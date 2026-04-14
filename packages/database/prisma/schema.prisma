@@ -1,0 +1,150 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id              String   @id @default(uuid()) @db.Uuid
+  parentId        String?  @map("parent_id") @db.Uuid
+  name            String
+  emergencyStatus String   @default("INACTIVE") @map("emergency_status")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  parent   Tenant?  @relation("TenantHierarchy", fields: [parentId], references: [id])
+  children Tenant[] @relation("TenantHierarchy")
+
+  users        User[]
+  screens      Screen[]
+  screenGroups ScreenGroup[]
+  assets       Asset[]
+  playlists    Playlist[]
+  schedules    Schedule[]
+  auditLogs    AuditLog[]
+
+  @@map("tenants")
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  assets    Asset[]
+  auditLogs AuditLog[]
+
+  @@map("users")
+}
+
+model ScreenGroup {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  screens   Screen[]
+  schedules Schedule[]
+
+  @@map("screen_groups")
+}
+
+model Screen {
+  id                String    @id @default(uuid()) @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  screenGroupId     String?   @map("screen_group_id") @db.Uuid
+  name              String
+  location          String?
+  deviceFingerprint String    @unique @map("device_fingerprint")
+  status            String
+  lastPingAt        DateTime? @map("last_ping_at")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  screenGroup ScreenGroup? @relation(fields: [screenGroupId], references: [id])
+  schedules   Schedule[]
+
+  @@map("screens")
+}
+
+model Asset {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  uploadedByUserId String   @map("uploaded_by_user_id") @db.Uuid
+  fileUrl          String   @map("file_url")
+  mimeType         String   @map("mime_type")
+  status           String   @default("PENDING_APPROVAL")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  uploadedBy    User           @relation(fields: [uploadedByUserId], references: [id])
+  playlistItems PlaylistItem[]
+
+  @@map("assets")
+}
+
+model Playlist {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  name     String
+
+  tenant    Tenant         @relation(fields: [tenantId], references: [id])
+  items     PlaylistItem[]
+  schedules Schedule[]
+
+  @@map("playlists")
+}
+
+model PlaylistItem {
+  id            String @id @default(uuid()) @db.Uuid
+  playlistId    String @map("playlist_id") @db.Uuid
+  assetId       String @map("asset_id") @db.Uuid
+  durationMs    Int    @map("duration_ms")
+  sequenceOrder Int    @map("sequence_order")
+
+  playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  asset    Asset    @relation(fields: [assetId], references: [id])
+
+  @@map("playlist_items")
+}
+
+model Schedule {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  playlistId    String    @map("playlist_id") @db.Uuid
+  screenGroupId String?   @map("screen_group_id") @db.Uuid
+  screenId      String?   @map("screen_id") @db.Uuid
+  startTime     DateTime  @map("start_time")
+  endTime       DateTime? @map("end_time")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  playlist    Playlist     @relation(fields: [playlistId], references: [id])
+  screenGroup ScreenGroup? @relation(fields: [screenGroupId], references: [id])
+  screen      Screen?      @relation(fields: [screenId], references: [id])
+
+  @@map("schedules")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  action     String
+  targetType String   @map("target_type")
+  targetId   String?  @map("target_id") @db.Uuid
+  details    Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}

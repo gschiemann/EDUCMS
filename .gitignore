@@ -1,0 +1,25 @@
+node_modules/
+.next/
+dist/
+build/
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.DS_Store
+*.pem
+*.sqlite
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+
+# IDEs
+.idea/
+.vscode/
+
+# Turborepo
+.turbo/

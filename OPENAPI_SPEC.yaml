@@ -1,0 +1,148 @@
+openapi: 3.1.0
+info:
+  title: School CMS Platform API
+  version: 1.0.0
+  description: Secure multi-tenant API for School Digital Signage Platform. Input validation strictly whitelists all sort/filter fields.
+
+components:
+  securitySchemes:
+    SessionAuth:
+      type: http
+      scheme: bearer
+      description: Session Identifier bound to User Authentication (rotated on login)
+    DeviceAuth:
+      type: http
+      scheme: bearer
+      description: Single-device cryptographically signed hardware token.
+
+security:
+  - SessionAuth: []
+
+paths:
+  /api/v1/auth/login:
+    post:
+      summary: User Login
+      description: Authenticates user and rotates session identifier. Strict HTTPS & CSRF checks.
+      security: []
+      responses:
+        '200':
+          description: Successful login with newly rotated session token.
+
+  /api/v1/admin/schools:
+    get:
+      summary: List Schools
+      description: Get schools within the user's permitted district scope.
+      parameters:
+        - in: query
+          name: sort
+          schema:
+            type: string
+            enum: [name, created_at] # Strict whitelisting
+      responses:
+        '200':
+          description: List of schools
+
+  /api/v1/cms/assets:
+    post:
+      summary: Upload Media Asset
+      description: Restricted to Contributor/Admin roles. Requires multi-tenant validation context.
+      responses:
+        '201':
+          description: Asset created successfully.
+
+  /api/v1/cms/playlists:
+    post:
+      summary: Create Playlist
+      description: Idempotent creation of playlists for a given school scope.
+      responses:
+        '201':
+          description: Playlist created successfully.
+
+  /api/v1/cms/schedules:
+    post:
+      summary: Schedule a Playlist
+      description: Associates a playlist to a screen group for an active timeframe.
+      responses:
+        '201':
+          description: Schedule active.
+
+  /api/v1/cms/publish:
+    post:
+      summary: Trigger Publish (Idempotent)
+      description: Snapshots current active staging state and compiles a deterministic manifest for connected players.
+      responses:
+        '202':
+          description: Manifest generation initiated.
+
+  /api/v1/emergency/override:
+    post:
+      summary: Trigger Emergency Override
+      description: Immediately broadcasts emergency override payload globally or down to the school level.
+      responses:
+        '200':
+          description: Emergency active.
+
+  /api/v1/device/sync:
+    get:
+      summary: Fetch Device Manifest
+      security:
+        - DeviceAuth: []
+      description: Player requests current manifest. Implements ETag/If-None-Match pattern.
+      parameters:
+        - in: header
+          name: If-None-Match
+          schema:
+            type: string
+          required: false
+      responses:
+        '200':
+          description: Manifest payload describing assets and schedules.
+        '304':
+          description: Not Modified (Content is up to date).
+
+  /api/v1/device/heartbeat:
+    post:
+      summary: Report Device Heartbeat
+      security:
+        - DeviceAuth: []
+      description: Report current health, thermal status, loaded manifest hash, and network IP.
+      responses:
+        '200':
+          description: Successfully logged.
+
+  /api/v1/emergency/override/clear:
+    post:
+      summary: Clear Emergency Override
+      description: Transmits the ALL_CLEAR event to screens and resets the system loop back to standard caching.
+      responses:
+        '200':
+          description: Override cleared.
+
+  /api/v1/admin/users:
+    get:
+      summary: List Users
+      description: Retrieves users managed by this caller's RBAC boundaries.
+      responses:
+        '200':
+          description: OK
+    post:
+      summary: Create or Invite User
+      responses:
+        '201':
+          description: User Created
+
+  /api/v1/admin/audit:
+    get:
+      summary: Fetch Immutable Audit Trace
+      description: Fetches standardized audit events for compliance tracing.
+      responses:
+        '200':
+          description: JSON Audit List
+
+  /api/v1/cms/assets/approve:
+    post:
+      summary: Approve Contributor Asset
+      description: Updates asset status from PENDING_REVIEW to SECURE/READY for playback.
+      responses:
+        '200':
+          description: Asset approved.
