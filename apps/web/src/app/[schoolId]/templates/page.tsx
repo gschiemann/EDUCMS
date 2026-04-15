@@ -16,7 +16,7 @@ import {
 import {
   useTemplates, useCreateTemplate, useDeleteTemplate, useCreateFromPreset,
   useDuplicateTemplate, useUpdateTemplate, useUpdateTemplateZones,
-  useAssets,
+  useAssets, usePlaylists,
 } from '@/hooks/use-api';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 

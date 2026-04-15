@@ -97,38 +97,6 @@ export default function PlayerPage() {
   const pollRef = useRef<NodeJS.Timeout | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
-  // ─── Realtime WebSocket Connection ───
-  useEffect(() => {
-    if (phase !== 'playing') return;
-
-    const wsUrl = getApiRoot().replace(/^http/, 'ws') + '/realtime';
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      // Decode tenant id out of the existing login routine (we assume Springfield)
-      const token = `dev_${screenId}_00000000-0000-0000-0000-000000000002`;
-      ws.send(JSON.stringify({
-        event: 'HELLO',
-        data: { token }
-      }));
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'SYNC' || msg.type === 'OVERRIDE') {
-          fetchContent();
-        }
-      } catch (e) {}
-    };
-
-    return () => {
-      ws.close();
-      wsRef.current = null;
-    };
-  }, [phase, screenId, fetchContent]);
-
   // ─── Phase 1: Register device ───
   useEffect(() => {
     if (phase !== 'registering') return;
@@ -259,6 +227,37 @@ export default function PlayerPage() {
   useEffect(() => {
     if (phase === 'connecting') fetchContent();
   }, [phase, fetchContent]);
+
+  // ─── Realtime WebSocket Connection ───
+  useEffect(() => {
+    if (phase !== 'playing') return;
+
+    const wsUrl = getApiRoot().replace(/^http/, 'ws') + '/realtime';
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      const token = `dev_${screenId}_00000000-0000-0000-0000-000000000002`;
+      ws.send(JSON.stringify({
+        event: 'HELLO',
+        data: { token }
+      }));
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'SYNC' || msg.type === 'OVERRIDE') {
+          fetchContent();
+        }
+      } catch (e) {}
+    };
+
+    return () => {
+      ws.close();
+      wsRef.current = null;
+    };
+  }, [phase, screenId, fetchContent]);
 
   // ─── Cycle through slides ───
   useEffect(() => {

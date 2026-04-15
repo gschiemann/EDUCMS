@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from 'react';
-import { Play, Plus, Clock, Loader2, Trash2, Save, GripVertical, Image as ImageIcon, Video, Music, Globe, File, Calendar, CalendarDays, Power, Eye, LayoutTemplate, Pencil, Monitor, Layers, ChevronRight } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Play, Plus, Clock, Loader2, Trash2, Save, GripVertical, Image as ImageIcon, Video, Music, Globe, File, Calendar, CalendarDays, Power, Eye, LayoutTemplate, Pencil, Monitor, Layers, ChevronRight, ChevronLeft, Tv2, Wifi, WifiOff, ArrowLeft, Smartphone } from 'lucide-react';
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent
 } from '@dnd-kit/core';
@@ -85,6 +85,113 @@ function SortableItem({ item, index, onRemove, onDurationChange }: any) {
   );
 }
 
+// --- Dashboard Playlist Card ---
+function PlaylistCard({ playlist, screenMap, onOpen, onDelete }: {
+  playlist: any;
+  screenMap: { screens: any[]; groups: any[]; scheduleCount: number; activeCount: number };
+  onOpen: () => void;
+  onDelete: () => void;
+}) {
+  const isTemplate = !!playlist.template;
+  const slideCount = playlist.items?.length || 0;
+  const hasScreens = screenMap.screens.length > 0 || screenMap.groups.length > 0;
+  const onlineScreens = screenMap.screens.filter((s: any) => s.status === 'ONLINE');
+
+  return (
+    <div
+      onClick={onOpen}
+      className="group relative bg-white rounded-2xl border border-slate-100 hover:border-indigo-200 hover:shadow-[0_8px_30px_rgba(99,102,241,0.08)] transition-all duration-300 cursor-pointer overflow-hidden"
+    >
+      {/* Top accent bar */}
+      <div className={`h-1 ${isTemplate ? 'bg-gradient-to-r from-violet-500 to-purple-500' : hasScreens ? 'bg-gradient-to-r from-emerald-400 to-teal-400' : 'bg-slate-200'}`} />
+
+      <div className="p-5">
+        {/* Header row */}
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-sm font-bold text-slate-800 truncate">{playlist.name}</h3>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                isTemplate
+                  ? 'bg-violet-100 text-violet-600'
+                  : 'bg-indigo-100 text-indigo-600'
+              }`}>
+                {isTemplate ? 'Layout' : 'Media'}
+              </span>
+              <span className="text-[10px] text-slate-400">
+                {isTemplate
+                  ? `${playlist.template.screenWidth}x${playlist.template.screenHeight}`
+                  : `${slideCount} slide${slideCount !== 1 ? 's' : ''}`
+                }
+              </span>
+            </div>
+          </div>
+          <div
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            className="p-1.5 rounded-lg text-slate-200 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </div>
+        </div>
+
+        {/* Screen Assignments — the hero section */}
+        <div className="mt-1">
+          {hasScreens ? (
+            <div className="space-y-1.5">
+              {/* Individual screens with status */}
+              {screenMap.screens.map((screen: any) => (
+                <div key={screen.id} className="flex items-center gap-2 py-1.5 px-2.5 rounded-lg bg-slate-50/80">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${screen.status === 'ONLINE' ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.4)]' : 'bg-slate-300'}`} />
+                  <Monitor className="w-3 h-3 text-slate-400 shrink-0" />
+                  <span className="text-[11px] font-medium text-slate-600 truncate">{screen.name}</span>
+                  <span className={`text-[9px] font-bold ml-auto shrink-0 ${screen.status === 'ONLINE' ? 'text-emerald-600' : 'text-slate-400'}`}>
+                    {screen.status === 'ONLINE' ? 'LIVE' : 'OFF'}
+                  </span>
+                </div>
+              ))}
+              {/* Screen groups */}
+              {screenMap.groups.map((group: any) => (
+                <div key={group.id} className="flex items-center gap-2 py-1.5 px-2.5 rounded-lg bg-slate-50/80">
+                  <span className="w-2 h-2 rounded-full shrink-0 bg-sky-400" />
+                  <Layers className="w-3 h-3 text-slate-400 shrink-0" />
+                  <span className="text-[11px] font-medium text-slate-600 truncate">{group.name}</span>
+                  <span className="text-[9px] font-bold text-sky-600 ml-auto shrink-0">{group.screenCount} screen{group.screenCount !== 1 ? 's' : ''}</span>
+                </div>
+              ))}
+              {/* Schedule summary */}
+              <div className="flex items-center gap-1.5 mt-1 pt-1.5 border-t border-slate-100">
+                <CalendarDays className="w-3 h-3 text-slate-400" />
+                <span className="text-[10px] text-slate-400">
+                  {screenMap.activeCount} active schedule{screenMap.activeCount !== 1 ? 's' : ''}
+                  {screenMap.scheduleCount > screenMap.activeCount && ` (${screenMap.scheduleCount - screenMap.activeCount} paused)`}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 py-3 px-3 rounded-lg bg-amber-50/60 border border-amber-100/60">
+              <WifiOff className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="text-[11px] text-amber-600 font-medium">Not assigned to any screen</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Footer — click prompt */}
+      <div className="px-5 py-2.5 border-t border-slate-50 bg-slate-50/30 flex items-center justify-between">
+        <span className="text-[10px] text-slate-400 font-medium">
+          {screenMap.scheduleCount > 0
+            ? `${onlineScreens.length} screen${onlineScreens.length !== 1 ? 's' : ''} online`
+            : 'No schedules'
+          }
+        </span>
+        <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all" />
+      </div>
+    </div>
+  );
+}
+
 // --- Main page ---
 export default function PlaylistsPage() {
   const { data: playlists, isLoading } = usePlaylists();
@@ -125,6 +232,55 @@ export default function PlaylistsPage() {
   const selectedPlaylist = playlists?.find((p: any) => p.id === selectedId);
   const playlistSchedules = (schedules || []).filter((s: any) => s.playlistId === selectedId);
 
+  // --- Build playlist → screen mapping for dashboard cards ---
+  const playlistScreenMap = useMemo(() => {
+    const map: Record<string, { screens: any[]; groups: any[]; scheduleCount: number; activeCount: number }> = {};
+    if (!playlists) return map;
+
+    for (const pl of playlists) {
+      const plSchedules = (schedules || []).filter((s: any) => s.playlistId === pl.id);
+      const screenSet = new Map<string, any>();
+      const groupSet = new Map<string, any>();
+
+      for (const sched of plSchedules) {
+        // Direct screen assignment
+        if (sched.screenId && sched.screen) {
+          screenSet.set(sched.screen.id, sched.screen);
+        }
+        // Screen group assignment — expand to individual screens
+        if (sched.screenGroupId && sched.screenGroup) {
+          groupSet.set(sched.screenGroup.id, {
+            ...sched.screenGroup,
+            screenCount: sched.screenGroup.screens?.length || 0,
+          });
+          // Also add individual screens from the group
+          if (sched.screenGroup.screens) {
+            for (const s of sched.screenGroup.screens) {
+              screenSet.set(s.id, s);
+            }
+          }
+        }
+      }
+
+      map[pl.id] = {
+        screens: Array.from(screenSet.values()),
+        groups: Array.from(groupSet.values()),
+        scheduleCount: plSchedules.length,
+        activeCount: plSchedules.filter((s: any) => s.isActive).length,
+      };
+    }
+    return map;
+  }, [playlists, schedules]);
+
+  // --- Quick stats ---
+  const totalScreensOnline = (screens || []).filter((s: any) => s.status === 'ONLINE').length;
+  const totalScreens = (screens || []).length;
+  const activeSchedules = (schedules || []).filter((s: any) => s.isActive).length;
+  const unassignedPlaylists = (playlists || []).filter((pl: any) => {
+    const m = playlistScreenMap[pl.id];
+    return !m || m.scheduleCount === 0;
+  }).length;
+
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -135,6 +291,12 @@ export default function PlaylistsPage() {
     setLocalItems(pl.items || []);
     setHasChanges(false);
     setTab('editor');
+  };
+
+  const handleBack = () => {
+    setSelectedId(null);
+    setLocalItems([]);
+    setHasChanges(false);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -227,23 +389,408 @@ export default function PlaylistsPage() {
     return true;
   });
 
+  // ─── DETAIL / EDITOR VIEW ───
+  if (selectedId && selectedPlaylist) {
+    return (
+      <div className="space-y-6">
+        {/* Back + header */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="flex items-center gap-3">
+            <button onClick={handleBack} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold tracking-tight text-slate-800">{selectedPlaylist.name}</h1>
+                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                  selectedPlaylist.template ? 'bg-violet-100 text-violet-600' : 'bg-indigo-100 text-indigo-600'
+                }`}>
+                  {selectedPlaylist.template ? 'Layout' : 'Media'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {selectedPlaylist.template
+                  ? `${selectedPlaylist.template.screenWidth}x${selectedPlaylist.template.screenHeight} template`
+                  : `${localItems.length} slides · ${totalDur}`
+                }
+                {playlistSchedules.length > 0 && ` · ${playlistSchedules.filter((s: any) => s.isActive).length} active schedule${playlistSchedules.filter((s: any) => s.isActive).length !== 1 ? 's' : ''}`}
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            {tab === 'editor' && !selectedPlaylist.template && (
+              <>
+                <button onClick={() => setShowPicker(true)} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1">
+                  <Plus className="w-3.5 h-3.5" /> Add Media
+                </button>
+                {hasChanges && (
+                  <button onClick={handleSave} disabled={saveItems.isPending} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg flex items-center gap-1">
+                    <Save className="w-3.5 h-3.5" /> {saveItems.isPending ? 'Saving...' : 'Save'}
+                  </button>
+                )}
+              </>
+            )}
+            <button onClick={() => setShowPublishModal(true)} className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shadow-sm">
+              <CalendarDays className="w-3.5 h-3.5" /> Schedule to Screen
+            </button>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex bg-slate-100 rounded-xl p-1 w-fit">
+          <button onClick={() => setTab('editor')} className={`px-4 py-2 text-xs font-semibold rounded-lg transition-colors ${tab === 'editor' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+            {selectedPlaylist.template ? 'Template' : 'Editor'}
+          </button>
+          <button onClick={() => setTab('schedules')} className={`px-4 py-2 text-xs font-semibold rounded-lg transition-colors ${tab === 'schedules' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+            Schedules {playlistSchedules.length > 0 && <span className="text-emerald-500 ml-0.5">({playlistSchedules.length})</span>}
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden min-h-[400px]">
+          <div className="p-6">
+            {tab === 'editor' && selectedPlaylist.template ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="w-16 h-16 rounded-2xl bg-violet-100 flex items-center justify-center mb-4">
+                  <LayoutTemplate className="w-8 h-8 text-violet-500" />
+                </div>
+                <h3 className="text-base font-bold text-slate-700">{selectedPlaylist.template.name}</h3>
+                <p className="text-xs text-slate-400 mt-1 mb-1">Template-based layout · {selectedPlaylist.template.screenWidth}x{selectedPlaylist.template.screenHeight}</p>
+                <span className="text-[10px] font-semibold bg-violet-100 text-violet-600 px-3 py-1 rounded-full uppercase tracking-wider mb-6">
+                  {selectedPlaylist.template.category}
+                </span>
+                <p className="text-xs text-slate-400 max-w-sm mb-6">
+                  This playlist uses a multi-zone template layout with live widgets (clock, weather, announcements, etc).
+                  Schedule it to your screens using the Schedules tab.
+                </p>
+                <button
+                  onClick={() => { window.location.href = window.location.pathname.replace('/playlists', '/templates'); }}
+                  className="px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors"
+                >
+                  <Pencil className="w-3.5 h-3.5" /> Edit Template
+                </button>
+              </div>
+            ) : tab === 'editor' ? (
+              localItems.length > 0 ? (
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToVerticalAxis]}>
+                  <SortableContext items={localItems.map((s: any) => s.id)} strategy={verticalListSortingStrategy}>
+                    <div className="space-y-2">
+                      {localItems.map((item: any, i: number) => (
+                        <SortableItem key={item.id} item={item} index={i} onRemove={handleRemove} onDurationChange={handleDuration} />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <Play className="w-10 h-10 text-slate-200 mb-3" />
+                  <p className="text-sm font-medium text-slate-400">Empty playlist</p>
+                  <p className="text-xs text-slate-300 mt-1 mb-4">Click &quot;Add Media&quot; to add content from your library</p>
+                  <button onClick={() => setShowPicker(true)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5">
+                    <Plus className="w-3.5 h-3.5" /> Add Media
+                  </button>
+                </div>
+              )
+            ) : (
+              <div className="space-y-4">
+                {playlistSchedules.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <CalendarDays className="w-10 h-10 text-slate-200 mb-3" />
+                    <p className="text-sm font-medium text-slate-400">No schedules yet</p>
+                    <p className="text-xs text-slate-300 mt-1 mb-4">Publish this playlist to a screen with optional time scheduling</p>
+                    <button onClick={() => setShowPublishModal(true)} className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5">
+                      <Plus className="w-3.5 h-3.5" /> Add Schedule
+                    </button>
+                  </div>
+                ) : (
+                  playlistSchedules.map((sched: any) => (
+                    <div key={sched.id} className={`p-5 rounded-2xl transition-all duration-300 border ${sched.isActive ? 'bg-emerald-50/50 border-emerald-100 hover:bg-emerald-50/80' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`w-2 h-2 rounded-full ${sched.isActive ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                            <Monitor className="w-3.5 h-3.5 text-slate-400" />
+                            <p className="text-sm font-bold text-slate-700">
+                              {sched.screenGroup?.name || sched.screen?.name || 'Unknown target'}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2 text-[10px] font-semibold mt-2">
+                            {sched.daysOfWeek ? (
+                              <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">{sched.daysOfWeek}</span>
+                            ) : (
+                              <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded">Every day</span>
+                            )}
+                            {sched.timeStart && sched.timeEnd ? (
+                              <span className="bg-sky-100 text-sky-700 px-2 py-0.5 rounded">{sched.timeStart} - {sched.timeEnd}</span>
+                            ) : (
+                              <span className="bg-sky-100 text-sky-700 px-2 py-0.5 rounded">All day</span>
+                            )}
+                            <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded">
+                              Since {new Date(sched.startTime).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => toggleSchedule.mutate(sched.id)}
+                            className={`p-1.5 rounded-lg transition-colors ${sched.isActive ? 'text-emerald-600 hover:bg-emerald-100' : 'text-slate-400 hover:bg-slate-100'}`}
+                            title={sched.isActive ? 'Pause schedule' : 'Resume schedule'}
+                          >
+                            <Power className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => deleteSchedule.mutate(sched.id)}
+                            className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ─── Asset Picker Modal ─── */}
+        {showPicker && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowPicker(false)}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[75vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center">
+                <h3 className="text-base font-bold text-slate-800">Add Media to Playlist</h3>
+                <button onClick={() => setShowPicker(false)} className="text-slate-400 hover:text-slate-600 text-lg">x</button>
+              </div>
+              <div className="px-5 py-3 border-b border-slate-50 flex gap-1 bg-slate-50/50">
+                {(['all', 'images', 'videos', 'audio', 'urls'] as const).map(f => (
+                  <button key={f} onClick={() => setPickerFilter(f)} className={`px-3 py-1 text-xs font-semibold rounded-md ${pickerFilter === f ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400'}`}>
+                    {f.charAt(0).toUpperCase() + f.slice(1)}
+                  </button>
+                ))}
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">
+                {pickerAssets.length === 0 ? (
+                  <div className="text-center py-12 text-sm text-slate-400">No assets found. Upload media on the Assets page first.</div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-3">
+                    {pickerAssets.map((asset: any) => {
+                      const thumb = thumbUrl(asset);
+                      const name = assetName(asset);
+                      return (
+                        <button
+                          key={asset.id}
+                          onClick={() => handleAddAsset(asset)}
+                          className="rounded-xl border border-slate-200 overflow-hidden hover:border-indigo-300 hover:shadow-md transition-all text-left group"
+                        >
+                          <div className="aspect-video bg-slate-50 flex items-center justify-center overflow-hidden relative">
+                            {thumb ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={thumb} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              mimeIcon(asset.mimeType, 'w-6 h-6')
+                            )}
+                            <div className="absolute inset-0 bg-indigo-600/0 group-hover:bg-indigo-600/10 transition-colors flex items-center justify-center">
+                              <Plus className="w-6 h-6 text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
+                          </div>
+                          <div className="p-2">
+                            <p className="text-[11px] font-medium text-slate-600 truncate">{name}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── Publish / Schedule Modal ─── */}
+        {showPublishModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowPublishModal(false)}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col p-6" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-bold text-slate-800 mb-1">Publish to Screens</h3>
+              <p className="text-sm text-slate-500 mb-5">
+                Schedule <span className="font-bold text-slate-800">{selectedPlaylist?.name}</span> to play on a screen or group.
+              </p>
+
+              <div className="mb-4">
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Publish Target</label>
+                <select
+                  value={schedTarget}
+                  onChange={e => setSchedTarget(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                >
+                  <option value="">-- Choose a group or screen --</option>
+                  {screenGroups && screenGroups.length > 0 && (
+                    <optgroup label="Screen Groups (Publish to all)">
+                      {screenGroups.map((g: any) => (
+                        <option key={`g-${g.id}`} value={`group-${g.id}`}>{g.name} ({g.screens?.length || 0} screens)</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {screens && screens.filter((s:any) => !s.screenGroupId).length > 0 && (
+                    <optgroup label="Ungrouped Screens">
+                      {screens.filter((s:any) => !s.screenGroupId).map((s: any) => (
+                        <option key={`s-${s.id}`} value={`screen-${s.id}`}>{s.name}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {screenGroups?.map((g: any) => g.screens && g.screens.length > 0 ? (
+                    <optgroup key={`opt-${g.id}`} label={`Screens inside: ${g.name}`}>
+                      {g.screens.map((s: any) => (
+                        <option key={`s-${s.id}`} value={`screen-${s.id}`}>{s.name}</option>
+                      ))}
+                    </optgroup>
+                  ) : null)}
+                </select>
+                {(!screenGroups || screenGroups.length === 0) && (!screens || screens.length === 0) && (
+                  <p className="text-[10px] text-amber-600 mt-1">No screens or groups exist. Pair a device on the Screens page first.</p>
+                )}
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">When to Play</label>
+                <div className="flex bg-slate-100 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setSchedMode('always')}
+                    className={`flex-1 px-3 py-2 text-xs font-semibold rounded-md transition-colors ${schedMode === 'always' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400'}`}
+                  >
+                    Always (24/7)
+                  </button>
+                  <button
+                    onClick={() => setSchedMode('scheduled')}
+                    className={`flex-1 px-3 py-2 text-xs font-semibold rounded-md transition-colors ${schedMode === 'scheduled' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400'}`}
+                  >
+                    Scheduled
+                  </button>
+                </div>
+              </div>
+
+              {schedMode === 'scheduled' && (
+                <div className="space-y-4 mb-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-2">Days of Week</label>
+                    <div className="flex gap-1">
+                      {DAYS.map(day => (
+                        <button
+                          key={day}
+                          onClick={() => setSchedDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])}
+                          className={`px-2.5 py-1.5 text-[10px] font-bold rounded-lg transition-all ${
+                            schedDays.includes(day)
+                              ? 'bg-indigo-600 text-white shadow-sm'
+                              : 'bg-white text-slate-400 border border-slate-200 hover:border-indigo-300'
+                          }`}
+                        >
+                          {day}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      <button onClick={() => setSchedDays(['Mon','Tue','Wed','Thu','Fri'])} className="text-[10px] font-semibold text-indigo-600 hover:underline">Weekdays</button>
+                      <button onClick={() => setSchedDays(['Sat','Sun'])} className="text-[10px] font-semibold text-indigo-600 hover:underline">Weekends</button>
+                      <button onClick={() => setSchedDays([...DAYS])} className="text-[10px] font-semibold text-indigo-600 hover:underline">Every day</button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-2">Time Window</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="time" value={schedTimeStart} onChange={e => setSchedTimeStart(e.target.value)}
+                        className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <span className="text-xs text-slate-400 font-semibold">to</span>
+                      <input
+                        type="time" value={schedTimeEnd} onChange={e => setSchedTimeEnd(e.target.value)}
+                        className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 mt-2">
+                <button onClick={() => setShowPublishModal(false)} className="px-4 py-2.5 text-slate-500 hover:text-slate-800 text-sm font-semibold rounded-lg hover:bg-slate-50">
+                  Cancel
+                </button>
+                <button
+                  disabled={!schedTarget || createSchedule.isPending}
+                  onClick={handlePublish}
+                  className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-sm font-bold rounded-lg shadow-sm flex items-center gap-2"
+                >
+                  {createSchedule.isPending ? 'Publishing...' : (
+                    <><CalendarDays className="w-4 h-4" /> Publish</>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ─── DASHBOARD VIEW ───
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-800">Playlists</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Create playlists, add media, schedule to screens.</p>
+          <p className="text-sm text-slate-500 mt-0.5">See what&apos;s playing on every screen at a glance.</p>
         </div>
         <button onClick={() => { setShowCreate(true); setCreateMode('choose'); setNewName(''); setSelectedTemplateId(null); }} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-1.5">
           <Plus className="w-4 h-4" /> New Playlist
         </button>
       </div>
 
+      {/* Quick Stats Bar */}
+      {playlists && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-white rounded-2xl border border-slate-100 px-4 py-3">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-7 h-7 rounded-lg bg-indigo-100 flex items-center justify-center">
+                <Play className="w-3.5 h-3.5 text-indigo-600" />
+              </div>
+              <span className="text-lg font-bold text-slate-800">{playlists.length}</span>
+            </div>
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Playlists</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-100 px-4 py-3">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center">
+                <Wifi className="w-3.5 h-3.5 text-emerald-600" />
+              </div>
+              <span className="text-lg font-bold text-slate-800">{totalScreensOnline}<span className="text-sm text-slate-400 font-normal">/{totalScreens}</span></span>
+            </div>
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Screens Online</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-100 px-4 py-3">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-7 h-7 rounded-lg bg-sky-100 flex items-center justify-center">
+                <CalendarDays className="w-3.5 h-3.5 text-sky-600" />
+              </div>
+              <span className="text-lg font-bold text-slate-800">{activeSchedules}</span>
+            </div>
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Active Schedules</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-100 px-4 py-3">
+            <div className="flex items-center gap-2 mb-1">
+              <div className={`w-7 h-7 rounded-lg ${unassignedPlaylists > 0 ? 'bg-amber-100' : 'bg-emerald-100'} flex items-center justify-center`}>
+                <WifiOff className={`w-3.5 h-3.5 ${unassignedPlaylists > 0 ? 'text-amber-600' : 'text-emerald-600'}`} />
+              </div>
+              <span className="text-lg font-bold text-slate-800">{unassignedPlaylists}</span>
+            </div>
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Unassigned</p>
+          </div>
+        </div>
+      )}
+
       {/* Create form — step-based */}
       {showCreate && (
         <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
-          {/* Step 1: Choose type */}
           {createMode === 'choose' && (
             <div className="p-5">
               <p className="text-sm font-semibold text-slate-700 mb-3">What kind of playlist?</p>
@@ -275,7 +822,6 @@ export default function PlaylistsPage() {
             </div>
           )}
 
-          {/* Step 2a: Blank playlist — just name */}
           {createMode === 'blank' && (
             <div className="p-5">
               <p className="text-sm font-semibold text-slate-700 mb-3">Name your playlist</p>
@@ -291,7 +837,6 @@ export default function PlaylistsPage() {
             </div>
           )}
 
-          {/* Step 2b: Pick a template */}
           {createMode === 'template' && (
             <div className="p-5">
               <p className="text-sm font-semibold text-slate-700 mb-3">
@@ -316,7 +861,7 @@ export default function PlaylistsPage() {
                           </div>
                           <div className="min-w-0">
                             <p className="text-xs font-bold text-slate-700 truncate">{t.name}</p>
-                            <p className="text-[10px] text-slate-400">{t.screenWidth}×{t.screenHeight} · {t._count?.zones || t.zones?.length || 0} zones</p>
+                            <p className="text-[10px] text-slate-400">{t.screenWidth}x{t.screenHeight} · {t._count?.zones || t.zones?.length || 0} zones</p>
                           </div>
                         </button>
                       ))}
@@ -346,392 +891,31 @@ export default function PlaylistsPage() {
 
       {isLoading && <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>}
 
-      {playlists && (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Playlist sidebar */}
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">{playlists.length} Playlists</p>
-            {playlists.map((pl: any) => (
-              <button
-                key={pl.id}
-                onClick={() => handleSelect(pl)}
-                className={`w-full text-left px-5 py-4 rounded-3xl transition-all duration-300 flex justify-between items-center ${
-                  selectedId === pl.id
-                    ? 'bg-indigo-50/80 text-indigo-700 shadow-[0_4px_20px_rgba(99,102,241,0.08)] scale-[1.02]'
-                    : 'bg-white hover:bg-slate-50/80 text-slate-700 shadow-sm border border-transparent hover:border-slate-100'
-                }`}
-              >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-sm font-semibold truncate">{pl.name}</p>
-                    {pl.template && (
-                      <span className="shrink-0 text-[8px] font-bold bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded uppercase tracking-wider">Layout</span>
-                    )}
-                  </div>
-                  <p className="text-[10px] text-slate-400 mt-0.5">
-                    {pl.template
-                      ? <span className="text-violet-500">{pl.template.screenWidth}×{pl.template.screenHeight} template</span>
-                      : <>{pl.items?.length || 0} slides</>
-                    }
-                    {pl._count?.schedules > 0 && <span className="text-emerald-500 ml-1">• {pl._count.schedules} scheduled</span>}
-                  </p>
-                </div>
-                <div onClick={(e) => { e.stopPropagation(); deletePlaylist.mutate(pl.id); }} className="text-slate-300 hover:text-red-500 p-1 cursor-pointer">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </div>
-              </button>
-            ))}
-            {playlists.length === 0 && <p className="text-center py-8 text-xs text-slate-400">No playlists yet.</p>}
-          </div>
-
-          {/* Timeline editor */}
-          <div className="lg:col-span-3 bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden flex flex-col min-h-[500px]">
-            {selectedPlaylist ? (
-              <>
-                {/* Toolbar */}
-                <div className="px-6 py-4 border-b border-slate-50 flex justify-between items-center bg-slate-50/30">
-                  <div className="flex items-center gap-3">
-                    <h2 className="text-sm font-bold text-slate-700">{selectedPlaylist.name}</h2>
-                    <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">{localItems.length} slides • {totalDur}</span>
-                  </div>
-                  <div className="flex gap-2">
-                    {/* Tabs */}
-                    <div className="flex bg-slate-100 rounded-lg p-0.5 mr-2">
-                      <button onClick={() => setTab('editor')} className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${tab === 'editor' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-                        Editor
-                      </button>
-                      <button onClick={() => setTab('schedules')} className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${tab === 'schedules' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-                        Schedules {playlistSchedules.length > 0 && <span className="text-emerald-500 ml-0.5">({playlistSchedules.length})</span>}
-                      </button>
-                    </div>
-                    {tab === 'editor' && selectedPlaylist.template && (
-                      <button onClick={() => setShowPublishModal(true)} className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shadow-sm">
-                        <CalendarDays className="w-3.5 h-3.5" /> Schedule to Screens
-                      </button>
-                    )}
-                    {tab === 'editor' && !selectedPlaylist.template && (
-                      <>
-                        <button onClick={() => setShowPicker(true)} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1">
-                          <Plus className="w-3.5 h-3.5" /> Add Media
-                        </button>
-                        {hasChanges ? (
-                          <button onClick={handleSave} disabled={saveItems.isPending} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg flex items-center gap-1">
-                            <Save className="w-3.5 h-3.5" /> {saveItems.isPending ? 'Saving...' : 'Save'}
-                          </button>
-                        ) : localItems.length > 0 ? (
-                          <button onClick={() => setShowPublishModal(true)} className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shadow-sm">
-                            <CalendarDays className="w-3.5 h-3.5" /> Publish
-                          </button>
-                        ) : null}
-                      </>
-                    )}
-                    {tab === 'schedules' && (
-                      <button onClick={() => setShowPublishModal(true)} className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shadow-sm">
-                        <Plus className="w-3.5 h-3.5" /> Add Schedule
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Content based on tab */}
-                <div className="flex-1 p-5 overflow-y-auto">
-                  {tab === 'editor' && selectedPlaylist.template ? (
-                    /* ─── Template Layout Info ─── */
-                    <div className="flex flex-col items-center justify-center py-12 text-center">
-                      <div className="w-16 h-16 rounded-2xl bg-violet-100 flex items-center justify-center mb-4">
-                        <LayoutTemplate className="w-8 h-8 text-violet-500" />
-                      </div>
-                      <h3 className="text-base font-bold text-slate-700">{selectedPlaylist.template.name}</h3>
-                      <p className="text-xs text-slate-400 mt-1 mb-1">Template-based layout • {selectedPlaylist.template.screenWidth}×{selectedPlaylist.template.screenHeight}</p>
-                      <span className="text-[10px] font-semibold bg-violet-100 text-violet-600 px-3 py-1 rounded-full uppercase tracking-wider mb-6">
-                        {selectedPlaylist.template.category}
-                      </span>
-                      <p className="text-xs text-slate-400 max-w-sm mb-6">
-                        This playlist uses a multi-zone template layout with live widgets (clock, weather, announcements, etc).
-                        Schedule it to your screens using the Schedules tab.
-                      </p>
-                      <button
-                        onClick={() => { window.location.href = window.location.pathname.replace('/playlists', '/templates'); }}
-                        className="px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors"
-                      >
-                        <Pencil className="w-3.5 h-3.5" /> Edit Template
-                      </button>
-                    </div>
-                  ) : tab === 'editor' ? (
-                    /* ─── Editor Tab ─── */
-                    localItems.length > 0 ? (
-                      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToVerticalAxis]}>
-                        <SortableContext items={localItems.map((s: any) => s.id)} strategy={verticalListSortingStrategy}>
-                          <div className="space-y-2">
-                            {localItems.map((item: any, i: number) => (
-                              <SortableItem key={item.id} item={item} index={i} onRemove={handleRemove} onDurationChange={handleDuration} />
-                            ))}
-                          </div>
-                        </SortableContext>
-                      </DndContext>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center py-16 text-center">
-                        <Play className="w-10 h-10 text-slate-200 mb-3" />
-                        <p className="text-sm font-medium text-slate-400">Empty playlist</p>
-                        <p className="text-xs text-slate-300 mt-1 mb-4">Click &quot;Add Media&quot; to add content from your library</p>
-                        <button onClick={() => setShowPicker(true)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5">
-                          <Plus className="w-3.5 h-3.5" /> Add Media
-                        </button>
-                      </div>
-                    )
-                  ) : (
-                    /* ─── Schedules Tab ─── */
-                    <div className="space-y-4">
-                      {playlistSchedules.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-16 text-center">
-                          <CalendarDays className="w-10 h-10 text-slate-200 mb-3" />
-                          <p className="text-sm font-medium text-slate-400">No schedules yet</p>
-                          <p className="text-xs text-slate-300 mt-1 mb-4">Publish this playlist to a screen group with optional time scheduling</p>
-                          <button onClick={() => setShowPublishModal(true)} className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5">
-                            <Plus className="w-3.5 h-3.5" /> Add Schedule
-                          </button>
-                        </div>
-                      ) : (
-                        playlistSchedules.map((sched: any) => (
-                          <div key={sched.id} className={`p-5 rounded-3xl transition-all duration-300 border-transparent shadow-sm ${sched.isActive ? 'bg-emerald-50/50 hover:bg-emerald-50/80' : 'bg-slate-50 opacity-60'}`}>
-                            <div className="flex items-start justify-between gap-4">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className={`w-2 h-2 rounded-full ${sched.isActive ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                                  <p className="text-sm font-bold text-slate-700">
-                                    {sched.screenGroup?.name || sched.screen?.name || 'Unknown target'}
-                                  </p>
-                                </div>
-                                <div className="flex flex-wrap gap-2 text-[10px] font-semibold mt-2">
-                                  {sched.daysOfWeek ? (
-                                    <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">{sched.daysOfWeek}</span>
-                                  ) : (
-                                    <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded">Every day</span>
-                                  )}
-                                  {sched.timeStart && sched.timeEnd ? (
-                                    <span className="bg-sky-100 text-sky-700 px-2 py-0.5 rounded">{sched.timeStart} – {sched.timeEnd}</span>
-                                  ) : (
-                                    <span className="bg-sky-100 text-sky-700 px-2 py-0.5 rounded">All day</span>
-                                  )}
-                                  <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded">
-                                    Since {new Date(sched.startTime).toLocaleDateString()}
-                                  </span>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1 shrink-0">
-                                <button
-                                  onClick={() => toggleSchedule.mutate(sched.id)}
-                                  className={`p-1.5 rounded-lg transition-colors ${sched.isActive ? 'text-emerald-600 hover:bg-emerald-100' : 'text-slate-400 hover:bg-slate-100'}`}
-                                  title={sched.isActive ? 'Pause schedule' : 'Resume schedule'}
-                                >
-                                  <Power className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => deleteSchedule.mutate(sched.id)}
-                                  className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : (
-              <div className="flex-1 flex items-center justify-center p-12 text-center">
-                <div>
-                  <Play className="w-12 h-12 text-slate-200 mx-auto mb-3" />
-                  <h3 className="text-sm font-semibold text-slate-500">Select a playlist</h3>
-                  <p className="text-xs text-slate-400 mt-1">Choose from the left to edit its timeline</p>
-                </div>
-              </div>
-            )}
-          </div>
+      {/* ─── Playlist Dashboard Grid ─── */}
+      {playlists && playlists.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {playlists.map((pl: any) => (
+            <PlaylistCard
+              key={pl.id}
+              playlist={pl}
+              screenMap={playlistScreenMap[pl.id] || { screens: [], groups: [], scheduleCount: 0, activeCount: 0 }}
+              onOpen={() => handleSelect(pl)}
+              onDelete={() => deletePlaylist.mutate(pl.id)}
+            />
+          ))}
         </div>
       )}
 
-      {/* ─── Asset Picker Modal ─── */}
-      {showPicker && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowPicker(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[75vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="text-base font-bold text-slate-800">Add Media to Playlist</h3>
-              <button onClick={() => setShowPicker(false)} className="text-slate-400 hover:text-slate-600 text-lg">✕</button>
-            </div>
-            <div className="px-5 py-3 border-b border-slate-50 flex gap-1 bg-slate-50/50">
-              {(['all', 'images', 'videos', 'audio', 'urls'] as const).map(f => (
-                <button key={f} onClick={() => setPickerFilter(f)} className={`px-3 py-1 text-xs font-semibold rounded-md ${pickerFilter === f ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400'}`}>
-                  {f.charAt(0).toUpperCase() + f.slice(1)}
-                </button>
-              ))}
-            </div>
-            <div className="flex-1 overflow-y-auto p-4">
-              {pickerAssets.length === 0 ? (
-                <div className="text-center py-12 text-sm text-slate-400">No assets found. Upload media on the Assets page first.</div>
-              ) : (
-                <div className="grid grid-cols-3 gap-3">
-                  {pickerAssets.map((asset: any) => {
-                    const thumb = thumbUrl(asset);
-                    const name = assetName(asset);
-                    return (
-                      <button
-                        key={asset.id}
-                        onClick={() => handleAddAsset(asset)}
-                        className="rounded-xl border border-slate-200 overflow-hidden hover:border-indigo-300 hover:shadow-md transition-all text-left group"
-                      >
-                        <div className="aspect-video bg-slate-50 flex items-center justify-center overflow-hidden relative">
-                          {thumb ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={thumb} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            mimeIcon(asset.mimeType, 'w-6 h-6')
-                          )}
-                          <div className="absolute inset-0 bg-indigo-600/0 group-hover:bg-indigo-600/10 transition-colors flex items-center justify-center">
-                            <Plus className="w-6 h-6 text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </div>
-                        </div>
-                        <div className="p-2">
-                          <p className="text-[11px] font-medium text-slate-600 truncate">{name}</p>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+      {playlists && playlists.length === 0 && !showCreate && (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
+            <Play className="w-8 h-8 text-slate-300" />
           </div>
-        </div>
-      )}
-
-      {/* ─── Publish / Schedule Modal ─── */}
-      {showPublishModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowPublishModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-slate-800 mb-1">Publish to Screens</h3>
-            <p className="text-sm text-slate-500 mb-5">
-              Schedule <span className="font-bold text-slate-800">{selectedPlaylist?.name}</span> to play on a screen group.
-            </p>
-
-            {/* Screen group selector */}
-            <div className="mb-4">
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Publish Target</label>
-              <select
-                value={schedTarget}
-                onChange={e => setSchedTarget(e.target.value)}
-                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-sky-500"
-              >
-                <option value="">-- Choose a group or screen --</option>
-                {screenGroups && screenGroups.length > 0 && (
-                  <optgroup label="Screen Groups (Publish to all)">
-                    {screenGroups.map((g: any) => (
-                      <option key={`g-${g.id}`} value={`group-${g.id}`}>{g.name} ({g.screens?.length || 0} screens)</option>
-                    ))}
-                  </optgroup>
-                )}
-                {screens && screens.filter((s:any) => !s.screenGroupId).length > 0 && (
-                  <optgroup label="Ungrouped Screens">
-                    {screens.filter((s:any) => !s.screenGroupId).map((s: any) => (
-                      <option key={`s-${s.id}`} value={`screen-${s.id}`}>{s.name}</option>
-                    ))}
-                  </optgroup>
-                )}
-                {screenGroups?.map((g: any) => g.screens && g.screens.length > 0 ? (
-                  <optgroup key={`opt-${g.id}`} label={`Screens inside: ${g.name}`}>
-                    {g.screens.map((s: any) => (
-                      <option key={`s-${s.id}`} value={`screen-${s.id}`}>{s.name}</option>
-                    ))}
-                  </optgroup>
-                ) : null)}
-              </select>
-              {(!screenGroups || screenGroups.length === 0) && (!screens || screens.length === 0) && (
-                <p className="text-[10px] text-amber-600 mt-1">No screens or groups exist. Pair a device on the Screens page first.</p>
-              )}
-            </div>
-
-            {/* Schedule mode */}
-            <div className="mb-4">
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">When to Play</label>
-              <div className="flex bg-slate-100 rounded-lg p-0.5">
-                <button
-                  onClick={() => setSchedMode('always')}
-                  className={`flex-1 px-3 py-2 text-xs font-semibold rounded-md transition-colors ${schedMode === 'always' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400'}`}
-                >
-                  🔁 Always (24/7)
-                </button>
-                <button
-                  onClick={() => setSchedMode('scheduled')}
-                  className={`flex-1 px-3 py-2 text-xs font-semibold rounded-md transition-colors ${schedMode === 'scheduled' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400'}`}
-                >
-                  📅 Scheduled
-                </button>
-              </div>
-            </div>
-
-            {/* Scheduled options */}
-            {schedMode === 'scheduled' && (
-              <div className="space-y-4 mb-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
-                {/* Days of week */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-2">Days of Week</label>
-                  <div className="flex gap-1">
-                    {DAYS.map(day => (
-                      <button
-                        key={day}
-                        onClick={() => setSchedDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])}
-                        className={`px-2.5 py-1.5 text-[10px] font-bold rounded-lg transition-all ${
-                          schedDays.includes(day)
-                            ? 'bg-indigo-600 text-white shadow-sm'
-                            : 'bg-white text-slate-400 border border-slate-200 hover:border-indigo-300'
-                        }`}
-                      >
-                        {day}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex gap-2 mt-2">
-                    <button onClick={() => setSchedDays(['Mon','Tue','Wed','Thu','Fri'])} className="text-[10px] font-semibold text-indigo-600 hover:underline">Weekdays</button>
-                    <button onClick={() => setSchedDays(['Sat','Sun'])} className="text-[10px] font-semibold text-indigo-600 hover:underline">Weekends</button>
-                    <button onClick={() => setSchedDays([...DAYS])} className="text-[10px] font-semibold text-indigo-600 hover:underline">Every day</button>
-                  </div>
-                </div>
-                {/* Time range */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-2">Time Window</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="time" value={schedTimeStart} onChange={e => setSchedTimeStart(e.target.value)}
-                      className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                    <span className="text-xs text-slate-400 font-semibold">to</span>
-                    <input
-                      type="time" value={schedTimeEnd} onChange={e => setSchedTimeEnd(e.target.value)}
-                      className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="flex justify-end gap-3 mt-2">
-              <button onClick={() => setShowPublishModal(false)} className="px-4 py-2.5 text-slate-500 hover:text-slate-800 text-sm font-semibold rounded-lg hover:bg-slate-50">
-                Cancel
-              </button>
-              <button
-                disabled={!schedTarget || createSchedule.isPending}
-                onClick={handlePublish}
-                className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-sm font-bold rounded-lg shadow-sm flex items-center gap-2"
-              >
-                {createSchedule.isPending ? 'Publishing...' : (
-                  <><CalendarDays className="w-4 h-4" /> Publish</>
-                )}
-              </button>
-            </div>
-          </div>
+          <h3 className="text-base font-bold text-slate-600 mb-1">No playlists yet</h3>
+          <p className="text-sm text-slate-400 mb-5 max-w-sm">Create your first playlist to start scheduling content to your screens.</p>
+          <button onClick={() => { setShowCreate(true); setCreateMode('choose'); }} className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-1.5">
+            <Plus className="w-4 h-4" /> Create First Playlist
+          </button>
         </div>
       )}
     </div>
