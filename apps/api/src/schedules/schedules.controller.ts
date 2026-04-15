@@ -1,5 +1,7 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../realtime/redis.service';
+import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
@@ -8,7 +10,18 @@ import { AppRole } from '@cms/database';
 @Controller('api/v1/schedules')
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class SchedulesController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redisService: RedisService,
+    private readonly signer: WebsocketSignerService
+  ) {}
+
+  private async notifySync(tenantId: string) {
+    try {
+      const message = this.signer.signMessage('SYNC', { source: 'schedule_update' });
+      await this.redisService.publish(`tenant:${tenantId}`, message);
+    } catch (e) {}
+  }
 
   @Get()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
@@ -45,7 +58,7 @@ export class SchedulesController {
       throw new HttpException('Either screenGroupId or screenId must be specified', HttpStatus.BAD_REQUEST);
     }
 
-    return this.prisma.client.schedule.create({
+    const res = await this.prisma.client.schedule.create({
       data: {
         tenantId: req.user.tenantId,
         playlistId: body.playlistId,
@@ -64,6 +77,8 @@ export class SchedulesController {
         screen: { select: { id: true, name: true } },
       },
     });
+    this.notifySync(req.user.tenantId);
+    return res;
   }
 
   @Put(':id/toggle')
@@ -74,7 +89,7 @@ export class SchedulesController {
     });
     if (!schedule) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
 
-    return this.prisma.client.schedule.update({
+    const res = await this.prisma.client.schedule.update({
       where: { id },
       data: { isActive: !schedule.isActive },
       include: {
@@ -82,6 +97,8 @@ export class SchedulesController {
         screenGroup: { select: { id: true, name: true } },
       },
     });
+    this.notifySync(req.user.tenantId);
+    return res;
   }
 
   @Delete(':id')
@@ -93,6 +110,7 @@ export class SchedulesController {
     if (!schedule) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
 
     await this.prisma.client.schedule.delete({ where: { id } });
+    this.notifySync(req.user.tenantId);
     return { deleted: true };
   }
 }

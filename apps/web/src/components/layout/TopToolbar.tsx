@@ -25,7 +25,7 @@ export function TopToolbar() {
 
   return (
     <>
-      <header className="h-16 border-b border-slate-100 bg-white/80 backdrop-blur-xl px-8 flex items-center justify-between sticky top-0 z-20">
+      <header className="h-[73px] bg-white/60 backdrop-blur-xl px-8 flex items-center justify-between sticky top-0 z-20 transition-all duration-300">
         {/* Left — spacer */}
         <div className="flex-1" />
 

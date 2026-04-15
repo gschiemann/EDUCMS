@@ -277,7 +277,12 @@ export class ScreensController {
       include: {
         playlist: {
           include: {
-            items: { orderBy: { sequenceOrder: 'asc' }, include: { asset: true } }
+            items: { orderBy: { sequenceOrder: 'asc' }, include: { asset: true } },
+            template: {
+              include: {
+                zones: { orderBy: { sortOrder: 'asc' } },
+              },
+            },
           }
         }
       }
@@ -289,6 +294,30 @@ export class ScreensController {
 
     const dynamicPlaylists = schedules.map(s => ({
       id: s.playlistId,
+      // Include template data when playlist is template-based
+      ...(s.playlist.template ? {
+        template: {
+          id: s.playlist.template.id,
+          name: s.playlist.template.name,
+          screenWidth: s.playlist.template.screenWidth,
+          screenHeight: s.playlist.template.screenHeight,
+          bgColor: s.playlist.template.bgColor,
+          bgGradient: s.playlist.template.bgGradient,
+          bgImage: s.playlist.template.bgImage,
+          zones: s.playlist.template.zones.map(z => ({
+            id: z.id,
+            name: z.name,
+            widgetType: z.widgetType,
+            x: z.x,
+            y: z.y,
+            width: z.width,
+            height: z.height,
+            zIndex: z.zIndex,
+            sortOrder: z.sortOrder,
+            defaultConfig: z.defaultConfig ? JSON.parse(z.defaultConfig) : null,
+          })),
+        },
+      } : {}),
       items: s.playlist.items.map(pi => ({
         url: pi.asset.fileUrl,
         duration_ms: pi.durationMs,

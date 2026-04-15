@@ -41,6 +41,8 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Main entrance display with school logo, announcements, upcoming events, and a scrolling ticker at the bottom.',
     category: 'LOBBY',
     orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
     zones: [
       {
         name: 'School Logo',
@@ -103,6 +105,8 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Visitor-focused display with a large video/slideshow area, school info, and wayfinding.',
     category: 'LOBBY',
     orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
     zones: [
       {
         name: 'Header Bar',
@@ -157,6 +161,8 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Three horizontal bands: header with logo/clock, large media area in the middle, announcements at the bottom.',
     category: 'HALLWAY',
     orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
     zones: [
       {
         name: 'Logo',
@@ -200,6 +206,8 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Portrait-oriented display for narrow hallway spaces. Stacked layout: logo, photo slideshow, upcoming events, and ticker.',
     category: 'HALLWAY',
     orientation: 'PORTRAIT',
+    screenWidth: 2160,
+    screenHeight: 3840,
     zones: [
       {
         name: 'School Logo',
@@ -241,6 +249,8 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Large lunch menu with daily specials, a photo area, and countdown to next lunch period.',
     category: 'CAFETERIA',
     orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
     zones: [
       {
         name: 'Header',
@@ -299,6 +309,8 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'In-class display with bell schedule, daily agenda, and a rotating photo/announcement area.',
     category: 'CLASSROOM',
     orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
     zones: [
       {
         name: 'Class Title',
@@ -358,6 +370,8 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Minimal two-zone layout for teachers who want just an agenda and a visual area. No clutter.',
     category: 'CLASSROOM',
     orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
     zones: [
       {
         name: 'Agenda / Instructions',
@@ -385,6 +399,8 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Front office display with visitor info, staff directory spotlight, calendar, and emergency-ready announcement area.',
     category: 'OFFICE',
     orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
     zones: [
       {
         name: 'School Logo & Name',
@@ -452,6 +468,8 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Large visual display for gym or multi-purpose room with video, event countdown, and team announcements.',
     category: 'GYM',
     orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
     zones: [
       {
         name: 'Team Logo / School Logo',
@@ -513,6 +531,8 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Quiet, information-rich display for library entrance with new arrivals, reading events, and a website embed.',
     category: 'LIBRARY',
     orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
     zones: [
       {
         name: 'Library Header',
@@ -574,6 +594,8 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Simple full-screen layout for playing a single video, image, or slideshow. No distractions.',
     category: 'CUSTOM',
     orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
     zones: [
       {
         name: 'Full Screen Content',
@@ -591,6 +613,8 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Equal left-right split. Put any content on each side — great for before/after, bilingual, or side-by-side info.',
     category: 'CUSTOM',
     orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
     zones: [
       {
         name: 'Left Panel',
@@ -613,6 +637,8 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Three equal horizontal bands. Header on top, main content in the middle, footer info on the bottom.',
     category: 'CUSTOM',
     orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
     zones: [
       {
         name: 'Top Band',
@@ -641,6 +667,8 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Three stacked zones: a website/embed on top, video in the middle, and a photo carousel on the bottom. The layout you asked for!',
     category: 'CUSTOM',
     orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
     zones: [
       {
         name: 'Website / Web App',
@@ -672,6 +700,8 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Large main area with a sidebar and bottom bar — great for news-style displays with a sidebar for quick info.',
     category: 'CUSTOM',
     orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
     zones: [
       {
         name: 'Main Content',
@@ -700,6 +730,8 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Equal four-panel grid layout. Perfect for showing four different content areas at once.',
     category: 'CUSTOM',
     orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
     zones: [
       {
         name: 'Top Left',
@@ -734,6 +766,8 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     description: 'Full-screen background with a small overlay in the corner — like a weather widget over a slideshow.',
     category: 'CUSTOM',
     orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
     zones: [
       {
         name: 'Background Content',

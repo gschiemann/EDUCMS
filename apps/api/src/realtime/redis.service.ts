@@ -82,8 +82,15 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   async publish(channel: string, payload: any) {
-    if (!this.connected || !this.publisher) return;
-    await this.publisher.publish(channel, JSON.stringify(payload));
+    if (this.connected && this.publisher) {
+      await this.publisher.publish(channel, JSON.stringify(payload));
+    } else {
+      // Fallback: If Redis is unavailable (local dev), pipe directly to the resident websocket gateway
+      if (this.gateway) {
+        this.logger.debug(`[Mock Redis] Publishing to channel ${channel}`);
+        this.handleRedisMessage(channel, JSON.stringify(payload));
+      }
+    }
   }
 
   /**

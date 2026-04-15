@@ -19,18 +19,18 @@ export function Sidebar() {
   ];
 
   return (
-    <aside className="w-72 flex flex-col bg-white border-r border-slate-200 h-full shadow-sm z-20">
-      <div className="h-16 flex items-center px-6 border-b border-slate-100">
-        <h1 className="text-2xl font-extrabold tracking-tight text-slate-800 flex items-center gap-3">
-          <div className="bg-indigo-50 p-2 rounded-xl text-indigo-600 shadow-sm">
-            <MonitorPlay className="w-6 h-6" />
+    <aside className="w-72 flex flex-col bg-white border-r border-slate-100/50 h-full shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-20">
+      <div className="h-[73px] flex items-center px-6">
+        <h1 className="text-2xl font-extrabold tracking-tight text-slate-800 flex items-center gap-2.5">
+          <div className="bg-gradient-to-br from-indigo-500 to-violet-500 p-2 rounded-2xl text-white shadow-md shadow-indigo-500/20">
+            <MonitorPlay className="w-5 h-5" />
           </div>
-          <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-500">EduSignage</span>
+          <span className="bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700">EduSignage</span>
         </h1>
       </div>
 
-      <nav className="flex-1 py-8 px-5 space-y-1.5 overflow-y-auto">
-        <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-5 px-3">
+      <nav className="flex-1 py-6 px-4 space-y-1 overflow-y-auto">
+        <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-4 px-4">
           Main Menu
         </div>
         {navItems.map((item) => {
@@ -40,13 +40,20 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-bold transition-all duration-200",
+                "flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-[14px] font-bold transition-all duration-300 group relative overflow-hidden",
                 isActive 
-                  ? "bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-100/50" 
+                  ? "text-indigo-700 bg-indigo-50/80 shadow-[0_2px_10px_rgba(99,102,241,0.05)]" 
                   : "text-slate-500 hover:text-indigo-600 hover:bg-slate-50"
               )}
             >
-              <item.icon className={cn("w-5 h-5 transition-transform", isActive && "scale-110")} />
+              {/* Active Indicator Bar */}
+              {isActive && (
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-indigo-500 rounded-r-full shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
+              )}
+              <item.icon className={cn(
+                "w-[22px] h-[22px] transition-transform duration-300", 
+                isActive ? "scale-110 drop-shadow-sm" : "group-hover:scale-110"
+              )} />
               {item.name}
             </Link>
           );

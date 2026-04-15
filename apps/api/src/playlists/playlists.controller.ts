@@ -1,5 +1,7 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../realtime/redis.service';
+import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
@@ -8,7 +10,18 @@ import { AppRole } from '@cms/database';
 @Controller('api/v1/playlists')
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class PlaylistsController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redisService: RedisService,
+    private readonly signer: WebsocketSignerService
+  ) {}
+
+  private async notifySync(tenantId: string) {
+    try {
+      const message = this.signer.signMessage('SYNC', { source: 'playlist_update' });
+      await this.redisService.publish(`tenant:${tenantId}`, message);
+    } catch (e) {}
+  }
 
   @Get()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
@@ -45,13 +58,15 @@ export class PlaylistsController {
   @Post()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async create(@Request() req: any, @Body() body: { name: string; templateId?: string }) {
-    return this.prisma.client.playlist.create({
+    const res = await this.prisma.client.playlist.create({
       data: {
         tenantId: req.user.tenantId,
         name: body.name,
         ...(body.templateId ? { templateId: body.templateId } : {}),
       },
     });
+    this.notifySync(req.user.tenantId);
+    return res;
   }
 
   @Put(':id')
@@ -62,10 +77,12 @@ export class PlaylistsController {
     });
     if (!playlist) return { error: 'Not found' };
 
-    return this.prisma.client.playlist.update({
+    const res = await this.prisma.client.playlist.update({
       where: { id },
       data: { name: body.name },
     });
+    this.notifySync(req.user.tenantId);
+    return res;
   }
 
   @Put(':id/items')
@@ -95,10 +112,12 @@ export class PlaylistsController {
       ),
     ]);
 
-    return this.prisma.client.playlist.findUnique({
+    const updated = await this.prisma.client.playlist.findUnique({
       where: { id },
       include: { items: { orderBy: { sequenceOrder: 'asc' }, include: { asset: true } } },
     });
+    this.notifySync(req.user.tenantId);
+    return updated;
   }
 
   @Delete(':id')
@@ -110,6 +129,7 @@ export class PlaylistsController {
     if (!playlist) return { error: 'Not found' };
 
     await this.prisma.client.playlist.delete({ where: { id } });
+    this.notifySync(req.user.tenantId);
     return { deleted: true };
   }
 }

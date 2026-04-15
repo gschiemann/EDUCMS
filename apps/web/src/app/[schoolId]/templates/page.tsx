@@ -10,13 +10,13 @@ import {
   Share2, Shield, ArrowRight, Square, FileText, ListVideo,
   AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical,
   Layers, ChevronUp, ChevronDown, Lock, Unlock, GripVertical,
-  ZoomIn, ZoomOut, Maximize2, RotateCcw, Palette, MousePointer,
+  ZoomIn, ZoomOut, Maximize2, RotateCcw, RotateCw, Palette, MousePointer,
   PanelLeft, Sparkles, Search, FolderOpen, ChevronRight,
 } from 'lucide-react';
 import {
   useTemplates, useCreateTemplate, useDeleteTemplate, useCreateFromPreset,
   useDuplicateTemplate, useUpdateTemplate, useUpdateTemplateZones,
-  useAssets, usePlaylists, useCreatePlaylist,
+  useAssets,
 } from '@/hooks/use-api';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 
@@ -37,10 +37,10 @@ const CATEGORY_TABS = [
 ];
 
 const RESOLUTION_PRESETS = [
+  { label: '4K UHD', sub: 'Landscape', w: 3840, h: 2160 },
+  { label: '4K UHD', sub: 'Portrait', w: 2160, h: 3840 },
   { label: 'Full HD', sub: 'Landscape', w: 1920, h: 1080 },
   { label: 'Full HD', sub: 'Portrait', w: 1080, h: 1920 },
-  { label: '4K', sub: 'Landscape', w: 3840, h: 2160 },
-  { label: '4K', sub: 'Portrait', w: 2160, h: 3840 },
   { label: '720p', sub: 'Landscape', w: 1280, h: 720 },
   { label: 'Ultra-Wide', sub: '21:9', w: 2560, h: 1080 },
   { label: 'LED Banner', sub: '5:1', w: 2500, h: 500 },
@@ -175,13 +175,14 @@ export default function TemplatesPage() {
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [newCategory, setNewCategory] = useState('CUSTOM');
-  const [newW, setNewW] = useState(1920);
-  const [newH, setNewH] = useState(1080);
+  const [newW, setNewW] = useState(3840);
+  const [newH, setNewH] = useState(2160);
   const [customRes, setCustomRes] = useState(false);
 
   const { data: templates, isLoading } = useTemplates();
   const createTemplate = useCreateTemplate();
   const createFromPreset = useCreateFromPreset();
+  const updateTemplate = useUpdateTemplate();
   const duplicateTemplate = useDuplicateTemplate();
   const deleteTemplate = useDeleteTemplate();
 
@@ -198,13 +199,24 @@ export default function TemplatesPage() {
       zones: [{ name: 'Full Screen', widgetType: 'EMPTY', x: 0, y: 0, width: 100, height: 100 }],
     });
     setShowCreate(false); setNewName(''); setNewDesc('');
-    setNewW(1920); setNewH(1080); setCustomRes(false);
+    setNewW(3840); setNewH(2160); setCustomRes(false);
     setEditingTemplate(result);
   }
 
-  async function handleUsePreset(preset: Template) {
+  async function handleUsePreset(preset: Template, flipOrientation?: boolean) {
     const result = await createFromPreset.mutateAsync({ presetId: preset.id, name: preset.name });
-    setEditingTemplate(result);
+    if (flipOrientation && result) {
+      // Flip the dimensions after creation
+      const flipped = await updateTemplate.mutateAsync({
+        id: result.id,
+        orientation: result.screenHeight > result.screenWidth ? 'LANDSCAPE' : 'PORTRAIT',
+        screenWidth: result.screenHeight,
+        screenHeight: result.screenWidth,
+      });
+      setEditingTemplate({ ...result, ...flipped });
+    } else {
+      setEditingTemplate(result);
+    }
   }
 
   async function handleDuplicate(template: Template) {
@@ -326,7 +338,7 @@ export default function TemplatesPage() {
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {systemTemplates.map((t: Template) => (
-                  <GalleryCard key={t.id} template={t} onUse={() => handleUsePreset(t)} />
+                  <GalleryCard key={t.id} template={t} onUse={() => handleUsePreset(t)} onUsePortrait={() => handleUsePreset(t, true)} />
                 ))}
               </div>
             </section>
@@ -363,16 +375,18 @@ export default function TemplatesPage() {
 // GALLERY CARD — premium hover preview
 // ═════════════════════════════════════════════════════
 
-function GalleryCard({ template, onUse, onEdit, onDuplicate, onDelete }: {
+function GalleryCard({ template, onUse, onUsePortrait, onEdit, onDuplicate, onDelete }: {
   template: Template;
   onUse?: () => void;
+  onUsePortrait?: () => void;
   onEdit?: () => void;
   onDuplicate?: () => void;
   onDelete?: () => void;
 }) {
   const zones = template.zones || [];
-  const sw = template.screenWidth || 1920;
-  const sh = template.screenHeight || 1080;
+  const sw = template.screenWidth || 3840;
+  const sh = template.screenHeight || 2160;
+  const isLandscape = sw >= sh;
 
   return (
     <div className="group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-200 transition-all duration-300 overflow-hidden">
@@ -416,9 +430,18 @@ function GalleryCard({ template, onUse, onEdit, onDuplicate, onDelete }: {
 
         <div className="flex gap-2 mt-3 pt-3 border-t border-slate-100">
           {onUse && (
-            <button onClick={onUse} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-sm">
-              <Plus className="w-3.5 h-3.5" /> Use This
-            </button>
+            <div className="flex-1 flex gap-1">
+              <button onClick={onUse} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-sm">
+                <Monitor className="w-3.5 h-3.5" /> {isLandscape ? 'Landscape' : 'Portrait'}
+              </button>
+              {onUsePortrait && (
+                <button onClick={onUsePortrait}
+                  className="py-2 px-3 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                  title={isLandscape ? 'Create as Portrait' : 'Create as Landscape'}>
+                  <Smartphone className="w-3.5 h-3.5" /> {isLandscape ? 'Portrait' : 'Landscape'}
+                </button>
+              )}
+            </div>
           )}
           {onEdit && (
             <button onClick={onEdit} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-sm">
@@ -454,8 +477,8 @@ function TemplateBuilder({ template, onBack, onSaved }: {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [tName, setTName] = useState(template.name);
   const [tDesc, setTDesc] = useState(template.description || '');
-  const [sW, setSW] = useState(template.screenWidth || 1920);
-  const [sH, setSH] = useState(template.screenHeight || 1080);
+  const [sW, setSW] = useState(template.screenWidth || 3840);
+  const [sH, setSH] = useState(template.screenHeight || 2160);
   const [leftPanel, setLeftPanel] = useState<'widgets' | 'zones' | 'config' | null>('zones');
   const [isDirty, setIsDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
@@ -614,6 +637,14 @@ function TemplateBuilder({ template, onBack, onSaved }: {
         {/* Right: Save & Resolution */}
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-mono text-slate-400 bg-slate-50 px-2 py-1 rounded">{sW}×{sH}</span>
+          <button
+            onClick={() => { setSW(sH); setSH(sW); setIsDirty(true); setSaveStatus('idle'); }}
+            className="p-1.5 hover:bg-indigo-50 rounded text-slate-400 hover:text-indigo-600 transition-colors"
+            title={`Flip to ${sH > sW ? 'Landscape' : 'Portrait'} (${sH}×${sW})`}
+          >
+            <RotateCw className="w-3.5 h-3.5" />
+          </button>
+          <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded">{sH > sW ? 'Portrait' : 'Landscape'}</span>
           {saveStatus === 'saved' && <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded">Saved!</span>}
           {isDirty && saveStatus === 'idle' && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded">Unsaved</span>}
           <button onClick={handleSave} disabled={saveStatus === 'saving'}
@@ -782,10 +813,82 @@ function TemplateBuilder({ template, onBack, onSaved }: {
             )}
 
             {leftPanel === 'config' && !selected && (
-              <div className="p-3 text-center py-12">
-                <MousePointer className="w-8 h-8 text-slate-200 mx-auto mb-2" />
-                <p className="text-xs font-medium text-slate-400">Select a zone on the canvas</p>
-                <p className="text-[10px] text-slate-300 mt-1">Click any zone to edit its properties</p>
+              <div className="p-3 space-y-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <Palette className="w-4 h-4 text-slate-400" />
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Canvas Background</span>
+                </div>
+
+                {/* Background color */}
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Solid Color</label>
+                  <div className="flex gap-2 items-center">
+                    <input type="color" value={bgColor || '#ffffff'}
+                      onChange={e => { setBgColor(e.target.value); setBgGradient(''); setIsDirty(true); setSaveStatus('idle'); }}
+                      className="w-10 h-8 rounded border border-slate-200 cursor-pointer" />
+                    <input value={bgColor || ''} placeholder="#ffffff"
+                      onChange={e => { setBgColor(e.target.value); setBgGradient(''); setIsDirty(true); setSaveStatus('idle'); }}
+                      className="flex-1 px-2 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                    {bgColor && <button onClick={() => { setBgColor(''); setIsDirty(true); setSaveStatus('idle'); }}
+                      className="p-1 text-slate-300 hover:text-red-400"><X className="w-3.5 h-3.5" /></button>}
+                  </div>
+                </div>
+
+                {/* Gradient presets */}
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Gradient</label>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {[
+                      { label: 'Dusk', css: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+                      { label: 'Ocean', css: 'linear-gradient(135deg, #0093E9 0%, #80D0C7 100%)' },
+                      { label: 'Sunset', css: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
+                      { label: 'Forest', css: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)' },
+                      { label: 'Night', css: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)' },
+                      { label: 'Warm', css: 'linear-gradient(135deg, #f6d365 0%, #fda085 100%)' },
+                      { label: 'Navy', css: 'linear-gradient(135deg, #141E30 0%, #243B55 100%)' },
+                      { label: 'Sky', css: 'linear-gradient(135deg, #89f7fe 0%, #66a6ff 100%)' },
+                    ].map(g => (
+                      <button key={g.label} onClick={() => { setBgGradient(g.css); setBgColor(''); setIsDirty(true); setSaveStatus('idle'); }}
+                        className={`h-8 rounded-lg border-2 transition-all ${bgGradient === g.css ? 'border-indigo-500 shadow-sm' : 'border-slate-200 hover:border-slate-300'}`}
+                        style={{ background: g.css }} title={g.label} />
+                    ))}
+                  </div>
+                  {bgGradient && (
+                    <div className="mt-1.5 flex items-center gap-1">
+                      <span className="text-[9px] text-slate-400 flex-1 truncate font-mono">{bgGradient.slice(0, 40)}...</span>
+                      <button onClick={() => { setBgGradient(''); setIsDirty(true); setSaveStatus('idle'); }}
+                        className="p-0.5 text-slate-300 hover:text-red-400"><X className="w-3 h-3" /></button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Background image URL */}
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Image URL</label>
+                  <div className="flex gap-2 items-center">
+                    <input value={bgImage || ''} placeholder="https://..."
+                      onChange={e => { setBgImage(e.target.value); setIsDirty(true); setSaveStatus('idle'); }}
+                      className="flex-1 px-2 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                    {bgImage && <button onClick={() => { setBgImage(''); setIsDirty(true); setSaveStatus('idle'); }}
+                      className="p-1 text-slate-300 hover:text-red-400"><X className="w-3.5 h-3.5" /></button>}
+                  </div>
+                  <p className="text-[9px] text-slate-300 mt-1">Fills canvas behind all zones (cover fit)</p>
+                </div>
+
+                {/* Reset */}
+                {(bgColor || bgGradient || bgImage) && (
+                  <button onClick={() => { setBgColor(''); setBgGradient(''); setBgImage(''); setIsDirty(true); setSaveStatus('idle'); }}
+                    className="w-full py-2 text-[10px] font-bold text-slate-400 hover:text-red-500 border border-dashed border-slate-200 hover:border-red-200 rounded-lg transition-colors">
+                    Reset to White
+                  </button>
+                )}
+
+                <div className="border-t border-slate-100 pt-3 mt-2">
+                  <div className="flex items-center gap-2">
+                    <MousePointer className="w-4 h-4 text-slate-200" />
+                    <p className="text-[10px] text-slate-300">Click a zone to edit its properties</p>
+                  </div>
+                </div>
               </div>
             )}
           </div>

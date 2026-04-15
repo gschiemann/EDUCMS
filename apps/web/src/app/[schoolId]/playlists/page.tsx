@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from 'react';
-import { Play, Plus, Clock, Loader2, Trash2, Save, GripVertical, Image as ImageIcon, Video, Music, Globe, File, Calendar, CalendarDays, Power, Eye, LayoutTemplate, Pencil } from 'lucide-react';
+import { Play, Plus, Clock, Loader2, Trash2, Save, GripVertical, Image as ImageIcon, Video, Music, Globe, File, Calendar, CalendarDays, Power, Eye, LayoutTemplate, Pencil, Monitor, Layers, ChevronRight } from 'lucide-react';
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent
 } from '@dnd-kit/core';
@@ -14,7 +14,8 @@ import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import {
   usePlaylists, useCreatePlaylist, useDeletePlaylist, useAssets,
   useReorderPlaylistItems, useScreenGroups, useCreateSchedule,
-  useSchedules, useDeleteSchedule, useToggleSchedule, useScreens
+  useSchedules, useDeleteSchedule, useToggleSchedule, useScreens,
+  useTemplates,
 } from '@/hooks/use-api';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
@@ -51,7 +52,7 @@ function SortableItem({ item, index, onRemove, onDurationChange }: any) {
   const name = assetName(item.asset);
 
   return (
-    <div ref={setNodeRef} style={style} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-200 group hover:shadow-sm transition-all">
+    <div ref={setNodeRef} style={style} className="flex items-center gap-3 p-3.5 bg-white rounded-2xl border border-slate-100 group hover:shadow-[0_4px_20px_rgba(0,0,0,0.04)] transition-all">
       <button {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 text-slate-300 hover:text-slate-500">
         <GripVertical className="w-4 h-4" />
       </button>
@@ -91,6 +92,7 @@ export default function PlaylistsPage() {
   const { data: screenGroups } = useScreenGroups();
   const { data: schedules } = useSchedules();
   const { data: screens } = useScreens();
+  const { data: templates } = useTemplates();
   const createPlaylist = useCreatePlaylist();
   const deletePlaylist = useDeletePlaylist();
   const saveItems = useReorderPlaylistItems();
@@ -100,9 +102,14 @@ export default function PlaylistsPage() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [createMode, setCreateMode] = useState<'choose' | 'blank' | 'template'>('choose');
   const [showPicker, setShowPicker] = useState(false);
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [newName, setNewName] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+
+  // Filter to non-system custom templates for the picker
+  const customTemplates = (templates || []).filter((t: any) => !t.isSystem && t.tenantId);
   const [localItems, setLocalItems] = useState<any[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
   const [pickerFilter, setPickerFilter] = useState<'all' | 'images' | 'videos' | 'audio' | 'urls'>('all');
@@ -144,9 +151,15 @@ export default function PlaylistsPage() {
 
   const handleCreate = async () => {
     if (!newName.trim()) return;
-    const created = await createPlaylist.mutateAsync({ name: newName });
+    const data: { name: string; templateId?: string } = { name: newName };
+    if (createMode === 'template' && selectedTemplateId) {
+      data.templateId = selectedTemplateId;
+    }
+    const created = await createPlaylist.mutateAsync(data);
     setNewName('');
     setShowCreate(false);
+    setCreateMode('choose');
+    setSelectedTemplateId(null);
     handleSelect({ ...created, items: [] });
   };
 
@@ -222,23 +235,112 @@ export default function PlaylistsPage() {
           <h1 className="text-2xl font-bold tracking-tight text-slate-800">Playlists</h1>
           <p className="text-sm text-slate-500 mt-0.5">Create playlists, add media, schedule to screens.</p>
         </div>
-        <button onClick={() => setShowCreate(true)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-1.5">
+        <button onClick={() => { setShowCreate(true); setCreateMode('choose'); setNewName(''); setSelectedTemplateId(null); }} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-1.5">
           <Plus className="w-4 h-4" /> New Playlist
         </button>
       </div>
 
-      {/* Create form */}
+      {/* Create form — step-based */}
       {showCreate && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-          <div className="flex gap-3">
-            <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Playlist name..."
-              className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-              onKeyDown={(e) => e.key === 'Enter' && handleCreate()} autoFocus />
-            <button onClick={handleCreate} disabled={createPlaylist.isPending} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold rounded-lg">
-              {createPlaylist.isPending ? 'Creating...' : 'Create'}
-            </button>
-            <button onClick={() => setShowCreate(false)} className="px-3 py-2 text-slate-400 hover:text-slate-600 text-sm">Cancel</button>
-          </div>
+        <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
+          {/* Step 1: Choose type */}
+          {createMode === 'choose' && (
+            <div className="p-5">
+              <p className="text-sm font-semibold text-slate-700 mb-3">What kind of playlist?</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button onClick={() => setCreateMode('blank')}
+                  className="flex items-start gap-3 p-4 rounded-xl border-2 border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50 transition-all text-left group">
+                  <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0 group-hover:bg-indigo-200 transition-colors">
+                    <Play className="w-5 h-5 text-indigo-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-700">Media Playlist</p>
+                    <p className="text-xs text-slate-400 mt-0.5">Add images, videos, and web content as slides</p>
+                  </div>
+                </button>
+                <button onClick={() => setCreateMode('template')}
+                  className="flex items-start gap-3 p-4 rounded-xl border-2 border-slate-200 hover:border-violet-400 hover:bg-violet-50/50 transition-all text-left group">
+                  <div className="w-10 h-10 rounded-lg bg-violet-100 flex items-center justify-center shrink-0 group-hover:bg-violet-200 transition-colors">
+                    <LayoutTemplate className="w-5 h-5 text-violet-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-700">From Template</p>
+                    <p className="text-xs text-slate-400 mt-0.5">Use a saved layout with live widgets (clock, weather, etc.)</p>
+                  </div>
+                </button>
+              </div>
+              <div className="mt-3 text-right">
+                <button onClick={() => setShowCreate(false)} className="px-3 py-1.5 text-xs text-slate-400 hover:text-slate-600">Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2a: Blank playlist — just name */}
+          {createMode === 'blank' && (
+            <div className="p-5">
+              <p className="text-sm font-semibold text-slate-700 mb-3">Name your playlist</p>
+              <div className="flex gap-3">
+                <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Playlist name..."
+                  className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                  onKeyDown={(e) => e.key === 'Enter' && handleCreate()} autoFocus />
+                <button onClick={handleCreate} disabled={createPlaylist.isPending || !newName.trim()} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold rounded-lg">
+                  {createPlaylist.isPending ? 'Creating...' : 'Create'}
+                </button>
+                <button onClick={() => setCreateMode('choose')} className="px-3 py-2 text-slate-400 hover:text-slate-600 text-sm">Back</button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2b: Pick a template */}
+          {createMode === 'template' && (
+            <div className="p-5">
+              <p className="text-sm font-semibold text-slate-700 mb-3">
+                {selectedTemplateId ? 'Name your playlist' : 'Pick a template'}
+              </p>
+
+              {!selectedTemplateId && (
+                <>
+                  {customTemplates.length === 0 ? (
+                    <div className="text-center py-8">
+                      <LayoutTemplate className="w-10 h-10 text-slate-200 mx-auto mb-2" />
+                      <p className="text-sm text-slate-400">No templates saved yet</p>
+                      <p className="text-xs text-slate-300 mt-1">Create one from the Templates page first</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-64 overflow-y-auto">
+                      {customTemplates.map((t: any) => (
+                        <button key={t.id} onClick={() => { setSelectedTemplateId(t.id); setNewName(t.name); }}
+                          className="flex items-center gap-3 p-3 rounded-xl border-2 border-slate-200 hover:border-violet-400 hover:bg-violet-50/30 transition-all text-left">
+                          <div className="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center shrink-0">
+                            <Layers className="w-4 h-4 text-violet-600" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-slate-700 truncate">{t.name}</p>
+                            <p className="text-[10px] text-slate-400">{t.screenWidth}×{t.screenHeight} · {t._count?.zones || t.zones?.length || 0} zones</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-3 text-right">
+                    <button onClick={() => setCreateMode('choose')} className="px-3 py-1.5 text-xs text-slate-400 hover:text-slate-600">Back</button>
+                  </div>
+                </>
+              )}
+
+              {selectedTemplateId && (
+                <div className="flex gap-3">
+                  <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Playlist name..."
+                    className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-500"
+                    onKeyDown={(e) => e.key === 'Enter' && handleCreate()} autoFocus />
+                  <button onClick={handleCreate} disabled={createPlaylist.isPending || !newName.trim()} className="px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-semibold rounded-lg">
+                    {createPlaylist.isPending ? 'Creating...' : 'Create'}
+                  </button>
+                  <button onClick={() => { setSelectedTemplateId(null); setNewName(''); }} className="px-3 py-2 text-slate-400 hover:text-slate-600 text-sm">Back</button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -253,10 +355,10 @@ export default function PlaylistsPage() {
               <button
                 key={pl.id}
                 onClick={() => handleSelect(pl)}
-                className={`w-full text-left px-4 py-3 rounded-xl border transition-all flex justify-between items-center ${
+                className={`w-full text-left px-5 py-4 rounded-3xl transition-all duration-300 flex justify-between items-center ${
                   selectedId === pl.id
-                    ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-sm'
-                    : 'border-slate-200 bg-white hover:border-slate-300 text-slate-700'
+                    ? 'bg-indigo-50/80 text-indigo-700 shadow-[0_4px_20px_rgba(99,102,241,0.08)] scale-[1.02]'
+                    : 'bg-white hover:bg-slate-50/80 text-slate-700 shadow-sm border border-transparent hover:border-slate-100'
                 }`}
               >
                 <div className="min-w-0">
@@ -283,11 +385,11 @@ export default function PlaylistsPage() {
           </div>
 
           {/* Timeline editor */}
-          <div className="lg:col-span-3 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[400px]">
+          <div className="lg:col-span-3 bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden flex flex-col min-h-[500px]">
             {selectedPlaylist ? (
               <>
                 {/* Toolbar */}
-                <div className="px-5 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <div className="px-6 py-4 border-b border-slate-50 flex justify-between items-center bg-slate-50/30">
                   <div className="flex items-center gap-3">
                     <h2 className="text-sm font-bold text-slate-700">{selectedPlaylist.name}</h2>
                     <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">{localItems.length} slides • {totalDur}</span>
@@ -391,8 +493,8 @@ export default function PlaylistsPage() {
                         </div>
                       ) : (
                         playlistSchedules.map((sched: any) => (
-                          <div key={sched.id} className={`p-4 rounded-xl border transition-all ${sched.isActive ? 'border-emerald-200 bg-emerald-50/50' : 'border-slate-200 bg-slate-50 opacity-60'}`}>
-                            <div className="flex items-start justify-between gap-3">
+                          <div key={sched.id} className={`p-5 rounded-3xl transition-all duration-300 border-transparent shadow-sm ${sched.isActive ? 'bg-emerald-50/50 hover:bg-emerald-50/80' : 'bg-slate-50 opacity-60'}`}>
+                            <div className="flex items-start justify-between gap-4">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 mb-1">
                                   <span className={`w-2 h-2 rounded-full ${sched.isActive ? 'bg-emerald-500' : 'bg-slate-300'}`} />

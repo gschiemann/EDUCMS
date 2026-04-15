@@ -178,7 +178,7 @@ export default function AssetsPage() {
         onDragLeave={() => setDragOver(false)}
         onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
         onClick={() => fileInputRef.current?.click()}
-        className={`border-2 border-dashed rounded-xl p-6 flex items-center justify-center cursor-pointer transition-all group ${dragOver ? 'border-indigo-400 bg-indigo-50/50 scale-[1.01]' : 'border-slate-200 hover:border-indigo-300'}`}
+        className={`border-2 border-dashed rounded-3xl p-8 flex items-center justify-center cursor-pointer transition-all group ${dragOver ? 'border-indigo-400 bg-indigo-50/50 scale-[1.01]' : 'border-slate-200 hover:border-indigo-300 bg-slate-50/30'}`}
       >
         <div className="flex items-center gap-4">
           <div className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${dragOver ? 'bg-indigo-100 scale-110' : 'bg-indigo-50 group-hover:scale-105'}`}>
@@ -193,8 +193,8 @@ export default function AssetsPage() {
 
       {/* Upload queue */}
       {uploads.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
+        <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Uploads</span>
             <button onClick={() => setUploads(p => p.filter(u => u.phase === 'uploading'))} className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold">Clear done</button>
           </div>
@@ -235,17 +235,17 @@ export default function AssetsPage() {
       {isLoading ? (
         <div className="flex justify-center py-16"><div className="w-8 h-8 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" /></div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-16 bg-white rounded-xl border border-slate-200">
+        <div className="text-center py-16 bg-white rounded-3xl border border-transparent shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
           <UploadCloud className="w-10 h-10 text-slate-200 mx-auto mb-3" />
           <p className="text-xs font-semibold text-slate-400">{search || filter !== 'all' ? 'No assets match your search' : 'Empty library — upload files to get started'}</p>
         </div>
       ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {filtered.map((a: any) => {
             const thumb = thumbUrl(a);
             const name = assetName(a);
             return (
-              <div key={a.id} onClick={() => setSelectedAsset(a)} className="bg-white rounded-xl border border-slate-200 overflow-hidden group hover:shadow-lg hover:border-indigo-200 transition-all cursor-pointer hover:-translate-y-0.5">
+              <div key={a.id} onClick={() => setSelectedAsset(a)} className="bg-white rounded-3xl overflow-hidden group hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 cursor-pointer hover:-translate-y-1">
                 <div className="aspect-video bg-slate-50 flex items-center justify-center relative overflow-hidden">
                   {thumb ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -281,7 +281,7 @@ export default function AssetsPage() {
           })}
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-50 overflow-hidden">
+        <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] divide-y divide-slate-50/50 overflow-hidden">
           {filtered.map((a: any) => {
             const thumb = thumbUrl(a);
             const name = assetName(a);

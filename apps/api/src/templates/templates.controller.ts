@@ -127,8 +127,8 @@ export class TemplatesController {
     }
 
     // Derive orientation from dimensions if not explicitly set
-    const screenWidth = body.screenWidth || 1920;
-    const screenHeight = body.screenHeight || 1080;
+    const screenWidth = body.screenWidth || 3840;
+    const screenHeight = body.screenHeight || 2160;
     const orientation = body.orientation || (screenHeight > screenWidth ? 'PORTRAIT' : 'LANDSCAPE');
 
     return this.prisma.client.template.create({
@@ -197,8 +197,8 @@ export class TemplatesController {
           description: preset.description,
           category: preset.category,
           orientation: preset.orientation,
-          screenWidth: preset.screenWidth || (preset.orientation === 'PORTRAIT' ? 1080 : 1920),
-          screenHeight: preset.screenHeight || (preset.orientation === 'PORTRAIT' ? 1920 : 1080),
+          screenWidth: preset.screenWidth || (preset.orientation === 'PORTRAIT' ? 2160 : 3840),
+          screenHeight: preset.screenHeight || (preset.orientation === 'PORTRAIT' ? 3840 : 2160),
           createdById: req.user.id,
           zones: {
             create: preset.zones.map((z, i) => ({

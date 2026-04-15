@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { MonitorPlay, Wifi, WifiOff, AlertTriangle, Loader2, Settings } from 'lucide-react';
+import { MonitorPlay, Wifi, WifiOff, AlertTriangle, Loader2, Settings, CheckCircle2, HardDrive, Cpu, Server, Network, Play, Monitor, Info, Power } from 'lucide-react';
+import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 
 function getApiRoot(): string {
   if (typeof window !== 'undefined') {
@@ -69,6 +70,21 @@ type Phase = 'registering' | 'pairing' | 'connecting' | 'playing' | 'offline' | 
 
 export default function PlayerPage() {
   const [phase, setPhase] = useState<Phase>('registering');
+  const [storageInfo, setStorageInfo] = useState({ used: '1.2 GB', total: '32 GB', percent: 4 });
+
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.estimate) {
+      navigator.storage.estimate().then(({ usage, quota }) => {
+        if (usage && quota) {
+          setStorageInfo({
+             used: (usage / (1024 * 1024 * 1024)).toFixed(2) + ' GB',
+             total: (quota / (1024 * 1024 * 1024)).toFixed(0) + ' GB',
+             percent: Math.round((usage / quota) * 100)
+          });
+        }
+      });
+    }
+  }, []);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [screenId, setScreenId] = useState<string | null>(null);
   const [screenName, setScreenName] = useState<string>('');
@@ -79,6 +95,39 @@ export default function PlayerPage() {
   const [showOverlay, setShowOverlay] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+
+  // ─── Realtime WebSocket Connection ───
+  useEffect(() => {
+    if (phase !== 'playing') return;
+
+    const wsUrl = getApiRoot().replace(/^http/, 'ws') + '/realtime';
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      // Decode tenant id out of the existing login routine (we assume Springfield)
+      const token = `dev_${screenId}_00000000-0000-0000-0000-000000000002`;
+      ws.send(JSON.stringify({
+        event: 'HELLO',
+        data: { token }
+      }));
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'SYNC' || msg.type === 'OVERRIDE') {
+          fetchContent();
+        }
+      } catch (e) {}
+    };
+
+    return () => {
+      ws.close();
+      wsRef.current = null;
+    };
+  }, [phase, screenId, fetchContent]);
 
   // ─── Phase 1: Register device ───
   useEffect(() => {
@@ -162,10 +211,26 @@ export default function PlayerPage() {
       if (manifestRes.ok) {
         const manifest = await manifestRes.json();
         if (manifest.playlists && manifest.playlists.length > 0) {
-          // Format manifest items to match player structure
+          const mp = manifest.playlists[0];
+
+          // Check if this is a template-based playlist
+          if (mp.template) {
+            const formattedPlaylist = {
+              name: mp.template.name || 'Template Content',
+              template: mp.template,
+              items: [],
+            };
+            setPlaylist(formattedPlaylist);
+            setCurrentIndex(0);
+            setPhase('playing');
+            setLastSync(new Date().toLocaleTimeString());
+            return;
+          }
+
+          // Regular media playlist
           const formattedPlaylist = {
             name: 'Scheduled Content',
-            items: manifest.playlists[0].items.map((item: any) => ({
+            items: mp.items.map((item: any) => ({
               id: item.url,
               durationMs: item.duration_ms,
               sequenceOrder: item.sequence,
@@ -180,26 +245,11 @@ export default function PlayerPage() {
         }
       }
 
-      // 2. Fallback: If no schedule is assigned, just find the very first playlist with items
-      const playlistRes = await fetch(`${getApiRoot()}/api/v1/playlists`, {
-        headers: { 'Authorization': `Bearer ${access_token}` },
-      });
-
-      if (!playlistRes.ok) throw new Error('Failed to load playlists');
-      const payload = await playlistRes.json();
-      const playlists = Array.isArray(payload) ? payload : (payload.value || []);
-
-      const validPlaylist = playlists.find((p: any) => p.items?.length > 0);
-
-      if (validPlaylist) {
-        setPlaylist(validPlaylist);
-        setCurrentIndex(0);
-        setPhase('playing');
-        setLastSync(new Date().toLocaleTimeString());
-      } else {
-        setError('No content assigned to this screen yet');
-        setPhase('offline');
-      }
+      // If we reach here, we have no active schedule/playlist mapped from the manifest
+      setPlaylist(null);
+      setCurrentIndex(0);
+      setPhase('playing');
+      setLastSync(new Date().toLocaleTimeString());
     } catch (e: any) {
       setError(e.message);
       setPhase('offline');
@@ -208,13 +258,6 @@ export default function PlayerPage() {
 
   useEffect(() => {
     if (phase === 'connecting') fetchContent();
-  }, [phase, fetchContent]);
-
-  // ─── Auto-refresh every 60s ───
-  useEffect(() => {
-    if (phase !== 'playing') return;
-    const id = setInterval(fetchContent, 60000);
-    return () => clearInterval(id);
   }, [phase, fetchContent]);
 
   // ─── Cycle through slides ───
@@ -322,12 +365,82 @@ export default function PlayerPage() {
   }
 
   // ─── Render: Playing ───
-  const sorted = playlist ? [...playlist.items].sort((a: any, b: any) => a.sequenceOrder - b.sequenceOrder) : [];
-  const currentItem = sorted[currentIndex % (sorted.length || 1)];
+  const isTemplate = !!playlist?.template;
+  const sorted = playlist && !isTemplate ? [...(playlist.items || [])].sort((a: any, b: any) => a.sequenceOrder - b.sequenceOrder) : [];
+  const currentItem = sorted.length ? sorted[currentIndex % sorted.length] : null;
   const isVideo = currentItem?.asset?.mimeType?.startsWith('video/');
   const fileUrl = currentItem?.asset?.fileUrl || '';
   const resolvedUrl = fileUrl.startsWith('http') ? fileUrl : `${getApiRoot()}${fileUrl}`;
 
+  // Template rendering
+  if (isTemplate) {
+    const tpl = playlist.template;
+    const zones = tpl.zones || [];
+
+    return (
+      <div className="fixed inset-0 cursor-none" onClick={() => setShowOverlay(!showOverlay)}
+        style={{
+          backgroundColor: tpl.bgColor || '#000000',
+          ...(tpl.bgGradient ? { background: tpl.bgGradient } : {}),
+          ...(tpl.bgImage ? { backgroundImage: `url(${tpl.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}),
+        }}>
+        {/* Render each zone with its live widget */}
+        {zones.map((zone: any) => (
+          <div key={zone.id} className="absolute overflow-hidden"
+            style={{
+              left: `${zone.x}%`,
+              top: `${zone.y}%`,
+              width: `${zone.width}%`,
+              height: `${zone.height}%`,
+              zIndex: zone.zIndex || 0,
+            }}>
+            <WidgetPreview
+              widgetType={zone.widgetType}
+              config={zone.defaultConfig}
+              width={zone.width}
+              height={zone.height}
+            />
+          </div>
+        ))}
+
+        {/* Info overlay */}
+        {showOverlay && (
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[999]">
+            <div className="bg-slate-900 rounded-2xl p-8 max-w-md w-full mx-4 border border-slate-700 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-white">{screenName || 'Screen'}</h3>
+                <div className="flex items-center gap-2">
+                  <Wifi className="w-4 h-4 text-emerald-400" />
+                  <span className="text-sm text-emerald-400 font-medium">Connected</span>
+                </div>
+              </div>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between"><span className="text-slate-400">Template</span><span className="text-white font-medium">{tpl.name}</span></div>
+                <div className="flex justify-between"><span className="text-slate-400">Zones</span><span className="text-white font-medium">{zones.length} live widgets</span></div>
+                <div className="flex justify-between"><span className="text-slate-400">Resolution</span><span className="text-white font-medium">{tpl.screenWidth}×{tpl.screenHeight}</span></div>
+                <div className="flex justify-between"><span className="text-slate-400">Last Sync</span><span className="text-white font-medium">{lastSync || 'Never'}</span></div>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm transition-colors">Sync Now</button>
+                <button onClick={(e) => { 
+                  e.stopPropagation(); 
+                  if(window.confirm('Are you sure you want to unpair this screen?')) {
+                    localStorage.removeItem('edu_device_fp'); 
+                    setPhase('registering'); 
+                    setShowOverlay(false); 
+                  }
+                }} title="Unpair Device" className="py-2 px-4 bg-red-950/40 hover:bg-red-900 border border-red-900/50 text-red-200 hover:text-white rounded-lg text-sm transition-colors">
+                  <Power className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Media playlist rendering
   return (
     <div className="fixed inset-0 bg-black cursor-none" onClick={() => setShowOverlay(!showOverlay)}>
       {currentItem ? (
@@ -346,9 +459,73 @@ export default function PlayerPage() {
           )}
         </div>
       ) : (
-        <div className="w-full h-full flex flex-col items-center justify-center">
-          <MonitorPlay className="w-16 h-16 text-slate-600 mb-4" />
-          <p className="text-xl text-slate-500">No content assigned</p>
+        <div className="w-full h-full bg-slate-50 flex items-center justify-center p-8 overflow-hidden relative cursor-default" onClick={(e) => e.stopPropagation()}>
+          {/* Decorative background blurs to match Pastel Pop */}
+          <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-400/20 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-400/20 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="w-full max-w-5xl bg-white/80 backdrop-blur-3xl rounded-[3rem] shadow-[0_20px_60px_rgb(0,0,0,0.06)] border border-white p-12 flex flex-col items-center z-10 animate-in fade-in zoom-in-95 duration-700">
+            <div className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-emerald-100 to-emerald-50 shadow-[inset_0_4px_20px_rgb(0,0,0,0.05)] flex items-center justify-center mb-6 ring-4 ring-white">
+              <CheckCircle2 className="w-12 h-12 text-emerald-500" />
+            </div>
+            <h1 className="text-4xl font-extrabold text-slate-800 tracking-tight">Screen Paired Successfully</h1>
+            <p className="text-lg font-medium text-slate-500 mt-2 mb-10 text-center">Waiting for a schedule to be assigned from the dashboard...</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl mb-10">
+              {/* Device Card */}
+              <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col items-center text-center">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center mb-4">
+                  <Monitor className="w-6 h-6 text-indigo-500" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-800">{screenName || 'Display Screen'}</h3>
+                <p className="text-xs font-semibold text-slate-400 mt-1">{typeof window !== 'undefined' ? `${window.screen.width}×${window.screen.height}` : 'Unknown'} • {typeof navigator !== 'undefined' ? (navigator.userAgent.includes('Chrome') ? 'Chrome' : 'Other') : ''}</p>
+                <div className="mt-4 flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-bold">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Online
+                </div>
+              </div>
+
+              {/* Storage Card */}
+              <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col items-center text-center">
+                <div className="w-12 h-12 rounded-2xl bg-sky-50 flex items-center justify-center mb-4">
+                  <HardDrive className="w-6 h-6 text-sky-500" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-800">Local Storage</h3>
+                <p className="text-xs font-semibold text-slate-400 mt-1">{storageInfo.used} used of {storageInfo.total}</p>
+                <div className="w-full h-2 bg-slate-100 rounded-full mt-4 overflow-hidden">
+                  <div className="h-full bg-sky-500 rounded-full transition-all duration-1000" style={{ width: `${storageInfo.percent}%` }} />
+                </div>
+              </div>
+
+              {/* Server Card */}
+              <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col items-center text-center">
+                <div className="w-12 h-12 rounded-2xl bg-violet-50 flex items-center justify-center mb-4">
+                  <Server className="w-6 h-6 text-violet-500" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-800">CMS Server</h3>
+                <p className="text-xs font-semibold text-slate-400 mt-1 truncate w-full px-2" title={typeof window !== 'undefined' ? window.location.hostname : 'Local'}>{typeof window !== 'undefined' ? window.location.hostname : 'Local'}</p>
+                <p className="text-[10px] font-semibold text-slate-400 mt-1">Last sync: {lastSync || 'Never'}</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-center gap-4">
+              <button onClick={(e) => { 
+                e.stopPropagation(); 
+                if(window.confirm('Are you absolutely certain you want to tear down the connection? This will wipe the pairing from this device.')) {
+                  localStorage.removeItem('edu_device_fp'); 
+                  setPhase('registering'); 
+                  setShowOverlay(false);
+                }
+              }} className="px-6 py-3 bg-white border border-slate-200 hover:border-red-100 hover:bg-red-50 text-slate-700 hover:text-red-600 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative group">
+                <Power className="w-5 h-5 text-slate-400 group-hover:text-red-500" /> Unpair Device
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="px-6 py-3 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative">
+                <Network className="w-5 h-5 text-slate-400" /> Ping Server
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); alert('No assigned content currently queued.'); }} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-2xl transition-all shadow-[0_8px_20px_rgb(99,102,241,0.3)] hover:shadow-[0_8px_25px_rgb(99,102,241,0.4)] hover:-translate-y-0.5 flex items-center gap-2 focus:scale-95 z-20 relative">
+                <Play className="w-5 h-5 fill-current" /> Auto-Play
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -380,9 +557,16 @@ export default function PlayerPage() {
               <div className="flex justify-between"><span className="text-slate-400">Last Sync</span><span className="text-white font-medium">{lastSync || 'Never'}</span></div>
             </div>
             <div className="flex gap-2 pt-2">
-              <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm">Sync Now</button>
-              <button onClick={(e) => { e.stopPropagation(); localStorage.removeItem('edu_device_fp'); setPhase('registering'); setShowOverlay(false); }} className="py-2 px-4 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm">
-                <Settings className="w-4 h-4" />
+              <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm transition-colors">Sync Now</button>
+              <button onClick={(e) => { 
+                e.stopPropagation(); 
+                if(window.confirm('Are you sure you want to completely unpair this device from the CMS?')) {
+                  localStorage.removeItem('edu_device_fp'); 
+                  setPhase('registering'); 
+                  setShowOverlay(false);
+                }
+              }} title="Unpair Device" className="py-2 px-4 bg-red-950/40 hover:bg-red-900 border border-red-900/50 text-red-200 hover:text-white rounded-lg text-sm transition-colors group">
+                <Power className="w-4 h-4 group-hover:text-red-100" />
               </button>
             </div>
           </div>
