@@ -457,7 +457,7 @@ function BellScheduleWidget({ config, compact }: { config: any; compact: boolean
         <span style={{ fontSize: compact ? '0.5em' : '0.7em', fontWeight: 700, color: 'white', letterSpacing: '0.05em' }}>Bell Schedule</span>
       </div>
       <div className="flex-1 overflow-y-auto" style={{ padding: '3% 5%' }}>
-        {lines.map((line, i) => {
+        {lines.map((line: string, i: number) => {
           const isActive = i === Math.min(Math.floor((currentHour - 8) / 1), lines.length - 1) && currentHour >= 8 && currentHour < 15;
           return (
             <div key={i} style={{
@@ -504,7 +504,7 @@ function LunchMenuWidget({ config, compact }: { config: any; compact: boolean })
         <span style={{ fontSize: compact ? '0.5em' : '0.7em', fontWeight: 700, color: 'white' }}>Lunch Menu</span>
       </div>
       <div className="flex-1 overflow-y-auto" style={{ padding: '3% 5%' }}>
-        {lines.map((line, i) => {
+        {lines.map((line: string, i: number) => {
           const isToday = line.toLowerCase().startsWith(today.toLowerCase());
           const [day, ...rest] = line.split(':');
           return (
