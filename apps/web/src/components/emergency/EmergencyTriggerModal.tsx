@@ -1,6 +1,8 @@
 import { useAppStore } from '@/lib/store';
 import { AlertCircle, X, Megaphone, ShieldAlert, WifiOff } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
+import { broadcastEmergency } from '@/actions/trigger-emergency';
+import { usePlaylists } from '@/hooks/use-api';
 
 interface Props {
   onClose: () => void;
@@ -8,23 +10,31 @@ interface Props {
 
 export function EmergencyTriggerModal({ onClose }: Props) {
   const setEmergencyActive = useAppStore((state) => state.setEmergencyActive);
+  const activeTenant = useAppStore((state) => state.activeTenant);
   
   const [selectedType, setSelectedType] = useState<string | null>(null);
+  const [selectedPlaylist, setSelectedPlaylist] = useState<string>('');
   const [confirmKey, setConfirmKey] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const { data: playlists } = usePlaylists();
 
-  // The confirmation word the admin must type
-  const confirmWord = "LOCKDOWN"; // In reality this would map to the typed emergency, using simple word for prototype
+  const confirmWord = "LOCKDOWN"; 
 
   const handleTrigger = () => {
     if (confirmKey === confirmWord) {
-      setIsLoading(true);
-      // Simulate network broadcast
-      setTimeout(() => {
-        setEmergencyActive(true);
-        setIsLoading(false);
-        onClose();
-      }, 1500);
+      startTransition(async () => {
+         // Next.js Server Action handles backend communication
+         await broadcastEmergency({
+            schoolId: activeTenant || 'global',
+            type: selectedType!,
+            playlistId: selectedPlaylist || undefined,
+            triggeredBy: 'admin-123'
+         });
+         
+         // Zustand global state update locks the UI optimistically immediately after resolution
+         setEmergencyActive(true);
+         onClose();
+      });
     }
   };
 
@@ -79,7 +89,31 @@ export function EmergencyTriggerModal({ onClose }: Props) {
           {selectedType && (
             <div className="animate-in fade-in slide-in-from-top-4 duration-300 pt-6 border-t border-slate-100 dark:border-slate-800">
               <h3 className="text-sm font-semibold tracking-tight text-slate-900 dark:text-white mb-4">
-                2. Final Authorization
+                2. Assign Emergency Playlist
+              </h3>
+              <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-5 border border-slate-200 dark:border-slate-700">
+                <p className="text-xs text-slate-600 dark:text-slate-400 mb-3">
+                  Select the playlist containing the media (e.g., evacuation routes, alert graphics) to display on all screens during the override.
+                </p>
+                <select 
+                  value={selectedPlaylist}
+                  onChange={(e) => setSelectedPlaylist(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-red-500"
+                >
+                  <option value="">-- No specific media (red alert text only) --</option>
+                  {playlists?.map((p: any) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3 */}
+          {selectedType && (
+            <div className="animate-in fade-in slide-in-from-top-4 duration-300 pt-6 border-t border-slate-100 dark:border-slate-800">
+              <h3 className="text-sm font-semibold tracking-tight text-slate-900 dark:text-white mb-4">
+                3. Final Authorization
               </h3>
               <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-5 border border-slate-200 dark:border-slate-700 space-y-4">
                 <p className="text-sm text-slate-600 dark:text-slate-400">
@@ -112,10 +146,10 @@ export function EmergencyTriggerModal({ onClose }: Props) {
           </button>
           <button
             onClick={handleTrigger}
-            disabled={!selectedType || confirmKey !== confirmWord || isLoading}
+            disabled={!selectedType || confirmKey !== confirmWord || isPending}
             className="px-6 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:hover:bg-red-600 text-white text-sm font-semibold rounded-md shadow-sm transition-all flex justify-center items-center gap-2 min-w-[140px]"
           >
-            {isLoading ? (
+            {isPending ? (
               <span className="flex items-center gap-2 animate-pulse">
                 Broadcasting...
               </span>

@@ -1,14 +1,19 @@
 {
   "name": "edu-cms-backend",
+  "packageManager": "pnpm@9.0.0",
   "version": "1.0.0",
   "description": "Secure multi-tenant School CMS API",
-  "main": "src/app.ts",
   "scripts": {
-    "start": "node dist/app.js",
-    "build": "tsc",
-    "dev": "ts-node-dev src/app.ts",
-    "test": "jest",
-    "migrate": "npx ts-node scripts/migrate.ts"
+    "start": "turbo run start",
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "test": "turbo run test",
+    "db:generate": "pnpm --filter @cms/database run db:generate",
+    "db:push": "pnpm --filter @cms/database run db:push",
+    "db:seed": "pnpm --filter @cms/database run db:seed",
+    "db:setup": "pnpm run db:push && pnpm run db:seed",
+    "dev:api": "pnpm --filter api run start:dev",
+    "dev:web": "pnpm --filter web run dev"
   },
   "dependencies": {
     "@cms/api-types": "workspace:*",
@@ -33,6 +38,7 @@
     "supertest": "^7.2.2",
     "ts-jest": "^29.1.1",
     "ts-node-dev": "^2.0.0",
+    "turbo": "^2.9.6",
     "typescript": "^5.3.3"
   }
 }

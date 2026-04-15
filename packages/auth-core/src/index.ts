@@ -1,7 +1,3 @@
-export enum Role {
-  SUPER_ADMIN = "SUPER_ADMIN",
-  DISTRICT_ADMIN = "DISTRICT_ADMIN",
-  SCHOOL_ADMIN = "SCHOOL_ADMIN",
-  CONTRIBUTOR = "CONTRIBUTOR",
-  VIEWER = "VIEWER"
-}
+// Canonical role definitions are in @cms/database.
+// This package re-exports for backward compatibility.
+export { AppRole as Role } from '@cms/database';

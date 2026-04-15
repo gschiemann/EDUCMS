@@ -1,9 +1,18 @@
 {
   "name": "@cms/database",
   "version": "1.0.0",
-  "main": "index.ts",
+  "main": "index.js",
+  "types": "index.ts",
+  "scripts": {
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:push": "prisma db push",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:reset": "prisma migrate reset --force"
+  },
   "dependencies": {
-    "@prisma/client": "^5.12.1"
+    "@prisma/client": "^5.12.1",
+    "argon2": "^0.31.2"
   },
   "devDependencies": {
     "prisma": "^5.12.1",

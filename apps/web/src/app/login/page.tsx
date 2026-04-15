@@ -1,0 +1,114 @@
+"use client";
+
+import { useState } from 'react';
+import { MonitorPlay, Loader2, AlertCircle } from 'lucide-react';
+import { useUIStore } from '@/store/ui-store';
+import { useRouter } from 'next/navigation';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+
+export default function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const login = useUIStore((state) => state.login);
+  const router = useRouter();
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (res.ok && data.access_token) {
+        login(data.access_token, data.user);
+        router.push(`/${data.user.tenantId}/dashboard`);
+      } else {
+        setError(data.message || 'Invalid email or password. Please try again.');
+      }
+    } catch {
+      setError('Cannot connect to the server. Make sure the API is running.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 p-4 relative overflow-hidden">
+      {/* Decorative elements */}
+      <div className="absolute top-1/4 -left-32 w-96 h-96 bg-indigo-500/10 rounded-full blur-[120px]" />
+      <div className="absolute bottom-1/4 -right-32 w-96 h-96 bg-violet-500/10 rounded-full blur-[120px]" />
+
+      <div className="w-full max-w-sm relative z-10">
+        {/* Logo */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl mb-4">
+            <MonitorPlay className="w-8 h-8 text-indigo-400" />
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-white">EduSignage</h1>
+          <p className="text-sm text-slate-400 mt-1">Digital Signage Management</p>
+        </div>
+
+        {/* Card */}
+        <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-2xl shadow-2xl p-8">
+          <form onSubmit={handleLogin} className="space-y-5">
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Email</label>
+              <input
+                type="email"
+                required
+                autoFocus
+                autoComplete="email"
+                placeholder="you@school.edu"
+                className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-xl text-sm text-white placeholder:text-slate-500 outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Password</label>
+              <input
+                type="password"
+                required
+                autoComplete="current-password"
+                placeholder="••••••••"
+                className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-xl text-sm text-white placeholder:text-slate-500 outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+              />
+            </div>
+
+            {error && (
+              <div className="flex items-start gap-2 px-3 py-2.5 bg-red-500/10 border border-red-500/20 rounded-xl">
+                <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                <p className="text-xs text-red-300 font-medium">{error}</p>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold py-3 px-4 rounded-xl transition-all shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Signing in...</>
+              ) : (
+                'Sign In'
+              )}
+            </button>
+          </form>
+        </div>
+
+        <p className="text-center text-xs text-slate-600 mt-6">
+          Secure multi-tenant CMS • RBAC enforced
+        </p>
+      </div>
+    </div>
+  );
+}

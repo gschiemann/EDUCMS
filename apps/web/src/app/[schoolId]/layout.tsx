@@ -11,13 +11,13 @@ export default function SchoolLayout({
   children: React.ReactNode;
 }) {
   const params = useParams();
-  const setActiveSchoolId = useAppStore((state) => state.setActiveSchoolId);
+  const setActiveTenant = useAppStore((state) => state.setActiveTenant);
 
   useEffect(() => {
     if (params?.schoolId) {
-      setActiveSchoolId(params.schoolId as string);
+      setActiveTenant(params.schoolId as string);
     }
-  }, [params?.schoolId, setActiveSchoolId]);
+  }, [params?.schoolId, setActiveTenant]);
 
   return <DashboardLayout>{children}</DashboardLayout>;
 }

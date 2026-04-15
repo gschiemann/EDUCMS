@@ -36,3 +36,12 @@ variable "aws_region" {
   description = "AWS Region deploying to"
   default     = "us-east-1"
 }
+
+variable "account_id" {
+  type = string
+}
+
+variable "ecr_repository_url" {
+  type = string
+}
+

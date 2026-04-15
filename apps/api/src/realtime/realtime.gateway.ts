@@ -101,8 +101,12 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         }, idempotencyKey);
         
         // Register in redis for metrics or fast lookups if needed
-        await this.redisService.publisher.sadd(`tenant:${ctx.tenantId}:devices`, ctx.deviceId);
-        await this.redisService.publisher.sadd(`group:${ctx.groupId}:devices`, ctx.deviceId);
+        if (ctx.deviceId && this.redisService.publisher) {
+          await this.redisService.publisher.sadd(`tenant:${ctx.tenantId}:devices`, ctx.deviceId);
+          if (ctx.groupId) {
+            await this.redisService.publisher.sadd(`group:${ctx.groupId}:devices`, ctx.deviceId);
+          }
+        }
       }
 
     } catch (e) {
@@ -127,7 +131,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     
     // Fire and forget update to Redis
     // To limit redis ops, this could be batched.
-    if (deviceId) {
+    if (deviceId && this.redisService.publisher) {
       this.redisService.publisher.hset(`device:${deviceId}:status`, 
         'lastSeen', Date.now(),
         'metrics', JSON.stringify(payload.metrics || {})

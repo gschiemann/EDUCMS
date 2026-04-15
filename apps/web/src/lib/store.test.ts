@@ -1,41 +1,53 @@
-import { useAppStore } from './store';
-import { act } from '@testing-library/react';
+import { useUIStore } from '@/store/ui-store';
 
-describe('AppStore', () => {
-  const initialStoreState = useAppStore.getState();
-
+describe('Unified App Store', () => {
   beforeEach(() => {
-    useAppStore.setState(initialStoreState, true);
+    // Reset store between tests
+    useUIStore.setState({
+      token: null,
+      user: null,
+      sidebarOpen: true,
+      activeTenant: null,
+      isEmergencyActive: false,
+    });
   });
 
-  test('should set active school id', () => {
-    act(() => {
-      useAppStore.getState().setActiveSchoolId('school-999');
+  it('should handle login and set tenant', () => {
+    const store = useUIStore.getState();
+    store.login('test-token', {
+      id: 'user-1',
+      email: 'admin@test.edu',
+      role: 'SUPER_ADMIN',
+      tenantId: 'tenant-123'
     });
-    expect(useAppStore.getState().activeSchoolId).toBe('school-999');
+
+    const state = useUIStore.getState();
+    expect(state.token).toBe('test-token');
+    expect(state.user?.email).toBe('admin@test.edu');
+    expect(state.activeTenant).toBe('tenant-123');
   });
 
-  test('should trigger emergency and clear emergency', () => {
-    // Initial state
-    expect(useAppStore.getState().isEmergencyActive).toBe(false);
-
-    // Trigger
-    act(() => {
-      useAppStore.getState().setEmergencyActive(true);
-    });
-    expect(useAppStore.getState().isEmergencyActive).toBe(true);
-
-    // Clear
-    act(() => {
-      useAppStore.getState().setEmergencyActive(false);
-    });
-    expect(useAppStore.getState().isEmergencyActive).toBe(false);
+  it('should handle setActiveTenant', () => {
+    useUIStore.getState().setActiveTenant('school-999');
+    expect(useUIStore.getState().activeTenant).toBe('school-999');
   });
 
-  test('should change user role', () => {
-    act(() => {
-      useAppStore.getState().setUserRole('teacher');
-    });
-    expect(useAppStore.getState().userRole).toBe('teacher');
+  it('should toggle emergency state', () => {
+    useUIStore.getState().setEmergencyActive(true);
+    expect(useUIStore.getState().isEmergencyActive).toBe(true);
+    
+    useUIStore.getState().setEmergencyActive(false);
+    expect(useUIStore.getState().isEmergencyActive).toBe(false);
+  });
+
+  it('should handle logout and clear state', () => {
+    const store = useUIStore.getState();
+    store.login('token', { id: '1', email: 'a@b.com', role: 'ADMIN', tenantId: 't1' });
+    store.logout();
+
+    const state = useUIStore.getState();
+    expect(state.token).toBeNull();
+    expect(state.user).toBeNull();
+    expect(state.activeTenant).toBeNull();
   });
 });

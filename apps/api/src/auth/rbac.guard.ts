@@ -2,6 +2,7 @@ import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@
 import { Reflector } from '@nestjs/core';
 import { AppRole } from '@cms/database';
 import { ROLES_KEY } from './roles.decorator';
+import { ALLOW_PANIC_BYPASS_KEY } from './panic-bypass.decorator';
 
 export interface RequestUser {
   id: string;
@@ -9,6 +10,7 @@ export interface RequestUser {
   role: AppRole;
   districtId?: string;
   schoolId?: string;
+  canTriggerPanic?: boolean;
 }
 
 @Injectable()
@@ -33,6 +35,15 @@ export class RbacGuard implements CanActivate {
     }
 
     const typedUser = user as RequestUser;
+
+    const allowPanicBypass = this.reflector.getAllAndOverride<boolean>(ALLOW_PANIC_BYPASS_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    if (allowPanicBypass && typedUser.canTriggerPanic) {
+      return true;
+    }
 
     // 1. Check if user holds the explicitly required role (or SUPER_ADMIN overrides)
     const hasRole = requiredRoles.includes(typedUser.role) || typedUser.role === AppRole.SUPER_ADMIN;

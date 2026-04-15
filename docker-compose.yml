@@ -6,21 +6,25 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "8080:8080"
     environment:
       - NODE_ENV=development
-      - PORT=3000
+      - PORT=8080
       - DATABASE_URL=postgres://cms_user:cms_password@db:5432/school_cms
       - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=dev_only_jwt_secret_CHANGE_ME
+      - SESSION_SECRET=dev_only_session_secret_CHANGE_ME
+      - ALLOWED_ORIGINS=http://localhost:3000
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
-      # Inject source code for hot reloading
-      - ./src:/app/src
-    command: ["corepack", "pnpm", "run", "dev"]
+      # Mount API source for hot reloading
+      - ./apps/api/src:/app/apps/api/src
+      - ./packages:/app/packages
+    command: ["node", "apps/api/dist/main.js"]
 
   db:
     image: postgres:15-alpine

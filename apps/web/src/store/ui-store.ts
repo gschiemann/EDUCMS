@@ -1,15 +1,63 @@
 import { create } from 'zustand';
 
-interface UIState {
+/**
+ * Unified application state store.
+ * Consolidates the previously split ui-store and lib/store into a single source of truth.
+ */
+interface AppState {
+  // Auth state
+  token: string | null;
+  user: { id: string; email: string; role: string; tenantId: string; canTriggerPanic?: boolean } | null;
+
+  // UI state
   sidebarOpen: boolean;
   activeTenant: string | null;
+  isEmergencyActive: boolean;
+
+  // Auth actions
+  login: (token: string, user: any) => void;
+  logout: () => void;
+
+  // UI actions
   toggleSidebar: () => void;
   setActiveTenant: (tenantId: string) => void;
+  setEmergencyActive: (active: boolean) => void;
 }
 
-export const useUIStore = create<UIState>((set) => ({
+export const useUIStore = create<AppState>((set) => ({
+  // Auth
+  token: typeof window !== 'undefined' ? localStorage.getItem('edu_cms_token') : null,
+  user: typeof window !== 'undefined' && localStorage.getItem('edu_cms_user')
+    ? JSON.parse(localStorage.getItem('edu_cms_user')!)
+    : null,
+
+  // UI
   sidebarOpen: true,
   activeTenant: null,
+  isEmergencyActive: false,
+
+  // Auth actions
+  login: (token, user) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('edu_cms_token', token);
+      localStorage.setItem('edu_cms_user', JSON.stringify(user));
+    }
+    set({ token, user, activeTenant: user.tenantId });
+  },
+  logout: () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('edu_cms_token');
+      localStorage.removeItem('edu_cms_user');
+    }
+    set({ token: null, user: null, activeTenant: null });
+    // Redirect handled by the page-level useEffect
+  },
+
+  // UI actions
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
   setActiveTenant: (tenantId) => set({ activeTenant: tenantId }),
+  setEmergencyActive: (active) => set({ isEmergencyActive: active }),
 }));
+
+// Re-export for backward compatibility with components that imported useAppStore
+export const useAppStore = useUIStore;

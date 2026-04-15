@@ -1,36 +1,17 @@
-import { Controller, Post, Body, Req, UseGuards, UnauthorizedException } from '@nestjs/common';
+import { Controller, Post, Body, UnauthorizedException, HttpCode, HttpStatus } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { Request } from 'express';
-import { ThrottlerGuard } from '@nestjs/throttler';
 
-@Controller('auth')
+@Controller('api/v1/auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private authService: AuthService) {}
 
+  @HttpCode(HttpStatus.OK)
   @Post('login')
-  @UseGuards(ThrottlerGuard)
-  async login(@Body() body: any, @Req() req: Request) {
-    const { username, password } = body;
-    
-    // Stub: lookup hash from db. 
-    const mockHash = await this.authService.hashPassword('admin123'); 
-    const isValid = await this.authService.verifyPassword(password, mockHash);
-
-    if (!isValid) {
+  async login(@Body() signInDto: Record<string, any>) {
+    const user = await this.authService.validateUser(signInDto.email, signInDto.password);
+    if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
-
-    return this.authService.login('mock-user-123', req);
-  }
-
-  @Post('refresh')
-  @UseGuards(ThrottlerGuard)
-  async refresh(@Body() body: { userId: string, refreshToken: string }) {
-    if (!body.refreshToken || !body.userId) {
-       throw new UnauthorizedException('Require userId and refreshToken');
-    }
-    
-    // Perform Refresh Token Rotation
-    return this.authService.refreshSession(body.userId, body.refreshToken);
+    return this.authService.login(user);
   }
 }

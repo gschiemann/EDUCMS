@@ -14,10 +14,18 @@ export const EmergencyPanel = () => {
     if (!canFire) return;
     setLoading(true);
     try {
-      // Firing against our Phase 1 mocked backend route (RT-01 WS Signer backend)
-      const res = await fetch('http://localhost:3000/api/v1/emergency/override', {
+      // Firing against actual NestJS backend
+      const res = await fetch('/api/v1/emergency/trigger', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + (typeof window !== 'undefined' ? localStorage.getItem('token') : '')
+        },
+        body: JSON.stringify({
+          scopeType: 'group',
+          scopeId: 'ALL_SCREENS',
+          overridePayload: { severity: 'CRITICAL' }
+        })
       });
       if (res.ok) {
         setActive(true);

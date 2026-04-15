@@ -3,148 +3,205 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Tenant {
-  id              String   @id @default(uuid()) @db.Uuid
-  parentId        String?  @map("parent_id") @db.Uuid
-  name            String
-  emergencyStatus String   @default("INACTIVE") @map("emergency_status")
-  createdAt       DateTime @default(now()) @map("created_at")
-
-  parent   Tenant?  @relation("TenantHierarchy", fields: [parentId], references: [id])
-  children Tenant[] @relation("TenantHierarchy")
-
-  users        User[]
-  screens      Screen[]
-  screenGroups ScreenGroup[]
-  assets       Asset[]
-  playlists    Playlist[]
-  schedules    Schedule[]
-  auditLogs    AuditLog[]
+  id                      String        @id @default(uuid())
+  parentId                String?       @map("parent_id")
+  name                    String
+  emergencyStatus         String        @default("INACTIVE") @map("emergency_status")
+  createdAt               DateTime      @default(now()) @map("created_at")
+  emergencyPlaylistId     String?       @map("emergency_playlist_id")
+  panicEvacuatePlaylistId String?       @map("panic_evacuate_playlist_id")
+  panicLockdownPlaylistId String?       @map("panic_lockdown_playlist_id")
+  panicWeatherPlaylistId  String?       @map("panic_weather_playlist_id")
+  assets                  Asset[]
+  auditLogs               AuditLog[]
+  playlists               Playlist[]
+  schedules               Schedule[]
+  screenGroups            ScreenGroup[]
+  screens                 Screen[]
+  templates               Template[]
+  parent                  Tenant?       @relation("TenantHierarchy", fields: [parentId], references: [id])
+  children                Tenant[]      @relation("TenantHierarchy")
+  users                   User[]
 
   @@map("tenants")
 }
 
 model User {
-  id           String   @id @default(uuid()) @db.Uuid
-  tenantId     String   @map("tenant_id") @db.Uuid
-  email        String   @unique
-  passwordHash String   @map("password_hash")
-  role         String
-  createdAt    DateTime @default(now()) @map("created_at")
-
-  tenant    Tenant     @relation(fields: [tenantId], references: [id])
-  assets    Asset[]
-  auditLogs AuditLog[]
+  id               String     @id @default(uuid())
+  tenantId         String     @map("tenant_id")
+  email            String     @unique
+  passwordHash     String     @map("password_hash")
+  role             String
+  canTriggerPanic  Boolean    @default(false) @map("can_trigger_panic")
+  createdAt        DateTime   @default(now()) @map("created_at")
+  assets           Asset[]
+  auditLogs        AuditLog[]
+  createdTemplates Template[] @relation("TemplateCreator")
+  tenant           Tenant     @relation(fields: [tenantId], references: [id])
 
   @@map("users")
 }
 
 model ScreenGroup {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @map("tenant_id") @db.Uuid
+  id          String     @id @default(uuid())
+  tenantId    String     @map("tenant_id")
   name        String
   description String?
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  tenant    Tenant     @relation(fields: [tenantId], references: [id])
-  screens   Screen[]
-  schedules Schedule[]
+  createdAt   DateTime   @default(now()) @map("created_at")
+  schedules   Schedule[]
+  tenant      Tenant     @relation(fields: [tenantId], references: [id])
+  screens     Screen[]
 
   @@map("screen_groups")
 }
 
 model Screen {
-  id                String    @id @default(uuid()) @db.Uuid
-  tenantId          String    @map("tenant_id") @db.Uuid
-  screenGroupId     String?   @map("screen_group_id") @db.Uuid
+  id                String       @id @default(uuid())
+  tenantId          String?      @map("tenant_id")
+  screenGroupId     String?      @map("screen_group_id")
   name              String
   location          String?
-  deviceFingerprint String    @unique @map("device_fingerprint")
-  status            String
-  lastPingAt        DateTime? @map("last_ping_at")
-
-  tenant      Tenant       @relation(fields: [tenantId], references: [id])
-  screenGroup ScreenGroup? @relation(fields: [screenGroupId], references: [id])
-  schedules   Schedule[]
+  deviceFingerprint String       @unique @map("device_fingerprint")
+  pairingCode       String?      @unique @map("pairing_code")
+  status            String       @default("PENDING")
+  lastPingAt        DateTime?    @map("last_ping_at")
+  pairedAt          DateTime?    @map("paired_at")
+  resolution        String?
+  osInfo            String?      @map("os_info")
+  browserInfo       String?      @map("browser_info")
+  ipAddress         String?      @map("ip_address")
+  userAgent         String?      @map("user_agent")
+  schedules         Schedule[]
+  screenGroup       ScreenGroup? @relation(fields: [screenGroupId], references: [id])
+  tenant            Tenant?      @relation(fields: [tenantId], references: [id])
 
   @@map("screens")
 }
 
 model Asset {
-  id               String   @id @default(uuid()) @db.Uuid
-  tenantId         String   @map("tenant_id") @db.Uuid
-  uploadedByUserId String   @map("uploaded_by_user_id") @db.Uuid
-  fileUrl          String   @map("file_url")
-  mimeType         String   @map("mime_type")
-  status           String   @default("PENDING_APPROVAL")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at")
-
-  tenant        Tenant         @relation(fields: [tenantId], references: [id])
-  uploadedBy    User           @relation(fields: [uploadedByUserId], references: [id])
-  playlistItems PlaylistItem[]
+  id               String         @id @default(uuid())
+  tenantId         String         @map("tenant_id")
+  uploadedByUserId String         @map("uploaded_by_user_id")
+  fileUrl          String         @map("file_url")
+  mimeType         String         @map("mime_type")
+  status           String         @default("PENDING_APPROVAL")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @default(now()) @updatedAt @map("updated_at")
+  fileSize         Int?           @map("file_size")
+  originalName     String?        @map("original_name")
+  uploadedBy       User           @relation(fields: [uploadedByUserId], references: [id])
+  tenant           Tenant         @relation(fields: [tenantId], references: [id])
+  playlistItems    PlaylistItem[]
 
   @@map("assets")
 }
 
 model Playlist {
-  id       String @id @default(uuid()) @db.Uuid
-  tenantId String @map("tenant_id") @db.Uuid
-  name     String
-
-  tenant    Tenant         @relation(fields: [tenantId], references: [id])
-  items     PlaylistItem[]
-  schedules Schedule[]
+  id         String         @id @default(uuid())
+  tenantId   String         @map("tenant_id")
+  name       String
+  templateId String?        @map("template_id")
+  items      PlaylistItem[]
+  tenant     Tenant         @relation(fields: [tenantId], references: [id])
+  template   Template?      @relation(fields: [templateId], references: [id])
+  schedules  Schedule[]
 
   @@map("playlists")
 }
 
 model PlaylistItem {
-  id            String @id @default(uuid()) @db.Uuid
-  playlistId    String @map("playlist_id") @db.Uuid
-  assetId       String @map("asset_id") @db.Uuid
-  durationMs    Int    @map("duration_ms")
-  sequenceOrder Int    @map("sequence_order")
-
-  playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
-  asset    Asset    @relation(fields: [assetId], references: [id])
+  id            String   @id @default(uuid())
+  playlistId    String   @map("playlist_id")
+  assetId       String   @map("asset_id")
+  durationMs    Int      @map("duration_ms")
+  sequenceOrder Int      @map("sequence_order")
+  asset         Asset    @relation(fields: [assetId], references: [id])
+  playlist      Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
 
   @@map("playlist_items")
 }
 
 model Schedule {
-  id            String    @id @default(uuid()) @db.Uuid
-  tenantId      String    @map("tenant_id") @db.Uuid
-  playlistId    String    @map("playlist_id") @db.Uuid
-  screenGroupId String?   @map("screen_group_id") @db.Uuid
-  screenId      String?   @map("screen_id") @db.Uuid
-  startTime     DateTime  @map("start_time")
-  endTime       DateTime? @map("end_time")
-
-  tenant      Tenant       @relation(fields: [tenantId], references: [id])
-  playlist    Playlist     @relation(fields: [playlistId], references: [id])
-  screenGroup ScreenGroup? @relation(fields: [screenGroupId], references: [id])
-  screen      Screen?      @relation(fields: [screenId], references: [id])
+  id            String       @id @default(uuid())
+  tenantId      String       @map("tenant_id")
+  playlistId    String       @map("playlist_id")
+  screenGroupId String?      @map("screen_group_id")
+  screenId      String?      @map("screen_id")
+  startTime     DateTime     @map("start_time")
+  endTime       DateTime?    @map("end_time")
+  daysOfWeek    String?      @map("days_of_week")
+  timeStart     String?      @map("time_start")
+  timeEnd       String?      @map("time_end")
+  priority      Int          @default(0)
+  isActive      Boolean      @default(true) @map("is_active")
+  screen        Screen?      @relation(fields: [screenId], references: [id])
+  screenGroup   ScreenGroup? @relation(fields: [screenGroupId], references: [id])
+  playlist      Playlist     @relation(fields: [playlistId], references: [id])
+  tenant        Tenant       @relation(fields: [tenantId], references: [id])
 
   @@map("schedules")
 }
 
 model AuditLog {
-  id         String   @id @default(uuid()) @db.Uuid
-  tenantId   String   @map("tenant_id") @db.Uuid
-  userId     String?  @map("user_id") @db.Uuid
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  userId     String?  @map("user_id")
   action     String
   targetType String   @map("target_type")
-  targetId   String?  @map("target_id") @db.Uuid
-  details    Json?
+  targetId   String?  @map("target_id")
+  details    String?
   createdAt  DateTime @default(now()) @map("created_at")
-
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-  user   User?  @relation(fields: [userId], references: [id])
+  user       User?    @relation(fields: [userId], references: [id])
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
 
   @@map("audit_logs")
+}
+
+model Template {
+  id           String         @id @default(uuid())
+  tenantId     String?        @map("tenant_id")
+  name         String
+  description  String?
+  category     String         @default("CUSTOM")
+  orientation  String         @default("LANDSCAPE")
+  screenWidth  Int            @default(1920) @map("screen_width")
+  screenHeight Int            @default(1080) @map("screen_height")
+  isSystem     Boolean        @default(false) @map("is_system")
+  status       String         @default("ACTIVE")
+  bgColor      String?        @map("bg_color")
+  bgImage      String?        @map("bg_image")
+  bgGradient   String?        @map("bg_gradient")
+  thumbnail    String?
+  createdById  String?        @map("created_by_id")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @default(now()) @updatedAt @map("updated_at")
+  zones        TemplateZone[]
+  playlists    Playlist[]
+  createdBy    User?          @relation("TemplateCreator", fields: [createdById], references: [id])
+  tenant       Tenant?        @relation(fields: [tenantId], references: [id])
+
+  @@map("templates")
+}
+
+model TemplateZone {
+  id            String   @id @default(uuid())
+  templateId    String   @map("template_id")
+  name          String
+  widgetType    String   @map("widget_type")
+  x             Float    @default(0)
+  y             Float    @default(0)
+  width         Float    @default(100)
+  height        Float    @default(100)
+  zIndex        Int      @default(0) @map("z_index")
+  sortOrder     Int      @default(0) @map("sort_order")
+  defaultConfig String?  @map("default_config")
+  template      Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@map("template_zones")
 }

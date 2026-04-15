@@ -33,3 +33,71 @@ export interface AuditLogEntry {
   timestamp: string;
   diff: any;
 }
+
+// ─────────────────────────────────────────────────────────────
+// Template Builder API types
+// ─────────────────────────────────────────────────────────────
+
+export interface TemplateZoneInput {
+  name: string;
+  widgetType: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  zIndex?: number;
+  sortOrder?: number;
+  defaultConfig?: Record<string, any>;
+}
+
+export interface CreateTemplateRequest {
+  name: string;
+  description?: string;
+  category?: string;
+  orientation?: string;
+  screenWidth?: number;
+  screenHeight?: number;
+  zones?: TemplateZoneInput[];
+}
+
+export interface UpdateTemplateRequest {
+  name?: string;
+  description?: string;
+  category?: string;
+  orientation?: string;
+  screenWidth?: number;
+  screenHeight?: number;
+  status?: string;
+}
+
+export interface TemplateResponse {
+  id: string;
+  tenantId: string | null;
+  name: string;
+  description: string | null;
+  category: string;
+  orientation: string;
+  screenWidth: number;
+  screenHeight: number;
+  isSystem: boolean;
+  status: string;
+  thumbnail: string | null;
+  createdById: string | null;
+  zones: TemplateZoneResponse[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TemplateZoneResponse {
+  id: string;
+  templateId: string;
+  name: string;
+  widgetType: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  zIndex: number;
+  sortOrder: number;
+  defaultConfig: Record<string, any> | null;
+}

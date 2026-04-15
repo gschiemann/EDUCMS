@@ -1,25 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
-
-const API_URL = 'http://localhost:8080/api/v1';
+import { apiFetch } from '@/lib/api-client';
 
 export function useDashboardStats() {
   return useQuery({
     queryKey: ['dashboard', 'stats'],
-    queryFn: async () => {
-      const res = await fetch(`${API_URL}/stats/overview`);
-      if (!res.ok) throw new Error('Network response was not ok');
-      return res.json();
-    },
+    queryFn: () => apiFetch('/stats/overview'),
+    refetchInterval: 30000, // Auto-refresh every 30s for live dashboard feel
   });
 }
 
 export function useRecentActivity() {
   return useQuery({
     queryKey: ['dashboard', 'activity'],
-    queryFn: async () => {
-      const res = await fetch(`${API_URL}/audit/recent`);
-      if (!res.ok) throw new Error('Network response was not ok');
-      return res.json();
-    },
+    queryFn: () => apiFetch('/audit/recent'),
+    refetchInterval: 15000, // More frequent for audit trail
   });
 }

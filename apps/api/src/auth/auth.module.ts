@@ -1,24 +1,22 @@
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
-import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
-import { JwtAuthGuard } from './jwt-auth.guard';
-import { RbacGuard } from './rbac.guard';
+import { PassportModule } from '@nestjs/passport';
+import { JwtModule } from '@nestjs/jwt';
+import { JwtStrategy } from './jwt.strategy';
+import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
   imports: [
+    PrismaModule,
     PassportModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET || (() => {
-        if (process.env.NODE_ENV === 'production') throw new Error('CRITICAL: JWT_SECRET missing in production');
-        return 'dev_secret';
-      })(),
-      signOptions: { expiresIn: '15m' }, // Short-lived AT mapping
+      secret: process.env.JWT_SECRET || 'dev_only_jwt_secret_CHANGE_ME',
+      signOptions: { expiresIn: '1h' },
     }),
   ],
+  providers: [AuthService, JwtStrategy],
   controllers: [AuthController],
-  providers: [AuthService, JwtAuthGuard, RbacGuard],
-  exports: [AuthService, JwtAuthGuard, RbacGuard, JwtModule],
+  exports: [AuthService, JwtModule],
 })
 export class AuthModule {}

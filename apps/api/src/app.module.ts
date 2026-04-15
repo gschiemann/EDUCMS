@@ -5,6 +5,14 @@ import { ScreensController } from './screens/screens.controller';
 import { EmergencyController } from './emergency/emergency.controller';
 import { StatsController } from './stats/stats.controller';
 import { AuditController } from './audit/audit.controller';
+import { UsersController } from './users/users.controller';
+import { PlaylistsController } from './playlists/playlists.controller';
+import { ScreenGroupsController } from './screen-groups/screen-groups.controller';
+import { SchedulesController } from './schedules/schedules.controller';
+import { AssetsController } from './assets/assets.controller';
+import { AssetFilesController } from './assets/asset-files.controller';
+import { TemplatesController } from './templates/templates.controller';
+import { TenantsController } from './tenants/tenants.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { RealtimeModule } from './realtime/realtime.module';
@@ -13,6 +21,10 @@ import { APP_GUARD, APP_PIPE, APP_INTERCEPTOR } from '@nestjs/core';
 import { SanitizationPipe } from './security/sanitization.pipe';
 import { AuditInterceptor } from './security/audit.interceptor';
 import { AnomalyMiddleware } from './security/anomaly.middleware';
+import { WebsocketSignerService } from './security/websocket-signer.service';
+import { AssetSanitizerService } from './security/asset-sanitizer.service';
+import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { RbacGuard } from './auth/rbac.guard';
 
 @Module({
   imports: [
@@ -24,9 +36,27 @@ import { AnomalyMiddleware } from './security/anomaly.middleware';
       limit: 100, 
     }]),
   ],
-  controllers: [AppController, ScreensController, EmergencyController, StatsController, AuditController],
+  controllers: [
+    AppController,
+    ScreensController,
+    EmergencyController,
+    StatsController,
+    AuditController,
+    UsersController,
+    PlaylistsController,
+    ScreenGroupsController,
+    SchedulesController,
+    AssetsController,
+    AssetFilesController,
+    TemplatesController,
+    TenantsController,
+  ],
   providers: [
     AppService,
+    WebsocketSignerService,
+    AssetSanitizerService,
+    JwtAuthGuard,
+    RbacGuard,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

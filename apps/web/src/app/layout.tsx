@@ -2,8 +2,6 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { SidebarProvider } from '@/components/ui/sidebar';
-import { AppSidebar } from '@/components/app-sidebar';
 import Providers from '@/components/providers';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -20,15 +18,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.className} min-h-screen bg-neutral-950 text-neutral-50`}>
+      <body className={`${inter.className} min-h-screen bg-slate-50 text-slate-900 antialiased`} suppressHydrationWarning>
         <Providers>
           <TooltipProvider>
-            <SidebarProvider>
-              <AppSidebar />
-              <main className="w-full h-screen overflow-hidden flex flex-col bg-neutral-950">
-                {children}
-              </main>
-            </SidebarProvider>
+            <main className="w-full min-h-screen relative flex flex-col">
+              <div className="absolute top-0 inset-x-0 h-96 bg-gradient-to-b from-indigo-50 to-transparent pointer-events-none -z-10" />
+              {children}
+            </main>
           </TooltipProvider>
         </Providers>
       </body>
