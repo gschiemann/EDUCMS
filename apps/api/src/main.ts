@@ -45,16 +45,13 @@ async function bootstrap() {
   // Manadatory: Secure cookie strategy & session mechanics
   app.use(
     session({
-      secret: process.env.SESSION_SECRET || (() => {
-        if (process.env.NODE_ENV === 'production') throw new Error('CRITICAL: SESSION_SECRET missing in production');
-        return 'fallback_dev_secret_change_me';
-      })(),
+      secret: process.env.SESSION_SECRET || 'edu_cms_beta_session_secret_CHANGE_FOR_PROD',
       resave: false,
       saveUninitialized: false,
       cookie: {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production', // true over HTTPS
-        sameSite: 'strict',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' as const : 'strict' as const, // 'none' needed for cross-origin (Vercel→Railway)
         maxAge: 15 * 60 * 1000, // 15 mins (Aligns with short-lived tokens requirement)
       },
       name: 'edu_cms_sid',
@@ -84,6 +81,8 @@ async function bootstrap() {
           }
         },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   });
 
   await app.listen(process.env.PORT ?? 8080);

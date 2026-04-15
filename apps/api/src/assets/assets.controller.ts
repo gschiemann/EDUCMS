@@ -14,7 +14,7 @@ import { extname, join } from 'path';
 import { existsSync, mkdirSync, unlinkSync } from 'fs';
 import { randomUUID } from 'crypto';
 
-const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
+const UPLOAD_DIR = process.env.UPLOAD_DIR || (process.env.NODE_ENV === 'production' ? '/tmp/uploads' : './uploads');
 
 // Ensure upload directory exists
 if (!existsSync(UPLOAD_DIR)) {

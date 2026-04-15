@@ -4,7 +4,7 @@ import type { Response } from 'express';
 import { existsSync } from 'fs';
 import { join, resolve } from 'path';
 
-const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
+const UPLOAD_DIR = process.env.UPLOAD_DIR || (process.env.NODE_ENV === 'production' ? '/tmp/uploads' : './uploads');
 
 /**
  * Public file serving controller — no auth, no throttle.
