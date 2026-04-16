@@ -182,19 +182,16 @@ export default function AssetsPage() {
   const handleAddUrl = async () => { if (!webUrl.trim()) return; await addWebUrl.mutateAsync({ url: webUrl.trim() }); setWebUrl(''); setShowUrlForm(false); };
 
   const filtered = (assets || []).filter((a: any) => {
-    // Folder filter — show assets in current folder (null = root / unfiled)
-    if (currentFolderId !== null) {
-      if (a.folderId !== currentFolderId) return false;
-    } else if (currentFolderId === null && search === '' && false) {
-      // When at root with no search, show all (including unfiled) — this branch intentionally disabled
-      // to show all files at root level for discoverability
-    }
+    // Folder filter — show only assets belonging to the current folder
+    // At root (null): show only unfiled assets; inside a folder: show that folder's assets
+    if (a.folderId !== currentFolderId) return false;
     if (filter !== 'all' && getAssetType(a.mimeType) !== filter) return false;
     if (search) { const q = search.toLowerCase(); const n = (a.originalName || a.fileUrl?.split('/').pop() || '').toLowerCase(); if (!n.includes(q) && !a.mimeType?.toLowerCase().includes(q)) return false; }
     return true;
   });
 
-  const counts = { all: (assets||[]).length, images: (assets||[]).filter((a:any)=>a.mimeType?.startsWith('image/')).length, videos: (assets||[]).filter((a:any)=>a.mimeType?.startsWith('video/')).length, audio: (assets||[]).filter((a:any)=>a.mimeType?.startsWith('audio/')).length, urls: (assets||[]).filter((a:any)=>a.mimeType==='text/html').length, documents: (assets||[]).filter((a:any)=>a.mimeType==='application/pdf').length };
+  const folderAssets = (assets||[]).filter((a:any) => a.folderId === currentFolderId);
+  const counts = { all: folderAssets.length, images: folderAssets.filter((a:any)=>a.mimeType?.startsWith('image/')).length, videos: folderAssets.filter((a:any)=>a.mimeType?.startsWith('video/')).length, audio: folderAssets.filter((a:any)=>a.mimeType?.startsWith('audio/')).length, urls: folderAssets.filter((a:any)=>a.mimeType==='text/html').length, documents: folderAssets.filter((a:any)=>a.mimeType==='application/pdf').length };
 
   const thumbUrl = (a: any) => {
     if (!a.mimeType?.startsWith('image/') && !a.mimeType?.startsWith('video/')) return null;
