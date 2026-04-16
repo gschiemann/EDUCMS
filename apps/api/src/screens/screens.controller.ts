@@ -6,6 +6,8 @@ import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import * as crypto from 'crypto';
+import { RedisService } from '../realtime/redis.service';
+import { WebsocketSignerService } from '../security/websocket-signer.service';
 
 function generatePairingCode(): string {
   // 6-char alphanumeric, uppercase, easy to read (no 0/O/I/1)
@@ -19,7 +21,18 @@ function generatePairingCode(): string {
 
 @Controller('api/v1/screens')
 export class ScreensController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redisService: RedisService,
+    private readonly signer: WebsocketSignerService
+  ) {}
+
+  private async notifySync(tenantId: string) {
+    try {
+      const message = this.signer.signMessage('SYNC', { source: 'screen_update' });
+      await this.redisService.publish(`tenant:${tenantId}`, message);
+    } catch (e) {}
+  }
 
   // ─── PUBLIC: Device self-registration (no auth) ───
   // The player opens, sends its device info, gets back a pairing code
@@ -162,6 +175,7 @@ export class ScreensController {
       include: { screenGroup: { select: { id: true, name: true } } },
     });
 
+    this.notifySync(req.user.tenantId);
     return updated;
   }
 
@@ -179,7 +193,7 @@ export class ScreensController {
     });
     if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
 
-    return this.prisma.client.screen.update({
+    const updated = await this.prisma.client.screen.update({
       where: { id },
       data: {
         name: body.name?.trim() || screen.name,
@@ -188,6 +202,8 @@ export class ScreensController {
       },
       include: { screenGroup: { select: { id: true, name: true } } },
     });
+    this.notifySync(req.user.tenantId);
+    return updated;
   }
 
   // ─── ADMIN: Delete a screen ───
@@ -202,6 +218,7 @@ export class ScreensController {
 
     await this.prisma.client.schedule.deleteMany({ where: { screenId: id } });
     await this.prisma.client.screen.delete({ where: { id } });
+    this.notifySync(req.user.tenantId);
     return { deleted: true };
   }
 

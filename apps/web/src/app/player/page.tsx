@@ -174,6 +174,7 @@ export default function PlayerPage() {
       // 1. Try to fetch the specific device manifest (what it is officially scheduled to play)
       const manifestRes = await fetch(`${getApiRoot()}/api/v1/screens/${screenId}/manifest`, {
         headers: { 'Authorization': `Bearer ${access_token}` },
+        cache: 'no-store',
       });
 
       if (manifestRes.ok) {
