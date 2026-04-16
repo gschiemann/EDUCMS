@@ -760,7 +760,11 @@ function LogoWidget({ config }: { config: any }) {
 // ═══════════════════════════════════════════════════════
 
 function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
-  const url = config.url;
+  // Auto-prefix bare domains with https://
+  const rawUrl = config.url || '';
+  const url = rawUrl && !rawUrl.startsWith('http://') && !rawUrl.startsWith('https://') && !rawUrl.startsWith('//')
+    ? `https://${rawUrl}`
+    : rawUrl;
   const refreshInterval = config.refreshIntervalMs || 0;
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -806,6 +810,7 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
         <div style={{ flex: 1, background: 'white', borderRadius: 4, padding: '1% 3%', fontSize: '0.35em', color: '#94a3b8', overflow: 'hidden', whiteSpace: 'nowrap' as const, textOverflow: 'ellipsis' }}>
           {url || 'https://...'}
         </div>
+
       </div>
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center">

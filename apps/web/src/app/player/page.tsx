@@ -482,7 +482,13 @@ export default function PlayerPage() {
           ...(tpl.bgImage ? { backgroundImage: `url(${tpl.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}),
         }}>
         {/* Render each zone with its live widget */}
-        {zones.map((zone: any) => (
+        {zones.map((zone: any) => {
+          // defaultConfig may be a JSON string from the DB — ensure it's a parsed object
+          let cfg = zone.defaultConfig;
+          if (typeof cfg === 'string') {
+            try { cfg = JSON.parse(cfg); } catch { cfg = {}; }
+          }
+          return (
           <div key={zone.id} className="absolute overflow-hidden"
             style={{
               left: `${zone.x}%`,
@@ -493,12 +499,14 @@ export default function PlayerPage() {
             }}>
             <WidgetPreview
               widgetType={zone.widgetType}
-              config={zone.defaultConfig}
+              config={cfg}
               width={zone.width}
               height={zone.height}
               live={true}
             />
           </div>
+          );
+        }
         ))}
 
         {/* Info overlay */}

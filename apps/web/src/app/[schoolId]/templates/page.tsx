@@ -170,6 +170,7 @@ export default function TemplatesPage() {
   const [activeCategory, setActiveCategory] = useState('');
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [autoEditHandled, setAutoEditHandled] = useState(false);
 
   // Create form state
   const [newName, setNewName] = useState('');
@@ -180,6 +181,22 @@ export default function TemplatesPage() {
   const [customRes, setCustomRes] = useState(false);
 
   const { data: templates, isLoading } = useTemplates();
+
+  // Auto-open editor if ?edit=<templateId> is in the URL (e.g. from playlist page)
+  useEffect(() => {
+    if (autoEditHandled || !templates || isLoading) return;
+    const params = new URLSearchParams(window.location.search);
+    const editId = params.get('edit');
+    if (editId) {
+      const target = templates.find((t: Template) => t.id === editId);
+      if (target) {
+        setEditingTemplate(target);
+        // Clean up the URL param without triggering navigation
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
+    setAutoEditHandled(true);
+  }, [templates, isLoading, autoEditHandled]);
   const createTemplate = useCreateTemplate();
   const createFromPreset = useCreateFromPreset();
   const updateTemplate = useUpdateTemplate();
@@ -1272,7 +1289,12 @@ function WidgetConfig({ zone, idx, updateZone }: { zone: Zone; idx: number; upda
     return (
       <div className="space-y-3 pt-2 border-t border-slate-100">
         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Website URL</label>
-        <input value={config.url || ''} onChange={e => setConfig({ url: e.target.value })} placeholder="https://example.com" className={inputClass} />
+        <input value={config.url || ''} onChange={e => setConfig({ url: e.target.value })} onBlur={e => {
+          const v = e.target.value.trim();
+          if (v && !v.startsWith('http://') && !v.startsWith('https://') && !v.startsWith('//')) {
+            setConfig({ url: `https://${v}` });
+          }
+        }} placeholder="e.g. example.com" className={inputClass} />
       </div>
     );
   }

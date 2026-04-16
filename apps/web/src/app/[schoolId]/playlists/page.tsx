@@ -644,7 +644,7 @@ export default function PlaylistsPage() {
                   Schedule it to your screens using the Schedules tab.
                 </p>
                 <button
-                  onClick={() => { window.location.href = window.location.pathname.replace('/playlists', '/templates'); }}
+                  onClick={() => { window.location.href = window.location.pathname.replace('/playlists', '/templates') + '?edit=' + selectedPlaylist.template.id; }}
                   className="px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors"
                 >
                   <Pencil className="w-3.5 h-3.5" /> Edit Template
