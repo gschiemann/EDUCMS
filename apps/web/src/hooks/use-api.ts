@@ -23,7 +23,11 @@ export function useDeleteScreenGroup() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/screen-groups/${id}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['screen-groups'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['screen-groups'] });
+      qc.invalidateQueries({ queryKey: ['schedules'] });
+      qc.invalidateQueries({ queryKey: ['playlists'] });
+    },
   });
 }
 
@@ -35,7 +39,11 @@ export function useAssignScreens() {
         method: 'PUT',
         body: JSON.stringify({ screenIds }),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['screen-groups'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['screen-groups'] });
+      qc.invalidateQueries({ queryKey: ['schedules'] });
+      qc.invalidateQueries({ queryKey: ['playlists'] });
+    },
   });
 }
 
@@ -56,6 +64,8 @@ export function useCreateScreen() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['screens'] });
       qc.invalidateQueries({ queryKey: ['screen-groups'] });
+      qc.invalidateQueries({ queryKey: ['schedules'] });
+      qc.invalidateQueries({ queryKey: ['playlists'] });
     },
   });
 }
@@ -68,6 +78,8 @@ export function useUpdateScreen() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['screens'] });
       qc.invalidateQueries({ queryKey: ['screen-groups'] });
+      qc.invalidateQueries({ queryKey: ['schedules'] });
+      qc.invalidateQueries({ queryKey: ['playlists'] });
     },
   });
 }
@@ -79,6 +91,8 @@ export function useDeleteScreen() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['screens'] });
       qc.invalidateQueries({ queryKey: ['screen-groups'] });
+      qc.invalidateQueries({ queryKey: ['schedules'] });
+      qc.invalidateQueries({ queryKey: ['playlists'] });
     },
   });
 }
