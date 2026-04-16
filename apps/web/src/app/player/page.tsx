@@ -180,13 +180,15 @@ export default function PlayerPage() {
       if (manifestRes.ok) {
         const manifest = await manifestRes.json();
         if (manifest.playlists && manifest.playlists.length > 0) {
-          const mp = manifest.playlists[0];
-
-          // Check if this is a template-based playlist
-          if (mp.template) {
+          
+          // Note: If an explicit template-based playlist exists, it intercepts as the top-level
+          // layout anchor since templates govern screen configurations intrinsically.
+          const firstTemplate = manifest.playlists.find((pl: any) => pl.template);
+          
+          if (firstTemplate) {
             const formattedPlaylist = {
-              name: mp.template.name || 'Template Content',
-              template: mp.template,
+              name: firstTemplate.template.name || 'Template Content',
+              template: firstTemplate.template,
               items: [],
             };
             setPlaylist(formattedPlaylist);
@@ -196,21 +198,29 @@ export default function PlayerPage() {
             return;
           }
 
-          // Regular media playlist
-          const formattedPlaylist = {
-            name: 'Scheduled Content',
-            items: mp.items.map((item: any) => ({
-              id: item.url,
+          // Otherwise, collect ALL regular media playlists and APPEND their items sequentially!
+          const combinedItems: any[] = [];
+          manifest.playlists.forEach((mp: any) => {
+            const items = mp.items.map((item: any) => ({
+              id: item.url + Math.random().toString(), // Force unique key internally per overlay
               durationMs: item.duration_ms,
               sequenceOrder: item.sequence,
               asset: { fileUrl: item.url, mimeType: item.url.match(/\.(mp4|webm)$/i) ? 'video/mp4' : 'image/jpeg' }
-            }))
-          };
-          setPlaylist(formattedPlaylist);
-          setCurrentIndex(0);
-          setPhase('playing');
-          setLastSync(new Date().toLocaleTimeString());
-          return;
+            }));
+            combinedItems.push(...items);
+          });
+
+          if (combinedItems.length > 0) {
+            const formattedPlaylist = {
+              name: manifest.playlists.length > 1 ? 'Scheduled Content (Combined)' : manifest.playlists[0].name || 'Scheduled Content',
+              items: combinedItems,
+            };
+            setPlaylist(formattedPlaylist);
+            setCurrentIndex(0);
+            setPhase('playing');
+            setLastSync(new Date().toLocaleTimeString());
+            return;
+          }
         }
       }
 

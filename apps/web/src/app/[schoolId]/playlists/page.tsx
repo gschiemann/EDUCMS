@@ -295,6 +295,7 @@ export default function PlaylistsPage() {
   const [editSchedDays, setEditSchedDays] = useState<string[]>([]);
   const [editSchedTimeStart, setEditSchedTimeStart] = useState('08:00');
   const [editSchedTimeEnd, setEditSchedTimeEnd] = useState('15:00');
+  const [publishMode, setPublishMode] = useState<'append' | 'replace'>('replace');
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -493,6 +494,7 @@ export default function PlaylistsPage() {
         timeStart: schedMode === 'scheduled' ? schedTimeStart : undefined,
         timeEnd: schedMode === 'scheduled' ? schedTimeEnd : undefined,
         priority: 0,
+        mode: publishMode,
       });
     }
     setShowPublishModal(false);
@@ -1026,6 +1028,31 @@ export default function PlaylistsPage() {
                   </button>
                 </div>
               </div>
+
+              {!editingScheduleId && (
+                <div className="mb-4">
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Conflict Resolution</label>
+                  <div className="flex bg-slate-100 rounded-lg p-0.5">
+                    <button
+                      onClick={() => setPublishMode('replace')}
+                      className={`flex-1 px-3 py-2 text-xs font-semibold rounded-md transition-colors ${publishMode === 'replace' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400'}`}
+                    >
+                      Replace All
+                    </button>
+                    <button
+                      onClick={() => setPublishMode('append')}
+                      className={`flex-1 px-3 py-2 text-xs font-semibold rounded-md transition-colors ${publishMode === 'append' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400'}`}
+                    >
+                      Append (Combine)
+                    </button>
+                  </div>
+                  {publishMode === 'replace' ? (
+                    <p className="text-[10px] text-amber-600 mt-1.5 leading-tight">Removes existing content scheduled to this hardware.</p>
+                  ) : (
+                    <p className="text-[10px] text-sky-600 mt-1.5 leading-tight">Will play sequentially alongside existing scheduled playlists.</p>
+                  )}
+                </div>
+              )}
 
               {schedMode === 'scheduled' && (
                 <div className="space-y-4 mb-4 p-4 bg-slate-50 rounded-xl border border-slate-100">

@@ -52,10 +52,26 @@ export class SchedulesController {
       timeStart?: string;    // "08:00"
       timeEnd?: string;      // "15:00"
       priority?: number;
+      mode?: 'append' | 'replace';
     },
   ) {
     if (!body.screenGroupId && !body.screenId) {
       throw new HttpException('Either screenGroupId or screenId must be specified', HttpStatus.BAD_REQUEST);
+    }
+
+    if (body.mode !== 'append') {
+       // Replace mode: disable all existing active schedules for this target
+       await this.prisma.client.schedule.updateMany({
+         where: {
+           tenantId: req.user.tenantId,
+           isActive: true,
+           OR: [
+             body.screenId ? { screenId: body.screenId } : {},
+             body.screenGroupId ? { screenGroupId: body.screenGroupId } : {},
+           ].filter(x => Object.keys(x).length > 0)
+         },
+         data: { isActive: false }
+       });
     }
 
     const res = await this.prisma.client.schedule.create({

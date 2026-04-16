@@ -132,6 +132,7 @@ export class PlaylistsController {
     });
     if (!playlist) return { error: 'Not found' };
 
+    await this.prisma.client.schedule.deleteMany({ where: { playlistId: id } });
     await this.prisma.client.playlist.delete({ where: { id } });
     this.notifySync(req.user.tenantId);
     return { deleted: true };

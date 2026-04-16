@@ -172,6 +172,7 @@ export function useCreateSchedule() {
       timeStart?: string;
       timeEnd?: string;
       priority?: number;
+      mode?: 'append' | 'replace';
     }) => apiFetch('/schedules', { method: 'POST', body: JSON.stringify(data) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['schedules'] });
