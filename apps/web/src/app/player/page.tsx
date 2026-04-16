@@ -506,8 +506,7 @@ export default function PlayerPage() {
             />
           </div>
           );
-        }
-        ))}
+        })}
 
         {/* Info overlay */}
         {showOverlay && (
