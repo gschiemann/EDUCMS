@@ -63,57 +63,35 @@ export class ProxyController {
 
       // Rewrite relative URLs to absolute so assets load correctly
       const baseUrl = upstream.url || url; // upstream.url follows redirects
-      const baseOrigin = new URL(baseUrl).origin;
-      const basePath = baseUrl.replace(/[^/]*$/, '');
 
-      // Inject <base> tag so relative URLs resolve against the original domain,
-      // PLUS anti-frame-busting script to prevent JS redirects that break out of iframe
+      // STRATEGY: Strip ALL JavaScript from the page.
+      // Chrome prevents overriding window.top, location.href, location.replace etc.
+      // (they're unforgeable browser APIs), so anti-frame-busting scripts don't work.
+      // For digital signage DISPLAY purposes, JS is unnecessary — pages render their
+      // content (CSS, images, layout) perfectly without it. Stripping JS also removes
+      // all frame-busting, redirect, and tracking scripts.
+
+      // 1. Remove all <script> tags and their content
+      html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+      // 2. Remove <meta http-equiv="refresh"> redirects
+      html = html.replace(/<meta[^>]*http-equiv\s*=\s*["']?refresh["']?[^>]*>/gi, '');
+      // 3. Remove javascript: URLs in event handlers
+      html = html.replace(/\s(on\w+)\s*=\s*["'][^"']*["']/gi, '');
+      // 4. Remove noscript tags (show their content since we ARE stripping scripts)
+      html = html.replace(/<\/?noscript[^>]*>/gi, '');
+
+      // Inject <base> tag so relative URLs (CSS, images) resolve against the original domain
       const baseTag = `<base href="${baseUrl}">`;
-      const proxyBase = '/api/v1/proxy/web';
-      const antiFrameBust = `<script>
-(function() {
-  try {
-    // 1. Override top/parent so frame-busting scripts think they're the top window
-    Object.defineProperty(window, 'top', { get: function() { return window.self; }, configurable: true });
-    Object.defineProperty(window, 'parent', { get: function() { return window.self; }, configurable: true });
-    // 2. Override frameElement to null so page thinks it's NOT in an iframe
-    Object.defineProperty(window, 'frameElement', { get: function() { return null; }, configurable: true });
-    // 3. Intercept location.replace and location.assign to re-route through proxy
-    var proxyBase = location.origin + '${proxyBase}';
-    var origReplace = location.replace.bind(location);
-    var origAssign = location.assign.bind(location);
-    location.replace = function(u) { origReplace(proxyBase + '?url=' + encodeURIComponent(u)); };
-    location.assign = function(u) { origAssign(proxyBase + '?url=' + encodeURIComponent(u)); };
-    // 4. Intercept location.href setter via descriptor if possible
-    try {
-      var locProto = Object.getPrototypeOf(location);
-      var hrefDesc = Object.getOwnPropertyDescriptor(locProto, 'href');
-      if (hrefDesc && hrefDesc.set) {
-        var origSet = hrefDesc.set;
-        Object.defineProperty(location, 'href', {
-          get: hrefDesc.get,
-          set: function(u) { origSet.call(location, proxyBase + '?url=' + encodeURIComponent(u)); },
-          configurable: true
-        });
-      }
-    } catch(e2) {}
-    // 5. Patch window.open to also go through proxy
-    var origOpen = window.open;
-    window.open = function(u, n, f) { return origOpen.call(window, u ? proxyBase + '?url=' + encodeURIComponent(u) : u, n, f); };
-  } catch(e) {}
-})();
-</script>`;
-      const injection = antiFrameBust + baseTag;
       if (html.includes('<head>')) {
-        html = html.replace('<head>', `<head>${injection}`);
+        html = html.replace('<head>', `<head>${baseTag}`);
       } else if (html.includes('<HEAD>')) {
-        html = html.replace('<HEAD>', `<HEAD>${injection}`);
+        html = html.replace('<HEAD>', `<HEAD>${baseTag}`);
       } else if (/<head[^>]*>/i.test(html)) {
-        html = html.replace(/<head[^>]*>/i, `$&${injection}`);
+        html = html.replace(/<head[^>]*>/i, `$&${baseTag}`);
       } else if (/<html[^>]*>/i.test(html)) {
-        html = html.replace(/<html[^>]*>/i, `$&<head>${injection}</head>`);
+        html = html.replace(/<html[^>]*>/i, `$&<head>${baseTag}</head>`);
       } else {
-        html = injection + html;
+        html = baseTag + html;
       }
 
       // Set response headers — strip all iframe-blocking headers
