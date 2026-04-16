@@ -725,6 +725,7 @@ export default function PlaylistsPage() {
                       </button>
                     </div>
                   </div>
+                </div>
 
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToVerticalAxis]}>
                     <SortableContext items={localItems.map((s: any) => s.id)} strategy={verticalListSortingStrategy}>
