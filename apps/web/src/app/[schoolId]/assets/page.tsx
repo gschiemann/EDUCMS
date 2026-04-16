@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { UploadCloud, Globe, X, CheckCircle2, File, Link2, Trash2, Grid3X3, List, Search, Eye, Image as ImageIcon, Video, Music, FileText, Download, Clock, HardDrive, Maximize2, Info, FolderPlus, Folder, FolderOpen, ChevronRight, Pencil, Home, MoreVertical } from 'lucide-react';
+import { UploadCloud, Globe, X, CheckCircle2, File, Link2, Trash2, Grid3X3, List, Search, Eye, Image as ImageIcon, Video, Music, FileText, Download, Clock, HardDrive, Maximize2, Info, FolderPlus, Folder, FolderOpen, ChevronRight, Pencil, Home, MoreVertical, Check, Trash } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAssets, useAddWebUrl, useDeleteAsset, useAssetFolders, useCreateAssetFolder, useRenameAssetFolder, useDeleteAssetFolder, useMoveAsset } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
@@ -79,6 +79,7 @@ export default function AssetsPage() {
   const [showUrlForm, setShowUrlForm] = useState(false);
   const [webUrl, setWebUrl] = useState('');
   const [selectedAsset, setSelectedAsset] = useState<any>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -140,6 +141,15 @@ export default function AssetsPage() {
 
   const handleMoveAssetToFolder = async (assetId: string, folderId: string | null) => {
     await moveAsset.mutateAsync({ id: assetId, folderId });
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (confirm(`Delete ${selectedIds.length} selected assets forever?`)) {
+      await Promise.all(selectedIds.map(id => deleteAsset.mutateAsync(id).catch(e => console.error(e))));
+      setSelectedIds([]);
+      queryClient.invalidateQueries({ queryKey: ['assets'] });
+    }
   };
 
   const handleFiles = useCallback((files: FileList | null) => {
@@ -220,6 +230,11 @@ export default function AssetsPage() {
           <p className="text-sm text-slate-500 mt-0.5">{counts.all} assets — drag files or click to upload</p>
         </div>
         <div className="flex gap-2">
+          {selectedIds.length > 0 && (
+            <button onClick={handleBulkDelete} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5">
+              <Trash2 className="w-4 h-4" /> Delete ({selectedIds.length})
+            </button>
+          )}
           <button onClick={() => setShowUrlForm(!showUrlForm)} className="px-3 py-2 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-sm">
             <Link2 className="w-3.5 h-3.5 text-indigo-500" /> Add URL
           </button>
@@ -421,8 +436,20 @@ export default function AssetsPage() {
           {filtered.map((a: any) => {
             const thumb = thumbUrl(a);
             const name = assetName(a);
+            const isSelected = selectedIds.includes(a.id);
             return (
-              <div key={a.id} onClick={() => setSelectedAsset(a)} draggable onDragStart={e => { e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className="bg-white rounded-3xl overflow-hidden group hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 cursor-pointer hover:-translate-y-1">
+              <div key={a.id} onClick={() => setSelectedAsset(a)} draggable onDragStart={e => { e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className={`bg-white rounded-3xl overflow-hidden group transition-all duration-300 cursor-pointer hover:-translate-y-1 relative border-2 ${isSelected ? 'border-indigo-500 shadow-[0_8px_30px_rgb(99,102,241,0.2)]' : 'border-transparent hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]'}`}>
+                
+                {/* Selection Checkbox Trigger */}
+                <div onClick={(e) => { e.stopPropagation(); setSelectedIds(p => p.includes(a.id) ? p.filter(id => id !== a.id) : [...p, a.id]); }} className={`absolute top-2.5 left-2.5 z-20 w-5 h-5 rounded flex items-center justify-center transition-all ${isSelected ? 'bg-indigo-500 border border-indigo-500 opacity-100 scale-100' : 'bg-white border border-slate-300 opacity-0 scale-90 group-hover:opacity-100 group-hover:scale-100 shadow-sm'}`}>
+                  {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                </div>
+
+                {/* Quick Delete Trash Trigger */}
+                <button onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${name}"?`)) deleteAsset.mutate(a.id); }} className="absolute top-2.5 right-2.5 z-20 w-6 h-6 rounded bg-red-500 hover:bg-red-600 flex items-center justify-center transition-all opacity-0 scale-90 group-hover:opacity-100 group-hover:scale-100 shadow-sm">
+                  <Trash className="w-3 h-3 text-white" />
+                </button>
+
                 <div className="aspect-video bg-slate-50 flex items-center justify-center relative overflow-hidden">
                   {thumb && isVideo(a) ? (
                     <video
@@ -448,12 +475,12 @@ export default function AssetsPage() {
                   ) : (
                     typeIcon(a.mimeType, 'w-8 h-8')
                   )}
-                  <div className="absolute top-1.5 right-1.5">{typeBadge(a.mimeType)}</div>
+                  <div className="absolute top-1.5 right-1.5 group-hover:opacity-0 transition-opacity">{typeBadge(a.mimeType)}</div>
                   {thumb && (
-                    <span data-res="" className="absolute bottom-1.5 left-1.5 text-[9px] font-bold text-white bg-black/50 backdrop-blur-sm px-1.5 py-0.5 rounded" />
+                    <span data-res="" className="absolute bottom-1.5 right-1.5 text-[9px] font-bold text-white bg-black/50 backdrop-blur-sm px-1.5 py-0.5 rounded" />
                   )}
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                    <div className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all scale-75 group-hover:scale-100 shadow-lg">
+                    <div className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all scale-75 group-hover:scale-100 shadow-lg mt-4">
                       <Eye className="w-4 h-4 text-slate-700" />
                     </div>
                   </div>
@@ -471,8 +498,12 @@ export default function AssetsPage() {
           {filtered.map((a: any) => {
             const thumb = thumbUrl(a);
             const name = assetName(a);
+            const isSelected = selectedIds.includes(a.id);
             return (
-              <div key={a.id} onClick={() => setSelectedAsset(a)} draggable onDragStart={e => { e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className="flex items-center gap-4 px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer">
+              <div key={a.id} onClick={() => setSelectedAsset(a)} draggable onDragStart={e => { e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className={`flex items-center gap-4 px-4 py-3 transition-colors cursor-pointer group ${isSelected ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}`}>
+                <div onClick={(e) => { e.stopPropagation(); setSelectedIds(p => p.includes(a.id) ? p.filter(id => id !== a.id) : [...p, a.id]); }} className={`w-4 h-4 rounded flex items-center justify-center transition-all ${isSelected ? 'bg-indigo-500 border border-indigo-500 opacity-100' : 'bg-white border border-slate-300 opacity-50 hover:opacity-100 shadow-sm'}`}>
+                  {isSelected && <Check className="w-3 h-3 text-white" />}
+                </div>
                 <div className="w-12 h-12 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
                   {thumb && isVideo(a) ? (
                     <video src={thumb} muted preload="metadata" className="w-full h-full object-cover" />
@@ -485,7 +516,12 @@ export default function AssetsPage() {
                   <p className="text-xs font-semibold text-slate-700 truncate">{name}</p>
                   <p className="text-[10px] text-slate-400">{a.mimeType} • {fmtSize(a.fileSize)} • {a.uploadedBy?.email}</p>
                 </div>
-                {typeBadge(a.mimeType)}
+                <div className="flex items-center gap-3">
+                  <button onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${name}"?`)) deleteAsset.mutate(a.id); }} className="w-6 h-6 rounded bg-slate-200 hover:bg-red-500 text-slate-500 hover:text-white flex items-center justify-center transition-all opacity-0 group-hover:opacity-100">
+                    <Trash className="w-3 h-3" />
+                  </button>
+                  {typeBadge(a.mimeType)}
+                </div>
               </div>
             );
           })}
