@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from 'react';
-import { Play, Plus, Clock, Loader2, Trash2, Save, GripVertical, Image as ImageIcon, Video, Music, Globe, File, Calendar, CalendarDays, Power, Eye, LayoutTemplate, Pencil, Monitor, Layers, ChevronRight, ChevronLeft, Tv2, Wifi, WifiOff, ArrowLeft, Smartphone, FolderOpen, Home, CheckSquare, Search } from 'lucide-react';
+import { Play, Plus, Clock, Loader2, Trash2, Save, GripVertical, Image as ImageIcon, Video, Music, Globe, File, Calendar, CalendarDays, Power, Eye, LayoutTemplate, Pencil, Monitor, Layers, ChevronRight, ChevronLeft, Tv2, Wifi, WifiOff, ArrowLeft, Smartphone, FolderOpen, Home, CheckSquare, Search, Settings } from 'lucide-react';
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent
 } from '@dnd-kit/core';
@@ -69,8 +69,8 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <p className="text-xs font-medium text-slate-700 truncate">{name}</p>
-            {isScheduled && <Clock className="w-3 h-3 text-indigo-500" title="Time Restricted" />}
+            <p className="text-xs font-medium text-slate-700 truncate" title={name}>{name}</p>
+            {isScheduled && <span title="Time Restricted"><Clock className="w-3 h-3 text-indigo-500" /></span>}
           </div>
           <p className="text-[10px] text-slate-400">{item.asset?.mimeType}</p>
         </div>
@@ -107,7 +107,7 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
                 <label className="text-[10px] font-bold text-slate-400 mb-1 block">Active Days</label>
                 <div className="flex gap-1 flex-wrap">
                   {DAYS.map(d => {
-                    const daysArr = item.daysOfWeek ? item.daysOfWeek.split(',') : DAYS as any[];
+                    const daysArr = item.daysOfWeek ? item.daysOfWeek.split(',') : [...DAYS];
                     const isActive = item.daysOfWeek ? daysArr.includes(d) : true;
                     return (
                       <button key={d} onClick={() => {
