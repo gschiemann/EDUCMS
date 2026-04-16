@@ -9,6 +9,19 @@ import {
 } from 'lucide-react';
 
 // ═══════════════════════════════════════════════════════
+// Helper — resolve relative asset URLs to full URLs
+// ═══════════════════════════════════════════════════════
+const API_BASE = (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_URL)
+  ? process.env.NEXT_PUBLIC_API_URL.replace('/api/v1', '')
+  : 'http://localhost:8080';
+
+function resolveUrl(url: string | undefined | null): string {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  return `${API_BASE}${url}`;
+}
+
+// ═══════════════════════════════════════════════════════
 // Master renderer — picks the right widget by type
 // ═══════════════════════════════════════════════════════
 
@@ -584,7 +597,7 @@ function StaffSpotlightWidget({ config, compact }: { config: any; compact: boole
         marginBottom: '0.4em',
       }}>
         {config.photoUrl ? (
-          <img src={config.photoUrl} style={{ width: '100%', height: '100%', borderRadius: 999, objectFit: 'cover' }} />
+          <img src={resolveUrl(config.photoUrl)} style={{ width: '100%', height: '100%', borderRadius: 999, objectFit: 'cover' }} />
         ) : (
           <Users style={{ width: '50%', height: '50%', color: 'white' }} />
         )}
@@ -608,7 +621,7 @@ function ImageWidget({ config }: { config: any }) {
   if (config.assetUrl) {
     return (
       <div className="absolute inset-0 overflow-hidden">
-        <img src={config.assetUrl} alt="" className="w-full h-full" style={{ objectFit: config.fitMode || 'cover' }} />
+        <img src={resolveUrl(config.assetUrl)} alt="" className="w-full h-full" style={{ objectFit: config.fitMode || 'cover' }} />
       </div>
     );
   }
@@ -634,7 +647,7 @@ function ImageCarouselWidget({ config }: { config: any }) {
   if (urls.length > 0) {
     return (
       <div className="absolute inset-0 overflow-hidden">
-        <img src={urls[idx % urls.length]} alt="" className="w-full h-full transition-opacity duration-500" style={{ objectFit: config.fitMode || 'cover' }} />
+        <img src={resolveUrl(urls[idx % urls.length])} alt="" className="w-full h-full transition-opacity duration-500" style={{ objectFit: config.fitMode || 'cover' }} />
         {urls.length > 1 && (
           <div className="absolute bottom-[5%] left-1/2 -translate-x-1/2 flex gap-1">
             {urls.map((_: string, i: number) => (
@@ -657,13 +670,38 @@ function ImageCarouselWidget({ config }: { config: any }) {
 function VideoWidget({ config }: { config: any }) {
   if (config.assetUrl) {
     return (
-      <div className="absolute inset-0 overflow-hidden bg-black flex items-center justify-center">
-        <Play style={{ width: '2.5em', height: '2.5em', color: 'white', opacity: 0.8 }} />
-        <div className="absolute bottom-[5%] left-[5%] right-[5%]">
-          <div style={{ height: 3, background: 'rgba(255,255,255,0.2)', borderRadius: 99 }}>
-            <div style={{ width: '35%', height: '100%', background: '#ef4444', borderRadius: 99 }} />
+      <div className="absolute inset-0 overflow-hidden bg-black">
+        <video
+          src={resolveUrl(config.assetUrl)}
+          className="w-full h-full"
+          style={{ objectFit: config.fitMode || 'contain' }}
+          muted
+          preload="metadata"
+          playsInline
+        />
+        {/* Play button overlay */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div style={{
+            width: '2.5em', height: '2.5em', borderRadius: 999,
+            background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Play style={{ width: '1em', height: '1em', color: 'white', marginLeft: '0.1em' }} />
           </div>
         </div>
+        {/* Name badge */}
+        {config.assetName && (
+          <div className="absolute bottom-[5%] left-[5%] right-[5%]">
+            <div style={{
+              background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+              borderRadius: 6, padding: '0.2em 0.4em',
+              fontSize: '0.4em', color: 'rgba(255,255,255,0.8)', fontWeight: 500,
+              whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              {config.assetName}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -681,7 +719,7 @@ function LogoWidget({ config }: { config: any }) {
   if (config.assetUrl) {
     return (
       <div className="absolute inset-0 flex items-center justify-center p-[8%]">
-        <img src={config.assetUrl} alt="Logo" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+        <img src={resolveUrl(config.assetUrl)} alt="Logo" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
       </div>
     );
   }

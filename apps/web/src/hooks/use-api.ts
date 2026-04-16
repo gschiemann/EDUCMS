@@ -234,6 +234,53 @@ export function useDeleteAsset() {
   });
 }
 
+export function useMoveAsset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, folderId }: { id: string; folderId: string | null }) =>
+      apiFetch(`/assets/${id}/move`, { method: 'PUT', body: JSON.stringify({ folderId }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['assets'] }),
+  });
+}
+
+// ─── Asset Folders ──────────────────────────────────────────────
+
+export function useAssetFolders() {
+  return useQuery({
+    queryKey: ['asset-folders'],
+    queryFn: () => apiFetch('/assets/folders'),
+  });
+}
+
+export function useCreateAssetFolder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { name: string; parentId?: string }) =>
+      apiFetch('/assets/folders', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['asset-folders'] }),
+  });
+}
+
+export function useRenameAssetFolder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) =>
+      apiFetch(`/assets/folders/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['asset-folders'] }),
+  });
+}
+
+export function useDeleteAssetFolder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/assets/folders/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['asset-folders'] });
+      qc.invalidateQueries({ queryKey: ['assets'] });
+    },
+  });
+}
+
 // ─── Templates ─────────────────────────────────────────────────
 
 export function useTemplates(category?: string) {

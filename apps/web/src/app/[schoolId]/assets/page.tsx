@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { UploadCloud, Globe, X, CheckCircle2, File, Link2, Trash2, Grid3X3, List, Search, Eye, Image as ImageIcon, Video, Music, FileText, Download, Clock, HardDrive, Maximize2, Info } from 'lucide-react';
+import { UploadCloud, Globe, X, CheckCircle2, File, Link2, Trash2, Grid3X3, List, Search, Eye, Image as ImageIcon, Video, Music, FileText, Download, Clock, HardDrive, Maximize2, Info, FolderPlus, Folder, FolderOpen, ChevronRight, Pencil, Home, MoreVertical } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useAssets, useAddWebUrl, useDeleteAsset } from '@/hooks/use-api';
+import { useAssets, useAddWebUrl, useDeleteAsset, useAssetFolders, useCreateAssetFolder, useRenameAssetFolder, useDeleteAssetFolder, useMoveAsset } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 
 const MAX_FILE_SIZE = 200 * 1024 * 1024;
@@ -86,7 +86,61 @@ export default function AssetsPage() {
   const addWebUrl = useAddWebUrl();
   const deleteAsset = useDeleteAsset();
 
+  // Folder state
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [showNewFolder, setShowNewFolder] = useState(false);
+  const [renamingFolder, setRenamingFolder] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [folderMenuOpen, setFolderMenuOpen] = useState<string | null>(null);
+  const { data: folders } = useAssetFolders();
+  const createFolder = useCreateAssetFolder();
+  const renameFolder = useRenameAssetFolder();
+  const deleteFolderMut = useDeleteAssetFolder();
+  const moveAsset = useMoveAsset();
+
   const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
+
+  // Folder helpers
+  const currentFolderChildren = (folders || []).filter((f: any) => f.parentId === currentFolderId);
+  const currentFolder = currentFolderId ? (folders || []).find((f: any) => f.id === currentFolderId) : null;
+
+  // Build breadcrumb trail
+  const breadcrumbs: { id: string | null; name: string }[] = [{ id: null, name: 'All Files' }];
+  if (currentFolder) {
+    const trail: any[] = [];
+    let f = currentFolder;
+    while (f) {
+      trail.unshift(f);
+      f = f.parentId ? (folders || []).find((x: any) => x.id === f.parentId) : null;
+    }
+    trail.forEach((t: any) => breadcrumbs.push({ id: t.id, name: t.name }));
+  }
+
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) return;
+    await createFolder.mutateAsync({ name: newFolderName.trim(), parentId: currentFolderId || undefined });
+    setNewFolderName('');
+    setShowNewFolder(false);
+  };
+
+  const handleRenameFolder = async (id: string) => {
+    if (!renameValue.trim()) return;
+    await renameFolder.mutateAsync({ id, name: renameValue.trim() });
+    setRenamingFolder(null);
+    setRenameValue('');
+  };
+
+  const handleDeleteFolder = async (id: string) => {
+    if (confirm('Delete this folder? Files inside will be moved to the parent folder.')) {
+      await deleteFolderMut.mutateAsync(id);
+      if (currentFolderId === id) setCurrentFolderId(null);
+    }
+  };
+
+  const handleMoveAssetToFolder = async (assetId: string, folderId: string | null) => {
+    await moveAsset.mutateAsync({ id: assetId, folderId });
+  };
 
   const handleFiles = useCallback((files: FileList | null) => {
     if (!files) return;
@@ -128,6 +182,13 @@ export default function AssetsPage() {
   const handleAddUrl = async () => { if (!webUrl.trim()) return; await addWebUrl.mutateAsync({ url: webUrl.trim() }); setWebUrl(''); setShowUrlForm(false); };
 
   const filtered = (assets || []).filter((a: any) => {
+    // Folder filter — show assets in current folder (null = root / unfiled)
+    if (currentFolderId !== null) {
+      if (a.folderId !== currentFolderId) return false;
+    } else if (currentFolderId === null && search === '' && false) {
+      // When at root with no search, show all (including unfiled) — this branch intentionally disabled
+      // to show all files at root level for discoverability
+    }
     if (filter !== 'all' && getAssetType(a.mimeType) !== filter) return false;
     if (search) { const q = search.toLowerCase(); const n = (a.originalName || a.fileUrl?.split('/').pop() || '').toLowerCase(); if (!n.includes(q) && !a.mimeType?.toLowerCase().includes(q)) return false; }
     return true;
@@ -144,6 +205,14 @@ export default function AssetsPage() {
 
   const selectedThumb = selectedAsset ? thumbUrl(selectedAsset) : null;
   const selectedDims = useImageDimensions(selectedThumb);
+
+  // Close folder context menu on outside click
+  useEffect(() => {
+    if (!folderMenuOpen) return;
+    const handler = () => setFolderMenuOpen(null);
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, [folderMenuOpen]);
 
   return (
     <div className="space-y-5">
@@ -232,6 +301,116 @@ export default function AssetsPage() {
         </div>
       </div>
 
+      {/* Breadcrumb + Folder bar */}
+      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+        <div className="flex items-center gap-1 text-xs">
+          {breadcrumbs.map((bc, i) => (
+            <span key={bc.id ?? 'root'} className="flex items-center gap-1">
+              {i > 0 && <ChevronRight className="w-3 h-3 text-slate-300" />}
+              <button
+                onClick={() => setCurrentFolderId(bc.id)}
+                className={`px-2 py-1 rounded-md transition-colors ${
+                  i === breadcrumbs.length - 1
+                    ? 'font-bold text-slate-800 bg-slate-100'
+                    : 'text-slate-500 hover:text-indigo-600 hover:bg-indigo-50'
+                }`}
+              >
+                {i === 0 && <Home className="w-3 h-3 inline mr-1 -mt-0.5" />}
+                {bc.name}
+              </button>
+            </span>
+          ))}
+        </div>
+        <button
+          onClick={() => setShowNewFolder(true)}
+          className="px-3 py-1.5 bg-white border border-slate-200 hover:border-indigo-300 text-slate-600 text-[11px] font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-sm"
+        >
+          <FolderPlus className="w-3.5 h-3.5 text-indigo-500" /> New Folder
+        </button>
+      </div>
+
+      {/* New folder input */}
+      {showNewFolder && (
+        <div className="flex gap-2 items-center bg-white rounded-xl border border-indigo-200 shadow-sm p-3">
+          <Folder className="w-5 h-5 text-indigo-400 shrink-0" />
+          <input
+            value={newFolderName}
+            onChange={e => setNewFolderName(e.target.value)}
+            placeholder="Folder name..."
+            className="flex-1 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-400"
+            onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') { setShowNewFolder(false); setNewFolderName(''); } }}
+            autoFocus
+          />
+          <button onClick={handleCreateFolder} disabled={createFolder.isPending} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold rounded-lg disabled:opacity-50">
+            {createFolder.isPending ? 'Creating...' : 'Create'}
+          </button>
+          <button onClick={() => { setShowNewFolder(false); setNewFolderName(''); }} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
+        </div>
+      )}
+
+      {/* Folder tiles */}
+      {currentFolderChildren.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
+          {currentFolderChildren.map((f: any) => (
+            <div
+              key={f.id}
+              className="group bg-white rounded-xl border border-slate-100 hover:border-indigo-200 hover:shadow-md transition-all cursor-pointer relative"
+              onDoubleClick={() => setCurrentFolderId(f.id)}
+              onClick={() => setCurrentFolderId(f.id)}
+              onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('ring-2', 'ring-indigo-400'); }}
+              onDragLeave={e => { e.currentTarget.classList.remove('ring-2', 'ring-indigo-400'); }}
+              onDrop={e => {
+                e.preventDefault();
+                e.currentTarget.classList.remove('ring-2', 'ring-indigo-400');
+                const assetId = e.dataTransfer.getData('assetId');
+                if (assetId) handleMoveAssetToFolder(assetId, f.id);
+              }}
+            >
+              <div className="flex items-center gap-2.5 px-3 py-3">
+                <FolderOpen className="w-8 h-8 text-amber-400 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  {renamingFolder === f.id ? (
+                    <input
+                      value={renameValue}
+                      onChange={e => setRenameValue(e.target.value)}
+                      onBlur={() => handleRenameFolder(f.id)}
+                      onKeyDown={e => { if (e.key === 'Enter') handleRenameFolder(f.id); if (e.key === 'Escape') setRenamingFolder(null); }}
+                      className="w-full px-1 py-0.5 text-xs font-semibold bg-indigo-50 border border-indigo-300 rounded outline-none"
+                      autoFocus
+                      onClick={e => e.stopPropagation()}
+                    />
+                  ) : (
+                    <p className="text-xs font-semibold text-slate-700 truncate">{f.name}</p>
+                  )}
+                  <p className="text-[10px] text-slate-400">
+                    {f._count?.assets || 0} files{f._count?.children ? `, ${f._count.children} folders` : ''}
+                  </p>
+                </div>
+                {/* Folder context menu */}
+                <div className="relative">
+                  <button
+                    onClick={e => { e.stopPropagation(); setFolderMenuOpen(folderMenuOpen === f.id ? null : f.id); }}
+                    className="p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-all"
+                  >
+                    <MoreVertical className="w-3.5 h-3.5" />
+                  </button>
+                  {folderMenuOpen === f.id && (
+                    <div className="absolute right-0 top-7 z-20 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[120px]" onClick={e => e.stopPropagation()}>
+                      <button onClick={() => { setRenamingFolder(f.id); setRenameValue(f.name); setFolderMenuOpen(null); }} className="w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                        <Pencil className="w-3 h-3" /> Rename
+                      </button>
+                      <button onClick={() => { handleDeleteFolder(f.id); setFolderMenuOpen(null); }} className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-2">
+                        <Trash2 className="w-3 h-3" /> Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Asset grid */}
       {isLoading ? (
         <div className="flex justify-center py-16"><div className="w-8 h-8 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" /></div>
@@ -246,7 +425,7 @@ export default function AssetsPage() {
             const thumb = thumbUrl(a);
             const name = assetName(a);
             return (
-              <div key={a.id} onClick={() => setSelectedAsset(a)} className="bg-white rounded-3xl overflow-hidden group hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 cursor-pointer hover:-translate-y-1">
+              <div key={a.id} onClick={() => setSelectedAsset(a)} draggable onDragStart={e => { e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className="bg-white rounded-3xl overflow-hidden group hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 cursor-pointer hover:-translate-y-1">
                 <div className="aspect-video bg-slate-50 flex items-center justify-center relative overflow-hidden">
                   {thumb && isVideo(a) ? (
                     <video
@@ -296,7 +475,7 @@ export default function AssetsPage() {
             const thumb = thumbUrl(a);
             const name = assetName(a);
             return (
-              <div key={a.id} onClick={() => setSelectedAsset(a)} className="flex items-center gap-4 px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer">
+              <div key={a.id} onClick={() => setSelectedAsset(a)} draggable onDragStart={e => { e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className="flex items-center gap-4 px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer">
                 <div className="w-12 h-12 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
                   {thumb && isVideo(a) ? (
                     <video src={thumb} muted preload="metadata" className="w-full h-full object-cover" />
@@ -401,6 +580,23 @@ export default function AssetsPage() {
                 <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${selectedAsset.status === 'PUBLISHED' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
                   {selectedAsset.status === 'PUBLISHED' ? '● Published' : '○ Pending'}
                 </span>
+              </div>
+
+              {/* Folder */}
+              <div className="flex items-center justify-between bg-slate-50 rounded-lg p-3">
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Folder</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
+                    <Folder className="w-3 h-3 text-amber-400" />
+                    {selectedAsset.folder?.name || 'Root'}
+                  </span>
+                  {selectedAsset.folderId && (
+                    <button onClick={() => { handleMoveAssetToFolder(selectedAsset.id, null); setSelectedAsset({ ...selectedAsset, folderId: null, folder: null }); }}
+                      className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold">
+                      Move to root
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Actions */}

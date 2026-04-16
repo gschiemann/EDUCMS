@@ -51,6 +51,7 @@ export class AssetsController {
       where: { tenantId },
       include: {
         uploadedBy: { select: { id: true, email: true } },
+        folder: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -183,5 +184,95 @@ export class AssetsController {
     });
     if (!asset) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
     return this.prisma.client.asset.update({ where: { id }, data: { status: 'ARCHIVED' } });
+  }
+
+  /**
+   * Move an asset to a folder (or root if folderId is null).
+   */
+  @Put(':id/move')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async moveAsset(@Request() req: any, @Param('id') id: string, @Body() body: { folderId: string | null }) {
+    const asset = await this.prisma.client.asset.findFirst({
+      where: { id, tenantId: req.user.tenantId },
+    });
+    if (!asset) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+
+    if (body.folderId) {
+      const folder = await this.prisma.client.assetFolder.findFirst({
+        where: { id: body.folderId, tenantId: req.user.tenantId },
+      });
+      if (!folder) throw new HttpException('Folder not found', HttpStatus.NOT_FOUND);
+    }
+
+    return this.prisma.client.asset.update({
+      where: { id },
+      data: { folderId: body.folderId },
+    });
+  }
+
+  // ─── Folder CRUD ───────────────────────────────────────
+
+  @Get('folders')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async listFolders(@Request() req: any) {
+    return this.prisma.client.assetFolder.findMany({
+      where: { tenantId: req.user.tenantId },
+      include: {
+        _count: { select: { assets: true, children: true } },
+      },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  @Post('folders')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async createFolder(@Request() req: any, @Body() body: { name: string; parentId?: string }) {
+    if (!body.name?.trim()) {
+      throw new HttpException('Folder name is required', HttpStatus.BAD_REQUEST);
+    }
+    return this.prisma.client.assetFolder.create({
+      data: {
+        tenantId: req.user.tenantId,
+        name: body.name.trim(),
+        parentId: body.parentId || null,
+      },
+    });
+  }
+
+  @Put('folders/:folderId')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async renameFolder(@Request() req: any, @Param('folderId') folderId: string, @Body() body: { name: string }) {
+    const folder = await this.prisma.client.assetFolder.findFirst({
+      where: { id: folderId, tenantId: req.user.tenantId },
+    });
+    if (!folder) throw new HttpException('Folder not found', HttpStatus.NOT_FOUND);
+    return this.prisma.client.assetFolder.update({
+      where: { id: folderId },
+      data: { name: body.name.trim() },
+    });
+  }
+
+  @Delete('folders/:folderId')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async deleteFolder(@Request() req: any, @Param('folderId') folderId: string) {
+    const folder = await this.prisma.client.assetFolder.findFirst({
+      where: { id: folderId, tenantId: req.user.tenantId },
+    });
+    if (!folder) throw new HttpException('Folder not found', HttpStatus.NOT_FOUND);
+
+    // Move all assets in this folder to root
+    await this.prisma.client.asset.updateMany({
+      where: { folderId },
+      data: { folderId: null },
+    });
+
+    // Move child folders to parent
+    await this.prisma.client.assetFolder.updateMany({
+      where: { parentId: folderId },
+      data: { parentId: folder.parentId },
+    });
+
+    await this.prisma.client.assetFolder.delete({ where: { id: folderId } });
+    return { deleted: true };
   }
 }
