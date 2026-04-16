@@ -498,21 +498,33 @@ export default function PlayerPage() {
 
   // Media playlist rendering
   return (
-    <div className="fixed inset-0 bg-black cursor-none" onClick={() => setShowOverlay(!showOverlay)}>
+    <div className="fixed inset-0 bg-black cursor-none overflow-hidden" onClick={() => setShowOverlay(!showOverlay)}>
       {currentItem ? (
-        <div className="w-full h-full flex items-center justify-center">
-          {isVideo ? (
-            <video
-              key={currentItem.id}
-              src={resolvedUrl}
-              className="w-full h-full object-contain"
-              autoPlay muted playsInline
-              onEnded={() => setCurrentIndex(prev => (prev + 1) % sorted.length)}
-            />
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img key={currentItem.id} src={resolvedUrl} alt="" className="w-full h-full object-contain" />
-          )}
+        <div className="relative w-full h-full flex items-center justify-center pointer-events-none">
+          {sorted.map((item, index) => {
+            const isActive = index === (currentIndex % sorted.length);
+            const isVid = item.asset?.mimeType?.startsWith('video/');
+            const fileUrl = item.asset?.fileUrl || '';
+            const resUrl = fileUrl.startsWith('http') ? fileUrl : `${getApiRoot()}${fileUrl}`;
+            
+            // Render video ONLY when active to preserve memory
+            if (isVid && !isActive) return null;
+
+            // Compute physics class limits
+            const trans = item.transitionType || 'FADE';
+            let classes = "absolute inset-0 w-full h-full object-contain transition-all duration-[1000ms] ease-in-out ";
+            if (trans === 'FADE') classes += isActive ? "opacity-100 z-10" : "opacity-0 z-0";
+            else if (trans === 'SLIDE_LEFT') classes += isActive ? "translate-x-0 z-10" : "translate-x-full z-0";
+            else if (trans === 'SLIDE_RIGHT') classes += isActive ? "translate-x-0 z-10" : "-translate-x-full z-0";
+            else if (trans === 'SLIDE_UP') classes += isActive ? "translate-y-0 z-10" : "translate-y-full z-0";
+            else if (trans === 'SLIDE_DOWN') classes += isActive ? "translate-y-0 z-10" : "-translate-y-full z-0";
+            else classes += isActive ? "opacity-100 z-10 duration-0" : "opacity-0 z-0 duration-0";
+
+            if (isVid) {
+              return <video key={item.id} src={resUrl} className={classes} autoPlay muted playsInline onEnded={() => setCurrentIndex(prev => prev + 1)} />;
+            }
+            return <img key={item.id} src={resUrl} alt="" className={classes} />;
+          })}
         </div>
       ) : (
         <div className="w-full h-full bg-slate-50 flex items-center justify-center p-8 overflow-hidden relative cursor-default" onClick={(e) => e.stopPropagation()}>

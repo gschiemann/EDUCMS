@@ -45,7 +45,7 @@ function assetName(asset: any) {
 }
 
 // --- Sortable item ---
-function SortableItem({ item, index, onRemove, onDurationChange, onUpdate }: any) {
+function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSelected, onToggle }: any) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   const [showSettings, setShowSettings] = useState(false);
   const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : undefined, opacity: isDragging ? 0.5 : 1 };
@@ -55,11 +55,14 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate }: any
   const isScheduled = !!(item.daysOfWeek || item.timeStart || item.timeEnd);
 
   return (
-    <div ref={setNodeRef} style={style} className="bg-white rounded-2xl border border-slate-100 group hover:shadow-[0_4px_20px_rgba(0,0,0,0.04)] transition-all overflow-hidden flex flex-col">
+    <div ref={setNodeRef} style={style} className={`bg-white rounded-2xl border ${isSelected ? 'border-indigo-400 ring-2 ring-indigo-100 shadow-[0_4px_20px_rgba(99,102,241,0.12)]' : 'border-slate-100 group hover:shadow-[0_4px_20px_rgba(0,0,0,0.04)]'} transition-all overflow-hidden flex flex-col`}>
       <div className="playlist-item-card flex items-center gap-3 p-3.5">
         <button {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 text-slate-300 hover:text-slate-500">
           <GripVertical className="w-4 h-4" />
         </button>
+        <div className="flex items-center">
+          <input type="checkbox" checked={isSelected} onChange={() => onToggle(item.id)} className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer" />
+        </div>
         <span className="text-xs font-bold text-slate-400 w-5 text-center">{index + 1}</span>
         <div className="w-14 h-10 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
           {thumb ? <img src={thumb} alt="" className="w-full h-full object-cover" /> : mimeIcon(item.asset?.mimeType)}
@@ -134,6 +137,22 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate }: any
               </div>
             </div>
           )}
+
+          <div className="mt-4 pt-4 border-t border-slate-200/60">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 block">Slide Transition Effect</label>
+            <select
+              value={item.transitionType || 'FADE'}
+              onChange={(e) => onUpdate(item.id, { transitionType: e.target.value })}
+              className="w-full xl:w-1/2 px-2 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+            >
+              <option value="NONE">None</option>
+              <option value="FADE">Fade</option>
+              <option value="SLIDE_LEFT">Slide Left</option>
+              <option value="SLIDE_RIGHT">Slide Right</option>
+              <option value="SLIDE_UP">Slide Up</option>
+              <option value="SLIDE_DOWN">Slide Down</option>
+            </select>
+          </div>
         </div>
       )}
     </div>
@@ -282,6 +301,7 @@ export default function PlaylistsPage() {
   // Filter to non-system custom templates for the picker
   const customTemplates = (templates || []).filter((t: any) => !t.isSystem && t.tenantId);
   const [localItems, setLocalItems] = useState<any[]>([]);
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [hasChanges, setHasChanges] = useState(false);
   const [pickerFilter, setPickerFilter] = useState<'all' | 'images' | 'videos' | 'audio' | 'urls'>('all');
   const [pickerFolderId, setPickerFolderId] = useState<string | null>(null);
@@ -406,9 +426,23 @@ export default function PlaylistsPage() {
     setHasChanges(true);
   };
 
-  const handleRemove = (id: string) => { setLocalItems(prev => prev.filter(i => i.id !== id)); setHasChanges(true); };
+  const handleRemove = (id: string) => { setLocalItems(prev => prev.filter(i => i.id !== id)); setSelectedItemIds(prev => { const n = new Set(prev); n.delete(id); return n; }); setHasChanges(true); };
   const handleDuration = (id: string, sec: number) => { setLocalItems(prev => prev.map(i => i.id === id ? { ...i, durationMs: sec * 1000 } : i)); setHasChanges(true); };
   const handleUpdateItem = (id: string, updates: any) => { setLocalItems(prev => prev.map(i => i.id === id ? { ...i, ...updates } : i)); setHasChanges(true); };
+  
+  const handleToggleSelect = (id: string) => {
+    setSelectedItemIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAll = (select: boolean) => {
+    if (select) setSelectedItemIds(new Set(localItems.map(i => i.id)));
+    else setSelectedItemIds(new Set());
+  };
 
   const handleSave = async () => {
     if (!selectedId) return;
@@ -612,14 +646,54 @@ export default function PlaylistsPage() {
               localItems.length > 0 ? (
                 <div className="flex flex-col h-full">
                   {/* Bulk Actions Header */}
-                  <div className="flex flex-wrap items-center justify-between mb-4 px-2 py-2 bg-slate-50/50 rounded-xl border border-slate-100/50">
-                    <div className="flex items-center gap-2">
-                      <Layers className="w-4 h-4 text-slate-400" />
-                      <span className="text-xs font-bold text-slate-600">{localItems.length} item{localItems.length !== 1 ? 's' : ''} in playlist</span>
+                  <div className="flex flex-wrap items-center justify-between mb-4 px-2 py-2 bg-slate-50/50 rounded-xl border border-slate-100/50 gap-y-2">
+                    <div className="flex items-center gap-3">
+                      <input 
+                        type="checkbox" 
+                        checked={selectedItemIds.size === localItems.length && localItems.length > 0}
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                        className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer ml-1"
+                      />
+                      <div className="flex items-center gap-2">
+                        <Layers className="w-4 h-4 text-slate-400" />
+                        <span className="text-xs font-bold text-slate-600">
+                          {selectedItemIds.size > 0 ? `${selectedItemIds.size} selected` : `${localItems.length} items`}
+                        </span>
+                      </div>
                     </div>
                     
-                    <div className="flex items-center gap-2 bg-white p-1 rounded-lg shadow-sm border border-slate-200/60">
-                      <div className="flex items-center pl-2 pr-1 gap-1">
+                    <div className="flex items-center gap-2">
+                      {selectedItemIds.size > 0 && (
+                        <div className="flex items-center gap-1 bg-white p-1 rounded-lg shadow-sm border border-slate-200/60 mr-2">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mx-2">Assign Block:</span>
+                          <select id="bulk-block-select" className="px-2 py-1 text-[10px] font-bold bg-slate-50 border border-slate-100 rounded outline-none w-32">
+                            <option value="none">Always Show</option>
+                            <option value="08:00|11:59">Breakfast (8a - 12p)</option>
+                            <option value="12:00|15:00">Lunch (12p - 3p)</option>
+                          </select>
+                          <button 
+                            onClick={() => {
+                              const val = (document.getElementById('bulk-block-select') as HTMLSelectElement).value;
+                              let updates: any = { timeStart: null, timeEnd: null, daysOfWeek: null };
+                              if (val !== 'none') {
+                                const [start, end] = val.split('|');
+                                updates = { timeStart: start, timeEnd: end };
+                              }
+                              setLocalItems(prev => prev.map(item => selectedItemIds.has(item.id) ? { ...item, ...updates } : item));
+                              setHasChanges(true);
+                              document.querySelectorAll('.playlist-item-card').forEach(i => {
+                                i.classList.add('ring-2', 'ring-emerald-400', 'bg-emerald-50');
+                                setTimeout(() => i.classList.remove('ring-2', 'ring-emerald-400', 'bg-emerald-50'), 400);
+                              });
+                            }}
+                            className="px-3 py-1 bg-emerald-50 hover:bg-emerald-600 text-emerald-600 hover:text-white text-[10px] font-bold rounded flex items-center transition-all"
+                          >
+                            Apply
+                          </button>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 bg-white p-1 rounded-lg shadow-sm border border-slate-200/60">
+                        <div className="flex items-center pl-2 pr-1 gap-1">
                         <Clock className="w-3.5 h-3.5 text-indigo-400" />
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mx-1">Set All</span>
                       </div>
@@ -650,13 +724,14 @@ export default function PlaylistsPage() {
                         Apply
                       </button>
                     </div>
+                    </div>
                   </div>
 
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToVerticalAxis]}>
                     <SortableContext items={localItems.map((s: any) => s.id)} strategy={verticalListSortingStrategy}>
                       <div className="space-y-2">
                         {localItems.map((item: any, i: number) => (
-                          <SortableItem key={item.id} item={item} index={i} onRemove={handleRemove} onDurationChange={handleDuration} onUpdate={handleUpdateItem} />
+                          <SortableItem key={item.id} item={item} index={i} onRemove={handleRemove} onDurationChange={handleDuration} onUpdate={handleUpdateItem} isSelected={selectedItemIds.has(item.id)} onToggle={handleToggleSelect} />
                         ))}
                       </div>
                     </SortableContext>
