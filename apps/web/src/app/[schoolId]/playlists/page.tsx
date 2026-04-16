@@ -74,14 +74,20 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
           </div>
           <p className="text-[10px] text-slate-400">{item.asset?.mimeType}</p>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <input
-            type="number" min={1} max={300}
-            value={Math.round((item.durationMs || 10000) / 1000)}
-            onChange={(e) => onDurationChange(item.id, parseInt(e.target.value) || 10)}
-            className="w-14 px-2 py-1 text-xs bg-slate-50 border border-slate-200 rounded-md text-center font-medium"
-          />
-          <span className="text-[10px] text-slate-400 font-medium">sec</span>
+        <div className="flex items-center gap-1.5 shrink-0 w-24 justify-end mr-2">
+          {item.asset?.mimeType?.startsWith('video/') ? (
+            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-md uppercase tracking-wide">Auto</span>
+          ) : (
+            <>
+              <input
+                type="number" min={1} max={300}
+                value={Math.round((item.durationMs || 10000) / 1000)}
+                onChange={(e) => onDurationChange(item.id, parseInt(e.target.value) || 10)}
+                className="w-14 px-2 py-1 text-xs bg-slate-50 border border-slate-200 rounded-md text-center font-medium outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <span className="text-[10px] text-slate-400 font-medium w-4">sec</span>
+            </>
+          )}
         </div>
         <button onClick={() => setShowSettings(!showSettings)} className={`p-1 transition-all ${showSettings || isScheduled ? 'text-indigo-500 hover:text-indigo-600' : 'text-slate-300 hover:text-indigo-500 opacity-0 group-hover:opacity-100'}`}>
           <Settings className="w-4 h-4" />
