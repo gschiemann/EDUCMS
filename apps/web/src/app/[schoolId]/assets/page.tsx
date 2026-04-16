@@ -136,9 +136,10 @@ export default function AssetsPage() {
   const counts = { all: (assets||[]).length, images: (assets||[]).filter((a:any)=>a.mimeType?.startsWith('image/')).length, videos: (assets||[]).filter((a:any)=>a.mimeType?.startsWith('video/')).length, audio: (assets||[]).filter((a:any)=>a.mimeType?.startsWith('audio/')).length, urls: (assets||[]).filter((a:any)=>a.mimeType==='text/html').length, documents: (assets||[]).filter((a:any)=>a.mimeType==='application/pdf').length };
 
   const thumbUrl = (a: any) => {
-    if (!a.mimeType?.startsWith('image/')) return null;
+    if (!a.mimeType?.startsWith('image/') && !a.mimeType?.startsWith('video/')) return null;
     return a.fileUrl?.startsWith('http') ? a.fileUrl : `${apiBase}${a.fileUrl}`;
   };
+  const isVideo = (a: any) => a.mimeType?.startsWith('video/');
   const assetName = (a: any) => a.originalName || (a.mimeType === 'text/html' ? a.fileUrl : a.fileUrl?.split('/').pop()) || 'Untitled';
 
   const selectedThumb = selectedAsset ? thumbUrl(selectedAsset) : null;
@@ -247,7 +248,16 @@ export default function AssetsPage() {
             return (
               <div key={a.id} onClick={() => setSelectedAsset(a)} className="bg-white rounded-3xl overflow-hidden group hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 cursor-pointer hover:-translate-y-1">
                 <div className="aspect-video bg-slate-50 flex items-center justify-center relative overflow-hidden">
-                  {thumb ? (
+                  {thumb && isVideo(a) ? (
+                    <video
+                      src={thumb}
+                      muted
+                      preload="metadata"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      onMouseEnter={(e) => { try { e.currentTarget.play(); } catch {} }}
+                      onMouseLeave={(e) => { try { e.currentTarget.pause(); e.currentTarget.currentTime = 0; } catch {} }}
+                    />
+                  ) : thumb ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={thumb}
@@ -288,7 +298,9 @@ export default function AssetsPage() {
             return (
               <div key={a.id} onClick={() => setSelectedAsset(a)} className="flex items-center gap-4 px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer">
                 <div className="w-12 h-12 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
-                  {thumb ? (
+                  {thumb && isVideo(a) ? (
+                    <video src={thumb} muted preload="metadata" className="w-full h-full object-cover" />
+                  ) : thumb ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={thumb} alt="" className="w-full h-full object-cover" />
                   ) : typeIcon(a.mimeType)}

@@ -1001,7 +1001,7 @@ function AssetPicker({ mimeFilter, selectedIds, onSelect, onRemove, multiple = f
   const [searchAsset, setSearchAsset] = useState('');
 
   const filtered = (assets || []).filter((a: any) => {
-    if (a.status !== 'APPROVED' && a.status !== 'PENDING_APPROVAL') return false;
+    if (a.status !== 'PUBLISHED' && a.status !== 'PENDING_APPROVAL') return false;
     if (mimeFilter === 'image') return a.mimeType?.startsWith('image/');
     if (mimeFilter === 'video') return a.mimeType?.startsWith('video/');
     return true;
