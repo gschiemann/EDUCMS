@@ -96,7 +96,7 @@ export class ProxyController {
 
       // Set response headers — strip all iframe-blocking headers
       res.setHeader('Content-Type', contentType);
-      res.setHeader('Cache-Control', 'public, max-age=300'); // 5 min cache
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       // Explicitly ALLOW framing
       res.removeHeader('X-Frame-Options');
       // Don't set CSP frame-ancestors (allow all)

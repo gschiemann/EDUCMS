@@ -772,7 +772,7 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
   // so any website can be embedded in digital signage screens
   const proxyUrl = useMemo(() => {
     if (!live || !url) return '';
-    return `${API_BASE}/api/v1/proxy/web?url=${encodeURIComponent(url)}`;
+    return `${API_BASE}/api/v1/proxy/web?url=${encodeURIComponent(url)}&v=2`;
   }, [live, url]);
 
   // Auto-refresh the iframe at the configured interval
