@@ -45,42 +45,97 @@ function assetName(asset: any) {
 }
 
 // --- Sortable item ---
-function SortableItem({ item, index, onRemove, onDurationChange }: any) {
+function SortableItem({ item, index, onRemove, onDurationChange, onUpdate }: any) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+  const [showSettings, setShowSettings] = useState(false);
   const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : undefined, opacity: isDragging ? 0.5 : 1 };
   const thumb = thumbUrl(item.asset);
   const name = assetName(item.asset);
 
+  const isScheduled = !!(item.daysOfWeek || item.timeStart || item.timeEnd);
+
   return (
-    <div ref={setNodeRef} style={style} className="playlist-item-card flex items-center gap-3 p-3.5 bg-white rounded-2xl border border-slate-100 group hover:shadow-[0_4px_20px_rgba(0,0,0,0.04)] transition-all">
-      <button {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 text-slate-300 hover:text-slate-500">
-        <GripVertical className="w-4 h-4" />
-      </button>
-      <span className="text-xs font-bold text-slate-400 w-5 text-center">{index + 1}</span>
-      <div className="w-14 h-10 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
-        {thumb ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={thumb} alt="" className="w-full h-full object-cover" />
-        ) : (
-          mimeIcon(item.asset?.mimeType)
-        )}
+    <div ref={setNodeRef} style={style} className="bg-white rounded-2xl border border-slate-100 group hover:shadow-[0_4px_20px_rgba(0,0,0,0.04)] transition-all overflow-hidden flex flex-col">
+      <div className="playlist-item-card flex items-center gap-3 p-3.5">
+        <button {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 text-slate-300 hover:text-slate-500">
+          <GripVertical className="w-4 h-4" />
+        </button>
+        <span className="text-xs font-bold text-slate-400 w-5 text-center">{index + 1}</span>
+        <div className="w-14 h-10 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
+          {thumb ? <img src={thumb} alt="" className="w-full h-full object-cover" /> : mimeIcon(item.asset?.mimeType)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="text-xs font-medium text-slate-700 truncate">{name}</p>
+            {isScheduled && <Clock className="w-3 h-3 text-indigo-500" title="Time Restricted" />}
+          </div>
+          <p className="text-[10px] text-slate-400">{item.asset?.mimeType}</p>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <input
+            type="number" min={1} max={300}
+            value={Math.round((item.durationMs || 10000) / 1000)}
+            onChange={(e) => onDurationChange(item.id, parseInt(e.target.value) || 10)}
+            className="w-14 px-2 py-1 text-xs bg-slate-50 border border-slate-200 rounded-md text-center font-medium"
+          />
+          <span className="text-[10px] text-slate-400 font-medium">sec</span>
+        </div>
+        <button onClick={() => setShowSettings(!showSettings)} className={`p-1 transition-all ${showSettings || isScheduled ? 'text-indigo-500 hover:text-indigo-600' : 'text-slate-300 hover:text-indigo-500 opacity-0 group-hover:opacity-100'}`}>
+          <Settings className="w-4 h-4" />
+        </button>
+        <button onClick={() => onRemove(item.id)} className="p-1 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+          <Trash2 className="w-4 h-4" />
+        </button>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-xs font-medium text-slate-700 truncate">{name}</p>
-        <p className="text-[10px] text-slate-400">{item.asset?.mimeType}</p>
-      </div>
-      <div className="flex items-center gap-1.5 shrink-0">
-        <input
-          type="number" min={1} max={300}
-          value={Math.round((item.durationMs || 10000) / 1000)}
-          onChange={(e) => onDurationChange(item.id, parseInt(e.target.value) || 10)}
-          className="w-14 px-2 py-1 text-xs bg-slate-50 border border-slate-200 rounded-md text-center font-medium"
-        />
-        <span className="text-[10px] text-slate-400 font-medium">sec</span>
-      </div>
-      <button onClick={() => onRemove(item.id)} className="p-1 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
-        <Trash2 className="w-4 h-4" />
-      </button>
+
+      {showSettings && (
+        <div className="border-t border-slate-100 bg-slate-50/50 p-4">
+          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 block">Slide Scheduling</label>
+          <p className="text-[10px] text-slate-400 mb-3">If scheduled is set, this slide will ONLY play during the specified limits. Otherwise it plays all day.</p>
+          
+          <div className="flex gap-2 mb-3">
+            <button onClick={() => onUpdate(item.id, { daysOfWeek: null, timeStart: null, timeEnd: null })} className={`px-3 py-1.5 text-[10px] font-semibold rounded-lg border transition-colors ${!isScheduled ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'border-slate-200 text-slate-400 bg-white hover:bg-slate-50'}`}>Always Show</button>
+            <button onClick={() => { if (!isScheduled) onUpdate(item.id, { timeStart: '08:00', timeEnd: '12:00' }); }} className={`px-3 py-1.5 text-[10px] font-semibold rounded-lg border transition-colors ${isScheduled ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-400 bg-white hover:bg-slate-50'}`}>Scheduled Block</button>
+          </div>
+
+          {isScheduled && (
+            <div className="space-y-3 bg-white p-3 rounded-lg border border-slate-100">
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 mb-1 block">Active Days</label>
+                <div className="flex gap-1 flex-wrap">
+                  {DAYS.map(d => {
+                    const daysArr = item.daysOfWeek ? item.daysOfWeek.split(',') : DAYS as any[];
+                    const isActive = item.daysOfWeek ? daysArr.includes(d) : true;
+                    return (
+                      <button key={d} onClick={() => {
+                         let nextArr = [...daysArr];
+                         if (isActive) nextArr = nextArr.filter(x => x !== d);
+                         else nextArr.push(d);
+                         
+                         if (nextArr.length === 0 || nextArr.length === 7) onUpdate(item.id, { daysOfWeek: null });
+                         else onUpdate(item.id, { daysOfWeek: nextArr.join(',') });
+                      }}
+                      className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${isActive ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                        {d}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="text-[10px] font-bold text-slate-400 mb-0.5 block">Start Time (HH:MM)</label>
+                  <input type="time" value={item.timeStart || ''} onChange={e => onUpdate(item.id, { timeStart: e.target.value || null })} className="w-full px-2 py-1 text-sm font-semibold border border-slate-200 rounded-md" />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] font-bold text-slate-400 mb-0.5 block">End Time (HH:MM)</label>
+                  <input type="time" value={item.timeEnd || ''} onChange={e => onUpdate(item.id, { timeEnd: e.target.value || null })} className="w-full px-2 py-1 text-sm font-semibold border border-slate-200 rounded-md" />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -353,6 +408,7 @@ export default function PlaylistsPage() {
 
   const handleRemove = (id: string) => { setLocalItems(prev => prev.filter(i => i.id !== id)); setHasChanges(true); };
   const handleDuration = (id: string, sec: number) => { setLocalItems(prev => prev.map(i => i.id === id ? { ...i, durationMs: sec * 1000 } : i)); setHasChanges(true); };
+  const handleUpdateItem = (id: string, updates: any) => { setLocalItems(prev => prev.map(i => i.id === id ? { ...i, ...updates } : i)); setHasChanges(true); };
 
   const handleSave = async () => {
     if (!selectedId) return;
@@ -362,6 +418,9 @@ export default function PlaylistsPage() {
         assetId: item.assetId || item.asset?.id,
         durationMs: item.durationMs || 10000,
         sequenceOrder: i,
+        daysOfWeek: item.daysOfWeek || null,
+        timeStart: item.timeStart || null,
+        timeEnd: item.timeEnd || null,
       })),
     });
     setHasChanges(false);
@@ -597,7 +656,7 @@ export default function PlaylistsPage() {
                     <SortableContext items={localItems.map((s: any) => s.id)} strategy={verticalListSortingStrategy}>
                       <div className="space-y-2">
                         {localItems.map((item: any, i: number) => (
-                          <SortableItem key={item.id} item={item} index={i} onRemove={handleRemove} onDurationChange={handleDuration} />
+                          <SortableItem key={item.id} item={item} index={i} onRemove={handleRemove} onDurationChange={handleDuration} onUpdate={handleUpdateItem} />
                         ))}
                       </div>
                     </SortableContext>

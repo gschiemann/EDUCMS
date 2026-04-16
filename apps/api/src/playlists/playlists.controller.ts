@@ -90,7 +90,7 @@ export class PlaylistsController {
   async reorderItems(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { items: Array<{ assetId: string; durationMs: number; sequenceOrder: number }> },
+    @Body() body: { items: Array<{ assetId: string; durationMs: number; sequenceOrder: number; daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null }> },
   ) {
     const playlist = await this.prisma.client.playlist.findFirst({
       where: { id, tenantId: req.user.tenantId },
@@ -107,6 +107,9 @@ export class PlaylistsController {
             assetId: item.assetId,
             durationMs: item.durationMs,
             sequenceOrder: item.sequenceOrder,
+            daysOfWeek: item.daysOfWeek || null,
+            timeStart: item.timeStart || null,
+            timeEnd: item.timeEnd || null,
           },
         }),
       ),

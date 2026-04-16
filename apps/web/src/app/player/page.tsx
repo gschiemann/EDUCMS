@@ -264,11 +264,54 @@ export default function PlayerPage() {
     if (phase !== 'playing' || !playlist?.items?.length) return;
 
     const sorted = [...playlist.items].sort((a: any, b: any) => a.sequenceOrder - b.sequenceOrder);
-    const item = sorted[currentIndex % sorted.length];
+    
+    // Core slide scheduler logic
+    const isItemValid = (item: any) => {
+      if (!item.daysOfWeek && !item.timeStart && !item.timeEnd) return true;
+      const now = new Date();
+      if (item.daysOfWeek) {
+        const dayMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        if (!item.daysOfWeek.includes(dayMap[now.getDay()])) return false;
+      }
+      if (item.timeStart && item.timeEnd) {
+        const [sh, sm] = item.timeStart.split(':').map(Number);
+        const [eh, em] = item.timeEnd.split(':').map(Number);
+        const currentMins = now.getHours() * 60 + now.getMinutes();
+        const startMins = sh * 60 + sm;
+        const endMins = eh * 60 + em;
+        if (currentMins < startMins || currentMins > endMins) return false;
+      }
+      return true;
+    };
+
+    // Find the next VALID index, up to a full cycle search
+    let nextIndex = currentIndex % sorted.length;
+    let found = false;
+    for (let i = 0; i < sorted.length; i++) {
+      if (isItemValid(sorted[nextIndex])) {
+        found = true;
+        break;
+      }
+      nextIndex = (nextIndex + 1) % sorted.length;
+    }
+
+    if (!found) {
+      // Entire playlist is locked right now! Fallback loop retry every 30s
+      timerRef.current = setTimeout(() => setCurrentIndex(prev => prev + 1), 30000);
+      return;
+    }
+
+    // If we skipped invalid slides to arrive at nextIndex, update state immediately
+    if (nextIndex !== (currentIndex % sorted.length)) {
+      setCurrentIndex(nextIndex);
+      return;
+    }
+
+    const item = sorted[nextIndex];
     const duration = item?.durationMs || 10000;
 
     timerRef.current = setTimeout(() => {
-      setCurrentIndex(prev => (prev + 1) % sorted.length);
+      setCurrentIndex(prev => prev + 1);
     }, duration);
 
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
@@ -366,7 +409,21 @@ export default function PlayerPage() {
   // ─── Render: Playing ───
   const isTemplate = !!playlist?.template;
   const sorted = playlist && !isTemplate ? [...(playlist.items || [])].sort((a: any, b: any) => a.sequenceOrder - b.sequenceOrder) : [];
-  const currentItem = sorted.length ? sorted[currentIndex % sorted.length] : null;
+  
+  const isItemValid = (item: any) => {
+    if (!item || (!item.daysOfWeek && !item.timeStart && !item.timeEnd)) return true;
+    const now = new Date();
+    if (item.daysOfWeek && !item.daysOfWeek.includes(['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][now.getDay()])) return false;
+    if (item.timeStart && item.timeEnd) {
+      const [sh, sm] = item.timeStart.split(':').map(Number);
+      const [eh, em] = item.timeEnd.split(':').map(Number);
+      const currentMins = now.getHours() * 60 + now.getMinutes();
+      if (currentMins < (sh * 60 + sm) || currentMins > (eh * 60 + em)) return false;
+    }
+    return true;
+  };
+  
+  const currentItem = sorted.length && isItemValid(sorted[currentIndex % sorted.length]) ? sorted[currentIndex % sorted.length] : null;
   const isVideo = currentItem?.asset?.mimeType?.startsWith('video/');
   const fileUrl = currentItem?.asset?.fileUrl || '';
   const resolvedUrl = fileUrl.startsWith('http') ? fileUrl : `${getApiRoot()}${fileUrl}`;
@@ -528,16 +585,7 @@ export default function PlayerPage() {
         </div>
       )}
 
-      {/* Progress bar */}
-      {sorted.length > 1 && (
-        <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-900/50">
-          <div
-            className="h-full bg-indigo-500/60"
-            key={`p-${currentIndex}`}
-            style={{ width: '100%', animation: `shrink ${currentItem?.durationMs || 10000}ms linear forwards` }}
-          />
-        </div>
-      )}
+      {/* Slide level restriction overlay logic goes here if desired, but UI logic removes the bottom progress bar. */}
 
       {/* Overlay */}
       {showOverlay && (
