@@ -479,7 +479,7 @@ export default function PlaylistsPage() {
         const isGroup = target.startsWith('group-');
         const targetId = target.replace(/^(group-|screen-)/, '');
         await createSchedule.mutateAsync({
-          playlistId: selectedId,
+          playlistId: selectedId!,
           screenGroupId: isGroup ? targetId : undefined,
           screenId: !isGroup ? targetId : undefined,
           startTime: new Date().toISOString(),
