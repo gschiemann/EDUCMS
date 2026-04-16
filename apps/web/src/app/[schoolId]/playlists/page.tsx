@@ -724,7 +724,6 @@ export default function PlaylistsPage() {
                         Apply
                       </button>
                     </div>
-                    </div>
                   </div>
 
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToVerticalAxis]}>
@@ -761,7 +760,7 @@ export default function PlaylistsPage() {
                 ) : (
                   playlistSchedules.map((sched: any) => (
                     <div key={sched.id} className={`p-5 rounded-2xl transition-all duration-300 border ${sched.isActive ? 'bg-emerald-50/50 border-emerald-100 hover:bg-emerald-50/80' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
-                      {/* ── Read-only Card ── */
+                      {/* ── Read-only Card ── */}
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">

@@ -308,8 +308,12 @@ export default function PlayerPage() {
     }
 
     const item = sorted[nextIndex];
-    const duration = item?.durationMs || 10000;
+    if (item?.asset?.mimeType?.startsWith('video/')) {
+      // For videos, do NOT set a timer. Let the <video onEnded> execute the sequence increment naturally.
+      return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+    }
 
+    const duration = item?.durationMs || 10000;
     timerRef.current = setTimeout(() => {
       setCurrentIndex(prev => prev + 1);
     }, duration);
@@ -521,7 +525,11 @@ export default function PlayerPage() {
             else classes += isActive ? "opacity-100 z-10 duration-0" : "opacity-0 z-0 duration-0";
 
             if (isVid) {
-              return <video key={item.id} src={resUrl} className={classes} autoPlay muted playsInline onEnded={() => setCurrentIndex(prev => prev + 1)} />;
+              return <video key={item.id} src={resUrl} className={classes} autoPlay muted playsInline onEnded={(e) => {
+                setCurrentIndex(prev => prev + 1);
+                e.currentTarget.currentTime = 0;
+                e.currentTarget.play();
+              }} />;
             }
             return <img key={item.id} src={resUrl} alt="" className={classes} />;
           })}
