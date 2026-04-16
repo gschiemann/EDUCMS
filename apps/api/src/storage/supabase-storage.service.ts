@@ -57,14 +57,12 @@ export class SupabaseStorageService implements OnModuleInit {
       throw new Error('Supabase Storage not configured — set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
     }
 
-    // Convert raw Node Buffer to a strictly sliced Web Standard ArrayBuffer
-    // This physically prevents both @supabase/supabase-js v2 boundary stringification
-    // AND runtime Node 18 native Blob DOM polyfill payload truncation issues completely.
-    const fileBytes = buffer instanceof ArrayBuffer ? buffer : new Uint8Array(buffer).buffer as ArrayBuffer;
-
+    // Pass the Buffer directly — @supabase/supabase-js handles Node Buffers natively.
+    // Previous code used `new Uint8Array(buffer).buffer` which returns the entire
+    // underlying ArrayBuffer pool, not just this Buffer's slice, causing 0-byte uploads.
     const { error } = await this.client.storage
       .from(BUCKET)
-      .upload(filePath, fileBytes, {
+      .upload(filePath, buffer, {
         contentType,
         upsert: true,
       });

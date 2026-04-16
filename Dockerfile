@@ -4,7 +4,7 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Enable corepack for pnpm support
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
 # Copy configuration and package manifests
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
@@ -41,7 +41,7 @@ WORKDIR /app
 RUN apk add --no-cache openssl
 
 # Install pnpm for prod dependencies
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
 ENV NODE_ENV=production
 
