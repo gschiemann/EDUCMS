@@ -32,7 +32,7 @@ export class PlaylistsController {
       include: {
         items: {
           orderBy: { sequenceOrder: 'asc' },
-          include: { asset: { select: { id: true, fileUrl: true, mimeType: true } } },
+          include: { asset: { select: { id: true, fileUrl: true, mimeType: true, originalName: true } } },
         },
         template: { select: { id: true, name: true, screenWidth: true, screenHeight: true, category: true } },
         _count: { select: { schedules: true } },
