@@ -39,7 +39,7 @@ export class TemplatesController {
     if (category) where.category = category;
     if (status) where.status = status;
 
-    return this.prisma.client.template.findMany({
+    const templates = await this.prisma.client.template.findMany({
       where,
       include: {
         zones: { orderBy: { sortOrder: 'asc' } },
@@ -47,6 +47,7 @@ export class TemplatesController {
       },
       orderBy: [{ isSystem: 'desc' }, { updatedAt: 'desc' }],
     });
+    return templates.map(mapTemplate);
   }
 
   // ───────────────────────────────────────────────────────
@@ -81,7 +82,7 @@ export class TemplatesController {
       },
     });
     if (!template) return { error: 'Not found' };
-    return template;
+    return mapTemplate(template);
   }
 
   // ───────────────────────────────────────────────────────
@@ -164,6 +165,7 @@ export class TemplatesController {
         zones: { orderBy: { sortOrder: 'asc' } },
       },
     });
+    return mapTemplate(result);
   }
 
   // ───────────────────────────────────────────────────────
@@ -216,6 +218,7 @@ export class TemplatesController {
         },
         include: { zones: { orderBy: { sortOrder: 'asc' } } },
       });
+      return mapTemplate(presetResult);
     }
 
     // Clone from database system template
@@ -331,7 +334,7 @@ export class TemplatesController {
       throw new HttpException('Cannot modify system templates. Duplicate it first.', HttpStatus.FORBIDDEN);
     }
 
-    return this.prisma.client.template.update({
+    return mapTemplate(await this.prisma.client.template.update({
       where: { id },
       data: {
         ...(body.name && { name: body.name.trim() }),
@@ -408,10 +411,11 @@ export class TemplatesController {
       ),
     ]);
 
-    return this.prisma.client.template.findUnique({
+    const freshTemplate = await this.prisma.client.template.findUnique({
       where: { id },
       include: { zones: { orderBy: { sortOrder: 'asc' } } },
     });
+    return mapTemplate(freshTemplate);
   }
 
   // ───────────────────────────────────────────────────────
@@ -438,6 +442,17 @@ export class TemplatesController {
 // ───────────────────────────────────────────────────────
 // Helpers
 // ───────────────────────────────────────────────────────
+
+function mapTemplate(template: any) {
+  if (!template) return template;
+  if (template.zones) {
+    template.zones = template.zones.map((z: any) => ({
+      ...z,
+      defaultConfig: z.defaultConfig ? JSON.parse(z.defaultConfig) : null,
+    }));
+  }
+  return template;
+}
 
 function validateZoneBounds(zone: { x: number; y: number; width: number; height: number }) {
   if (zone.x < 0 || zone.y < 0 || zone.width <= 0 || zone.height <= 0) {

@@ -486,6 +486,7 @@ function TemplateBuilder({ template, onBack, onSaved }: {
   const [bgColor, setBgColor] = useState(template.bgColor || '');
   const [bgGradient, setBgGradient] = useState(template.bgGradient || '');
   const [bgImage, setBgImage] = useState(template.bgImage || '');
+  const [showSaveModal, setShowSaveModal] = useState(false);
 
   const updateTemplate = useUpdateTemplate();
   const updateZonesApi = useUpdateTemplateZones();
@@ -528,7 +529,8 @@ function TemplateBuilder({ template, onBack, onSaved }: {
     setIsDirty(true); setSaveStatus('idle');
   }
 
-  async function handleSave() {
+  async function executeSave() {
+    setShowSaveModal(false);
     setSaveStatus('saving');
     const orientation = sH > sW ? 'PORTRAIT' : 'LANDSCAPE';
     try {
@@ -647,13 +649,36 @@ function TemplateBuilder({ template, onBack, onSaved }: {
           <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded">{sH > sW ? 'Portrait' : 'Landscape'}</span>
           {saveStatus === 'saved' && <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded">Saved!</span>}
           {isDirty && saveStatus === 'idle' && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded">Unsaved</span>}
-          <button onClick={handleSave} disabled={saveStatus === 'saving'}
+          <button onClick={() => setShowSaveModal(true)} disabled={saveStatus === 'saving'}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5 transition-colors disabled:opacity-50">
             {saveStatus === 'saving' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
             Save
           </button>
         </div>
       </div>
+
+      {showSaveModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[1000] flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200" onClick={() => setShowSaveModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-800">Save Template</h2>
+              <button onClick={() => setShowSaveModal(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Template Name</label>
+                <input value={tName} onChange={e => setTName(e.target.value)} placeholder="Enter a descriptive name..." autoFocus
+                  className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent placeholder:text-slate-400"
+                  onKeyDown={e => e.key === 'Enter' && executeSave()} />
+              </div>
+              <button onClick={executeSave} disabled={!tName.trim()}
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 transition-colors">
+                <Save className="w-4 h-4" /> Save Template
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-1 overflow-hidden">
         {/* ── Left Panel ── */}
