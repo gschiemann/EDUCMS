@@ -59,8 +59,9 @@ export class SupabaseStorageService implements OnModuleInit {
 
     // Convert raw Node Buffer to a Web Standard Blob 
     // This physically prevents @supabase/supabase-js v2 from destructively treating 
-    // the binary byte array as a conventional Javascript object and stringifying it into JSON
-    const fileBlob = new Blob([buffer], { type: contentType });
+    // the binary byte array as a conventional Javascript object and stringifying it into JSON.
+    // Wrap in standard Uint8Array to satisfy strict Typescript BlobPart DOM constraints.
+    const fileBlob = new Blob([new Uint8Array(buffer)], { type: contentType });
 
     const { error } = await this.client.storage
       .from(BUCKET)
