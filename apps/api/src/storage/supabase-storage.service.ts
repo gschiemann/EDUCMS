@@ -64,15 +64,18 @@ export class SupabaseStorageService implements OnModuleInit {
       throw new Error('Supabase Storage not configured — set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
     }
 
-    this.logger.log(`Upload: path=${filePath}, bufferType=${typeof buffer}, len=${buffer?.byteLength}, contentType=${contentType}`);
+    // Ensure we have a real Node Buffer regardless of what multer gives us
+    const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+    const size = buf.length;
+
+    this.logger.log(`Upload: path=${filePath}, size=${size}, contentType=${contentType}`);
 
     // POST directly to the Storage REST API — bypasses the JS client entirely.
     const endpoint = `${url}/storage/v1/object/${BUCKET}/${filePath}`;
 
     // Copy into a guaranteed ArrayBuffer (not SharedArrayBuffer).
-    const size = buffer.byteLength;
     const ab = new ArrayBuffer(size);
-    new Uint8Array(ab).set(buffer);
+    new Uint8Array(ab).set(buf);
 
     const res = await fetch(endpoint, {
       method: 'POST',

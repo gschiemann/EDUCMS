@@ -2,5 +2,5 @@
 cd "$(dirname "$0")"
 rm -f .git/index.lock
 git add -A
-git commit -m "fix: add upload logging + safer toString"
+git commit -m "fix: ensure Buffer + explicit memoryStorage for multer"
 git push origin master

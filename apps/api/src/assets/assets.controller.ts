@@ -3,6 +3,7 @@ import {
   UseInterceptors, UploadedFile, HttpException, HttpStatus,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
@@ -48,6 +49,7 @@ export class AssetsController {
   @Post('upload')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(),
     limits: { fileSize: 50 * 1024 * 1024 }, // 50MB (Matches Supabase free-tier limits)
     fileFilter: (_req, file, cb) => {
       if (ALLOWED_TYPES.includes(file.mimetype)) {
