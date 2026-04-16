@@ -97,9 +97,13 @@ export class ProxyController {
       // Set response headers — strip all iframe-blocking headers
       res.setHeader('Content-Type', contentType);
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      // Explicitly ALLOW framing
+      // Explicitly ALLOW framing — remove BOTH headers that block iframes
       res.removeHeader('X-Frame-Options');
-      // Don't set CSP frame-ancestors (allow all)
+      // Helmet middleware sets CSP with frame-ancestors 'self' by default,
+      // which blocks cross-origin framing (Vercel frontend → Railway API).
+      // Remove the entire CSP header and replace with a permissive one.
+      res.removeHeader('Content-Security-Policy');
+      res.setHeader('Content-Security-Policy', "frame-ancestors *");
       res.setHeader('Access-Control-Allow-Origin', '*');
 
       res.send(html);
