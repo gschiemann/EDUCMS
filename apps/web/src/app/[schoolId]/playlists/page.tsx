@@ -316,7 +316,8 @@ export default function PlaylistsPage() {
   const [tab, setTab] = useState<'editor' | 'schedules'>('editor');
 
   // Schedule form state
-  const [schedTarget, setSchedTarget] = useState('');
+  const [schedTargets, setSchedTargets] = useState<string[]>([]);
+  const toggleTarget = (t: string) => setSchedTargets(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
   const [schedDays, setSchedDays] = useState<string[]>(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
   const [schedTimeStart, setSchedTimeStart] = useState('08:00');
   const [schedTimeEnd, setSchedTimeEnd] = useState('15:00');
@@ -468,12 +469,13 @@ export default function PlaylistsPage() {
   };
 
   const handlePublish = async () => {
-    if (!schedTarget) return;
-
-    const isGroup = schedTarget.startsWith('group-');
-    const targetId = schedTarget.replace(/^(group-|screen-)/, '');
+    if (schedTargets.length === 0) return;
 
     if (editingScheduleId) {
+      const target = schedTargets[0];
+      const isGroup = target.startsWith('group-');
+      const targetId = target.replace(/^(group-|screen-)/, '');
+
       await updateSchedule.mutateAsync({
         id: editingScheduleId,
         screenGroupId: isGroup ? targetId : undefined,
@@ -485,20 +487,24 @@ export default function PlaylistsPage() {
       setEditingScheduleId(null);
     } else {
       if (!selectedId) return;
-      await createSchedule.mutateAsync({
-        playlistId: selectedId,
-        screenGroupId: isGroup ? targetId : undefined,
-        screenId: !isGroup ? targetId : undefined,
-        startTime: new Date().toISOString(),
-        daysOfWeek: schedMode === 'scheduled' ? schedDays.join(',') : undefined,
-        timeStart: schedMode === 'scheduled' ? schedTimeStart : undefined,
-        timeEnd: schedMode === 'scheduled' ? schedTimeEnd : undefined,
-        priority: 0,
-        mode: publishMode,
-      });
+      for (const target of schedTargets) {
+        const isGroup = target.startsWith('group-');
+        const targetId = target.replace(/^(group-|screen-)/, '');
+        await createSchedule.mutateAsync({
+          playlistId: selectedId,
+          screenGroupId: isGroup ? targetId : undefined,
+          screenId: !isGroup ? targetId : undefined,
+          startTime: new Date().toISOString(),
+          daysOfWeek: schedMode === 'scheduled' ? schedDays.join(',') : undefined,
+          timeStart: schedMode === 'scheduled' ? schedTimeStart : undefined,
+          timeEnd: schedMode === 'scheduled' ? schedTimeEnd : undefined,
+          priority: 0,
+          mode: publishMode,
+        });
+      }
     }
     setShowPublishModal(false);
-    setSchedTarget('');
+    setSchedTargets([]);
     setTab('schedules');
   };
 
@@ -610,7 +616,7 @@ export default function PlaylistsPage() {
                 )}
               </>
             )}
-            <button onClick={() => { setEditingScheduleId(null); setSchedTarget(''); setSchedMode('always'); setShowPublishModal(true); }} className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shadow-sm">
+            <button onClick={() => { setEditingScheduleId(null); setSchedTargets([]); setSchedMode('always'); setShowPublishModal(true); }} className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shadow-sm">
               <CalendarDays className="w-3.5 h-3.5" /> Schedule to Screen
             </button>
           </div>
@@ -762,7 +768,7 @@ export default function PlaylistsPage() {
                     <CalendarDays className="w-10 h-10 text-slate-200 mb-3" />
                     <p className="text-sm font-medium text-slate-400">No schedules yet</p>
                     <p className="text-xs text-slate-300 mt-1 mb-4">Publish this playlist to a screen with optional time scheduling</p>
-                    <button onClick={() => { setEditingScheduleId(null); setSchedTarget(''); setSchedMode('always'); setShowPublishModal(true); }} className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5">
+                    <button onClick={() => { setEditingScheduleId(null); setSchedTargets([]); setSchedMode('always'); setShowPublishModal(true); }} className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5">
                       <Plus className="w-3.5 h-3.5" /> Add Schedule
                     </button>
                   </div>
@@ -800,7 +806,7 @@ export default function PlaylistsPage() {
                               onClick={() => {
                                 setEditingScheduleId(sched.id);
                                 const target = sched.screenGroupId ? `group-${sched.screenGroupId}` : sched.screenId ? `screen-${sched.screenId}` : '';
-                                setSchedTarget(target);
+                                setSchedTargets(target ? [target] : []);
                                 setSchedMode(sched.daysOfWeek || sched.timeStart ? 'scheduled' : 'always');
                                 setSchedDays(sched.daysOfWeek ? sched.daysOfWeek.split(',') : ['Mon','Tue','Wed','Thu','Fri']);
                                 setSchedTimeStart(sched.timeStart || '08:00');
@@ -977,38 +983,41 @@ export default function PlaylistsPage() {
               </p>
 
               <div className="mb-4">
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Publish Target</label>
-                <select
-                  value={schedTarget}
-                  onChange={e => setSchedTarget(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-sky-500"
-                >
-                  <option value="">-- Choose a group or screen --</option>
-                  {screenGroups && screenGroups.length > 0 && (
-                    <optgroup label="Screen Groups (Publish to all)">
-                      {screenGroups.map((g: any) => (
-                        <option key={`g-${g.id}`} value={`group-${g.id}`}>{g.name} ({g.screens?.length || 0} screens)</option>
-                      ))}
-                    </optgroup>
-                  )}
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Publish Targets</label>
+                <div className="w-full max-h-48 overflow-y-auto px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none space-y-2">
+                  {screenGroups && screenGroups.map((g: any) => (
+                    <div key={`g-${g.id}`} className="flex flex-col">
+                      <label className="flex items-center gap-2 px-1 py-1 hover:bg-slate-100 rounded cursor-pointer">
+                        <input type="checkbox" checked={schedTargets.includes(`group-${g.id}`)} onChange={() => toggleTarget(`group-${g.id}`)} className="rounded border-slate-300 text-sky-600 focus:ring-sky-500" />
+                        <span className="font-semibold text-slate-700">{g.name} (Entire Group)</span>
+                      </label>
+                      {g.screens && g.screens.length > 0 && (
+                        <div className="ml-5 mt-1 flex flex-col gap-1 border-l-2 border-slate-200 pl-2">
+                          {g.screens.map((s: any) => (
+                            <label key={`s-${s.id}`} className="flex items-center gap-2 px-1 py-0.5 hover:bg-slate-100 rounded cursor-pointer">
+                              <input type="checkbox" checked={schedTargets.includes(`screen-${s.id}`) || schedTargets.includes(`group-${g.id}`)} disabled={schedTargets.includes(`group-${g.id}`)} onChange={() => toggleTarget(`screen-${s.id}`)} className="rounded border-slate-300 text-sky-600 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed" />
+                              <span className="text-slate-600">{s.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                   {screens && screens.filter((s:any) => !s.screenGroupId).length > 0 && (
-                    <optgroup label="Ungrouped Screens">
+                    <div className="flex flex-col mt-2 pt-2 border-t border-slate-200">
+                      <span className="px-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Ungrouped Screens</span>
                       {screens.filter((s:any) => !s.screenGroupId).map((s: any) => (
-                        <option key={`s-${s.id}`} value={`screen-${s.id}`}>{s.name}</option>
+                        <label key={`s-${s.id}`} className="flex items-center gap-2 px-1 py-1 hover:bg-slate-100 rounded cursor-pointer">
+                          <input type="checkbox" checked={schedTargets.includes(`screen-${s.id}`)} onChange={() => toggleTarget(`screen-${s.id}`)} className="rounded border-slate-300 text-sky-600 focus:ring-sky-500" />
+                          <span className="font-semibold text-slate-700">{s.name}</span>
+                        </label>
                       ))}
-                    </optgroup>
+                    </div>
                   )}
-                  {screenGroups?.map((g: any) => g.screens && g.screens.length > 0 ? (
-                    <optgroup key={`opt-${g.id}`} label={`Screens inside: ${g.name}`}>
-                      {g.screens.map((s: any) => (
-                        <option key={`s-${s.id}`} value={`screen-${s.id}`}>{s.name}</option>
-                      ))}
-                    </optgroup>
-                  ) : null)}
-                </select>
-                {(!screenGroups || screenGroups.length === 0) && (!screens || screens.length === 0) && (
-                  <p className="text-[10px] text-amber-600 mt-1">No screens or groups exist. Pair a device on the Screens page first.</p>
-                )}
+                  {(!screenGroups || screenGroups.length === 0) && (!screens || screens.length === 0) && (
+                    <p className="text-[10px] text-amber-600 p-1">No screens or groups exist. Pair a device on the Screens page first.</p>
+                  )}
+                </div>
               </div>
 
               <div className="mb-4">
