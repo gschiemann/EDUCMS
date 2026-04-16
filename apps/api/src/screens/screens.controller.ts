@@ -380,6 +380,7 @@ export class ScreensController {
     const manifestPayload: Record<string, any> = {
       version: "1.0",
       screenId: id,
+      tenantId: screen.tenantId,
       generatedAt: now.toISOString(),
       playlists: dynamicPlaylists
     };

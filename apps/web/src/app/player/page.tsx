@@ -87,6 +87,7 @@ export default function PlayerPage() {
   }, []);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [screenId, setScreenId] = useState<string | null>(null);
+  const [tenantId, setTenantId] = useState<string | null>(null);
   const [screenName, setScreenName] = useState<string>('');
   const [playlist, setPlaylist] = useState<any>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -179,6 +180,12 @@ export default function PlayerPage() {
 
       if (manifestRes.ok) {
         const manifest = await manifestRes.json();
+        
+        // Dynamically capture the player's true tenant boundary so WebSocket binds correctly
+        if (manifest.tenantId) {
+          setTenantId(manifest.tenantId);
+        }
+
         if (manifest.playlists && manifest.playlists.length > 0) {
           
           // Note: If an explicit template-based playlist exists, it intercepts as the top-level
@@ -256,7 +263,10 @@ export default function PlayerPage() {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        const token = `dev_${screenId}_00000000-0000-0000-0000-000000000002`;
+        // Build the correct dev token so the WebSocket Gateway binds the screen
+        // to the correct tenant channel in Redis. Fallback to global if missing to avoid throwing.
+        const activeTenant = tenantId || '00000000-0000-0000-0000-000000000002';
+        const token = `dev_${screenId}_${activeTenant}`;
         ws.send(JSON.stringify({
           event: 'HELLO',
           data: { token }
@@ -298,7 +308,7 @@ export default function PlayerPage() {
         wsRef.current.close();
       }
     };
-  }, [phase, screenId, fetchContent]);
+  }, [phase, screenId, tenantId, fetchContent]);
 
   // ─── Cycle through slides ───
   useEffect(() => {
