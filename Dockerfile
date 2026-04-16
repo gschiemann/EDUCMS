@@ -37,6 +37,9 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
+# Install OpenSSL for Prisma engine compatibility
+RUN apk add --no-cache openssl
+
 # Install pnpm for prod dependencies
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
