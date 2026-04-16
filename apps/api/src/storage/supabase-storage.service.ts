@@ -57,14 +57,13 @@ export class SupabaseStorageService implements OnModuleInit {
       throw new Error('Supabase Storage not configured — set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
     }
 
-    // Convert Node Buffer to a properly-sliced Uint8Array.
-    // Supabase JS v2 JSON-serializes plain Buffer objects ({"0":137,"1":80,...}) instead
-    // of sending binary data. A fresh Uint8Array with the correct slice avoids this.
-    const bytes = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    // Supabase JS v2 JSON-serializes Node Buffer objects and mishandles Uint8Array.
+    // Wrapping in a Blob guarantees correct binary upload via the fetch-based client.
+    const blob = new Blob([buffer], { type: contentType });
 
     const { error } = await this.client.storage
       .from(BUCKET)
-      .upload(filePath, bytes, {
+      .upload(filePath, blob, {
         contentType,
         upsert: true,
       });
