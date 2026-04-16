@@ -1,13 +1,16 @@
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
-import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate } from 'lucide-react';
+import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut } from 'lucide-react';
 import { RoleGate } from '../RoleGate';
 
 export function Sidebar() {
   const pathname = usePathname() || '';
   const activeTenant = useAppStore((state) => state.activeTenant);
+  const user = useAppStore((state) => state.user);
+  const logout = useAppStore((state) => state.logout);
+  const router = useRouter();
 
   const navItems = [
     { name: 'Dashboard', href: `/${activeTenant}/dashboard`, icon: LayoutDashboard },
@@ -60,14 +63,32 @@ export function Sidebar() {
         })}
       </nav>
 
-      <RoleGate allowedRoles={['admin']}>
-        <div className="px-5 pb-5">
-          <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-100 rounded-lg">
+      <div className="px-4 pb-5 space-y-2">
+        <RoleGate allowedRoles={['admin']}>
+          <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-100 rounded-xl">
             <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
             <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Admin</span>
           </div>
+        </RoleGate>
+
+        {/* User info + Logout */}
+        <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white text-[10px] font-bold shrink-0 shadow-sm">
+            {user?.email?.substring(0, 2).toUpperCase() || '??'}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] font-semibold text-slate-700 truncate">{user?.email || 'User'}</p>
+            <p className="text-[9px] text-slate-400">{user?.role?.replace(/_/g, ' ') || 'Role'}</p>
+          </div>
+          <button
+            onClick={() => { logout(); router.push('/login'); }}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
+            title="Sign out"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
-      </RoleGate>
+      </div>
     </aside>
   );
 }
