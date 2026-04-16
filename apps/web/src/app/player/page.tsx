@@ -258,44 +258,55 @@ export default function PlayerPage() {
     let reconnectTimer: NodeJS.Timeout;
 
     const connect = () => {
-      const wsUrl = getApiRoot().replace(/^http/, 'ws') + '/realtime';
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
+      try {
+        const wsUrl = getApiRoot().replace(/^http/, 'ws') + '/realtime';
+        console.log('[Player WS] Connecting to', wsUrl);
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
 
-      ws.onopen = () => {
-        // Build the correct dev token so the WebSocket Gateway binds the screen
-        // to the correct tenant channel in Redis. Fallback to global if missing to avoid throwing.
-        const activeTenant = tenantId || '00000000-0000-0000-0000-000000000002';
-        const token = `dev_${screenId}_${activeTenant}`;
-        ws.send(JSON.stringify({
-          event: 'HELLO',
-          data: { token }
-        }));
-        
-        // Prevent load balancers from indiscriminately destroying idle connections
-        heartbeatTimer = setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ event: 'HEARTBEAT' }));
+        ws.onopen = () => {
+          const activeTenant = tenantId || '00000000-0000-0000-0000-000000000002';
+          const token = `dev_${screenId}_${activeTenant}`;
+          console.log('[Player WS] Connected — sending HELLO with tenant:', activeTenant);
+          ws.send(JSON.stringify({
+            event: 'HELLO',
+            data: { token }
+          }));
+
+          heartbeatTimer = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ event: 'HEARTBEAT' }));
+            }
+          }, 15000);
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data as string);
+            console.log('[Player WS] Received:', msg.type);
+            if (msg.type === 'SYNC' || msg.type === 'OVERRIDE' || msg.type === 'ALL_CLEAR') {
+              console.log('[Player WS] Emergency/sync event — refetching content NOW');
+              fetchContent();
+            }
+          } catch (e) {
+            console.error('[Player WS] Parse error:', e);
           }
-        }, 15000);
-      };
+        };
 
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          if (msg.type === 'SYNC' || msg.type === 'OVERRIDE' || msg.type === 'ALL_CLEAR') {
-            fetchContent();
-          }
-        } catch (e) {}
-      };
+        ws.onerror = (err) => {
+          console.error('[Player WS] Error:', err);
+          ws.close();
+        };
 
-      ws.onerror = () => { ws.close(); };
-
-      ws.onclose = () => {
-        if (heartbeatTimer) clearInterval(heartbeatTimer);
-        // Aggressively attempt transparent auto-reconnect indefinitely without reloading DOM player caches
-        reconnectTimer = setTimeout(connect, 5000);
-      };
+        ws.onclose = (ev) => {
+          console.log('[Player WS] Closed:', ev.code, ev.reason);
+          if (heartbeatTimer) clearInterval(heartbeatTimer);
+          reconnectTimer = setTimeout(connect, 3000);
+        };
+      } catch (e) {
+        console.error('[Player WS] Connection failed:', e);
+        reconnectTimer = setTimeout(connect, 3000);
+      }
     };
 
     connect();
@@ -309,6 +320,21 @@ export default function PlayerPage() {
       }
     };
   }, [phase, screenId, tenantId, fetchContent]);
+
+  // ─── CRITICAL: Emergency polling fallback ───
+  // WebSocket is the primary delivery channel, but for life-safety alerts we CANNOT
+  // rely on a single transport. Poll the manifest every 10 seconds as a guaranteed
+  // fallback. If an emergency is active and we're not already showing it (or vice
+  // versa), refetch content immediately.
+  useEffect(() => {
+    if (phase !== 'playing' || !screenId) return;
+
+    const emergencyPoll = setInterval(() => {
+      fetchContent();
+    }, 10000); // 10-second poll guarantees alert visibility even if WS is dead
+
+    return () => clearInterval(emergencyPoll);
+  }, [phase, screenId, fetchContent]);
 
   // ─── Cycle through slides ───
   useEffect(() => {
