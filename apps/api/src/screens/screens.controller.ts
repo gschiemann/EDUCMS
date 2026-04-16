@@ -287,12 +287,13 @@ export class ScreensController {
                  {
                    id: "emergency-zone",
                    x: 0, y: 0, width: 100, height: 100, zIndex: 1,
-                   widgetType: "RICH_TEXT",
+                   widgetType: "TEXT",
                    defaultConfig: {
-                     content: `<div style="text-align: center; height: 100vh; display: flex; flex-direction: column; justify-content: center; font-family: system-ui, sans-serif;">
-                                 <h1 style="font-size: 8rem; margin: 0; font-weight: 900; color: white; line-height: 1.1;">EMERGENCY NOTIFICATION</h1>
-                                 <p style="font-size: 4rem; margin: 2rem 0 0; font-weight: 700; color: rgba(255,255,255,0.9);">Please follow standard procedure</p>
-                               </div>`
+                     content: `EMERGENCY NOTIFICATION\n\n${tenant.emergencyStatus} PROTOCOL ACTIVE\n\nPlease follow standard procedures`,
+                     fontSize: 100,
+                     color: "white",
+                     alignment: "center",
+                     bold: true
                    }
                  }
                ]
