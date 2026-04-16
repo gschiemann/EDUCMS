@@ -74,12 +74,13 @@ export default function MobilePanicPage() {
     if (progressTimerRef.current) clearInterval(progressTimerRef.current);
 
     try {
-      await broadcastEmergency({
+      const result = await broadcastEmergency({
         schoolId: user.tenantId,
         type: selectedType || 'lockdown',
         triggeredBy: user.id,
         token: token!
       });
+      if (result?.error) throw new Error(result.error);
       setPhase('triggered');
     } catch (e: any) {
       setErrorMsg(e.message || 'Failed to connect. Ensure you have internet.');

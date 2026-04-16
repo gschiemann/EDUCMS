@@ -787,6 +787,8 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
   }, [live, proxyUrl, refreshInterval]);
 
   // Live mode — render an actual iframe routed through proxy
+  // No sandbox attribute — the proxy already strips X-Frame-Options and injects
+  // anti-frame-busting code. Sandbox would break many sites' internal scripts.
   if (live && proxyUrl) {
     return (
       <div className="absolute inset-0 overflow-hidden">
@@ -795,7 +797,6 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
           src={proxyUrl}
           className="w-full h-full border-0"
           style={{ overflow: config.scrollEnabled ? 'auto' : 'hidden' }}
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
           allow="autoplay; encrypted-media"
           loading="eager"
           title="Web content"

@@ -66,17 +66,31 @@ export class ProxyController {
       const baseOrigin = new URL(baseUrl).origin;
       const basePath = baseUrl.replace(/[^/]*$/, '');
 
-      // Inject <base> tag so relative URLs resolve against the original domain
-      // This handles CSS, images, scripts, etc.
+      // Inject <base> tag so relative URLs resolve against the original domain,
+      // PLUS anti-frame-busting script to prevent JS redirects that break out of iframe
       const baseTag = `<base href="${baseUrl}">`;
+      const antiFrameBust = `<script>
+try {
+  // Override top/parent so frame-busting scripts think they're the top window
+  Object.defineProperty(window, '__realTop', { value: window.top, writable: false });
+  Object.defineProperty(window, 'top', { get: function() { return window.self; }, configurable: true });
+  Object.defineProperty(window, 'parent', { get: function() { return window.self; }, configurable: true });
+  // Prevent location.replace/assign redirects to non-proxy URLs
+  var _origReplace = window.location.replace.bind(window.location);
+  var _origAssign = window.location.assign.bind(window.location);
+} catch(e) {}
+</script>`;
+      const injection = antiFrameBust + baseTag;
       if (html.includes('<head>')) {
-        html = html.replace('<head>', `<head>${baseTag}`);
+        html = html.replace('<head>', `<head>${injection}`);
       } else if (html.includes('<HEAD>')) {
-        html = html.replace('<HEAD>', `<HEAD>${baseTag}`);
-      } else if (html.includes('<html>') || html.includes('<HTML>')) {
-        html = html.replace(/<html[^>]*>/i, `$&<head>${baseTag}</head>`);
+        html = html.replace('<HEAD>', `<HEAD>${injection}`);
+      } else if (/<head[^>]*>/i.test(html)) {
+        html = html.replace(/<head[^>]*>/i, `$&${injection}`);
+      } else if (/<html[^>]*>/i.test(html)) {
+        html = html.replace(/<html[^>]*>/i, `$&<head>${injection}</head>`);
       } else {
-        html = baseTag + html;
+        html = injection + html;
       }
 
       // Set response headers — strip all iframe-blocking headers

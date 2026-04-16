@@ -11,7 +11,7 @@ interface EmergencyPayload {
 }
 
 export async function broadcastEmergency(payload: EmergencyPayload) {
-  const API_URL = process.env.INTERNAL_API_URL || 'http://localhost:8080/api/v1';
+  const API_URL = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
   
   const res = await fetch(`${API_URL}/emergency/trigger`, {
     method: 'POST',
@@ -27,7 +27,7 @@ export async function broadcastEmergency(payload: EmergencyPayload) {
   });
 
   if (!res.ok) {
-    throw new Error(`Emergency broadcast failed: ${res.status}`);
+    return { success: false, error: `Emergency broadcast failed: ${res.status}` };
   }
 
   revalidatePath(`/[schoolId]/dashboard`, 'page');
