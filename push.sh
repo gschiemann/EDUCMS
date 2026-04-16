@@ -2,5 +2,5 @@
 cd "$(dirname "$0")"
 rm -f .git/index.lock
 git add -A
-git commit -m "fix: copy Buffer to clean ArrayBuffer for Blob+fetch upload"
+git commit -m "fix: add upload logging + safer toString"
 git push origin master

@@ -64,13 +64,14 @@ export class SupabaseStorageService implements OnModuleInit {
       throw new Error('Supabase Storage not configured — set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
     }
 
+    this.logger.log(`Upload: path=${filePath}, bufferType=${typeof buffer}, len=${buffer?.byteLength}, contentType=${contentType}`);
+
     // POST directly to the Storage REST API — bypasses the JS client entirely.
     const endpoint = `${url}/storage/v1/object/${BUCKET}/${filePath}`;
 
     // Copy into a guaranteed ArrayBuffer (not SharedArrayBuffer).
-    // Node Buffer's .buffer can be SharedArrayBuffer, which fails TS strict checks
-    // for both Blob and fetch BodyInit. Manual copy avoids all generic type issues.
-    const ab = new ArrayBuffer(buffer.byteLength);
+    const size = buffer.byteLength;
+    const ab = new ArrayBuffer(size);
     new Uint8Array(ab).set(buffer);
 
     const res = await fetch(endpoint, {
@@ -79,10 +80,10 @@ export class SupabaseStorageService implements OnModuleInit {
         Authorization: `Bearer ${key}`,
         apikey: key,
         'Content-Type': contentType,
-        'Content-Length': buffer.byteLength.toString(),
+        'Content-Length': String(size),
         'x-upsert': 'true',
       },
-      body: new Blob([ab], { type: contentType }),
+      body: new Blob([ab]),
     });
 
     if (!res.ok) {
