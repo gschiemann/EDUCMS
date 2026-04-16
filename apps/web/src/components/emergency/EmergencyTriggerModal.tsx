@@ -11,6 +11,7 @@ interface Props {
 export function EmergencyTriggerModal({ onClose }: Props) {
   const setEmergencyActive = useAppStore((state) => state.setEmergencyActive);
   const user = useAppStore((state) => state.user);
+  const token = useAppStore((state) => state.token);
   
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [selectedPlaylist, setSelectedPlaylist] = useState<string>('');
@@ -28,7 +29,8 @@ export function EmergencyTriggerModal({ onClose }: Props) {
             schoolId: user?.tenantId || 'global',
             type: selectedType!,
             playlistId: selectedPlaylist || undefined,
-            triggeredBy: 'admin-123'
+            triggeredBy: user?.id || 'unknown',
+            token: token || undefined,
          });
          
          // Zustand global state update locks the UI optimistically immediately after resolution
