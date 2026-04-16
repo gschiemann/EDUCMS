@@ -368,21 +368,34 @@ export default function PlaylistsPage() {
   };
 
   const handlePublish = async () => {
-    if (!selectedId || !schedTarget) return;
+    if (!schedTarget) return;
 
     const isGroup = schedTarget.startsWith('group-');
     const targetId = schedTarget.replace(/^(group-|screen-)/, '');
 
-    await createSchedule.mutateAsync({
-      playlistId: selectedId,
-      screenGroupId: isGroup ? targetId : undefined,
-      screenId: !isGroup ? targetId : undefined,
-      startTime: new Date().toISOString(),
-      daysOfWeek: schedMode === 'scheduled' ? schedDays.join(',') : undefined,
-      timeStart: schedMode === 'scheduled' ? schedTimeStart : undefined,
-      timeEnd: schedMode === 'scheduled' ? schedTimeEnd : undefined,
-      priority: 0,
-    });
+    if (editingScheduleId) {
+      await updateSchedule.mutateAsync({
+        id: editingScheduleId,
+        screenGroupId: isGroup ? targetId : undefined,
+        screenId: !isGroup ? targetId : undefined,
+        daysOfWeek: schedMode === 'scheduled' ? schedDays.join(',') : null,
+        timeStart: schedMode === 'scheduled' ? schedTimeStart : null,
+        timeEnd: schedMode === 'scheduled' ? schedTimeEnd : null,
+      });
+      setEditingScheduleId(null);
+    } else {
+      if (!selectedId) return;
+      await createSchedule.mutateAsync({
+        playlistId: selectedId,
+        screenGroupId: isGroup ? targetId : undefined,
+        screenId: !isGroup ? targetId : undefined,
+        startTime: new Date().toISOString(),
+        daysOfWeek: schedMode === 'scheduled' ? schedDays.join(',') : undefined,
+        timeStart: schedMode === 'scheduled' ? schedTimeStart : undefined,
+        timeEnd: schedMode === 'scheduled' ? schedTimeEnd : undefined,
+        priority: 0,
+      });
+    }
     setShowPublishModal(false);
     setSchedTarget('');
     setTab('schedules');
@@ -496,7 +509,7 @@ export default function PlaylistsPage() {
                 )}
               </>
             )}
-            <button onClick={() => setShowPublishModal(true)} className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shadow-sm">
+            <button onClick={() => { setEditingScheduleId(null); setSchedTarget(''); setSchedMode('always'); setShowPublishModal(true); }} className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shadow-sm">
               <CalendarDays className="w-3.5 h-3.5" /> Schedule to Screen
             </button>
           </div>
@@ -607,76 +620,14 @@ export default function PlaylistsPage() {
                     <CalendarDays className="w-10 h-10 text-slate-200 mb-3" />
                     <p className="text-sm font-medium text-slate-400">No schedules yet</p>
                     <p className="text-xs text-slate-300 mt-1 mb-4">Publish this playlist to a screen with optional time scheduling</p>
-                    <button onClick={() => setShowPublishModal(true)} className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5">
+                    <button onClick={() => { setEditingScheduleId(null); setSchedTarget(''); setSchedMode('always'); setShowPublishModal(true); }} className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5">
                       <Plus className="w-3.5 h-3.5" /> Add Schedule
                     </button>
                   </div>
                 ) : (
                   playlistSchedules.map((sched: any) => (
                     <div key={sched.id} className={`p-5 rounded-2xl transition-all duration-300 border ${sched.isActive ? 'bg-emerald-50/50 border-emerald-100 hover:bg-emerald-50/80' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
-                      {editingScheduleId === sched.id ? (
-                        /* ── Inline Edit Form ── */
-                        <div className="space-y-3">
-                          {/* Target selector */}
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Target Screen / Group</label>
-                            <select value={editSchedTarget} onChange={e => setEditSchedTarget(e.target.value)} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-indigo-300 outline-none">
-                              <option value="">Select target...</option>
-                              {(screenGroups || []).map((g: any) => <option key={`g-${g.id}`} value={`group:${g.id}`}>Group: {g.name}</option>)}
-                              {(screens || []).map((s: any) => <option key={`s-${s.id}`} value={`screen:${s.id}`}>Screen: {s.name}</option>)}
-                            </select>
-                          </div>
-                          {/* Mode toggle */}
-                          <div className="flex gap-2">
-                            <button onClick={() => setEditSchedMode('always')} className={`flex-1 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${editSchedMode === 'always' ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'border-slate-200 text-slate-400'}`}>Always On</button>
-                            <button onClick={() => setEditSchedMode('scheduled')} className={`flex-1 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${editSchedMode === 'scheduled' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-400'}`}>Scheduled</button>
-                          </div>
-                          {editSchedMode === 'scheduled' && (
-                            <>
-                              {/* Days */}
-                              <div className="flex gap-1">
-                                {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => (
-                                  <button key={d} onClick={() => setEditSchedDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])}
-                                    className={`flex-1 py-1 text-[10px] font-bold rounded transition-colors ${editSchedDays.includes(d) ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}>{d}</button>
-                                ))}
-                              </div>
-                              {/* Times */}
-                              <div className="flex gap-2">
-                                <div className="flex-1">
-                                  <label className="text-[10px] font-bold text-slate-400 mb-0.5 block">Start</label>
-                                  <input type="time" value={editSchedTimeStart} onChange={e => setEditSchedTimeStart(e.target.value)} className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg" />
-                                </div>
-                                <div className="flex-1">
-                                  <label className="text-[10px] font-bold text-slate-400 mb-0.5 block">End</label>
-                                  <input type="time" value={editSchedTimeEnd} onChange={e => setEditSchedTimeEnd(e.target.value)} className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg" />
-                                </div>
-                              </div>
-                            </>
-                          )}
-                          {/* Save / Cancel */}
-                          <div className="flex gap-2 pt-1">
-                            <button onClick={() => setEditingScheduleId(null)} className="flex-1 py-1.5 text-xs font-semibold text-slate-500 bg-slate-100 hover:bg-slate-200 rounded-lg">Cancel</button>
-                            <button
-                              onClick={async () => {
-                                const isGroup = editSchedTarget.startsWith('group:');
-                                const targetId = editSchedTarget.split(':')[1];
-                                await updateSchedule.mutateAsync({
-                                  id: sched.id,
-                                  ...(isGroup ? { screenGroupId: targetId, screenId: undefined } : { screenId: targetId, screenGroupId: undefined }),
-                                  daysOfWeek: editSchedMode === 'scheduled' ? editSchedDays.join(',') : null,
-                                  timeStart: editSchedMode === 'scheduled' ? editSchedTimeStart : null,
-                                  timeEnd: editSchedMode === 'scheduled' ? editSchedTimeEnd : null,
-                                });
-                                setEditingScheduleId(null);
-                              }}
-                              className="flex-1 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg flex items-center justify-center gap-1"
-                            >
-                              <Save className="w-3 h-3" /> Save
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        /* ── Read-only Card ── */
+                      {/* ── Read-only Card ── */
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
@@ -706,12 +657,13 @@ export default function PlaylistsPage() {
                             <button
                               onClick={() => {
                                 setEditingScheduleId(sched.id);
-                                const target = sched.screenGroupId ? `group:${sched.screenGroupId}` : sched.screenId ? `screen:${sched.screenId}` : '';
-                                setEditSchedTarget(target);
-                                setEditSchedMode(sched.daysOfWeek || sched.timeStart ? 'scheduled' : 'always');
-                                setEditSchedDays(sched.daysOfWeek ? sched.daysOfWeek.split(',') : ['Mon','Tue','Wed','Thu','Fri']);
-                                setEditSchedTimeStart(sched.timeStart || '08:00');
-                                setEditSchedTimeEnd(sched.timeEnd || '15:00');
+                                const target = sched.screenGroupId ? `group-${sched.screenGroupId}` : sched.screenId ? `screen-${sched.screenId}` : '';
+                                setSchedTarget(target);
+                                setSchedMode(sched.daysOfWeek || sched.timeStart ? 'scheduled' : 'always');
+                                setSchedDays(sched.daysOfWeek ? sched.daysOfWeek.split(',') : ['Mon','Tue','Wed','Thu','Fri']);
+                                setSchedTimeStart(sched.timeStart || '08:00');
+                                setSchedTimeEnd(sched.timeEnd || '15:00');
+                                setShowPublishModal(true);
                               }}
                               className="p-1.5 rounded-lg text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
                               title="Edit schedule"
@@ -733,7 +685,6 @@ export default function PlaylistsPage() {
                             </button>
                           </div>
                         </div>
-                      )}
                     </div>
                   ))
                 )}
