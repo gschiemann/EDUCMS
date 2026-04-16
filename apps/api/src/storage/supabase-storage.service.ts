@@ -45,6 +45,59 @@ export class SupabaseStorageService implements OnModuleInit {
   }
 
   /**
+   * Safely convert any multer buffer input into a real Node.js Buffer.
+   * Multer on Railway/Docker sometimes provides:
+   *   - A real Buffer
+   *   - A Uint8Array or ArrayBuffer
+   *   - A serialized object: { type: 'Buffer', data: [1,2,3,...] }
+   *   - A plain object with numeric keys: { '0': 1, '1': 2, ... }
+   */
+  private toSafeBuffer(input: any): Buffer {
+    // Already a real Buffer
+    if (Buffer.isBuffer(input)) {
+      return input;
+    }
+
+    // Uint8Array or ArrayBuffer
+    if (input instanceof Uint8Array || input instanceof ArrayBuffer) {
+      return Buffer.from(input);
+    }
+
+    // Array of byte values
+    if (Array.isArray(input)) {
+      return Buffer.from(input);
+    }
+
+    // Serialized Buffer object: { type: 'Buffer', data: [...] }
+    if (input && typeof input === 'object' && Array.isArray(input.data)) {
+      return Buffer.from(input.data);
+    }
+
+    // Plain object with numeric keys (e.g. { '0': 137, '1': 80, ... })
+    if (input && typeof input === 'object') {
+      const keys = Object.keys(input);
+      if (keys.length > 0 && keys.every(k => /^\d+$/.test(k))) {
+        const arr = new Uint8Array(keys.length);
+        for (let i = 0; i < keys.length; i++) {
+          arr[i] = input[String(i)];
+        }
+        return Buffer.from(arr);
+      }
+      // Last resort: try Object.values
+      const vals = Object.values(input);
+      if (vals.length > 0 && vals.every(v => typeof v === 'number')) {
+        return Buffer.from(vals as number[]);
+      }
+    }
+
+    throw new Error(
+      `Cannot convert to Buffer: type=${typeof input}, ` +
+      `constructor=${input?.constructor?.name}, ` +
+      `keys=${input ? Object.keys(input).slice(0, 5).join(',') : 'null'}`,
+    );
+  }
+
+  /**
    * Upload a file buffer to Supabase Storage.
    * Returns the public URL.
    *
@@ -54,7 +107,7 @@ export class SupabaseStorageService implements OnModuleInit {
    */
   async upload(
     filePath: string,
-    buffer: Buffer,
+    buffer: any,
     contentType: string,
   ): Promise<string> {
     const url = process.env.SUPABASE_URL;
@@ -64,11 +117,11 @@ export class SupabaseStorageService implements OnModuleInit {
       throw new Error('Supabase Storage not configured — set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
     }
 
-    // Ensure we have a real Node Buffer regardless of what multer gives us
-    const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+    // Convert whatever multer gave us into a real Buffer
+    const buf = this.toSafeBuffer(buffer);
     const size = buf.length;
 
-    this.logger.log(`Upload: path=${filePath}, size=${size}, contentType=${contentType}`);
+    this.logger.log(`Upload: path=${filePath}, size=${size}, contentType=${contentType}, inputType=${typeof buffer}, isBuffer=${Buffer.isBuffer(buffer)}, constructor=${buffer?.constructor?.name}`);
 
     // POST directly to the Storage REST API — bypasses the JS client entirely.
     const endpoint = `${url}/storage/v1/object/${BUCKET}/${filePath}`;
