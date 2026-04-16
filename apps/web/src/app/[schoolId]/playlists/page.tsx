@@ -472,18 +472,24 @@ export default function PlaylistsPage() {
     if (schedTargets.length === 0) return;
 
     if (editingScheduleId) {
-      const target = schedTargets[0];
-      const isGroup = target.startsWith('group-');
-      const targetId = target.replace(/^(group-|screen-)/, '');
-
-      await updateSchedule.mutateAsync({
-        id: editingScheduleId,
-        screenGroupId: isGroup ? targetId : undefined,
-        screenId: !isGroup ? targetId : undefined,
-        daysOfWeek: schedMode === 'scheduled' ? schedDays.join(',') : null,
-        timeStart: schedMode === 'scheduled' ? schedTimeStart : null,
-        timeEnd: schedMode === 'scheduled' ? schedTimeEnd : null,
-      });
+      // In edit mode we process the multiple targets by clearing the original and recreating them
+      await deleteSchedule.mutateAsync(editingScheduleId);
+      
+      for (const target of schedTargets) {
+        const isGroup = target.startsWith('group-');
+        const targetId = target.replace(/^(group-|screen-)/, '');
+        await createSchedule.mutateAsync({
+          playlistId: selectedId,
+          screenGroupId: isGroup ? targetId : undefined,
+          screenId: !isGroup ? targetId : undefined,
+          startTime: new Date().toISOString(),
+          daysOfWeek: schedMode === 'scheduled' ? schedDays.join(',') : undefined,
+          timeStart: schedMode === 'scheduled' ? schedTimeStart : undefined,
+          timeEnd: schedMode === 'scheduled' ? schedTimeEnd : undefined,
+          priority: 0,
+          mode: publishMode,
+        });
+      }
       setEditingScheduleId(null);
     } else {
       if (!selectedId) return;
