@@ -57,12 +57,14 @@ export class SupabaseStorageService implements OnModuleInit {
       throw new Error('Supabase Storage not configured — set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
     }
 
-    // Pass the Buffer directly — @supabase/supabase-js handles Node Buffers natively.
-    // Previous code used `new Uint8Array(buffer).buffer` which returns the entire
-    // underlying ArrayBuffer pool, not just this Buffer's slice, causing 0-byte uploads.
+    // Convert Node Buffer to a properly-sliced Uint8Array.
+    // Supabase JS v2 JSON-serializes plain Buffer objects ({"0":137,"1":80,...}) instead
+    // of sending binary data. A fresh Uint8Array with the correct slice avoids this.
+    const bytes = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+
     const { error } = await this.client.storage
       .from(BUCKET)
-      .upload(filePath, buffer, {
+      .upload(filePath, bytes, {
         contentType,
         upsert: true,
       });

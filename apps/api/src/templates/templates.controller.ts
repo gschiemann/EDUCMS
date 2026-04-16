@@ -132,7 +132,7 @@ export class TemplatesController {
     const screenHeight = body.screenHeight || 2160;
     const orientation = body.orientation || (screenHeight > screenWidth ? 'PORTRAIT' : 'LANDSCAPE');
 
-    return this.prisma.client.template.create({
+    const result = await this.prisma.client.template.create({
       data: {
         tenantId: req.user.tenantId,
         name: body.name.trim(),
@@ -192,7 +192,7 @@ export class TemplatesController {
         throw new HttpException('Preset not found', HttpStatus.NOT_FOUND);
       }
       // Use preset data directly
-      return this.prisma.client.template.create({
+      const presetResult = await this.prisma.client.template.create({
         data: {
           tenantId: req.user.tenantId,
           name: body.name || preset.name,
@@ -349,7 +349,7 @@ export class TemplatesController {
         ...(body.bgGradient !== undefined && { bgGradient: body.bgGradient }),
       },
       include: { zones: { orderBy: { sortOrder: 'asc' } } },
-    });
+    }));
   }
 
   // ───────────────────────────────────────────────────────
