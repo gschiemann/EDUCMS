@@ -1,13 +1,28 @@
 "use client";
 
+import { useEffect } from 'react';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { Sidebar } from './Sidebar';
 import { TopToolbar } from './TopToolbar';
 import { EmergencyOverlay } from './EmergencyOverlay';
+import { useTenantStatus } from '@/hooks/use-api';
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const isEmergencyActive = useAppStore((state) => state.isEmergencyActive);
+  const setEmergencyActive = useAppStore((state) => state.setEmergencyActive);
+  const { data: tenant } = useTenantStatus();
+
+  // Universally lock the dashboard when backend reports an emergency
+  useEffect(() => {
+    if (tenant) {
+      if (tenant.emergencyStatus && tenant.emergencyStatus !== 'INACTIVE') {
+        setEmergencyActive(true);
+      } else {
+        setEmergencyActive(false);
+      }
+    }
+  }, [tenant, setEmergencyActive]);
 
   return (
     <div className="flex h-screen w-full bg-slate-50 overflow-hidden text-slate-900 font-sans relative">

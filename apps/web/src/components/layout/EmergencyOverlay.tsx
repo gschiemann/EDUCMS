@@ -2,21 +2,30 @@
 
 import { useAppStore } from '@/lib/store';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
+import { allClearEmergency } from '@/actions/trigger-emergency';
 
 export function EmergencyOverlay() {
   const setEmergencyActive = useAppStore((state) => state.setEmergencyActive);
+  const user = useAppStore((state) => state.user);
+  const token = useAppStore((state) => state.token);
   const [confirmKey, setConfirmKey] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
 
   const handleAllClear = () => {
     if (confirmKey === 'CLEAR') {
-      setIsLoading(true);
-      // Simulate network request to clear emergency
-      setTimeout(() => {
-        setEmergencyActive(false);
-        setIsLoading(false);
-      }, 1500);
+      startTransition(async () => {
+        try {
+          await allClearEmergency({
+            schoolId: user?.tenantId || 'global',
+            token: token || undefined,
+          });
+          setEmergencyActive(false);
+        } catch (e) {
+          console.error("Failed to clear emergency", e);
+          // Retry later or handle error UI
+        }
+      });
     }
   };
 
@@ -58,10 +67,10 @@ export function EmergencyOverlay() {
 
           <button
             onClick={handleAllClear}
-            disabled={confirmKey !== 'CLEAR' || isLoading}
+            disabled={confirmKey !== 'CLEAR' || isPending}
             className="w-full py-4 px-6 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:hover:bg-red-600 text-white font-bold rounded-lg shadow-xl hover:shadow-red-500/20 transition-all flex justify-center items-center gap-2"
           >
-            {isLoading ? (
+            {isPending ? (
               <span className="flex items-center gap-2 animate-pulse">
                 <ShieldCheck className="w-5 h-5" /> Submitting...
               </span>

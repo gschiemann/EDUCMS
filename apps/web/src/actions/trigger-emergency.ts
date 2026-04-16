@@ -34,3 +34,26 @@ export async function broadcastEmergency(payload: EmergencyPayload) {
   
   return { success: true };
 }
+
+export async function allClearEmergency(payload: { schoolId: string; token?: string }) {
+  const API_URL = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+  
+  const res = await fetch(`${API_URL}/emergency/global_clear/all-clear`, {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      ...(payload.token ? { Authorization: `Bearer ${payload.token}` } : {})
+    },
+    body: JSON.stringify({
+      scopeType: 'tenant',
+      scopeId: payload.schoolId,
+    }),
+  });
+
+  if (!res.ok) {
+    return { success: false, error: `All clear failed: ${res.status}` };
+  }
+
+  revalidatePath(`/[schoolId]/dashboard`, 'page');
+  return { success: true };
+}

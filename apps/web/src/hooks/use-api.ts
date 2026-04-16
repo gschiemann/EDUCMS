@@ -1,6 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 
+// ─── Tenant Status ──────────────────────────────────────────────
+export function useTenantStatus() {
+  return useQuery({
+    queryKey: ['tenant-status'],
+    queryFn: () => apiFetch('/tenants'),
+    refetchInterval: 5000, // Poll every 5 seconds to sync emergency overrides
+    refetchIntervalInBackground: true,
+  });
+}
+
 // ─── Screen Groups ──────────────────────────────────────────────
 
 export function useScreenGroups() {
