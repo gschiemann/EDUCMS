@@ -27,7 +27,7 @@ export class SupabaseStorageService implements OnModuleInit {
     // Ensure the bucket exists (idempotent)
     const { error } = await this.client.storage.createBucket(BUCKET, {
       public: true,
-      fileSizeLimit: 200 * 1024 * 1024, // 200 MB
+      fileSizeLimit: 50 * 1024 * 1024, // 50 MB (Supabase default project limit boundary)
       allowedMimeTypes: [
         'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml',
         'image/x-icon', 'image/bmp',
@@ -37,7 +37,7 @@ export class SupabaseStorageService implements OnModuleInit {
       ],
     });
 
-    if (error && !error.message?.includes('already exists')) {
+    if (error && !error.message?.includes('already exists') && !error.message?.includes('duplicate')) {
       this.logger.error(`Failed to create storage bucket: ${error.message}`);
     } else {
       this.logger.log('Supabase Storage bucket "assets" ready');

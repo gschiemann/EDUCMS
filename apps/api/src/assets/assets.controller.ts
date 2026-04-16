@@ -48,7 +48,7 @@ export class AssetsController {
   @Post('upload')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   @UseInterceptors(FileInterceptor('file', {
-    limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
+    limits: { fileSize: 50 * 1024 * 1024 }, // 50MB (Matches Supabase free-tier limits)
     fileFilter: (_req, file, cb) => {
       if (ALLOWED_TYPES.includes(file.mimetype)) {
         cb(null, true);
