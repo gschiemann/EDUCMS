@@ -71,9 +71,25 @@ export class AssetsController {
     const ext = extname(file.originalname) || '';
     const storagePath = `${req.user.tenantId}/${randomUUID()}${ext}`;
 
+    // Ensure we have a proper Buffer — multer may provide different types depending on version
+    let uploadBuffer: Buffer;
+    if (Buffer.isBuffer(file.buffer)) {
+      uploadBuffer = file.buffer;
+    } else if (file.buffer instanceof ArrayBuffer || file.buffer instanceof Uint8Array) {
+      uploadBuffer = Buffer.from(file.buffer);
+    } else if (file.buffer && typeof file.buffer === 'object') {
+      // Multer on some versions provides {type: 'Buffer', data: [...]} JSON object
+      uploadBuffer = Buffer.from((file.buffer as any).data || Object.values(file.buffer));
+    } else {
+      throw new HttpException(
+        `Unexpected buffer type: ${typeof file.buffer}, keys: ${file.buffer ? Object.keys(file.buffer).join(',') : 'null'}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
     let fileUrl: string;
     try {
-      fileUrl = await this.storage.upload(storagePath, file.buffer, file.mimetype);
+      fileUrl = await this.storage.upload(storagePath, uploadBuffer, file.mimetype);
     } catch (err: any) {
       throw new HttpException(
         `Upload failed: ${err.message}`,
