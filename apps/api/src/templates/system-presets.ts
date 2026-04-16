@@ -345,7 +345,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'IMAGE_CAROUSEL',
         x: 70, y: 12, width: 30, height: 50,
         sortOrder: 4,
-        defaultConfig: { transitionEffect: 'fade', intervalMs: 10000, fitMode: 'contain' },
+        defaultConfig: { transitionEffect: 'fade', intervalMs: 10000, fitMode: 'cover' },
       },
       {
         name: 'Countdown to Event',
@@ -385,7 +385,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'IMAGE_CAROUSEL',
         x: 50, y: 0, width: 50, height: 100,
         sortOrder: 1,
-        defaultConfig: { transitionEffect: 'fade', intervalMs: 8000, fitMode: 'contain' },
+        defaultConfig: { transitionEffect: 'fade', intervalMs: 8000, fitMode: 'cover' },
       },
     ],
   },
@@ -552,7 +552,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'IMAGE_CAROUSEL',
         x: 0, y: 12, width: 50, height: 55,
         sortOrder: 2,
-        defaultConfig: { transitionEffect: 'fade', intervalMs: 8000, fitMode: 'contain' },
+        defaultConfig: { transitionEffect: 'fade', intervalMs: 8000, fitMode: 'cover' },
       },
       {
         name: 'Reading Events / Programs',

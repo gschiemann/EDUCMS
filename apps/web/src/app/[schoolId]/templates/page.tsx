@@ -16,7 +16,7 @@ import {
 import {
   useTemplates, useCreateTemplate, useDeleteTemplate, useCreateFromPreset,
   useDuplicateTemplate, useUpdateTemplate, useUpdateTemplateZones,
-  useAssets, usePlaylists,
+  useAssets, usePlaylists, useAssetFolders,
 } from '@/hooks/use-api';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 
@@ -1039,16 +1039,22 @@ function AssetPicker({ mimeFilter, selectedIds, onSelect, onRemove, multiple = f
   multiple?: boolean;
 }) {
   const { data: assets, isLoading } = useAssets();
+  const { data: folders } = useAssetFolders();
   const [showModal, setShowModal] = useState(false);
   const [searchAsset, setSearchAsset] = useState('');
   const [previewAsset, setPreviewAsset] = useState<any>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  
+  // Folder state
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
 
   const apiBase = process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') || 'http://localhost:8080';
   const assetUrl = (a: any) => a.fileUrl?.startsWith('http') ? a.fileUrl : `${apiBase}${a.fileUrl}`;
 
+  // Filter assets by current folder and mime type/search
   const filtered = (assets || []).filter((a: any) => {
     if (a.status !== 'PUBLISHED' && a.status !== 'PENDING_APPROVAL') return false;
+    if (a.folderId !== currentFolderId) return false;
     if (mimeFilter === 'image') return a.mimeType?.startsWith('image/');
     if (mimeFilter === 'video') return a.mimeType?.startsWith('video/');
     return true;
@@ -1065,13 +1071,42 @@ function AssetPicker({ mimeFilter, selectedIds, onSelect, onRemove, multiple = f
     return `${(bytes / 1048576).toFixed(1)} MB`;
   };
 
+  // Folders logic
+  const currentFolderChildren = (folders || []).filter((f: any) => f.parentId === currentFolderId);
+  const currentFolder = currentFolderId ? (folders || []).find((f: any) => f.id === currentFolderId) : null;
+  const breadcrumbs: { id: string | null; name: string }[] = [{ id: null, name: 'All Files' }];
+  if (currentFolder) {
+    const trail: any[] = [];
+    let f = currentFolder;
+    while (f) {
+      trail.unshift(f);
+      f = f.parentId ? (folders || []).find((x: any) => x.id === f.parentId) : null;
+    }
+    trail.forEach((t: any) => breadcrumbs.push({ id: t.id, name: t.name }));
+  }
+
+  // Quick toggle selection without closing (for multiple mode)
+  const handleToggleSelect = (a: any, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    const isSelected = selectedIds.includes(a.id);
+    if (isSelected) {
+      onRemove(a.id);
+    } else {
+      onSelect(a);
+      if (!multiple) setShowModal(false);
+    }
+  };
+
   return (
     <div className="space-y-2">
       {/* Selected assets preview */}
       {selectedAssets.length > 0 && (
         <div className="space-y-1.5">
           {selectedAssets.map((a: any) => (
-            <div key={a.id} className="flex items-center gap-2 bg-white rounded-lg border border-slate-200 p-1.5">
+            <div key={a.id} className="flex items-center gap-2 bg-white rounded-lg border border-slate-200 p-1.5 shadow-sm">
               {isImage(a) ? (
                 <img src={assetUrl(a)} alt={a.originalName} className="w-10 h-10 object-cover rounded-md bg-slate-100" />
               ) : isVideo(a) ? (
@@ -1082,10 +1117,10 @@ function AssetPicker({ mimeFilter, selectedIds, onSelect, onRemove, multiple = f
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-medium text-slate-700 truncate">{a.originalName || 'Untitled'}</p>
-                <p className="text-[9px] text-slate-400">{a.mimeType}</p>
+                <p className="text-[11px] font-bold text-slate-700 truncate">{a.originalName || 'Untitled'}</p>
+                <p className="text-[9px] font-medium text-slate-400 truncate">{a.mimeType}</p>
               </div>
-              <button onClick={() => onRemove(a.id)} className="p-1 text-slate-300 hover:text-rose-500 shrink-0"><X className="w-3.5 h-3.5" /></button>
+              <button onClick={() => onRemove(a.id)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors shrink-0"><X className="w-3.5 h-3.5" /></button>
             </div>
           ))}
         </div>
@@ -1093,7 +1128,7 @@ function AssetPicker({ mimeFilter, selectedIds, onSelect, onRemove, multiple = f
 
       {/* Browse button */}
       <button onClick={() => setShowModal(true)}
-        className="w-full py-2.5 px-3 rounded-lg border-2 border-dashed border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 text-xs font-bold text-slate-500 hover:text-indigo-600 transition-all flex items-center justify-center gap-2">
+        className="w-full py-2.5 px-3 rounded-lg border-2 border-dashed border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 text-xs font-bold text-slate-500 hover:text-indigo-600 transition-all flex items-center justify-center gap-2 shadow-sm">
         <ImageIcon className="w-3.5 h-3.5" />
         {selectedAssets.length > 0 ? (multiple ? 'Add More Assets' : 'Change Asset') : 'Browse Assets'}
       </button>
@@ -1103,6 +1138,7 @@ function AssetPicker({ mimeFilter, selectedIds, onSelect, onRemove, multiple = f
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200"
           onClick={(e) => { if (e.target === e.currentTarget) setShowModal(false); }}>
           <div className="bg-white dark:bg-slate-900 w-full max-w-5xl h-[85vh] rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden">
+            
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 shrink-0">
               <div className="flex items-center gap-3">
@@ -1115,7 +1151,6 @@ function AssetPicker({ mimeFilter, selectedIds, onSelect, onRemove, multiple = f
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {/* View toggle */}
                 <div className="flex items-center bg-slate-200 dark:bg-slate-700 rounded-lg p-0.5">
                   <button onClick={() => setViewMode('grid')}
                     className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
@@ -1132,43 +1167,105 @@ function AssetPicker({ mimeFilter, selectedIds, onSelect, onRemove, multiple = f
               </div>
             </div>
 
-            {/* Search bar */}
-            <div className="px-6 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
-              <div className="relative max-w-md">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input value={searchAsset} onChange={e => setSearchAsset(e.target.value)} placeholder="Search by filename..."
-                  autoFocus
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent placeholder:text-slate-400 transition-all" />
+            {/* Search and Navigation Bar */}
+            <div className="px-6 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0 bg-white">
+              <div className="flex items-center justify-between gap-4">
+                
+                {/* Breadcrumbs */}
+                <div className="flex items-center gap-1 text-xs overflow-x-auto whitespace-nowrap hide-scrollbar">
+                  {breadcrumbs.map((bc, i) => (
+                    <span key={bc.id ?? 'root'} className="flex items-center gap-1">
+                      {i > 0 && <ChevronRight className="w-3 h-3 text-slate-300" />}
+                      <button
+                        onClick={() => setCurrentFolderId(bc.id)}
+                        className={`px-2 py-1.5 rounded-md transition-colors font-semibold ${
+                          i === breadcrumbs.length - 1
+                            ? 'text-slate-800 bg-slate-100'
+                            : 'text-slate-500 hover:text-indigo-600 hover:bg-indigo-50'
+                        }`}
+                      >
+                        {i === 0 && <span className="inline-flex mr-1 align-sub"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>}
+                        {bc.name}
+                      </button>
+                    </span>
+                  ))}
+                </div>
+
+                {/* Search */}
+                <div className="relative max-w-sm w-full">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input value={searchAsset} onChange={e => setSearchAsset(e.target.value)} placeholder="Search in folder..."
+                    autoFocus
+                    className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent placeholder:text-slate-400 transition-all font-medium" />
+                </div>
               </div>
             </div>
 
             {/* Content area */}
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
+              
+              {/* Folder Grid */}
+              {currentFolderChildren.length > 0 && (
+                <div className="mb-8">
+                  <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3 pl-1">Folders</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                    {currentFolderChildren.map((f: any) => (
+                      <button
+                        key={f.id}
+                        onDoubleClick={() => setCurrentFolderId(f.id)}
+                        onClick={() => setCurrentFolderId(f.id)}
+                        className="bg-white rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-md transition-all p-3 text-left flex items-center gap-3 group"
+                      >
+                        <FolderOpen className="w-8 h-8 text-amber-400 group-hover:scale-105 transition-transform" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-slate-700 group-hover:text-indigo-700 truncate">{f.name}</p>
+                          <p className="text-[10px] font-medium text-slate-400">{f._count?.assets || 0} files</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Asset Grid */}
+              <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3 pl-1">Files</h3>
               {isLoading ? (
-                <div className="flex flex-col items-center justify-center h-full gap-3">
+                <div className="flex flex-col items-center justify-center p-12 gap-3">
                   <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
                   <p className="text-sm text-slate-400 font-medium">Loading assets...</p>
                 </div>
               ) : filtered.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full gap-3">
-                  <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                <div className="flex flex-col items-center justify-center p-12 gap-3 bg-white border border-dashed border-slate-200 rounded-2xl">
+                  <div className="w-16 h-16 rounded-2xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center">
                     <ImageIcon className="w-8 h-8 text-slate-300" />
                   </div>
                   <p className="text-sm font-semibold text-slate-400">No {mimeFilter !== 'all' ? mimeFilter : ''} assets found</p>
-                  <p className="text-xs text-slate-400">Upload assets from the Assets page first</p>
                 </div>
               ) : viewMode === 'grid' ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                   {filtered.map((a: any) => {
                     const selected = selectedIds.includes(a.id);
                     return (
-                      <button key={a.id}
-                        onClick={() => { onSelect(a); if (!multiple) setShowModal(false); }}
+                      <div key={a.id}
+                        onClick={() => handleToggleSelect(a)}
                         onContextMenu={(e) => { e.preventDefault(); setPreviewAsset(a); }}
-                        className={`group relative rounded-xl overflow-hidden border-2 transition-all hover:shadow-lg focus:outline-none ${
-                          selected ? 'border-indigo-500 ring-2 ring-indigo-300 shadow-md' : 'border-slate-200 dark:border-slate-700 hover:border-indigo-300'
+                        className={`group relative rounded-2xl overflow-hidden bg-white hover:-translate-y-1 transition-all cursor-pointer border-2 ${
+                          selected ? 'border-indigo-500 shadow-[0_8px_30px_rgb(99,102,241,0.2)]' : 'border-transparent shadow-sm hover:shadow-lg'
                         }`}>
-                        <div className="aspect-square bg-slate-100 dark:bg-slate-800 relative">
+                        
+                        {/* Interactive Checkbox for Multi-Select */}
+                        {multiple && (
+                          <button
+                            onClick={(e) => handleToggleSelect(a, e)}
+                            className={`absolute top-2.5 left-2.5 z-20 w-6 h-6 rounded-md flex items-center justify-center transition-all shadow-sm ${
+                              selected ? 'bg-indigo-500 border border-indigo-500 opacity-100 scale-100' : 'bg-white/90 border border-slate-300 opacity-0 scale-90 group-hover:opacity-100 group-hover:scale-100 backdrop-blur-sm hover:bg-indigo-50 hover:border-indigo-300'
+                            }`}
+                          >
+                            {selected && <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                          </button>
+                        )}
+
+                        <div className="aspect-square bg-slate-100 dark:bg-slate-800 relative border-b border-slate-100">
                           {isImage(a) ? (
                             <img src={assetUrl(a)} alt={a.originalName} className="w-full h-full object-cover" loading="lazy" />
                           ) : isVideo(a) ? (
@@ -1180,58 +1277,64 @@ function AssetPicker({ mimeFilter, selectedIds, onSelect, onRemove, multiple = f
                               <Play className="w-8 h-8 text-slate-400" />
                             </div>
                           )}
-                          {/* Hover overlay */}
-                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                            <Eye className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
-                          </div>
+                          {/* Hover overlay viewing */}
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors pointer-events-none" />
                           {/* Video badge */}
                           {isVideo(a) && (
-                            <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-black/60 backdrop-blur-sm rounded text-[9px] font-bold text-white flex items-center gap-1">
+                            <div className="absolute top-2.5 right-2.5 px-1.5 py-0.5 bg-black/60 backdrop-blur-sm rounded text-[9px] font-bold text-white flex items-center gap-1 z-10">
                               <Play className="w-2.5 h-2.5" /> Video
                             </div>
                           )}
-                          {/* Selected check */}
-                          {selected && (
-                            <div className="absolute top-2 right-2 w-6 h-6 bg-indigo-600 rounded-full flex items-center justify-center shadow-lg">
-                              <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-                            </div>
+                          {/* Selected check ring fallback if no multiple */}
+                          {!multiple && selected && (
+                             <div className="absolute top-2.5 right-2.5 w-6 h-6 bg-indigo-600 rounded-full flex items-center justify-center shadow-lg border-2 border-white z-10">
+                               <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                             </div>
                           )}
                         </div>
-                        <div className="px-2.5 py-2 bg-white dark:bg-slate-800">
-                          <p className="text-xs font-medium text-slate-700 dark:text-slate-200 truncate">{a.originalName || 'Untitled'}</p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">{formatSize(a.fileSize)}</p>
+                        <div className="px-3 py-2.5 bg-white dark:bg-slate-800">
+                          <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{a.originalName || 'Untitled'}</p>
+                          <p className="text-[10px] font-medium text-slate-400 mt-0.5">{formatSize(a.fileSize)}</p>
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
               ) : (
-                <div className="space-y-1">
+                <div className="space-y-2 bg-white rounded-2xl border border-slate-200 p-2 shadow-sm">
                   {filtered.map((a: any) => {
                     const selected = selectedIds.includes(a.id);
                     return (
                       <button key={a.id}
-                        onClick={() => { onSelect(a); if (!multiple) setShowModal(false); }}
-                        className={`w-full flex items-center gap-4 p-3 rounded-xl border-2 transition-all hover:shadow-sm text-left ${
-                          selected ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10' : 'border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                        onClick={() => handleToggleSelect(a)}
+                        className={`w-full flex items-center gap-4 p-2 rounded-xl transition-all hover:shadow-sm text-left border-2 ${
+                          selected ? 'bg-indigo-50 border-indigo-200 dark:bg-indigo-500/10' : 'bg-transparent border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:border-slate-100'
                         }`}>
-                        <div className="w-16 h-16 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 shrink-0">
+                        <div className="w-12 h-12 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 shrink-0 border border-slate-200">
                           {isImage(a) ? (
                             <img src={assetUrl(a)} alt={a.originalName} className="w-full h-full object-cover" loading="lazy" />
                           ) : isVideo(a) ? (
                             <video src={assetUrl(a)} className="w-full h-full object-cover" muted preload="metadata" />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center"><Play className="w-6 h-6 text-slate-400" /></div>
+                            <div className="w-full h-full flex items-center justify-center"><Play className="w-5 h-5 text-slate-400" /></div>
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{a.originalName || 'Untitled'}</p>
-                          <p className="text-xs text-slate-400 mt-0.5">{a.mimeType} {a.fileSize ? `· ${formatSize(a.fileSize)}` : ''}</p>
+                          <p className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{a.originalName || 'Untitled'}</p>
+                          <p className="text-[11px] font-medium text-slate-400 mt-0.5">{a.mimeType} {a.fileSize ? `· ${formatSize(a.fileSize)}` : ''}</p>
                         </div>
-                        {selected && (
-                          <div className="w-6 h-6 bg-indigo-600 rounded-full flex items-center justify-center shrink-0">
-                            <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-                          </div>
+                        
+                        {/* Checkbox for List View */}
+                        {multiple ? (
+                           <div className={`w-5 h-5 rounded border-2 flex items-center justify-center mr-2 transition-all ${
+                             selected ? 'bg-indigo-500 border-indigo-500' : 'bg-white border-slate-300'
+                           }`}>
+                             {selected && <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                           </div>
+                        ) : selected && (
+                           <div className="w-5 h-5 bg-indigo-600 rounded-full flex items-center justify-center shrink-0 mr-2 border-2 border-white shadow-sm">
+                             <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                           </div>
                         )}
                       </button>
                     );
@@ -1241,13 +1344,13 @@ function AssetPicker({ mimeFilter, selectedIds, onSelect, onRemove, multiple = f
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between shrink-0">
-              <p className="text-xs text-slate-500">
-                {selectedIds.length > 0 ? `${selectedIds.length} selected` : 'Click to select'} {multiple ? '· Click multiple to add' : ''}
+            <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-white flex items-center justify-between shrink-0 shadow-[0_-4px_6px_-1px_rgb(0,0,0,0.02)]">
+              <p className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg">
+                {selectedIds.length > 0 ? `${selectedIds.length} file${selectedIds.length === 1 ? '' : 's'} selected` : 'Select content'} {multiple ? '· Checkboxes enabled' : ''}
               </p>
               <button onClick={() => setShowModal(false)}
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl shadow-sm transition-all">
-                Done
+                className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-xl shadow-md shadow-indigo-600/20 hover:shadow-lg hover:shadow-indigo-600/30 transition-all hover:-translate-y-0.5 active:translate-y-0">
+                {selectedIds.length > 0 ? 'Use Selected' : 'Done'}
               </button>
             </div>
           </div>
@@ -1259,16 +1362,19 @@ function AssetPicker({ mimeFilter, selectedIds, onSelect, onRemove, multiple = f
       {previewAsset && createPortal(
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-8"
           onClick={() => setPreviewAsset(null)}>
-          <div className="max-w-3xl max-h-[80vh] rounded-2xl overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="max-w-3xl max-h-[80vh] rounded-2xl overflow-hidden shadow-2xl relative" onClick={e => e.stopPropagation()}>
             {isImage(previewAsset) ? (
-              <img src={assetUrl(previewAsset)} alt={previewAsset.originalName} className="max-w-full max-h-[75vh] object-contain" />
+              <img src={assetUrl(previewAsset)} alt={previewAsset.originalName} className="max-w-full max-h-[75vh] object-contain bg-black/50" />
             ) : isVideo(previewAsset) ? (
-              <video src={assetUrl(previewAsset)} controls autoPlay muted className="max-w-full max-h-[75vh]" />
+              <video src={assetUrl(previewAsset)} controls autoPlay muted className="max-w-full max-h-[75vh] bg-black/50" />
             ) : null}
-            <div className="bg-black/80 backdrop-blur-sm px-4 py-2">
-              <p className="text-sm text-white font-medium">{previewAsset.originalName}</p>
-              <p className="text-xs text-white/60">{previewAsset.mimeType} {previewAsset.fileSize ? `· ${formatSize(previewAsset.fileSize)}` : ''}</p>
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent pt-8 pb-3 px-4">
+              <p className="text-sm font-bold text-white drop-shadow-md">{previewAsset.originalName}</p>
+              <p className="text-[10px] font-medium text-white/70 drop-shadow-md">{previewAsset.mimeType} {previewAsset.fileSize ? `· ${formatSize(previewAsset.fileSize)}` : ''}</p>
             </div>
+            <button onClick={() => setPreviewAsset(null)} className="absolute top-3 right-3 p-1.5 bg-black/50 hover:bg-black/80 rounded-full text-white backdrop-blur-md transition-colors">
+              <X className="w-4 h-4" />
+            </button>
           </div>
         </div>,
         document.body
