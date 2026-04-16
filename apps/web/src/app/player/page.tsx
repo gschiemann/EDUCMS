@@ -232,6 +232,10 @@ export default function PlayerPage() {
     } catch (e: any) {
       setError(e.message);
       setPhase('offline');
+      
+      // Self-healing: if the network drops or API restarts, aggressively try to reconnect
+      // This prevents the player from permanently bricking itself during a 502/503 rollout.
+      setTimeout(() => setPhase('connecting'), 7500);
     }
   }, [screenId]);
 
@@ -269,7 +273,7 @@ export default function PlayerPage() {
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          if (msg.type === 'SYNC' || msg.type === 'OVERRIDE') {
+          if (msg.type === 'SYNC' || msg.type === 'OVERRIDE' || msg.type === 'ALL_CLEAR') {
             fetchContent();
           }
         } catch (e) {}
