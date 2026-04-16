@@ -67,6 +67,11 @@ export class SupabaseStorageService implements OnModuleInit {
     // POST directly to the Storage REST API — bypasses the JS client entirely.
     const endpoint = `${url}/storage/v1/object/${BUCKET}/${filePath}`;
 
+    // Crucial fix: Wrap raw Uint8Array into a Web Blob. 
+    // This forces `undici` fetch to calculate and explicitly set the `Content-Length` header.
+    // Supabase (S3) strictly requires `Content-Length`, otherwise chunked transfers result in 0-byte files.
+    const payload = new Blob([buffer], { type: contentType });
+
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -75,7 +80,7 @@ export class SupabaseStorageService implements OnModuleInit {
         'Content-Type': contentType,
         'x-upsert': 'true',
       },
-      body: buffer, // Node 18+ fetch handles Buffer natively as binary
+      body: payload,
     });
 
     if (!res.ok) {
