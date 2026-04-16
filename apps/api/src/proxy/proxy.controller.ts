@@ -69,16 +69,39 @@ export class ProxyController {
       // Inject <base> tag so relative URLs resolve against the original domain,
       // PLUS anti-frame-busting script to prevent JS redirects that break out of iframe
       const baseTag = `<base href="${baseUrl}">`;
+      const proxyBase = '/api/v1/proxy/web';
       const antiFrameBust = `<script>
-try {
-  // Override top/parent so frame-busting scripts think they're the top window
-  Object.defineProperty(window, '__realTop', { value: window.top, writable: false });
-  Object.defineProperty(window, 'top', { get: function() { return window.self; }, configurable: true });
-  Object.defineProperty(window, 'parent', { get: function() { return window.self; }, configurable: true });
-  // Prevent location.replace/assign redirects to non-proxy URLs
-  var _origReplace = window.location.replace.bind(window.location);
-  var _origAssign = window.location.assign.bind(window.location);
-} catch(e) {}
+(function() {
+  try {
+    // 1. Override top/parent so frame-busting scripts think they're the top window
+    Object.defineProperty(window, 'top', { get: function() { return window.self; }, configurable: true });
+    Object.defineProperty(window, 'parent', { get: function() { return window.self; }, configurable: true });
+    // 2. Override frameElement to null so page thinks it's NOT in an iframe
+    Object.defineProperty(window, 'frameElement', { get: function() { return null; }, configurable: true });
+    // 3. Intercept location.replace and location.assign to re-route through proxy
+    var proxyBase = location.origin + '${proxyBase}';
+    var origReplace = location.replace.bind(location);
+    var origAssign = location.assign.bind(location);
+    location.replace = function(u) { origReplace(proxyBase + '?url=' + encodeURIComponent(u)); };
+    location.assign = function(u) { origAssign(proxyBase + '?url=' + encodeURIComponent(u)); };
+    // 4. Intercept location.href setter via descriptor if possible
+    try {
+      var locProto = Object.getPrototypeOf(location);
+      var hrefDesc = Object.getOwnPropertyDescriptor(locProto, 'href');
+      if (hrefDesc && hrefDesc.set) {
+        var origSet = hrefDesc.set;
+        Object.defineProperty(location, 'href', {
+          get: hrefDesc.get,
+          set: function(u) { origSet.call(location, proxyBase + '?url=' + encodeURIComponent(u)); },
+          configurable: true
+        });
+      }
+    } catch(e2) {}
+    // 5. Patch window.open to also go through proxy
+    var origOpen = window.open;
+    window.open = function(u, n, f) { return origOpen.call(window, u ? proxyBase + '?url=' + encodeURIComponent(u) : u, n, f); };
+  } catch(e) {}
+})();
 </script>`;
       const injection = antiFrameBust + baseTag;
       if (html.includes('<head>')) {
