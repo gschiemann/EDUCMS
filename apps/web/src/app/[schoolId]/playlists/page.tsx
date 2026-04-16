@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from 'react';
-import { Play, Plus, Clock, Loader2, Trash2, Save, GripVertical, Image as ImageIcon, Video, Music, Globe, File, Calendar, CalendarDays, Power, Eye, LayoutTemplate, Pencil, Monitor, Layers, ChevronRight, ChevronLeft, Tv2, Wifi, WifiOff, ArrowLeft, Smartphone } from 'lucide-react';
+import { Play, Plus, Clock, Loader2, Trash2, Save, GripVertical, Image as ImageIcon, Video, Music, Globe, File, Calendar, CalendarDays, Power, Eye, LayoutTemplate, Pencil, Monitor, Layers, ChevronRight, ChevronLeft, Tv2, Wifi, WifiOff, ArrowLeft, Smartphone, FolderOpen, Home, CheckSquare, Search } from 'lucide-react';
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent
 } from '@dnd-kit/core';
@@ -14,8 +14,8 @@ import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import {
   usePlaylists, useCreatePlaylist, useDeletePlaylist, useAssets,
   useReorderPlaylistItems, useScreenGroups, useCreateSchedule,
-  useSchedules, useDeleteSchedule, useToggleSchedule, useScreens,
-  useTemplates,
+  useSchedules, useDeleteSchedule, useToggleSchedule, useUpdateSchedule, useScreens,
+  useTemplates, useAssetFolders
 } from '@/hooks/use-api';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
@@ -196,6 +196,7 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete }: {
 export default function PlaylistsPage() {
   const { data: playlists, isLoading } = usePlaylists();
   const { data: assets } = useAssets();
+  const { data: folders } = useAssetFolders();
   const { data: screenGroups } = useScreenGroups();
   const { data: schedules } = useSchedules();
   const { data: screens } = useScreens();
@@ -206,6 +207,14 @@ export default function PlaylistsPage() {
   const createSchedule = useCreateSchedule();
   const deleteSchedule = useDeleteSchedule();
   const toggleSchedule = useToggleSchedule();
+  const updateSchedule = useUpdateSchedule();
+
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
+  const [editSchedTarget, setEditSchedTarget] = useState('');
+  const [editSchedMode, setEditSchedMode] = useState<'always' | 'scheduled'>('always');
+  const [editSchedDays, setEditSchedDays] = useState<string[]>([]);
+  const [editSchedTimeStart, setEditSchedTimeStart] = useState('08:00');
+  const [editSchedTimeEnd, setEditSchedTimeEnd] = useState('15:00');
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -220,6 +229,8 @@ export default function PlaylistsPage() {
   const [localItems, setLocalItems] = useState<any[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
   const [pickerFilter, setPickerFilter] = useState<'all' | 'images' | 'videos' | 'audio' | 'urls'>('all');
+  const [pickerFolderId, setPickerFolderId] = useState<string | null>(null);
+  const [selectedPickerAssets, setSelectedPickerAssets] = useState<Set<string>>(new Set());
   const [tab, setTab] = useState<'editor' | 'schedules'>('editor');
 
   // Schedule form state
@@ -381,6 +392,7 @@ export default function PlaylistsPage() {
   const totalDur = `${Math.floor(totalMs / 60000)}m ${Math.round((totalMs % 60000) / 1000)}s`;
 
   const pickerAssets = (assets || []).filter((a: any) => {
+    if (a.folderId !== pickerFolderId) return false;
     if (pickerFilter === 'all') return true;
     if (pickerFilter === 'images') return a.mimeType?.startsWith('image/');
     if (pickerFilter === 'videos') return a.mimeType?.startsWith('video/');
@@ -388,6 +400,60 @@ export default function PlaylistsPage() {
     if (pickerFilter === 'urls') return a.mimeType === 'text/html';
     return true;
   });
+
+  const pickerCurrentFolderChildren = (folders || []).filter((f: any) => f.parentId === pickerFolderId);
+  const pickerCurrentFolder = pickerFolderId ? (folders || []).find((f: any) => f.id === pickerFolderId) : null;
+  const pickerBreadcrumbs: { id: string | null; name: string }[] = [{ id: null, name: 'All Files' }];
+  if (pickerCurrentFolder) {
+    const trail: any[] = [];
+    let f = pickerCurrentFolder;
+    while (f) {
+      trail.unshift(f);
+      f = f.parentId ? (folders || []).find((x: any) => x.id === f.parentId) : null;
+    }
+    trail.forEach((t: any) => pickerBreadcrumbs.push({ id: t.id, name: t.name }));
+  }
+
+  const handleTogglePickerAsset = (assetId: string) => {
+    setSelectedPickerAssets(prev => {
+      const next = new Set(prev);
+      if (next.has(assetId)) next.delete(assetId);
+      else next.add(assetId);
+      return next;
+    });
+  };
+
+  const handleSelectAllPickerAssets = () => {
+    if (selectedPickerAssets.size === pickerAssets.length && pickerAssets.length > 0) {
+      setSelectedPickerAssets(new Set()); // Deselect all
+    } else {
+      setSelectedPickerAssets(new Set(pickerAssets.map((a: any) => a.id))); // Select all
+    }
+  };
+
+  const handleBulkAddPickerAssets = () => {
+    if (selectedPickerAssets.size === 0) return;
+    const toAdd = (assets || []).filter((a: any) => selectedPickerAssets.has(a.id));
+    
+    setLocalItems(prev => {
+      const newItems = [...prev];
+      for (const asset of toAdd) {
+        const dur = asset.mimeType?.startsWith('video/') || asset.mimeType?.startsWith('audio/') ? 30000 : 10000;
+        const generateId = () => { try { return crypto.randomUUID(); } catch { return Math.random().toString(36).substring(2, 10); } };
+        newItems.push({
+          id: `new-${generateId()}`,
+          assetId: asset.id,
+          durationMs: dur,
+          sequenceOrder: newItems.length,
+          asset: { id: asset.id, fileUrl: asset.fileUrl, mimeType: asset.mimeType, originalName: asset.originalName },
+        });
+      }
+      return newItems;
+    });
+    setHasChanges(true);
+    setSelectedPickerAssets(new Set());
+    setShowPicker(false);
+  };
 
   // ─── DETAIL / EDITOR VIEW ───
   if (selectedId && selectedPlaylist) {
@@ -505,47 +571,126 @@ export default function PlaylistsPage() {
                 ) : (
                   playlistSchedules.map((sched: any) => (
                     <div key={sched.id} className={`p-5 rounded-2xl transition-all duration-300 border ${sched.isActive ? 'bg-emerald-50/50 border-emerald-100 hover:bg-emerald-50/80' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className={`w-2 h-2 rounded-full ${sched.isActive ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                            <Monitor className="w-3.5 h-3.5 text-slate-400" />
-                            <p className="text-sm font-bold text-slate-700">
-                              {sched.screenGroup?.name || sched.screen?.name || 'Unknown target'}
-                            </p>
+                      {editingScheduleId === sched.id ? (
+                        /* ── Inline Edit Form ── */
+                        <div className="space-y-3">
+                          {/* Target selector */}
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Target Screen / Group</label>
+                            <select value={editSchedTarget} onChange={e => setEditSchedTarget(e.target.value)} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-indigo-300 outline-none">
+                              <option value="">Select target...</option>
+                              {(screenGroups || []).map((g: any) => <option key={`g-${g.id}`} value={`group:${g.id}`}>Group: {g.name}</option>)}
+                              {(screens || []).map((s: any) => <option key={`s-${s.id}`} value={`screen:${s.id}`}>Screen: {s.name}</option>)}
+                            </select>
                           </div>
-                          <div className="flex flex-wrap gap-2 text-[10px] font-semibold mt-2">
-                            {sched.daysOfWeek ? (
-                              <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">{sched.daysOfWeek}</span>
-                            ) : (
-                              <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded">Every day</span>
-                            )}
-                            {sched.timeStart && sched.timeEnd ? (
-                              <span className="bg-sky-100 text-sky-700 px-2 py-0.5 rounded">{sched.timeStart} - {sched.timeEnd}</span>
-                            ) : (
-                              <span className="bg-sky-100 text-sky-700 px-2 py-0.5 rounded">All day</span>
-                            )}
-                            <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded">
-                              Since {new Date(sched.startTime).toLocaleDateString()}
-                            </span>
+                          {/* Mode toggle */}
+                          <div className="flex gap-2">
+                            <button onClick={() => setEditSchedMode('always')} className={`flex-1 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${editSchedMode === 'always' ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'border-slate-200 text-slate-400'}`}>Always On</button>
+                            <button onClick={() => setEditSchedMode('scheduled')} className={`flex-1 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${editSchedMode === 'scheduled' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-400'}`}>Scheduled</button>
+                          </div>
+                          {editSchedMode === 'scheduled' && (
+                            <>
+                              {/* Days */}
+                              <div className="flex gap-1">
+                                {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => (
+                                  <button key={d} onClick={() => setEditSchedDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])}
+                                    className={`flex-1 py-1 text-[10px] font-bold rounded transition-colors ${editSchedDays.includes(d) ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}>{d}</button>
+                                ))}
+                              </div>
+                              {/* Times */}
+                              <div className="flex gap-2">
+                                <div className="flex-1">
+                                  <label className="text-[10px] font-bold text-slate-400 mb-0.5 block">Start</label>
+                                  <input type="time" value={editSchedTimeStart} onChange={e => setEditSchedTimeStart(e.target.value)} className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg" />
+                                </div>
+                                <div className="flex-1">
+                                  <label className="text-[10px] font-bold text-slate-400 mb-0.5 block">End</label>
+                                  <input type="time" value={editSchedTimeEnd} onChange={e => setEditSchedTimeEnd(e.target.value)} className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg" />
+                                </div>
+                              </div>
+                            </>
+                          )}
+                          {/* Save / Cancel */}
+                          <div className="flex gap-2 pt-1">
+                            <button onClick={() => setEditingScheduleId(null)} className="flex-1 py-1.5 text-xs font-semibold text-slate-500 bg-slate-100 hover:bg-slate-200 rounded-lg">Cancel</button>
+                            <button
+                              onClick={async () => {
+                                const isGroup = editSchedTarget.startsWith('group:');
+                                const targetId = editSchedTarget.split(':')[1];
+                                await updateSchedule.mutateAsync({
+                                  id: sched.id,
+                                  ...(isGroup ? { screenGroupId: targetId, screenId: undefined } : { screenId: targetId, screenGroupId: undefined }),
+                                  daysOfWeek: editSchedMode === 'scheduled' ? editSchedDays.join(',') : null,
+                                  timeStart: editSchedMode === 'scheduled' ? editSchedTimeStart : null,
+                                  timeEnd: editSchedMode === 'scheduled' ? editSchedTimeEnd : null,
+                                });
+                                setEditingScheduleId(null);
+                              }}
+                              className="flex-1 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg flex items-center justify-center gap-1"
+                            >
+                              <Save className="w-3 h-3" /> Save
+                            </button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            onClick={() => toggleSchedule.mutate(sched.id)}
-                            className={`p-1.5 rounded-lg transition-colors ${sched.isActive ? 'text-emerald-600 hover:bg-emerald-100' : 'text-slate-400 hover:bg-slate-100'}`}
-                            title={sched.isActive ? 'Pause schedule' : 'Resume schedule'}
-                          >
-                            <Power className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => deleteSchedule.mutate(sched.id)}
-                            className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                      ) : (
+                        /* ── Read-only Card ── */
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className={`w-2 h-2 rounded-full ${sched.isActive ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                              <Monitor className="w-3.5 h-3.5 text-slate-400" />
+                              <p className="text-sm font-bold text-slate-700">
+                                {sched.screenGroup?.name || sched.screen?.name || 'Unknown target'}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2 text-[10px] font-semibold mt-2">
+                              {sched.daysOfWeek ? (
+                                <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">{sched.daysOfWeek}</span>
+                              ) : (
+                                <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded">Every day</span>
+                              )}
+                              {sched.timeStart && sched.timeEnd ? (
+                                <span className="bg-sky-100 text-sky-700 px-2 py-0.5 rounded">{sched.timeStart} - {sched.timeEnd}</span>
+                              ) : (
+                                <span className="bg-sky-100 text-sky-700 px-2 py-0.5 rounded">All day</span>
+                              )}
+                              <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded">
+                                Since {new Date(sched.startTime).toLocaleDateString()}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={() => {
+                                setEditingScheduleId(sched.id);
+                                const target = sched.screenGroupId ? `group:${sched.screenGroupId}` : sched.screenId ? `screen:${sched.screenId}` : '';
+                                setEditSchedTarget(target);
+                                setEditSchedMode(sched.daysOfWeek || sched.timeStart ? 'scheduled' : 'always');
+                                setEditSchedDays(sched.daysOfWeek ? sched.daysOfWeek.split(',') : ['Mon','Tue','Wed','Thu','Fri']);
+                                setEditSchedTimeStart(sched.timeStart || '08:00');
+                                setEditSchedTimeEnd(sched.timeEnd || '15:00');
+                              }}
+                              className="p-1.5 rounded-lg text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                              title="Edit schedule"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => toggleSchedule.mutate(sched.id)}
+                              className={`p-1.5 rounded-lg transition-colors ${sched.isActive ? 'text-emerald-600 hover:bg-emerald-100' : 'text-slate-400 hover:bg-slate-100'}`}
+                              title={sched.isActive ? 'Pause schedule' : 'Resume schedule'}
+                            >
+                              <Power className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => deleteSchedule.mutate(sched.id)}
+                              className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   ))
                 )}
@@ -557,47 +702,126 @@ export default function PlaylistsPage() {
         {/* ─── Asset Picker Modal ─── */}
         {showPicker && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowPicker(false)}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[75vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-              <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center">
-                <h3 className="text-base font-bold text-slate-800">Add Media to Playlist</h3>
-                <button onClick={() => setShowPicker(false)} className="text-slate-400 hover:text-slate-600 text-lg">x</button>
-              </div>
-              <div className="px-5 py-3 border-b border-slate-50 flex gap-1 bg-slate-50/50">
-                {(['all', 'images', 'videos', 'audio', 'urls'] as const).map(f => (
-                  <button key={f} onClick={() => setPickerFilter(f)} className={`px-3 py-1 text-xs font-semibold rounded-md ${pickerFilter === f ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400'}`}>
-                    {f.charAt(0).toUpperCase() + f.slice(1)}
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+              
+              {/* Modal Header */}
+              <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-white z-10">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-base font-bold text-slate-800">Choose Media</h3>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{selectedPickerAssets.size} selected</span>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => setShowPicker(false)} className="px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">
+                    Cancel
                   </button>
-                ))}
+                  <button 
+                    onClick={handleBulkAddPickerAssets} 
+                    disabled={selectedPickerAssets.size === 0}
+                    className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
+                  >
+                    Add Selected
+                  </button>
+                </div>
               </div>
-              <div className="flex-1 overflow-y-auto p-4">
+
+              {/* Filter and Breadcrumbs Bar */}
+              <div className="px-5 py-3 border-b border-slate-50 bg-slate-50/80 flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center">
+                <div className="flex items-center gap-1 text-[11px]">
+                  {pickerBreadcrumbs.map((bc, i) => (
+                    <span key={bc.id ?? 'root'} className="flex items-center gap-1">
+                      {i > 0 && <ChevronRight className="w-3 h-3 text-slate-300" />}
+                      <button
+                        onClick={() => setPickerFolderId(bc.id)}
+                        className={`px-1.5 py-1 rounded transition-colors ${
+                          i === pickerBreadcrumbs.length - 1
+                            ? 'font-bold text-slate-800'
+                            : 'text-slate-500 hover:text-indigo-600 font-medium'
+                        }`}
+                      >
+                        {i === 0 && <Home className="w-3 h-3 inline mr-1 -mt-0.5 text-slate-400" />}
+                        {bc.name}
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-2 items-center">
+                  <button 
+                    onClick={handleSelectAllPickerAssets}
+                    className="px-2 py-1 text-[10px] font-bold text-indigo-600 hover:bg-indigo-50 rounded flex items-center gap-1 transition-colors"
+                  >
+                    <CheckSquare className="w-3 h-3" /> Select All
+                  </button>
+                  <div className="w-px h-4 bg-slate-200 mx-1"></div>
+                  <div className="flex gap-1">
+                    {(['all', 'images', 'videos', 'audio', 'urls'] as const).map(f => (
+                      <button key={f} onClick={() => setPickerFilter(f)} className={`px-2.5 py-1 text-[10px] font-bold rounded-md ${pickerFilter === f ? 'bg-white text-slate-700 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}>
+                        {f.charAt(0).toUpperCase() + f.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-5 bg-slate-50/30">
+                {/* Folders */}
+                {pickerCurrentFolderChildren.length > 0 && Array.isArray(pickerCurrentFolderChildren) && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+                    {pickerCurrentFolderChildren.map((f: any) => (
+                      <button
+                        key={f.id}
+                        onClick={() => setPickerFolderId(f.id)}
+                        className="group bg-white rounded-xl border border-slate-100 hover:border-indigo-200 hover:shadow-sm transition-all text-left flex items-center gap-2.5 p-3"
+                      >
+                        <FolderOpen className="w-6 h-6 text-amber-400 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-bold text-slate-700 truncate">{f.name}</p>
+                          <p className="text-[9px] font-medium text-slate-400">{f._count?.assets || 0} items</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                
+                {/* Assets */}
                 {pickerAssets.length === 0 ? (
-                  <div className="text-center py-12 text-sm text-slate-400">No assets found. Upload media on the Assets page first.</div>
+                  <div className="text-center py-12 text-sm text-slate-400">No assets in this folder.</div>
                 ) : (
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     {pickerAssets.map((asset: any) => {
                       const thumb = thumbUrl(asset);
                       const name = assetName(asset);
+                      const isSelected = selectedPickerAssets.has(asset.id);
+                      
                       return (
-                        <button
+                        <div
                           key={asset.id}
-                          onClick={() => handleAddAsset(asset)}
-                          className="rounded-xl border border-slate-200 overflow-hidden hover:border-indigo-300 hover:shadow-md transition-all text-left group"
+                          onClick={() => handleTogglePickerAsset(asset.id)}
+                          className={`relative rounded-xl border transition-all text-left overflow-hidden cursor-pointer group select-none ${
+                            isSelected 
+                              ? 'border-indigo-500 shadow-[0_0_0_2px_rgba(99,102,241,0.2)]' 
+                              : 'border-slate-200 hover:border-indigo-300 hover:shadow-md'
+                          }`}
                         >
-                          <div className="aspect-video bg-slate-50 flex items-center justify-center overflow-hidden relative">
+                          <div className="aspect-video bg-slate-100 flex items-center justify-center relative overflow-hidden">
                             {thumb ? (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img src={thumb} alt="" className="w-full h-full object-cover" />
                             ) : (
-                              mimeIcon(asset.mimeType, 'w-6 h-6')
+                              mimeIcon(asset.mimeType, 'w-8 h-8')
                             )}
-                            <div className="absolute inset-0 bg-indigo-600/0 group-hover:bg-indigo-600/10 transition-colors flex items-center justify-center">
-                              <Plus className="w-6 h-6 text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            {/* Checkbox overlay */}
+                            <div className={`absolute top-2 left-2 w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
+                              isSelected 
+                                ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm scale-110' 
+                                : 'bg-white/80 backdrop-blur-sm border-slate-300 text-transparent opacity-0 group-hover:opacity-100'
+                            }`}>
+                              <CheckSquare className="w-3.5 h-3.5" />
                             </div>
                           </div>
-                          <div className="p-2">
-                            <p className="text-[11px] font-medium text-slate-600 truncate">{name}</p>
+                          <div className={`p-2 transition-colors ${isSelected ? 'bg-indigo-50/50' : 'bg-white'}`}>
+                            <p className={`text-[11px] font-bold truncate ${isSelected ? 'text-indigo-900' : 'text-slate-700'}`}>{name}</p>
                           </div>
-                        </button>
+                        </div>
                       );
                     })}
                   </div>

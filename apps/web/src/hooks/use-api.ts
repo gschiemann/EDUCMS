@@ -166,6 +166,18 @@ export function useCreateSchedule() {
   });
 }
 
+export function useUpdateSchedule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; screenGroupId?: string; screenId?: string; daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null; priority?: number }) =>
+      apiFetch(`/schedules/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['schedules'] });
+      qc.invalidateQueries({ queryKey: ['playlists'] });
+    },
+  });
+}
+
 export function useToggleSchedule() {
   const qc = useQueryClient();
   return useMutation({

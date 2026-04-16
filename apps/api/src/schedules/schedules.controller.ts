@@ -81,6 +81,46 @@ export class SchedulesController {
     return res;
   }
 
+  @Put(':id')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async update(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: {
+      screenGroupId?: string;
+      screenId?: string;
+      daysOfWeek?: string | null;
+      timeStart?: string | null;
+      timeEnd?: string | null;
+      priority?: number;
+    },
+  ) {
+    const schedule = await this.prisma.client.schedule.findFirst({
+      where: { id, tenantId: req.user.tenantId },
+    });
+    if (!schedule) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+
+    const data: any = {};
+    if (body.screenGroupId !== undefined) { data.screenGroupId = body.screenGroupId || null; data.screenId = null; }
+    if (body.screenId !== undefined) { data.screenId = body.screenId || null; data.screenGroupId = null; }
+    if (body.daysOfWeek !== undefined) data.daysOfWeek = body.daysOfWeek || null;
+    if (body.timeStart !== undefined) data.timeStart = body.timeStart || null;
+    if (body.timeEnd !== undefined) data.timeEnd = body.timeEnd || null;
+    if (body.priority !== undefined) data.priority = body.priority;
+
+    const res = await this.prisma.client.schedule.update({
+      where: { id },
+      data,
+      include: {
+        playlist: { select: { id: true, name: true } },
+        screenGroup: { select: { id: true, name: true } },
+        screen: { select: { id: true, name: true } },
+      },
+    });
+    this.notifySync(req.user.tenantId);
+    return res;
+  }
+
   @Put(':id/toggle')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async toggle(@Request() req: any, @Param('id') id: string) {
