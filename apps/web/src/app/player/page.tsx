@@ -243,30 +243,56 @@ export default function PlayerPage() {
   useEffect(() => {
     if (phase !== 'playing') return;
 
-    const wsUrl = getApiRoot().replace(/^http/, 'ws') + '/realtime';
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+    let heartbeatTimer: NodeJS.Timeout;
+    let reconnectTimer: NodeJS.Timeout;
 
-    ws.onopen = () => {
-      const token = `dev_${screenId}_00000000-0000-0000-0000-000000000002`;
-      ws.send(JSON.stringify({
-        event: 'HELLO',
-        data: { token }
-      }));
+    const connect = () => {
+      const wsUrl = getApiRoot().replace(/^http/, 'ws') + '/realtime';
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        const token = `dev_${screenId}_00000000-0000-0000-0000-000000000002`;
+        ws.send(JSON.stringify({
+          event: 'HELLO',
+          data: { token }
+        }));
+        
+        // Prevent load balancers from indiscriminately destroying idle connections
+        heartbeatTimer = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ event: 'HEARTBEAT' }));
+          }
+        }, 15000);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'SYNC' || msg.type === 'OVERRIDE') {
+            fetchContent();
+          }
+        } catch (e) {}
+      };
+
+      ws.onerror = () => { ws.close(); };
+
+      ws.onclose = () => {
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
+        // Aggressively attempt transparent auto-reconnect indefinitely without reloading DOM player caches
+        reconnectTimer = setTimeout(connect, 5000);
+      };
     };
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'SYNC' || msg.type === 'OVERRIDE') {
-          fetchContent();
-        }
-      } catch (e) {}
-    };
+    connect();
 
     return () => {
-      ws.close();
-      wsRef.current = null;
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (wsRef.current) {
+        wsRef.current.onclose = null;
+        wsRef.current.close();
+      }
     };
   }, [phase, screenId, fetchContent]);
 
