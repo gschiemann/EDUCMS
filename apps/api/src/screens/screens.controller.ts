@@ -243,36 +243,70 @@ export class ScreensController {
         select: { emergencyStatus: true, emergencyPlaylistId: true }
       });
 
-      // If an emergency is active AND a specific playlist was assigned to it
-      if (tenant?.emergencyStatus && tenant.emergencyStatus !== 'INACTIVE' && tenant.emergencyPlaylistId) {
-        const emergencyPlaylist = await this.prisma.client.playlist.findUnique({
-          where: { id: tenant.emergencyPlaylistId },
-          include: {
-            items: {
-              include: { asset: true },
-              orderBy: { sequenceOrder: 'asc' }
-            }
-          }
-        });
-
-        if (emergencyPlaylist) {
-          return res.status(200).json({
-            screenId: screen.id,
-            generatedAt: new Date().toISOString(),
-            isEmergency: true,
-            playlists: [
-              {
-                id: emergencyPlaylist.id,
-                name: emergencyPlaylist.name,
-                items: emergencyPlaylist.items.map(item => ({
-                  url: item.asset.fileUrl,
-                  duration_ms: item.durationMs,
-                  sequence: item.sequenceOrder
-                }))
+      // If an emergency is active, ALWAYS force an emergency override
+      if (tenant?.emergencyStatus && tenant.emergencyStatus !== 'INACTIVE') {
+        let playlists: any[] = [];
+        
+        // Try to load the assigned emergency media if it exists
+        if (tenant.emergencyPlaylistId) {
+          const emergencyPlaylist = await this.prisma.client.playlist.findUnique({
+            where: { id: tenant.emergencyPlaylistId },
+            include: {
+              items: {
+                include: { asset: true },
+                orderBy: { sequenceOrder: 'asc' }
               }
-            ]
+            }
           });
+
+          if (emergencyPlaylist && emergencyPlaylist.items.length > 0) {
+            playlists = [{
+              id: emergencyPlaylist.id,
+              name: emergencyPlaylist.name,
+              items: emergencyPlaylist.items.map(item => ({
+                url: item.asset.fileUrl,
+                duration_ms: item.durationMs,
+                sequence: item.sequenceOrder
+              }))
+            }];
+          }
         }
+
+        // BULLETPROOF FALLBACK: If the admin failed to assign an emergency playlist or it was empty, 
+        // we MUST still lock the screen down to protect the school.
+        if (playlists.length === 0) {
+          playlists = [{
+             id: "DEFAULT_EMERGENCY",
+             name: `SYSTEM DEFAULT - ${tenant.emergencyStatus}`,
+             template: {
+               name: "EMERGENCY OVERRIDE",
+               bgColor: tenant.emergencyStatus === 'CRITICAL' ? '#dc2626' : '#d97706',
+               screenWidth: 1920,
+               screenHeight: 1080,
+               zones: [
+                 {
+                   id: "emergency-zone",
+                   x: 0, y: 0, width: 100, height: 100, zIndex: 1,
+                   widgetType: "RICH_TEXT",
+                   defaultConfig: {
+                     content: `<div style="text-align: center; height: 100vh; display: flex; flex-direction: column; justify-content: center; font-family: system-ui, sans-serif;">
+                                 <h1 style="font-size: 8rem; margin: 0; font-weight: 900; color: white; line-height: 1.1;">EMERGENCY NOTIFICATION</h1>
+                                 <p style="font-size: 4rem; margin: 2rem 0 0; font-weight: 700; color: rgba(255,255,255,0.9);">Please follow standard procedure</p>
+                               </div>`
+                   }
+                 }
+               ]
+             },
+             items: []
+          }];
+        }
+
+        return res.status(200).json({
+          screenId: screen.id,
+          generatedAt: new Date().toISOString(),
+          isEmergency: true,
+          playlists
+        });
       }
     }
 
