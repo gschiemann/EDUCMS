@@ -99,7 +99,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
    * Returns false if Redis is unavailable (fail-open for dev).
    */
   async sismember(key: string, member: string): Promise<boolean> {
-    if (!this.connected || !this.publisher) return false;
+    if (!this.connected || !this.publisher) {
+      this.logger.warn('Redis unavailable — token revocation check skipped (fail-open)');
+      return false;
+    }
     try {
       const result = await this.publisher.sismember(key, member);
       return result === 1;

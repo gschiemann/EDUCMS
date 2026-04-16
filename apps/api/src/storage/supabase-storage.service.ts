@@ -47,33 +47,44 @@ export class SupabaseStorageService implements OnModuleInit {
   /**
    * Upload a file buffer to Supabase Storage.
    * Returns the public URL.
+   *
+   * Uses the Supabase Storage REST API directly via fetch because
+   * @supabase/supabase-js v2 mangles Node.js Buffers (JSON-serializes them)
+   * and produces 0-byte files with Uint8Array views.
    */
   async upload(
     filePath: string,
     buffer: Buffer,
     contentType: string,
   ): Promise<string> {
-    if (!this.client) {
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!url || !key) {
       throw new Error('Supabase Storage not configured — set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
     }
 
-    // Supabase JS v2 JSON-serializes Node Buffer objects and mishandles Uint8Array.
-    // Wrapping in a Blob guarantees correct binary upload via the fetch-based client.
-    const blob = new Blob([buffer], { type: contentType });
+    // POST directly to the Storage REST API — bypasses the JS client entirely.
+    const endpoint = `${url}/storage/v1/object/${BUCKET}/${filePath}`;
 
-    const { error } = await this.client.storage
-      .from(BUCKET)
-      .upload(filePath, blob, {
-        contentType,
-        upsert: true,
-      });
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${key}`,
+        apikey: key,
+        'Content-Type': contentType,
+        'x-upsert': 'true',
+      },
+      body: buffer, // Node 18+ fetch handles Buffer natively as binary
+    });
 
-    if (error) {
-      throw new Error(`Storage upload failed: ${error.message}`);
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Storage upload failed (${res.status}): ${body}`);
     }
 
-    const { data } = this.client.storage.from(BUCKET).getPublicUrl(filePath);
-    return data.publicUrl;
+    // Build the public URL the same way the JS client does
+    return `${url}/storage/v1/object/public/${BUCKET}/${filePath}`;
   }
 
   /**

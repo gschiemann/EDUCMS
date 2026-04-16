@@ -43,20 +43,7 @@ export class AuthService {
       // Hash format not recognized by argon2 — fall through to legacy check
     }
 
-    // Legacy/dev fallback: support seed data with plaintext hashes
-    // This allows the seed user (passwordHash = 'secure_hash') to still log in
-    if (user.passwordHash === pass || user.passwordHash === 'secure_hash') {
-      // Auto-upgrade to Argon2id hash on successful legacy login
-      const upgradedHash = await this.hashPassword(pass);
-      await this.prisma.client.user.update({
-        where: { id: user.id },
-        data: { passwordHash: upgradedHash }
-      });
-
-      const { passwordHash, ...result } = user;
-      return result;
-    }
-
+    // Argon2id verification failed — reject
     return null;
   }
 

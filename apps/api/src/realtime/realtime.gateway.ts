@@ -72,10 +72,12 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
       // Verify JWT token
       let decoded: any;
-      if (token.startsWith('dev_')) {
-         // Local dev bypass
+      if (token.startsWith('dev_') && process.env.NODE_ENV !== 'production') {
+         // Local dev bypass — NEVER available in production
          const parts = token.split('_');
          decoded = { deviceId: parts[1], tenantId: parts[2] };
+      } else if (token.startsWith('dev_')) {
+         throw new Error('Dev tokens are not allowed in production');
       } else {
          const jwtSecret = process.env.DEVICE_JWT_SECRET || 'dev_secret';
          decoded = jwt.verify(token, jwtSecret) as any;

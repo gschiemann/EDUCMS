@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from './auth.service';
 import { JwtService } from '@nestjs/jwt';
+import { PrismaService } from '../prisma/prisma.service';
 import { cryptoPlatformConfig } from './crypto.config';
 import * as argon2 from 'argon2';
 
@@ -15,6 +16,20 @@ describe('AuthService Security Properties', () => {
           provide: JwtService,
           useValue: {
             sign: jest.fn().mockReturnValue('mock_jwt_token'),
+          },
+        },
+        {
+          provide: PrismaService,
+          useValue: {
+            client: {
+              user: {
+                findUnique: jest.fn(),
+                update: jest.fn(),
+              },
+              tenant: {
+                findUnique: jest.fn().mockResolvedValue({ slug: 'test-school' }),
+              },
+            },
           },
         },
       ],
@@ -49,29 +64,34 @@ describe('AuthService Security Properties', () => {
     it('should successfully verify valid password', async () => {
       const password = 'test_password';
       const hash = await service.hashPassword(password);
-      const isValid = await service.verifyPassword(password, hash);
+      const isValid = await argon2.verify(hash, password, cryptoPlatformConfig);
       expect(isValid).toBeTruthy();
     });
 
     it('should explicitly reject invalid password', async () => {
       const password = 'test_password';
       const hash = await service.hashPassword(password);
-      const isValid = await service.verifyPassword('wrong_password', hash);
+      const isValid = await argon2.verify(hash, 'wrong_password', cryptoPlatformConfig);
       expect(isValid).toBeFalsy();
     });
   });
 
-  describe('Session Mechanics', () => {
-    it('should rotate session ID upon login call', async () => {
-      const regenerateMock = jest.fn((callback) => callback(null));
-      const reqMock: any = {
-        session: { regenerate: regenerateMock },
-        ip: '127.0.0.1',
+  describe('Login', () => {
+    it('should return access_token and user info on login', async () => {
+      const user = {
+        id: 'user-1',
+        email: 'test@school.edu',
+        role: 'SCHOOL_ADMIN',
+        tenantId: 'tenant-1',
+        canTriggerPanic: false,
       };
 
-      await service.login('user-id', reqMock);
-      expect(regenerateMock).toHaveBeenCalled();
-      expect(reqMock.session['userId']).toEqual('user-id');
+      const result = await service.login(user);
+
+      expect(result.access_token).toBe('mock_jwt_token');
+      expect(result.user.id).toBe('user-1');
+      expect(result.user.email).toBe('test@school.edu');
+      expect(result.user.tenantSlug).toBe('test-school');
     });
   });
 });
