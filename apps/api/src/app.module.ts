@@ -23,6 +23,7 @@ import { AuditInterceptor } from './security/audit.interceptor';
 import { AnomalyMiddleware } from './security/anomaly.middleware';
 import { WebsocketSignerService } from './security/websocket-signer.service';
 import { AssetSanitizerService } from './security/asset-sanitizer.service';
+import { SupabaseStorageService } from './storage/supabase-storage.service';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RbacGuard } from './auth/rbac.guard';
 
@@ -55,6 +56,7 @@ import { RbacGuard } from './auth/rbac.guard';
     AppService,
     WebsocketSignerService,
     AssetSanitizerService,
+    SupabaseStorageService,
     JwtAuthGuard,
     RbacGuard,
     {

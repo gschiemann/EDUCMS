@@ -1,25 +1,16 @@
 import {
   Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request,
-  UseInterceptors, UploadedFile, Res, HttpException, HttpStatus,
+  UseInterceptors, UploadedFile, HttpException, HttpStatus,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import type { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
-import { diskStorage } from 'multer';
-import { extname, join } from 'path';
-import { existsSync, mkdirSync, unlinkSync } from 'fs';
+import { extname } from 'path';
 import { randomUUID } from 'crypto';
-
-const UPLOAD_DIR = process.env.UPLOAD_DIR || (process.env.NODE_ENV === 'production' ? '/tmp/uploads' : './uploads');
-
-// Ensure upload directory exists
-if (!existsSync(UPLOAD_DIR)) {
-  mkdirSync(UPLOAD_DIR, { recursive: true });
-}
+import { SupabaseStorageService } from '../storage/supabase-storage.service';
 
 const ALLOWED_TYPES = [
   'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml', 'image/x-icon', 'image/bmp',
@@ -28,20 +19,13 @@ const ALLOWED_TYPES = [
   'application/pdf',
 ];
 
-const storage = diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, UPLOAD_DIR);
-  },
-  filename: (_req, file, cb) => {
-    const uniqueName = `${randomUUID()}${extname(file.originalname)}`;
-    cb(null, uniqueName);
-  },
-});
-
 @Controller('api/v1/assets')
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class AssetsController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: SupabaseStorageService,
+  ) {}
 
   @Get()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
@@ -59,18 +43,17 @@ export class AssetsController {
 
   /**
    * File upload endpoint.
-   * Stores file on disk, creates asset record with full metadata.
+   * Receives file via multer (memory storage), uploads to Supabase Storage.
    */
   @Post('upload')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   @UseInterceptors(FileInterceptor('file', {
-    storage,
     limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
     fileFilter: (_req, file, cb) => {
       if (ALLOWED_TYPES.includes(file.mimetype)) {
         cb(null, true);
       } else {
-        cb(null, false); // Reject without throwing — we handle it below
+        cb(null, false);
       }
     },
   }))
@@ -82,11 +65,25 @@ export class AssetsController {
       );
     }
 
+    // Upload to Supabase Storage: tenant/<tenantId>/<uuid>.<ext>
+    const ext = extname(file.originalname) || '';
+    const storagePath = `${req.user.tenantId}/${randomUUID()}${ext}`;
+
+    let fileUrl: string;
+    try {
+      fileUrl = await this.storage.upload(storagePath, file.buffer, file.mimetype);
+    } catch (err: any) {
+      throw new HttpException(
+        `Upload failed: ${err.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
     const asset = await this.prisma.client.asset.create({
       data: {
         tenantId: req.user.tenantId,
         uploadedByUserId: req.user.id,
-        fileUrl: `/api/v1/assets/file/${file.filename}`,
+        fileUrl,
         mimeType: file.mimetype,
         fileSize: file.size,
         originalName: file.originalname,
@@ -105,7 +102,7 @@ export class AssetsController {
   }
 
   /**
-   * Delete an asset (and its file from disk).
+   * Delete an asset (and its file from Supabase Storage).
    */
   @Delete(':id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
@@ -118,15 +115,10 @@ export class AssetsController {
     // Delete playlist items referencing this asset
     await this.prisma.client.playlistItem.deleteMany({ where: { assetId: id } });
 
-    // Delete from disk if it's a local file
-    if (asset.fileUrl.startsWith('/api/v1/assets/file/')) {
-      const filename = asset.fileUrl.split('/').pop();
-      if (filename) {
-        const filePath = join(process.cwd(), UPLOAD_DIR, filename);
-        if (existsSync(filePath)) {
-          try { unlinkSync(filePath); } catch { /* ignore */ }
-        }
-      }
+    // Delete from Supabase Storage if it's a Supabase URL
+    const storagePath = this.storage.extractPath(asset.fileUrl);
+    if (storagePath) {
+      await this.storage.delete(storagePath);
     }
 
     await this.prisma.client.asset.delete({ where: { id } });
