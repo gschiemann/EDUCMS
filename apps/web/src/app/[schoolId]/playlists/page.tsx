@@ -1116,7 +1116,7 @@ export default function PlaylistsPage() {
                   Cancel
                 </button>
                 <button
-                  disabled={!schedTarget || createSchedule.isPending}
+                  disabled={schedTargets.length === 0 || createSchedule.isPending}
                   onClick={handlePublish}
                   className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-sm font-bold rounded-lg shadow-sm flex items-center gap-2"
                 >
