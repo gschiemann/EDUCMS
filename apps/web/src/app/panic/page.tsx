@@ -1,54 +1,84 @@
 "use client";
 
 import { useAppStore } from '@/lib/store';
-import { ShieldAlert, WifiOff, Loader2, AlertTriangle, CheckCircle2, Megaphone, ChevronLeft } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { ShieldAlert, Loader2, AlertTriangle, CheckCircle2, Megaphone, ChevronLeft, LogIn } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { broadcastEmergency } from '@/actions/trigger-emergency';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+
 export default function MobilePanicPage() {
   const router = useRouter();
-  const { user, token } = useAppStore();
-  const [phase, setPhase] = useState<'idle' | 'holding' | 'triggering' | 'triggered' | 'error'>('idle');
+  const storeUser = useAppStore((s) => s.user);
+  const storeToken = useAppStore((s) => s.token);
+  const login = useAppStore((s) => s.login);
+  const [phase, setPhase] = useState<'loading' | 'idle' | 'holding' | 'triggering' | 'triggered' | 'error'>('loading');
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
-  const [mounted, setMounted] = useState(false);
-  
+
+  // Verified user/token after re-validation
+  const [verifiedUser, setVerifiedUser] = useState<any>(null);
+  const [verifiedToken, setVerifiedToken] = useState<string | null>(null);
+
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
   const progressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Authorization Check
+  // On mount: verify the session is still valid by calling the API
   useEffect(() => {
-    setMounted(true);
-    if (!token) {
+    async function verifySession() {
+      const token = storeToken;
+
+      // No token at all → go to login
+      if (!token) {
+        router.push('/login?redirect=/panic');
+        return;
+      }
+
+      // Try to verify the token is still valid by hitting a lightweight endpoint
+      try {
+        const res = await fetch(`${API_URL}/users`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+
+        if (res.ok) {
+          // Token is valid — use stored user data
+          if (storeUser) {
+            setVerifiedUser(storeUser);
+            setVerifiedToken(token);
+            setPhase('idle');
+            return;
+          }
+        }
+      } catch {
+        // Network error — try to use cached data anyway (offline resilience for life-safety)
+        if (storeUser) {
+          setVerifiedUser(storeUser);
+          setVerifiedToken(token);
+          setPhase('idle');
+          return;
+        }
+      }
+
+      // Token invalid or no user data → force re-login
       router.push('/login?redirect=/panic');
     }
-  }, [token, router]);
 
-  if (!mounted || !user) return null;
-
-  if (!user.canTriggerPanic && user.role !== 'SUPER_ADMIN' && user.role !== 'DISTRICT_ADMIN' && user.role !== 'SCHOOL_ADMIN') {
-    return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center">
-        <WifiOff className="w-16 h-16 text-slate-700 mb-6" />
-        <h1 className="text-2xl font-bold text-white mb-2">Unauthorized</h1>
-        <p className="text-slate-400">Your account is not authorized to trigger mobile emergency overrides.</p>
-      </div>
-    );
-  }
+    verifySession();
+  }, [storeToken, storeUser, router]);
 
   const HOLD_DURATION_MS = 1500;
 
   const handlePointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
     if (phase === 'triggering' || phase === 'triggered') return;
-    
+
     setPhase('holding');
     setProgress(0);
 
     const startTime = Date.now();
-    
+
     progressTimerRef.current = setInterval(() => {
       const elapsed = Date.now() - startTime;
       const pct = Math.min((elapsed / HOLD_DURATION_MS) * 100, 100);
@@ -74,15 +104,27 @@ export default function MobilePanicPage() {
     if (progressTimerRef.current) clearInterval(progressTimerRef.current);
 
     try {
+      if (!verifiedToken) throw new Error('No auth token. Please log in again.');
+      if (!verifiedUser?.tenantId) throw new Error('No school ID. Please log in again.');
+
       const result = await broadcastEmergency({
-        schoolId: user.tenantId,
+        schoolId: verifiedUser.tenantId,
         type: selectedType || 'lockdown',
-        triggeredBy: user.id,
-        token: token!
+        triggeredBy: verifiedUser.id || 'unknown',
+        token: verifiedToken
       });
-      if (result?.error) throw new Error(result.error);
+
+      if (result?.error) {
+        // If it's a 401/403, tell the user to re-login
+        if (result.error.includes('401') || result.error.includes('403')) {
+          throw new Error('Session expired. Please log out and log back in, then try again.');
+        }
+        throw new Error(result.error);
+      }
+
       setPhase('triggered');
     } catch (e: any) {
+      console.error('[PANIC] Emergency trigger failed:', e);
       setErrorMsg(e.message || 'Failed to connect. Ensure you have internet.');
       setPhase('error');
     }
@@ -96,23 +138,41 @@ export default function MobilePanicPage() {
 
   const activeConf = types.find(t => t.id === selectedType) || types[0];
 
+  // Loading state while verifying session
+  if (phase === 'loading') {
+    return (
+      <div className="fixed inset-0 bg-slate-950 text-white flex flex-col items-center justify-center">
+        <Loader2 className="w-12 h-12 text-red-500 animate-spin mb-4" />
+        <p className="text-slate-400 text-sm">Verifying authorization...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6 overscroll-none select-none">
       <div className="absolute top-6 left-6 right-6 flex justify-between items-center opacity-50">
         <ShieldAlert className="w-6 h-6" />
-        <span className="text-xs font-bold uppercase tracking-widest">{user.email}</span>
+        <span className="text-xs font-bold uppercase tracking-widest">{verifiedUser?.email || 'AUTHORIZED'}</span>
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center w-full max-w-sm">
-        
+
         {phase === 'error' ? (
           <div className="text-center animate-in zoom-in duration-300">
             <AlertTriangle className="w-24 h-24 text-red-500 mx-auto mb-6" />
             <h1 className="text-3xl font-black mb-2 text-red-500">FAILED</h1>
-            <p className="text-slate-400 mb-8 max-w-[250px] mx-auto">{errorMsg}</p>
-            <button onClick={() => setPhase('idle')} className="px-8 py-3 bg-slate-800 rounded-full font-bold uppercase tracking-wider text-sm">
-              Try Again
-            </button>
+            <p className="text-slate-400 mb-8 max-w-[280px] mx-auto text-sm">{errorMsg}</p>
+            <div className="flex flex-col gap-3">
+              <button onClick={() => { setPhase('idle'); setErrorMsg(''); }} className="px-8 py-3 bg-slate-800 rounded-full font-bold uppercase tracking-wider text-sm">
+                Try Again
+              </button>
+              <button
+                onClick={() => router.push('/login?redirect=/panic')}
+                className="px-8 py-3 bg-slate-900 border border-slate-700 rounded-full font-bold uppercase tracking-wider text-sm flex items-center justify-center gap-2"
+              >
+                <LogIn className="w-4 h-4" /> Re-Login
+              </button>
+            </div>
           </div>
         ) : phase === 'triggered' ? (
           <div className="text-center animate-in zoom-in duration-300">
@@ -148,7 +208,7 @@ export default function MobilePanicPage() {
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center text-center w-full animate-in fade-in zoom-in-95 duration-300">
-            <button 
+            <button
               onClick={() => setSelectedType(null)}
               className="absolute top-6 left-6 flex items-center justify-center w-10 h-10 rounded-full bg-slate-900 text-slate-400"
             >
@@ -186,7 +246,7 @@ export default function MobilePanicPage() {
                 onContextMenu={e => e.preventDefault()}
                 disabled={phase === 'triggering'}
                 className={`
-                  relative z-10 w-48 h-48 rounded-full shadow-[inset_0_-8px_0_rgba(0,0,0,0.2)] 
+                  relative z-10 w-48 h-48 rounded-full shadow-[inset_0_-8px_0_rgba(0,0,0,0.2)]
                   flex flex-col items-center justify-center transition-all duration-200 outline-none
                   ${phase === 'holding' ? `${activeConf.holdColor} scale-95 shadow-[inset_0_0_0_rgba(0,0,0,0)]` : activeConf.activeColor}
                   ${phase === 'triggering' ? '!bg-slate-800 opacity-50 cursor-not-allowed border outline-none border-slate-700' : ''}
@@ -208,7 +268,7 @@ export default function MobilePanicPage() {
           </div>
         )}
       </div>
-      
+
       {phase === 'triggered' && (
         <div className="absolute bottom-8 italic text-slate-500 text-xs text-center w-full px-8">
           The emergency must be cleared from a secure terminal by an administrator.
