@@ -57,9 +57,14 @@ export class SupabaseStorageService implements OnModuleInit {
       throw new Error('Supabase Storage not configured — set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
     }
 
+    // Convert raw Node Buffer to a Web Standard Blob 
+    // This physically prevents @supabase/supabase-js v2 from destructively treating 
+    // the binary byte array as a conventional Javascript object and stringifying it into JSON
+    const fileBlob = new Blob([buffer], { type: contentType });
+
     const { error } = await this.client.storage
       .from(BUCKET)
-      .upload(filePath, buffer, {
+      .upload(filePath, fileBlob, {
         contentType,
         upsert: true,
       });
