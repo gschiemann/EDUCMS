@@ -28,7 +28,7 @@ export default function MobilePanicPage() {
 
   if (!mounted || !user) return null;
 
-  if (!user.canTriggerPanic && user.role !== 'SUPER_ADMIN' && user.role !== 'SCHOOL_ADMIN') {
+  if (!user.canTriggerPanic && user.role !== 'SUPER_ADMIN' && user.role !== 'DISTRICT_ADMIN' && user.role !== 'SCHOOL_ADMIN') {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center">
         <WifiOff className="w-16 h-16 text-slate-700 mb-6" />
