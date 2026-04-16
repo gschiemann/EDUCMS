@@ -52,7 +52,7 @@ function SortableItem({ item, index, onRemove, onDurationChange }: any) {
   const name = assetName(item.asset);
 
   return (
-    <div ref={setNodeRef} style={style} className="flex items-center gap-3 p-3.5 bg-white rounded-2xl border border-slate-100 group hover:shadow-[0_4px_20px_rgba(0,0,0,0.04)] transition-all">
+    <div ref={setNodeRef} style={style} className="playlist-item-card flex items-center gap-3 p-3.5 bg-white rounded-2xl border border-slate-100 group hover:shadow-[0_4px_20px_rgba(0,0,0,0.04)] transition-all">
       <button {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 text-slate-300 hover:text-slate-500">
         <GripVertical className="w-4 h-4" />
       </button>
@@ -538,15 +538,58 @@ export default function PlaylistsPage() {
               </div>
             ) : tab === 'editor' ? (
               localItems.length > 0 ? (
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToVerticalAxis]}>
-                  <SortableContext items={localItems.map((s: any) => s.id)} strategy={verticalListSortingStrategy}>
-                    <div className="space-y-2">
-                      {localItems.map((item: any, i: number) => (
-                        <SortableItem key={item.id} item={item} index={i} onRemove={handleRemove} onDurationChange={handleDuration} />
-                      ))}
+                <div className="flex flex-col h-full">
+                  {/* Bulk Actions Header */}
+                  <div className="flex flex-wrap items-center justify-between mb-4 px-2 py-2 bg-slate-50/50 rounded-xl border border-slate-100/50">
+                    <div className="flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-slate-400" />
+                      <span className="text-xs font-bold text-slate-600">{localItems.length} item{localItems.length !== 1 ? 's' : ''} in playlist</span>
                     </div>
-                  </SortableContext>
-                </DndContext>
+                    
+                    <div className="flex items-center gap-2 bg-white p-1 rounded-lg shadow-sm border border-slate-200/60">
+                      <div className="flex items-center pl-2 pr-1 gap-1">
+                        <Clock className="w-3.5 h-3.5 text-indigo-400" />
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mx-1">Set All</span>
+                      </div>
+                      <input 
+                        type="number" 
+                        min="1" max="300"
+                        id="bulk-time-input"
+                        defaultValue="10"
+                        className="w-14 px-2 py-1 text-xs bg-slate-50 border border-slate-100 rounded-md text-center font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition-all" 
+                      />
+                      <span className="text-[10px] text-slate-400 font-semibold mr-1">sec</span>
+                      <button 
+                        onClick={() => {
+                          const el = document.getElementById('bulk-time-input') as HTMLInputElement;
+                          const val = parseInt(el?.value) || 10;
+                          setLocalItems(prev => prev.map(item => ({ ...item, durationMs: val * 1000 })));
+                          setHasChanges(true);
+                          
+                          // Optional: Little flash animation on the items to show they updated
+                          const items = document.querySelectorAll('.playlist-item-card');
+                          items.forEach(item => {
+                            item.classList.add('ring-2', 'ring-indigo-400', 'bg-indigo-50');
+                            setTimeout(() => item.classList.remove('ring-2', 'ring-indigo-400', 'bg-indigo-50'), 400);
+                          });
+                        }}
+                        className="px-3 py-1 bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white text-[10px] font-bold rounded-md transition-all duration-200"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  </div>
+
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToVerticalAxis]}>
+                    <SortableContext items={localItems.map((s: any) => s.id)} strategy={verticalListSortingStrategy}>
+                      <div className="space-y-2">
+                        {localItems.map((item: any, i: number) => (
+                          <SortableItem key={item.id} item={item} index={i} onRemove={handleRemove} onDurationChange={handleDuration} />
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
+                </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                   <Play className="w-10 h-10 text-slate-200 mb-3" />
