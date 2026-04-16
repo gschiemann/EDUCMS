@@ -1,0 +1,17 @@
+{
+  "name": "EMERGENCY TRG",
+  "short_name": "EMERGENCY",
+  "description": "Emergency facility broadcast override",
+  "start_url": "/panic",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "icons": [
+    {
+      "src": "/panic-icon.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

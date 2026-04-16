@@ -47,7 +47,7 @@ export class AuthService {
     return null;
   }
 
-  async login(user: any) {
+  async login(user: any, rememberMe?: boolean) {
     // Look up the tenant slug for URL-friendly routing
     const tenant = await this.prisma.client.tenant.findUnique({
       where: { id: user.tenantId },
@@ -62,7 +62,7 @@ export class AuthService {
       canTriggerPanic: user.canTriggerPanic
     };
     return {
-      access_token: this.jwtService.sign(payload),
+      access_token: this.jwtService.sign(payload, rememberMe ? { expiresIn: '365d' } : undefined),
       user: {
         id: user.id, email: user.email, role: user.role,
         tenantId: user.tenantId, tenantSlug: tenant?.slug || user.tenantId,

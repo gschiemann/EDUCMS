@@ -22,7 +22,7 @@ export default function MobilePanicPage() {
   useEffect(() => {
     setMounted(true);
     if (!token) {
-      router.push('/login');
+      router.push('/login?redirect=/panic');
     }
   }, [token, router]);
 

@@ -1,19 +1,30 @@
 "use client";
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { MonitorPlay, Loader2, AlertCircle } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-950"><Loader2 className="w-8 h-8 text-indigo-500 animate-spin" /></div>}>
+      <LoginContent />
+    </Suspense>
+  );
+}
+
+function LoginContent() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const login = useUIStore((state) => state.login);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTarget = searchParams.get('redirect');
+  const [rememberMe, setRememberMe] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,12 +34,12 @@ export default function LoginPage() {
       const res = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password, rememberMe })
       });
       const data = await res.json();
       if (res.ok && data.access_token) {
         login(data.access_token, data.user);
-        router.push(`/${data.user.tenantSlug || data.user.tenantId}/dashboard`);
+        router.push(redirectTarget || `/${data.user.tenantSlug || data.user.tenantId}/dashboard`);
       } else {
         setError(data.message || 'Invalid email or password. Please try again.');
       }
@@ -82,6 +93,20 @@ export default function LoginPage() {
                 value={password}
                 onChange={e => setPassword(e.target.value)}
               />
+            </div>
+
+            <div>
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input 
+                  type="checkbox" 
+                  checked={rememberMe} 
+                  onChange={e => setRememberMe(e.target.checked)} 
+                  className="w-4 h-4 rounded border-slate-700 bg-slate-800/50 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-slate-900 transition-all cursor-pointer" 
+                />
+                <span className="text-xs font-semibold text-slate-400 group-hover:text-slate-300 transition-colors">
+                  Keep me signed in (For Emergency Devices / PWAs)
+                </span>
+              </label>
             </div>
 
             {error && (
