@@ -13,6 +13,7 @@ model Tenant {
   id                      String        @id @default(uuid())
   parentId                String?       @map("parent_id")
   name                    String
+  slug                    String        @unique
   emergencyStatus         String        @default("INACTIVE") @map("emergency_status")
   createdAt               DateTime      @default(now()) @map("created_at")
   emergencyPlaylistId     String?       @map("emergency_playlist_id")

@@ -13,7 +13,7 @@ export default function RootPage() {
     if (!token) {
       router.push('/login');
     } else if (user?.tenantId) {
-      router.push(`/${user.tenantId}/dashboard`);
+      router.push(`/${user.tenantSlug || user.tenantId}/dashboard`);
     } else {
       // Token exists but user is corrupted/missing tenantId -> Force cleanup
       useUIStore.getState().logout();

@@ -61,6 +61,12 @@ export class AuthService {
   }
 
   async login(user: any) {
+    // Look up the tenant slug for URL-friendly routing
+    const tenant = await this.prisma.client.tenant.findUnique({
+      where: { id: user.tenantId },
+      select: { slug: true },
+    });
+
     const payload = {
       sub: user.id,
       email: user.email,
@@ -70,7 +76,11 @@ export class AuthService {
     };
     return {
       access_token: this.jwtService.sign(payload),
-      user: { id: user.id, email: user.email, role: user.role, tenantId: user.tenantId, canTriggerPanic: user.canTriggerPanic }
+      user: {
+        id: user.id, email: user.email, role: user.role,
+        tenantId: user.tenantId, tenantSlug: tenant?.slug || user.tenantId,
+        canTriggerPanic: user.canTriggerPanic,
+      }
     };
   }
 }

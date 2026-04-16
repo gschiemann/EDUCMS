@@ -28,7 +28,7 @@ export default function LoginPage() {
       const data = await res.json();
       if (res.ok && data.access_token) {
         login(data.access_token, data.user);
-        router.push(`/${data.user.tenantId}/dashboard`);
+        router.push(`/${data.user.tenantSlug || data.user.tenantId}/dashboard`);
       } else {
         setError(data.message || 'Invalid email or password. Please try again.');
       }

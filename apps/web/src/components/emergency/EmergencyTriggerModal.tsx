@@ -10,7 +10,7 @@ interface Props {
 
 export function EmergencyTriggerModal({ onClose }: Props) {
   const setEmergencyActive = useAppStore((state) => state.setEmergencyActive);
-  const activeTenant = useAppStore((state) => state.activeTenant);
+  const user = useAppStore((state) => state.user);
   
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [selectedPlaylist, setSelectedPlaylist] = useState<string>('');
@@ -25,7 +25,7 @@ export function EmergencyTriggerModal({ onClose }: Props) {
       startTransition(async () => {
          // Next.js Server Action handles backend communication
          await broadcastEmergency({
-            schoolId: activeTenant || 'global',
+            schoolId: user?.tenantId || 'global',
             type: selectedType!,
             playlistId: selectedPlaylist || undefined,
             triggeredBy: 'admin-123'

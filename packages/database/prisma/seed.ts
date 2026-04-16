@@ -26,6 +26,7 @@ async function main() {
     data: {
       id: "00000000-0000-0000-0000-000000000001",
       name: "Springfield School District",
+      slug: "springfield-district",
     }
   });
 
@@ -34,6 +35,7 @@ async function main() {
     data: {
       id: "00000000-0000-0000-0000-000000000002",
       name: "Springfield Elementary",
+      slug: "springfield-elementary",
       parentId: district.id,
     }
   });

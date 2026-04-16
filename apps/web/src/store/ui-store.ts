@@ -7,7 +7,7 @@ import { create } from 'zustand';
 interface AppState {
   // Auth state
   token: string | null;
-  user: { id: string; email: string; role: string; tenantId: string; canTriggerPanic?: boolean } | null;
+  user: { id: string; email: string; role: string; tenantId: string; tenantSlug?: string; canTriggerPanic?: boolean } | null;
 
   // UI state
   sidebarOpen: boolean;
@@ -42,7 +42,7 @@ export const useUIStore = create<AppState>((set) => ({
       localStorage.setItem('edu_cms_token', token);
       localStorage.setItem('edu_cms_user', JSON.stringify(user));
     }
-    set({ token, user, activeTenant: user.tenantId });
+    set({ token, user, activeTenant: user.tenantSlug || user.tenantId });
   },
   logout: () => {
     if (typeof window !== 'undefined') {
