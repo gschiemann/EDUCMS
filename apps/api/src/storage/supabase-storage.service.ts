@@ -60,7 +60,7 @@ export class SupabaseStorageService implements OnModuleInit {
     // Convert raw Node Buffer to a strictly sliced Web Standard ArrayBuffer
     // This physically prevents both @supabase/supabase-js v2 boundary stringification
     // AND runtime Node 18 native Blob DOM polyfill payload truncation issues completely.
-    const fileBytes = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+    const fileBytes = buffer instanceof ArrayBuffer ? buffer : new Uint8Array(buffer).buffer as ArrayBuffer;
 
     const { error } = await this.client.storage
       .from(BUCKET)
