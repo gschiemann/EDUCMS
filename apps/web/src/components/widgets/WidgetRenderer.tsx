@@ -25,11 +25,12 @@ function resolveUrl(url: string | undefined | null): string {
 // Master renderer — picks the right widget by type
 // ═══════════════════════════════════════════════════════
 
-export function WidgetPreview({ widgetType, config, width, height }: {
+export function WidgetPreview({ widgetType, config, width, height, live }: {
   widgetType: string;
   config: any;
   width: number;   // percentage width of zone
   height: number;  // percentage height of zone
+  live?: boolean;  // true on the player page — enables autoplay, iframes, etc.
 }) {
   const cfg = config || {};
   const compact = height < 20 || width < 25;
@@ -48,9 +49,9 @@ export function WidgetPreview({ widgetType, config, width, height }: {
     case 'STAFF_SPOTLIGHT': return <StaffSpotlightWidget config={cfg} compact={compact} />;
     case 'IMAGE':        return <ImageWidget config={cfg} />;
     case 'IMAGE_CAROUSEL': return <ImageCarouselWidget config={cfg} />;
-    case 'VIDEO':        return <VideoWidget config={cfg} />;
+    case 'VIDEO':        return <VideoWidget config={cfg} live={live} />;
     case 'LOGO':         return <LogoWidget config={cfg} />;
-    case 'WEBPAGE':      return <WebpageWidget config={cfg} />;
+    case 'WEBPAGE':      return <WebpageWidget config={cfg} live={live} />;
     case 'RSS_FEED':     return <RSSWidget config={cfg} compact={compact} />;
     case 'SOCIAL_FEED':  return <SocialWidget config={cfg} />;
     case 'PLAYLIST':     return <PlaylistWidget config={cfg} />;
@@ -667,30 +668,53 @@ function ImageCarouselWidget({ config }: { config: any }) {
   );
 }
 
-function VideoWidget({ config }: { config: any }) {
+function VideoWidget({ config, live }: { config: any; live?: boolean }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const shouldAutoplay = live && (config.autoplay !== false);  // default true in live mode
+  const shouldLoop = config.loop !== false;                     // default true
+  const shouldMute = config.muted !== false;                    // default true (required for autoplay)
+
+  // Force autoplay when in live mode — browsers require muted for autoplay
+  useEffect(() => {
+    if (shouldAutoplay && videoRef.current) {
+      videoRef.current.play().catch(() => {
+        // Autoplay blocked — try muted
+        if (videoRef.current) {
+          videoRef.current.muted = true;
+          videoRef.current.play().catch(() => {});
+        }
+      });
+    }
+  }, [shouldAutoplay, config.assetUrl]);
+
   if (config.assetUrl) {
     return (
       <div className="absolute inset-0 overflow-hidden bg-black">
         <video
+          ref={videoRef}
           src={resolveUrl(config.assetUrl)}
           className="w-full h-full"
           style={{ objectFit: config.fitMode || 'contain' }}
-          muted
-          preload="metadata"
+          autoPlay={shouldAutoplay}
+          muted={shouldMute}
+          loop={shouldLoop}
+          preload={live ? 'auto' : 'metadata'}
           playsInline
         />
-        {/* Play button overlay */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div style={{
-            width: '2.5em', height: '2.5em', borderRadius: 999,
-            background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <Play style={{ width: '1em', height: '1em', color: 'white', marginLeft: '0.1em' }} />
+        {/* Play button overlay — only show in editor preview, not on live player */}
+        {!live && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div style={{
+              width: '2.5em', height: '2.5em', borderRadius: 999,
+              background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Play style={{ width: '1em', height: '1em', color: 'white', marginLeft: '0.1em' }} />
+            </div>
           </div>
-        </div>
-        {/* Name badge */}
-        {config.assetName && (
+        )}
+        {/* Name badge — only in editor */}
+        {!live && config.assetName && (
           <div className="absolute bottom-[5%] left-[5%] right-[5%]">
             <div style={{
               background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
@@ -735,8 +759,41 @@ function LogoWidget({ config }: { config: any }) {
 // WEB / CONTENT WIDGETS
 // ═══════════════════════════════════════════════════════
 
-function WebpageWidget({ config }: { config: any }) {
+function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
   const url = config.url;
+  const refreshInterval = config.refreshIntervalMs || 0;
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // Auto-refresh the iframe at the configured interval
+  useEffect(() => {
+    if (!live || !url || !refreshInterval || refreshInterval < 5000) return;
+    const t = setInterval(() => {
+      if (iframeRef.current) {
+        iframeRef.current.src = url;
+      }
+    }, refreshInterval);
+    return () => clearInterval(t);
+  }, [live, url, refreshInterval]);
+
+  // Live mode — render an actual iframe
+  if (live && url) {
+    return (
+      <div className="absolute inset-0 overflow-hidden">
+        <iframe
+          ref={iframeRef}
+          src={url}
+          className="w-full h-full border-0"
+          style={{ overflow: config.scrollEnabled ? 'auto' : 'hidden' }}
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+          allow="autoplay; encrypted-media"
+          loading="eager"
+          title="Web content"
+        />
+      </div>
+    );
+  }
+
+  // Editor preview — show browser mockup
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden" style={{ background: '#f8fafc' }}>
       {/* Browser chrome */}

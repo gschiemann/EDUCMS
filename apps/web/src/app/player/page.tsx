@@ -496,6 +496,7 @@ export default function PlayerPage() {
               config={zone.defaultConfig}
               width={zone.width}
               height={zone.height}
+              live={true}
             />
           </div>
         ))}

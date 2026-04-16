@@ -1436,9 +1436,9 @@ function WidgetConfig({ zone, idx, updateZone }: { zone: Zone; idx: number; upda
           <option value="stretch">Stretch to fill</option>
         </select>
         <div>
-          <label className="text-[10px] font-bold text-slate-400 block mb-1">Slide Duration (ms)</label>
-          <input type="number" min={1000} max={60000} step={1000} value={config.intervalMs || 5000}
-            onChange={e => setConfig({ intervalMs: parseInt(e.target.value) || 5000 })} className={inputClass} />
+          <label className="text-[10px] font-bold text-slate-400 block mb-1">Slide Duration (seconds)</label>
+          <input type="number" min={1} max={60} step={1} value={Math.round((config.intervalMs || 5000) / 1000)}
+            onChange={e => setConfig({ intervalMs: (parseInt(e.target.value) || 5) * 1000 })} className={inputClass} />
         </div>
         <select value={config.transitionEffect || 'fade'} onChange={e => setConfig({ transitionEffect: e.target.value })} className={inputClass}>
           <option value="fade">Fade</option>
