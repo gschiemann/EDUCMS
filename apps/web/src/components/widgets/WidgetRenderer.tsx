@@ -622,7 +622,7 @@ function ImageWidget({ config }: { config: any }) {
   if (config.assetUrl) {
     return (
       <div className="absolute inset-0 overflow-hidden">
-        <img src={resolveUrl(config.assetUrl)} alt="" className="w-full h-full" style={{ objectFit: config.fitMode || 'cover' }} />
+        <img src={resolveUrl(config.assetUrl)} alt="" className="w-full h-full" style={{ objectFit: config.fitMode || 'contain' }} />
       </div>
     );
   }
@@ -648,7 +648,7 @@ function ImageCarouselWidget({ config }: { config: any }) {
   if (urls.length > 0) {
     return (
       <div className="absolute inset-0 overflow-hidden">
-        <img src={resolveUrl(urls[idx % urls.length])} alt="" className="w-full h-full transition-opacity duration-500" style={{ objectFit: config.fitMode || 'cover' }} />
+        <img src={resolveUrl(urls[idx % urls.length])} alt="" className="w-full h-full transition-opacity duration-500" style={{ objectFit: config.fitMode || 'contain' }} />
         {urls.length > 1 && (
           <div className="absolute bottom-[5%] left-1/2 -translate-x-1/2 flex gap-1">
             {urls.map((_: string, i: number) => (

@@ -13,79 +13,70 @@ export class ProxyController {
   @Get('web')
   @SkipThrottle()
   async proxyWeb(@Query('url') url: string, @Res() res: Response) {
-    if (!url) {
-      throw new HttpException('Missing url parameter', HttpStatus.BAD_REQUEST);
-    }
-
-    // Basic URL validation
-    let parsed: URL;
     try {
-      parsed = new URL(url);
-    } catch {
-      throw new HttpException('Invalid URL', HttpStatus.BAD_REQUEST);
-    }
+      if (!url) {
+        throw new HttpException('Missing url parameter', HttpStatus.BAD_REQUEST);
+      }
 
-    // Only allow http/https
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-      throw new HttpException('Only http/https URLs allowed', HttpStatus.BAD_REQUEST);
-    }
+      let parsed: URL;
+      try {
+        parsed = new URL(url);
+      } catch {
+        throw new HttpException('Invalid URL', HttpStatus.BAD_REQUEST);
+      }
 
-    try {
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        throw new HttpException('Only http/https URLs allowed', HttpStatus.BAD_REQUEST);
+      }
+
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
 
-      const upstream = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
-        redirect: 'follow',
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeout);
+      let upstream;
+      try {
+        upstream = await fetch(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+          },
+          redirect: 'follow',
+          signal: controller.signal,
+        });
+      } catch (e: any) {
+        if (e.name === 'AbortError') {
+          throw new HttpException('Upstream timeout (15s)', HttpStatus.GATEWAY_TIMEOUT);
+        }
+        throw new HttpException(`Upstream connection failed: ${e.message}`, HttpStatus.BAD_GATEWAY);
+      } finally {
+        clearTimeout(timeout);
+      }
 
       if (!upstream.ok) {
-        throw new HttpException(`Upstream returned ${upstream.status}`, HttpStatus.BAD_GATEWAY);
+        throw new HttpException(`Upstream returned HTTP ${upstream.status}`, HttpStatus.BAD_GATEWAY);
       }
 
       const contentType = upstream.headers.get('content-type') || 'text/html';
 
-      // Only proxy HTML content
       if (!contentType.includes('text/html') && !contentType.includes('application/xhtml')) {
-        // For non-HTML (images, scripts, etc.), redirect directly
         res.redirect(url);
         return;
       }
 
       let html = await upstream.text();
 
-      // Rewrite relative URLs to absolute so assets load correctly
-      const baseUrl = upstream.url || url; // upstream.url follows redirects
+      const baseUrl = upstream.url || url; 
 
-      // STRATEGY: Strip ALL JavaScript from the page.
-      // Chrome prevents overriding window.top, location.href, location.replace etc.
-      // (they're unforgeable browser APIs), so anti-frame-busting scripts don't work.
-      // For digital signage DISPLAY purposes, JS is unnecessary — pages render their
-      // content (CSS, images, layout) perfectly without it. Stripping JS also removes
-      // all frame-busting, redirect, and tracking scripts.
-
-      // 1. Remove all <script> tags and their content
       html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-      // 2. Remove <meta http-equiv="refresh"> redirects
       html = html.replace(/<meta[^>]*http-equiv\s*=\s*["']?refresh["']?[^>]*>/gi, '');
-      // 3. Remove javascript: URLs in event handlers
       html = html.replace(/\s(on\w+)\s*=\s*["'][^"']*["']/gi, '');
-      // 4. Remove noscript tags (show their content since we ARE stripping scripts)
       html = html.replace(/<\/?noscript[^>]*>/gi, '');
 
-      // Inject <base> tag so relative URLs (CSS, images) resolve against the original domain
       const baseTag = `<base href="${baseUrl}">`;
       if (html.includes('<head>')) {
-        html = html.replace('<head>', `<head>${baseTag}`);
+        html = html.replace('<head>', `<head>\n${baseTag}`);
       } else if (html.includes('<HEAD>')) {
-        html = html.replace('<HEAD>', `<HEAD>${baseTag}`);
+        html = html.replace('<HEAD>', `<HEAD>\n${baseTag}`);
       } else if (/<head[^>]*>/i.test(html)) {
         html = html.replace(/<head[^>]*>/i, `$&${baseTag}`);
       } else if (/<html[^>]*>/i.test(html)) {
@@ -94,25 +85,54 @@ export class ProxyController {
         html = baseTag + html;
       }
 
-      // Set response headers — strip all iframe-blocking headers
       res.setHeader('Content-Type', contentType);
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      // Explicitly ALLOW framing — remove BOTH headers that block iframes
       res.removeHeader('X-Frame-Options');
-      // Helmet middleware sets CSP with frame-ancestors 'self' by default,
-      // which blocks cross-origin framing (Vercel frontend → Railway API).
-      // Remove the entire CSP header and replace with a permissive one.
       res.removeHeader('Content-Security-Policy');
       res.setHeader('Content-Security-Policy', "frame-ancestors *");
       res.setHeader('Access-Control-Allow-Origin', '*');
 
       res.send(html);
     } catch (err: any) {
-      if (err instanceof HttpException) throw err;
-      if (err.name === 'AbortError') {
-        throw new HttpException('Upstream timeout (15s)', HttpStatus.GATEWAY_TIMEOUT);
+      // When catching errors, manually clear the headers Helmet injected earlier in the pipeline.
+      // If we allowed NestJS to throw and digest this exception natively, Helmet's initial
+      // `X-Frame-Options: SAMEORIGIN` block would lock the iframe, causing Chrome to display
+      // a highly confusing "api-XXXX.up.railway.app refused to connect" modal to users!
+      res.setHeader('Content-Type', 'text/html');
+      res.removeHeader('X-Frame-Options');
+      res.removeHeader('Content-Security-Policy');
+      res.setHeader('Content-Security-Policy', "frame-ancestors *");
+      res.setHeader('Access-Control-Allow-Origin', '*');
+
+      let message = 'An unknown proxy error occurred';
+      let status = HttpStatus.BAD_GATEWAY;
+
+      if (err instanceof HttpException) {
+        message = err.message;
+        status = err.getStatus();
+      } else if (err.message) {
+        message = err.message;
       }
-      throw new HttpException(`Proxy error: ${err.message}`, HttpStatus.BAD_GATEWAY);
+
+      res.status(status).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0f172a; color: #f8fafc; }
+            .box { text-align: center; padding: 30px; background: #1e293b; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); border: 1px solid #334155; }
+            h3 { color: #f87171; margin-top: 0; margin-bottom: 12px; }
+            p { margin: 0; color: #94a3b8; font-size: 14px; max-width: 300px; line-height: 1.5; }
+          </style>
+        </head>
+        <body>
+          <div class="box">
+            <h3>Website Connection Failed</h3>
+            <p>${message}</p>
+          </div>
+        </body>
+        </html>
+      `);
     }
   }
 }
