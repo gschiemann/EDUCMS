@@ -13,6 +13,7 @@ import { AssetsController } from './assets/assets.controller';
 import { AssetFilesController } from './assets/asset-files.controller';
 import { TemplatesController } from './templates/templates.controller';
 import { TenantsController } from './tenants/tenants.controller';
+import { ProxyController } from './proxy/proxy.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { RealtimeModule } from './realtime/realtime.module';
@@ -51,6 +52,7 @@ import { RbacGuard } from './auth/rbac.guard';
     AssetFilesController,
     TemplatesController,
     TenantsController,
+    ProxyController,
   ],
   providers: [
     AppService,

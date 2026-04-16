@@ -768,24 +768,31 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
   const refreshInterval = config.refreshIntervalMs || 0;
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
+  // In live mode, route through our API proxy to bypass X-Frame-Options / CSP
+  // so any website can be embedded in digital signage screens
+  const proxyUrl = useMemo(() => {
+    if (!live || !url) return '';
+    return `${API_BASE}/api/v1/proxy/web?url=${encodeURIComponent(url)}`;
+  }, [live, url]);
+
   // Auto-refresh the iframe at the configured interval
   useEffect(() => {
-    if (!live || !url || !refreshInterval || refreshInterval < 5000) return;
+    if (!live || !proxyUrl || !refreshInterval || refreshInterval < 5000) return;
     const t = setInterval(() => {
       if (iframeRef.current) {
-        iframeRef.current.src = url;
+        iframeRef.current.src = proxyUrl;
       }
     }, refreshInterval);
     return () => clearInterval(t);
-  }, [live, url, refreshInterval]);
+  }, [live, proxyUrl, refreshInterval]);
 
-  // Live mode — render an actual iframe
-  if (live && url) {
+  // Live mode — render an actual iframe routed through proxy
+  if (live && proxyUrl) {
     return (
       <div className="absolute inset-0 overflow-hidden">
         <iframe
           ref={iframeRef}
-          src={url}
+          src={proxyUrl}
           className="w-full h-full border-0"
           style={{ overflow: config.scrollEnabled ? 'auto' : 'hidden' }}
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
