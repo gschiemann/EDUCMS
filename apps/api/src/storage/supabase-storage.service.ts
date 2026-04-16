@@ -58,9 +58,14 @@ export class SupabaseStorageService implements OnModuleInit {
       return input;
     }
 
-    // Uint8Array or ArrayBuffer
-    if (input instanceof Uint8Array || input instanceof ArrayBuffer) {
-      return Buffer.from(input);
+    // Uint8Array — wrap via its underlying ArrayBuffer
+    if (input instanceof Uint8Array) {
+      return Buffer.from(input.buffer, input.byteOffset, input.byteLength);
+    }
+
+    // ArrayBuffer
+    if (input instanceof ArrayBuffer) {
+      return Buffer.from(new Uint8Array(input));
     }
 
     // Array of byte values
