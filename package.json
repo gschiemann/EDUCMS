@@ -8,6 +8,7 @@
     "build": "turbo run build",
     "dev": "turbo run dev --parallel",
     "test": "turbo run test",
+    "postinstall": "pnpm run db:generate",
     "db:generate": "pnpm --filter @cms/database run db:generate",
     "db:push": "pnpm --filter @cms/database run db:push",
     "db:seed": "pnpm --filter @cms/database run db:seed",
