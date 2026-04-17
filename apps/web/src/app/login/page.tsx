@@ -6,8 +6,7 @@ import { Suspense, useState } from 'react';
 import { MonitorPlay, Loader2, AlertCircle } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 import { useRouter, useSearchParams } from 'next/navigation';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+import { API_URL, warnIfMisconfigured, isLikelyMisconfigured } from '@/lib/api-url';
 
 export default function LoginPage() {
   return (
@@ -32,6 +31,7 @@ function LoginContent() {
     e.preventDefault();
     setError('');
     setLoading(true);
+    warnIfMisconfigured();
     try {
       const res = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
@@ -46,7 +46,14 @@ function LoginContent() {
         setError(data.message || 'Invalid email or password. Please try again.');
       }
     } catch {
-      setError('Cannot connect to the server. Make sure the API is running.');
+      if (isLikelyMisconfigured()) {
+        setError(
+          "Can't reach the server. This deployment is missing NEXT_PUBLIC_API_URL — " +
+            'ask your administrator to set it in Vercel (it should point to the Railway API + /api/v1).'
+        );
+      } else {
+        setError(`Can't reach the server at ${API_URL}. If this keeps happening, contact your administrator.`);
+      }
     } finally {
       setLoading(false);
     }

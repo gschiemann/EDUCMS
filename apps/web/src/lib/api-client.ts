@@ -1,13 +1,13 @@
 import { useUIStore } from '@/store/ui-store';
 import { ensureCsrfToken, invalidateCsrfToken } from './csrf';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+import { API_URL, warnIfMisconfigured } from './api-url';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 type ApiFetchOptions = RequestInit & { _csrfRetry?: boolean };
 
 export async function apiFetch<T = any>(path: string, options: ApiFetchOptions = {}): Promise<T> {
+  warnIfMisconfigured();
   const token = useUIStore.getState().token;
   const method = (options.method ?? 'GET').toUpperCase();
   const isMutation = !SAFE_METHODS.has(method);
