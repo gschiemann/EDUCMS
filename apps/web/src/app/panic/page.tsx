@@ -1,7 +1,7 @@
 "use client";
 
 import { useAppStore } from '@/lib/store';
-import { ShieldAlert, Loader2, AlertTriangle, CheckCircle2, Megaphone, ChevronLeft, LogIn } from 'lucide-react';
+import { ShieldAlert, Loader2, AlertTriangle, CheckCircle2, Megaphone, ChevronLeft, LogIn, Siren, Mic, Square } from 'lucide-react';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { broadcastEmergency } from '@/actions/trigger-emergency';
@@ -24,6 +24,13 @@ export default function MobilePanicPage() {
 
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
   const progressTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Sprint 5: voice memo recording for SOS
+  const [recording, setRecording] = useState(false);
+  const [voiceBlob, setVoiceBlob] = useState<Blob | null>(null);
+  const [voiceDataUrl, setVoiceDataUrl] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
 
   // On mount: verify the session is still valid by calling the API
   useEffect(() => {
@@ -98,7 +105,72 @@ export default function MobilePanicPage() {
     if (progressTimerRef.current) clearInterval(progressTimerRef.current);
   };
 
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      chunksRef.current = [];
+      rec.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
+      rec.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        setVoiceBlob(blob);
+        const reader = new FileReader();
+        reader.onloadend = () => setVoiceDataUrl(reader.result as string);
+        reader.readAsDataURL(blob);
+        stream.getTracks().forEach((t) => t.stop());
+      };
+      mediaRecorderRef.current = rec;
+      rec.start();
+      setRecording(true);
+    } catch (e: any) {
+      setErrorMsg('Microphone unavailable: ' + (e?.message || 'permission denied'));
+    }
+  };
+
+  const stopRecording = () => {
+    const rec = mediaRecorderRef.current;
+    if (rec && rec.state !== 'inactive') rec.stop();
+    setRecording(false);
+  };
+
+  const fireSos = async () => {
+    setPhase('triggering');
+    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+
+    try {
+      if (!verifiedToken) throw new Error('No auth token. Please log in again.');
+
+      // NOTE: voice memos are posted inline as data URLs for now; follow-up
+      // is to upload to Supabase storage and send a signed URL instead.
+      const body: any = {};
+      if (voiceDataUrl) body.voiceClipUrl = voiceDataUrl.slice(0, 2040);
+
+      const res = await fetch(`${API_URL}/emergency/sos`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${verifiedToken}`,
+        },
+        body: JSON.stringify(body),
+        credentials: 'include',
+      });
+
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) throw new Error('Session expired. Please log out and log back in, then try again.');
+        throw new Error(`SOS failed: ${res.status}`);
+      }
+      setPhase('triggered');
+    } catch (e: any) {
+      console.error('[PANIC] SOS failed:', e);
+      setErrorMsg(e.message || 'Failed to send SOS.');
+      setPhase('error');
+    }
+  };
+
   const fireEmergency = async () => {
+    if (selectedType === 'sos') return fireSos();
+
     setPhase('triggering');
     if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
     if (progressTimerRef.current) clearInterval(progressTimerRef.current);
@@ -134,6 +206,8 @@ export default function MobilePanicPage() {
     { id: 'lockdown', name: 'Lockdown', icon: ShieldAlert, activeColor: 'bg-red-600 hover:bg-red-500', holdColor: 'bg-red-700', outline: 'stroke-red-600', shadow: 'drop-shadow-[0_0_15px_rgba(220,38,38,0.5)]', text: 'text-red-500' },
     { id: 'weather', name: 'Tornado', icon: AlertTriangle, activeColor: 'bg-amber-500 hover:bg-amber-400', holdColor: 'bg-amber-600', outline: 'stroke-amber-500', shadow: 'drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]', text: 'text-amber-500' },
     { id: 'evacuate', name: 'Evacuate', icon: Megaphone, activeColor: 'bg-orange-500 hover:bg-orange-400', holdColor: 'bg-orange-600', outline: 'stroke-orange-500', shadow: 'drop-shadow-[0_0_15px_rgba(249,115,22,0.5)]', text: 'text-orange-500' },
+    // Sprint 5: Staff SOS — any authenticated user. Attaches optional voice memo.
+    { id: 'sos', name: 'SOS', icon: Siren, activeColor: 'bg-rose-600 hover:bg-rose-500', holdColor: 'bg-rose-700', outline: 'stroke-rose-600', shadow: 'drop-shadow-[0_0_15px_rgba(244,63,94,0.5)]', text: 'text-rose-500' },
   ];
 
   const activeConf = types.find(t => t.id === selectedType) || types[0];
@@ -215,9 +289,40 @@ export default function MobilePanicPage() {
               <ChevronLeft className="w-6 h-6" />
             </button>
             <h1 className="text-3xl font-black mb-3 uppercase">{activeConf.name} TRIGGER</h1>
-            <p className="text-slate-400 text-sm mb-16 px-4">
-              Press and hold the button below until the ring fills entirely to instantly trigger a facility-wide override.
+            <p className="text-slate-400 text-sm mb-6 px-4">
+              {selectedType === 'sos'
+                ? 'Silent SOS will page admins with your identity and location. Optionally record a short voice memo first.'
+                : 'Press and hold the button below until the ring fills entirely to instantly trigger a facility-wide override.'}
             </p>
+
+            {selectedType === 'sos' && (
+              <div className="w-full max-w-xs mb-6 flex flex-col items-center gap-2">
+                {!recording && !voiceBlob && (
+                  <button
+                    type="button"
+                    onClick={startRecording}
+                    className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900 border border-slate-700 text-sm"
+                  >
+                    <Mic className="w-4 h-4" /> Record voice memo
+                  </button>
+                )}
+                {recording && (
+                  <button
+                    type="button"
+                    onClick={stopRecording}
+                    className="flex items-center gap-2 px-4 py-2 rounded-full bg-rose-700 text-sm animate-pulse"
+                  >
+                    <Square className="w-4 h-4" /> Stop recording
+                  </button>
+                )}
+                {voiceBlob && !recording && (
+                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Voice memo attached
+                    <button onClick={() => { setVoiceBlob(null); setVoiceDataUrl(null); }} className="underline">remove</button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Hold Button */}
             <div className="relative w-64 h-64 flex items-center justify-center mt-4">

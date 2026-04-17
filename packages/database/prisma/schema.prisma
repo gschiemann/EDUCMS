@@ -213,6 +213,26 @@ model Template {
   @@map("templates")
 }
 
+model EmergencyMessage {
+  id                 String    @id @default(uuid())
+  tenantId           String    @map("tenant_id")
+  triggeredByUserId  String?   @map("triggered_by_user_id")
+  type               String
+  severity           String    @default("CRITICAL")
+  textBlob           String?   @map("text_blob")
+  mediaUrls          String?   @map("media_urls")
+  audioUrl           String?   @map("audio_url")
+  scopeType          String    @map("scope_type")
+  scopeId            String    @map("scope_id")
+  expiresAt          DateTime? @map("expires_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  clearedAt          DateTime? @map("cleared_at")
+  clearedByUserId    String?   @map("cleared_by_user_id")
+
+  @@index([tenantId, createdAt(sort: Desc)], map: "emergency_messages_tenant_created_idx")
+  @@map("emergency_messages")
+}
+
 model TemplateZone {
   id            String   @id @default(uuid())
   templateId    String   @map("template_id")
