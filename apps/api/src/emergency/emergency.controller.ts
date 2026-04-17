@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Param, Req, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { RedisService } from '../realtime/redis.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppRole } from '@cms/database';
@@ -9,8 +9,20 @@ import { AllowPanicBypass } from '../auth/panic-bypass.decorator';
 import * as crypto from 'crypto';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
-import { TriggerEmergencyInputSchema, ClearEmergencyInputSchema } from '@cms/api-types';
-import type { TriggerEmergencyInput, ClearEmergencyInput } from '@cms/api-types';
+import {
+  TriggerEmergencyInputSchema,
+  ClearEmergencyInputSchema,
+  SosInputSchema,
+  BroadcastInputSchema,
+  MediaAlertInputSchema,
+} from '@cms/api-types';
+import type {
+  TriggerEmergencyInput,
+  ClearEmergencyInput,
+  SosInput,
+  BroadcastInput,
+  MediaAlertInput,
+} from '@cms/api-types';
 
 @Controller('api/v1/emergency')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -149,6 +161,335 @@ export class EmergencyController {
     return {
       success: true,
       message: `All clear dispatched to ${channel} for ${overrideId}`
+    };
+  }
+
+  // ───────────────────────────────────────────────────────────
+  // Sprint 5: Emergency System Expansion
+  // SOS, broadcast text, media-rich alerts, polling fallback.
+  // Each new endpoint mirrors the /trigger flow exactly:
+  //   1. Persist an EmergencyMessage (polling fallback source)
+  //   2. Write an immutable AuditLog entry
+  //   3. Sign the payload with WebsocketSignerService
+  //   4. Publish to Redis; swallow failures so screens poll
+  // ───────────────────────────────────────────────────────────
+
+  /**
+   * Staff SOS trigger. Any authenticated user — covers teachers
+   * and non-admin staff who aren't provisioned for /trigger.
+   * Hold-to-trigger is enforced client-side; server records the
+   * trigger moment in the audit log for investigations.
+   */
+  @Post('sos')
+  async triggerSos(
+    @Body(new ZodValidationPipe(SosInputSchema)) body: SosInput,
+    @Req() req: any,
+  ) {
+    const user = req.user || {};
+    const tenantId = user.schoolId || user.tenantId || user.districtId;
+    if (!tenantId) {
+      return { success: false, message: 'SOS rejected — user has no tenant context' };
+    }
+
+    const messageId = `sos_${crypto.randomUUID()}`;
+    const severity = 'CRITICAL';
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min
+
+    const textBlob = body.location
+      ? `SOS from ${user.email || 'staff'} — ${body.location}`
+      : `SOS from ${user.email || 'staff'}`;
+
+    await this.prisma.client.emergencyMessage.create({
+      data: {
+        id: messageId,
+        tenantId,
+        triggeredByUserId: user.id || null,
+        type: 'SOS',
+        severity,
+        textBlob,
+        mediaUrls: null,
+        audioUrl: body.voiceClipUrl || null,
+        scopeType: 'tenant',
+        scopeId: tenantId,
+        expiresAt,
+      },
+    });
+
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'SOS_TRIGGER',
+        targetType: 'tenant',
+        targetId: tenantId,
+        tenantId,
+        userId: user.id,
+        details: JSON.stringify({
+          messageId,
+          severity,
+          location: body.location || null,
+          hasVoiceClip: !!body.voiceClipUrl,
+          triggerAt: new Date().toISOString(),
+        }),
+      },
+    });
+
+    const signedMessage = this.signer.signMessage('SOS', {
+      messageId,
+      severity,
+      textBlob,
+      audioUrl: body.voiceClipUrl,
+      location: body.location,
+      triggeredBy: user.email || user.id,
+      expiresAt: Math.floor(expiresAt.getTime() / 1000),
+    });
+
+    const channel = `tenant:${tenantId}`;
+    try {
+      await this.redisService.publish(channel, signedMessage);
+    } catch (error) {
+      console.warn(`[Emergency] SOS redis publish failed for ${channel}. Falling back to HTTP polling. Error: ${error}`);
+    }
+
+    return { success: true, messageId, message: `SOS dispatched to ${channel}` };
+  }
+
+  /**
+   * Text-overlay broadcast. Renders on top of the running playlist.
+   * Admins only, same role set as /trigger.
+   */
+  @Post('broadcast')
+  @AllowPanicBypass()
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async broadcastText(
+    @Body(new ZodValidationPipe(BroadcastInputSchema)) body: BroadcastInput,
+    @Req() req: any,
+  ) {
+    const user = req.user || {};
+    const { scopeType, scopeId, text, severity, durationMs } = body;
+
+    const messageId = `bcast_${crypto.randomUUID()}`;
+    const expiresAtDate = body.expiresAt
+      ? new Date(typeof body.expiresAt === 'number' ? body.expiresAt * 1000 : body.expiresAt)
+      : durationMs
+        ? new Date(Date.now() + durationMs)
+        : new Date(Date.now() + 5 * 60 * 1000); // 5 min default
+
+    const resolvedTenantId = user.schoolId || user.districtId || scopeId;
+
+    await this.prisma.client.emergencyMessage.create({
+      data: {
+        id: messageId,
+        tenantId: resolvedTenantId,
+        triggeredByUserId: user.id || null,
+        type: 'TEXT_BROADCAST',
+        severity,
+        textBlob: text,
+        mediaUrls: null,
+        audioUrl: null,
+        scopeType,
+        scopeId,
+        expiresAt: expiresAtDate,
+      },
+    });
+
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'BROADCAST_TEXT',
+        targetType: scopeType,
+        targetId: scopeId,
+        tenantId: resolvedTenantId,
+        userId: user.id,
+        details: JSON.stringify({ messageId, severity, len: text.length, durationMs }),
+      },
+    });
+
+    const signedMessage = this.signer.signMessage('TEXT_BROADCAST', {
+      messageId,
+      severity,
+      text,
+      expiresAt: Math.floor(expiresAtDate.getTime() / 1000),
+    });
+
+    const channel = `${scopeType}:${scopeId}`;
+    try {
+      await this.redisService.publish(channel, signedMessage);
+    } catch (error) {
+      console.warn(`[Emergency] Broadcast redis publish failed for ${channel}. Falling back to HTTP polling. Error: ${error}`);
+    }
+
+    return { success: true, messageId, message: `Broadcast dispatched to ${channel}` };
+  }
+
+  /**
+   * Media-rich emergency alert — images/video/audio attached.
+   */
+  @Post('media-alert')
+  @AllowPanicBypass()
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async mediaAlert(
+    @Body(new ZodValidationPipe(MediaAlertInputSchema)) body: MediaAlertInput,
+    @Req() req: any,
+  ) {
+    const user = req.user || {};
+    const { scopeType, scopeId, mediaUrls, audioUrl, textBlob, severity } = body;
+
+    const messageId = `media_${crypto.randomUUID()}`;
+    const expiresAtDate = body.expiresAt
+      ? new Date(typeof body.expiresAt === 'number' ? body.expiresAt * 1000 : body.expiresAt)
+      : new Date(Date.now() + 60 * 60 * 1000); // 1 hr default
+
+    const resolvedTenantId = user.schoolId || user.districtId || scopeId;
+
+    await this.prisma.client.emergencyMessage.create({
+      data: {
+        id: messageId,
+        tenantId: resolvedTenantId,
+        triggeredByUserId: user.id || null,
+        type: 'MEDIA_ALERT',
+        severity,
+        textBlob,
+        mediaUrls: mediaUrls && mediaUrls.length ? JSON.stringify(mediaUrls) : null,
+        audioUrl: audioUrl || null,
+        scopeType,
+        scopeId,
+        expiresAt: expiresAtDate,
+      },
+    });
+
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'MEDIA_ALERT',
+        targetType: scopeType,
+        targetId: scopeId,
+        tenantId: resolvedTenantId,
+        userId: user.id,
+        details: JSON.stringify({
+          messageId,
+          severity,
+          mediaCount: mediaUrls.length,
+          hasAudio: !!audioUrl,
+        }),
+      },
+    });
+
+    const signedMessage = this.signer.signMessage('MEDIA_ALERT', {
+      messageId,
+      severity,
+      textBlob,
+      mediaUrls,
+      audioUrl,
+      expiresAt: Math.floor(expiresAtDate.getTime() / 1000),
+    });
+
+    const channel = `${scopeType}:${scopeId}`;
+    try {
+      await this.redisService.publish(channel, signedMessage);
+    } catch (error) {
+      console.warn(`[Emergency] Media alert redis publish failed for ${channel}. Falling back to HTTP polling. Error: ${error}`);
+    }
+
+    return { success: true, messageId, message: `Media alert dispatched to ${channel}` };
+  }
+
+  /**
+   * All-clear for a specific EmergencyMessage (SOS / broadcast / media-alert).
+   * Existing `:overrideId/all-clear` stays untouched for legacy overrides.
+   */
+  @Post('messages/:messageId/all-clear')
+  @AllowPanicBypass()
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async clearMessage(
+    @Param('messageId') messageId: string,
+    @Req() req: any,
+  ) {
+    const user = req.user || {};
+    const existing = await this.prisma.client.emergencyMessage.findUnique({ where: { id: messageId } });
+    if (!existing) {
+      return { success: false, message: 'Emergency message not found' };
+    }
+
+    await this.prisma.client.emergencyMessage.update({
+      where: { id: messageId },
+      data: { clearedAt: new Date(), clearedByUserId: user.id || null },
+    });
+
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'CLEAR_EMERGENCY_MESSAGE',
+        targetType: existing.scopeType,
+        targetId: existing.scopeId,
+        tenantId: existing.tenantId,
+        userId: user.id,
+        details: JSON.stringify({ messageId, type: existing.type }),
+      },
+    });
+
+    const channel = `${existing.scopeType}:${existing.scopeId}`;
+    const signedMessage = this.signer.signMessage('ALL_CLEAR', {
+      messageId,
+      clearedBy: user.id || 'admin_system',
+    });
+    try {
+      await this.redisService.publish(channel, signedMessage);
+    } catch (error) {
+      console.warn(`[Emergency] Clear publish failed for ${channel}. Error: ${error}`);
+    }
+
+    return { success: true, message: `All clear for ${messageId} dispatched to ${channel}` };
+  }
+
+  /**
+   * HTTP polling fallback. Screens poll this every ~10s when Redis
+   * is unavailable. Returns active (not cleared, not expired)
+   * emergency messages for the given tenant/scope.
+   * Intentionally unauthenticated at JWT level is NOT permitted —
+   * screens paired to a tenant receive a device JWT separately.
+   * For now we inherit controller-wide JwtAuthGuard; device auth
+   * is a separate follow-up.
+   */
+  @Get('status')
+  async status(
+    @Query('tenantId') tenantId: string,
+    @Query('scopeType') scopeType?: string,
+    @Query('scopeId') scopeId?: string,
+  ) {
+    if (!tenantId) {
+      return { active: [], tenantId: null };
+    }
+
+    const now = new Date();
+    const where: any = {
+      tenantId,
+      clearedAt: null,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    };
+    if (scopeType) where.scopeType = scopeType;
+    if (scopeId) where.scopeId = scopeId;
+
+    const rows = await this.prisma.client.emergencyMessage.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    const tenant = await this.prisma.client.tenant.findUnique({ where: { id: tenantId } });
+
+    return {
+      tenantId,
+      tenantStatus: tenant?.emergencyStatus || 'INACTIVE',
+      tenantPlaylistId: tenant?.emergencyPlaylistId || null,
+      active: rows.map(r => ({
+        id: r.id,
+        type: r.type,
+        severity: r.severity,
+        textBlob: r.textBlob,
+        mediaUrls: r.mediaUrls ? JSON.parse(r.mediaUrls) : [],
+        audioUrl: r.audioUrl,
+        scopeType: r.scopeType,
+        scopeId: r.scopeId,
+        expiresAt: r.expiresAt ? Math.floor(r.expiresAt.getTime() / 1000) : null,
+        createdAt: r.createdAt.toISOString(),
+        triggeredByUserId: r.triggeredByUserId,
+      })),
     };
   }
 }

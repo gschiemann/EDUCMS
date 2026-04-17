@@ -172,3 +172,45 @@ export const ClearEmergencyInputSchema = z
   })
   .strict();
 export type ClearEmergencyInput = z.infer<typeof ClearEmergencyInputSchema>;
+
+// ─────────────────────────────────────────────────────────────
+// Sprint 5: Emergency System Expansion
+// ─────────────────────────────────────────────────────────────
+
+// Tri-tier severity used by SOS / broadcast / media-alert rendering.
+export const BroadcastSeverity = z.enum(['INFO', 'WARN', 'CRITICAL']);
+export type BroadcastSeverity = z.infer<typeof BroadcastSeverity>;
+
+export const SosInputSchema = z
+  .object({
+    location: BoundedText(500).optional(),
+    voiceClipUrl: UrlString.optional(),
+  })
+  .strict();
+export type SosInput = z.infer<typeof SosInputSchema>;
+
+export const BroadcastInputSchema = z
+  .object({
+    scopeType: ScopeType,
+    scopeId: Id,
+    text: BoundedText(2000).min(1),
+    severity: BroadcastSeverity.default('WARN'),
+    durationMs: z.number().int().positive().max(24 * 60 * 60 * 1000).optional(),
+    expiresAt: EpochSecondsOrIso.optional(),
+  })
+  .strict();
+export type BroadcastInput = z.infer<typeof BroadcastInputSchema>;
+
+export const MediaAlertInputSchema = z
+  .object({
+    scopeType: ScopeType,
+    scopeId: Id,
+    mediaUrls: z.array(UrlString).max(10).default([]),
+    audioUrl: UrlString.optional(),
+    textBlob: BoundedText(5000).min(1),
+    severity: BroadcastSeverity.default('CRITICAL'),
+    expiresAt: EpochSecondsOrIso.optional(),
+  })
+  .strict();
+export type MediaAlertInput = z.infer<typeof MediaAlertInputSchema>;
+
