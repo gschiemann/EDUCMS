@@ -36,6 +36,9 @@ importers:
         specifier: ^8.11.3
         version: 8.20.0
     devDependencies:
+      '@playwright/test':
+        specifier: ^1.59.1
+        version: 1.59.1
       '@types/cors':
         specifier: ^2.8.17
         version: 2.8.19
@@ -9465,7 +9468,6 @@ snapshots:
   '@playwright/test@1.59.1':
     dependencies:
       playwright: 1.59.1
-    optional: true
 
   '@prisma/client@5.22.0(prisma@5.22.0)':
     optionalDependencies:
@@ -14571,15 +14573,13 @@ snapshots:
     dependencies:
       find-up: 4.1.0
 
-  playwright-core@1.59.1:
-    optional: true
+  playwright-core@1.59.1: {}
 
   playwright@1.59.1:
     dependencies:
       playwright-core: 1.59.1
     optionalDependencies:
       fsevents: 2.3.2
-    optional: true
 
   pluralize@8.0.0: {}
 

@@ -91,3 +91,41 @@ jobs:
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
+
+  e2e:
+    name: E2E Tests (Playwright / Chromium)
+    runs-on: ubuntu-latest
+    # Run only on pull requests to keep free-tier minutes low
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+
+      - name: Enable Corepack and Setup pnpm
+        run: corepack enable && corepack prepare pnpm@latest --activate
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install chromium --with-deps
+
+      - name: Run E2E Tests
+        run: pnpm test:e2e
+        env:
+          CI: true
+          PLAYWRIGHT_ADMIN_TOKEN: ${{ secrets.PLAYWRIGHT_ADMIN_TOKEN }}
+          PLAYWRIGHT_TENANT_ID: ${{ secrets.PLAYWRIGHT_TENANT_ID }}
+
+      - name: Upload Playwright HTML Report
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

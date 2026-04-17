@@ -1,38 +1,45 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * See https://playwright.dev/docs/test-configuration
- * QA Architect Handoff: Cross-browser configuration for the UI (TEST_MATRIX.md)
+ * EDU CMS Playwright configuration.
+ * Chromium-only (zero-budget constraint). See docs/E2E_TESTING.md.
  */
 export default defineConfig({
-  testDir: './tests/e2e-ui',
-  fullyParallel: true,
+  testDir: './tests/e2e',
+  fullyParallel: false, // emergency tests must not race
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
+
   use: {
-    baseURL: 'http://127.0.0.1:3000',
+    baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
   },
 
-  /* Test against standard school browsers mapped in TEST_MATRIX.md */
+  expect: {
+    timeout: 10000,
+  },
+
   projects: [
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
+  ],
+
+  webServer: [
     {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
+      command: 'pnpm --filter api run start:dev',
+      url: 'http://localhost:8080/api/v1/health',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
     },
     {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },
-    {
-      name: 'Mobile Chrome (Simulator)',
-      use: { ...devices['Pixel 5'] },
+      command: 'pnpm --filter web run dev',
+      url: 'http://localhost:3000',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
     },
   ],
 });

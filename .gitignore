@@ -31,3 +31,7 @@ _tmp_*
 
 # Claude Code local session data
 .claude/
+
+# Playwright
+test-results/
+playwright-report/

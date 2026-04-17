@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node"]
+  },
+  "include": [
+    "playwright.config.ts",
+    "tests/e2e/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "tests/e2e/**/*.test.ts"
+  ]
+}
