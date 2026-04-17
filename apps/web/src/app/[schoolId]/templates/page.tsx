@@ -196,6 +196,7 @@ export default function TemplatesPage() {
   const [newW, setNewW] = useState(3840);
   const [newH, setNewH] = useState(2160);
   const [customRes, setCustomRes] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const { data: templates, isLoading } = useTemplates();
 
@@ -220,7 +221,16 @@ export default function TemplatesPage() {
   const duplicateTemplate = useDuplicateTemplate();
   const deleteTemplate = useDeleteTemplate();
 
-  const filtered = templates?.filter((t: Template) => !activeCategory || t.category === activeCategory) || [];
+  const q = searchQuery.trim().toLowerCase();
+  const filtered = (templates || []).filter((t: Template) => {
+    if (activeCategory && t.category !== activeCategory) return false;
+    if (!q) return true;
+    return (
+      t.name.toLowerCase().includes(q) ||
+      (t.description || '').toLowerCase().includes(q) ||
+      (t.category || '').toLowerCase().includes(q)
+    );
+  });
   const systemTemplates = filtered.filter((t: Template) => t.isSystem);
   const customTemplates = filtered.filter((t: Template) => !t.isSystem);
 
@@ -351,14 +361,27 @@ export default function TemplatesPage() {
         </div>
       )}
 
-      {/* Category Tabs */}
-      <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
-        {CATEGORY_TABS.map(tab => (
-          <button key={tab.key} onClick={() => setActiveCategory(tab.key)}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeCategory === tab.key ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-            {tab.label}
-          </button>
-        ))}
+      {/* Category Tabs + Search */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
+          {CATEGORY_TABS.map(tab => (
+            <button key={tab.key} onClick={() => setActiveCategory(tab.key)}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeCategory === tab.key ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <div className="relative flex-1 min-w-[200px] max-w-md">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" aria-hidden />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search templates..."
+            aria-label="Search templates"
+            className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+          />
+        </div>
       </div>
 
       {isLoading ? (
@@ -426,15 +449,27 @@ function GalleryCard({ template, onUse, onUsePortrait, onEdit, onDuplicate, onDe
     <div className="group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-200 transition-all duration-300 overflow-hidden">
       {/* Preview Canvas */}
       <div className="relative bg-gradient-to-br from-slate-50 to-slate-100 p-5" style={{ minHeight: 180 }}>
-        <div className="relative mx-auto rounded-lg overflow-hidden border border-slate-200 bg-white shadow-sm" style={{ aspectRatio: `${sw}/${sh}`, maxWidth: '100%', maxHeight: 150 }}>
+        <div
+          className="relative mx-auto rounded-lg overflow-hidden border border-slate-200 shadow-sm"
+          style={{
+            aspectRatio: `${sw}/${sh}`,
+            maxWidth: '100%',
+            maxHeight: 150,
+            backgroundColor: template.bgColor || '#ffffff',
+            background: template.bgGradient || undefined,
+            backgroundImage: template.bgImage ? `url(${template.bgImage})` : undefined,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          }}
+        >
           {zones.map((zone, i) => {
             const c = getZoneColor(zone.widgetType);
             const Icon = WIDGET_ICONS[zone.widgetType] || Square;
             return (
               <div key={i} className="absolute flex flex-col items-center justify-center text-center overflow-hidden transition-all"
-                style={{ left: `${zone.x}%`, top: `${zone.y}%`, width: `${zone.width}%`, height: `${zone.height}%`, zIndex: zone.zIndex || 0, backgroundColor: c.bg, borderWidth: 1, borderColor: c.border, borderStyle: 'solid' }}>
-                <Icon className="w-3 h-3 mb-0.5" style={{ color: c.accent, opacity: 0.7 }} />
-                <span className="text-[7px] font-bold leading-tight px-0.5 truncate max-w-full" style={{ color: c.text, opacity: 0.6 }}>
+                style={{ left: `${zone.x}%`, top: `${zone.y}%`, width: `${zone.width}%`, height: `${zone.height}%`, zIndex: zone.zIndex || 0, backgroundColor: `${c.bg}dd`, borderWidth: 1, borderColor: c.border, borderStyle: 'solid' }}>
+                <Icon className="w-3 h-3 mb-0.5" style={{ color: c.accent, opacity: 0.8 }} />
+                <span className="text-[7px] font-bold leading-tight px-0.5 truncate max-w-full" style={{ color: c.text, opacity: 0.7 }}>
                   {WIDGET_LABELS[zone.widgetType] || zone.widgetType}
                 </span>
               </div>
