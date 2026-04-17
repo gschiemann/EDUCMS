@@ -31,6 +31,10 @@ model Tenant {
   parent                  Tenant?       @relation("TenantHierarchy", fields: [parentId], references: [id])
   children                Tenant[]      @relation("TenantHierarchy")
   users                   User[]
+  cleverDistrictId        String?       @unique @map("clever_district_id")
+  cleverAccessToken       String?       @map("clever_access_token")
+  cleverConnectedAt       DateTime?     @map("clever_connected_at")
+  cleverSyncLogs          CleverSyncLog[]
 
   @@map("tenants")
 }
@@ -47,8 +51,25 @@ model User {
   auditLogs        AuditLog[]
   createdTemplates Template[] @relation("TemplateCreator")
   tenant           Tenant     @relation(fields: [tenantId], references: [id])
+  cleverId         String?    @unique @map("clever_id")
+  cleverRole       String?    @map("clever_role")
 
   @@map("users")
+}
+
+model CleverSyncLog {
+  id                String    @id @default(uuid())
+  tenantId          String    @map("tenant_id")
+  syncStartedAt     DateTime  @default(now()) @map("sync_started_at")
+  syncCompletedAt   DateTime? @map("sync_completed_at")
+  usersAdded        Int       @default(0) @map("users_added")
+  usersUpdated      Int       @default(0) @map("users_updated")
+  usersDisabled     Int       @default(0) @map("users_disabled")
+  errorMessage      String?   @map("error_message")
+  tenant            Tenant    @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, syncStartedAt])
+  @@map("clever_sync_logs")
 }
 
 model ScreenGroup {
