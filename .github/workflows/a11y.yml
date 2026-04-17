@@ -1,0 +1,46 @@
+name: Accessibility (axe-core)
+
+on:
+  pull_request:
+    branches: [main, master, develop]
+
+jobs:
+  axe:
+    name: axe-core Automated Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Enable Corepack and Setup pnpm
+        run: corepack enable && corepack prepare pnpm@latest --activate
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter web exec playwright install --with-deps chromium
+
+      - name: Build Web
+        run: pnpm --filter web build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8080
+
+      - name: Start Web in Background
+        run: pnpm --filter web start &
+        env:
+          PORT: 3000
+
+      - name: Wait for Web to be Ready
+        run: npx wait-on http://localhost:3000/login --timeout 60000
+
+      - name: Run axe-core Audit
+        run: pnpm a11y:ci
+        env:
+          A11Y_BASE_URL: http://localhost:3000
