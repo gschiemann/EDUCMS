@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 import { Plus, Layers, Settings2, Keyboard } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useBuilderStore } from './useBuilderStore';
@@ -9,7 +10,7 @@ import { BuilderCanvas } from './BuilderCanvas';
 import { WidgetPalette } from './WidgetPalette';
 import { LayersPanel } from './LayersPanel';
 import { PropertiesPanel } from './PropertiesPanel';
-import { useUpdateTemplate, useUpdateTemplateZones } from '@/hooks/use-api';
+import { useUpdateTemplate, useUpdateTemplateZones, useCreateTemplate } from '@/hooks/use-api';
 import type { Template, Zone } from './types';
 
 interface Props {
@@ -19,6 +20,9 @@ interface Props {
 }
 
 type PanelKey = 'widgets' | 'layers' | 'properties';
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
+const AUTO_SAVE_IDLE_MS = 15_000;
 
 export function BuilderShell({ template, onBack, onSaved }: Props) {
   const {
@@ -27,13 +31,18 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
     undo, redo, markClean,
   } = useBuilderStore();
   const [panel, setPanel] = useState<PanelKey>('widgets');
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [saveError, setSaveError] = useState<string>();
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [clipboard, setClipboard] = useState<Zone[] | null>(null);
 
+  const router = useRouter();
+  const routeParams = useParams<{ schoolId: string }>();
+
   const updateTemplate = useUpdateTemplate();
   const updateZonesApi = useUpdateTemplateZones();
+  const createTemplate = useCreateTemplate();
 
   useEffect(() => {
     init({
@@ -105,6 +114,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       });
       markClean();
       setSaveStatus('saved');
+      setLastSavedAt(Date.now());
       onSaved(result);
       setTimeout(() => setSaveStatus((s) => (s === 'saved' ? 'idle' : s)), 2500);
     } catch (err) {
@@ -112,6 +122,84 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       setSaveError(err instanceof Error ? err.message : String(err));
     }
   }, [template.id, updateTemplate, updateZonesApi, markClean, onSaved]);
+
+  const handleSaveAs = useCallback(async () => {
+    const state = useBuilderStore.getState();
+    const defaultName = `${state.meta.name || 'Untitled template'} copy`;
+    const name = window.prompt('Name for the copy', defaultName);
+    if (!name || !name.trim()) return;
+
+    setSaveStatus('saving');
+    setSaveError(undefined);
+    try {
+      const orientation = state.meta.screenHeight > state.meta.screenWidth ? 'PORTRAIT' : 'LANDSCAPE';
+      const created = await createTemplate.mutateAsync({
+        name: name.trim(),
+        description: state.meta.description || undefined,
+        orientation,
+        screenWidth: state.meta.screenWidth,
+        screenHeight: state.meta.screenHeight,
+        zones: state.zones.map((z, i) => ({
+          name: z.name,
+          widgetType: z.widgetType,
+          x: Math.round(z.x * 100) / 100,
+          y: Math.round(z.y * 100) / 100,
+          width: Math.round(z.width * 100) / 100,
+          height: Math.round(z.height * 100) / 100,
+          zIndex: z.zIndex,
+          sortOrder: i,
+          defaultConfig: z.defaultConfig,
+        })),
+      });
+      const newId = (created as { id?: string })?.id;
+      if (newId && (state.meta.bgColor || state.meta.bgGradient || state.meta.bgImage)) {
+        await updateTemplate.mutateAsync({
+          id: newId,
+          bgColor: state.meta.bgColor || null,
+          bgGradient: state.meta.bgGradient || null,
+          bgImage: state.meta.bgImage || null,
+        });
+      }
+      setSaveStatus('saved');
+      setLastSavedAt(Date.now());
+      setTimeout(() => setSaveStatus((s) => (s === 'saved' ? 'idle' : s)), 2500);
+
+      const schoolId = routeParams?.schoolId;
+      if (newId && schoolId) {
+        router.push(`/${schoolId}/templates/builder/${newId}`);
+      }
+    } catch (err) {
+      setSaveStatus('error');
+      setSaveError(err instanceof Error ? err.message : String(err));
+    }
+  }, [createTemplate, updateTemplate, router, routeParams]);
+
+  const handleSaveRef = useRef(handleSave);
+  const saveStatusRef = useRef(saveStatus);
+  useEffect(() => { handleSaveRef.current = handleSave; }, [handleSave]);
+  useEffect(() => { saveStatusRef.current = saveStatus; }, [saveStatus]);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const unsub = useBuilderStore.subscribe(() => {
+      if (timer) clearTimeout(timer);
+      const state = useBuilderStore.getState();
+      if (!state.isDirty || state.isSystem) return;
+      timer = setTimeout(() => {
+        if (
+          useBuilderStore.getState().isDirty &&
+          !useBuilderStore.getState().isSystem &&
+          saveStatusRef.current !== 'saving'
+        ) {
+          handleSaveRef.current();
+        }
+      }, AUTO_SAVE_IDLE_MS);
+    });
+    return () => {
+      unsub();
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
 
   const handleBack = useCallback(() => {
     if (isDirty) {
@@ -128,7 +216,8 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
 
       if (mod && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        handleSave();
+        if (e.shiftKey) handleSaveAs();
+        else handleSave();
         return;
       }
 
@@ -218,7 +307,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selectedIds, clipboard, undo, redo, select, removeSelected, duplicateZone, updateZones, handleSave, showShortcuts]);
+  }, [selectedIds, clipboard, undo, redo, select, removeSelected, duplicateZone, updateZones, handleSave, handleSaveAs, showShortcuts]);
 
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
@@ -239,7 +328,14 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
 
   return (
     <div className="fixed inset-0 bg-slate-100 z-[999] flex flex-col">
-      <BuilderToolbar onBack={handleBack} onSave={handleSave} saveStatus={saveStatus} saveError={saveError} />
+      <BuilderToolbar
+        onBack={handleBack}
+        onSave={handleSave}
+        onSaveAs={handleSaveAs}
+        saveStatus={saveStatus}
+        saveError={saveError}
+        lastSavedAt={lastSavedAt}
+      />
 
       <div className="flex flex-1 overflow-hidden">
         {!previewMode && (
@@ -293,7 +389,8 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
 
 function ShortcutsModal({ onClose }: { onClose: () => void }) {
   const rows: Array<[string, string]> = [
-    ['Ctrl / \u2318 + S', 'Save template'],
+    ['Ctrl / \u2318 + S', 'Save template (auto-saves after 15s idle)'],
+    ['Ctrl / \u2318 + Shift + S', 'Save as copy'],
     ['Ctrl / \u2318 + Z', 'Undo'],
     ['Ctrl / \u2318 + Y  (or Shift+Z)', 'Redo'],
     ['Ctrl / \u2318 + D', 'Duplicate selected'],

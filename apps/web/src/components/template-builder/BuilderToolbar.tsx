@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  ArrowLeft, Save, Undo2, Redo2, Eye, EyeOff, Grid3X3, Magnet,
+  ArrowLeft, Save, Copy, Undo2, Redo2, Eye, EyeOff, Grid3X3, Magnet,
   ZoomIn, ZoomOut, RotateCw, Loader2, CheckCircle2, AlertCircle,
 } from 'lucide-react';
 import { useBuilderStore } from './useBuilderStore';
@@ -9,11 +9,13 @@ import { useBuilderStore } from './useBuilderStore';
 interface Props {
   onBack: () => void;
   onSave: () => void;
+  onSaveAs?: () => void;
   saveStatus: 'idle' | 'saving' | 'saved' | 'error';
   saveError?: string;
+  lastSavedAt?: number | null;
 }
 
-export function BuilderToolbar({ onBack, onSave, saveStatus, saveError }: Props) {
+export function BuilderToolbar({ onBack, onSave, onSaveAs, saveStatus, saveError, lastSavedAt }: Props) {
   const {
     meta, zones, isDirty, past, future, zoom, showGrid, snapEnabled, previewMode,
     undo, redo, flipCanvas, setZoom, setShowGrid, setSnapEnabled, setPreviewMode,
@@ -103,12 +105,26 @@ export function BuilderToolbar({ onBack, onSave, saveStatus, saveError }: Props)
           {isPortrait ? 'Portrait' : 'Landscape'}
         </span>
 
-        <SaveStatusChip status={saveStatus} isDirty={isDirty} error={saveError} />
+        <SaveStatusChip status={saveStatus} isDirty={isDirty} error={saveError} lastSavedAt={lastSavedAt ?? null} />
+
+        {onSaveAs && (
+          <button
+            type="button"
+            onClick={onSaveAs}
+            disabled={saveStatus === 'saving'}
+            title="Save as copy (Ctrl+Shift+S)"
+            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5 transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          >
+            <Copy className="w-3.5 h-3.5" aria-hidden />
+            Save as copy
+          </button>
+        )}
 
         <button
           type="button"
           onClick={onSave}
           disabled={saveStatus === 'saving'}
+          title="Save (Ctrl+S)"
           className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5 transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-400"
         >
           {saveStatus === 'saving'
@@ -146,7 +162,18 @@ function ToolbarBtn({
   );
 }
 
-function SaveStatusChip({ status, isDirty, error }: { status: Props['saveStatus']; isDirty: boolean; error?: string }) {
+function SaveStatusChip({
+  status, isDirty, error, lastSavedAt,
+}: {
+  status: Props['saveStatus']; isDirty: boolean; error?: string; lastSavedAt: number | null;
+}) {
+  if (status === 'saving') {
+    return (
+      <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded flex items-center gap-1" role="status">
+        <Loader2 className="w-3 h-3 animate-spin" aria-hidden /> Saving&hellip;
+      </span>
+    );
+  }
   if (status === 'saved') {
     return (
       <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded flex items-center gap-1" role="status">
@@ -156,13 +183,36 @@ function SaveStatusChip({ status, isDirty, error }: { status: Props['saveStatus'
   }
   if (status === 'error') {
     return (
-      <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-1 rounded flex items-center gap-1" role="alert" title={error}>
+      <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-1 rounded flex items-center gap-1" role="alert" title={error || 'Save failed'}>
         <AlertCircle className="w-3 h-3" aria-hidden /> Save failed
       </span>
     );
   }
   if (isDirty) {
-    return <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded" role="status">Unsaved</span>;
+    return (
+      <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded" role="status" title="Auto-saves after 15s idle">
+        Unsaved
+      </span>
+    );
+  }
+  if (lastSavedAt) {
+    return (
+      <span className="text-[10px] font-semibold text-slate-400 px-2 py-1" title={new Date(lastSavedAt).toLocaleString()}>
+        Saved {formatRelative(lastSavedAt)}
+      </span>
+    );
   }
   return null;
+}
+
+function formatRelative(ts: number): string {
+  const delta = Math.max(0, Date.now() - ts);
+  const sec = Math.floor(delta / 1000);
+  if (sec < 10) return 'just now';
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  return new Date(ts).toLocaleDateString();
 }
