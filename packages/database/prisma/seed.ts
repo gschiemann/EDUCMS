@@ -15,6 +15,7 @@ async function main() {
   await prisma.playlistItem.deleteMany();
   await prisma.playlist.deleteMany();
   await prisma.asset.deleteMany();
+  await prisma.assetFolder.deleteMany();
   await prisma.screen.deleteMany();
   await prisma.screenGroup.deleteMany();
   await prisma.user.deleteMany();
