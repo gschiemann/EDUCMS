@@ -1,6 +1,3 @@
-// TODO(a11y): Sprint 2 — convert interactive <div> click handlers in the player overlay
-// to <button> elements, or add role="button" + onKeyDown + tabIndex={0}.
-/* eslint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -518,7 +515,13 @@ export default function PlayerPage() {
     const zones = tpl.zones || [];
 
     return (
-      <div className="fixed inset-0 cursor-none" onClick={() => setShowOverlay(!showOverlay)}
+      <div
+        className="fixed inset-0 cursor-none"
+        role="button"
+        tabIndex={0}
+        aria-label="Toggle screen info overlay"
+        onClick={() => setShowOverlay(!showOverlay)}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowOverlay(s => !s); } }}
         style={{
           backgroundColor: tpl.bgColor || '#000000',
           ...(tpl.bgGradient ? { background: tpl.bgGradient } : {}),
@@ -590,7 +593,14 @@ export default function PlayerPage() {
 
   // Media playlist rendering
   return (
-    <div className="fixed inset-0 bg-black cursor-none overflow-hidden" onClick={() => setShowOverlay(!showOverlay)}>
+    <div
+      className="fixed inset-0 bg-black cursor-none overflow-hidden"
+      role="button"
+      tabIndex={0}
+      aria-label="Toggle screen info overlay"
+      onClick={() => setShowOverlay(!showOverlay)}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowOverlay(s => !s); } }}
+    >
       {currentItem ? (
         <div className="relative w-full h-full flex items-center justify-center pointer-events-none">
           {sorted.map((item, index) => {
@@ -623,7 +633,7 @@ export default function PlayerPage() {
           })}
         </div>
       ) : (
-        <div className="w-full h-full bg-slate-50 flex items-center justify-center p-8 overflow-hidden relative cursor-default" onClick={(e) => e.stopPropagation()}>
+        <div className="w-full h-full bg-slate-50 flex items-center justify-center p-8 overflow-hidden relative cursor-default" onClick={(e) => e.stopPropagation()} role="presentation">
           {/* Decorative background blurs to match Pastel Pop */}
           <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-400/20 rounded-full blur-3xl pointer-events-none" />
           <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-400/20 rounded-full blur-3xl pointer-events-none" />

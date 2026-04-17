@@ -1,10 +1,6 @@
-// TODO(a11y): Sprint 2 — fix click-events-have-key-events, no-static-element-interactions,
-// and label-has-associated-control violations throughout this file. Add htmlFor/id pairs to
-// all form labels and convert interactive <div> click handlers to <button> elements.
-/* eslint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions, jsx-a11y/label-has-associated-control, jsx-a11y/no-autofocus */
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { Play, Plus, Clock, Loader2, Trash2, Save, GripVertical, Image as ImageIcon, Video, Music, Globe, File, Calendar, CalendarDays, Power, Eye, LayoutTemplate, Pencil, Monitor, Layers, ChevronRight, ChevronLeft, Tv2, Wifi, WifiOff, ArrowLeft, Smartphone, FolderOpen, Home, CheckSquare, Search, Settings } from 'lucide-react';
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent
@@ -103,7 +99,7 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
 
       {showSettings && (
         <div className="border-t border-slate-100 bg-slate-50/50 p-4">
-          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 block">Slide Scheduling</label>
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Slide Scheduling</p>
           <p className="text-[10px] text-slate-400 mb-3">If scheduled is set, this slide will ONLY play during the specified limits. Otherwise it plays all day.</p>
           
           <div className="flex gap-2 mb-3">
@@ -114,7 +110,7 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
           {isScheduled && (
             <div className="space-y-3 bg-white p-3 rounded-lg border border-slate-100">
               <div>
-                <label className="text-[10px] font-bold text-slate-400 mb-1 block">Active Days</label>
+                <p className="text-[10px] font-bold text-slate-400 mb-1">Active Days</p>
                 <div className="flex gap-1 flex-wrap">
                   {DAYS.map(d => {
                     const daysArr = item.daysOfWeek ? item.daysOfWeek.split(',') : [...DAYS];
@@ -137,20 +133,21 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
               </div>
               <div className="flex gap-4">
                 <div className="flex-1">
-                  <label className="text-[10px] font-bold text-slate-400 mb-0.5 block">Start Time (HH:MM)</label>
-                  <input type="time" value={item.timeStart || ''} onChange={e => onUpdate(item.id, { timeStart: e.target.value || null })} className="w-full px-2 py-1 text-sm font-semibold border border-slate-200 rounded-md" />
+                  <label htmlFor={`time-start-${item.id}`} className="text-[10px] font-bold text-slate-400 mb-0.5 block">Start Time (HH:MM)</label>
+                  <input id={`time-start-${item.id}`} type="time" value={item.timeStart || ''} onChange={e => onUpdate(item.id, { timeStart: e.target.value || null })} className="w-full px-2 py-1 text-sm font-semibold border border-slate-200 rounded-md" />
                 </div>
                 <div className="flex-1">
-                  <label className="text-[10px] font-bold text-slate-400 mb-0.5 block">End Time (HH:MM)</label>
-                  <input type="time" value={item.timeEnd || ''} onChange={e => onUpdate(item.id, { timeEnd: e.target.value || null })} className="w-full px-2 py-1 text-sm font-semibold border border-slate-200 rounded-md" />
+                  <label htmlFor={`time-end-${item.id}`} className="text-[10px] font-bold text-slate-400 mb-0.5 block">End Time (HH:MM)</label>
+                  <input id={`time-end-${item.id}`} type="time" value={item.timeEnd || ''} onChange={e => onUpdate(item.id, { timeEnd: e.target.value || null })} className="w-full px-2 py-1 text-sm font-semibold border border-slate-200 rounded-md" />
                 </div>
               </div>
             </div>
           )}
 
           <div className="mt-4 pt-4 border-t border-slate-200/60">
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 block">Slide Transition Effect</label>
+            <label htmlFor={`transition-${item.id}`} className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 block">Slide Transition Effect</label>
             <select
+              id={`transition-${item.id}`}
               value={item.transitionType || 'FADE'}
               onChange={(e) => onUpdate(item.id, { transitionType: e.target.value })}
               className="w-full xl:w-1/2 px-2 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
@@ -182,10 +179,12 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete }: {
   const onlineScreens = screenMap.screens.filter((s: any) => s.status === 'ONLINE');
 
   return (
-    <div
-      onClick={onOpen}
-      className="group relative bg-white rounded-2xl border border-slate-100 hover:border-indigo-200 hover:shadow-[0_8px_30px_rgba(99,102,241,0.08)] transition-all duration-300 cursor-pointer overflow-hidden"
-    >
+    <div className="group relative bg-white rounded-2xl border border-slate-100 hover:border-indigo-200 hover:shadow-[0_8px_30px_rgba(99,102,241,0.08)] transition-all duration-300 overflow-hidden">
+      <button
+        onClick={onOpen}
+        aria-label={`Open playlist ${playlist.name}`}
+        className="absolute inset-0 w-full h-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 z-0"
+      />
       {/* Top accent bar */}
       <div className={`h-1 ${isTemplate ? 'bg-gradient-to-r from-violet-500 to-purple-500' : hasScreens ? 'bg-gradient-to-r from-emerald-400 to-teal-400' : 'bg-slate-200'}`} />
 
@@ -212,12 +211,13 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete }: {
               </span>
             </div>
           </div>
-          <div
+          <button
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
-            className="p-1.5 rounded-lg text-slate-200 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+            aria-label={`Delete playlist ${playlist.name}`}
+            className="relative z-10 p-1.5 rounded-lg text-slate-200 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
           >
             <Trash2 className="w-3.5 h-3.5" />
-          </div>
+          </button>
         </div>
 
         {/* Screen Assignments — the hero section */}
@@ -318,6 +318,14 @@ export default function PlaylistsPage() {
   const [pickerFolderId, setPickerFolderId] = useState<string | null>(null);
   const [selectedPickerAssets, setSelectedPickerAssets] = useState<Set<string>>(new Set());
   const [tab, setTab] = useState<'editor' | 'schedules'>('editor');
+  const createNameInputRef = useRef<HTMLInputElement>(null);
+
+  // Focus the playlist name input when create form is in naming mode
+  useEffect(() => {
+    if (showCreate && (createMode === 'blank' || (createMode === 'template' && selectedTemplateId))) {
+      createNameInputRef.current?.focus();
+    }
+  }, [showCreate, createMode, selectedTemplateId]);
 
   // Schedule form state
   const [schedTargets, setSchedTargets] = useState<string[]>([]);
@@ -853,8 +861,9 @@ export default function PlaylistsPage() {
 
         {/* ─── Asset Picker Modal ─── */}
         {showPicker && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowPicker(false)}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Choose Media">
+            <button className="absolute inset-0 cursor-default" aria-label="Close dialog" onClick={() => setShowPicker(false)} />
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col relative z-10" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} role="document">
               
               {/* Modal Header */}
               <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-white z-10">
@@ -945,12 +954,14 @@ export default function PlaylistsPage() {
                       const isSelected = selectedPickerAssets.has(asset.id);
                       
                       return (
-                        <div
+                        <button
                           key={asset.id}
                           onClick={() => handleTogglePickerAsset(asset.id)}
-                          className={`relative rounded-xl border transition-all text-left overflow-hidden cursor-pointer group select-none ${
-                            isSelected 
-                              ? 'border-indigo-500 shadow-[0_0_0_2px_rgba(99,102,241,0.2)]' 
+                          aria-pressed={isSelected}
+                          aria-label={isSelected ? `Deselect ${name}` : `Select ${name}`}
+                          className={`relative rounded-xl border transition-all text-left overflow-hidden group select-none w-full ${
+                            isSelected
+                              ? 'border-indigo-500 shadow-[0_0_0_2px_rgba(99,102,241,0.2)]'
                               : 'border-slate-200 hover:border-indigo-300 hover:shadow-md'
                           }`}
                         >
@@ -973,7 +984,7 @@ export default function PlaylistsPage() {
                           <div className={`p-2 transition-colors ${isSelected ? 'bg-indigo-50/50' : 'bg-white'}`}>
                             <p className={`text-[11px] font-bold truncate ${isSelected ? 'text-indigo-900' : 'text-slate-700'}`}>{name}</p>
                           </div>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
@@ -985,15 +996,16 @@ export default function PlaylistsPage() {
 
         {/* ─── Publish / Schedule Modal ─── */}
         {showPublishModal && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowPublishModal(false)}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col p-6" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Publish to Screens">
+            <button className="absolute inset-0 cursor-default" aria-label="Close dialog" onClick={() => setShowPublishModal(false)} />
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col p-6 relative z-10" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} role="document">
               <h3 className="text-lg font-bold text-slate-800 mb-1">Publish to Screens</h3>
               <p className="text-sm text-slate-500 mb-5">
                 Schedule <span className="font-bold text-slate-800">{selectedPlaylist?.name}</span> to play on a screen or group.
               </p>
 
               <div className="mb-4">
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Publish Targets</label>
+                <p className="block text-xs font-semibold text-slate-600 mb-1.5">Publish Targets</p>
                 <div className="w-full max-h-48 overflow-y-auto px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none space-y-2">
                   {screenGroups && screenGroups.map((g: any) => (
                     <div key={`g-${g.id}`} className="flex flex-col">
@@ -1031,7 +1043,7 @@ export default function PlaylistsPage() {
               </div>
 
               <div className="mb-4">
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">When to Play</label>
+                <p className="block text-xs font-semibold text-slate-600 mb-1.5">When to Play</p>
                 <div className="flex bg-slate-100 rounded-lg p-0.5">
                   <button
                     onClick={() => setSchedMode('always')}
@@ -1050,7 +1062,7 @@ export default function PlaylistsPage() {
 
               {!editingScheduleId && (
                 <div className="mb-4">
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Conflict Resolution</label>
+                  <p className="block text-xs font-semibold text-slate-600 mb-1.5">Conflict Resolution</p>
                   <div className="flex bg-slate-100 rounded-lg p-0.5">
                     <button
                       onClick={() => setPublishMode('replace')}
@@ -1076,7 +1088,7 @@ export default function PlaylistsPage() {
               {schedMode === 'scheduled' && (
                 <div className="space-y-4 mb-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-2">Days of Week</label>
+                    <p className="block text-xs font-semibold text-slate-600 mb-2">Days of Week</p>
                     <div className="flex gap-1">
                       {DAYS.map(day => (
                         <button
@@ -1099,14 +1111,18 @@ export default function PlaylistsPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-2">Time Window</label>
+                    <p className="block text-xs font-semibold text-slate-600 mb-2">Time Window</p>
                     <div className="flex items-center gap-2">
+                      <label htmlFor="sched-time-start" className="sr-only">Start time</label>
                       <input
+                        id="sched-time-start"
                         type="time" value={schedTimeStart} onChange={e => setSchedTimeStart(e.target.value)}
                         className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                       />
                       <span className="text-xs text-slate-400 font-semibold">to</span>
+                      <label htmlFor="sched-time-end" className="sr-only">End time</label>
                       <input
+                        id="sched-time-end"
                         type="time" value={schedTimeEnd} onChange={e => setSchedTimeEnd(e.target.value)}
                         className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                       />
@@ -1230,9 +1246,9 @@ export default function PlaylistsPage() {
             <div className="p-5">
               <p className="text-sm font-semibold text-slate-700 mb-3">Name your playlist</p>
               <div className="flex gap-3">
-                <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Playlist name..."
+                <input ref={createNameInputRef} value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Playlist name..."
                   className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                  onKeyDown={(e) => e.key === 'Enter' && handleCreate()} autoFocus />
+                  onKeyDown={(e) => e.key === 'Enter' && handleCreate()} />
                 <button onClick={handleCreate} disabled={createPlaylist.isPending || !newName.trim()} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold rounded-lg">
                   {createPlaylist.isPending ? 'Creating...' : 'Create'}
                 </button>
@@ -1279,9 +1295,9 @@ export default function PlaylistsPage() {
 
               {selectedTemplateId && (
                 <div className="flex gap-3">
-                  <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Playlist name..."
+                  <input ref={createNameInputRef} value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Playlist name..."
                     className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-500"
-                    onKeyDown={(e) => e.key === 'Enter' && handleCreate()} autoFocus />
+                    onKeyDown={(e) => e.key === 'Enter' && handleCreate()} />
                   <button onClick={handleCreate} disabled={createPlaylist.isPending || !newName.trim()} className="px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-semibold rounded-lg">
                     {createPlaylist.isPending ? 'Creating...' : 'Create'}
                   </button>

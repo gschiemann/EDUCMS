@@ -1,7 +1,3 @@
-// TODO(a11y): Sprint 2 — fix click-events-have-key-events and no-static-element-interactions
-// violations throughout this file. Interactive <div> elements need role="button" + onKeyDown,
-// or should be refactored to native <button>. Also add id/htmlFor pairs to remaining inputs.
-/* eslint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions, jsx-a11y/no-autofocus, jsx-a11y/no-noninteractive-element-interactions */
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from 'react';
@@ -86,6 +82,8 @@ export default function AssetsPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const urlInputRef = useRef<HTMLInputElement>(null);
+  const newFolderInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const { data: assets, isLoading } = useAssets();
   const addWebUrl = useAddWebUrl();
@@ -225,6 +223,16 @@ export default function AssetsPage() {
     return () => document.removeEventListener('click', handler);
   }, [folderMenuOpen]);
 
+  // Focus URL input when the URL form opens
+  useEffect(() => {
+    if (showUrlForm) urlInputRef.current?.focus();
+  }, [showUrlForm]);
+
+  // Focus new-folder input when the folder form opens
+  useEffect(() => {
+    if (showNewFolder) newFolderInputRef.current?.focus();
+  }, [showNewFolder]);
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -252,7 +260,7 @@ export default function AssetsPage() {
       {/* URL form */}
       {showUrlForm && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex gap-3">
-          <input value={webUrl} onChange={e => setWebUrl(e.target.value)} placeholder="https://docs.google.com/presentation/d/..." className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500" onKeyDown={e => e.key === 'Enter' && handleAddUrl()} autoFocus />
+          <input ref={urlInputRef} value={webUrl} onChange={e => setWebUrl(e.target.value)} placeholder="https://docs.google.com/presentation/d/..." className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500" onKeyDown={e => e.key === 'Enter' && handleAddUrl()} />
           <button onClick={handleAddUrl} disabled={addWebUrl.isPending} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg">{addWebUrl.isPending ? 'Adding...' : 'Add'}</button>
           <button onClick={() => setShowUrlForm(false)} className="px-2 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
         </div>
@@ -260,10 +268,14 @@ export default function AssetsPage() {
 
       {/* Drop zone */}
       <div
+        role="button"
+        tabIndex={0}
+        aria-label="Upload files — drag and drop or press Enter to browse"
         onDragOver={e => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
         onClick={() => fileInputRef.current?.click()}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current?.click(); } }}
         className={`border-2 border-dashed rounded-3xl p-8 flex items-center justify-center cursor-pointer transition-all group ${dragOver ? 'border-indigo-400 bg-indigo-50/50 scale-[1.01]' : 'border-slate-200 hover:border-indigo-300 bg-slate-50/30'}`}
       >
         <div className="flex items-center gap-4">
@@ -350,12 +362,12 @@ export default function AssetsPage() {
         <div className="flex gap-2 items-center bg-white rounded-xl border border-indigo-200 shadow-sm p-3">
           <Folder className="w-5 h-5 text-indigo-400 shrink-0" />
           <input
+            ref={newFolderInputRef}
             value={newFolderName}
             onChange={e => setNewFolderName(e.target.value)}
             placeholder="Folder name..."
             className="flex-1 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-400"
             onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') { setShowNewFolder(false); setNewFolderName(''); } }}
-            autoFocus
           />
           <button onClick={handleCreateFolder} disabled={createFolder.isPending} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold rounded-lg disabled:opacity-50">
             {createFolder.isPending ? 'Creating...' : 'Create'}
@@ -370,9 +382,8 @@ export default function AssetsPage() {
           {currentFolderChildren.map((f: any) => (
             <div
               key={f.id}
-              className="group bg-white rounded-xl border border-slate-100 hover:border-indigo-200 hover:shadow-md transition-all cursor-pointer relative"
-              onDoubleClick={() => setCurrentFolderId(f.id)}
-              onClick={() => setCurrentFolderId(f.id)}
+              role="listitem"
+              className="group bg-white rounded-xl border border-slate-100 hover:border-indigo-200 hover:shadow-md transition-all relative"
               onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('ring-2', 'ring-indigo-400'); }}
               onDragLeave={e => { e.currentTarget.classList.remove('ring-2', 'ring-indigo-400'); }}
               onDrop={e => {
@@ -383,8 +394,13 @@ export default function AssetsPage() {
               }}
             >
               <div className="flex items-center gap-2.5 px-3 py-3">
-                <FolderOpen className="w-8 h-8 text-amber-400 shrink-0" />
-                <div className="flex-1 min-w-0">
+                <button
+                  className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
+                  onClick={() => setCurrentFolderId(f.id)}
+                  aria-label={`Open folder ${f.name}`}
+                >
+                  <FolderOpen className="w-8 h-8 text-amber-400 shrink-0" />
+                  <div className="flex-1 min-w-0">
                   {renamingFolder === f.id ? (
                     <input
                       value={renameValue}
@@ -392,7 +408,6 @@ export default function AssetsPage() {
                       onBlur={() => handleRenameFolder(f.id)}
                       onKeyDown={e => { if (e.key === 'Enter') handleRenameFolder(f.id); if (e.key === 'Escape') setRenamingFolder(null); }}
                       className="w-full px-1 py-0.5 text-xs font-semibold bg-indigo-50 border border-indigo-300 rounded outline-none"
-                      autoFocus
                       onClick={e => e.stopPropagation()}
                     />
                   ) : (
@@ -402,6 +417,7 @@ export default function AssetsPage() {
                     {f._count?.assets || 0} files{f._count?.children ? `, ${f._count.children} folders` : ''}
                   </p>
                 </div>
+                </button>
                 {/* Folder context menu */}
                 <div className="relative">
                   <button
@@ -411,7 +427,7 @@ export default function AssetsPage() {
                     <MoreVertical className="w-3.5 h-3.5" />
                   </button>
                   {folderMenuOpen === f.id && (
-                    <div className="absolute right-0 top-7 z-20 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[120px]" onClick={e => e.stopPropagation()}>
+                    <div role="none" className="absolute right-0 top-7 z-20 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[120px]" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
                       <button onClick={() => { setRenamingFolder(f.id); setRenameValue(f.name); setFolderMenuOpen(null); }} className="w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2">
                         <Pencil className="w-3 h-3" /> Rename
                       </button>
@@ -442,18 +458,27 @@ export default function AssetsPage() {
             const name = assetName(a);
             const isSelected = selectedIds.includes(a.id);
             return (
-              <div key={a.id} onClick={() => setSelectedAsset(a)} draggable onDragStart={e => { e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className={`bg-white rounded-3xl overflow-hidden group transition-all duration-300 cursor-pointer hover:-translate-y-1 relative border-2 ${isSelected ? 'border-indigo-500 shadow-[0_8px_30px_rgb(99,102,241,0.2)]' : 'border-transparent hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]'}`}>
-                
+              <div key={a.id} role="listitem" draggable onDragStart={e => { e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className={`bg-white rounded-3xl overflow-hidden group transition-all duration-300 relative border-2 ${isSelected ? 'border-indigo-500 shadow-[0_8px_30px_rgb(99,102,241,0.2)]' : 'border-transparent hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]'}`}>
                 {/* Selection Checkbox Trigger */}
-                <div onClick={(e) => { e.stopPropagation(); setSelectedIds(p => p.includes(a.id) ? p.filter(id => id !== a.id) : [...p, a.id]); }} className={`absolute top-2.5 left-2.5 z-20 w-5 h-5 rounded flex items-center justify-center transition-all ${isSelected ? 'bg-indigo-500 border border-indigo-500 opacity-100 scale-100' : 'bg-white border border-slate-300 opacity-0 scale-90 group-hover:opacity-100 group-hover:scale-100 shadow-sm'}`}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setSelectedIds(p => p.includes(a.id) ? p.filter(id => id !== a.id) : [...p, a.id]); }}
+                  aria-label={isSelected ? `Deselect ${name}` : `Select ${name}`}
+                  aria-pressed={isSelected}
+                  className={`absolute top-2.5 left-2.5 z-20 w-5 h-5 rounded flex items-center justify-center transition-all ${isSelected ? 'bg-indigo-500 border border-indigo-500 opacity-100 scale-100' : 'bg-white border border-slate-300 opacity-0 scale-90 group-hover:opacity-100 group-hover:scale-100 shadow-sm'}`}
+                >
                   {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
-                </div>
+                </button>
 
                 {/* Quick Delete Trash Trigger */}
                 <button onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${name}"?`)) deleteAsset.mutate(a.id); }} className="absolute top-2.5 right-2.5 z-20 w-6 h-6 rounded bg-red-500 hover:bg-red-600 flex items-center justify-center transition-all opacity-0 scale-90 group-hover:opacity-100 group-hover:scale-100 shadow-sm">
                   <Trash className="w-3 h-3 text-white" />
                 </button>
 
+                <button
+                  onClick={() => setSelectedAsset(a)}
+                  aria-label={`View details for ${name}`}
+                  className="w-full text-left cursor-pointer hover:-translate-y-0 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500"
+                >
                 <div className="aspect-video bg-slate-50 flex items-center justify-center relative overflow-hidden">
                   {thumb && isVideo(a) ? (
                     <video
@@ -493,6 +518,7 @@ export default function AssetsPage() {
                   <p className="text-[11px] font-semibold text-slate-700 truncate">{name}</p>
                   <p className="text-[10px] text-slate-400 mt-0.5">{fmtSize(a.fileSize)}</p>
                 </div>
+                </button>
               </div>
             );
           })}
@@ -504,22 +530,33 @@ export default function AssetsPage() {
             const name = assetName(a);
             const isSelected = selectedIds.includes(a.id);
             return (
-              <div key={a.id} onClick={() => setSelectedAsset(a)} draggable onDragStart={e => { e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className={`flex items-center gap-4 px-4 py-3 transition-colors cursor-pointer group ${isSelected ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}`}>
-                <div onClick={(e) => { e.stopPropagation(); setSelectedIds(p => p.includes(a.id) ? p.filter(id => id !== a.id) : [...p, a.id]); }} className={`w-4 h-4 rounded flex items-center justify-center transition-all ${isSelected ? 'bg-indigo-500 border border-indigo-500 opacity-100' : 'bg-white border border-slate-300 opacity-50 hover:opacity-100 shadow-sm'}`}>
+              <div key={a.id} role="listitem" draggable onDragStart={e => { e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className={`flex items-center gap-4 px-4 py-3 transition-colors group ${isSelected ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}`}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setSelectedIds(p => p.includes(a.id) ? p.filter(id => id !== a.id) : [...p, a.id]); }}
+                  aria-label={isSelected ? `Deselect ${name}` : `Select ${name}`}
+                  aria-pressed={isSelected}
+                  className={`w-4 h-4 rounded flex items-center justify-center transition-all ${isSelected ? 'bg-indigo-500 border border-indigo-500 opacity-100' : 'bg-white border border-slate-300 opacity-50 hover:opacity-100 shadow-sm'}`}
+                >
                   {isSelected && <Check className="w-3 h-3 text-white" />}
-                </div>
-                <div className="w-12 h-12 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
-                  {thumb && isVideo(a) ? (
-                    <video src={thumb} muted preload="metadata" className="w-full h-full object-cover" />
-                  ) : thumb ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={thumb} alt="" className="w-full h-full object-cover" />
-                  ) : typeIcon(a.mimeType)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-slate-700 truncate">{name}</p>
-                  <p className="text-[10px] text-slate-400">{a.mimeType} • {fmtSize(a.fileSize)} • {a.uploadedBy?.email}</p>
-                </div>
+                </button>
+                <button
+                  onClick={() => setSelectedAsset(a)}
+                  aria-label={`View details for ${name}`}
+                  className="flex items-center gap-4 flex-1 min-w-0 text-left"
+                >
+                  <div className="w-12 h-12 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
+                    {thumb && isVideo(a) ? (
+                      <video src={thumb} muted preload="metadata" className="w-full h-full object-cover" />
+                    ) : thumb ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={thumb} alt="" className="w-full h-full object-cover" />
+                    ) : typeIcon(a.mimeType)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-slate-700 truncate">{name}</p>
+                    <p className="text-[10px] text-slate-400">{a.mimeType} • {fmtSize(a.fileSize)} • {a.uploadedBy?.email}</p>
+                  </div>
+                </button>
                 <div className="flex items-center gap-3">
                   <button onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${name}"?`)) deleteAsset.mutate(a.id); }} className="w-6 h-6 rounded bg-slate-200 hover:bg-red-500 text-slate-500 hover:text-white flex items-center justify-center transition-all opacity-0 group-hover:opacity-100">
                     <Trash className="w-3 h-3" />
@@ -535,7 +572,7 @@ export default function AssetsPage() {
       {/* Detail Panel (slide-over) */}
       {selectedAsset && (
         <div className="fixed inset-0 z-50 flex">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedAsset(null)} />
+          <button aria-label="Close detail panel" className="absolute inset-0 bg-black/50 backdrop-blur-sm cursor-default" onClick={() => setSelectedAsset(null)} />
           <div className="ml-auto w-full max-w-xl bg-white shadow-2xl relative z-10 flex flex-col animate-in slide-in-from-right">
             {/* Preview */}
             <div className="aspect-video bg-slate-900 flex items-center justify-center relative overflow-hidden shrink-0">

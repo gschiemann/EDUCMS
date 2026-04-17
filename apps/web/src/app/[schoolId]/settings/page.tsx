@@ -1,11 +1,9 @@
-// TODO(a11y): Sprint 2 — remove no-autofocus usage; move focus management to a useEffect hook.
-/* eslint-disable jsx-a11y/no-autofocus */
 "use client";
 
 import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
 import { useUsers, useCreateUser, useDeleteUser, useUpdateUserRole, useTenant, useUpdateTenantPanicSettings, usePlaylists } from '@/hooks/use-api';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 const ROLES = ['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN', 'CONTRIBUTOR', 'RESTRICTED_VIEWER'] as const;
 
@@ -38,6 +36,14 @@ export default function SettingsPage() {
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState<string>('CONTRIBUTOR');
+  const inviteEmailRef = useRef<HTMLInputElement>(null);
+
+  // Focus invite email input when the add-user form opens
+  useEffect(() => {
+    if (showAddUser) {
+      inviteEmailRef.current?.focus();
+    }
+  }, [showAddUser]);
 
   const handleAddUser = async () => {
     if (!newEmail.trim() || !newPassword.trim()) return;
@@ -173,8 +179,8 @@ export default function SettingsPage() {
           {showAddUser && (
             <div className="px-6 py-4 bg-slate-50 border-b border-slate-100">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="Email address" type="email"
-                  className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500" autoFocus />
+                <input ref={inviteEmailRef} value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="Email address" type="email"
+                  className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
                 <input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Password" type="password"
                   className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
                 <select value={newRole} onChange={(e) => setNewRole(e.target.value)}

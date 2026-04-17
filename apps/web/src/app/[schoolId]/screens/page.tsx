@@ -1,12 +1,8 @@
-// TODO(a11y): Sprint 2 — fix click-events-have-key-events, no-static-element-interactions,
-// no-noninteractive-element-interactions, label-has-associated-control, and no-autofocus
-// violations throughout this file.
-/* eslint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions, jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/label-has-associated-control, jsx-a11y/no-autofocus */
 "use client";
 
 import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink } from 'lucide-react';
 import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens } from '@/hooks/use-api';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { apiFetch } from '@/lib/api-client';
 
 function OsIcon({ os }: { os?: string }) {
@@ -40,6 +36,24 @@ export default function ScreensPage() {
   const [pairError, setPairError] = useState('');
   const [editingScreen, setEditingScreen] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const newGroupInputRef = useRef<HTMLInputElement>(null);
+  const pairCodeInputRef = useRef<HTMLInputElement>(null);
+  const editNameInputRef = useRef<HTMLInputElement>(null);
+
+  // Focus new-group name input when the form opens
+  useEffect(() => {
+    if (showCreateGroup) newGroupInputRef.current?.focus();
+  }, [showCreateGroup]);
+
+  // Focus pairing code input when the modal opens
+  useEffect(() => {
+    if (showPairModal) pairCodeInputRef.current?.focus();
+  }, [showPairModal]);
+
+  // Focus the inline rename input when a screen enters edit mode
+  useEffect(() => {
+    if (editingScreen) editNameInputRef.current?.focus();
+  }, [editingScreen]);
 
   const handleCreateGroup = async () => {
     if (!newGroupName.trim()) return;
@@ -146,10 +160,10 @@ export default function ScreensPage() {
         <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-6">
           <h3 className="text-sm font-bold text-slate-800 mb-3">New Screen Group</h3>
           <div className="flex gap-3">
-            <input value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)}
+            <input ref={newGroupInputRef} value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)}
               placeholder="e.g., Main Hallway, Cafeteria, Library"
               className="flex-1 px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-              onKeyDown={(e) => e.key === 'Enter' && handleCreateGroup()} autoFocus />
+              onKeyDown={(e) => e.key === 'Enter' && handleCreateGroup()} />
             <button onClick={handleCreateGroup} disabled={createGroup.isPending}
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold rounded-lg">
               {createGroup.isPending ? 'Creating...' : 'Create'}
@@ -206,16 +220,20 @@ export default function ScreensPage() {
                         <div className="flex-1 min-w-0">
                           {editingScreen === screen.id ? (
                             <div className="flex items-center gap-2">
-                              <input value={editName} onChange={e => setEditName(e.target.value)}
+                              <input ref={editNameInputRef} value={editName} onChange={e => setEditName(e.target.value)}
                                 className="px-2 py-1 text-xs border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-                                onKeyDown={e => e.key === 'Enter' && handleRename(screen.id)} autoFocus />
+                                onKeyDown={e => e.key === 'Enter' && handleRename(screen.id)} />
                               <button onClick={() => handleRename(screen.id)} className="text-emerald-600 hover:underline text-xs font-bold">Save</button>
                               <button onClick={() => setEditingScreen(null)} className="text-slate-400 hover:text-slate-600 text-xs font-semibold">Cancel</button>
                             </div>
                           ) : (
-                            <p className="text-sm font-bold text-slate-700 cursor-pointer hover:text-indigo-600 transition-colors" onClick={() => { setEditingScreen(screen.id); setEditName(screen.name); }}>
+                            <button
+                              className="text-sm font-bold text-slate-700 hover:text-indigo-600 transition-colors text-left"
+                              onClick={() => { setEditingScreen(screen.id); setEditName(screen.name); }}
+                              title="Click to rename"
+                            >
                               {screen.name}
-                            </p>
+                            </button>
                           )}
                           <div className="flex gap-3 mt-1 text-[11px] font-medium text-slate-400">
                             {screen.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {screen.location}</span>}
@@ -242,9 +260,9 @@ export default function ScreensPage() {
                           className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 opacity-0 group-hover/item:opacity-100 transition-all shadow-sm">
                           <Trash2 className="w-4 h-4" />
                         </button>
-                        <a 
-                          href={`${playerUrl}?deviceId=${screen.deviceFingerprint}`} 
-                          target="_blank" 
+                        <a
+                          href={`${playerUrl}?deviceId=${screen.deviceFingerprint}`}
+                          target="_blank"
                           rel="noopener noreferrer"
                           className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-indigo-600 hover:border-indigo-100 hover:bg-indigo-50 opacity-0 group-hover/item:opacity-100 transition-all shadow-sm"
                           title="Open Screen in Browser"
@@ -315,16 +333,20 @@ export default function ScreensPage() {
                     <div className="flex-1 min-w-0">
                       {editingScreen === screen.id ? (
                         <div className="flex items-center gap-2">
-                          <input value={editName} onChange={e => setEditName(e.target.value)}
+                          <input ref={editNameInputRef} value={editName} onChange={e => setEditName(e.target.value)}
                             className="px-2 py-1 text-xs border border-indigo-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none"
-                            onKeyDown={e => e.key === 'Enter' && handleRename(screen.id)} autoFocus />
+                            onKeyDown={e => e.key === 'Enter' && handleRename(screen.id)} />
                           <button onClick={() => handleRename(screen.id)} className="text-emerald-600 hover:underline text-xs font-bold">Save</button>
                           <button onClick={() => setEditingScreen(null)} className="text-slate-400 hover:text-slate-600 text-xs font-semibold">Cancel</button>
                         </div>
                       ) : (
-                        <p className="text-sm font-bold text-slate-700 cursor-pointer hover:text-indigo-600 transition-colors" onClick={() => { setEditingScreen(screen.id); setEditName(screen.name); }}>
+                        <button
+                          className="text-sm font-bold text-slate-700 hover:text-indigo-600 transition-colors text-left"
+                          onClick={() => { setEditingScreen(screen.id); setEditName(screen.name); }}
+                          title="Click to rename"
+                        >
                           {screen.name}
-                        </p>
+                        </button>
                       )}
                       <div className="flex gap-3 mt-1 text-[11px] font-medium text-slate-400">
                         {screen.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {screen.location}</span>}
@@ -387,8 +409,9 @@ export default function ScreensPage() {
 
       {/* ─── Pair Screen Modal ─── */}
       {showPairModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowPairModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Pair a Screen">
+          <button className="absolute inset-0 cursor-default" aria-label="Close dialog" onClick={() => setShowPairModal(false)} />
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative z-10" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()} role="document">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <Wifi className="w-5 h-5 text-emerald-600" /> Pair a Screen
@@ -404,21 +427,23 @@ export default function ScreensPage() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Pairing Code</label>
+                <label htmlFor="pair-code-input" className="block text-xs font-semibold text-slate-600 mb-1.5">Pairing Code</label>
                 <input
+                  id="pair-code-input"
+                  ref={pairCodeInputRef}
                   value={pairCode}
                   onChange={e => setPairCode(e.target.value.toUpperCase())}
                   placeholder="e.g., ABC123"
                   maxLength={6}
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center text-2xl font-mono font-bold tracking-[0.3em] outline-none focus:ring-2 focus:ring-emerald-500 uppercase"
                   onKeyDown={e => e.key === 'Enter' && handlePairScreen()}
-                  autoFocus
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Screen Name (optional)</label>
+                <label htmlFor="pair-name-input" className="block text-xs font-semibold text-slate-600 mb-1.5">Screen Name (optional)</label>
                 <input
+                  id="pair-name-input"
                   value={pairName}
                   onChange={e => setPairName(e.target.value)}
                   placeholder="e.g., Lobby Display, Room 201"
@@ -427,8 +452,9 @@ export default function ScreensPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Assign to Group</label>
+                <label htmlFor="pair-group-select" className="block text-xs font-semibold text-slate-600 mb-1.5">Assign to Group</label>
                 <select
+                  id="pair-group-select"
                   value={pairGroupId}
                   onChange={e => setPairGroupId(e.target.value)}
                   className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500"
