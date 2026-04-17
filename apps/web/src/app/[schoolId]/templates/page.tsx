@@ -23,6 +23,8 @@ import {
   useAssets, usePlaylists, useAssetFolders,
 } from '@/hooks/use-api';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
+import { useParams, useRouter } from 'next/navigation';
+import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 
 // ─────────────────────────────────────────────────────
 // Constants & Helpers
@@ -175,6 +177,17 @@ export default function TemplatesPage() {
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [autoEditHandled, setAutoEditHandled] = useState(false);
+  const router = useRouter();
+  const params = useParams<{ schoolId: string }>();
+  const useV2Builder = isFeatureEnabled(FLAGS.TEMPLATE_BUILDER_V2);
+
+  const openInBuilder = useCallback((t: Template) => {
+    if (useV2Builder && !t.isSystem) {
+      router.push(`/${params?.schoolId ?? ''}/templates/builder/${t.id}`);
+    } else {
+      setEditingTemplate(t);
+    }
+  }, [useV2Builder, router, params?.schoolId]);
 
   // Create form state
   const [newName, setNewName] = useState('');
@@ -194,7 +207,7 @@ export default function TemplatesPage() {
     if (editId) {
       const target = templates.find((t: Template) => t.id === editId);
       if (target) {
-        setEditingTemplate(target);
+        openInBuilder(target);
         // Clean up the URL param without triggering navigation
         window.history.replaceState({}, '', window.location.pathname);
       }
@@ -221,7 +234,7 @@ export default function TemplatesPage() {
     });
     setShowCreate(false); setNewName(''); setNewDesc('');
     setNewW(3840); setNewH(2160); setCustomRes(false);
-    setEditingTemplate(result);
+    openInBuilder(result);
   }
 
   async function handleUsePreset(preset: Template, flipOrientation?: boolean) {
@@ -234,15 +247,15 @@ export default function TemplatesPage() {
         screenWidth: result.screenHeight,
         screenHeight: result.screenWidth,
       });
-      setEditingTemplate({ ...result, ...flipped });
+      openInBuilder({ ...result, ...flipped });
     } else {
-      setEditingTemplate(result);
+      openInBuilder(result);
     }
   }
 
   async function handleDuplicate(template: Template) {
     const result = await duplicateTemplate.mutateAsync({ id: template.id });
-    setEditingTemplate(result);
+    openInBuilder(result);
   }
 
   if (editingTemplate) {
@@ -381,7 +394,7 @@ export default function TemplatesPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {customTemplates.map((t: Template) => (
-                  <GalleryCard key={t.id} template={t} onEdit={() => setEditingTemplate(t)} onDuplicate={() => handleDuplicate(t)} onDelete={() => { if (confirm('Delete this template?')) deleteTemplate.mutateAsync(t.id); }} />
+                  <GalleryCard key={t.id} template={t} onEdit={() => openInBuilder(t)} onDuplicate={() => handleDuplicate(t)} onDelete={() => { if (confirm('Delete this template?')) deleteTemplate.mutateAsync(t.id); }} />
                 ))}
               </div>
             )}
