@@ -16,7 +16,9 @@
     "dev:api": "pnpm --filter api run start:dev",
     "dev:web": "pnpm --filter web run dev",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "a11y:ci": "pnpm --filter web run a11y:ci",
+    "lhci": "pnpm --filter web run lhci"
   },
   "dependencies": {
     "@cms/api-types": "workspace:*",

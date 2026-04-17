@@ -1,9 +1,10 @@
 "use client";
 
-import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink } from 'lucide-react';
+import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode } from 'lucide-react';
 import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens } from '@/hooks/use-api';
 import { useState, useRef, useEffect } from 'react';
 import { apiFetch } from '@/lib/api-client';
+import QRCode from 'qrcode';
 
 function OsIcon({ os }: { os?: string }) {
   if (!os) return <Monitor className="w-4 h-4 text-slate-400" />;
@@ -36,6 +37,20 @@ export default function ScreensPage() {
   const [pairError, setPairError] = useState('');
   const [editingScreen, setEditingScreen] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const [showQrForScan, setShowQrForScan] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+
+  // Generate a QR encoding the pairing code (or a deep-link to /pair?code=) so
+  // a phone pointed at this modal can scan and complete pairing.
+  useEffect(() => {
+    if (!showQrForScan || !pairCode.trim()) { setQrDataUrl(''); return; }
+    const payload = typeof window !== 'undefined'
+      ? `${window.location.origin}/pair?code=${encodeURIComponent(pairCode.trim().toUpperCase())}`
+      : pairCode.trim().toUpperCase();
+    QRCode.toDataURL(payload, { width: 220, margin: 1 })
+      .then(setQrDataUrl)
+      .catch(() => setQrDataUrl(''));
+  }, [showQrForScan, pairCode]);
   const newGroupInputRef = useRef<HTMLInputElement>(null);
   const pairCodeInputRef = useRef<HTMLInputElement>(null);
   const editNameInputRef = useRef<HTMLInputElement>(null);
@@ -480,6 +495,28 @@ export default function ScreensPage() {
                 {pairing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wifi className="w-4 h-4" />}
                 {pairing ? 'Pairing...' : 'Pair Screen'}
               </button>
+
+              <button
+                type="button"
+                onClick={() => setShowQrForScan(v => !v)}
+                disabled={pairCode.length < 4}
+                className="w-full py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 text-sm font-semibold rounded-xl flex items-center justify-center gap-2"
+                aria-expanded={showQrForScan}
+                data-testid="scan-instead-button"
+              >
+                <QrCode className="w-4 h-4" />
+                {showQrForScan ? 'Hide QR code' : 'Scan instead with phone'}
+              </button>
+
+              {showQrForScan && qrDataUrl && (
+                <div className="flex flex-col items-center gap-2 border border-slate-200 rounded-xl p-4" data-testid="pair-qr-container">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={qrDataUrl} alt="QR code to pair screen with phone" width={220} height={220} />
+                  <p className="text-xs text-slate-500 text-center">
+                    On your phone, open <code className="font-mono">/pair</code> and scan this code.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>

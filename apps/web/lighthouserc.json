@@ -1,0 +1,33 @@
+{
+  "ci": {
+    "collect": {
+      "startServerCommand": "pnpm --filter web start",
+      "startServerReadyPattern": "Ready|ready|started server on",
+      "startServerReadyTimeout": 60000,
+      "url": [
+        "http://localhost:3000/login",
+        "http://localhost:3000/dashboard",
+        "http://localhost:3000/screens",
+        "http://localhost:3000/00000000-0000-0000-0000-000000000002/templates",
+        "http://localhost:3000/player"
+      ],
+      "numberOfRuns": 1,
+      "settings": {
+        "preset": "desktop",
+        "chromeFlags": "--no-sandbox --headless=new"
+      }
+    },
+    "assert": {
+      "assertions": {
+        "categories:performance": ["error", { "minScore": 0.85 }],
+        "categories:accessibility": ["error", { "minScore": 0.95 }],
+        "categories:best-practices": ["error", { "minScore": 0.9 }],
+        "categories:seo": ["error", { "minScore": 0.85 }]
+      }
+    },
+    "upload": {
+      "target": "filesystem",
+      "outputDir": "./.lighthouseci"
+    }
+  }
+}

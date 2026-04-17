@@ -7,10 +7,13 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "jest"
+    "lhci": "lhci autorun",
+    "a11y:ci": "tsx scripts/a11y-audit.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.0",
+    "jsqr": "^1.4.0",
+    "qrcode": "^1.5.4",
     "@cms/api-types": "workspace:*",
     "@cms/auth-core": "workspace:*",
     "@cms/ws-events": "workspace:*",
@@ -39,22 +42,21 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
     "@axe-core/react": "^4.11.1",
+    "@lhci/cli": "^0.15.0",
+    "@playwright/test": "^1.59.1",
+    "@types/qrcode": "^1.5.5",
+    "tsx": "^4.19.2",
     "@tailwindcss/postcss": "^4",
-    "@testing-library/jest-dom": "^6.6.3",
-    "@testing-library/react": "^16.1.0",
-    "@types/jest": "^29.5.11",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
     "eslint-plugin-jsx-a11y": "^6.10.2",
-    "jest": "^29.7.0",
     "jest-axe": "^10.0.0",
-    "jest-environment-jsdom": "^29.7.0",
     "tailwindcss": "^4",
-    "ts-jest": "^29.1.1",
     "typescript": "^5"
   }
 }
