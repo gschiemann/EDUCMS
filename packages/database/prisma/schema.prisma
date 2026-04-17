@@ -31,8 +31,31 @@ model Tenant {
   parent                  Tenant?       @relation("TenantHierarchy", fields: [parentId], references: [id])
   children                Tenant[]      @relation("TenantHierarchy")
   users                   User[]
+  ssoConfig               TenantSSOConfig?
 
   @@map("tenants")
+}
+
+model TenantSSOConfig {
+  id                String   @id @default(uuid())
+  tenantId          String   @unique @map("tenant_id")
+  provider          String   // 'SAML' | 'OIDC'
+  enabled           Boolean  @default(false)
+  metadataUrl       String?  @map("metadata_url")
+  entityId          String?  @map("entity_id")
+  acsUrl            String?  @map("acs_url")
+  x509Cert          String?  @map("x509_cert")           // encrypted at rest
+  oidcIssuer        String?  @map("oidc_issuer")
+  oidcClientId      String?  @map("oidc_client_id")
+  oidcClientSecret  String?  @map("oidc_client_secret")  // encrypted at rest
+  defaultRole       String   @default("RESTRICTED_VIEWER") @map("default_role")
+  allowedEmailDomain String? @map("allowed_email_domain")
+  autoProvision     Boolean  @default(false) @map("auto_provision")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at")
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_sso_configs")
 }
 
 model User {
