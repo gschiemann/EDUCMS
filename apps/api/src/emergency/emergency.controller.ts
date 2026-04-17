@@ -8,6 +8,9 @@ import { RequireRoles } from '../auth/roles.decorator';
 import { AllowPanicBypass } from '../auth/panic-bypass.decorator';
 import * as crypto from 'crypto';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
+import { ZodValidationPipe } from '../security/zod-validation.pipe';
+import { TriggerEmergencyInputSchema, ClearEmergencyInputSchema } from '@cms/api-types';
+import type { TriggerEmergencyInput, ClearEmergencyInput } from '@cms/api-types';
 
 @Controller('api/v1/emergency')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -21,7 +24,10 @@ export class EmergencyController {
   @Post('trigger')
   @AllowPanicBypass()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async triggerEmergency(@Body() body: { scopeType: 'tenant' | 'group' | 'device', scopeId: string, overridePayload: any }, @Req() req: any) {
+  async triggerEmergency(
+    @Body(new ZodValidationPipe(TriggerEmergencyInputSchema)) body: TriggerEmergencyInput,
+    @Req() req: any,
+  ) {
     const { scopeType, scopeId, overridePayload } = body;
     
     const overrideId = overridePayload.overrideId || `ovr_${crypto.randomUUID()}`;
@@ -93,7 +99,11 @@ export class EmergencyController {
   @Post(':overrideId/all-clear')
   @AllowPanicBypass()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async clearEmergency(@Param('overrideId') overrideId: string, @Body() body: { scopeType: 'tenant' | 'group' | 'device', scopeId: string }, @Req() req: any) {
+  async clearEmergency(
+    @Param('overrideId') overrideId: string,
+    @Body(new ZodValidationPipe(ClearEmergencyInputSchema)) body: ClearEmergencyInput,
+    @Req() req: any,
+  ) {
     const { scopeType, scopeId } = body;
     const clearedBy = req.user?.id || 'admin_system';
 

@@ -13,6 +13,9 @@ export interface ManifestResponse {
   hash: string;
 }
 
+// Legacy: kept for backward compatibility. Prefer the zod-validated
+// TriggerEmergencyInputSchema / OverridePayloadSchema re-exported at the
+// bottom of this file — those match what EmergencyController actually accepts.
 export interface EmergencyOverrideRequest {
   severity: "CRITICAL" | "WEATHER" | "INFO";
   mediaUrl?: string;
@@ -101,3 +104,12 @@ export interface TemplateZoneResponse {
   sortOrder: number;
   defaultConfig: Record<string, any> | null;
 }
+
+// ─────────────────────────────────────────────────────────────
+// Zod-validated API boundary schemas. New in Sprint 1.
+// Prefer these over the plain interfaces above for any new
+// controller or form — runtime validation matches compile-time types.
+// ─────────────────────────────────────────────────────────────
+
+export * from './schemas/common';
+export * from './schemas/emergency';

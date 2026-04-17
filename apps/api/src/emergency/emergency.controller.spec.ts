@@ -67,6 +67,7 @@ describe('EmergencyController', () => {
       scopeId: 't1',
       overridePayload: {
         overrideId: 'o1',
+        severity: 'CRITICAL' as const,
         textBlob: 'EMERGENCY'
       }
     };
