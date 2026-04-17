@@ -18,6 +18,11 @@ export interface SystemPreset {
   orientation: string;
   screenWidth?: number;
   screenHeight?: number;
+  // Optional background applied template-wide. Any of these can be set;
+  // the player layers them as:  bgImage on top of bgGradient on top of bgColor.
+  bgColor?: string;       // solid color fallback — e.g. '#ffffff'
+  bgGradient?: string;    // any valid CSS `background:` value (supports layered backgrounds + SVG data URIs)
+  bgImage?: string;       // URL to a single background image
   zones: Array<{
     name: string;
     widgetType: string;
@@ -31,7 +36,172 @@ export interface SystemPreset {
   }>;
 }
 
+// ═════════════════════════════════════════════════════════════════════════
+// PREMIUM THEMED BACKGROUND — Sunny Meadow
+// A layered CSS background: illustrated meadow hills at the bottom, stitched
+// on top of a sky-blue → warm-yellow → peach gradient. Inline SVG is
+// URL-encoded so it ships with the template and doesn't require any asset
+// upload or network call.
+// ═════════════════════════════════════════════════════════════════════════
+const SUNNY_MEADOW_BG = (() => {
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1920 600' preserveAspectRatio='none'>
+    <!-- distant hills -->
+    <path d='M0,360 C320,290 640,410 960,330 C1280,270 1600,410 1920,320 L1920,600 L0,600 Z' fill='#86E09B' opacity='0.9'/>
+    <!-- mid hills -->
+    <path d='M0,440 C240,390 520,490 820,420 C1160,350 1480,480 1920,410 L1920,600 L0,600 Z' fill='#5BB36C'/>
+    <!-- front hills -->
+    <path d='M0,520 C300,480 620,550 960,510 C1280,475 1600,550 1920,505 L1920,600 L0,600 Z' fill='#4A9D5C'/>
+    <!-- yellow flowers -->
+    <g fill='#FFD166'>
+      <circle cx='140' cy='540' r='7'/><circle cx='360' cy='560' r='6'/><circle cx='580' cy='535' r='7'/>
+      <circle cx='820' cy='565' r='6'/><circle cx='1080' cy='540' r='7'/><circle cx='1320' cy='560' r='6'/>
+      <circle cx='1560' cy='538' r='7'/><circle cx='1800' cy='565' r='6'/>
+    </g>
+    <!-- pink flowers -->
+    <g fill='#FF8FAB'>
+      <circle cx='230' cy='565' r='5'/><circle cx='490' cy='550' r='5'/><circle cx='720' cy='570' r='4'/>
+      <circle cx='980' cy='558' r='5'/><circle cx='1220' cy='548' r='4'/><circle cx='1460' cy='565' r='5'/>
+      <circle cx='1700' cy='550' r='4'/>
+    </g>
+    <!-- white flowers -->
+    <g fill='#FFFFFF' opacity='0.85'>
+      <circle cx='300' cy='548' r='4'/><circle cx='660' cy='555' r='4'/><circle cx='1020' cy='568' r='4'/>
+      <circle cx='1400' cy='548' r='4'/><circle cx='1640' cy='572' r='4'/>
+    </g>
+  </svg>`;
+  // URL-encode ( # and < and > and space etc ) so it's safe inside a CSS url("...")
+  const encoded = svg
+    .replace(/\n/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/#/g, '%23')
+    .replace(/"/g, "'");
+  return `url("data:image/svg+xml;utf8,${encoded}") no-repeat bottom / 100% 38%, linear-gradient(180deg, #BFE4FF 0%, #FFF1B8 55%, #FFD8A8 100%)`;
+})();
+
 export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
+  // ─────────────────────────────────────────────────────
+  // ★ PREMIUM — Sunny Meadow (elementary lobby showcase)
+  // Teachers pick this, configure names/messages, hit publish. Done.
+  // ─────────────────────────────────────────────────────
+  {
+    id: 'preset-lobby-sunny-meadow',
+    name: '☀️ Sunny Meadow — Elementary Welcome',
+    description: 'A bright, illustrated welcome screen designed for elementary school lobbies. Playful rounded typography, animated sun, hand-drawn accents, and a polaroid-style Teacher of the Week. Zero design work needed — just fill in names and messages.',
+    category: 'LOBBY',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgGradient: SUNNY_MEADOW_BG,
+    zones: [
+      {
+        name: 'School Logo',
+        widgetType: 'LOGO',
+        x: 2, y: 3, width: 14, height: 14,
+        sortOrder: 0,
+        defaultConfig: { fitMode: 'contain' },
+      },
+      {
+        name: 'Welcome Headline',
+        widgetType: 'TEXT',
+        x: 17, y: 3, width: 54, height: 14,
+        sortOrder: 1,
+        defaultConfig: {
+          content: 'Welcome to Sunnyside Elementary! ☀️',
+          fontSize: 64,
+          alignment: 'center',
+          color: '#3A2E2A',
+          bgColor: 'transparent',
+        },
+      },
+      {
+        name: 'Clock',
+        widgetType: 'CLOCK',
+        x: 72, y: 3, width: 26, height: 14,
+        sortOrder: 2,
+        defaultConfig: {
+          format: '12h',
+          theme: 'sunny-meadow',
+        },
+      },
+      {
+        name: 'Weather',
+        widgetType: 'WEATHER',
+        x: 2, y: 20, width: 32, height: 26,
+        sortOrder: 3,
+        defaultConfig: {
+          location: 'Springfield',
+          units: 'imperial',
+          theme: 'sunny-meadow',
+        },
+      },
+      {
+        name: 'Teacher of the Week',
+        widgetType: 'STAFF_SPOTLIGHT',
+        x: 2, y: 48, width: 32, height: 40,
+        sortOrder: 4,
+        defaultConfig: {
+          staffName: 'Mrs. Johnson',
+          role: 'Teacher of the Week',
+          bio: 'Inspiring 3rd graders every day with creativity, kindness, and a big smile!',
+          theme: 'sunny-meadow',
+        },
+      },
+      {
+        name: 'Today\'s Announcements',
+        widgetType: 'ANNOUNCEMENT',
+        x: 36, y: 20, width: 42, height: 42,
+        sortOrder: 5,
+        defaultConfig: {
+          message: 'Book Fair starts Monday! Come explore hundreds of new books in the library. Don\'t forget to bring your reading log.',
+          priority: 'normal',
+        },
+      },
+      {
+        name: 'School Photos',
+        widgetType: 'IMAGE_CAROUSEL',
+        x: 36, y: 64, width: 42, height: 24,
+        sortOrder: 6,
+        defaultConfig: {
+          transitionEffect: 'fade',
+          intervalMs: 5000,
+          fitMode: 'cover',
+        },
+      },
+      {
+        name: 'Upcoming Events',
+        widgetType: 'CALENDAR',
+        x: 80, y: 20, width: 18, height: 42,
+        sortOrder: 7,
+        defaultConfig: { maxEvents: 4 },
+      },
+      {
+        name: 'Countdown to Field Trip',
+        widgetType: 'COUNTDOWN',
+        x: 80, y: 64, width: 18, height: 24,
+        sortOrder: 8,
+        defaultConfig: {
+          label: 'Field Trip in',
+          targetDate: '',
+        },
+      },
+      {
+        name: 'Rolling Ticker',
+        widgetType: 'TICKER',
+        x: 0, y: 91, width: 100, height: 9,
+        sortOrder: 9,
+        defaultConfig: {
+          speed: 'medium',
+          messages: [
+            'Welcome back, Sunnyside Stars! ⭐',
+            'Picture day is this Friday — wear your school colors!',
+            'Parent-teacher conferences next Tuesday',
+            'Lunch menu updates every Monday',
+          ],
+        },
+      },
+    ],
+  },
+
   // ─────────────────────────────────────────────────────
   // LOBBY — the main entrance display
   // ─────────────────────────────────────────────────────

@@ -5,8 +5,16 @@ import {
   Clock, Cloud, Sun, CloudRain, CloudSnow, CloudLightning, Wind, Droplets,
   Megaphone, CalendarDays, Bell, UtensilsCrossed, Users, Globe, Rss, Share2,
   Image as ImageIcon, Play, ArrowRight, Timer, Shield, FileText, Square,
-  ChevronRight, Thermometer, Eye, Sunrise, Sunset, MapPin,
+  ChevronRight, Thermometer, Eye, Sunrise, Sunset, MapPin, Star, Heart, Sparkles,
 } from 'lucide-react';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THEME SYSTEM
+// Widgets can render a themed variant when config.theme is set. Themes live
+// alongside the default implementation — zero breaking change for existing
+// templates. To add a new theme: (1) create a *_THEME_NAME component in this
+// file, (2) add a case to the theme switch at the top of each widget.
+// ═══════════════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════
 // Helper — resolve relative asset URLs to full URLs
@@ -64,6 +72,9 @@ export function WidgetPreview({ widgetType, config, width, height, live }: {
 // ═══════════════════════════════════════════════════════
 
 function ClockWidget({ config, compact }: { config: any; compact: boolean }) {
+  // Theme router — render a themed variant if requested
+  if (config.theme === 'sunny-meadow') return <SunnyMeadowClock config={config} compact={compact} />;
+
   const [now, setNow] = useState(new Date());
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -196,6 +207,9 @@ async function fetchWeather(location: string, isCelsius: boolean) {
 }
 
 function WeatherWidget({ config, compact }: { config: any; compact: boolean }) {
+  // Theme router — render a themed variant if requested
+  if (config.theme === 'sunny-meadow') return <SunnyMeadowWeather config={config} compact={compact} />;
+
   const location = config.location || 'Springfield';
   const isCelsius = config.units === 'celsius';
   const unit = isCelsius ? '°C' : '°F';
@@ -584,6 +598,9 @@ function CalendarWidget({ config, compact }: { config: any; compact: boolean }) 
 // ═══════════════════════════════════════════════════════
 
 function StaffSpotlightWidget({ config, compact }: { config: any; compact: boolean }) {
+  // Theme router — render a themed variant if requested
+  if (config.theme === 'sunny-meadow') return <SunnyMeadowStaffSpotlight config={config} compact={compact} />;
+
   const name = config.staffName || 'Mrs. Johnson';
   const role = config.role || 'Teacher of the Month';
   const bio = config.bio || 'Inspiring students every day with creativity and passion for learning.';
@@ -882,3 +899,609 @@ function PlaylistWidget({ config }: { config: any }) {
     </div>
   );
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//      SUNNY MEADOW THEME — playful, illustrated variant for K-5 schools
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SUNNY = {
+  text: '#3A2E2A', textSoft: '#6B5853', textMuted: '#9B8680',
+  skyTop: '#BFE4FF', skyMid: '#FFF1B8', skyLow: '#FFD8A8',
+  sunCore: '#FFB84D', sunGlow: '#FFD166', sunRing: '#FFE9A8',
+  cloudFill: '#FFFFFF', cloudShadow: '#E8F4FF',
+  grassDark: '#4A9D5C', grassMid: '#5BB36C', grassLight: '#86E09B',
+  rose: '#FF8FAB', coral: '#FF6B6B', teal: '#4ECDC4', buttercup: '#FFD166',
+  polaroid: '#FFFCF4', tape: 'rgba(255,220,120,0.55)',
+};
+
+const SUNNY_FONT_DISPLAY = "var(--font-fredoka), ui-rounded, 'Arial Rounded MT Bold', 'SF Pro Rounded', system-ui, sans-serif";
+const SUNNY_FONT_HAND    = "var(--font-caveat), 'Segoe Script', 'Comic Sans MS', cursive";
+
+const SUNNY_KEYFRAMES = `
+  @keyframes sunny-rays-spin   { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @keyframes sunny-cloud-drift { 0% { transform: translateX(-4%); } 50% { transform: translateX(4%); } 100% { transform: translateX(-4%); } }
+  @keyframes sunny-bob         { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6%); } }
+  @keyframes sunny-wiggle      { 0%,100% { transform: rotate(-1.5deg); } 50% { transform: rotate(1.5deg); } }
+  @keyframes sunny-twinkle     { 0%,100% { opacity: 0.35; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.1); } }
+  @keyframes sunny-rain        { 0% { transform: translateY(-4px); opacity: 0; } 50% { opacity: 1; } 100% { transform: translateY(14px); opacity: 0; } }
+  @keyframes sunny-snow        { 0% { transform: translateY(-4px); opacity: 0; } 50% { opacity: 1; } 100% { transform: translateY(16px); opacity: 0; } }
+`;
+
+// ─── Illustrated SVG atoms ───────────────────────────────────────────────
+
+function SunnySunIcon({ size = 120, animate = true }: { size?: number; animate?: boolean }) {
+  const rays = Array.from({ length: 12 }, (_, i) => i);
+  return (
+    <svg width={size} height={size} viewBox="0 0 120 120" aria-hidden>
+      <defs>
+        <radialGradient id="sunny-sun-core" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#FFF2C2" />
+          <stop offset="55%" stopColor={SUNNY.sunGlow} />
+          <stop offset="100%" stopColor={SUNNY.sunCore} />
+        </radialGradient>
+        <radialGradient id="sunny-sun-halo" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor={SUNNY.sunGlow} stopOpacity="0.45" />
+          <stop offset="100%" stopColor={SUNNY.sunGlow} stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      <circle cx="60" cy="60" r="58" fill="url(#sunny-sun-halo)" />
+      <g style={animate ? { transformOrigin: '60px 60px', animation: 'sunny-rays-spin 60s linear infinite' } : undefined}>
+        {rays.map(i => (
+          <rect key={i} x={58} y={6} width={4} height={14} rx={2}
+            fill={SUNNY.sunGlow} transform={`rotate(${i * 30} 60 60)`} opacity={0.9} />
+        ))}
+      </g>
+      <circle cx="60" cy="60" r="30" fill="url(#sunny-sun-core)" />
+      <g fill={SUNNY.text} opacity={0.85}>
+        <ellipse cx="51" cy="57" rx="2.1" ry="2.8" />
+        <ellipse cx="69" cy="57" rx="2.1" ry="2.8" />
+        <path d="M51 66 Q60 74 69 66" stroke={SUNNY.text} strokeWidth="2.2" strokeLinecap="round" fill="none" />
+        <circle cx="47" cy="65" r="2.4" fill={SUNNY.rose} opacity="0.55" />
+        <circle cx="73" cy="65" r="2.4" fill={SUNNY.rose} opacity="0.55" />
+      </g>
+    </svg>
+  );
+}
+
+function SunnyCloud({ width = 140, style, opacity = 0.95 }: { width?: number; style?: React.CSSProperties; opacity?: number }) {
+  return (
+    <svg width={width} height={width * 0.6} viewBox="0 0 140 84" style={style} aria-hidden>
+      <defs>
+        <linearGradient id={`cloud-grad-${width}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#FFFFFF" />
+          <stop offset="100%" stopColor={SUNNY.cloudShadow} />
+        </linearGradient>
+      </defs>
+      <g opacity={opacity}>
+        <ellipse cx="34" cy="55" rx="30" ry="24" fill={`url(#cloud-grad-${width})`} />
+        <ellipse cx="70" cy="42" rx="36" ry="30" fill={`url(#cloud-grad-${width})`} />
+        <ellipse cx="108" cy="52" rx="28" ry="22" fill={`url(#cloud-grad-${width})`} />
+        <ellipse cx="70" cy="62" rx="54" ry="18" fill={`url(#cloud-grad-${width})`} />
+      </g>
+    </svg>
+  );
+}
+
+function SunnyRainCloud({ size = 120 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 120 120" aria-hidden>
+      <g>
+        <ellipse cx="30" cy="55" rx="22" ry="18" fill="#E0EEFA" />
+        <ellipse cx="60" cy="44" rx="30" ry="24" fill="#F2F8FD" />
+        <ellipse cx="90" cy="52" rx="22" ry="18" fill="#E0EEFA" />
+      </g>
+      <g fill="#6EC1E4">
+        <path d="M40 80 Q36 88 40 92 Q44 88 40 80" style={{ animation: 'sunny-rain 1.4s ease-in 0s infinite' }} />
+        <path d="M60 84 Q56 92 60 96 Q64 92 60 84" style={{ animation: 'sunny-rain 1.4s ease-in 0.3s infinite' }} />
+        <path d="M80 80 Q76 88 80 92 Q84 88 80 80" style={{ animation: 'sunny-rain 1.4s ease-in 0.6s infinite' }} />
+      </g>
+    </svg>
+  );
+}
+
+function SunnySnowCloud({ size = 120 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 120 120" aria-hidden>
+      <g>
+        <ellipse cx="30" cy="55" rx="22" ry="18" fill="#F0F6FF" />
+        <ellipse cx="60" cy="44" rx="30" ry="24" fill="#FFFFFF" />
+        <ellipse cx="90" cy="52" rx="22" ry="18" fill="#F0F6FF" />
+      </g>
+      <g fill="#D4E4FF">
+        <circle cx="40" cy="85" r="3" style={{ animation: 'sunny-snow 2s ease-in-out 0s infinite' }} />
+        <circle cx="60" cy="90" r="3" style={{ animation: 'sunny-snow 2s ease-in-out 0.5s infinite' }} />
+        <circle cx="80" cy="85" r="3" style={{ animation: 'sunny-snow 2s ease-in-out 1s infinite' }} />
+      </g>
+    </svg>
+  );
+}
+
+function SunnyLightningCloud({ size = 120 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 120 120" aria-hidden>
+      <g>
+        <ellipse cx="30" cy="52" rx="22" ry="18" fill="#A8B5C9" />
+        <ellipse cx="60" cy="41" rx="30" ry="24" fill="#C3CEE0" />
+        <ellipse cx="90" cy="49" rx="22" ry="18" fill="#A8B5C9" />
+      </g>
+      <path d="M58 62 L46 86 L58 86 L52 108 L74 78 L62 78 L68 62 Z"
+        fill={SUNNY.buttercup} stroke="#F59E0B" strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function SunnyStar({ size = 22, color = SUNNY.sunGlow, style }: { size?: number; color?: string; style?: React.CSSProperties }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 22 22" style={style} aria-hidden>
+      <path d="M11 1.5 L13.5 8 L20.5 8.6 L15.2 13.2 L17 20 L11 16.2 L5 20 L6.8 13.2 L1.5 8.6 L8.5 8 Z"
+        fill={color} stroke="#FFFFFF" strokeWidth="0.8" strokeLinejoin="round" />
+    </svg>
+  );
+}
+// ─── end Sunny Meadow atoms ──────────────────────────────────────────────
+
+// ─── SunnyMeadowClock ────────────────────────────────────────────────────
+function SunnyMeadowClock({ config, compact }: { config: any; compact: boolean }) {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const tz = config.timezone || undefined;
+  const is24 = config.format === '24h';
+  const fmt = (opts: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat('en-US', { ...opts, timeZone: tz }).format(now);
+
+  const rawHour = parseInt(fmt({ hour: 'numeric', hour12: false }), 10);
+  const ampm = rawHour >= 12 ? 'PM' : 'AM';
+  const hours = is24 ? rawHour : (rawHour % 12 || 12);
+  const mins = fmt({ minute: '2-digit' }).padStart(2, '0');
+  const weekday = fmt({ weekday: 'long' });
+  const dateLong = fmt({ month: 'long', day: 'numeric' });
+
+  // Friendly weekday greeting
+  const greetings: Record<string, string> = {
+    Monday: 'Happy Monday!', Tuesday: 'Terrific Tuesday!', Wednesday: 'Wonderful Wednesday!',
+    Thursday: 'Thankful Thursday!', Friday: 'Fantastic Friday!', Saturday: 'Super Saturday!', Sunday: 'Sunny Sunday!',
+  };
+  const greeting = greetings[weekday] || weekday;
+
+  return (
+    <div className="absolute inset-0 overflow-hidden" style={{
+      background: 'linear-gradient(180deg, #DBF0FF 0%, #FFF1B8 65%, #FFD8A8 100%)',
+      fontFamily: SUNNY_FONT_DISPLAY,
+    }}>
+      <style>{SUNNY_KEYFRAMES}</style>
+
+      {/* Drifting cloud top-left */}
+      <div style={{ position: 'absolute', top: '8%', left: '-6%', animation: 'sunny-cloud-drift 22s ease-in-out infinite', opacity: 0.85 }}>
+        <SunnyCloud width={compact ? 90 : 160} />
+      </div>
+
+      {/* Sun top-right (behind clock) */}
+      <div style={{ position: 'absolute', top: '-8%', right: '-4%', animation: 'sunny-bob 6s ease-in-out infinite' }}>
+        <SunnySunIcon size={compact ? 110 : 200} />
+      </div>
+
+      {/* Twinkling stars */}
+      <SunnyStar size={compact ? 14 : 22} color={SUNNY.rose} style={{ position: 'absolute', top: '18%', left: '22%', animation: 'sunny-twinkle 2.4s ease-in-out infinite' }} />
+      <SunnyStar size={compact ? 12 : 18} color={SUNNY.teal} style={{ position: 'absolute', bottom: '28%', right: '18%', animation: 'sunny-twinkle 3.1s ease-in-out 0.6s infinite' }} />
+      <SunnyStar size={compact ? 10 : 16} color={SUNNY.coral} style={{ position: 'absolute', top: '38%', right: '36%', animation: 'sunny-twinkle 2.8s ease-in-out 1.2s infinite' }} />
+
+      {/* Content — centered */}
+      <div className="relative z-10 h-full flex flex-col items-center justify-center" style={{ padding: '6%' }}>
+        {/* Weekday pill — handwritten */}
+        {!compact && (
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: '0.35em',
+            background: SUNNY.polaroid, color: SUNNY.text,
+            padding: '0.25em 0.9em', borderRadius: 999,
+            fontFamily: SUNNY_FONT_HAND, fontWeight: 700,
+            fontSize: '0.7em',
+            transform: 'rotate(-2deg)',
+            boxShadow: '0 4px 12px rgba(58,46,42,0.12)',
+            border: `2px solid ${SUNNY.buttercup}`,
+          }}>
+            <SunnyStar size={14} color={SUNNY.buttercup} />
+            <span>{greeting}</span>
+          </div>
+        )}
+
+        {/* Big digits with blinking colon */}
+        <div className="tabular-nums" style={{
+          fontFamily: SUNNY_FONT_DISPLAY,
+          fontSize: compact ? '2em' : '4.4em',
+          fontWeight: 700,
+          color: SUNNY.text,
+          lineHeight: 1,
+          letterSpacing: '-0.01em',
+          marginTop: compact ? '0.2em' : '0.4em',
+          textShadow: '0 3px 0 rgba(255,255,255,0.6), 0 6px 18px rgba(58,46,42,0.15)',
+          display: 'flex', alignItems: 'baseline', gap: '0.02em',
+        }}>
+          <span>{hours}</span>
+          <span style={{ animation: 'sunny-twinkle 1s steps(2, start) infinite', color: SUNNY.coral }}>:</span>
+          <span>{mins}</span>
+          {!is24 && (
+            <span style={{ fontSize: '0.35em', fontWeight: 600, color: SUNNY.textSoft, marginLeft: '0.3em', alignSelf: 'center' }}>{ampm}</span>
+          )}
+        </div>
+
+        {/* Date line */}
+        {!compact && (
+          <div style={{
+            fontFamily: SUNNY_FONT_HAND,
+            fontSize: '0.9em',
+            color: SUNNY.textSoft,
+            marginTop: '0.1em',
+            letterSpacing: '0.01em',
+          }}>
+            {weekday}, {dateLong}
+          </div>
+        )}
+      </div>
+
+      {/* Meadow hills at bottom */}
+      <svg viewBox="0 0 400 80" preserveAspectRatio="none" style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '22%', display: 'block' }} aria-hidden>
+        <path d="M0 40 Q80 10 160 30 T320 25 T400 35 L400 80 L0 80 Z" fill={SUNNY.grassLight} opacity="0.9" />
+        <path d="M0 55 Q80 30 160 45 T320 40 T400 50 L400 80 L0 80 Z" fill={SUNNY.grassMid} />
+        <path d="M0 68 Q80 55 160 62 T320 60 T400 65 L400 80 L0 80 Z" fill={SUNNY.grassDark} />
+      </svg>
+    </div>
+  );
+}
+// ─── end SunnyMeadowClock ────────────────────────────────────────────────
+
+// ─── SunnyMeadowWeather ──────────────────────────────────────────────────
+
+// WMO code → illustration bucket + friendly label + sky gradient
+function getSunnyWeatherBucket(code: number) {
+  if (code === 0 || code === 1) return {
+    bucket: 'clear', label: 'Sunny & Bright',
+    sky: 'linear-gradient(180deg, #BFE4FF 0%, #FFF1B8 60%, #FFD8A8 100%)',
+  };
+  if (code === 2) return {
+    bucket: 'partly', label: 'Partly Cloudy',
+    sky: 'linear-gradient(180deg, #CCE7FF 0%, #FFF4D6 70%, #FFE4BC 100%)',
+  };
+  if (code === 3 || code === 45 || code === 48) return {
+    bucket: 'cloudy', label: 'Cloudy Skies',
+    sky: 'linear-gradient(180deg, #D8E6F2 0%, #E8EEF5 70%, #DFE6EE 100%)',
+  };
+  if (code >= 51 && code <= 67) return {
+    bucket: 'rain', label: 'Rainy Day',
+    sky: 'linear-gradient(180deg, #B9C9DA 0%, #D3DEE9 70%, #C8D4DF 100%)',
+  };
+  if (code >= 71 && code <= 77) return {
+    bucket: 'snow', label: 'Snowy Day',
+    sky: 'linear-gradient(180deg, #E6EEFA 0%, #F4F8FE 70%, #E8EFF8 100%)',
+  };
+  if (code === 95 || code === 96 || code === 99) return {
+    bucket: 'storm', label: 'Stormy',
+    sky: 'linear-gradient(180deg, #8A98AB 0%, #B1BCCE 70%, #A2AEC0 100%)',
+  };
+  if (code >= 80 && code <= 86) return {
+    bucket: 'rain', label: 'Rain Showers',
+    sky: 'linear-gradient(180deg, #B9C9DA 0%, #D3DEE9 70%, #C8D4DF 100%)',
+  };
+  return {
+    bucket: 'clear', label: 'Fair Weather',
+    sky: 'linear-gradient(180deg, #BFE4FF 0%, #FFF1B8 60%, #FFD8A8 100%)',
+  };
+}
+
+function SunnyMeadowWeather({ config, compact }: { config: any; compact: boolean }) {
+  const location = config.location || 'Springfield';
+  const isCelsius = config.units === 'celsius';
+  const unit = isCelsius ? '°C' : '°F';
+  const [weather, setWeather] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetchWeather(location, isCelsius).then(data => {
+      if (!cancelled) { setWeather(data); setLoading(false); }
+    });
+    const t = setInterval(() => {
+      fetchWeather(location, isCelsius).then(data => {
+        if (!cancelled) setWeather(data);
+      });
+    }, CACHE_MS);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [location, isCelsius]);
+
+  const bucketInfo = getSunnyWeatherBucket(weather?.weatherCode ?? 0);
+
+  const renderIllustration = (size: number) => {
+    switch (bucketInfo.bucket) {
+      case 'partly':
+        return (
+          <div style={{ position: 'relative', width: size, height: size }}>
+            <SunnySunIcon size={size * 0.85} />
+            <div style={{ position: 'absolute', right: -size * 0.1, bottom: 0 }}>
+              <SunnyCloud width={size * 0.7} />
+            </div>
+          </div>
+        );
+      case 'cloudy':
+        return (
+          <div style={{ width: size, height: size, position: 'relative' }}>
+            <div style={{ position: 'absolute', top: size * 0.15, left: 0, animation: 'sunny-cloud-drift 18s ease-in-out infinite' }}>
+              <SunnyCloud width={size * 0.95} opacity={1} />
+            </div>
+            <div style={{ position: 'absolute', top: size * 0.45, left: size * 0.15, animation: 'sunny-cloud-drift 24s ease-in-out -4s infinite reverse' }}>
+              <SunnyCloud width={size * 0.7} opacity={0.8} />
+            </div>
+          </div>
+        );
+      case 'rain': return <SunnyRainCloud size={size} />;
+      case 'snow': return <SunnySnowCloud size={size} />;
+      case 'storm': return <SunnyLightningCloud size={size} />;
+      case 'clear':
+      default:
+        return <div style={{ animation: 'sunny-bob 5s ease-in-out infinite' }}><SunnySunIcon size={size} /></div>;
+    }
+  };
+
+  if (loading || !weather) {
+    return (
+      <div className="absolute inset-0 overflow-hidden flex items-center justify-center" style={{ background: bucketInfo.sky, fontFamily: SUNNY_FONT_DISPLAY }}>
+        <style>{SUNNY_KEYFRAMES}</style>
+        <div style={{ animation: 'sunny-bob 2.5s ease-in-out infinite', color: SUNNY.textSoft, fontSize: '0.6em', fontWeight: 600 }}>
+          {loading ? 'Checking the sky...' : 'Location not found'}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="absolute inset-0 overflow-hidden" style={{ background: bucketInfo.sky, fontFamily: SUNNY_FONT_DISPLAY }}>
+      <style>{SUNNY_KEYFRAMES}</style>
+
+      {/* Twinkling stars on clear */}
+      {bucketInfo.bucket === 'clear' && (
+        <>
+          <SunnyStar size={16} color={SUNNY.rose} style={{ position: 'absolute', top: '14%', left: '10%', animation: 'sunny-twinkle 2.4s ease-in-out infinite' }} />
+          <SunnyStar size={14} color={SUNNY.teal} style={{ position: 'absolute', top: '62%', right: '12%', animation: 'sunny-twinkle 3.1s ease-in-out 0.6s infinite' }} />
+        </>
+      )}
+
+      <div className="relative z-10 h-full flex items-center" style={{ padding: '6% 7%', gap: '5%' }}>
+        {/* Illustration */}
+        <div style={{ flexShrink: 0 }}>
+          {renderIllustration(compact ? 90 : 170)}
+        </div>
+
+        {/* Temp + labels */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.15em' }}>
+            <span style={{
+              fontSize: compact ? '2.4em' : '4.2em', fontWeight: 700, color: SUNNY.text,
+              lineHeight: 0.9, letterSpacing: '-0.02em',
+              textShadow: '0 3px 0 rgba(255,255,255,0.5)',
+            }}>
+              {weather.temp}
+            </span>
+            <span style={{ fontSize: compact ? '0.9em' : '1.4em', fontWeight: 600, color: SUNNY.textSoft, marginTop: '0.15em' }}>{unit}</span>
+          </div>
+
+          {!compact && (
+            <div style={{
+              fontFamily: SUNNY_FONT_HAND,
+              fontSize: '0.95em', fontWeight: 700, color: SUNNY.text,
+              marginTop: '0.1em', letterSpacing: '0.01em',
+            }}>
+              {bucketInfo.label}
+            </div>
+          )}
+
+          {!compact && (
+            <div style={{ display: 'flex', gap: '0.5em', marginTop: '0.5em', flexWrap: 'wrap' }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: '0.3em',
+                background: SUNNY.polaroid, color: SUNNY.text,
+                padding: '0.25em 0.7em', borderRadius: 999,
+                fontSize: '0.5em', fontWeight: 700,
+                boxShadow: '0 3px 8px rgba(58,46,42,0.08)',
+                border: `2px solid ${SUNNY.buttercup}`,
+              }}>
+                <MapPin style={{ width: '1em', height: '1em', color: SUNNY.coral }} />
+                {weather.locationName || location}
+              </span>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: '0.2em',
+                background: '#FFE4EC', color: SUNNY.text,
+                padding: '0.25em 0.7em', borderRadius: 999,
+                fontSize: '0.5em', fontWeight: 700,
+              }}>
+                ↑ {weather.high}{unit}
+              </span>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: '0.2em',
+                background: '#DCF1FB', color: SUNNY.text,
+                padding: '0.25em 0.7em', borderRadius: 999,
+                fontSize: '0.5em', fontWeight: 700,
+              }}>
+                ↓ {weather.low}{unit}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Meadow hills */}
+      <svg viewBox="0 0 400 80" preserveAspectRatio="none" style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '18%', display: 'block' }} aria-hidden>
+        <path d="M0 50 Q100 25 200 40 T400 40 L400 80 L0 80 Z" fill={SUNNY.grassMid} opacity="0.9" />
+        <path d="M0 65 Q100 52 200 60 T400 58 L400 80 L0 80 Z" fill={SUNNY.grassDark} />
+      </svg>
+    </div>
+  );
+}
+// ─── end SunnyMeadowWeather ──────────────────────────────────────────────
+
+// ─── SunnyMeadowStaffSpotlight ───────────────────────────────────────────
+
+function SunnyMeadowFallbackAvatar({ size = 200 }: { size?: number }) {
+  // A friendly illustrated scene used when no photoUrl is provided
+  return (
+    <svg width={size} height={size} viewBox="0 0 200 200" aria-hidden>
+      <defs>
+        <linearGradient id="fallback-sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={SUNNY.skyTop} />
+          <stop offset="100%" stopColor={SUNNY.skyMid} />
+        </linearGradient>
+        <radialGradient id="fallback-sun" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#FFF2C2" />
+          <stop offset="100%" stopColor={SUNNY.sunCore} />
+        </radialGradient>
+      </defs>
+      <rect width="200" height="200" fill="url(#fallback-sky)" />
+      <circle cx="148" cy="48" r="28" fill="url(#fallback-sun)" />
+      {/* Hills */}
+      <path d="M0 140 Q50 110 100 130 T200 125 L200 200 L0 200 Z" fill={SUNNY.grassLight} />
+      <path d="M0 160 Q50 140 100 150 T200 148 L200 200 L0 200 Z" fill={SUNNY.grassMid} />
+      <path d="M0 175 Q50 165 100 170 T200 168 L200 200 L0 200 Z" fill={SUNNY.grassDark} />
+      {/* Simple character silhouette */}
+      <circle cx="100" cy="118" r="24" fill="#FFDAB8" stroke={SUNNY.text} strokeWidth="2" />
+      <path d="M76 160 Q100 138 124 160 L124 180 L76 180 Z" fill={SUNNY.coral} stroke={SUNNY.text} strokeWidth="2" />
+      {/* Face */}
+      <circle cx="92" cy="115" r="2" fill={SUNNY.text} />
+      <circle cx="108" cy="115" r="2" fill={SUNNY.text} />
+      <path d="M92 124 Q100 130 108 124" stroke={SUNNY.text} strokeWidth="2" fill="none" strokeLinecap="round" />
+      <circle cx="86" cy="122" r="2.4" fill={SUNNY.rose} opacity="0.6" />
+      <circle cx="114" cy="122" r="2.4" fill={SUNNY.rose} opacity="0.6" />
+    </svg>
+  );
+}
+
+function SunnyMeadowStaffSpotlight({ config, compact }: { config: any; compact: boolean }) {
+  const name = config.staffName || 'Mrs. Johnson';
+  const role = config.role || 'Teacher of the Week';
+  const bio = config.bio || 'Inspiring young minds with curiosity and kindness every day.';
+
+  return (
+    <div className="absolute inset-0 overflow-hidden" style={{
+      background: 'linear-gradient(180deg, #FFF6D4 0%, #FFE6A7 60%, #FFD08A 100%)',
+      fontFamily: SUNNY_FONT_DISPLAY,
+    }}>
+      <style>{SUNNY_KEYFRAMES}</style>
+
+      {/* Doodle stars at corners */}
+      <SunnyStar size={compact ? 14 : 22} color={SUNNY.rose}      style={{ position: 'absolute', top: '8%',  left: '6%',  animation: 'sunny-twinkle 2.4s ease-in-out infinite' }} />
+      <SunnyStar size={compact ? 12 : 20} color={SUNNY.buttercup} style={{ position: 'absolute', top: '16%', right: '10%', animation: 'sunny-twinkle 3.1s ease-in-out 0.5s infinite' }} />
+      <SunnyStar size={compact ? 10 : 16} color={SUNNY.teal}      style={{ position: 'absolute', bottom: '18%', left: '9%', animation: 'sunny-twinkle 2.7s ease-in-out 1.1s infinite' }} />
+      <SunnyStar size={compact ? 12 : 18} color={SUNNY.coral}     style={{ position: 'absolute', bottom: '12%', right: '8%', animation: 'sunny-twinkle 2.9s ease-in-out 0.9s infinite' }} />
+
+      <div className="relative z-10 h-full flex flex-col items-center justify-start" style={{ padding: compact ? '4%' : '5%' }}>
+        {/* Ribbon banner */}
+        <div style={{
+          position: 'relative',
+          background: 'linear-gradient(90deg, #FF8FAB 0%, #FF6B6B 100%)',
+          color: '#FFFFFF',
+          padding: compact ? '0.25em 0.9em' : '0.4em 1.4em',
+          borderRadius: 8,
+          fontFamily: SUNNY_FONT_HAND,
+          fontSize: compact ? '0.55em' : '0.8em',
+          fontWeight: 700,
+          letterSpacing: '0.02em',
+          boxShadow: '0 6px 18px rgba(255,107,107,0.35)',
+          transform: 'rotate(-1.5deg)',
+          whiteSpace: 'nowrap' as const,
+        }}>
+          <span style={{ marginRight: '0.3em' }}>✨</span>
+          {role}
+          <span style={{ marginLeft: '0.3em' }}>✨</span>
+        </div>
+
+        {/* Polaroid frame */}
+        <div style={{
+          marginTop: compact ? '0.5em' : '0.8em',
+          background: SUNNY.polaroid,
+          padding: compact ? '0.4em 0.4em 0.8em' : '0.55em 0.55em 1.2em',
+          borderRadius: 6,
+          boxShadow: '0 12px 30px rgba(58,46,42,0.18), 0 4px 8px rgba(58,46,42,0.1)',
+          transform: 'rotate(-2.5deg)',
+          animation: 'sunny-wiggle 8s ease-in-out infinite',
+          position: 'relative',
+          maxWidth: compact ? '55%' : '52%',
+        }}>
+          {/* Tape accents */}
+          <div style={{
+            position: 'absolute', top: '-4%', left: '18%',
+            width: '26%', height: '12%',
+            background: SUNNY.tape,
+            borderRadius: 2,
+            transform: 'rotate(-8deg)',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+          }} />
+          <div style={{
+            position: 'absolute', top: '-4%', right: '16%',
+            width: '22%', height: '11%',
+            background: SUNNY.tape,
+            borderRadius: 2,
+            transform: 'rotate(6deg)',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+          }} />
+
+          {/* Photo area */}
+          <div style={{
+            aspectRatio: '1 / 1',
+            background: '#F0E6D8',
+            borderRadius: 4,
+            overflow: 'hidden',
+            width: '100%',
+            position: 'relative',
+          }}>
+            {config.photoUrl ? (
+              <img src={resolveUrl(config.photoUrl)} alt={name}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              <div style={{ width: '100%', height: '100%' }}>
+                <SunnyMeadowFallbackAvatar size={compact ? 120 : 240} />
+                <style>{`
+                  div > svg { width: 100% !important; height: 100% !important; }
+                `}</style>
+              </div>
+            )}
+          </div>
+
+          {/* Handwritten name under photo */}
+          <div style={{
+            fontFamily: SUNNY_FONT_HAND,
+            fontSize: compact ? '0.7em' : '1.1em',
+            fontWeight: 700,
+            color: SUNNY.text,
+            textAlign: 'center' as const,
+            marginTop: compact ? '0.3em' : '0.4em',
+            letterSpacing: '0.01em',
+          }}>
+            {name}
+          </div>
+        </div>
+
+        {/* Bio */}
+        {!compact && bio && (
+          <p style={{
+            marginTop: '0.7em',
+            fontFamily: SUNNY_FONT_DISPLAY,
+            fontSize: '0.52em',
+            fontWeight: 500,
+            color: SUNNY.textSoft,
+            textAlign: 'center' as const,
+            maxWidth: '80%',
+            lineHeight: 1.5,
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical' as any,
+            overflow: 'hidden',
+          }}>
+            {bio}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+// ─── end SunnyMeadowStaffSpotlight ───────────────────────────────────────

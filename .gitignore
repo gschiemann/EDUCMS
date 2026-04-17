@@ -28,3 +28,6 @@ _tmp_*
 
 # Turborepo
 .turbo/
+
+# Claude Code local session data
+.claude/

@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sunny Meadow — Elementary Lobby Template Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Caveat:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --text:       #3A2E2A;
+    --text-soft:  #6B5853;
+    --text-muted: #9B8680;
+    --sky-top:    #BFE4FF;
+    --sky-mid:    #FFF1B8;
+    --sky-low:    #FFD8A8;
+    --sun-core:   #FFB84D;
+    --sun-glow:   #FFD166;
+    --rose:       #FF8FAB;
+    --coral:      #FF6B6B;
+    --teal:       #4ECDC4;
+    --buttercup:  #FFD166;
+    --grass-dark: #4A9D5C;
+    --grass-mid:  #5BB36C;
+    --grass-light:#86E09B;
+    --polaroid:   #FFFCF4;
+    --tape:       rgba(255,220,120,0.55);
+    --font-display: 'Fredoka', ui-rounded, 'Arial Rounded MT Bold', system-ui, sans-serif;
+    --font-hand:    'Caveat', 'Segoe Script', cursive;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: #1a1a1a;
+    font-family: var(--font-display);
+    color: var(--text);
+  }
+  .page {
+    padding: 40px;
+    min-height: 100vh;
+  }
+  .page h1 {
+    color: #fff;
+    font-weight: 600;
+    font-size: 22px;
+    margin: 0 0 6px;
+  }
+  .page .sub {
+    color: #aaa;
+    font-size: 14px;
+    margin: 0 0 24px;
+  }
+
+  /* 16:9 stage mimicking a 1920×1080 TV */
+  .stage {
+    position: relative;
+    width: 100%;
+    max-width: 1920px;
+    aspect-ratio: 16 / 9;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 40px 80px rgba(0,0,0,0.5);
+    background:
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1920 600' preserveAspectRatio='none'><path d='M0,360 C320,290 640,410 960,330 C1280,270 1600,410 1920,320 L1920,600 L0,600 Z' fill='%2386E09B' opacity='0.9'/><path d='M0,440 C240,390 520,490 820,420 C1160,350 1480,480 1920,410 L1920,600 L0,600 Z' fill='%235BB36C'/><path d='M0,520 C300,480 620,550 960,510 C1280,475 1600,550 1920,505 L1920,600 L0,600 Z' fill='%234A9D5C'/><g fill='%23FFD166'><circle cx='140' cy='540' r='7'/><circle cx='360' cy='560' r='6'/><circle cx='580' cy='535' r='7'/><circle cx='820' cy='565' r='6'/><circle cx='1080' cy='540' r='7'/><circle cx='1320' cy='560' r='6'/><circle cx='1560' cy='538' r='7'/><circle cx='1800' cy='565' r='6'/></g><g fill='%23FF8FAB'><circle cx='230' cy='565' r='5'/><circle cx='490' cy='550' r='5'/><circle cx='720' cy='570' r='4'/><circle cx='980' cy='558' r='5'/><circle cx='1220' cy='548' r='4'/><circle cx='1460' cy='565' r='5'/><circle cx='1700' cy='550' r='4'/></g><g fill='%23FFFFFF' opacity='0.85'><circle cx='300' cy='548' r='4'/><circle cx='660' cy='555' r='4'/><circle cx='1020' cy='568' r='4'/><circle cx='1400' cy='548' r='4'/><circle cx='1640' cy='572' r='4'/></g></svg>") no-repeat bottom / 100% 38%,
+      linear-gradient(180deg, #BFE4FF 0%, #FFF1B8 55%, #FFD8A8 100%);
+  }
+
+  /* Zones are positioned in % (same grid the CMS uses) */
+  .zone {
+    position: absolute;
+    overflow: hidden;
+  }
+
+  /* ══════════ Logo zone ══════════ */
+  .zone-logo {
+    left: 2%; top: 3%; width: 14%; height: 14%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .logo-placeholder {
+    width: 78%; height: 78%;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 30% 30%, #FFF 0%, rgba(255,255,255,0) 55%),
+      linear-gradient(135deg, var(--sun-glow) 0%, var(--rose) 100%);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-display);
+    font-weight: 700;
+    color: #fff;
+    font-size: 26px;
+    letter-spacing: -0.01em;
+    text-shadow: 0 3px 6px rgba(0,0,0,0.18);
+    box-shadow: 0 10px 24px rgba(255,139,107,0.35);
+  }
+
+  /* ══════════ Welcome headline ══════════ */
+  .zone-welcome {
+    left: 17%; top: 3%; width: 54%; height: 14%;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 2%;
+  }
+  .welcome-text {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: clamp(28px, 3.2vw, 64px);
+    color: var(--text);
+    text-align: center;
+    text-shadow: 0 4px 0 rgba(255,184,77,0.25), 0 6px 18px rgba(58,46,42,0.12);
+    letter-spacing: -0.01em;
+  }
+
+  /* ══════════ Clock zone ══════════ */
+  .zone-clock {
+    left: 72%; top: 3%; width: 26%; height: 14%;
+    background: linear-gradient(180deg, #DBF0FF 0%, #FFF7D6 100%);
+    border-radius: 18px;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column;
+    box-shadow: 0 10px 24px rgba(58,46,42,0.08);
+  }
+  .clock-sun {
+    position: absolute; top: -20%; right: -18%;
+    width: 70%; aspect-ratio: 1/1;
+    opacity: 0.9;
+  }
+  .weekday-pill {
+    position: relative;
+    font-family: var(--font-hand);
+    font-weight: 700;
+    font-size: clamp(16px, 1.3vw, 26px);
+    background: var(--polaroid);
+    color: var(--text);
+    padding: 2px 18px;
+    border-radius: 999px;
+    box-shadow: 0 6px 20px rgba(255,184,77,0.35), 0 2px 6px rgba(58,46,42,0.08);
+    transform: rotate(-2deg);
+    margin-bottom: 4px;
+  }
+  .weekday-pill .star {
+    position: absolute; top: -10px; right: -8px;
+    animation: sunny-twinkle 2.2s ease-in-out infinite;
+  }
+  .clock-digits {
+    position: relative;
+    font-weight: 600;
+    font-size: clamp(40px, 5.2vw, 92px);
+    line-height: 1;
+    letter-spacing: -0.02em;
+    text-shadow: 0 4px 0 rgba(255,184,77,0.25), 0 6px 18px rgba(58,46,42,0.12);
+    font-variant-numeric: tabular-nums;
+  }
+  .clock-digits .colon { opacity: 0.55; animation: sunny-twinkle 1.2s ease-in-out infinite; }
+  .clock-digits .ampm { font-size: 0.32em; font-weight: 700; color: var(--sun-core); margin-left: 10px; letter-spacing: 0.05em; }
+
+  /* ══════════ Weather zone ══════════ */
+  .zone-weather {
+    left: 2%; top: 20%; width: 32%; height: 26%;
+    background: linear-gradient(180deg, #BFE4FF 0%, #FFF1B8 65%, #FFD8A8 100%);
+    border-radius: 24px;
+    box-shadow: 0 14px 34px rgba(58,46,42,0.12);
+    padding: 4% 5%;
+    display: flex; align-items: center; gap: 5%;
+  }
+  .weather-icon {
+    width: 40%; aspect-ratio: 1/1;
+    filter: drop-shadow(0 12px 24px rgba(58,46,42,0.18));
+    animation: sunny-bob 4s ease-in-out infinite;
+  }
+  .weather-info .temp {
+    display: flex; align-items: baseline;
+    font-weight: 700;
+    font-size: clamp(56px, 5.5vw, 108px);
+    line-height: 1;
+    letter-spacing: -0.03em;
+    text-shadow: 0 4px 0 rgba(255,255,255,0.5);
+  }
+  .weather-info .unit { font-size: 0.34em; font-weight: 600; color: var(--text-soft); margin-left: 4px; }
+  .weather-info .label {
+    font-weight: 600;
+    font-size: clamp(16px, 1.3vw, 26px);
+    color: var(--text);
+    margin: 4px 0 10px;
+  }
+  .weather-info .meta {
+    display: flex; gap: 8px; align-items: center;
+    font-size: clamp(12px, 0.9vw, 16px);
+    color: var(--text-soft);
+    font-weight: 500;
+    margin-bottom: 8px;
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(255,255,255,0.55);
+    backdrop-filter: blur(2px);
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-size: clamp(11px, 0.8vw, 14px);
+    font-weight: 600;
+    color: var(--text);
+    box-shadow: 0 2px 6px rgba(58,46,42,0.06);
+  }
+
+  /* ══════════ Teacher Spotlight ══════════ */
+  .zone-spotlight {
+    left: 2%; top: 48%; width: 32%; height: 40%;
+    background: linear-gradient(180deg, #FFF6E2 0%, #FFE9C2 100%);
+    border-radius: 24px;
+    box-shadow: 0 14px 34px rgba(58,46,42,0.12);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .spotlight-ribbon {
+    position: absolute; top: 5%; left: 50%; transform: translateX(-50%);
+    background: linear-gradient(135deg, var(--sun-core) 0%, var(--rose) 100%);
+    color: white;
+    font-weight: 700;
+    font-size: clamp(10px, 0.9vw, 16px);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 8px 22px;
+    border-radius: 999px;
+    box-shadow: 0 6px 18px rgba(255,139,107,0.4);
+    white-space: nowrap;
+  }
+  .polaroid {
+    position: relative;
+    background: var(--polaroid);
+    padding: 12px 12px 18px;
+    border-radius: 10px;
+    box-shadow: 0 20px 40px rgba(58,46,42,0.18), 0 6px 12px rgba(58,46,42,0.1);
+    transform: rotate(-2.5deg);
+    width: 64%;
+    animation: sunny-wiggle 6s ease-in-out infinite;
+  }
+  .tape {
+    position: absolute;
+    top: -10px; width: 22%; height: 14px;
+    background: var(--tape);
+    box-shadow: 0 2px 3px rgba(0,0,0,0.05);
+  }
+  .tape.left  { left: 12%; transform: rotate(-8deg); }
+  .tape.right { right: 10%; transform: rotate(6deg); }
+  .photo {
+    width: 100%; aspect-ratio: 1/1;
+    border-radius: 6px;
+    overflow: hidden;
+    background: linear-gradient(135deg, #FFE1B8 0%, #FFC2A0 100%);
+    margin-bottom: 10px;
+  }
+  .name {
+    font-family: var(--font-hand);
+    font-weight: 700;
+    font-size: clamp(22px, 2vw, 36px);
+    color: var(--text);
+    line-height: 1.05;
+    text-align: center;
+  }
+  .doodle-star {
+    position: absolute;
+  }
+  .bio {
+    position: absolute;
+    bottom: 7%; left: 10%; right: 10%;
+    text-align: center;
+    font-size: clamp(11px, 0.85vw, 15px);
+    color: var(--text-soft);
+    line-height: 1.5;
+    font-weight: 500;
+  }
+
+  /* ══════════ Announcement ══════════ */
+  .zone-announce {
+    left: 36%; top: 20%; width: 42%; height: 42%;
+    background: linear-gradient(135deg, #FFFFFF 0%, #FFF8E8 100%);
+    border-radius: 24px;
+    box-shadow: 0 14px 34px rgba(58,46,42,0.1);
+    overflow: hidden;
+    display: flex;
+  }
+  .zone-announce .accent-bar {
+    width: 10px; background: linear-gradient(180deg, var(--sun-core), var(--rose));
+    flex-shrink: 0;
+  }
+  .zone-announce .body {
+    flex: 1;
+    padding: 24px 32px;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .announce-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: linear-gradient(135deg, #FFF1B8 0%, #FFE9C2 100%);
+    color: #8B5A00;
+    font-weight: 700;
+    font-size: clamp(12px, 0.9vw, 16px);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 6px 14px;
+    border-radius: 999px;
+    width: fit-content;
+    margin-bottom: 16px;
+  }
+  .announce-title {
+    font-weight: 600;
+    font-size: clamp(22px, 2.4vw, 48px);
+    color: var(--text);
+    line-height: 1.15;
+    margin-bottom: 12px;
+    letter-spacing: -0.01em;
+  }
+  .announce-body {
+    font-size: clamp(14px, 1.1vw, 22px);
+    color: var(--text-soft);
+    line-height: 1.5;
+    font-weight: 500;
+  }
+
+  /* ══════════ School photos carousel ══════════ */
+  .zone-photos {
+    left: 36%; top: 64%; width: 42%; height: 24%;
+    background: linear-gradient(135deg, #FFDDC0 0%, #FFC8A2 100%);
+    border-radius: 24px;
+    box-shadow: 0 14px 34px rgba(58,46,42,0.1);
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  .photo-placeholder {
+    font-weight: 600;
+    color: rgba(58,46,42,0.5);
+    font-size: 16px;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+  }
+
+  /* ══════════ Calendar ══════════ */
+  .zone-calendar {
+    left: 80%; top: 20%; width: 18%; height: 42%;
+    background: linear-gradient(180deg, #FFF 0%, #FFF8E8 100%);
+    border-radius: 24px;
+    box-shadow: 0 14px 34px rgba(58,46,42,0.1);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .zone-calendar .header {
+    background: linear-gradient(135deg, var(--sun-core), var(--rose));
+    color: white;
+    font-weight: 700;
+    font-size: 14px;
+    padding: 12px 16px;
+    letter-spacing: 0.05em;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .zone-calendar .items { padding: 12px 16px; flex: 1; overflow: hidden; }
+  .ev {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 0; border-bottom: 1px solid rgba(58,46,42,0.08);
+  }
+  .ev:last-child { border-bottom: none; }
+  .ev .dot { width: 10px; height: 10px; border-radius: 999px; margin-top: 6px; flex-shrink: 0; }
+  .ev .t { font-weight: 600; font-size: 13px; color: var(--text); line-height: 1.25; }
+  .ev .d { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+  /* ══════════ Countdown ══════════ */
+  .zone-countdown {
+    left: 80%; top: 64%; width: 18%; height: 24%;
+    background: linear-gradient(135deg, #4ECDC4 0%, #3BAFA8 100%);
+    border-radius: 24px;
+    box-shadow: 0 14px 34px rgba(78,205,196,0.25);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: white;
+    padding: 12px;
+  }
+  .countdown-label {
+    font-family: var(--font-hand);
+    font-weight: 700;
+    font-size: 20px;
+    margin-bottom: 4px;
+    opacity: 0.95;
+  }
+  .countdown-big {
+    font-weight: 700;
+    font-size: clamp(32px, 3vw, 58px);
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+  .countdown-unit { font-size: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.9; margin-top: 2px; }
+
+  /* ══════════ Ticker ══════════ */
+  .zone-ticker {
+    left: 0; top: 91%; width: 100%; height: 9%;
+    background: linear-gradient(90deg, var(--sun-core) 0%, var(--rose) 100%);
+    display: flex; align-items: center;
+    overflow: hidden;
+  }
+  .ticker-inner {
+    display: flex;
+    white-space: nowrap;
+    animation: ticker-scroll 40s linear infinite;
+    color: white;
+    font-weight: 600;
+    font-size: clamp(14px, 1.3vw, 24px);
+    letter-spacing: 0.01em;
+    padding-left: 100%;
+  }
+  .ticker-inner .dot { opacity: 0.6; margin: 0 18px; }
+
+  /* Animations */
+  @keyframes sunny-rays-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @keyframes sunny-cloud-drift { 0% { transform: translateX(-4%); } 50% { transform: translateX(4%); } 100% { transform: translateX(-4%); } }
+  @keyframes sunny-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6%); } }
+  @keyframes sunny-wiggle { 0%,100% { transform: rotate(-2.5deg); } 50% { transform: rotate(-1.2deg); } }
+  @keyframes sunny-twinkle { 0%,100% { opacity: 0.35; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.1); } }
+  @keyframes ticker-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+  .cloud-drift { animation: sunny-cloud-drift 22s ease-in-out infinite; }
+
+  .caption { color: #bbb; font-size: 13px; margin-top: 24px; line-height: 1.6; }
+  .caption b { color: #fff; }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <h1>☀️ Sunny Meadow — Elementary Lobby Template</h1>
+  <div class="sub">1920 × 1080 preview · same layout as 4K TV at 3840 × 2160 (percent-based zones scale)</div>
+
+  <div class="stage">
+
+    <!-- Zone: Logo -->
+    <div class="zone zone-logo">
+      <div class="logo-placeholder">SE</div>
+    </div>
+
+    <!-- Zone: Welcome headline -->
+    <div class="zone zone-welcome">
+      <div class="welcome-text">Welcome to Sunnyside Elementary! ☀️</div>
+    </div>
+
+    <!-- Zone: Clock -->
+    <div class="zone zone-clock">
+      <svg class="clock-sun" viewBox="0 0 120 120" aria-hidden>
+        <defs>
+          <radialGradient id="clock-sun-core" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#FFF2C2"/>
+            <stop offset="55%" stop-color="#FFD166"/>
+            <stop offset="100%" stop-color="#FFB84D"/>
+          </radialGradient>
+        </defs>
+        <g style="transform-origin:60px 60px; animation: sunny-rays-spin 60s linear infinite;">
+          <g fill="#FFD166" opacity="0.9">
+            <rect x="58" y="6" width="4" height="14" rx="2"/>
+            <rect x="58" y="6" width="4" height="14" rx="2" transform="rotate(30 60 60)"/>
+            <rect x="58" y="6" width="4" height="14" rx="2" transform="rotate(60 60 60)"/>
+            <rect x="58" y="6" width="4" height="14" rx="2" transform="rotate(90 60 60)"/>
+            <rect x="58" y="6" width="4" height="14" rx="2" transform="rotate(120 60 60)"/>
+            <rect x="58" y="6" width="4" height="14" rx="2" transform="rotate(150 60 60)"/>
+            <rect x="58" y="6" width="4" height="14" rx="2" transform="rotate(180 60 60)"/>
+            <rect x="58" y="6" width="4" height="14" rx="2" transform="rotate(210 60 60)"/>
+            <rect x="58" y="6" width="4" height="14" rx="2" transform="rotate(240 60 60)"/>
+            <rect x="58" y="6" width="4" height="14" rx="2" transform="rotate(270 60 60)"/>
+            <rect x="58" y="6" width="4" height="14" rx="2" transform="rotate(300 60 60)"/>
+            <rect x="58" y="6" width="4" height="14" rx="2" transform="rotate(330 60 60)"/>
+          </g>
+        </g>
+        <circle cx="60" cy="60" r="30" fill="url(#clock-sun-core)"/>
+      </svg>
+      <div class="weekday-pill">
+        Thursday
+        <svg class="star" width="18" height="18" viewBox="0 0 22 22" aria-hidden><path d="M11 1.5 L13.5 8 L20.5 8.6 L15.2 13.2 L17 20 L11 16.2 L5 20 L6.8 13.2 L1.5 8.6 L8.5 8 Z" fill="#FF8FAB" stroke="#fff" stroke-width="0.8"/></svg>
+      </div>
+      <div class="clock-digits">
+        <span>9</span><span class="colon">:</span><span>14</span><span class="ampm">AM</span>
+      </div>
+      <div style="font-size: 14px; color: var(--text-soft); margin-top: 4px; font-weight: 500;">April 16</div>
+    </div>
+
+    <!-- Zone: Weather -->
+    <div class="zone zone-weather">
+      <svg class="weather-icon" viewBox="0 0 120 120" aria-hidden>
+        <defs>
+          <radialGradient id="wx-sun-core" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#FFF2C2"/>
+            <stop offset="55%" stop-color="#FFD166"/>
+            <stop offset="100%" stop-color="#FFB84D"/>
+          </radialGradient>
+          <radialGradient id="wx-sun-halo" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#FFD166" stop-opacity="0.45"/>
+            <stop offset="100%" stop-color="#FFD166" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <circle cx="60" cy="60" r="58" fill="url(#wx-sun-halo)"/>
+        <g style="transform-origin:60px 60px; animation: sunny-rays-spin 60s linear infinite;">
+          <g fill="#FFD166" opacity="0.9">
+            <rect x="58" y="6" width="4" height="14" rx="2"/>
+            <rect x="58" y="6" width="4" height="14" rx="2" transform="rotate(30 60 60)"/>
+            <rect x="58" y="6" width="4" height="14" rx="2" transform="rotate(60 60 60)"/>
+            <rect x="58" y="6" width="4" height="14" rx="2" transform="rotate(90 60 60)"/>
+            <rect x="58" y="6" width="4" height="14" rx="2" transform="rotate(120 60 60)"/>
+            <rect x="58" y="6" width="4" height="14" rx="2" transform="rotate(150 60 60)"/>
+            <rect x="58" y="6" width="4" height="14" rx="2" transform="rotate(180 60 60)"/>
+            <rect x="58" y="6" width="4" height="14" rx="2" transform="rotate(210 60 60)"/>
+            <rect x="58" y="6" width="4" height="14" rx="2" transform="rotate(240 60 60)"/>
+            <rect x="58" y="6" width="4" height="14" rx="2" transform="rotate(270 60 60)"/>
+            <rect x="58" y="6" width="4" height="14" rx="2" transform="rotate(300 60 60)"/>
+            <rect x="58" y="6" width="4" height="14" rx="2" transform="rotate(330 60 60)"/>
+          </g>
+        </g>
+        <circle cx="60" cy="60" r="30" fill="url(#wx-sun-core)"/>
+        <g fill="#3A2E2A" opacity="0.85">
+          <ellipse cx="51" cy="57" rx="2.1" ry="2.8"/>
+          <ellipse cx="69" cy="57" rx="2.1" ry="2.8"/>
+          <path d="M51 66 Q60 74 69 66" stroke="#3A2E2A" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+          <circle cx="47" cy="65" r="2.4" fill="#FF8FAB" opacity="0.55"/>
+          <circle cx="73" cy="65" r="2.4" fill="#FF8FAB" opacity="0.55"/>
+        </g>
+      </svg>
+      <div class="weather-info">
+        <div class="temp"><span>72</span><span class="unit">°F</span></div>
+        <div class="label">Sunny</div>
+        <div class="meta">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FF6B6B" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          <span>Springfield</span>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <div class="chip">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFB84D" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+            High 78°
+          </div>
+          <div class="chip">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6EC1E4" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z"/></svg>
+            Low 54°
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Zone: Teacher of the Week -->
+    <div class="zone zone-spotlight">
+      <div class="spotlight-ribbon">✨ Teacher of the Week ✨</div>
+
+      <!-- Doodles -->
+      <svg class="doodle-star" style="top:16%; left:7%; animation: sunny-twinkle 2.6s ease-in-out infinite;" width="26" height="26" viewBox="0 0 22 22"><path d="M11 1.5 L13.5 8 L20.5 8.6 L15.2 13.2 L17 20 L11 16.2 L5 20 L6.8 13.2 L1.5 8.6 L8.5 8 Z" fill="#FF8FAB" stroke="#fff" stroke-width="0.8"/></svg>
+      <svg class="doodle-star" style="top:22%; right:9%; animation: sunny-twinkle 3.1s ease-in-out 0.5s infinite;" width="20" height="20" viewBox="0 0 22 22"><path d="M11 1.5 L13.5 8 L20.5 8.6 L15.2 13.2 L17 20 L11 16.2 L5 20 L6.8 13.2 L1.5 8.6 L8.5 8 Z" fill="#FFD166" stroke="#fff" stroke-width="0.8"/></svg>
+      <svg class="doodle-star" style="bottom:20%; left:10%; animation: sunny-twinkle 2.3s ease-in-out 1s infinite;" width="18" height="18" viewBox="0 0 22 22"><path d="M11 1.5 L13.5 8 L20.5 8.6 L15.2 13.2 L17 20 L11 16.2 L5 20 L6.8 13.2 L1.5 8.6 L8.5 8 Z" fill="#4ECDC4" stroke="#fff" stroke-width="0.8"/></svg>
+      <svg class="doodle-star" style="bottom:26%; right:8%; animation: sunny-twinkle 2.8s ease-in-out 0.8s infinite;" width="22" height="22" viewBox="0 0 22 22"><path d="M11 1.5 L13.5 8 L20.5 8.6 L15.2 13.2 L17 20 L11 16.2 L5 20 L6.8 13.2 L1.5 8.6 L8.5 8 Z" fill="#FF6B6B" stroke="#fff" stroke-width="0.8"/></svg>
+
+      <!-- Polaroid -->
+      <div class="polaroid">
+        <div class="tape left"></div>
+        <div class="tape right"></div>
+        <div class="photo">
+          <svg viewBox="0 0 100 100" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+            <defs>
+              <linearGradient id="spotlight-bg" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#BFE4FF"/>
+                <stop offset="100%" stop-color="#FFF1B8"/>
+              </linearGradient>
+            </defs>
+            <rect width="100" height="100" fill="url(#spotlight-bg)"/>
+            <path d="M0 78 Q25 62 50 72 Q75 82 100 66 L100 100 L0 100 Z" fill="#86E09B"/>
+            <path d="M0 86 Q30 76 55 82 Q80 88 100 80 L100 100 L0 100 Z" fill="#5BB36C"/>
+            <circle cx="78" cy="22" r="12" fill="#FFD166"/>
+            <circle cx="50" cy="42" r="14" fill="#F6C6A1"/>
+            <rect x="34" y="56" width="32" height="26" rx="10" fill="#7FB7E8"/>
+            <circle cx="45" cy="41" r="1.8" fill="#3A2E2A"/>
+            <circle cx="55" cy="41" r="1.8" fill="#3A2E2A"/>
+            <path d="M44 48 Q50 52 56 48" stroke="#3A2E2A" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="name">Mrs. Johnson</div>
+      </div>
+
+      <div class="bio">"Inspiring 3rd graders every day with creativity, kindness, and a big smile!"</div>
+    </div>
+
+    <!-- Zone: Announcement -->
+    <div class="zone zone-announce">
+      <div class="accent-bar"></div>
+      <div class="body">
+        <div class="announce-badge">📣 Today's Announcement</div>
+        <div class="announce-title">Book Fair starts Monday!</div>
+        <div class="announce-body">Come explore hundreds of new books in the library. Don't forget to bring your reading log and library card.</div>
+      </div>
+    </div>
+
+    <!-- Zone: Photos -->
+    <div class="zone zone-photos">
+      <div class="photo-placeholder">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        School Photos (rotating every 5s)
+      </div>
+    </div>
+
+    <!-- Zone: Calendar -->
+    <div class="zone zone-calendar">
+      <div class="header">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        EVENTS
+      </div>
+      <div class="items">
+        <div class="ev"><div class="dot" style="background:#6366f1;"></div><div><div class="t">Spring Assembly</div><div class="d">Today · 10:00 AM</div></div></div>
+        <div class="ev"><div class="dot" style="background:#f59e0b;"></div><div><div class="t">PTA Meeting</div><div class="d">Tomorrow · 6:30 PM</div></div></div>
+        <div class="ev"><div class="dot" style="background:#22c55e;"></div><div><div class="t">Science Fair</div><div class="d">Apr 19</div></div></div>
+        <div class="ev"><div class="dot" style="background:#ec4899;"></div><div><div class="t">Spring Break</div><div class="d">Apr 30</div></div></div>
+      </div>
+    </div>
+
+    <!-- Zone: Countdown -->
+    <div class="zone zone-countdown">
+      <div class="countdown-label">Field Trip in</div>
+      <div class="countdown-big">12</div>
+      <div class="countdown-unit">Days</div>
+    </div>
+
+    <!-- Zone: Ticker -->
+    <div class="zone zone-ticker">
+      <div class="ticker-inner">
+        Welcome back, Sunnyside Stars! ⭐
+        <span class="dot">•</span> Picture day is this Friday — wear your school colors!
+        <span class="dot">•</span> Parent-teacher conferences next Tuesday
+        <span class="dot">•</span> Lunch menu updates every Monday
+        <span class="dot">•</span> Welcome back, Sunnyside Stars! ⭐
+        <span class="dot">•</span> Picture day is this Friday — wear your school colors!
+      </div>
+    </div>
+
+  </div>
+
+  <div class="caption">
+    <b>What's new vs. the old templates:</b> warm illustrated meadow background, animated sun with a smile, polaroid-style teacher spotlight with confetti stars, rounded Fredoka display type, handwritten Caveat accents on labels and names, chip-style weather stats, gradient ribbon badges, and a ticker that feels cheerful instead of corporate. Every zone is percent-positioned so it scales perfectly to a 4K lobby TV (3840 × 2160).
+  </div>
+</div>
+
+</body>
+</html>

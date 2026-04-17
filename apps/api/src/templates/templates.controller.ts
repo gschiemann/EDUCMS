@@ -201,6 +201,10 @@ export class TemplatesController {
           orientation: preset.orientation,
           screenWidth: preset.screenWidth || (preset.orientation === 'PORTRAIT' ? 2160 : 3840),
           screenHeight: preset.screenHeight || (preset.orientation === 'PORTRAIT' ? 3840 : 2160),
+          // Carry themed background from preset (optional — most presets leave it null)
+          bgColor: preset.bgColor ?? null,
+          bgGradient: preset.bgGradient ?? null,
+          bgImage: preset.bgImage ?? null,
           createdById: req.user.id,
           zones: {
             create: preset.zones.map((z, i) => ({
