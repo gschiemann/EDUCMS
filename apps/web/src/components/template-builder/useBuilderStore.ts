@@ -17,6 +17,9 @@ interface BuilderState {
     bgGradient: string;
     bgImage: string;
   };
+  // Sprint 4 — touch-mode settings. Not part of HistoryEntry (toggle-only UX).
+  isTouchEnabled: boolean;
+  idleResetMs: number;
   selectedIds: string[];
   gridSize: number;
   snapEnabled: boolean;
@@ -29,7 +32,9 @@ interface BuilderState {
   isDirty: boolean;
 
   // actions
-  init(payload: { id: string; isSystem: boolean; zones: Zone[]; meta: BuilderState['meta'] }): void;
+  init(payload: { id: string; isSystem: boolean; zones: Zone[]; meta: BuilderState['meta']; isTouchEnabled?: boolean; idleResetMs?: number }): void;
+  setTouchEnabled(v: boolean): void;
+  setIdleResetMs(n: number): void;
   markClean(): void;
   addZone(widgetType: string): string;
   duplicateZone(id: string): string | null;
@@ -81,6 +86,8 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     bgGradient: '',
     bgImage: '',
   },
+  isTouchEnabled: false,
+  idleResetMs: 60000,
   selectedIds: [],
   gridSize: DEFAULT_GRID_SIZE,
   snapEnabled: true,
@@ -92,16 +99,21 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   future: [],
   isDirty: false,
 
-  init: ({ id, isSystem, zones, meta }) => set({
+  init: ({ id, isSystem, zones, meta, isTouchEnabled, idleResetMs }) => set({
     templateId: id,
     isSystem,
     zones: zones.map(z => ({ ...z })),
     meta,
+    isTouchEnabled: isTouchEnabled ?? false,
+    idleResetMs: idleResetMs ?? 60000,
     selectedIds: [],
     past: [],
     future: [],
     isDirty: false,
   }),
+
+  setTouchEnabled: (v) => set({ isTouchEnabled: v, isDirty: true }),
+  setIdleResetMs: (n) => set({ idleResetMs: Math.max(5000, Math.min(600000, n)), isDirty: true }),
 
   markClean: () => set({ isDirty: false }),
 
