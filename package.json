@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "Secure multi-tenant School CMS API",
   "scripts": {
-    "start": "turbo run start",
+    "start": "pnpm --filter api run start:prod",
     "build": "turbo run build",
     "dev": "turbo run dev --parallel",
     "test": "turbo run test",
