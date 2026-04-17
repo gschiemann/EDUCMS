@@ -957,4 +957,716 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
       },
     ],
   },
+
+  // ─────────────────────────────────────────────────────
+  // ELEMENTARY MORNING WELCOME — K-5 colorful start-of-day
+  // ─────────────────────────────────────────────────────
+  {
+    id: 'elementary-morning-welcome',
+    name: 'Elementary Morning Welcome',
+    description: 'Colorful K-5 morning screen with clock, weather, announcements ticker, and a mascot image zone — perfect for lobby or hallway before the bell.',
+    category: 'welcome',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgGradient: 'linear-gradient(135deg, #FFF9C4 0%, #B3E5FC 50%, #F8BBD0 100%)',
+    zones: [
+      {
+        name: 'Good Morning Clock',
+        widgetType: 'CLOCK',
+        x: 0, y: 0, width: 30, height: 28,
+        sortOrder: 0,
+        defaultConfig: { format: '12h', showSeconds: false, color: '#1565C0', bgColor: 'transparent' },
+      },
+      {
+        name: 'Weather',
+        widgetType: 'WEATHER',
+        x: 30, y: 0, width: 40, height: 28,
+        sortOrder: 1,
+        defaultConfig: { units: 'imperial', showForecast: false },
+      },
+      {
+        name: 'Mascot / School Image',
+        widgetType: 'IMAGE',
+        x: 70, y: 0, width: 30, height: 55,
+        sortOrder: 2,
+        defaultConfig: { fitMode: 'contain' },
+      },
+      {
+        name: 'Morning Announcements',
+        widgetType: 'ANNOUNCEMENT',
+        x: 0, y: 28, width: 70, height: 55,
+        sortOrder: 3,
+        defaultConfig: {
+          message: 'Good morning, Stars! Remember to return your reading logs today.',
+          priority: 'normal',
+        },
+      },
+      {
+        name: 'Scrolling Morning Ticker',
+        widgetType: 'TICKER',
+        x: 0, y: 83, width: 100, height: 17,
+        sortOrder: 4,
+        defaultConfig: {
+          speed: 'slow',
+          messages: [
+            'Welcome to school! Have a great day! ⭐',
+            'Lunch today: pizza, salad bar, and fruit cup',
+            'Library books due this Friday',
+            'Early dismissal Wednesday at 1:30 PM',
+          ],
+        },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────
+  // MIDDLE SCHOOL HALL BOARD — landscape tri-zone for corridors
+  // ─────────────────────────────────────────────────────
+  {
+    id: 'middle-school-hall-board',
+    name: 'Middle School Hall Board',
+    description: 'Landscape hallway display for middle school: clock/date on the left, bell schedule in the center, and a scrolling announcement ticker at the bottom.',
+    category: 'hallway',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#1A237E',
+    zones: [
+      {
+        name: 'Clock & Date',
+        widgetType: 'CLOCK',
+        x: 0, y: 0, width: 28, height: 85,
+        sortOrder: 0,
+        defaultConfig: { format: '12h', showSeconds: true, color: '#FFFFFF', bgColor: 'transparent' },
+      },
+      {
+        name: 'Bell Schedule',
+        widgetType: 'BELL_SCHEDULE',
+        x: 29, y: 0, width: 70, height: 85,
+        sortOrder: 1,
+        defaultConfig: { showCurrentHighlight: true },
+      },
+      {
+        name: 'Hall Ticker',
+        widgetType: 'TICKER',
+        x: 0, y: 85, width: 100, height: 15,
+        sortOrder: 2,
+        defaultConfig: {
+          speed: 'medium',
+          messages: [
+            'Spirit Week: dress-up themes posted on the main office door',
+            'Science fair projects due next Friday',
+            'No phones in hallways — keep them in your locker',
+          ],
+        },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────
+  // HIGH SCHOOL ATHLETICS SCOREBOARD — portrait, fan-facing
+  // ─────────────────────────────────────────────────────
+  {
+    id: 'high-school-athletics-scoreboard',
+    name: 'High School Athletics Scoreboard',
+    description: 'Portrait display for team lobbies and gyms: school logo, next-game countdown, last-score summary, and a scrolling fan-hype ticker.',
+    category: 'athletics',
+    orientation: 'PORTRAIT',
+    screenWidth: 1080,
+    screenHeight: 1920,
+    bgColor: '#0D0D0D',
+    zones: [
+      {
+        name: 'Team / School Logo',
+        widgetType: 'LOGO',
+        x: 10, y: 2, width: 80, height: 18,
+        sortOrder: 0,
+        defaultConfig: { fitMode: 'contain' },
+      },
+      {
+        name: 'Next Game Countdown',
+        widgetType: 'COUNTDOWN',
+        x: 0, y: 22, width: 100, height: 24,
+        sortOrder: 1,
+        defaultConfig: {
+          label: 'Next Game',
+          targetDate: '',
+          showDays: true,
+          showHours: true,
+        },
+      },
+      {
+        name: 'Last Score & Opponent',
+        widgetType: 'RICH_TEXT',
+        x: 0, y: 48, width: 100, height: 28,
+        sortOrder: 2,
+        defaultConfig: {
+          html: '<h2 style="color:#FFD700;text-align:center;font-size:2rem;">Last Game</h2><p style="color:#fff;text-align:center;font-size:1.5rem;">Eagles 42 — Rivals 28</p><p style="color:#aaa;text-align:center;">Update after each game</p>',
+        },
+      },
+      {
+        name: 'Fan Hype Ticker',
+        widgetType: 'TICKER',
+        x: 0, y: 78, width: 100, height: 12,
+        sortOrder: 3,
+        defaultConfig: {
+          speed: 'fast',
+          messages: [
+            'GO EAGLES! 🦅 Make some noise!',
+            'Wear your school colors to the next home game',
+            'Student section doors open 30 minutes before tip-off',
+          ],
+        },
+      },
+      {
+        name: 'Hype Announcement',
+        widgetType: 'TEXT',
+        x: 0, y: 90, width: 100, height: 10,
+        sortOrder: 4,
+        defaultConfig: {
+          content: '🏆 State Champions 2024',
+          fontSize: 28,
+          alignment: 'center',
+          color: '#FFD700',
+          bgColor: 'transparent',
+        },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────
+  // LIBRARY QUIET ZONE — subdued, minimal, reader-friendly
+  // ─────────────────────────────────────────────────────
+  {
+    id: 'library-quiet-zone',
+    name: 'Library Quiet Zone',
+    description: 'Minimal, subdued library display with book-of-the-month image, quiet-hours schedule, and a small lunch menu — keeps noise down and readers informed.',
+    category: 'library',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#F5F0EB',
+    zones: [
+      {
+        name: 'Library Header',
+        widgetType: 'TEXT',
+        x: 0, y: 0, width: 70, height: 14,
+        sortOrder: 0,
+        defaultConfig: {
+          content: 'Media Center — Please keep voices low 📚',
+          fontSize: 22,
+          alignment: 'center',
+          color: '#3E2723',
+          bgColor: 'transparent',
+        },
+      },
+      {
+        name: 'Clock',
+        widgetType: 'CLOCK',
+        x: 70, y: 0, width: 30, height: 14,
+        sortOrder: 1,
+        defaultConfig: { format: '12h', showSeconds: false, color: '#3E2723', bgColor: 'transparent' },
+      },
+      {
+        name: 'Book of the Month',
+        widgetType: 'IMAGE',
+        x: 0, y: 15, width: 35, height: 60,
+        sortOrder: 2,
+        defaultConfig: { fitMode: 'contain' },
+      },
+      {
+        name: 'Quiet Hours & Schedule',
+        widgetType: 'RICH_TEXT',
+        x: 36, y: 15, width: 36, height: 60,
+        sortOrder: 3,
+        defaultConfig: {
+          html: '<h3 style="color:#3E2723;">Library Hours</h3><p>Mon–Fri: 7:30 AM – 4:00 PM</p><p>Quiet Study: 8:00 – 11:00 AM</p><p>Open Reading: 11:00 AM – 3:00 PM</p>',
+        },
+      },
+      {
+        name: 'Lunch Menu (small)',
+        widgetType: 'LUNCH_MENU',
+        x: 73, y: 15, width: 27, height: 60,
+        sortOrder: 4,
+        defaultConfig: {
+          meals: [
+            { label: 'Today', items: ['Update in settings'] },
+          ],
+        },
+      },
+      {
+        name: 'Library Ticker',
+        widgetType: 'TICKER',
+        x: 0, y: 76, width: 100, height: 12,
+        sortOrder: 5,
+        defaultConfig: {
+          speed: 'slow',
+          messages: [
+            'New arrivals on the display shelf near the entrance',
+            'Book Club meets Wednesdays at 3:15 PM — all grades welcome',
+            'Overdue books? Return them to the front desk — no questions asked',
+          ],
+        },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────
+  // GYM / PE DISPLAY — bold, motivational, activity-facing
+  // ─────────────────────────────────────────────────────
+  {
+    id: 'gym-pe-display',
+    name: 'Gym / PE Display',
+    description: 'Bold gym-facing display with a motivational quote, class rotation schedule, and weather for outdoor activity planning.',
+    category: 'gym',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgGradient: 'linear-gradient(160deg, #1B2631 0%, #2E4057 60%, #1B2631 100%)',
+    zones: [
+      {
+        name: 'Motivational Quote',
+        widgetType: 'TEXT',
+        x: 0, y: 0, width: 70, height: 28,
+        sortOrder: 0,
+        defaultConfig: {
+          content: '"Champions are made in the moments when they want to quit." — Keep going!',
+          fontSize: 28,
+          alignment: 'center',
+          color: '#FFD700',
+          bgColor: 'transparent',
+        },
+      },
+      {
+        name: 'Outdoor Weather',
+        widgetType: 'WEATHER',
+        x: 70, y: 0, width: 30, height: 28,
+        sortOrder: 1,
+        defaultConfig: { units: 'imperial', showForecast: false },
+      },
+      {
+        name: 'Class Rotation Schedule',
+        widgetType: 'BELL_SCHEDULE',
+        x: 0, y: 29, width: 60, height: 55,
+        sortOrder: 2,
+        defaultConfig: { showCurrentHighlight: true },
+      },
+      {
+        name: 'PE Announcements',
+        widgetType: 'ANNOUNCEMENT',
+        x: 61, y: 29, width: 39, height: 55,
+        sortOrder: 3,
+        defaultConfig: {
+          message: 'Fitness testing week starts Monday. Please wear appropriate athletic shoes.',
+          priority: 'normal',
+        },
+      },
+      {
+        name: 'Activity Ticker',
+        widgetType: 'TICKER',
+        x: 0, y: 85, width: 100, height: 15,
+        sortOrder: 4,
+        defaultConfig: {
+          speed: 'medium',
+          messages: [
+            'Intramural sign-ups close this Friday — see Coach Davis',
+            'Locker room reminder: clean up after yourself',
+            'Outdoor PE cancelled when heat index exceeds 95°F',
+          ],
+        },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────
+  // MUSIC ROOM / ARTS — artistic, concert-focused
+  // ─────────────────────────────────────────────────────
+  {
+    id: 'music-room-arts',
+    name: 'Music Room & Arts',
+    description: 'Artistic display for music and arts classrooms: upcoming concert countdown, practice schedule, and a featured student spotlight.',
+    category: 'arts',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgGradient: 'linear-gradient(135deg, #1A0533 0%, #2D1B5E 50%, #0D2137 100%)',
+    zones: [
+      {
+        name: 'Arts Room Header',
+        widgetType: 'TEXT',
+        x: 0, y: 0, width: 65, height: 16,
+        sortOrder: 0,
+        defaultConfig: {
+          content: 'Music & Arts — Practice Makes Perfect 🎵',
+          fontSize: 26,
+          alignment: 'center',
+          color: '#E040FB',
+          bgColor: 'transparent',
+        },
+      },
+      {
+        name: 'Concert Countdown',
+        widgetType: 'COUNTDOWN',
+        x: 65, y: 0, width: 35, height: 16,
+        sortOrder: 1,
+        defaultConfig: {
+          label: 'Spring Concert in',
+          targetDate: '',
+          showDays: true,
+          showHours: false,
+        },
+      },
+      {
+        name: 'Practice Schedule',
+        widgetType: 'RICH_TEXT',
+        x: 0, y: 17, width: 45, height: 68,
+        sortOrder: 2,
+        defaultConfig: {
+          html: '<h3 style="color:#E040FB;">Rehearsal Schedule</h3><p style="color:#fff;">Monday: Band 7:00–8:00 AM</p><p style="color:#fff;">Tuesday: Choir 3:15–4:30 PM</p><p style="color:#fff;">Thursday: Orchestra 3:15–5:00 PM</p><p style="color:#fff;">Update with current schedule</p>',
+        },
+      },
+      {
+        name: 'Featured Student Spotlight',
+        widgetType: 'STAFF_SPOTLIGHT',
+        x: 46, y: 17, width: 54, height: 68,
+        sortOrder: 3,
+        defaultConfig: {
+          staffName: 'Featured Artist',
+          role: 'Student of the Month',
+          bio: 'Outstanding dedication to our music program. Congratulations!',
+          rotateIntervalMs: 20000,
+        },
+      },
+      {
+        name: 'Arts Ticker',
+        widgetType: 'TICKER',
+        x: 0, y: 86, width: 100, height: 14,
+        sortOrder: 4,
+        defaultConfig: {
+          speed: 'slow',
+          messages: [
+            'All-State auditions — see Mr. Rivera for details',
+            'Art gallery submissions due by the 15th',
+            'Spring musical rehearsals begin next week — check the schedule',
+          ],
+        },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────
+  // STEM / SCIENCE LAB — data-viz feel, fact-of-the-day
+  // ─────────────────────────────────────────────────────
+  {
+    id: 'stem-science-lab',
+    name: 'STEM & Science Lab',
+    description: 'Data-inspired STEM lab display with a science fact of the day, project deadline countdown, and a safety reminders ticker.',
+    category: 'stem',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgGradient: 'linear-gradient(160deg, #0A1628 0%, #0D3349 55%, #0A1628 100%)',
+    zones: [
+      {
+        name: 'Lab Header',
+        widgetType: 'TEXT',
+        x: 0, y: 0, width: 60, height: 15,
+        sortOrder: 0,
+        defaultConfig: {
+          content: 'STEM Lab — Think. Build. Discover. 🔬',
+          fontSize: 26,
+          alignment: 'center',
+          color: '#00E5FF',
+          bgColor: 'transparent',
+        },
+      },
+      {
+        name: 'Project Countdown',
+        widgetType: 'COUNTDOWN',
+        x: 60, y: 0, width: 40, height: 15,
+        sortOrder: 1,
+        defaultConfig: {
+          label: 'Science Fair Deadline',
+          targetDate: '',
+          showDays: true,
+          showHours: true,
+        },
+      },
+      {
+        name: 'Science Fact of the Day',
+        widgetType: 'RICH_TEXT',
+        x: 0, y: 16, width: 55, height: 65,
+        sortOrder: 2,
+        defaultConfig: {
+          html: '<h2 style="color:#00E5FF;">Fact of the Day</h2><p style="color:#E0F7FA;font-size:1.1rem;">The human body contains approximately 37 trillion cells.</p><br><p style="color:#80DEEA;">Update daily with a new science or STEM fact.</p>',
+        },
+      },
+      {
+        name: 'Lab Photo / Project Showcase',
+        widgetType: 'IMAGE_CAROUSEL',
+        x: 56, y: 16, width: 44, height: 65,
+        sortOrder: 3,
+        defaultConfig: {
+          transitionEffect: 'fade',
+          intervalMs: 7000,
+          fitMode: 'cover',
+        },
+      },
+      {
+        name: 'Safety Reminders Ticker',
+        widgetType: 'TICKER',
+        x: 0, y: 82, width: 100, height: 18,
+        sortOrder: 4,
+        defaultConfig: {
+          speed: 'slow',
+          messages: [
+            '🥽 Safety goggles required during all lab activities',
+            'No food or drink in the lab at any time',
+            'Report spills immediately to the teacher',
+            'Wash hands after handling any lab materials',
+          ],
+        },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────
+  // CAFETERIA DAILY SPECIAL — vibrant menu-first display
+  // ─────────────────────────────────────────────────────
+  {
+    id: 'cafeteria-daily-special',
+    name: 'Cafeteria Daily Special',
+    description: 'Vibrant cafeteria display leading with the featured menu item, allergen legend, and next meal period countdown.',
+    category: 'cafeteria',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgGradient: 'linear-gradient(135deg, #1B5E20 0%, #2E7D32 40%, #33691E 100%)',
+    zones: [
+      {
+        name: 'Menu Header',
+        widgetType: 'TEXT',
+        x: 0, y: 0, width: 70, height: 14,
+        sortOrder: 0,
+        defaultConfig: {
+          content: "Today's Cafeteria Menu 🍽️",
+          fontSize: 32,
+          alignment: 'center',
+          color: '#FFFFFF',
+          bgColor: 'transparent',
+        },
+      },
+      {
+        name: 'Next Meal Countdown',
+        widgetType: 'COUNTDOWN',
+        x: 70, y: 0, width: 30, height: 14,
+        sortOrder: 1,
+        defaultConfig: {
+          label: 'Next meal period',
+          showHours: true,
+          showDays: false,
+        },
+      },
+      {
+        name: 'Featured Menu Item',
+        widgetType: 'LUNCH_MENU',
+        x: 0, y: 15, width: 55, height: 65,
+        sortOrder: 2,
+        defaultConfig: {
+          meals: [
+            { label: "Today's Special", items: ['Update with featured item'] },
+            { label: 'Sides', items: ['Garden salad', 'Steamed broccoli', 'Fruit cup'] },
+            { label: 'Drinks', items: ['Milk', 'Juice', 'Water'] },
+          ],
+        },
+      },
+      {
+        name: 'Food Photo',
+        widgetType: 'IMAGE_CAROUSEL',
+        x: 56, y: 15, width: 44, height: 44,
+        sortOrder: 3,
+        defaultConfig: {
+          transitionEffect: 'fade',
+          intervalMs: 5000,
+          fitMode: 'cover',
+        },
+      },
+      {
+        name: 'Allergen Legend',
+        widgetType: 'RICH_TEXT',
+        x: 56, y: 60, width: 44, height: 20,
+        sortOrder: 4,
+        defaultConfig: {
+          html: '<p style="color:#fff;font-size:0.85rem;"><strong>Allergen Legend:</strong> 🥜 Peanuts &nbsp; 🌾 Gluten &nbsp; 🥛 Dairy &nbsp; 🥚 Eggs &nbsp; 🐟 Fish &nbsp; 🫘 Soy</p><p style="color:#ccc;font-size:0.8rem;">Full allergen info available at the serving counter.</p>',
+        },
+      },
+      {
+        name: 'Nutrition Ticker',
+        widgetType: 'TICKER',
+        x: 0, y: 81, width: 100, height: 12,
+        sortOrder: 5,
+        defaultConfig: {
+          speed: 'slow',
+          messages: [
+            'Eat the rainbow! Choose colorful fruits and vegetables every day.',
+            'Low-sodium options available — ask a cafeteria staff member',
+            'Free/reduced meal applications available in the main office',
+          ],
+        },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────
+  // BUS LOOP / DISMISSAL BOARD — high-contrast, safety-first
+  // ─────────────────────────────────────────────────────
+  {
+    id: 'bus-loop-dismissal-board',
+    name: 'Bus Loop & Dismissal Board',
+    description: 'High-contrast dismissal display with scrolling bus arrival information, weather delay alert zone, and an announcement area for route changes.',
+    category: 'transport',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#0D0D0D',
+    zones: [
+      {
+        name: 'Dismissal Header',
+        widgetType: 'TEXT',
+        x: 0, y: 0, width: 70, height: 16,
+        sortOrder: 0,
+        defaultConfig: {
+          content: 'BUS LOOP — DISMISSAL INFORMATION',
+          fontSize: 30,
+          alignment: 'center',
+          color: '#FFD700',
+          bgColor: '#1A1A00',
+        },
+      },
+      {
+        name: 'Clock',
+        widgetType: 'CLOCK',
+        x: 70, y: 0, width: 30, height: 16,
+        sortOrder: 1,
+        defaultConfig: { format: '12h', showSeconds: true, color: '#FFFFFF', bgColor: 'transparent' },
+      },
+      {
+        name: 'Route & Delay Announcement',
+        widgetType: 'ANNOUNCEMENT',
+        x: 0, y: 17, width: 45, height: 62,
+        sortOrder: 2,
+        defaultConfig: {
+          message: 'All buses running on schedule. Riders: proceed to your designated pickup zone.',
+          priority: 'normal',
+        },
+      },
+      {
+        name: 'Weather & Delay Alert',
+        widgetType: 'WEATHER',
+        x: 46, y: 17, width: 54, height: 30,
+        sortOrder: 3,
+        defaultConfig: { units: 'imperial', showForecast: false },
+      },
+      {
+        name: 'Bus Arrival Notes',
+        widgetType: 'RICH_TEXT',
+        x: 46, y: 48, width: 54, height: 31,
+        sortOrder: 4,
+        defaultConfig: {
+          html: '<h3 style="color:#FFD700;">Today\'s Bus Notes</h3><p style="color:#fff;">Route 12 — Delayed approx. 10 min</p><p style="color:#fff;">Route 7 — On time</p><p style="color:#ccc;font-size:0.85rem;">Update with live information each day</p>',
+        },
+      },
+      {
+        name: 'Bus Ticker',
+        widgetType: 'TICKER',
+        x: 0, y: 80, width: 100, height: 20,
+        sortOrder: 5,
+        defaultConfig: {
+          speed: 'medium',
+          messages: [
+            'Students: wait for your bus number to be called before moving to the loop',
+            'Car riders: proceed to the south parking lot — bring your ID card',
+            'Walker/bike riders: use the crosswalk — staff on duty until 3:45 PM',
+          ],
+        },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────
+  // PRINCIPAL'S OFFICE WELCOME — professional, visitor-ready
+  // ─────────────────────────────────────────────────────
+  {
+    id: 'principals-office-welcome',
+    name: "Principal's Office Welcome",
+    description: "Professional display for the principal's office reception area: school logo, visitor welcome message, daily office hours, and current date and time.",
+    category: 'admin',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgGradient: 'linear-gradient(180deg, #0A2744 0%, #123F6D 60%, #0A2744 100%)',
+    zones: [
+      {
+        name: 'School Logo',
+        widgetType: 'LOGO',
+        x: 2, y: 4, width: 20, height: 28,
+        sortOrder: 0,
+        defaultConfig: { fitMode: 'contain' },
+      },
+      {
+        name: 'Welcome Message',
+        widgetType: 'TEXT',
+        x: 23, y: 4, width: 55, height: 28,
+        sortOrder: 1,
+        defaultConfig: {
+          content: 'Welcome — Please sign in at the front desk and have a seat. Someone will be with you shortly.',
+          fontSize: 22,
+          alignment: 'center',
+          color: '#FFFFFF',
+          bgColor: 'transparent',
+        },
+      },
+      {
+        name: 'Date & Time',
+        widgetType: 'CLOCK',
+        x: 79, y: 4, width: 20, height: 28,
+        sortOrder: 2,
+        defaultConfig: { format: '12h', showSeconds: false, color: '#FFFFFF', bgColor: 'transparent' },
+      },
+      {
+        name: 'Office Hours',
+        widgetType: 'RICH_TEXT',
+        x: 2, y: 35, width: 45, height: 50,
+        sortOrder: 3,
+        defaultConfig: {
+          html: '<h3 style="color:#90CAF9;">Office Hours</h3><p style="color:#fff;">Monday – Friday: 7:30 AM – 4:30 PM</p><p style="color:#fff;">Principal available: 8:00 – 11:30 AM</p><p style="color:#fff;">Appointments preferred — call ext. 100</p><br><p style="color:#ccc;font-size:0.85rem;">After-hours messages can be left with the main office.</p>',
+        },
+      },
+      {
+        name: 'Daily Announcement',
+        widgetType: 'ANNOUNCEMENT',
+        x: 48, y: 35, width: 50, height: 50,
+        sortOrder: 4,
+        defaultConfig: {
+          message: 'Thank you for visiting. All visitors must check in and wear a visitor badge while on campus.',
+          priority: 'normal',
+        },
+      },
+      {
+        name: 'Office Footer Ticker',
+        widgetType: 'TICKER',
+        x: 0, y: 86, width: 100, height: 14,
+        sortOrder: 5,
+        defaultConfig: {
+          speed: 'slow',
+          messages: [
+            'School office hours: Mon–Fri, 7:30 AM – 4:30 PM',
+            'For student absences, please call the attendance line by 9:00 AM',
+            'Visitor badges must be returned upon departure — thank you!',
+          ],
+        },
+      },
+    ],
+  },
 ];
