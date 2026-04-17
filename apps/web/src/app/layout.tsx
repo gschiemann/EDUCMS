@@ -4,6 +4,13 @@ import './globals.css';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import Providers from '@/components/providers';
 
+// Development-only axe accessibility overlay — never shipped in production builds.
+if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
+  const ReactDOM = require('react-dom');
+  const axeCore = require('@axe-core/react');
+  axeCore.default(require('react'), ReactDOM, 1000);
+}
+
 const inter = Inter({ subsets: ['latin'] });
 
 // Rounded, friendly display font — used by playful template themes (e.g. Sunny Meadow).

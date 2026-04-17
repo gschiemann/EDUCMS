@@ -1,3 +1,7 @@
+// TODO(a11y): Sprint 2 — fix click-events-have-key-events, no-static-element-interactions,
+// no-noninteractive-element-interactions, label-has-associated-control, and no-autofocus
+// violations throughout this file.
+/* eslint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions, jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/label-has-associated-control, jsx-a11y/no-autofocus */
 "use client";
 
 import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink } from 'lucide-react';

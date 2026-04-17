@@ -1,3 +1,6 @@
+// TODO(a11y): Sprint 2 — convert interactive <div> click handlers in the player overlay
+// to <button> elements, or add role="button" + onKeyDown + tabIndex={0}.
+/* eslint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from 'react';

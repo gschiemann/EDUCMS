@@ -31,6 +31,39 @@ jobs:
       - name: Build Application
         run: pnpm run build
 
+  accessibility:
+    name: Accessibility Lint (jsx-a11y)
+    runs-on: ubuntu-latest
+    # Only run when frontend or shared packages change.
+    # Remove this filter if the monorepo CI needs full-run guarantees.
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+
+      - name: Enable Corepack and Setup pnpm
+        run: corepack enable && corepack prepare pnpm@latest --activate
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run a11y lint (jsx-a11y — any error fails the build)
+        # Run eslint and grep for jsx-a11y errors. If any are found, fail.
+        # Pre-existing non-a11y lint errors (e.g. @typescript-eslint/no-explicit-any)
+        # are tracked separately and do not block this job.
+        run: |
+          pnpm --filter web lint 2>&1 | tee /tmp/lint.txt || true
+          if grep -q "jsx-a11y/" /tmp/lint.txt; then
+            echo "FAIL: jsx-a11y violations found:"
+            grep "jsx-a11y/" /tmp/lint.txt
+            exit 1
+          fi
+          echo "OK: no jsx-a11y violations"
+
   security-scan:
     name: Container Security Scanning
     runs-on: ubuntu-latest

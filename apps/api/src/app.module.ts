@@ -19,24 +19,29 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { APP_GUARD, APP_PIPE, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_PIPE, APP_INTERCEPTOR } from '@nestjs/core';
 import { SanitizationPipe } from './security/sanitization.pipe';
 import { AuditInterceptor } from './security/audit.interceptor';
 import { AnomalyMiddleware } from './security/anomaly.middleware';
+import { CsrfMiddleware } from './security/csrf.middleware';
+import { CsrfController } from './security/csrf.controller';
 import { WebsocketSignerService } from './security/websocket-signer.service';
 import { AssetSanitizerService } from './security/asset-sanitizer.service';
 import { SupabaseStorageService } from './storage/supabase-storage.service';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RbacGuard } from './auth/rbac.guard';
+import { SentryModule } from '@sentry/nestjs/setup';
+import { SentryGlobalFilter } from '@sentry/nestjs/setup';
 
 @Module({
   imports: [
+    SentryModule.forRoot(),
     PrismaModule,
-    AuthModule, 
+    AuthModule,
     RealtimeModule,
     ThrottlerModule.forRoot([{
       ttl: 60000,
-      limit: 100, 
+      limit: 100,
     }]),
   ],
   controllers: [
@@ -55,6 +60,7 @@ import { RbacGuard } from './auth/rbac.guard';
     TenantsController,
     ProxyController,
     HealthController,
+    CsrfController,
   ],
   providers: [
     AppService,
@@ -63,6 +69,10 @@ import { RbacGuard } from './auth/rbac.guard';
     SupabaseStorageService,
     JwtAuthGuard,
     RbacGuard,
+    {
+      provide: APP_FILTER,
+      useClass: SentryGlobalFilter,
+    },
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
@@ -74,13 +84,14 @@ import { RbacGuard } from './auth/rbac.guard';
     {
       provide: APP_INTERCEPTOR,
       useClass: AuditInterceptor,
-    }
+    },
   ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
+    // CSRF must run before anomaly so blocked requests don't skew anomaly stats.
     consumer
-      .apply(AnomalyMiddleware)
+      .apply(CsrfMiddleware, AnomalyMiddleware)
       .forRoutes('*');
   }
 }

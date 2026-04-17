@@ -87,8 +87,9 @@ export default function AnnouncementsPage() {
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-semibold text-slate-900 dark:text-white mb-2">Announcement Title</label>
-                  <input 
+                  <label htmlFor="ann-title" className="block text-sm font-semibold text-slate-900 dark:text-white mb-2">Announcement Title</label>
+                  <input
+                    id="ann-title"
                     {...register("title")}
                     className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow"
                     placeholder="e.g. Winter Break Schedule"
@@ -97,8 +98,9 @@ export default function AnnouncementsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-slate-900 dark:text-white mb-2">Priority Level</label>
-                  <select 
+                  <label htmlFor="ann-priority" className="block text-sm font-semibold text-slate-900 dark:text-white mb-2">Priority Level</label>
+                  <select
+                    id="ann-priority"
                     {...register("priority")}
                     className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow"
                   >
@@ -110,8 +112,9 @@ export default function AnnouncementsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-900 dark:text-white mb-2">Message Body (Rich HTML Allowed)</label>
-                <textarea 
+                <label htmlFor="ann-body" className="block text-sm font-semibold text-slate-900 dark:text-white mb-2">Message Body (Rich HTML Allowed)</label>
+                <textarea
+                  id="ann-body"
                   {...register("bodyText")}
                   rows={8}
                   className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow font-mono resize-y"
@@ -121,10 +124,11 @@ export default function AnnouncementsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-900 dark:text-white mb-2">Expiration Date</label>
+                <label htmlFor="ann-expires" className="block text-sm font-semibold text-slate-900 dark:text-white mb-2">Expiration Date</label>
                 <div className="relative max-w-xs">
                   <CalendarClock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input 
+                  <input
+                    id="ann-expires"
                     type="datetime-local"
                     {...register("expiresAt")}
                     className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow"

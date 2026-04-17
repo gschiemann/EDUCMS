@@ -615,7 +615,7 @@ function StaffSpotlightWidget({ config, compact }: { config: any; compact: boole
         marginBottom: '0.4em',
       }}>
         {config.photoUrl ? (
-          <img src={resolveUrl(config.photoUrl)} style={{ width: '100%', height: '100%', borderRadius: 999, objectFit: 'cover' }} />
+          <img src={resolveUrl(config.photoUrl)} alt={name ? `Photo of ${name}` : 'Staff member photo'} style={{ width: '100%', height: '100%', borderRadius: 999, objectFit: 'cover' }} />
         ) : (
           <Users style={{ width: '50%', height: '50%', color: 'white' }} />
         )}

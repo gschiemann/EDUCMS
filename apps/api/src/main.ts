@@ -5,6 +5,9 @@ import { resolve } from 'path';
 config({ path: resolve(__dirname, '..', '.env') });
 config({ path: resolve(__dirname, '..', '..', '..', '.env') });
 
+// Sentry must be initialised before any other imports that may instrument code
+import './sentry';
+
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { WsAdapter } from '@nestjs/platform-ws';

@@ -86,10 +86,11 @@ export const EmergencyPanel = () => {
           </button>
         ) : (
           <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 w-80">
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">
+            <label htmlFor="lockdown-confirm" className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">
               Type "LOCKDOWN" to verify
             </label>
             <input
+              id="lockdown-confirm"
               type="text"
               className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all font-mono mb-3"
               value={typedConfirm}

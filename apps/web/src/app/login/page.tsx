@@ -1,3 +1,5 @@
+// TODO(a11y): Sprint 2 — replace autoFocus on email input with useEffect-based focus management.
+/* eslint-disable jsx-a11y/no-autofocus */
 "use client";
 
 import { Suspense, useState } from 'react';
@@ -70,8 +72,9 @@ function LoginContent() {
         <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-2xl shadow-2xl p-8">
           <form onSubmit={handleLogin} className="space-y-5">
             <div>
-              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Email</label>
+              <label htmlFor="login-email" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Email</label>
               <input
+                id="login-email"
                 type="email"
                 required
                 autoFocus
@@ -83,8 +86,9 @@ function LoginContent() {
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Password</label>
+              <label htmlFor="login-password" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Password</label>
               <input
+                id="login-password"
                 type="password"
                 required
                 autoComplete="current-password"

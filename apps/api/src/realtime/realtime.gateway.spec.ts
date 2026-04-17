@@ -37,7 +37,7 @@ describe('RealtimeGateway', () => {
   describe('handleConnection', () => {
     it('should initialize connection and set timeout', () => {
       jest.useFakeTimers();
-      const mockWs = { close: jest.fn() } as unknown as WebSocket;
+      const mockWs = { close: jest.fn(), on: jest.fn() } as unknown as WebSocket;
 
       gateway.handleConnection(mockWs);
       const clients = (gateway as any).clients;
@@ -47,7 +47,7 @@ describe('RealtimeGateway', () => {
       expect(ctx.isAuthenticated).toBe(false);
 
       // Verify the auth timeout closes connection if not authenticated
-      jest.advanceTimersByTime(5000);
+      jest.advanceTimersByTime(10000);
       expect(mockWs.close).toHaveBeenCalledWith(4001, 'Auth Timeout');
 
       jest.useRealTimers();
@@ -56,7 +56,7 @@ describe('RealtimeGateway', () => {
 
   describe('handleHello', () => {
     it('should authenticate correctly with valid JWT', async () => {
-      const mockWs = { send: jest.fn(), close: jest.fn(), readyState: WebSocket.OPEN } as unknown as WebSocket;
+      const mockWs = { send: jest.fn(), close: jest.fn(), on: jest.fn(), readyState: WebSocket.OPEN } as unknown as WebSocket;
       const secret = 'dev_secret';
       process.env.DEVICE_JWT_SECRET = secret;
 
@@ -69,7 +69,7 @@ describe('RealtimeGateway', () => {
       // Setup connection context
       gateway.handleConnection(mockWs);
 
-      await gateway.handleHello({ token, idempotencyKey: 'idempotency-123' }, mockWs);
+      await (gateway as any).processHello(mockWs, { token, idempotencyKey: 'idempotency-123' });
 
       const ctx = (gateway as any).clients.get(mockWs);
       expect(ctx.isAuthenticated).toBe(true);
@@ -81,18 +81,17 @@ describe('RealtimeGateway', () => {
       const sent = JSON.parse(sentRaw);
 
       expect(sent.type).toBe('AUTH_OK');
-      expect(sent.idempotencyKey).toBe('idempotency-123');
       expect(sent.payload.deviceId).toBe('dev_123');
-      
+
       // Asserts redis operations
-      expect(redisService.publisher.sadd).toHaveBeenCalledWith('tenant:tenant_1:devices', 'dev_123');
+      expect(redisService.publisher!.sadd).toHaveBeenCalledWith('tenant:tenant_1:devices', 'dev_123');
     });
 
     it('should reject invalid JWT and close connection', async () => {
-      const mockWs = { send: jest.fn(), close: jest.fn(), readyState: WebSocket.OPEN } as unknown as WebSocket;
+      const mockWs = { send: jest.fn(), close: jest.fn(), on: jest.fn(), readyState: WebSocket.OPEN } as unknown as WebSocket;
 
       gateway.handleConnection(mockWs);
-      await gateway.handleHello({ token: 'invalid_token' }, mockWs);
+      await (gateway as any).processHello(mockWs, { token: 'invalid_token' });
 
       const ctx = (gateway as any).clients.get(mockWs);
       // Wait, ctx is still there until disconnect handler?

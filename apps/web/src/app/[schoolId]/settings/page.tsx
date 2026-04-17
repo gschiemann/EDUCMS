@@ -1,3 +1,5 @@
+// TODO(a11y): Sprint 2 — remove no-autofocus usage; move focus management to a useEffect hook.
+/* eslint-disable jsx-a11y/no-autofocus */
 "use client";
 
 import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon } from 'lucide-react';

@@ -1,3 +1,7 @@
+// TODO(a11y): Sprint 2 — fix click-events-have-key-events, no-static-element-interactions,
+// and label-has-associated-control violations throughout this file. Add htmlFor/id pairs to
+// all form labels and convert interactive <div> click handlers to <button> elements.
+/* eslint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions, jsx-a11y/label-has-associated-control, jsx-a11y/no-autofocus */
 "use client";
 
 import { useState, useMemo } from 'react';

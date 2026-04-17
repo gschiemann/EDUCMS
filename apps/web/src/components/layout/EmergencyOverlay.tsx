@@ -50,13 +50,14 @@ export function EmergencyOverlay() {
 
         <div className="w-full max-w-md bg-black/40 backdrop-blur-md rounded-xl p-8 border border-red-500/30 mt-8 space-y-6">
           <div>
-            <label className="block text-sm font-bold uppercase tracking-wider text-red-400 mb-2">
+            <label htmlFor="all-clear-input" className="block text-sm font-bold uppercase tracking-wider text-red-400 mb-2">
               All-Clear Authorization
             </label>
             <p className="text-sm text-red-200 mb-4 opacity-80">
               To restore normal screen scheduling, type <strong>CLEAR</strong> and authorize the all-clear signal.
             </p>
-            <input 
+            <input
+              id="all-clear-input"
               type="text"
               value={confirmKey}
               onChange={(e) => setConfirmKey(e.target.value.toUpperCase())}
