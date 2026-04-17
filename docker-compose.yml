@@ -15,6 +15,10 @@ services:
       - JWT_SECRET=dev_only_jwt_secret_CHANGE_ME
       - SESSION_SECRET=dev_only_session_secret_CHANGE_ME
       - ALLOWED_ORIGINS=http://localhost:3000
+      # GrowthBook — set GROWTHBOOK_CLIENT_KEY after you create an SDK Connection
+      # in the GrowthBook UI (http://localhost:3100) under SDK Connections.
+      - GROWTHBOOK_API_HOST=http://growthbook:3100
+      - GROWTHBOOK_CLIENT_KEY=${GROWTHBOOK_CLIENT_KEY:-}
     depends_on:
       db:
         condition: service_healthy
@@ -52,5 +56,32 @@ services:
       timeout: 5s
       retries: 5
 
+  # ─── GrowthBook self-hosted ──────────────────────────────────────────────
+  # UI + API server on port 3100. Connect from the browser at http://localhost:3100
+  # and from within Docker at http://growthbook:3100.
+  growthbook:
+    image: growthbook/growthbook:latest
+    ports:
+      - "3100:3100"   # GrowthBook UI + API
+      - "3300:3300"   # GrowthBook websocket / streaming (optional)
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/growthbook
+      - APP_ORIGIN=http://localhost:3100
+      - API_HOST=http://localhost:3100
+      # Set a long random string for JWT signing inside GrowthBook
+      - JWT_SECRET=growthbook_dev_jwt_CHANGE_ME_IN_PRODUCTION
+      - SECRET_API_KEY=growthbook_dev_api_key_CHANGE_ME_IN_PRODUCTION
+    depends_on:
+      - mongodb
+    restart: unless-stopped
+
+  # MongoDB — GrowthBook's internal datastore. Not exposed to the host.
+  mongodb:
+    image: mongo:7
+    volumes:
+      - mongodata:/data/db
+    restart: unless-stopped
+
 volumes:
   pgdata:
+  mongodata:

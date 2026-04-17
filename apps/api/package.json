@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@cms/database": "workspace:*",
+    "@growthbook/growthbook": "^1.6.5",
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",
     "@nestjs/jwt": "^11.0.2",
@@ -30,6 +31,8 @@
     "@nestjs/platform-ws": "^11.1.19",
     "@nestjs/throttler": "^6.5.0",
     "@nestjs/websockets": "^11.1.19",
+    "@openfeature/core": "^1.9.2",
+    "@openfeature/server-sdk": "^1.20.2",
     "@sentry/nestjs": "^10.49.0",
     "@sentry/node": "^10.49.0",
     "@sentry/profiling-node": "^10.49.0",
