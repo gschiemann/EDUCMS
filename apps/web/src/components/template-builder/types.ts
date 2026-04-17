@@ -1,3 +1,8 @@
+export interface TouchActionConfig {
+  type: 'navigate' | 'show' | 'url';
+  target: string;
+}
+
 export interface Zone {
   id: string;
   name: string;
@@ -10,6 +15,7 @@ export interface Zone {
   sortOrder: number;
   defaultConfig?: Record<string, unknown> | null;
   locked?: boolean;
+  touchAction?: TouchActionConfig | null;
 }
 
 export interface Template {

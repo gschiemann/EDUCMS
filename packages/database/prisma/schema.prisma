@@ -247,6 +247,8 @@ model Template {
   bgGradient   String?        @map("bg_gradient")
   thumbnail    String?
   createdById  String?        @map("created_by_id")
+  isTouchEnabled Boolean      @default(false) @map("is_touch_enabled")
+  idleResetMs  Int            @default(60000) @map("idle_reset_ms")
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @default(now()) @updatedAt @map("updated_at")
   zones        TemplateZone[]
@@ -269,6 +271,7 @@ model TemplateZone {
   zIndex        Int      @default(0) @map("z_index")
   sortOrder     Int      @default(0) @map("sort_order")
   defaultConfig String?  @map("default_config")
+  touchAction   Json?    @map("touch_action")
   template      Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
 
   @@map("template_zones")

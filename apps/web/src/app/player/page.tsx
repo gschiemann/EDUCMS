@@ -487,6 +487,51 @@ export default function PlayerPage() {
     );
   }
 
+  // ─── Sprint 4: Touch idle-reset for interactive templates ───
+  // Kiosks left untouched by students return to the template home scene. A
+  // "scene" today == the full template; a navigate/show action bumps a
+  // sceneTick to force a re-mount, which drops child widget state (keyboards,
+  // poll votes, room selection, etc.).
+  const [sceneTick, setSceneTick] = useState(0);
+  const idleResetTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const isTouchTemplate = !!playlist?.template?.isTouchEnabled;
+  const idleResetMs: number = playlist?.template?.idleResetMs ?? 60000;
+
+  useEffect(() => {
+    if (!isTouchTemplate) return;
+
+    const reset = () => {
+      if (idleResetTimerRef.current) clearTimeout(idleResetTimerRef.current);
+      idleResetTimerRef.current = setTimeout(() => {
+        setSceneTick(t => t + 1);
+      }, idleResetMs);
+    };
+
+    const onTouch = () => reset();
+    const onTouchAction = (e: Event) => {
+      const ce = e as CustomEvent<{ type: string; target: string }>;
+      // For 'navigate'/'show' we bump the scene tick immediately. 'url' is
+      // handled inline by fireTouchAction (opens new tab).
+      if (ce.detail && (ce.detail.type === 'navigate' || ce.detail.type === 'show')) {
+        setSceneTick(t => t + 1);
+      }
+      reset();
+    };
+
+    window.addEventListener('pointerdown', onTouch, { passive: true });
+    window.addEventListener('keydown', onTouch);
+    window.addEventListener('edu:touch-action', onTouchAction as EventListener);
+    reset(); // start timer
+
+    return () => {
+      window.removeEventListener('pointerdown', onTouch);
+      window.removeEventListener('keydown', onTouch);
+      window.removeEventListener('edu:touch-action', onTouchAction as EventListener);
+      if (idleResetTimerRef.current) clearTimeout(idleResetTimerRef.current);
+    };
+  }, [isTouchTemplate, idleResetMs]);
+
   // ─── Render: Playing ───
   const isTemplate = !!playlist?.template;
   const sorted = playlist && !isTemplate ? [...(playlist.items || [])].sort((a: any, b: any) => a.sequenceOrder - b.sequenceOrder) : [];
@@ -516,32 +561,50 @@ export default function PlayerPage() {
 
     return (
       <div
-        className="fixed inset-0 cursor-none"
+        className={`fixed inset-0 ${isTouchTemplate ? '' : 'cursor-none'}`}
         role="button"
         tabIndex={0}
         aria-label="Toggle screen info overlay"
-        onClick={() => setShowOverlay(!showOverlay)}
-        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowOverlay(s => !s); } }}
+        onClick={isTouchTemplate ? undefined : () => setShowOverlay(!showOverlay)}
+        onKeyDown={e => { if (!isTouchTemplate && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setShowOverlay(s => !s); } }}
         style={{
           backgroundColor: tpl.bgColor || '#000000',
           ...(tpl.bgGradient ? { background: tpl.bgGradient } : {}),
           ...(tpl.bgImage ? { backgroundImage: `url(${tpl.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}),
         }}>
-        {/* Render each zone with its live widget */}
+        {/* Render each zone with its live widget. Key by sceneTick on touch
+            templates so idle-reset remounts widgets and clears local state. */}
         {zones.map((zone: any) => {
           // defaultConfig may be a JSON string from the DB — ensure it's a parsed object
           let cfg = zone.defaultConfig;
           if (typeof cfg === 'string') {
             try { cfg = JSON.parse(cfg); } catch { cfg = {}; }
           }
+          const zoneTouchAction = zone.touchAction || null;
+          const onZoneClick = zoneTouchAction
+            ? (e: React.MouseEvent) => {
+                e.stopPropagation();
+                // Broadcast the action so the idle-reset listener above picks it up.
+                try {
+                  window.dispatchEvent(new CustomEvent('edu:touch-action', { detail: zoneTouchAction }));
+                } catch {}
+                if (zoneTouchAction.type === 'url' && zoneTouchAction.target) {
+                  window.open(zoneTouchAction.target, '_blank', 'noopener,noreferrer');
+                }
+              }
+            : undefined;
           return (
-          <div key={zone.id} className="absolute overflow-hidden"
+          <div
+            key={`${zone.id}-${isTouchTemplate ? sceneTick : 0}`}
+            className="absolute overflow-hidden"
+            onClick={onZoneClick}
             style={{
               left: `${zone.x}%`,
               top: `${zone.y}%`,
               width: `${zone.width}%`,
               height: `${zone.height}%`,
               zIndex: zone.zIndex || 0,
+              cursor: zoneTouchAction ? 'pointer' : undefined,
             }}>
             <WidgetPreview
               widgetType={zone.widgetType}

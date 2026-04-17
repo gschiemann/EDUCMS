@@ -63,6 +63,13 @@ export function WidgetPreview({ widgetType, config, width, height, live }: {
     case 'RSS_FEED':     return <RSSWidget config={cfg} compact={compact} />;
     case 'SOCIAL_FEED':  return <SocialWidget config={cfg} />;
     case 'PLAYLIST':     return <PlaylistWidget config={cfg} />;
+    // ── Touch / Interactive (Sprint 4) ──────────────────────────
+    case 'TOUCH_BUTTON':     return <TouchButtonWidget config={cfg} />;
+    case 'TOUCH_MENU':       return <TouchMenuWidget config={cfg} />;
+    case 'ROOM_FINDER':      return <RoomFinderWidget config={cfg} />;
+    case 'ON_SCREEN_KEYBOARD': return <OnScreenKeyboardWidget config={cfg} />;
+    case 'WAYFINDING_MAP':   return <WayfindingMapWidget config={cfg} />;
+    case 'QUICK_POLL':       return <QuickPollWidget config={cfg} />;
     default:             return null;
   }
 }
@@ -1505,3 +1512,476 @@ function SunnyMeadowStaffSpotlight({ config, compact }: { config: any; compact: 
   );
 }
 // ─── end SunnyMeadowStaffSpotlight ───────────────────────────────────────
+
+// ═══════════════════════════════════════════════════════════════════════
+// SPRINT 4 — Touch / Interactive widgets
+// WCAG min hit target 44×44px. Pressed-state = scale 0.96. 4px focus ring.
+// No hover-only affordances. Percentage coords for layout.
+// ═══════════════════════════════════════════════════════════════════════
+
+export interface TouchAction {
+  type: 'navigate' | 'show' | 'url';
+  target: string;
+}
+
+// Fire a touch action. On the player this dispatches a CustomEvent that the
+// player runtime listens for; anywhere else we log + no-op (widgets render the
+// same in the builder preview). Navigate/show are scene-level; 'url' opens a
+// link in a new tab.
+export function fireTouchAction(action: TouchAction | null | undefined) {
+  if (!action || !action.type) return;
+  try {
+    if (action.type === 'url' && action.target) {
+      if (typeof window !== 'undefined') {
+        window.open(action.target, '_blank', 'noopener,noreferrer');
+      }
+      return;
+    }
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('edu:touch-action', { detail: action }));
+    }
+  } catch {
+    /* swallow — widgets must never throw */
+  }
+}
+
+// Shared touch-button style — WCAG 44×44, pressed-state, bold focus ring
+const TOUCH_MIN_PX = 44;
+
+function TouchPressable({
+  onActivate, children, className, style, ariaLabel, testId,
+}: {
+  onActivate: () => void;
+  children: React.ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
+  ariaLabel?: string;
+  testId?: string;
+}) {
+  const [pressed, setPressed] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-label={ariaLabel}
+      data-testid={testId}
+      onPointerDown={() => setPressed(true)}
+      onPointerUp={() => setPressed(false)}
+      onPointerCancel={() => setPressed(false)}
+      onPointerLeave={() => setPressed(false)}
+      onClick={onActivate}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onActivate();
+        }
+      }}
+      className={`touch-pressable select-none transition-transform duration-75 focus:outline-none focus-visible:ring-4 focus-visible:ring-indigo-400 ${className ?? ''}`}
+      style={{
+        minWidth: TOUCH_MIN_PX,
+        minHeight: TOUCH_MIN_PX,
+        transform: pressed ? 'scale(0.96)' : 'scale(1)',
+        ...style,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+// Resolve a lucide icon by config name (optional). Defaults: null.
+function touchIcon(name?: string) {
+  if (!name) return null;
+  const key = name.toLowerCase();
+  const map: Record<string, React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>> = {
+    'arrow-right': ArrowRight,
+    'chevron-right': ChevronRight,
+    'bell': Bell,
+    'globe': Globe,
+    'map-pin': MapPin,
+    'star': Star,
+    'heart': Heart,
+    'shield': Shield,
+    'clock': Clock,
+    'eye': Eye,
+    'play': Play,
+    'image': ImageIcon,
+    'sparkles': Sparkles,
+  };
+  const C = map[key];
+  if (!C) return null;
+  return <C className="w-6 h-6" aria-hidden />;
+}
+
+// ─── TOUCH_BUTTON ────────────────────────────────────────────────────────
+function TouchButtonWidget({ config }: { config: any }) {
+  const label: string = config.label ?? 'Tap';
+  const action: TouchAction | undefined = config.action;
+  const icon = touchIcon(config.icon);
+  const bg = config.bgColor || '#4f46e5';
+  const color = config.color || '#ffffff';
+  const radius = config.radius ?? 18;
+
+  return (
+    <div className="absolute inset-0 flex items-center justify-center p-2">
+      <TouchPressable
+        ariaLabel={label}
+        testId="touch-button"
+        onActivate={() => fireTouchAction(action)}
+        className="w-full h-full flex items-center justify-center gap-3 font-bold shadow-lg active:shadow-md"
+        style={{
+          background: bg,
+          color,
+          borderRadius: radius,
+          fontSize: 'clamp(1rem, 3vw, 2rem)',
+        }}
+      >
+        {icon}
+        <span className="truncate">{label}</span>
+      </TouchPressable>
+    </div>
+  );
+}
+
+// ─── TOUCH_MENU ──────────────────────────────────────────────────────────
+function TouchMenuWidget({ config }: { config: any }) {
+  const orientation: 'vertical' | 'horizontal' = config.orientation === 'horizontal' ? 'horizontal' : 'vertical';
+  const buttons: Array<{ label: string; icon?: string; action?: TouchAction; bgColor?: string; color?: string }> =
+    Array.isArray(config.buttons) ? config.buttons : [];
+  const gap = config.gap ?? 12;
+
+  return (
+    <div
+      className="absolute inset-0 p-3 flex"
+      style={{
+        flexDirection: orientation === 'horizontal' ? 'row' : 'column',
+        gap,
+      }}
+      data-testid="touch-menu"
+      data-orientation={orientation}
+    >
+      {buttons.length === 0 && (
+        <div className="w-full h-full flex items-center justify-center text-slate-400 text-sm">
+          No menu items configured
+        </div>
+      )}
+      {buttons.map((b, i) => {
+        const icon = touchIcon(b.icon);
+        return (
+          <TouchPressable
+            key={i}
+            ariaLabel={b.label}
+            testId={`touch-menu-item-${i}`}
+            onActivate={() => fireTouchAction(b.action)}
+            className="flex-1 flex items-center justify-center gap-2 font-bold shadow-md"
+            style={{
+              background: b.bgColor || '#1e293b',
+              color: b.color || '#ffffff',
+              borderRadius: 14,
+              fontSize: 'clamp(0.9rem, 2.2vw, 1.6rem)',
+              padding: '0.75rem 1rem',
+            }}
+          >
+            {icon}
+            <span className="truncate">{b.label}</span>
+          </TouchPressable>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── ON_SCREEN_KEYBOARD ──────────────────────────────────────────────────
+function OnScreenKeyboard({
+  value, onChange, mode, onSubmit,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  mode?: 'qwerty' | 'numeric';
+  onSubmit?: () => void;
+}) {
+  const layout = mode === 'numeric'
+    ? [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], ['.', '0', '⌫']]
+    : [
+        ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+        ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
+        ['Z', 'X', 'C', 'V', 'B', 'N', 'M', '⌫'],
+        ['␣', '⏎'],
+      ];
+
+  const handleKey = (k: string) => {
+    if (k === '⌫') onChange(value.slice(0, -1));
+    else if (k === '␣') onChange(value + ' ');
+    else if (k === '⏎') onSubmit?.();
+    else onChange(value + k);
+  };
+
+  return (
+    <div className="flex flex-col gap-2 w-full" data-testid="on-screen-keyboard" data-mode={mode ?? 'qwerty'}>
+      {layout.map((row, ri) => (
+        <div key={ri} className="flex gap-2 justify-center">
+          {row.map((k) => (
+            <TouchPressable
+              key={k}
+              ariaLabel={`Key ${k}`}
+              onActivate={() => handleKey(k)}
+              className="flex-1 font-semibold bg-white text-slate-800 shadow-sm border border-slate-200 active:bg-slate-100"
+              style={{
+                minWidth: k === '␣' ? 200 : TOUCH_MIN_PX,
+                minHeight: TOUCH_MIN_PX,
+                borderRadius: 10,
+                fontSize: '1.15rem',
+              }}
+            >
+              {k}
+            </TouchPressable>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function OnScreenKeyboardWidget({ config }: { config: any }) {
+  const [value, setValue] = useState('');
+  const mode: 'qwerty' | 'numeric' = config.mode === 'numeric' ? 'numeric' : 'qwerty';
+  return (
+    <div className="absolute inset-0 flex flex-col p-3 bg-slate-50 gap-3">
+      <div
+        className="w-full rounded-lg bg-white border-2 border-slate-300 px-4 py-3 text-lg font-mono min-h-[44px] shadow-inner"
+        data-testid="keyboard-display"
+      >
+        {value || <span className="text-slate-400">{config.placeholder ?? 'Type here…'}</span>}
+      </div>
+      <div className="flex-1 flex items-center justify-center">
+        <OnScreenKeyboard value={value} onChange={setValue} mode={mode} />
+      </div>
+    </div>
+  );
+}
+
+// ─── ROOM_FINDER ─────────────────────────────────────────────────────────
+function RoomFinderWidget({ config }: { config: any }) {
+  const rooms: Array<{ name: string; location?: string; mapZoneId?: string }> =
+    Array.isArray(config.rooms) ? config.rooms : [];
+  const [query, setQuery] = useState('');
+  const [selected, setSelected] = useState<number | null>(null);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return rooms;
+    return rooms.filter(r =>
+      r.name.toLowerCase().includes(q) ||
+      (r.location || '').toLowerCase().includes(q),
+    );
+  }, [rooms, query]);
+
+  return (
+    <div className="absolute inset-0 flex flex-col bg-white p-4 gap-3" data-testid="room-finder">
+      <div className="flex items-center gap-2">
+        <MapPin className="w-5 h-5 text-indigo-600" aria-hidden />
+        <h3 className="text-lg font-bold text-slate-800">{config.title ?? 'Find a room'}</h3>
+      </div>
+      <div
+        className="w-full rounded-lg bg-slate-50 border-2 border-slate-200 px-4 py-3 text-base font-mono min-h-[44px]"
+        data-testid="room-finder-query"
+      >
+        {query || <span className="text-slate-400">Search by room or teacher…</span>}
+      </div>
+      <div className="flex-1 overflow-hidden flex gap-3">
+        <div className="flex-1 overflow-auto border border-slate-200 rounded-lg">
+          {filtered.length === 0 && (
+            <p className="p-4 text-sm text-slate-400">No matches.</p>
+          )}
+          {filtered.map((r, i) => (
+            <TouchPressable
+              key={i}
+              ariaLabel={`Select ${r.name}`}
+              testId={`room-${i}`}
+              onActivate={() => {
+                setSelected(i);
+                if (r.mapZoneId) {
+                  fireTouchAction({ type: 'show', target: r.mapZoneId });
+                }
+              }}
+              className={`w-full text-left px-4 py-3 border-b border-slate-100 flex justify-between items-center ${selected === i ? 'bg-indigo-50' : 'bg-white'}`}
+              style={{ minHeight: TOUCH_MIN_PX, borderRadius: 0 }}
+            >
+              <span className="font-semibold text-slate-800">{r.name}</span>
+              {r.location && <span className="text-sm text-slate-500">{r.location}</span>}
+            </TouchPressable>
+          ))}
+        </div>
+        <div className="flex-1 min-w-0">
+          <OnScreenKeyboard value={query} onChange={setQuery} mode="qwerty" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── WAYFINDING_MAP ──────────────────────────────────────────────────────
+function WayfindingMapWidget({ config }: { config: any }) {
+  const mapUrl: string = config.mapImageUrl || '';
+  const hotspots: Array<{ x: number; y: number; label: string; roomId?: string }> =
+    Array.isArray(config.hotspots) ? config.hotspots : [];
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [active, setActive] = useState<number | null>(null);
+
+  // Simple drag-to-pan
+  const dragRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null);
+
+  return (
+    <div className="absolute inset-0 overflow-hidden bg-slate-100" data-testid="wayfinding-map">
+      <div
+        className="relative w-full h-full touch-none"
+        onPointerDown={(e) => {
+          dragRef.current = { sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y };
+          (e.target as Element).setPointerCapture?.(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          if (!dragRef.current) return;
+          setPan({
+            x: dragRef.current.px + (e.clientX - dragRef.current.sx),
+            y: dragRef.current.py + (e.clientY - dragRef.current.sy),
+          });
+        }}
+        onPointerUp={() => { dragRef.current = null; }}
+        onPointerCancel={() => { dragRef.current = null; }}
+      >
+        <div
+          className="absolute inset-0"
+          style={{
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transformOrigin: '0 0',
+          }}
+        >
+          {mapUrl ? (
+            <img
+              src={resolveUrl(mapUrl)}
+              alt={config.alt || 'Wayfinding map'}
+              className="w-full h-full object-contain pointer-events-none select-none"
+              draggable={false}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-slate-400">
+              No map configured
+            </div>
+          )}
+          {hotspots.map((h, i) => (
+            <button
+              key={i}
+              type="button"
+              aria-label={h.label}
+              onClick={(e) => {
+                e.stopPropagation();
+                setActive(i);
+                if (h.roomId) fireTouchAction({ type: 'show', target: h.roomId });
+              }}
+              className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 border-4 border-white shadow-lg active:scale-90 transition-transform focus:outline-none focus-visible:ring-4 focus-visible:ring-indigo-400"
+              style={{
+                left: `${h.x}%`,
+                top: `${h.y}%`,
+                width: TOUCH_MIN_PX,
+                height: TOUCH_MIN_PX,
+              }}
+              data-testid={`hotspot-${i}`}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Zoom controls */}
+      <div className="absolute top-3 right-3 flex flex-col gap-2">
+        <TouchPressable ariaLabel="Zoom in" onActivate={() => setZoom(z => Math.min(4, z + 0.25))}
+          className="bg-white text-slate-800 font-bold shadow-md rounded-full" style={{ width: 44, height: 44 }}>
+          +
+        </TouchPressable>
+        <TouchPressable ariaLabel="Zoom out" onActivate={() => setZoom(z => Math.max(0.5, z - 0.25))}
+          className="bg-white text-slate-800 font-bold shadow-md rounded-full" style={{ width: 44, height: 44 }}>
+          −
+        </TouchPressable>
+        <TouchPressable ariaLabel="Reset view" onActivate={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}
+          className="bg-white text-slate-800 text-xs font-bold shadow-md rounded-full" style={{ width: 44, height: 44 }}>
+          1:1
+        </TouchPressable>
+      </div>
+
+      {active !== null && hotspots[active] && (
+        <div className="absolute bottom-3 left-3 right-3 bg-white rounded-xl shadow-xl p-4 border border-slate-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-red-500" aria-hidden />
+              <span className="font-bold text-slate-800">{hotspots[active].label}</span>
+            </div>
+            <TouchPressable ariaLabel="Close" onActivate={() => setActive(null)}
+              className="bg-slate-100 text-slate-600 rounded-full" style={{ width: 40, height: 40 }}>
+              ×
+            </TouchPressable>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── QUICK_POLL ──────────────────────────────────────────────────────────
+// TODO(sprint-5): wire votes to backend. Currently local-only — page refresh
+// resets counts. Add POST /polls/:id/vote + tenant-scoped aggregation.
+function QuickPollWidget({ config }: { config: any }) {
+  const question: string = config.question ?? 'Quick poll';
+  const initialOptions: Array<{ label: string; votes?: number }> =
+    Array.isArray(config.options) ? config.options : [];
+  const [options, setOptions] = useState(() => initialOptions.map(o => ({ label: o.label, votes: o.votes ?? 0 })));
+  const [voted, setVoted] = useState(false);
+
+  const total = options.reduce((s, o) => s + o.votes, 0) || 1;
+
+  return (
+    <div className="absolute inset-0 flex flex-col bg-white p-5 gap-4" data-testid="quick-poll">
+      <h3 className="text-xl font-bold text-slate-800">{question}</h3>
+      <div className="flex-1 flex flex-col gap-3 overflow-auto">
+        {options.length === 0 && (
+          <p className="text-sm text-slate-400">No options configured.</p>
+        )}
+        {options.map((o, i) => {
+          const pct = Math.round((o.votes / total) * 100);
+          return (
+            <TouchPressable
+              key={i}
+              ariaLabel={`Vote for ${o.label}`}
+              testId={`poll-option-${i}`}
+              onActivate={() => {
+                if (voted) return;
+                setOptions(prev => prev.map((p, j) => j === i ? { ...p, votes: p.votes + 1 } : p));
+                setVoted(true);
+              }}
+              className="w-full text-left bg-slate-50 border-2 border-slate-200 active:bg-indigo-50 active:border-indigo-300 relative overflow-hidden"
+              style={{
+                minHeight: 56,
+                borderRadius: 14,
+                padding: '0.75rem 1rem',
+              }}
+            >
+              {voted && (
+                <div
+                  className="absolute inset-y-0 left-0 bg-indigo-100"
+                  style={{ width: `${pct}%` }}
+                  aria-hidden
+                />
+              )}
+              <div className="relative flex items-center justify-between">
+                <span className="font-semibold text-slate-800">{o.label}</span>
+                {voted && <span className="text-sm font-bold text-indigo-600">{pct}%</span>}
+              </div>
+            </TouchPressable>
+          );
+        })}
+      </div>
+      {voted && (
+        <p className="text-xs text-slate-500 text-center">Thanks for voting! Results are local to this screen.</p>
+      )}
+    </div>
+  );
+}
+// ─── end Sprint 4 touch widgets ──────────────────────────────────────────

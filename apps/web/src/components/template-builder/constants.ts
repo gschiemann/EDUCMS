@@ -3,6 +3,7 @@ import {
   Play, Image as ImageIcon, Globe, Type, Bell, Clock, Cloud, Timer,
   CalendarDays, Megaphone, UtensilsCrossed, Users, Rss, Share2, Shield,
   ArrowRight, Square, FileText, ListVideo,
+  MousePointerClick, Menu as MenuIcon, MapPin, Keyboard, Map, BarChart3,
 } from 'lucide-react';
 
 export const WIDGET_GROUPS = [
@@ -46,6 +47,17 @@ export const WIDGET_GROUPS = [
       { type: 'EMPTY', label: 'Placeholder', desc: 'Reserve a zone for later', icon: Square },
     ],
   },
+  {
+    label: 'Touch / Interactive',
+    types: [
+      { type: 'TOUCH_BUTTON',    label: 'Touch Button',    desc: 'Large tappable button with action', icon: MousePointerClick },
+      { type: 'TOUCH_MENU',      label: 'Touch Menu',      desc: 'Row or column of touch buttons', icon: MenuIcon },
+      { type: 'ROOM_FINDER',     label: 'Room Finder',     desc: 'Searchable directory with keyboard', icon: MapPin },
+      { type: 'ON_SCREEN_KEYBOARD', label: 'On-Screen Keyboard', desc: 'Virtual QWERTY / numeric pad', icon: Keyboard },
+      { type: 'WAYFINDING_MAP',  label: 'Wayfinding Map',  desc: 'Pan/zoom map with hotspots', icon: Map },
+      { type: 'QUICK_POLL',      label: 'Quick Poll',      desc: 'Touch voting widget (local)', icon: BarChart3 },
+    ],
+  },
 ] as const;
 
 export const WIDGET_META: Record<string, { label: string; icon: LucideIcon; desc: string }> = {};
@@ -82,7 +94,44 @@ export const ZONE_COLORS: Record<string, { bg: string; border: string; text: str
   LOGO:            { bg: '#eef2ff', border: '#a5b4fc', text: '#4338ca', accent: '#6366f1' },
   TICKER:          { bg: '#fffbeb', border: '#fcd34d', text: '#a16207', accent: '#f59e0b' },
   EMPTY:           { bg: '#f8fafc', border: '#e2e8f0', text: '#94a3b8', accent: '#cbd5e1' },
+  // Touch / Interactive (Sprint 4)
+  TOUCH_BUTTON:       { bg: '#eef2ff', border: '#a5b4fc', text: '#3730a3', accent: '#4f46e5' },
+  TOUCH_MENU:         { bg: '#eef2ff', border: '#a5b4fc', text: '#3730a3', accent: '#4f46e5' },
+  ROOM_FINDER:        { bg: '#f0fdfa', border: '#5eead4', text: '#0f766e', accent: '#14b8a6' },
+  ON_SCREEN_KEYBOARD: { bg: '#f1f5f9', border: '#cbd5e1', text: '#334155', accent: '#475569' },
+  WAYFINDING_MAP:     { bg: '#fef3c7', border: '#fcd34d', text: '#92400e', accent: '#f59e0b' },
+  QUICK_POLL:         { bg: '#fdf2f8', border: '#f9a8d4', text: '#be185d', accent: '#ec4899' },
 };
+
+// Hit-target validator — warn if a zone would render smaller than WCAG 44px
+// at the template's target resolution. Returns { ok, warnings[] }.
+export const MIN_TOUCH_TARGET_PX = 44;
+
+export function validateTouchHitTargets(
+  zones: Array<{ id: string; name: string; widgetType: string; x: number; y: number; width: number; height: number; touchAction?: unknown }>,
+  screenWidth: number,
+  screenHeight: number,
+): { ok: boolean; warnings: Array<{ zoneId: string; zoneName: string; reason: string }> } {
+  const warnings: Array<{ zoneId: string; zoneName: string; reason: string }> = [];
+  const touchWidgets = new Set([
+    'TOUCH_BUTTON', 'TOUCH_MENU', 'ROOM_FINDER', 'ON_SCREEN_KEYBOARD',
+    'WAYFINDING_MAP', 'QUICK_POLL',
+  ]);
+  for (const z of zones) {
+    const interactive = touchWidgets.has(z.widgetType) || !!z.touchAction;
+    if (!interactive) continue;
+    const pxW = (z.width / 100) * screenWidth;
+    const pxH = (z.height / 100) * screenHeight;
+    if (pxW < MIN_TOUCH_TARGET_PX || pxH < MIN_TOUCH_TARGET_PX) {
+      warnings.push({
+        zoneId: z.id,
+        zoneName: z.name,
+        reason: `Too small for touch (${Math.round(pxW)}×${Math.round(pxH)}px; needs ≥ ${MIN_TOUCH_TARGET_PX}px)`,
+      });
+    }
+  }
+  return { ok: warnings.length === 0, warnings };
+}
 
 export function getZoneColor(type: string) {
   return ZONE_COLORS[type] ?? ZONE_COLORS.EMPTY;

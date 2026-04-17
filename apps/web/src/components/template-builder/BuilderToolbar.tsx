@@ -2,9 +2,11 @@
 
 import {
   ArrowLeft, Save, Copy, Undo2, Redo2, Eye, EyeOff, Grid3X3, Magnet,
-  ZoomIn, ZoomOut, RotateCw, Loader2, CheckCircle2, AlertCircle,
+  ZoomIn, ZoomOut, RotateCw, Loader2, CheckCircle2, AlertCircle, Hand,
 } from 'lucide-react';
+import { useMemo } from 'react';
 import { useBuilderStore } from './useBuilderStore';
+import { validateTouchHitTargets } from './constants';
 
 interface Props {
   onBack: () => void;
@@ -18,8 +20,14 @@ interface Props {
 export function BuilderToolbar({ onBack, onSave, onSaveAs, saveStatus, saveError, lastSavedAt }: Props) {
   const {
     meta, zones, isDirty, past, future, zoom, showGrid, snapEnabled, previewMode,
+    isTouchEnabled, setTouchEnabled,
     undo, redo, flipCanvas, setZoom, setShowGrid, setSnapEnabled, setPreviewMode,
   } = useBuilderStore();
+
+  const touchWarnings = useMemo(
+    () => isTouchEnabled ? validateTouchHitTargets(zones, meta.screenWidth, meta.screenHeight).warnings : [],
+    [isTouchEnabled, zones, meta.screenWidth, meta.screenHeight],
+  );
 
   const canUndo = past.length > 0;
   const canRedo = future.length > 0;
@@ -86,6 +94,24 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, saveStatus, saveError
         >
           {previewMode ? <EyeOff className="w-3.5 h-3.5" aria-hidden /> : <Eye className="w-3.5 h-3.5" aria-hidden />}
         </ToolbarBtn>
+        <ToolbarBtn
+          label={isTouchEnabled ? 'Touch mode: ON (WCAG 44px enforced)' : 'Enable touch mode'}
+          onClick={() => setTouchEnabled(!isTouchEnabled)}
+          pressed={isTouchEnabled}
+        >
+          <Hand className="w-3.5 h-3.5" aria-hidden />
+        </ToolbarBtn>
+        {isTouchEnabled && touchWarnings.length > 0 && (
+          <span
+            className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded flex items-center gap-1"
+            title={touchWarnings.map(w => `${w.zoneName}: ${w.reason}`).join('\n')}
+            role="status"
+            data-testid="touch-warnings"
+          >
+            <AlertCircle className="w-3 h-3" aria-hidden />
+            {touchWarnings.length} hit-target {touchWarnings.length === 1 ? 'warning' : 'warnings'}
+          </span>
+        )}
       </div>
 
       <div className="flex items-center gap-2">
