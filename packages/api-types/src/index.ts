@@ -109,7 +109,66 @@ export interface TemplateZoneResponse {
 // Zod-validated API boundary schemas. New in Sprint 1.
 // Prefer these over the plain interfaces above for any new
 // controller or form — runtime validation matches compile-time types.
+//
+// Inlined here (rather than re-exported from ./schemas) because Node's
+// native TS loader in 24+ won't auto-resolve extensionless relative
+// imports across a workspace package that's consumed as raw TS.
 // ─────────────────────────────────────────────────────────────
 
-export * from './schemas/common';
-export * from './schemas/emergency';
+import { z } from 'zod';
+
+export const ScopeType = z.enum(['tenant', 'group', 'device']);
+export type ScopeType = z.infer<typeof ScopeType>;
+
+export const Severity = z.enum(['LOW', 'MODERATE', 'HIGH', 'CRITICAL']);
+export type Severity = z.infer<typeof Severity>;
+
+export const OverrideIncidentType = z.enum(['lockdown', 'weather', 'evacuate']);
+export type OverrideIncidentType = z.infer<typeof OverrideIncidentType>;
+
+export const Id = z.string().trim().min(1).max(128);
+export const Cuid = z
+  .string()
+  .trim()
+  .regex(/^[a-z0-9_]+$/i, 'Invalid identifier characters')
+  .min(1)
+  .max(128);
+
+export const NonEmptyString = z.string().trim().min(1);
+export const BoundedText = (max: number) => z.string().trim().max(max);
+export const UrlString = z.string().trim().url().max(2048);
+
+export const EpochSecondsOrIso = z.union([
+  z.number().int().positive(),
+  z.string().trim().datetime({ offset: true }),
+]);
+
+export const OverridePayloadSchema = z
+  .object({
+    overrideId: Id.optional(),
+    type: OverrideIncidentType.optional(),
+    severity: Severity.default('CRITICAL'),
+    mediaUrl: UrlString.optional(),
+    textBlob: BoundedText(5000).optional(),
+    expiresAt: EpochSecondsOrIso.optional(),
+    playlistId: Id.optional(),
+  })
+  .strict();
+export type OverridePayload = z.infer<typeof OverridePayloadSchema>;
+
+export const TriggerEmergencyInputSchema = z
+  .object({
+    scopeType: ScopeType,
+    scopeId: Id,
+    overridePayload: OverridePayloadSchema,
+  })
+  .strict();
+export type TriggerEmergencyInput = z.infer<typeof TriggerEmergencyInputSchema>;
+
+export const ClearEmergencyInputSchema = z
+  .object({
+    scopeType: ScopeType,
+    scopeId: Id,
+  })
+  .strict();
+export type ClearEmergencyInput = z.infer<typeof ClearEmergencyInputSchema>;
