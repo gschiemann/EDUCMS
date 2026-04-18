@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
-import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut } from 'lucide-react';
+import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, FileClock } from 'lucide-react';
 import { RoleGate } from '../RoleGate';
 
 export function Sidebar() {
@@ -21,6 +21,12 @@ export function Sidebar() {
     { name: 'Settings', href: `/${activeTenant}/settings`, icon: Settings },
   ];
 
+  const adminNavItems = [
+    { name: 'Audit Log', href: `/${activeTenant}/audit`, icon: FileClock },
+  ];
+
+  const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'DISTRICT_ADMIN' || user?.role === 'SCHOOL_ADMIN';
+
   return (
     <aside className="w-72 flex flex-col bg-white border-r border-slate-100/50 h-full shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-20">
       <div className="h-[73px] flex items-center px-6">
@@ -36,7 +42,7 @@ export function Sidebar() {
         <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-4 px-4">
           Main Menu
         </div>
-        {navItems.map((item) => {
+        {navItems.concat(isAdmin ? adminNavItems : []).map((item) => {
           const isActive = pathname.startsWith(item.href);
           return (
             <Link

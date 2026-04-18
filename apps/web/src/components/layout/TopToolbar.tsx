@@ -6,6 +6,8 @@ import { ShieldAlert, LogOut } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
+import { NotificationsBell } from './NotificationsBell';
+import { SchoolSwitcher } from './SchoolSwitcher';
 
 export function TopToolbar() {
   const router = useRouter();
@@ -31,6 +33,8 @@ export function TopToolbar() {
 
         {/* Right Side */}
         <div className="flex items-center gap-3">
+          <SchoolSwitcher />
+          <NotificationsBell />
           <RoleGate allowedRoles={['admin']}>
             {isEmergencyActive ? (
               <div className="px-4 py-2 bg-red-50 text-red-600 text-xs font-bold rounded-lg flex items-center gap-2 animate-pulse">

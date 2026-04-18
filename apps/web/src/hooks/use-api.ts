@@ -498,6 +498,57 @@ export function useTenant() {
   });
 }
 
+// ─── Accessible Tenants (Multi-school Switcher) ───────────────
+export function useAccessibleTenants() {
+  return useQuery<{ current: string; tenants: Array<{ id: string; name: string; slug: string; parentId: string | null }> }>({
+    queryKey: ['tenants', 'accessible'],
+    queryFn: () => apiFetch('/tenants/accessible'),
+    staleTime: 60_000,
+  });
+}
+
+// ─── Notifications ────────────────────────────────────────────
+export function useNotifications() {
+  return useQuery<{ items: Array<any>; unreadCount: number }>({
+    queryKey: ['notifications'],
+    queryFn: () => apiFetch('/notifications?limit=20'),
+    // Light-weight polling per CLAUDE.md guidance: 30s, also refetch on window focus
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useMarkNotificationRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/notifications/${id}/read`, { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+}
+
+export function useMarkAllNotificationsRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch('/notifications/read-all', { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+}
+
+// ─── Audit Log ────────────────────────────────────────────────
+export function useAuditLog(params: { from?: string; to?: string; actorId?: string; action?: string; limit?: number; offset?: number }) {
+  const qs = new URLSearchParams();
+  if (params.from) qs.set('from', params.from);
+  if (params.to) qs.set('to', params.to);
+  if (params.actorId) qs.set('actorId', params.actorId);
+  if (params.action) qs.set('action', params.action);
+  qs.set('limit', String(params.limit ?? 50));
+  qs.set('offset', String(params.offset ?? 0));
+  return useQuery<{ items: any[]; total: number; limit: number; offset: number }>({
+    queryKey: ['audit', params],
+    queryFn: () => apiFetch(`/audit?${qs.toString()}`),
+  });
+}
+
 export function useUpdateTenantPanicSettings() {
   const qc = useQueryClient();
   return useMutation({
