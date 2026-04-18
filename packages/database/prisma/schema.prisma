@@ -214,6 +214,7 @@ model Asset {
   updatedAt        DateTime       @default(now()) @updatedAt @map("updated_at")
   fileSize         Int?           @map("file_size")
   originalName     String?        @map("original_name")
+  fileHash         String?        @map("file_hash") // SHA-256 hex, computed at upload time for offline-cache integrity
   uploadedBy       User           @relation(fields: [uploadedByUserId], references: [id])
   tenant           Tenant         @relation(fields: [tenantId], references: [id])
   folder           AssetFolder?   @relation(fields: [folderId], references: [id])

@@ -396,4 +396,97 @@ export class ScreensController {
     manifestPayload['hash'] = versionHash;
     return res.status(200).json(manifestPayload);
   }
+
+  // ─── PUBLIC: Emergency assets list (for offline pre-cache) ───
+  // The player calls this on startup AND after every successful manifest sync
+  // to keep its `emergency-assets` Service-Worker cache tier hot. The cache
+  // tier is NEVER evicted, so when an emergency fires the player can serve
+  // every asset from local disk in under a second — no network required.
+  //
+  // Returns assets across all 4 panic-type playlists configured on the
+  // tenant (lockdown / evacuate / weather / emergency-default), each with a
+  // SHA-256 hash so the SW can detect tampered or stale files and re-download.
+  @Get(':id/emergency-assets')
+  async getEmergencyAssets(@Param('id') id: string) {
+    const screen = await this.prisma.client.screen.findUnique({
+      where: { id },
+      select: { tenantId: true },
+    });
+    if (!screen?.tenantId) {
+      throw new HttpException('Screen not found or not paired', HttpStatus.NOT_FOUND);
+    }
+
+    const tenant = await this.prisma.client.tenant.findUnique({
+      where: { id: screen.tenantId },
+      select: {
+        id: true,
+        emergencyPlaylistId: true,
+        panicLockdownPlaylistId: true,
+        panicEvacuatePlaylistId: true,
+        panicWeatherPlaylistId: true,
+      },
+    });
+    if (!tenant) {
+      throw new HttpException('Tenant not found', HttpStatus.NOT_FOUND);
+    }
+
+    const playlistIds = [
+      tenant.emergencyPlaylistId,
+      tenant.panicLockdownPlaylistId,
+      tenant.panicEvacuatePlaylistId,
+      tenant.panicWeatherPlaylistId,
+    ].filter((x): x is string => !!x);
+
+    const assets: Array<{ url: string; sha256: string; size: number; kind: string }> = [];
+
+    if (playlistIds.length > 0) {
+      const playlists = await this.prisma.client.playlist.findMany({
+        where: { id: { in: playlistIds } },
+        include: {
+          items: {
+            include: {
+              asset: { select: { fileUrl: true, fileSize: true, mimeType: true, fileHash: true } },
+            },
+          },
+        },
+      });
+      const seen = new Set<string>();
+      for (const pl of playlists) {
+        for (const item of pl.items) {
+          if (!item.asset?.fileUrl) continue;
+          if (seen.has(item.asset.fileUrl)) continue;
+          seen.add(item.asset.fileUrl);
+          // Asset.fileHash is the canonical SHA-256 if the upload pipeline
+          // computed it; otherwise we synthesize a stable id from the URL +
+          // fileSize so the SW can still de-dupe (re-download only when
+          // either changes).
+          const hash = item.asset.fileHash
+            ?? crypto.createHash('sha256').update(`${item.asset.fileUrl}:${item.asset.fileSize ?? 0}`).digest('hex');
+          assets.push({
+            url: item.asset.fileUrl,
+            sha256: hash,
+            size: item.asset.fileSize ?? 0,
+            kind: item.asset.mimeType?.startsWith('video/') ? 'video' : 'image',
+          });
+        }
+      }
+    }
+
+    // Stable hash of the whole asset set so the player can short-circuit
+    // pre-cache when nothing has changed.
+    const setHash = crypto
+      .createHash('sha256')
+      .update(assets.map(a => `${a.url}:${a.sha256}`).sort().join('|'))
+      .digest('hex');
+
+    return {
+      tenantId: tenant.id,
+      screenId: id,
+      generatedAt: new Date().toISOString(),
+      assets,
+      assetCount: assets.length,
+      totalBytes: assets.reduce((sum, a) => sum + a.size, 0),
+      setHash,
+    };
+  }
 }

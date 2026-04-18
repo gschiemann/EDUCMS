@@ -3,6 +3,15 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Component, ReactNode } from 'react';
 import { MonitorPlay, Wifi, WifiOff, AlertTriangle, Loader2, Settings, CheckCircle2, HardDrive, Cpu, Server, Network, Play, Monitor, Info, Power } from 'lucide-react';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
+import {
+  registerOfflineCache,
+  precachePlaylist,
+  precacheEmergency,
+  getCacheStatus,
+  formatBytes,
+  isSwSupported,
+  type CacheStatus,
+} from './offline-cache';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Bullet-proof helpers (Phase 1 hardening)
@@ -145,6 +154,38 @@ function getDeviceInfo() {
 
 type Phase = 'registering' | 'pairing' | 'connecting' | 'playing' | 'offline' | 'emergency';
 
+// ─── Cache status chip shown inside the info overlay. Surfaces both tiers
+// ─── so admins can verify the player is actually serving emergencies from
+// ─── disk (not network) — critical sanity check during drills.
+function CacheStatusRow({ status }: { status: CacheStatus | null }) {
+  if (!status) {
+    return (
+      <div className="flex justify-between"><span className="text-slate-400">Offline cache</span><span className="text-slate-500 text-xs">checking…</span></div>
+    );
+  }
+  if (!status.supported) {
+    return (
+      <div className="flex justify-between"><span className="text-slate-400">Offline cache</span><span className="text-slate-500 text-xs">unsupported (browser)</span></div>
+    );
+  }
+  return (
+    <>
+      <div className="flex justify-between">
+        <span className="text-slate-400">Playlist cache</span>
+        <span className="text-white font-medium text-xs">{status.playlist.count} assets · {formatBytes(status.playlist.bytes)}</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-slate-400">Emergency cache 🛡️</span>
+        <span className={status.emergency.count > 0 ? 'text-emerald-400 font-medium text-xs' : 'text-amber-400 font-medium text-xs'}>
+          {status.emergency.count > 0
+            ? `${status.emergency.count} assets · ${formatBytes(status.emergency.bytes)} ✓`
+            : 'NONE — emergencies will fetch from network'}
+        </span>
+      </div>
+    </>
+  );
+}
+
 // ─── Error boundary wraps the whole player so a single widget crash can't
 // ─── black out the screen mid-emergency. On crash, we surface the cached
 // ─── emergency (if any) and start a recovery countdown, then auto-reload.
@@ -227,12 +268,59 @@ function PlayerPage() {
   const emergencyPollRef = useRef<NodeJS.Timeout | null>(null);
   const cachedAuthTokenRef = useRef<string | null>(null);
   const [activeEmergency, setActiveEmergency] = useState<any | null>(null);
+  const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null);
+  const lastEmergencySetHashRef = useRef<string>('');
   // Hydrate any cached emergency on first render so a power-cycle mid-alert
   // still shows the alert until ALL_CLEAR or a fresh manifest arrives.
   useEffect(() => {
     const cached = readCachedEmergency();
     if (cached) setActiveEmergency(cached);
   }, []);
+
+  // Register the offline-cache Service Worker on mount. Safe no-op when
+  // SW isn't supported (older browsers, in-page test runners, etc).
+  useEffect(() => {
+    if (!isSwSupported()) return;
+    registerOfflineCache().then(() => {
+      // Ask for current status as soon as the worker activates.
+      getCacheStatus().then(setCacheStatus).catch(() => {});
+    });
+    // Refresh status every 30s so the info overlay stays current.
+    const t = setInterval(() => {
+      getCacheStatus().then(setCacheStatus).catch(() => {});
+    }, 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Refresh emergency-asset pre-cache whenever we know the screenId. This
+  // runs alongside (not instead of) the periodic manifest sync — the
+  // emergency tier is sacred and we keep it hot proactively.
+  const refreshEmergencyCache = useCallback(async () => {
+    if (!screenId || !isSwSupported()) return;
+    try {
+      const headers: Record<string, string> = {};
+      const tok = getDeviceToken();
+      if (tok) headers['Authorization'] = `Bearer ${tok}`;
+      const res = await fetch(`${getApiRoot()}/api/v1/screens/${screenId}/emergency-assets`, { headers });
+      if (!res.ok) return;
+      const data = await res.json();
+      // Short-circuit if the asset set is unchanged since last push.
+      if (data.setHash && data.setHash === lastEmergencySetHashRef.current) return;
+      lastEmergencySetHashRef.current = data.setHash || '';
+      await precacheEmergency(data.assets || [], data.setHash || '');
+      console.log(`[Player] Emergency pre-cache push: ${data.assets?.length || 0} assets, ${formatBytes(data.totalBytes || 0)}`);
+    } catch (e) {
+      // Best-effort; emergency play still works from network if push fails.
+    }
+  }, [screenId]);
+
+  useEffect(() => {
+    refreshEmergencyCache();
+    // Also re-check every 5 minutes to pick up admin changes to emergency
+    // playlists between manifest syncs.
+    const t = setInterval(refreshEmergencyCache, 5 * 60 * 1000);
+    return () => clearInterval(t);
+  }, [refreshEmergencyCache]);
 
   // ─── Phase 1: Register device ───
   useEffect(() => {
@@ -338,6 +426,27 @@ function PlayerPage() {
     // from cache when offline.
     const applyManifest = (manifest: any) => {
       if (manifest.tenantId) setTenantId(manifest.tenantId);
+
+      // Push every asset URL to the offline-cache Service Worker. Safe no-op
+      // when SW isn't available. Asset shape comes from the server's
+      // PlaylistItem mapping (item.url + item.duration_ms etc).
+      try {
+        const urls = new Set<string>();
+        const playlistAssets: Array<{ url: string }> = [];
+        (manifest.playlists || []).forEach((mp: any) => {
+          (mp.items || []).forEach((item: any) => {
+            const u = item.url;
+            if (u && !urls.has(u)) {
+              urls.add(u);
+              playlistAssets.push({ url: u.startsWith('http') ? u : `${getApiRoot()}${u}` });
+            }
+          });
+        });
+        if (playlistAssets.length > 0) {
+          precachePlaylist(playlistAssets).catch(() => {});
+        }
+      } catch { /* defensive — SW push failures must never break playback */ }
+
       // Detect emergency override (server may surface as `emergency`, `override`,
       // or via Tenant.emergencyStatus / emergencyPlaylistId on the manifest).
       const em = manifest.emergency || manifest.override || null;
@@ -865,6 +974,7 @@ function PlayerPage() {
                 <div className="flex justify-between"><span className="text-slate-400">Zones</span><span className="text-white font-medium">{zones.length} live widgets</span></div>
                 <div className="flex justify-between"><span className="text-slate-400">Resolution</span><span className="text-white font-medium">{tpl.screenWidth}×{tpl.screenHeight}</span></div>
                 <div className="flex justify-between"><span className="text-slate-400">Last Sync</span><span className="text-white font-medium">{lastSync || 'Never'}</span></div>
+                <CacheStatusRow status={cacheStatus} />
               </div>
               <div className="flex gap-2 pt-2">
                 <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm transition-colors">Sync Now</button>
@@ -1029,6 +1139,7 @@ function PlayerPage() {
               <div className="flex justify-between"><span className="text-slate-400">Playlist</span><span className="text-white font-medium">{playlist?.name || 'None'}</span></div>
               <div className="flex justify-between"><span className="text-slate-400">Slide</span><span className="text-white font-medium">{(currentIndex % (sorted.length || 1)) + 1} / {sorted.length}</span></div>
               <div className="flex justify-between"><span className="text-slate-400">Last Sync</span><span className="text-white font-medium">{lastSync || 'Never'}</span></div>
+              <CacheStatusRow status={cacheStatus} />
             </div>
             <div className="flex gap-2 pt-2">
               <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm transition-colors">Sync Now</button>
