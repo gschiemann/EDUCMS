@@ -6,6 +6,7 @@ import { ShieldAlert, LogOut, Menu } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
+import { HelpDrawer } from '../help/HelpDrawer';
 
 export function TopToolbar() {
   const router = useRouter();
@@ -57,6 +58,9 @@ export function TopToolbar() {
               </button>
             )}
           </RoleGate>
+
+          {/* In-app help drawer */}
+          <HelpDrawer />
 
           {/* User avatar + menu */}
           <div className="relative">
