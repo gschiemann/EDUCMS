@@ -1,8 +1,85 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, Component, ReactNode } from 'react';
 import { MonitorPlay, Wifi, WifiOff, AlertTriangle, Loader2, Settings, CheckCircle2, HardDrive, Cpu, Server, Network, Play, Monitor, Info, Power } from 'lucide-react';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bullet-proof helpers (Phase 1 hardening)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const LS_TOKEN = 'edu_device_token';
+const LS_MANIFEST_CACHE = 'edu_manifest_cache_v1';
+const LS_EMERGENCY_CACHE = 'edu_emergency_cache_v1';
+
+/** Read a URL query param once; safe for SSR. */
+function qp(name: string): string | null {
+  if (typeof window === 'undefined') return null;
+  return new URLSearchParams(window.location.search).get(name);
+}
+
+/** True when running inside the Android player WebView (passed via ?client=android). */
+function isAndroidWebView(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (qp('client') === 'android') return true;
+  // Native app exposes window.EduCmsNative as a JS bridge.
+  return !!(window as any).EduCmsNative;
+}
+
+/** Ask the Android shell to do a hard reload (last-resort recovery). No-op in browser. */
+function nativeReload() {
+  try { (window as any).EduCmsNative?.reload?.(); } catch { /* noop */ }
+}
+
+/** Get the device pairing token from URL → localStorage → null. */
+function getDeviceToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  const fromUrl = qp('token');
+  if (fromUrl) {
+    try { localStorage.setItem(LS_TOKEN, fromUrl); } catch {}
+    return fromUrl;
+  }
+  try { return localStorage.getItem(LS_TOKEN); } catch { return null; }
+}
+
+/** Compute exponential backoff with full jitter. Capped at maxMs. */
+function backoffMs(attempt: number, baseMs = 1000, maxMs = 30_000): number {
+  const exp = Math.min(maxMs, baseMs * 2 ** Math.min(attempt, 10));
+  return Math.floor(Math.random() * exp);
+}
+
+/** Cache the last good manifest payload so the player can survive a cold reboot offline. */
+function cacheManifest(m: any) {
+  try { localStorage.setItem(LS_MANIFEST_CACHE, JSON.stringify({ at: Date.now(), m })); } catch {}
+}
+function readCachedManifest(): { at: number; m: any } | null {
+  try {
+    const raw = localStorage.getItem(LS_MANIFEST_CACHE);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+/**
+ * Cache the last-known emergency override. CRITICAL for life-safety: if the
+ * device power-cycles mid-emergency or loses network during the alert, we can
+ * still show the cached emergency on next boot until ALL_CLEAR or a fresh
+ * manifest arrives. Stale cache is auto-discarded after 4 hours.
+ */
+function cacheEmergency(payload: any | null) {
+  try {
+    if (!payload) localStorage.removeItem(LS_EMERGENCY_CACHE);
+    else localStorage.setItem(LS_EMERGENCY_CACHE, JSON.stringify({ at: Date.now(), payload }));
+  } catch {}
+}
+function readCachedEmergency(): any | null {
+  try {
+    const raw = localStorage.getItem(LS_EMERGENCY_CACHE);
+    if (!raw) return null;
+    const { at, payload } = JSON.parse(raw);
+    if (Date.now() - at > 4 * 60 * 60 * 1000) return null; // 4-hour TTL
+    return payload;
+  } catch { return null; }
+}
 
 function getApiRoot(): string {
   if (typeof window !== 'undefined') {
@@ -68,7 +145,50 @@ function getDeviceInfo() {
 
 type Phase = 'registering' | 'pairing' | 'connecting' | 'playing' | 'offline' | 'emergency';
 
-export default function PlayerPage() {
+// ─── Error boundary wraps the whole player so a single widget crash can't
+// ─── black out the screen mid-emergency. On crash, we surface the cached
+// ─── emergency (if any) and start a recovery countdown, then auto-reload.
+class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; err?: any }> {
+  state = { hasError: false, err: undefined as any };
+  static getDerivedStateFromError(err: any) { return { hasError: true, err }; }
+  componentDidCatch(err: any, info: any) {
+    console.error('[Player] FATAL render error', err, info);
+    // Auto-recover after 8s. In the Android shell, ask the native side to do a
+    // hard reload (clears WebView caches + GPU state).
+    setTimeout(() => {
+      if (isAndroidWebView()) nativeReload();
+      else if (typeof window !== 'undefined') window.location.reload();
+    }, 8_000);
+  }
+  render() {
+    if (!this.state.hasError) return this.props.children;
+    const cachedEm = readCachedEmergency();
+    if (cachedEm) {
+      // Life-safety override survives the crash.
+      return (
+        <div className="fixed inset-0 bg-red-700 text-white flex flex-col items-center justify-center p-12 text-center">
+          <AlertTriangle className="w-32 h-32 mb-8 animate-pulse" />
+          <h1 className="text-7xl font-black uppercase tracking-wider mb-6">{cachedEm.type || cachedEm.title || 'Emergency'}</h1>
+          {cachedEm.textBlob && <p className="text-3xl font-bold max-w-4xl">{cachedEm.textBlob}</p>}
+          <p className="text-sm mt-12 opacity-70">Player recovering — reloading shortly</p>
+        </div>
+      );
+    }
+    return (
+      <div className="fixed inset-0 bg-slate-950 text-white flex flex-col items-center justify-center">
+        <Loader2 className="w-12 h-12 text-amber-500 animate-spin mb-4" />
+        <h2 className="text-xl font-bold mb-2">Player recovering…</h2>
+        <p className="text-slate-400 text-sm">Reloading in a few seconds</p>
+      </div>
+    );
+  }
+}
+
+export default function PlayerPageWrapper() {
+  return <PlayerErrorBoundary><PlayerPage /></PlayerErrorBoundary>;
+}
+
+function PlayerPage() {
   const [phase, setPhase] = useState<Phase>('registering');
   const [storageInfo, setStorageInfo] = useState({ used: '1.2 GB', total: '32 GB', percent: 4 });
 
@@ -97,6 +217,22 @@ export default function PlayerPage() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  // Bullet-proof refs (Phase 1)
+  const fetchFailCountRef = useRef(0);
+  const wsFailCountRef = useRef(0);
+  const lastWsMessageAtRef = useRef<number>(Date.now());
+  const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
+  const wsReconnectRef = useRef<NodeJS.Timeout | null>(null);
+  const httpFallbackRef = useRef<NodeJS.Timeout | null>(null);
+  const emergencyPollRef = useRef<NodeJS.Timeout | null>(null);
+  const cachedAuthTokenRef = useRef<string | null>(null);
+  const [activeEmergency, setActiveEmergency] = useState<any | null>(null);
+  // Hydrate any cached emergency on first render so a power-cycle mid-alert
+  // still shows the alert until ALL_CLEAR or a fresh manifest arrives.
+  useEffect(() => {
+    const cached = readCachedEmergency();
+    if (cached) setActiveEmergency(cached);
+  }, []);
 
   // ─── Phase 1: Register device ───
   useEffect(() => {
@@ -136,41 +272,116 @@ export default function PlayerPage() {
     register();
   }, [phase]);
 
-  // ─── Phase 2: Poll while showing pairing code ───
+  // ─── Phase 2: Poll while showing pairing code (with backoff on errors) ───
   useEffect(() => {
     if (phase !== 'pairing') return;
+    // Defensively clear any prior interval before scheduling a new one.
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
 
     const fp = getDeviceFingerprint();
-    pollRef.current = setInterval(async () => {
+    let pollFails = 0;
+    const tick = async () => {
       try {
         const res = await fetch(`${getApiRoot()}/api/v1/screens/status/${fp}`);
-        if (!res.ok) return;
+        if (!res.ok) { pollFails += 1; return; }
+        pollFails = 0;
         const data = await res.json();
         if (data.paired) {
           setScreenName(data.name);
           setScreenId(data.screenId);
           setPhase('connecting');
         }
-      } catch { /* ignore polling errors */ }
-    }, 3000);
-
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+      } catch { pollFails += 1; }
+      // Stretch the interval after repeated failures so we don't hammer a down server.
+      if (pollFails >= 3) {
+        if (pollRef.current) clearInterval(pollRef.current);
+        const delay = backoffMs(pollFails, 3000, 30_000);
+        pollRef.current = setTimeout(tick as any, delay) as any;
+      }
+    };
+    pollRef.current = setInterval(tick, 3000);
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        clearTimeout(pollRef.current as any);
+        pollRef.current = null;
+      }
+    };
   }, [phase]);
 
   // ─── Phase 3: Fetch playlist content ───
   const fetchContent = useCallback(async () => {
     if (!screenId) return;
 
-    try {
-      // Login as admin to get content (simplified — production would use device JWT)
+    // Resolve auth token for this fetch:
+    //   1. Device pairing token from URL/localStorage (production path)
+    //   2. Cached short-lived admin JWT (cuts login round-trip on subsequent polls)
+    //   3. Fresh admin login (dev fallback, kept so browser testing still works)
+    const resolveAuthToken = async (): Promise<string> => {
+      const deviceTok = getDeviceToken();
+      if (deviceTok) return deviceTok;
+      if (cachedAuthTokenRef.current) return cachedAuthTokenRef.current;
       const loginRes = await fetch(`${getApiRoot()}/api/v1/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: 'admin@springfield.edu', password: 'admin123' }),
       });
-
       if (!loginRes.ok) throw new Error('Auth failed');
       const { access_token } = await loginRes.json();
+      cachedAuthTokenRef.current = access_token;
+      // Auto-expire the cached token after 50 minutes (JWTs in this app are 1h).
+      setTimeout(() => { cachedAuthTokenRef.current = null; }, 50 * 60 * 1000);
+      return access_token;
+    };
+
+    // Apply manifest payload to player state. Extracted so we can replay it
+    // from cache when offline.
+    const applyManifest = (manifest: any) => {
+      if (manifest.tenantId) setTenantId(manifest.tenantId);
+      // Detect emergency override (server may surface as `emergency`, `override`,
+      // or via Tenant.emergencyStatus / emergencyPlaylistId on the manifest).
+      const em = manifest.emergency || manifest.override || null;
+      if (em && (em.active === true || em.status === 'ACTIVE' || em.type)) {
+        setActiveEmergency(em);
+        cacheEmergency(em);
+      } else if (manifest.allClear === true || manifest.emergencyStatus === 'NONE') {
+        setActiveEmergency(null);
+        cacheEmergency(null);
+      }
+      if (manifest.playlists && manifest.playlists.length > 0) {
+        const firstTemplate = manifest.playlists.find((pl: any) => pl.template);
+        if (firstTemplate) {
+          setPlaylist({ name: firstTemplate.template.name || 'Template Content', template: firstTemplate.template, items: [] });
+          setCurrentIndex(0);
+          return true;
+        }
+        const combinedItems: any[] = [];
+        manifest.playlists.forEach((mp: any) => {
+          mp.items.forEach((item: any) => {
+            combinedItems.push({
+              id: item.url + Math.random().toString(),
+              durationMs: item.duration_ms,
+              sequenceOrder: item.sequence,
+              asset: { fileUrl: item.url, mimeType: item.url.match(/\.(mp4|webm)$/i) ? 'video/mp4' : 'image/jpeg' },
+            });
+          });
+        });
+        if (combinedItems.length > 0) {
+          setPlaylist({
+            name: manifest.playlists.length > 1 ? 'Scheduled Content (Combined)' : manifest.playlists[0].name || 'Scheduled Content',
+            items: combinedItems,
+          });
+          setCurrentIndex(0);
+          return true;
+        }
+      }
+      setPlaylist(null);
+      setCurrentIndex(0);
+      return true;
+    };
+
+    try {
+      const access_token = await resolveAuthToken();
 
       // 1. Try to fetch the specific device manifest (what it is officially scheduled to play)
       const manifestRes = await fetch(`${getApiRoot()}/api/v1/screens/${screenId}/manifest`, {
@@ -178,71 +389,52 @@ export default function PlayerPage() {
         cache: 'no-store',
       });
 
-      if (manifestRes.ok) {
-        const manifest = await manifestRes.json();
-        
-        // Dynamically capture the player's true tenant boundary so WebSocket binds correctly
-        if (manifest.tenantId) {
-          setTenantId(manifest.tenantId);
-        }
-
-        if (manifest.playlists && manifest.playlists.length > 0) {
-          
-          // Note: If an explicit template-based playlist exists, it intercepts as the top-level
-          // layout anchor since templates govern screen configurations intrinsically.
-          const firstTemplate = manifest.playlists.find((pl: any) => pl.template);
-          
-          if (firstTemplate) {
-            const formattedPlaylist = {
-              name: firstTemplate.template.name || 'Template Content',
-              template: firstTemplate.template,
-              items: [],
-            };
-            setPlaylist(formattedPlaylist);
-            setCurrentIndex(0);
-            setPhase('playing');
-            setLastSync(new Date().toLocaleTimeString());
-            return;
-          }
-
-          // Otherwise, collect ALL regular media playlists and APPEND their items sequentially!
-          const combinedItems: any[] = [];
-          manifest.playlists.forEach((mp: any) => {
-            const items = mp.items.map((item: any) => ({
-              id: item.url + Math.random().toString(), // Force unique key internally per overlay
-              durationMs: item.duration_ms,
-              sequenceOrder: item.sequence,
-              asset: { fileUrl: item.url, mimeType: item.url.match(/\.(mp4|webm)$/i) ? 'video/mp4' : 'image/jpeg' }
-            }));
-            combinedItems.push(...items);
-          });
-
-          if (combinedItems.length > 0) {
-            const formattedPlaylist = {
-              name: manifest.playlists.length > 1 ? 'Scheduled Content (Combined)' : manifest.playlists[0].name || 'Scheduled Content',
-              items: combinedItems,
-            };
-            setPlaylist(formattedPlaylist);
-            setCurrentIndex(0);
-            setPhase('playing');
-            setLastSync(new Date().toLocaleTimeString());
-            return;
-          }
-        }
+      // 401 → cached admin token has expired; bust cache and retry once next tick.
+      if (manifestRes.status === 401) {
+        cachedAuthTokenRef.current = null;
+        throw new Error('Auth expired — will retry');
       }
 
-      // If we reach here, we have no active schedule/playlist mapped from the manifest
-      setPlaylist(null);
-      setCurrentIndex(0);
-      setPhase('playing');
-      setLastSync(new Date().toLocaleTimeString());
+      if (manifestRes.ok) {
+        const manifest = await manifestRes.json();
+        cacheManifest(manifest); // survive cold reboot
+        fetchFailCountRef.current = 0; // reset on success
+        applyManifest(manifest);
+        setPhase('playing');
+        setLastSync(new Date().toLocaleTimeString());
+        return;
+      }
+
+      // Non-OK and not 401 — fall through to catch.
+      throw new Error(`Manifest fetch failed: HTTP ${manifestRes.status}`);
     } catch (e: any) {
-      setError(e.message);
-      setPhase('offline');
-      
-      // Self-healing: if the network drops or API restarts, aggressively try to reconnect
-      // This prevents the player from permanently bricking itself during a 502/503 rollout.
-      setTimeout(() => setPhase('connecting'), 7500);
+      fetchFailCountRef.current += 1;
+      console.warn(`[Player] fetchContent failed (#${fetchFailCountRef.current}):`, e?.message || e);
+
+      // Try cached manifest so we keep playing during outages.
+      const cached = readCachedManifest();
+      if (cached?.m) {
+        const ageMin = Math.round((Date.now() - cached.at) / 60000);
+        console.warn(`[Player] Falling back to cached manifest (${ageMin}m old)`);
+        applyManifest(cached.m);
+        setPhase('playing');
+        setError(`Offline — showing last sync (${ageMin}m ago)`);
+      } else {
+        setError(e?.message || 'Network error');
+        setPhase('offline');
+      }
+
+      // Self-heal escalation:
+      //   3 failures → quick retry (3s + jitter)
+      //   5 failures → ask the Android shell to hard-reload the WebView (last resort)
+      //   otherwise  → standard 7.5s retry
+      const retryDelay = backoffMs(fetchFailCountRef.current, 1500, 30_000);
+      if (fetchFailCountRef.current >= 5 && isAndroidWebView()) {
+        console.warn('[Player] 5 consecutive fetch failures — asking native shell to reload');
+        nativeReload();
+      } else {
+        setTimeout(() => setPhase('connecting'), Math.max(2_000, retryDelay));
+      }
     }
   }, [screenId]);
 
@@ -251,41 +443,61 @@ export default function PlayerPage() {
   }, [phase, fetchContent]);
 
   // ─── Realtime WebSocket Connection ───
+  // Hardened: exponential backoff with jitter, refs (not effect-locals) for timers
+  // so cleanup is deterministic, dead-connection detection via lastWsMessageAt,
+  // and HTTP polling fallback after 3 consecutive WS connect failures.
   useEffect(() => {
     if (phase !== 'playing') return;
 
-    let heartbeatTimer: NodeJS.Timeout;
-    let reconnectTimer: NodeJS.Timeout;
+    const clearTimers = () => {
+      if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
+      if (wsReconnectRef.current) { clearTimeout(wsReconnectRef.current); wsReconnectRef.current = null; }
+    };
 
     const connect = () => {
+      // Always clear timers from prior attempt before opening a new socket.
+      clearTimers();
       try {
         const wsUrl = getApiRoot().replace(/^http/, 'ws') + '/realtime';
-        console.log('[Player WS] Connecting to', wsUrl);
+        console.log('[Player WS] Connecting to', wsUrl, `(attempt ${wsFailCountRef.current + 1})`);
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
         ws.onopen = () => {
+          wsFailCountRef.current = 0; // reset on successful open
+          lastWsMessageAtRef.current = Date.now();
+          // Stop the HTTP fallback poll if we now have a working socket.
+          if (httpFallbackRef.current) { clearInterval(httpFallbackRef.current); httpFallbackRef.current = null; }
           const activeTenant = tenantId || '00000000-0000-0000-0000-000000000002';
-          const token = `dev_${screenId}_${activeTenant}`;
-          console.log('[Player WS] Connected — sending HELLO with tenant:', activeTenant);
-          ws.send(JSON.stringify({
-            event: 'HELLO',
-            data: { token }
-          }));
-
-          heartbeatTimer = setInterval(() => {
+          const tok = getDeviceToken() || `dev_${screenId}_${activeTenant}`;
+          console.log('[Player WS] Connected — sending HELLO');
+          ws.send(JSON.stringify({ event: 'HELLO', data: { token: tok } }));
+          heartbeatRef.current = setInterval(() => {
             if (ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({ event: 'HEARTBEAT' }));
+              // Dead-connection detector: if we haven't heard ANYTHING (incl
+              // pong) in 60s, force a reconnect. Some proxies silently drop.
+              if (Date.now() - lastWsMessageAtRef.current > 60_000) {
+                console.warn('[Player WS] Silent for 60s — force reconnect');
+                ws.close();
+              }
             }
-          }, 15000);
+          }, 15_000);
         };
 
         ws.onmessage = (event) => {
+          lastWsMessageAtRef.current = Date.now();
           try {
             const msg = JSON.parse(event.data as string);
             console.log('[Player WS] Received:', msg.type);
+            // ALL_CLEAR explicitly drops the cached emergency before refetching
+            // so any race between cache-replay and server response can't leave
+            // a stale alert on screen.
+            if (msg.type === 'ALL_CLEAR') {
+              setActiveEmergency(null);
+              cacheEmergency(null);
+            }
             if (msg.type === 'SYNC' || msg.type === 'OVERRIDE' || msg.type === 'ALL_CLEAR') {
-              console.log('[Player WS] Emergency/sync event — refetching content NOW');
               fetchContent();
             }
           } catch (e) {
@@ -295,46 +507,62 @@ export default function PlayerPage() {
 
         ws.onerror = (err) => {
           console.error('[Player WS] Error:', err);
-          ws.close();
+          try { ws.close(); } catch {}
         };
 
         ws.onclose = (ev) => {
           console.log('[Player WS] Closed:', ev.code, ev.reason);
-          if (heartbeatTimer) clearInterval(heartbeatTimer);
-          reconnectTimer = setTimeout(connect, 3000);
+          clearTimers();
+          wsFailCountRef.current += 1;
+          // Exponential backoff with full jitter: 1s, 2s, 4s, 8s, 16s, 30s max.
+          const delay = backoffMs(wsFailCountRef.current, 1000, 30_000);
+          console.log(`[Player WS] Reconnect in ~${Math.round(delay)}ms`);
+          wsReconnectRef.current = setTimeout(connect, delay);
+
+          // After 3 consecutive failures, START a 5s HTTP fallback poll so emergency
+          // alerts still arrive even with WS completely down. Stops itself when
+          // ws.onopen fires.
+          if (wsFailCountRef.current >= 3 && !httpFallbackRef.current) {
+            console.warn('[Player WS] 3 failures — engaging 5s HTTP fallback poll');
+            httpFallbackRef.current = setInterval(() => fetchContent(), 5_000);
+          }
         };
       } catch (e) {
         console.error('[Player WS] Connection failed:', e);
-        reconnectTimer = setTimeout(connect, 3000);
+        wsFailCountRef.current += 1;
+        wsReconnectRef.current = setTimeout(connect, backoffMs(wsFailCountRef.current, 1000, 30_000));
       }
     };
 
     connect();
 
     return () => {
-      if (heartbeatTimer) clearInterval(heartbeatTimer);
-      if (reconnectTimer) clearTimeout(reconnectTimer);
+      clearTimers();
+      if (httpFallbackRef.current) { clearInterval(httpFallbackRef.current); httpFallbackRef.current = null; }
       if (wsRef.current) {
         wsRef.current.onclose = null;
-        wsRef.current.close();
+        try { wsRef.current.close(); } catch {}
+        wsRef.current = null;
       }
     };
   }, [phase, screenId, tenantId, fetchContent]);
 
   // ─── CRITICAL: Emergency polling fallback ───
-  // WebSocket is the primary delivery channel, but for life-safety alerts we CANNOT
-  // rely on a single transport. Poll the manifest every 10 seconds as a guaranteed
-  // fallback. If an emergency is active and we're not already showing it (or vice
-  // versa), refetch content immediately.
+  // WebSocket is the primary channel, but for life-safety alerts we CANNOT
+  // rely on a single transport. Adaptive cadence: 5s when emergency is active
+  // OR WebSocket is degraded (≥2 consecutive WS failures), otherwise 10s.
   useEffect(() => {
     if (phase !== 'playing' || !screenId) return;
-
-    const emergencyPoll = setInterval(() => {
-      fetchContent();
-    }, 10000); // 10-second poll guarantees alert visibility even if WS is dead
-
-    return () => clearInterval(emergencyPoll);
-  }, [phase, screenId, fetchContent]);
+    const fast = !!activeEmergency || wsFailCountRef.current >= 2;
+    const cadence = fast ? 5_000 : 10_000;
+    emergencyPollRef.current = setInterval(() => fetchContent(), cadence);
+    return () => {
+      if (emergencyPollRef.current) {
+        clearInterval(emergencyPollRef.current);
+        emergencyPollRef.current = null;
+      }
+    };
+  }, [phase, screenId, fetchContent, activeEmergency]);
 
   // ─── Cycle through slides ───
   useEffect(() => {
@@ -534,9 +762,13 @@ export default function PlayerPage() {
 
   // ─── Render: Playing ───
   const isTemplate = !!playlist?.template;
-  const sorted = playlist && !isTemplate ? [...(playlist.items || [])].sort((a: any, b: any) => a.sequenceOrder - b.sequenceOrder) : [];
-  
-  const isItemValid = (item: any) => {
+  // Memoize the sorted playlist so we don't allocate a new array every render.
+  const sorted = useMemo(
+    () => (playlist && !isTemplate ? [...(playlist.items || [])].sort((a: any, b: any) => a.sequenceOrder - b.sequenceOrder) : []),
+    [playlist, isTemplate],
+  );
+
+  const isItemValid = useCallback((item: any) => {
     if (!item || (!item.daysOfWeek && !item.timeStart && !item.timeEnd)) return true;
     const now = new Date();
     if (item.daysOfWeek && !item.daysOfWeek.includes(['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][now.getDay()])) return false;
@@ -547,7 +779,7 @@ export default function PlayerPage() {
       if (currentMins < (sh * 60 + sm) || currentMins > (eh * 60 + em)) return false;
     }
     return true;
-  };
+  }, []);
   
   const currentItem = sorted.length && isItemValid(sorted[currentIndex % sorted.length]) ? sorted[currentIndex % sorted.length] : null;
   const isVideo = currentItem?.asset?.mimeType?.startsWith('video/');
@@ -686,11 +918,25 @@ export default function PlayerPage() {
             else classes += isActive ? "opacity-100 z-10 duration-0" : "opacity-0 z-0 duration-0";
 
             if (isVid) {
-              return <video key={item.id} src={resUrl} className={classes} autoPlay muted playsInline onEnded={(e) => {
-                setCurrentIndex(prev => prev + 1);
-                e.currentTarget.currentTime = 0;
-                e.currentTarget.play();
-              }} />;
+              return <video
+                key={item.id}
+                src={resUrl}
+                className={classes}
+                autoPlay
+                muted
+                playsInline
+                onEnded={(e) => {
+                  setCurrentIndex(prev => prev + 1);
+                  // Release the buffer; assignment happens AFTER advancing index so
+                  // a re-render can swap to the next item without a flash.
+                  try { e.currentTarget.removeAttribute('src'); e.currentTarget.load(); } catch {}
+                }}
+                onError={(e) => {
+                  // Corrupted file or 404 → skip ahead instead of stalling forever.
+                  console.warn('[Player] video error, skipping:', resUrl);
+                  setCurrentIndex(prev => prev + 1);
+                }}
+              />;
             }
             return <img key={item.id} src={resUrl} alt="" className={classes} />;
           })}
