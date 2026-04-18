@@ -105,6 +105,74 @@ Recommended: **Headwind MDM**, **Hexnode** (paid), or **Android Enterprise Dedic
 2. Disable Notification Shade swipe (most OEMs have this in `Settings → Display → Kiosk mode`)
 3. Disable status bar pull-down: requires device-owner; use `dpm set-device-owner com.educms.player/.PlayerDeviceAdmin` (admin receiver not yet implemented — V2)
 
+## USB sneakernet ingestion (Sprint 7B)
+
+Run the EduCMS player with **zero internet** by sideloading content over USB. End-to-end flow:
+
+### 1. Admin enables USB ingest for the tenant (one-time)
+
+```
+PUT  /api/v1/tenants/me/usb-ingest         { "enabled": true }
+POST /api/v1/tenants/me/usb-ingest/rotate-key
+```
+
+The rotate response contains the HMAC key — **shown once, never again**. Save it as `EDU_USB_KEY` env var or paste into a `.key` file kept off public storage.
+
+### 2. Operator builds a USB bundle
+
+```bash
+export EDU_USB_KEY=<64-char hex from step 1>
+
+pnpm tsx scripts/usb-bundler.ts \
+  --tenant <tenantId> \
+  --key $EDU_USB_KEY \
+  --out /media/USBSTICK \
+  --asset https://cdn.example/welcome.mp4 \
+  --emergency-asset https://cdn.example/lockdown-2026.mp4 \
+  --emergency-asset https://cdn.example/evacuation-map.jpg
+```
+
+The bundler downloads each asset, computes SHA-256, lays out:
+```
+/media/USBSTICK/edu-cms-content/
+  manifest.json        (signed)
+  manifest.sig         (HMAC-SHA256 hex)
+  assets/<sha256>.<ext>
+  emergency/<sha256>.<ext>
+```
+
+### 3. Operator walks the stick to the screen
+
+Plug into the Android player. The OS fires `USB_DEVICE_ATTACHED` → `UsbAttachReceiver` → `UsbIngestActivity`:
+
+1. System file picker prompts the operator to select the USB root
+2. `UsbIngester` verifies the HMAC signature against the locally-stored tenant key
+3. Verifies every asset's SHA-256 hash
+4. Copies accepted assets into `filesDir/usb-cache/`
+5. Toast confirms; bounces back to the player
+6. Player picks them up on next manifest sync (the WebView's Service Worker reads the new local cache)
+
+Rejected outcomes:
+- `REJECTED_SIGNATURE` — wrong tenant key or tampered manifest
+- `REJECTED_HASH` — file content doesn't match its declared hash (tampered or corrupt)
+- `REJECTED` — wrong tenantId, missing files, bad layout
+- `CANCELLED_BY_OPERATOR` — operator dismissed the picker
+
+Every outcome posts a `UsbIngestEvent` audit row to the server (visible at `GET /api/v1/tenants/me/usb-ingest/events`).
+
+### V1 status (2026-04-17)
+
+- ✅ Schema + migration (`Tenant.usbIngestEnabled/Key`, `UsbIngestEvent` table)
+- ✅ Server endpoints (rotate, get config, list events, accept event POST)
+- ✅ Bundler CLI (`scripts/usb-bundler.ts`)
+- ✅ Android receiver + ingest activity + signature/hash verification
+- ⏳ `/devices/pair` endpoint must be extended to also return `{ usbIngestKey, tenantId }` so the player has the key without a separate fetch
+- ⏳ Admin PIN prompt on first ingest from a new device serial
+- ⏳ Escalated approval for emergency-tier asset updates
+- ⏳ Service Worker reads `filesDir/usb-cache/` (currently in `/usb-cache/` on disk; SW fetch handler needs a hook)
+
+V1 is wired end-to-end except for the pairing-endpoint key handoff and SW pickup — both are 1-day follow-ups.
+
 ## Roadmap
 
 V1 (this scaffold):

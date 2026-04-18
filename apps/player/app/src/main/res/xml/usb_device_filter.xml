@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  USB device filter — accept any mass-storage device (class 8). Most USB
+  flash drives match this. We also fall back to OTG file managers'
+  intent if the OEM mounts the drive automatically and only sends the
+  ACTION_VIEW intent.
+-->
+<resources>
+    <usb-device class="8" />
+</resources>

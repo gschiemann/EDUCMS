@@ -38,6 +38,14 @@ model Tenant {
   cleverConnectedAt       DateTime?     @map("clever_connected_at")
   cleverSyncLogs          CleverSyncLog[]
   userInvites             UserInvite[]
+  // USB sneakernet ingest (Sprint 7B). Off by default; admins opt in per
+  // tenant. The HMAC key signs every USB bundle's manifest.json so a
+  // random/stolen stick can't push content to a paired screen. Rotated
+  // by an admin via POST /tenants/me/usb-ingest-key/rotate.
+  usbIngestEnabled        Boolean       @default(false) @map("usb_ingest_enabled")
+  usbIngestKey            String?       @map("usb_ingest_key")             // 64-char hex (HMAC-SHA256 secret)
+  usbIngestKeyRotatedAt   DateTime?     @map("usb_ingest_key_rotated_at")
+  usbIngestEvents         UsbIngestEvent[]
 
   @@map("tenants")
 }
@@ -133,6 +141,25 @@ model UserInvite {
   @@index([tenantId])
   @@index([email])
   @@map("user_invites")
+}
+
+model UsbIngestEvent {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  screenId        String?  @map("screen_id")
+  deviceSerial    String?  @map("device_serial") // USB stick volume serial
+  bundleVersion   String?  @map("bundle_version") // version field from manifest.json
+  assetCount      Int      @default(0) @map("asset_count")
+  totalBytes      BigInt   @default(0) @map("total_bytes")
+  emergencyAssets Boolean  @default(false) @map("emergency_assets") // true if bundle contained any emergency assets
+  outcome         String   // 'ACCEPTED' | 'REJECTED_SIGNATURE' | 'REJECTED_HASH' | 'CANCELLED_BY_OPERATOR' | 'PARTIAL'
+  reason          String?
+  operatorPin     String?  @map("operator_pin") // SHA-256 of pin used; never store the raw pin
+  createdAt       DateTime @default(now()) @map("created_at")
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@map("usb_ingest_events")
 }
 
 model EmailLog {
