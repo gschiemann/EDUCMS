@@ -569,3 +569,32 @@ export function useUpdateTenantPanicSettings() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tenant'] }),
   });
 }
+
+// ─── USB sneakernet ingest (Sprint 7B) ───
+export function useUsbIngestConfig() {
+  return useQuery<{ enabled: boolean; hasKey: boolean; keyRotatedAt: string | null }>({
+    queryKey: ['usb-ingest-config'],
+    queryFn: () => apiFetch('/tenants/me/usb-ingest'),
+  });
+}
+export function useToggleUsbIngest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      apiFetch('/tenants/me/usb-ingest', { method: 'PUT', body: JSON.stringify({ enabled }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['usb-ingest-config'] }),
+  });
+}
+export function useRotateUsbIngestKey() {
+  const qc = useQueryClient();
+  return useMutation<{ key: string; rotatedAt: string; warning: string }, Error, void>({
+    mutationFn: () => apiFetch('/tenants/me/usb-ingest/rotate-key', { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['usb-ingest-config'] }),
+  });
+}
+export function useUsbIngestEvents() {
+  return useQuery<Array<any>>({
+    queryKey: ['usb-ingest-events'],
+    queryFn: () => apiFetch('/tenants/me/usb-ingest/events'),
+  });
+}
