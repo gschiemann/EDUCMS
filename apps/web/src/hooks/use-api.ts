@@ -570,6 +570,16 @@ export function useUpdateTenantPanicSettings() {
   });
 }
 
+// ─── Sprint 8 — fleet map view ───
+export function useUpdateScreenLocation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; address?: string | null; latitude?: number | null; longitude?: number | null; photoUrl?: string | null }) =>
+      apiFetch(`/screens/${id}/location`, { method: 'PUT', body: JSON.stringify(body) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['screens'] }),
+  });
+}
+
 // ─── License + billing (Sprint 7E) ───
 export type LicenseSummary = {
   tier: string;

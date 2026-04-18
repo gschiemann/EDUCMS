@@ -251,6 +251,67 @@ export class ScreensController {
     return updated;
   }
 
+  // ─── Sprint 8 — set screen geo location (map view) ───
+  // Admin types an address (or pastes lat/lng); we forward to the
+  // OpenStreetMap Nominatim public endpoint to geocode, store all three.
+  // Nominatim is rate-limited to ~1 req/sec per IP; the request fires
+  // server-side from this NestJS process, so the rate limit is per-deploy
+  // and easily fits typical admin usage.
+  //
+  // No third-party API key required. If Nominatim is offline or refuses,
+  // we still save the raw address and any caller-provided coordinates.
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @Put(':id/location')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async setLocation(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { address?: string | null; latitude?: number | null; longitude?: number | null; photoUrl?: string | null },
+  ) {
+    const screen = await this.prisma.client.screen.findFirst({
+      where: { id, tenantId: req.user.tenantId },
+    });
+    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+
+    let lat = body.latitude ?? screen.latitude ?? null;
+    let lng = body.longitude ?? screen.longitude ?? null;
+    const addressChanged = body.address !== undefined && body.address !== screen.address;
+
+    // Geocode if the operator gave us a fresh address but no explicit
+    // coordinates. Use OSM Nominatim (free, no key). Polite single
+    // request with a descriptive User-Agent (their ToS).
+    if (addressChanged && body.address && body.latitude === undefined && body.longitude === undefined) {
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(body.address)}`;
+        const r = await fetch(url, {
+          headers: { 'User-Agent': 'EduCMS/1.0 (+https://educms.app)' },
+        });
+        if (r.ok) {
+          const arr = (await r.json()) as Array<{ lat: string; lon: string }>;
+          if (arr[0]) {
+            lat = parseFloat(arr[0].lat);
+            lng = parseFloat(arr[0].lon);
+          }
+        }
+      } catch {
+        // Geocode failure is non-fatal — admin can manually set lat/lng.
+      }
+    }
+
+    const updated = await this.prisma.client.screen.update({
+      where: { id },
+      data: {
+        address: body.address !== undefined ? (body.address?.trim() || null) : screen.address,
+        latitude: lat,
+        longitude: lng,
+        photoUrl: body.photoUrl !== undefined ? (body.photoUrl?.trim() || null) : screen.photoUrl,
+      },
+      include: { screenGroup: { select: { id: true, name: true } } },
+    });
+    this.notifySync(req.user.tenantId);
+    return updated;
+  }
+
   // ─── ADMIN: Delete a screen ───
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Delete(':id')

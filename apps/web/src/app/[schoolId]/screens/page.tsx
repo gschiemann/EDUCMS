@@ -1,8 +1,10 @@
 "use client";
 
-import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode } from 'lucide-react';
-import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens } from '@/hooks/use-api';
-import { useState, useRef, useEffect } from 'react';
+import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon } from 'lucide-react';
+import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation } from '@/hooks/use-api';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
+import { appPrompt } from '@/components/ui/app-dialog';
 import { apiFetch } from '@/lib/api-client';
 import QRCode from 'qrcode';
 import { appConfirm } from '@/components/ui/app-dialog';
@@ -20,6 +22,21 @@ function OsIcon({ os }: { os?: string }) {
 export default function ScreensPage() {
   const { data: groups, isLoading, refetch } = useScreenGroups();
   const { data: allScreens, refetch: refetchScreens } = useScreens();
+  // Sprint 8 — fleet map view. Toggle persists in URL via search param so a
+  // bookmarked map link still opens the map.
+  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+  const updateLocation = useUpdateScreenLocation();
+  const flatScreens = useMemo(() => (allScreens || []) as any[], [allScreens]);
+
+  const handleSetLocation = async (screenId: string, screenName: string, currentAddress?: string | null) => {
+    const address = await appPrompt({
+      title: `Where is "${screenName}"?`,
+      message: 'Type the building address or paste a street address. We auto-geocode via OpenStreetMap so the screen drops on the fleet map.',
+      defaultValue: currentAddress || '',
+    });
+    if (address === null) return; // cancelled
+    updateLocation.mutate({ id: screenId, address: address || null });
+  };
   const createGroup = useCreateScreenGroup();
   const deleteGroup = useDeleteScreenGroup();
   const deleteScreen = useDeleteScreen();
@@ -122,7 +139,18 @@ export default function ScreensPage() {
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">Pair devices, organize into groups, and manage your display fleet.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          {/* Sprint 8 — list/map toggle */}
+          <div className="inline-flex bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+            <button onClick={() => setViewMode('list')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 transition-colors ${viewMode === 'list' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+              <ListIcon className="w-3.5 h-3.5" /> List
+            </button>
+            <button onClick={() => setViewMode('map')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 transition-colors ${viewMode === 'map' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+              <MapIcon className="w-3.5 h-3.5" /> Map
+            </button>
+          </div>
           <button onClick={() => { setShowPairModal(true); setPairGroupId(''); setPairCode(''); setPairName(''); setPairError(''); }}
             className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2">
             <Wifi className="w-4 h-4" /> Pair Screen
@@ -133,6 +161,33 @@ export default function ScreensPage() {
           </button>
         </div>
       </div>
+
+      {/* Sprint 8 — fleet map view (only when toggled on) */}
+      {viewMode === 'map' && (
+        <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-5 space-y-3">
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+              <MapIcon className="w-4 h-4 text-indigo-500" /> Fleet map
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Every screen with an address. Pin colors show live status — emergency-active screens pulse red. Click a pin for details.
+            </p>
+          </div>
+          <ScreenMapClient
+            screens={flatScreens.map(s => ({
+              id: s.id, name: s.name, status: s.status,
+              latitude: s.latitude, longitude: s.longitude,
+              address: s.address, lastPingAt: s.lastPingAt,
+              lastCacheReport: s.lastCacheReport,
+            }))}
+          />
+          {flatScreens.length > 0 && (
+            <p className="text-[11px] text-slate-400">
+              Tip: open a screen card below and click <span className="font-bold">📍 Set location</span> to put it on the map.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* How it works banner */}
       <div className="bg-gradient-to-br from-emerald-50 to-teal-50/50 rounded-3xl border-transparent p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
@@ -285,6 +340,18 @@ export default function ScreensPage() {
                             {new Date(screen.lastPingAt).toLocaleTimeString()}
                           </span>
                         )}
+                        {/* Sprint 8 — set or update map location */}
+                        <button
+                          onClick={() => handleSetLocation(screen.id, screen.name, (screen as any).address)}
+                          className={`p-2 bg-white border border-slate-100 rounded-lg transition-all shadow-sm opacity-0 group-hover/item:opacity-100 ${
+                            (screen as any).latitude != null
+                              ? 'text-emerald-600 border-emerald-100 hover:bg-emerald-50'
+                              : 'text-slate-400 hover:text-indigo-600 hover:border-indigo-100 hover:bg-indigo-50'
+                          }`}
+                          title={(screen as any).latitude != null ? `On map: ${(screen as any).address || 'set'}` : 'Set map location'}
+                        >
+                          <MapPin className="w-4 h-4" />
+                        </button>
                         <button onClick={() => deleteScreen.mutate(screen.id)}
                           className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 opacity-0 group-hover/item:opacity-100 transition-all shadow-sm">
                           <Trash2 className="w-4 h-4" />

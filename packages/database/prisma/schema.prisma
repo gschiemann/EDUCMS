@@ -245,6 +245,13 @@ model Screen {
   browserInfo       String?      @map("browser_info")
   ipAddress         String?      @map("ip_address")
   userAgent         String?      @map("user_agent")
+  // Sprint 8 — fleet map view. Optional geo + visual identification so
+  // a 100-screen district can manage the fleet on a map instead of a
+  // flat list. Address geocoded via Nominatim on save.
+  address           String?
+  latitude          Float?
+  longitude         Float?
+  photoUrl          String?      @map("photo_url")
   // Last offline-cache status the player reported. JSON shape:
   //   { playlist: { count, bytes }, emergency: { count, bytes } }
   // Lets admins verify each screen actually has emergency assets on disk
