@@ -262,6 +262,10 @@ function PlayerPage() {
   const fetchFailCountRef = useRef(0);
   const wsFailCountRef = useRef(0);
   const lastWsMessageAtRef = useRef<number>(Date.now());
+  // Audit fix #2 (partial): WebSocket message replay/dupe protection.
+  // Tracks recent eventIds so an attacker who captures a signed message
+  // can't replay it. Eviction is a soft cap to bound memory.
+  const recentEventIdsRef = useRef<Map<string, number>>(new Map());
   const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
   const wsReconnectRef = useRef<NodeJS.Timeout | null>(null);
   const httpFallbackRef = useRef<NodeJS.Timeout | null>(null);
@@ -622,12 +626,72 @@ function PlayerPage() {
           try {
             const msg = JSON.parse(event.data as string);
             console.log('[Player WS] Received:', msg.type);
+
+            // ─── Audit fix #2: client-side replay + freshness gate ───
+            // The full HMAC signature uses a server-only secret we
+            // intentionally don't ship to the player (would defeat the
+            // purpose). What we CAN enforce client-side:
+            //   1. Reject events older than 30s (server signs with a 10s
+            //      window, this is the loose client-side equivalent).
+            //   2. Reject duplicate eventIds (replay protection).
+            //   3. Sensitive events (OVERRIDE / TENANT_CHANGED) MUST carry
+            //      a signature field — we don't verify it here, but its
+            //      absence means the message didn't even pass through the
+            //      signer service and is rejected outright.
+            // Full asymmetric verification requires per-tenant Ed25519
+            // keys issued at pair time — slated as a follow-up.
+            const SENSITIVE_TYPES = new Set(['OVERRIDE', 'TENANT_CHANGED', 'ALL_CLEAR']);
+            if (SENSITIVE_TYPES.has(msg.type)) {
+              if (!msg.signature || typeof msg.signature !== 'string') {
+                console.warn('[Player WS] dropped unsigned sensitive event:', msg.type);
+                return;
+              }
+              if (typeof msg.timestamp !== 'number' || Math.abs(Date.now() - msg.timestamp) > 30_000) {
+                console.warn('[Player WS] dropped stale/future event:', msg.type, msg.timestamp);
+                return;
+              }
+              if (msg.eventId && typeof msg.eventId === 'string') {
+                const seen = recentEventIdsRef.current;
+                if (seen.has(msg.eventId)) {
+                  console.warn('[Player WS] dropped replayed event:', msg.eventId);
+                  return;
+                }
+                seen.set(msg.eventId, Date.now());
+                // Bound memory: drop entries older than 5 min, hard cap at 500.
+                if (seen.size > 500) {
+                  const cutoff = Date.now() - 5 * 60_000;
+                  for (const [k, t] of seen) if (t < cutoff) seen.delete(k);
+                  while (seen.size > 500) seen.delete(seen.keys().next().value as string);
+                }
+              }
+            }
             // ALL_CLEAR explicitly drops the cached emergency before refetching
             // so any race between cache-replay and server response can't leave
             // a stale alert on screen.
             if (msg.type === 'ALL_CLEAR') {
               setActiveEmergency(null);
               cacheEmergency(null);
+            }
+            // Audit fix #6: kiosk was re-paired by an admin to a different
+            // tenant (likely physically moved between buildings or districts).
+            // Wipe every piece of tenant-scoped local state and reset to the
+            // pairing screen so the new tenant's content can't be served from
+            // disk before re-pair completes.
+            if (msg.type === 'TENANT_CHANGED') {
+              try { localStorage.removeItem('edu_device_token'); } catch {}
+              try { localStorage.removeItem('edu_device_fp'); } catch {}
+              try { localStorage.removeItem('edu_manifest_cache_v1'); } catch {}
+              try { localStorage.removeItem('edu_emergency_cache_v1'); } catch {}
+              // Ask the SW to clear both cache tiers so disk is clean for the
+              // new tenant.
+              try {
+                navigator.serviceWorker?.controller?.postMessage({ type: 'CLEAR_CACHE', tier: 'all' });
+              } catch {}
+              // Ask the native shell (if present) to wipe USB cache + reload.
+              try { (window as any).EduCmsNative?.unpair?.(); } catch {}
+              setActiveEmergency(null);
+              setPhase('registering');
+              return;
             }
             if (msg.type === 'SYNC' || msg.type === 'OVERRIDE' || msg.type === 'ALL_CLEAR') {
               fetchContent();
