@@ -144,6 +144,22 @@ function LoginContent() {
         <p className="text-center text-xs text-slate-600 mt-6">
           Secure multi-tenant CMS • RBAC enforced
         </p>
+
+        <nav className="mt-8 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[11px] text-slate-500">
+          <a href="/" className="hover:text-slate-300 transition">Home</a>
+          <span className="text-slate-700">&middot;</span>
+          <a href="/pricing" className="hover:text-slate-300 transition">Pricing</a>
+          <span className="text-slate-700">&middot;</span>
+          <a href="/help" className="hover:text-slate-300 transition">Help</a>
+          <span className="text-slate-700">&middot;</span>
+          <a href="/privacy" className="hover:text-slate-300 transition">Privacy</a>
+          <span className="text-slate-700">&middot;</span>
+          <a href="/terms" className="hover:text-slate-300 transition">Terms</a>
+          <span className="text-slate-700">&middot;</span>
+          <a href="/ferpa" className="hover:text-slate-300 transition">FERPA</a>
+          <span className="text-slate-700">&middot;</span>
+          <a href="/coppa" className="hover:text-slate-300 transition">COPPA</a>
+        </nav>
       </div>
     </div>
   );
