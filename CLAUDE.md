@@ -234,6 +234,55 @@ Zero-budget roadmap underway (6 sprints planned):
 - Emergency system expansion (SOS button, broadcastable text, media)
 - Polish (UX, performance, mobile)
 
+**Future / multi-industry expansion (Sprint 7+, post-funding)**
+
+- **API integrations + real-time data feeds.** Generic "data source"
+  primitive (REST / GraphQL / webhook / DB / Google Sheet) that
+  widgets subscribe to by id. Updates flow through the existing
+  signed Redis pub/sub → emergency-grade fan-out to player fleet.
+  K-12 examples: lunch menus, district calendars, athletic
+  scoreboards (MaxPreps), bus tracker, weather/AQI. Beyond K-12 the
+  same primitive sells to:
+    - Restaurants — POS pushes price/availability to menu boards
+      across 100+ stores instantly (Square / Toast / Clover webhooks).
+    - Retail — inventory + promo signage updates on item changes.
+    - Healthcare — wait times, room status from EHR.
+    - Corporate lobbies — Workday / SharePoint event feeds.
+
+- **Licensing + billing (per-registered-player).** Billing meter is
+  the count of registered, paired Screens per Tenant. Architecture
+  needs:
+    - `License` model: per-tenant, with `seatLimit`, `currentSeats`,
+      `tier` (Pilot / Standard / Enterprise / industry-specific),
+      `billingMode` (CARD / INVOICE / PURCHASE_ORDER), `expiresAt`.
+    - Enforcement: `ScreenService.register()` checks
+      `currentSeats < seatLimit`; over-quota returns
+      `LICENSE_EXHAUSTED` with a friendly UX prompt to add seats.
+    - **In-app self-serve checkout** for credit-card customers
+      (Stripe Billing — usage-based subscription per active screen,
+      auto-prorate on add/remove).
+    - **Invoice / PO flow** for districts and large enterprises
+      (generate quote → mark paid → manual seat top-up by
+      `SUPER_ADMIN`). Stripe Invoicing covers this too without
+      needing a second processor.
+    - **Owner control panel** at `/super` (SUPER_ADMIN only) to
+      create tenants, apply licenses, comp seats, suspend, refund,
+      view MRR per industry vertical, export AR aging.
+    - **Industry verticals as fully separate accounts.** Tenants
+      already isolate data; a `Tenant.vertical` field
+      (`K12 | RESTAURANT | RETAIL | HEALTHCARE | CORPORATE`) and
+      vertical-aware default templates / widget palette / pricing
+      tier let one codebase serve multiple markets without
+      cross-contamination.
+    - **Per-vertical SKUs** so K-12 districts get FERPA add-on,
+      restaurants get POS-integration add-on, etc.
+    - **Compliance:** PCI-SAQ-A by keeping all card data in the
+      Stripe-hosted iframe; never touch PAN.
+    - **Audit hooks:** every license change writes to existing
+      `AuditLog` (immutable).
+  Treat as the first paid sprint once funding lands — without
+  metering, the business doesn't bill.
+
 No commercial vendors until we have funding. All free/open-source or self-hosted.
 
 ## For AI Assistants
@@ -256,4 +305,4 @@ No commercial vendors until we have funding. All free/open-source or self-hosted
 
 ---
 
-**Last Updated:** 2026-04-16
+**Last Updated:** 2026-04-17
