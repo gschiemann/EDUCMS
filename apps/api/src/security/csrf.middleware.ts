@@ -18,6 +18,13 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   (p) => p === '/api/v1/auth/login',
   (p) => p.startsWith('/api/v1/health'),
   (p) => p === '/api/v1/security/csrf',
+  // Onboarding & auth-extras: requests arrive without any prior session,
+  // so there is no CSRF cookie to round-trip. Rate limiting + argon2 cost
+  // (+ hashed single-use tokens) mitigate abuse.
+  (p) => p === '/api/v1/signup',
+  (p) => p === '/api/v1/password-reset/request',
+  (p) => p === '/api/v1/password-reset/complete',
+  (p) => /^\/api\/v1\/invites\/[^/]+\/accept$/.test(p),
 ];
 
 export function isCsrfExempt(method: string, path: string): boolean {

@@ -2,7 +2,7 @@
 
 import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
-import { useUsers, useCreateUser, useDeleteUser, useUpdateUserRole, useTenant, useUpdateTenantPanicSettings, usePlaylists } from '@/hooks/use-api';
+import { useUsers, useInviteUser, useDeleteUser, useUpdateUserRole, useTenant, useUpdateTenantPanicSettings, usePlaylists } from '@/hooks/use-api';
 import { useState, useRef, useEffect } from 'react';
 
 const ROLES = ['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN', 'CONTRIBUTOR', 'RESTRICTED_VIEWER'] as const;
@@ -28,14 +28,14 @@ export default function SettingsPage() {
   const { data: tenant, isLoading: tenantLoading } = useTenant();
   const { data: playlists } = usePlaylists();
   
-  const createUser = useCreateUser();
+  const inviteUser = useInviteUser();
   const deleteUser = useDeleteUser();
   const updateRole = useUpdateUserRole();
   const updatePanicSettings = useUpdateTenantPanicSettings();
   const [showAddUser, setShowAddUser] = useState(false);
   const [newEmail, setNewEmail] = useState('');
-  const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState<string>('CONTRIBUTOR');
+  const [inviteStatus, setInviteStatus] = useState<{ kind: 'ok' | 'err'; message: string } | null>(null);
   const inviteEmailRef = useRef<HTMLInputElement>(null);
 
   // Focus invite email input when the add-user form opens
@@ -45,12 +45,17 @@ export default function SettingsPage() {
     }
   }, [showAddUser]);
 
-  const handleAddUser = async () => {
-    if (!newEmail.trim() || !newPassword.trim()) return;
-    await createUser.mutateAsync({ email: newEmail, password: newPassword, role: newRole });
-    setNewEmail('');
-    setNewPassword('');
-    setShowAddUser(false);
+  const handleInvite = async () => {
+    if (!newEmail.trim()) return;
+    setInviteStatus(null);
+    try {
+      await inviteUser.mutateAsync({ email: newEmail.trim(), role: newRole });
+      setInviteStatus({ kind: 'ok', message: `Invitation sent to ${newEmail.trim()}.` });
+      setNewEmail('');
+      setShowAddUser(false);
+    } catch (err: any) {
+      setInviteStatus({ kind: 'err', message: err?.message || 'Could not send invitation.' });
+    }
   };
 
   const playerUrl = typeof window !== 'undefined' ? `${window.location.origin}/player` : 'http://localhost:3000/player';
@@ -172,28 +177,39 @@ export default function SettingsPage() {
               onClick={() => setShowAddUser(true)}
               className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5"
             >
-              <UserPlus className="w-3.5 h-3.5" /> Add User
+              <UserPlus className="w-3.5 h-3.5" /> Invite by email
             </button>
           </div>
 
+          {inviteStatus && (
+            <div className={`px-6 py-2.5 text-xs font-medium border-b ${
+              inviteStatus.kind === 'ok'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                : 'bg-red-50 text-red-700 border-red-100'
+            }`}>
+              {inviteStatus.message}
+            </div>
+          )}
+
           {showAddUser && (
             <div className="px-6 py-4 bg-slate-50 border-b border-slate-100">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <input ref={inviteEmailRef} value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="Email address" type="email"
-                  className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
-                <input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Password" type="password"
+              <p className="text-xs text-slate-500 mb-3">
+                We&apos;ll email an invitation link. The recipient sets their own password — you never see it.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input ref={inviteEmailRef} value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="teacher@school.edu" type="email"
                   className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
                 <select value={newRole} onChange={(e) => setNewRole(e.target.value)}
                   className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500">
-                  {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                  {ROLES.filter(r => r !== 'SUPER_ADMIN').map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                 </select>
               </div>
               <div className="flex gap-2 mt-3">
-                <button onClick={handleAddUser} disabled={createUser.isPending}
+                <button onClick={handleInvite} disabled={inviteUser.isPending || !newEmail.trim()}
                   className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg">
-                  {createUser.isPending ? 'Adding...' : 'Add User'}
+                  {inviteUser.isPending ? 'Sending…' : 'Send invitation'}
                 </button>
-                <button onClick={() => setShowAddUser(false)}
+                <button onClick={() => { setShowAddUser(false); setInviteStatus(null); }}
                   className="px-4 py-2 text-slate-500 hover:text-slate-700 text-xs font-semibold">
                   Cancel
                 </button>

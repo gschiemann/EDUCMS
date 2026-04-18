@@ -19,6 +19,8 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
+import { OnboardingModule } from './onboarding/onboarding.module';
+import { EmailModule } from './email/email.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_FILTER, APP_GUARD, APP_PIPE, APP_INTERCEPTOR } from '@nestjs/core';
 import { SanitizationPipe } from './security/sanitization.pipe';
@@ -41,6 +43,8 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     AuthModule,
     RealtimeModule,
     FeatureFlagsModule,
+    EmailModule,
+    OnboardingModule,
     ThrottlerModule.forRoot([{
       ttl: 60000,
       limit: 100,
