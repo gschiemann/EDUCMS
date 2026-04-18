@@ -1,6 +1,7 @@
 "use client";
 
 import { FitText } from './FitText';
+import { EditableText } from './EditableText';
 
 /**
  * Bulletin Board — classroom cork-board theme.
@@ -121,7 +122,7 @@ export function BulletinBoardLogo({ config }: { config: any; compact?: boolean }
 // ═══════════════════════════════════════════════════════════
 // TEXT — construction-paper letter banner on a jute string
 // ═══════════════════════════════════════════════════════════
-export function BulletinBoardText({ config, compact }: { config: any; compact?: boolean }) {
+export function BulletinBoardText({ config, compact, onConfigChange }: { config: any; compact?: boolean; onConfigChange?: (p: Record<string, any>) => void }) {
   const content = (config.content || 'WELCOME').toString();
   const subtitle = config.subtitle || '~ come on in, friends ~';
 
@@ -184,10 +185,11 @@ export function BulletinBoardText({ config, compact }: { config: any; compact?: 
         </div>
         {!compact && subtitle && (
           <div style={{ flex: '0 0 44%', minHeight: 0, marginTop: '1%' }}>
-            <FitText max={360} min={10} wrap={false}
+            <EditableText configKey="subtitle" onConfigChange={onConfigChange}
+              max={360} min={10} wrap={false}
               style={{ fontFamily: BB_FONT_SCRIPT, color: BB.ink }}>
               {subtitle}
-            </FitText>
+            </EditableText>
           </div>
         )}
       </div>
@@ -405,7 +407,7 @@ export function BulletinBoardWeather({ config, compact }: { config: any; compact
 // ═══════════════════════════════════════════════════════════
 // COUNTDOWN — torn-paper banner with dangling ribbon tails
 // ═══════════════════════════════════════════════════════════
-export function BulletinBoardCountdown({ config, compact }: { config: any; compact?: boolean }) {
+export function BulletinBoardCountdown({ config, compact, onConfigChange }: { config: any; compact?: boolean; onConfigChange?: (p: Record<string, any>) => void }) {
   const [now, setNow] = useState(new Date());
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
   const resolved = resolveCountdownTarget(config, now);
@@ -447,10 +449,11 @@ export function BulletinBoardCountdown({ config, compact }: { config: any; compa
           textAlign: 'center',
         }}>
           <div style={{ flex: '0 0 22%', minHeight: 0 }}>
-            <FitText max={80} min={8} wrap={false}
+            <EditableText configKey="label" onConfigChange={onConfigChange}
+              max={80} min={8} wrap={false}
               style={{ fontWeight: 800, color: BB.pinRed, letterSpacing: '0.04em' }}>
               {label}
-            </FitText>
+            </EditableText>
           </div>
           <div style={{ flex: '0 0 54%', minHeight: 0 }}>
             <FitText max={320} min={24} wrap={false}
@@ -473,7 +476,7 @@ export function BulletinBoardCountdown({ config, compact }: { config: any; compa
 // ═══════════════════════════════════════════════════════════
 // ANNOUNCEMENT — lined index card pinned with two blue pushpins
 // ═══════════════════════════════════════════════════════════
-export function BulletinBoardAnnouncement({ config, compact }: { config: any; compact?: boolean }) {
+export function BulletinBoardAnnouncement({ config, compact, onConfigChange }: { config: any; compact?: boolean; onConfigChange?: (p: Record<string, any>) => void }) {
   const message = config.message || config.body || 'The Book Fair opens today — bring your list!';
   const date = config.date || '';
 
@@ -515,10 +518,11 @@ export function BulletinBoardAnnouncement({ config, compact }: { config: any; co
           transformOrigin: 'center center',
         }}>
           <div style={{ flex: !compact && date ? '1 1 80%' : '1 1 100%', minHeight: 0 }}>
-            <FitText max={280} min={12}
+            <EditableText configKey="message" onConfigChange={onConfigChange}
+              max={280} min={12}
               style={{ fontWeight: 700, color: BB.ink, letterSpacing: '0.005em' }}>
               {message}
-            </FitText>
+            </EditableText>
           </div>
           {!compact && date && (
             <div style={{ flex: '0 0 20%', minHeight: 0 }}>
@@ -542,7 +546,7 @@ export function BulletinBoardCalendar({ config }: { config: any; compact?: boole
     { date: 'MON · 8:30am', title: 'Pajama Day Reading Hour' },
     { date: 'WED · 10am',   title: "Principal's Story Time" },
     { date: 'APR 30',       title: 'Field Trip — THE ZOO!' },
-  ]).slice(0, 3);
+  ]).slice(0, Math.max(1, Math.min(12, config.maxEvents ?? 3)));
 
   const stickies = [
     { bg: BB.yellow, rot: -2 },
@@ -611,7 +615,7 @@ export function BulletinBoardCalendar({ config }: { config: any; compact?: boole
 // ═══════════════════════════════════════════════════════════
 // STAFF SPOTLIGHT — polaroid with black tape corner
 // ═══════════════════════════════════════════════════════════
-export function BulletinBoardStaffSpotlight({ config }: { config: any; compact?: boolean }) {
+export function BulletinBoardStaffSpotlight({ config, onConfigChange }: { config: any; compact?: boolean; onConfigChange?: (p: Record<string, any>) => void }) {
   const name = config.staffName || config.name || 'Mrs. Johnson';
   const role = config.role || 'Teacher of the Week';
   const photoUrl: string | undefined = config.photoUrl || config.assetUrl;
@@ -685,16 +689,18 @@ export function BulletinBoardStaffSpotlight({ config }: { config: any; compact?:
           display: 'flex', flexDirection: 'column',
         }}>
           <div style={{ flex: '1 1 60%', minHeight: 0 }}>
-            <FitText max={160} min={10} wrap={false}
+            <EditableText configKey="staffName" onConfigChange={onConfigChange}
+              max={160} min={10} wrap={false}
               style={{ fontFamily: BB_FONT_SCRIPT, color: BB.ink, fontWeight: 600 }}>
               {name}
-            </FitText>
+            </EditableText>
           </div>
           <div style={{ flex: '0 0 40%', minHeight: 0 }}>
-            <FitText max={70} min={8} wrap={false}
+            <EditableText configKey="role" onConfigChange={onConfigChange}
+              max={70} min={8} wrap={false}
               style={{ fontFamily: BB_FONT_SCRIPT, color: BB.pinRed }}>
               {role}
-            </FitText>
+            </EditableText>
           </div>
         </div>
       </div>
@@ -786,7 +792,15 @@ export function BulletinBoardImageCarousel({ config }: { config: any; compact?: 
 // ═══════════════════════════════════════════════════════════
 export function BulletinBoardTicker({ config, compact }: { config: any; compact?: boolean }) {
   const messages: string[] = config.messages?.length ? config.messages : ['★ Lost & Found cleanout Friday ★'];
-  const primary = messages[0];
+  const speed = (config.speed as string) || 'medium';
+  const secs = speed === 'fast' ? 4 : speed === 'slow' ? 10 : 6;
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    if (messages.length <= 1) return;
+    const t = setInterval(() => setIdx((i) => (i + 1) % messages.length), secs * 1000);
+    return () => clearInterval(t);
+  }, [messages.length, secs]);
+  const primary = messages[idx % messages.length];
 
   return (
     <div className="absolute inset-0" style={{ overflow: 'visible' }}>

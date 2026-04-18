@@ -870,6 +870,75 @@ function PlayerPage() {
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [phase, playlist, currentIndex]);
 
+  // ═══════════════════════════════════════════════════════════════
+  // ALL HOOKS MUST BE CALLED BEFORE ANY EARLY RETURN (Rules of Hooks).
+  // The touch idle-reset + playlist memoization hooks below used to
+  // live further down the file, after the phase === 'registering' /
+  // 'pairing' / 'connecting' / 'offline' early returns. That caused a
+  // hook-count mismatch when the player transitioned from 'pairing' to
+  // 'playing' (React saw extra hooks materialize on the second render)
+  // which crashed the page right after the dashboard paired the
+  // screen. Moved up so every render calls the same hook sequence
+  // regardless of phase.
+  // ═══════════════════════════════════════════════════════════════
+
+  // Sprint 4: Touch idle-reset for interactive templates.
+  const [sceneTick, setSceneTick] = useState(0);
+  const idleResetTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isTouchTemplate = !!playlist?.template?.isTouchEnabled;
+  const idleResetMs: number = playlist?.template?.idleResetMs ?? 60000;
+
+  useEffect(() => {
+    if (!isTouchTemplate) return;
+
+    const reset = () => {
+      if (idleResetTimerRef.current) clearTimeout(idleResetTimerRef.current);
+      idleResetTimerRef.current = setTimeout(() => {
+        setSceneTick(t => t + 1);
+      }, idleResetMs);
+    };
+
+    const onTouch = () => reset();
+    const onTouchAction = (e: Event) => {
+      const ce = e as CustomEvent<{ type: string; target: string }>;
+      if (ce.detail && (ce.detail.type === 'navigate' || ce.detail.type === 'show')) {
+        setSceneTick(t => t + 1);
+      }
+      reset();
+    };
+
+    window.addEventListener('pointerdown', onTouch, { passive: true });
+    window.addEventListener('keydown', onTouch);
+    window.addEventListener('edu:touch-action', onTouchAction as EventListener);
+    reset();
+
+    return () => {
+      window.removeEventListener('pointerdown', onTouch);
+      window.removeEventListener('keydown', onTouch);
+      window.removeEventListener('edu:touch-action', onTouchAction as EventListener);
+      if (idleResetTimerRef.current) clearTimeout(idleResetTimerRef.current);
+    };
+  }, [isTouchTemplate, idleResetMs]);
+
+  // Memoized sorted playlist + item-validity check.
+  const isTemplate = !!playlist?.template;
+  const sorted = useMemo(
+    () => (playlist && !isTemplate ? [...(playlist.items || [])].sort((a: any, b: any) => a.sequenceOrder - b.sequenceOrder) : []),
+    [playlist, isTemplate],
+  );
+  const isItemValid = useCallback((item: any) => {
+    if (!item || (!item.daysOfWeek && !item.timeStart && !item.timeEnd)) return true;
+    const now = new Date();
+    if (item.daysOfWeek && !item.daysOfWeek.includes(['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][now.getDay()])) return false;
+    if (item.timeStart && item.timeEnd) {
+      const [sh, sm] = item.timeStart.split(':').map(Number);
+      const [eh, em] = item.timeEnd.split(':').map(Number);
+      const currentMins = now.getHours() * 60 + now.getMinutes();
+      if (currentMins < (sh * 60 + sm) || currentMins > (eh * 60 + em)) return false;
+    }
+    return true;
+  }, []);
+
   // ─── Render: Registering ───
   if (phase === 'registering') {
     return (
@@ -959,72 +1028,8 @@ function PlayerPage() {
     );
   }
 
-  // ─── Sprint 4: Touch idle-reset for interactive templates ───
-  // Kiosks left untouched by students return to the template home scene. A
-  // "scene" today == the full template; a navigate/show action bumps a
-  // sceneTick to force a re-mount, which drops child widget state (keyboards,
-  // poll votes, room selection, etc.).
-  const [sceneTick, setSceneTick] = useState(0);
-  const idleResetTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  const isTouchTemplate = !!playlist?.template?.isTouchEnabled;
-  const idleResetMs: number = playlist?.template?.idleResetMs ?? 60000;
-
-  useEffect(() => {
-    if (!isTouchTemplate) return;
-
-    const reset = () => {
-      if (idleResetTimerRef.current) clearTimeout(idleResetTimerRef.current);
-      idleResetTimerRef.current = setTimeout(() => {
-        setSceneTick(t => t + 1);
-      }, idleResetMs);
-    };
-
-    const onTouch = () => reset();
-    const onTouchAction = (e: Event) => {
-      const ce = e as CustomEvent<{ type: string; target: string }>;
-      // For 'navigate'/'show' we bump the scene tick immediately. 'url' is
-      // handled inline by fireTouchAction (opens new tab).
-      if (ce.detail && (ce.detail.type === 'navigate' || ce.detail.type === 'show')) {
-        setSceneTick(t => t + 1);
-      }
-      reset();
-    };
-
-    window.addEventListener('pointerdown', onTouch, { passive: true });
-    window.addEventListener('keydown', onTouch);
-    window.addEventListener('edu:touch-action', onTouchAction as EventListener);
-    reset(); // start timer
-
-    return () => {
-      window.removeEventListener('pointerdown', onTouch);
-      window.removeEventListener('keydown', onTouch);
-      window.removeEventListener('edu:touch-action', onTouchAction as EventListener);
-      if (idleResetTimerRef.current) clearTimeout(idleResetTimerRef.current);
-    };
-  }, [isTouchTemplate, idleResetMs]);
-
-  // ─── Render: Playing ───
-  const isTemplate = !!playlist?.template;
-  // Memoize the sorted playlist so we don't allocate a new array every render.
-  const sorted = useMemo(
-    () => (playlist && !isTemplate ? [...(playlist.items || [])].sort((a: any, b: any) => a.sequenceOrder - b.sequenceOrder) : []),
-    [playlist, isTemplate],
-  );
-
-  const isItemValid = useCallback((item: any) => {
-    if (!item || (!item.daysOfWeek && !item.timeStart && !item.timeEnd)) return true;
-    const now = new Date();
-    if (item.daysOfWeek && !item.daysOfWeek.includes(['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][now.getDay()])) return false;
-    if (item.timeStart && item.timeEnd) {
-      const [sh, sm] = item.timeStart.split(':').map(Number);
-      const [eh, em] = item.timeEnd.split(':').map(Number);
-      const currentMins = now.getHours() * 60 + now.getMinutes();
-      if (currentMins < (sh * 60 + sm) || currentMins > (eh * 60 + em)) return false;
-    }
-    return true;
-  }, []);
-  
+  // (sceneTick / idleResetTimerRef / sorted / isItemValid hooks were
+  // moved above the early returns to satisfy the Rules of Hooks.)
   const currentItem = sorted.length && isItemValid(sorted[currentIndex % sorted.length]) ? sorted[currentIndex % sorted.length] : null;
   const isVideo = currentItem?.asset?.mimeType?.startsWith('video/');
   const fileUrl = currentItem?.asset?.fileUrl || '';

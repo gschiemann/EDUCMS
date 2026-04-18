@@ -196,7 +196,17 @@ export class ScreensController {
           include: { screenGroup: { select: { id: true, name: true } } },
         });
       },
-      { isolationLevel: 'Serializable' },
+      {
+        isolationLevel: 'Serializable',
+        // Default is 5s but Supabase's pgbouncer + SERIALIZABLE can
+        // push past that on first connection. Raise to 20s so we
+        // don't 500 on slow networks; user sees a crisp error either
+        // way if the actual work exceeds 20s (which means something
+        // is very wrong). maxWait bumps the pool acquisition timeout
+        // so we don't fail before the transaction even starts.
+        timeout: 20000,
+        maxWait: 10000,
+      },
     );
 
     // Audit fix #6: if this re-pair changed the tenant, blast a

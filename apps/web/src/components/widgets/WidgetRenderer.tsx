@@ -28,6 +28,18 @@ import { SunshineAcademyClock, SunshineAcademyWeather, SunshineAcademyCountdown,
 import { RainbowRibbonLogo, RainbowRibbonText, RainbowRibbonClock, RainbowRibbonWeather, RainbowRibbonCountdown, RainbowRibbonAnnouncement, RainbowRibbonCalendar, RainbowRibbonStaffSpotlight, RainbowRibbonImageCarousel, RainbowRibbonTicker } from './themes/rainbow-ribbon';
 import { FieldDayLogo, FieldDayText, FieldDayClock, FieldDayWeather, FieldDayCountdown, FieldDayAnnouncement, FieldDayCalendar, FieldDayStaffSpotlight, FieldDayImageCarousel, FieldDayTicker } from './themes/field-day';
 import { BulletinBoardLogo, BulletinBoardText, BulletinBoardClock, BulletinBoardWeather, BulletinBoardCountdown, BulletinBoardAnnouncement, BulletinBoardCalendar, BulletinBoardStaffSpotlight, BulletinBoardImageCarousel, BulletinBoardTicker } from './themes/bulletin-board';
+import { StorybookLogo, StorybookText, StorybookClock, StorybookWeather, StorybookCountdown, StorybookAnnouncement, StorybookCalendar, StorybookStaffSpotlight, StorybookImageCarousel, StorybookTicker } from './themes/storybook';
+import { ScrapbookLogo, ScrapbookText, ScrapbookClock, ScrapbookWeather, ScrapbookCountdown, ScrapbookAnnouncement, ScrapbookCalendar, ScrapbookStaffSpotlight, ScrapbookImageCarousel, ScrapbookTicker } from './themes/scrapbook';
+import { LockerHallwayLogo, LockerHallwayText, LockerHallwayClock, LockerHallwayWeather, LockerHallwayCountdown, LockerHallwayAnnouncement, LockerHallwayCalendar, LockerHallwayStaffSpotlight, LockerHallwayImageCarousel, LockerHallwayTicker } from './themes/locker-hallway';
+import { SpiritRallyLogo, SpiritRallyText, SpiritRallyClock, SpiritRallyWeather, SpiritRallyCountdown, SpiritRallyAnnouncement, SpiritRallyCalendar, SpiritRallyStaffSpotlight, SpiritRallyImageCarousel, SpiritRallyTicker } from './themes/spirit-rally';
+import { StemLabLogo, StemLabText, StemLabClock, StemLabWeather, StemLabCountdown, StemLabAnnouncement, StemLabCalendar, StemLabStaffSpotlight, StemLabImageCarousel, StemLabTicker } from './themes/stem-lab';
+import { MorningNewsLogo, MorningNewsText, MorningNewsClock, MorningNewsWeather, MorningNewsCountdown, MorningNewsAnnouncement, MorningNewsCalendar, MorningNewsStaffSpotlight, MorningNewsImageCarousel, MorningNewsTicker } from './themes/morning-news';
+import { ArtStudioLogo, ArtStudioText, ArtStudioClock, ArtStudioWeather, ArtStudioCountdown, ArtStudioAnnouncement, ArtStudioCalendar, ArtStudioStaffSpotlight, ArtStudioImageCarousel, ArtStudioTicker } from './themes/art-studio';
+import { VarsityAthleticLogo, VarsityAthleticText, VarsityAthleticClock, VarsityAthleticWeather, VarsityAthleticCountdown, VarsityAthleticAnnouncement, VarsityAthleticCalendar, VarsityAthleticStaffSpotlight, VarsityAthleticImageCarousel, VarsityAthleticTicker } from './themes/varsity-athletic';
+import { SeniorCountdownLogo, SeniorCountdownText, SeniorCountdownClock, SeniorCountdownWeather, SeniorCountdownCountdown, SeniorCountdownAnnouncement, SeniorCountdownCalendar, SeniorCountdownStaffSpotlight, SeniorCountdownImageCarousel, SeniorCountdownTicker } from './themes/senior-countdown';
+import { NewsStudioProLogo, NewsStudioProText, NewsStudioProClock, NewsStudioProWeather, NewsStudioProCountdown, NewsStudioProAnnouncement, NewsStudioProCalendar, NewsStudioProStaffSpotlight, NewsStudioProImageCarousel, NewsStudioProTicker } from './themes/news-studio-pro';
+import { CampusQuadLogo, CampusQuadText, CampusQuadClock, CampusQuadWeather, CampusQuadCountdown, CampusQuadAnnouncement, CampusQuadCalendar, CampusQuadStaffSpotlight, CampusQuadImageCarousel, CampusQuadTicker } from './themes/campus-quad';
+import { AchievementHallLogo, AchievementHallText, AchievementHallClock, AchievementHallWeather, AchievementHallCountdown, AchievementHallAnnouncement, AchievementHallCalendar, AchievementHallStaffSpotlight, AchievementHallImageCarousel, AchievementHallTicker } from './themes/achievement-hall';
 // Countdown helpers (recurring period support — used by every Countdown variant)
 import { resolveCountdownTarget } from './countdown-utils';
 
@@ -67,24 +79,21 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
   // call this to persist a config patch back up to the zone.
   onConfigChange?: (patch: Record<string, any>) => void;
 }) {
-  // Suppress unused-var warning until individual widgets opt in to use
-  // the hook. Available for future widgets that want inline edit UX.
-  void onConfigChange;
   const cfg = config || {};
   const compact = height < 20 || width < 25;
 
   switch (widgetType) {
     case 'CLOCK':        return <ClockWidget config={cfg} compact={compact} />;
     case 'WEATHER':      return <WeatherWidget config={cfg} compact={compact} />;
-    case 'COUNTDOWN':    return <CountdownWidget config={cfg} compact={compact} />;
-    case 'TEXT':         return <TextWidget config={cfg} />;
-    case 'RICH_TEXT':    return <TextWidget config={cfg} />;
-    case 'ANNOUNCEMENT': return <AnnouncementWidget config={cfg} compact={compact} />;
+    case 'COUNTDOWN':    return <CountdownWidget config={cfg} compact={compact} onConfigChange={onConfigChange} />;
+    case 'TEXT':         return <TextWidget config={cfg} onConfigChange={onConfigChange} />;
+    case 'RICH_TEXT':    return <TextWidget config={cfg} onConfigChange={onConfigChange} />;
+    case 'ANNOUNCEMENT': return <AnnouncementWidget config={cfg} compact={compact} onConfigChange={onConfigChange} />;
     case 'TICKER':       return <TickerWidget config={cfg} />;
     case 'BELL_SCHEDULE': return <BellScheduleWidget config={cfg} compact={compact} />;
     case 'LUNCH_MENU':   return <LunchMenuWidget config={cfg} compact={compact} />;
     case 'CALENDAR':     return <CalendarWidget config={cfg} compact={compact} />;
-    case 'STAFF_SPOTLIGHT': return <StaffSpotlightWidget config={cfg} compact={compact} />;
+    case 'STAFF_SPOTLIGHT': return <StaffSpotlightWidget config={cfg} compact={compact} onConfigChange={onConfigChange} />;
     case 'IMAGE':        return <ImageWidget config={cfg} />;
     case 'IMAGE_CAROUSEL': return <ImageCarouselWidget config={cfg} />;
     case 'VIDEO':        return <VideoWidget config={cfg} live={live} />;
@@ -117,6 +126,18 @@ function ClockWidget({ config, compact }: { config: any; compact: boolean }) {
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonClock config={config} compact={compact} />;
   if (config.theme === 'field-day') return <FieldDayClock config={config} compact={compact} />;
   if (config.theme === 'bulletin-board') return <BulletinBoardClock config={config} compact={compact} />;
+  if (config.theme === 'storybook') return <StorybookClock config={config} compact={compact} />;
+  if (config.theme === 'scrapbook') return <ScrapbookClock config={config} compact={compact} />;
+  if (config.theme === 'locker-hallway') return <LockerHallwayClock config={config} compact={compact} />;
+  if (config.theme === 'spirit-rally') return <SpiritRallyClock config={config} compact={compact} />;
+  if (config.theme === 'stem-lab') return <StemLabClock config={config} compact={compact} />;
+  if (config.theme === 'morning-news') return <MorningNewsClock config={config} compact={compact} />;
+  if (config.theme === 'art-studio') return <ArtStudioClock config={config} compact={compact} />;
+  if (config.theme === 'varsity-athletic') return <VarsityAthleticClock config={config} compact={compact} />;
+  if (config.theme === 'senior-countdown') return <SeniorCountdownClock config={config} compact={compact} />;
+  if (config.theme === 'news-studio-pro') return <NewsStudioProClock config={config} compact={compact} />;
+  if (config.theme === 'campus-quad') return <CampusQuadClock config={config} compact={compact} />;
+  if (config.theme === 'achievement-hall') return <AchievementHallClock config={config} compact={compact} />;
   if (config.theme === 'final-chance') return <FinalChanceClock config={config} />;
   if (config.theme === 'library-quiet') return <LibraryQuietClock config={config} />;
   if (config.theme === 'middle-school-hall') return <MSHallClock config={config} />;
@@ -265,6 +286,18 @@ function WeatherWidget({ config, compact }: { config: any; compact: boolean }) {
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonWeather config={config} compact={compact} />;
   if (config.theme === 'field-day') return <FieldDayWeather config={config} compact={compact} />;
   if (config.theme === 'bulletin-board') return <BulletinBoardWeather config={config} compact={compact} />;
+  if (config.theme === 'storybook') return <StorybookWeather config={config} compact={compact} />;
+  if (config.theme === 'scrapbook') return <ScrapbookWeather config={config} compact={compact} />;
+  if (config.theme === 'locker-hallway') return <LockerHallwayWeather config={config} compact={compact} />;
+  if (config.theme === 'spirit-rally') return <SpiritRallyWeather config={config} compact={compact} />;
+  if (config.theme === 'stem-lab') return <StemLabWeather config={config} compact={compact} />;
+  if (config.theme === 'morning-news') return <MorningNewsWeather config={config} compact={compact} />;
+  if (config.theme === 'art-studio') return <ArtStudioWeather config={config} compact={compact} />;
+  if (config.theme === 'varsity-athletic') return <VarsityAthleticWeather config={config} compact={compact} />;
+  if (config.theme === 'senior-countdown') return <SeniorCountdownWeather config={config} compact={compact} />;
+  if (config.theme === 'news-studio-pro') return <NewsStudioProWeather config={config} compact={compact} />;
+  if (config.theme === 'campus-quad') return <CampusQuadWeather config={config} compact={compact} />;
+  if (config.theme === 'achievement-hall') return <AchievementHallWeather config={config} compact={compact} />;
   if (config.theme === 'final-chance') return <FinalChanceWeather config={config} />;
   if (config.theme === 'middle-school-hall') return <MSHallWeather config={config} />;
   if (config.theme === 'sunshine-academy') return <SunshineAcademyWeather config={config} compact={compact} />;
@@ -370,12 +403,24 @@ function WeatherWidget({ config, compact }: { config: any; compact: boolean }) {
 // COUNTDOWN — Animated flip-style countdown
 // ═══════════════════════════════════════════════════════
 
-function CountdownWidget({ config, compact }: { config: any; compact: boolean }) {
+function CountdownWidget({ config, compact, onConfigChange }: { config: any; compact: boolean; onConfigChange?: (patch: Record<string, any>) => void }) {
   if (config.theme === 'back-to-school') return <BackToSchoolCountdown config={config} />;
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardCountdown config={config} />;
-  if (config.theme === 'rainbow-ribbon') return <RainbowRibbonCountdown config={config} compact={compact} />;
-  if (config.theme === 'field-day') return <FieldDayCountdown config={config} compact={compact} />;
-  if (config.theme === 'bulletin-board') return <BulletinBoardCountdown config={config} compact={compact} />;
+  if (config.theme === 'rainbow-ribbon') return <RainbowRibbonCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'field-day') return <FieldDayCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'bulletin-board') return <BulletinBoardCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'storybook') return <StorybookCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'scrapbook') return <ScrapbookCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'locker-hallway') return <LockerHallwayCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'spirit-rally') return <SpiritRallyCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'stem-lab') return <StemLabCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'morning-news') return <MorningNewsCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'art-studio') return <ArtStudioCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'varsity-athletic') return <VarsityAthleticCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'senior-countdown') return <SeniorCountdownCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'news-studio-pro') return <NewsStudioProCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'campus-quad') return <CampusQuadCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'achievement-hall') return <AchievementHallCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
   if (config.theme === 'final-chance') return <FinalChanceCountdown config={config} />;
   if (config.theme === 'high-school-athletics') return <AthleticsCountdown config={config} compact={compact} />;
   if (config.theme === 'middle-school-hall') return <MSHallCountdown config={config} />;
@@ -446,16 +491,28 @@ function CountdownWidget({ config, compact }: { config: any; compact: boolean })
 // TEXT — Renders actual styled text
 // ═══════════════════════════════════════════════════════
 
-function TextWidget({ config }: { config: any }) {
+function TextWidget({ config, onConfigChange }: { config: any; onConfigChange?: (patch: Record<string, any>) => void }) {
   if (config.theme === 'gym-pe') return <GymPEText config={config} />;
   if (config.theme === 'principals-office') return <PrincipalsOfficeText config={config} />;
   if (config.theme === 'office-dashboard') return <OfficeDashboardText config={config} />;
   if (config.theme === 'back-to-school') return <BackToSchoolText config={config} />;
   if (config.theme === 'bus-loop') return <BusLoopText config={config} />;
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardText config={config} />;
-  if (config.theme === 'rainbow-ribbon') return <RainbowRibbonText config={config} />;
-  if (config.theme === 'field-day') return <FieldDayText config={config} />;
-  if (config.theme === 'bulletin-board') return <BulletinBoardText config={config} />;
+  if (config.theme === 'rainbow-ribbon') return <RainbowRibbonText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'field-day') return <FieldDayText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'bulletin-board') return <BulletinBoardText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'storybook') return <StorybookText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'scrapbook') return <ScrapbookText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'locker-hallway') return <LockerHallwayText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'spirit-rally') return <SpiritRallyText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'stem-lab') return <StemLabText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'morning-news') return <MorningNewsText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'art-studio') return <ArtStudioText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'varsity-athletic') return <VarsityAthleticText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'senior-countdown') return <SeniorCountdownText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'news-studio-pro') return <NewsStudioProText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'campus-quad') return <CampusQuadText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'achievement-hall') return <AchievementHallText config={config} onConfigChange={onConfigChange} />;
   if (config.theme === 'final-chance') return <FinalChanceText config={config} />;
   if (config.theme === 'high-school-athletics') return <AthleticsText config={config} />;
   if (config.theme === 'middle-school-hall') return <MSHallText config={config} />;
@@ -490,16 +547,28 @@ function TextWidget({ config }: { config: any }) {
 // ANNOUNCEMENT — Priority-styled announcement
 // ═══════════════════════════════════════════════════════
 
-function AnnouncementWidget({ config, compact }: { config: any; compact: boolean }) {
+function AnnouncementWidget({ config, compact, onConfigChange }: { config: any; compact: boolean; onConfigChange?: (patch: Record<string, any>) => void }) {
   if (config.theme === 'gym-pe') return <GymPEAnnouncement config={config} compact={compact} />;
   if (config.theme === 'principals-office') return <PrincipalsOfficeAnnouncement config={config} compact={compact} />;
   if (config.theme === 'office-dashboard') return <OfficeDashboardAnnouncement config={config} compact={compact} />;
   if (config.theme === 'back-to-school') return <BackToSchoolAnnouncement config={config} />;
   if (config.theme === 'bus-loop') return <BusLoopAnnouncement config={config} />;
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardAnnouncement config={config} />;
-  if (config.theme === 'rainbow-ribbon') return <RainbowRibbonAnnouncement config={config} compact={compact} />;
-  if (config.theme === 'field-day') return <FieldDayAnnouncement config={config} compact={compact} />;
-  if (config.theme === 'bulletin-board') return <BulletinBoardAnnouncement config={config} compact={compact} />;
+  if (config.theme === 'rainbow-ribbon') return <RainbowRibbonAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'field-day') return <FieldDayAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'bulletin-board') return <BulletinBoardAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'storybook') return <StorybookAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'scrapbook') return <ScrapbookAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'locker-hallway') return <LockerHallwayAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'spirit-rally') return <SpiritRallyAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'stem-lab') return <StemLabAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'morning-news') return <MorningNewsAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'art-studio') return <ArtStudioAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'varsity-athletic') return <VarsityAthleticAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'senior-countdown') return <SeniorCountdownAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'news-studio-pro') return <NewsStudioProAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'campus-quad') return <CampusQuadAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'achievement-hall') return <AchievementHallAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
   if (config.theme === 'final-chance') return <FinalChanceAnnouncement config={config} />;
   if (config.theme === 'high-school-athletics') return <AthleticsAnnouncement config={config} />;
   if (config.theme === 'middle-school-hall') return <MSHallAnnouncement config={config} />;
@@ -556,6 +625,18 @@ function TickerWidget({ config }: { config: any }) {
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonTicker config={config} />;
   if (config.theme === 'field-day') return <FieldDayTicker config={config} />;
   if (config.theme === 'bulletin-board') return <BulletinBoardTicker config={config} />;
+  if (config.theme === 'storybook') return <StorybookTicker config={config} />;
+  if (config.theme === 'scrapbook') return <ScrapbookTicker config={config} />;
+  if (config.theme === 'locker-hallway') return <LockerHallwayTicker config={config} />;
+  if (config.theme === 'spirit-rally') return <SpiritRallyTicker config={config} />;
+  if (config.theme === 'stem-lab') return <StemLabTicker config={config} />;
+  if (config.theme === 'morning-news') return <MorningNewsTicker config={config} />;
+  if (config.theme === 'art-studio') return <ArtStudioTicker config={config} />;
+  if (config.theme === 'varsity-athletic') return <VarsityAthleticTicker config={config} />;
+  if (config.theme === 'senior-countdown') return <SeniorCountdownTicker config={config} />;
+  if (config.theme === 'news-studio-pro') return <NewsStudioProTicker config={config} />;
+  if (config.theme === 'campus-quad') return <CampusQuadTicker config={config} />;
+  if (config.theme === 'achievement-hall') return <AchievementHallTicker config={config} />;
   if (config.theme === 'final-chance') return <FinalChanceTicker config={config} />;
   if (config.theme === 'high-school-athletics') return <AthleticsTicker config={config} />;
   if (config.theme === 'library-quiet') return <LibraryQuietTicker config={config} />;
@@ -687,6 +768,18 @@ function CalendarWidget({ config, compact }: { config: any; compact: boolean }) 
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonCalendar config={config} compact={compact} />;
   if (config.theme === 'field-day') return <FieldDayCalendar config={config} compact={compact} />;
   if (config.theme === 'bulletin-board') return <BulletinBoardCalendar config={config} compact={compact} />;
+  if (config.theme === 'storybook') return <StorybookCalendar config={config} compact={compact} />;
+  if (config.theme === 'scrapbook') return <ScrapbookCalendar config={config} compact={compact} />;
+  if (config.theme === 'locker-hallway') return <LockerHallwayCalendar config={config} compact={compact} />;
+  if (config.theme === 'spirit-rally') return <SpiritRallyCalendar config={config} compact={compact} />;
+  if (config.theme === 'stem-lab') return <StemLabCalendar config={config} compact={compact} />;
+  if (config.theme === 'morning-news') return <MorningNewsCalendar config={config} compact={compact} />;
+  if (config.theme === 'art-studio') return <ArtStudioCalendar config={config} compact={compact} />;
+  if (config.theme === 'varsity-athletic') return <VarsityAthleticCalendar config={config} compact={compact} />;
+  if (config.theme === 'senior-countdown') return <SeniorCountdownCalendar config={config} compact={compact} />;
+  if (config.theme === 'news-studio-pro') return <NewsStudioProCalendar config={config} compact={compact} />;
+  if (config.theme === 'campus-quad') return <CampusQuadCalendar config={config} compact={compact} />;
+  if (config.theme === 'achievement-hall') return <AchievementHallCalendar config={config} compact={compact} />;
   if (config.theme === 'final-chance') return <FinalChanceCalendar config={config} />;
   if (config.theme === 'sunshine-academy') return <SunshineAcademyCalendar config={config} compact={compact} />;
   const maxEvents = config.maxEvents || 5;
@@ -729,13 +822,25 @@ function CalendarWidget({ config, compact }: { config: any; compact: boolean }) 
 // STAFF SPOTLIGHT
 // ═══════════════════════════════════════════════════════
 
-function StaffSpotlightWidget({ config, compact }: { config: any; compact: boolean }) {
+function StaffSpotlightWidget({ config, compact, onConfigChange }: { config: any; compact: boolean; onConfigChange?: (patch: Record<string, any>) => void }) {
   if (config.theme === 'office-dashboard') return <OfficeDashboardStaff config={config} compact={compact} />;
   if (config.theme === 'back-to-school') return <BackToSchoolStaff config={config} />;
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardStaff config={config} />;
-  if (config.theme === 'rainbow-ribbon') return <RainbowRibbonStaffSpotlight config={config} compact={compact} />;
-  if (config.theme === 'field-day') return <FieldDayStaffSpotlight config={config} compact={compact} />;
-  if (config.theme === 'bulletin-board') return <BulletinBoardStaffSpotlight config={config} compact={compact} />;
+  if (config.theme === 'rainbow-ribbon') return <RainbowRibbonStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'field-day') return <FieldDayStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'bulletin-board') return <BulletinBoardStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'storybook') return <StorybookStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'scrapbook') return <ScrapbookStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'locker-hallway') return <LockerHallwayStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'spirit-rally') return <SpiritRallyStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'stem-lab') return <StemLabStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'morning-news') return <MorningNewsStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'art-studio') return <ArtStudioStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'varsity-athletic') return <VarsityAthleticStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'senior-countdown') return <SeniorCountdownStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'news-studio-pro') return <NewsStudioProStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'campus-quad') return <CampusQuadStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'achievement-hall') return <AchievementHallStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
   if (config.theme === 'final-chance') return <FinalChanceStaff config={config} />;
   if (config.theme === 'middle-school-hall') return <MSHallStaff config={config} />;
   if (config.theme === 'music-arts') return <MusicArtsSpotlight config={config} />;
@@ -785,6 +890,28 @@ function ImageWidget({ config }: { config: any }) {
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonLogo config={config} />;
   if (config.theme === 'field-day') return <FieldDayLogo config={config} />;
   if (config.theme === 'bulletin-board') return <BulletinBoardLogo config={config} />;
+  if (config.theme === 'storybook') return <StorybookLogo config={config} />;
+  if (config.theme === 'scrapbook') return <ScrapbookLogo config={config} />;
+  if (config.theme === 'locker-hallway') return <LockerHallwayLogo config={config} />;
+  if (config.theme === 'spirit-rally') return <SpiritRallyLogo config={config} />;
+  if (config.theme === 'stem-lab') return <StemLabLogo config={config} />;
+  if (config.theme === 'morning-news') return <MorningNewsLogo config={config} />;
+  if (config.theme === 'art-studio') return <ArtStudioLogo config={config} />;
+  if (config.theme === 'varsity-athletic') return <VarsityAthleticLogo config={config} />;
+  if (config.theme === 'senior-countdown') return <SeniorCountdownLogo config={config} />;
+  if (config.theme === 'news-studio-pro') return <NewsStudioProLogo config={config} />;
+  if (config.theme === 'campus-quad') return <CampusQuadLogo config={config} />;
+  if (config.theme === 'achievement-hall') return <AchievementHallLogo config={config} />;
+  if (config.theme === 'locker-hallway') return <LockerHallwayLogo config={config} />;
+  if (config.theme === 'spirit-rally') return <SpiritRallyLogo config={config} />;
+  if (config.theme === 'stem-lab') return <StemLabLogo config={config} />;
+  if (config.theme === 'morning-news') return <MorningNewsLogo config={config} />;
+  if (config.theme === 'art-studio') return <ArtStudioLogo config={config} />;
+  if (config.theme === 'varsity-athletic') return <VarsityAthleticLogo config={config} />;
+  if (config.theme === 'senior-countdown') return <SeniorCountdownLogo config={config} />;
+  if (config.theme === 'news-studio-pro') return <NewsStudioProLogo config={config} />;
+  if (config.theme === 'campus-quad') return <CampusQuadLogo config={config} />;
+  if (config.theme === 'achievement-hall') return <AchievementHallLogo config={config} />;
   if (config.theme === 'final-chance') return <FinalChanceLogo config={config} />;
   if (config.theme === 'high-school-athletics') return <AthleticsLogo config={config} />;
   if (config.theme === 'middle-school-hall') return <MSHallLogo config={config} />;
@@ -810,6 +937,18 @@ function ImageCarouselWidget({ config }: { config: any }) {
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonImageCarousel config={config} />;
   if (config.theme === 'field-day') return <FieldDayImageCarousel config={config} />;
   if (config.theme === 'bulletin-board') return <BulletinBoardImageCarousel config={config} />;
+  if (config.theme === 'storybook') return <StorybookImageCarousel config={config} />;
+  if (config.theme === 'scrapbook') return <ScrapbookImageCarousel config={config} />;
+  if (config.theme === 'locker-hallway') return <LockerHallwayImageCarousel config={config} />;
+  if (config.theme === 'spirit-rally') return <SpiritRallyImageCarousel config={config} />;
+  if (config.theme === 'stem-lab') return <StemLabImageCarousel config={config} />;
+  if (config.theme === 'morning-news') return <MorningNewsImageCarousel config={config} />;
+  if (config.theme === 'art-studio') return <ArtStudioImageCarousel config={config} />;
+  if (config.theme === 'varsity-athletic') return <VarsityAthleticImageCarousel config={config} />;
+  if (config.theme === 'senior-countdown') return <SeniorCountdownImageCarousel config={config} />;
+  if (config.theme === 'news-studio-pro') return <NewsStudioProImageCarousel config={config} />;
+  if (config.theme === 'campus-quad') return <CampusQuadImageCarousel config={config} />;
+  if (config.theme === 'achievement-hall') return <AchievementHallImageCarousel config={config} />;
   if (config.theme === 'final-chance') return <FinalChanceImageCarousel config={config} />;
   if (config.theme === 'middle-school-hall') return <MSHallImageCarousel config={config} />;
   if (config.theme === 'stem-science') return <StemScienceImageCarousel config={config} />;
@@ -932,6 +1071,18 @@ function LogoWidget({ config }: { config: any }) {
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonLogo config={config} />;
   if (config.theme === 'field-day') return <FieldDayLogo config={config} />;
   if (config.theme === 'bulletin-board') return <BulletinBoardLogo config={config} />;
+  if (config.theme === 'storybook') return <StorybookLogo config={config} />;
+  if (config.theme === 'scrapbook') return <ScrapbookLogo config={config} />;
+  if (config.theme === 'locker-hallway') return <LockerHallwayLogo config={config} />;
+  if (config.theme === 'spirit-rally') return <SpiritRallyLogo config={config} />;
+  if (config.theme === 'stem-lab') return <StemLabLogo config={config} />;
+  if (config.theme === 'morning-news') return <MorningNewsLogo config={config} />;
+  if (config.theme === 'art-studio') return <ArtStudioLogo config={config} />;
+  if (config.theme === 'varsity-athletic') return <VarsityAthleticLogo config={config} />;
+  if (config.theme === 'senior-countdown') return <SeniorCountdownLogo config={config} />;
+  if (config.theme === 'news-studio-pro') return <NewsStudioProLogo config={config} />;
+  if (config.theme === 'campus-quad') return <CampusQuadLogo config={config} />;
+  if (config.theme === 'achievement-hall') return <AchievementHallLogo config={config} />;
   if (config.theme === 'final-chance') return <FinalChanceLogo config={config} />;
   if (config.theme === 'high-school-athletics') return <AthleticsLogo config={config} />;
   if (config.theme === 'middle-school-hall') return <MSHallLogo config={config} />;

@@ -1,6 +1,7 @@
 "use client";
 
 import { FitText } from './FitText';
+import { EditableText } from './EditableText';
 
 /**
  * Rainbow Ribbon — candy-pop party theme.
@@ -126,7 +127,7 @@ export function RainbowRibbonLogo({ config }: { config: any; compact?: boolean }
 // ═══════════════════════════════════════════════════════════
 // TEXT — folded ribbon banner
 // ═══════════════════════════════════════════════════════════
-export function RainbowRibbonText({ config, compact }: { config: any; compact?: boolean }) {
+export function RainbowRibbonText({ config, compact, onConfigChange }: { config: any; compact?: boolean; onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || 'GOOD MORNING, STARS!';
   const subtitle = config.subtitle || '~ let\'s make today colorful ~';
   return (
@@ -157,7 +158,8 @@ export function RainbowRibbonText({ config, compact }: { config: any; compact?: 
           display: 'flex', flexDirection: 'column',
         }}>
           <div style={{ flex: !compact && subtitle ? '0 0 70%' : '0 0 100%', minHeight: 0 }}>
-            <FitText
+            <EditableText
+              configKey="content" onConfigChange={onConfigChange}
               max={180} min={12} wrap={false}
               style={{
                 fontFamily: RR_FONT_DISPLAY, fontWeight: 700,
@@ -167,11 +169,12 @@ export function RainbowRibbonText({ config, compact }: { config: any; compact?: 
               }}
             >
               {content}
-            </FitText>
+            </EditableText>
           </div>
           {!compact && subtitle && (
             <div style={{ flex: '0 0 32%', minHeight: 0 }}>
-              <FitText
+              <EditableText
+                configKey="subtitle" onConfigChange={onConfigChange}
                 max={140} min={10} wrap={false}
                 style={{
                   fontFamily: RR_FONT_SCRIPT,
@@ -180,7 +183,7 @@ export function RainbowRibbonText({ config, compact }: { config: any; compact?: 
                 }}
               >
                 {subtitle}
-              </FitText>
+              </EditableText>
             </div>
           )}
         </div>
@@ -277,22 +280,28 @@ export function RainbowRibbonWeather({ config, compact }: { config: any; compact
       fill={RR.white} stroke={RR.ink} strokeWidth="10" />
   );
   const BigSun = (
+    // Positioned in the upper 60% of the viewBox so it doesn't
+    // collide with the temp text that lives in the bottom 36% of
+    // the zone. Face radius 145 puts the bottom ray cap at ~310 of
+    // 520 = 60% of viewBox, matching the text overlay's top edge.
     <g>
-      <circle cx="350" cy="230" r="120" fill={RR.yellow} stroke={RR.ink} strokeWidth="8" />
-      <g stroke={RR.yellow} strokeWidth="16" strokeLinecap="round">
-        <line x1="350" y1="50" x2="350" y2="100" />
-        <line x1="350" y1="360" x2="350" y2="410" />
-        <line x1="170" y1="230" x2="220" y2="230" />
-        <line x1="480" y1="230" x2="530" y2="230" />
-        <line x1="230" y1="110" x2="265" y2="145" />
-        <line x1="435" y1="315" x2="470" y2="350" />
-        <line x1="470" y1="110" x2="435" y2="145" />
-        <line x1="265" y1="315" x2="230" y2="350" />
+      <circle cx="350" cy="180" r="145" fill={RR.yellow} stroke={RR.ink} strokeWidth="10" />
+      <g stroke={RR.yellow} strokeWidth="20" strokeLinecap="round">
+        <line x1="350" y1="0"   x2="350" y2="40"  />
+        <line x1="350" y1="320" x2="350" y2="360" />
+        <line x1="80"  y1="180" x2="130" y2="180" />
+        <line x1="570" y1="180" x2="620" y2="180" />
+        <line x1="155" y1="55"  x2="195" y2="95"  />
+        <line x1="505" y1="265" x2="545" y2="305" />
+        <line x1="545" y1="55"  x2="505" y2="95"  />
+        <line x1="195" y1="265" x2="155" y2="305" />
       </g>
-      {/* smiley */}
-      <circle cx="320" cy="215" r="7" fill={RR.ink} />
-      <circle cx="380" cy="215" r="7" fill={RR.ink} />
-      <path d="M 315 245 Q 350 275 385 245" stroke={RR.ink} strokeWidth="6" fill="none" strokeLinecap="round" />
+      {/* smiley face */}
+      <circle cx="318" cy="165" r="9" fill={RR.ink} />
+      <circle cx="382" cy="165" r="9" fill={RR.ink} />
+      <path d="M 308 200 Q 350 240 392 200" stroke={RR.ink} strokeWidth="7" fill="none" strokeLinecap="round" />
+      <ellipse cx="295" cy="190" rx="11" ry="6" fill={RR.pink} opacity="0.6" />
+      <ellipse cx="405" cy="190" rx="11" ry="6" fill={RR.pink} opacity="0.6" />
     </g>
   );
   const SmallSunPeek = (
@@ -346,36 +355,32 @@ export function RainbowRibbonWeather({ config, compact }: { config: any; compact
           {isSnow && (<>{DarkerCloud}{Snowflakes}</>)}
           {isStorm && (<>{DarkerCloud}{Bolt}</>)}
         </svg>
-        {/* Text overlay flex-centered inside the zone so the temp +
-            condition sit dead-center no matter which illustration is
-            showing. Previous absolute-percent bounds drifted slightly
-            off-center as the SVG shape varied (cloud has more mass
-            on one side, sun is symmetric, rain splits bottom). Flex
-            center removes the math. */}
+        {/* Temp + condition sit below the illustration so the icon
+            dominates the tile. Earlier the text was centered in the
+            zone and was chewing half the widget on top of the sun.
+            Now: icon top 60%, text bottom 30%. Safer on every
+            condition (sun, cloud, rain) since the icon always fills
+            its half. */}
         <div style={{
-          position: 'absolute', inset: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          position: 'absolute',
+          left: '6%', right: '6%', top: '62%', bottom: '4%',
+          display: 'flex', flexDirection: 'column',
+          fontFamily: RR_FONT_DISPLAY,
         }}>
-          <div style={{
-            width: '72%', height: '56%',
-            display: 'flex', flexDirection: 'column',
-            fontFamily: RR_FONT_DISPLAY,
-          }}>
-            <div style={{ flex: !compact ? '1 1 68%' : '1 1 100%', minHeight: 0 }}>
-              <FitText max={280} min={14} wrap={false}
-                style={{ fontWeight: 700, color: RR.sky, letterSpacing: '-0.02em' }}>
-                {temp}°
+          <div style={{ flex: !compact ? '1 1 68%' : '1 1 100%', minHeight: 0 }}>
+            <FitText max={160} min={14} wrap={false}
+              style={{ fontWeight: 700, color: RR.sky, letterSpacing: '-0.02em' }}>
+              {temp}°
+            </FitText>
+          </div>
+          {!compact && (
+            <div style={{ flex: '0 0 32%', minHeight: 0 }}>
+              <FitText max={70} min={9} wrap={false}
+                style={{ fontFamily: RR_FONT_SCRIPT, color: RR.pink }}>
+                {cond}
               </FitText>
             </div>
-            {!compact && (
-              <div style={{ flex: '0 0 32%', minHeight: 0 }}>
-                <FitText max={100} min={9} wrap={false}
-                  style={{ fontFamily: RR_FONT_SCRIPT, color: RR.pink }}>
-                  {cond}
-                </FitText>
-              </div>
-            )}
-          </div>
+          )}
         </div>
       </div>
     </div>
@@ -385,7 +390,7 @@ export function RainbowRibbonWeather({ config, compact }: { config: any; compact
 // ═══════════════════════════════════════════════════════════
 // COUNTDOWN — 12-point starburst
 // ═══════════════════════════════════════════════════════════
-export function RainbowRibbonCountdown({ config, compact }: { config: any; compact?: boolean }) {
+export function RainbowRibbonCountdown({ config, compact, onConfigChange }: { config: any; compact?: boolean; onConfigChange?: (p: Record<string, any>) => void }) {
   const [now, setNow] = useState(new Date());
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
   const resolved = resolveCountdownTarget(config, now);
@@ -427,7 +432,8 @@ export function RainbowRibbonCountdown({ config, compact }: { config: any; compa
         }}>
           {/* Label row — 22% of interior height */}
           <div style={{ flex: '0 0 22%', minHeight: 0 }}>
-            <FitText
+            <EditableText
+              configKey="label" onConfigChange={onConfigChange}
               max={72} min={8} wrap={false}
               style={{
                 fontWeight: 800,
@@ -436,7 +442,7 @@ export function RainbowRibbonCountdown({ config, compact }: { config: any; compa
               }}
             >
               {label}
-            </FitText>
+            </EditableText>
           </div>
           {/* Big number row — 52% of interior height */}
           <div style={{ flex: '0 0 52%', minHeight: 0 }}>
@@ -471,7 +477,7 @@ export function RainbowRibbonCountdown({ config, compact }: { config: any; compa
 // ═══════════════════════════════════════════════════════════
 // ANNOUNCEMENT — speech bubble with tail
 // ═══════════════════════════════════════════════════════════
-export function RainbowRibbonAnnouncement({ config, compact }: { config: any; compact?: boolean }) {
+export function RainbowRibbonAnnouncement({ config, compact, onConfigChange }: { config: any; compact?: boolean; onConfigChange?: (p: Record<string, any>) => void }) {
   const title = config.title || "★ TODAY'S SCOOP ★";
   const message = config.message || config.body || 'The Book Fair opens today — bring your list!';
   const date = config.date || '';
@@ -501,12 +507,13 @@ export function RainbowRibbonAnnouncement({ config, compact }: { config: any; co
         }}>
           {/* Message — fills the entire bubble interior. */}
           <div style={{ flex: !compact && date ? '1 1 84%' : '1 1 100%', minHeight: 0 }}>
-            <FitText
+            <EditableText
+              configKey="message" onConfigChange={onConfigChange}
               max={320} min={12}
               style={{ fontWeight: 700, color: RR.ink, letterSpacing: '0.005em' }}
             >
               {message}
-            </FitText>
+            </EditableText>
           </div>
           {!compact && date && (
             <div style={{ flex: '0 0 18%', minHeight: 0 }}>
@@ -532,7 +539,7 @@ export function RainbowRibbonCalendar({ config }: { config: any; compact?: boole
     { date: 'MON · 8:30am', title: 'Pajama Day Reading Hour' },
     { date: 'WED · 10am',   title: "Principal's Story Time" },
     { date: 'APR 30',       title: 'Field Trip — THE ZOO!' },
-  ]).slice(0, 4);
+  ]).slice(0, Math.max(1, Math.min(12, config.maxEvents ?? 4)));
 
   const colors = [RR.sky, RR.yellow, RR.pinkLt, RR.mint];
 
@@ -613,7 +620,7 @@ export function RainbowRibbonCalendar({ config }: { config: any; compact?: boole
 // ═══════════════════════════════════════════════════════════
 // STAFF SPOTLIGHT — polaroid card with washi-ribbon tag
 // ═══════════════════════════════════════════════════════════
-export function RainbowRibbonStaffSpotlight({ config }: { config: any; compact?: boolean }) {
+export function RainbowRibbonStaffSpotlight({ config, onConfigChange }: { config: any; compact?: boolean; onConfigChange?: (p: Record<string, any>) => void }) {
   const name = config.staffName || config.name || 'Mrs. Johnson';
   const role = config.role || 'Teacher of the Week';
   const quote = config.bio || config.quote || '"Be bright. Be bold. Be YOU today!"';
@@ -672,22 +679,25 @@ export function RainbowRibbonStaffSpotlight({ config }: { config: any; compact?:
           display: 'flex', flexDirection: 'column', justifyContent: 'center',
         }}>
           <div style={{ flex: '0 0 22%', minHeight: 0 }}>
-            <FitText max={80} min={8} wrap={false} center={false}
+            <EditableText configKey="role" onConfigChange={onConfigChange}
+              max={80} min={8} wrap={false} center={false}
               style={{ fontWeight: 700, color: RR.pink, letterSpacing: '0.02em' }}>
               ★ {role.toUpperCase()} ★
-            </FitText>
+            </EditableText>
           </div>
           <div style={{ flex: '0 0 36%', minHeight: 0 }}>
-            <FitText max={220} min={10} wrap={false} center={false}
+            <EditableText configKey="staffName" onConfigChange={onConfigChange}
+              max={220} min={10} wrap={false} center={false}
               style={{ fontWeight: 700, color: RR.ink }}>
               {name}
-            </FitText>
+            </EditableText>
           </div>
           <div style={{ flex: '1 1 42%', minHeight: 0 }}>
-            <FitText max={100} min={9} center={false}
+            <EditableText configKey="bio" onConfigChange={onConfigChange}
+              max={100} min={9} center={false}
               style={{ fontFamily: RR_FONT_SCRIPT, color: RR.lavenderDk }}>
               {quote}
-            </FitText>
+            </EditableText>
           </div>
         </div>
       </div>
@@ -782,7 +792,18 @@ export function RainbowRibbonImageCarousel({ config }: { config: any; compact?: 
 // ═══════════════════════════════════════════════════════════
 export function RainbowRibbonTicker({ config, compact }: { config: any; compact?: boolean }) {
   const messages: string[] = config.messages?.length ? config.messages : ['☆ Lost & Found cleanout Friday ☆'];
-  const primary = messages[0];
+  // Cycle through every message — speed maps to seconds per line. Panel
+  // lets teachers edit the full list; we render each in turn instead of
+  // dropping [1..N] on the floor like the old single-message version.
+  const speed = (config.speed as string) || 'medium';
+  const secs = speed === 'fast' ? 4 : speed === 'slow' ? 10 : 6;
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    if (messages.length <= 1) return;
+    const t = setInterval(() => setIdx((i) => (i + 1) % messages.length), secs * 1000);
+    return () => clearInterval(t);
+  }, [messages.length, secs]);
+  const primary = messages[idx % messages.length];
 
   // 12 pennants across
   const pennantColors = [RR.pink, RR.yellow, RR.mint, RR.sky, RR.lavender, RR.peach, RR.pink, RR.lavender, RR.sky, RR.mint, RR.yellow, RR.pink];

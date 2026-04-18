@@ -83,20 +83,43 @@ export function PropertiesPanel() {
             >
               <option value="default">Default / Base</option>
               <option value="seamless">Seamless (No Background)</option>
-              <option value="sunny-meadow">☀️ Sunny Meadow</option>
-              <option value="back-to-school">🍎 Back to School</option>
-              <option value="diner-chalkboard">🍽️ Diner Chalkboard</option>
-              <option value="middle-school-hall">🏫 Middle School Hallway</option>
-              <option value="bus-loop">🚌 Bus Loop</option>
-              <option value="high-school-athletics">🏆 Athletics Jumbotron</option>
-              <option value="library-quiet">📚 Library Quiet Zone</option>
-              <option value="sunshine-academy">🌞 Sunshine Academy</option>
-              <option value="final-chance">✨ Final Chance</option>
-              <option value="principals-office">🎓 Principal's Office</option>
-              <option value="office-dashboard">📊 Office Dashboard</option>
-              <option value="gym-pe">💪 Gym / PE</option>
-              <option value="music-arts">🎵 Music & Arts</option>
-              <option value="stem-science">🔬 STEM & Science</option>
+              <optgroup label="Elementary">
+                <option value="rainbow-ribbon">🌈 Rainbow Ribbon</option>
+                <option value="bulletin-board">📌 Bulletin Board</option>
+                <option value="field-day">🏆 Field Day</option>
+                <option value="storybook">📖 Storybook</option>
+                <option value="scrapbook">📎 Scrapbook</option>
+              </optgroup>
+              <optgroup label="Middle School">
+                <option value="locker-hallway">🔐 Locker Hallway</option>
+                <option value="spirit-rally">📣 Spirit Rally</option>
+                <option value="stem-lab">🔬 STEM Lab</option>
+                <option value="morning-news">📺 Morning News</option>
+                <option value="art-studio">🎨 Art Studio</option>
+              </optgroup>
+              <optgroup label="High School">
+                <option value="varsity-athletic">🥇 Varsity Athletic</option>
+                <option value="senior-countdown">🎓 Senior Countdown</option>
+                <option value="news-studio-pro">🎬 News Studio Pro</option>
+                <option value="campus-quad">🏛️ Campus Quad</option>
+                <option value="achievement-hall">🏅 Achievement Hall</option>
+              </optgroup>
+              <optgroup label="Legacy">
+                <option value="sunny-meadow">☀️ Sunny Meadow</option>
+                <option value="back-to-school">🍎 Back to School</option>
+                <option value="diner-chalkboard">🍽️ Diner Chalkboard</option>
+                <option value="middle-school-hall">🏫 Middle School Hallway</option>
+                <option value="bus-loop">🚌 Bus Loop</option>
+                <option value="high-school-athletics">🏆 Athletics Jumbotron</option>
+                <option value="library-quiet">📚 Library Quiet Zone</option>
+                <option value="sunshine-academy">🌞 Sunshine Academy</option>
+                <option value="final-chance">✨ Final Chance</option>
+                <option value="principals-office">🎓 Principal's Office</option>
+                <option value="office-dashboard">📊 Office Dashboard</option>
+                <option value="gym-pe">💪 Gym / PE</option>
+                <option value="music-arts">🎵 Music & Arts</option>
+                <option value="stem-science">🔬 STEM & Science</option>
+              </optgroup>
             </select>
             <p className="mt-1 text-[10px] text-slate-400">Tip: use the <strong>Widgets</strong> tab to swap themes visually with thumbnails.</p>
           </div>
@@ -328,6 +351,20 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
     updateZone(zone.id, { defaultConfig: { ...cfg, ...patch } }, true);
   };
 
+  // Shape-based themes bake their own palette + typography and ignore
+  // generic style knobs like text color, font size, and background.
+  // Hide those knobs for those themes so the panel never lies to the
+  // user about controls that do nothing.
+  const SHAPE_THEMES = new Set([
+    // Elementary
+    'rainbow-ribbon', 'bulletin-board', 'field-day', 'storybook', 'scrapbook',
+    // Middle school
+    'locker-hallway', 'spirit-rally', 'stem-lab', 'morning-news', 'art-studio',
+    // High school
+    'varsity-athletic', 'senior-countdown', 'news-studio-pro', 'campus-quad', 'achievement-hall',
+  ]);
+  const isShapeTheme = SHAPE_THEMES.has(cfg.theme);
+
   // Build a list of editable fields based on widget type
   const fields: React.ReactNode[] = [];
 
@@ -335,10 +372,17 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
     case 'TEXT':
     case 'RICH_TEXT':
       fields.push(<TextAreaField key="content" label="Text" value={cfg.content || ''} placeholder="Your headline…" onChange={(v) => setField({ content: v })} rows={3} />);
-      fields.push(<SelectField key="alignment" label="Alignment" value={cfg.alignment || 'center'} options={[['left','Left'],['center','Center'],['right','Right']]} onChange={(v) => setField({ alignment: v })} />);
-      fields.push(<TextField key="fontSize" label="Font size (px, optional)" value={String(cfg.fontSize ?? '')} placeholder="48" onChange={(v) => setField({ fontSize: v ? parseInt(v) : undefined })} />);
-      fields.push(<ColorField key="color" label="Text color" value={cfg.color || '#1e293b'} onChange={(v) => setField({ color: v })} />);
-      fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || 'transparent'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+      // Banner themes often use a subtitle too. Expose it for shape
+      // themes where the widget renders both lines.
+      if (isShapeTheme) {
+        fields.push(<TextField key="subtitle" label="Subtitle (optional)" value={cfg.subtitle || ''} placeholder="Today is going to be amazing" onChange={(v) => setField({ subtitle: v })} />);
+      }
+      if (!isShapeTheme) {
+        fields.push(<SelectField key="alignment" label="Alignment" value={cfg.alignment || 'center'} options={[['left','Left'],['center','Center'],['right','Right']]} onChange={(v) => setField({ alignment: v })} />);
+        fields.push(<TextField key="fontSize" label="Font size (px, optional)" value={String(cfg.fontSize ?? '')} placeholder="48" onChange={(v) => setField({ fontSize: v ? parseInt(v) : undefined })} />);
+        fields.push(<ColorField key="color" label="Text color" value={cfg.color || '#1e293b'} onChange={(v) => setField({ color: v })} />);
+        fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || 'transparent'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+      }
       if (zone.widgetType === 'RICH_TEXT') {
         fields.push(<TextAreaField key="html" label="HTML (advanced)" value={cfg.html || ''} placeholder="<p>Custom HTML…</p>" onChange={(v) => setField({ html: v })} rows={4} />);
       }
@@ -346,8 +390,10 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
     case 'ANNOUNCEMENT':
       fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Big news…" onChange={(v) => setField({ title: v })} />);
       fields.push(<TextAreaField key="message" label="Message" value={cfg.message || cfg.body || ''} placeholder="Details…" onChange={(v) => setField({ message: v, body: undefined })} rows={3} />);
-      fields.push(<TextField key="badge" label="Badge label" value={cfg.badgeLabel || ''} placeholder="📣 Today's Announcement" onChange={(v) => setField({ badgeLabel: v })} />);
-      fields.push(<SelectField key="priority" label="Priority" value={cfg.priority || 'normal'} options={[['low','Low'],['normal','Normal'],['high','High'],['critical','Critical']]} onChange={(v) => setField({ priority: v })} />);
+      if (!isShapeTheme) {
+        fields.push(<TextField key="badge" label="Badge label" value={cfg.badgeLabel || ''} placeholder="📣 Today's Announcement" onChange={(v) => setField({ badgeLabel: v })} />);
+        fields.push(<SelectField key="priority" label="Priority" value={cfg.priority || 'normal'} options={[['low','Low'],['normal','Normal'],['high','High'],['critical','Critical']]} onChange={(v) => setField({ priority: v })} />);
+      }
       break;
     case 'STAFF_SPOTLIGHT':
       fields.push(<TextField key="staffName" label="Name" value={cfg.staffName || ''} placeholder="Mrs. Johnson" onChange={(v) => setField({ staffName: v })} />);
@@ -384,9 +430,13 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
     case 'CLOCK':
       fields.push(<SelectField key="format" label="Format" value={cfg.format || '12h'} options={[['12h','12-hour'],['24h','24-hour']]} onChange={(v) => setField({ format: v })} />);
       fields.push(<TextField key="timezone" label="Timezone (optional)" value={cfg.timezone || ''} placeholder="America/Chicago" onChange={(v) => setField({ timezone: v })} />);
-      fields.push(<ToggleField key="showSeconds" label="Show seconds" value={!!cfg.showSeconds} onChange={(v) => setField({ showSeconds: v })} />);
-      fields.push(<ToggleField key="showDays" label="Show day & date" value={cfg.showDays !== false} onChange={(v) => setField({ showDays: v })} />);
-      fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || 'transparent'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+      if (!isShapeTheme) {
+        // showSeconds / showDays / bgColor are ignored by shape
+        // themes (clock face is baked into the SVG).
+        fields.push(<ToggleField key="showSeconds" label="Show seconds" value={!!cfg.showSeconds} onChange={(v) => setField({ showSeconds: v })} />);
+        fields.push(<ToggleField key="showDays" label="Show day & date" value={cfg.showDays !== false} onChange={(v) => setField({ showDays: v })} />);
+        fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || 'transparent'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+      }
       break;
     case 'WEATHER':
       fields.push(<TextField key="location" label="Location" value={cfg.location || ''} placeholder="Springfield" onChange={(v) => setField({ location: v })} />);

@@ -22,15 +22,20 @@ export class LicenseService {
 
   static readonly PILOT_SEAT_LIMIT = 3;
 
-  /** Effective limit + tier for a tenant, falling back to PILOT defaults. */
-  async getEffective(tenantId: string): Promise<{
+  /** Effective limit + tier for a tenant, falling back to PILOT defaults.
+   *  Optionally takes a Prisma transaction client — callers inside a
+   *  $transaction MUST pass it, otherwise they'll deadlock on the
+   *  connection pool (the transaction holds the only connection and
+   *  findUnique can't acquire a second one). */
+  async getEffective(tenantId: string, tx?: any): Promise<{
     tier: string;
     seatLimit: number;
     status: string;
     expiresAt: Date | null;
     isPilot: boolean;
   }> {
-    const lic = await this.prisma.client.license.findUnique({ where: { tenantId } });
+    const client = tx ?? this.prisma.client;
+    const lic = await client.license.findUnique({ where: { tenantId } });
     if (!lic) {
       return {
         tier: 'PILOT',
@@ -82,7 +87,7 @@ export class LicenseService {
    * against an admin-claimed Screen so the limit was checked at claim time.
    */
   async assertSeatAvailable(tenantId: string, tx?: any): Promise<void> {
-    const eff = await this.getEffective(tenantId);
+    const eff = await this.getEffective(tenantId, tx);
     if (eff.status !== 'ACTIVE') {
       throw new HttpException(
         {

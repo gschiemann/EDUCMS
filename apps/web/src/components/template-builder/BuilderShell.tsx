@@ -195,6 +195,12 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
   // (Keeping the constant + scaffolding in case we add a per-template opt-in later.)
 
   const handleBack = useCallback(async () => {
+    // System presets open in draft mode — nothing is persisted to the
+    // preset itself, so "unsaved changes" is misleading (there's
+    // nothing to save, only Save-as-copy). Skip the prompt for system
+    // presets so Back exits silently. For custom templates, the prompt
+    // still protects real in-progress edits.
+    if (template.isSystem) { onBack(); return; }
     if (isDirty) {
       const ok = await appConfirm({
         title: 'Unsaved changes',
@@ -206,7 +212,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       if (!ok) return;
     }
     onBack();
-  }, [isDirty, onBack]);
+  }, [isDirty, onBack, template.isSystem]);
 
   const handleDiscard = useCallback(async () => {
     if (template.isSystem) { onBack(); return; } // system presets aren't deletable

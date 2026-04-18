@@ -371,6 +371,11 @@ import {
   BulletinBoardCountdown, BulletinBoardAnnouncement, BulletinBoardCalendar,
   BulletinBoardStaffSpotlight, BulletinBoardImageCarousel, BulletinBoardTicker,
 } from './themes/bulletin-board';
+import {
+  StorybookLogo, StorybookText, StorybookClock, StorybookWeather,
+  StorybookCountdown, StorybookAnnouncement, StorybookCalendar,
+  StorybookStaffSpotlight, StorybookImageCarousel, StorybookTicker,
+} from './themes/storybook';
 
 // ─── RAINBOW RIBBON (Elementary, candy-pop party) ──────────────────────
 registerVariant({ id: 'clock-rainbow-ribbon',         widgetType: 'CLOCK',           name: 'Rainbow Speech Bubble', description: 'Speech-bubble clock with rainbow strip',     category: 'ELEMENTARY', render: RainbowRibbonClock,          defaultConfig: { theme: 'rainbow-ribbon', format: '12h' } });
@@ -407,4 +412,170 @@ registerVariant({ id: 'countdown-bulletin-board',     widgetType: 'COUNTDOWN',  
 registerVariant({ id: 'logo-bulletin-board',          widgetType: 'LOGO',            name: 'Paper Crest',            description: 'Paper school crest with red pushpin',        category: 'ELEMENTARY', render: BulletinBoardLogo,           defaultConfig: { theme: 'bulletin-board' } });
 registerVariant({ id: 'ticker-bulletin-board',        widgetType: 'TICKER',          name: 'Paper Strip Banner',     description: 'Scalloped paper strip taped to the board',   category: 'ELEMENTARY', render: BulletinBoardTicker,         defaultConfig: { theme: 'bulletin-board' } });
 registerVariant({ id: 'image-bulletin-board',         widgetType: 'IMAGE_CAROUSEL',  name: 'Pinned Photo',           description: 'Photo pinned with four colored pushpins',    category: 'ELEMENTARY', render: BulletinBoardImageCarousel,  defaultConfig: { theme: 'bulletin-board' } });
+
+// ─── STORYBOOK (Elementary, picture-book / library aesthetic) ──────────
+registerVariant({ id: 'clock-storybook',              widgetType: 'CLOCK',           name: 'Pocket Watch',           description: 'Gold pocket-watch clock with chain + live hands', category: 'ELEMENTARY', render: StorybookClock,              defaultConfig: { theme: 'storybook', format: '12h' } });
+registerVariant({ id: 'text-storybook',               widgetType: 'TEXT',            name: 'Illuminated Title',      description: 'Gold drop-cap page title with swash underline',  category: 'ELEMENTARY', render: StorybookText,               defaultConfig: { theme: 'storybook' } });
+registerVariant({ id: 'weather-storybook',            widgetType: 'WEATHER',         name: 'Parchment Weather',      description: 'Ink + watercolor weather sketch on parchment',   category: 'ELEMENTARY', render: StorybookWeather,            defaultConfig: { theme: 'storybook', location: 'Springfield', units: 'imperial' } });
+registerVariant({ id: 'announcement-storybook',       widgetType: 'ANNOUNCEMENT',    name: 'Open Book Page',         description: 'Ruled book-page spread with fleur-de-lis',       category: 'ELEMENTARY', render: StorybookAnnouncement,       defaultConfig: { theme: 'storybook' } });
+registerVariant({ id: 'calendar-storybook',           widgetType: 'CALENDAR',        name: 'Chapter List',           description: 'Library-style chapter heading list',             category: 'ELEMENTARY', render: StorybookCalendar,           defaultConfig: { theme: 'storybook' } });
+registerVariant({ id: 'staff-storybook',              widgetType: 'STAFF_SPOTLIGHT', name: 'Pop-up Book Card',       description: 'Polaroid rising from a book page',               category: 'ELEMENTARY', render: StorybookStaffSpotlight,     defaultConfig: { theme: 'storybook' } });
+registerVariant({ id: 'countdown-storybook',          widgetType: 'COUNTDOWN',       name: 'Bookmark Ribbon',        description: 'Red library-ribbon bookmark with tails',         category: 'ELEMENTARY', render: StorybookCountdown,          defaultConfig: { theme: 'storybook', label: 'Event in' } });
+registerVariant({ id: 'logo-storybook',               widgetType: 'LOGO',            name: 'Illuminated Crest',      description: 'Scalloped gold medallion with books + quill',    category: 'ELEMENTARY', render: StorybookLogo,               defaultConfig: { theme: 'storybook' } });
+registerVariant({ id: 'ticker-storybook',             widgetType: 'TICKER',          name: 'Parchment Banner',       description: 'Swallow-tail parchment banner with rope tassels',category: 'ELEMENTARY', render: StorybookTicker,             defaultConfig: { theme: 'storybook' } });
+registerVariant({ id: 'image-storybook',              widgetType: 'IMAGE_CAROUSEL',  name: 'Ornate Frame',           description: 'Illustrated plate with gold oval frame',         category: 'ELEMENTARY', render: StorybookImageCarousel,      defaultConfig: { theme: 'storybook' } });
+
+// ─── SCRAPBOOK (Elementary, teacher's personal scrapbook) ──────────────
+import {
+  ScrapbookLogo, ScrapbookText, ScrapbookClock, ScrapbookWeather,
+  ScrapbookCountdown, ScrapbookAnnouncement, ScrapbookCalendar,
+  ScrapbookStaffSpotlight, ScrapbookImageCarousel, ScrapbookTicker,
+} from './themes/scrapbook';
+registerVariant({ id: 'clock-scrapbook',              widgetType: 'CLOCK',           name: 'Scrapbook Polaroid',     description: 'Polaroid-framed wall clock with live analog hands',  category: 'ELEMENTARY', render: ScrapbookClock,              defaultConfig: { theme: 'scrapbook', format: '12h' } });
+registerVariant({ id: 'text-scrapbook',               widgetType: 'TEXT',            name: 'Washi Tape Header',      description: 'Headline on a torn paper strip with washi tape',     category: 'ELEMENTARY', render: ScrapbookText,               defaultConfig: { theme: 'scrapbook' } });
+registerVariant({ id: 'weather-scrapbook',            widgetType: 'WEATHER',         name: 'Parchment Card',         description: 'Parchment card with 6 condition doodle illustrations',category: 'ELEMENTARY', render: ScrapbookWeather,            defaultConfig: { theme: 'scrapbook', location: 'Springfield', units: 'imperial' } });
+registerVariant({ id: 'announcement-scrapbook',       widgetType: 'ANNOUNCEMENT',    name: 'Notebook Page',          description: 'Ruled notebook page with spiral binding + tape',     category: 'ELEMENTARY', render: ScrapbookAnnouncement,       defaultConfig: { theme: 'scrapbook' } });
+registerVariant({ id: 'calendar-scrapbook',           widgetType: 'CALENDAR',        name: 'Index Card Stack',       description: 'Three overlapping index cards at slight rotations',  category: 'ELEMENTARY', render: ScrapbookCalendar,           defaultConfig: { theme: 'scrapbook' } });
+registerVariant({ id: 'staff-scrapbook',              widgetType: 'STAFF_SPOTLIGHT', name: 'Classic Polaroid',       description: 'Polaroid photo + handwritten caption below',         category: 'ELEMENTARY', render: ScrapbookStaffSpotlight,     defaultConfig: { theme: 'scrapbook' } });
+registerVariant({ id: 'countdown-scrapbook',          widgetType: 'COUNTDOWN',       name: 'Ticket Stub',            description: 'Ticket stub with big day count + torn edge',         category: 'ELEMENTARY', render: ScrapbookCountdown,          defaultConfig: { theme: 'scrapbook', label: 'Days Until' } });
+registerVariant({ id: 'logo-scrapbook',               widgetType: 'LOGO',            name: 'Paper Crest',            description: 'Round paper crest with star stickers + polaroid tape',category: 'ELEMENTARY', render: ScrapbookLogo,               defaultConfig: { theme: 'scrapbook' } });
+registerVariant({ id: 'ticker-scrapbook',             widgetType: 'TICKER',          name: 'Paper Strip',            description: 'Yellow paper strip with a paperclip at each end',    category: 'ELEMENTARY', render: ScrapbookTicker,             defaultConfig: { theme: 'scrapbook' } });
+registerVariant({ id: 'image-scrapbook',              widgetType: 'IMAGE_CAROUSEL',  name: 'Scrapbook Polaroid',     description: 'Polaroid frame with four corner washi tapes',        category: 'ELEMENTARY', render: ScrapbookImageCarousel,      defaultConfig: { theme: 'scrapbook' } });
+
 registerVariant({ id: 'bell-gym',                widgetType: 'BELL_SCHEDULE', name: 'Gym',      description: 'Pep-style bell schedule',           category: 'ATHLETICS', render: GymPEBellSchedule });
+
+// ─── LOCKER HALLWAY (Middle school lobby, brushed-steel locker aesthetic) ──
+import {
+  LockerHallwayLogo, LockerHallwayText, LockerHallwayClock, LockerHallwayWeather,
+  LockerHallwayCountdown, LockerHallwayAnnouncement, LockerHallwayCalendar,
+  LockerHallwayStaffSpotlight, LockerHallwayImageCarousel, LockerHallwayTicker,
+} from './themes/locker-hallway';
+// Side-effect import triggers registerTheme() for the background + theme picker
+import './themes/locker-hallway/index';
+registerVariant({ id: 'clock-locker-hallway',         widgetType: 'CLOCK',           name: 'Combination Lock',       description: 'Combination-dial clock with live analog hands',       category: 'HALLWAY',    render: LockerHallwayClock,          defaultConfig: { theme: 'locker-hallway', format: '12h' } });
+registerVariant({ id: 'text-locker-hallway',          widgetType: 'TEXT',            name: 'Magnetic Tiles',         description: 'Magnetic letter tiles on a brushed-steel locker strip',category: 'HALLWAY',    render: LockerHallwayText,           defaultConfig: { theme: 'locker-hallway' } });
+registerVariant({ id: 'weather-locker-hallway',       widgetType: 'WEATHER',         name: 'Locker Door Forecast',   description: 'Forecast taped inside a locker door with magnet icons', category: 'HALLWAY',   render: LockerHallwayWeather,        defaultConfig: { theme: 'locker-hallway', location: 'Springfield', units: 'imperial' } });
+registerVariant({ id: 'announcement-locker-hallway',  widgetType: 'ANNOUNCEMENT',    name: 'Notebook Flyer',         description: 'Notebook paper taped to locker with corner magnets',  category: 'HALLWAY',    render: LockerHallwayAnnouncement,   defaultConfig: { theme: 'locker-hallway' } });
+registerVariant({ id: 'calendar-locker-hallway',      widgetType: 'CALENDAR',        name: 'Hall Pass Cards',        description: 'Hall-pass–style cards with colored header bars',      category: 'HALLWAY',    render: LockerHallwayCalendar,       defaultConfig: { theme: 'locker-hallway' } });
+registerVariant({ id: 'staff-locker-hallway',         widgetType: 'STAFF_SPOTLIGHT', name: 'Magnet Polaroid',        description: 'Polaroid held to locker door by 4 colored magnets',  category: 'HALLWAY',    render: LockerHallwayStaffSpotlight, defaultConfig: { theme: 'locker-hallway' } });
+registerVariant({ id: 'countdown-locker-hallway',     widgetType: 'COUNTDOWN',       name: 'Gym Pennant',            description: 'Gym-class pennant stuck to locker with red magnets',  category: 'HALLWAY',    render: LockerHallwayCountdown,      defaultConfig: { theme: 'locker-hallway', label: 'Days Left' } });
+registerVariant({ id: 'logo-locker-hallway',          widgetType: 'LOGO',            name: 'Magnetic Badge',         description: 'Circular magnetic school badge on a locker door',     category: 'HALLWAY',    render: LockerHallwayLogo,           defaultConfig: { theme: 'locker-hallway' } });
+registerVariant({ id: 'ticker-locker-hallway',        widgetType: 'TICKER',          name: 'Magnetic Strip',         description: 'Bold condensed-caps text on a long magnetic strip',   category: 'HALLWAY',    render: LockerHallwayTicker,         defaultConfig: { theme: 'locker-hallway' } });
+registerVariant({ id: 'image-locker-hallway',         widgetType: 'IMAGE_CAROUSEL',  name: 'Locker Magnets Frame',   description: 'Photo held to the locker plate by 4 colored magnets', category: 'HALLWAY',    render: LockerHallwayImageCarousel,  defaultConfig: { theme: 'locker-hallway' } });
+
+// ─── NEWS STUDIO PRO (High school premium broadcast aesthetic) ─────────────
+import {
+  NewsStudioProLogo, NewsStudioProText, NewsStudioProClock, NewsStudioProWeather,
+  NewsStudioProCountdown, NewsStudioProAnnouncement, NewsStudioProCalendar,
+  NewsStudioProStaffSpotlight, NewsStudioProImageCarousel, NewsStudioProTicker,
+} from './themes/news-studio-pro';
+// Side-effect import triggers registerTheme() for the background + theme picker
+import './themes/news-studio-pro/index';
+registerVariant({ id: 'clock-news-studio-pro',         widgetType: 'CLOCK',           name: 'Broadcast Clock',        description: 'Dark glass panel with blue glow, ON AIR dot + live analog hands',    category: 'BROADCAST', render: NewsStudioProClock,          defaultConfig: { theme: 'news-studio-pro', format: '12h' } });
+registerVariant({ id: 'text-news-studio-pro',          widgetType: 'TEXT',            name: 'Glass Headline Card',    description: 'Glass-panel headline with blue left accent strip + italic serif sub', category: 'BROADCAST', render: NewsStudioProText,           defaultConfig: { theme: 'news-studio-pro' } });
+registerVariant({ id: 'weather-news-studio-pro',       widgetType: 'WEATHER',         name: 'Weather Center',         description: '"WEATHER CENTER" glass panel with condition icon + 5-day strip',     category: 'BROADCAST', render: NewsStudioProWeather,        defaultConfig: { theme: 'news-studio-pro', location: 'Springfield', units: 'imperial' } });
+registerVariant({ id: 'announcement-news-studio-pro',  widgetType: 'ANNOUNCEMENT',    name: 'Lower-Third Chyron',     description: 'Hot-red category block + dark glass body — broadcast lower-third',   category: 'BROADCAST', render: NewsStudioProAnnouncement,   defaultConfig: { theme: 'news-studio-pro' } });
+registerVariant({ id: 'calendar-news-studio-pro',      widgetType: 'CALENDAR',        name: 'Up Next Segments',       description: '"UP NEXT" event tiles in glass panels with premium typography',      category: 'BROADCAST', render: NewsStudioProCalendar,       defaultConfig: { theme: 'news-studio-pro' } });
+registerVariant({ id: 'staff-news-studio-pro',         widgetType: 'STAFF_SPOTLIGHT', name: 'Anchor Intro Card',      description: 'Portrait frame + glass nameplate with gold accent — anchor intro',   category: 'BROADCAST', render: NewsStudioProStaffSpotlight, defaultConfig: { theme: 'news-studio-pro' } });
+registerVariant({ id: 'countdown-news-studio-pro',     widgetType: 'COUNTDOWN',       name: 'T-Minus Banner',         description: 'Breaking-news "T-MINUS" glass banner with blue glow + live counter', category: 'BROADCAST', render: NewsStudioProCountdown,      defaultConfig: { theme: 'news-studio-pro', label: 'Until Game Day' } });
+registerVariant({ id: 'logo-news-studio-pro',          widgetType: 'LOGO',            name: 'Station ID Bug',         description: 'Sharp rectangular station-ID bug with school initials + blue underline', category: 'BROADCAST', render: NewsStudioProLogo,       defaultConfig: { theme: 'news-studio-pro' } });
+registerVariant({ id: 'ticker-news-studio-pro',        widgetType: 'TICKER',          name: 'Live Ticker',            description: 'Hot-red LIVE block + glass body + italic serif scroll',              category: 'BROADCAST', render: NewsStudioProTicker,         defaultConfig: { theme: 'news-studio-pro' } });
+registerVariant({ id: 'image-news-studio-pro',         widgetType: 'IMAGE_CAROUSEL',  name: 'Broadcast Frame',        description: 'Widescreen 16:9 bezel with blue glow + corner network bug',          category: 'BROADCAST', render: NewsStudioProImageCarousel,  defaultConfig: { theme: 'news-studio-pro' } });
+
+// ─── AUTO-GENERATED: 8 shape-based themes (middle + high school) ───
+import { SpiritRallyLogo, SpiritRallyText, SpiritRallyClock, SpiritRallyWeather, SpiritRallyCountdown, SpiritRallyAnnouncement, SpiritRallyCalendar, SpiritRallyStaffSpotlight, SpiritRallyImageCarousel, SpiritRallyTicker } from './themes/spirit-rally';
+registerVariant({ id: 'clock-spirit-rally', widgetType: 'CLOCK', name: 'Spirit Rally', description: 'Spirit Rally themed Clock', category: 'MIDDLE', render: SpiritRallyClock, defaultConfig: { theme: 'spirit-rally' } });
+registerVariant({ id: 'text-spirit-rally', widgetType: 'TEXT', name: 'Spirit Rally', description: 'Spirit Rally themed Text', category: 'MIDDLE', render: SpiritRallyText, defaultConfig: { theme: 'spirit-rally' } });
+registerVariant({ id: 'weather-spirit-rally', widgetType: 'WEATHER', name: 'Spirit Rally', description: 'Spirit Rally themed Weather', category: 'MIDDLE', render: SpiritRallyWeather, defaultConfig: { theme: 'spirit-rally' } });
+registerVariant({ id: 'announcement-spirit-rally', widgetType: 'ANNOUNCEMENT', name: 'Spirit Rally', description: 'Spirit Rally themed Announcement', category: 'MIDDLE', render: SpiritRallyAnnouncement, defaultConfig: { theme: 'spirit-rally' } });
+registerVariant({ id: 'calendar-spirit-rally', widgetType: 'CALENDAR', name: 'Spirit Rally', description: 'Spirit Rally themed Calendar', category: 'MIDDLE', render: SpiritRallyCalendar, defaultConfig: { theme: 'spirit-rally' } });
+registerVariant({ id: 'staff_spotlight-spirit-rally', widgetType: 'STAFF_SPOTLIGHT', name: 'Spirit Rally', description: 'Spirit Rally themed StaffSpotlight', category: 'MIDDLE', render: SpiritRallyStaffSpotlight, defaultConfig: { theme: 'spirit-rally' } });
+registerVariant({ id: 'countdown-spirit-rally', widgetType: 'COUNTDOWN', name: 'Spirit Rally', description: 'Spirit Rally themed Countdown', category: 'MIDDLE', render: SpiritRallyCountdown, defaultConfig: { theme: 'spirit-rally' } });
+registerVariant({ id: 'logo-spirit-rally', widgetType: 'LOGO', name: 'Spirit Rally', description: 'Spirit Rally themed Logo', category: 'MIDDLE', render: SpiritRallyLogo, defaultConfig: { theme: 'spirit-rally' } });
+registerVariant({ id: 'ticker-spirit-rally', widgetType: 'TICKER', name: 'Spirit Rally', description: 'Spirit Rally themed Ticker', category: 'MIDDLE', render: SpiritRallyTicker, defaultConfig: { theme: 'spirit-rally' } });
+registerVariant({ id: 'image_carousel-spirit-rally', widgetType: 'IMAGE_CAROUSEL', name: 'Spirit Rally', description: 'Spirit Rally themed ImageCarousel', category: 'MIDDLE', render: SpiritRallyImageCarousel, defaultConfig: { theme: 'spirit-rally' } });
+
+import { StemLabLogo, StemLabText, StemLabClock, StemLabWeather, StemLabCountdown, StemLabAnnouncement, StemLabCalendar, StemLabStaffSpotlight, StemLabImageCarousel, StemLabTicker } from './themes/stem-lab';
+registerVariant({ id: 'clock-stem-lab', widgetType: 'CLOCK', name: 'STEM Lab', description: 'STEM Lab themed Clock', category: 'MIDDLE', render: StemLabClock, defaultConfig: { theme: 'stem-lab' } });
+registerVariant({ id: 'text-stem-lab', widgetType: 'TEXT', name: 'STEM Lab', description: 'STEM Lab themed Text', category: 'MIDDLE', render: StemLabText, defaultConfig: { theme: 'stem-lab' } });
+registerVariant({ id: 'weather-stem-lab', widgetType: 'WEATHER', name: 'STEM Lab', description: 'STEM Lab themed Weather', category: 'MIDDLE', render: StemLabWeather, defaultConfig: { theme: 'stem-lab' } });
+registerVariant({ id: 'announcement-stem-lab', widgetType: 'ANNOUNCEMENT', name: 'STEM Lab', description: 'STEM Lab themed Announcement', category: 'MIDDLE', render: StemLabAnnouncement, defaultConfig: { theme: 'stem-lab' } });
+registerVariant({ id: 'calendar-stem-lab', widgetType: 'CALENDAR', name: 'STEM Lab', description: 'STEM Lab themed Calendar', category: 'MIDDLE', render: StemLabCalendar, defaultConfig: { theme: 'stem-lab' } });
+registerVariant({ id: 'staff_spotlight-stem-lab', widgetType: 'STAFF_SPOTLIGHT', name: 'STEM Lab', description: 'STEM Lab themed StaffSpotlight', category: 'MIDDLE', render: StemLabStaffSpotlight, defaultConfig: { theme: 'stem-lab' } });
+registerVariant({ id: 'countdown-stem-lab', widgetType: 'COUNTDOWN', name: 'STEM Lab', description: 'STEM Lab themed Countdown', category: 'MIDDLE', render: StemLabCountdown, defaultConfig: { theme: 'stem-lab' } });
+registerVariant({ id: 'logo-stem-lab', widgetType: 'LOGO', name: 'STEM Lab', description: 'STEM Lab themed Logo', category: 'MIDDLE', render: StemLabLogo, defaultConfig: { theme: 'stem-lab' } });
+registerVariant({ id: 'ticker-stem-lab', widgetType: 'TICKER', name: 'STEM Lab', description: 'STEM Lab themed Ticker', category: 'MIDDLE', render: StemLabTicker, defaultConfig: { theme: 'stem-lab' } });
+registerVariant({ id: 'image_carousel-stem-lab', widgetType: 'IMAGE_CAROUSEL', name: 'STEM Lab', description: 'STEM Lab themed ImageCarousel', category: 'MIDDLE', render: StemLabImageCarousel, defaultConfig: { theme: 'stem-lab' } });
+
+import { MorningNewsLogo, MorningNewsText, MorningNewsClock, MorningNewsWeather, MorningNewsCountdown, MorningNewsAnnouncement, MorningNewsCalendar, MorningNewsStaffSpotlight, MorningNewsImageCarousel, MorningNewsTicker } from './themes/morning-news';
+registerVariant({ id: 'clock-morning-news', widgetType: 'CLOCK', name: 'Morning News', description: 'Morning News themed Clock', category: 'MIDDLE', render: MorningNewsClock, defaultConfig: { theme: 'morning-news' } });
+registerVariant({ id: 'text-morning-news', widgetType: 'TEXT', name: 'Morning News', description: 'Morning News themed Text', category: 'MIDDLE', render: MorningNewsText, defaultConfig: { theme: 'morning-news' } });
+registerVariant({ id: 'weather-morning-news', widgetType: 'WEATHER', name: 'Morning News', description: 'Morning News themed Weather', category: 'MIDDLE', render: MorningNewsWeather, defaultConfig: { theme: 'morning-news' } });
+registerVariant({ id: 'announcement-morning-news', widgetType: 'ANNOUNCEMENT', name: 'Morning News', description: 'Morning News themed Announcement', category: 'MIDDLE', render: MorningNewsAnnouncement, defaultConfig: { theme: 'morning-news' } });
+registerVariant({ id: 'calendar-morning-news', widgetType: 'CALENDAR', name: 'Morning News', description: 'Morning News themed Calendar', category: 'MIDDLE', render: MorningNewsCalendar, defaultConfig: { theme: 'morning-news' } });
+registerVariant({ id: 'staff_spotlight-morning-news', widgetType: 'STAFF_SPOTLIGHT', name: 'Morning News', description: 'Morning News themed StaffSpotlight', category: 'MIDDLE', render: MorningNewsStaffSpotlight, defaultConfig: { theme: 'morning-news' } });
+registerVariant({ id: 'countdown-morning-news', widgetType: 'COUNTDOWN', name: 'Morning News', description: 'Morning News themed Countdown', category: 'MIDDLE', render: MorningNewsCountdown, defaultConfig: { theme: 'morning-news' } });
+registerVariant({ id: 'logo-morning-news', widgetType: 'LOGO', name: 'Morning News', description: 'Morning News themed Logo', category: 'MIDDLE', render: MorningNewsLogo, defaultConfig: { theme: 'morning-news' } });
+registerVariant({ id: 'ticker-morning-news', widgetType: 'TICKER', name: 'Morning News', description: 'Morning News themed Ticker', category: 'MIDDLE', render: MorningNewsTicker, defaultConfig: { theme: 'morning-news' } });
+registerVariant({ id: 'image_carousel-morning-news', widgetType: 'IMAGE_CAROUSEL', name: 'Morning News', description: 'Morning News themed ImageCarousel', category: 'MIDDLE', render: MorningNewsImageCarousel, defaultConfig: { theme: 'morning-news' } });
+
+import { ArtStudioLogo, ArtStudioText, ArtStudioClock, ArtStudioWeather, ArtStudioCountdown, ArtStudioAnnouncement, ArtStudioCalendar, ArtStudioStaffSpotlight, ArtStudioImageCarousel, ArtStudioTicker } from './themes/art-studio';
+registerVariant({ id: 'clock-art-studio', widgetType: 'CLOCK', name: 'Art Studio', description: 'Art Studio themed Clock', category: 'MIDDLE', render: ArtStudioClock, defaultConfig: { theme: 'art-studio' } });
+registerVariant({ id: 'text-art-studio', widgetType: 'TEXT', name: 'Art Studio', description: 'Art Studio themed Text', category: 'MIDDLE', render: ArtStudioText, defaultConfig: { theme: 'art-studio' } });
+registerVariant({ id: 'weather-art-studio', widgetType: 'WEATHER', name: 'Art Studio', description: 'Art Studio themed Weather', category: 'MIDDLE', render: ArtStudioWeather, defaultConfig: { theme: 'art-studio' } });
+registerVariant({ id: 'announcement-art-studio', widgetType: 'ANNOUNCEMENT', name: 'Art Studio', description: 'Art Studio themed Announcement', category: 'MIDDLE', render: ArtStudioAnnouncement, defaultConfig: { theme: 'art-studio' } });
+registerVariant({ id: 'calendar-art-studio', widgetType: 'CALENDAR', name: 'Art Studio', description: 'Art Studio themed Calendar', category: 'MIDDLE', render: ArtStudioCalendar, defaultConfig: { theme: 'art-studio' } });
+registerVariant({ id: 'staff_spotlight-art-studio', widgetType: 'STAFF_SPOTLIGHT', name: 'Art Studio', description: 'Art Studio themed StaffSpotlight', category: 'MIDDLE', render: ArtStudioStaffSpotlight, defaultConfig: { theme: 'art-studio' } });
+registerVariant({ id: 'countdown-art-studio', widgetType: 'COUNTDOWN', name: 'Art Studio', description: 'Art Studio themed Countdown', category: 'MIDDLE', render: ArtStudioCountdown, defaultConfig: { theme: 'art-studio' } });
+registerVariant({ id: 'logo-art-studio', widgetType: 'LOGO', name: 'Art Studio', description: 'Art Studio themed Logo', category: 'MIDDLE', render: ArtStudioLogo, defaultConfig: { theme: 'art-studio' } });
+registerVariant({ id: 'ticker-art-studio', widgetType: 'TICKER', name: 'Art Studio', description: 'Art Studio themed Ticker', category: 'MIDDLE', render: ArtStudioTicker, defaultConfig: { theme: 'art-studio' } });
+registerVariant({ id: 'image_carousel-art-studio', widgetType: 'IMAGE_CAROUSEL', name: 'Art Studio', description: 'Art Studio themed ImageCarousel', category: 'MIDDLE', render: ArtStudioImageCarousel, defaultConfig: { theme: 'art-studio' } });
+
+import { VarsityAthleticLogo, VarsityAthleticText, VarsityAthleticClock, VarsityAthleticWeather, VarsityAthleticCountdown, VarsityAthleticAnnouncement, VarsityAthleticCalendar, VarsityAthleticStaffSpotlight, VarsityAthleticImageCarousel, VarsityAthleticTicker } from './themes/varsity-athletic';
+registerVariant({ id: 'clock-varsity-athletic', widgetType: 'CLOCK', name: 'Varsity Athletic', description: 'Varsity Athletic themed Clock', category: 'HIGH', render: VarsityAthleticClock, defaultConfig: { theme: 'varsity-athletic' } });
+registerVariant({ id: 'text-varsity-athletic', widgetType: 'TEXT', name: 'Varsity Athletic', description: 'Varsity Athletic themed Text', category: 'HIGH', render: VarsityAthleticText, defaultConfig: { theme: 'varsity-athletic' } });
+registerVariant({ id: 'weather-varsity-athletic', widgetType: 'WEATHER', name: 'Varsity Athletic', description: 'Varsity Athletic themed Weather', category: 'HIGH', render: VarsityAthleticWeather, defaultConfig: { theme: 'varsity-athletic' } });
+registerVariant({ id: 'announcement-varsity-athletic', widgetType: 'ANNOUNCEMENT', name: 'Varsity Athletic', description: 'Varsity Athletic themed Announcement', category: 'HIGH', render: VarsityAthleticAnnouncement, defaultConfig: { theme: 'varsity-athletic' } });
+registerVariant({ id: 'calendar-varsity-athletic', widgetType: 'CALENDAR', name: 'Varsity Athletic', description: 'Varsity Athletic themed Calendar', category: 'HIGH', render: VarsityAthleticCalendar, defaultConfig: { theme: 'varsity-athletic' } });
+registerVariant({ id: 'staff_spotlight-varsity-athletic', widgetType: 'STAFF_SPOTLIGHT', name: 'Varsity Athletic', description: 'Varsity Athletic themed StaffSpotlight', category: 'HIGH', render: VarsityAthleticStaffSpotlight, defaultConfig: { theme: 'varsity-athletic' } });
+registerVariant({ id: 'countdown-varsity-athletic', widgetType: 'COUNTDOWN', name: 'Varsity Athletic', description: 'Varsity Athletic themed Countdown', category: 'HIGH', render: VarsityAthleticCountdown, defaultConfig: { theme: 'varsity-athletic' } });
+registerVariant({ id: 'logo-varsity-athletic', widgetType: 'LOGO', name: 'Varsity Athletic', description: 'Varsity Athletic themed Logo', category: 'HIGH', render: VarsityAthleticLogo, defaultConfig: { theme: 'varsity-athletic' } });
+registerVariant({ id: 'ticker-varsity-athletic', widgetType: 'TICKER', name: 'Varsity Athletic', description: 'Varsity Athletic themed Ticker', category: 'HIGH', render: VarsityAthleticTicker, defaultConfig: { theme: 'varsity-athletic' } });
+registerVariant({ id: 'image_carousel-varsity-athletic', widgetType: 'IMAGE_CAROUSEL', name: 'Varsity Athletic', description: 'Varsity Athletic themed ImageCarousel', category: 'HIGH', render: VarsityAthleticImageCarousel, defaultConfig: { theme: 'varsity-athletic' } });
+
+import { SeniorCountdownLogo, SeniorCountdownText, SeniorCountdownClock, SeniorCountdownWeather, SeniorCountdownCountdown, SeniorCountdownAnnouncement, SeniorCountdownCalendar, SeniorCountdownStaffSpotlight, SeniorCountdownImageCarousel, SeniorCountdownTicker } from './themes/senior-countdown';
+registerVariant({ id: 'clock-senior-countdown', widgetType: 'CLOCK', name: 'Senior Countdown', description: 'Senior Countdown themed Clock', category: 'HIGH', render: SeniorCountdownClock, defaultConfig: { theme: 'senior-countdown' } });
+registerVariant({ id: 'text-senior-countdown', widgetType: 'TEXT', name: 'Senior Countdown', description: 'Senior Countdown themed Text', category: 'HIGH', render: SeniorCountdownText, defaultConfig: { theme: 'senior-countdown' } });
+registerVariant({ id: 'weather-senior-countdown', widgetType: 'WEATHER', name: 'Senior Countdown', description: 'Senior Countdown themed Weather', category: 'HIGH', render: SeniorCountdownWeather, defaultConfig: { theme: 'senior-countdown' } });
+registerVariant({ id: 'announcement-senior-countdown', widgetType: 'ANNOUNCEMENT', name: 'Senior Countdown', description: 'Senior Countdown themed Announcement', category: 'HIGH', render: SeniorCountdownAnnouncement, defaultConfig: { theme: 'senior-countdown' } });
+registerVariant({ id: 'calendar-senior-countdown', widgetType: 'CALENDAR', name: 'Senior Countdown', description: 'Senior Countdown themed Calendar', category: 'HIGH', render: SeniorCountdownCalendar, defaultConfig: { theme: 'senior-countdown' } });
+registerVariant({ id: 'staff_spotlight-senior-countdown', widgetType: 'STAFF_SPOTLIGHT', name: 'Senior Countdown', description: 'Senior Countdown themed StaffSpotlight', category: 'HIGH', render: SeniorCountdownStaffSpotlight, defaultConfig: { theme: 'senior-countdown' } });
+registerVariant({ id: 'countdown-senior-countdown', widgetType: 'COUNTDOWN', name: 'Senior Countdown', description: 'Senior Countdown themed Countdown', category: 'HIGH', render: SeniorCountdownCountdown, defaultConfig: { theme: 'senior-countdown' } });
+registerVariant({ id: 'logo-senior-countdown', widgetType: 'LOGO', name: 'Senior Countdown', description: 'Senior Countdown themed Logo', category: 'HIGH', render: SeniorCountdownLogo, defaultConfig: { theme: 'senior-countdown' } });
+registerVariant({ id: 'ticker-senior-countdown', widgetType: 'TICKER', name: 'Senior Countdown', description: 'Senior Countdown themed Ticker', category: 'HIGH', render: SeniorCountdownTicker, defaultConfig: { theme: 'senior-countdown' } });
+registerVariant({ id: 'image_carousel-senior-countdown', widgetType: 'IMAGE_CAROUSEL', name: 'Senior Countdown', description: 'Senior Countdown themed ImageCarousel', category: 'HIGH', render: SeniorCountdownImageCarousel, defaultConfig: { theme: 'senior-countdown' } });
+
+import { CampusQuadLogo, CampusQuadText, CampusQuadClock, CampusQuadWeather, CampusQuadCountdown, CampusQuadAnnouncement, CampusQuadCalendar, CampusQuadStaffSpotlight, CampusQuadImageCarousel, CampusQuadTicker } from './themes/campus-quad';
+registerVariant({ id: 'clock-campus-quad', widgetType: 'CLOCK', name: 'Campus Quad', description: 'Campus Quad themed Clock', category: 'HIGH', render: CampusQuadClock, defaultConfig: { theme: 'campus-quad' } });
+registerVariant({ id: 'text-campus-quad', widgetType: 'TEXT', name: 'Campus Quad', description: 'Campus Quad themed Text', category: 'HIGH', render: CampusQuadText, defaultConfig: { theme: 'campus-quad' } });
+registerVariant({ id: 'weather-campus-quad', widgetType: 'WEATHER', name: 'Campus Quad', description: 'Campus Quad themed Weather', category: 'HIGH', render: CampusQuadWeather, defaultConfig: { theme: 'campus-quad' } });
+registerVariant({ id: 'announcement-campus-quad', widgetType: 'ANNOUNCEMENT', name: 'Campus Quad', description: 'Campus Quad themed Announcement', category: 'HIGH', render: CampusQuadAnnouncement, defaultConfig: { theme: 'campus-quad' } });
+registerVariant({ id: 'calendar-campus-quad', widgetType: 'CALENDAR', name: 'Campus Quad', description: 'Campus Quad themed Calendar', category: 'HIGH', render: CampusQuadCalendar, defaultConfig: { theme: 'campus-quad' } });
+registerVariant({ id: 'staff_spotlight-campus-quad', widgetType: 'STAFF_SPOTLIGHT', name: 'Campus Quad', description: 'Campus Quad themed StaffSpotlight', category: 'HIGH', render: CampusQuadStaffSpotlight, defaultConfig: { theme: 'campus-quad' } });
+registerVariant({ id: 'countdown-campus-quad', widgetType: 'COUNTDOWN', name: 'Campus Quad', description: 'Campus Quad themed Countdown', category: 'HIGH', render: CampusQuadCountdown, defaultConfig: { theme: 'campus-quad' } });
+registerVariant({ id: 'logo-campus-quad', widgetType: 'LOGO', name: 'Campus Quad', description: 'Campus Quad themed Logo', category: 'HIGH', render: CampusQuadLogo, defaultConfig: { theme: 'campus-quad' } });
+registerVariant({ id: 'ticker-campus-quad', widgetType: 'TICKER', name: 'Campus Quad', description: 'Campus Quad themed Ticker', category: 'HIGH', render: CampusQuadTicker, defaultConfig: { theme: 'campus-quad' } });
+registerVariant({ id: 'image_carousel-campus-quad', widgetType: 'IMAGE_CAROUSEL', name: 'Campus Quad', description: 'Campus Quad themed ImageCarousel', category: 'HIGH', render: CampusQuadImageCarousel, defaultConfig: { theme: 'campus-quad' } });
+
+import { AchievementHallLogo, AchievementHallText, AchievementHallClock, AchievementHallWeather, AchievementHallCountdown, AchievementHallAnnouncement, AchievementHallCalendar, AchievementHallStaffSpotlight, AchievementHallImageCarousel, AchievementHallTicker } from './themes/achievement-hall';
+registerVariant({ id: 'clock-achievement-hall', widgetType: 'CLOCK', name: 'Achievement Hall', description: 'Achievement Hall themed Clock', category: 'HIGH', render: AchievementHallClock, defaultConfig: { theme: 'achievement-hall' } });
+registerVariant({ id: 'text-achievement-hall', widgetType: 'TEXT', name: 'Achievement Hall', description: 'Achievement Hall themed Text', category: 'HIGH', render: AchievementHallText, defaultConfig: { theme: 'achievement-hall' } });
+registerVariant({ id: 'weather-achievement-hall', widgetType: 'WEATHER', name: 'Achievement Hall', description: 'Achievement Hall themed Weather', category: 'HIGH', render: AchievementHallWeather, defaultConfig: { theme: 'achievement-hall' } });
+registerVariant({ id: 'announcement-achievement-hall', widgetType: 'ANNOUNCEMENT', name: 'Achievement Hall', description: 'Achievement Hall themed Announcement', category: 'HIGH', render: AchievementHallAnnouncement, defaultConfig: { theme: 'achievement-hall' } });
+registerVariant({ id: 'calendar-achievement-hall', widgetType: 'CALENDAR', name: 'Achievement Hall', description: 'Achievement Hall themed Calendar', category: 'HIGH', render: AchievementHallCalendar, defaultConfig: { theme: 'achievement-hall' } });
+registerVariant({ id: 'staff_spotlight-achievement-hall', widgetType: 'STAFF_SPOTLIGHT', name: 'Achievement Hall', description: 'Achievement Hall themed StaffSpotlight', category: 'HIGH', render: AchievementHallStaffSpotlight, defaultConfig: { theme: 'achievement-hall' } });
+registerVariant({ id: 'countdown-achievement-hall', widgetType: 'COUNTDOWN', name: 'Achievement Hall', description: 'Achievement Hall themed Countdown', category: 'HIGH', render: AchievementHallCountdown, defaultConfig: { theme: 'achievement-hall' } });
+registerVariant({ id: 'logo-achievement-hall', widgetType: 'LOGO', name: 'Achievement Hall', description: 'Achievement Hall themed Logo', category: 'HIGH', render: AchievementHallLogo, defaultConfig: { theme: 'achievement-hall' } });
+registerVariant({ id: 'ticker-achievement-hall', widgetType: 'TICKER', name: 'Achievement Hall', description: 'Achievement Hall themed Ticker', category: 'HIGH', render: AchievementHallTicker, defaultConfig: { theme: 'achievement-hall' } });
+registerVariant({ id: 'image_carousel-achievement-hall', widgetType: 'IMAGE_CAROUSEL', name: 'Achievement Hall', description: 'Achievement Hall themed ImageCarousel', category: 'HIGH', render: AchievementHallImageCarousel, defaultConfig: { theme: 'achievement-hall' } });
+

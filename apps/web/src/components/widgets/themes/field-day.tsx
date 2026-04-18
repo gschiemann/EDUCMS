@@ -20,6 +20,7 @@ import { useEffect, useState } from 'react';
 import { resolveCountdownTarget } from '../countdown-utils';
 import { fetchWeather, getWMO } from '../WidgetRenderer';
 import { FitText } from './FitText';
+import { EditableText } from './EditableText';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '') : 'http://localhost:8080';
 function resolveUrl(url: string | undefined | null): string {
@@ -116,7 +117,7 @@ export function FieldDayLogo({ config }: { config: any; compact?: boolean }) {
 // ═══════════════════════════════════════════════════════════
 // TEXT — varsity pennant banner patch
 // ═══════════════════════════════════════════════════════════
-export function FieldDayText({ config, compact }: { config: any; compact?: boolean }) {
+export function FieldDayText({ config, compact, onConfigChange }: { config: any; compact?: boolean; onConfigChange?: (p: Record<string, any>) => void }) {
   const content = (config?.content || "LET'S GO TIGERS!").toString();
   const sub = config?.subtitle || '';
   return (
@@ -140,7 +141,8 @@ export function FieldDayText({ config, compact }: { config: any; compact?: boole
           textAlign: 'center',
         }}>
           <div style={{ flex: '0 0 65%', width: '100%', minHeight: 0 }}>
-            <FitText max={160} min={10} wrap={false} style={{
+            <EditableText configKey="content" onConfigChange={onConfigChange}
+              max={160} min={10} wrap={false} style={{
               fontFamily: FD_FONT_DISPLAY,
               color: FD.white,
               WebkitTextStroke: `3px ${FD.ink}`,
@@ -148,18 +150,19 @@ export function FieldDayText({ config, compact }: { config: any; compact?: boole
               letterSpacing: '0.05em',
             }}>
               {content}
-            </FitText>
+            </EditableText>
           </div>
           {!compact && sub && (
             <div style={{ flex: '0 0 35%', width: '100%', minHeight: 0 }}>
-              <FitText max={44} min={8} wrap={false} style={{
+              <EditableText configKey="subtitle" onConfigChange={onConfigChange}
+                max={44} min={8} wrap={false} style={{
                 fontFamily: FD_FONT_BODY,
                 fontWeight: 700,
                 color: FD.gold,
                 WebkitTextStroke: `1.5px ${FD.ink}`,
               }}>
                 ☆ {sub} ☆
-              </FitText>
+              </EditableText>
             </div>
           )}
         </div>
@@ -181,8 +184,12 @@ export function FieldDayClock({ config, compact }: { config: any; compact?: bool
     ? fmt({ hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\s?[AP]M$/i, '')
     : fmt({ hour: '2-digit', minute: '2-digit', hour12: false });
   const ampm = hours12 ? fmt({ hour: 'numeric', hour12: true }).replace(/^\d+\s?/, '').trim() : '';
+  const h24 = parseInt(fmt({ hour: 'numeric', hour12: false }), 10);
+  const mins = parseInt(fmt({ minute: 'numeric' }), 10);
   const secs = parseInt(fmt({ second: 'numeric' }), 10);
-  const secDeg = secs * 6;
+  const hourDeg = ((h24 % 12) + mins / 60) * 30;
+  const minDeg  = (mins + secs / 60) * 6;
+  const secDeg  = secs * 6;
 
   return (
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
@@ -215,9 +222,17 @@ export function FieldDayClock({ config, compact }: { config: any; compact?: bool
         {!compact && ampm && (
           <text x="320" y="500" textAnchor="middle" fontFamily={FD_FONT_DISPLAY} fontSize="44" fill={FD.red}>{ampm}</text>
         )}
-        {/* sweep hand */}
+        {/* hour hand */}
+        <line x1="320" y1="410" x2="320" y2="290"
+          stroke={FD.ink} strokeWidth="16" strokeLinecap="round"
+          transform={`rotate(${hourDeg} 320 410)`} />
+        {/* minute hand */}
+        <line x1="320" y1="410" x2="320" y2="240"
+          stroke={FD.ink} strokeWidth="10" strokeLinecap="round"
+          transform={`rotate(${minDeg} 320 410)`} />
+        {/* second / sweep hand */}
         <g transform={`rotate(${secDeg} 320 410)`}>
-          <line x1="320" y1="410" x2="320" y2="210" stroke={FD.red} strokeWidth="10" strokeLinecap="round" />
+          <line x1="320" y1="430" x2="320" y2="210" stroke={FD.red} strokeWidth="5" strokeLinecap="round" />
         </g>
         <circle cx="320" cy="410" r="14" fill={FD.ink} />
       </svg>
@@ -236,9 +251,12 @@ export function FieldDayWeather({ config, compact }: { config: any; compact?: bo
   const temp = weather ? weather.temp : (config?.tempF ?? '--');
   const cond = weather ? getWMO(weather.weatherCode).label : (config?.condition || 'Loading').toString();
   const low = cond.toLowerCase();
-  const isRain = low.includes('rain') || low.includes('drizzle');
-  const isCloud = low.includes('cloud') || low.includes('overcast');
-  const isSnow = low.includes('snow');
+  const isSnow    = low.includes('snow') || low.includes('flurr');
+  const isStorm   = low.includes('storm') || low.includes('thunder');
+  const isRain    = !isSnow && !isStorm && (low.includes('rain') || low.includes('drizzle') || low.includes('shower'));
+  const isOvercast = !isRain && !isSnow && !isStorm && (low.includes('overcast') || low.includes('cloudy'));
+  const isClear   = !isOvercast && !isRain && !isSnow && !isStorm && (low.includes('clear') || low.includes('sun') || low.includes('fair'));
+  const isPartly  = !isClear && !isOvercast && !isRain && !isSnow && !isStorm;
   return (
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%' }}>
       <svg viewBox="0 0 640 720" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
@@ -261,6 +279,13 @@ export function FieldDayWeather({ config, compact }: { config: any; compact?: bo
                 <line x1="-35" y1="35" x2="35" y2="-35" />
               </g>
             </g>
+          ) : isStorm ? (
+            <g>
+              <ellipse cx="0" cy="-20" rx="110" ry="60" fill="#555" stroke={FD.ink} strokeWidth="8" />
+              <circle cx="-60" cy="-30" r="40" fill="#666" stroke={FD.ink} strokeWidth="8" />
+              <circle cx="55" cy="-35" r="35" fill="#555" stroke={FD.ink} strokeWidth="8" />
+              <path d="M10 30 L-15 70 L5 65 L-20 110 L25 55 L5 60 Z" fill={FD.gold} stroke={FD.ink} strokeWidth="4" />
+            </g>
           ) : isRain ? (
             <g>
               <ellipse cx="0" cy="-10" rx="110" ry="60" fill={FD.white} stroke={FD.ink} strokeWidth="8" />
@@ -272,13 +297,29 @@ export function FieldDayWeather({ config, compact }: { config: any; compact?: bo
                 <path d="M40 40 L35 70 L45 70 Z" />
               </g>
             </g>
-          ) : isCloud ? (
+          ) : isOvercast ? (
             <g>
-              <ellipse cx="0" cy="0" rx="110" ry="55" fill={FD.white} stroke={FD.ink} strokeWidth="8" />
-              <circle cx="-60" cy="-15" r="40" fill={FD.white} stroke={FD.ink} strokeWidth="8" />
-              <circle cx="55" cy="-20" r="38" fill={FD.white} stroke={FD.ink} strokeWidth="8" />
+              <ellipse cx="0" cy="0" rx="110" ry="55" fill="#ccc" stroke={FD.ink} strokeWidth="8" />
+              <circle cx="-60" cy="-15" r="40" fill="#ccc" stroke={FD.ink} strokeWidth="8" />
+              <circle cx="55" cy="-20" r="38" fill="#ccc" stroke={FD.ink} strokeWidth="8" />
+            </g>
+          ) : isPartly ? (
+            <g>
+              <g stroke={FD.gold} strokeWidth="8" strokeLinecap="round">
+                {Array.from({ length: 6 }).map((_, i) => {
+                  const a = ((i * 60) - 30) * Math.PI / 180;
+                  return <line key={i}
+                    x1={Math.cos(a) * 95} y1={Math.sin(a) * 95 - 20}
+                    x2={Math.cos(a) * 118} y2={Math.sin(a) * 118 - 20} />;
+                })}
+              </g>
+              <circle cx="20" cy="-20" r="65" fill="#FF9A3C" stroke={FD.ink} strokeWidth="8" />
+              <ellipse cx="-30" cy="30" rx="90" ry="45" fill={FD.white} stroke={FD.ink} strokeWidth="7" />
+              <circle cx="-80" cy="22" r="32" fill={FD.white} stroke={FD.ink} strokeWidth="7" />
+              <circle cx="45" cy="18" r="30" fill={FD.white} stroke={FD.ink} strokeWidth="7" />
             </g>
           ) : (
+            // isClear (or fallback)
             <g>
               <g stroke={FD.ink} strokeWidth="10" strokeLinecap="round">
                 {Array.from({ length: 8 }).map((_, i) => {
@@ -310,7 +351,7 @@ export function FieldDayWeather({ config, compact }: { config: any; compact?: bo
 // ═══════════════════════════════════════════════════════════
 // COUNTDOWN — medal with ribbon tails
 // ═══════════════════════════════════════════════════════════
-export function FieldDayCountdown({ config, compact }: { config: any; compact?: boolean }) {
+export function FieldDayCountdown({ config, compact, onConfigChange }: { config: any; compact?: boolean; onConfigChange?: (p: Record<string, any>) => void }) {
   const [now, setNow] = useState(new Date());
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
   const resolved = resolveCountdownTarget(config, now);
@@ -351,9 +392,10 @@ export function FieldDayCountdown({ config, compact }: { config: any; compact?: 
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         }}>
           <div style={{ flex: '0 0 22%', width: '100%', minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <FitText max={28} min={8} style={{ fontFamily: FD_FONT_DISPLAY, color: FD.ink, textTransform: 'uppercase', textAlign: 'center' }}>
-              {label.slice(0, 16)}
-            </FitText>
+            <EditableText configKey="label" onConfigChange={onConfigChange}
+              max={28} min={8} style={{ fontFamily: FD_FONT_DISPLAY, color: FD.ink, textTransform: 'uppercase', textAlign: 'center' }}>
+              {label}
+            </EditableText>
           </div>
           <div style={{ flex: '0 0 52%', width: '100%', minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <FitText max={180} min={20} style={{ fontFamily: FD_FONT_DISPLAY, color: FD.ink, fontWeight: 'bold', textAlign: 'center' }}>
@@ -374,7 +416,7 @@ export function FieldDayCountdown({ config, compact }: { config: any; compact?: 
 // ═══════════════════════════════════════════════════════════
 // ANNOUNCEMENT — trophy cup + ribbon scroll
 // ═══════════════════════════════════════════════════════════
-export function FieldDayAnnouncement({ config, compact }: { config: any; compact?: boolean }) {
+export function FieldDayAnnouncement({ config, compact, onConfigChange }: { config: any; compact?: boolean; onConfigChange?: (p: Record<string, any>) => void }) {
   const title = (config?.title || "Today's Headline").toString();
   const body = (config?.message || config?.body || 'Exciting things happening at school today!').toString();
   const date = config?.date || '';
@@ -406,6 +448,7 @@ export function FieldDayAnnouncement({ config, compact }: { config: any; compact
           left: '22%', right: '4%', top: '18%', bottom: '15%',
           display: 'flex', flexDirection: 'column', justifyContent: 'center',
           textAlign: 'center', fontFamily: FD_FONT_BODY,
+          transform: 'rotate(-0.8deg)', transformOrigin: 'center center',
         }}>
           <div style={{ flex: '0 0 28%', width: '100%', minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <FitText max={72} min={10} style={{
@@ -417,13 +460,14 @@ export function FieldDayAnnouncement({ config, compact }: { config: any; compact
             </FitText>
           </div>
           <div style={{ flex: '0 0 55%', width: '100%', minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <FitText max={60} min={10} style={{
+            <EditableText configKey="message" onConfigChange={onConfigChange}
+              max={60} min={10} style={{
               fontFamily: FD_FONT_BODY,
               fontWeight: 700,
               color: FD.ink, textAlign: 'center',
             }}>
               {body}
-            </FitText>
+            </EditableText>
           </div>
           {!compact && date && (
             <div style={{ flex: '0 0 17%', width: '100%', minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -507,7 +551,7 @@ export function FieldDayCalendar({ config, compact }: { config: any; compact?: b
 // ═══════════════════════════════════════════════════════════
 // STAFF SPOTLIGHT — gold-frame portrait + MVP banner
 // ═══════════════════════════════════════════════════════════
-export function FieldDayStaffSpotlight({ config, compact }: { config: any; compact?: boolean }) {
+export function FieldDayStaffSpotlight({ config, compact, onConfigChange }: { config: any; compact?: boolean; onConfigChange?: (p: Record<string, any>) => void }) {
   const name = (config?.staffName || config?.name || 'Mrs. Johnson').toString();
   const role = (config?.role || 'Teacher of the Week').toString();
   const bio = (config?.bio || config?.quote || '"Be kind · work hard · high-five everyone."').toString();
