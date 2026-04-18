@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
@@ -96,6 +96,23 @@ export class PlaylistsController {
       where: { id, tenantId: req.user.tenantId },
     });
     if (!playlist) return { error: 'Not found' };
+
+    // HIGH-1 audit fix: validate every assetId in the body actually
+    // belongs to the caller's tenant. Without this, a user could insert
+    // another tenant's assetId into their own playlist (existence-leak +
+    // potential cross-tenant rendering). Single COUNT query is cheap.
+    const assetIds = Array.from(new Set(body.items.map(i => i.assetId).filter(Boolean)));
+    if (assetIds.length > 0) {
+      const ownedCount = await this.prisma.client.asset.count({
+        where: { id: { in: assetIds }, tenantId: req.user.tenantId },
+      });
+      if (ownedCount !== assetIds.length) {
+        throw new HttpException(
+          { code: 'ASSET_TENANT_MISMATCH', message: 'One or more assets do not belong to this tenant.' },
+          HttpStatus.FORBIDDEN,
+        );
+      }
+    }
 
     // Replace all items in a transaction
     await this.prisma.client.$transaction([

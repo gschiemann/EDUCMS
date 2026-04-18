@@ -192,6 +192,15 @@ async function main() {
     assets: manifestAssets.sort((a, b) => a.sha256.localeCompare(b.sha256)),
   };
 
+  // CANONICAL FORMAT — DO NOT REFORMAT manifest.json AFTER WRITING.
+  // The HMAC signature is computed over the EXACT bytes written here
+  // (2-space pretty-printed JSON). The Android UsbIngester reads the
+  // raw file bytes and recomputes the HMAC — any tool that re-serializes
+  // the manifest with different whitespace, key order, or indentation
+  // (e.g., for a diff tool, automated linter, or upload pipeline) will
+  // invalidate the signature and the bundle will be rejected. Treat the
+  // manifest.json file as immutable once written; any modification
+  // requires re-running this bundler. (HIGH-11 audit fix — doc note.)
   const manifestJson = JSON.stringify(manifest, null, 2);
   writeFileSync(join(root, 'manifest.json'), manifestJson, 'utf8');
 

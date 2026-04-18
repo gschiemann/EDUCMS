@@ -68,8 +68,16 @@ class UsbIngester(
         val sigHex = context.contentResolver.openInputStream(sigFile.uri)?.use { it.bufferedReader().readText().trim() }
             ?: return Result.Rejected("REJECTED_SIGNATURE", "Cannot read manifest.sig")
 
-        // 1. Verify HMAC signature.
-        val computedSig = hmacSha256Hex(hmacKeyHex, manifestBytes)
+        // 1. Verify HMAC signature. hexToBytes inside hmacSha256Hex now
+        // require()s a 64-char hex key (HIGH-10) — wrap in try/catch so
+        // a malformed locally-stored key produces a clean rejection
+        // instead of crashing UsbIngestActivity.
+        val computedSig = try {
+            hmacSha256Hex(hmacKeyHex, manifestBytes)
+        } catch (e: IllegalArgumentException) {
+            Log.w("UsbIngester", "HMAC key is malformed: ${e.message}")
+            return Result.Rejected("REJECTED", "Player's USB key is invalid — re-pair the screen to receive a fresh key from the dashboard")
+        }
         if (!constantTimeEq(computedSig, sigHex)) {
             Log.w("UsbIngester", "Signature mismatch: expected $sigHex, got $computedSig")
             return Result.Rejected("REJECTED_SIGNATURE", "manifest.sig does not match — wrong tenant key or tampered bundle")
@@ -174,6 +182,17 @@ class UsbIngester(
         bytesToHex(MessageDigest.getInstance("SHA-256").digest(data))
 
     private fun hexToBytes(hex: String): ByteArray {
+        // HIGH-10 audit fix: bundler always issues a 64-char (32-byte)
+        // HMAC key. Anything else is operator error (mistyped, truncated,
+        // or wrong field) — fail loudly with a clear message instead of
+        // silently corrupting bytes via Character.digit returning -1 or
+        // an IndexOutOfBoundsException on odd-length input.
+        require(hex.length % 2 == 0) {
+            "Hex string must have an even number of characters (got ${hex.length})"
+        }
+        require(hex.all { (it in '0'..'9') || (it in 'a'..'f') || (it in 'A'..'F') }) {
+            "Hex string contains non-hex characters"
+        }
         val out = ByteArray(hex.length / 2)
         for (i in out.indices) {
             out[i] = ((Character.digit(hex[i * 2], 16) shl 4)

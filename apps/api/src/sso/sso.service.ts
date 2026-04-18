@@ -316,6 +316,16 @@ export class SsoService {
       );
     }
 
+    // HIGH-4 audit fix: refuse SSO login for users still in the INVITED
+    // state. They must accept their invite and set a password before they
+    // can authenticate via any path (regular login already gates this in
+    // auth.service.ts after the previous critical-batch fix).
+    if ((user as any).status && (user as any).status !== 'ACTIVE') {
+      throw new UnauthorizedException(
+        'This account is pending activation. Check your invite email to finish signup.',
+      );
+    }
+
     return user;
   }
 

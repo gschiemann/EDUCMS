@@ -1,4 +1,12 @@
 import { Body, Controller, Get, Param, Post, Put, UseGuards, HttpException, HttpStatus } from '@nestjs/common';
+
+// HIGH-2 audit fix: enums for the License columns. Whitelisting these
+// catches malformed admin payloads (`{ status: "PIZZA" }` would have
+// silently persisted before) and locks the surface so future schema
+// changes are obvious.
+const ALLOWED_TIERS = new Set(['PILOT', 'STANDARD', 'ENTERPRISE', 'EDU_DISTRICT', 'RESTAURANT_CHAIN']);
+const ALLOWED_BILLING_MODES = new Set(['CARD', 'INVOICE', 'PURCHASE_ORDER', 'COMP']);
+const ALLOWED_STATUSES = new Set(['ACTIVE', 'PAST_DUE', 'SUSPENDED', 'CANCELLED']);
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
@@ -66,6 +74,19 @@ export class SuperLicenseController {
     if (!body.tier || typeof body.seatLimit !== 'number' || body.seatLimit < 1) {
       throw new HttpException('tier and seatLimit (>=1) required', HttpStatus.BAD_REQUEST);
     }
+    // Enum guards. Reject silently-malformed payloads at the boundary.
+    if (!ALLOWED_TIERS.has(body.tier)) {
+      throw new HttpException(`tier must be one of: ${[...ALLOWED_TIERS].join(', ')}`, HttpStatus.BAD_REQUEST);
+    }
+    if (body.billingMode && !ALLOWED_BILLING_MODES.has(body.billingMode)) {
+      throw new HttpException(`billingMode must be one of: ${[...ALLOWED_BILLING_MODES].join(', ')}`, HttpStatus.BAD_REQUEST);
+    }
+    if (body.status && !ALLOWED_STATUSES.has(body.status)) {
+      throw new HttpException(`status must be one of: ${[...ALLOWED_STATUSES].join(', ')}`, HttpStatus.BAD_REQUEST);
+    }
+    if (body.seatLimit > 100_000) {
+      throw new HttpException('seatLimit unreasonable; cap is 100k', HttpStatus.BAD_REQUEST);
+    }
     const exists = await this.prisma.client.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
     if (!exists) throw new HttpException('Tenant not found', HttpStatus.NOT_FOUND);
 
@@ -111,6 +132,9 @@ export class SuperLicenseController {
     @Param('tenantId') tenantId: string,
     @Body() body: { status: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'CANCELLED' },
   ) {
+    if (!body.status || !ALLOWED_STATUSES.has(body.status)) {
+      throw new HttpException(`status must be one of: ${[...ALLOWED_STATUSES].join(', ')}`, HttpStatus.BAD_REQUEST);
+    }
     return this.prisma.client.license.update({
       where: { tenantId },
       data: { status: body.status },
