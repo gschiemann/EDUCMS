@@ -36,6 +36,7 @@ model Tenant {
   cleverAccessToken       String?       @map("clever_access_token")
   cleverConnectedAt       DateTime?     @map("clever_connected_at")
   cleverSyncLogs          CleverSyncLog[]
+  userInvites             UserInvite[]
 
   @@map("tenants")
 }
@@ -63,19 +64,23 @@ model TenantSSOConfig {
 }
 
 model User {
-  id               String     @id @default(uuid())
-  tenantId         String     @map("tenant_id")
-  email            String     @unique
-  passwordHash     String     @map("password_hash")
+  id               String               @id @default(uuid())
+  tenantId         String               @map("tenant_id")
+  email            String               @unique
+  passwordHash     String               @map("password_hash")
   role             String
-  canTriggerPanic  Boolean    @default(false) @map("can_trigger_panic")
-  createdAt        DateTime   @default(now()) @map("created_at")
+  canTriggerPanic  Boolean              @default(false) @map("can_trigger_panic")
+  status           String               @default("ACTIVE")
+  createdAt        DateTime             @default(now()) @map("created_at")
   assets           Asset[]
   auditLogs        AuditLog[]
-  createdTemplates Template[] @relation("TemplateCreator")
-  tenant           Tenant     @relation(fields: [tenantId], references: [id])
-  cleverId         String?    @unique @map("clever_id")
-  cleverRole       String?    @map("clever_role")
+  createdTemplates Template[]           @relation("TemplateCreator")
+  tenant           Tenant               @relation(fields: [tenantId], references: [id])
+  cleverId         String?              @unique @map("clever_id")
+  cleverRole       String?              @map("clever_role")
+  passwordResets   PasswordResetToken[]
+  invitesSent      UserInvite[]         @relation("InviteInviter")
+  invite           UserInvite?          @relation("InviteUser")
 
   @@map("users")
 }
@@ -93,6 +98,55 @@ model CleverSyncLog {
 
   @@index([tenantId, syncStartedAt])
   @@map("clever_sync_logs")
+}
+
+model PasswordResetToken {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  tokenHash  String   @unique @map("token_hash")
+  expiresAt  DateTime @map("expires_at")
+  usedAt     DateTime? @map("used_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model UserInvite {
+  id          String    @id @default(uuid())
+  tenantId    String    @map("tenant_id")
+  email       String
+  role        String
+  tokenHash   String    @unique @map("token_hash")
+  invitedById String    @map("invited_by_id")
+  userId      String?   @unique @map("user_id")
+  expiresAt   DateTime  @map("expires_at")
+  acceptedAt  DateTime? @map("accepted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  invitedBy   User      @relation("InviteInviter", fields: [invitedById], references: [id])
+  user        User?     @relation("InviteUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([email])
+  @@map("user_invites")
+}
+
+model EmailLog {
+  id        String   @id @default(uuid())
+  toEmail   String   @map("to_email")
+  subject   String
+  body      String
+  kind      String
+  status    String   @default("QUEUED")
+  error     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  sentAt    DateTime? @map("sent_at")
+
+  @@index([status])
+  @@index([toEmail])
+  @@map("email_logs")
 }
 
 model ScreenGroup {

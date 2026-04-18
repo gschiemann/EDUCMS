@@ -472,6 +472,15 @@ export function useCreateUser() {
   });
 }
 
+export function useInviteUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { email: string; role: string }) =>
+      apiFetch('/invites', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+}
+
 export function useUpdateUserRole() {
   const qc = useQueryClient();
   return useMutation({

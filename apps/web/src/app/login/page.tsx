@@ -3,6 +3,7 @@
 "use client";
 
 import { Suspense, useState } from 'react';
+import Link from 'next/link';
 import { MonitorPlay, Loader2, AlertCircle, KeyRound } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -135,18 +136,24 @@ function LoginContent() {
               />
             </div>
 
-            <div>
+            <div className="flex items-center justify-between gap-2">
               <label className="flex items-center gap-2 cursor-pointer group">
-                <input 
-                  type="checkbox" 
-                  checked={rememberMe} 
-                  onChange={e => setRememberMe(e.target.checked)} 
-                  className="w-4 h-4 rounded border-slate-700 bg-slate-800/50 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-slate-900 transition-all cursor-pointer" 
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={e => setRememberMe(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-700 bg-slate-800/50 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-slate-900 transition-all cursor-pointer"
                 />
                 <span className="text-xs font-semibold text-slate-400 group-hover:text-slate-300 transition-colors">
-                  Keep me signed in (For Emergency Devices / PWAs)
+                  Keep me signed in
                 </span>
               </label>
+              <Link
+                href="/reset-password/request"
+                className="text-xs font-semibold text-indigo-400 hover:text-indigo-300"
+              >
+                Forgot password?
+              </Link>
             </div>
 
             {error && (
@@ -214,7 +221,10 @@ function LoginContent() {
           </div>
         </div>
 
-        <p className="text-center text-xs text-slate-600 mt-6">
+        <p className="text-center text-xs text-slate-500 mt-6">
+          New here? <Link href="/signup" className="text-indigo-400 hover:text-indigo-300 font-semibold">Create a workspace</Link>
+        </p>
+        <p className="text-center text-xs text-slate-600 mt-2">
           Secure multi-tenant CMS • RBAC enforced
         </p>
       </div>
