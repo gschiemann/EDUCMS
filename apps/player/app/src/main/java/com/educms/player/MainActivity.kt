@@ -1,36 +1,204 @@
 package com.educms.player
 
+import android.annotation.SuppressLint
+import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
 import android.util.Log
+import android.view.KeyEvent
+import android.view.View
+import android.view.WindowManager
+import android.webkit.ConsoleMessage
+import android.webkit.PermissionRequest
+import android.webkit.WebChromeClient
+import android.webkit.WebSettings
+import android.webkit.WebView
+import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
+import com.educms.player.databinding.ActivityMainBinding
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 /**
- * Fullscreen Kiosk Mode activity mapped to physical LCD hardware.
- * Bound locally to the Android Room DB, enforcing strict gapless ExoPlayer caching loop decoupled thoroughly from `SyncWorker`.
+ * Fullscreen WebView player. Loads the EduCMS web player URL with the device's
+ * pairing token. The web app does the rendering; this Activity provides the
+ * immersive kiosk shell, wake lock, and crash recovery.
  */
-class MainActivity : AppCompatActivity() {
+class MainActivity : ComponentActivity() {
 
+    private lateinit var binding: ActivityMainBinding
+    private lateinit var webView: WebView
+    private val deviceStore by lazy { DeviceStore(applicationContext) }
+
+    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // Hide System Bars (Kiosk Execution)
-        Log.i("Player", "Booting Android Edge Kiosk Instance - Fullscreen Overrides active.")
-        
-        lockHardwareKioskBoundaries()
-        
-        // Failsafe Logic enforcing isolation mandate
-        initializeExoPlayerFromLocalCache()
-    }
-    
-    private fun lockHardwareKioskBoundaries() {
-        // Enforce Android LockTask constraints / SYSTEM_UI_FLAG_FULLSCREEN
+
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
+        window.addFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+        window.addFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD)
+
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+        webView = binding.webview
+
+        configureWebView(webView)
+
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() { /* swallow */ }
+        })
+
+        lifecycleScope.launch {
+            val token = deviceStore.deviceToken.first()
+            if (token.isNullOrBlank()) {
+                startActivity(Intent(this@MainActivity, PairingActivity::class.java))
+                finish()
+                return@launch
+            }
+            loadPlayer(token)
+        }
     }
 
-    private fun initializeExoPlayerFromLocalCache() {
-        // 1. Query Room Database (`Database.kt`) bypassing external interfaces
-        // 2. Map MediaItem instances from `localFilePath` arrays
-        // 3. Disable all network seeking heuristics on Player
-        
-        Log.i("Player", "Gapless fallback playback initialized natively from SQLite persistent cache.")
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun configureWebView(wv: WebView) {
+        wv.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            databaseEnabled = true
+            mediaPlaybackRequiresUserGesture = false
+            allowFileAccess = false
+            allowContentAccess = false
+            cacheMode = WebSettings.LOAD_DEFAULT
+            loadsImagesAutomatically = true
+            useWideViewPort = true
+            loadWithOverviewMode = true
+            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            userAgentString = "$userAgentString EduCmsPlayer/${BuildConfig.VERSION_NAME} (Android ${Build.VERSION.RELEASE})"
+        }
+
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
+            @Suppress("DEPRECATION")
+            WebSettingsCompat.setForceDark(wv.settings, WebSettingsCompat.FORCE_DARK_AUTO)
+        }
+
+        wv.addJavascriptInterface(
+            WebAppBridge(
+                onUnpair = { unpairAndRestart() },
+                onReload = { runOnUiThread { wv.reload() } },
+                getDeviceInfo = { deviceInfoJson() }
+            ),
+            "EduCmsNative"
+        )
+
+        wv.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(cm: ConsoleMessage): Boolean {
+                Log.d("PlayerWeb", "${cm.messageLevel()}: ${cm.message()} @${cm.sourceId()}:${cm.lineNumber()}")
+                return true
+            }
+            override fun onPermissionRequest(request: PermissionRequest) {
+                request.deny()
+            }
+        }
+
+        wv.webViewClient = SafePlayerWebViewClient(
+            onRendererGone = {
+                Log.w("Player", "WebView renderer crashed — reloading")
+                lifecycleScope.launch {
+                    val token = deviceStore.deviceToken.first().orEmpty()
+                    loadPlayer(token)
+                }
+            }
+        )
+    }
+
+    private fun loadPlayer(token: String) {
+        val base = BuildConfig.PLAYER_BASE_URL.trimEnd('/')
+        val url = Uri.parse(base).buildUpon()
+            .appendQueryParameter("token", token)
+            .appendQueryParameter("client", "android")
+            .appendQueryParameter("v", BuildConfig.VERSION_NAME)
+            .build()
+            .toString()
+        Log.i("Player", "Loading $url")
+        webView.loadUrl(url)
+    }
+
+    private fun unpairAndRestart() {
+        lifecycleScope.launch {
+            deviceStore.clear()
+            startActivity(Intent(this@MainActivity, PairingActivity::class.java))
+            finish()
+        }
+    }
+
+    private fun deviceInfoJson(): String {
+        val w = resources.displayMetrics.widthPixels
+        val h = resources.displayMetrics.heightPixels
+        return """{"manufacturer":"${Build.MANUFACTURER}","model":"${Build.MODEL}","sdk":${Build.VERSION.SDK_INT},"width":$w,"height":$h,"appVersion":"${BuildConfig.VERSION_NAME}"}"""
+    }
+
+    override fun onResume() {
+        super.onResume()
+        webView.onResume()
+        webView.resumeTimers()
+    }
+
+    override fun onPause() {
+        webView.onPause()
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        webView.stopLoading()
+        (webView.parent as? android.view.ViewGroup)?.removeView(webView)
+        webView.destroy()
+        super.onDestroy()
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        return when (keyCode) {
+            KeyEvent.KEYCODE_VOLUME_DOWN,
+            KeyEvent.KEYCODE_VOLUME_UP,
+            KeyEvent.KEYCODE_VOLUME_MUTE -> super.onKeyDown(keyCode, event)
+            else -> true
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) reapplyImmersive()
+    }
+
+    private fun reapplyImmersive() {
+        WindowInsetsControllerCompat(window, window.decorView).hide(WindowInsetsCompat.Type.systemBars())
+        @Suppress("DEPRECATION")
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                )
+        }
     }
 }

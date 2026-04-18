@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand: indigo→violet, matches the web dashboard. -->
+    <color name="brand_bg">#0f172a</color>
+    <color name="brand_indigo">#6366f1</color>
+    <color name="brand_violet">#8b5cf6</color>
+</resources>

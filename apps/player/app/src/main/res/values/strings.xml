@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">EduCMS Player</string>
+
+    <string name="pairing_title">Pair this display</string>
+    <string name="pairing_subtitle">Enter the 6-character code shown on your EduCMS dashboard under Screens → Add Screen.</string>
+    <string name="pairing_code_hint">Pairing code (e.g. ABC123)</string>
+    <string name="pairing_button">Pair this screen</string>
+    <string name="pairing_invalid_code">Enter a valid pairing code.</string>
+    <string name="pairing_error">Pairing failed: %1$s</string>
+    <string name="pairing_version">Player v%1$s</string>
+</resources>
