@@ -45,7 +45,13 @@ export function Sidebar() {
     { name: 'Audit Log', href: `/${activeTenant}/audit`, icon: FileClock },
   ];
 
-  const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'DISTRICT_ADMIN' || user?.role === 'SCHOOL_ADMIN';
+  // Hydration safety: `user` is loaded from localStorage on the client
+  // only, so SSR sees `isAdmin = false`. Without the `mounted` gate the
+  // admin links would appear on the client only after hydration,
+  // producing a "extra element" hydration mismatch error. Always
+  // render the same nav set on server + client's first paint; flip
+  // to the admin set on the next render after mount.
+  const isAdmin = mounted && (user?.role === 'SUPER_ADMIN' || user?.role === 'DISTRICT_ADMIN' || user?.role === 'SCHOOL_ADMIN');
 
   return (
     <>
