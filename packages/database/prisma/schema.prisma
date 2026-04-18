@@ -20,6 +20,13 @@ model Tenant {
   panicEvacuatePlaylistId String?       @map("panic_evacuate_playlist_id")
   panicLockdownPlaylistId String?       @map("panic_lockdown_playlist_id")
   panicWeatherPlaylistId  String?       @map("panic_weather_playlist_id")
+  // SRP (Standard Response Protocol) expansion — most US K-12 districts
+  // train on these specific actions. Hold + Secure + Medical added so
+  // operators don't have to over-trigger Lockdown for hallway clearing
+  // (Hold), outside-only threats (Secure), or medical events (Medical).
+  panicHoldPlaylistId     String?       @map("panic_hold_playlist_id")
+  panicSecurePlaylistId   String?       @map("panic_secure_playlist_id")
+  panicMedicalPlaylistId  String?       @map("panic_medical_playlist_id")
   assetFolders            AssetFolder[]
   assets                  Asset[]
   auditLogs               AuditLog[]

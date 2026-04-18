@@ -30,19 +30,27 @@ import { AppRole } from '@cms/database';
 export class PanicContentController {
   constructor(private readonly prisma: PrismaService) {}
 
-  // The four allowed kinds + which Tenant.* column tracks them.
+  // SRP-aligned panic kinds + which Tenant.* column tracks each.
+  // `default` is a generic fallback used when Tenant.emergencyStatus
+  // fires without a specific panic type (legacy /trigger payloads).
   private static readonly KIND_TO_FIELD = {
     lockdown: 'panicLockdownPlaylistId',
-    weather: 'panicWeatherPlaylistId',
+    weather:  'panicWeatherPlaylistId',
     evacuate: 'panicEvacuatePlaylistId',
-    default: 'emergencyPlaylistId', // generic fallback used when emergencyStatus is set without a panic type
+    hold:     'panicHoldPlaylistId',
+    secure:   'panicSecurePlaylistId',
+    medical:  'panicMedicalPlaylistId',
+    default:  'emergencyPlaylistId',
   } as const;
 
   private static readonly KIND_LABELS: Record<string, string> = {
     lockdown: 'Lockdown',
-    weather: 'Weather / Tornado',
+    weather:  'Shelter (Weather / Hazmat)',
     evacuate: 'Evacuate',
-    default: 'Generic Emergency',
+    hold:     'Hold (Hallway / Medical Pass)',
+    secure:   'Secure (Outside Threat)',
+    medical:  'Medical',
+    default:  'Generic Emergency',
   };
 
   private validateKind(kind: string) {

@@ -7,42 +7,56 @@ const prisma = new PrismaClient();
 const SEED_PASSWORD = 'admin123';
 
 async function main() {
-  // Clean up existing data (order matters for foreign keys)
-  await prisma.templateZone.deleteMany();
-  await prisma.template.deleteMany();
-  await prisma.auditLog.deleteMany();
-  await prisma.schedule.deleteMany();
-  await prisma.playlistItem.deleteMany();
-  await prisma.playlist.deleteMany();
-  await prisma.asset.deleteMany();
-  await prisma.assetFolder.deleteMany();
-  await prisma.screen.deleteMany();
-  await prisma.screenGroup.deleteMany();
-  await prisma.user.deleteMany();
-  await prisma.tenant.deleteMany();
+  // ─────────────────────────────────────────────────────
+  // SAFETY GATE — preserve tenant work on every seed run.
+  // ─────────────────────────────────────────────────────
+  // The original script unconditionally deleted EVERY template (system
+  // AND tenant-built), every playlist, every asset, every user, every
+  // tenant — wiping months of operator work on every `pnpm db:seed`.
+  // That repeated nuke is what kept eating your custom templates.
+  //
+  // New default: REFRESH-ONLY. Re-upserts the system template presets
+  // and creates the demo tenant/users only if they don't already
+  // exist. Custom (`isSystem = false`) templates, playlists, schedules,
+  // assets, screens, audit log entries, and notifications are left
+  // strictly alone.
+  //
+  // To get the old destructive behavior (e.g. when explicitly setting
+  // up a fresh dev DB) set `SEED_FULL_RESET=true` on the command line.
+  const fullReset = process.env.SEED_FULL_RESET === 'true';
 
-  console.log('Seeding demo tenant...');
-
-  // Create district tenant
-  const district = await prisma.tenant.create({
-    data: {
-      id: "00000000-0000-0000-0000-000000000001",
-      name: "Springfield School District",
-      slug: "springfield-district",
+  if (fullReset) {
+    console.warn('⚠️  SEED_FULL_RESET=true — wiping ALL tenant data including custom templates.');
+    await prisma.templateZone.deleteMany();
+    await prisma.template.deleteMany();
+    await prisma.auditLog.deleteMany();
+    await prisma.schedule.deleteMany();
+    await prisma.playlistItem.deleteMany();
+    await prisma.playlist.deleteMany();
+    await prisma.asset.deleteMany();
+    await prisma.assetFolder.deleteMany();
+    await prisma.screen.deleteMany();
+    await prisma.screenGroup.deleteMany();
+    await prisma.user.deleteMany();
+    await prisma.tenant.deleteMany();
+  } else {
+    // Refresh-only: drop ONLY system template zones + system templates.
+    // Custom (tenant-built) templates and EVERYTHING ELSE are preserved.
+    const systemTemplates = await prisma.template.findMany({
+      where: { isSystem: true },
+      select: { id: true },
+    });
+    const systemTemplateIds = systemTemplates.map((t) => t.id);
+    if (systemTemplateIds.length > 0) {
+      await prisma.templateZone.deleteMany({ where: { templateId: { in: systemTemplateIds } } });
+      await prisma.template.deleteMany({ where: { id: { in: systemTemplateIds } } });
     }
-  });
+    console.log(`Refresh-only mode: preserved all custom templates + tenant data. Dropping ${systemTemplateIds.length} stale system presets to re-upsert.`);
+  }
 
-  // Create school tenant under district
-  const school = await prisma.tenant.create({
-    data: {
-      id: "00000000-0000-0000-0000-000000000002",
-      name: "Springfield Elementary",
-      slug: "springfield-elementary",
-      parentId: district.id,
-    }
-  });
+  console.log('Seeding demo tenant (idempotent)...');
 
-  // Hash the seed password with Argon2id
+  // Hash the seed password once (Argon2id is expensive).
   const passwordHash = await argon2.hash(SEED_PASSWORD, {
     type: argon2.argon2id,
     memoryCost: 65536,
@@ -50,46 +64,67 @@ async function main() {
     parallelism: 4,
   });
 
-  // Create admin user
-  const admin = await prisma.user.create({
-    data: {
+  // Idempotent upsert. If the tenant / users / starter playlists already
+  // exist the seed leaves them unchanged. Without this the script
+  // crashed on re-run because of unique-constraint violations.
+  const district = await prisma.tenant.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000001' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000001',
+      name: 'Springfield School District',
+      slug: 'springfield-district',
+    },
+  });
+  const school = await prisma.tenant.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000002' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000002',
+      name: 'Springfield Elementary',
+      slug: 'springfield-elementary',
+      parentId: district.id,
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { email: 'admin@springfield.edu' },
+    update: {}, // never reset a real admin's password from seed
+    create: {
       tenantId: school.id,
-      email: "admin@springfield.edu",
+      email: 'admin@springfield.edu',
       passwordHash,
-      role: "SUPER_ADMIN"
-    }
+      role: 'SUPER_ADMIN',
+    },
   });
-
-  // Create contributor user
-  const teacher = await prisma.user.create({
-    data: {
+  await prisma.user.upsert({
+    where: { email: 'teacher@springfield.edu' },
+    update: {},
+    create: {
       tenantId: school.id,
-      email: "teacher@springfield.edu",
+      email: 'teacher@springfield.edu',
       passwordHash,
-      role: "CONTRIBUTOR"
-    }
+      role: 'CONTRIBUTOR',
+    },
   });
 
-  console.log(`  Admin: admin@springfield.edu / ${SEED_PASSWORD}`);
-  console.log(`  Teacher: teacher@springfield.edu / ${SEED_PASSWORD}`);
+  console.log(`  Admin: admin@springfield.edu / ${SEED_PASSWORD} (preserved if already set)`);
+  console.log(`  Teacher: teacher@springfield.edu / ${SEED_PASSWORD} (preserved if already set)`);
 
-  // No fake screens or groups — screens are provisioned via the player app.
-  // Users create screen groups through the Screens page.
-
-  // Seed empty playlists as starting points
-  await prisma.playlist.create({
-    data: {
-      tenantId: school.id,
-      name: "Morning Announcements",
-    }
-  });
-
-  await prisma.playlist.create({
-    data: {
-      tenantId: school.id,
-      name: "Lunch Menu Display",
-    }
-  });
+  // Starter playlists: only create if NONE exist for this tenant. Once
+  // an operator has built any real playlists, leave them alone.
+  const existingPlaylistCount = await prisma.playlist.count({ where: { tenantId: school.id } });
+  if (existingPlaylistCount === 0) {
+    await prisma.playlist.createMany({
+      data: [
+        { tenantId: school.id, name: 'Morning Announcements' },
+        { tenantId: school.id, name: 'Lunch Menu Display' },
+      ],
+    });
+    console.log('  Seeded 2 empty starter playlists.');
+  } else {
+    console.log(`  Skipped starter playlists (tenant already has ${existingPlaylistCount}).`);
+  }
 
   // No seed assets — users upload their own content via the UI.
   // Playlists are created empty and populated through the playlist editor.
@@ -118,6 +153,9 @@ async function main() {
   // ─────────────────────────────────────────────────────
   console.log('Seeding system template presets...');
 
+  // Re-create each system preset by id. The earlier deleteMany already
+  // cleared the old system rows; this loop just recreates them.
+  // Custom (tenant-built) templates are NOT touched.
   for (const preset of SYSTEM_TEMPLATE_PRESETS) {
     await prisma.template.create({
       data: {

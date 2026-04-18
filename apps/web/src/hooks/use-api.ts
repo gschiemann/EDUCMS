@@ -571,7 +571,7 @@ export function useUpdateTenantPanicSettings() {
 }
 
 // ─── Panic content (emergency assets, protected from /playlists) ───
-export type PanicKind = 'lockdown' | 'weather' | 'evacuate' | 'default';
+export type PanicKind = 'lockdown' | 'weather' | 'evacuate' | 'hold' | 'secure' | 'medical' | 'default';
 export type PanicAssetItem = {
   id: string;
   assetId: string;

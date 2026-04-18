@@ -100,23 +100,59 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Panic Button Content — direct upload, can't be accidentally deleted */}
+        {/* Panic Button Content — direct upload, can't be accidentally deleted.
+            Aligned with the Standard Response Protocol (SRP) used by most US K-12
+            districts: Hold, Secure, Lockdown, Evacuate, Shelter (= Weather here).
+            Plus a separate Medical bucket for nurse / EMS events. */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100">
             <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2">
               <AlertOctagon className="w-4 h-4 text-red-500" /> Panic Button Content
             </h2>
             <p className="text-xs text-slate-500 mt-1">
-              Upload the content that displays on screens when each panic type is triggered. These assets are
-              protected — they cannot be deleted from the regular Playlists list, so an accidental delete can
-              never break a real lockdown.
+              Upload the content that plays on screens when each panic type is triggered. Aligned with the
+              Standard Response Protocol (SRP) used by US K-12 districts. These assets are protected and
+              cannot be deleted from the regular Playlists list, so an accidental delete can never break a
+              real emergency.
             </p>
           </div>
-          <div className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <PanicContentEditor kind="lockdown" label="Lockdown" accent="red" />
-              <PanicContentEditor kind="weather" label="Tornado / Weather" accent="amber" />
-              <PanicContentEditor kind="evacuate" label="Evacuate" accent="orange" />
+          <div className="p-6 space-y-6">
+            {/* Critical / life-safety row */}
+            <div>
+              <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Critical (life-safety)</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <PanicContentEditor
+                  kind="lockdown" label="Lockdown" accent="red"
+                  hint="Threat inside the building — locks, lights, out of sight."
+                />
+                <PanicContentEditor
+                  kind="evacuate" label="Evacuate" accent="orange"
+                  hint="Get out and head to the rendezvous point."
+                />
+                <PanicContentEditor
+                  kind="medical" label="Medical" accent="rose"
+                  hint="Nurse / EMS event. Specify location."
+                />
+              </div>
+            </div>
+
+            {/* Heightened-awareness row */}
+            <div>
+              <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Heightened awareness</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <PanicContentEditor
+                  kind="secure" label="Secure (Lockout)" accent="amber"
+                  hint="Threat OUTSIDE — lock perimeter, stay inside, business as usual."
+                />
+                <PanicContentEditor
+                  kind="weather" label="Shelter (Weather / Hazmat)" accent="violet"
+                  hint="Tornado, severe storm, hazmat, air-quality event."
+                />
+                <PanicContentEditor
+                  kind="hold" label="Hold" accent="sky"
+                  hint="Stay in classroom — clear hallways for medical / police passing through."
+                />
+              </div>
             </div>
           </div>
         </div>

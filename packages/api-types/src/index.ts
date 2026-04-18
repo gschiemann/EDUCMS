@@ -123,7 +123,12 @@ export type ScopeType = z.infer<typeof ScopeType>;
 export const Severity = z.enum(['LOW', 'MODERATE', 'HIGH', 'CRITICAL']);
 export type Severity = z.infer<typeof Severity>;
 
-export const OverrideIncidentType = z.enum(['lockdown', 'weather', 'evacuate']);
+// SRP-aligned panic types. Hold + Secure + Medical added 2026-04-17 to
+// match the I Love U Guys Standard Response Protocol used by US K-12.
+export const OverrideIncidentType = z.enum([
+  'lockdown', 'weather', 'evacuate',
+  'hold', 'secure', 'medical',
+]);
 export type OverrideIncidentType = z.infer<typeof OverrideIncidentType>;
 
 export const Id = z.string().trim().min(1).max(128);

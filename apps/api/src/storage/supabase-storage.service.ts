@@ -52,7 +52,12 @@ export class SupabaseStorageService implements OnModuleInit {
    *   - A serialized object: { type: 'Buffer', data: [1,2,3,...] }
    *   - A plain object with numeric keys: { '0': 1, '1': 2, ... }
    */
-  private toSafeBuffer(input: any): Buffer {
+  /** Normalize whatever-shape multer / IPC handed us into a real Buffer.
+   *  Multer sometimes gives us Buffer, Uint8Array, ArrayBuffer, or a JSON-
+   *  serialised `{type:'Buffer',data:[...]}` (e.g. when the request body
+   *  was passed through a process boundary). Public so callers that need
+   *  the same bytes for hashing/etc can normalize once and reuse. */
+  toSafeBuffer(input: any): Buffer {
     // Already a real Buffer
     if (Buffer.isBuffer(input)) {
       return input;

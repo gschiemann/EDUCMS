@@ -13,7 +13,9 @@ type Props = {
   kind: PanicKind;
   label: string;
   /** Tailwind color name for the dot + accents (matches the existing card scheme). */
-  accent: 'red' | 'amber' | 'orange' | 'slate';
+  accent: 'red' | 'amber' | 'orange' | 'slate' | 'sky' | 'violet' | 'rose';
+  /** Optional one-line description shown under the title. */
+  hint?: string;
 };
 
 const ACCENT_MAP = {
@@ -21,6 +23,9 @@ const ACCENT_MAP = {
   amber:  { dot: 'bg-amber-500',  border: 'border-amber-200',  bg: 'bg-amber-50/40',  chip: 'text-amber-700' },
   orange: { dot: 'bg-orange-500', border: 'border-orange-200', bg: 'bg-orange-50/40', chip: 'text-orange-700' },
   slate:  { dot: 'bg-slate-500',  border: 'border-slate-200',  bg: 'bg-slate-50',     chip: 'text-slate-700' },
+  sky:    { dot: 'bg-sky-500',    border: 'border-sky-200',    bg: 'bg-sky-50/40',    chip: 'text-sky-700' },
+  violet: { dot: 'bg-violet-500', border: 'border-violet-200', bg: 'bg-violet-50/40', chip: 'text-violet-700' },
+  rose:   { dot: 'bg-rose-500',   border: 'border-rose-200',   bg: 'bg-rose-50/40',   chip: 'text-rose-700' },
 };
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
@@ -31,7 +36,7 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024;
  * accidentally deleted from the playlists list. Operators just see
  * "drop assets here" and a list of what's currently set.
  */
-export function PanicContentEditor({ kind, label, accent }: Props) {
+export function PanicContentEditor({ kind, label, accent, hint }: Props) {
   const a = ACCENT_MAP[accent];
   const { data, isLoading } = usePanicContent(kind);
   const addAsset = useAddPanicAsset(kind);
@@ -110,15 +115,18 @@ export function PanicContentEditor({ kind, label, accent }: Props) {
 
   return (
     <div className={`p-4 rounded-xl border ${a.border} ${a.bg} flex flex-col gap-3 min-h-[180px]`}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className={`w-3 h-3 rounded-full ${a.dot}`} />
-          <h3 className="text-sm font-bold text-slate-800">{label}</h3>
+      <div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className={`w-3 h-3 rounded-full ${a.dot}`} />
+            <h3 className="text-sm font-bold text-slate-800">{label}</h3>
+          </div>
+          <span className={`text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 ${items.length > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+            {items.length > 0 ? <ShieldCheck className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+            {items.length > 0 ? `${items.length} asset${items.length === 1 ? '' : 's'}` : 'No content'}
+          </span>
         </div>
-        <span className={`text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 ${items.length > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
-          {items.length > 0 ? <ShieldCheck className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
-          {items.length > 0 ? `${items.length} asset${items.length === 1 ? '' : 's'}` : 'No content'}
-        </span>
+        {hint && <p className="text-[11px] text-slate-500 mt-0.5 ml-5">{hint}</p>}
       </div>
 
       {/* Drop zone */}

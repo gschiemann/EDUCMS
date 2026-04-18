@@ -71,11 +71,16 @@ export class AssetsController {
     const ext = extname(file.originalname) || '';
     const storagePath = `${req.user.tenantId}/${randomUUID()}${ext}`;
 
-    // Pass file.buffer directly — SupabaseStorageService.toSafeBuffer() handles
-    // every possible type multer might give us (Buffer, Uint8Array, serialized Object, etc.)
+    // Normalize the multer payload to a real Buffer ONCE. Multer sometimes
+    // delivers a serialized `{type:'Buffer',data:[...]}` instead of a
+    // native Buffer (depends on the IPC/proxy boundary). Reuse the same
+    // normalized bytes for both the upload AND the SHA-256 hash so we
+    // never crash with ERR_INVALID_ARG_TYPE on createHash.
+    const safeBuffer = this.storage.toSafeBuffer(file.buffer);
+
     let fileUrl: string;
     try {
-      fileUrl = await this.storage.upload(storagePath, file.buffer, file.mimetype);
+      fileUrl = await this.storage.upload(storagePath, safeBuffer, file.mimetype);
     } catch (err: any) {
       throw new HttpException(
         `Upload failed: ${err.message}`,
@@ -85,9 +90,9 @@ export class AssetsController {
 
     // SHA-256 hash so the offline-cache Service Worker can detect when an
     // asset has been replaced server-side without the URL changing, and
-    // re-download exactly the diff. Computed in-memory from the same buffer
-    // we just uploaded — no extra read.
-    const fileHash = createHash('sha256').update(file.buffer).digest('hex');
+    // re-download exactly the diff. Computed in-memory from the same
+    // normalized buffer — no extra read.
+    const fileHash = createHash('sha256').update(safeBuffer).digest('hex');
 
     const asset = await this.prisma.client.asset.create({
       data: {

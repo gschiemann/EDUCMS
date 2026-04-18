@@ -59,13 +59,19 @@ export class EmergencyController {
     if (scopeType === 'tenant') {
       let activePlaylistId = overridePayload.playlistId || null;
 
-      // If no playlist was explicitly provided, auto-resolve based on Panic Button settings
+      // If no playlist was explicitly provided, auto-resolve based on
+      // the configured Panic Button content for this panic type.
       if (!activePlaylistId) {
         const tenantInfo = await this.prisma.client.tenant.findUnique({ where: { id: scopeId } });
         if (tenantInfo) {
-          if (overridePayload.type === 'lockdown') activePlaylistId = tenantInfo.panicLockdownPlaylistId;
-          else if (overridePayload.type === 'weather') activePlaylistId = tenantInfo.panicWeatherPlaylistId;
-          else if (overridePayload.type === 'evacuate') activePlaylistId = tenantInfo.panicEvacuatePlaylistId;
+          switch (overridePayload.type) {
+            case 'lockdown': activePlaylistId = tenantInfo.panicLockdownPlaylistId; break;
+            case 'weather':  activePlaylistId = tenantInfo.panicWeatherPlaylistId;  break;
+            case 'evacuate': activePlaylistId = tenantInfo.panicEvacuatePlaylistId; break;
+            case 'hold':     activePlaylistId = (tenantInfo as any).panicHoldPlaylistId    ?? null; break;
+            case 'secure':   activePlaylistId = (tenantInfo as any).panicSecurePlaylistId  ?? null; break;
+            case 'medical':  activePlaylistId = (tenantInfo as any).panicMedicalPlaylistId ?? null; break;
+          }
         }
       }
 
