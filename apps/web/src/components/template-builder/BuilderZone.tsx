@@ -1,7 +1,8 @@
 "use client";
 
-import { createElement, memo } from 'react';
-import { Lock } from 'lucide-react';
+import { createElement, memo, useState } from 'react';
+import { Lock, Loader2, Upload } from 'lucide-react';
+import { uploadAsset } from '@/actions/upload-asset';
 import type { Zone, ResizeHandle } from './types';
 import { getZoneColor, widgetIcon, widgetLabel } from './constants';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
@@ -13,6 +14,7 @@ interface Props {
   onPointerDown: (e: React.PointerEvent, zoneId: string, mode: 'move') => void;
   onResizePointerDown: (e: React.PointerEvent, zoneId: string, handle: ResizeHandle) => void;
   onSelect: (e: React.MouseEvent, zoneId: string) => void;
+  onConfigChange?: (zoneId: string, patch: Record<string, any>) => void;
 }
 
 const HANDLES: ResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
@@ -28,10 +30,59 @@ const HANDLE_STYLES: Record<ResizeHandle, React.CSSProperties> = {
   w:  { top: '50%', left: -6, marginTop: -6, cursor: 'ew-resize' },
 };
 
-function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizePointerDown, onSelect }: Props) {
+function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizePointerDown, onSelect, onConfigChange }: Props) {
   const color = getZoneColor(zone.widgetType);
   const icon = widgetIcon(zone.widgetType);
   const label = widgetLabel(zone.widgetType);
+
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const supportsUpload = ['STAFF_SPOTLIGHT', 'LOGO', 'IMAGE_CAROUSEL', 'IMAGE'].includes(zone.widgetType);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    if (previewMode || zone.locked || !supportsUpload || !onConfigChange) return;
+    const isFile = Array.from(e.dataTransfer.types).includes('Files');
+    if (isFile) {
+      e.preventDefault();
+      setIsDragOver(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    setIsDragOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    if (previewMode || zone.locked || !supportsUpload || !onConfigChange) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    const file = e.dataTransfer.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const { url } = await uploadAsset(formData);
+      
+      if (zone.widgetType === 'IMAGE_CAROUSEL') {
+        const existing = Array.isArray(zone.defaultConfig?.urls) ? zone.defaultConfig.urls : [];
+        onConfigChange(zone.id, { urls: [...existing, url] });
+      } else if (zone.widgetType === 'STAFF_SPOTLIGHT') {
+        onConfigChange(zone.id, { photoUrl: url });
+      } else {
+        onConfigChange(zone.id, { assetUrl: url });
+      }
+    } catch (err) {
+      console.error('Upload failed:', err);
+      alert('Failed to upload image. Please try again.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -46,16 +97,16 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       tabIndex={previewMode ? -1 : 0}
       aria-label={`${label} zone: ${zone.name}`}
       aria-pressed={selected}
-      className={`absolute group transition-[box-shadow] ${selected ? 'shadow-2xl' : 'hover:shadow-lg'}`}
+      className="absolute group"
       style={{
         left: `${zone.x}%`,
         top: `${zone.y}%`,
         width: `${zone.width}%`,
         height: `${zone.height}%`,
         zIndex: zone.zIndex,
-        background: previewMode ? 'transparent' : color.bg,
-        border: previewMode ? 'none' : `2px solid ${selected ? color.accent : color.border}`,
-        boxShadow: selected ? `0 0 0 2px ${color.accent}40` : undefined,
+        background: 'transparent',
+        border: previewMode ? 'none' : (selected ? `1px dashed ${color.accent}` : '1px solid transparent'),
+        boxShadow: undefined,
         outline: 'none',
         cursor: zone.locked || previewMode ? 'default' : 'move',
         userSelect: 'none',
@@ -71,25 +122,42 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         onSelect(e, zone.id);
       }}
       onKeyDown={handleKeyDown}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
       data-zone-id={zone.id}
     >
-      {previewMode ? (
-        <WidgetPreview
-          widgetType={zone.widgetType}
-          config={zone.defaultConfig || {}}
-          width={zone.width}
-          height={zone.height}
-          live={false}
-        />
-      ) : (
-        <div className="w-full h-full flex flex-col items-center justify-center p-2 pointer-events-none">
-          {createElement(icon, { className: 'w-6 h-6 mb-1', style: { color: color.accent }, 'aria-hidden': true })}
-          <span className="text-[11px] font-bold text-center truncate max-w-full" style={{ color: color.text }}>
-            {zone.name}
-          </span>
-          <span className="text-[9px] uppercase tracking-wider font-semibold opacity-60" style={{ color: color.text }}>
-            {label}
-          </span>
+      <WidgetPreview
+        widgetType={zone.widgetType}
+        config={zone.defaultConfig || {}}
+        width={zone.width}
+        height={zone.height}
+        live={false}
+        onConfigChange={!previewMode && onConfigChange ? (patch) => onConfigChange(zone.id, patch) : undefined}
+      />
+
+      {isDragOver && !previewMode && supportsUpload && (
+        <div className="absolute inset-0 z-50 bg-indigo-500/20 backdrop-blur-[2px] flex items-center justify-center rounded-lg border-2 border-indigo-500 border-dashed transition-all">
+          <div className="bg-indigo-600 text-white p-3 rounded-full shadow-xl animate-bounce">
+            <Upload className="w-8 h-8" />
+          </div>
+        </div>
+      )}
+
+      {isUploading && !previewMode && (
+        <div className="absolute inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex flex-col gap-2 items-center justify-center rounded-lg">
+          <Loader2 className="w-8 h-8 text-white animate-spin" />
+          <span className="text-white text-xs font-bold bg-slate-900/50 px-2 py-1 rounded-full">Uploading...</span>
+        </div>
+      )}
+
+      {!previewMode && selected && (
+        <div
+          className="absolute -top-6 left-0 flex items-center gap-1 px-1.5 py-0.5 rounded-md pointer-events-none whitespace-nowrap"
+          style={{ background: color.accent, color: 'white', boxShadow: '0 2px 4px rgba(0,0,0,0.15)' }}
+        >
+          {createElement(icon, { className: 'w-3 h-3', 'aria-hidden': true })}
+          <span className="text-[9px] font-bold">{zone.name}</span>
         </div>
       )}
 

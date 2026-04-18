@@ -7,7 +7,7 @@ import type { LucideIcon } from 'lucide-react';
 import { useBuilderStore } from './useBuilderStore';
 import { BuilderToolbar } from './BuilderToolbar';
 import { BuilderCanvas } from './BuilderCanvas';
-import { WidgetPalette } from './WidgetPalette';
+import { VariantPicker } from './VariantPicker';
 import { LayersPanel } from './LayersPanel';
 import { PropertiesPanel } from './PropertiesPanel';
 import { useUpdateTemplate, useUpdateTemplateZones, useCreateTemplate } from '@/hooks/use-api';
@@ -362,7 +362,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
               })}
             </div>
             <div className="flex-1 overflow-y-auto" role="tabpanel">
-              {panel === 'widgets' && <WidgetPalette />}
+              {panel === 'widgets' && <VariantPicker />}
               {panel === 'layers' && <LayersPanel />}
               {panel === 'properties' && <PropertiesPanel />}
             </div>
