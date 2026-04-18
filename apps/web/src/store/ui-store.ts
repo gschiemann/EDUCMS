@@ -11,6 +11,7 @@ interface AppState {
 
   // UI state
   sidebarOpen: boolean;
+  mobileSidebarOpen: boolean;
   activeTenant: string | null;
   isEmergencyActive: boolean;
 
@@ -20,6 +21,8 @@ interface AppState {
 
   // UI actions
   toggleSidebar: () => void;
+  setMobileSidebarOpen: (open: boolean) => void;
+  toggleMobileSidebar: () => void;
   setActiveTenant: (tenantId: string) => void;
   setEmergencyActive: (active: boolean) => void;
 }
@@ -33,6 +36,7 @@ export const useUIStore = create<AppState>((set) => ({
 
   // UI
   sidebarOpen: true,
+  mobileSidebarOpen: false,
   activeTenant: null,
   isEmergencyActive: false,
 
@@ -55,6 +59,8 @@ export const useUIStore = create<AppState>((set) => ({
 
   // UI actions
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+  setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
+  toggleMobileSidebar: () => set((state) => ({ mobileSidebarOpen: !state.mobileSidebarOpen })),
   setActiveTenant: (tenantId) => set({ activeTenant: tenantId }),
   setEmergencyActive: (active) => set({ isEmergencyActive: active }),
 }));

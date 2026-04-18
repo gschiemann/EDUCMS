@@ -2,7 +2,7 @@
 
 import { useAppStore } from '@/lib/store';
 import { RoleGate } from '../RoleGate';
-import { ShieldAlert, LogOut } from 'lucide-react';
+import { ShieldAlert, LogOut, Menu } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
@@ -12,6 +12,7 @@ export function TopToolbar() {
   const isEmergencyActive = useAppStore((state) => state.isEmergencyActive);
   const user = useAppStore((state) => state.user);
   const logout = useAppStore((state) => state.logout);
+  const toggleMobileSidebar = useAppStore((state) => state.toggleMobileSidebar);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -25,9 +26,18 @@ export function TopToolbar() {
 
   return (
     <>
-      <header className="h-[73px] bg-white/60 backdrop-blur-xl px-8 flex items-center justify-between sticky top-0 z-20 transition-all duration-300">
-        {/* Left — spacer */}
-        <div className="flex-1" />
+      <header className="h-[73px] bg-white/60 backdrop-blur-xl px-4 sm:px-8 flex items-center justify-between sticky top-0 z-20 transition-all duration-300">
+        {/* Left — hamburger on mobile, spacer on desktop */}
+        <div className="flex-1 flex items-center">
+          <button
+            type="button"
+            onClick={toggleMobileSidebar}
+            className="md:hidden inline-flex items-center justify-center w-10 h-10 rounded-xl text-slate-600 hover:text-indigo-600 hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            aria-label="Open navigation menu"
+          >
+            <Menu className="w-5 h-5" aria-hidden="true" />
+          </button>
+        </div>
 
         {/* Right Side */}
         <div className="flex items-center gap-3">

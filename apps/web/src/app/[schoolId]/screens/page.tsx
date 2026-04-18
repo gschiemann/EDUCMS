@@ -5,6 +5,7 @@ import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteS
 import { useState, useRef, useEffect } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import QRCode from 'qrcode';
+import { appConfirm } from '@/components/ui/app-dialog';
 
 function OsIcon({ os }: { os?: string }) {
   if (!os) return <Monitor className="w-4 h-4 text-slate-400" />;
@@ -217,7 +218,7 @@ export default function ScreensPage() {
                       className="px-4 py-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white transition-colors text-xs font-bold rounded-xl flex items-center gap-1.5">
                       <Wifi className="w-4 h-4" /> Pair to Group
                     </button>
-                    <button onClick={() => { if (confirm(`Delete group "${group.name}"?`)) deleteGroup.mutate(group.id); }}
+                    <button onClick={async () => { if (await appConfirm({ title: 'Delete group?', message: `"${group.name}" will be deleted. Screens in it won't be deleted.`, tone: 'danger', confirmLabel: 'Delete' })) deleteGroup.mutate(group.id); }}
                       className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors">
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -426,7 +427,7 @@ export default function ScreensPage() {
       {showPairModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Pair a Screen">
           <button className="absolute inset-0 cursor-default" aria-label="Close dialog" onClick={() => setShowPairModal(false)} />
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative z-10" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()} role="document">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative z-10">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <Wifi className="w-5 h-5 text-emerald-600" /> Pair a Screen

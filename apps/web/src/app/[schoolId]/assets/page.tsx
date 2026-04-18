@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { appConfirm } from '@/components/ui/app-dialog';
 import { UploadCloud, Globe, X, CheckCircle2, File, Link2, Trash2, Grid3X3, List, Search, Eye, Image as ImageIcon, Video, Music, FileText, Download, Clock, HardDrive, Maximize2, Info, FolderPlus, Folder, FolderOpen, ChevronRight, Pencil, Home, MoreVertical, Check, Trash } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAssets, useAddWebUrl, useDeleteAsset, useAssetFolders, useCreateAssetFolder, useRenameAssetFolder, useDeleteAssetFolder, useMoveAsset } from '@/hooks/use-api';
@@ -135,7 +136,13 @@ export default function AssetsPage() {
   };
 
   const handleDeleteFolder = async (id: string) => {
-    if (confirm('Delete this folder? Files inside will be moved to the parent folder.')) {
+    const ok = await appConfirm({
+      title: 'Delete folder?',
+      message: 'Files inside will be moved to the parent folder.',
+      tone: 'warn',
+      confirmLabel: 'Delete folder',
+    });
+    if (ok) {
       await deleteFolderMut.mutateAsync(id);
       if (currentFolderId === id) setCurrentFolderId(null);
     }
@@ -147,7 +154,13 @@ export default function AssetsPage() {
 
   const handleBulkDelete = async () => {
     if (selectedIds.length === 0) return;
-    if (confirm(`Delete ${selectedIds.length} selected assets forever?`)) {
+    const ok = await appConfirm({
+      title: 'Delete selected assets?',
+      message: `${selectedIds.length} asset${selectedIds.length === 1 ? '' : 's'} will be permanently deleted.`,
+      tone: 'danger',
+      confirmLabel: 'Delete',
+    });
+    if (ok) {
       await Promise.all(selectedIds.map(id => deleteAsset.mutateAsync(id).catch(e => console.error(e))));
       setSelectedIds([]);
       queryClient.invalidateQueries({ queryKey: ['assets'] });
@@ -378,11 +391,11 @@ export default function AssetsPage() {
 
       {/* Folder tiles */}
       {currentFolderChildren.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
+        <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 list-none p-0 m-0">
           {currentFolderChildren.map((f: any) => (
-            <div
+            // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
+            <li
               key={f.id}
-              role="listitem"
               className="group bg-white rounded-xl border border-slate-100 hover:border-indigo-200 hover:shadow-md transition-all relative"
               onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('ring-2', 'ring-indigo-400'); }}
               onDragLeave={e => { e.currentTarget.classList.remove('ring-2', 'ring-indigo-400'); }}
@@ -438,9 +451,9 @@ export default function AssetsPage() {
                   )}
                 </div>
               </div>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
       {/* Asset grid */}
@@ -452,13 +465,14 @@ export default function AssetsPage() {
           <p className="text-xs font-semibold text-slate-400">{search || filter !== 'all' ? 'No assets match your search' : 'Empty library — upload files to get started'}</p>
         </div>
       ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+        <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 list-none p-0 m-0">
           {filtered.map((a: any) => {
             const thumb = thumbUrl(a);
             const name = assetName(a);
             const isSelected = selectedIds.includes(a.id);
             return (
-              <div key={a.id} role="listitem" draggable onDragStart={e => { e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className={`bg-white rounded-3xl overflow-hidden group transition-all duration-300 relative border-2 ${isSelected ? 'border-indigo-500 shadow-[0_8px_30px_rgb(99,102,241,0.2)]' : 'border-transparent hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]'}`}>
+              // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
+              <li key={a.id} draggable onDragStart={e => { e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className={`bg-white rounded-3xl overflow-hidden group transition-all duration-300 relative border-2 ${isSelected ? 'border-indigo-500 shadow-[0_8px_30px_rgb(99,102,241,0.2)]' : 'border-transparent hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]'}`}>
                 {/* Selection Checkbox Trigger */}
                 <button
                   onClick={(e) => { e.stopPropagation(); setSelectedIds(p => p.includes(a.id) ? p.filter(id => id !== a.id) : [...p, a.id]); }}
@@ -470,7 +484,7 @@ export default function AssetsPage() {
                 </button>
 
                 {/* Quick Delete Trash Trigger */}
-                <button onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${name}"?`)) deleteAsset.mutate(a.id); }} className="absolute top-2.5 right-2.5 z-20 w-6 h-6 rounded bg-red-500 hover:bg-red-600 flex items-center justify-center transition-all opacity-0 scale-90 group-hover:opacity-100 group-hover:scale-100 shadow-sm">
+                <button onClick={(e) => { e.stopPropagation(); appConfirm({ title: 'Delete asset?', message: `"${name}" will be permanently deleted.`, tone: 'danger', confirmLabel: 'Delete' }).then(ok => { if (ok) deleteAsset.mutate(a.id); }); }} className="absolute top-2.5 right-2.5 z-20 w-6 h-6 rounded bg-red-500 hover:bg-red-600 flex items-center justify-center transition-all opacity-0 scale-90 group-hover:opacity-100 group-hover:scale-100 shadow-sm">
                   <Trash className="w-3 h-3 text-white" />
                 </button>
 
@@ -490,7 +504,7 @@ export default function AssetsPage() {
                       onMouseLeave={(e) => { try { e.currentTarget.pause(); e.currentTarget.currentTime = 0; } catch {} }}
                     />
                   ) : thumb ? (
-                    // eslint-disable-next-line @next/next/no-img-element
+                    // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/no-noninteractive-element-interactions
                     <img
                       src={thumb}
                       alt={name}
@@ -519,18 +533,19 @@ export default function AssetsPage() {
                   <p className="text-[10px] text-slate-400 mt-0.5">{fmtSize(a.fileSize)}</p>
                 </div>
                 </button>
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       ) : (
-        <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] divide-y divide-slate-50/50 overflow-hidden">
+        <ul className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] divide-y divide-slate-50/50 overflow-hidden list-none p-0 m-0">
           {filtered.map((a: any) => {
             const thumb = thumbUrl(a);
             const name = assetName(a);
             const isSelected = selectedIds.includes(a.id);
             return (
-              <div key={a.id} role="listitem" draggable onDragStart={e => { e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className={`flex items-center gap-4 px-4 py-3 transition-colors group ${isSelected ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}`}>
+              // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
+              <li key={a.id} draggable onDragStart={e => { e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className={`flex items-center gap-4 px-4 py-3 transition-colors group ${isSelected ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}`}>
                 <button
                   onClick={(e) => { e.stopPropagation(); setSelectedIds(p => p.includes(a.id) ? p.filter(id => id !== a.id) : [...p, a.id]); }}
                   aria-label={isSelected ? `Deselect ${name}` : `Select ${name}`}
@@ -558,15 +573,15 @@ export default function AssetsPage() {
                   </div>
                 </button>
                 <div className="flex items-center gap-3">
-                  <button onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${name}"?`)) deleteAsset.mutate(a.id); }} className="w-6 h-6 rounded bg-slate-200 hover:bg-red-500 text-slate-500 hover:text-white flex items-center justify-center transition-all opacity-0 group-hover:opacity-100">
+                  <button onClick={(e) => { e.stopPropagation(); appConfirm({ title: 'Delete asset?', message: `"${name}" will be permanently deleted.`, tone: 'danger', confirmLabel: 'Delete' }).then(ok => { if (ok) deleteAsset.mutate(a.id); }); }} className="w-6 h-6 rounded bg-slate-200 hover:bg-red-500 text-slate-500 hover:text-white flex items-center justify-center transition-all opacity-0 group-hover:opacity-100">
                     <Trash className="w-3 h-3" />
                   </button>
                   {typeBadge(a.mimeType)}
                 </div>
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
 
       {/* Detail Panel (slide-over) */}
@@ -679,7 +694,7 @@ export default function AssetsPage() {
                   <Download className="w-3.5 h-3.5" /> Download
                 </a>
                 <button
-                  onClick={() => { if (confirm(`Delete "${assetName(selectedAsset)}"?`)) { deleteAsset.mutate(selectedAsset.id); setSelectedAsset(null); }}}
+                  onClick={async () => { if (await appConfirm({ title: 'Delete asset?', message: `"${assetName(selectedAsset)}" will be permanently deleted.`, tone: 'danger', confirmLabel: 'Delete' })) { deleteAsset.mutate(selectedAsset.id); setSelectedAsset(null); }}}
                   className="px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-lg flex items-center gap-1.5 transition-colors"
                 >
                   <Trash2 className="w-3.5 h-3.5" /> Delete

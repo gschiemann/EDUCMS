@@ -863,7 +863,7 @@ export default function PlaylistsPage() {
         {showPicker && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Choose Media">
             <button className="absolute inset-0 cursor-default" aria-label="Close dialog" onClick={() => setShowPicker(false)} />
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col relative z-10" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} role="document">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col relative z-10">
               
               {/* Modal Header */}
               <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-white z-10">
@@ -998,7 +998,7 @@ export default function PlaylistsPage() {
         {showPublishModal && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Publish to Screens">
             <button className="absolute inset-0 cursor-default" aria-label="Close dialog" onClick={() => setShowPublishModal(false)} />
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col p-6 relative z-10" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} role="document">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col p-6 relative z-10">
               <h3 className="text-lg font-bold text-slate-800 mb-1">Publish to Screens</h3>
               <p className="text-sm text-slate-500 mb-5">
                 Schedule <span className="font-bold text-slate-800">{selectedPlaylist?.name}</span> to play on a screen or group.
