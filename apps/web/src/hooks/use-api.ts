@@ -570,6 +570,64 @@ export function useUpdateTenantPanicSettings() {
   });
 }
 
+// ─── License + billing (Sprint 7E) ───
+export type LicenseSummary = {
+  tier: string;
+  seatLimit: number;
+  seatsUsed: number;
+  seatsAvailable: number;
+  status: string;
+  expiresAt: string | null;
+  isPilot: boolean;
+  atLimit: boolean;
+};
+export function useLicense() {
+  return useQuery<LicenseSummary>({
+    queryKey: ['license'],
+    queryFn: () => apiFetch('/license/me'),
+  });
+}
+// ─── Owner-only (SUPER_ADMIN) license management ───
+export type SuperTenantRow = {
+  id: string;
+  name: string;
+  slug: string;
+  vertical: string;
+  parentId: string | null;
+  createdAt: string;
+  tier: string;
+  status: string;
+  billingMode: string;
+  seatLimit: number;
+  seatsUsed: number;
+  atLimit: boolean;
+  monthlyPriceCents: number | null;
+  expiresAt: string | null;
+  notes: string | null;
+};
+export function useSuperTenants() {
+  return useQuery<SuperTenantRow[]>({
+    queryKey: ['super', 'tenants'],
+    queryFn: () => apiFetch('/super/tenants'),
+  });
+}
+export function useUpsertLicense() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tenantId, ...body }: any) =>
+      apiFetch(`/super/tenants/${tenantId}/license`, { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['super', 'tenants'] }),
+  });
+}
+export function useCompSeats() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tenantId, seatLimit, tier, notes }: { tenantId: string; seatLimit: number; tier?: string; notes?: string }) =>
+      apiFetch(`/super/tenants/${tenantId}/comp`, { method: 'POST', body: JSON.stringify({ seatLimit, tier, notes }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['super', 'tenants'] }),
+  });
+}
+
 // ─── USB sneakernet ingest (Sprint 7B) ───
 export function useUsbIngestConfig() {
   return useQuery<{ enabled: boolean; hasKey: boolean; keyRotatedAt: string | null }>({

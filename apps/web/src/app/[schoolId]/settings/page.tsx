@@ -5,6 +5,7 @@ import { RoleGate } from '@/components/RoleGate';
 import { useUsers, useInviteUser, useDeleteUser, useUpdateUserRole, useTenant, useUpdateTenantPanicSettings, usePlaylists } from '@/hooks/use-api';
 import { useState, useRef, useEffect } from 'react';
 import { UsbIngestCard } from '@/components/settings/UsbIngestCard';
+import { LicenseCard } from '@/components/settings/LicenseCard';
 
 const ROLES = ['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN', 'CONTRIBUTOR', 'RESTRICTED_VIEWER'] as const;
 
@@ -167,6 +168,9 @@ export default function SettingsPage() {
             )}
           </div>
         </div>
+
+        {/* License & Billing (Sprint 7E) — current tier, seats used, expiry */}
+        <LicenseCard />
 
         {/* USB Sneakernet Ingest (Sprint 7B) — admins enable + rotate HMAC key + see ingest events */}
         <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}>

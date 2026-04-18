@@ -1,3 +1,7 @@
+const STEM_LAB_BG = "url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOTIwIiBoZWlnaHQ9IjEwODAiIHZpZXdCb3g9IjAgMCAxOTIwIDEwODAiPgogIDxkZWZzPgogICAgPGxpbmVhckdyYWRpZW50IGlkPSJiZyIgeDE9IjAiIHkxPSIwIiB4Mj0iMTkyMCIgeTI9IjEwODAiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzAyMDYxNyIgLz4KICAgICAgPHN0b3Agb2Zmc2V0PSI1MCUiIHN0b3AtY29sb3I9IiMwZjE3MmEiIC8+CiAgICAgIDxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iIzAyMDYxNyIgLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8cGF0dGVybiBpZD0iaGV4IiB4PSIwIiB5PSIwIiB3aWR0aD0iMTAwIiBoZWlnaHQ9IjE3My4yIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KICAgICAgPHBhdGggZD0iTTUwIDBMMTAwIDI4Ljg2djU3Ljc0TDUwIDExNS40N0wwIDg2LjZWMjguODZ6IE01MCAxNzMuMkwxMDAgMjAyLjA2djU3Ljc0TDUwIDI4OC42N0wwIDI1OS44VjIwMi4wNnoiIHN0cm9rZT0iIzFlMjkzYiIgc3Ryb2tlLXdpZHRoPSIyIiBmaWxsPSJub25lIiAvPgogICAgICA8cGF0aCBkPSJNMCAxNzMuMkw1MCAyMDIuMDZ2NTcuNzRMMCAyODguNjdMLTUwIDI1OS44VjIwMi4wNnoiIHN0cm9rZT0iIzFlMjkzYiIgc3Ryb2tlLXdpZHRoPSIyIiBmaWxsPSJub25lIiAvPgogICAgICA8cGF0aCBkPSJNMTAwIDE3My4yTDE1MCAyMDIuMDZ2NTcuNzRMMTAwIDI4OC42N0w1MCAyNTkuOFYyMDIuMDZ6IiBzdHJva2U9IiMxZTI5M2IiIHN0cm9rZS13aWR0aD0iMiIgZmlsbD0ibm9uZSIgLz4KICAgIDwvcGF0dGVybj4KICAgIDxyYWRpYWxHcmFkaWVudCBpZD0iZ2xvdzEiIGN4PSIyMCUiIGN5PSIyMCUiIHI9IjUwJSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMzOGJkZjgiIHN0b3Atb3BhY2l0eT0iMC4xNSIgLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMzhiZGY4IiBzdG9wLW9wYWNpdHk9IjAiIC8+CiAgICA8L3JhZGlhbEdyYWRpZW50PgogICAgPHJhZGlhbEdyYWRpZW50IGlkPSJnbG93MiIgY3g9IjgwJSIgY3k9IjgwJSIgcj0iNTAlIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzgxOGNmOCIgc3RvcC1vcGFjaXR5PSIwLjEiIC8+CiAgICAgIDxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iIzgxOGNmOCIgc3RvcC1vcGFjaXR5PSIwIiAvPgogICAgPC9yYWRpYWxHcmFkaWVudD4KICA8L2RlZnM+CiAgPHJlY3Qgd2lkdGg9IjE5MjAiIGhlaWdodD0iMTA4MCIgZmlsbD0idXJsKCNiZykiIC8+CiAgPHJlY3Qgd2lkdGg9IjE5MjAiIGhlaWdodD0iMTA4MCIgZmlsbD0idXJsKCNoZXgpIiBvcGFjaXR5PSIwLjYiIC8+CiAgPHJlY3Qgd2lkdGg9IjE5MjAiIGhlaWdodD0iMTA4MCIgZmlsbD0idXJsKCNnbG93MSkiIC8+CiAgPHJlY3Qgd2lkdGg9IjE5MjAiIGhlaWdodD0iMTA4MCIgZmlsbD0idXJsKCNnbG93MikiIC8+CiAgCiAgPGcgb3BhY2l0eT0iMC4zIj4KICAgIDwhLS0gVGVjaCBub2RlcyAtLT4KICAgIDxjaXJjbGUgY3g9IjIwMCIgY3k9IjE1MCIgcj0iNCIgZmlsbD0iIzM4YmRmOCIgLz4KICAgIDxjaXJjbGUgY3g9IjQ1MCIgY3k9IjMwMCIgcj0iMyIgZmlsbD0iIzM4YmRmOCIgLz4KICAgIDxjaXJjbGUgY3g9IjgwMCIgY3k9IjEwMCIgcj0iNSIgZmlsbD0iIzgxOGNmOCIgLz4KICAgIDxjaXJjbGUgY3g9IjE2MDAiIGN5PSI0MDAiIHI9IjQiIGZpbGw9IiMzOGJkZjgiIC8+CiAgICA8Y2lyY2xlIGN4PSIxNDAwIiBjeT0iODAwIiByPSI2IiBmaWxsPSIjODE4Y2Y4IiAvPgogICAgPGNpcmNsZSBjeD0iMzAwIiBjeT0iNzAwIiByPSIzIiBmaWxsPSIjMzhiZGY4IiAvPgogICAgPCEtLSBDb25uZWN0aW5nIGxpbmVzIC0tPgogICAgPHBhdGggZD0iTTIwMCAxNTAgTDQ1MCAzMDAgTDgwMCAxMDAiIHN0cm9rZT0iIzM4YmRmOCIgc3Ryb2tlLXdpZHRoPSIxIiBmaWxsPSJub25lIiBvcGFjaXR5PSIwLjUiIC8+CiAgICA8cGF0aCBkPSJNMTYwMCA0MDAgTDE0MDAgODAwIiBzdHJva2U9IiM4MThjZjgiIHN0cm9rZS13aWR0aD0iMSIgZmlsbD0ibm9uZSIgb3BhY2l0eT0iMC41IiAvPgogIDwvZz4KPC9zdmc+')";
+const LIBRARY_QUIET_BG = "url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOTIwIiBoZWlnaHQ9IjEwODAiIHZpZXdCb3g9IjAgMCAxOTIwIDEwODAiPgogIDxkZWZzPgogICAgPGxpbmVhckdyYWRpZW50IGlkPSJiZyIgeDE9IjAiIHkxPSIwIiB4Mj0iMTkyMCIgeTI9IjEwODAiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iI2Y1ZjBlYiIgLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjZTZkZmQ1IiAvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICAgIDxmaWx0ZXIgaWQ9Im5vaXNlIj4KICAgICAgPGZlVHVyYnVsZW5jZSB0eXBlPSJmcmFjdGFsTm9pc2UiIGJhc2VGcmVxdWVuY3k9IjAuNjUiIG51bU9jdGF2ZXM9IjMiIHN0aXRjaFRpbGVzPSJzdGl0Y2giIC8+CiAgICAgIDxmZUNvbG9yTWF0cml4IHR5cGU9Im1hdHJpeCIgdmFsdWVzPSIxIDAgMCAwIDAsIDAgMSAwIDAgMCwgMCAwIDEgMCAwLCAwIDAgMCAwLjA1IDAiIC8+CiAgICA8L2ZpbHRlcj4KICA8L2RlZnM+CiAgPHJlY3Qgd2lkdGg9IjE5MjAiIGhlaWdodD0iMTA4MCIgZmlsbD0idXJsKCNiZykiIC8+CiAgPHJlY3Qgd2lkdGg9IjE5MjAiIGhlaWdodD0iMTA4MCIgc3R5bGU9InBvaW50ZXItZXZlbnRzOm5vbmU7IiBmaWx0ZXI9InVybCgjbm9pc2UpIiAvPgogIAogIDxnIG9wYWNpdHk9IjAuMDMiIHN0cm9rZT0iIzNlMjcyMyIgc3Ryb2tlLXdpZHRoPSI0IiBmaWxsPSJub25lIiBzdHJva2UtbGluZWNhcD0icm91bmQiPgogICAgPCEtLSBBYnN0cmFjdCBib29rIC8gc2hlbGYgb3V0bGluZXMgLS0+CiAgICA8cmVjdCB4PSIxMDAiIHk9IjIwMCIgd2lkdGg9IjQwMCIgaGVpZ2h0PSI2MDAiIHJ4PSIxMCIgLz4KICAgIDxyZWN0IHg9IjEyMCIgeT0iMjIwIiB3aWR0aD0iMzYwIiBoZWlnaHQ9IjU2MCIgcng9IjUiIC8+CiAgICA8bGluZSB4MT0iMTYwIiB5MT0iMjAwIiB4Mj0iMTYwIiB5Mj0iODAwIiAvPgogICAgPGxpbmUgeDE9IjQ2MCIgeTE9IjIwMCIgeDI9IjQ2MCIgeTI9IjgwMCIgLz4KICAgIAogICAgPHJlY3QgeD0iMTQwMCIgeT0iMzAwIiB3aWR0aD0iMzUwIiBoZWlnaHQ9IjUwMCIgcng9IjEwIiAvPgogICAgPHJlY3QgeD0iMTQyMCIgeT0iMzIwIiB3aWR0aD0iMzEwIiBoZWlnaHQ9IjQ2MCIgcng9IjUiIC8+CiAgICA8bGluZSB4MT0iMTQ2MCIgeTE9IjMwMCIgeDI9IjE0NjAiIHkyPSI4MDAiIC8+CiAgICA8bGluZSB4MT0iMTcxMCIgeTE9IjMwMCIgeDI9IjE3MTAiIHkyPSI4MDAiIC8+CiAgICAKICAgIDxwYXRoIGQ9Ik03MDAgODUwIFEgOTYwIDk1MCAxMjIwIDg1MCIgc3Ryb2tlLXdpZHRoPSIyIiAvPgogICAgPHBhdGggZD0iTTcwMCA4NzAgUSA5NjAgOTcwIDEyMjAgODcwIiBzdHJva2Utd2lkdGg9IjIiIC8+CiAgPC9nPgo8L3N2Zz4=')";
+const MUSIC_ARTS_BG = "url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOTIwIiBoZWlnaHQ9IjEwODAiIHZpZXdCb3g9IjAgMCAxOTIwIDEwODAiPgogIDxkZWZzPgogICAgPGxpbmVhckdyYWRpZW50IGlkPSJiZyIgeDE9IjAiIHkxPSIwIiB4Mj0iMTkyMCIgeTI9IjEwODAiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzFlMTAyZiIgLz4KICAgICAgPHN0b3Agb2Zmc2V0PSI1MCUiIHN0b3AtY29sb3I9IiMwYTA1MTUiIC8+CiAgICAgIDxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iIzEyMDgyMiIgLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8cmFkaWFsR3JhZGllbnQgaWQ9InNwb3RsaWdodDEiIGN4PSIxMCUiIGN5PSIwJSIgcj0iODAlIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNjMDI2ZDMiIHN0b3Atb3BhY2l0eT0iMC4yIiAvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNjMDI2ZDMiIHN0b3Atb3BhY2l0eT0iMCIgLz4KICAgIDwvcmFkaWFsR3JhZGllbnQ+CiAgICA8cmFkaWFsR3JhZGllbnQgaWQ9InNwb3RsaWdodDIiIGN4PSI5MCUiIGN5PSIxMDAlIiByPSI4MCUiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzNiODJmNiIgc3RvcC1vcGFjaXR5PSIwLjE1IiAvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMzYjgyZjYiIHN0b3Atb3BhY2l0eT0iMCIgLz4KICAgIDwvcmFkaWFsR3JhZGllbnQ+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSIxOTIwIiBoZWlnaHQ9IjEwODAiIGZpbGw9InVybCgjYmcpIiAvPgogIDxyZWN0IHdpZHRoPSIxOTIwIiBoZWlnaHQ9IjEwODAiIGZpbGw9InVybCgjc3BvdGxpZ2h0MSkiIC8+CiAgPHJlY3Qgd2lkdGg9IjE5MjAiIGhlaWdodD0iMTA4MCIgZmlsbD0idXJsKCNzcG90bGlnaHQyKSIgLz4KICAKICA8ZyBvcGFjaXR5PSIwLjEiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+CiAgICA8IS0tIEFic3RyYWN0IGF1ZGlvIHdhdmVmb3JtcyAtLT4KICAgIDxwYXRoIGQ9Ik0wIDYwMCBRIDIwMCA1MDAgNDAwIDYwMCBUIDgwMCA2MDAgVCAxMjAwIDYwMCBUIDE2MDAgNjAwIFQgMjAwMCA2MDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2MwMjZkMyIgc3Ryb2tlLXdpZHRoPSI0IiAvPgogICAgPHBhdGggZD0iTTAgNjUwIFEgMjAwIDQwMCA0MDAgNjUwIFQgODAwIDY1MCBUIDEyMDAgNjUwIFQgMTYwMCA2NTAgVCAyMDAwIDY1MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjM2I4MmY2IiBzdHJva2Utd2lkdGg9IjIiIC8+CiAgICA8cGF0aCBkPSJNMCA3MDAgUSAyMDAgNjAwIDQwMCA3MDAgVCA4MDAgNzAwIFQgMTIwMCA3MDAgVCAxNjAwIDcwMCBUIDIwMDAgNzAwIiBmaWxsPSJub25lIiBzdHJva2U9IiNkYjI3NzciIHN0cm9rZS13aWR0aD0iMSIgLz4KICA8L2c+Cjwvc3ZnPg==')";
+
 /**
  * System Template Presets — built-in, ready-to-use screen layouts
  * designed specifically for schools. Teachers pick a preset, and the
@@ -98,15 +102,14 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'LOGO',
         x: 2, y: 3, width: 14, height: 14,
         sortOrder: 0,
-        defaultConfig: { fitMode: 'contain' },
+        defaultConfig: { theme: 'sunny-meadow', fitMode: 'contain' },
       },
       {
         name: 'Welcome Headline',
         widgetType: 'TEXT',
         x: 17, y: 3, width: 54, height: 14,
         sortOrder: 1,
-        defaultConfig: {
-          content: 'Welcome to Sunnyside Elementary! ☀️',
+        defaultConfig: { theme: 'sunny-meadow', content: 'Welcome to Sunnyside Elementary! ☀️',
           fontSize: 64,
           alignment: 'center',
           color: '#3A2E2A',
@@ -118,9 +121,8 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'CLOCK',
         x: 72, y: 3, width: 26, height: 14,
         sortOrder: 2,
-        defaultConfig: {
-          format: '12h',
-          theme: 'sunny-meadow',
+        defaultConfig: { theme: 'sunny-meadow', format: '12h',
+          
         },
       },
       {
@@ -128,10 +130,9 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'WEATHER',
         x: 2, y: 20, width: 32, height: 26,
         sortOrder: 3,
-        defaultConfig: {
-          location: 'Springfield',
+        defaultConfig: { theme: 'sunny-meadow', location: 'Springfield',
           units: 'imperial',
-          theme: 'sunny-meadow',
+          
         },
       },
       {
@@ -139,11 +140,10 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'STAFF_SPOTLIGHT',
         x: 2, y: 48, width: 32, height: 40,
         sortOrder: 4,
-        defaultConfig: {
-          staffName: 'Mrs. Johnson',
+        defaultConfig: { theme: 'sunny-meadow', staffName: 'Mrs. Johnson',
           role: 'Teacher of the Week',
           bio: 'Inspiring 3rd graders every day with creativity, kindness, and a big smile!',
-          theme: 'sunny-meadow',
+          
         },
       },
       {
@@ -151,8 +151,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'ANNOUNCEMENT',
         x: 36, y: 20, width: 42, height: 42,
         sortOrder: 5,
-        defaultConfig: {
-          message: 'Book Fair starts Monday! Come explore hundreds of new books in the library. Don\'t forget to bring your reading log.',
+        defaultConfig: { theme: 'sunny-meadow', message: 'Book Fair starts Monday! Come explore hundreds of new books in the library. Don\'t forget to bring your reading log.',
           priority: 'normal',
         },
       },
@@ -161,8 +160,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'IMAGE_CAROUSEL',
         x: 36, y: 64, width: 42, height: 24,
         sortOrder: 6,
-        defaultConfig: {
-          transitionEffect: 'fade',
+        defaultConfig: { theme: 'sunny-meadow', transitionEffect: 'fade',
           intervalMs: 5000,
           fitMode: 'cover',
         },
@@ -172,15 +170,14 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'CALENDAR',
         x: 80, y: 20, width: 18, height: 42,
         sortOrder: 7,
-        defaultConfig: { maxEvents: 4 },
+        defaultConfig: { theme: 'sunny-meadow', maxEvents: 4 },
       },
       {
         name: 'Countdown to Field Trip',
         widgetType: 'COUNTDOWN',
         x: 80, y: 64, width: 18, height: 24,
         sortOrder: 8,
-        defaultConfig: {
-          label: 'Field Trip in',
+        defaultConfig: { theme: 'sunny-meadow', label: 'Field Trip in',
           targetDate: '',
         },
       },
@@ -189,8 +186,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'TICKER',
         x: 0, y: 91, width: 100, height: 9,
         sortOrder: 9,
-        defaultConfig: {
-          speed: 'medium',
+        defaultConfig: { theme: 'sunny-meadow', speed: 'medium',
           messages: [
             'Welcome back, Sunnyside Stars! ⭐',
             'Picture day is this Friday — wear your school colors!',
@@ -219,49 +215,49 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'LOGO',
         x: 0, y: 0, width: 25, height: 20,
         sortOrder: 0,
-        defaultConfig: { fitMode: 'contain' },
+        defaultConfig: { theme: 'sunshine-academy', fitMode: 'contain' },
       },
       {
         name: 'Welcome Message',
         widgetType: 'TEXT',
         x: 25, y: 0, width: 50, height: 20,
         sortOrder: 1,
-        defaultConfig: { content: 'Welcome to Our School!', fontSize: 36, alignment: 'center' },
+        defaultConfig: { theme: 'sunshine-academy', content: 'Welcome to Sunshine Academy! ☀️', fontSize: 36, alignment: 'center' },
       },
       {
         name: 'Clock & Weather',
         widgetType: 'CLOCK',
         x: 75, y: 0, width: 25, height: 10,
         sortOrder: 2,
-        defaultConfig: { format: '12h', showSeconds: false },
+        defaultConfig: { theme: 'sunshine-academy', format: '12h', showSeconds: false },
       },
       {
         name: 'Weather',
         widgetType: 'WEATHER',
         x: 75, y: 10, width: 25, height: 10,
         sortOrder: 3,
-        defaultConfig: { units: 'imperial', showForecast: false },
+        defaultConfig: { theme: 'sunshine-academy', units: 'imperial', showForecast: false },
       },
       {
         name: 'Main Announcements',
         widgetType: 'ANNOUNCEMENT',
         x: 0, y: 20, width: 60, height: 70,
         sortOrder: 4,
-        defaultConfig: { priority: 'normal' },
+        defaultConfig: { theme: 'sunshine-academy', priority: 'normal' },
       },
       {
         name: 'Upcoming Events',
         widgetType: 'CALENDAR',
         x: 60, y: 20, width: 40, height: 70,
         sortOrder: 5,
-        defaultConfig: { daysToShow: 7, showWeekend: false },
+        defaultConfig: { theme: 'sunshine-academy', daysToShow: 7, showWeekend: false },
       },
       {
         name: 'Bottom Ticker',
         widgetType: 'TICKER',
         x: 0, y: 90, width: 100, height: 10,
         sortOrder: 6,
-        defaultConfig: { speed: 'medium', direction: 'left', messages: ['Welcome!'] },
+        defaultConfig: { theme: 'sunshine-academy', speed: 'medium', direction: 'left', messages: ['Welcome back, Sunshine Stars! ⭐', 'Picture day is this Friday!', 'Parent-teacher conferences next Tuesday'] },
       },
     ],
   },
@@ -339,14 +335,14 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'LOGO',
         x: 0, y: 0, width: 20, height: 15,
         sortOrder: 0,
-        defaultConfig: { fitMode: 'contain' },
+        defaultConfig: { theme: 'final-chance', fitMode: 'contain' },
       },
       {
         name: 'Header Title',
         widgetType: 'TEXT',
         x: 20, y: 0, width: 60, height: 15,
         sortOrder: 1,
-        defaultConfig: { content: 'Eagle News', fontSize: 28, alignment: 'center' },
+        defaultConfig: { theme: 'final-chance', content: 'Eagle News', fontSize: 28, alignment: 'center' },
       },
       {
         name: 'Clock',
@@ -359,7 +355,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'IMAGE_CAROUSEL',
         x: 0, y: 15, width: 100, height: 60,
         sortOrder: 3,
-        defaultConfig: { transitionEffect: 'slide', intervalMs: 6000, fitMode: 'cover' },
+        defaultConfig: { theme: 'final-chance', transitionEffect: 'slide', intervalMs: 6000, fitMode: 'cover' },
       },
       {
         name: 'Bottom Announcements',
@@ -427,7 +423,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'TEXT',
         x: 0, y: 0, width: 70, height: 12,
         sortOrder: 0,
-        defaultConfig: { content: "Today's Menu", fontSize: 36, alignment: 'center', bgColor: '#2d5016', color: '#ffffff' },
+        defaultConfig: { theme: 'diner-chalkboard', content: "Today's Menu", fontSize: 36, alignment: 'center', bgColor: '#2d5016', color: '#ffffff' },
       },
       {
         name: 'Clock',
@@ -440,7 +436,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'LUNCH_MENU',
         x: 0, y: 12, width: 55, height: 78,
         sortOrder: 2,
-        defaultConfig: { meals: [
+        defaultConfig: { theme: 'diner-chalkboard', meals: [
           { label: 'Main Entrée', items: ['Update in settings'] },
           { label: 'Side Options', items: ['Update in settings'] },
           { label: 'Drinks', items: ['Milk', 'Juice', 'Water'] },
@@ -451,21 +447,21 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'IMAGE_CAROUSEL',
         x: 55, y: 12, width: 45, height: 50,
         sortOrder: 3,
-        defaultConfig: { transitionEffect: 'fade', intervalMs: 5000, fitMode: 'cover' },
+        defaultConfig: { theme: 'diner-chalkboard', transitionEffect: 'fade', intervalMs: 5000, fitMode: 'cover' },
       },
       {
         name: 'Next Period Countdown',
         widgetType: 'COUNTDOWN',
         x: 55, y: 62, width: 45, height: 28,
         sortOrder: 4,
-        defaultConfig: { label: 'Next lunch period in', showHours: true, showDays: false },
+        defaultConfig: { theme: 'diner-chalkboard', label: 'Next lunch period in', showHours: true, showDays: false },
       },
       {
         name: 'Nutrition Ticker',
         widgetType: 'TICKER',
         x: 0, y: 90, width: 100, height: 10,
         sortOrder: 5,
-        defaultConfig: { speed: 'slow', messages: ['Remember to eat your fruits and vegetables!', 'Allergy info available at the front counter'] },
+        defaultConfig: { theme: 'diner-chalkboard', speed: 'slow', messages: ['Remember to eat your fruits and vegetables!', 'Allergy info available at the front counter'] },
       },
     ],
   },
@@ -487,49 +483,49 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'TEXT',
         x: 0, y: 0, width: 75, height: 12,
         sortOrder: 0,
-        defaultConfig: { content: 'Room 204 — Mrs. Johnson', fontSize: 24, alignment: 'left' },
+        defaultConfig: { theme: 'back-to-school', content: 'Room 204 — Mrs. Johnson', fontSize: 24, alignment: 'left' },
       },
       {
         name: 'Clock',
         widgetType: 'CLOCK',
         x: 75, y: 0, width: 25, height: 12,
         sortOrder: 1,
-        defaultConfig: { format: '12h', showSeconds: true },
+        defaultConfig: { theme: 'back-to-school', format: '12h', showSeconds: true },
       },
       {
         name: 'Bell Schedule',
         widgetType: 'BELL_SCHEDULE',
         x: 0, y: 12, width: 30, height: 78,
         sortOrder: 2,
-        defaultConfig: { showCurrentHighlight: true },
+        defaultConfig: { theme: 'back-to-school', showCurrentHighlight: true },
       },
       {
         name: 'Daily Agenda / Announcements',
         widgetType: 'RICH_TEXT',
         x: 30, y: 12, width: 40, height: 78,
         sortOrder: 3,
-        defaultConfig: { html: '<h2>Today\'s Agenda</h2><ol><li>Warm-up activity</li><li>Lesson</li><li>Group work</li><li>Wrap-up</li></ol>' },
+        defaultConfig: { theme: 'back-to-school', html: '<h2>Today\'s Agenda</h2><ol><li>Warm-up activity</li><li>Lesson</li><li>Group work</li><li>Wrap-up</li></ol>' },
       },
       {
         name: 'Class Photos / Spotlight',
         widgetType: 'IMAGE_CAROUSEL',
         x: 70, y: 12, width: 30, height: 50,
         sortOrder: 4,
-        defaultConfig: { transitionEffect: 'fade', intervalMs: 10000, fitMode: 'cover' },
+        defaultConfig: { theme: 'back-to-school', transitionEffect: 'fade', intervalMs: 10000, fitMode: 'cover' },
       },
       {
         name: 'Countdown to Event',
         widgetType: 'COUNTDOWN',
         x: 70, y: 62, width: 30, height: 28,
         sortOrder: 5,
-        defaultConfig: { label: 'Days until field trip', showDays: true, showHours: false },
+        defaultConfig: { theme: 'back-to-school', label: 'Days until field trip', showDays: true, showHours: false },
       },
       {
         name: 'Bottom Updates',
         widgetType: 'TICKER',
         x: 0, y: 90, width: 100, height: 10,
         sortOrder: 6,
-        defaultConfig: { speed: 'slow', messages: ['Remember: Science project due Friday!'] },
+        defaultConfig: { theme: 'back-to-school', speed: 'slow', messages: ['Remember: Science project due Friday!'] },
       },
     ],
   },
@@ -577,14 +573,14 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'LOGO',
         x: 0, y: 0, width: 30, height: 15,
         sortOrder: 0,
-        defaultConfig: { fitMode: 'contain' },
+        defaultConfig: { theme: 'office-dashboard', fitMode: 'contain' },
       },
       {
         name: 'Welcome Text',
         widgetType: 'TEXT',
         x: 30, y: 0, width: 45, height: 15,
         sortOrder: 1,
-        defaultConfig: { content: 'Welcome — Please check in at the front desk', fontSize: 20, alignment: 'center' },
+        defaultConfig: { theme: 'office-dashboard', content: 'Welcome — Please check in at the front desk', fontSize: 20, alignment: 'center' },
       },
       {
         name: 'Clock & Weather',
@@ -603,28 +599,28 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'STAFF_SPOTLIGHT',
         x: 50, y: 15, width: 50, height: 25,
         sortOrder: 4,
-        defaultConfig: { rotateIntervalMs: 20000 },
+        defaultConfig: { theme: 'office-dashboard', rotateIntervalMs: 20000 },
       },
       {
         name: 'School Calendar',
         widgetType: 'CALENDAR',
         x: 50, y: 40, width: 50, height: 25,
         sortOrder: 5,
-        defaultConfig: { daysToShow: 5, showWeekend: false },
+        defaultConfig: { theme: 'office-dashboard', daysToShow: 5, showWeekend: false },
       },
       {
         name: 'Visitor Info / Web Embed',
         widgetType: 'WEBPAGE',
         x: 0, y: 65, width: 100, height: 25,
         sortOrder: 6,
-        defaultConfig: { scrollEnabled: false },
+        defaultConfig: { theme: 'office-dashboard', scrollEnabled: false },
       },
       {
         name: 'Alert Ticker',
         widgetType: 'TICKER',
         x: 0, y: 90, width: 100, height: 10,
         sortOrder: 7,
-        defaultConfig: { speed: 'medium', messages: ['Visitors: please remember to sign in and wear your badge'] },
+        defaultConfig: { theme: 'office-dashboard', speed: 'medium', messages: ['Visitors: please remember to sign in and wear your badge'] },
       },
     ],
   },
@@ -1038,22 +1034,21 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'CLOCK',
         x: 0, y: 0, width: 28, height: 85,
         sortOrder: 0,
-        defaultConfig: { format: '12h', showSeconds: true, color: '#FFFFFF', bgColor: 'transparent' },
+        defaultConfig: { theme: 'middle-school-hall', format: '12h', showSeconds: true, color: '#FFFFFF', bgColor: 'transparent' },
       },
       {
         name: 'Bell Schedule',
         widgetType: 'BELL_SCHEDULE',
         x: 29, y: 0, width: 70, height: 85,
         sortOrder: 1,
-        defaultConfig: { showCurrentHighlight: true },
+        defaultConfig: { theme: 'middle-school-hall', showCurrentHighlight: true },
       },
       {
         name: 'Hall Ticker',
         widgetType: 'TICKER',
         x: 0, y: 85, width: 100, height: 15,
         sortOrder: 2,
-        defaultConfig: {
-          speed: 'medium',
+        defaultConfig: { theme: 'middle-school-hall', speed: 'medium',
           messages: [
             'Spirit Week: dress-up themes posted on the main office door',
             'Science fair projects due next Friday',
@@ -1082,15 +1077,14 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'LOGO',
         x: 10, y: 2, width: 80, height: 18,
         sortOrder: 0,
-        defaultConfig: { fitMode: 'contain' },
+        defaultConfig: { theme: 'high-school-athletics', fitMode: 'contain' },
       },
       {
         name: 'Next Game Countdown',
         widgetType: 'COUNTDOWN',
         x: 0, y: 22, width: 100, height: 24,
         sortOrder: 1,
-        defaultConfig: {
-          label: 'Next Game',
+        defaultConfig: { theme: 'high-school-athletics', label: 'Next Game',
           targetDate: '',
           showDays: true,
           showHours: true,
@@ -1101,8 +1095,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'RICH_TEXT',
         x: 0, y: 48, width: 100, height: 28,
         sortOrder: 2,
-        defaultConfig: {
-          html: '<h2 style="color:#FFD700;text-align:center;font-size:2rem;">Last Game</h2><p style="color:#fff;text-align:center;font-size:1.5rem;">Eagles 42 — Rivals 28</p><p style="color:#aaa;text-align:center;">Update after each game</p>',
+        defaultConfig: { theme: 'high-school-athletics', html: '<h2 style="color:#FFD700;text-align:center;font-size:2rem;">Last Game</h2><p style="color:#fff;text-align:center;font-size:1.5rem;">Eagles 42 — Rivals 28</p><p style="color:#aaa;text-align:center;">Update after each game</p>',
         },
       },
       {
@@ -1110,8 +1103,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'TICKER',
         x: 0, y: 78, width: 100, height: 12,
         sortOrder: 3,
-        defaultConfig: {
-          speed: 'fast',
+        defaultConfig: { theme: 'high-school-athletics', speed: 'fast',
           messages: [
             'GO EAGLES! 🦅 Make some noise!',
             'Wear your school colors to the next home game',
@@ -1124,8 +1116,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'TEXT',
         x: 0, y: 90, width: 100, height: 10,
         sortOrder: 4,
-        defaultConfig: {
-          content: '🏆 State Champions 2024',
+        defaultConfig: { theme: 'high-school-athletics', content: '🏆 State Champions 2024',
           fontSize: 28,
           alignment: 'center',
           color: '#FFD700',
@@ -1146,15 +1137,14 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     orientation: 'LANDSCAPE',
     screenWidth: 1920,
     screenHeight: 1080,
-    bgColor: '#F5F0EB',
+    bgGradient: LIBRARY_QUIET_BG,
     zones: [
       {
         name: 'Library Header',
         widgetType: 'TEXT',
         x: 0, y: 0, width: 70, height: 14,
         sortOrder: 0,
-        defaultConfig: {
-          content: 'Media Center — Please keep voices low 📚',
+        defaultConfig: { theme: 'library-quiet', content: 'Media Center — Please keep voices low 📚',
           fontSize: 22,
           alignment: 'center',
           color: '#3E2723',
@@ -1166,22 +1156,21 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'CLOCK',
         x: 70, y: 0, width: 30, height: 14,
         sortOrder: 1,
-        defaultConfig: { format: '12h', showSeconds: false, color: '#3E2723', bgColor: 'transparent' },
+        defaultConfig: { theme: 'library-quiet', format: '12h', showSeconds: false, color: '#3E2723', bgColor: 'transparent' },
       },
       {
         name: 'Book of the Month',
         widgetType: 'IMAGE',
         x: 0, y: 15, width: 35, height: 60,
         sortOrder: 2,
-        defaultConfig: { fitMode: 'contain' },
+        defaultConfig: { theme: 'library-quiet', fitMode: 'contain' },
       },
       {
         name: 'Quiet Hours & Schedule',
         widgetType: 'RICH_TEXT',
         x: 36, y: 15, width: 36, height: 60,
         sortOrder: 3,
-        defaultConfig: {
-          html: '<h3 style="color:#3E2723;">Library Hours</h3><p>Mon–Fri: 7:30 AM – 4:00 PM</p><p>Quiet Study: 8:00 – 11:00 AM</p><p>Open Reading: 11:00 AM – 3:00 PM</p>',
+        defaultConfig: { theme: 'library-quiet', html: '<h3 style="color:#3E2723;">Library Hours</h3><p>Mon–Fri: 7:30 AM – 4:00 PM</p><p>Quiet Study: 8:00 – 11:00 AM</p><p>Open Reading: 11:00 AM – 3:00 PM</p>',
         },
       },
       {
@@ -1189,8 +1178,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'LUNCH_MENU',
         x: 73, y: 15, width: 27, height: 60,
         sortOrder: 4,
-        defaultConfig: {
-          meals: [
+        defaultConfig: { theme: 'library-quiet', meals: [
             { label: 'Today', items: ['Update in settings'] },
           ],
         },
@@ -1200,8 +1188,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'TICKER',
         x: 0, y: 76, width: 100, height: 12,
         sortOrder: 5,
-        defaultConfig: {
-          speed: 'slow',
+        defaultConfig: { theme: 'library-quiet', speed: 'slow',
           messages: [
             'New arrivals on the display shelf near the entrance',
             'Book Club meets Wednesdays at 3:15 PM — all grades welcome',
@@ -1230,7 +1217,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'TEXT',
         x: 0, y: 0, width: 70, height: 28,
         sortOrder: 0,
-        defaultConfig: {
+        defaultConfig: { theme: 'gym-pe',
           content: '"Champions are made in the moments when they want to quit." — Keep going!',
           fontSize: 28,
           alignment: 'center',
@@ -1243,21 +1230,21 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'WEATHER',
         x: 70, y: 0, width: 30, height: 28,
         sortOrder: 1,
-        defaultConfig: { units: 'imperial', showForecast: false },
+        defaultConfig: { theme: 'gym-pe', units: 'imperial', showForecast: false },
       },
       {
         name: 'Class Rotation Schedule',
         widgetType: 'BELL_SCHEDULE',
         x: 0, y: 29, width: 60, height: 55,
         sortOrder: 2,
-        defaultConfig: { showCurrentHighlight: true },
+        defaultConfig: { theme: 'gym-pe', showCurrentHighlight: true },
       },
       {
         name: 'PE Announcements',
         widgetType: 'ANNOUNCEMENT',
         x: 61, y: 29, width: 39, height: 55,
         sortOrder: 3,
-        defaultConfig: {
+        defaultConfig: { theme: 'gym-pe',
           message: 'Fitness testing week starts Monday. Please wear appropriate athletic shoes.',
           priority: 'normal',
         },
@@ -1267,7 +1254,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'TICKER',
         x: 0, y: 85, width: 100, height: 15,
         sortOrder: 4,
-        defaultConfig: {
+        defaultConfig: { theme: 'gym-pe',
           speed: 'medium',
           messages: [
             'Intramural sign-ups close this Friday — see Coach Davis',
@@ -1297,8 +1284,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'TEXT',
         x: 0, y: 0, width: 65, height: 16,
         sortOrder: 0,
-        defaultConfig: {
-          content: 'Music & Arts — Practice Makes Perfect 🎵',
+        defaultConfig: { theme: 'music-arts', content: 'Music & Arts — Practice Makes Perfect 🎵',
           fontSize: 26,
           alignment: 'center',
           color: '#E040FB',
@@ -1310,8 +1296,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'COUNTDOWN',
         x: 65, y: 0, width: 35, height: 16,
         sortOrder: 1,
-        defaultConfig: {
-          label: 'Spring Concert in',
+        defaultConfig: { theme: 'music-arts', label: 'Spring Concert in',
           targetDate: '',
           showDays: true,
           showHours: false,
@@ -1322,8 +1307,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'RICH_TEXT',
         x: 0, y: 17, width: 45, height: 68,
         sortOrder: 2,
-        defaultConfig: {
-          html: '<h3 style="color:#E040FB;">Rehearsal Schedule</h3><p style="color:#fff;">Monday: Band 7:00–8:00 AM</p><p style="color:#fff;">Tuesday: Choir 3:15–4:30 PM</p><p style="color:#fff;">Thursday: Orchestra 3:15–5:00 PM</p><p style="color:#fff;">Update with current schedule</p>',
+        defaultConfig: { theme: 'music-arts', html: '<h3 style="color:#E040FB;">Rehearsal Schedule</h3><p style="color:#fff;">Monday: Band 7:00–8:00 AM</p><p style="color:#fff;">Tuesday: Choir 3:15–4:30 PM</p><p style="color:#fff;">Thursday: Orchestra 3:15–5:00 PM</p><p style="color:#fff;">Update with current schedule</p>',
         },
       },
       {
@@ -1331,8 +1315,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'STAFF_SPOTLIGHT',
         x: 46, y: 17, width: 54, height: 68,
         sortOrder: 3,
-        defaultConfig: {
-          staffName: 'Featured Artist',
+        defaultConfig: { theme: 'music-arts', staffName: 'Featured Artist',
           role: 'Student of the Month',
           bio: 'Outstanding dedication to our music program. Congratulations!',
           rotateIntervalMs: 20000,
@@ -1343,8 +1326,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'TICKER',
         x: 0, y: 86, width: 100, height: 14,
         sortOrder: 4,
-        defaultConfig: {
-          speed: 'slow',
+        defaultConfig: { theme: 'music-arts', speed: 'slow',
           messages: [
             'All-State auditions — see Mr. Rivera for details',
             'Art gallery submissions due by the 15th',
@@ -1373,8 +1355,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'TEXT',
         x: 0, y: 0, width: 60, height: 15,
         sortOrder: 0,
-        defaultConfig: {
-          content: 'STEM Lab — Think. Build. Discover. 🔬',
+        defaultConfig: { theme: 'stem-science', content: 'STEM Lab — Think. Build. Discover. 🔬',
           fontSize: 26,
           alignment: 'center',
           color: '#00E5FF',
@@ -1386,8 +1367,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'COUNTDOWN',
         x: 60, y: 0, width: 40, height: 15,
         sortOrder: 1,
-        defaultConfig: {
-          label: 'Science Fair Deadline',
+        defaultConfig: { theme: 'stem-science', label: 'Science Fair Deadline',
           targetDate: '',
           showDays: true,
           showHours: true,
@@ -1398,8 +1378,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'RICH_TEXT',
         x: 0, y: 16, width: 55, height: 65,
         sortOrder: 2,
-        defaultConfig: {
-          html: '<h2 style="color:#00E5FF;">Fact of the Day</h2><p style="color:#E0F7FA;font-size:1.1rem;">The human body contains approximately 37 trillion cells.</p><br><p style="color:#80DEEA;">Update daily with a new science or STEM fact.</p>',
+        defaultConfig: { theme: 'stem-science', html: '<h2 style="color:#00E5FF;">Fact of the Day</h2><p style="color:#E0F7FA;font-size:1.1rem;">The human body contains approximately 37 trillion cells.</p><br><p style="color:#80DEEA;">Update daily with a new science or STEM fact.</p>',
         },
       },
       {
@@ -1407,8 +1386,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'IMAGE_CAROUSEL',
         x: 56, y: 16, width: 44, height: 65,
         sortOrder: 3,
-        defaultConfig: {
-          transitionEffect: 'fade',
+        defaultConfig: { theme: 'stem-science', transitionEffect: 'fade',
           intervalMs: 7000,
           fitMode: 'cover',
         },
@@ -1418,8 +1396,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'TICKER',
         x: 0, y: 82, width: 100, height: 18,
         sortOrder: 4,
-        defaultConfig: {
-          speed: 'slow',
+        defaultConfig: { theme: 'stem-science', speed: 'slow',
           messages: [
             '🥽 Safety goggles required during all lab activities',
             'No food or drink in the lab at any time',
@@ -1434,7 +1411,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
   // ─────────────────────────────────────────────────────
   // CAFETERIA DAILY SPECIAL — vibrant menu-first display
   // ─────────────────────────────────────────────────────
-  {
+    {
     id: 'cafeteria-daily-special',
     name: 'Cafeteria Daily Special',
     description: 'Vibrant cafeteria display leading with the featured menu item, allergen legend, and next meal period countdown.',
@@ -1442,8 +1419,73 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     orientation: 'LANDSCAPE',
     screenWidth: 1920,
     screenHeight: 1080,
-    bgGradient: 'linear-gradient(135deg, #1B5E20 0%, #2E7D32 40%, #33691E 100%)',
+    bgImage: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOTIwIiBoZWlnaHQ9IjEwODAiIHZpZXdCb3g9IjAgMCAxOTIwIDEwODAiPgogIDxkZWZzPgogICAgPGxpbmVhckdyYWRpZW50IGlkPSJiZzEiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjMkMzRTJEIiAvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMxRTJCMUYiIC8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogICAgPGZpbHRlciBpZD0ibm9pc2UiPgoJCQk8ZmVUdXJidWxlbmNlIHR5cGU9ImZyYWN0YWxOb2lzZSIgYmFzZUZyZXF1ZW5jeT0iMC42NSIgbnVtT2N0YXZlcz0iMyIgc3RpdGNoVGlsZXM9InN0aXRjaCIvPgoJCQk8ZmVDb2xvck1hdHJpeCB0eXBlPSJtYXRyaXgiIHZhbHVlcz0iMSAwIDAgMCAwLCAwIDEgMCAwIDAsIDAgMCAxIDAgMCwgMCAwIDAgMC4wOCAwIiAvPgoJCTwvZmlsdGVyPgogICAgPHBhdHRlcm4gaWQ9ImNoYWxrLWR1c3QiIHg9IjAiIHk9IjAiIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KICAgICAgPGNpcmNsZSBjeD0iMjUiIGN5PSI1MCIgcj0iMSIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjA1KSIgLz4KICAgICAgPGNpcmNsZSBjeD0iMTMwIiBjeT0iODAiIHI9IjEuNSIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjAzKSIgLz4KICAgICAgPGNpcmNsZSBjeD0iODAiIGN5PSIxNzAiIHI9IjEiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC4wNCkiIC8+CiAgICAgIDxwYXRoIGQ9Ik00MCAxMzAgQzUwIDEyMCA2MCAxNDAgNzAgMTMwIiBzdHJva2U9InJnYmEoMjU1LDI1NSwyNTUsMC4wMikiIGZpbGw9Im5vbmUiIC8+CiAgICAgIDxwYXRoIGQ9Ik0xNTAgMzAgQzE2MCAyMCAxNzAgNDAgMTgwIDMwIiBzdHJva2U9InJnYmEoMjU1LDI1NSwyNTUsMC4wMykiIGZpbGw9Im5vbmUiIC8+CiAgICA8L3BhdHRlcm4+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSIxOTIwIiBoZWlnaHQ9IjE0NDAiIGZpbGw9InVybCgjYmcxKSIgLz4KICA8cmVjdCB3aWR0aD0iMTkyMCIgaGVpZ2h0PSIxNDQwIiBmaWxsPSJ1cmwoI2NoYWxrLWR1c3QpIiAvPgogIDxyZWN0IHdpZHRoPSIxOTIwIiBoZWlnaHQ9IjE0NDAiIGZpbHRlcj0idXJsKCNub2lzZSkiIG9wYWNpdHk9IjAuNiIgLz4KPC9zdmc+",
     zones: [
+      {
+        name: 'Menu Header',
+        widgetType: 'TEXT',
+        x: 2, y: 3, width: 66, height: 14,
+        sortOrder: 0,
+        defaultConfig: {
+          theme: 'diner-chalkboard',
+          content: "Today's Cafeteria Menu 🍽️",
+          fontSize: 32,
+          alignment: 'center',
+          color: '#FECA57',
+          bgColor: 'transparent',
+        },
+      },
+      {
+        name: 'Next Meal Countdown',
+        widgetType: 'COUNTDOWN',
+        x: 70, y: 3, width: 28, height: 14,
+        sortOrder: 1,
+        defaultConfig: {
+          theme: 'diner-chalkboard',
+          label: 'Next meal period',
+          showHours: true,
+          showDays: false,
+        },
+      },
+      {
+        name: 'Featured Menu Item',
+        widgetType: 'LUNCH_MENU',
+        x: 2, y: 20, width: 55, height: 75,
+        sortOrder: 2,
+        defaultConfig: {
+          theme: 'diner-chalkboard',
+          meals: [
+            { label: "Today's Special", items: ['Crispy Chicken Sandwich'] },
+            { label: 'Sides', items: ['Sweet Potato Fries', 'Steamed Broccoli', 'Fruit Cup'] },
+            { label: 'Drinks', items: ['Chocolate Milk', 'Apple Juice', 'Water'] },
+          ],
+        },
+      },
+      {
+        name: 'Food Photo',
+        widgetType: 'IMAGE_CAROUSEL',
+        x: 60, y: 20, width: 38, height: 45,
+        sortOrder: 3,
+        defaultConfig: {
+          theme: 'diner-chalkboard',
+          title: "Today's Feature",
+          urls: [],
+        },
+      },
+      {
+        name: 'Chef Spotlight',
+        widgetType: 'STAFF_SPOTLIGHT',
+        x: 60, y: 68, width: 38, height: 27,
+        sortOrder: 4,
+        defaultConfig: {
+          theme: 'diner-chalkboard',
+          staffName: 'Chef Rodriguez',
+          role: 'Head Chef',
+          bio: 'Making lunches everyone loves!',
+        },
+      },
+    ],
+  },
       {
         name: 'Menu Header',
         widgetType: 'TEXT',
@@ -1536,8 +1578,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'TEXT',
         x: 0, y: 0, width: 70, height: 16,
         sortOrder: 0,
-        defaultConfig: {
-          content: 'BUS LOOP — DISMISSAL INFORMATION',
+        defaultConfig: { theme: 'bus-loop', content: 'BUS LOOP — DISMISSAL INFORMATION',
           fontSize: 30,
           alignment: 'center',
           color: '#FFD700',
@@ -1549,15 +1590,14 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'CLOCK',
         x: 70, y: 0, width: 30, height: 16,
         sortOrder: 1,
-        defaultConfig: { format: '12h', showSeconds: true, color: '#FFFFFF', bgColor: 'transparent' },
+        defaultConfig: { theme: 'bus-loop', format: '12h', showSeconds: true, color: '#FFFFFF', bgColor: 'transparent' },
       },
       {
         name: 'Route & Delay Announcement',
         widgetType: 'ANNOUNCEMENT',
         x: 0, y: 17, width: 45, height: 62,
         sortOrder: 2,
-        defaultConfig: {
-          message: 'All buses running on schedule. Riders: proceed to your designated pickup zone.',
+        defaultConfig: { theme: 'bus-loop', message: 'All buses running on schedule. Riders: proceed to your designated pickup zone.',
           priority: 'normal',
         },
       },
@@ -1566,15 +1606,14 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'WEATHER',
         x: 46, y: 17, width: 54, height: 30,
         sortOrder: 3,
-        defaultConfig: { units: 'imperial', showForecast: false },
+        defaultConfig: { theme: 'bus-loop', units: 'imperial', showForecast: false },
       },
       {
         name: 'Bus Arrival Notes',
         widgetType: 'RICH_TEXT',
         x: 46, y: 48, width: 54, height: 31,
         sortOrder: 4,
-        defaultConfig: {
-          html: '<h3 style="color:#FFD700;">Today\'s Bus Notes</h3><p style="color:#fff;">Route 12 — Delayed approx. 10 min</p><p style="color:#fff;">Route 7 — On time</p><p style="color:#ccc;font-size:0.85rem;">Update with live information each day</p>',
+        defaultConfig: { theme: 'bus-loop', html: '<h3 style="color:#FFD700;">Today\'s Bus Notes</h3><p style="color:#fff;">Route 12 — Delayed approx. 10 min</p><p style="color:#fff;">Route 7 — On time</p><p style="color:#ccc;font-size:0.85rem;">Update with live information each day</p>',
         },
       },
       {
@@ -1582,8 +1621,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'TICKER',
         x: 0, y: 80, width: 100, height: 20,
         sortOrder: 5,
-        defaultConfig: {
-          speed: 'medium',
+        defaultConfig: { theme: 'bus-loop', speed: 'medium',
           messages: [
             'Students: wait for your bus number to be called before moving to the loop',
             'Car riders: proceed to the south parking lot — bring your ID card',
@@ -1612,14 +1650,14 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'LOGO',
         x: 2, y: 4, width: 20, height: 28,
         sortOrder: 0,
-        defaultConfig: { fitMode: 'contain' },
+        defaultConfig: { theme: 'principals-office', fitMode: 'contain' },
       },
       {
         name: 'Welcome Message',
         widgetType: 'TEXT',
         x: 23, y: 4, width: 55, height: 28,
         sortOrder: 1,
-        defaultConfig: {
+        defaultConfig: { theme: 'principals-office',
           content: 'Welcome — Please sign in at the front desk and have a seat. Someone will be with you shortly.',
           fontSize: 22,
           alignment: 'center',
@@ -1632,14 +1670,14 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'CLOCK',
         x: 79, y: 4, width: 20, height: 28,
         sortOrder: 2,
-        defaultConfig: { format: '12h', showSeconds: false, color: '#FFFFFF', bgColor: 'transparent' },
+        defaultConfig: { theme: 'principals-office', format: '12h', showSeconds: false, color: '#FFFFFF', bgColor: 'transparent' },
       },
       {
         name: 'Office Hours',
         widgetType: 'RICH_TEXT',
         x: 2, y: 35, width: 45, height: 50,
         sortOrder: 3,
-        defaultConfig: {
+        defaultConfig: { theme: 'principals-office',
           html: '<h3 style="color:#90CAF9;">Office Hours</h3><p style="color:#fff;">Monday – Friday: 7:30 AM – 4:30 PM</p><p style="color:#fff;">Principal available: 8:00 – 11:30 AM</p><p style="color:#fff;">Appointments preferred — call ext. 100</p><br><p style="color:#ccc;font-size:0.85rem;">After-hours messages can be left with the main office.</p>',
         },
       },
@@ -1648,7 +1686,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'ANNOUNCEMENT',
         x: 48, y: 35, width: 50, height: 50,
         sortOrder: 4,
-        defaultConfig: {
+        defaultConfig: { theme: 'principals-office',
           message: 'Thank you for visiting. All visitors must check in and wear a visitor badge while on campus.',
           priority: 'normal',
         },
@@ -1658,7 +1696,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         widgetType: 'TICKER',
         x: 0, y: 86, width: 100, height: 14,
         sortOrder: 5,
-        defaultConfig: {
+        defaultConfig: { theme: 'principals-office',
           speed: 'slow',
           messages: [
             'School office hours: Mon–Fri, 7:30 AM – 4:30 PM',

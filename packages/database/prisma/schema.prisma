@@ -46,6 +46,14 @@ model Tenant {
   usbIngestKey            String?       @map("usb_ingest_key")             // 64-char hex (HMAC-SHA256 secret)
   usbIngestKeyRotatedAt   DateTime?     @map("usb_ingest_key_rotated_at")
   usbIngestEvents         UsbIngestEvent[]
+  // Industry vertical — drives default templates, widget palette, and
+  // pricing tier. Tenants are isolated regardless; this is just metadata
+  // + UI personalization.
+  vertical                String        @default("K12") // K12 | RESTAURANT | RETAIL | HEALTHCARE | CORPORATE | OTHER
+  // Per-screen billing meter. One License row per Tenant; absence means
+  // "Pilot" (free tier with cap of 3 screens, no expiry). License flips
+  // when an admin runs a Stripe checkout or the SUPER_ADMIN comps seats.
+  license                 License?
 
   @@map("tenants")
 }
@@ -141,6 +149,36 @@ model UserInvite {
   @@index([tenantId])
   @@index([email])
   @@map("user_invites")
+}
+
+// Per-tenant license. The billing meter is the count of paired Screens
+// (Screen.tenantId IS NOT NULL AND Screen.pairedAt IS NOT NULL). When
+// register() would push currentSeats above seatLimit, we reject with a
+// LICENSE_EXHAUSTED error and instruct the admin to add seats.
+model License {
+  id            String    @id @default(uuid())
+  tenantId      String    @unique @map("tenant_id")
+  tier          String    // PILOT | STANDARD | ENTERPRISE | EDU_DISTRICT | RESTAURANT_CHAIN | (custom)
+  seatLimit     Int       @default(3) @map("seat_limit")
+  billingMode   String    @default("CARD") @map("billing_mode") // CARD | INVOICE | PURCHASE_ORDER | COMP
+  status        String    @default("ACTIVE")              // ACTIVE | PAST_DUE | SUSPENDED | CANCELLED
+  monthlyPriceCents Int?  @map("monthly_price_cents")    // null for COMP / EDU_DISTRICT custom
+  // Stripe wire-up slots — populated when the customer runs in-app
+  // checkout. Empty for COMP, INVOICE, PURCHASE_ORDER customers.
+  stripeCustomerId      String?   @map("stripe_customer_id")
+  stripeSubscriptionId  String?   @map("stripe_subscription_id")
+  // Expiry / renewal. Null = perpetual (e.g. PILOT, COMP).
+  currentPeriodStart    DateTime? @map("current_period_start")
+  currentPeriodEnd      DateTime? @map("current_period_end")
+  expiresAt             DateTime? @map("expires_at")
+  // Free-form notes from the SUPER_ADMIN (e.g. "manually comp'd 5 seats
+  // through 2026-09-01 — ARRA grant").
+  notes                 String?
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at")
+  tenant                Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("licenses")
 }
 
 model UsbIngestEvent {

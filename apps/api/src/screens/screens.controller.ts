@@ -8,6 +8,7 @@ import { AppRole } from '@cms/database';
 import * as crypto from 'crypto';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
+import { LicenseService } from '../license/license.service';
 
 function generatePairingCode(): string {
   // 6-char alphanumeric, uppercase, easy to read (no 0/O/I/1)
@@ -24,7 +25,8 @@ export class ScreensController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
-    private readonly signer: WebsocketSignerService
+    private readonly signer: WebsocketSignerService,
+    private readonly license: LicenseService,
   ) {}
 
   private async notifySync(tenantId: string) {
@@ -160,6 +162,12 @@ export class ScreensController {
 
     if (screen.tenantId && screen.tenantId !== req.user.tenantId) {
       throw new HttpException('This screen is already paired to another organization', HttpStatus.CONFLICT);
+    }
+
+    // License gate: only count NEW pair attempts (re-pairing an existing
+    // tenant Screen is free).
+    if (!screen.tenantId) {
+      await this.license.assertSeatAvailable(req.user.tenantId);
     }
 
     const updated = await this.prisma.client.screen.update({
