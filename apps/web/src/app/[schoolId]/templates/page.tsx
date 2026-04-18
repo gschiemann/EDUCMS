@@ -138,8 +138,13 @@ function getZoneColor(type: string) {
  * background-image since CSS gradients are valid background-image values)
  * > solid bgColor.
  */
-function previewBgStyle(t: { bgImage?: string | null; bgGradient?: string | null; bgColor?: string | null }): React.CSSProperties {
+function previewBgStyle(t: { screenWidth?: number; screenHeight?: number; bgImage?: string | null; bgGradient?: string | null; bgColor?: string | null }): React.CSSProperties {
+  const sw = t.screenWidth || 3840;
+  const sh = t.screenHeight || 2160;
   const style: React.CSSProperties = {
+    aspectRatio: `${sw}/${sh}`,
+    maxWidth: '100%',
+    maxHeight: 150,
     backgroundColor: t.bgColor || '#ffffff',
     backgroundSize: 'cover',
     backgroundPosition: 'center',

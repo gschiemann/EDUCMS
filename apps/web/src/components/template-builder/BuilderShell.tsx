@@ -4,13 +4,17 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Plus, Layers, Settings2, Keyboard } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { DndContext, DragOverlay, DragEndEvent, pointerWithin } from '@dnd-kit/core';
+import { getZoneColor } from './constants';
 import { useBuilderStore } from './useBuilderStore';
 import { BuilderToolbar } from './BuilderToolbar';
 import { BuilderCanvas } from './BuilderCanvas';
+import { WidgetPalette } from './WidgetPalette';
 import { VariantPicker } from './VariantPicker';
 import { LayersPanel } from './LayersPanel';
 import { PropertiesPanel } from './PropertiesPanel';
-import { useUpdateTemplate, useUpdateTemplateZones, useCreateTemplate } from '@/hooks/use-api';
+import { useUpdateTemplate, useUpdateTemplateZones, useCreateTemplate, useDeleteTemplate } from '@/hooks/use-api';
+import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
 import type { Template, Zone } from './types';
 
 interface Props {
@@ -28,7 +32,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
   const {
     init, selectedIds, isDirty, previewMode,
     updateZones, removeSelected, duplicateZone, select,
-    undo, redo, markClean,
+    undo, redo, markClean, addZone,
   } = useBuilderStore();
   const [panel, setPanel] = useState<PanelKey>('widgets');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
@@ -36,6 +40,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [clipboard, setClipboard] = useState<Zone[] | null>(null);
+  const [activeDragType, setActiveDragType] = useState<string | null>(null);
 
   const router = useRouter();
   const routeParams = useParams<{ schoolId: string }>();
@@ -43,6 +48,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
   const updateTemplate = useUpdateTemplate();
   const updateZonesApi = useUpdateTemplateZones();
   const createTemplate = useCreateTemplate();
+  const deleteTemplate = useDeleteTemplate();
 
   useEffect(() => {
     init({
@@ -126,7 +132,12 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
   const handleSaveAs = useCallback(async () => {
     const state = useBuilderStore.getState();
     const defaultName = `${state.meta.name || 'Untitled template'} copy`;
-    const name = window.prompt('Name for the copy', defaultName);
+    const name = await appPrompt({
+      title: 'Save as copy',
+      message: 'What should we call this copy?',
+      defaultValue: defaultName,
+      confirmLabel: 'Create copy',
+    });
     if (!name || !name.trim()) return;
 
     setSaveStatus('saving');
@@ -179,34 +190,41 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
   useEffect(() => { handleSaveRef.current = handleSave; }, [handleSave]);
   useEffect(() => { saveStatusRef.current = saveStatus; }, [saveStatus]);
 
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const unsub = useBuilderStore.subscribe(() => {
-      if (timer) clearTimeout(timer);
-      const state = useBuilderStore.getState();
-      if (!state.isDirty || state.isSystem) return;
-      timer = setTimeout(() => {
-        if (
-          useBuilderStore.getState().isDirty &&
-          !useBuilderStore.getState().isSystem &&
-          saveStatusRef.current !== 'saving'
-        ) {
-          handleSaveRef.current();
-        }
-      }, AUTO_SAVE_IDLE_MS);
-    });
-    return () => {
-      unsub();
-      if (timer) clearTimeout(timer);
-    };
-  }, []);
+  // Auto-save was making changes "stick" without an explicit Save action — confusing
+  // because the user expects nothing to persist until they click Save. Disabled.
+  // (Keeping the constant + scaffolding in case we add a per-template opt-in later.)
 
-  const handleBack = useCallback(() => {
+  const handleBack = useCallback(async () => {
     if (isDirty) {
-      if (!window.confirm('You have unsaved changes. Leave without saving?')) return;
+      const ok = await appConfirm({
+        title: 'Unsaved changes',
+        message: 'You have unsaved changes. Leave without saving?',
+        tone: 'warn',
+        confirmLabel: 'Leave',
+        cancelLabel: 'Keep editing',
+      });
+      if (!ok) return;
     }
     onBack();
   }, [isDirty, onBack]);
+
+  const handleDiscard = useCallback(async () => {
+    if (template.isSystem) { onBack(); return; } // system presets aren't deletable
+    const ok = await appConfirm({
+      title: 'Discard this template?',
+      message: `"${template.name}" will be permanently deleted. This can't be undone.`,
+      tone: 'danger',
+      confirmLabel: 'Delete',
+      cancelLabel: 'Keep it',
+    });
+    if (!ok) return;
+    try {
+      await deleteTemplate.mutateAsync(template.id);
+    } catch (err) {
+      console.error('discard failed', err);
+    }
+    onBack();
+  }, [template.id, template.name, template.isSystem, deleteTemplate, onBack]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -326,21 +344,56 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
     { key: 'properties', label: 'Properties', icon: Settings2 },
   ];
 
+  const handleDragStart = (event: any) => {
+    const { active } = event;
+    if (active.data.current?.type === 'widget-palette-item' || active.data.current?.type === 'variant-tile') {
+      setActiveDragType(active.data.current.widgetType);
+    }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { over, active } = event;
+    setActiveDragType(null);
+    if (over && over.id === 'builder-canvas') {
+      const type = active.data.current?.widgetType;
+      if (!type) return;
+      const id = addZone(type);
+      // If dragged from the variant picker, also seed the variant + its defaultConfig
+      if (active.data.current?.type === 'variant-tile') {
+        const variantId = active.data.current.variantId as string | undefined;
+        const variantConfig = (active.data.current.defaultConfig || {}) as Record<string, any>;
+        if (variantId) {
+          useBuilderStore.getState().updateZone(id, {
+            defaultConfig: { ...variantConfig, variant: variantId },
+          });
+        }
+      }
+    }
+  };
+
   return (
-    <div className="fixed inset-0 bg-slate-100 z-[999] flex flex-col">
+    <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <div className="fixed inset-0 bg-slate-50 z-[999] flex flex-col font-sans text-slate-800 selection:bg-indigo-500/30">
       <BuilderToolbar
         onBack={handleBack}
         onSave={handleSave}
         onSaveAs={handleSaveAs}
+        onDiscard={template.isSystem ? undefined : handleDiscard}
         saveStatus={saveStatus}
         saveError={saveError}
         lastSavedAt={lastSavedAt}
       />
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* Abstract background blobs for premium feel */}
+        <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+          <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] rounded-full bg-indigo-200/20 blur-[120px]" />
+          <div className="absolute top-[60%] -right-[10%] w-[40%] h-[60%] rounded-full bg-sky-200/20 blur-[100px]" />
+        </div>
+
         {!previewMode && (
-          <aside className="w-72 bg-white border-r border-slate-200 flex flex-col shrink-0 shadow-sm" aria-label="Builder tools">
-            <div className="flex border-b border-slate-100" role="tablist" aria-label="Panel">
+          <aside className="w-[420px] bg-white/70 backdrop-blur-2xl border-r border-slate-200/50 flex flex-col shrink-0 shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-10" aria-label="Builder tools">
+            <div className="flex p-2 gap-1 border-b border-slate-200/50 bg-white/40" role="tablist" aria-label="Panel">
               {panels.map(tab => {
                 const Icon = tab.icon;
                 const active = panel === tab.key;
@@ -351,8 +404,8 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
                     role="tab"
                     aria-selected={active}
                     onClick={() => setPanel(tab.key)}
-                    className={`flex-1 py-3 text-[10px] font-bold uppercase tracking-wider flex flex-col items-center gap-1 transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-400 ${
-                      active ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/50' : 'text-slate-400 hover:text-slate-600'
+                    className={`flex-1 py-2.5 rounded-lg text-[10px] font-bold uppercase tracking-wider flex flex-col items-center gap-1.5 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${
+                      active ? 'text-indigo-600 bg-white shadow-sm ring-1 ring-slate-200/50' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50/50'
                     }`}
                   >
                     <Icon className="w-4 h-4" aria-hidden />
@@ -382,8 +435,19 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         <BuilderCanvas />
       </div>
 
+      <DragOverlay dropAnimation={{ duration: 250, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)' }}>
+        {activeDragType ? (
+           <div className="w-48 h-32 rounded-xl border-2 border-indigo-500 bg-indigo-50/90 backdrop-blur-md shadow-2xl flex items-center justify-center rotate-3 scale-105">
+             <div className="text-indigo-600 font-bold uppercase tracking-widest text-xs flex items-center gap-2">
+                <Plus className="w-4 h-4" /> Drop to Add
+             </div>
+           </div>
+        ) : null}
+      </DragOverlay>
+
       {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
     </div>
+    </DndContext>
   );
 }
 

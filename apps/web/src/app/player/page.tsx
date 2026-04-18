@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo, Component, ReactNode } from 'react';
+import '@/components/widgets/variants-register'; // Boot-time registration for custom themes
 import { MonitorPlay, Wifi, WifiOff, AlertTriangle, Loader2, Settings, CheckCircle2, HardDrive, Cpu, Server, Network, Play, Monitor, Info, Power } from 'lucide-react';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import {
@@ -1045,7 +1046,7 @@ function PlayerPage() {
         style={{
           backgroundColor: tpl.bgColor || '#000000',
           ...(tpl.bgGradient ? { background: tpl.bgGradient } : {}),
-          ...(tpl.bgImage ? { backgroundImage: `url(${tpl.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}),
+          ...(tpl.bgImage ? { backgroundImage: tpl.bgImage.trim().startsWith('url(') ? tpl.bgImage : `url(${tpl.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}),
         }}>
         {/* Render each zone with its live widget. Key by sceneTick on touch
             templates so idle-reset remounts widgets and clears local state. */}

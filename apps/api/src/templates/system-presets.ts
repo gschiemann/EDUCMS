@@ -1486,6 +1486,79 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
       },
     ],
   },
+      {
+        name: 'Menu Header',
+        widgetType: 'TEXT',
+        x: 0, y: 0, width: 70, height: 14,
+        sortOrder: 0,
+        defaultConfig: {
+          content: "Today's Cafeteria Menu 🍽️",
+          fontSize: 32,
+          alignment: 'center',
+          color: '#FFFFFF',
+          bgColor: 'transparent',
+        },
+      },
+      {
+        name: 'Next Meal Countdown',
+        widgetType: 'COUNTDOWN',
+        x: 70, y: 0, width: 30, height: 14,
+        sortOrder: 1,
+        defaultConfig: {
+          label: 'Next meal period',
+          showHours: true,
+          showDays: false,
+        },
+      },
+      {
+        name: 'Featured Menu Item',
+        widgetType: 'LUNCH_MENU',
+        x: 0, y: 15, width: 55, height: 65,
+        sortOrder: 2,
+        defaultConfig: {
+          meals: [
+            { label: "Today's Special", items: ['Update with featured item'] },
+            { label: 'Sides', items: ['Garden salad', 'Steamed broccoli', 'Fruit cup'] },
+            { label: 'Drinks', items: ['Milk', 'Juice', 'Water'] },
+          ],
+        },
+      },
+      {
+        name: 'Food Photo',
+        widgetType: 'IMAGE_CAROUSEL',
+        x: 56, y: 15, width: 44, height: 44,
+        sortOrder: 3,
+        defaultConfig: {
+          transitionEffect: 'fade',
+          intervalMs: 5000,
+          fitMode: 'cover',
+        },
+      },
+      {
+        name: 'Allergen Legend',
+        widgetType: 'RICH_TEXT',
+        x: 56, y: 60, width: 44, height: 20,
+        sortOrder: 4,
+        defaultConfig: {
+          html: '<p style="color:#fff;font-size:0.85rem;"><strong>Allergen Legend:</strong> 🥜 Peanuts &nbsp; 🌾 Gluten &nbsp; 🥛 Dairy &nbsp; 🥚 Eggs &nbsp; 🐟 Fish &nbsp; 🫘 Soy</p><p style="color:#ccc;font-size:0.8rem;">Full allergen info available at the serving counter.</p>',
+        },
+      },
+      {
+        name: 'Nutrition Ticker',
+        widgetType: 'TICKER',
+        x: 0, y: 81, width: 100, height: 12,
+        sortOrder: 5,
+        defaultConfig: {
+          speed: 'slow',
+          messages: [
+            'Eat the rainbow! Choose colorful fruits and vegetables every day.',
+            'Low-sodium options available — ask a cafeteria staff member',
+            'Free/reduced meal applications available in the main office',
+          ],
+        },
+      },
+    ],
+  },
 
   // ─────────────────────────────────────────────────────
   // BUS LOOP / DISMISSAL BOARD — high-contrast, safety-first

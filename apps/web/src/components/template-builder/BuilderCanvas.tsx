@@ -167,7 +167,7 @@ export function BuilderCanvas() {
   }, [marqueeState, zones, select]);
 
   const background = meta.bgImage
-    ? { backgroundImage: `url(${meta.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+    ? { backgroundImage: meta.bgImage.trim().startsWith('url(') ? meta.bgImage : `url(${meta.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }
     : meta.bgGradient
       ? { background: meta.bgGradient }
       : { background: meta.bgColor || '#ffffff' };
