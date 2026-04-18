@@ -138,7 +138,10 @@ class UsbIngester(
             if (tier == "emergency") emergencyCount += 1
         }
 
-        // 4. Write a tiny ingest-state file so the WebView bridge can read it.
+        // 4. Write the manifest copy + ingest-state file. The WebView's
+        // SafePlayerWebViewClient reads them via UsbCacheIndex to serve
+        // asset URLs from local disk on subsequent fetches.
+        File(targetRoot, "manifest.json").writeBytes(manifestBytes)
         val state = JSONObject().apply {
             put("bundleVersion", bundleVersion)
             put("ingestedAt", System.currentTimeMillis())
@@ -147,6 +150,10 @@ class UsbIngester(
             put("totalBytes", totalBytes)
         }
         File(targetRoot, "state.json").writeText(state.toString())
+
+        // Refresh the lookup index so the WebView starts serving from disk
+        // immediately on next render.
+        UsbCacheIndex.reload(context)
 
         return Result.Accepted(
             bundleVersion = bundleVersion,

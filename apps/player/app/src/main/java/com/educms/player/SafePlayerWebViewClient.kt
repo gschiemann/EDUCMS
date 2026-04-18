@@ -4,12 +4,16 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.util.Log
+import android.webkit.MimeTypeMap
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.annotation.RequiresApi
+import com.educms.player.usb.UsbCacheIndex
+import java.io.FileInputStream
 
 /**
  * Restricts navigation to the configured PLAYER_BASE_URL host and recovers
@@ -22,6 +26,35 @@ class SafePlayerWebViewClient(
     private val allowedHost: String? = runCatching {
         Uri.parse(BuildConfig.PLAYER_BASE_URL).host
     }.getOrNull()
+
+    /**
+     * Intercept asset GETs for content the operator sideloaded via USB.
+     * UsbCacheIndex maps asset URL → File on local disk; if we have a hit
+     * we return a synthesized WebResourceResponse pointing at the file.
+     * Critical for zero-network operation: even with no internet at all,
+     * the WebView's <img>/<video> tags hit local disk through us.
+     */
+    override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+        if (request.method != "GET") return null
+        val url = request.url?.toString() ?: return null
+        val file = UsbCacheIndex.lookup(url) ?: return null
+        if (!file.exists()) return null
+        val ext = file.extension.lowercase()
+        val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
+        return try {
+            WebResourceResponse(mime, "UTF-8", FileInputStream(file)).apply {
+                setStatusCodeAndReasonPhrase(200, "OK")
+                responseHeaders = mapOf(
+                    "Content-Length" to file.length().toString(),
+                    "Cache-Control" to "public, max-age=31536000, immutable",
+                    "X-EduCMS-Source" to "usb-cache",
+                )
+            }
+        } catch (e: Exception) {
+            Log.w("PlayerWeb", "Failed to serve usb-cache file ${file.path}", e)
+            null
+        }
+    }
 
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
         val host = request.url.host ?: return true

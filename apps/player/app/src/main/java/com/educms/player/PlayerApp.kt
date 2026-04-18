@@ -5,12 +5,17 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import android.util.Log
+import com.educms.player.usb.UsbCacheIndex
 
 class PlayerApp : Application() {
     override fun onCreate() {
         super.onCreate()
         Log.i("PlayerApp", "EduCMS Player ${BuildConfig.VERSION_NAME} starting (SDK ${Build.VERSION.SDK_INT})")
         ensureHeartbeatChannel()
+        // Hydrate the USB-cache lookup so the WebView starts intercepting
+        // asset GETs immediately on cold boot — critical for kiosks that
+        // power-cycled mid-emergency or have never had network.
+        UsbCacheIndex.reload(this)
     }
 
     private fun ensureHeartbeatChannel() {

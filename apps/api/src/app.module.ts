@@ -2,6 +2,7 @@ import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ScreensController } from './screens/screens.controller';
+import { DevicesController } from './devices/devices.controller';
 import { EmergencyController } from './emergency/emergency.controller';
 import { StatsController } from './stats/stats.controller';
 import { AuditController } from './audit/audit.controller';
@@ -57,6 +58,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
   controllers: [
     AppController,
     ScreensController,
+    DevicesController,
     EmergencyController,
     StatsController,
     AuditController,

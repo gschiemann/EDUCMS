@@ -67,7 +67,13 @@ class PairingActivity : ComponentActivity() {
             binding.pairButton.isEnabled = true
 
             result.onSuccess { resp ->
-                deviceStore.savePairing(resp.token, resp.tenantSlug, resp.screenId)
+                deviceStore.savePairing(
+                    token = resp.token,
+                    tenantSlug = resp.tenantSlug,
+                    screenId = resp.screenId,
+                    tenantId = resp.tenantId,
+                    usbIngestKey = resp.usbIngestKey,
+                )
                 startActivity(Intent(this@PairingActivity, MainActivity::class.java))
                 finish()
             }.onFailure { err ->
@@ -112,6 +118,11 @@ class PairingActivity : ComponentActivity() {
             token = json.getString("token"),
             screenId = json.optString("screenId").takeIf { it.isNotBlank() },
             tenantSlug = json.optString("tenantSlug").takeIf { it.isNotBlank() },
+            tenantId = json.optString("tenantId").takeIf { it.isNotBlank() },
+            // Server only returns usbIngestKey when the tenant has USB ingest
+            // enabled. Empty/missing value persists as "" in DataStore so we
+            // know to refuse USB ingest attempts cleanly.
+            usbIngestKey = json.optString("usbIngestKey").takeIf { it.isNotBlank() },
         )
     }
 
@@ -119,5 +130,7 @@ class PairingActivity : ComponentActivity() {
         val token: String,
         val screenId: String?,
         val tenantSlug: String?,
+        val tenantId: String?,
+        val usbIngestKey: String?,
     )
 }

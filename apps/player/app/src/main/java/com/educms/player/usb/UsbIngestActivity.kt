@@ -65,20 +65,16 @@ class UsbIngestActivity : ComponentActivity() {
                 return@launch
             }
 
-            // V1: HMAC key + tenant id are stored in DeviceStore at pairing
-            // time. (Pairing endpoint will be extended to include these in
-            // a follow-up; for V1 scaffold we read whatever is there and
-            // bail with a friendly error if missing.)
-            val tenantId = deviceStore.tenantSlug.first().orEmpty() // placeholder until pairing returns the tenant id
-            // TODO(7B-followup): server's /devices/pair endpoint should also return
-            // { usbIngestKey, tenantId } so we can persist them here. For now we
-            // accept the tree but reject at signature-check time if the key isn't set.
-            val hmacKey = "" // TODO: read from a future DeviceStore.usbHmacKey field
+            // HMAC key + tenant id were persisted by PairingActivity from
+            // the /devices/pair response. Tenant must have opted in to USB
+            // ingest before the key is issued.
+            val tenantId = deviceStore.tenantId.first().orEmpty()
+            val hmacKey = deviceStore.usbIngestKey.first().orEmpty()
 
             if (hmacKey.isBlank() || tenantId.isBlank()) {
                 Toast.makeText(
                     this@UsbIngestActivity,
-                    "USB ingest not configured for this tenant. Ask your admin to enable it in the dashboard, then re-pair the screen.",
+                    "USB ingest not enabled for this tenant. Ask your admin to enable it in the dashboard, then re-pair this screen.",
                     Toast.LENGTH_LONG,
                 ).show()
                 finish()
