@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
-import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X } from 'lucide-react';
+import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, FileClock } from 'lucide-react';
 import { RoleGate } from '../RoleGate';
 
 export function Sidebar() {
@@ -40,6 +40,12 @@ export function Sidebar() {
     { name: 'Playlists', href: `/${activeTenant}/playlists`, icon: Folders },
     { name: 'Settings', href: `/${activeTenant}/settings`, icon: Settings },
   ];
+
+  const adminNavItems = [
+    { name: 'Audit Log', href: `/${activeTenant}/audit`, icon: FileClock },
+  ];
+
+  const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'DISTRICT_ADMIN' || user?.role === 'SCHOOL_ADMIN';
 
   return (
     <>
@@ -87,7 +93,7 @@ export function Sidebar() {
           <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-4 px-4">
             Main Menu
           </div>
-          {navItems.map((item) => {
+          {navItems.concat(isAdmin ? adminNavItems : []).map((item) => {
             const isActive = pathname.startsWith(item.href);
             return (
               <Link

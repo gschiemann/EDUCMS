@@ -28,6 +28,7 @@ model Tenant {
   screenGroups            ScreenGroup[]
   screens                 Screen[]
   templates               Template[]
+  notifications           Notification[]
   parent                  Tenant?       @relation("TenantHierarchy", fields: [parentId], references: [id])
   children                Tenant[]      @relation("TenantHierarchy")
   users                   User[]
@@ -81,6 +82,7 @@ model User {
   passwordResets   PasswordResetToken[]
   invitesSent      UserInvite[]         @relation("InviteInviter")
   invite           UserInvite?          @relation("InviteUser")
+  notifications    Notification[]
 
   @@map("users")
 }
@@ -283,6 +285,26 @@ model AuditLog {
   tenant     Tenant   @relation(fields: [tenantId], references: [id])
 
   @@map("audit_logs")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  userId    String?  @map("user_id")
+  kind      String
+  title     String
+  body      String?
+  link      String?
+  isRead    Boolean  @default(false) @map("is_read")
+  dedupeKey String?  @map("dedupe_key")
+  createdAt DateTime @default(now()) @map("created_at")
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, userId, isRead])
+  @@index([tenantId, createdAt])
+  @@unique([tenantId, dedupeKey])
+  @@map("notifications")
 }
 
 model Template {
