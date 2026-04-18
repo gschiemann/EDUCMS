@@ -25,6 +25,18 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   (p) => p === '/api/v1/password-reset/request',
   (p) => p === '/api/v1/password-reset/complete',
   (p) => /^\/api\/v1\/invites\/[^/]+\/accept$/.test(p),
+  // SSO callbacks: SAML POSTs come from the IdP, not our origin, so they
+  // can't carry a CSRF cookie. Authenticity is established by the SAML
+  // assertion signature (verified by passport-saml). Same for OIDC
+  // form-post response_mode.
+  (p) => /^\/api\/v1\/auth\/sso\/[^/]+\/saml\/callback$/.test(p),
+  (p) => /^\/api\/v1\/auth\/sso\/[^/]+\/oidc\/callback$/.test(p),
+  // Public device endpoints — no prior session; auth is the pairing code
+  // or device fingerprint already pre-bound server-side.
+  (p) => p === '/api/v1/devices/pair',
+  (p) => p === '/api/v1/screens/register',
+  (p) => /^\/api\/v1\/screens\/[^/]+\/cache-status$/.test(p),
+  (p) => /^\/api\/v1\/tenants\/me\/usb-ingest\/screens\/[^/]+\/event$/.test(p),
 ];
 
 export function isCsrfExempt(method: string, path: string): boolean {

@@ -144,6 +144,13 @@ export class ScreensController {
   }
 
   // ─── ADMIN: Pair a screen by code ───
+  // NOTE: this endpoint also handles re-pairing an existing tenant's
+  // screen (e.g. the operator regenerates a code and another admin in
+  // the same tenant claims it). When the resulting tenantId differs
+  // from the previously-bound tenantId we publish a TENANT_CHANGED
+  // signal on the OLD tenant's channel so the device wipes its USB
+  // key + cache before binding to the new tenant — closes the
+  // cross-tenant content leak (audit fix #6).
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Post('pair')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
@@ -164,24 +171,54 @@ export class ScreensController {
       throw new HttpException('This screen is already paired to another organization', HttpStatus.CONFLICT);
     }
 
-    // License gate: only count NEW pair attempts (re-pairing an existing
-    // tenant Screen is free).
-    if (!screen.tenantId) {
-      await this.license.assertSeatAvailable(req.user.tenantId);
-    }
-
-    const updated = await this.prisma.client.screen.update({
-      where: { id: screen.id },
-      data: {
-        tenantId: req.user.tenantId,
-        name: body.name?.trim() || screen.name,
-        screenGroupId: body.screenGroupId || null,
-        status: 'ONLINE',
-        pairedAt: new Date(),
-        pairingCode: null, // Clear the code after pairing
+    // Audit fix #10: wrap the seat-availability check + the screen claim
+    // in a SERIALIZABLE transaction so two admins can't simultaneously pass
+    // assertSeatAvailable and overshoot the seat limit. PostgreSQL retries
+    // on serialization conflict; one of the racing claims will get a
+    // structured 402 LICENSE_EXHAUSTED instead of silently sneaking past.
+    // Re-pairing a screen that already belongs to this tenant is free.
+    const isNewPair = !screen.tenantId;
+    const updated = await this.prisma.client.$transaction(
+      async (tx) => {
+        if (isNewPair) {
+          await this.license.assertSeatAvailable(req.user.tenantId, tx);
+        }
+        return tx.screen.update({
+          where: { id: screen.id },
+          data: {
+            tenantId: req.user.tenantId,
+            name: body.name?.trim() || screen.name,
+            screenGroupId: body.screenGroupId || null,
+            status: 'ONLINE',
+            pairedAt: new Date(),
+            pairingCode: null, // Clear the code after pairing
+          },
+          include: { screenGroup: { select: { id: true, name: true } } },
+        });
       },
-      include: { screenGroup: { select: { id: true, name: true } } },
-    });
+      { isolationLevel: 'Serializable' },
+    );
+
+    // Audit fix #6: if this re-pair changed the tenant, blast a
+    // TENANT_CHANGED message on the OLD tenant's channel so the
+    // physical device wipes its DataStore (token, tenantId,
+    // usbIngestKey) and its filesDir/usb-cache before re-pairing
+    // against the new tenant. Without this, a kiosk physically moved
+    // between districts would keep serving its old tenant's emergency
+    // assets from disk.
+    const previousTenantId = screen.tenantId;
+    if (previousTenantId && previousTenantId !== req.user.tenantId) {
+      try {
+        const signed = this.signer.signMessage('TENANT_CHANGED', {
+          screenId: screen.id,
+          previousTenantId,
+          newTenantId: req.user.tenantId,
+        });
+        await this.redisService.publish(`tenant:${previousTenantId}`, signed);
+      } catch (e) {
+        console.warn('[pair] failed to notify previous tenant of TENANT_CHANGED', e);
+      }
+    }
 
     this.notifySync(req.user.tenantId);
     return updated;

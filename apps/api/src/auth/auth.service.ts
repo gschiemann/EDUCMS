@@ -32,6 +32,15 @@ export class AuthService {
     const user = await this.prisma.client.user.findUnique({ where: { email } });
     if (!user) return null;
 
+    // Audit fix #8: refuse login for users still in the INVITED state.
+    // They must accept their invite and set a password before they can log
+    // in directly. Without this gate, the placeholder password set during
+    // invite creation could (in theory) be guessed before the operator
+    // accepts.
+    if (user.status && user.status !== 'ACTIVE') {
+      return null;
+    }
+
     // Try Argon2id verification first (production path)
     try {
       const isValid = await argon2.verify(user.passwordHash, pass, cryptoPlatformConfig);

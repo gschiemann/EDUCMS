@@ -1,10 +1,11 @@
 import { Controller, Get, Put, Post, Body, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
-import { randomBytes } from 'crypto';
+import { randomBytes, createHash, createHmac, timingSafeEqual } from 'crypto';
 
 @Controller('api/v1/tenants')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -165,29 +166,81 @@ export class TenantsController {
   }
 
   // Public — the player POSTs here from the Android shell after every USB
-  // ingest attempt (accepted, rejected, partial, cancelled). No auth: the
-  // payload is signed using the tenant's HMAC key from the bundle, which we
-  // re-verify here to prevent fake audit injection.
-  @Post('me/usb-ingest/event')
-  async recordUsbIngestEvent(@Body() body: {
-    tenantId: string;
-    screenId?: string;
-    deviceSerial?: string;
-    bundleVersion?: string;
-    assetCount?: number;
-    totalBytes?: string;
-    emergencyAssets?: boolean;
-    outcome: string;
-    reason?: string;
-    operatorPin?: string;
-  }) {
-    if (!body.tenantId || !body.outcome) {
-      throw new HttpException('tenantId and outcome required', HttpStatus.BAD_REQUEST);
+  // ingest attempt. Hardened in audit fix #3:
+  //   1. tenantId is derived from the trusted Screen.tenantId via the
+  //      screenId in the URL — NOT from the body. Previously the body
+  //      tenantId was trusted, allowing audit-log injection across tenants.
+  //   2. operatorPin is SHA-256 hashed before storage; raw PINs were
+  //      visible in plaintext in the audit log otherwise.
+  //   3. Optional HMAC signature on the body — when present we verify it
+  //      against the tenant's USB ingest key. The Android client should
+  //      include `signature` (HMAC-SHA256 of canonical JSON body sans the
+  //      signature field) once it knows the key; until then, the screenId
+  //      derivation alone closes the IDOR.
+  //   4. Rate-limited to 6 events / minute per IP — sticks plug in
+  //      one-at-a-time, so anything faster is suspicious.
+  @Post('me/usb-ingest/screens/:screenId/event')
+  @Throttle({ default: { ttl: 60_000, limit: 6 } })
+  async recordUsbIngestEvent(
+    @Request() req: any,
+    @Body() body: {
+      deviceSerial?: string;
+      bundleVersion?: string;
+      assetCount?: number;
+      totalBytes?: string;
+      emergencyAssets?: boolean;
+      outcome: string;
+      reason?: string;
+      operatorPin?: string;
+      signature?: string; // hex HMAC-SHA256 (optional, forward-compat)
+    },
+  ) {
+    const screenId = req.params?.screenId;
+    if (!screenId || !body.outcome) {
+      throw new HttpException('screenId and outcome required', HttpStatus.BAD_REQUEST);
     }
+
+    const screen = await this.prisma.client.screen.findUnique({
+      where: { id: screenId },
+      include: {
+        tenant: { select: { id: true, usbIngestEnabled: true, usbIngestKey: true } },
+      },
+    });
+    if (!screen?.tenantId || !screen.tenant) {
+      throw new HttpException('Unknown or unpaired screen', HttpStatus.NOT_FOUND);
+    }
+    if (!screen.tenant.usbIngestEnabled) {
+      throw new HttpException('USB ingest is disabled for this tenant', HttpStatus.FORBIDDEN);
+    }
+
+    // Optional HMAC signature verification (defense-in-depth).
+    if (body.signature && screen.tenant.usbIngestKey) {
+      try {
+        const { signature, ...payload } = body;
+        const canonical = JSON.stringify(payload);
+        const expected = createHmac('sha256', Buffer.from(screen.tenant.usbIngestKey, 'hex'))
+          .update(canonical)
+          .digest('hex');
+        const a = Buffer.from(expected);
+        const b = Buffer.from(signature);
+        if (a.length !== b.length || !timingSafeEqual(a, b)) {
+          throw new HttpException('Invalid event signature', HttpStatus.FORBIDDEN);
+        }
+      } catch (e) {
+        if (e instanceof HttpException) throw e;
+        throw new HttpException('Signature verification failed', HttpStatus.FORBIDDEN);
+      }
+    }
+
+    // Hash operator PIN before storage so the raw value never lands in the DB.
+    const pinHash = body.operatorPin
+      ? createHash('sha256').update(body.operatorPin).digest('hex')
+      : null;
+
     await this.prisma.client.usbIngestEvent.create({
       data: {
-        tenantId: body.tenantId,
-        screenId: body.screenId || null,
+        tenantId: screen.tenantId,           // trusted, derived from Screen lookup
+        screenId,
         deviceSerial: body.deviceSerial || null,
         bundleVersion: body.bundleVersion || null,
         assetCount: body.assetCount || 0,
@@ -195,7 +248,7 @@ export class TenantsController {
         emergencyAssets: !!body.emergencyAssets,
         outcome: body.outcome,
         reason: body.reason || null,
-        operatorPin: body.operatorPin || null,
+        operatorPin: pinHash,                // SHA-256 hex of the raw PIN
       },
     });
     return { ok: true };

@@ -195,6 +195,24 @@ export class OnboardingService {
     const tenant = await this.prisma.client.tenant.findUnique({ where: { id: input.tenantId } });
     if (!tenant) throw new NotFoundException('Tenant not found.');
 
+    // Audit fix #7: cross-tenant invite injection guard. Without this, a
+    // DISTRICT_ADMIN from Tenant A could invite a user into Tenant B by
+    // crafting the request body. SUPER_ADMIN is allowed cross-tenant by
+    // design; DISTRICT_ADMIN may invite into their own district OR a child
+    // school of their district; everyone else is locked to their own
+    // tenant.
+    if (inviter.role !== 'SUPER_ADMIN' && inviter.tenantId !== input.tenantId) {
+      // Allow DISTRICT_ADMIN to invite into a child school of their district.
+      if (inviter.role === 'DISTRICT_ADMIN') {
+        const targetTenant = tenant.parentId === inviter.tenantId ? tenant : null;
+        if (!targetTenant) {
+          throw new BadRequestException("You can only invite users into tenants in your district.");
+        }
+      } else {
+        throw new BadRequestException("You can only invite users into your own tenant.");
+      }
+    }
+
     const existing = await this.prisma.client.user.findUnique({ where: { email } });
     if (existing && existing.status === 'ACTIVE') {
       throw new ConflictException('A user with that email already exists.');

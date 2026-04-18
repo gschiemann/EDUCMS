@@ -31,13 +31,31 @@ export class NotificationsService {
    */
   async notify(input: NotifyInput) {
     try {
+      // Audit fix #11: previously findUnique→create wasn't atomic, so
+      // two concurrent emitters with the same dedupeKey could both pass
+      // the existence check and the second create would crash on the
+      // unique constraint violation. Switch to upsert: the database
+      // enforces atomicity and we get the existing row back when it
+      // matches. When no dedupeKey is given we keep the plain create
+      // (no constraint to upsert against).
       if (input.dedupeKey) {
-        const existing = await this.prisma.client.notification.findUnique({
+        return await this.prisma.client.notification.upsert({
           where: {
             tenantId_dedupeKey: { tenantId: input.tenantId, dedupeKey: input.dedupeKey },
           },
+          create: {
+            tenantId: input.tenantId,
+            userId: input.userId ?? null,
+            kind: input.kind,
+            title: input.title,
+            body: input.body ?? null,
+            link: input.link ?? null,
+            dedupeKey: input.dedupeKey,
+          },
+          // No-op update preserves the original notification verbatim
+          // (matches the prior "return existing" behavior).
+          update: {},
         });
-        if (existing) return existing;
       }
       return await this.prisma.client.notification.create({
         data: {
@@ -47,7 +65,7 @@ export class NotificationsService {
           title: input.title,
           body: input.body ?? null,
           link: input.link ?? null,
-          dedupeKey: input.dedupeKey ?? null,
+          dedupeKey: null,
         },
       });
     } catch (err: any) {

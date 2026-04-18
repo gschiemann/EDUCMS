@@ -41,7 +41,26 @@ export class RbacGuard implements CanActivate {
       context.getClass(),
     ]);
 
-    if (allowPanicBypass && typedUser.canTriggerPanic) {
+    // INTENT — DELEGATED PANIC CAPABILITY (audit fix #5):
+    // @AllowPanicBypass on an emergency endpoint lets a user with
+    // User.canTriggerPanic=true fire it WITHOUT meeting the @RequireRoles
+    // requirement. This is intentional: schools deploy physical panic
+    // buttons / wall stations to non-admin staff (receptionist, security
+    // guard, nurse) who need the ability without admin privileges.
+    //
+    // The capability flag is set by an admin in the dashboard
+    // (Settings → Team Members → toggle "Can trigger panic"). Audit log
+    // captures every flip of canTriggerPanic AND every emergency trigger,
+    // so privilege creep is detectable post-hoc.
+    //
+    // Hard guardrail: RESTRICTED_VIEWER is read-only by definition and
+    // can NEVER trigger an emergency, even if their canTriggerPanic flag
+    // is somehow set. Defense-in-depth against UI bugs or rogue admins.
+    if (
+      allowPanicBypass &&
+      typedUser.canTriggerPanic &&
+      typedUser.role !== AppRole.RESTRICTED_VIEWER
+    ) {
       return true;
     }
 

@@ -32,6 +32,13 @@ describe('EmergencyController', () => {
           update: jest.fn().mockResolvedValue({}),
           findMany: jest.fn().mockResolvedValue([]),
         },
+        // After audit fix #12 the trigger/all-clear flow wraps state +
+        // audit writes in a $transaction. Mock accepts the array form
+        // (Promise.all-style) or the interactive callback form.
+        $transaction: jest.fn().mockImplementation((opsOrFn: any) => {
+          if (typeof opsOrFn === 'function') return opsOrFn(prismaService.client);
+          return Promise.all(opsOrFn);
+        }),
       },
     };
 
@@ -206,7 +213,11 @@ describe('EmergencyController', () => {
       },
     ]);
 
-    const res = await controller.status('t1');
+    // After audit fix #1, /status derives tenantId from req.user (not the
+    // query string) for non-SUPER callers. Pass a req with the user's
+    // tenant context so the test mirrors real auth.
+    const req = { user: { id: 'admin1', tenantId: 't1', schoolId: 't1' } };
+    const res = await controller.status(req, 't1');
 
     expect(prismaService.client.emergencyMessage.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -216,5 +227,18 @@ describe('EmergencyController', () => {
     expect(res.active).toHaveLength(1);
     expect(res.active[0].id).toBe('msg_a');
     expect(res.tenantStatus).toBe('INACTIVE');
+  });
+
+  it('HTTP polling /status refuses to enumerate other tenants for non-SUPER users', async () => {
+    // Audit fix #1: the tenantId query param is IGNORED for non-SUPER
+    // callers; we always lock to the caller's own tenant.
+    prismaService.client.emergencyMessage.findMany.mockResolvedValueOnce([]);
+    const req = { user: { id: 'admin1', role: 'DISTRICT_ADMIN', tenantId: 'my-tenant', schoolId: 'my-tenant' } };
+    await controller.status(req, 'attacker-target-tenant');
+    expect(prismaService.client.emergencyMessage.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ tenantId: 'my-tenant' }),
+      }),
+    );
   });
 });

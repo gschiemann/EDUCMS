@@ -49,9 +49,13 @@ export class LicenseService {
     };
   }
 
-  /** Count of seats currently in use by this tenant. */
-  async usedSeats(tenantId: string): Promise<number> {
-    return this.prisma.client.screen.count({
+  /** Count of seats currently in use by this tenant. Optionally takes a
+   *  Prisma transaction client so the count + downstream write are
+   *  serialized together (used by ScreensController.pair to close the
+   *  TOCTOU window between check and claim). */
+  async usedSeats(tenantId: string, tx?: any): Promise<number> {
+    const client = tx ?? this.prisma.client;
+    return client.screen.count({
       where: { tenantId, pairedAt: { not: null } },
     });
   }
@@ -77,7 +81,7 @@ export class LicenseService {
    * (admin-side claim) — the device-side /devices/pair already operates
    * against an admin-claimed Screen so the limit was checked at claim time.
    */
-  async assertSeatAvailable(tenantId: string): Promise<void> {
+  async assertSeatAvailable(tenantId: string, tx?: any): Promise<void> {
     const eff = await this.getEffective(tenantId);
     if (eff.status !== 'ACTIVE') {
       throw new HttpException(
@@ -90,7 +94,22 @@ export class LicenseService {
         HttpStatus.PAYMENT_REQUIRED,
       );
     }
-    const used = await this.usedSeats(tenantId);
+    // Audit fix #13: enforce expiry. Previously we only checked status,
+    // so a license whose expiresAt or currentPeriodEnd had passed but
+    // status was never flipped to PAST_DUE/CANCELLED would silently
+    // continue allowing new pairs.
+    if (eff.expiresAt && eff.expiresAt < new Date()) {
+      throw new HttpException(
+        {
+          code: 'LICENSE_EXPIRED',
+          message: `Your ${eff.tier} license expired on ${eff.expiresAt.toISOString().slice(0, 10)}. Renew to claim more screens.`,
+          tier: eff.tier,
+          expiresAt: eff.expiresAt,
+        },
+        HttpStatus.PAYMENT_REQUIRED,
+      );
+    }
+    const used = await this.usedSeats(tenantId, tx);
     if (used >= eff.seatLimit) {
       throw new HttpException(
         {

@@ -13,6 +13,7 @@ describe('NotificationsService', () => {
       findMany: jest.fn(),
       findFirst: jest.fn(),
       create: jest.fn(),
+      upsert: jest.fn(),
       count: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(),
@@ -44,8 +45,11 @@ describe('NotificationsService', () => {
     );
   });
 
-  it('dedupes when a matching key already exists', async () => {
-    notification.findUnique.mockResolvedValue({ id: 'existing' });
+  it('dedupes via upsert when a matching key already exists', async () => {
+    // After audit fix #11 the dedupe path uses upsert (atomic), not
+    // findUnique→create. The DB returns the existing row when the
+    // unique key collides; the no-op `update: {}` preserves it.
+    notification.upsert.mockResolvedValue({ id: 'existing' });
     const out = await service.notify({
       tenantId: 't1',
       kind: 'SCREEN_OFFLINE',
@@ -54,6 +58,15 @@ describe('NotificationsService', () => {
     });
     expect(out).toEqual({ id: 'existing' });
     expect(notification.create).not.toHaveBeenCalled();
+    expect(notification.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId_dedupeKey: { tenantId: 't1', dedupeKey: 'screen-offline:abc:123' },
+        }),
+        create: expect.objectContaining({ kind: 'SCREEN_OFFLINE' }),
+        update: {},
+      }),
+    );
   });
 
   it('listForUser includes tenant-wide + direct with newest first', async () => {
@@ -97,14 +110,14 @@ describe('NotificationsService', () => {
       { id: 's1', name: 'Lobby', tenantId: 't1', lastPingAt: new Date(now - 10 * 60 * 1000) },
       { id: 's2', name: 'Hall', tenantId: 't1', lastPingAt: new Date(now - 20 * 60 * 1000) },
     ]);
-    notification.findUnique.mockResolvedValue(null);
-    notification.create.mockImplementation(async (args: any) => ({ id: args.data.dedupeKey }));
+    // dedupe path now goes through upsert (audit fix #11)
+    notification.upsert.mockImplementation(async (args: any) => ({ id: args.create.dedupeKey }));
 
     const res = await service.scanOfflineScreens(5);
     expect(res.found).toBe(2);
     expect(res.notified).toBe(2);
-    expect(notification.create).toHaveBeenCalledTimes(2);
-    const createdKinds = notification.create.mock.calls.map((c: any[]) => c[0].data.kind);
+    expect(notification.upsert).toHaveBeenCalledTimes(2);
+    const createdKinds = notification.upsert.mock.calls.map((c: any[]) => c[0].create.kind);
     expect(createdKinds).toEqual(['SCREEN_OFFLINE', 'SCREEN_OFFLINE']);
   });
 });

@@ -69,26 +69,43 @@ export class EmergencyController {
         }
       }
 
-      await this.prisma.client.tenant.update({
-        where: { id: scopeId },
-        data: { 
-          emergencyStatus: severity,
-          emergencyPlaylistId: activePlaylistId || null
-        }
+      // Wrap state mutation + audit in one transaction so a concurrent
+      // trigger or all-clear can't leave the Tenant in a half-updated
+      // state where emergencyStatus says CRITICAL but emergencyPlaylistId
+      // is null (or vice versa). All-or-nothing.
+      await this.prisma.client.$transaction([
+        this.prisma.client.tenant.update({
+          where: { id: scopeId },
+          data: {
+            emergencyStatus: severity,
+            emergencyPlaylistId: activePlaylistId || null,
+          },
+        }),
+        this.prisma.client.auditLog.create({
+          data: {
+            action: 'TRIGGER_EMERGENCY',
+            targetType: scopeType,
+            targetId: scopeId,
+            tenantId: req.user?.schoolId || req.user?.districtId || scopeId,
+            userId: req.user?.id,
+            details: JSON.stringify({ overrideId, severity }),
+          },
+        }),
+      ]);
+    } else {
+      // Non-tenant scope (group / device) — still need an audit row but
+      // no Tenant.update is involved so a single insert is fine.
+      await this.prisma.client.auditLog.create({
+        data: {
+          action: 'TRIGGER_EMERGENCY',
+          targetType: scopeType,
+          targetId: scopeId,
+          tenantId: req.user?.schoolId || req.user?.districtId || scopeId,
+          userId: req.user?.id,
+          details: JSON.stringify({ overrideId, severity }),
+        },
       });
     }
-
-    // Explicit Immutable Audit Logging
-    await this.prisma.client.auditLog.create({
-       data: {
-         action: 'TRIGGER_EMERGENCY',
-         targetType: scopeType,
-         targetId: scopeId,
-         tenantId: req.user?.schoolId || req.user?.districtId || scopeId, // Resolve contextual tenant
-         userId: req.user?.id,
-         details: JSON.stringify({ overrideId, severity })
-       }
-    });
 
     // Create WSSP envelope before transmission (Mitigates RT-01)
     const signedMessage = this.signer.signMessage('OVERRIDE', message.payload);
@@ -127,28 +144,39 @@ export class EmergencyController {
       }
     };
 
-    // If targeting a tenant, clear its emergencyStatus
+    // If targeting a tenant, clear its emergencyStatus + audit atomically.
     if (scopeType === 'tenant') {
-      await this.prisma.client.tenant.update({
-        where: { id: scopeId },
-        data: { 
-          emergencyStatus: 'INACTIVE',
-          emergencyPlaylistId: null
-        }
+      await this.prisma.client.$transaction([
+        this.prisma.client.tenant.update({
+          where: { id: scopeId },
+          data: {
+            emergencyStatus: 'INACTIVE',
+            emergencyPlaylistId: null,
+          },
+        }),
+        this.prisma.client.auditLog.create({
+          data: {
+            action: 'CLEAR_EMERGENCY',
+            targetType: scopeType,
+            targetId: scopeId,
+            tenantId: req.user?.schoolId || req.user?.districtId || scopeId,
+            userId: req.user?.id,
+            details: JSON.stringify({ overrideId }),
+          },
+        }),
+      ]);
+    } else {
+      await this.prisma.client.auditLog.create({
+        data: {
+          action: 'CLEAR_EMERGENCY',
+          targetType: scopeType,
+          targetId: scopeId,
+          tenantId: req.user?.schoolId || req.user?.districtId || scopeId,
+          userId: req.user?.id,
+          details: JSON.stringify({ overrideId }),
+        },
       });
     }
-
-    // Explicit Immutable Audit Logging
-    await this.prisma.client.auditLog.create({
-       data: {
-         action: 'CLEAR_EMERGENCY',
-         targetType: scopeType,
-         targetId: scopeId,
-         tenantId: req.user?.schoolId || req.user?.districtId || scopeId,
-         userId: req.user?.id,
-         details: JSON.stringify({ overrideId })
-       }
-    });
 
     // Publish via Redis for fanout
     const channel = `${scopeType}:${scopeId}`;
@@ -175,12 +203,17 @@ export class EmergencyController {
   // ───────────────────────────────────────────────────────────
 
   /**
-   * Staff SOS trigger. Any authenticated user — covers teachers
-   * and non-admin staff who aren't provisioned for /trigger.
-   * Hold-to-trigger is enforced client-side; server records the
-   * trigger moment in the audit log for investigations.
+   * Staff SOS trigger. Intentionally permissive on role — any authenticated
+   * user EXCEPT RESTRICTED_VIEWER can fire (covers teachers + non-admin
+   * staff who aren't provisioned for /trigger). RESTRICTED_VIEWER is
+   * read-only by definition and shouldn't have any panic capability.
+   *
+   * Audit fix (#4): explicitly block RESTRICTED_VIEWER instead of relying
+   * on it never being deployed. Hold-to-trigger UX on the client + audit
+   * log per attempt remain the abuse mitigations.
    */
   @Post('sos')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   async triggerSos(
     @Body(new ZodValidationPipe(SosInputSchema)) body: SosInput,
     @Req() req: any,
@@ -448,10 +481,21 @@ export class EmergencyController {
    */
   @Get('status')
   async status(
-    @Query('tenantId') tenantId: string,
+    @Req() req: any,
+    @Query('tenantId') queryTenantId: string,
     @Query('scopeType') scopeType?: string,
     @Query('scopeId') scopeId?: string,
   ) {
+    // Hardening (Sprint 7E audit fix #1): the caller can only see their
+    // own tenant's emergency state. SUPER_ADMIN may pass an explicit
+    // tenantId in the query; everyone else is locked to req.user.tenantId
+    // regardless of what they pass. This was previously unscoped — any
+    // authenticated user could enumerate tenant IDs and harvest active
+    // lockdown messages from other schools.
+    const callerTenantId = req.user?.schoolId || req.user?.tenantId || req.user?.districtId;
+    const isSuper = req.user?.role === AppRole.SUPER_ADMIN;
+    const tenantId = isSuper ? (queryTenantId || callerTenantId) : callerTenantId;
+
     if (!tenantId) {
       return { active: [], tenantId: null };
     }
