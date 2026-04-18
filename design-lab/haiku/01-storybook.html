@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Storybook Lobby Display</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;700&family=Caveat:wght@700&family=Quicksand:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #f5f1ea; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+    .viewport { width: 3840px; height: 2160px; transform: scale(0.16); transform-origin: top left; }
+    .stage { width: 100%; height: 100%; background: linear-gradient(135deg, #fef5e7 0%, #f9e8d4 50%, #f5e6d3 100%); position: relative; overflow: hidden; font-family: 'Quicksand', sans-serif; }
+    .page-left { position: absolute; left: 60px; top: 80px; width: 1800px; height: 2000px; background: #fff8f0; border-radius: 30px; box-shadow: -15px 20px 40px rgba(0,0,0,0.15); border: 8px solid #d4a574; padding: 120px 80px; }
+    .page-right { position: absolute; right: 60px; top: 80px; width: 1800px; height: 2000px; background: #fffbf7; border-radius: 30px; box-shadow: 15px 20px 40px rgba(0,0,0,0.15); border: 8px solid #c9985f; padding: 120px 80px; }
+    .page-corner { position: absolute; bottom: 40px; right: 60px; width: 150px; height: 150px; background: #fef5e7; border-radius: 50%; box-shadow: inset -5px -5px 15px rgba(0,0,0,0.1); }
+    .banner { position: absolute; top: 100px; left: 50%; transform: translateX(-50%); font-family: 'Caveat', cursive; font-size: 120px; font-weight: 700; color: #8b5a3c; text-align: center; z-index: 10; }
+    .banner-line { position: absolute; top: 180px; left: 50%; width: 600px; transform: translateX(-50%); height: 6px; background: #d4a574; border-radius: 3px; }
+    .welcome { position: absolute; top: 280px; left: 100px; font-family: 'Caveat', cursive; font-size: 80px; color: #8b5a3c; line-height: 1.2; }
+    .pop-up-card { position: absolute; top: 500px; right: 120px; width: 320px; height: 380px; background: #fff0e6; border-radius: 15px; border: 4px solid #d4a574; padding: 20px; text-align: center; box-shadow: 8px 12px 25px rgba(0,0,0,0.12); transform: rotate(3deg); }
+    .pop-up-card .photo { width: 200px; height: 200px; background: linear-gradient(135deg, #e8c9a8, #d4a574); border-radius: 10px; margin: 10px auto; border: 3px dashed #8b5a3c; }
+    .pop-up-card .label { font-family: 'Caveat', cursive; font-size: 32px; color: #8b5a3c; margin-top: 15px; }
+    .clock-shape { position: absolute; top: 950px; left: 150px; }
+    .weather-shape { position: absolute; top: 950px; right: 180px; }
+    .announcement { position: absolute; bottom: 400px; left: 120px; width: 1700px; background: #fff3e0; border-radius: 15px; padding: 40px; border-left: 10px solid #ff9800; font-size: 36px; color: #333; line-height: 1.6; }
+    .announcement-title { font-family: 'Caveat', cursive; font-size: 52px; color: #ff9800; margin-bottom: 20px; }
+    .events { position: absolute; bottom: 80px; left: 120px; right: 120px; display: flex; gap: 40px; }
+    .event-box { flex: 1; background: linear-gradient(135deg, #ffeb99, #ffe082); border-radius: 15px; padding: 30px; border: 4px solid #fbc02d; text-align: center; transform: rotate(-2deg); }
+    .event-box h3 { font-family: 'Caveat', cursive; font-size: 42px; color: #f57f17; margin-bottom: 15px; }
+    .event-box p { font-size: 28px; color: #333; }
+    .ticker { position: absolute; bottom: 0; left: 0; right: 0; height: 140px; background: linear-gradient(90deg, #8b5a3c, #a0654f); display: flex; align-items: center; overflow: hidden; }
+    .ticker-text { font-size: 48px; color: #fff; font-weight: bold; white-space: nowrap; animation: scroll 15s linear infinite; padding: 0 40px; }
+    @keyframes scroll { from { transform: translateX(3840px); } to { transform: translateX(-600px); } }
+  </style>
+</head>
+<body>
+  <div class="viewport">
+    <div class="stage">
+      <div class="banner">Once Upon a Lobby...</div>
+      <div class="banner-line"></div>
+      <div class="page-left">
+        <div class="welcome">Welcome, Little Readers!</div>
+        <svg width="240" height="280" style="position: absolute; top: 300px; right: 40px; opacity: 0.6;">
+          <circle cx="120" cy="100" r="80" fill="#ffd700" stroke="#ffb300" stroke-width="4"/>
+          <path d="M 80 80 Q 120 60 160 80" fill="none" stroke="#ffb300" stroke-width="3"/>
+          <circle cx="100" cy="100" r="8" fill="#ffb300"/>
+          <circle cx="140" cy="100" r="8" fill="#ffb300"/>
+          <path d="M 110 120 Q 120 130 130 120" fill="none" stroke="#ffb300" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="page-right">
+        <div class="pop-up-card">
+          <div style="font-family: 'Caveat', cursive; font-size: 28px; color: #8b5a3c;">Teacher of the Week</div>
+          <div class="photo"></div>
+          <div class="label">Mrs. Johnson<br>3rd Grade</div>
+        </div>
+        <svg width="300" height="300" style="position: absolute; top: 250px; left: 40px; opacity: 0.5;">
+          <polygon points="150,20 170,110 260,110 190,165 210,255 150,200 90,255 110,165 40,110 130,110" fill="#ff69b4" stroke="#ff1493" stroke-width="4"/>
+        </svg>
+      </div>
+      <div class="page-corner"></div>
+
+      <svg class="clock-shape" width="280" height="320" viewBox="0 0 280 320">
+        <defs>
+          <filter id="shadow1">
+            <feDropShadow dx="8" dy="8" stdDeviation="6" flood-opacity="0.3"/>
+          </filter>
+        </defs>
+        <rect x="20" y="20" width="240" height="260" rx="20" fill="#fff0e6" stroke="#d4a574" stroke-width="6" filter="url(#shadow1)"/>
+        <circle cx="140" cy="120" r="90" fill="#fffbf7" stroke="#8b5a3c" stroke-width="5"/>
+        <line x1="140" y1="30" x2="140" y2="80" stroke="#8b5a3c" stroke-width="6" stroke-linecap="round"/>
+        <line x1="140" y1="120" x2="180" y2="120" stroke="#ff6b6b" stroke-width="5" stroke-linecap="round"/>
+        <circle cx="140" cy="120" r="10" fill="#8b5a3c"/>
+        <text x="140" y="260" font-family="Caveat, cursive" font-size="48" font-weight="700" text-anchor="middle" fill="#8b5a3c">7:53 AM</text>
+      </svg>
+
+      <svg class="weather-shape" width="280" height="320" viewBox="0 0 280 320">
+        <defs>
+          <filter id="shadow2">
+            <feDropShadow dx="8" dy="8" stdDeviation="6" flood-opacity="0.3"/>
+          </filter>
+        </defs>
+        <path d="M 60 140 Q 40 120 60 100 Q 50 80 70 70 Q 90 50 110 60 Q 130 40 150 50 Q 170 40 180 60 Q 200 55 210 75 Q 230 70 240 90 Q 250 110 230 130 Q 240 150 220 160 Q 200 170 180 160 Q 160 180 140 170 Q 120 180 100 170 Q 80 180 70 160 Q 50 165 40 150 Z" fill="#e3f2fd" stroke="#64b5f6" stroke-width="5" filter="url(#shadow2)"/>
+        <circle cx="140" cy="115" r="20" fill="#ffc107" stroke="#ffb300" stroke-width="3"/>
+        <text x="140" y="260" font-family="Caveat, cursive" font-size="52" font-weight="700" text-anchor="middle" fill="#1565c0">46°F Sunny</text>
+      </svg>
+
+      <div class="announcement">
+        <div class="announcement-title">📚 Book Fair This Week! 📚</div>
+        Join us for stories, signings, and special readings. Stop by the library after school!
+      </div>
+
+      <div class="events">
+        <div class="event-box">
+          <h3>🎨 Art Show</h3>
+          <p>Friday 3 PM</p>
+        </div>
+        <div class="event-box">
+          <h3>🏃 Field Trip</h3>
+          <p>12 days away</p>
+        </div>
+        <div class="event-box">
+          <h3>🎉 Assembly</h3>
+          <p>Next Monday</p>
+        </div>
+      </div>
+
+      <div class="ticker">
+        <div class="ticker-text">⭐ Welcome to our lobby! Today is Friday, April 18th. Have a wonderful day! ⭐ Book Fair in the library! ⭐ See you at assemblies!</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -87,7 +87,7 @@ async function main() {
     },
   });
 
-  await prisma.user.upsert({
+  const admin = await prisma.user.upsert({
     where: { email: 'admin@springfield.edu' },
     update: {}, // never reset a real admin's password from seed
     create: {
@@ -164,6 +164,7 @@ async function main() {
         description: preset.description,
         category: preset.category,
         orientation: preset.orientation,
+        schoolLevel: preset.schoolLevel ?? 'UNIVERSAL',
         screenWidth: preset.screenWidth,
         screenHeight: preset.screenHeight,
         bgColor: preset.bgColor,

@@ -128,12 +128,9 @@ export function Sidebar() {
         </nav>
 
         <div className="px-4 pb-5 space-y-2">
-          <RoleGate allowedRoles={['admin']}>
-            <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-100 rounded-xl">
-              <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
-              <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Admin</span>
-            </div>
-          </RoleGate>
+          {/* Admin chip removed — role is already visible in the user
+              info card's sub-line and an extra shield was visual
+              clutter. User-requested cleanup. */}
 
           {/* User info + Logout */}
           <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-100">

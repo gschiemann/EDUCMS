@@ -1,0 +1,327 @@
+<!--
+  CONCEPT 04 — SCRAPBOOK
+  Everything looks pasted in. Polaroids with tape, washi borders, torn paper edges,
+  stickers, handwritten arrows. Widgets rotate a few degrees each so nothing feels
+  gridded. Kids love it because it looks like something they'd make themselves.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Scrapbook — Lobby 4K</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Patrick+Hand&family=Fredoka:wght@700&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#2a2018;overflow:hidden;font-family:'Patrick Hand',system-ui,sans-serif;}
+  .viewport{position:fixed;inset:0;display:grid;place-items:center;}
+  .stage{width:3840px;height:2160px;position:relative;transform-origin:center;box-shadow:0 80px 200px rgba(0,0,0,.7);overflow:hidden;
+    background:
+      repeating-linear-gradient(0deg, rgba(200,170,120,.05) 0 2px, transparent 2px 40px),
+      repeating-linear-gradient(90deg, rgba(200,170,120,.05) 0 2px, transparent 2px 40px),
+      linear-gradient(180deg, #f6e6c6 0%, #ead0a0 100%);
+  }
+  /* paper texture blobs */
+  .paper-speck{position:absolute;width:20px;height:20px;border-radius:50%;background:rgba(120,80,40,.1);}
+
+  /* Washi tape helper */
+  .tape{position:absolute;width:220px;height:56px;background:repeating-linear-gradient(45deg,#ffb3c9 0 18px,#ffd6e6 18px 36px);
+    opacity:.85;box-shadow:0 4px 8px rgba(0,0,0,.15);border-radius:4px;}
+  .tape.blue{background:repeating-linear-gradient(45deg,#9fd3f5 0 18px,#c8e9ff 18px 36px);}
+  .tape.yellow{background:repeating-linear-gradient(45deg,#ffe14d 0 18px,#fff5a0 18px 36px);}
+  .tape.green{background:repeating-linear-gradient(45deg,#a9dc99 0 18px,#d0f0c2 18px 36px);}
+
+  /* Torn page header */
+  .header{position:absolute;top:0;left:0;right:0;height:420px;}
+  .header svg{width:100%;height:100%;}
+  .title{position:absolute;top:70px;left:50%;transform:translateX(-50%) rotate(-2deg);text-align:center;width:2800px;}
+  .title h1{font-family:'Caveat',cursive;font-weight:700;font-size:220px;color:#c2481a;margin:0;line-height:.9;
+    text-shadow:6px 6px 0 #2d1a08;}
+  .title .sub{font-family:'Patrick Hand',cursive;font-size:72px;color:#4a2818;margin-top:10px;}
+  .title .underline{display:block;margin:10px auto;width:1600px;}
+
+  /* Date sticker top right */
+  .datesticker{position:absolute;top:80px;right:120px;width:240px;height:240px;transform:rotate(8deg);z-index:5;}
+
+  /* Clock — analog doodle */
+  .clock{position:absolute;top:500px;left:140px;width:560px;transform:rotate(-3deg);z-index:3;}
+  .clock-tape{top:-20px;left:180px;width:200px;}
+  .clock svg{width:100%;filter:drop-shadow(0 14px 20px rgba(0,0,0,.2));}
+
+  /* Weather polaroid */
+  .weather{position:absolute;top:500px;right:140px;width:560px;transform:rotate(2deg);z-index:3;}
+  .weather-tape{top:-20px;left:180px;width:200px;}
+  .weather-card{background:#fff;padding:24px 24px 60px;box-shadow:0 14px 24px rgba(0,0,0,.25);}
+  .weather-photo{width:100%;aspect-ratio:1;background:linear-gradient(180deg,#9fd3f5 0%,#fff5a0 60%,#ffe14d 100%);position:relative;overflow:hidden;}
+  .weather-photo svg{position:absolute;inset:0;width:100%;height:100%;}
+  .weather-cap{font-family:'Caveat',cursive;font-size:72px;color:#4a2818;text-align:center;margin-top:20px;line-height:1;}
+  .weather-cap span{color:#c2481a;}
+
+  /* Hero photo stack */
+  .hero{position:absolute;top:560px;left:50%;transform:translateX(-50%);width:1900px;height:900px;}
+  .hero-photo{position:absolute;background:#fff;padding:30px 30px 100px;box-shadow:0 20px 40px rgba(0,0,0,.3);}
+  .hero-1{top:60px;left:0;width:880px;transform:rotate(-4deg);}
+  .hero-2{top:30px;right:60px;width:900px;transform:rotate(3deg);z-index:2;}
+  .hero-3{bottom:0;left:380px;width:1000px;transform:rotate(-1deg);z-index:3;}
+  .hero-photo .inner{width:100%;aspect-ratio:16/10;border-radius:4px;position:relative;overflow:hidden;}
+  .hero-photo .cap{font-family:'Caveat',cursive;font-size:56px;color:#4a2818;text-align:center;margin-top:16px;}
+  .hero-photo .cap span{color:#c2481a;}
+
+  /* Teacher polaroid */
+  .teacher{position:absolute;top:1500px;left:160px;width:900px;transform:rotate(-3deg);z-index:5;}
+  .teacher-tape{top:-22px;left:340px;width:240px;}
+  .teacher-card{background:#fff;padding:30px 30px 80px;box-shadow:0 20px 40px rgba(0,0,0,.3);position:relative;}
+  .teacher-photo{width:100%;aspect-ratio:1;background:#ffd6a0;position:relative;overflow:hidden;}
+  .teacher-photo svg{position:absolute;inset:0;width:100%;height:100%;}
+  .teacher-cap{font-family:'Caveat',cursive;font-size:80px;color:#c2481a;text-align:center;margin-top:20px;line-height:1;}
+  .teacher-name{font-family:'Caveat',cursive;font-weight:700;font-size:110px;color:#2d1a08;text-align:center;margin-top:-4px;}
+  .teacher-note{font-family:'Patrick Hand',cursive;font-size:44px;color:#4a2818;text-align:center;margin-top:8px;}
+
+  /* Sticky note announcement */
+  .anno{position:absolute;top:1480px;left:50%;transform:translateX(-50%) rotate(2deg);width:1100px;height:720px;z-index:4;}
+  .anno-paper{background:linear-gradient(180deg,#ffe14d 0%, #fdd040 100%);padding:60px;box-shadow:0 24px 50px rgba(0,0,0,.3), inset 0 -60px 40px rgba(0,0,0,.08);position:relative;}
+  .anno-paper::before{content:'';position:absolute;top:0;right:0;width:120px;height:120px;background:linear-gradient(225deg,#2a2018 0%, transparent 50%);opacity:.1;}
+  .anno h3{font-family:'Caveat',cursive;font-weight:700;font-size:110px;color:#c2481a;margin:0;line-height:.95;}
+  .anno .banner{font-family:'Fredoka',sans-serif;font-weight:700;font-size:48px;color:#2d1a08;margin:10px 0;}
+  .anno p{font-family:'Patrick Hand',cursive;font-size:60px;color:#2d1a08;margin:20px 0 0;line-height:1.2;}
+  .anno .arrow{position:absolute;bottom:30px;right:40px;width:200px;}
+
+  /* Events "pasted list" */
+  .events{position:absolute;top:1500px;right:160px;width:900px;transform:rotate(2deg);z-index:4;}
+  .events-tape{top:-22px;left:340px;width:240px;}
+  .events-card{background:#fff;padding:40px 50px;box-shadow:0 20px 40px rgba(0,0,0,.3);}
+  .events h3{font-family:'Caveat',cursive;font-weight:700;font-size:80px;color:#c2481a;margin:0 0 20px;line-height:1;}
+  .events .ev{display:flex;gap:20px;align-items:center;padding:14px 0;border-bottom:2px dashed #c2a878;}
+  .events .ev:last-child{border-bottom:none;}
+  .events .sticker{width:90px;height:90px;flex-shrink:0;display:grid;place-items:center;font-family:'Fredoka';font-weight:700;font-size:48px;color:#fff;border-radius:50%;box-shadow:0 4px 0 rgba(0,0,0,.15), 0 8px 14px rgba(0,0,0,.2);transform:rotate(-5deg);}
+  .events .meta{font-family:'Caveat';font-size:48px;color:#c2481a;line-height:1;}
+  .events .name{font-family:'Patrick Hand';font-size:44px;color:#2d1a08;line-height:1.1;}
+
+  /* Countdown sticker */
+  .countdown{position:absolute;top:480px;left:50%;transform:translateX(-50%) rotate(-6deg);width:400px;height:400px;z-index:6;}
+
+  /* Ticker — taped paper strip */
+  .ticker{position:absolute;bottom:80px;left:80px;right:80px;height:180px;transform:rotate(-.5deg);}
+  .ticker-paper{background:#fff;height:100%;padding:30px 60px;box-shadow:0 16px 30px rgba(0,0,0,.35);display:flex;align-items:center;gap:40px;box-sizing:border-box;}
+  .ticker .tag{background:#c2481a;color:#fff;font-family:'Fredoka';font-weight:700;font-size:48px;padding:14px 30px;transform:rotate(-3deg);box-shadow:0 4px 0 rgba(0,0,0,.3);}
+  .ticker .msg{font-family:'Caveat',cursive;font-size:72px;color:#2d1a08;}
+  .ticker-tape-l{position:absolute;top:-24px;left:140px;width:240px;}
+  .ticker-tape-r{position:absolute;top:-24px;right:140px;width:240px;}
+
+  /* Random stickers */
+  .sticker-float{position:absolute;z-index:7;filter:drop-shadow(0 6px 10px rgba(0,0,0,.3));}
+
+  /* Logo badge */
+  .logo{position:absolute;top:90px;left:130px;width:280px;height:280px;transform:rotate(-6deg);z-index:6;filter:drop-shadow(0 14px 20px rgba(0,0,0,.3));}
+</style>
+</head>
+<body>
+<div class="viewport">
+<div class="stage" id="stage">
+
+  <!-- Paper texture speckles -->
+  <div class="paper-speck" style="top:200px;left:400px;"></div>
+  <div class="paper-speck" style="top:850px;left:2700px;width:8px;height:8px;"></div>
+  <div class="paper-speck" style="top:1200px;left:1800px;width:14px;height:14px;"></div>
+  <div class="paper-speck" style="top:1900px;left:500px;"></div>
+
+  <!-- Torn header band -->
+  <div class="header">
+    <svg viewBox="0 0 3840 420" preserveAspectRatio="none">
+      <path d="M0 0 L3840 0 L3840 320 Q3600 380 3400 340 Q3100 300 2800 360 Q2400 410 2100 340 Q1800 280 1500 360 Q1200 420 900 350 Q600 290 300 370 Q150 410 0 340 Z" fill="#f8d9a6"/>
+      <path d="M0 340 Q150 410 300 370 Q600 290 900 350 Q1200 420 1500 360 Q1800 280 2100 340 Q2400 410 2800 360 Q3100 300 3400 340 Q3600 380 3840 320" stroke="#c2481a" stroke-width="6" fill="none" opacity=".3"/>
+    </svg>
+  </div>
+
+  <!-- Title -->
+  <div class="title">
+    <h1>~ Our School Day ~</h1>
+    <div class="sub">clippings, scribbles &amp; news from Willow Elementary</div>
+    <svg class="underline" viewBox="0 0 1600 40" preserveAspectRatio="none">
+      <path d="M10 20 Q400 0 800 24 T1590 20" stroke="#c2481a" stroke-width="6" fill="none" stroke-linecap="round"/>
+      <path d="M10 28 Q400 10 800 32 T1590 28" stroke="#c2481a" stroke-width="3" fill="none" stroke-linecap="round" opacity=".5"/>
+    </svg>
+  </div>
+
+  <!-- Date sticker -->
+  <svg class="datesticker" viewBox="0 0 240 240">
+    <path d="M120 10 L148 50 L195 30 L190 80 L235 100 L198 130 L225 175 L175 175 L175 225 L130 200 L100 235 L80 190 L35 200 L50 155 L10 130 L50 100 L20 60 L70 60 Z" fill="#c2481a" stroke="#2d1a08" stroke-width="6"/>
+    <text x="120" y="95" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="38" fill="#fff">FRIDAY</text>
+    <text x="120" y="155" text-anchor="middle" font-family="Caveat" font-weight="700" font-size="80" fill="#ffe14d">18</text>
+    <text x="120" y="195" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="26" fill="#fff">APRIL</text>
+  </svg>
+
+  <!-- Logo -->
+  <svg class="logo" viewBox="0 0 280 280">
+    <polygon points="140,20 170,90 245,100 188,150 205,225 140,190 75,225 92,150 35,100 110,90" fill="#ffe14d" stroke="#2d1a08" stroke-width="8"/>
+    <circle cx="140" cy="135" r="60" fill="#fff" stroke="#2d1a08" stroke-width="4"/>
+    <text x="140" y="125" text-anchor="middle" font-family="Caveat" font-weight="700" font-size="30" fill="#c2481a">Willow</text>
+    <text x="140" y="165" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="22" fill="#2d1a08">ELEMENTARY</text>
+  </svg>
+
+  <!-- Clock -->
+  <div class="clock">
+    <div class="tape blue clock-tape"></div>
+    <svg viewBox="0 0 560 560">
+      <circle cx="280" cy="280" r="240" fill="#fff" stroke="#2d1a08" stroke-width="8"/>
+      <circle cx="280" cy="280" r="240" fill="none" stroke="#c2481a" stroke-width="4" stroke-dasharray="8 12" opacity=".5"/>
+      <g stroke="#2d1a08" stroke-width="5" stroke-linecap="round">
+        <line x1="280" y1="50" x2="280" y2="85"/><line x1="280" y1="475" x2="280" y2="510"/>
+        <line x1="50" y1="280" x2="85" y2="280"/><line x1="475" y1="280" x2="510" y2="280"/>
+      </g>
+      <text x="280" y="230" text-anchor="middle" font-family="Caveat" font-weight="700" font-size="72" fill="#c2481a">good morning!</text>
+      <text x="280" y="370" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="160" fill="#2d1a08">7:53</text>
+      <text x="280" y="430" text-anchor="middle" font-family="Patrick Hand" font-size="44" fill="#4a2818">am ~ school starts at 8:15 ~</text>
+    </svg>
+  </div>
+
+  <!-- Weather polaroid -->
+  <div class="weather">
+    <div class="tape yellow weather-tape"></div>
+    <div class="weather-card">
+      <div class="weather-photo">
+        <svg viewBox="0 0 500 500">
+          <circle cx="250" cy="250" r="140" fill="#ffdd55" stroke="#2d1a08" stroke-width="8"/>
+          <g stroke="#ffb300" stroke-width="12" stroke-linecap="round">
+            <line x1="250" y1="30" x2="250" y2="80"/><line x1="250" y1="420" x2="250" y2="470"/>
+            <line x1="30" y1="250" x2="80" y2="250"/><line x1="420" y1="250" x2="470" y2="250"/>
+            <line x1="90" y1="90" x2="130" y2="130"/><line x1="370" y1="130" x2="410" y2="90"/>
+            <line x1="90" y1="410" x2="130" y2="370"/><line x1="370" y1="370" x2="410" y2="410"/>
+          </g>
+          <circle cx="220" cy="240" r="8" fill="#2d1a08"/><circle cx="280" cy="240" r="8" fill="#2d1a08"/>
+          <path d="M215 275 Q250 300 285 275" stroke="#2d1a08" stroke-width="6" fill="none" stroke-linecap="round"/>
+          <text x="250" y="120" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="90" fill="#c2481a">46°</text>
+        </svg>
+      </div>
+      <div class="weather-cap">sunny &amp; <span>46°F</span></div>
+    </div>
+  </div>
+
+  <!-- Hero photo stack -->
+  <div class="hero">
+    <div class="hero-photo hero-1">
+      <div class="inner" style="background:linear-gradient(180deg,#a9dc99,#7aa96b);">
+        <svg viewBox="0 0 820 500" width="100%" height="100%" preserveAspectRatio="none">
+          <circle cx="680" cy="100" r="60" fill="#ffdd55"/>
+          <path d="M0 350 Q200 280 400 320 T820 300 L820 500 L0 500 Z" fill="#7aa96b"/>
+          <!-- tree -->
+          <rect x="150" y="280" width="24" height="80" fill="#6b3410"/>
+          <circle cx="162" cy="270" r="60" fill="#4a8040"/>
+          <!-- kids running -->
+          <g transform="translate(450 340)">
+            <circle r="30" fill="#ffd6a0" stroke="#2d1a08" stroke-width="4"/>
+            <rect x="-25" y="25" width="50" height="60" fill="#c2481a" stroke="#2d1a08" stroke-width="4"/>
+          </g>
+        </svg>
+      </div>
+      <div class="cap">recess <span>★</span> Tuesday</div>
+    </div>
+    <div class="hero-photo hero-2">
+      <div class="inner" style="background:linear-gradient(180deg,#9fd3f5,#4a90e2);">
+        <svg viewBox="0 0 840 500" width="100%" height="100%" preserveAspectRatio="none">
+          <rect x="100" y="200" width="640" height="280" fill="#c2481a" stroke="#2d1a08" stroke-width="6"/>
+          <polygon points="100,200 420,80 740,200" fill="#8a2a20" stroke="#2d1a08" stroke-width="6"/>
+          <rect x="380" y="280" width="80" height="200" fill="#6b3410"/>
+          <rect x="160" y="250" width="80" height="80" fill="#fff"/>
+          <rect x="600" y="250" width="80" height="80" fill="#fff"/>
+        </svg>
+      </div>
+      <div class="cap">our <span>school</span> ♥</div>
+    </div>
+    <div class="hero-photo hero-3">
+      <div class="inner" style="background:linear-gradient(180deg,#ffb3c9,#ffe14d);">
+        <svg viewBox="0 0 940 580" width="100%" height="100%" preserveAspectRatio="none">
+          <!-- stack of books -->
+          <g transform="translate(180 200)">
+            <rect x="0" y="0" width="580" height="60" fill="#c2481a" stroke="#2d1a08" stroke-width="4"/>
+            <rect x="30" y="60" width="560" height="70" fill="#4a90e2" stroke="#2d1a08" stroke-width="4"/>
+            <rect x="-10" y="130" width="600" height="65" fill="#a9dc99" stroke="#2d1a08" stroke-width="4"/>
+            <rect x="40" y="195" width="520" height="80" fill="#ffe14d" stroke="#2d1a08" stroke-width="4"/>
+          </g>
+          <!-- apple -->
+          <circle cx="780" cy="180" r="50" fill="#c2481a" stroke="#2d1a08" stroke-width="5"/>
+          <rect x="775" y="120" width="8" height="30" fill="#4a2818"/>
+          <ellipse cx="800" cy="135" rx="20" ry="10" fill="#4a8040" transform="rotate(30 800 135)"/>
+        </svg>
+      </div>
+      <div class="cap">book fair <span>TODAY</span>!</div>
+    </div>
+  </div>
+
+  <!-- Countdown sticker centered -->
+  <svg class="countdown" viewBox="0 0 400 400">
+    <circle cx="200" cy="200" r="185" fill="#c2481a" stroke="#2d1a08" stroke-width="10"/>
+    <circle cx="200" cy="200" r="160" fill="none" stroke="#fff" stroke-width="4" stroke-dasharray="10 8"/>
+    <text x="200" y="130" text-anchor="middle" font-family="Caveat" font-weight="700" font-size="50" fill="#ffe14d">field trip in</text>
+    <text x="200" y="265" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="170" fill="#fff">12</text>
+    <text x="200" y="315" text-anchor="middle" font-family="Caveat" font-weight="700" font-size="48" fill="#ffe14d">days!</text>
+  </svg>
+
+  <!-- Teacher polaroid -->
+  <div class="teacher">
+    <div class="tape teacher-tape"></div>
+    <div class="teacher-card">
+      <div class="teacher-photo">
+        <svg viewBox="0 0 500 500">
+          <rect width="500" height="500" fill="#ffd6a0"/>
+          <circle cx="250" cy="220" r="120" fill="#f5c58a" stroke="#2d1a08" stroke-width="6"/>
+          <path d="M130 220 Q130 100 250 100 Q370 100 370 220 Q370 170 320 155 Q250 145 180 160 Q130 180 130 220" fill="#4a2818"/>
+          <circle cx="215" cy="220" r="10" fill="#2d1a08"/><circle cx="285" cy="220" r="10" fill="#2d1a08"/>
+          <path d="M215 270 Q250 295 285 270" stroke="#c2481a" stroke-width="8" fill="none" stroke-linecap="round"/>
+          <circle cx="185" cy="245" r="16" fill="#ffb3c9"/><circle cx="315" cy="245" r="16" fill="#ffb3c9"/>
+          <rect x="120" y="360" width="260" height="140" fill="#a9dc99" stroke="#2d1a08" stroke-width="6"/>
+          <circle cx="250" cy="380" r="16" fill="#fff" stroke="#2d1a08" stroke-width="4"/>
+        </svg>
+      </div>
+      <div class="teacher-cap">★ our star teacher ★</div>
+      <div class="teacher-name">Mrs. Johnson</div>
+      <div class="teacher-note">(3rd grade · always has snacks)</div>
+    </div>
+  </div>
+
+  <!-- Sticky note announcement -->
+  <div class="anno">
+    <div class="anno-paper">
+      <h3>Book Fair<br/>~ TODAY! ~</h3>
+      <div class="banner">★ in the library ★</div>
+      <p>New dinosaur books, comic packs, and glitter pens waiting for you. Bring your wish list and your library card!</p>
+      <p style="margin-top:40px;font-family:'Caveat',cursive;font-size:72px;color:#c2481a;">open 8 am – 3:30 pm</p>
+      <svg class="arrow" viewBox="0 0 200 120">
+        <path d="M10 60 Q80 10 180 40" stroke="#c2481a" stroke-width="6" fill="none" stroke-linecap="round"/>
+        <polygon points="180,40 150,20 160,55" fill="#c2481a"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Events -->
+  <div class="events">
+    <div class="tape green events-tape"></div>
+    <div class="events-card">
+      <h3>☆ what's next ☆</h3>
+      <div class="ev"><div class="sticker" style="background:#c2481a">M</div><div><div class="meta">Mon 8:30</div><div class="name">Pajama Day Reading</div></div></div>
+      <div class="ev"><div class="sticker" style="background:#4a90e2">W</div><div><div class="meta">Wed 10 am</div><div class="name">Principal's Story Time</div></div></div>
+      <div class="ev"><div class="sticker" style="background:#a9dc99;color:#2d1a08">Z</div><div><div class="meta">Apr 30</div><div class="name">Field Trip — ZOO!</div></div></div>
+      <div class="ev"><div class="sticker" style="background:#ffe14d;color:#2d1a08">♪</div><div><div class="meta">May 8</div><div class="name">Spring Concert</div></div></div>
+    </div>
+  </div>
+
+  <!-- Random stickers -->
+  <svg class="sticker-float" style="top:460px;left:1600px;width:140px;" viewBox="0 0 140 140"><path d="M70 10 L85 50 L130 55 L96 85 L108 130 L70 105 L32 130 L44 85 L10 55 L55 50 Z" fill="#ffe14d" stroke="#2d1a08" stroke-width="5"/></svg>
+  <svg class="sticker-float" style="top:1460px;left:1270px;width:160px;transform:rotate(12deg);" viewBox="0 0 160 160"><circle cx="80" cy="80" r="70" fill="#c2481a" stroke="#2d1a08" stroke-width="5"/><text x="80" y="75" text-anchor="middle" font-family="Caveat" font-weight="700" font-size="28" fill="#fff">you're a</text><text x="80" y="110" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="30" fill="#ffe14d">STAR!</text></svg>
+  <svg class="sticker-float" style="top:480px;left:2800px;width:140px;transform:rotate(-10deg);" viewBox="0 0 140 140"><path d="M70 20 Q30 20 30 60 Q30 80 70 120 Q110 80 110 60 Q110 20 70 20" fill="#ffb3c9" stroke="#2d1a08" stroke-width="5"/></svg>
+
+  <!-- Ticker -->
+  <div class="ticker">
+    <div class="tape ticker-tape-l"></div>
+    <div class="tape blue ticker-tape-r"></div>
+    <div class="ticker-paper">
+      <div class="tag">★ NEWS ★</div>
+      <div class="msg">Lost &amp; Found cleanout Friday — hats, jackets, and one mystery boot waiting at the office!</div>
+    </div>
+  </div>
+
+</div></div>
+<script>
+  function fit(){const s=document.getElementById('stage');const k=Math.min(window.innerWidth/3840,window.innerHeight/2160);s.style.transform='scale('+k+')';}
+  window.addEventListener('resize',fit);fit();
+</script>
+</body></html>

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Elementary Welcome — Design Bake-off</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;800&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #0f172a; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 48px 24px 80px; }
+  h1 { font-family: 'Fredoka', sans-serif; font-weight: 800; font-size: 48px; margin: 0 0 8px; color: #fff; letter-spacing: -0.02em; }
+  .sub { color: #94a3b8; font-size: 16px; margin: 0 0 40px; max-width: 720px; line-height: 1.6; }
+  .sub strong { color: #fde68a; }
+  .model-section { margin-bottom: 64px; }
+  .model-header { display: flex; align-items: baseline; gap: 16px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #1e293b; }
+  .model-name { font-family: 'Fredoka', sans-serif; font-weight: 800; font-size: 28px; color: #fff; }
+  .model-tag { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; }
+  .model-pill { font-size: 11px; padding: 4px 10px; border-radius: 999px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+  .pill-opus    { background: #4c1d95; color: #ddd6fe; }
+  .pill-sonnet  { background: #075985; color: #bae6fd; }
+  .pill-haiku   { background: #065f46; color: #a7f3d0; }
+  .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; overflow: hidden; transition: transform .15s, border-color .15s; }
+  .card:hover { transform: translateY(-2px); border-color: #6366f1; }
+  .card a { display: block; color: inherit; text-decoration: none; }
+  .frame { position: relative; width: 100%; aspect-ratio: 16/9; background: #0f172a; overflow: hidden; }
+  .frame iframe { border: 0; width: 3840px; height: 2160px; transform-origin: top left; pointer-events: none; }
+  .label { padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .label .n { font-weight: 800; color: #fff; font-size: 14px; }
+  .label .d { color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .fineprint { color: #64748b; font-size: 12px; margin-top: 48px; text-align: center; }
+  @media (max-width: 1100px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Elementary Welcome — Design Bake-off</h1>
+  <p class="sub">Three models (<strong>Opus</strong>, <strong>Sonnet</strong>, <strong>Haiku</strong>) — same brief, 5 concepts each, zero coordination. Click any thumb to open it full-size. Pick a winner and we'll wire that design into the CMS preset.</p>
+
+  <section class="model-section">
+    <div class="model-header">
+      <div class="model-name">Opus</div>
+      <span class="model-pill pill-opus">Claude Opus 4.7</span>
+      <span class="model-tag" style="margin-left:auto">The expensive one</span>
+    </div>
+    <div class="grid" id="grid-opus"></div>
+  </section>
+
+  <section class="model-section">
+    <div class="model-header">
+      <div class="model-name">Sonnet</div>
+      <span class="model-pill pill-sonnet">Claude Sonnet</span>
+      <span class="model-tag" style="margin-left:auto">The workhorse</span>
+    </div>
+    <div class="grid" id="grid-sonnet"></div>
+  </section>
+
+  <section class="model-section">
+    <div class="model-header">
+      <div class="model-name">Haiku</div>
+      <span class="model-pill pill-haiku">Claude Haiku</span>
+      <span class="model-tag" style="margin-left:auto">The cheap one</span>
+    </div>
+    <div class="grid" id="grid-haiku"></div>
+  </section>
+
+  <div class="fineprint">Refresh this page once the models finish — empty slots mean that mockup isn't built yet.</div>
+</div>
+
+<script>
+  const concepts = [
+    { file: '01-storybook.html',      n: '01',  d: 'Storybook' },
+    { file: '02-playground.html',     n: '02',  d: 'Playground' },
+    { file: '03-rainbow-ribbon.html', n: '03',  d: 'Rainbow Ribbon' },
+    { file: '04-scrapbook.html',      n: '04',  d: 'Scrapbook' },
+    { file: '05-field-day.html',      n: '05',  d: 'Field Day' },
+  ];
+  ['opus','sonnet','haiku'].forEach(model => {
+    const grid = document.getElementById('grid-' + model);
+    grid.innerHTML = concepts.map(c => `
+      <div class="card">
+        <a href="viewer.html?file=${model}/${c.file}" target="_blank" rel="noopener">
+          <div class="frame">
+            <iframe src="${model}/${c.file}" loading="lazy"></iframe>
+          </div>
+          <div class="label">
+            <span class="n">${c.n} · ${c.d}</span>
+            <span class="d">${model}</span>
+          </div>
+        </a>
+      </div>
+    `).join('');
+  });
+  function rescale() {
+    document.querySelectorAll('.frame').forEach(f => {
+      const iframe = f.querySelector('iframe');
+      if (!iframe) return;
+      iframe.style.transform = `scale(${f.clientWidth / 3840})`;
+    });
+  }
+  window.addEventListener('load', rescale);
+  window.addEventListener('resize', rescale);
+  setTimeout(rescale, 200);
+  setTimeout(rescale, 1500);
+</script>
+</body>
+</html>

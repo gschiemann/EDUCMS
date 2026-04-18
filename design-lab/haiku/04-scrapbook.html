@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scrapbook Lobby Display</title>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Fredoka:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #f5f1ea; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+    .viewport { width: 3840px; height: 2160px; transform: scale(0.16); transform-origin: top left; }
+    .stage { width: 100%; height: 100%; background: linear-gradient(135deg, #fff9e6 0%, #f5f1ea 50%, #fffbf7 100%); position: relative; overflow: hidden; font-family: 'Fredoka', sans-serif; }
+
+    .sticker { position: absolute; font-size: 120px; }
+    .sticker.top-left { top: 80px; left: 120px; transform: rotate(-25deg); opacity: 0.9; }
+    .sticker.top-right { top: 100px; right: 140px; transform: rotate(20deg); opacity: 0.85; font-size: 140px; }
+    .sticker.mid-left { top: 800px; left: 80px; transform: rotate(-15deg); opacity: 0.8; }
+    .sticker.bottom-right { bottom: 200px; right: 100px; transform: rotate(35deg); opacity: 0.75; }
+
+    .washi-border { position: absolute; top: 0; left: 0; right: 0; height: 180px; background: repeating-linear-gradient(45deg, #ffcc80, #ffcc80 30px, #ff8a65 30px, #ff8a65 60px, #ef9a9a 60px, #ef9a9a 90px, #ce93d8 90px, #ce93d8 120px); opacity: 0.7; }
+    .washi-border::before { content: ''; position: absolute; top: 160px; left: 0; right: 0; height: 20px; background: repeating-linear-gradient(90deg, transparent, transparent 40px, rgba(0,0,0,0.1) 40px, rgba(0,0,0,0.1) 45px); }
+
+    .banner { position: absolute; top: 120px; left: 50%; transform: translateX(-50%); z-index: 10; }
+    .banner-text { font-family: 'Caveat', cursive; font-size: 120px; font-weight: 700; color: #d32f2f; text-align: center; text-shadow: 2px 2px 4px rgba(0,0,0,0.1); }
+
+    .polaroid { position: absolute; background: #fff; border: 12px solid #fff3e0; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+    .polaroid.logo { top: 280px; left: 100px; width: 300px; height: 340px; transform: rotate(-8deg); }
+    .polaroid.teacher { top: 280px; right: 120px; width: 340px; height: 400px; transform: rotate(12deg); }
+    .polaroid-photo { background: linear-gradient(135deg, #ffcc80, #ffb74d); width: 100%; aspect-ratio: 1; border-radius: 4px; margin-bottom: 20px; }
+    .polaroid-label { font-family: 'Caveat', cursive; font-size: 32px; color: #333; text-align: center; }
+
+    .sticky-note { position: absolute; background: linear-gradient(135deg, #fff9c4, #ffeb3b); border: 3px solid #fbc02d; padding: 25px; font-family: 'Caveat', cursive; font-size: 28px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    .sticky-note.announcement { top: 720px; left: 150px; width: 380px; height: 240px; transform: rotate(-5deg); }
+    .sticky-note.announcement .title { font-size: 42px; font-weight: 700; color: #d32f2f; margin-bottom: 10px; }
+    .sticky-note.announcement .content { font-size: 26px; color: #333; line-height: 1.4; }
+
+    .torn-paper { position: absolute; background: #fff; border: 2px solid #e0e0e0; padding: 30px; box-shadow: 0 6px 15px rgba(0,0,0,0.12); }
+    .torn-paper.events { bottom: 300px; left: 120px; right: 120px; width: auto; }
+    .torn-paper.events .title { font-family: 'Caveat', cursive; font-size: 56px; font-weight: 700; color: #d32f2f; margin-bottom: 20px; }
+    .events-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; }
+    .event-item { text-align: center; }
+    .event-item .icon { font-size: 80px; margin-bottom: 15px; }
+    .event-item .name { font-family: 'Caveat', cursive; font-size: 42px; color: #333; font-weight: 700; }
+    .event-item .date { font-size: 28px; color: #666; margin-top: 8px; }
+
+    .arrow-label { position: absolute; font-family: 'Caveat', cursive; font-size: 32px; color: #d32f2f; font-weight: 700; }
+    .arrow-label svg { width: 60px; height: 60px; stroke: #d32f2f; stroke-width: 3; fill: none; }
+    .arrow-label.teach { top: 700px; left: 520px; }
+    .arrow-label.when { top: 280px; right: 450px; }
+
+    .tape { position: absolute; width: 120px; height: 60px; background: rgba(200, 180, 150, 0.4); border: 1px solid rgba(180, 160, 130, 0.5); box-shadow: inset 0 1px 3px rgba(255,255,255,0.3); }
+    .tape.tape1 { top: 260px; left: 180px; transform: rotate(-15deg); }
+    .tape.tape2 { top: 240px; right: 240px; transform: rotate(25deg); }
+    .tape.tape3 { bottom: 280px; left: 160px; transform: rotate(-20deg); }
+    .tape.tape4 { bottom: 280px; right: 140px; transform: rotate(18deg); }
+
+    .ticker { position: absolute; bottom: 0; left: 0; right: 0; height: 140px; background: linear-gradient(90deg, #d32f2f, #e64a19); display: flex; align-items: center; overflow: hidden; }
+    .ticker-text { font-size: 48px; color: #fff; font-weight: bold; white-space: nowrap; animation: scroll 15s linear infinite; padding: 0 40px; text-shadow: 2px 2px 4px rgba(0,0,0,0.2); font-family: 'Caveat', cursive; }
+    @keyframes scroll { from { transform: translateX(3840px); } to { transform: translateX(-600px); } }
+
+    .speech-bubble-arrow { position: absolute; }
+    .speech-bubble-arrow svg { width: 80px; height: 80px; }
+  </style>
+</head>
+<body>
+  <div class="viewport">
+    <div class="stage">
+      <div class="washi-border"></div>
+
+      <div class="sticker top-left">📚</div>
+      <div class="sticker top-right">✏️</div>
+      <div class="sticker mid-left">⭐</div>
+      <div class="sticker bottom-right">🎨</div>
+
+      <div class="banner">
+        <div class="banner-text">Welcome to Our Scrapbook!</div>
+      </div>
+
+      <div class="polaroid logo">
+        <div class="polaroid-photo"></div>
+        <div class="polaroid-label">School Logo</div>
+      </div>
+
+      <div class="polaroid teacher">
+        <div class="polaroid-photo"></div>
+        <div class="polaroid-label">Mrs. Johnson<br>3rd Grade<br>Teacher of Week</div>
+      </div>
+
+      <div class="sticky-note announcement">
+        <div class="title">📚 Book Fair!</div>
+        <div class="content">Come read & pick new books. Library this week!</div>
+      </div>
+
+      <div class="arrow-label teach">
+        <svg viewBox="0 0 60 60">
+          <path d="M 10 10 Q 30 30 50 50" stroke-linecap="round"/>
+          <path d="M 40 45 L 50 50 L 45 60" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span style="position: relative; left: 10px; top: -30px;">Teacher!!</span>
+      </div>
+
+      <div class="arrow-label when">
+        <span style="position: absolute; right: -120px; top: -10px;">When?</span>
+        <svg viewBox="0 0 60 60">
+          <path d="M 50 50 Q 30 30 10 10" stroke-linecap="round"/>
+          <path d="M 20 15 L 10 10 L 15 0" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+
+      <div class="torn-paper events">
+        <div class="title">Coming Up!</div>
+        <div class="events-grid">
+          <div class="event-item">
+            <div class="icon">🎨</div>
+            <div class="name">Art Show</div>
+            <div class="date">Friday 3 PM</div>
+          </div>
+          <div class="event-item">
+            <div class="icon">🏃</div>
+            <div class="name">Field Trip</div>
+            <div class="date">12 Days</div>
+          </div>
+          <div class="event-item">
+            <div class="icon">🎉</div>
+            <div class="name">Assembly</div>
+            <div class="date">Next Monday</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tape tape1"></div>
+      <div class="tape tape2"></div>
+      <div class="tape tape3"></div>
+      <div class="tape tape4"></div>
+
+      <svg class="clock-shape" width="280" height="320" viewBox="0 0 280 320" style="position: absolute; top: 900px; left: 150px; filter: drop-shadow(0 8px 16px rgba(0,0,0,0.2)); transform: rotate(-5deg);">
+        <rect x="20" y="20" width="240" height="260" rx="15" fill="#fff3e0" stroke="#d32f2f" stroke-width="5"/>
+        <circle cx="140" cy="120" r="85" fill="#fffbf7" stroke="#d32f2f" stroke-width="4"/>
+        <line x1="140" y1="35" x2="140" y2="80" stroke="#d32f2f" stroke-width="5" stroke-linecap="round"/>
+        <line x1="140" y1="120" x2="185" y2="120" stroke="#ff6b6b" stroke-width="4" stroke-linecap="round"/>
+        <circle cx="140" cy="120" r="8" fill="#d32f2f"/>
+        <text x="140" y="260" font-family="Caveat, cursive" font-size="48" font-weight="700" text-anchor="middle" fill="#d32f2f">7:53 AM</text>
+      </svg>
+
+      <svg class="weather-shape" width="300" height="320" viewBox="0 0 300 320" style="position: absolute; top: 900px; right: 140px; filter: drop-shadow(0 8px 16px rgba(0,0,0,0.15)); transform: rotate(8deg);">
+        <path d="M 60 160 C 35 160 20 145 20 120 C 20 95 35 80 60 80 C 65 55 85 40 110 40 C 135 40 155 55 160 80 C 185 75 205 90 205 115 C 205 145 185 160 160 160 Z" fill="#e3f2fd" stroke="#1565c0" stroke-width="4"/>
+        <circle cx="220" cy="90" r="35" fill="#ffc107" stroke="#ff8f00" stroke-width="3"/>
+        <text x="150" y="260" font-family="Caveat, cursive" font-size="44" font-weight="700" text-anchor="middle" fill="#1565c0">46°F Sunny</text>
+      </svg>
+
+      <div class="ticker">
+        <div class="ticker-text">✨ Welcome to school! ✨ Book Fair in the library! ✨ Art show this Friday! ✨ Have a wonderful day!</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

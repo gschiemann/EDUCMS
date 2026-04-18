@@ -1,0 +1,274 @@
+<!--
+  CONCEPT 03 — RAINBOW RIBBON
+  Banners, streamers, speech bubbles, cloud cutouts, star bursts, and pennant flags.
+  Candy-pop palette. Everything is a shape with a tail or a fold. Kids love it because
+  the whole screen feels like someone is throwing them a party first thing in the morning.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Rainbow Ribbon — Lobby 4K</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Caveat:wght@700&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#1c0f28;overflow:hidden;font-family:'Fredoka',system-ui,sans-serif;}
+  .viewport{position:fixed;inset:0;display:grid;place-items:center;}
+  .stage{width:3840px;height:2160px;position:relative;transform-origin:center;box-shadow:0 80px 200px rgba(0,0,0,.7);overflow:hidden;
+    background:
+      radial-gradient(ellipse at 50% 40%, #ffe9f3 0%, #ffd6e9 30%, #c9e7ff 70%, #a8d8ff 100%);
+  }
+  /* Confetti */
+  .confetti{position:absolute;inset:0;pointer-events:none;}
+
+  /* Ribbon banner at top */
+  .ribbon{position:absolute;top:120px;left:50%;transform:translateX(-50%);width:3200px;height:360px;filter:drop-shadow(0 20px 30px rgba(0,0,0,.25));}
+  .ribbon-text{position:absolute;top:200px;left:0;right:0;text-align:center;font-family:'Fredoka',sans-serif;font-weight:700;
+    font-size:180px;color:#fff;text-shadow:4px 4px 0 #d63384, 10px 10px 0 rgba(0,0,0,.25);letter-spacing:2px;}
+  .ribbon-sub{position:absolute;top:400px;left:0;right:0;text-align:center;font-family:'Caveat',cursive;font-size:80px;color:#d63384;
+    text-shadow:2px 2px 0 #fff;}
+
+  /* Cloud weather */
+  .cloud{position:absolute;top:620px;right:180px;width:700px;height:520px;}
+  .cloud svg{width:100%;height:100%;filter:drop-shadow(0 20px 30px rgba(0,0,0,.2));}
+
+  /* Sun clock */
+  .sunclock{position:absolute;top:620px;left:180px;width:700px;height:520px;}
+  .sunclock svg{width:100%;height:100%;filter:drop-shadow(0 20px 30px rgba(0,0,0,.25));}
+
+  /* Speech bubble announcement */
+  .speech{position:absolute;top:720px;left:50%;transform:translateX(-50%) rotate(-1deg);width:1800px;height:500px;}
+  .speech svg{width:100%;height:100%;filter:drop-shadow(0 20px 40px rgba(0,0,0,.25));}
+  .speech .txt{position:absolute;top:60px;left:80px;right:80px;bottom:120px;display:flex;flex-direction:column;justify-content:center;}
+  .speech h3{font-family:'Fredoka',sans-serif;font-weight:700;font-size:72px;color:#d63384;margin:0 0 10px;}
+  .speech p{font-family:'Fredoka',sans-serif;font-weight:600;font-size:58px;color:#3a2a5a;margin:0;line-height:1.15;}
+  .speech .date{font-family:'Caveat',cursive;font-size:56px;color:#6b4ac8;margin-top:14px;}
+
+  /* Teacher polaroid card with ribbon */
+  .teacher{position:absolute;top:1280px;left:160px;width:1300px;transform:rotate(-2deg);}
+  .teacher-card{background:#fff;border-radius:30px;padding:30px;box-shadow:0 30px 60px rgba(0,0,0,.3);display:flex;gap:30px;align-items:center;position:relative;border:6px solid #fff;}
+  .teacher-card::before{content:'';position:absolute;top:-30px;left:60px;width:200px;height:60px;background:repeating-linear-gradient(45deg,#ffb3e6 0 20px,#a8d8ff 20px 40px);border-radius:10px;transform:rotate(-8deg);box-shadow:0 6px 12px rgba(0,0,0,.15);}
+  .teacher-portrait{width:320px;height:320px;border-radius:24px;background:#ffe14d;flex-shrink:0;position:relative;overflow:hidden;border:8px solid #fff;box-shadow:0 8px 0 #6b4ac8;}
+  .teacher-portrait svg{position:absolute;inset:0;width:100%;height:100%;}
+  .teacher h3{font-family:'Fredoka';font-weight:700;font-size:56px;color:#d63384;margin:0;}
+  .teacher .name{font-family:'Fredoka';font-weight:700;font-size:92px;color:#3a2a5a;margin:8px 0 0;line-height:1;}
+  .teacher .quote{font-family:'Caveat',cursive;font-size:56px;color:#6b4ac8;margin-top:14px;line-height:1.15;}
+
+  /* Starburst countdown */
+  .starburst{position:absolute;top:1260px;right:160px;width:700px;height:700px;}
+  .starburst svg{width:100%;height:100%;filter:drop-shadow(0 30px 40px rgba(0,0,0,.3));}
+
+  /* Events — speech bubble stack */
+  .events{position:absolute;top:1780px;left:50%;transform:translateX(-50%);width:2400px;display:flex;gap:40px;justify-content:center;}
+  .event-bub{width:740px;height:220px;position:relative;filter:drop-shadow(0 16px 24px rgba(0,0,0,.25));}
+  .event-bub svg{width:100%;height:100%;}
+  .event-bub .cnt{position:absolute;top:30px;left:60px;right:60px;bottom:50px;display:flex;flex-direction:column;justify-content:center;}
+  .event-bub .meta{font-family:'Caveat';font-size:48px;color:#d63384;line-height:1;}
+  .event-bub .name{font-family:'Fredoka';font-weight:700;font-size:52px;color:#3a2a5a;line-height:1.05;}
+
+  /* Pennant flag ticker */
+  .pennants{position:absolute;bottom:80px;left:40px;right:40px;height:180px;display:flex;align-items:flex-start;}
+  .pennants svg{width:100%;height:100%;}
+  .ticker-msg{position:absolute;bottom:110px;left:0;right:0;text-align:center;font-family:'Fredoka';font-weight:700;font-size:56px;color:#3a2a5a;text-shadow:3px 3px 0 #fff;}
+
+  /* Logo — star badge */
+  .logo{position:absolute;top:40px;left:80px;width:260px;height:260px;z-index:5;filter:drop-shadow(0 10px 20px rgba(0,0,0,.25));}
+  .school{position:absolute;top:40px;right:80px;width:260px;height:260px;z-index:5;filter:drop-shadow(0 10px 20px rgba(0,0,0,.25));}
+</style>
+</head>
+<body>
+<div class="viewport">
+<div class="stage" id="stage">
+
+  <!-- Confetti -->
+  <svg class="confetti" viewBox="0 0 3840 2160" preserveAspectRatio="none">
+    <g opacity=".7">
+      <rect x="300" y="300" width="24" height="48" fill="#d63384" transform="rotate(25 312 324)"/>
+      <rect x="800" y="220" width="24" height="48" fill="#4a90e2" transform="rotate(-35 812 244)"/>
+      <rect x="1500" y="180" width="24" height="48" fill="#ffb300" transform="rotate(15 1512 204)"/>
+      <rect x="2500" y="260" width="24" height="48" fill="#7bc86c" transform="rotate(-20 2512 284)"/>
+      <rect x="3200" y="320" width="24" height="48" fill="#6b4ac8" transform="rotate(40 3212 344)"/>
+      <circle cx="500" cy="520" r="14" fill="#ffb300"/>
+      <circle cx="3300" cy="560" r="14" fill="#d63384"/>
+      <circle cx="200" cy="900" r="14" fill="#4a90e2"/>
+      <circle cx="3600" cy="1100" r="14" fill="#7bc86c"/>
+      <rect x="100" y="1400" width="24" height="48" fill="#d63384" transform="rotate(15 112 1424)"/>
+      <rect x="3700" y="1500" width="24" height="48" fill="#4a90e2" transform="rotate(-25 3712 1524)"/>
+      <rect x="2200" y="2000" width="24" height="48" fill="#ffb300" transform="rotate(40 2212 2024)"/>
+    </g>
+  </svg>
+
+  <!-- Logo star -->
+  <svg class="logo" viewBox="0 0 260 260">
+    <polygon points="130,20 160,90 235,100 180,150 195,225 130,190 65,225 80,150 25,100 100,90" fill="#ffb300" stroke="#3a2a5a" stroke-width="8"/>
+    <circle cx="130" cy="135" r="55" fill="#fff"/>
+    <text x="130" y="130" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="26" fill="#d63384">STAR</text>
+    <text x="130" y="160" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="22" fill="#3a2a5a">ELEMENTARY</text>
+  </svg>
+  <svg class="school" viewBox="0 0 260 260">
+    <circle cx="130" cy="130" r="110" fill="#d63384" stroke="#3a2a5a" stroke-width="8"/>
+    <text x="130" y="120" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="40" fill="#fff">Apr</text>
+    <text x="130" y="175" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="70" fill="#ffe14d">18</text>
+    <text x="130" y="210" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="26" fill="#fff">FRIDAY</text>
+  </svg>
+
+  <!-- Ribbon banner -->
+  <svg class="ribbon" viewBox="0 0 3200 360">
+    <!-- Left tail -->
+    <polygon points="0,180 120,60 240,180 120,300" fill="#a61e5a"/>
+    <polygon points="0,180 120,120 240,180 120,240" fill="#d63384"/>
+    <!-- Right tail -->
+    <polygon points="3200,180 3080,60 2960,180 3080,300" fill="#a61e5a"/>
+    <polygon points="3200,180 3080,120 2960,180 3080,240" fill="#d63384"/>
+    <!-- Fold shadows -->
+    <polygon points="200,0 260,60 260,300 200,360" fill="#a61e5a"/>
+    <polygon points="3000,0 2940,60 2940,300 3000,360" fill="#a61e5a"/>
+    <!-- Main banner -->
+    <rect x="260" y="0" width="2740" height="360" fill="#ff4fa3"/>
+    <rect x="260" y="0" width="2740" height="20" fill="#ff7fbe"/>
+    <rect x="260" y="340" width="2740" height="20" fill="#c21770"/>
+  </svg>
+  <div class="ribbon-text" style="width:100%;">GOOD MORNING, STARS!</div>
+  <div class="ribbon-sub" style="width:100%;">~ let's make today colorful ~</div>
+
+  <!-- Sun clock -->
+  <div class="sunclock">
+    <svg viewBox="0 0 700 520">
+      <g>
+        <!-- rays -->
+        <g stroke="#ffb300" stroke-width="14" stroke-linecap="round">
+          <line x1="350" y1="40" x2="350" y2="110"/><line x1="350" y1="410" x2="350" y2="480"/>
+          <line x1="40" y1="260" x2="110" y2="260"/><line x1="590" y1="260" x2="660" y2="260"/>
+          <line x1="120" y1="80" x2="170" y2="130"/><line x1="530" y1="130" x2="580" y2="80"/>
+          <line x1="120" y1="440" x2="170" y2="390"/><line x1="530" y1="390" x2="580" y2="440"/>
+        </g>
+        <circle cx="350" cy="260" r="180" fill="#ffdd55" stroke="#3a2a5a" stroke-width="10"/>
+        <circle cx="350" cy="260" r="150" fill="#fff5d0"/>
+        <text x="350" y="280" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="130" fill="#d63384">7:53</text>
+        <text x="350" y="340" text-anchor="middle" font-family="Caveat" font-size="50" fill="#3a2a5a">good morning!</text>
+        <!-- smile -->
+        <circle cx="310" cy="230" r="8" fill="#3a2a5a" opacity=".4"/>
+        <circle cx="390" cy="230" r="8" fill="#3a2a5a" opacity=".4"/>
+      </g>
+    </svg>
+  </div>
+
+  <!-- Cloud weather -->
+  <div class="cloud">
+    <svg viewBox="0 0 700 520">
+      <path d="M140 320 Q80 320 80 260 Q80 200 140 200 Q150 120 240 120 Q300 80 360 120 Q420 80 480 140 Q560 140 580 220 Q640 220 640 290 Q640 360 560 360 L180 360 Q140 360 140 320Z"
+            fill="#fff" stroke="#3a2a5a" stroke-width="10"/>
+      <text x="360" y="260" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="150" fill="#4a90e2">46°</text>
+      <text x="360" y="330" text-anchor="middle" font-family="Caveat" font-size="54" fill="#d63384">SUNNY &amp; CLEAR</text>
+      <!-- little sun peeking behind -->
+      <circle cx="580" cy="140" r="50" fill="#ffb300" stroke="#3a2a5a" stroke-width="6"/>
+      <g stroke="#ffb300" stroke-width="10" stroke-linecap="round">
+        <line x1="580" y1="50" x2="580" y2="80"/>
+        <line x1="660" y1="80" x2="640" y2="100"/>
+        <line x1="660" y1="200" x2="640" y2="180"/>
+      </g>
+      <!-- raindrops little -->
+      <circle cx="260" cy="410" r="14" fill="#4a90e2"/>
+      <circle cx="320" cy="440" r="10" fill="#4a90e2"/>
+      <circle cx="400" cy="420" r="12" fill="#4a90e2"/>
+    </svg>
+  </div>
+
+  <!-- Speech bubble announcement -->
+  <div class="speech">
+    <svg viewBox="0 0 1800 500" preserveAspectRatio="none">
+      <path d="M60 60 Q60 20 140 20 L1700 20 Q1760 20 1760 80 L1760 360 Q1760 400 1700 400 L1200 400 L1100 480 L1080 400 L140 400 Q60 400 60 340 Z"
+            fill="#fff" stroke="#3a2a5a" stroke-width="10"/>
+    </svg>
+    <div class="txt">
+      <h3>★ TODAY'S SCOOP ★</h3>
+      <p>The Book Fair opens in the library TODAY! Bring your list — new dinosaur books, comic packs, and glitter pens waiting just for you.</p>
+      <div class="date">~ open 8 am – 3:30 pm · all week ~</div>
+    </div>
+  </div>
+
+  <!-- Teacher -->
+  <div class="teacher">
+    <div class="teacher-card">
+      <div class="teacher-portrait">
+        <svg viewBox="0 0 320 320">
+          <circle cx="160" cy="140" r="85" fill="#ffd6a0" stroke="#3a2a5a" stroke-width="6"/>
+          <path d="M75 140 Q75 55 160 55 Q245 55 245 140 Q245 105 210 95 Q160 90 115 100 Q75 115 75 140" fill="#6b4ac8"/>
+          <circle cx="135" cy="140" r="6" fill="#3a2a5a"/><circle cx="185" cy="140" r="6" fill="#3a2a5a"/>
+          <path d="M135 175 Q160 195 185 175" stroke="#d63384" stroke-width="6" fill="none" stroke-linecap="round"/>
+          <circle cx="118" cy="160" r="10" fill="#ffb3c9"/><circle cx="202" cy="160" r="10" fill="#ffb3c9"/>
+          <rect x="80" y="230" width="160" height="90" fill="#d63384" stroke="#3a2a5a" stroke-width="5"/>
+        </svg>
+      </div>
+      <div>
+        <h3>★ TEACHER OF THE WEEK ★</h3>
+        <div class="name">Mrs. Johnson</div>
+        <div class="quote">"Be bright. Be bold. Be YOU today!" — 3rd grade</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Starburst countdown -->
+  <div class="starburst">
+    <svg viewBox="0 0 700 700">
+      <g transform="translate(350 350)">
+        <polygon points="0,-320 60,-90 300,-120 130,60 310,210 40,180 0,340 -40,180 -310,210 -130,60 -300,-120 -60,-90"
+                 fill="#ffb300" stroke="#3a2a5a" stroke-width="10"/>
+        <polygon points="0,-220 40,-60 210,-80 90,40 220,150 30,130 0,230 -30,130 -220,150 -90,40 -210,-80 -40,-60"
+                 fill="#d63384" stroke="#fff" stroke-width="6"/>
+      </g>
+      <text x="350" y="320" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="64" fill="#fff" style="text-shadow:3px 3px 0 #3a2a5a;">FIELD TRIP IN</text>
+      <text x="350" y="470" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="220" fill="#fff" style="text-shadow:6px 6px 0 #3a2a5a;">12</text>
+      <text x="350" y="540" text-anchor="middle" font-family="Caveat" font-size="54" fill="#fff" style="text-shadow:2px 2px 0 #3a2a5a;">DAYS!</text>
+    </svg>
+  </div>
+
+  <!-- Events — 3 speech bubbles -->
+  <div class="events">
+    <div class="event-bub">
+      <svg viewBox="0 0 740 220" preserveAspectRatio="none">
+        <path d="M40 40 Q40 20 100 20 L680 20 Q720 20 720 60 L720 160 Q720 180 680 180 L200 180 L140 210 L150 180 L100 180 Q40 180 40 140 Z" fill="#a8d8ff" stroke="#3a2a5a" stroke-width="8"/>
+      </svg>
+      <div class="cnt"><div class="meta">MON · 8:30 am</div><div class="name">Pajama Day Reading Hour</div></div>
+    </div>
+    <div class="event-bub">
+      <svg viewBox="0 0 740 220" preserveAspectRatio="none">
+        <path d="M40 40 Q40 20 100 20 L680 20 Q720 20 720 60 L720 160 Q720 180 680 180 L200 180 L140 210 L150 180 L100 180 Q40 180 40 140 Z" fill="#ffe14d" stroke="#3a2a5a" stroke-width="8"/>
+      </svg>
+      <div class="cnt"><div class="meta">WED · 10 am</div><div class="name">Principal's Story Time</div></div>
+    </div>
+    <div class="event-bub">
+      <svg viewBox="0 0 740 220" preserveAspectRatio="none">
+        <path d="M40 40 Q40 20 100 20 L680 20 Q720 20 720 60 L720 160 Q720 180 680 180 L200 180 L140 210 L150 180 L100 180 Q40 180 40 140 Z" fill="#ffb3e6" stroke="#3a2a5a" stroke-width="8"/>
+      </svg>
+      <div class="cnt"><div class="meta">APR 30 · 9 am</div><div class="name">Field Trip — THE ZOO!</div></div>
+    </div>
+  </div>
+
+  <!-- Pennant ticker -->
+  <svg class="pennants" viewBox="0 0 3760 180" preserveAspectRatio="none">
+    <path d="M0 0 Q940 40 1880 20 T3760 0" stroke="#3a2a5a" stroke-width="4" fill="none"/>
+    <g>
+      <!-- pennants hang from the string -->
+      <polygon points="80,20 200,20 140,140" fill="#d63384" stroke="#3a2a5a" stroke-width="4"/>
+      <polygon points="240,24 360,24 300,144" fill="#ffb300" stroke="#3a2a5a" stroke-width="4"/>
+      <polygon points="400,28 520,28 460,148" fill="#7bc86c" stroke="#3a2a5a" stroke-width="4"/>
+      <polygon points="560,32 680,32 620,152" fill="#4a90e2" stroke="#3a2a5a" stroke-width="4"/>
+      <polygon points="720,36 840,36 780,156" fill="#6b4ac8" stroke="#3a2a5a" stroke-width="4"/>
+      <polygon points="880,40 1000,40 940,160" fill="#d63384" stroke="#3a2a5a" stroke-width="4"/>
+      <polygon points="2760,40 2880,40 2820,160" fill="#d63384" stroke="#3a2a5a" stroke-width="4"/>
+      <polygon points="2920,36 3040,36 2980,156" fill="#6b4ac8" stroke="#3a2a5a" stroke-width="4"/>
+      <polygon points="3080,32 3200,32 3140,152" fill="#4a90e2" stroke="#3a2a5a" stroke-width="4"/>
+      <polygon points="3240,28 3360,28 3300,148" fill="#7bc86c" stroke="#3a2a5a" stroke-width="4"/>
+      <polygon points="3400,24 3520,24 3460,144" fill="#ffb300" stroke="#3a2a5a" stroke-width="4"/>
+      <polygon points="3560,20 3680,20 3620,140" fill="#d63384" stroke="#3a2a5a" stroke-width="4"/>
+    </g>
+  </svg>
+  <div class="ticker-msg">☆ Lost &amp; Found cleanout Friday — hats, jackets &amp; one mystery boot waiting at the office! ☆</div>
+
+</div></div>
+<script>
+  function fit(){const s=document.getElementById('stage');const k=Math.min(window.innerWidth/3840,window.innerHeight/2160);s.style.transform='scale('+k+')';}
+  window.addEventListener('resize',fit);fit();
+</script>
+</body></html>

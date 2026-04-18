@@ -299,6 +299,103 @@ var if a customer demands it.
 
 ---
 
+**Sprint 9 — Auto-branding (paste your school's URL, we match it)**
+
+Every district wants the CMS to "look like our school." Instead of
+making them fight a color picker, let them paste their existing
+website URL — we scrape it, extract the brand, and theme the whole
+admin UI (and default template palette) to match in under 30 seconds.
+Friction killer for the pilot-sign-up conversation.
+
+- **Tenant branding model.** Add `TenantBranding` row:
+  `{ tenantId, logoUrl, faviconUrl, displayName, palette JSON,
+     fontHeading, fontBody, sourceUrl, scrapedAt, confidence }`.
+  `palette` is a structured object (`primary`, `primaryHover`,
+  `accent`, `ink`, `surface`, `surfaceAlt`, `success`, `warn`,
+  `danger`) so themes stay consistent even if the scraper only
+  finds two colors — we derive shades.
+- **Scraper microservice.** New `POST /api/v1/branding/scrape`
+  accepting `{ url }`. Server-side:
+    1. Fetch the homepage with a reasonable UA + 10s timeout.
+    2. Parse with cheerio. Pull logo from
+       `link[rel="icon"]`, `link[rel="apple-touch-icon"]`, OG image,
+       and `<img>` matching `/logo|brand|mark/i` in class/alt/src —
+       rank by size + position (top-left wins).
+    3. Extract colors: read every `<link rel="stylesheet">`, parse
+       with `postcss` + `postcss-value-parser`, collect every hex /
+       rgb(a) / hsl(a) value. Score by frequency + proximity to
+       brand-sounding selectors (`nav`, `header`, `button`,
+       `.btn-primary`, CSS custom props named `--primary` / `--brand`).
+       Top two wins: primary + accent.
+    4. Font detection: `font-family` declarations on `body`,
+       `h1`-`h3`, buttons. Match against Google Fonts catalog;
+       fall back to a system-safe stack.
+    5. Favicon: follow the existing favicon link; re-host in our
+       Supabase bucket so we don't hotlink.
+    6. Return a `BrandingPreview` DTO with everything found plus
+       **confidence scores per field** so the UI can flag "we're
+       not sure about this — pick one" fields.
+- **Security (this is a scraping endpoint — it's dangerous):**
+    - SSRF defense: resolve the URL's hostname, reject private/
+      link-local/loopback IP ranges before fetching. Block
+      `file://`, `ftp://`, `data:`, and non-80/443 ports.
+    - Rate limit: 5 scrapes per tenant per hour. Hard cap at
+      50/hour global to contain abuse.
+    - Sandbox the fetch in a short-lived worker; don't execute
+      any returned JS. Cheerio is static parse only — no headless
+      browser in v1. (If a customer needs a JS-heavy SPA brand,
+      v2 gets Playwright with a locked-down Chrome container.)
+    - Max response size 5MB per fetch; max 30 stylesheet fetches
+      per URL; total 10s budget end-to-end.
+    - All scrape requests logged to `AuditLog` with tenantId +
+      userId + URL + outcome.
+- **Onboarding UX.** First-run wizard (also accessible from
+  `/settings/branding`):
+    1. "Paste your school's website" → URL input.
+    2. Call scrape, show **live preview** of the admin UI with the
+      detected palette in the right half of the screen while the
+      form sits on the left (real-time: clicking a different
+      primary color repaints immediately).
+    3. "Name your CMS" — free-text `displayName` (defaults to
+      `"${Tenant.name} Signage"` but can be anything the operator
+      wants).
+    4. Logo picker — shows the scraped logo + upload override.
+    5. **Adopt** → persist to `TenantBranding`, invalidate CSS-
+      variable cache.
+- **Theme application — CSS custom properties, not a rebuild.**
+  The admin layout root renders
+  `<style>:root{--brand-primary:#xxx; --brand-ink:#yyy; ...}</style>`
+  from the tenant's branding at request time (SSR). Every Tailwind
+  utility we care about (buttons, headers, sidebar active state)
+  already reads from `var(--brand-*)`. No per-tenant build, no
+  dynamic className generation — one CSS var file, swap values,
+  done. Sub-second theme switch.
+- **Template palette overrides.** When a tenant has branding,
+  default-config generators for new templates pull from the
+  palette instead of the hard-coded indigo. Existing templates
+  stay untouched (editor decides whether to re-theme or keep
+  what's there).
+- **Scope notes:**
+    - v1: admin UI + default template palettes only.
+    - v1.5: player chrome (loading spinner, emergency overlay
+      border) picks up the palette too.
+    - v2: Playwright-based scraper for SPA-heavy sites that hide
+      colors in dynamic styles.
+    - v3: allow multi-school districts to theme each school
+      differently (TenantBranding is already scoped per tenant so
+      the data model is already right).
+- **Why this matters.** In demos, "paste URL → CMS looks like
+  your school in 10 seconds" is the single highest-delight moment
+  for a superintendent who was expecting 2 days of config hell.
+  It's the gap between "nice product" and "this is us."
+
+No third-party commitment; everything is free (cheerio, postcss,
+Google Fonts CDN is free at scale). Ship behind a feature flag
+(`AUTO_BRANDING`) so the pilot districts that hate surprises can
+leave it off.
+
+---
+
 **Sprint 7 — Offline-first player (download-and-play architecture)**
 
 The player MUST download all content locally and play from local cache.

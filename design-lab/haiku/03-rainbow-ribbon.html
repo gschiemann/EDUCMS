@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rainbow Ribbon Lobby Display</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;700&family=Quicksand:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+    .viewport { width: 3840px; height: 2160px; transform: scale(0.16); transform-origin: top left; }
+    .stage { width: 100%; height: 100%; background: linear-gradient(135deg, #fff5f7 0%, #f0f9ff 50%, #f0fff4 100%); position: relative; overflow: hidden; font-family: 'Quicksand', sans-serif; }
+
+    .ribbon-banner { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); width: 1600px; }
+    .ribbon { width: 100%; height: 180px; background: linear-gradient(90deg, #ff6b6b 0%, #ff8787 12%, #ffa726 24%, #ffd700 36%, #66bb6a 48%, #42a5f5 60%, #ab47bc 72%, #ec407a 84%, #ff6b6b 100%); position: relative; clip-path: polygon(0 30%, 3% 0, 97% 0, 100% 30%, 97% 100%, 3% 100%); display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+    .ribbon-text { font-size: 96px; font-weight: 700; color: #fff; text-shadow: 3px 3px 6px rgba(0,0,0,0.3); text-align: center; }
+
+    .logo-cloud { position: absolute; top: 280px; left: 80px; }
+    .content-clouds { position: absolute; top: 250px; left: 250px; }
+
+    .teacher-bubble { position: absolute; top: 320px; right: 100px; width: 340px; background: #ffd700; border-radius: 50% 50% 50% 0; border: 6px solid #ffa726; padding: 30px; text-align: center; transform: rotate(-15deg); box-shadow: 0 8px 20px rgba(0,0,0,0.15); }
+    .teacher-bubble::after { content: ''; position: absolute; bottom: -40px; right: 20px; width: 0; height: 0; border-left: 20px solid transparent; border-top: 40px solid #ffa726; }
+    .teacher-bubble .photo { width: 200px; height: 200px; background: linear-gradient(135deg, #ffcc80, #ffb74d); border-radius: 50%; margin: 10px auto; border: 4px solid #ffa726; }
+    .teacher-bubble-text { font-size: 32px; color: #333; font-weight: 700; margin-top: 15px; }
+
+    .clock-bubble { position: absolute; top: 900px; left: 120px; width: 360px; background: #42a5f5; border-radius: 15px; padding: 30px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.15); transform: rotate(5deg); }
+    .clock-bubble svg { max-width: 100%; height: auto; }
+    .clock-time { font-size: 56px; font-weight: 700; color: #fff; margin-top: 15px; text-shadow: 2px 2px 4px rgba(0,0,0,0.2); }
+
+    .weather-cloud { position: absolute; top: 950px; right: 120px; width: 340px; }
+
+    .announcement-bubble { position: absolute; bottom: 520px; left: 120px; right: 120px; background: #fff; border: 6px solid #ff6b6b; border-radius: 20px; padding: 40px; position: relative; box-shadow: 0 8px 20px rgba(0,0,0,0.1); }
+    .announcement-bubble::before { content: ''; position: absolute; bottom: -35px; left: 60px; width: 0; height: 0; border-left: 20px solid transparent; border-right: 0 solid transparent; border-top: 35px solid #ff6b6b; }
+    .announcement-bubble::after { content: ''; position: absolute; bottom: -29px; left: 66px; width: 0; height: 0; border-left: 14px solid transparent; border-right: 0 solid transparent; border-top: 29px solid #fff; }
+    .announcement-bubble h2 { font-size: 64px; color: #ff6b6b; margin-bottom: 15px; }
+    .announcement-bubble p { font-size: 40px; color: #333; line-height: 1.5; }
+
+    .event-pennant { position: absolute; bottom: 240px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+    .event-pennant.one { left: 140px; }
+    .event-pennant.two { left: 50%; transform: translateX(-50%); }
+    .event-pennant.three { right: 140px; }
+    .pennant-shape { width: 200px; height: 280px; clip-path: polygon(50% 0%, 100% 80%, 100% 100%, 50% 80%, 0 100%, 0 80%); display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 700; color: #fff; text-shadow: 2px 2px 4px rgba(0,0,0,0.2); }
+    .pennant-shape.p1 { background: linear-gradient(135deg, #ff6b6b, #ff8787); }
+    .pennant-shape.p2 { background: linear-gradient(135deg, #42a5f5, #64b5f6); }
+    .pennant-shape.p3 { background: linear-gradient(135deg, #66bb6a, #81c784); }
+    .pennant-text { font-size: 28px; margin-top: 20px; color: #333; }
+
+    .ticker { position: absolute; bottom: 0; left: 0; right: 0; height: 140px; background: linear-gradient(90deg, #ff6b6b, #ffa726, #ffd700, #66bb6a, #42a5f5, #ab47bc); display: flex; align-items: center; overflow: hidden; }
+    .ticker-text { font-size: 48px; color: #fff; font-weight: bold; white-space: nowrap; animation: scroll 15s linear infinite; padding: 0 40px; text-shadow: 2px 2px 4px rgba(0,0,0,0.2); }
+    @keyframes scroll { from { transform: translateX(3840px); } to { transform: translateX(-600px); } }
+  </style>
+</head>
+<body>
+  <div class="viewport">
+    <div class="stage">
+      <div class="ribbon-banner">
+        <div class="ribbon">
+          <div class="ribbon-text">🌈 Welcome to School! 🌈</div>
+        </div>
+      </div>
+
+      <svg class="logo-cloud" width="280" height="200" viewBox="0 0 280 200">
+        <defs>
+          <filter id="shadow-cloud1">
+            <feDropShadow dx="6" dy="6" stdDeviation="5" flood-opacity="0.2"/>
+          </filter>
+        </defs>
+        <path d="M 40 100 C 20 100 10 90 10 75 C 10 55 25 45 45 45 C 50 30 65 20 80 20 C 100 20 115 30 120 50 C 135 45 150 50 150 70 C 150 90 135 100 120 100 Z" fill="#fff" stroke="#42a5f5" stroke-width="4" filter="url(#shadow-cloud1)"/>
+        <text x="75" y="75" font-family="Quicksand" font-size="28" font-weight="700" text-anchor="middle" fill="#42a5f5">School</text>
+      </svg>
+
+      <svg class="content-clouds" width="240" height="160" viewBox="0 0 240 160" style="opacity: 0.7;">
+        <path d="M 30 80 C 15 80 8 72 8 60 C 8 45 20 38 35 38 C 38 25 50 18 65 18 C 80 18 92 25 95 40 C 108 36 120 42 120 58 C 120 74 108 80 95 80 Z" fill="#e0f2f1" stroke="#26a69a" stroke-width="2"/>
+        <path d="M 130 95 C 120 95 115 88 115 78 C 115 66 125 62 138 62 C 140 52 150 47 162 47 C 173 47 182 52 185 62 C 195 59 205 64 205 76 C 205 88 195 95 185 95 Z" fill="#f0f4c3" stroke="#9ccc65" stroke-width="2"/>
+      </svg>
+
+      <div class="teacher-bubble">
+        <div class="photo"></div>
+        <div class="teacher-bubble-text">Mrs. Johnson<br>3rd Grade</div>
+      </div>
+
+      <div class="clock-bubble">
+        <svg width="200" height="200" viewBox="0 0 200 200">
+          <circle cx="100" cy="100" r="90" fill="#fff" stroke="#1976d2" stroke-width="4"/>
+          <circle cx="100" cy="100" r="80" fill="#e3f2fd" stroke="#42a5f5" stroke-width="2"/>
+          <text x="100" y="50" font-family="Quicksand" font-size="28" font-weight="700" text-anchor="middle" fill="#333">12</text>
+          <text x="150" y="110" font-family="Quicksand" font-size="24" text-anchor="middle" fill="#333">3</text>
+          <text x="100" y="160" font-family="Quicksand" font-size="28" font-weight="700" text-anchor="middle" fill="#333">6</text>
+          <text x="50" y="110" font-family="Quicksand" font-size="24" text-anchor="middle" fill="#333">9</text>
+          <line x1="100" y1="100" x2="100" y2="50" stroke="#ff6b6b" stroke-width="6" stroke-linecap="round"/>
+          <line x1="100" y1="100" x2="140" y2="100" stroke="#42a5f5" stroke-width="5" stroke-linecap="round"/>
+          <circle cx="100" cy="100" r="7" fill="#333"/>
+        </svg>
+        <div class="clock-time">7:53 AM</div>
+      </div>
+
+      <svg class="weather-cloud" width="320" height="240" viewBox="0 0 320 240">
+        <defs>
+          <filter id="shadow-weather">
+            <feDropShadow dx="6" dy="6" stdDeviation="5" flood-opacity="0.25"/>
+          </filter>
+        </defs>
+        <path d="M 50 140 C 30 140 20 125 20 105 C 20 80 35 65 55 65 C 60 45 75 30 95 30 C 120 30 140 45 145 70 C 165 65 180 75 180 100 C 180 125 165 140 145 140 Z" fill="#e1f5fe" stroke="#01579b" stroke-width="5" filter="url(#shadow-weather)"/>
+        <circle cx="220" cy="80" r="45" fill="#ffc107" stroke="#ff8f00" stroke-width="3"/>
+        <text x="160" y="180" font-family="Quicksand" font-size="56" font-weight="700" text-anchor="middle" fill="#01579b">46° Sunny</text>
+      </svg>
+
+      <div class="announcement-bubble">
+        <h2>📚 Book Fair This Week!</h2>
+        <p>Come explore amazing stories and take home your new favorite books. Stop by the library!</p>
+      </div>
+
+      <div class="event-pennant one">
+        <div class="pennant-shape p1">🎨</div>
+        <div class="pennant-text">Art Show<br>Friday 3 PM</div>
+      </div>
+      <div class="event-pennant two">
+        <div class="pennant-shape p2">🏃</div>
+        <div class="pennant-text">Field Trip<br>12 Days Away</div>
+      </div>
+      <div class="event-pennant three">
+        <div class="pennant-shape p3">🎉</div>
+        <div class="pennant-text">Assembly<br>Next Monday</div>
+      </div>
+
+      <div class="ticker">
+        <div class="ticker-text">⭐ Welcome to school! ⭐ Book Fair in the library! ⭐ Art show this week! ⭐ Have an amazing Friday!</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

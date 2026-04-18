@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Playground Lobby Display</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;700&family=Patrick+Hand:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #d4a574; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+    .viewport { width: 3840px; height: 2160px; transform: scale(0.16); transform-origin: top left; }
+    .stage { width: 100%; height: 100%; background: linear-gradient(180deg, #87ceeb 0%, #e0f6ff 50%, #c2e59c 100%); position: relative; overflow: hidden; font-family: 'Patrick Hand', cursive; }
+
+    .chalkboard { position: absolute; top: 80px; left: 50%; transform: translateX(-50%); width: 1200px; height: 280px; background: linear-gradient(135deg, #2d3e2d 0%, #1a2d1a 100%); border-radius: 15px; border: 8px solid #8b6f47; box-shadow: 0 10px 30px rgba(0,0,0,0.4); padding: 40px; text-align: center; position: relative; }
+    .chalkboard::before { content: ''; position: absolute; top: 20px; left: 20px; right: 20px; bottom: 20px; border: 2px solid rgba(255,255,255,0.1); border-radius: 5px; }
+    .chalkboard-text { font-size: 96px; color: #fff9e6; font-weight: 700; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); position: relative; z-index: 1; }
+    .chalkboard-sub { font-size: 48px; color: #ffd700; margin-top: 20px; font-style: italic; position: relative; z-index: 1; }
+
+    .wooden-sign { position: absolute; width: 320px; height: 380px; background: linear-gradient(90deg, #8b6f47 0%, #a0826d 50%, #8b6f47 100%); border-radius: 10px; border: 6px solid #6b5238; box-shadow: 0 15px 35px rgba(0,0,0,0.3); padding: 30px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+    .wooden-sign.logo { top: 420px; left: 100px; }
+    .wooden-sign.teachercard { top: 420px; right: 100px; }
+    .wooden-sign h2 { color: #fff9e6; font-size: 42px; margin-bottom: 20px; text-shadow: 1px 1px 3px rgba(0,0,0,0.5); }
+    .wooden-sign .content { color: #ffe082; font-size: 32px; line-height: 1.6; }
+    .wooden-sign .photo { width: 180px; height: 180px; background: linear-gradient(135deg, #ffcc80, #ffb74d); border-radius: 8px; border: 4px dashed #8b6f47; margin: 15px 0; }
+
+    .swing-clock { position: absolute; top: 900px; left: 150px; }
+    .kite-weather { position: absolute; top: 900px; right: 180px; }
+
+    .hopscotch-grid { position: absolute; bottom: 500px; left: 50%; transform: translateX(-50%); width: 200px; }
+    .hopscotch-box { width: 160px; height: 160px; background: linear-gradient(135deg, #ff6b6b, #ff8787); border: 4px solid #333; border-radius: 8px; margin: 8px auto; display: flex; align-items: center; justify-content: center; font-size: 52px; font-weight: 700; color: #fff; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+    .hopscotch-box:nth-child(even) { background: linear-gradient(135deg, #4ecdc4, #44b7b0); }
+    .hopscotch-box:nth-child(3n) { background: linear-gradient(135deg, #ffd700, #ffed4e); color: #333; }
+
+    .announcement { position: absolute; bottom: 240px; left: 100px; right: 100px; width: auto; }
+    .announcement-bubble { background: #fff9e6; border: 6px solid #ff6b6b; border-radius: 20px; padding: 40px; position: relative; box-shadow: 0 8px 20px rgba(0,0,0,0.2); }
+    .announcement-bubble::after { content: ''; position: absolute; bottom: -30px; left: 50px; width: 0; height: 0; border-left: 20px solid transparent; border-right: 0 solid transparent; border-top: 30px solid #ff6b6b; }
+    .announcement-bubble::before { content: ''; position: absolute; bottom: -24px; left: 56px; width: 0; height: 0; border-left: 14px solid transparent; border-right: 0 solid transparent; border-top: 24px solid #fff9e6; }
+    .announcement-bubble h2 { color: #ff6b6b; font-size: 64px; margin-bottom: 15px; }
+    .announcement-bubble p { color: #333; font-size: 40px; line-height: 1.5; }
+
+    .events { position: absolute; bottom: 60px; left: 100px; right: 100px; display: flex; gap: 60px; justify-content: center; }
+    .event-flag { width: 280px; background: linear-gradient(135deg, #ff6b6b 0%, #ff8787 100%); color: #fff; padding: 30px 25px; text-align: center; clip-path: polygon(0 0, 85% 0, 100% 50%, 85% 100%, 0 100%); position: relative; box-shadow: 0 6px 15px rgba(0,0,0,0.2); }
+    .event-flag h3 { font-size: 42px; font-weight: 700; margin-bottom: 10px; }
+    .event-flag p { font-size: 32px; }
+    .event-flag:nth-child(2) { background: linear-gradient(135deg, #4ecdc4 0%, #44b7b0 100%); }
+    .event-flag:nth-child(3) { background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%); color: #333; }
+
+    .ticker { position: absolute; bottom: 0; left: 0; right: 0; height: 140px; background: linear-gradient(90deg, #333 0%, #555 50%, #333 100%); display: flex; align-items: center; overflow: hidden; border-top: 4px dashed #fff9e6; }
+    .ticker-text { font-size: 48px; color: #fff; font-weight: bold; white-space: nowrap; animation: scroll 15s linear infinite; padding: 0 40px; }
+    @keyframes scroll { from { transform: translateX(3840px); } to { transform: translateX(-600px); } }
+  </style>
+</head>
+<body>
+  <div class="viewport">
+    <div class="stage">
+      <div class="chalkboard">
+        <div class="chalkboard-text">Welcome to Our Playground!</div>
+        <div class="chalkboard-sub">~ Come on in and have fun ~</div>
+      </div>
+
+      <div class="wooden-sign logo">
+        <h2>🦁 School<br>Mascot</h2>
+        <svg width="140" height="140" viewBox="0 0 140 140" style="margin: 10px 0;">
+          <circle cx="70" cy="50" r="35" fill="#ffd700" stroke="#ff9800" stroke-width="3"/>
+          <circle cx="40" cy="30" r="12" fill="#ff9800"/>
+          <circle cx="100" cy="30" r="12" fill="#ff9800"/>
+          <circle cx="70" cy="30" r="8" fill="#ff9800"/>
+          <path d="M 55 50 Q 70 65 85 50" fill="none" stroke="#ff9800" stroke-width="3" stroke-linecap="round"/>
+          <circle cx="60" cy="45" r="4" fill="#333"/>
+          <circle cx="80" cy="45" r="4" fill="#333"/>
+          <path d="M 50 70 L 40 90 M 70 70 L 70 95 M 90 70 L 100 90" stroke="#ff9800" stroke-width="4" stroke-linecap="round"/>
+        </svg>
+      </div>
+
+      <div class="wooden-sign teachercard">
+        <h2>Teacher<br>of Week</h2>
+        <div class="photo"></div>
+        <div class="content">Mrs. Johnson<br>3rd Grade</div>
+      </div>
+
+      <svg class="swing-clock" width="300" height="360" viewBox="0 0 300 360">
+        <defs>
+          <filter id="shadow-swing">
+            <feDropShadow dx="6" dy="10" stdDeviation="5" flood-opacity="0.3"/>
+          </filter>
+        </defs>
+        <!-- Swing ropes -->
+        <line x1="80" y1="20" x2="60" y2="120" stroke="#8b6f47" stroke-width="4"/>
+        <line x1="220" y1="20" x2="240" y2="120" stroke="#8b6f47" stroke-width="4"/>
+        <!-- Seat -->
+        <rect x="60" y="120" width="180" height="40" rx="5" fill="#ff6b6b" stroke="#333" stroke-width="3" filter="url(#shadow-swing)"/>
+        <!-- Clock face -->
+        <circle cx="150" cy="180" r="80" fill="#fff9e6" stroke="#8b6f47" stroke-width="5"/>
+        <circle cx="150" cy="180" r="70" fill="#fffbf0" stroke="#ffd700" stroke-width="3"/>
+        <!-- Hour markers -->
+        <text x="150" y="130" text-anchor="middle" font-family="Patrick Hand" font-size="36" font-weight="700" fill="#333">12</text>
+        <text x="200" y="190" text-anchor="middle" font-family="Patrick Hand" font-size="32" fill="#333">3</text>
+        <text x="150" y="245" text-anchor="middle" font-family="Patrick Hand" font-size="36" font-weight="700" fill="#333">6</text>
+        <text x="100" y="190" text-anchor="middle" font-family="Patrick Hand" font-size="32" fill="#333">9</text>
+        <!-- Hands -->
+        <line x1="150" y1="180" x2="150" y2="130" stroke="#ff6b6b" stroke-width="8" stroke-linecap="round"/>
+        <line x1="150" y1="180" x2="185" y2="180" stroke="#4ecdc4" stroke-width="6" stroke-linecap="round"/>
+        <circle cx="150" cy="180" r="8" fill="#333"/>
+        <!-- Time label -->
+        <text x="150" y="280" text-anchor="middle" font-family="Patrick Hand" font-size="48" font-weight="700" fill="#333">7:53 AM</text>
+      </svg>
+
+      <svg class="kite-weather" width="300" height="360" viewBox="0 0 300 360">
+        <defs>
+          <filter id="shadow-kite">
+            <feDropShadow dx="6" dy="10" stdDeviation="5" flood-opacity="0.3"/>
+          </filter>
+        </defs>
+        <!-- Kite string -->
+        <line x1="150" y1="20" x2="150" y2="140" stroke="#8b6f47" stroke-width="3" stroke-dasharray="5,5"/>
+        <!-- Kite shape -->
+        <path d="M 150 80 L 210 140 L 150 200 L 90 140 Z" fill="#ff6b6b" stroke="#333" stroke-width="4" filter="url(#shadow-kite)"/>
+        <!-- Kite pattern -->
+        <circle cx="150" cy="140" r="20" fill="#ffd700" stroke="#333" stroke-width="2"/>
+        <path d="M 130 140 L 170 140 M 150 120 L 150 160" stroke="#333" stroke-width="2"/>
+        <!-- Tail -->
+        <path d="M 150 200 Q 140 260 150 320 Q 160 260 150 200" fill="#ff8787" stroke="#333" stroke-width="3"/>
+        <!-- Weather info -->
+        <text x="150" y="280" text-anchor="middle" font-family="Patrick Hand" font-size="42" font-weight="700" fill="#333">46°F</text>
+        <text x="150" y="330" text-anchor="middle" font-family="Patrick Hand" font-size="36" fill="#333">Sunny</text>
+      </svg>
+
+      <div class="hopscotch-grid">
+        <div class="hopscotch-box">1</div>
+        <div class="hopscotch-box">2</div>
+        <div class="hopscotch-box">3</div>
+        <div class="hopscotch-box">4</div>
+        <div class="hopscotch-box">5</div>
+      </div>
+
+      <div class="announcement">
+        <div class="announcement-bubble">
+          <h2>📚 Book Fair!</h2>
+          <p>Come read stories and pick new books! This week in the library.</p>
+        </div>
+      </div>
+
+      <div class="events">
+        <div class="event-flag">
+          <h3>🎨</h3>
+          <p>Art Show<br>Friday 3 PM</p>
+        </div>
+        <div class="event-flag">
+          <h3>🏃</h3>
+          <p>Field Trip<br>12 days!</p>
+        </div>
+        <div class="event-flag">
+          <h3>🎉</h3>
+          <p>Assembly<br>Next Monday</p>
+        </div>
+      </div>
+
+      <div class="ticker">
+        <div class="ticker-text">✏️ Welcome! Today is Friday! ✏️ Book Fair in the library! ✏️ Art show coming up! ✏️ Have fun at recess!</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

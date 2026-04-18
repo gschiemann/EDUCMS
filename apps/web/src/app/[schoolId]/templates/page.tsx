@@ -24,6 +24,7 @@ import {
   useAssets, usePlaylists, useAssetFolders,
 } from '@/hooks/use-api';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
+import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
 import { useParams, useRouter } from 'next/navigation';
 import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 
@@ -41,6 +42,16 @@ const CATEGORY_TABS = [
   { key: 'GYM', label: 'Gym' },
   { key: 'LIBRARY', label: 'Library' },
   { key: 'CUSTOM', label: 'Custom' },
+];
+
+// School-level filter chips. UNIVERSAL templates always show (no level
+// restriction), so the filter only hides templates explicitly tagged
+// for a different level. Empty key = show everything.
+const SCHOOL_LEVEL_CHIPS = [
+  { key: '', label: 'All ages', emoji: '🏫' },
+  { key: 'ELEMENTARY', label: 'Elementary', emoji: '🎨' },
+  { key: 'MIDDLE', label: 'Middle', emoji: '📚' },
+  { key: 'HIGH', label: 'High', emoji: '🎓' },
 ];
 
 const RESOLUTION_PRESETS = [
@@ -143,8 +154,8 @@ function previewBgStyle(t: { screenWidth?: number; screenHeight?: number; bgImag
   const sh = t.screenHeight || 2160;
   const style: React.CSSProperties = {
     aspectRatio: `${sw}/${sh}`,
-    maxWidth: '100%',
-    maxHeight: 150,
+    width: '100%',
+    height: '100%',
     backgroundColor: t.bgColor || '#ffffff',
     backgroundSize: 'cover',
     backgroundPosition: 'center',
@@ -199,6 +210,7 @@ interface Template {
   name: string;
   description?: string;
   category: string;
+  schoolLevel?: string;
   orientation: string;
   screenWidth: number;
   screenHeight: number;
@@ -219,6 +231,8 @@ interface Template {
 
 export default function TemplatesPage() {
   const [activeCategory, setActiveCategory] = useState('');
+  const [activeLevel, setActiveLevel] = useState('');
+  const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [autoEditHandled, setAutoEditHandled] = useState(false);
@@ -269,6 +283,11 @@ export default function TemplatesPage() {
   const q = searchQuery.trim().toLowerCase();
   const filtered = (templates || []).filter((t: Template) => {
     if (activeCategory && t.category !== activeCategory) return false;
+    if (activeLevel) {
+      // UNIVERSAL (or missing) is always shown — it's grade-agnostic.
+      const lvl = (t.schoolLevel || 'UNIVERSAL').toUpperCase();
+      if (lvl !== 'UNIVERSAL' && lvl !== activeLevel) return false;
+    }
     if (!q) return true;
     return (
       t.name.toLowerCase().includes(q) ||
@@ -406,27 +425,56 @@ export default function TemplatesPage() {
         </div>
       )}
 
-      {/* Category Tabs + Search */}
-      <div className="flex flex-wrap gap-3 items-center">
-        <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
-          {CATEGORY_TABS.map(tab => (
-            <button key={tab.key} onClick={() => setActiveCategory(tab.key)}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeCategory === tab.key ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-              {tab.label}
-            </button>
-          ))}
+      {/* Two-tier filter bar.
+          Primary = grade level (Elementary / Middle / High) — most
+          teachers know their grade before anything else. Secondary
+          (LOBBY / HALLWAY / CAFETERIA / …) only appears AFTER a level
+          is chosen, keeping the top of the page clean and matching
+          the mental model of "pick your school, then pick the spot". */}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="flex gap-1.5 items-center">
+            {SCHOOL_LEVEL_CHIPS.map(chip => (
+              <button
+                key={chip.key}
+                type="button"
+                onClick={() => setActiveLevel(chip.key)}
+                aria-pressed={activeLevel === chip.key}
+                className={`px-4 py-2 rounded-full text-sm font-bold border transition-all ${
+                  activeLevel === chip.key
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
+                }`}
+              >
+                <span className="mr-1.5" aria-hidden>{chip.emoji}</span>
+                {chip.label}
+              </button>
+            ))}
+          </div>
+          <div className="relative flex-1 min-w-[200px] max-w-md">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" aria-hidden />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search templates..."
+              aria-label="Search templates"
+              className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+            />
+          </div>
         </div>
-        <div className="relative flex-1 min-w-[200px] max-w-md">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" aria-hidden />
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search templates..."
-            aria-label="Search templates"
-            className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
-          />
-        </div>
+        {/* Room/category sub-filter. Only renders once a grade level
+            is active — keeps the page calm for first-time visitors. */}
+        {activeLevel && (
+          <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit flex-wrap">
+            {CATEGORY_TABS.map(tab => (
+              <button key={tab.key} onClick={() => setActiveCategory(tab.key)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${activeCategory === tab.key ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {isLoading ? (
@@ -440,7 +488,11 @@ export default function TemplatesPage() {
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {systemTemplates.map((t: Template) => (
-                  <GalleryCard key={t.id} template={t} onUse={() => handleUsePreset(t)} onUsePortrait={() => handleUsePreset(t, true)} />
+                  // Preset cards open the fullscreen Preview. Only an
+                  // explicit "Use this template" click inside the preview
+                  // creates a custom DB row — browsing doesn't pollute
+                  // the tenant's template list.
+                  <GalleryCard key={t.id} template={t} onPreview={() => setPreviewTemplate(t)} />
                 ))}
               </div>
             </section>
@@ -462,14 +514,157 @@ export default function TemplatesPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {customTemplates.map((t: Template) => (
-                  <GalleryCard key={t.id} template={t} onEdit={() => openInBuilder(t)} onDuplicate={() => handleDuplicate(t)} onDelete={() => { if (confirm('Delete this template?')) deleteTemplate.mutateAsync(t.id); }} />
+                  <GalleryCard key={t.id} template={t} onEdit={() => openInBuilder(t)} onDuplicate={() => handleDuplicate(t)} onDelete={() => { if (confirm('Delete this template?')) deleteTemplate.mutateAsync(t.id); }} onPreview={() => setPreviewTemplate(t)} />
                 ))}
               </div>
             )}
           </section>
         </>
       )}
+
+      {/* Fullscreen template preview. "Customize" routes straight to
+          the builder with the preset loaded — nothing is written to
+          the DB until the user hits Save-as-copy in the builder. This
+          replaces the old flow that silently created a custom row the
+          moment you clicked a preset. */}
+      {previewTemplate && (
+        <TemplatePreviewModal
+          template={previewTemplate}
+          onClose={() => setPreviewTemplate(null)}
+          onCustomize={previewTemplate.isSystem ? () => {
+            const t = previewTemplate;
+            setPreviewTemplate(null);
+            router.push(`/${params?.schoolId}/templates/builder/${t.id}`);
+          } : undefined}
+          onEdit={!previewTemplate.isSystem ? () => {
+            const t = previewTemplate;
+            setPreviewTemplate(null);
+            openInBuilder(t);
+          } : undefined}
+        />
+      )}
     </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════
+// Fullscreen template preview modal
+// ═════════════════════════════════════════════════════
+function TemplatePreviewModal({
+  template, onClose, onCustomize, onEdit,
+}: {
+  template: Template;
+  onClose: () => void;
+  /** Opens the builder with the system preset loaded. Nothing is
+   *  written to the DB here — save-as-copy in the builder does that. */
+  onCustomize?: () => void;
+  /** Opens an existing custom template in the builder. */
+  onEdit?: () => void;
+}) {
+  // Live viewport size — recomputed on resize so the template scales
+  // to fill the available area instead of a once-at-mount snapshot.
+  const [vh, setVh] = useState<number>(typeof window !== 'undefined' ? window.innerHeight : 800);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onResize = () => setVh(window.innerHeight);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [onClose]);
+
+  const sw = template.screenWidth || 3840;
+  const sh = template.screenHeight || 2160;
+  const isLandscape = sw >= sh;
+
+  // Template fills the full viewport; the top and bottom bars float as
+  // semi-transparent overlays so the template renders at maximum size
+  // instead of losing 150+ px to stacked toolbars.
+  const maxH = Math.max(300, vh - 48);
+
+  // Portal to document.body so the modal isn't trapped inside the
+  // DashboardLayout's flex container (which leaves the sidebar peeking
+  // out on the left). `fixed` alone isn't enough when an ancestor uses
+  // `transform`/`contain` — the fixed element gets rebased to that
+  // ancestor instead of the viewport. Portal dodges it entirely.
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] bg-slate-950/92 backdrop-blur-md"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Preview: ${template.name}`}
+    >
+      {/* Full-bleed stage */}
+      <div
+        className="absolute inset-0 flex items-center justify-center p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <ScaledTemplateThumbnail
+          zones={(template.zones || []) as any}
+          screenWidth={sw}
+          screenHeight={sh}
+          bgImage={template.bgImage}
+          bgGradient={template.bgGradient}
+          bgColor={template.bgColor}
+          maxHeight={maxH}
+        />
+      </div>
+
+      {/* Floating top bar — title + huge visible close */}
+      <div
+        className="absolute top-0 inset-x-0 flex items-center justify-between px-4 py-2.5 bg-gradient-to-b from-slate-950/80 to-transparent pointer-events-none"
+      >
+        <div className="pointer-events-auto">
+          <div className="text-base font-bold text-white drop-shadow">{template.name}</div>
+          <div className="text-[11px] text-white/60 drop-shadow">{sw}×{sh} · {(template.zones || []).length} zones · Esc to close</div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="pointer-events-auto flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-100 text-slate-900 text-sm font-bold rounded-full transition-colors shadow-lg"
+          aria-label="Close preview"
+        >
+          <X className="w-4 h-4" /> Close
+        </button>
+      </div>
+
+      {/* Floating bottom CTA bar */}
+      {(onEdit || onCustomize) && (
+        <div
+          className="absolute bottom-4 inset-x-0 flex items-center justify-center gap-2 pointer-events-none"
+        >
+          <div
+            className="pointer-events-auto flex items-center gap-2 px-3 py-2 bg-slate-900/85 backdrop-blur-md rounded-full shadow-2xl border border-white/10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {onEdit && (
+              <button
+                type="button"
+                onClick={onEdit}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-full"
+              >
+                Edit this template
+              </button>
+            )}
+            {onCustomize && (
+              <button
+                type="button"
+                onClick={onCustomize}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-full flex items-center gap-1.5"
+              >
+                <Pencil className="w-3.5 h-3.5" /> Customize
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>,
+    document.body,
   );
 }
 
@@ -477,13 +672,14 @@ export default function TemplatesPage() {
 // GALLERY CARD — premium hover preview
 // ═════════════════════════════════════════════════════
 
-function GalleryCard({ template, onUse, onUsePortrait, onEdit, onDuplicate, onDelete }: {
+function GalleryCard({ template, onUse, onUsePortrait, onEdit, onDuplicate, onDelete, onPreview }: {
   template: Template;
   onUse?: () => void;
   onUsePortrait?: () => void;
   onEdit?: () => void;
   onDuplicate?: () => void;
   onDelete?: () => void;
+  onPreview?: () => void;
 }) {
   const zones = template.zones || [];
   const sw = template.screenWidth || 3840;
@@ -500,42 +696,23 @@ function GalleryCard({ template, onUse, onUsePortrait, onEdit, onDuplicate, onDe
           tracks independently. CSS gradients are valid `background-image`
           values, so a `bgGradient` from the DB lives in the same slot
           as a `bgImage`. */}
-      <div className="relative bg-gradient-to-br from-slate-50 to-slate-100 p-5" style={{ minHeight: 180 }}>
-        <div
-          className="relative mx-auto rounded-lg overflow-hidden border border-slate-200 shadow-sm"
-          style={previewBgStyle(template)}
-        >
-          {/* Render every zone as a real themed widget so the gallery
-              preview looks like the actual screen, not a wireframe. We
-              pass live={false} so widgets that auto-fetch (Weather,
-              Calendar) or animate (Ticker, Video) stay static — keeps
-              the gallery cheap to render with 100 templates on screen.
-              pointer-events:none lets the card click handlers fire
-              through the preview. */}
-          {zones.map((zone: any, i: number) => (
-            <div
-              key={zone.id ?? i}
-              className="absolute overflow-hidden pointer-events-none"
-              style={{
-                left: `${zone.x}%`,
-                top: `${zone.y}%`,
-                width: `${zone.width}%`,
-                height: `${zone.height}%`,
-                zIndex: zone.zIndex || 0,
-              }}
-            >
-              <ZoneRenderBoundary>
-                <WidgetPreview
-                  widgetType={zone.widgetType}
-                  config={zone.defaultConfig || {}}
-                  width={zone.width}
-                  height={zone.height}
-                  live={false}
-                />
-              </ZoneRenderBoundary>
-            </div>
-          ))}
-        </div>
+      <div className="relative bg-gradient-to-br from-slate-50 to-slate-100 p-4 flex items-center justify-center" style={{ height: 200 }}>
+        {/*
+          Proper thumbnail rendering: render the template at its NATURAL
+          resolution (e.g. 1920×1080) into a scaled-down container. The
+          CSS transform:scale shrinks widgets' fonts, icons, and layout
+          proportionally — previously they rendered at full pixel size
+          inside a 150px box and got clipped / looked squished.
+        */}
+        <ScaledTemplateThumbnail
+          zones={zones as any}
+          screenWidth={sw}
+          screenHeight={sh}
+          bgImage={template.bgImage}
+          bgGradient={template.bgGradient}
+          bgColor={template.bgColor}
+          maxHeight={168}
+        />
 
         {template.isSystem && (
           <div className="absolute top-3 right-3 bg-gradient-to-r from-indigo-500 to-violet-500 text-white text-[9px] font-bold px-2.5 py-1 rounded-full shadow-sm">
@@ -544,7 +721,21 @@ function GalleryCard({ template, onUse, onUsePortrait, onEdit, onDuplicate, onDe
         )}
 
         {/* Hover overlay */}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors rounded-t-2xl" />
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors rounded-t-2xl pointer-events-none" />
+        {/* Fullscreen Preview — pops a modal that renders the template
+            at max viewport size with all widgets live (clock ticking,
+            real weather, etc.). Discoverable on hover; always-available
+            keyboard target for accessibility. */}
+        {onPreview && (
+          <button
+            type="button"
+            onClick={onPreview}
+            className="absolute bottom-3 left-3 px-2.5 py-1 bg-slate-900/80 hover:bg-slate-900 text-white text-[10px] font-bold rounded-full flex items-center gap-1 backdrop-blur-sm opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity shadow-lg"
+            title="Fullscreen preview"
+          >
+            <Eye className="w-3 h-3" /> Preview
+          </button>
+        )}
       </div>
 
       {/* Info */}

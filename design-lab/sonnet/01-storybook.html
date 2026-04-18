@@ -1,0 +1,670 @@
+<!--
+  STORYBOOK: An open picture-book spread where every widget lives inside
+  an illustrated page element — torn paper, ribbon bookmarks, pop-up cards.
+  Kids love it because it literally looks like the giant storybook came alive
+  on the wall, with page-curl corners and hand-painted pastels.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Storybook Lobby — Elementary School</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Caveat:wght@400;600;700&family=Quicksand:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #2a1a0e;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  .viewport-wrapper {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .stage {
+    width: 3840px;
+    height: 2160px;
+    transform-origin: center center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Book spread background */
+  .stage {
+    background: #f5e6c8;
+    background-image:
+      radial-gradient(ellipse 60% 40% at 50% 50%, #fdf3de 30%, #f0d9a8 100%);
+  }
+
+  /* Page texture lines */
+  .stage::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      transparent, transparent 59px, #e8d4aa 59px, #e8d4aa 60px
+    );
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
+  /* Spine in center */
+  .spine {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    width: 8px;
+    height: 100%;
+    background: linear-gradient(to right, #c8a060, #8b5e2a, #c8a060);
+    transform: translateX(-50%);
+    z-index: 50;
+    box-shadow: 0 0 20px rgba(0,0,0,0.3);
+  }
+
+  /* Wooden frame border */
+  .wood-border {
+    position: absolute;
+    inset: 0;
+    border: 32px solid transparent;
+    border-image: linear-gradient(45deg, #8B4513, #D2691E, #A0522D, #8B4513) 1;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  /* Top banner — hand-painted ribbon */
+  .top-banner {
+    position: absolute;
+    top: 60px;
+    left: 120px;
+    right: 120px;
+    height: 200px;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .banner-text {
+    font-family: 'Fredoka', sans-serif;
+    font-size: 128px;
+    font-weight: 700;
+    color: #5c1a6e;
+    text-shadow: 6px 6px 0 #e8a0f8, 10px 10px 0 rgba(0,0,0,0.15);
+    letter-spacing: 4px;
+    position: relative;
+    z-index: 2;
+  }
+
+  /* Clock — grandfather clock face shape */
+  .clock-widget {
+    position: absolute;
+    top: 300px;
+    left: 140px;
+    width: 480px;
+    z-index: 20;
+    filter: drop-shadow(8px 12px 16px rgba(0,0,0,0.3));
+  }
+  .clock-time {
+    position: absolute;
+    top: 110px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Fredoka', sans-serif;
+    font-size: 96px;
+    font-weight: 700;
+    color: #3a1a50;
+    white-space: nowrap;
+  }
+  .clock-label {
+    position: absolute;
+    top: 230px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Caveat', cursive;
+    font-size: 40px;
+    color: #7a4a00;
+  }
+
+  /* Weather — cloud cutout */
+  .weather-widget {
+    position: absolute;
+    top: 280px;
+    left: 720px;
+    width: 520px;
+    z-index: 20;
+    filter: drop-shadow(6px 8px 14px rgba(0,0,0,0.2));
+  }
+  .weather-content {
+    position: absolute;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    white-space: nowrap;
+  }
+  .weather-temp {
+    font-family: 'Fredoka', sans-serif;
+    font-size: 88px;
+    font-weight: 700;
+    color: #1a3a7a;
+  }
+  .weather-desc {
+    font-family: 'Caveat', cursive;
+    font-size: 46px;
+    color: #2a5aa8;
+  }
+
+  /* Hero photo — book illustration frame */
+  .hero-frame {
+    position: absolute;
+    top: 260px;
+    left: 1350px;
+    width: 1140px;
+    height: 820px;
+    z-index: 20;
+    filter: drop-shadow(10px 14px 20px rgba(0,0,0,0.25));
+  }
+  .hero-photo {
+    position: absolute;
+    top: 60px;
+    left: 60px;
+    width: 1020px;
+    height: 700px;
+    background: linear-gradient(135deg, #a8d8ea 0%, #c8e6c9 50%, #fff9c4 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Caveat', cursive;
+    font-size: 56px;
+    color: #5a7a3a;
+    border-radius: 12px;
+  }
+
+  /* Teacher card — pop-up book style */
+  .teacher-widget {
+    position: absolute;
+    top: 320px;
+    right: 200px;
+    width: 540px;
+    z-index: 25;
+    filter: drop-shadow(8px 12px 18px rgba(0,0,0,0.3));
+    transform: rotate(3deg);
+  }
+  .teacher-photo-placeholder {
+    position: absolute;
+    top: 100px;
+    left: 100px;
+    width: 180px;
+    height: 180px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #ffd6e0, #c8a0f0);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 80px;
+  }
+  .teacher-name {
+    position: absolute;
+    top: 90px;
+    left: 300px;
+    font-family: 'Fredoka', sans-serif;
+    font-size: 48px;
+    font-weight: 700;
+    color: #3a1a50;
+    width: 200px;
+    line-height: 1.2;
+  }
+  .teacher-grade {
+    position: absolute;
+    top: 210px;
+    left: 300px;
+    font-family: 'Caveat', cursive;
+    font-size: 38px;
+    color: #7a4a8a;
+  }
+  .teacher-label {
+    position: absolute;
+    top: 36px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Fredoka', sans-serif;
+    font-size: 34px;
+    font-weight: 600;
+    color: #fff;
+    white-space: nowrap;
+  }
+
+  /* Announcements — scroll/parchment */
+  .announce-widget {
+    position: absolute;
+    top: 1120px;
+    left: 140px;
+    width: 680px;
+    z-index: 20;
+    filter: drop-shadow(6px 8px 14px rgba(0,0,0,0.2));
+  }
+  .announce-content {
+    position: absolute;
+    top: 70px;
+    left: 60px;
+    right: 60px;
+    bottom: 50px;
+  }
+  .announce-title {
+    font-family: 'Fredoka', sans-serif;
+    font-size: 52px;
+    font-weight: 700;
+    color: #5c1a00;
+    margin-bottom: 18px;
+  }
+  .announce-body {
+    font-family: 'Caveat', cursive;
+    font-size: 44px;
+    color: #3a1a00;
+    line-height: 1.5;
+  }
+
+  /* Events — bookmark tabs */
+  .events-widget {
+    position: absolute;
+    top: 1100px;
+    left: 880px;
+    width: 500px;
+    z-index: 20;
+  }
+  .event-item {
+    margin-bottom: 28px;
+    filter: drop-shadow(4px 6px 10px rgba(0,0,0,0.2));
+  }
+  .event-text {
+    position: absolute;
+    top: 20px;
+    left: 100px;
+    right: 24px;
+    font-family: 'Fredoka', sans-serif;
+    font-size: 38px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .event-date {
+    position: absolute;
+    top: 68px;
+    left: 100px;
+    font-family: 'Caveat', cursive;
+    font-size: 34px;
+    color: rgba(255,255,255,0.85);
+  }
+
+  /* Countdown — starburst */
+  .countdown-widget {
+    position: absolute;
+    top: 1080px;
+    left: 2560px;
+    z-index: 20;
+    filter: drop-shadow(8px 10px 18px rgba(0,0,0,0.25));
+  }
+  .countdown-days {
+    position: absolute;
+    top: 130px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Fredoka', sans-serif;
+    font-size: 130px;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 4px 4px 0 rgba(0,0,0,0.2);
+    line-height: 1;
+  }
+  .countdown-label {
+    position: absolute;
+    top: 290px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Caveat', cursive;
+    font-size: 48px;
+    color: #fff;
+    white-space: nowrap;
+    text-align: center;
+    width: 280px;
+    line-height: 1.2;
+  }
+
+  /* Logo area */
+  .logo-area {
+    position: absolute;
+    top: 1120px;
+    right: 200px;
+    z-index: 20;
+    text-align: center;
+    filter: drop-shadow(4px 6px 12px rgba(0,0,0,0.2));
+  }
+  .logo-mascot {
+    font-size: 140px;
+    line-height: 1;
+  }
+  .logo-name {
+    font-family: 'Fredoka', sans-serif;
+    font-size: 56px;
+    font-weight: 700;
+    color: #3a1a50;
+    margin-top: 12px;
+  }
+  .logo-sub {
+    font-family: 'Caveat', cursive;
+    font-size: 40px;
+    color: #7a4a8a;
+  }
+
+  /* Page corner curl */
+  .corner-curl {
+    position: absolute;
+    bottom: 100px;
+    right: 80px;
+    z-index: 30;
+  }
+
+  /* Ticker at bottom */
+  .ticker-strip {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 120px;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+  }
+  .ticker-label {
+    position: absolute;
+    left: 32px;
+    font-family: 'Fredoka', sans-serif;
+    font-size: 42px;
+    font-weight: 700;
+    color: #fff;
+    z-index: 2;
+    white-space: nowrap;
+  }
+  .ticker-content {
+    position: absolute;
+    left: 220px;
+    right: 0;
+    font-family: 'Caveat', cursive;
+    font-size: 52px;
+    color: #fff;
+    white-space: nowrap;
+    padding-left: 30px;
+  }
+
+  /* Decorative flowers/stars scattered */
+  .deco {
+    position: absolute;
+    pointer-events: none;
+    z-index: 5;
+  }
+</style>
+</head>
+<body>
+<div class="viewport-wrapper">
+<div class="stage" id="stage">
+
+  <!-- Wood border suggestion -->
+  <svg style="position:absolute;inset:0;width:100%;height:100%;z-index:8;pointer-events:none" viewBox="0 0 3840 2160">
+    <!-- Wood frame border strips -->
+    <rect x="0" y="0" width="3840" height="60" fill="url(#woodH)"/>
+    <rect x="0" y="2100" width="3840" height="60" fill="url(#woodH)"/>
+    <rect x="0" y="0" width="60" height="2160" fill="url(#woodV)"/>
+    <rect x="3780" y="0" width="60" height="2160" fill="url(#woodV)"/>
+    <!-- Corner details -->
+    <circle cx="60" cy="60" r="40" fill="#7a3a00"/>
+    <circle cx="3780" cy="60" r="40" fill="#7a3a00"/>
+    <circle cx="60" cy="2100" r="40" fill="#7a3a00"/>
+    <circle cx="3780" cy="2100" r="40" fill="#7a3a00"/>
+    <defs>
+      <linearGradient id="woodH" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#c8843a"/>
+        <stop offset="40%" stop-color="#8B4513"/>
+        <stop offset="60%" stop-color="#6b3010"/>
+        <stop offset="100%" stop-color="#c8843a"/>
+      </linearGradient>
+      <linearGradient id="woodV" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#c8843a"/>
+        <stop offset="40%" stop-color="#8B4513"/>
+        <stop offset="60%" stop-color="#6b3010"/>
+        <stop offset="100%" stop-color="#c8843a"/>
+      </linearGradient>
+    </defs>
+  </svg>
+
+  <!-- Spine -->
+  <div class="spine"></div>
+
+  <!-- Scattered background doodles -->
+  <svg class="deco" style="left:80px;top:700px;width:200px;height:200px;opacity:0.3" viewBox="0 0 200 200">
+    <path d="M100 20 Q120 60 160 80 Q120 100 100 140 Q80 100 40 80 Q80 60 100 20Z" fill="#f4a0c0"/>
+  </svg>
+  <svg class="deco" style="right:300px;top:600px;width:160px;height:160px;opacity:0.25" viewBox="0 0 160 160">
+    <circle cx="80" cy="80" r="60" fill="#a0d0f8" stroke="#78b8f0" stroke-width="4"/>
+  </svg>
+  <svg class="deco" style="left:1200px;top:400px;width:80px;height:80px;opacity:0.3" viewBox="0 0 80 80">
+    <path d="M40 5 L48 30 L75 30 L53 47 L61 72 L40 55 L19 72 L27 47 L5 30 L32 30 Z" fill="#ffe080"/>
+  </svg>
+
+  <!-- TOP BANNER — illustrated ribbon -->
+  <div class="top-banner">
+    <svg style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 3600 200" preserveAspectRatio="none">
+      <!-- Main ribbon body -->
+      <path d="M0 30 Q100 10 200 30 L3400 30 Q3500 10 3600 30 L3600 170 Q3500 190 3400 170 L200 170 Q100 190 0 170 Z" fill="#b86fc8"/>
+      <!-- Ribbon highlight -->
+      <path d="M0 30 Q100 10 200 30 L3400 30 Q3500 10 3600 30 L3600 80 Q3500 60 3400 80 L200 80 Q100 60 0 80 Z" fill="#d090e0" opacity="0.5"/>
+      <!-- Left tail -->
+      <path d="M0 30 L-40 100 L0 170 Z" fill="#9a50b0"/>
+      <!-- Right tail -->
+      <path d="M3600 30 L3640 100 L3600 170 Z" fill="#9a50b0"/>
+      <!-- Decorative dots -->
+      <circle cx="150" cy="100" r="12" fill="rgba(255,255,255,0.4)"/>
+      <circle cx="3450" cy="100" r="12" fill="rgba(255,255,255,0.4)"/>
+      <circle cx="300" cy="55" r="8" fill="rgba(255,255,255,0.3)"/>
+      <circle cx="3300" cy="55" r="8" fill="rgba(255,255,255,0.3)"/>
+    </svg>
+    <span class="banner-text">🦉 Good Morning, Meadow Elementary! 📖</span>
+  </div>
+
+  <!-- CLOCK — grandfather clock silhouette -->
+  <div class="clock-widget">
+    <svg width="480" height="360" viewBox="0 0 480 360">
+      <!-- Clock case body -->
+      <rect x="80" y="80" width="320" height="260" rx="20" fill="#8B4513"/>
+      <rect x="90" y="90" width="300" height="240" rx="16" fill="#D2691E"/>
+      <!-- Clock face circle -->
+      <circle cx="240" cy="200" r="110" fill="#fdf3de" stroke="#6b3010" stroke-width="6"/>
+      <!-- Hour markers -->
+      <circle cx="240" cy="120" r="8" fill="#3a1a00"/>
+      <circle cx="320" cy="200" r="8" fill="#3a1a00"/>
+      <circle cx="240" cy="280" r="8" fill="#3a1a00"/>
+      <circle cx="160" cy="200" r="8" fill="#3a1a00"/>
+      <!-- Decorative top -->
+      <path d="M100 80 Q240 20 380 80" fill="#6b3010"/>
+      <circle cx="240" cy="40" r="30" fill="#8B4513" stroke="#D2691E" stroke-width="4"/>
+    </svg>
+    <span class="clock-time">7:53 AM</span>
+    <span class="clock-label">☀️ Saturday, April 18</span>
+  </div>
+
+  <!-- WEATHER — cloud cutout -->
+  <div class="weather-widget">
+    <svg width="520" height="280" viewBox="0 0 520 280">
+      <!-- Main cloud shape -->
+      <path d="M80 220 Q40 220 40 180 Q40 155 65 148 Q58 132 72 118 Q86 104 108 110 Q118 80 148 72 Q178 64 200 82 Q218 60 252 58 Q300 56 318 96 Q344 90 364 108 Q388 128 380 156 Q410 162 418 188 Q426 218 400 228 L80 228 Z" fill="#e8f4fd" stroke="#b0d4f0" stroke-width="4"/>
+      <!-- Sun peeking out -->
+      <circle cx="430" cy="120" r="50" fill="#FFD700" opacity="0.8"/>
+      <line x1="430" y1="50" x2="430" y2="30" stroke="#FFD700" stroke-width="6" stroke-linecap="round"/>
+      <line x1="490" y1="80" x2="510" y2="68" stroke="#FFD700" stroke-width="6" stroke-linecap="round"/>
+      <line x1="500" y1="140" x2="520" y2="148" stroke="#FFD700" stroke-width="6" stroke-linecap="round"/>
+    </svg>
+    <div class="weather-content">
+      <div class="weather-temp">46°F</div>
+      <div class="weather-desc">☀️ Sunny</div>
+    </div>
+  </div>
+
+  <!-- HERO — illustrated book-spread panel -->
+  <div class="hero-frame">
+    <svg width="1140" height="820" viewBox="0 0 1140 820">
+      <!-- Outer illustrated border -->
+      <rect x="0" y="0" width="1140" height="820" rx="24" fill="#c8843a"/>
+      <rect x="16" y="16" width="1108" height="788" rx="18" fill="#8B4513"/>
+      <rect x="32" y="32" width="1076" height="756" rx="14" fill="#fdf3de"/>
+      <!-- Corner flourishes -->
+      <path d="M32 32 Q100 32 100 100 Q100 32 168 32" fill="none" stroke="#c8843a" stroke-width="8"/>
+      <path d="M1108 32 Q1040 32 1040 100 Q1040 32 972 32" fill="none" stroke="#c8843a" stroke-width="8"/>
+      <path d="M32 788 Q100 788 100 720 Q100 788 168 788" fill="none" stroke="#c8843a" stroke-width="8"/>
+      <path d="M1108 788 Q1040 788 1040 720 Q1040 788 972 788" fill="none" stroke="#c8843a" stroke-width="8"/>
+    </svg>
+    <div class="hero-photo">📸 Photo / Video Hero<br><span style="font-size:36px;color:#7a9a5a">Morning announcements or slideshow here</span></div>
+  </div>
+
+  <!-- TEACHER CARD — pop-up book style -->
+  <div class="teacher-widget">
+    <svg width="540" height="400" viewBox="0 0 540 400">
+      <!-- Card body with pop-up tab effect -->
+      <rect x="10" y="60" width="520" height="330" rx="20" fill="#fff9f0" stroke="#c8843a" stroke-width="6"/>
+      <!-- Tab at top -->
+      <path d="M180 60 L180 20 Q180 8 192 8 L348 8 Q360 8 360 20 L360 60 Z" fill="#6b3010"/>
+      <!-- Photo frame circle -->
+      <circle cx="200" cy="210" r="100" fill="#f0e0ff" stroke="#9a50b0" stroke-width="6"/>
+      <!-- Star decorations -->
+      <path d="M460 80 L467 103 L492 103 L471 118 L478 141 L460 126 L442 141 L449 118 L428 103 L453 103 Z" fill="#FFD700" stroke="#e0a000" stroke-width="2"/>
+      <path d="M480 180 L484 193 L498 193 L487 202 L491 215 L480 206 L469 215 L473 202 L462 193 L476 193 Z" fill="#ff9a9a"/>
+    </svg>
+    <div class="teacher-label">⭐ Teacher of the Week</div>
+    <div class="teacher-photo-placeholder">👩‍🏫</div>
+    <div class="teacher-name">Mrs. Johnson</div>
+    <div class="teacher-grade">3rd Grade 🍎</div>
+  </div>
+
+  <!-- ANNOUNCEMENTS — scroll parchment -->
+  <div class="announce-widget">
+    <svg width="680" height="380" viewBox="0 0 680 380">
+      <!-- Scroll body -->
+      <rect x="40" y="40" width="600" height="300" rx="8" fill="#fef3d0"/>
+      <!-- Top rolled edge -->
+      <ellipse cx="340" cy="40" rx="300" ry="24" fill="#f5d88a"/>
+      <!-- Bottom rolled edge -->
+      <ellipse cx="340" cy="340" rx="300" ry="24" fill="#f5d88a"/>
+      <!-- Scroll ends (cylinders) -->
+      <ellipse cx="340" cy="40" rx="300" ry="20" fill="#e8c870" stroke="#c8a030" stroke-width="3"/>
+      <ellipse cx="340" cy="340" rx="300" ry="20" fill="#e8c870" stroke="#c8a030" stroke-width="3"/>
+      <!-- Shadow lines on scroll -->
+      <path d="M40 80 L640 80" stroke="#e8c870" stroke-width="2" opacity="0.6"/>
+      <path d="M40 300 L640 300" stroke="#e8c870" stroke-width="2" opacity="0.6"/>
+    </svg>
+    <div class="announce-content">
+      <div class="announce-title">📚 Book Fair!</div>
+      <div class="announce-body">The Scholastic Book Fair is here!<br>Visit the library all week.<br>Bring your reading list! 🌟</div>
+    </div>
+  </div>
+
+  <!-- EVENTS — bookmark ribbons -->
+  <div class="events-widget">
+    <div class="event-item" style="position:relative;height:120px">
+      <svg width="500" height="120" viewBox="0 0 500 120" style="position:absolute;top:0;left:0">
+        <path d="M0 0 L440 0 L440 95 L440 120 L420 105 L400 120 L400 95 L0 95 Z" fill="#e84040" rx="8"/>
+        <rect x="0" y="0" width="440" height="95" rx="8" fill="#e84040"/>
+        <rect x="0" y="0" width="80" height="95" rx="8" fill="#c02020"/>
+      </svg>
+      <span style="position:absolute;top:18px;left:20px;font-family:'Fredoka',sans-serif;font-size:44px;font-weight:700;color:#fff">APR</span>
+      <span style="position:absolute;top:60px;left:20px;font-family:'Fredoka',sans-serif;font-size:32px;font-weight:600;color:rgba(255,255,255,0.8)">22</span>
+      <span class="event-text" style="top:18px;left:100px;font-size:38px">Science Fair</span>
+      <span class="event-date" style="top:68px;left:100px;font-size:32px">Gymnasium, 6–8 PM 🔬</span>
+    </div>
+    <div class="event-item" style="position:relative;height:120px;margin-top:20px">
+      <svg width="500" height="120" viewBox="0 0 500 120" style="position:absolute;top:0;left:0">
+        <rect x="0" y="0" width="440" height="95" rx="8" fill="#2080e0"/>
+        <rect x="0" y="0" width="80" height="95" rx="8" fill="#1060c0"/>
+      </svg>
+      <span style="position:absolute;top:18px;left:20px;font-family:'Fredoka',sans-serif;font-size:44px;font-weight:700;color:#fff">APR</span>
+      <span style="position:absolute;top:60px;left:20px;font-family:'Fredoka',sans-serif;font-size:32px;font-weight:600;color:rgba(255,255,255,0.8)">25</span>
+      <span class="event-text" style="top:18px;left:100px;font-size:38px">Spring Concert</span>
+      <span class="event-date" style="top:68px;left:100px;font-size:32px">Auditorium 7 PM 🎵</span>
+    </div>
+    <div class="event-item" style="position:relative;height:120px;margin-top:20px">
+      <svg width="500" height="120" viewBox="0 0 500 120" style="position:absolute;top:0;left:0">
+        <rect x="0" y="0" width="440" height="95" rx="8" fill="#20a040"/>
+        <rect x="0" y="0" width="80" height="95" rx="8" fill="#108030"/>
+      </svg>
+      <span style="position:absolute;top:18px;left:20px;font-family:'Fredoka',sans-serif;font-size:44px;font-weight:700;color:#fff">MAY</span>
+      <span style="position:absolute;top:60px;left:20px;font-family:'Fredoka',sans-serif;font-size:32px;font-weight:600;color:rgba(255,255,255,0.8)">3</span>
+      <span class="event-text" style="top:18px;left:100px;font-size:38px">Field Trip Day 🚌</span>
+      <span class="event-date" style="top:68px;left:100px;font-size:32px">Museum of Natural History</span>
+    </div>
+  </div>
+
+  <!-- COUNTDOWN — starburst shape -->
+  <div class="countdown-widget">
+    <svg width="400" height="400" viewBox="0 0 400 400">
+      <!-- Starburst outer rays -->
+      <path d="M200 10 L218 90 L290 40 L250 108 L340 100 L280 158 L360 190 L280 210 L340 280 L252 258 L290 350 L218 302 L200 390 L182 302 L110 350 L148 258 L60 280 L120 210 L40 190 L120 158 L60 100 L150 108 L110 40 L182 90 Z" fill="#FF8C00"/>
+      <!-- Inner circle -->
+      <circle cx="200" cy="200" r="140" fill="#FFD700"/>
+      <!-- Inner highlight -->
+      <circle cx="160" cy="150" r="50" fill="rgba(255,255,255,0.2)"/>
+    </svg>
+    <div class="countdown-days">12</div>
+    <div class="countdown-label">days until<br>Field Trip! 🚌</div>
+  </div>
+
+  <!-- LOGO area -->
+  <div class="logo-area">
+    <div class="logo-mascot">🦉</div>
+    <div class="logo-name">Meadow Elementary</div>
+    <div class="logo-sub">Home of the Owls</div>
+  </div>
+
+  <!-- Page corner curl SVG -->
+  <div class="corner-curl">
+    <svg width="150" height="150" viewBox="0 0 150 150">
+      <path d="M0 150 L150 150 L150 0 Q100 60 40 80 Q20 120 0 150 Z" fill="#e8c870"/>
+      <path d="M0 150 Q40 80 150 0" fill="none" stroke="#c8a030" stroke-width="2"/>
+      <path d="M0 150 Q60 100 150 0" fill="rgba(0,0,0,0.05)"/>
+    </svg>
+  </div>
+
+  <!-- TICKER -->
+  <div class="ticker-strip">
+    <svg style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 3840 120" preserveAspectRatio="none">
+      <rect x="0" y="0" width="3840" height="120" fill="#6b3010"/>
+      <rect x="0" y="0" width="3840" height="16" fill="#c8843a"/>
+      <!-- Decorative small stars along ticker -->
+      <path d="M50 60 L56 78 L76 78 L60 90 L66 108 L50 96 L34 108 L40 90 L24 78 L44 78 Z" fill="#FFD700" opacity="0.5"/>
+      <path d="M3790 60 L3796 78 L3816 78 L3800 90 L3806 108 L3790 96 L3774 108 L3780 90 L3764 78 L3784 78 Z" fill="#FFD700" opacity="0.5"/>
+    </svg>
+    <span class="ticker-label">📖</span>
+    <span class="ticker-content">🌟 Reading Week is April 22–26 — check out a book from the library and enter the reading raffle! &nbsp;&nbsp;&nbsp; 🍎 Lunch menu today: Pizza Friday, apple slices, chocolate milk &nbsp;&nbsp;&nbsp; 🎨 Art Club meets Thursday in Room 12 after school</span>
+  </div>
+
+</div>
+</div>
+
+<script>
+  function scaleStage() {
+    const stage = document.getElementById('stage');
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const scaleX = vw / 3840;
+    const scaleY = vh / 2160;
+    const scale = Math.min(scaleX, scaleY);
+    stage.style.transform = `scale(${scale})`;
+  }
+  scaleStage();
+  window.addEventListener('resize', scaleStage);
+</script>
+</body>
+</html>

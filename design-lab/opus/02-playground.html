@@ -1,0 +1,250 @@
+<!--
+  CONCEPT 02 — PLAYGROUND
+  Chalkboard greens plus primary crayon colors. Widgets rendered on wooden signposts,
+  a hopscotch grid background, jump-rope borders, a swing-set clock, kite weather, and
+  a chalkboard announcement panel. Kids love it because the whole screen feels like recess.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Playground — Lobby 4K</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&family=Caveat:wght@700&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#0a1a0d;overflow:hidden;font-family:'Fredoka',system-ui,sans-serif;}
+  .viewport{position:fixed;inset:0;display:grid;place-items:center;}
+  .stage{width:3840px;height:2160px;position:relative;transform-origin:center;box-shadow:0 80px 200px rgba(0,0,0,.7);
+    background:
+      radial-gradient(ellipse at 50% 0%, #8ec87a 0%, #5a9a4a 50%, #3a7a38 100%);
+    overflow:hidden;}
+  /* Hopscotch grid background */
+  .hopscotch{position:absolute;bottom:0;left:50%;transform:translateX(-50%);opacity:.16;}
+  /* Jump-rope top/bottom border */
+  .jumprope-top{position:absolute;top:0;left:0;right:0;height:80px;}
+  .jumprope-bot{position:absolute;bottom:0;left:0;right:0;height:80px;transform:scaleY(-1);}
+
+  /* Banner — wooden sign with crayon text */
+  .banner{position:absolute;top:120px;left:50%;transform:translateX(-50%) rotate(-1deg);width:2600px;text-align:center;}
+  .banner-board{background:linear-gradient(180deg,#b87e3a 0%, #8a5a22 100%);
+    border:10px solid #5a3a18;border-radius:30px;padding:50px 80px;box-shadow:0 20px 0 #3a2410, 0 40px 60px rgba(0,0,0,.4);
+    position:relative;}
+  .banner-board::before,.banner-board::after{content:'';position:absolute;top:-40px;width:40px;height:40px;background:#5a3a18;border-radius:50%;box-shadow:inset 0 -4px 6px rgba(0,0,0,.4);}
+  .banner-board::before{left:40px;}.banner-board::after{right:40px;}
+  .banner h1{font-family:'Fredoka',sans-serif;font-weight:700;font-size:180px;color:#ffe14d;margin:0;line-height:.95;
+    text-shadow:6px 6px 0 #c23b2e, 12px 12px 0 rgba(0,0,0,.3);}
+  .banner .sub{font-family:'Caveat',cursive;font-size:84px;color:#fff;margin-top:10px;text-shadow:3px 3px 0 rgba(0,0,0,.3);}
+
+  /* Swing-set clock */
+  .clock-swing{position:absolute;top:100px;left:120px;width:600px;height:700px;}
+  .clock-swing svg{width:100%;height:100%;filter:drop-shadow(0 20px 20px rgba(0,0,0,.35));}
+
+  /* Kite weather */
+  .kite{position:absolute;top:100px;right:120px;width:600px;height:700px;}
+  .kite svg{width:100%;height:100%;filter:drop-shadow(0 20px 20px rgba(0,0,0,.35));}
+
+  /* Chalkboard announcement */
+  .chalk{position:absolute;top:820px;left:50%;transform:translateX(-50%) rotate(.5deg);width:2400px;height:560px;
+    background:#2d4a2b;border-radius:20px;border:40px solid #7a4a1a;box-shadow:0 30px 60px rgba(0,0,0,.45), inset 0 0 80px rgba(0,0,0,.3);
+    padding:50px 80px;box-sizing:border-box;position:relative;}
+  .chalk::before,.chalk::after{content:'';position:absolute;width:80px;height:40px;background:#5a3a18;border-radius:8px;}
+  .chalk::before{top:-60px;left:80px;}.chalk::after{top:-60px;right:80px;}
+  .chalk h3{font-family:'Caveat',cursive;font-size:110px;color:#ffe14d;margin:0 0 20px;text-shadow:0 2px 0 rgba(0,0,0,.3);}
+  .chalk p{font-family:'Caveat',cursive;font-size:84px;color:#fff;margin:0;line-height:1.15;}
+  .chalk .small{font-family:'Caveat',cursive;font-size:60px;color:#a9dc99;margin-top:20px;}
+  .chalk .dust{position:absolute;inset:0;background:radial-gradient(ellipse at 20% 80%, rgba(255,255,255,.08) 0%, transparent 60%);pointer-events:none;}
+
+  /* Teacher on a signpost */
+  .teacher-post{position:absolute;top:1440px;left:150px;width:960px;transform:rotate(-2deg);}
+  .teacher-sign{background:linear-gradient(180deg,#d68c3e 0%, #a05c18 100%);border:10px solid #5a3a18;border-radius:30px;
+    padding:40px;box-shadow:0 20px 0 #3a2410, 0 40px 60px rgba(0,0,0,.4);display:flex;gap:30px;align-items:center;position:relative;}
+  .teacher-post::after{content:'';position:absolute;left:50%;bottom:-180px;transform:translateX(-50%);width:40px;height:200px;background:#5a3a18;z-index:-1;}
+  .teacher-portrait{width:260px;height:260px;flex-shrink:0;border-radius:50%;background:#ffd6a0;border:10px solid #5a3a18;position:relative;overflow:hidden;}
+  .teacher-portrait svg{position:absolute;inset:0;width:100%;height:100%;}
+  .teacher-post h3{font-family:'Fredoka',sans-serif;font-weight:700;font-size:54px;color:#ffe14d;margin:0;line-height:1;text-shadow:3px 3px 0 rgba(0,0,0,.3);}
+  .teacher-post .name{font-family:'Fredoka',sans-serif;font-weight:700;font-size:84px;color:#fff;margin:8px 0 0;line-height:1;}
+  .teacher-post .quote{font-family:'Caveat',cursive;font-size:48px;color:#2d1a08;margin-top:12px;}
+
+  /* Events post */
+  .events-post{position:absolute;top:1440px;right:150px;width:1100px;transform:rotate(1.5deg);}
+  .events-sign{background:linear-gradient(180deg,#4a90e2 0%, #2a70b8 100%);border:10px solid #1a3860;border-radius:30px;
+    padding:40px 50px;box-shadow:0 20px 0 #0f2a4a, 0 40px 60px rgba(0,0,0,.4);}
+  .events-post h3{font-family:'Fredoka',sans-serif;font-weight:700;font-size:64px;color:#ffe14d;margin:0 0 20px;text-shadow:3px 3px 0 rgba(0,0,0,.3);}
+  .events-post .ev{display:flex;gap:20px;align-items:center;margin-bottom:18px;background:rgba(255,255,255,.15);border-radius:20px;padding:14px 20px;}
+  .events-post .badge{width:80px;height:80px;border-radius:18px;display:grid;place-items:center;flex-shrink:0;font-family:'Fredoka';font-weight:700;color:#fff;font-size:44px;border:4px solid #fff;box-shadow:0 4px 0 rgba(0,0,0,.3);}
+  .events-post .ev .meta{font-family:'Caveat';font-size:44px;color:#ffe14d;line-height:1;}
+  .events-post .ev .name{font-family:'Fredoka';font-weight:500;font-size:42px;color:#fff;line-height:1.1;}
+
+  /* Countdown — ball on hopscotch */
+  .countdown{position:absolute;bottom:300px;left:50%;transform:translateX(-50%);width:500px;height:500px;}
+  .countdown svg{width:100%;height:100%;filter:drop-shadow(0 20px 30px rgba(0,0,0,.4));}
+
+  /* Ticker — jump rope */
+  .ticker{position:absolute;bottom:120px;left:160px;right:160px;height:140px;
+    background:#c23b2e;border-radius:80px;display:flex;align-items:center;padding:0 60px;
+    box-shadow:0 12px 0 #7a2218, 0 30px 50px rgba(0,0,0,.35);border:8px solid #fff;}
+  .ticker .tag{background:#ffe14d;color:#c23b2e;font-family:'Fredoka';font-weight:700;font-size:56px;padding:14px 36px;border-radius:50px;margin-right:30px;border:6px solid #fff;box-shadow:0 6px 0 rgba(0,0,0,.3);}
+  .ticker .msg{font-family:'Fredoka';font-weight:500;font-size:58px;color:#fff;text-shadow:2px 2px 0 rgba(0,0,0,.3);}
+
+  /* Logo — mascot ball */
+  .logo{position:absolute;top:40px;left:50%;transform:translateX(-50%);width:220px;height:220px;z-index:5;}
+</style>
+</head>
+<body>
+<div class="viewport">
+<div class="stage" id="stage">
+
+  <!-- Hopscotch grid -->
+  <svg class="hopscotch" width="2400" height="1400" viewBox="0 0 2400 1400">
+    <g stroke="#fff" stroke-width="10" fill="none">
+      <rect x="1050" y="1200" width="300" height="160"/>
+      <rect x="1050" y="1040" width="300" height="160"/>
+      <rect x="900" y="880" width="300" height="160"/>
+      <rect x="1200" y="880" width="300" height="160"/>
+      <rect x="1050" y="720" width="300" height="160"/>
+      <rect x="900" y="560" width="300" height="160"/>
+      <rect x="1200" y="560" width="300" height="160"/>
+    </g>
+    <g fill="#fff" font-family="Fredoka" font-size="80" font-weight="700" text-anchor="middle">
+      <text x="1200" y="1310">1</text><text x="1200" y="1150">2</text>
+      <text x="1050" y="990">3</text><text x="1350" y="990">4</text>
+      <text x="1200" y="830">5</text>
+      <text x="1050" y="670">6</text><text x="1350" y="670">7</text>
+    </g>
+  </svg>
+
+  <!-- Jump-rope top border -->
+  <svg class="jumprope-top" viewBox="0 0 3840 80" preserveAspectRatio="none">
+    <path d="M0 40 Q240 0 480 40 T960 40 T1440 40 T1920 40 T2400 40 T2880 40 T3360 40 T3840 40" stroke="#ffe14d" stroke-width="14" fill="none" stroke-linecap="round"/>
+    <path d="M0 40 Q240 0 480 40 T960 40 T1440 40 T1920 40 T2400 40 T2880 40 T3360 40 T3840 40" stroke="#c23b2e" stroke-width="6" fill="none" stroke-dasharray="30 20"/>
+  </svg>
+  <svg class="jumprope-bot" viewBox="0 0 3840 80" preserveAspectRatio="none">
+    <path d="M0 40 Q240 0 480 40 T960 40 T1440 40 T1920 40 T2400 40 T2880 40 T3360 40 T3840 40" stroke="#ffe14d" stroke-width="14" fill="none" stroke-linecap="round"/>
+  </svg>
+
+  <!-- Mascot logo -->
+  <svg class="logo" viewBox="0 0 220 220">
+    <circle cx="110" cy="110" r="100" fill="#ffe14d" stroke="#2d1a08" stroke-width="8"/>
+    <circle cx="85" cy="95" r="12" fill="#2d1a08"/><circle cx="135" cy="95" r="12" fill="#2d1a08"/>
+    <path d="M75 135 Q110 170 145 135" stroke="#2d1a08" stroke-width="8" fill="none" stroke-linecap="round"/>
+    <circle cx="60" cy="140" r="10" fill="#ffb3b3"/><circle cx="160" cy="140" r="10" fill="#ffb3b3"/>
+    <text x="110" y="205" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="24" fill="#2d1a08">RECESS ROCKS</text>
+  </svg>
+
+  <!-- Banner -->
+  <div class="banner">
+    <div class="banner-board">
+      <h1>LET'S GO, LIONS!</h1>
+      <div class="sub">~ it's a great day to play &amp; learn ~</div>
+    </div>
+  </div>
+
+  <!-- Swing-set clock -->
+  <div class="clock-swing">
+    <svg viewBox="0 0 600 700">
+      <!-- frame -->
+      <line x1="60" y1="80" x2="300" y2="40" stroke="#5a3a18" stroke-width="14"/>
+      <line x1="540" y1="80" x2="300" y2="40" stroke="#5a3a18" stroke-width="14"/>
+      <line x1="40" y1="560" x2="60" y2="80" stroke="#5a3a18" stroke-width="18" stroke-linecap="round"/>
+      <line x1="560" y1="560" x2="540" y2="80" stroke="#5a3a18" stroke-width="18" stroke-linecap="round"/>
+      <line x1="60" y1="80" x2="540" y2="80" stroke="#5a3a18" stroke-width="18" stroke-linecap="round"/>
+      <!-- chains -->
+      <line x1="200" y1="90" x2="220" y2="340" stroke="#888" stroke-width="6"/>
+      <line x1="400" y1="90" x2="380" y2="340" stroke="#888" stroke-width="6"/>
+      <!-- swing seat w/ clock face -->
+      <rect x="100" y="320" width="400" height="260" rx="30" fill="#fff" stroke="#2d1a08" stroke-width="10"/>
+      <circle cx="300" cy="450" r="110" fill="none" stroke="#c23b2e" stroke-width="6"/>
+      <text x="300" y="480" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="110" fill="#2d4a2b">7:53</text>
+      <text x="300" y="555" text-anchor="middle" font-family="Caveat" font-size="50" fill="#c23b2e">good morning!</text>
+      <!-- ground -->
+      <ellipse cx="300" cy="670" rx="260" ry="20" fill="rgba(0,0,0,.2)"/>
+    </svg>
+  </div>
+
+  <!-- Kite weather -->
+  <div class="kite">
+    <svg viewBox="0 0 600 700">
+      <!-- string -->
+      <path d="M300 120 Q280 300 320 500 Q300 600 280 680" stroke="#fff" stroke-width="4" fill="none" stroke-dasharray="4 8"/>
+      <!-- kite diamond -->
+      <polygon points="300,50 500,250 300,450 100,250" fill="#4a90e2" stroke="#2d1a08" stroke-width="10"/>
+      <line x1="300" y1="50" x2="300" y2="450" stroke="#2d1a08" stroke-width="6"/>
+      <line x1="100" y1="250" x2="500" y2="250" stroke="#2d1a08" stroke-width="6"/>
+      <polygon points="300,50 500,250 300,250" fill="#c23b2e"/>
+      <polygon points="300,250 100,250 300,450" fill="#ffe14d"/>
+      <text x="300" y="240" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="90" fill="#fff" style="text-shadow:3px 3px 0 rgba(0,0,0,.3);">46°</text>
+      <text x="300" y="320" text-anchor="middle" font-family="Caveat" font-size="56" fill="#2d1a08">SUNNY</text>
+      <!-- bow tail -->
+      <g stroke="#fff" stroke-width="3" fill="none">
+        <path d="M300 450 L270 500 L330 530 L280 570 L340 600 L290 640"/>
+      </g>
+      <ellipse cx="270" cy="500" rx="22" ry="10" fill="#ffb3b3"/>
+      <ellipse cx="330" cy="530" rx="22" ry="10" fill="#a9dc99"/>
+      <ellipse cx="280" cy="570" rx="22" ry="10" fill="#ffe14d"/>
+      <ellipse cx="340" cy="600" rx="22" ry="10" fill="#f28ec1"/>
+    </svg>
+  </div>
+
+  <!-- Chalkboard -->
+  <div class="chalk">
+    <div class="dust"></div>
+    <h3>★ Today's BIG News ★</h3>
+    <p>Book Fair opens in the library TODAY! Bring your wish list — new dinosaur books, comics, and sticker packs have just arrived.</p>
+    <div class="small">— Mrs. Park, librarian · open 8am–3:30pm ·</div>
+  </div>
+
+  <!-- Teacher post -->
+  <div class="teacher-post">
+    <div class="teacher-sign">
+      <div class="teacher-portrait">
+        <svg viewBox="0 0 260 260">
+          <circle cx="130" cy="110" r="70" fill="#ffd6a0" stroke="#5a3a18" stroke-width="6"/>
+          <path d="M60 110 Q60 40 130 40 Q200 40 200 110 Q200 80 170 70 Q130 65 90 75 Q60 85 60 110" fill="#5a3a18"/>
+          <circle cx="108" cy="110" r="6" fill="#2d1a08"/><circle cx="152" cy="110" r="6" fill="#2d1a08"/>
+          <path d="M108 140 Q130 158 152 140" stroke="#c23b2e" stroke-width="5" fill="none" stroke-linecap="round"/>
+          <rect x="60" y="180" width="140" height="80" fill="#4a90e2" stroke="#5a3a18" stroke-width="5"/>
+        </svg>
+      </div>
+      <div>
+        <h3>TEACHER OF THE WEEK</h3>
+        <div class="name">Mrs. Johnson</div>
+        <div class="quote">"Recess is my favorite subject — then reading, then math, then lunch!"</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Events -->
+  <div class="events-post">
+    <div class="events-sign">
+      <h3>UPCOMING FUN</h3>
+      <div class="ev"><div class="badge" style="background:#c23b2e">M</div><div><div class="meta">Mon · 8:30 am</div><div class="name">Pajama Day Reading Hour</div></div></div>
+      <div class="ev"><div class="badge" style="background:#7aa96b">W</div><div><div class="meta">Wed · 10:00 am</div><div class="name">Principal's Story Time</div></div></div>
+      <div class="ev"><div class="badge" style="background:#ffe14d;color:#2d1a08">★</div><div><div class="meta">Apr 30</div><div class="name">Spring Field Trip — the Zoo!</div></div></div>
+    </div>
+  </div>
+
+  <!-- Countdown kickball -->
+  <div class="countdown">
+    <svg viewBox="0 0 500 500">
+      <ellipse cx="250" cy="460" rx="200" ry="18" fill="rgba(0,0,0,.3)"/>
+      <circle cx="250" cy="250" r="200" fill="#c23b2e" stroke="#2d1a08" stroke-width="12"/>
+      <path d="M50 250 Q250 180 450 250" stroke="#fff" stroke-width="6" fill="none"/>
+      <path d="M50 250 Q250 320 450 250" stroke="#fff" stroke-width="6" fill="none"/>
+      <circle cx="250" cy="250" r="110" fill="#ffe14d" stroke="#2d1a08" stroke-width="10"/>
+      <text x="250" y="270" text-anchor="middle" font-family="Fredoka" font-weight="700" font-size="140" fill="#c23b2e">12</text>
+      <text x="250" y="410" text-anchor="middle" font-family="Caveat" font-size="54" fill="#fff" style="text-shadow:3px 3px 0 rgba(0,0,0,.5);">days to FIELD TRIP!</text>
+    </svg>
+  </div>
+
+  <!-- Ticker -->
+  <div class="ticker">
+    <div class="tag">▶ NOW</div>
+    <div class="msg">Lost &amp; Found cleanout Friday — hats, jackets &amp; one mystery boot waiting at the office!</div>
+  </div>
+
+</div></div>
+<script>
+  function fit(){const s=document.getElementById('stage');const k=Math.min(window.innerWidth/3840,window.innerHeight/2160);s.style.transform='scale('+k+')';}
+  window.addEventListener('resize',fit);fit();
+</script>
+</body></html>

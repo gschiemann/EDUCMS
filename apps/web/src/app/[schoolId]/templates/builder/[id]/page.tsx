@@ -59,24 +59,11 @@ export default function TemplateBuilderV2Page() {
   }
 
   const template = data as Template;
-  if (template.isSystem) {
-    return (
-      <div className="fixed inset-0 bg-white flex flex-col items-center justify-center gap-3 p-6 text-center">
-        <AlertCircle className="w-8 h-8 text-amber-500" aria-hidden />
-        <h1 className="text-lg font-bold text-slate-800">Can&rsquo;t edit a system preset</h1>
-        <p className="text-sm text-slate-500 max-w-md">
-          Duplicate this preset first — then open the copy in the builder.
-        </p>
-        <button
-          type="button"
-          onClick={() => router.push(`/${schoolId}/templates`)}
-          className="mt-2 px-4 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700"
-        >
-          Back to templates
-        </button>
-      </div>
-    );
-  }
+  // System presets open in the builder as a "draft" — user can edit
+  // zones in-memory and the only way to persist is Save-as-copy, which
+  // creates a custom template in their tenant. BuilderShell handles
+  // hiding the plain Save button when isSystem=true. Nothing is written
+  // to the DB unless the user explicitly saves.
 
   return (
     <BuilderShell

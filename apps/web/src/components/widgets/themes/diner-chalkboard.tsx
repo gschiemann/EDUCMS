@@ -360,11 +360,19 @@ export function DinerChalkboardStaff({ config }: { config: any }) {
         fontFamily: DC_FONT_DISPLAY, border: `3px solid ${DC.counter}`,
         borderRadius: 4,
       }}>
-        <div style={{ height: '55%', marginBottom: '4%', overflow: 'hidden', background: '#F0E8D4', flexShrink: 0, borderRadius: 2 }}>
+        <div style={{ height: '55%', marginBottom: '4%', overflow: 'hidden', flexShrink: 0, borderRadius: 2 }}>
           {photoUrl ? (
             <img src={resolveUrl(photoUrl)} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           ) : (
-            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'clamp(32px, 30cqh, 120px)' }}>👨‍🍳</div>
+            <div style={{ 
+              width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', 
+              border: '2px dashed #D5C9B1', borderRadius: 4, background: '#F8F4EA' 
+            }}>
+              <div style={{ fontSize: 'clamp(40px, 40cqh, 200px)', lineHeight: 1, filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))' }}>👨‍🍳</div>
+              <div style={{ fontSize: 'clamp(8px, 3.5cqh, 24px)', fontWeight: 700, color: '#B3A58E', marginTop: '3cqh', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                Drop Photo
+              </div>
+            </div>
           )}
         </div>
         <div style={{ flex: 1, textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: 0 }}>

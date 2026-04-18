@@ -22,6 +22,9 @@ export interface SystemPreset {
   orientation: string;
   screenWidth?: number;
   screenHeight?: number;
+  // School level filter — Elementary, Middle, High, or Universal. Drives
+  // the filter chips on /templates. Optional; defaults to 'UNIVERSAL'.
+  schoolLevel?: 'ELEMENTARY' | 'MIDDLE' | 'HIGH' | 'UNIVERSAL';
   // Optional background applied template-wide. Any of these can be set;
   // the player layers them as:  bgImage on top of bgGradient on top of bgColor.
   bgColor?: string;       // solid color fallback — e.g. '#ffffff'
@@ -48,38 +51,117 @@ export interface SystemPreset {
 // upload or network call.
 // ═════════════════════════════════════════════════════════════════════════
 const SUNNY_MEADOW_BG = (() => {
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1920 600' preserveAspectRatio='none'>
-    <!-- distant hills -->
-    <path d='M0,360 C320,290 640,410 960,330 C1280,270 1600,410 1920,320 L1920,600 L0,600 Z' fill='#86E09B' opacity='0.9'/>
-    <!-- mid hills -->
-    <path d='M0,440 C240,390 520,490 820,420 C1160,350 1480,480 1920,410 L1920,600 L0,600 Z' fill='#5BB36C'/>
-    <!-- front hills -->
-    <path d='M0,520 C300,480 620,550 960,510 C1280,475 1600,550 1920,505 L1920,600 L0,600 Z' fill='#4A9D5C'/>
-    <!-- yellow flowers -->
-    <g fill='#FFD166'>
-      <circle cx='140' cy='540' r='7'/><circle cx='360' cy='560' r='6'/><circle cx='580' cy='535' r='7'/>
-      <circle cx='820' cy='565' r='6'/><circle cx='1080' cy='540' r='7'/><circle cx='1320' cy='560' r='6'/>
-      <circle cx='1560' cy='538' r='7'/><circle cx='1800' cy='565' r='6'/>
+  // Two-layer background: full-canvas sky scene (sun, clouds, rainbow,
+  // flying kite) + foreground meadow with rolling hills and flowers.
+  // Sized to the 3840×2160 template so every element reads cleanly on
+  // a 4K classroom lobby display.
+  const sceneSvg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1920 1080' preserveAspectRatio='none'>
+    <defs>
+      <radialGradient id='sunGlow' cx='50%' cy='50%' r='50%'>
+        <stop offset='0%' stop-color='#FFF4B8' stop-opacity='0.95'/>
+        <stop offset='55%' stop-color='#FFE066' stop-opacity='0.5'/>
+        <stop offset='100%' stop-color='#FFE066' stop-opacity='0'/>
+      </radialGradient>
+    </defs>
+
+    <!-- Big happy sun with rays -->
+    <g transform='translate(1620 180)'>
+      <circle r='220' fill='url(#sunGlow)'/>
+      <g stroke='#FFD166' stroke-width='14' stroke-linecap='round' opacity='0.85'>
+        <line x1='0' y1='-190' x2='0' y2='-250'/>
+        <line x1='135' y1='-135' x2='180' y2='-180'/>
+        <line x1='190' y1='0' x2='250' y2='0'/>
+        <line x1='135' y1='135' x2='180' y2='180'/>
+        <line x1='0' y1='190' x2='0' y2='250'/>
+        <line x1='-135' y1='135' x2='-180' y2='180'/>
+        <line x1='-190' y1='0' x2='-250' y2='0'/>
+        <line x1='-135' y1='-135' x2='-180' y2='-180'/>
+      </g>
+      <circle r='100' fill='#FFD166'/>
+      <!-- smiley face -->
+      <circle cx='-34' cy='-12' r='7' fill='#3A2E2A'/>
+      <circle cx='34' cy='-12' r='7' fill='#3A2E2A'/>
+      <path d='M -30 22 Q 0 48 30 22' stroke='#3A2E2A' stroke-width='5' fill='none' stroke-linecap='round'/>
+      <ellipse cx='-52' cy='16' rx='10' ry='6' fill='#FF8FAB' opacity='0.7'/>
+      <ellipse cx='52' cy='16' rx='10' ry='6' fill='#FF8FAB' opacity='0.7'/>
     </g>
-    <!-- pink flowers -->
-    <g fill='#FF8FAB'>
-      <circle cx='230' cy='565' r='5'/><circle cx='490' cy='550' r='5'/><circle cx='720' cy='570' r='4'/>
-      <circle cx='980' cy='558' r='5'/><circle cx='1220' cy='548' r='4'/><circle cx='1460' cy='565' r='5'/>
-      <circle cx='1700' cy='550' r='4'/>
+
+    <!-- Fluffy clouds -->
+    <g fill='#FFFFFF' opacity='0.95'>
+      <g transform='translate(260 160)'>
+        <ellipse cx='0' cy='0' rx='90' ry='40'/>
+        <ellipse cx='55' cy='-18' rx='56' ry='34'/>
+        <ellipse cx='-50' cy='-10' rx='46' ry='30'/>
+      </g>
+      <g transform='translate(880 110) scale(0.82)'>
+        <ellipse cx='0' cy='0' rx='100' ry='42'/>
+        <ellipse cx='62' cy='-20' rx='58' ry='36'/>
+        <ellipse cx='-58' cy='-14' rx='50' ry='32'/>
+      </g>
+      <g transform='translate(1150 260) scale(0.68)'>
+        <ellipse cx='0' cy='0' rx='80' ry='36'/>
+        <ellipse cx='50' cy='-18' rx='48' ry='30'/>
+        <ellipse cx='-46' cy='-10' rx='42' ry='28'/>
+      </g>
     </g>
-    <!-- white flowers -->
-    <g fill='#FFFFFF' opacity='0.85'>
-      <circle cx='300' cy='548' r='4'/><circle cx='660' cy='555' r='4'/><circle cx='1020' cy='568' r='4'/>
-      <circle cx='1400' cy='548' r='4'/><circle cx='1640' cy='572' r='4'/>
+
+    <!-- Rainbow arc, top-left -->
+    <g transform='translate(140 40)' fill='none' stroke-width='18' stroke-linecap='round'>
+      <path d='M 0 200 A 200 200 0 0 1 400 200' stroke='#FF6B8B'/>
+      <path d='M 20 200 A 180 180 0 0 1 380 200' stroke='#FFA05A'/>
+      <path d='M 40 200 A 160 160 0 0 1 360 200' stroke='#FFD166'/>
+      <path d='M 60 200 A 140 140 0 0 1 340 200' stroke='#8CE99A'/>
+      <path d='M 80 200 A 120 120 0 0 1 320 200' stroke='#66C4FF'/>
+      <path d='M 100 200 A 100 100 0 0 1 300 200' stroke='#C58CFF'/>
+    </g>
+
+    <!-- Flying kite (accent) -->
+    <g transform='translate(730 460) rotate(-18)'>
+      <polygon points='0,-40 30,0 0,40 -30,0' fill='#FF8FAB' stroke='#3A2E2A' stroke-width='3'/>
+      <line x1='0' y1='-40' x2='0' y2='40' stroke='#3A2E2A' stroke-width='2'/>
+      <line x1='-30' y1='0' x2='30' y2='0' stroke='#3A2E2A' stroke-width='2'/>
+      <path d='M 0 40 Q 18 70 8 98 Q -12 130 12 160' stroke='#3A2E2A' stroke-width='2' fill='none'/>
+      <g stroke='#FFD166' stroke-width='4' stroke-linecap='round'>
+        <line x1='5' y1='60' x2='18' y2='72'/>
+        <line x1='2' y1='100' x2='-12' y2='112'/>
+        <line x1='10' y1='140' x2='24' y2='150'/>
+      </g>
+    </g>
+
+    <!-- Meadow hills (bottom third) -->
+    <g transform='translate(0 700)'>
+      <!-- distant hills -->
+      <path d='M0,160 C320,90 640,210 960,130 C1280,70 1600,210 1920,120 L1920,380 L0,380 Z' fill='#86E09B' opacity='0.9'/>
+      <!-- mid hills -->
+      <path d='M0,240 C240,190 520,290 820,220 C1160,150 1480,280 1920,210 L1920,380 L0,380 Z' fill='#5BB36C'/>
+      <!-- front hills -->
+      <path d='M0,320 C300,280 620,350 960,310 C1280,275 1600,350 1920,305 L1920,380 L0,380 Z' fill='#4A9D5C'/>
+      <!-- yellow flowers -->
+      <g fill='#FFD166'>
+        <circle cx='140' cy='340' r='9'/><circle cx='360' cy='360' r='8'/><circle cx='580' cy='335' r='9'/>
+        <circle cx='820' cy='365' r='8'/><circle cx='1080' cy='340' r='9'/><circle cx='1320' cy='360' r='8'/>
+        <circle cx='1560' cy='338' r='9'/><circle cx='1800' cy='365' r='8'/>
+      </g>
+      <!-- pink flowers -->
+      <g fill='#FF8FAB'>
+        <circle cx='230' cy='365' r='7'/><circle cx='490' cy='350' r='7'/><circle cx='720' cy='370' r='6'/>
+        <circle cx='980' cy='358' r='7'/><circle cx='1220' cy='348' r='6'/><circle cx='1460' cy='365' r='7'/>
+        <circle cx='1700' cy='350' r='6'/>
+      </g>
+      <!-- white flowers -->
+      <g fill='#FFFFFF' opacity='0.9'>
+        <circle cx='300' cy='348' r='6'/><circle cx='660' cy='355' r='6'/><circle cx='1020' cy='368' r='6'/>
+        <circle cx='1400' cy='348' r='6'/><circle cx='1640' cy='372' r='6'/>
+      </g>
     </g>
   </svg>`;
-  // URL-encode ( # and < and > and space etc ) so it's safe inside a CSS url("...")
-  const encoded = svg
+  const encoded = sceneSvg
     .replace(/\n/g, '')
     .replace(/\s{2,}/g, ' ')
     .replace(/#/g, '%23')
     .replace(/"/g, "'");
-  return `url("data:image/svg+xml;utf8,${encoded}") no-repeat bottom / 100% 38%, linear-gradient(180deg, #BFE4FF 0%, #FFF1B8 55%, #FFD8A8 100%)`;
+  // Base sky gradient underneath the scene SVG for extra depth.
+  return `url("data:image/svg+xml;utf8,${encoded}") no-repeat center / 100% 100%, linear-gradient(180deg, #9FDCFF 0%, #BFE8FF 30%, #FFF1B8 65%, #FFD8A8 100%)`;
 })();
 
 export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
@@ -89,28 +171,33 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
   // ─────────────────────────────────────────────────────
   {
     id: 'preset-lobby-sunny-meadow',
-    name: '☀️ Sunny Meadow — Elementary Welcome',
-    description: 'A bright, illustrated welcome screen designed for elementary school lobbies. Playful rounded typography, animated sun, hand-drawn accents, and a polaroid-style Teacher of the Week. Zero design work needed — just fill in names and messages.',
+    name: '☀️ Elementary Welcome',
+    description: 'A bright, illustrated welcome screen designed for elementary schools. Big playful hero GIF area kids love, cloud-shaped weather, polaroid Teacher of the Week, rainbow accents, and a scrolling ticker. Just fill in names and messages — zero design work needed.',
     category: 'LOBBY',
     orientation: 'LANDSCAPE',
+    schoolLevel: 'ELEMENTARY',
     screenWidth: 3840,
     screenHeight: 2160,
     bgGradient: SUNNY_MEADOW_BG,
     zones: [
+      // Row 1 — header band (logo · hero headline · clock)
       {
         name: 'School Logo',
         widgetType: 'LOGO',
-        x: 2, y: 3, width: 14, height: 14,
+        x: 3, y: 4, width: 11, height: 13,
         sortOrder: 0,
         defaultConfig: { theme: 'sunny-meadow', fitMode: 'contain' },
       },
       {
         name: 'Welcome Headline',
         widgetType: 'TEXT',
-        x: 17, y: 3, width: 54, height: 14,
+        x: 15, y: 5, width: 56, height: 14,
         sortOrder: 1,
-        defaultConfig: { theme: 'sunny-meadow', content: 'Welcome to Sunnyside Elementary! ☀️',
-          fontSize: 64,
+        defaultConfig: {
+          theme: 'sunny-meadow',
+          content: "Welcome back, friends! 🌻",
+          fontSize: 96,
+          fontWeight: 800,
           alignment: 'center',
           color: '#3A2E2A',
           bgColor: 'transparent',
@@ -119,79 +206,324 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
       {
         name: 'Clock',
         widgetType: 'CLOCK',
-        x: 72, y: 3, width: 26, height: 14,
+        x: 73, y: 5, width: 24, height: 14,
         sortOrder: 2,
-        defaultConfig: { theme: 'sunny-meadow', format: '12h',
-          
+        defaultConfig: { theme: 'sunny-meadow', format: '12h' },
+      },
+
+      // Row 2 — hero GIF/photo carousel dominates left; info widgets stack right
+      {
+        name: 'Kids in Action (GIFs)',
+        widgetType: 'IMAGE_CAROUSEL',
+        x: 3, y: 23, width: 50, height: 47,
+        sortOrder: 3,
+        defaultConfig: {
+          theme: 'sunny-meadow',
+          transitionEffect: 'fade',
+          intervalMs: 4500,
+          fitMode: 'cover',
+          allowGifs: true,
+          caption: 'What we are up to this week',
+          // Teachers drop in animated GIFs + photos of field trips, art
+          // projects, recess, science fairs — anything that makes kids
+          // light up when they walk past the screen.
+          urls: [],
         },
       },
       {
-        name: 'Weather',
+        name: 'Weather (cloud card)',
         widgetType: 'WEATHER',
-        x: 2, y: 20, width: 32, height: 26,
-        sortOrder: 3,
-        defaultConfig: { theme: 'sunny-meadow', location: 'Springfield',
+        x: 55, y: 23, width: 20, height: 22,
+        sortOrder: 4,
+        defaultConfig: {
+          theme: 'sunny-meadow',
+          location: 'Springfield',
           units: 'imperial',
-          
+          showForecast: false,
+          shape: 'cloud',
         },
       },
+      {
+        name: 'Countdown Badge',
+        widgetType: 'COUNTDOWN',
+        x: 77, y: 23, width: 20, height: 22,
+        sortOrder: 5,
+        defaultConfig: {
+          theme: 'sunny-meadow',
+          label: 'Field Trip in',
+          targetDate: '',
+          shape: 'badge',
+        },
+      },
+      {
+        name: "Today's Announcements",
+        widgetType: 'ANNOUNCEMENT',
+        x: 55, y: 47, width: 42, height: 23,
+        sortOrder: 6,
+        defaultConfig: {
+          theme: 'sunny-meadow',
+          message:
+            "Book Fair starts Monday! Come explore hundreds of new books in the library. Don't forget your reading log. 📚",
+          priority: 'normal',
+          shape: 'bubble',
+        },
+      },
+
+      // Row 3 — polaroid-style spotlight + calendar strip
       {
         name: 'Teacher of the Week',
         widgetType: 'STAFF_SPOTLIGHT',
-        x: 2, y: 48, width: 32, height: 40,
-        sortOrder: 4,
-        defaultConfig: { theme: 'sunny-meadow', staffName: 'Mrs. Johnson',
+        x: 3, y: 73, width: 36, height: 17,
+        sortOrder: 7,
+        defaultConfig: {
+          theme: 'sunny-meadow',
+          staffName: 'Mrs. Johnson',
           role: 'Teacher of the Week',
           bio: 'Inspiring 3rd graders every day with creativity, kindness, and a big smile!',
-          
-        },
-      },
-      {
-        name: 'Today\'s Announcements',
-        widgetType: 'ANNOUNCEMENT',
-        x: 36, y: 20, width: 42, height: 42,
-        sortOrder: 5,
-        defaultConfig: { theme: 'sunny-meadow', message: 'Book Fair starts Monday! Come explore hundreds of new books in the library. Don\'t forget to bring your reading log.',
-          priority: 'normal',
-        },
-      },
-      {
-        name: 'School Photos',
-        widgetType: 'IMAGE_CAROUSEL',
-        x: 36, y: 64, width: 42, height: 24,
-        sortOrder: 6,
-        defaultConfig: { theme: 'sunny-meadow', transitionEffect: 'fade',
-          intervalMs: 5000,
-          fitMode: 'cover',
+          shape: 'polaroid',
+          rotation: -2,
         },
       },
       {
         name: 'Upcoming Events',
         widgetType: 'CALENDAR',
-        x: 80, y: 20, width: 18, height: 42,
-        sortOrder: 7,
-        defaultConfig: { theme: 'sunny-meadow', maxEvents: 4 },
-      },
-      {
-        name: 'Countdown to Field Trip',
-        widgetType: 'COUNTDOWN',
-        x: 80, y: 64, width: 18, height: 24,
+        x: 41, y: 73, width: 56, height: 17,
         sortOrder: 8,
-        defaultConfig: { theme: 'sunny-meadow', label: 'Field Trip in',
-          targetDate: '',
+        defaultConfig: {
+          theme: 'sunny-meadow',
+          daysToShow: 7,
+          maxEvents: 4,
+          layout: 'horizontal',
         },
       },
+
+      // Ticker ribbon across the bottom edge
       {
         name: 'Rolling Ticker',
         widgetType: 'TICKER',
         x: 0, y: 91, width: 100, height: 9,
         sortOrder: 9,
-        defaultConfig: { theme: 'sunny-meadow', speed: 'medium',
+        defaultConfig: {
+          theme: 'sunny-meadow',
+          speed: 'medium',
+          direction: 'left',
           messages: [
             'Welcome back, Sunnyside Stars! ⭐',
             'Picture day is this Friday — wear your school colors!',
-            'Parent-teacher conferences next Tuesday',
+            'Parent-teacher conferences next Tuesday 🍎',
             'Lunch menu updates every Monday',
+            'Reading Challenge: 20 minutes a day keeps the boring away! 📖',
+          ],
+        },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────
+  // ★ 🌈 RAINBOW RIBBON — shape-based elementary lobby
+  // Ported from design-lab/opus/03-rainbow-ribbon.html. Every widget
+  // renders as a real SVG shape (ribbon banner, speech bubbles, cloud
+  // cutout, starburst, polaroid, pennant bunting). No rectangles.
+  // ─────────────────────────────────────────────────────
+  {
+    id: 'preset-lobby-rainbow-ribbon',
+    name: '🌈 Rainbow Ribbon',
+    description: 'Big pink ribbon banner, cloud-cutout weather, speech-bubble announcement, starburst countdown, polaroid Teacher of the Week, pennant ticker — every widget is a real shape, not a box.',
+    category: 'LOBBY',
+    orientation: 'LANDSCAPE',
+    schoolLevel: 'ELEMENTARY',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgGradient: 'linear-gradient(180deg,#BFE8FF 0%,#FFE0EC 55%,#FFD8A8 100%)',
+    bgColor: '#BFE8FF',
+    zones: [
+      {
+        name: 'School Rosette',
+        widgetType: 'LOGO',
+        x: 2, y: 2, width: 8, height: 13,
+        zIndex: 5, sortOrder: 0,
+        defaultConfig: { theme: 'rainbow-ribbon' },
+      },
+      {
+        name: 'Welcome Ribbon',
+        widgetType: 'TEXT',
+        x: 10, y: 4, width: 80, height: 18,
+        zIndex: 3, sortOrder: 1,
+        defaultConfig: {
+          theme: 'rainbow-ribbon',
+          content: 'Welcome Back, Friends!',
+          subtitle: 'Today is going to be amazing',
+        },
+      },
+      {
+        name: 'Cloud Weather',
+        widgetType: 'WEATHER',
+        x: 3, y: 28, width: 20, height: 26,
+        zIndex: 2, sortOrder: 2,
+        defaultConfig: { theme: 'rainbow-ribbon', location: 'Springfield', units: 'imperial' },
+      },
+      {
+        name: 'Sun Clock',
+        widgetType: 'CLOCK',
+        x: 77, y: 28, width: 20, height: 26,
+        zIndex: 2, sortOrder: 3,
+        defaultConfig: { theme: 'rainbow-ribbon', format: '12h' },
+      },
+      {
+        name: "Today's News Bubble",
+        widgetType: 'ANNOUNCEMENT',
+        x: 23, y: 30, width: 54, height: 22,
+        zIndex: 10, sortOrder: 4,
+        defaultConfig: {
+          theme: 'rainbow-ribbon',
+          message: 'Book Fair starts Monday! 📚 Come find your new favorite story in the library.',
+          priority: 'normal',
+        },
+      },
+      {
+        name: 'Teacher Polaroid',
+        widgetType: 'STAFF_SPOTLIGHT',
+        x: 2, y: 56, width: 30, height: 28,
+        zIndex: 3, sortOrder: 5,
+        defaultConfig: {
+          theme: 'rainbow-ribbon',
+          staffName: 'Mrs. Johnson',
+          role: 'Teacher of the Week',
+          bio: 'Inspiring 3rd graders every day!',
+        },
+      },
+      {
+        name: 'Upcoming Events Pills',
+        widgetType: 'CALENDAR',
+        x: 34, y: 56, width: 42, height: 28,
+        zIndex: 2, sortOrder: 6,
+        defaultConfig: { theme: 'rainbow-ribbon', daysToShow: 7, maxEvents: 3 },
+      },
+      {
+        name: 'Field Trip Countdown',
+        widgetType: 'COUNTDOWN',
+        x: 78, y: 55, width: 20, height: 30,
+        zIndex: 4, sortOrder: 7,
+        defaultConfig: { theme: 'rainbow-ribbon', label: 'Field Trip in', targetDate: '' },
+      },
+      {
+        name: 'Pennant Ticker',
+        widgetType: 'TICKER',
+        x: 0, y: 83, width: 100, height: 17,
+        zIndex: 6, sortOrder: 8,
+        defaultConfig: {
+          theme: 'rainbow-ribbon',
+          speed: 'medium',
+          messages: [
+            'Welcome back, Sunnyside Stars! ⭐',
+            'Picture day is this Friday — wear your school colors!',
+            'Parent-teacher conferences next Tuesday 🍎',
+            'Reading Challenge: 20 minutes a day! 📖',
+          ],
+        },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────
+  // ★ 🏆 FIELD DAY — shape-based sports/varsity elementary theme
+  // Ported from design-lab/opus/05-field-day.html. Stopwatch clock,
+  // shield weather, medal countdown, trophy announcement, jersey
+  // calendar cards, scoreboard ticker. Deep-navy stadium background.
+  // ─────────────────────────────────────────────────────
+  {
+    id: 'preset-lobby-field-day',
+    name: '🏆 Field Day',
+    description: 'Varsity pennant welcome, stopwatch clock, shield weather, medal countdown, trophy announcement scroll, jersey event cards, scoreboard ticker. Every widget is a real sports-sticker shape.',
+    category: 'LOBBY',
+    orientation: 'LANDSCAPE',
+    schoolLevel: 'ELEMENTARY',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#1E2A4A',
+    zones: [
+      {
+        name: 'Mascot Patch',
+        widgetType: 'LOGO',
+        x: 85, y: 3, width: 12, height: 18,
+        zIndex: 6, sortOrder: 0,
+        defaultConfig: { theme: 'field-day' },
+      },
+      {
+        name: 'Varsity Welcome Pennant',
+        widgetType: 'TEXT',
+        x: 7, y: 4, width: 76, height: 18,
+        zIndex: 3, sortOrder: 1,
+        defaultConfig: {
+          theme: 'field-day',
+          content: 'GO TIGERS!',
+          subtitle: 'Welcome Back Elementary Champions',
+        },
+      },
+      {
+        name: 'Field Trip Medal',
+        widgetType: 'COUNTDOWN',
+        x: 42, y: 22, width: 16, height: 26,
+        zIndex: 5, sortOrder: 2,
+        defaultConfig: { theme: 'field-day', label: 'Field Trip in', targetDate: '' },
+      },
+      {
+        name: 'Stopwatch Clock',
+        widgetType: 'CLOCK',
+        x: 4, y: 30, width: 18, height: 34,
+        zIndex: 2, sortOrder: 3,
+        defaultConfig: { theme: 'field-day', format: '12h' },
+      },
+      {
+        name: 'Shield Weather',
+        widgetType: 'WEATHER',
+        x: 78, y: 30, width: 18, height: 34,
+        zIndex: 2, sortOrder: 4,
+        defaultConfig: { theme: 'field-day', location: 'Springfield', units: 'imperial' },
+      },
+      {
+        name: 'Trophy Announcement',
+        widgetType: 'ANNOUNCEMENT',
+        x: 23, y: 44, width: 54, height: 22,
+        zIndex: 10, sortOrder: 5,
+        defaultConfig: {
+          theme: 'field-day',
+          message: 'ASSEMBLY FRIDAY — celebrate our reading champions in the gym at 2:00 PM!',
+          priority: 'normal',
+        },
+      },
+      {
+        name: 'MVP Teacher Card',
+        widgetType: 'STAFF_SPOTLIGHT',
+        x: 4, y: 68, width: 30, height: 20,
+        zIndex: 3, sortOrder: 6,
+        defaultConfig: {
+          theme: 'field-day',
+          staffName: 'Mrs. Johnson',
+          role: 'Teacher of the Week',
+          bio: 'Coaching every kid to their personal best.',
+        },
+      },
+      {
+        name: 'Jersey Event Cards',
+        widgetType: 'CALENDAR',
+        x: 36, y: 68, width: 60, height: 20,
+        zIndex: 3, sortOrder: 7,
+        defaultConfig: { theme: 'field-day', daysToShow: 7, maxEvents: 3 },
+      },
+      {
+        name: 'Scoreboard Ticker',
+        widgetType: 'TICKER',
+        x: 2, y: 89, width: 96, height: 10,
+        zIndex: 6, sortOrder: 8,
+        defaultConfig: {
+          theme: 'field-day',
+          speed: 'medium',
+          messages: [
+            'GAME DAY TOMORROW — wear your team colors!',
+            'Reading Challenge: 20 minutes a day!',
+            'Lunch menu updates every Monday',
+            'Picture day is this Friday',
           ],
         },
       },
@@ -1482,79 +1814,6 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
           staffName: 'Chef Rodriguez',
           role: 'Head Chef',
           bio: 'Making lunches everyone loves!',
-        },
-      },
-    ],
-  },
-      {
-        name: 'Menu Header',
-        widgetType: 'TEXT',
-        x: 0, y: 0, width: 70, height: 14,
-        sortOrder: 0,
-        defaultConfig: {
-          content: "Today's Cafeteria Menu 🍽️",
-          fontSize: 32,
-          alignment: 'center',
-          color: '#FFFFFF',
-          bgColor: 'transparent',
-        },
-      },
-      {
-        name: 'Next Meal Countdown',
-        widgetType: 'COUNTDOWN',
-        x: 70, y: 0, width: 30, height: 14,
-        sortOrder: 1,
-        defaultConfig: {
-          label: 'Next meal period',
-          showHours: true,
-          showDays: false,
-        },
-      },
-      {
-        name: 'Featured Menu Item',
-        widgetType: 'LUNCH_MENU',
-        x: 0, y: 15, width: 55, height: 65,
-        sortOrder: 2,
-        defaultConfig: {
-          meals: [
-            { label: "Today's Special", items: ['Update with featured item'] },
-            { label: 'Sides', items: ['Garden salad', 'Steamed broccoli', 'Fruit cup'] },
-            { label: 'Drinks', items: ['Milk', 'Juice', 'Water'] },
-          ],
-        },
-      },
-      {
-        name: 'Food Photo',
-        widgetType: 'IMAGE_CAROUSEL',
-        x: 56, y: 15, width: 44, height: 44,
-        sortOrder: 3,
-        defaultConfig: {
-          transitionEffect: 'fade',
-          intervalMs: 5000,
-          fitMode: 'cover',
-        },
-      },
-      {
-        name: 'Allergen Legend',
-        widgetType: 'RICH_TEXT',
-        x: 56, y: 60, width: 44, height: 20,
-        sortOrder: 4,
-        defaultConfig: {
-          html: '<p style="color:#fff;font-size:0.85rem;"><strong>Allergen Legend:</strong> 🥜 Peanuts &nbsp; 🌾 Gluten &nbsp; 🥛 Dairy &nbsp; 🥚 Eggs &nbsp; 🐟 Fish &nbsp; 🫘 Soy</p><p style="color:#ccc;font-size:0.8rem;">Full allergen info available at the serving counter.</p>',
-        },
-      },
-      {
-        name: 'Nutrition Ticker',
-        widgetType: 'TICKER',
-        x: 0, y: 81, width: 100, height: 12,
-        sortOrder: 5,
-        defaultConfig: {
-          speed: 'slow',
-          messages: [
-            'Eat the rainbow! Choose colorful fruits and vegetables every day.',
-            'Low-sodium options available — ask a cafeteria staff member',
-            'Free/reduced meal applications available in the main office',
-          ],
         },
       },
     ],

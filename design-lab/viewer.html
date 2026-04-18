@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Preview</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  html, body { margin: 0; padding: 0; background: #0f172a; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; color: #e2e8f0; }
+  .bar { position: fixed; top: 0; left: 0; right: 0; height: 40px; background: rgba(15,23,42,0.95); backdrop-filter: blur(8px); display: flex; align-items: center; gap: 16px; padding: 0 16px; z-index: 10; border-bottom: 1px solid #1e293b; }
+  .bar a { color: #a5b4fc; text-decoration: none; font-size: 13px; font-weight: 600; }
+  .bar a:hover { color: #fff; }
+  .bar .title { color: #fff; font-size: 13px; font-weight: 700; }
+  .bar .fill { flex: 1; }
+  /* The stage sits below the toolbar. We flex-center a
+     fixed-dimension iframe (3840x2160) and shrink IT with a CSS
+     transform — the mockup inside always thinks it's at full 4K,
+     so its own scaling code runs at scale=1 and we handle fit-to-
+     window once, out here. */
+  .stage { position: absolute; inset: 40px 0 0 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  iframe#frame { border: 0; width: 3840px; height: 2160px; flex: 0 0 auto; transform-origin: center center; background: #000; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+  .err { color: #f87171; padding: 24px; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <a href="index.html">← all mockups</a>
+  <span class="title" id="title">—</span>
+  <span class="fill"></span>
+  <span id="scale" style="color:#64748b;font-size:12px;"></span>
+  <a id="raw" href="#" target="_blank">open raw file ↗</a>
+</div>
+<div class="stage"><iframe id="frame"></iframe></div>
+<script>
+  const qs = new URLSearchParams(location.search);
+  const file = qs.get('file') || '';
+  if (!file || file.includes('..') || !file.endsWith('.html')) {
+    document.body.innerHTML = '<div class="err">Missing or invalid ?file= param. <a href="index.html">Back to bake-off</a></div>';
+  } else {
+    const frame = document.getElementById('frame');
+    frame.src = file;
+    document.getElementById('raw').href = file;
+    document.getElementById('title').textContent = file;
+    const scaleLabel = document.getElementById('scale');
+    function fit() {
+      const availW = window.innerWidth - 32;
+      const availH = window.innerHeight - 40 - 32;
+      const k = Math.min(availW / 3840, availH / 2160);
+      frame.style.transform = `scale(${k})`;
+      scaleLabel.textContent = `${Math.round(k * 100)}% scale`;
+    }
+    window.addEventListener('resize', fit);
+    fit();
+    // Re-fit a couple of times as fonts load and the iframe repaints.
+    setTimeout(fit, 100);
+    setTimeout(fit, 600);
+    setTimeout(fit, 1500);
+  }
+</script>
+</body>
+</html>

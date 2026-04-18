@@ -1,0 +1,307 @@
+<!--
+  CONCEPT 01 — STORYBOOK
+  An open picture book spread. Illustrated borders, page-corner peel, serif display type,
+  soft pastel palette, gentle hand-drawn underlines. Kids love it because it feels like
+  story time: every widget looks like a page illustration, not a tech dashboard.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Storybook — Lobby 4K</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;0,9..144,900;1,9..144,700&family=Caveat:wght@500;700&family=Quicksand:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#1a1212;overflow:hidden;font-family:'Quicksand',system-ui,sans-serif;}
+  .viewport{position:fixed;inset:0;display:grid;place-items:center;}
+  .stage{width:3840px;height:2160px;position:relative;transform-origin:center center;background:
+    radial-gradient(ellipse at 30% 20%, #fff7e6 0%, #fde8c9 40%, #f6d6a6 100%);
+    box-shadow:0 80px 200px rgba(0,0,0,.6);
+    overflow:hidden;
+  }
+  /* Book page fold down the middle */
+  .spine{position:absolute;left:50%;top:0;width:80px;height:100%;transform:translateX(-50%);
+    background:linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(90,50,20,.25) 45%, rgba(70,35,10,.45) 50%, rgba(90,50,20,.25) 55%, rgba(0,0,0,0) 100%);
+    pointer-events:none;}
+  /* Decorative illustrated border */
+  .border-art{position:absolute;inset:40px;border-radius:60px;border:12px double #a66a2e;
+    box-shadow:inset 0 0 0 18px #fff4dc, inset 0 0 60px rgba(150,80,20,.15);
+    pointer-events:none;}
+  .corner{position:absolute;width:260px;height:260px;}
+  .corner svg{width:100%;height:100%;}
+  .tl{top:60px;left:60px;}
+  .tr{top:60px;right:60px;transform:scaleX(-1);}
+  .bl{bottom:60px;left:60px;transform:scaleY(-1);}
+  .br{bottom:60px;right:60px;transform:scale(-1,-1);}
+
+  /* Page-corner peel */
+  .peel{position:absolute;right:0;bottom:0;width:340px;height:340px;}
+
+  /* Headline banner */
+  .banner{position:absolute;top:110px;left:50%;transform:translateX(-50%);width:2400px;text-align:center;}
+  .banner h1{font-family:'Fraunces',serif;font-weight:900;font-size:180px;color:#6b3410;margin:0;line-height:.95;
+    text-shadow:0 6px 0 #f2c98a, 0 14px 40px rgba(90,40,10,.25);}
+  .banner .sub{font-family:'Caveat',cursive;font-size:90px;color:#b8531a;margin-top:10px;}
+  .underline{display:block;margin:10px auto 0;width:1400px;height:40px;}
+
+  /* Clock — vintage pocket watch */
+  .clock{position:absolute;top:260px;left:200px;width:520px;}
+  .clock svg{width:100%;filter:drop-shadow(0 20px 30px rgba(80,40,10,.35));}
+  .clock .label{font-family:'Caveat',cursive;font-size:64px;color:#6b3410;text-align:center;margin-top:-20px;}
+
+  /* Weather — sun with cloud */
+  .weather{position:absolute;top:260px;right:200px;width:520px;text-align:center;}
+  .weather svg{width:100%;filter:drop-shadow(0 20px 30px rgba(80,40,10,.3));}
+  .weather .t{font-family:'Fraunces',serif;font-weight:900;font-size:120px;color:#d48a1c;margin-top:-30px;}
+  .weather .c{font-family:'Caveat',cursive;font-size:60px;color:#6b3410;margin-top:-20px;}
+
+  /* Hero illustration - pop-up scene */
+  .hero{position:absolute;top:700px;left:200px;width:1700px;height:900px;}
+  .hero-frame{position:absolute;inset:0;background:
+    linear-gradient(180deg,#bfe5ff 0%, #9fd3f5 55%, #c8ecc0 55%, #a9dc99 100%);
+    border-radius:40px;border:10px solid #6b3410;box-shadow:0 30px 60px rgba(80,40,10,.35), inset 0 0 0 6px #fff4dc;
+    overflow:hidden;}
+  .hero-label{position:absolute;top:-40px;left:50%;transform:translateX(-50%) rotate(-2deg);
+    background:#fff4dc;border:8px solid #6b3410;border-radius:20px;padding:18px 50px;
+    font-family:'Fraunces',serif;font-weight:900;font-size:56px;color:#6b3410;box-shadow:0 8px 0 #6b3410;}
+
+  /* Teacher pop-up book */
+  .teacher{position:absolute;top:720px;right:200px;width:1540px;height:460px;
+    background:#fff4dc;border-radius:40px;border:10px solid #6b3410;box-shadow:0 30px 60px rgba(80,40,10,.35), inset 0 0 0 6px #f9e0ae;
+    padding:40px;box-sizing:border-box;display:flex;gap:40px;align-items:center;}
+  .teacher .portrait{flex:0 0 380px;height:380px;border-radius:30px;background:
+    radial-gradient(circle at 50% 35%, #ffd6a0 0%, #f2a06c 55%, #c56a2a 100%);
+    border:8px solid #6b3410;position:relative;overflow:hidden;box-shadow:0 12px 0 #6b3410;}
+  .teacher .portrait svg{position:absolute;inset:0;width:100%;height:100%;}
+  .teacher .txt h2{font-family:'Fraunces',serif;font-weight:900;font-size:96px;color:#6b3410;margin:0 0 10px;line-height:1;}
+  .teacher .txt .name{font-family:'Caveat',cursive;font-size:120px;color:#b8531a;margin:0;line-height:1;}
+  .teacher .txt .quote{font-family:'Quicksand',sans-serif;font-weight:500;font-size:48px;color:#6b3410;margin-top:20px;max-width:900px;}
+
+  /* Announcements page */
+  .anno{position:absolute;top:1220px;right:200px;width:1540px;height:380px;
+    background:#fff4dc;border-radius:40px;border:10px solid #6b3410;box-shadow:0 30px 60px rgba(80,40,10,.35);
+    padding:40px 60px;box-sizing:border-box;}
+  .anno h3{font-family:'Fraunces',serif;font-weight:900;font-size:80px;color:#6b3410;margin:0 0 10px;}
+  .anno h3 .star{color:#e0a12b;}
+  .anno p{font-family:'Quicksand',sans-serif;font-weight:500;font-size:52px;color:#5a3818;margin:0;line-height:1.25;}
+  .anno .date{font-family:'Caveat',cursive;font-size:64px;color:#b8531a;margin-top:14px;}
+
+  /* Events list — bottom left */
+  .events{position:absolute;bottom:240px;left:200px;width:1700px;height:420px;
+    background:#fff4dc;border-radius:40px;border:10px solid #6b3410;box-shadow:0 30px 60px rgba(80,40,10,.35);
+    padding:30px 50px;box-sizing:border-box;display:flex;gap:40px;}
+  .events .col{flex:1;}
+  .events h3{font-family:'Fraunces',serif;font-weight:900;font-size:64px;color:#6b3410;margin:0 0 14px;}
+  .events .ev{display:flex;gap:20px;align-items:center;margin-bottom:18px;}
+  .events .ev .bullet{width:64px;height:64px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;
+    font-family:'Fraunces',serif;font-weight:900;color:#fff4dc;font-size:36px;box-shadow:0 6px 0 rgba(0,0,0,.15);}
+  .events .ev .meta{font-family:'Caveat',cursive;font-size:48px;color:#b8531a;line-height:1;}
+  .events .ev .name{font-family:'Quicksand',sans-serif;font-weight:700;font-size:44px;color:#5a3818;line-height:1.1;}
+
+  /* Countdown — hourglass scene */
+  .countdown{position:absolute;bottom:240px;right:200px;width:520px;text-align:center;}
+  .countdown .num{font-family:'Fraunces',serif;font-weight:900;font-size:280px;color:#c23b2e;line-height:1;
+    text-shadow:0 8px 0 #6b3410;}
+  .countdown .lbl{font-family:'Caveat',cursive;font-size:72px;color:#6b3410;margin-top:-10px;}
+
+  /* Ticker — ribbon at bottom */
+  .ticker{position:absolute;bottom:80px;left:40px;right:40px;height:120px;
+    background:#6b3410;border-radius:60px;display:flex;align-items:center;padding:0 80px;
+    box-shadow:0 12px 30px rgba(0,0,0,.3), inset 0 0 0 6px #a66a2e;}
+  .ticker .tag{background:#e0a12b;color:#6b3410;font-family:'Fraunces',serif;font-weight:900;font-size:48px;
+    padding:10px 30px;border-radius:40px;margin-right:40px;box-shadow:0 4px 0 rgba(0,0,0,.2);}
+  .ticker .msg{font-family:'Quicksand',sans-serif;font-weight:700;font-size:52px;color:#fff4dc;}
+
+  /* Logo — top center crest */
+  .logo{position:absolute;top:40px;left:50%;transform:translateX(-50%);width:260px;height:260px;z-index:5;}
+</style>
+</head>
+<body>
+<div class="viewport">
+<div class="stage" id="stage">
+
+  <div class="border-art"></div>
+  <div class="spine"></div>
+
+  <!-- Corner flourishes -->
+  <div class="corner tl"><svg viewBox="0 0 260 260"><path d="M20 240 Q20 80 100 60 T240 40" stroke="#a66a2e" stroke-width="6" fill="none"/><circle cx="80" cy="80" r="14" fill="#c23b2e"/><circle cx="140" cy="50" r="10" fill="#e0a12b"/><path d="M40 180 q20 -30 50 -20 q-10 20 -30 25 q-15 3 -20 -5z" fill="#7aa96b"/><path d="M60 120 q15 -25 40 -15 q-8 18 -25 22 q-12 2 -15 -7z" fill="#a9dc99"/></svg></div>
+  <div class="corner tr"><svg viewBox="0 0 260 260"><path d="M20 240 Q20 80 100 60 T240 40" stroke="#a66a2e" stroke-width="6" fill="none"/><circle cx="80" cy="80" r="14" fill="#c23b2e"/><circle cx="140" cy="50" r="10" fill="#e0a12b"/><path d="M40 180 q20 -30 50 -20 q-10 20 -30 25 q-15 3 -20 -5z" fill="#7aa96b"/></svg></div>
+  <div class="corner bl"><svg viewBox="0 0 260 260"><path d="M20 240 Q20 80 100 60 T240 40" stroke="#a66a2e" stroke-width="6" fill="none"/><circle cx="80" cy="80" r="14" fill="#c23b2e"/></svg></div>
+  <div class="corner br"><svg viewBox="0 0 260 260"><path d="M20 240 Q20 80 100 60 T240 40" stroke="#a66a2e" stroke-width="6" fill="none"/><circle cx="80" cy="80" r="14" fill="#e0a12b"/></svg></div>
+
+  <!-- Page corner peel -->
+  <svg class="peel" viewBox="0 0 340 340">
+    <defs><linearGradient id="peelg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff4dc"/><stop offset="1" stop-color="#e6c98a"/></linearGradient></defs>
+    <path d="M340 340 L340 100 Q200 140 100 340 Z" fill="url(#peelg)" stroke="#a66a2e" stroke-width="4"/>
+    <path d="M340 100 Q240 120 180 220 Q220 180 340 160 Z" fill="#d9b87a" opacity=".5"/>
+  </svg>
+
+  <!-- Logo crest -->
+  <svg class="logo" viewBox="0 0 260 260">
+    <circle cx="130" cy="130" r="118" fill="#c23b2e" stroke="#6b3410" stroke-width="10"/>
+    <circle cx="130" cy="130" r="96" fill="#fff4dc"/>
+    <text x="130" y="120" text-anchor="middle" font-family="Fraunces" font-weight="900" font-size="46" fill="#6b3410">OAK</text>
+    <text x="130" y="170" text-anchor="middle" font-family="Fraunces" font-weight="900" font-size="34" fill="#b8531a">ELEMENTARY</text>
+    <path d="M80 190 Q130 210 180 190" stroke="#6b3410" stroke-width="6" fill="none"/>
+  </svg>
+
+  <!-- Banner -->
+  <div class="banner">
+    <h1>Once Upon a Morning…</h1>
+    <div class="sub">Welcome back, storytellers of Oak Elementary!</div>
+    <svg class="underline" viewBox="0 0 1400 40" preserveAspectRatio="none">
+      <path d="M10 20 Q200 0 400 22 T800 20 T1200 22 T1390 20" stroke="#c23b2e" stroke-width="8" fill="none" stroke-linecap="round"/>
+    </svg>
+  </div>
+
+  <!-- Clock pocket watch -->
+  <div class="clock">
+    <svg viewBox="0 0 520 520">
+      <circle cx="260" cy="270" r="230" fill="#f2c98a" stroke="#6b3410" stroke-width="14"/>
+      <circle cx="260" cy="270" r="200" fill="#fff4dc" stroke="#a66a2e" stroke-width="6"/>
+      <circle cx="260" cy="40" r="24" fill="#6b3410"/>
+      <rect x="250" y="20" width="20" height="20" fill="#6b3410"/>
+      <text x="260" y="285" text-anchor="middle" font-family="Fraunces" font-weight="900" font-size="130" fill="#6b3410">7:53</text>
+      <text x="260" y="360" text-anchor="middle" font-family="Caveat" font-size="60" fill="#b8531a">in the morning</text>
+      <g stroke="#6b3410" stroke-width="4">
+        <line x1="260" y1="80" x2="260" y2="100"/><line x1="260" y1="440" x2="260" y2="460"/>
+        <line x1="70" y1="270" x2="90" y2="270"/><line x1="430" y1="270" x2="450" y2="270"/>
+      </g>
+    </svg>
+    <div class="label">~ tick, tock ~</div>
+  </div>
+
+  <!-- Weather -->
+  <div class="weather">
+    <svg viewBox="0 0 520 400">
+      <g>
+        <circle cx="260" cy="200" r="130" fill="#ffd34d" stroke="#6b3410" stroke-width="10"/>
+        <g stroke="#6b3410" stroke-width="10" stroke-linecap="round">
+          <line x1="260" y1="30" x2="260" y2="70"/><line x1="260" y1="330" x2="260" y2="370"/>
+          <line x1="90" y1="200" x2="130" y2="200"/><line x1="390" y1="200" x2="430" y2="200"/>
+          <line x1="130" y1="70" x2="160" y2="100"/><line x1="360" y1="100" x2="390" y2="70"/>
+          <line x1="130" y1="330" x2="160" y2="300"/><line x1="360" y1="300" x2="390" y2="330"/>
+        </g>
+        <circle cx="230" cy="190" r="8" fill="#6b3410"/><circle cx="290" cy="190" r="8" fill="#6b3410"/>
+        <path d="M220 220 Q260 250 300 220" stroke="#6b3410" stroke-width="8" fill="none" stroke-linecap="round"/>
+      </g>
+      <path d="M340 260 q30 -30 70 -10 q20 -5 30 10 q20 5 15 25 q-5 15 -25 15 l-90 -5 q-15 -5 -10 -20 q0 -15 10 -15z" fill="#fff4dc" stroke="#6b3410" stroke-width="6"/>
+    </svg>
+    <div class="t">46°F</div>
+    <div class="c">Sunny &amp; Clear</div>
+  </div>
+
+  <!-- Hero illustration -->
+  <div class="hero">
+    <div class="hero-frame">
+      <!-- rolling hills scene -->
+      <svg viewBox="0 0 1700 900" width="100%" height="100%" preserveAspectRatio="none">
+        <circle cx="1400" cy="180" r="100" fill="#ffd34d" stroke="#6b3410" stroke-width="8"/>
+        <path d="M0 600 Q400 420 800 550 T1700 520 L1700 900 L0 900 Z" fill="#7aa96b"/>
+        <path d="M0 700 Q500 600 900 680 T1700 660 L1700 900 L0 900 Z" fill="#5a8d4e"/>
+        <!-- tree -->
+        <rect x="340" y="540" width="36" height="120" fill="#6b3410"/>
+        <circle cx="358" cy="520" r="90" fill="#7aa96b" stroke="#6b3410" stroke-width="6"/>
+        <circle cx="320" cy="500" r="60" fill="#a9dc99" stroke="#6b3410" stroke-width="6"/>
+        <!-- schoolhouse -->
+        <rect x="950" y="500" width="340" height="220" fill="#c23b2e" stroke="#6b3410" stroke-width="8"/>
+        <polygon points="950,500 1120,380 1290,500" fill="#8a2a20" stroke="#6b3410" stroke-width="8"/>
+        <rect x="1090" y="580" width="60" height="140" fill="#6b3410"/>
+        <rect x="990" y="560" width="60" height="60" fill="#fff4dc" stroke="#6b3410" stroke-width="4"/>
+        <rect x="1190" y="560" width="60" height="60" fill="#fff4dc" stroke="#6b3410" stroke-width="4"/>
+        <!-- kids -->
+        <g transform="translate(600,620)">
+          <circle cx="0" cy="0" r="40" fill="#ffd6a0" stroke="#6b3410" stroke-width="5"/>
+          <rect x="-35" y="40" width="70" height="80" fill="#4a90e2" stroke="#6b3410" stroke-width="5"/>
+          <circle cx="-10" cy="-5" r="5" fill="#6b3410"/><circle cx="10" cy="-5" r="5" fill="#6b3410"/>
+          <path d="M-12 15 Q0 25 12 15" stroke="#6b3410" stroke-width="4" fill="none"/>
+        </g>
+        <g transform="translate(720,640)">
+          <circle cx="0" cy="0" r="36" fill="#c56a2a" stroke="#6b3410" stroke-width="5"/>
+          <rect x="-32" y="36" width="64" height="72" fill="#e0a12b" stroke="#6b3410" stroke-width="5"/>
+          <circle cx="-10" cy="-5" r="4" fill="#fff"/><circle cx="10" cy="-5" r="4" fill="#fff"/>
+          <path d="M-10 12 Q0 22 10 12" stroke="#6b3410" stroke-width="4" fill="none"/>
+        </g>
+        <!-- book in foreground -->
+        <g transform="translate(150,700)">
+          <rect x="0" y="0" width="280" height="160" fill="#fff4dc" stroke="#6b3410" stroke-width="6"/>
+          <line x1="140" y1="0" x2="140" y2="160" stroke="#6b3410" stroke-width="4"/>
+          <line x1="20" y1="40" x2="120" y2="40" stroke="#a66a2e" stroke-width="3"/>
+          <line x1="20" y1="70" x2="120" y2="70" stroke="#a66a2e" stroke-width="3"/>
+          <line x1="160" y1="40" x2="260" y2="40" stroke="#a66a2e" stroke-width="3"/>
+          <line x1="160" y1="70" x2="260" y2="70" stroke="#a66a2e" stroke-width="3"/>
+        </g>
+      </svg>
+    </div>
+    <div class="hero-label">Chapter One: A New Day Begins</div>
+  </div>
+
+  <!-- Teacher of the week -->
+  <div class="teacher">
+    <div class="portrait">
+      <svg viewBox="0 0 380 380">
+        <circle cx="190" cy="160" r="80" fill="#ffd6a0" stroke="#6b3410" stroke-width="6"/>
+        <path d="M110 160 Q110 80 190 80 Q270 80 270 160 Q270 140 250 120 Q220 110 190 110 Q160 110 130 120 Q110 140 110 160" fill="#6b3410"/>
+        <circle cx="165" cy="160" r="7" fill="#6b3410"/><circle cx="215" cy="160" r="7" fill="#6b3410"/>
+        <path d="M165 195 Q190 215 215 195" stroke="#6b3410" stroke-width="5" fill="none" stroke-linecap="round"/>
+        <rect x="110" y="250" width="160" height="130" fill="#c23b2e" stroke="#6b3410" stroke-width="6"/>
+        <circle cx="190" cy="260" r="14" fill="#fff4dc" stroke="#6b3410" stroke-width="4"/>
+      </svg>
+    </div>
+    <div class="txt">
+      <h2>Teacher of the Week</h2>
+      <p class="name">Mrs. Johnson</p>
+      <p class="quote">"Every morning is a new page — let's write a great one together." Mrs. J teaches 3rd grade and keeps a jar of dragon stickers on her desk.</p>
+    </div>
+  </div>
+
+  <!-- Announcements -->
+  <div class="anno">
+    <h3><span class="star">★</span> Today's Story</h3>
+    <p>The Book Fair opens today in the library! Bring your reading list and explore 200+ new adventures waiting on the shelves.</p>
+    <div class="date">~ April 18 — Open until 3:30 pm ~</div>
+  </div>
+
+  <!-- Events -->
+  <div class="events">
+    <div class="col">
+      <h3>This Week's Chapters</h3>
+      <div class="ev"><div class="bullet" style="background:#c23b2e">M</div><div><div class="meta">Mon · 8:30 am</div><div class="name">Pajama Day Reading Hour</div></div></div>
+      <div class="ev"><div class="bullet" style="background:#e0a12b">W</div><div><div class="meta">Wed · 10:00 am</div><div class="name">Principal's Story Time</div></div></div>
+      <div class="ev"><div class="bullet" style="background:#7aa96b">F</div><div><div class="meta">Fri · 1:30 pm</div><div class="name">Author Visit: K. Lopez</div></div></div>
+    </div>
+    <div class="col">
+      <h3>Coming Soon</h3>
+      <div class="ev"><div class="bullet" style="background:#4a90e2">★</div><div><div class="meta">Apr 30</div><div class="name">Spring Field Trip — Zoo!</div></div></div>
+      <div class="ev"><div class="bullet" style="background:#b8531a">♪</div><div><div class="meta">May 8</div><div class="name">Spring Concert — Gym</div></div></div>
+      <div class="ev"><div class="bullet" style="background:#8a5ab8">◆</div><div><div class="meta">May 15</div><div class="name">Art Show Opening</div></div></div>
+    </div>
+  </div>
+
+  <!-- Countdown -->
+  <div class="countdown">
+    <div style="font-family:'Caveat',cursive;font-size:72px;color:#b8531a;">Field Trip in</div>
+    <div class="num">12</div>
+    <div class="lbl">days — pack your lunch!</div>
+  </div>
+
+  <!-- Ticker -->
+  <div class="ticker">
+    <div class="tag">★ TODAY ★</div>
+    <div class="msg">Lost &amp; Found cleanout Friday — check by the office for hats, jackets, and one mysterious yellow boot!</div>
+  </div>
+
+</div></div>
+
+<script>
+  // Fit the 3840x2160 stage to the viewport
+  function fit(){
+    const s=document.getElementById('stage');
+    const sx=window.innerWidth/3840, sy=window.innerHeight/2160;
+    const k=Math.min(sx,sy);
+    s.style.transform='scale('+k+')';
+  }
+  window.addEventListener('resize',fit);fit();
+</script>
+</body></html>

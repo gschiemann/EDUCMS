@@ -721,13 +721,28 @@ function AssetPickerField({ label, value, onChange, kind }: { label: string; val
             placeholder="https://… or pick from library"
             className="w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
           />
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            className="px-2 py-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded border border-indigo-100 self-start"
-          >
-            Browse library
-          </button>
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => setOpen(true)}
+              className="px-2 py-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded border border-indigo-100"
+            >
+              Browse library
+            </button>
+            {/* Clear — reverts the widget to its default illustrated
+                placeholder. Teachers kept getting stuck with a photo
+                they couldn't remove; the tiny × corner badge wasn't
+                discoverable enough, so this is the explicit escape. */}
+            {value && (
+              <button
+                type="button"
+                onClick={() => onChange('')}
+                className="px-2 py-1 text-[10px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded border border-rose-100"
+              >
+                Remove photo
+              </button>
+            )}
+          </div>
         </div>
       </div>
       {open && (

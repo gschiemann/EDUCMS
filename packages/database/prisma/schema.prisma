@@ -412,6 +412,11 @@ model Template {
   description  String?
   category     String         @default("CUSTOM")
   orientation  String         @default("LANDSCAPE")
+  // Filter chip on /templates — 'ELEMENTARY' | 'MIDDLE' | 'HIGH' | 'UNIVERSAL'.
+  // Stored as a free string so we don't need a DB enum migration each time
+  // a new level (PRE_K, ADULT_ED, etc.) comes along. Defaults to UNIVERSAL
+  // so existing templates stay visible under every filter.
+  schoolLevel  String         @default("UNIVERSAL") @map("school_level")
   screenWidth  Int            @default(1920) @map("screen_width")
   screenHeight Int            @default(1080) @map("screen_height")
   isSystem     Boolean        @default(false) @map("is_system")

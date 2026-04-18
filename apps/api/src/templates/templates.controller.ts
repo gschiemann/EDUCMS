@@ -199,6 +199,7 @@ export class TemplatesController {
           description: preset.description,
           category: preset.category,
           orientation: preset.orientation,
+          schoolLevel: preset.schoolLevel ?? 'UNIVERSAL',
           screenWidth: preset.screenWidth || (preset.orientation === 'PORTRAIT' ? 2160 : 3840),
           screenHeight: preset.screenHeight || (preset.orientation === 'PORTRAIT' ? 3840 : 2160),
           // Carry themed background from preset (optional — most presets leave it null)

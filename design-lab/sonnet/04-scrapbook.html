@@ -1,0 +1,370 @@
+<!--
+  SCRAPBOOK: The entire screen is a cork bulletin board covered in overlapping
+  polaroids with tape, sticky notes, washi-tape strips, rotated index cards,
+  torn paper edges, and Sharpie-labeled arrows — like a teacher went
+  absolutely wild with craft supplies at 2 AM.
+  Kids love it because it looks exactly like the classroom wall they made
+  together, and the slight rotations and tape make it feel handmade and real.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scrapbook Lobby — Elementary School</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Patrick+Hand&family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a0a00;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; overflow: hidden;
+  }
+  .viewport-wrapper {
+    width: 100vw; height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .stage {
+    width: 3840px; height: 2160px;
+    transform-origin: center center;
+    position: relative; overflow: hidden;
+    /* Cork board texture */
+    background-color: #c8853a;
+    background-image:
+      radial-gradient(ellipse 60% 40% at 30% 40%, #d4933a 0%, transparent 60%),
+      radial-gradient(ellipse 40% 60% at 70% 60%, #b87030 0%, transparent 50%);
+  }
+
+  /* Cork grain overlay */
+  .stage::before {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      repeating-linear-gradient(
+        102deg,
+        transparent 0px, transparent 8px,
+        rgba(0,0,0,0.04) 8px, rgba(0,0,0,0.04) 9px
+      ),
+      repeating-linear-gradient(
+        168deg,
+        transparent 0px, transparent 12px,
+        rgba(255,255,255,0.03) 12px, rgba(255,255,255,0.03) 13px
+      );
+    pointer-events: none; z-index: 0;
+  }
+
+  /* Cork board wooden frame */
+  .stage::after {
+    content: '';
+    position: absolute; inset: 0;
+    border: 50px solid #7a4010;
+    box-shadow:
+      inset 0 0 20px rgba(0,0,0,0.3),
+      0 0 80px rgba(0,0,0,0.8);
+    z-index: 100; pointer-events: none;
+  }
+
+  /* Shared card base */
+  .card {
+    position: absolute;
+    background: #fff;
+    z-index: 20;
+  }
+
+  /* Polaroid style */
+  .polaroid {
+    position: absolute;
+    background: #fff;
+    padding: 24px 24px 80px 24px;
+    z-index: 20;
+    box-shadow: 4px 6px 20px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.2);
+  }
+  .polaroid-photo {
+    width: 100%; aspect-ratio: 1;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 80px;
+  }
+  .polaroid-label {
+    position: absolute;
+    bottom: 20px; left: 0; right: 0;
+    text-align: center;
+    font-family: 'Caveat', cursive;
+    font-size: 40px; font-weight: 600;
+    color: #333;
+  }
+
+  /* Tape strip */
+  .tape {
+    position: absolute;
+    background: rgba(240, 220, 160, 0.65);
+    z-index: 30;
+    border-top: 1px solid rgba(200,170,80,0.4);
+    border-bottom: 1px solid rgba(200,170,80,0.4);
+  }
+
+  /* Sticky note */
+  .sticky {
+    position: absolute;
+    z-index: 25;
+    padding: 24px;
+    box-shadow: 3px 5px 16px rgba(0,0,0,0.25);
+  }
+
+  /* Index card */
+  .index-card {
+    position: absolute;
+    background: #fffdf5;
+    border-top: 4px solid #f0b0c0;
+    z-index: 22;
+    padding: 20px 24px;
+    box-shadow: 3px 5px 16px rgba(0,0,0,0.25);
+  }
+  .index-card::before {
+    content: '';
+    position: absolute;
+    left: 50px; top: 0; bottom: 0;
+    width: 3px;
+    background: rgba(255,100,100,0.3);
+  }
+
+  /* Washi tape strips */
+  .washi { position: absolute; z-index: 28; opacity: 0.7; }
+
+  /* Paper torn edge (SVG) */
+
+  /* Push pin */
+  .pin {
+    position: absolute;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    z-index: 40;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+    transform: translate(-50%, -50%);
+  }
+
+  /* Sharpie arrow / label */
+  .sharpie-label {
+    position: absolute;
+    font-family: 'Caveat', cursive;
+    font-size: 44px; font-weight: 700;
+    color: #222;
+    z-index: 35;
+    line-height: 1;
+  }
+</style>
+</head>
+<body>
+<div class="viewport-wrapper">
+<div class="stage" id="stage">
+
+  <!-- ===== HEADER BANNER — torn paper edge + washi tape ===== -->
+  <!-- Big torn paper banner -->
+  <div style="position:absolute;top:55px;left:55px;right:55px;z-index:25">
+    <svg width="3730" height="230" viewBox="0 0 3730 230" style="display:block">
+      <!-- Main paper base -->
+      <rect x="0" y="0" width="3730" height="200" fill="#ffd6e0"/>
+      <!-- Torn bottom edge -->
+      <path d="M0 200 Q40 185 80 195 Q120 205 170 192 Q220 180 280 196 Q340 212 410 198 Q480 185 550 200 Q620 215 700 200 Q780 185 860 198 Q940 210 1020 195 Q1100 180 1180 196 Q1260 212 1350 198 Q1440 185 1530 200 Q1620 215 1720 198 Q1820 182 1920 196 Q2020 210 2120 198 Q2220 185 2320 200 Q2420 215 2530 198 Q2640 182 2750 196 Q2860 210 2970 195 Q3080 180 3190 198 Q3300 215 3400 200 Q3500 185 3600 198 Q3665 208 3730 195 L3730 230 L0 230 Z" fill="#ffd6e0"/>
+    </svg>
+    <!-- Washi tape strips holding banner -->
+    <div class="washi" style="top:-24px;left:180px;width:180px;height:48px;background:repeating-linear-gradient(45deg,#ff9ec8,#ff9ec8 8px,#ffbcd8 8px,#ffbcd8 16px);transform:rotate(-2deg)"></div>
+    <div class="washi" style="top:-24px;left:1800px;width:180px;height:48px;background:repeating-linear-gradient(-45deg,#a0c8ff,#a0c8ff 8px,#c0d8ff 8px,#c0d8ff 16px);transform:rotate(3deg)"></div>
+    <div class="washi" style="top:-24px;right:200px;width:180px;height:48px;background:repeating-linear-gradient(45deg,#c8f0a0,#c8f0a0 8px,#d8f8b0 8px,#d8f8b0 16px);transform:rotate(-1deg)"></div>
+    <!-- Title text -->
+    <div style="position:absolute;top:10px;left:0;right:0;text-align:center;font-family:'Fredoka',sans-serif;font-size:140px;font-weight:700;color:#c0005a;text-shadow:4px 4px 0 rgba(255,255,255,0.5),6px 6px 12px rgba(0,0,0,0.15)">
+      🎒 Good Morning, Meadow Elementary! ✏️
+    </div>
+  </div>
+
+  <!-- Push pins on banner -->
+  <div class="pin" style="top:90px;left:220px;background:#ff3366"></div>
+  <div class="pin" style="top:90px;left:1860px;background:#3399ff"></div>
+  <div class="pin" style="top:90px;right:220px;background:#ffcc00"></div>
+
+  <!-- ===== CLOCK — sticky note ===== -->
+  <div class="sticky" style="top:340px;left:80px;width:420px;height:360px;background:#fff9a0;transform:rotate(-4deg)">
+    <!-- Tape strip holding it -->
+    <div class="washi" style="top:-22px;left:50%;transform:translateX(-50%) rotate(-1deg);width:140px;height:44px;background:repeating-linear-gradient(90deg,#ffd0e8,#ffd0e8 8px,#ffe8f4 8px,#ffe8f4 16px)"></div>
+    <div style="font-family:'Caveat',cursive;font-size:46px;font-weight:700;color:#aa8800;margin-bottom:16px">⏰ Right now...</div>
+    <div style="font-family:'Caveat',cursive;font-size:120px;font-weight:700;color:#333;line-height:1">7:53</div>
+    <div style="font-family:'Caveat',cursive;font-size:52px;color:#666;margin-top:4px">AM</div>
+    <div style="font-family:'Patrick Hand',cursive;font-size:38px;color:#888;margin-top:8px">☀️ Sat, April 18</div>
+    <div class="pin" style="top:12px;left:50%;background:#ff6600"></div>
+  </div>
+
+  <!-- ===== WEATHER — index card with washi tape ===== -->
+  <div class="index-card" style="top:320px;left:600px;width:420px;height:320px;transform:rotate(3deg)">
+    <div class="washi" style="top:-20px;left:50%;transform:translateX(-50%) rotate(2deg);width:120px;height:40px;background:repeating-linear-gradient(-45deg,#80d0ff,#80d0ff 8px,#a0e0ff 8px,#a0e0ff 16px)"></div>
+    <div style="font-family:'Patrick Hand',cursive;font-size:44px;color:#0060aa;margin-bottom:12px">Weather ☀️</div>
+    <div style="font-family:'Caveat',cursive;font-size:120px;font-weight:700;color:#003388;line-height:1">46°F</div>
+    <div style="font-family:'Caveat',cursive;font-size:56px;color:#0080cc;margin-top:8px">Sunny day! ☀️</div>
+    <div class="pin" style="top:12px;left:50%;background:#3399ff"></div>
+  </div>
+
+  <!-- ===== HERO — big polaroid ===== -->
+  <div class="polaroid" style="top:310px;left:1200px;width:1020px;padding:24px 24px 100px 24px;transform:rotate(-1.5deg)">
+    <div class="washi" style="top:-22px;left:160px;width:160px;height:44px;background:repeating-linear-gradient(90deg,#c8a0ff,#c8a0ff 8px,#e0c0ff 8px,#e0c0ff 16px);transform:rotate(-2deg)"></div>
+    <div class="washi" style="top:-22px;right:180px;width:140px;height:44px;background:repeating-linear-gradient(-45deg,#ffa0c0,#ffa0c0 8px,#ffbcd0 8px,#ffbcd0 16px);transform:rotate(3deg)"></div>
+    <div style="width:972px;height:660px;background:linear-gradient(135deg,#e8f4ff,#f4ffe8);display:flex;align-items:center;justify-content:center;border-radius:4px">
+      <div style="font-family:'Patrick Hand',cursive;font-size:60px;color:#88a8aa;text-align:center">📸 Photo / Video Hero<br><span style="font-size:44px">Morning slideshow here</span></div>
+    </div>
+    <div class="polaroid-label" style="font-size:48px">morning memories ✨</div>
+    <div class="pin" style="top:16px;left:50%;background:#cc33ff"></div>
+  </div>
+
+  <!-- ===== TEACHER — polaroid ===== -->
+  <div class="polaroid" style="top:360px;right:130px;width:460px;padding:20px 20px 100px 20px;transform:rotate(5deg)">
+    <div class="tape" style="top:-18px;left:50%;transform:translateX(-50%) rotate(-3deg);width:130px;height:40px"></div>
+    <div style="width:420px;height:420px;background:linear-gradient(135deg,#ffe0f0,#ffd0c0);display:flex;align-items:center;justify-content:center;border-radius:4px">
+      <span style="font-size:160px">👩‍🏫</span>
+    </div>
+    <div class="polaroid-label" style="font-size:38px;bottom:48px">Mrs. Johnson 🍎</div>
+    <div style="position:absolute;bottom:12px;left:0;right:0;text-align:center;font-family:'Patrick Hand',cursive;font-size:32px;color:#888">3rd Grade ⭐</div>
+    <div class="pin" style="top:12px;left:50%;background:#ff6699"></div>
+    <!-- Sticky label on top -->
+    <div style="position:absolute;top:-50px;right:-20px;background:#fff9a0;padding:8px 16px;font-family:'Caveat',cursive;font-size:38px;font-weight:700;color:#aa8800;transform:rotate(-8deg);box-shadow:2px 3px 8px rgba(0,0,0,0.2)">Teacher of the Week! ⭐</div>
+  </div>
+
+  <!-- Sharpie arrow pointing to teacher -->
+  <svg style="position:absolute;top:430px;right:540px;z-index:30" width="200" height="120" viewBox="0 0 200 120">
+    <path d="M180 20 Q80 20 40 100" fill="none" stroke="#222" stroke-width="8" stroke-linecap="round"/>
+    <path d="M20 90 L40 100 L50 78" fill="none" stroke="#222" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+
+  <!-- ===== ANNOUNCEMENTS — torn paper note ===== -->
+  <div style="position:absolute;top:1140px;left:80px;z-index:22;width:700px">
+    <svg width="700" height="380" viewBox="0 0 700 380" style="position:absolute;top:0;left:0">
+      <!-- Paper base -->
+      <rect x="0" y="0" width="700" height="360" fill="#fff8e8"/>
+      <!-- Torn right edge -->
+      <path d="M700 0 Q688 20 694 45 Q700 70 690 95 Q680 120 692 148 Q704 176 695 205 Q686 234 696 262 Q706 290 698 318 Q690 346 700 360 L700 0 Z" fill="#fff8e8"/>
+      <!-- Ruled lines -->
+      <line x1="60" y1="80" x2="680" y2="80" stroke="#e0d0c0" stroke-width="2"/>
+      <line x1="60" y1="140" x2="680" y2="140" stroke="#e0d0c0" stroke-width="2"/>
+      <line x1="60" y1="200" x2="680" y2="200" stroke="#e0d0c0" stroke-width="2"/>
+      <line x1="60" y1="260" x2="680" y2="260" stroke="#e0d0c0" stroke-width="2"/>
+      <line x1="60" y1="320" x2="680" y2="320" stroke="#e0d0c0" stroke-width="2"/>
+      <!-- Red margin line -->
+      <line x1="60" y1="0" x2="60" y2="360" stroke="#ffaaaa" stroke-width="3"/>
+    </svg>
+    <!-- Washi tape at top -->
+    <div class="washi" style="top:-18px;left:280px;width:140px;height:40px;background:repeating-linear-gradient(45deg,#ffb0c8,#ffb0c8 6px,#ffc8d8 6px,#ffc8d8 12px);transform:rotate(-2deg)"></div>
+    <div class="pin" style="top:12px;left:350px;background:#ff3366"></div>
+    <div style="position:relative;z-index:2;padding:16px 24px 12px 80px">
+      <div style="font-family:'Caveat',cursive;font-size:64px;font-weight:700;color:#c04000">📚 Book Fair!</div>
+      <div style="font-family:'Patrick Hand',cursive;font-size:48px;color:#333;line-height:1.6;margin-top:8px">Scholastic Book Fair is here!<br>Library all week.<br>Bring your reading list! 📖✨</div>
+    </div>
+  </div>
+
+  <!-- Sticker overlapping announcement -->
+  <div style="position:absolute;top:1150px;left:700px;z-index:30;transform:rotate(-15deg);filter:drop-shadow(3px 3px 6px rgba(0,0,0,0.2))">
+    <svg width="160" height="160" viewBox="0 0 160 160">
+      <path d="M80 8 L93 48 L136 48 L101 75 L114 116 L80 89 L46 116 L59 75 L24 48 L67 48 Z" fill="#FFD700" stroke="#e0a000" stroke-width="4"/>
+    </svg>
+    <div style="position:absolute;top:55px;left:50%;transform:translateX(-50%);font-family:'Caveat',cursive;font-size:36px;font-weight:700;color:#7a5500;white-space:nowrap">WOW!</div>
+  </div>
+
+  <!-- ===== EVENTS — index cards pinned in column ===== -->
+  <div style="position:absolute;top:1110px;left:900px;z-index:22;width:500px">
+    <div style="font-family:'Caveat',cursive;font-size:64px;font-weight:700;color:#c05000;margin-bottom:20px;transform:rotate(-1deg)">📅 Coming Up!</div>
+
+    <div class="index-card" style="position:relative;width:480px;height:130px;transform:rotate(-2deg);margin-bottom:24px">
+      <div class="washi" style="top:-18px;left:180px;width:120px;height:36px;background:repeating-linear-gradient(90deg,#ff9ec8,#ff9ec8 6px,#ffbcd8 6px,#ffbcd8 12px)"></div>
+      <div class="pin" style="top:10px;left:240px;background:#ff3366"></div>
+      <div style="font-family:'Caveat',cursive;font-size:52px;font-weight:700;color:#333;padding-left:20px">Science Fair 🔬</div>
+      <div style="font-family:'Patrick Hand',cursive;font-size:40px;color:#666;padding-left:20px">Apr 22 — Gymnasium</div>
+    </div>
+
+    <div class="index-card" style="position:relative;width:480px;height:130px;transform:rotate(2.5deg);margin-bottom:24px">
+      <div class="tape" style="top:-16px;left:50%;transform:translateX(-50%);width:110px;height:36px"></div>
+      <div class="pin" style="top:10px;left:240px;background:#3399ff"></div>
+      <div style="font-family:'Caveat',cursive;font-size:52px;font-weight:700;color:#333;padding-left:20px">Spring Concert 🎵</div>
+      <div style="font-family:'Patrick Hand',cursive;font-size:40px;color:#666;padding-left:20px">Apr 25 — Auditorium</div>
+    </div>
+
+    <div class="index-card" style="position:relative;width:480px;height:130px;transform:rotate(-1.5deg)">
+      <div class="washi" style="top:-18px;left:160px;width:120px;height:36px;background:repeating-linear-gradient(45deg,#c8f0a0,#c8f0a0 6px,#d8f8b0 6px,#d8f8b0 12px)"></div>
+      <div class="pin" style="top:10px;left:240px;background:#33cc33"></div>
+      <div style="font-family:'Caveat',cursive;font-size:52px;font-weight:700;color:#333;padding-left:20px">Field Trip 🚌</div>
+      <div style="font-family:'Patrick Hand',cursive;font-size:40px;color:#666;padding-left:20px">May 3 — Museum</div>
+    </div>
+  </div>
+
+  <!-- ===== COUNTDOWN — sticky note with arrow ===== -->
+  <div class="sticky" style="top:1120px;left:2560px;width:420px;height:380px;background:#c8f0ff;transform:rotate(4deg)">
+    <div class="washi" style="top:-20px;left:50%;transform:translateX(-50%) rotate(-1deg);width:130px;height:40px;background:repeating-linear-gradient(-45deg,#80d0ff,#80d0ff 6px,#a0e0ff 6px,#a0e0ff 12px)"></div>
+    <div class="pin" style="top:12px;left:50%;background:#3399ff"></div>
+    <div style="font-family:'Caveat',cursive;font-size:50px;font-weight:700;color:#003388;margin-bottom:8px">Field Trip! 🚌</div>
+    <div style="font-family:'Caveat',cursive;font-size:200px;font-weight:700;color:#003388;line-height:0.9;text-align:center">12</div>
+    <div style="font-family:'Patrick Hand',cursive;font-size:44px;color:#006699;text-align:center">more days!</div>
+  </div>
+
+  <!-- Sharpie label for countdown -->
+  <div class="sharpie-label" style="top:1080px;left:2480px;transform:rotate(-8deg)">← countdown!</div>
+
+  <!-- ===== LOGO — decorated polaroid ===== -->
+  <div class="polaroid" style="top:1160px;right:100px;width:400px;padding:20px 20px 90px 20px;transform:rotate(-3deg)">
+    <div class="tape" style="top:-18px;left:50%;transform:translateX(-50%) rotate(2deg);width:120px;height:38px"></div>
+    <div class="pin" style="top:12px;left:50%;background:#9933ff"></div>
+    <div style="width:360px;height:360px;background:linear-gradient(135deg,#f0e8ff,#ffe8f8);display:flex;align-items:center;justify-content:center;border-radius:4px;font-size:160px">🦉</div>
+    <div class="polaroid-label" style="font-size:36px;bottom:50px">Meadow Elementary</div>
+    <div style="position:absolute;bottom:12px;left:0;right:0;text-align:center;font-family:'Patrick Hand',cursive;font-size:30px;color:#999">Home of the Owls</div>
+    <!-- Extra star sticker -->
+    <svg style="position:absolute;bottom:-30px;right:-20px;transform:rotate(15deg)" width="100" height="100" viewBox="0 0 100 100">
+      <path d="M50 5 L60 38 L95 38 L67 58 L77 91 L50 71 L23 91 L33 58 L5 38 L40 38 Z" fill="#FFD700" stroke="#e0a000" stroke-width="3"/>
+    </svg>
+  </div>
+
+  <!-- Scattered decorative stickers -->
+  <!-- Rainbow sticker near top right -->
+  <svg style="position:absolute;top:160px;right:170px;z-index:26;transform:rotate(8deg);filter:drop-shadow(3px 4px 8px rgba(0,0,0,0.2))" width="200" height="120" viewBox="0 0 200 120">
+    <path d="M20 100 Q20 20 100 20 Q180 20 180 100" fill="none" stroke="#FF3366" stroke-width="16" stroke-linecap="round"/>
+    <path d="M36 100 Q36 38 100 38 Q164 38 164 100" fill="none" stroke="#FF9900" stroke-width="16" stroke-linecap="round"/>
+    <path d="M52 100 Q52 56 100 56 Q148 56 148 100" fill="none" stroke="#FFEE00" stroke-width="16" stroke-linecap="round"/>
+    <path d="M68 100 Q68 74 100 74 Q132 74 132 100" fill="none" stroke="#33CC33" stroke-width="16" stroke-linecap="round"/>
+    <path d="M84 100 Q84 90 100 90 Q116 90 116 100" fill="none" stroke="#3399FF" stroke-width="16" stroke-linecap="round"/>
+  </svg>
+
+  <!-- Heart sticker -->
+  <svg style="position:absolute;top:1780px;left:1460px;z-index:26;opacity:0.8" width="80" height="70" viewBox="0 0 80 70">
+    <path d="M40 66 Q10 44 10 26 Q10 10 24 10 Q34 10 40 22 Q46 10 56 10 Q70 10 70 26 Q70 44 40 66 Z" fill="#FF6699"/>
+  </svg>
+
+  <!-- ABC sticker -->
+  <div style="position:absolute;top:1900px;left:3200px;z-index:26;font-family:'Fredoka',sans-serif;font-size:60px;font-weight:700;color:#ff6600;transform:rotate(-5deg);opacity:0.6">ABC ✏️</div>
+
+  <!-- ===== TICKER — kraft paper strip with washi edges ===== -->
+  <div style="position:absolute;bottom:0;left:0;right:0;height:130px;z-index:30;overflow:hidden">
+    <svg style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 3840 130" preserveAspectRatio="none">
+      <!-- Kraft paper base -->
+      <rect x="0" y="0" width="3840" height="130" fill="#c89050"/>
+      <!-- Washi tape strip across top of ticker -->
+      <rect x="0" y="0" width="3840" height="22" fill="url(#washiRepeat)"/>
+      <defs>
+        <pattern id="washiRepeat" x="0" y="0" width="40" height="22" patternUnits="userSpaceOnUse">
+          <rect x="0" y="0" width="20" height="22" fill="#ff9ec8" opacity="0.7"/>
+          <rect x="20" y="0" width="20" height="22" fill="#ffbcd8" opacity="0.7"/>
+        </pattern>
+      </defs>
+    </svg>
+    <div style="position:relative;z-index:2;display:flex;align-items:center;height:100%;padding:0 40px">
+      <span style="font-family:'Caveat',cursive;font-size:54px;font-weight:700;color:#fff8e8;flex-shrink:0;padding-right:30px;text-shadow:1px 1px 3px rgba(0,0,0,0.3)">📣</span>
+      <span style="font-family:'Patrick Hand',cursive;font-size:52px;color:#fff8e8;white-space:nowrap;text-shadow:1px 1px 3px rgba(0,0,0,0.3)">🌟 Reading Week April 22–26 — check out a book and enter the raffle! &nbsp;&nbsp;&nbsp; 🍕 Lunch today: Pizza, apple slices, chocolate milk &nbsp;&nbsp;&nbsp; 🎨 Art Club Thursday Room 12</span>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script>
+  function scaleStage() {
+    const stage = document.getElementById('stage');
+    const scale = Math.min(window.innerWidth / 3840, window.innerHeight / 2160);
+    stage.style.transform = `scale(${scale})`;
+  }
+  scaleStage();
+  window.addEventListener('resize', scaleStage);
+</script>
+</body>
+</html>

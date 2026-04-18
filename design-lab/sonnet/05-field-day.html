@@ -1,0 +1,348 @@
+<!--
+  FIELD DAY: A sticker-pack sports universe with thick cartoon outlines,
+  stamped jersey numbers, tilted color blocks, trophy and ribbon shapes,
+  and a giant owl mascot dominating the center — pure athletic energy
+  cranked up to eleven for elementary schoolers.
+  Kids love it because it looks like their favorite sports stickers exploded
+  on the wall, and the mascot makes them feel like champions every morning.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Field Day Lobby — Elementary School</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Quicksand:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a1a;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; overflow: hidden;
+  }
+  .viewport-wrapper {
+    width: 100vw; height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .stage {
+    width: 3840px; height: 2160px;
+    transform-origin: center center;
+    position: relative; overflow: hidden;
+    background-color: #1a2040;
+  }
+
+  /* Halftone dot background */
+  .stage::before {
+    content: '';
+    position: absolute; inset: 0;
+    background-image: radial-gradient(circle, rgba(255,255,255,0.08) 2px, transparent 2px);
+    background-size: 40px 40px;
+    pointer-events: none; z-index: 0;
+  }
+
+  /* Tilted color block background sections */
+  .bg-block {
+    position: absolute;
+    transform-origin: center center;
+  }
+
+  /* Thick-outline sticker style */
+  .sticker {
+    position: absolute;
+    filter: drop-shadow(0 0 0 6px #fff) drop-shadow(0 6px 20px rgba(0,0,0,0.5));
+  }
+
+  /* Jersey number stamp style */
+  .jersey-num {
+    font-family: 'Fredoka', sans-serif;
+    font-weight: 700;
+    -webkit-text-stroke: 6px rgba(0,0,0,0.3);
+    letter-spacing: -2px;
+  }
+
+  /* Card with thick outline (sticker feel) */
+  .sport-card {
+    position: absolute;
+    z-index: 20;
+  }
+</style>
+</head>
+<body>
+<div class="viewport-wrapper">
+<div class="stage" id="stage">
+
+  <!-- ===== TILTED BG COLOR BLOCKS ===== -->
+  <svg style="position:absolute;inset:0;width:100%;height:100%;z-index:1" viewBox="0 0 3840 2160" preserveAspectRatio="none">
+    <!-- Big diagonal yellow-green block top-left -->
+    <polygon points="-100,0 1600,0 1200,600 -100,600" fill="#22cc44" opacity="0.9"/>
+    <!-- Red block top-right -->
+    <polygon points="2400,0 3940,0 3940,500 2100,380" fill="#ff2244" opacity="0.9"/>
+    <!-- Blue block bottom -->
+    <polygon points="0,1600 1800,1400 3840,1600 3840,2160 0,2160" fill="#1144cc" opacity="0.8"/>
+    <!-- Orange accent mid-right -->
+    <polygon points="2600,600 3940,500 3940,1400 2400,1300" fill="#ff8800" opacity="0.7"/>
+    <!-- Dark center ground -->
+    <polygon points="1200,600 2100,380 2600,600 2400,1300 1800,1400 1000,1200" fill="#111830" opacity="0.9"/>
+    <!-- Stripe accents -->
+    <line x1="0" y1="620" x2="1300" y2="580" stroke="rgba(255,255,255,0.15)" stroke-width="12"/>
+    <line x1="0" y1="650" x2="1300" y2="610" stroke="rgba(255,255,255,0.1)" stroke-width="8"/>
+    <line x1="2300" y1="360" x2="3940" y2="480" stroke="rgba(255,255,255,0.15)" stroke-width="12"/>
+  </svg>
+
+  <!-- ===== TOP BANNER — jersey-style stamp ===== -->
+  <div style="position:absolute;top:40px;left:80px;right:80px;height:280px;z-index:30;display:flex;align-items:center;justify-content:center">
+    <svg style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 3680 280" preserveAspectRatio="none">
+      <!-- Banner outline thick sticker border -->
+      <rect x="6" y="6" width="3668" height="268" rx="28" fill="#fff" opacity="0.15"/>
+      <rect x="0" y="0" width="3680" height="280" rx="28" fill="none" stroke="#fff" stroke-width="10" opacity="0.5"/>
+      <!-- Star accents left and right -->
+      <path d="M80 140 L92 178 L134 178 L100 202 L112 240 L80 216 L48 240 L60 202 L26 178 L68 178 Z" fill="#FFD700"/>
+      <path d="M3600 140 L3612 178 L3654 178 L3620 202 L3632 240 L3600 216 L3568 240 L3580 202 L3546 178 L3588 178 Z" fill="#FFD700"/>
+    </svg>
+    <div style="position:relative;z-index:2;font-family:'Fredoka',sans-serif;font-size:156px;font-weight:700;color:#fff;text-shadow:6px 6px 0 rgba(0,0,0,0.4),10px 10px 24px rgba(0,0,0,0.3);letter-spacing:4px">
+      🦉 GOOD MORNING, MEADOW ELEMENTARY! 🏆
+    </div>
+  </div>
+
+  <!-- ===== MASCOT — giant owl sticker center ===== -->
+  <div style="position:absolute;top:340px;left:50%;transform:translateX(-50%);z-index:25;filter:drop-shadow(0 12px 40px rgba(0,0,0,0.5))">
+    <svg width="900" height="860" viewBox="0 0 900 860">
+      <!-- Owl body — thick outlined sticker style -->
+      <!-- Body -->
+      <ellipse cx="450" cy="560" rx="280" ry="280" fill="#FFB800" stroke="#000" stroke-width="14"/>
+      <!-- Wing left -->
+      <path d="M200 480 Q100 600 170 720 Q260 600 320 560 Z" fill="#e09000" stroke="#000" stroke-width="12"/>
+      <!-- Wing right -->
+      <path d="M700 480 Q800 600 730 720 Q640 600 580 560 Z" fill="#e09000" stroke="#000" stroke-width="12"/>
+      <!-- Belly -->
+      <ellipse cx="450" cy="600" rx="160" ry="200" fill="#fff8d0" stroke="#000" stroke-width="8"/>
+      <!-- Belly stripes -->
+      <path d="M310 560 Q450 540 590 560" fill="none" stroke="#e09000" stroke-width="6" opacity="0.5"/>
+      <path d="M300 610 Q450 590 600 610" fill="none" stroke="#e09000" stroke-width="6" opacity="0.5"/>
+      <!-- Head -->
+      <ellipse cx="450" cy="340" rx="240" ry="220" fill="#FFB800" stroke="#000" stroke-width="14"/>
+      <!-- Ear tufts -->
+      <path d="M290 170 L320 280 L370 230 Z" fill="#e09000" stroke="#000" stroke-width="10"/>
+      <path d="M610 170 L580 280 L530 230 Z" fill="#e09000" stroke="#000" stroke-width="10"/>
+      <!-- Eyes background -->
+      <circle cx="360" cy="340" r="80" fill="#fff" stroke="#000" stroke-width="10"/>
+      <circle cx="540" cy="340" r="80" fill="#fff" stroke="#000" stroke-width="10"/>
+      <!-- Eye irises -->
+      <circle cx="360" cy="340" r="55" fill="#FF8C00"/>
+      <circle cx="540" cy="340" r="55" fill="#FF8C00"/>
+      <!-- Eye pupils -->
+      <circle cx="370" cy="340" r="30" fill="#000"/>
+      <circle cx="550" cy="340" r="30" fill="#000"/>
+      <!-- Eye shine -->
+      <circle cx="380" cy="326" r="10" fill="#fff"/>
+      <circle cx="560" cy="326" r="10" fill="#fff"/>
+      <!-- Beak -->
+      <path d="M420 390 L450 440 L480 390 Z" fill="#ff8800" stroke="#000" stroke-width="8"/>
+      <!-- Graduation cap -->
+      <rect x="290" y="130" width="320" height="30" rx="8" fill="#1a1a2e" stroke="#000" stroke-width="8"/>
+      <polygon points="450,50 640,140 450,160 260,140" fill="#1a1a2e" stroke="#000" stroke-width="8"/>
+      <line x1="640" y1="140" x2="680" y2="220" stroke="#FFD700" stroke-width="8"/>
+      <circle cx="680" cy="230" r="20" fill="#FFD700" stroke="#000" stroke-width="6"/>
+      <!-- Feet -->
+      <path d="M360 820 L320 860 M360 820 L350 870 M360 820 L385 860" stroke="#e09000" stroke-width="16" stroke-linecap="round"/>
+      <path d="M540 820 L500 860 M540 820 L530 870 M540 820 L565 860" stroke="#e09000" stroke-width="16" stroke-linecap="round"/>
+      <!-- Jersey number on belly -->
+      <text x="450" y="660" text-anchor="middle" font-family="'Fredoka',sans-serif" font-size="100" font-weight="700" fill="#FFB800" stroke="#000" stroke-width="6" paint-order="stroke">01</text>
+    </svg>
+  </div>
+
+  <!-- ===== CLOCK — jersey shape ===== -->
+  <div style="position:absolute;top:380px;left:80px;z-index:25;filter:drop-shadow(6px 8px 20px rgba(0,0,0,0.5))">
+    <svg width="480" height="520" viewBox="0 0 480 520">
+      <!-- Jersey outline -->
+      <path d="M80 0 L0 100 L80 120 L80 520 L400 520 L400 120 L480 100 L400 0 L320 60 Q240 80 160 60 Z" fill="#22cc44" stroke="#000" stroke-width="14"/>
+      <!-- Jersey number area -->
+      <ellipse cx="240" cy="260" rx="130" ry="140" fill="rgba(0,0,0,0.1)"/>
+      <!-- Collar -->
+      <path d="M160 60 Q240 100 320 60 Q300 80 240 90 Q180 80 160 60 Z" fill="#1a9930" stroke="#000" stroke-width="8"/>
+      <!-- Shoulder stripes -->
+      <line x1="0" y1="130" x2="80" y2="130" stroke="rgba(255,255,255,0.4)" stroke-width="10"/>
+      <line x1="400" y1="130" x2="480" y2="130" stroke="rgba(255,255,255,0.4)" stroke-width="10"/>
+    </svg>
+    <div style="position:absolute;top:150px;left:50%;transform:translateX(-50%);text-align:center;width:480px">
+      <div style="font-family:'Fredoka',sans-serif;font-size:120px;font-weight:700;color:#fff;text-shadow:4px 4px 0 rgba(0,0,0,0.3);white-space:nowrap">7:53 AM</div>
+      <div style="font-family:'Quicksand',sans-serif;font-size:44px;font-weight:700;color:rgba(255,255,255,0.85);margin-top:8px">☀️ Sat, April 18</div>
+    </div>
+  </div>
+
+  <!-- ===== WEATHER — shield badge ===== -->
+  <div style="position:absolute;top:360px;left:700px;z-index:25;filter:drop-shadow(6px 8px 20px rgba(0,0,0,0.5));transform:rotate(-4deg)">
+    <svg width="460" height="500" viewBox="0 0 460 500">
+      <!-- Shield shape -->
+      <path d="M230 10 L440 80 L440 260 Q440 400 230 490 Q20 400 20 260 L20 80 Z" fill="#ff2244" stroke="#000" stroke-width="14"/>
+      <!-- Shield inner -->
+      <path d="M230 40 L410 100 L410 260 Q410 380 230 455 Q50 380 50 260 L50 100 Z" fill="#cc0030" opacity="0.5"/>
+      <!-- Star at top -->
+      <path d="M230 60 L242 98 L283 98 L250 122 L262 160 L230 136 L198 160 L210 122 L177 98 L218 98 Z" fill="#FFD700" stroke="#000" stroke-width="6"/>
+    </svg>
+    <div style="position:absolute;top:100px;left:50%;transform:translateX(-50%);text-align:center;width:400px">
+      <div style="font-family:'Fredoka',sans-serif;font-size:110px;font-weight:700;color:#fff;text-shadow:4px 4px 0 rgba(0,0,0,0.3);white-space:nowrap">46°F</div>
+      <div style="font-family:'Quicksand',sans-serif;font-size:56px;font-weight:700;color:#ffe0c0">☀️ Sunny!</div>
+    </div>
+  </div>
+
+  <!-- ===== HERO — photo in bold frame ===== -->
+  <div style="position:absolute;top:1210px;left:80px;z-index:25;filter:drop-shadow(8px 10px 24px rgba(0,0,0,0.5))">
+    <svg width="2000" height="860" viewBox="0 0 2000 860" style="position:absolute;top:0;left:0">
+      <!-- Outer thick border -->
+      <rect x="0" y="0" width="2000" height="860" rx="24" fill="#FFD700" stroke="#000" stroke-width="16"/>
+      <rect x="20" y="20" width="1960" height="820" rx="16" fill="#fff"/>
+      <!-- Corner stars -->
+      <path d="M40 40 L52 76 L90 76 L60 98 L72 134 L40 112 L8 134 L20 98 L-10 76 L28 76 Z" fill="#FF2244"/>
+      <path d="M1960 40 L1972 76 L2010 76 L1980 98 L1992 134 L1960 112 L1928 134 L1940 98 L1910 76 L1948 76 Z" fill="#FF2244"/>
+      <path d="M40 820 L52 856 L90 856 L60 878 L72 914 L40 892 L8 914 L20 878 L-10 856 L28 856 Z" fill="#22CC44"/>
+      <path d="M1960 820 L1972 856 L2010 856 L1980 878 L1992 914 L1960 892 L1928 914 L1940 878 L1910 856 L1948 856 Z" fill="#22CC44"/>
+    </svg>
+    <div style="position:absolute;top:36px;left:36px;right:36px;bottom:36px;background:linear-gradient(135deg,#1a2a4a,#2a3a6a);border-radius:14px;display:flex;align-items:center;justify-content:center">
+      <div style="font-family:'Quicksand',sans-serif;font-size:64px;font-weight:700;color:rgba(255,255,255,0.4);text-align:center">📸 Photo / Video Hero<br><span style="font-size:44px">Morning slideshow here</span></div>
+    </div>
+  </div>
+
+  <!-- ===== TEACHER — trophy shape ===== -->
+  <div style="position:absolute;top:380px;right:80px;z-index:25;filter:drop-shadow(6px 8px 20px rgba(0,0,0,0.5))">
+    <svg width="500" height="600" viewBox="0 0 500 600">
+      <!-- Trophy cup -->
+      <path d="M120 20 L380 20 L420 200 Q460 320 380 380 L380 440 L420 460 L420 500 L80 500 L80 460 L120 440 L120 380 Q40 320 80 200 Z" fill="#FFD700" stroke="#000" stroke-width="14"/>
+      <!-- Trophy handles -->
+      <path d="M80 100 Q20 100 20 180 Q20 260 80 260" fill="none" stroke="#FFD700" stroke-width="20"/>
+      <path d="M420 100 Q480 100 480 180 Q480 260 420 260" fill="none" stroke="#FFD700" stroke-width="20"/>
+      <path d="M80 100 Q20 100 20 180 Q20 260 80 260" fill="none" stroke="#000" stroke-width="14"/>
+      <path d="M420 100 Q480 100 480 180 Q480 260 420 260" fill="none" stroke="#000" stroke-width="14"/>
+      <!-- Trophy shine -->
+      <path d="M150 40 L170 200 Q160 260 150 300" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="16" stroke-linecap="round"/>
+      <!-- Base -->
+      <rect x="60" y="500" width="380" height="30" rx="8" fill="#e0a000" stroke="#000" stroke-width="10"/>
+      <rect x="40" y="525" width="420" height="40" rx="8" fill="#FFD700" stroke="#000" stroke-width="10"/>
+      <!-- Star inside trophy -->
+      <path d="M250 120 L264 164 L312 164 L274 192 L288 236 L250 208 L212 236 L226 192 L188 164 L236 164 Z" fill="#fff" opacity="0.6"/>
+    </svg>
+    <!-- Teacher info overlay -->
+    <div style="position:absolute;top:80px;left:50%;transform:translateX(-50%);text-align:center;width:460px">
+      <div style="font-family:'Fredoka',sans-serif;font-size:36px;font-weight:700;color:#333;background:#fff;padding:6px 20px;border-radius:20px;display:inline-block;margin-bottom:16px;border:4px solid #000">⭐ TEACHER OF THE WEEK</div>
+      <div style="font-size:100px;line-height:1">👩‍🏫</div>
+      <div style="font-family:'Fredoka',sans-serif;font-size:56px;font-weight:700;color:#fff;text-shadow:3px 3px 0 rgba(0,0,0,0.4);margin-top:8px">Mrs. Johnson</div>
+      <div style="font-family:'Quicksand',sans-serif;font-size:44px;font-weight:700;color:#ffe080">3rd Grade 🍎</div>
+    </div>
+  </div>
+
+  <!-- ===== ANNOUNCEMENTS — big number plate ===== -->
+  <div style="position:absolute;top:1220px;left:2180px;z-index:25;filter:drop-shadow(6px 8px 20px rgba(0,0,0,0.5));transform:rotate(-2deg)">
+    <svg width="760" height="420" viewBox="0 0 760 420" style="position:absolute;top:0;left:0">
+      <!-- Number plate / scoreboard shape -->
+      <rect x="0" y="0" width="760" height="420" rx="20" fill="#ff2244" stroke="#000" stroke-width="16"/>
+      <rect x="14" y="14" width="732" height="392" rx="12" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="6"/>
+      <!-- Top label bar -->
+      <rect x="0" y="0" width="760" height="80" rx="20" fill="#c00030"/>
+      <rect x="0" y="60" width="760" height="20" fill="#c00030"/>
+    </svg>
+    <div style="position:relative;z-index:2;padding:16px 36px">
+      <div style="font-family:'Fredoka',sans-serif;font-size:50px;font-weight:700;color:rgba(255,255,255,0.7);letter-spacing:6px;text-transform:uppercase">📢 Announcement</div>
+      <div style="font-family:'Fredoka',sans-serif;font-size:68px;font-weight:700;color:#fff;text-shadow:3px 3px 0 rgba(0,0,0,0.3);margin-top:8px">📚 Book Fair!</div>
+      <div style="font-family:'Quicksand',sans-serif;font-size:52px;font-weight:600;color:#ffcccc;line-height:1.4;margin-top:8px">Scholastic Book Fair<br>Library all week! 📖</div>
+    </div>
+  </div>
+
+  <!-- ===== EVENTS — tilted score cards ===== -->
+  <div style="position:absolute;top:1220px;left:3000px;z-index:25;width:750px">
+    <div style="font-family:'Fredoka',sans-serif;font-size:64px;font-weight:700;color:#FFD700;text-shadow:3px 3px 0 rgba(0,0,0,0.3);margin-bottom:20px">📅 SCHEDULE</div>
+
+    <div style="position:relative;background:#22cc44;border-radius:16px;border:10px solid #000;padding:20px 28px;margin-bottom:20px;filter:drop-shadow(4px 4px 12px rgba(0,0,0,0.4))">
+      <div style="font-family:'Fredoka',sans-serif;font-size:50px;font-weight:700;color:#fff;text-shadow:2px 2px 0 rgba(0,0,0,0.3)">Science Fair 🔬</div>
+      <div style="font-family:'Quicksand',sans-serif;font-size:40px;font-weight:700;color:rgba(255,255,255,0.85)">Apr 22 — Gymnasium 6 PM</div>
+    </div>
+
+    <div style="position:relative;background:#3399ff;border-radius:16px;border:10px solid #000;padding:20px 28px;margin-bottom:20px;filter:drop-shadow(4px 4px 12px rgba(0,0,0,0.4));transform:rotate(1deg)">
+      <div style="font-family:'Fredoka',sans-serif;font-size:50px;font-weight:700;color:#fff;text-shadow:2px 2px 0 rgba(0,0,0,0.3)">Spring Concert 🎵</div>
+      <div style="font-family:'Quicksand',sans-serif;font-size:40px;font-weight:700;color:rgba(255,255,255,0.85)">Apr 25 — Auditorium 7 PM</div>
+    </div>
+
+    <div style="position:relative;background:#ff8800;border-radius:16px;border:10px solid #000;padding:20px 28px;filter:drop-shadow(4px 4px 12px rgba(0,0,0,0.4));transform:rotate(-1.5deg)">
+      <div style="font-family:'Fredoka',sans-serif;font-size:50px;font-weight:700;color:#fff;text-shadow:2px 2px 0 rgba(0,0,0,0.3)">Field Trip 🚌</div>
+      <div style="font-family:'Quicksand',sans-serif;font-size:40px;font-weight:700;color:rgba(255,255,255,0.85)">May 3 — Museum</div>
+    </div>
+  </div>
+
+  <!-- ===== COUNTDOWN — medal shape ===== -->
+  <div style="position:absolute;top:370px;left:1600px;z-index:24;filter:drop-shadow(6px 8px 20px rgba(0,0,0,0.5))">
+    <svg width="520" height="620" viewBox="0 0 520 620">
+      <!-- Medal ribbon/lanyard -->
+      <path d="M180 0 L220 120 L260 0 L300 120 L340 0 L260 0 Z" fill="#3399ff" stroke="#000" stroke-width="10"/>
+      <!-- Medal ring -->
+      <circle cx="260" cy="120" r="30" fill="#FFD700" stroke="#000" stroke-width="10"/>
+      <!-- Medal circle body -->
+      <circle cx="260" cy="380" r="220" fill="#FFD700" stroke="#000" stroke-width="16"/>
+      <!-- Inner circle -->
+      <circle cx="260" cy="380" r="185" fill="#e09000" opacity="0.4"/>
+      <!-- Star burst inside -->
+      <path d="M260 210 L276 264 L334 264 L287 298 L304 352 L260 318 L216 352 L233 298 L186 264 L244 264 Z" fill="#fff" opacity="0.5"/>
+    </svg>
+    <!-- Countdown text -->
+    <div style="position:absolute;top:210px;left:50%;transform:translateX(-50%);text-align:center;width:480px">
+      <div style="font-family:'Fredoka',sans-serif;font-size:200px;font-weight:700;color:#fff;text-shadow:6px 6px 0 rgba(0,0,0,0.3);line-height:0.9">12</div>
+      <div style="font-family:'Quicksand',sans-serif;font-size:50px;font-weight:700;color:#fff;text-shadow:3px 3px 0 rgba(0,0,0,0.3);line-height:1.2">DAYS TO<br>FIELD TRIP! 🚌</div>
+    </div>
+  </div>
+
+  <!-- ===== LOGO — pennant shape ===== -->
+  <div style="position:absolute;top:920px;right:80px;z-index:24;filter:drop-shadow(6px 8px 20px rgba(0,0,0,0.5));transform:rotate(-3deg)">
+    <svg width="560" height="320" viewBox="0 0 560 320">
+      <!-- Pennant flag shape -->
+      <path d="M0 0 L560 0 L560 280 L0 280 L80 140 Z" fill="#1144cc" stroke="#000" stroke-width="14"/>
+      <!-- Stripes -->
+      <path d="M0 0 L80 140 L0 280 Z" fill="#0a30aa" stroke="#000" stroke-width="6"/>
+      <line x1="0" y1="93" x2="560" y2="93" stroke="rgba(255,255,255,0.2)" stroke-width="6"/>
+      <line x1="0" y1="186" x2="560" y2="186" stroke="rgba(255,255,255,0.2)" stroke-width="6"/>
+    </svg>
+    <div style="position:absolute;top:30px;left:110px;right:20px">
+      <div style="font-size:90px;line-height:1">🦉</div>
+      <div style="font-family:'Fredoka',sans-serif;font-size:52px;font-weight:700;color:#fff;text-shadow:2px 2px 0 rgba(0,0,0,0.3);margin-top:4px">MEADOW ELEM.</div>
+      <div style="font-family:'Quicksand',sans-serif;font-size:40px;font-weight:700;color:#a0c0ff">Home of the Owls</div>
+    </div>
+  </div>
+
+  <!-- Scattered floating number stamps -->
+  <div style="position:absolute;top:720px;left:140px;z-index:15;font-family:'Fredoka',sans-serif;font-size:280px;font-weight:700;color:rgba(255,255,255,0.04);pointer-events:none">88</div>
+  <div style="position:absolute;top:600px;right:140px;z-index:15;font-family:'Fredoka',sans-serif;font-size:240px;font-weight:700;color:rgba(255,255,255,0.04);pointer-events:none">44</div>
+
+  <!-- ===== TICKER — scoreboard style ===== -->
+  <div style="position:absolute;bottom:0;left:0;right:0;height:140px;z-index:30;overflow:hidden">
+    <svg style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 3840 140" preserveAspectRatio="none">
+      <!-- Scoreboard dark base -->
+      <rect x="0" y="0" width="3840" height="140" fill="#0a0a1a"/>
+      <!-- LED-style divider line -->
+      <rect x="0" y="0" width="3840" height="8" fill="#22cc44" opacity="0.8"/>
+      <!-- Scoreboard light dots -->
+      <circle cx="30" cy="70" r="8" fill="#22cc44" opacity="0.4"/>
+      <circle cx="3810" cy="70" r="8" fill="#22cc44" opacity="0.4"/>
+      <!-- Score-style side panels -->
+      <rect x="0" y="8" width="200" height="132" fill="#111830"/>
+      <rect x="3640" y="8" width="200" height="132" fill="#111830"/>
+      <line x1="200" y1="8" x2="200" y2="140" stroke="#22cc44" stroke-width="4" opacity="0.4"/>
+      <line x1="3640" y1="8" x2="3640" y2="140" stroke="#22cc44" stroke-width="4" opacity="0.4"/>
+    </svg>
+    <div style="position:absolute;left:60px;top:50%;transform:translateY(-50%);font-family:'Fredoka',sans-serif;font-size:60px;font-weight:700;color:#22cc44;text-shadow:0 0 10px rgba(34,204,68,0.5)">📣</div>
+    <div style="position:absolute;left:240px;right:240px;top:50%;transform:translateY(-50%);font-family:'Fredoka',sans-serif;font-size:56px;font-weight:600;color:#fff;white-space:nowrap;text-shadow:0 0 8px rgba(34,204,68,0.3)">
+      🌟 Reading Week April 22–26 — check out a book and enter the raffle! &nbsp;&nbsp;&nbsp; 🍕 Lunch: Pizza, apples, chocolate milk &nbsp;&nbsp;&nbsp; 🎨 Art Club Thursday Room 12
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script>
+  function scaleStage() {
+    const stage = document.getElementById('stage');
+    const scale = Math.min(window.innerWidth / 3840, window.innerHeight / 2160);
+    stage.style.transform = `scale(${scale})`;
+  }
+  scaleStage();
+  window.addEventListener('resize', scaleStage);
+</script>
+</body>
+</html>

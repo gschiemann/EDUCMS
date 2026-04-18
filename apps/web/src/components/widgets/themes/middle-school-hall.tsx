@@ -59,7 +59,7 @@ export function MSHallClock({ config }: { config: any }) {
   const ampm = config.format !== '24h' ? hRaw.slice(-2) : '';
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center overflow-hidden" style={{
+    <div className="absolute inset-0 flex items-center justify-center" style={{
       containerType: 'size',
       background: `linear-gradient(180deg, #1A1A1A 0%, #050505 100%)`,
       borderRadius: '8px',
@@ -67,8 +67,12 @@ export function MSHallClock({ config }: { config: any }) {
       boxShadow: 'inset 0 0 20px rgba(0,0,0,0.8), 0 10px 20px rgba(0,0,0,0.4)',
       padding: '4%',
     }}>
+      {/* Hanging rods extending to the ceiling */}
+      <div style={{ position: 'absolute', bottom: '100%', left: '20%', width: '3cqw', minWidth: '4px', height: '2000px', background: 'linear-gradient(90deg, #7F8C8D 0%, #95A5A6 50%, #546067 100%)', zIndex: -1 }} />
+      <div style={{ position: 'absolute', bottom: '100%', right: '20%', width: '3cqw', minWidth: '4px', height: '2000px', background: 'linear-gradient(90deg, #7F8C8D 0%, #95A5A6 50%, #546067 100%)', zIndex: -1 }} />
+
       {/* Glare effect */}
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '40%', background: 'linear-gradient(180deg, rgba(255,255,255,0.1) 0%, transparent 100%)', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '40%', background: 'linear-gradient(180deg, rgba(255,255,255,0.1) 0%, transparent 100%)', pointerEvents: 'none', borderRadius: '8px 8px 0 0' }} />
       
       <div style={{
         fontFamily: MSH_FONT_DIGITAL,

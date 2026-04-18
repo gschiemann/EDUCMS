@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Field Day Lobby Display</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;700&family=Quicksand:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #222; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+    .viewport { width: 3840px; height: 2160px; transform: scale(0.16); transform-origin: top left; }
+    .stage { width: 100%; height: 100%; background: linear-gradient(135deg, #ffeb3b 0%, #ff9800 50%, #f44336 100%); position: relative; overflow: hidden; font-family: 'Fredoka', sans-serif; }
+
+    .thick-border { position: absolute; top: 0; left: 0; right: 0; height: 160px; background: #2196f3; border-bottom: 8px solid #1565c0; box-shadow: 0 8px 20px rgba(0,0,0,0.3); }
+
+    .banner { position: absolute; top: 35px; left: 50%; transform: translateX(-50%); z-index: 10; }
+    .banner-text { font-size: 128px; font-weight: 700; color: #fff; text-align: center; text-shadow: 4px 4px 8px rgba(0,0,0,0.4), -2px -2px 4px rgba(255,255,255,0.3); }
+
+    .mascot { position: absolute; top: 280px; left: 100px; width: 320px; height: 380px; background: linear-gradient(135deg, #ff6b6b, #ff8787); border: 8px solid #333; border-radius: 20px; padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; box-shadow: 0 12px 30px rgba(0,0,0,0.3); transform: rotate(-5deg); }
+    .mascot h2 { font-size: 48px; color: #fff; font-weight: 700; margin-bottom: 20px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+    .mascot-head { width: 180px; height: 180px; background: #ffd700; border-radius: 50%; border: 6px solid #333; margin: 10px 0; display: flex; align-items: center; justify-content: center; font-size: 100px; }
+
+    .trophy-teacher { position: absolute; top: 280px; right: 100px; width: 340px; background: linear-gradient(135deg, #ffd700, #ffed4e); border: 8px solid #333; border-radius: 15px; padding: 25px; text-align: center; box-shadow: 0 12px 30px rgba(0,0,0,0.25); transform: rotate(8deg); }
+    .trophy-teacher .title { font-size: 44px; color: #333; font-weight: 700; margin-bottom: 15px; }
+    .trophy-teacher .photo { width: 200px; height: 200px; background: linear-gradient(135deg, #ffcc80, #ffb74d); border-radius: 8px; margin: 10px auto; border: 4px solid #333; }
+    .trophy-teacher .name { font-size: 32px; color: #333; font-weight: 700; margin-top: 15px; }
+
+    .jersey-clock { position: absolute; top: 900px; left: 140px; width: 320px; height: 360px; }
+    .jersey-shape { background: linear-gradient(90deg, #2196f3 0%, #1976d2 50%, #1565c0 100%); width: 100%; height: 280px; clip-path: polygon(20% 0%, 80% 0%, 100% 15%, 95% 60%, 100% 100%, 0 100%, 5% 60%, 0 15%); border: 6px solid #333; position: relative; display: flex; align-items: center; justify-content: center; }
+    .jersey-num { font-size: 120px; font-weight: 700; color: #fff; text-shadow: 3px 3px 6px rgba(0,0,0,0.4); }
+    .clock-display { position: absolute; bottom: 20px; background: #fff; border: 4px solid #333; border-radius: 10px; padding: 20px; text-align: center; width: 280px; left: 20px; }
+    .clock-display-time { font-size: 52px; font-weight: 700; color: #2196f3; }
+
+    .medal-weather { position: absolute; top: 920px; right: 140px; width: 300px; }
+    .medal { width: 260px; height: 280px; background: #ff9800; border: 6px solid #333; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto; box-shadow: 0 12px 30px rgba(0,0,0,0.3); position: relative; }
+    .medal::before { content: ''; position: absolute; top: -40px; left: 50%; transform: translateX(-50%); width: 60px; height: 60px; background: #ff9800; clip-path: polygon(40% 0%, 60% 0%, 100% 100%, 0% 100%); }
+    .medal-ribbon { position: absolute; top: -100px; left: 50%; width: 120px; height: 100px; transform: translateX(-50%); background: linear-gradient(90deg, #f44336 0%, #f44336 50%, #2196f3 50%, #2196f3 100%); }
+    .medal-content { text-align: center; z-index: 1; }
+    .medal-icon { font-size: 100px; }
+    .medal-text { font-size: 28px; color: #333; font-weight: 700; margin-top: 10px; }
+    .weather-info { position: absolute; bottom: 0; background: #fff; border: 4px solid #333; border-radius: 8px; padding: 15px; width: 280px; text-align: center; }
+    .weather-temp { font-size: 40px; font-weight: 700; color: #ff9800; }
+    .weather-cond { font-size: 24px; color: #333; }
+
+    .announcement-box { position: absolute; bottom: 480px; left: 120px; right: 120px; width: auto; }
+    .announce-shape { background: #fff; border: 8px solid #f44336; border-radius: 15px; padding: 40px; position: relative; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+    .announce-shape::before { content: ''; position: absolute; top: -20px; left: 40px; width: 40px; height: 40px; background: #f44336; clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
+    .announce-title { font-size: 72px; font-weight: 700; color: #f44336; margin-bottom: 20px; }
+    .announce-text { font-size: 40px; color: #333; line-height: 1.5; }
+
+    .event-stamp { position: absolute; bottom: 200px; }
+    .stamp-shape { width: 220px; height: 220px; background: linear-gradient(45deg, #f44336 0%, #e53935 100%); border: 6px solid #333; transform: rotate(-15deg); display: flex; align-items: center; justify-content: center; flex-direction: column; box-shadow: 0 8px 20px rgba(0,0,0,0.3); }
+    .stamp-shape.s2 { background: linear-gradient(45deg, #2196f3 0%, #1976d2 100%); transform: rotate(8deg); }
+    .stamp-shape.s3 { background: linear-gradient(45deg, #4caf50 0%, #43a047 100%); transform: rotate(-12deg); }
+    .stamp-icon { font-size: 80px; margin-bottom: 10px; }
+    .stamp-text { font-size: 32px; font-weight: 700; color: #fff; text-align: center; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+
+    .stamp-s1 { left: 140px; }
+    .stamp-s2 { left: 50%; transform: translateX(-50%); }
+    .stamp-s3 { right: 140px; }
+
+    .ticker { position: absolute; bottom: 0; left: 0; right: 0; height: 140px; background: linear-gradient(90deg, #1565c0 0%, #f44336 50%, #4caf50 100%); display: flex; align-items: center; overflow: hidden; }
+    .ticker-text { font-size: 52px; color: #fff; font-weight: bold; white-space: nowrap; animation: scroll 15s linear infinite; padding: 0 40px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+    @keyframes scroll { from { transform: translateX(3840px); } to { transform: translateX(-600px); } }
+  </style>
+</head>
+<body>
+  <div class="viewport">
+    <div class="stage">
+      <div class="thick-border">
+        <div class="banner">
+          <div class="banner-text">🏆 FIELD DAY! 🏆</div>
+        </div>
+      </div>
+
+      <div class="mascot">
+        <h2>Go Lions!</h2>
+        <div class="mascot-head">🦁</div>
+      </div>
+
+      <div class="trophy-teacher">
+        <div class="title">🏆 Teacher<br>of Week</div>
+        <div class="photo"></div>
+        <div class="name">Mrs. Johnson<br>3rd Grade</div>
+      </div>
+
+      <div class="jersey-clock">
+        <div class="jersey-shape">
+          <div class="jersey-num">12</div>
+        </div>
+        <div class="clock-display">
+          <div class="clock-display-time">7:53 AM</div>
+        </div>
+      </div>
+
+      <div class="medal-weather">
+        <div class="medal-ribbon"></div>
+        <div class="medal">
+          <div class="medal-content">
+            <div class="medal-icon">☀️</div>
+            <div class="medal-text">Weather</div>
+          </div>
+        </div>
+        <div class="weather-info">
+          <div class="weather-temp">46°F</div>
+          <div class="weather-cond">Sunny</div>
+        </div>
+      </div>
+
+      <div class="announcement-box">
+        <div class="announce-shape">
+          <div class="announce-title">📚 Book Fair This Week!</div>
+          <div class="announce-text">Come explore amazing stories! Stop by the library after school for readings and signings.</div>
+        </div>
+      </div>
+
+      <div class="event-stamp stamp-s1">
+        <div class="stamp-shape">
+          <div class="stamp-icon">🎨</div>
+          <div class="stamp-text">Art Show<br>Friday</div>
+        </div>
+      </div>
+      <div class="event-stamp stamp-s2">
+        <div class="stamp-shape s2">
+          <div class="stamp-icon">🏃</div>
+          <div class="stamp-text">Field Trip<br>12 Days</div>
+        </div>
+      </div>
+      <div class="event-stamp stamp-s3">
+        <div class="stamp-shape s3">
+          <div class="stamp-icon">🎉</div>
+          <div class="stamp-text">Assembly<br>Next Mon</div>
+        </div>
+      </div>
+
+      <div class="ticker">
+        <div class="ticker-text">🏆 Welcome to school! 🏆 Field Day coming soon! 🏆 Book Fair in the library! 🏆 Have an amazing day!</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
