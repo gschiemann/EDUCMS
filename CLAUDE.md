@@ -288,6 +288,59 @@ message that flips a switch, not a content download.
   back to text-only emergency message which is always pre-cached as
   default).
 
+- **USB sneakernet ingestion (zero-network deployment).** The player
+  must run completely offline if the customer never gives it
+  internet. Use cases: rural districts with no WiFi, schools on
+  isolated VLANs, content updates during a network outage, initial
+  provisioning before WiFi setup, safety officer pushing lockdown
+  drill content by hand.
+
+  - **Hardware path:** Android 7+ supports USB OTG host mode. APK
+    registers `USB_DEVICE_ATTACHED` intent filter; on attach,
+    scans the drive for the EduCMS manifest path.
+  - **Expected USB layout:**
+    ```
+    /edu-cms-content/
+      manifest.json          ← signed, declares assets + tenant + version
+      manifest.sig           ← HMAC-SHA256 signature
+      assets/
+        <sha256>.mp4
+        <sha256>.jpg
+        ...
+      emergency/
+        <sha256>.mp4         ← lockdown / evacuate / weather / all-clear media
+        ...
+    ```
+  - **Security model (this is critical — USB is an attack vector):**
+    1. Manifest must be signed with tenant-specific HMAC key
+       generated at pairing time. Tampered or unsigned drives
+       are rejected with an audit log entry, no content loaded.
+    2. Asset filenames are SHA-256 of content; player verifies
+       hash before accepting any file into local cache.
+    3. Operator confirmation prompt on first ingest from a new
+       USB device fingerprint ("Update content from USB stick?
+       [device serial X, Y assets]") — kiosk-mode dialog, requires
+       admin PIN.
+    4. **Emergency asset updates from USB require escalated
+       approval:** confirmation prompt warns "This will update
+       emergency content shown during lockdowns. Continue?"
+       and writes to immutable AuditLog with `source: USB`,
+       device serial, file hashes, operator user id.
+    5. Per-tenant feature flag: `usbIngestEnabled` (default false
+       for new tenants; admins must opt in). Disabled for
+       restaurant/retail tenants by default — they have WiFi.
+    6. Drive is read-only mounted; player never writes back to USB.
+  - **Workflow for fully offline deployment:**
+    1. Admin generates a signed bundle from dashboard (button:
+       "Export to USB"), downloads .zip with manifest + assets.
+    2. Operator copies to USB stick, walks to screen.
+    3. Player auto-detects on plug-in, prompts for admin PIN,
+       ingests, swaps to new content within seconds.
+    4. Audit log entry posted to server when next online.
+  - **Bonus:** same export bundle format works for "preload" during
+    initial APK provisioning — sysadmins can ship a USB with a
+    pre-paired template before any WiFi is configured.
+
 ---
 
 **Future / multi-industry expansion (Sprint 7+, post-funding)**
