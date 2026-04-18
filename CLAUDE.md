@@ -234,6 +234,71 @@ Zero-budget roadmap underway (6 sprints planned):
 - Emergency system expansion (SOS button, broadcastable text, media)
 - Polish (UX, performance, mobile)
 
+**Sprint 8 — Screen management at scale (map view + fleet ops)**
+
+Once a customer has 100+ screens across multiple buildings or
+locations, the flat list in `/screens` stops being useful. Sprint 8
+turns screen management into a real operations console.
+
+- **Geographic data on Screen.** Add `latitude` / `longitude` /
+  `address` columns. Auto-geocode `address` via OpenStreetMap
+  Nominatim (free, rate-limited; fall back to manual lat/lng entry).
+  When a screen first registers we capture nothing — admin sets the
+  location once when assigning to a building.
+- **Map view at `/[schoolId]/screens?view=map`.** Toggle between
+  list and map. Use **Leaflet + OpenStreetMap tiles** (free, no key)
+  with `leaflet.markercluster` for dense areas. Mapbox is the easy
+  upsell when funding lands; Leaflet stays default.
+- **Status-coded pins:**
+    - 🟢 ONLINE + emergency cache READY
+    - 🟡 ONLINE but emergency cache NONE (would fetch over network)
+    - 🟠 ONLINE but offline-flag (last manifest sync >5min)
+    - 🔴 OFFLINE (last_ping_at >2min)
+    - 🚨 EMERGENCY ACTIVE (huge red ring, blinking)
+    - ⚪ PENDING / unpaired
+- **Drill-down panel.** Click a pin → side panel slides in showing:
+  screen name + photo, last 5 cache reports, current playlist, last
+  ingest event, "Open player" / "Sync now" / "Trigger emergency on
+  this screen only" buttons.
+- **Cluster colors and counts.** A cluster shows the worst-status
+  pin's color so a district admin instantly sees "3 screens in
+  Lincoln HS are red." Cluster click zooms in.
+- **Filters in the toolbar.** By status, screen group, building,
+  emergency-cache readiness, last ping age, license tier (for
+  SUPER_ADMIN cross-tenant view).
+- **Heat-map mode for SUPER_ADMIN.** Across every tenant, density
+  by status. Useful for "where do we have outage clusters?" when
+  CDN/region issues hit.
+- **Geo-scoped emergency triggers.** Future: lasso-select an area
+  on the map → trigger emergency on every screen inside. Backed by
+  the same signed pub/sub used today, just with a geographic scope
+  filter applied server-side (and audit log entry includes the
+  bounding box for forensics).
+- **Bulk operations.** Multi-select pins → "assign to group X",
+  "unpair selected", "force sync", "swap playlist". Same actions
+  as the list view, but with map-driven multi-select.
+- **Mobile-friendly map.** District admins on a phone can pan/zoom
+  + tap a pin to drill in. Tailwind breakpoints already cover the
+  layout; just need touch-friendly hit targets on the cluster pins.
+- **Photo per screen.** Optional `Screen.photoUrl` so the drill-in
+  shows what the wall actually looks like. Operator uploads on first
+  install. Helps remote troubleshooting ("the lobby one near the
+  trophy case is red").
+
+Implementation order:
+  1. Add lat/lng/address columns + Nominatim geocoder service.
+  2. Map view route with Leaflet + clustering.
+  3. Status-coded pins driven off existing /screens endpoint payload
+     (we already report cache status + lastPingAt).
+  4. Drill-down panel reusing existing screen-detail components.
+  5. Geo-scoped emergency triggers (security review required).
+
+No vendor commitment; Leaflet + OSM is free and hits the mark for
+v1. Mapbox / Google Maps slot in cleanly later via a tile-source env
+var if a customer demands it.
+
+---
+
 **Sprint 7 — Offline-first player (download-and-play architecture)**
 
 The player MUST download all content locally and play from local cache.
