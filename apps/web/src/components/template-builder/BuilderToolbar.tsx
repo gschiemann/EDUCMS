@@ -2,7 +2,7 @@
 
 import {
   ArrowLeft, Save, Copy, Undo2, Redo2, Eye, EyeOff, Grid3X3, Magnet,
-  ZoomIn, ZoomOut, RotateCw, Loader2, CheckCircle2, AlertCircle, Hand,
+  ZoomIn, ZoomOut, RotateCw, Loader2, CheckCircle2, AlertCircle, Hand, Trash2,
 } from 'lucide-react';
 import { useMemo } from 'react';
 import { useBuilderStore } from './useBuilderStore';
@@ -12,14 +12,18 @@ interface Props {
   onBack: () => void;
   onSave: () => void;
   onSaveAs?: () => void;
+  /** Discard in-progress work and delete the template. BuilderShell
+   *  passes this only for non-system templates; a missing handler hides
+   *  the button. Clicking prompts for confirmation in BuilderShell. */
+  onDiscard?: () => void;
   saveStatus: 'idle' | 'saving' | 'saved' | 'error';
   saveError?: string;
   lastSavedAt?: number | null;
 }
 
-export function BuilderToolbar({ onBack, onSave, onSaveAs, saveStatus, saveError, lastSavedAt }: Props) {
+export function BuilderToolbar({ onBack, onSave, onSaveAs, onDiscard, saveStatus, saveError, lastSavedAt }: Props) {
   const {
-    meta, zones, isDirty, past, future, zoom, showGrid, snapEnabled, previewMode,
+    meta, zones, isDirty, isSystem, past, future, zoom, showGrid, snapEnabled, previewMode,
     isTouchEnabled, setTouchEnabled,
     undo, redo, flipCanvas, setZoom, setShowGrid, setSnapEnabled, setPreviewMode,
   } = useBuilderStore();
@@ -133,6 +137,21 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, saveStatus, saveError
 
         <SaveStatusChip status={saveStatus} isDirty={isDirty} error={saveError} lastSavedAt={lastSavedAt ?? null} />
 
+        {/* Discard — delete the in-progress (non-system) template and
+            exit. Red tint so it's clearly destructive; only renders when
+            BuilderShell passes the handler (system presets hide it). */}
+        {onDiscard && (
+          <button
+            type="button"
+            onClick={onDiscard}
+            title="Discard this template and exit"
+            className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5 transition-colors focus:outline-none focus:ring-2 focus:ring-rose-400 border border-rose-200"
+          >
+            <Trash2 className="w-3.5 h-3.5" aria-hidden />
+            Discard
+          </button>
+        )}
+
         {onSaveAs && (
           <button
             type="button"
@@ -146,18 +165,23 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, saveStatus, saveError
           </button>
         )}
 
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={saveStatus === 'saving'}
-          title="Save (Ctrl+S)"
-          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5 transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-        >
-          {saveStatus === 'saving'
-            ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
-            : <Save className="w-3.5 h-3.5" aria-hidden />}
-          Save
-        </button>
+        {/* The primary "Save" writes into the current template. Hidden
+            for system presets — those can never be overwritten; the
+            operator can only Save-as-copy into their tenant. */}
+        {!isSystem && (
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saveStatus === 'saving'}
+            title="Save (Ctrl+S)"
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5 transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          >
+            {saveStatus === 'saving'
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+              : <Save className="w-3.5 h-3.5" aria-hidden />}
+            Save
+          </button>
+        )}
       </div>
     </div>
   );
