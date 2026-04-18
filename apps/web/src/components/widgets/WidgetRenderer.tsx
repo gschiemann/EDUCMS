@@ -27,6 +27,7 @@ import { SunshineAcademyClock, SunshineAcademyWeather, SunshineAcademyCountdown,
 // medals, jerseys) — not a rectangle with a background color.
 import { RainbowRibbonLogo, RainbowRibbonText, RainbowRibbonClock, RainbowRibbonWeather, RainbowRibbonCountdown, RainbowRibbonAnnouncement, RainbowRibbonCalendar, RainbowRibbonStaffSpotlight, RainbowRibbonImageCarousel, RainbowRibbonTicker } from './themes/rainbow-ribbon';
 import { FieldDayLogo, FieldDayText, FieldDayClock, FieldDayWeather, FieldDayCountdown, FieldDayAnnouncement, FieldDayCalendar, FieldDayStaffSpotlight, FieldDayImageCarousel, FieldDayTicker } from './themes/field-day';
+import { BulletinBoardLogo, BulletinBoardText, BulletinBoardClock, BulletinBoardWeather, BulletinBoardCountdown, BulletinBoardAnnouncement, BulletinBoardCalendar, BulletinBoardStaffSpotlight, BulletinBoardImageCarousel, BulletinBoardTicker } from './themes/bulletin-board';
 // Countdown helpers (recurring period support — used by every Countdown variant)
 import { resolveCountdownTarget } from './countdown-utils';
 
@@ -115,6 +116,7 @@ function ClockWidget({ config, compact }: { config: any; compact: boolean }) {
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardClock config={config} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonClock config={config} compact={compact} />;
   if (config.theme === 'field-day') return <FieldDayClock config={config} compact={compact} />;
+  if (config.theme === 'bulletin-board') return <BulletinBoardClock config={config} compact={compact} />;
   if (config.theme === 'final-chance') return <FinalChanceClock config={config} />;
   if (config.theme === 'library-quiet') return <LibraryQuietClock config={config} />;
   if (config.theme === 'middle-school-hall') return <MSHallClock config={config} />;
@@ -262,6 +264,7 @@ function WeatherWidget({ config, compact }: { config: any; compact: boolean }) {
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardWeather config={config} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonWeather config={config} compact={compact} />;
   if (config.theme === 'field-day') return <FieldDayWeather config={config} compact={compact} />;
+  if (config.theme === 'bulletin-board') return <BulletinBoardWeather config={config} compact={compact} />;
   if (config.theme === 'final-chance') return <FinalChanceWeather config={config} />;
   if (config.theme === 'middle-school-hall') return <MSHallWeather config={config} />;
   if (config.theme === 'sunshine-academy') return <SunshineAcademyWeather config={config} compact={compact} />;
@@ -372,6 +375,7 @@ function CountdownWidget({ config, compact }: { config: any; compact: boolean })
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardCountdown config={config} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonCountdown config={config} compact={compact} />;
   if (config.theme === 'field-day') return <FieldDayCountdown config={config} compact={compact} />;
+  if (config.theme === 'bulletin-board') return <BulletinBoardCountdown config={config} compact={compact} />;
   if (config.theme === 'final-chance') return <FinalChanceCountdown config={config} />;
   if (config.theme === 'high-school-athletics') return <AthleticsCountdown config={config} compact={compact} />;
   if (config.theme === 'middle-school-hall') return <MSHallCountdown config={config} />;
@@ -451,6 +455,7 @@ function TextWidget({ config }: { config: any }) {
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardText config={config} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonText config={config} />;
   if (config.theme === 'field-day') return <FieldDayText config={config} />;
+  if (config.theme === 'bulletin-board') return <BulletinBoardText config={config} />;
   if (config.theme === 'final-chance') return <FinalChanceText config={config} />;
   if (config.theme === 'high-school-athletics') return <AthleticsText config={config} />;
   if (config.theme === 'middle-school-hall') return <MSHallText config={config} />;
@@ -494,6 +499,7 @@ function AnnouncementWidget({ config, compact }: { config: any; compact: boolean
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardAnnouncement config={config} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonAnnouncement config={config} compact={compact} />;
   if (config.theme === 'field-day') return <FieldDayAnnouncement config={config} compact={compact} />;
+  if (config.theme === 'bulletin-board') return <BulletinBoardAnnouncement config={config} compact={compact} />;
   if (config.theme === 'final-chance') return <FinalChanceAnnouncement config={config} />;
   if (config.theme === 'high-school-athletics') return <AthleticsAnnouncement config={config} />;
   if (config.theme === 'middle-school-hall') return <MSHallAnnouncement config={config} />;
@@ -549,6 +555,7 @@ function TickerWidget({ config }: { config: any }) {
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardTicker config={config} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonTicker config={config} />;
   if (config.theme === 'field-day') return <FieldDayTicker config={config} />;
+  if (config.theme === 'bulletin-board') return <BulletinBoardTicker config={config} />;
   if (config.theme === 'final-chance') return <FinalChanceTicker config={config} />;
   if (config.theme === 'high-school-athletics') return <AthleticsTicker config={config} />;
   if (config.theme === 'library-quiet') return <LibraryQuietTicker config={config} />;
@@ -679,6 +686,7 @@ function CalendarWidget({ config, compact }: { config: any; compact: boolean }) 
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardCalendar config={config} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonCalendar config={config} compact={compact} />;
   if (config.theme === 'field-day') return <FieldDayCalendar config={config} compact={compact} />;
+  if (config.theme === 'bulletin-board') return <BulletinBoardCalendar config={config} compact={compact} />;
   if (config.theme === 'final-chance') return <FinalChanceCalendar config={config} />;
   if (config.theme === 'sunshine-academy') return <SunshineAcademyCalendar config={config} compact={compact} />;
   const maxEvents = config.maxEvents || 5;
@@ -727,6 +735,7 @@ function StaffSpotlightWidget({ config, compact }: { config: any; compact: boole
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardStaff config={config} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonStaffSpotlight config={config} compact={compact} />;
   if (config.theme === 'field-day') return <FieldDayStaffSpotlight config={config} compact={compact} />;
+  if (config.theme === 'bulletin-board') return <BulletinBoardStaffSpotlight config={config} compact={compact} />;
   if (config.theme === 'final-chance') return <FinalChanceStaff config={config} />;
   if (config.theme === 'middle-school-hall') return <MSHallStaff config={config} />;
   if (config.theme === 'music-arts') return <MusicArtsSpotlight config={config} />;
@@ -775,6 +784,7 @@ function ImageWidget({ config }: { config: any }) {
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardLogo config={config} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonLogo config={config} />;
   if (config.theme === 'field-day') return <FieldDayLogo config={config} />;
+  if (config.theme === 'bulletin-board') return <BulletinBoardLogo config={config} />;
   if (config.theme === 'final-chance') return <FinalChanceLogo config={config} />;
   if (config.theme === 'high-school-athletics') return <AthleticsLogo config={config} />;
   if (config.theme === 'middle-school-hall') return <MSHallLogo config={config} />;
@@ -799,6 +809,7 @@ function ImageCarouselWidget({ config }: { config: any }) {
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardImageCarousel config={config} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonImageCarousel config={config} />;
   if (config.theme === 'field-day') return <FieldDayImageCarousel config={config} />;
+  if (config.theme === 'bulletin-board') return <BulletinBoardImageCarousel config={config} />;
   if (config.theme === 'final-chance') return <FinalChanceImageCarousel config={config} />;
   if (config.theme === 'middle-school-hall') return <MSHallImageCarousel config={config} />;
   if (config.theme === 'stem-science') return <StemScienceImageCarousel config={config} />;
@@ -920,6 +931,7 @@ function LogoWidget({ config }: { config: any }) {
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardLogo config={config} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonLogo config={config} />;
   if (config.theme === 'field-day') return <FieldDayLogo config={config} />;
+  if (config.theme === 'bulletin-board') return <BulletinBoardLogo config={config} />;
   if (config.theme === 'final-chance') return <FinalChanceLogo config={config} />;
   if (config.theme === 'high-school-athletics') return <AthleticsLogo config={config} />;
   if (config.theme === 'middle-school-hall') return <MSHallLogo config={config} />;

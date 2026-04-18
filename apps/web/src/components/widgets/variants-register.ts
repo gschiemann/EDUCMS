@@ -348,4 +348,63 @@ registerVariant({ id: 'lunch-library',           widgetType: 'LUNCH_MENU', name:
 
 // ─── BELL SCHEDULE ─────────────────────────────────────────────────────
 registerVariant({ id: 'bell-hallway',            widgetType: 'BELL_SCHEDULE', name: 'Hallway',  description: 'Pinned bell schedule on corkboard', category: 'HALLWAY',   render: MSHallBellSchedule });
+
+// ═══════════════════════════════════════════════════════════════════════
+// ELEMENTARY SHAPE-BASED THEMES — Rainbow Ribbon / Field Day / Bulletin Board
+// Every widget in these themes is a real SVG shape (ribbon, stopwatch,
+// polaroid, pushpin). Registered here so teachers can pick any of them
+// a la carte from the widget picker, not just when instantiating the
+// full preset.
+// ═══════════════════════════════════════════════════════════════════════
+import {
+  RainbowRibbonLogo, RainbowRibbonText, RainbowRibbonClock, RainbowRibbonWeather,
+  RainbowRibbonCountdown, RainbowRibbonAnnouncement, RainbowRibbonCalendar,
+  RainbowRibbonStaffSpotlight, RainbowRibbonImageCarousel, RainbowRibbonTicker,
+} from './themes/rainbow-ribbon';
+import {
+  FieldDayLogo, FieldDayText, FieldDayClock, FieldDayWeather,
+  FieldDayCountdown, FieldDayAnnouncement, FieldDayCalendar,
+  FieldDayStaffSpotlight, FieldDayImageCarousel, FieldDayTicker,
+} from './themes/field-day';
+import {
+  BulletinBoardLogo, BulletinBoardText, BulletinBoardClock, BulletinBoardWeather,
+  BulletinBoardCountdown, BulletinBoardAnnouncement, BulletinBoardCalendar,
+  BulletinBoardStaffSpotlight, BulletinBoardImageCarousel, BulletinBoardTicker,
+} from './themes/bulletin-board';
+
+// ─── RAINBOW RIBBON (Elementary, candy-pop party) ──────────────────────
+registerVariant({ id: 'clock-rainbow-ribbon',         widgetType: 'CLOCK',           name: 'Rainbow Speech Bubble', description: 'Speech-bubble clock with rainbow strip',     category: 'ELEMENTARY', render: RainbowRibbonClock,          defaultConfig: { theme: 'rainbow-ribbon', format: '12h' } });
+registerVariant({ id: 'text-rainbow-ribbon',          widgetType: 'TEXT',            name: 'Pink Ribbon Banner',     description: 'Folded ribbon banner with swallow tails',    category: 'ELEMENTARY', render: RainbowRibbonText,           defaultConfig: { theme: 'rainbow-ribbon' } });
+registerVariant({ id: 'weather-rainbow-ribbon',       widgetType: 'WEATHER',         name: 'Cloud Cutout',           description: 'Dynamic cloud + sun/rain/snow per condition', category: 'ELEMENTARY', render: RainbowRibbonWeather,        defaultConfig: { theme: 'rainbow-ribbon', location: 'Springfield', units: 'imperial' } });
+registerVariant({ id: 'announcement-rainbow-ribbon',  widgetType: 'ANNOUNCEMENT',    name: 'Speech Bubble',          description: 'White speech bubble with tail',              category: 'ELEMENTARY', render: RainbowRibbonAnnouncement,   defaultConfig: { theme: 'rainbow-ribbon' } });
+registerVariant({ id: 'calendar-rainbow-ribbon',      widgetType: 'CALENDAR',        name: 'Candy Pills',            description: 'Rounded pastel pills with bullet dots',      category: 'ELEMENTARY', render: RainbowRibbonCalendar,       defaultConfig: { theme: 'rainbow-ribbon' } });
+registerVariant({ id: 'staff-rainbow-ribbon',         widgetType: 'STAFF_SPOTLIGHT', name: 'Washi Polaroid',         description: 'Polaroid with spotlight washi tape',         category: 'ELEMENTARY', render: RainbowRibbonStaffSpotlight, defaultConfig: { theme: 'rainbow-ribbon' } });
+registerVariant({ id: 'countdown-rainbow-ribbon',     widgetType: 'COUNTDOWN',       name: 'Yellow Starburst',       description: '12-point starburst with day counter',        category: 'ELEMENTARY', render: RainbowRibbonCountdown,      defaultConfig: { theme: 'rainbow-ribbon', label: 'Event in' } });
+registerVariant({ id: 'logo-rainbow-ribbon',          widgetType: 'LOGO',            name: 'Pleated Rosette',        description: 'Ribbon rosette with smiley sun mascot',      category: 'ELEMENTARY', render: RainbowRibbonLogo,           defaultConfig: { theme: 'rainbow-ribbon' } });
+registerVariant({ id: 'ticker-rainbow-ribbon',        widgetType: 'TICKER',          name: 'Pennant Bunting',        description: 'Colorful pennant-flag bunting ticker',       category: 'ELEMENTARY', render: RainbowRibbonTicker,         defaultConfig: { theme: 'rainbow-ribbon' } });
+registerVariant({ id: 'image-rainbow-ribbon',         widgetType: 'IMAGE_CAROUSEL',  name: 'Washi Frame',            description: 'Photo hero with washi-tape corners',         category: 'ELEMENTARY', render: RainbowRibbonImageCarousel,  defaultConfig: { theme: 'rainbow-ribbon' } });
+
+// ─── FIELD DAY (Elementary, sports/varsity sticker-pack) ───────────────
+registerVariant({ id: 'clock-field-day',              widgetType: 'CLOCK',           name: 'Stopwatch',              description: 'Coach\'s stopwatch with side lugs',          category: 'ELEMENTARY', render: FieldDayClock,               defaultConfig: { theme: 'field-day', format: '12h' } });
+registerVariant({ id: 'text-field-day',               widgetType: 'TEXT',            name: 'Varsity Pennant',        description: 'Thick-stroke varsity banner patch',          category: 'ELEMENTARY', render: FieldDayText,                defaultConfig: { theme: 'field-day' } });
+registerVariant({ id: 'weather-field-day',            widgetType: 'WEATHER',         name: 'Shield Badge',           description: 'Navy shield weather badge',                  category: 'ELEMENTARY', render: FieldDayWeather,             defaultConfig: { theme: 'field-day', location: 'Springfield', units: 'imperial' } });
+registerVariant({ id: 'announcement-field-day',       widgetType: 'ANNOUNCEMENT',    name: 'Trophy Scroll',          description: 'Trophy cup + ribbon scroll announcement',    category: 'ELEMENTARY', render: FieldDayAnnouncement,        defaultConfig: { theme: 'field-day' } });
+registerVariant({ id: 'calendar-field-day',           widgetType: 'CALENDAR',        name: 'Jersey Cards',           description: 'Stacked jersey-silhouette event cards',      category: 'ELEMENTARY', render: FieldDayCalendar,            defaultConfig: { theme: 'field-day' } });
+registerVariant({ id: 'staff-field-day',              widgetType: 'STAFF_SPOTLIGHT', name: 'MVP Gold Card',          description: 'Gold MVP card with rotated sticker',         category: 'ELEMENTARY', render: FieldDayStaffSpotlight,      defaultConfig: { theme: 'field-day' } });
+registerVariant({ id: 'countdown-field-day',          widgetType: 'COUNTDOWN',       name: 'Gold Medal',             description: 'Gold medal with ribbon tails',               category: 'ELEMENTARY', render: FieldDayCountdown,           defaultConfig: { theme: 'field-day', label: 'Event in' } });
+registerVariant({ id: 'logo-field-day',               widgetType: 'LOGO',            name: 'Mascot Patch',           description: 'Round mascot shield with sunburst rays',     category: 'ELEMENTARY', render: FieldDayLogo,                defaultConfig: { theme: 'field-day' } });
+registerVariant({ id: 'ticker-field-day',             widgetType: 'TICKER',          name: 'Scoreboard LED',         description: 'Amber dot-matrix scoreboard strip',          category: 'ELEMENTARY', render: FieldDayTicker,              defaultConfig: { theme: 'field-day' } });
+registerVariant({ id: 'image-field-day',              widgetType: 'IMAGE_CAROUSEL',  name: 'Scoreboard Frame',       description: 'LED-dot scoreboard photo frame',             category: 'ELEMENTARY', render: FieldDayImageCarousel,       defaultConfig: { theme: 'field-day' } });
+
+// ─── BULLETIN BOARD (Elementary, paper crafts + pushpins) ──────────────
+registerVariant({ id: 'clock-bulletin-board',         widgetType: 'CLOCK',           name: 'Paper Clock',            description: 'Round paper clock pinned to cork',           category: 'ELEMENTARY', render: BulletinBoardClock,          defaultConfig: { theme: 'bulletin-board', format: '12h' } });
+registerVariant({ id: 'text-bulletin-board',          widgetType: 'TEXT',            name: 'Letter Banner',          description: 'Construction-paper letters on jute string',  category: 'ELEMENTARY', render: BulletinBoardText,           defaultConfig: { theme: 'bulletin-board' } });
+registerVariant({ id: 'weather-bulletin-board',       widgetType: 'WEATHER',         name: 'Index Card',             description: 'Weather written on a pinned index card',     category: 'ELEMENTARY', render: BulletinBoardWeather,        defaultConfig: { theme: 'bulletin-board', location: 'Springfield', units: 'imperial' } });
+registerVariant({ id: 'announcement-bulletin-board',  widgetType: 'ANNOUNCEMENT',    name: 'Pinned Index Card',      description: 'Lined index card with two pushpins',         category: 'ELEMENTARY', render: BulletinBoardAnnouncement,   defaultConfig: { theme: 'bulletin-board' } });
+registerVariant({ id: 'calendar-bulletin-board',      widgetType: 'CALENDAR',        name: 'Sticky Note Stack',      description: 'Rotated pastel sticky notes with tape',      category: 'ELEMENTARY', render: BulletinBoardCalendar,       defaultConfig: { theme: 'bulletin-board' } });
+registerVariant({ id: 'staff-bulletin-board',         widgetType: 'STAFF_SPOTLIGHT', name: 'Taped Polaroid',         description: 'Classic polaroid with corner tape',          category: 'ELEMENTARY', render: BulletinBoardStaffSpotlight, defaultConfig: { theme: 'bulletin-board' } });
+registerVariant({ id: 'countdown-bulletin-board',     widgetType: 'COUNTDOWN',       name: 'Torn Paper Banner',      description: 'Torn-edge paper countdown with ribbons',     category: 'ELEMENTARY', render: BulletinBoardCountdown,      defaultConfig: { theme: 'bulletin-board', label: 'Event in' } });
+registerVariant({ id: 'logo-bulletin-board',          widgetType: 'LOGO',            name: 'Paper Crest',            description: 'Paper school crest with red pushpin',        category: 'ELEMENTARY', render: BulletinBoardLogo,           defaultConfig: { theme: 'bulletin-board' } });
+registerVariant({ id: 'ticker-bulletin-board',        widgetType: 'TICKER',          name: 'Paper Strip Banner',     description: 'Scalloped paper strip taped to the board',   category: 'ELEMENTARY', render: BulletinBoardTicker,         defaultConfig: { theme: 'bulletin-board' } });
+registerVariant({ id: 'image-bulletin-board',         widgetType: 'IMAGE_CAROUSEL',  name: 'Pinned Photo',           description: 'Photo pinned with four colored pushpins',    category: 'ELEMENTARY', render: BulletinBoardImageCarousel,  defaultConfig: { theme: 'bulletin-board' } });
 registerVariant({ id: 'bell-gym',                widgetType: 'BELL_SCHEDULE', name: 'Gym',      description: 'Pep-style bell schedule',           category: 'ATHLETICS', render: GymPEBellSchedule });

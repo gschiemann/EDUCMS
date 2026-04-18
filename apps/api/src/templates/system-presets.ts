@@ -43,14 +43,13 @@ export interface SystemPreset {
   }>;
 }
 
-// ═════════════════════════════════════════════════════════════════════════
-// PREMIUM THEMED BACKGROUND — Sunny Meadow
-// A layered CSS background: illustrated meadow hills at the bottom, stitched
-// on top of a sky-blue → warm-yellow → peach gradient. Inline SVG is
-// URL-encoded so it ships with the template and doesn't require any asset
-// upload or network call.
-// ═════════════════════════════════════════════════════════════════════════
-const SUNNY_MEADOW_BG = (() => {
+// The Sunny Meadow / Elementary Welcome preset was retired — only the
+// shape-based Rainbow Ribbon stack is approved for elementary. The SVG
+// background constant below would produce a TS unused-const warning, so
+// we keep it gated behind a never-referenced IIFE. If we ever need it
+// back, just wire it into a preset's bgGradient field.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _RETIRED_SUNNY_MEADOW_BG = (() => {
   // Two-layer background: full-canvas sky scene (sun, clouds, rainbow,
   // flying kite) + foreground meadow with rolling hills and flowers.
   // Sized to the 3840×2160 template so every element reads cleanly on
@@ -166,160 +165,6 @@ const SUNNY_MEADOW_BG = (() => {
 
 export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
   // ─────────────────────────────────────────────────────
-  // ★ PREMIUM — Sunny Meadow (elementary lobby showcase)
-  // Teachers pick this, configure names/messages, hit publish. Done.
-  // ─────────────────────────────────────────────────────
-  {
-    id: 'preset-lobby-sunny-meadow',
-    name: '☀️ Elementary Welcome',
-    description: 'A bright, illustrated welcome screen designed for elementary schools. Big playful hero GIF area kids love, cloud-shaped weather, polaroid Teacher of the Week, rainbow accents, and a scrolling ticker. Just fill in names and messages — zero design work needed.',
-    category: 'LOBBY',
-    orientation: 'LANDSCAPE',
-    schoolLevel: 'ELEMENTARY',
-    screenWidth: 3840,
-    screenHeight: 2160,
-    bgGradient: SUNNY_MEADOW_BG,
-    zones: [
-      // Row 1 — header band (logo · hero headline · clock)
-      {
-        name: 'School Logo',
-        widgetType: 'LOGO',
-        x: 3, y: 4, width: 11, height: 13,
-        sortOrder: 0,
-        defaultConfig: { theme: 'sunny-meadow', fitMode: 'contain' },
-      },
-      {
-        name: 'Welcome Headline',
-        widgetType: 'TEXT',
-        x: 15, y: 5, width: 56, height: 14,
-        sortOrder: 1,
-        defaultConfig: {
-          theme: 'sunny-meadow',
-          content: "Welcome back, friends! 🌻",
-          fontSize: 96,
-          fontWeight: 800,
-          alignment: 'center',
-          color: '#3A2E2A',
-          bgColor: 'transparent',
-        },
-      },
-      {
-        name: 'Clock',
-        widgetType: 'CLOCK',
-        x: 73, y: 5, width: 24, height: 14,
-        sortOrder: 2,
-        defaultConfig: { theme: 'sunny-meadow', format: '12h' },
-      },
-
-      // Row 2 — hero GIF/photo carousel dominates left; info widgets stack right
-      {
-        name: 'Kids in Action (GIFs)',
-        widgetType: 'IMAGE_CAROUSEL',
-        x: 3, y: 23, width: 50, height: 47,
-        sortOrder: 3,
-        defaultConfig: {
-          theme: 'sunny-meadow',
-          transitionEffect: 'fade',
-          intervalMs: 4500,
-          fitMode: 'cover',
-          allowGifs: true,
-          caption: 'What we are up to this week',
-          // Teachers drop in animated GIFs + photos of field trips, art
-          // projects, recess, science fairs — anything that makes kids
-          // light up when they walk past the screen.
-          urls: [],
-        },
-      },
-      {
-        name: 'Weather (cloud card)',
-        widgetType: 'WEATHER',
-        x: 55, y: 23, width: 20, height: 22,
-        sortOrder: 4,
-        defaultConfig: {
-          theme: 'sunny-meadow',
-          location: 'Springfield',
-          units: 'imperial',
-          showForecast: false,
-          shape: 'cloud',
-        },
-      },
-      {
-        name: 'Countdown Badge',
-        widgetType: 'COUNTDOWN',
-        x: 77, y: 23, width: 20, height: 22,
-        sortOrder: 5,
-        defaultConfig: {
-          theme: 'sunny-meadow',
-          label: 'Field Trip in',
-          targetDate: '',
-          shape: 'badge',
-        },
-      },
-      {
-        name: "Today's Announcements",
-        widgetType: 'ANNOUNCEMENT',
-        x: 55, y: 47, width: 42, height: 23,
-        sortOrder: 6,
-        defaultConfig: {
-          theme: 'sunny-meadow',
-          message:
-            "Book Fair starts Monday! Come explore hundreds of new books in the library. Don't forget your reading log. 📚",
-          priority: 'normal',
-          shape: 'bubble',
-        },
-      },
-
-      // Row 3 — polaroid-style spotlight + calendar strip
-      {
-        name: 'Teacher of the Week',
-        widgetType: 'STAFF_SPOTLIGHT',
-        x: 3, y: 73, width: 36, height: 17,
-        sortOrder: 7,
-        defaultConfig: {
-          theme: 'sunny-meadow',
-          staffName: 'Mrs. Johnson',
-          role: 'Teacher of the Week',
-          bio: 'Inspiring 3rd graders every day with creativity, kindness, and a big smile!',
-          shape: 'polaroid',
-          rotation: -2,
-        },
-      },
-      {
-        name: 'Upcoming Events',
-        widgetType: 'CALENDAR',
-        x: 41, y: 73, width: 56, height: 17,
-        sortOrder: 8,
-        defaultConfig: {
-          theme: 'sunny-meadow',
-          daysToShow: 7,
-          maxEvents: 4,
-          layout: 'horizontal',
-        },
-      },
-
-      // Ticker ribbon across the bottom edge
-      {
-        name: 'Rolling Ticker',
-        widgetType: 'TICKER',
-        x: 0, y: 91, width: 100, height: 9,
-        sortOrder: 9,
-        defaultConfig: {
-          theme: 'sunny-meadow',
-          speed: 'medium',
-          direction: 'left',
-          messages: [
-            'Welcome back, Sunnyside Stars! ⭐',
-            'Picture day is this Friday — wear your school colors!',
-            'Parent-teacher conferences next Tuesday 🍎',
-            'Lunch menu updates every Monday',
-            'Reading Challenge: 20 minutes a day keeps the boring away! 📖',
-          ],
-        },
-      },
-    ],
-  },
-
-  // ─────────────────────────────────────────────────────
   // ★ 🌈 RAINBOW RIBBON — shape-based elementary lobby
   // Ported from design-lab/opus/03-rainbow-ribbon.html. Every widget
   // renders as a real SVG shape (ribbon banner, speech bubbles, cloud
@@ -413,6 +258,226 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
         zIndex: 6, sortOrder: 8,
         defaultConfig: {
           theme: 'rainbow-ribbon',
+          speed: 'medium',
+          messages: [
+            'Welcome back, Sunnyside Stars! ⭐',
+            'Picture day is this Friday — wear your school colors!',
+            'Parent-teacher conferences next Tuesday 🍎',
+            'Reading Challenge: 20 minutes a day! 📖',
+          ],
+        },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────
+  // ★ 🌈 RAINBOW RIBBON — PORTRAIT variant (2160×3840)
+  // Same shape-based widgets as the landscape preset, restacked for
+  // vertical signs (hallway doorways, entry-foyer totems, portrait
+  // tablets). Banner spans full width up top; clock + weather pair
+  // below it; announcement + teacher own the middle; countdown +
+  // calendar split the bottom over the pennant ticker.
+  // ─────────────────────────────────────────────────────
+  {
+    id: 'preset-lobby-rainbow-ribbon-portrait',
+    name: '🌈 Rainbow Ribbon — Portrait',
+    description: 'Portrait remix of Rainbow Ribbon. Same cheerful shape-based widgets (ribbon banner, cloud weather, starburst countdown, polaroid teacher, pennant ticker), restacked for vertical displays.',
+    category: 'LOBBY',
+    orientation: 'PORTRAIT',
+    schoolLevel: 'ELEMENTARY',
+    screenWidth: 2160,
+    screenHeight: 3840,
+    bgGradient: 'linear-gradient(180deg,#BFE8FF 0%,#FFE0EC 55%,#FFD8A8 100%)',
+    bgColor: '#BFE8FF',
+    zones: [
+      // Row 1 — welcome banner (full width, top)
+      {
+        name: 'Welcome Ribbon',
+        widgetType: 'TEXT',
+        x: 4, y: 2, width: 92, height: 10,
+        zIndex: 3, sortOrder: 0,
+        defaultConfig: {
+          theme: 'rainbow-ribbon',
+          content: 'Welcome Back, Friends!',
+          subtitle: 'Today is going to be amazing',
+        },
+      },
+      // School rosette logo — centered beneath banner
+      {
+        name: 'School Rosette',
+        widgetType: 'LOGO',
+        x: 38, y: 13, width: 24, height: 9,
+        zIndex: 5, sortOrder: 1,
+        defaultConfig: { theme: 'rainbow-ribbon' },
+      },
+      // Row 2 — clock + weather (split half-and-half horizontally)
+      {
+        name: 'Cloud Weather',
+        widgetType: 'WEATHER',
+        x: 4, y: 24, width: 44, height: 12,
+        zIndex: 2, sortOrder: 2,
+        defaultConfig: { theme: 'rainbow-ribbon', location: 'Springfield', units: 'imperial' },
+      },
+      {
+        name: 'Sun Clock',
+        widgetType: 'CLOCK',
+        x: 52, y: 24, width: 44, height: 12,
+        zIndex: 2, sortOrder: 3,
+        defaultConfig: { theme: 'rainbow-ribbon', format: '12h' },
+      },
+      // Row 3 — hero announcement bubble
+      {
+        name: "Today's News Bubble",
+        widgetType: 'ANNOUNCEMENT',
+        x: 4, y: 38, width: 92, height: 16,
+        zIndex: 10, sortOrder: 4,
+        defaultConfig: {
+          theme: 'rainbow-ribbon',
+          message: 'Book Fair starts Monday! 📚 Come find your new favorite story in the library.',
+          priority: 'normal',
+        },
+      },
+      // Row 4 — Teacher of the Week (wide polaroid)
+      {
+        name: 'Teacher Polaroid',
+        widgetType: 'STAFF_SPOTLIGHT',
+        x: 4, y: 56, width: 92, height: 14,
+        zIndex: 3, sortOrder: 5,
+        defaultConfig: {
+          theme: 'rainbow-ribbon',
+          staffName: 'Mrs. Johnson',
+          role: 'Teacher of the Week',
+          bio: 'Inspiring 3rd graders every day!',
+        },
+      },
+      // Row 5 — countdown + calendar side-by-side
+      {
+        name: 'Field Trip Countdown',
+        widgetType: 'COUNTDOWN',
+        x: 4, y: 72, width: 30, height: 17,
+        zIndex: 4, sortOrder: 6,
+        defaultConfig: { theme: 'rainbow-ribbon', label: 'Field Trip in', targetDate: '' },
+      },
+      {
+        name: 'Upcoming Events Pills',
+        widgetType: 'CALENDAR',
+        x: 36, y: 72, width: 60, height: 17,
+        zIndex: 2, sortOrder: 7,
+        defaultConfig: { theme: 'rainbow-ribbon', daysToShow: 7, maxEvents: 3 },
+      },
+      // Pennant ticker at the bottom
+      {
+        name: 'Pennant Ticker',
+        widgetType: 'TICKER',
+        x: 0, y: 90, width: 100, height: 10,
+        zIndex: 6, sortOrder: 8,
+        defaultConfig: {
+          theme: 'rainbow-ribbon',
+          speed: 'medium',
+          messages: [
+            'Welcome back, Sunnyside Stars! ⭐',
+            'Picture day is this Friday — wear your school colors!',
+            'Parent-teacher conferences next Tuesday 🍎',
+            'Reading Challenge: 20 minutes a day! 📖',
+          ],
+        },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────
+  // ★ 📌 BULLETIN BOARD — classroom-cork paper-craft aesthetic
+  // Every widget looks like something a teacher stapled up: polaroids
+  // with tape, sticky notes, construction-paper letter banners,
+  // pushpins, torn paper. Warm tan cork texture background.
+  // ─────────────────────────────────────────────────────
+  {
+    id: 'preset-lobby-bulletin-board',
+    name: '📌 Bulletin Board',
+    description: 'Classroom cork board with construction-paper letter banners, pinned index cards, taped polaroid teacher spotlight, sticky-note calendar, torn-paper countdown. Handmade elementary charm.',
+    category: 'LOBBY',
+    orientation: 'LANDSCAPE',
+    schoolLevel: 'ELEMENTARY',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#C69C6D',
+    zones: [
+      {
+        name: 'School Crest Pin',
+        widgetType: 'LOGO',
+        x: 2, y: 2, width: 10, height: 14,
+        zIndex: 5, sortOrder: 0,
+        defaultConfig: { theme: 'bulletin-board' },
+      },
+      {
+        name: 'Welcome Letter Banner',
+        widgetType: 'TEXT',
+        x: 13, y: 3, width: 72, height: 15,
+        zIndex: 4, sortOrder: 1,
+        defaultConfig: {
+          theme: 'bulletin-board',
+          content: 'WELCOME BACK!',
+          subtitle: "hey friends, so glad you're here",
+        },
+      },
+      {
+        name: 'Paper Clock',
+        widgetType: 'CLOCK',
+        x: 82, y: 1, width: 16, height: 18,
+        zIndex: 5, sortOrder: 2,
+        defaultConfig: { theme: 'bulletin-board', format: '12h' },
+      },
+      {
+        name: 'Index-card Weather',
+        widgetType: 'WEATHER',
+        x: 2, y: 20, width: 20, height: 28,
+        zIndex: 3, sortOrder: 3,
+        defaultConfig: { theme: 'bulletin-board', location: 'Springfield', units: 'imperial' },
+      },
+      {
+        name: 'Pinned Announcement',
+        widgetType: 'ANNOUNCEMENT',
+        x: 24, y: 20, width: 52, height: 28,
+        zIndex: 10, sortOrder: 4,
+        defaultConfig: {
+          theme: 'bulletin-board',
+          message: 'Book Fair starts Monday! 📚 Come find your new favorite story in the library.',
+          priority: 'normal',
+        },
+      },
+      {
+        name: 'Countdown Banner',
+        widgetType: 'COUNTDOWN',
+        x: 78, y: 20, width: 20, height: 28,
+        zIndex: 4, sortOrder: 5,
+        defaultConfig: { theme: 'bulletin-board', label: 'Field Trip in', targetDate: '' },
+      },
+      {
+        name: 'Teacher Polaroid',
+        widgetType: 'STAFF_SPOTLIGHT',
+        x: 2, y: 52, width: 30, height: 36,
+        zIndex: 3, sortOrder: 6,
+        defaultConfig: {
+          theme: 'bulletin-board',
+          staffName: 'Mrs. Johnson',
+          role: 'Teacher of the Week',
+          bio: 'Inspiring 3rd graders every day!',
+        },
+      },
+      {
+        name: 'Sticky-note Events',
+        widgetType: 'CALENDAR',
+        x: 34, y: 52, width: 64, height: 36,
+        zIndex: 3, sortOrder: 7,
+        defaultConfig: { theme: 'bulletin-board', daysToShow: 7, maxEvents: 3 },
+      },
+      {
+        name: 'Paper-strip Ticker',
+        widgetType: 'TICKER',
+        x: 0, y: 90, width: 100, height: 10,
+        zIndex: 6, sortOrder: 8,
+        defaultConfig: {
+          theme: 'bulletin-board',
           speed: 'medium',
           messages: [
             'Welcome back, Sunnyside Stars! ⭐',
