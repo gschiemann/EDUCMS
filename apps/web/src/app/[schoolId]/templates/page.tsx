@@ -4,8 +4,9 @@
 /* eslint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions, jsx-a11y/label-has-associated-control, jsx-a11y/no-autofocus */
 "use client";
 
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import '@/components/widgets/variants-register'; // Boot-time registration for custom themes
 import {
   LayoutTemplate, Plus, Loader2, Trash2, Copy, ArrowLeft, Save,
   Grid3X3, Pencil, X, Monitor, Smartphone, Settings2, Eye,
@@ -126,6 +127,45 @@ const ZONE_COLORS: Record<string, { bg: string; border: string; text: string; ac
 
 function getZoneColor(type: string) {
   return ZONE_COLORS[type] || ZONE_COLORS.EMPTY;
+}
+
+/**
+ * Build the background style for a template preview using ONLY longhand
+ * CSS properties. Mixing `background` (shorthand) with `backgroundImage`
+ * triggers React's style-diffing warnings on every re-render.
+ *
+ * Priority: explicit bgImage URL > bgGradient (also goes in
+ * background-image since CSS gradients are valid background-image values)
+ * > solid bgColor.
+ */
+function previewBgStyle(t: { bgImage?: string | null; bgGradient?: string | null; bgColor?: string | null }): React.CSSProperties {
+  const style: React.CSSProperties = {
+    backgroundColor: t.bgColor || '#ffffff',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+  };
+  if (t.bgImage) {
+    style.backgroundImage = t.bgImage.trim().startsWith('url(') ? t.bgImage : `url(${t.bgImage})`;
+  } else if (t.bgGradient) {
+    // CSS gradients are valid background-image values, so this stays in
+    // the longhand slot — no shorthand collision.
+    style.backgroundImage = t.bgGradient;
+  }
+  return style;
+}
+
+/** Defensive wrapper so one broken widget can't blank-out an entire
+ *  GalleryCard preview. Returns the requested children, or a tiny inline
+ *  "broken zone" placeholder if the children throw on render. */
+class ZoneRenderBoundary extends React.Component<{ children: React.ReactNode }, { broke: boolean }> {
+  state = { broke: false };
+  static getDerivedStateFromError() { return { broke: true }; }
+  render() {
+    if (this.state.broke) {
+      return <div className="w-full h-full bg-rose-50 border border-rose-200" aria-hidden />;
+    }
+    return this.props.children;
+  }
 }
 
 function formatRes(w: number, h: number) {
@@ -447,34 +487,49 @@ function GalleryCard({ template, onUse, onUsePortrait, onEdit, onDuplicate, onDe
 
   return (
     <div className="group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-200 transition-all duration-300 overflow-hidden">
-      {/* Preview Canvas */}
+      {/* Preview Canvas. CSS shorthand (`background`) is FORBIDDEN here —
+          mixing it with `backgroundImage` triggers React's style-diffing
+          warning ("removing/updating a style property during rerender
+          when a conflicting property is set"). We use ONLY longhand
+          properties (`backgroundImage`, `backgroundColor`) which React
+          tracks independently. CSS gradients are valid `background-image`
+          values, so a `bgGradient` from the DB lives in the same slot
+          as a `bgImage`. */}
       <div className="relative bg-gradient-to-br from-slate-50 to-slate-100 p-5" style={{ minHeight: 180 }}>
         <div
           className="relative mx-auto rounded-lg overflow-hidden border border-slate-200 shadow-sm"
-          style={{
-            aspectRatio: `${sw}/${sh}`,
-            maxWidth: '100%',
-            maxHeight: 150,
-            backgroundColor: template.bgColor || '#ffffff',
-            background: template.bgGradient || undefined,
-            backgroundImage: template.bgImage ? `url(${template.bgImage})` : undefined,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-          }}
+          style={previewBgStyle(template)}
         >
-          {zones.map((zone, i) => {
-            const c = getZoneColor(zone.widgetType);
-            const Icon = WIDGET_ICONS[zone.widgetType] || Square;
-            return (
-              <div key={i} className="absolute flex flex-col items-center justify-center text-center overflow-hidden transition-all"
-                style={{ left: `${zone.x}%`, top: `${zone.y}%`, width: `${zone.width}%`, height: `${zone.height}%`, zIndex: zone.zIndex || 0, backgroundColor: `${c.bg}dd`, borderWidth: 1, borderColor: c.border, borderStyle: 'solid' }}>
-                <Icon className="w-3 h-3 mb-0.5" style={{ color: c.accent, opacity: 0.8 }} />
-                <span className="text-[7px] font-bold leading-tight px-0.5 truncate max-w-full" style={{ color: c.text, opacity: 0.7 }}>
-                  {WIDGET_LABELS[zone.widgetType] || zone.widgetType}
-                </span>
-              </div>
-            );
-          })}
+          {/* Render every zone as a real themed widget so the gallery
+              preview looks like the actual screen, not a wireframe. We
+              pass live={false} so widgets that auto-fetch (Weather,
+              Calendar) or animate (Ticker, Video) stay static — keeps
+              the gallery cheap to render with 100 templates on screen.
+              pointer-events:none lets the card click handlers fire
+              through the preview. */}
+          {zones.map((zone: any, i: number) => (
+            <div
+              key={zone.id ?? i}
+              className="absolute overflow-hidden pointer-events-none"
+              style={{
+                left: `${zone.x}%`,
+                top: `${zone.y}%`,
+                width: `${zone.width}%`,
+                height: `${zone.height}%`,
+                zIndex: zone.zIndex || 0,
+              }}
+            >
+              <ZoneRenderBoundary>
+                <WidgetPreview
+                  widgetType={zone.widgetType}
+                  config={zone.defaultConfig || {}}
+                  width={zone.width}
+                  height={zone.height}
+                  live={false}
+                />
+              </ZoneRenderBoundary>
+            </div>
+          ))}
         </div>
 
         {template.isSystem && (
@@ -997,7 +1052,7 @@ function TemplateBuilder({ template, onBack, onSaved }: {
               width: '100%', maxWidth: 900, aspectRatio: `${sW}/${sH}`,
               backgroundColor: bgColor || '#ffffff',
               ...(bgGradient ? { background: bgGradient } : {}),
-              ...(bgImage ? { backgroundImage: `url(${bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}),
+              ...(bgImage ? { backgroundImage: bgImage.trim().startsWith('url(') ? bgImage : `url(${bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}),
             }}
             onClick={() => { setSelectedIdx(null); }}
           >
