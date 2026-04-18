@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Play, Plus, Clock, Loader2, Trash2, Save, GripVertical, Image as ImageIcon, Video, Music, Globe, File, Calendar, CalendarDays, Power, Eye, LayoutTemplate, Pencil, Monitor, Layers, ChevronRight, ChevronLeft, Tv2, Wifi, WifiOff, ArrowLeft, Smartphone, FolderOpen, Home, CheckSquare, Search, Settings } from 'lucide-react';
+import { Play, Plus, Clock, Loader2, Trash2, Save, GripVertical, Image as ImageIcon, Video, Music, Globe, File, Calendar, CalendarDays, Power, Eye, LayoutTemplate, Pencil, Monitor, Layers, ChevronRight, ChevronLeft, Tv2, Wifi, WifiOff, ArrowLeft, Smartphone, FolderOpen, Home, CheckSquare, Search, Settings, Upload, AlertCircle } from 'lucide-react';
+import { useUIStore } from '@/store/ui-store';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent
 } from '@dnd-kit/core';
@@ -317,6 +319,19 @@ export default function PlaylistsPage() {
   const [pickerFilter, setPickerFilter] = useState<'all' | 'images' | 'videos' | 'audio' | 'urls'>('all');
   const [pickerFolderId, setPickerFolderId] = useState<string | null>(null);
   const [selectedPickerAssets, setSelectedPickerAssets] = useState<Set<string>>(new Set());
+  // Inline-upload from the asset picker (so users don't have to leave the
+  // playlist they're building, go to /assets, upload, then come back).
+  type PickerUpload = {
+    id: string;
+    name: string;
+    progress: number;
+    phase: 'uploading' | 'success' | 'error';
+    error?: string;
+  };
+  const [pickerUploads, setPickerUploads] = useState<PickerUpload[]>([]);
+  const [pickerDragOver, setPickerDragOver] = useState(false);
+  const pickerFileInputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<'editor' | 'schedules'>('editor');
   const createNameInputRef = useRef<HTMLInputElement>(null);
 
@@ -558,6 +573,73 @@ export default function PlaylistsPage() {
       if (next.has(assetId)) next.delete(assetId);
       else next.add(assetId);
       return next;
+    });
+  };
+
+  // Inline upload from the asset picker. Files post to the same
+  // /assets/upload endpoint the /assets page uses, with the upload's
+  // folderId set to whichever folder the picker is currently browsing.
+  // On success we (a) invalidate the assets cache so it refetches and
+  // (b) auto-select the new asset so "Add Selected" picks it up
+  // without an extra click.
+  const PICKER_MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB matches /assets
+
+  const handlePickerUploadFiles = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+    const token = useUIStore.getState().token;
+    const folderId = pickerFolderId; // capture current folder for the batch
+    const genId = () => { try { return crypto.randomUUID(); } catch { return Math.random().toString(36).substring(2, 10); } };
+
+    const newItems: PickerUpload[] = Array.from(files).map(file => ({
+      id: genId(),
+      name: file.name,
+      progress: 0,
+      phase: file.size > PICKER_MAX_FILE_SIZE ? 'error' : 'uploading',
+      error: file.size > PICKER_MAX_FILE_SIZE ? `Too large (${Math.round(file.size / (1024 * 1024))}MB > 50MB cap)` : undefined,
+    }));
+    setPickerUploads(prev => [...newItems, ...prev]);
+
+    Array.from(files).forEach((file, i) => {
+      const item = newItems[i];
+      if (item.phase === 'error') return;
+      const fd = new FormData();
+      fd.append('file', file);
+      if (folderId) fd.append('folderId', folderId);
+      const xhr = new XMLHttpRequest();
+      xhr.upload.onprogress = e => {
+        if (!e.lengthComputable) return;
+        const pct = Math.round((e.loaded * 100) / e.total);
+        setPickerUploads(prev => prev.map(u => (u.id === item.id ? { ...u, progress: pct } : u)));
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          setPickerUploads(prev => prev.map(u => (u.id === item.id ? { ...u, progress: 100, phase: 'success' } : u)));
+          // Refetch assets and pre-select the freshly-uploaded one so
+          // the user can hit "Add Selected" right away.
+          try {
+            const resp = JSON.parse(xhr.responseText);
+            if (resp?.id) {
+              setSelectedPickerAssets(prev => new Set(prev).add(resp.id));
+            }
+          } catch { /* server didn't return JSON, just refetch */ }
+          queryClient.invalidateQueries({ queryKey: ['assets'] });
+          // Sweep this row out after a short success flash.
+          setTimeout(() => {
+            setPickerUploads(prev => prev.filter(u => u.id !== item.id));
+          }, 1500);
+        } else {
+          let msg = `Upload failed (${xhr.status})`;
+          try { const r = JSON.parse(xhr.responseText); msg = r.message || msg; } catch {}
+          setPickerUploads(prev => prev.map(u => (u.id === item.id ? { ...u, phase: 'error', error: msg } : u)));
+        }
+      };
+      xhr.onerror = () => {
+        setPickerUploads(prev => prev.map(u => (u.id === item.id ? { ...u, phase: 'error', error: 'Network error' } : u)));
+      };
+      xhr.open('POST', `${apiUrl}/assets/upload`);
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.send(fd);
     });
   };
 
@@ -872,11 +954,26 @@ export default function PlaylistsPage() {
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{selectedPickerAssets.size} selected</span>
                 </div>
                 <div className="flex gap-2">
+                  {/* Inline upload — keeps the operator inside the playlist they're building */}
+                  <input
+                    ref={pickerFileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => { handlePickerUploadFiles(e.target.files); if (pickerFileInputRef.current) pickerFileInputRef.current.value = ''; }}
+                  />
+                  <button
+                    onClick={() => pickerFileInputRef.current?.click()}
+                    className="px-3 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg flex items-center gap-1.5 transition-colors"
+                    title="Upload files into this folder without leaving the playlist"
+                  >
+                    <Upload className="w-3.5 h-3.5" /> Upload
+                  </button>
                   <button onClick={() => setShowPicker(false)} className="px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">
                     Cancel
                   </button>
-                  <button 
-                    onClick={handleBulkAddPickerAssets} 
+                  <button
+                    onClick={handleBulkAddPickerAssets}
                     disabled={selectedPickerAssets.size === 0}
                     className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
                   >
@@ -923,7 +1020,58 @@ export default function PlaylistsPage() {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-5 bg-slate-50/30">
+              <div
+                className={`flex-1 overflow-y-auto p-5 transition-colors ${pickerDragOver ? 'bg-emerald-50/60 ring-2 ring-emerald-300 ring-inset' : 'bg-slate-50/30'}`}
+                onDragOver={(e) => { e.preventDefault(); if (!pickerDragOver) setPickerDragOver(true); }}
+                onDragLeave={(e) => {
+                  // Only clear when actually leaving the body, not just moving over a child.
+                  if (e.currentTarget === e.target) setPickerDragOver(false);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setPickerDragOver(false);
+                  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    handlePickerUploadFiles(e.dataTransfer.files);
+                  }
+                }}
+              >
+                {pickerDragOver && (
+                  <div className="mb-4 px-4 py-3 rounded-lg border-2 border-dashed border-emerald-400 bg-white text-center text-xs font-bold text-emerald-700 flex items-center justify-center gap-2">
+                    <Upload className="w-4 h-4" /> Drop to upload into {pickerCurrentFolder?.name || 'this folder'}
+                  </div>
+                )}
+
+                {/* In-flight upload progress strip */}
+                {pickerUploads.length > 0 && (
+                  <div className="mb-4 space-y-1.5">
+                    {pickerUploads.map(u => (
+                      <div key={u.id} className="bg-white border border-slate-200 rounded-lg px-3 py-2 flex items-center gap-3 text-xs">
+                        {u.phase === 'uploading' && <Loader2 className="w-3.5 h-3.5 text-indigo-500 animate-spin shrink-0" />}
+                        {u.phase === 'success' && <CheckSquare className="w-3.5 h-3.5 text-emerald-500 shrink-0" />}
+                        {u.phase === 'error' && <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />}
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-slate-700 truncate">{u.name}</div>
+                          {u.phase === 'uploading' && (
+                            <div className="h-1 bg-slate-100 rounded-full overflow-hidden mt-1">
+                              <div className="h-full bg-indigo-500 transition-all" style={{ width: `${u.progress}%` }} />
+                            </div>
+                          )}
+                          {u.phase === 'error' && <div className="text-[11px] text-rose-600 font-medium">{u.error}</div>}
+                          {u.phase === 'success' && <div className="text-[11px] text-emerald-600 font-medium">Uploaded — added to selection</div>}
+                        </div>
+                        {u.phase === 'error' && (
+                          <button
+                            onClick={() => setPickerUploads(prev => prev.filter(x => x.id !== u.id))}
+                            className="text-[10px] font-bold text-slate-400 hover:text-slate-600 px-1.5 py-0.5"
+                          >
+                            DISMISS
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {/* Folders */}
                 {pickerCurrentFolderChildren.length > 0 && Array.isArray(pickerCurrentFolderChildren) && (
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
