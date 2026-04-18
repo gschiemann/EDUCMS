@@ -18,6 +18,7 @@ export function UsbIngestCard() {
 
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
 
   const handleToggle = async (next: boolean) => {
     if (next && !cfg?.hasKey) {
@@ -68,12 +69,18 @@ export function UsbIngestCard() {
 
   const copyKey = async () => {
     if (!revealedKey) return;
+    setCopyError(null);
     try {
       await navigator.clipboard.writeText(revealedKey);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
-    } catch {
-      // Browser blocked clipboard — operator can still select-all manually.
+    } catch (e: any) {
+      // MED-5 audit fix: surface the error visibly. Previously we
+      // silently swallowed clipboard failures — admin would assume the
+      // key was copied and lose it on modal close.
+      setCopyError(
+        'Browser blocked clipboard access. Triple-click the key above to select all, then Ctrl+C / Cmd+C to copy manually.',
+      );
     }
   };
 
@@ -244,12 +251,18 @@ pnpm tsx scripts/usb-bundler.ts \\
               </button>
               <button
                 type="button"
-                onClick={() => { setRevealedKey(null); setCopied(false); }}
+                onClick={() => { setRevealedKey(null); setCopied(false); setCopyError(null); }}
                 className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg"
               >
                 I&apos;ve saved it
               </button>
             </div>
+            {copyError && (
+              <div className="flex items-start gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-lg text-[11px] text-rose-700 font-medium">
+                <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span>{copyError}</span>
+              </div>
+            )}
             <p className="text-[11px] text-slate-500">
               Store this in a password manager or your build environment as <code className="bg-slate-100 px-1 py-0.5 rounded">EDU_USB_KEY</code>. Anyone with this key can sign USB bundles for your tenant.
             </p>

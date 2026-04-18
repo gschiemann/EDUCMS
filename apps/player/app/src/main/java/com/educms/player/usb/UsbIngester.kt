@@ -146,10 +146,12 @@ class UsbIngester(
             if (tier == "emergency") emergencyCount += 1
         }
 
-        // 4. Write the manifest copy + ingest-state file. The WebView's
-        // SafePlayerWebViewClient reads them via UsbCacheIndex to serve
-        // asset URLs from local disk on subsequent fetches.
-        File(targetRoot, "manifest.json").writeBytes(manifestBytes)
+        // 4. Write the manifest copy + ingest-state file. MED-4 audit fix:
+        // write to a temp filename and atomically rename into place so a
+        // concurrent UsbCacheIndex.reload() can never observe a half-written
+        // state.json. java.io.File.renameTo is POSIX-atomic on the same
+        // filesystem (always true here since both files live in filesDir).
+        atomicWrite(File(targetRoot, "manifest.json"), manifestBytes)
         val state = JSONObject().apply {
             put("bundleVersion", bundleVersion)
             put("ingestedAt", System.currentTimeMillis())
@@ -157,7 +159,7 @@ class UsbIngester(
             put("emergencyCount", emergencyCount)
             put("totalBytes", totalBytes)
         }
-        File(targetRoot, "state.json").writeText(state.toString())
+        atomicWrite(File(targetRoot, "state.json"), state.toString().toByteArray(Charsets.UTF_8))
 
         // Refresh the lookup index so the WebView starts serving from disk
         // immediately on next render.
@@ -205,6 +207,20 @@ class UsbIngester(
         val sb = StringBuilder(bytes.size * 2)
         for (b in bytes) sb.append(String.format("%02x", b))
         return sb.toString()
+    }
+
+    /** Write file atomically: temp file in same dir → rename. Same-FS rename
+     *  is POSIX-atomic so a concurrent reader never sees a half-written file. */
+    private fun atomicWrite(target: File, bytes: ByteArray) {
+        val tmp = File(target.parentFile, target.name + ".tmp-" + System.nanoTime())
+        FileOutputStream(tmp).use { it.write(bytes) }
+        // renameTo returns false on failure; fall back to a copy+delete so we
+        // never silently leave the target stale. Same-volume rename is the
+        // common case on Android internal storage.
+        if (!tmp.renameTo(target)) {
+            target.writeBytes(bytes)
+            tmp.delete()
+        }
     }
 
     private fun constantTimeEq(a: String, b: String): Boolean {

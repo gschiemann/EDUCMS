@@ -569,6 +569,12 @@ function PlayerPage() {
       // 401 → cached admin token has expired; bust cache and retry once next tick.
       if (manifestRes.status === 401) {
         cachedAuthTokenRef.current = null;
+        // MED-6 audit fix: a 401 isn't a real failure — it's just an
+        // expired JWT we'll re-mint on the next call. Don't let it
+        // bump the failure counter; otherwise a routine token rotation
+        // could push us past the 5-failure native-reload threshold and
+        // hard-reload the WebView for nothing.
+        fetchFailCountRef.current = Math.max(0, fetchFailCountRef.current - 1);
         throw new Error('Auth expired — will retry');
       }
 

@@ -343,6 +343,29 @@ export class ScreensController {
       return res.status(403).json({ error: 'Device invalid or revoked' });
     }
 
+    // MED-1 audit fix: tenant-scope the read so a user from Tenant A can't
+    // fetch Tenant B's manifest by guessing the screen UUID. Three valid
+    // callers:
+    //   1. Device JWT (kind: 'device', sub: screenId) — must match this
+    //      screen.id directly.
+    //   2. SUPER_ADMIN — cross-tenant by design.
+    //   3. User JWT — req.user.tenantId must match screen.tenantId.
+    const u: any = (req as any).user;
+    if (u) {
+      const isDeviceJwt = u.kind === 'device';
+      const isSuper = u.role === AppRole.SUPER_ADMIN;
+      if (isDeviceJwt) {
+        if (u.sub !== screen.id) {
+          return res.status(403).json({ error: 'Device token does not match screen' });
+        }
+      } else if (!isSuper) {
+        const callerTenantId = u.schoolId || u.tenantId || u.districtId;
+        if (!screen.tenantId || screen.tenantId !== callerTenantId) {
+          return res.status(404).json({ error: 'Screen not found' }); // 404 not 403 to avoid existence-leak
+        }
+      }
+    }
+
     if (screen.tenantId) {
       const tenant = await this.prisma.client.tenant.findUnique({
         where: { id: screen.tenantId },

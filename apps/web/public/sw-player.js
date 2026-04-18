@@ -60,14 +60,23 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.includes('/api/v1/')) return;
 
   event.respondWith((async () => {
+    // MED-3 audit fix: try the request URL as-is first, then fall back to
+    // a query-stripped variant. CDNs often append cache-busters
+    // (?v=2) that wouldn't otherwise match a previously-cached version
+    // of the same asset. ignoreSearch on .match() does the work for us.
+    const stripped = stripQuery(req.url);
+    const altReq = stripped !== req.url ? new Request(stripped, { method: 'GET' }) : null;
+
     // Try emergency cache first (highest priority for life-safety).
     const emCache = await caches.open(EMERGENCY_CACHE);
-    const emHit = await emCache.match(req, { ignoreSearch: true });
+    const emHit = await emCache.match(req, { ignoreSearch: true })
+              ?? (altReq && await emCache.match(altReq, { ignoreSearch: true }));
     if (emHit) return emHit;
 
     // Then playlist cache.
     const plCache = await caches.open(PLAYLIST_CACHE);
-    const plHit = await plCache.match(req, { ignoreSearch: true });
+    const plHit = await plCache.match(req, { ignoreSearch: true })
+              ?? (altReq && await plCache.match(altReq, { ignoreSearch: true }));
     if (plHit) return plHit;
 
     // Fall through to network. If the response is OK and looks cacheable,
@@ -247,4 +256,13 @@ function metaKey(url) {
 function normalizeUrl(u) {
   try { return new URL(u, self.location.origin).toString().split('#')[0]; }
   catch { return u; }
+}
+
+function stripQuery(u) {
+  try {
+    const p = new URL(u, self.location.origin);
+    p.search = '';
+    p.hash = '';
+    return p.toString();
+  } catch { return u; }
 }

@@ -83,15 +83,34 @@ export class EmailService {
   }
 
   async #enqueue(params: { to: string; subject: string; body: string; kind: string }): Promise<void> {
-    const row = await this.prisma.client.emailLog.create({
-      data: {
-        toEmail: params.to,
-        subject: params.subject,
-        body: params.body,
-        kind: params.kind,
-        status: 'QUEUED',
-      },
-    });
+    // MED-7 audit fix: previously a failed EmailLog.create would either
+    // 500 the calling request silently or be lost in the noise. Wrap each
+    // step with explicit logging at appropriate severity so production
+    // observability (Sentry / log shipper) sees the full picture:
+    //   - persist failure → ERROR (we lost the durable record entirely)
+    //   - dispatch failure → WARN with structured fields (will show in
+    //     the email_logs FAILED row anyway, but log gives an alertable
+    //     signal)
+    let row;
+    try {
+      row = await this.prisma.client.emailLog.create({
+        data: {
+          toEmail: params.to,
+          subject: params.subject,
+          body: params.body,
+          kind: params.kind,
+          status: 'QUEUED',
+        },
+      });
+    } catch (err: any) {
+      this.logger.error(
+        `EmailLog persist FAILED — durable record lost. kind=${params.kind} to=${params.to} err=${err?.message ?? err}`,
+      );
+      // Re-throw so the calling flow (onboarding signup / invite) can
+      // surface the failure to the operator instead of silently
+      // pretending the email was queued.
+      throw err;
+    }
 
     try {
       await this.#dispatch(params);
@@ -100,11 +119,22 @@ export class EmailService {
         data: { status: 'SENT', sentAt: new Date() },
       });
     } catch (err: any) {
-      this.logger.warn(`Email dispatch failed (${params.kind} -> ${params.to}): ${err?.message}`);
-      await this.prisma.client.emailLog.update({
-        where: { id: row.id },
-        data: { status: 'FAILED', error: String(err?.message ?? err) },
-      });
+      this.logger.warn(
+        `Email dispatch FAILED — log row persisted, marking FAILED. ` +
+        `kind=${params.kind} to=${params.to} logId=${row.id} err=${err?.message ?? err}`,
+      );
+      try {
+        await this.prisma.client.emailLog.update({
+          where: { id: row.id },
+          data: { status: 'FAILED', error: String(err?.message ?? err) },
+        });
+      } catch (updateErr: any) {
+        // Two-strike scenario: dispatch failed AND we couldn't update
+        // the row to record the failure. Loud error so this gets noticed.
+        this.logger.error(
+          `EmailLog FAILED-status update ALSO failed. logId=${row.id} originalErr=${err?.message} updateErr=${updateErr?.message}`,
+        );
+      }
     }
   }
 

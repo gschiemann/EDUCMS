@@ -194,7 +194,10 @@ model UsbIngestEvent {
   reason          String?
   operatorPin     String?  @map("operator_pin") // SHA-256 of pin used; never store the raw pin
   createdAt       DateTime @default(now()) @map("created_at")
-  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  // MED-2 audit fix: cascade delete with the parent Tenant. RESTRICT
+  // previously made any tenant that ever ingested a USB bundle
+  // permanently undeletable.
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, createdAt])
   @@map("usb_ingest_events")
