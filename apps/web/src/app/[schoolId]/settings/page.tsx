@@ -6,6 +6,7 @@ import { useUsers, useInviteUser, useDeleteUser, useUpdateUserRole, useTenant, u
 import { useState, useRef, useEffect } from 'react';
 import { UsbIngestCard } from '@/components/settings/UsbIngestCard';
 import { LicenseCard } from '@/components/settings/LicenseCard';
+import { PanicContentEditor } from '@/components/settings/PanicContentEditor';
 
 const ROLES = ['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN', 'CONTRIBUTOR', 'RESTRICTED_VIEWER'] as const;
 
@@ -99,73 +100,24 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Panic Button Mapping */}
+        {/* Panic Button Content — direct upload, can't be accidentally deleted */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100">
-             <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2">
-               <AlertOctagon className="w-4 h-4 text-red-500" /> Panic Button Integrations
-             </h2>
-             <p className="text-xs text-slate-500 mt-1">Bind specific CMS playlists to the mobile panic button trigger events.</p>
+            <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+              <AlertOctagon className="w-4 h-4 text-red-500" /> Panic Button Content
+            </h2>
+            <p className="text-xs text-slate-500 mt-1">
+              Upload the content that displays on screens when each panic type is triggered. These assets are
+              protected — they cannot be deleted from the regular Playlists list, so an accidental delete can
+              never break a real lockdown.
+            </p>
           </div>
           <div className="p-6">
-            {tenantLoading ? (
-               <Loader2 className="w-5 h-5 animate-spin text-slate-400 mx-auto" />
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                
-                {/* Lockdown Mapping */}
-                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex flex-col gap-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-red-500" />
-                    <h3 className="text-sm font-bold text-slate-800">Lockdown</h3>
-                  </div>
-                  <select 
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white"
-                    value={tenant?.panicLockdownPlaylistId || ''}
-                    onChange={(e) => updatePanicSettings.mutate({ panicLockdownPlaylistId: e.target.value || null })}
-                    disabled={updatePanicSettings.isPending}
-                  >
-                    <option value="">No explicit playlist (Default Red Screen)</option>
-                    {playlists?.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                </div>
-
-                {/* Weather Mapping */}
-                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex flex-col gap-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-amber-500" />
-                    <h3 className="text-sm font-bold text-slate-800">Tornado / Weather</h3>
-                  </div>
-                  <select 
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white"
-                    value={tenant?.panicWeatherPlaylistId || ''}
-                    onChange={(e) => updatePanicSettings.mutate({ panicWeatherPlaylistId: e.target.value || null })}
-                    disabled={updatePanicSettings.isPending}
-                  >
-                    <option value="">No explicit playlist (Default Red Screen)</option>
-                    {playlists?.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                </div>
-
-                {/* Evacuate Mapping */}
-                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex flex-col gap-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-orange-500" />
-                    <h3 className="text-sm font-bold text-slate-800">Evacuate</h3>
-                  </div>
-                  <select 
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white"
-                    value={tenant?.panicEvacuatePlaylistId || ''}
-                    onChange={(e) => updatePanicSettings.mutate({ panicEvacuatePlaylistId: e.target.value || null })}
-                    disabled={updatePanicSettings.isPending}
-                  >
-                    <option value="">No explicit playlist (Default Red Screen)</option>
-                    {playlists?.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                </div>
-
-              </div>
-            )}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <PanicContentEditor kind="lockdown" label="Lockdown" accent="red" />
+              <PanicContentEditor kind="weather" label="Tornado / Weather" accent="amber" />
+              <PanicContentEditor kind="evacuate" label="Evacuate" accent="orange" />
+            </div>
           </div>
         </div>
 

@@ -3,6 +3,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ScreensController } from './screens/screens.controller';
 import { DevicesController } from './devices/devices.controller';
+import { PanicContentController } from './panic-content/panic-content.controller';
 import { EmergencyController } from './emergency/emergency.controller';
 import { StatsController } from './stats/stats.controller';
 import { AuditController } from './audit/audit.controller';
@@ -61,6 +62,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     AppController,
     ScreensController,
     DevicesController,
+    PanicContentController,
     EmergencyController,
     StatsController,
     AuditController,

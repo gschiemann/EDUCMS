@@ -309,11 +309,20 @@ model Playlist {
   tenantId   String         @map("tenant_id")
   name       String
   templateId String?        @map("template_id")
+  // Protected playlists are owned by the system (e.g. emergency content
+  // bound to Tenant.panicLockdownPlaylistId). They are hidden from the
+  // /playlists list and cannot be deleted by an admin — preventing the
+  // "I accidentally deleted the lockdown playlist mid-emergency" failure
+  // mode. Created automatically by the panic-content endpoints and
+  // managed only through that surface.
+  isProtected Boolean       @default(false) @map("is_protected")
+  protectedKind String?     @map("protected_kind") // 'lockdown' | 'weather' | 'evacuate' | null
   items      PlaylistItem[]
   tenant     Tenant         @relation(fields: [tenantId], references: [id])
   template   Template?      @relation(fields: [templateId], references: [id])
   schedules  Schedule[]
 
+  @@index([tenantId, isProtected])
   @@map("playlists")
 }
 

@@ -570,6 +570,44 @@ export function useUpdateTenantPanicSettings() {
   });
 }
 
+// ─── Panic content (emergency assets, protected from /playlists) ───
+export type PanicKind = 'lockdown' | 'weather' | 'evacuate' | 'default';
+export type PanicAssetItem = {
+  id: string;
+  assetId: string;
+  durationMs: number;
+  sequenceOrder: number;
+  asset: { id: string; fileUrl: string; mimeType: string; originalName?: string | null; fileSize?: number | null };
+};
+export type PanicBucket = {
+  kind: PanicKind;
+  label: string;
+  playlistId: string;
+  items: PanicAssetItem[];
+};
+export function usePanicContent(kind: PanicKind) {
+  return useQuery<PanicBucket>({
+    queryKey: ['panic-content', kind],
+    queryFn: () => apiFetch(`/panic-content/${kind}/assets`),
+  });
+}
+export function useAddPanicAsset(kind: PanicKind) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { assetId: string; durationMs?: number }) =>
+      apiFetch(`/panic-content/${kind}/assets`, { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['panic-content', kind] }),
+  });
+}
+export function useRemovePanicAsset(kind: PanicKind) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (itemId: string) =>
+      apiFetch(`/panic-content/${kind}/assets/${itemId}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['panic-content', kind] }),
+  });
+}
+
 // ─── Sprint 8 — fleet map view ───
 export function useUpdateScreenLocation() {
   const qc = useQueryClient();

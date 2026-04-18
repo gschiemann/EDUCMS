@@ -28,7 +28,10 @@ export class PlaylistsController {
   async list(@Request() req: any) {
     const tenantId = req.user.tenantId;
     return this.prisma.client.playlist.findMany({
-      where: { tenantId },
+      // Hide protected (emergency) playlists from the regular /playlists
+      // list so they can't be accidentally deleted. They surface only
+      // through the panic-content settings card.
+      where: { tenantId, isProtected: false },
       include: {
         items: {
           orderBy: { sequenceOrder: 'asc' },
@@ -148,6 +151,21 @@ export class PlaylistsController {
       where: { id, tenantId: req.user.tenantId },
     });
     if (!playlist) return { error: 'Not found' };
+
+    // Refuse to delete a protected (emergency) playlist. The settings
+    // page manages these; deleting one would silently break a future
+    // panic trigger. The "BULLETPROOF FALLBACK" in screens/manifest
+    // would still render a default red screen, but the operator's
+    // configured content would be gone.
+    if (playlist.isProtected) {
+      throw new HttpException(
+        {
+          code: 'PLAYLIST_PROTECTED',
+          message: `This playlist holds ${playlist.protectedKind || 'emergency'} content and cannot be deleted from here. Manage it from Settings → Panic Button Integrations.`,
+        },
+        HttpStatus.FORBIDDEN,
+      );
+    }
 
     await this.prisma.client.schedule.deleteMany({ where: { playlistId: id } });
     await this.prisma.client.playlist.delete({ where: { id } });
