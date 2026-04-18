@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, Crown, Building2, AlertCircle, Plus } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
@@ -21,9 +21,25 @@ export default function SuperPage() {
   const upsert = useUpsertLicense();
   const [actingId, setActingId] = useState<string | null>(null);
 
-  // Hard gate at the page level so non-owners get a clear "go away" rather
-  // than a half-rendered list while the API rejects.
-  if (user && user.role !== 'SUPER_ADMIN') {
+  // HIGH-3 audit fix: deny-by-default with explicit hydration tracking.
+  // The previous guard `if (user && user.role !== 'SUPER_ADMIN')` would
+  // render the full admin panel during the hydration window where `user`
+  // was still null. Combined with the API also returning data optimistically
+  // it could leak a tenant list flash to non-owners. Now we wait one tick
+  // for the store to hydrate, then deny unless the user is confirmed
+  // SUPER_ADMIN. The API still enforces server-side via @RequireRoles —
+  // this is just defense-in-depth at the page boundary.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  if (!mounted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+      </div>
+    );
+  }
+  if (!user || user.role !== 'SUPER_ADMIN') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="bg-white rounded-2xl border border-slate-200 shadow p-8 text-center max-w-sm">

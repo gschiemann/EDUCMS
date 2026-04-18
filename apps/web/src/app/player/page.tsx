@@ -76,16 +76,47 @@ function readCachedManifest(): { at: number; m: any } | null {
  */
 function cacheEmergency(payload: any | null) {
   try {
-    if (!payload) localStorage.removeItem(LS_EMERGENCY_CACHE);
-    else localStorage.setItem(LS_EMERGENCY_CACHE, JSON.stringify({ at: Date.now(), payload }));
+    if (!payload) {
+      localStorage.removeItem(LS_EMERGENCY_CACHE);
+      return;
+    }
+    // HIGH-8 audit fix: persist a server-issued absolute expiry alongside
+    // the payload so we don't depend on the device's wall clock to decide
+    // staleness. Order of preference:
+    //   1. payload.expiresAt    — server-side absolute UNIX seconds
+    //   2. payload.expires_at   — same field, snake_case variant
+    //   3. fall back to "Date.now() + 4h" written at cache time (legacy
+    //      behavior). Marked so reads can prefer absolute when present.
+    const serverExpires =
+      typeof payload?.expiresAt === 'number' ? payload.expiresAt * 1000 :
+      typeof payload?.expires_at === 'number' ? payload.expires_at * 1000 :
+      null;
+    const fallbackExpires = Date.now() + 4 * 60 * 60 * 1000;
+    localStorage.setItem(LS_EMERGENCY_CACHE, JSON.stringify({
+      at: Date.now(),
+      expiresAt: serverExpires ?? fallbackExpires,
+      hasServerExpiry: serverExpires != null,
+      payload,
+    }));
   } catch {}
 }
 function readCachedEmergency(): any | null {
   try {
     const raw = localStorage.getItem(LS_EMERGENCY_CACHE);
     if (!raw) return null;
-    const { at, payload } = JSON.parse(raw);
-    if (Date.now() - at > 4 * 60 * 60 * 1000) return null; // 4-hour TTL
+    const parsed = JSON.parse(raw);
+    const { at, expiresAt, hasServerExpiry, payload } = parsed;
+    // Prefer server-issued absolute expiry when available — robust against
+    // device clock skew that could otherwise hide an expired alert OR keep
+    // a long-stale one alive (e.g. kiosk clock regressed by a month).
+    if (typeof expiresAt === 'number' && Date.now() > expiresAt) {
+      return null;
+    }
+    // Legacy fallback (no server expiry was stored): 4h TTL anchored to
+    // the cache write time. Same behavior as before.
+    if (!hasServerExpiry && typeof at === 'number' && Date.now() - at > 4 * 60 * 60 * 1000) {
+      return null;
+    }
     return payload;
   } catch { return null; }
 }
@@ -274,6 +305,9 @@ function PlayerPage() {
   const [activeEmergency, setActiveEmergency] = useState<any | null>(null);
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null);
   const lastEmergencySetHashRef = useRef<string>('');
+  // HIGH-5: track the last set of playlist asset URLs we pushed to the SW.
+  // Equal hash = no-op skip; saves a postMessage + SW work on every poll.
+  const lastPlaylistSetHashRef = useRef<string>('');
   // Hydrate any cached emergency on first render so a power-cycle mid-alert
   // still shows the alert until ALL_CLEAR or a fresh manifest arrives.
   useEffect(() => {
@@ -455,8 +489,10 @@ function PlayerPage() {
       if (manifest.tenantId) setTenantId(manifest.tenantId);
 
       // Push every asset URL to the offline-cache Service Worker. Safe no-op
-      // when SW isn't available. Asset shape comes from the server's
-      // PlaylistItem mapping (item.url + item.duration_ms etc).
+      // when SW isn't available. HIGH-5 fix: short-circuit when the URL set
+      // hasn't changed since our last push (cheap content-hash compare),
+      // so the 10s emergency poll doesn't re-postMessage the same list to
+      // the SW every time.
       try {
         const urls = new Set<string>();
         const playlistAssets: Array<{ url: string }> = [];
@@ -470,7 +506,12 @@ function PlayerPage() {
           });
         });
         if (playlistAssets.length > 0) {
-          precachePlaylist(playlistAssets).catch(() => {});
+          // Stable hash of the URL set so re-pushes are skipped when nothing changed.
+          const setHash = playlistAssets.map(a => a.url).sort().join('|');
+          if (setHash !== lastPlaylistSetHashRef.current) {
+            lastPlaylistSetHashRef.current = setHash;
+            precachePlaylist(playlistAssets).catch(() => {});
+          }
         }
       } catch { /* defensive — SW push failures must never break playback */ }
 
@@ -1123,10 +1164,18 @@ function PlayerPage() {
                 muted
                 playsInline
                 onEnded={(e) => {
+                  // HIGH-6 fix: tear down THIS video's buffer BEFORE we
+                  // advance the index. If we advance first, the re-render
+                  // can briefly paint the old <video> with the old src
+                  // before React unmounts it (visible 1-frame flash on
+                  // slow devices). Releasing src first guarantees the
+                  // outgoing element is blank during the swap.
+                  try {
+                    e.currentTarget.pause();
+                    e.currentTarget.removeAttribute('src');
+                    e.currentTarget.load();
+                  } catch {}
                   setCurrentIndex(prev => prev + 1);
-                  // Release the buffer; assignment happens AFTER advancing index so
-                  // a re-render can swap to the next item without a flash.
-                  try { e.currentTarget.removeAttribute('src'); e.currentTarget.load(); } catch {}
                 }}
                 onError={(e) => {
                   // Corrupted file or 404 → skip ahead instead of stalling forever.
