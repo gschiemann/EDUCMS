@@ -180,6 +180,12 @@ model Screen {
   browserInfo       String?      @map("browser_info")
   ipAddress         String?      @map("ip_address")
   userAgent         String?      @map("user_agent")
+  // Last offline-cache status the player reported. JSON shape:
+  //   { playlist: { count, bytes }, emergency: { count, bytes } }
+  // Lets admins verify each screen actually has emergency assets on disk
+  // without trusting the network at the moment of an emergency.
+  lastCacheReport   Json?        @map("last_cache_report")
+  lastCacheReportAt DateTime?    @map("last_cache_report_at")
   schedules         Schedule[]
   screenGroup       ScreenGroup? @relation(fields: [screenGroupId], references: [id])
   tenant            Tenant?      @relation(fields: [tenantId], references: [id])

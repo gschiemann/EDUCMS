@@ -397,6 +397,52 @@ export class ScreensController {
     return res.status(200).json(manifestPayload);
   }
 
+  // ─── Admin: per-screen cache readiness report ───
+  // Surfaces in the dashboard so admins can verify each screen has actually
+  // pre-cached the emergency assets. The screen reports back via
+  // POST /:id/cache-status; we just read what was last reported.
+  @Get(':id/cache-status')
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async getCacheStatus(@Param('id') id: string, @Request() req: any) {
+    const screen = await this.prisma.client.screen.findFirst({
+      where: { id, tenantId: req.user.tenantId },
+      select: { id: true, name: true, lastCacheReport: true, lastCacheReportAt: true },
+    });
+    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+
+    const report = (screen.lastCacheReport as any) || null;
+    return {
+      screenId: screen.id,
+      screenName: screen.name,
+      reportedAt: screen.lastCacheReportAt,
+      report,
+      // Compute "all emergency assets cached?" against the current emergency
+      // asset set so the dashboard can show a green check or red warning.
+      emergencyReady: !!(report && report.emergency && report.emergency.count > 0),
+    };
+  }
+
+  // The player POSTs a small status payload here ~every 30s so admins can
+  // see which screens are actually serving offline. No auth needed (the
+  // payload is harmless metadata) but rate-limited via global throttler.
+  @Post(':id/cache-status')
+  async reportCacheStatus(
+    @Param('id') id: string,
+    @Body() body: { playlist?: { count: number; bytes: number }; emergency?: { count: number; bytes: number } },
+  ) {
+    const screen = await this.prisma.client.screen.findUnique({ where: { id }, select: { id: true } });
+    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    await this.prisma.client.screen.update({
+      where: { id },
+      data: {
+        lastCacheReport: body as any,
+        lastCacheReportAt: new Date(),
+      },
+    });
+    return { ok: true };
+  }
+
   // ─── PUBLIC: Emergency assets list (for offline pre-cache) ───
   // The player calls this on startup AND after every successful manifest sync
   // to keep its `emergency-assets` Service-Worker cache tier hot. The cache

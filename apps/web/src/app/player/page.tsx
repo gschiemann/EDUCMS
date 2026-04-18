@@ -292,6 +292,29 @@ function PlayerPage() {
     return () => clearInterval(t);
   }, []);
 
+  // Report cache status to the server every 30s so admins can see in the
+  // dashboard which screens actually have emergency content on disk.
+  useEffect(() => {
+    if (!screenId) return;
+    const post = async () => {
+      try {
+        const status = await getCacheStatus();
+        if (!status?.supported) return;
+        await fetch(`${getApiRoot()}/api/v1/screens/${screenId}/cache-status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            playlist: status.playlist,
+            emergency: status.emergency,
+          }),
+        });
+      } catch { /* best-effort — admin visibility, not safety-critical */ }
+    };
+    post();
+    const t = setInterval(post, 30_000);
+    return () => clearInterval(t);
+  }, [screenId]);
+
   // Refresh emergency-asset pre-cache whenever we know the screenId. This
   // runs alongside (not instead of) the periodic manifest sync — the
   // emergency tier is sacred and we keep it hot proactively.

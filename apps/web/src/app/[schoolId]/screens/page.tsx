@@ -266,6 +266,19 @@ export default function ScreensPage() {
                         }`}>
                           {screen.status || 'OFFLINE'}
                         </span>
+                        {/* Emergency offline-cache readiness chip — green = assets on disk,
+                            amber = no report yet, red = reported empty (would fetch from network) */}
+                        {(() => {
+                          const r: any = (screen as any).lastCacheReport;
+                          if (!r) {
+                            return <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-slate-100 text-slate-400" title="Player has not reported cache status yet">cache: ?</span>;
+                          }
+                          const emCount = r?.emergency?.count || 0;
+                          if (emCount > 0) {
+                            return <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700" title={`${emCount} emergency assets cached on disk`}>🛡️ ready</span>;
+                          }
+                          return <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700" title="No emergency assets cached — would fetch from network during an alert">🛡️ none</span>;
+                        })()}
                         {screen.lastPingAt && (
                           <span className="text-[10px] font-medium text-slate-400 flex items-center gap-1 shrink-0 px-2">
                             <Clock className="w-3 h-3" />

@@ -10,7 +10,7 @@ import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { extname } from 'path';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
 
 const ALLOWED_TYPES = [
@@ -83,6 +83,12 @@ export class AssetsController {
       );
     }
 
+    // SHA-256 hash so the offline-cache Service Worker can detect when an
+    // asset has been replaced server-side without the URL changing, and
+    // re-download exactly the diff. Computed in-memory from the same buffer
+    // we just uploaded — no extra read.
+    const fileHash = createHash('sha256').update(file.buffer).digest('hex');
+
     const asset = await this.prisma.client.asset.create({
       data: {
         tenantId: req.user.tenantId,
@@ -90,6 +96,7 @@ export class AssetsController {
         fileUrl,
         mimeType: file.mimetype,
         fileSize: file.size,
+        fileHash,
         originalName: file.originalname,
         status: 'PUBLISHED',
       },
@@ -100,6 +107,7 @@ export class AssetsController {
       fileUrl: asset.fileUrl,
       mimeType: asset.mimeType,
       fileSize: asset.fileSize,
+      fileHash: asset.fileHash,
       originalName: asset.originalName,
       status: asset.status,
     };
