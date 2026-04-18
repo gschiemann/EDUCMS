@@ -234,6 +234,62 @@ Zero-budget roadmap underway (6 sprints planned):
 - Emergency system expansion (SOS button, broadcastable text, media)
 - Polish (UX, performance, mobile)
 
+**Sprint 7 — Offline-first player (download-and-play architecture)**
+
+The player MUST download all content locally and play from local cache.
+Network is the control plane; local disk is the playback plane. This is
+non-negotiable for life-safety: an emergency trigger is a tiny WS
+message that flips a switch, not a content download.
+
+- **Two cache tiers:**
+  - `playlist-assets` — all assets in active playlists. LRU eviction
+    when manifest no longer references them.
+  - `emergency-assets` 🛡️ — every asset across all 4 panic-type
+    playlists per Tenant.emergency*PlaylistId. **NEVER evicted.**
+    Refreshed only when the tenant's emergency config changes.
+- **Implementation order:**
+  1. Service Worker + Cache API in apps/web/public/sw-player.js.
+     Works in both browser and Android System WebView 60+ (Android
+     7+ covered). Single codebase.
+  2. New endpoint `GET /api/v1/screens/:id/emergency-assets` returns
+     all 4 panic playlists' asset URLs + SHA hashes.
+  3. Player postMessages manifest + emergency list to SW on every
+     successful sync; SW pre-fetches into the right tier.
+  4. SHA integrity check; SW re-downloads if hash mismatches.
+  5. "Emergency content cached ✓ N assets / Mmb" indicator in info
+     overlay.
+  6. Admin sanity check in dashboard: per-screen "all emergency
+     assets cached" status.
+  7. (Later) Native Android download + embedded localhost server in
+     the APK as a hardening layer for sub-second cold-boot.
+
+- **Disk budget per screen — competitive landscape (researched
+  2026-04-17):**
+  | Vendor | Per-screen storage |
+  |---|---|
+  | Yodeck (Pi 4) | 8GB min / 16GB rec / ~24GB usable on 32GB card |
+  | Yodeck (Pi 5) | 16GB min / 32GB rec |
+  | Xibo Android | No hard cap; aggressively evicts when device free <10% |
+  | OptiSigns + BrightSign | No documented per-device cache cap |
+  | Rise Vision | Not documented |
+  Most competitors don't expose a hard cap; they evict on free-space
+  pressure. Recommendation:
+  - Default soft cap: **5GB** per screen (admin-configurable
+    1GB-50GB).
+  - Reserve **1GB hard floor** for `emergency-assets` tier (never
+    counts against the soft cap, never evicted).
+  - Surface usage in dashboard: "Screen X: 3.2 GB used / 5 GB cap
+    (emergency: 240 MB protected)".
+  - Warn admin when emergency assets exceed 80% of the reserved
+    floor so they tune media size before it overflows.
+- **Failure modes covered:** WiFi pulled mid-emergency; player power
+  cycle mid-emergency; CDN outage; new emergency asset uploaded but
+  player offline (asset stays uncached, server logs warning, falls
+  back to text-only emergency message which is always pre-cached as
+  default).
+
+---
+
 **Future / multi-industry expansion (Sprint 7+, post-funding)**
 
 - **API integrations + real-time data feeds.** Generic "data source"
