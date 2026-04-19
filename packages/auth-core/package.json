@@ -8,8 +8,5 @@
   },
   "dependencies": {
     "@cms/database": "workspace:*"
-  },
-  "devDependencies": {
-    "typescript": "^5.9.3"
   }
 }
