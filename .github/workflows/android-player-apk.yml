@@ -64,8 +64,11 @@ jobs:
         run: |
           if [ ! -f apps/player/gradle/wrapper/gradle-wrapper.jar ] || [ ! -f apps/player/gradlew ]; then
             echo "Bootstrapping Gradle wrapper for the player project…"
-            cd apps/player && gradle wrapper --gradle-version 8.7
+            # Subshell so 'cd' doesn't leak into the next chmod, which would
+            # then resolve apps/player/gradlew relative to the new CWD.
+            ( cd apps/player && gradle wrapper --gradle-version 8.7 )
           fi
+          ls -la apps/player/gradlew apps/player/gradle/wrapper/gradle-wrapper.jar
           chmod +x apps/player/gradlew
 
       - name: Build debug APK
