@@ -1,0 +1,25 @@
+name: Keep API warm
+
+# Pings the Railway API /health endpoint every 5 minutes so the
+# Postgres pool + Node process stay warm between requests.
+# Free GitHub Actions cron — replaces the Vercel cron (Hobby plan
+# only allows daily crons).
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Curl /health
+        run: |
+          curl -fsS --max-time 15 https://api-production-39a1.up.railway.app/api/v1/health \
+            -H 'User-Agent: educms-keepwarm-cron' \
+            -o /tmp/h.json && cat /tmp/h.json | head -c 400 || {
+            echo "Health endpoint did not respond cleanly"
+            exit 1
+          }
