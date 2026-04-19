@@ -46,9 +46,16 @@ interface Cfg {
   announcementLabel?: string;
   announcementMessage?: string;
   countdownLabel?: string;
-  countdownNumber?: string | number;
-  countdownUnit?: string;
-  teacherEmoji?: string;
+  // Date-driven countdown (preferred) — ISO-8601 date string. The
+  // widget computes days remaining from now until midnight of this
+  // date. Falls back to countdownNumber if unset.
+  countdownDate?: string;
+  countdownNumber?: string | number;  // fallback / static override
+  countdownUnit?: string;              // 'days' (auto-pluralized)
+  // Teacher icon — 'female' (👩‍🏫) or 'male' (👨‍🏫). No more free-text
+  // emoji input.
+  teacherGender?: 'female' | 'male';
+  teacherEmoji?: string;  // legacy support — overridden by teacherGender if set
   teacherName?: string;
   teacherRole?: string;
   // Birthday names — accepts either a string ("Maya, Eli, Sofia" or
@@ -355,23 +362,43 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
           <div className="aw-countdown">
             <div className="aw-badge">
               <div className="aw-cdLbl">{c.countdownLabel || 'Field Trip in'}</div>
-              <div className="aw-cdNum">{c.countdownNumber ?? 3}</div>
-              <div className="aw-cdUnit">{c.countdownUnit || 'days'}</div>
+              {(() => {
+                // Date-driven preferred. Compute whole days from
+                // today (00:00 local) until the target date (00:00 local).
+                // Falls back to the static countdownNumber if no date set.
+                if (c.countdownDate) {
+                  const target = new Date(c.countdownDate + 'T00:00:00');
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  const days = Math.max(0, Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)));
+                  return (
+                    <>
+                      <div className="aw-cdNum">{days}</div>
+                      <div className="aw-cdUnit">{days === 1 ? 'day' : (c.countdownUnit || 'days')}</div>
+                    </>
+                  );
+                }
+                return (
+                  <>
+                    <div className="aw-cdNum">{c.countdownNumber ?? 3}</div>
+                    <div className="aw-cdUnit">{c.countdownUnit || 'days'}</div>
+                  </>
+                );
+              })()}
             </div>
           </div>
 
           <div className="aw-teacher">
             <div className="aw-polaroid">
-              {/* Washi-tape banner above the photo, with the role text
-                  printed on it. Replaces the floating role caption that
-                  used to sit below the polaroid. */}
+              {/* Washi-tape banner with caption, then name, then photo —
+                  caption + name read first, photo anchors the bottom. */}
               <div className="aw-tWashi">{c.teacherRole || 'Teacher of the Week'}</div>
+              <div className="aw-tName">{c.teacherName || 'Mrs. Johnson'}</div>
               <div className="aw-tFace">
                 {c.teacherPhotoUrl
                   ? <img src={c.teacherPhotoUrl} alt="" className="aw-tPhoto" />
-                  : <span>{c.teacherEmoji || '👩‍🏫'}</span>}
+                  : <span>{c.teacherGender === 'male' ? '👨‍🏫' : (c.teacherEmoji || '👩‍🏫')}</span>}
               </div>
-              <div className="aw-tName">{c.teacherName || 'Mrs. Johnson'}</div>
             </div>
           </div>
 
@@ -702,9 +729,10 @@ const CSS = `
 .aw-cdNum { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 84px; line-height: .9; color: #7c2d12; text-shadow: 0 3px 0 rgba(255,255,255,.5); margin: 6px 0; }
 .aw-cdUnit { font-family: 'Caveat', cursive; font-size: 32px; color: #7c2d12; }
 
-/* TEACHER — polaroid. justify-content: flex-start + fixed padding-top
-   anchors the polaroid at a known position so it doesn't drift when
-   sibling cells (e.g. birthdays carousel) re-render. */
+/* TEACHER — polaroid. Caption (washi tape) on top of the frame, then
+   name, then photo — photo anchors the bottom of the polaroid.
+   justify-content: flex-start + fixed padding anchors the polaroid
+   at a known position so it doesn't drift when sibling cells re-render. */
 .aw-teacher {
   grid-column: 1; grid-row: 2;
   display: flex; flex-direction: column; align-items: center;
@@ -713,10 +741,11 @@ const CSS = `
   position: relative;
 }
 .aw-polaroid {
-  background: #fff; padding: 18px 18px 60px; width: 260px;
+  background: #fff; padding: 38px 18px 18px; width: 260px;
   box-shadow: 0 12px 24px rgba(0,0,0,.22);
   transform: rotate(-3deg); position: relative;
   animation: aw-slideX 5s ease-in-out infinite;
+  display: flex; flex-direction: column; align-items: center;
 }
 @keyframes aw-slideX {
   0%, 100% { transform: rotate(-3deg) translateX(-4px); }
@@ -739,6 +768,13 @@ const CSS = `
   white-space: nowrap;
   z-index: 2;
 }
+/* New stack order: caption (washi) → name → photo. Name sits ABOVE
+   the photo so it reads first. Photo anchors the bottom. */
+.aw-tName {
+  font-family: 'Caveat', cursive; font-weight: 700; font-size: 36px; color: #6d28d9;
+  line-height: 1; text-align: center;
+  margin-bottom: 10px;
+}
 .aw-tFace {
   width: 100%; aspect-ratio: 1;
   background: linear-gradient(135deg, #fce7f3, #ddd6fe);
@@ -747,11 +783,6 @@ const CSS = `
 }
 .aw-tPhoto {
   width: 100%; height: 100%; object-fit: cover;
-}
-.aw-tName {
-  position: absolute; left: 0; right: 0; bottom: 20px; text-align: center;
-  font-family: 'Caveat', cursive; font-weight: 700; font-size: 40px; color: #6d28d9;
-  line-height: 1;
 }
 /* .aw-tRole removed — role text is now rendered inside .aw-tWashi
    on top of the polaroid, no longer a separate element below it. */

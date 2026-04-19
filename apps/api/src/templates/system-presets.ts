@@ -1192,7 +1192,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
           "countdownLabel": "Field Trip in",
           "countdownNumber": 3,
           "countdownUnit": "days",
-          "teacherEmoji": "👩‍🏫",
+          "teacherGender": "female",
           "teacherName": "Mrs. Johnson",
           "teacherRole": "Teacher of the Week",
           "birthdayNames": "Maya · Eli · Sofia",

@@ -599,16 +599,51 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="announcementLabel" label="Small label" value={cfg.announcementLabel || ''} placeholder="Big News" onChange={(v) => setField({ announcementLabel: v })} />);
       fields.push(<TextAreaField key="announcementMessage" label="Message" value={cfg.announcementMessage || ''} placeholder="Book Fair starts Monday!" onChange={(v) => setField({ announcementMessage: v })} />);
 
-      fields.push(SH('countdown', 'Countdown (starburst)'));
-      fields.push(<TextField key="countdownLabel" label="Label" value={cfg.countdownLabel || ''} placeholder="Field Trip in" onChange={(v) => setField({ countdownLabel: v })} />);
-      fields.push(<TextField key="countdownNumber" label="Big number" value={String(cfg.countdownNumber ?? '')} placeholder="3" onChange={(v) => setField({ countdownNumber: v })} />);
-      fields.push(<TextField key="countdownUnit" label="Unit (days, hours…)" value={cfg.countdownUnit || ''} placeholder="days" onChange={(v) => setField({ countdownUnit: v })} />);
+      fields.push(SH('countdown', 'Countdown (starburst) — auto-counts down to a date'));
+      fields.push(<TextField key="countdownLabel" label="What's the countdown for? (e.g. Spring Break in, Winter Break in)" value={cfg.countdownLabel || ''} placeholder="Field Trip in" onChange={(v) => setField({ countdownLabel: v })} />);
+      fields.push(
+        <div key="countdownDate" className="space-y-1">
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Target date</label>
+          <input
+            type="date"
+            value={cfg.countdownDate || ''}
+            onChange={(e) => setField({ countdownDate: e.target.value })}
+            className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+          />
+          <div className="text-[11px] text-slate-400">Leaves the static number below if no date selected.</div>
+        </div>
+      );
+      fields.push(<TextField key="countdownNumber" label="Static number (only used if no date set)" value={String(cfg.countdownNumber ?? '')} placeholder="3" onChange={(v) => setField({ countdownNumber: v })} />);
+      fields.push(<TextField key="countdownUnit" label="Unit label" value={cfg.countdownUnit || ''} placeholder="days" onChange={(v) => setField({ countdownUnit: v })} />);
 
       fields.push(SH('teacher', 'Teacher of the Week (polaroid)'));
-      fields.push(<AssetPickerField key="teacherPhotoUrl" label="Upload photo (optional)" value={cfg.teacherPhotoUrl || ''} kind="image" onChange={(v) => setField({ teacherPhotoUrl: v })} />);
-      fields.push(<TextField key="teacherEmoji" label="Or use an emoji" value={cfg.teacherEmoji || ''} placeholder="👩‍🏫" onChange={(v) => setField({ teacherEmoji: v })} />);
+      fields.push(<TextField key="teacherRole" label="Caption above (the washi tape)" value={cfg.teacherRole || ''} placeholder="Teacher of the Week" onChange={(v) => setField({ teacherRole: v })} />);
       fields.push(<TextField key="teacherName" label="Name" value={cfg.teacherName || ''} placeholder="Mrs. Johnson" onChange={(v) => setField({ teacherName: v })} />);
-      fields.push(<TextField key="teacherRole" label="Caption below" value={cfg.teacherRole || ''} placeholder="Teacher of the Week" onChange={(v) => setField({ teacherRole: v })} />);
+      fields.push(<AssetPickerField key="teacherPhotoUrl" label="Upload photo (recommended)" value={cfg.teacherPhotoUrl || ''} kind="image" onChange={(v) => setField({ teacherPhotoUrl: v })} />);
+      fields.push(
+        <div key="teacherGender" className="space-y-1">
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Or pick an icon (used when no photo uploaded)</label>
+          <div className="flex gap-2">
+            {([
+              { value: 'female', label: '👩‍🏫', name: 'She / Her' },
+              { value: 'male',   label: '👨‍🏫', name: 'He / Him' },
+            ] as const).map((opt) => {
+              const selected = (cfg.teacherGender || 'female') === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setField({ teacherGender: opt.value })}
+                  className={`flex-1 px-3 py-3 rounded-md border-2 transition flex flex-col items-center gap-1 ${selected ? 'border-indigo-600 bg-indigo-50' : 'border-slate-200 hover:border-slate-300 bg-white'}`}
+                >
+                  <span className="text-3xl leading-none">{opt.label}</span>
+                  <span className="text-[11px] text-slate-600">{opt.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      );
 
       fields.push(SH('birthdays', 'Birthdays (balloon cluster)'));
       // Normalize to one-name-per-line for display so it's obvious how
