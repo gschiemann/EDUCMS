@@ -1,0 +1,107 @@
+name: Android Player APK
+
+# Builds the kiosk APK on every push that touches apps/player or this
+# workflow. Uploads as a downloadable artifact named 'edu-cms-player-apk'
+# so non-developers can grab a fresh build straight from the GitHub UI:
+# Actions → latest run → Artifacts → download.
+#
+# Manual trigger via workflow_dispatch lets you build whenever without
+# pushing.
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'apps/player/**'
+      - '.github/workflows/android-player-apk.yml'
+  workflow_dispatch:
+    inputs:
+      playerBaseUrl:
+        description: 'Override the player base URL (e.g. for a staging build)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-player-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    name: Build debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            apps/player/.gradle
+          key: gradle-${{ runner.os }}-${{ hashFiles('apps/player/**/*.gradle*', 'apps/player/**/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Install Gradle (bootstrap — wrapper jar isn't committed)
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+
+      - name: Generate Gradle wrapper if missing
+        run: |
+          if [ ! -f apps/player/gradle/wrapper/gradle-wrapper.jar ] || [ ! -f apps/player/gradlew ]; then
+            echo "Bootstrapping Gradle wrapper for the player project…"
+            cd apps/player && gradle wrapper --gradle-version 8.7
+          fi
+          chmod +x apps/player/gradlew
+
+      - name: Build debug APK
+        env:
+          PLAYER_BASE_URL: ${{ github.event.inputs.playerBaseUrl != '' && github.event.inputs.playerBaseUrl || 'https://educms-five.vercel.app/player' }}
+        run: |
+          cd apps/player
+          ./gradlew --no-daemon assembleDebug -PplayerBaseUrl="$PLAYER_BASE_URL"
+
+      - name: Locate APK
+        id: locate
+        run: |
+          APK=$(find apps/player/app/build/outputs/apk/debug -name '*.apk' | head -1)
+          if [ -z "$APK" ]; then
+            echo "::error::No APK was produced"
+            exit 1
+          fi
+          echo "apk=$APK" >> $GITHUB_OUTPUT
+          ls -la "$APK"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: edu-cms-player-apk
+          path: ${{ steps.locate.outputs.apk }}
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Build summary
+        run: |
+          echo "### EduCMS Player APK built ✓" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download from the **Artifacts** section above (\`edu-cms-player-apk\`)." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Player base URL:** \`${PLAYER_BASE_URL:-https://educms-five.vercel.app/player}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Side-load on Android: Settings → Apps → Special access → Install unknown apps → enable for your file manager → tap the .apk." >> $GITHUB_STEP_SUMMARY
+        env:
+          PLAYER_BASE_URL: ${{ github.event.inputs.playerBaseUrl != '' && github.event.inputs.playerBaseUrl || 'https://educms-five.vercel.app/player' }}

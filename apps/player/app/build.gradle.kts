@@ -18,7 +18,7 @@ android {
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)
             ?: System.getenv("PLAYER_BASE_URL")
-            ?: "https://educms.vercel.app/player"
+            ?: "https://educms-five.vercel.app/player"
         buildConfigField("String", "PLAYER_BASE_URL", "\"$playerBaseUrl\"")
     }
 

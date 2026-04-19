@@ -159,9 +159,21 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         webView.onResume()
         webView.resumeTimers()
+        // Lock-task / screen-pinning. When the device is set as Device Owner
+        // (one-shot ADB command, see README), this puts the player in true
+        // kiosk mode — home button, recents, status bar swipe all disabled.
+        // No prompt to the user.
+        // Without Device Owner, falls back to user-confirmable pinning so
+        // the operator at least gets the dialog. Catch + log so a non-DO
+        // device never crashes here.
+        runCatching { startLockTask() }
+            .onFailure { Log.w("MainActivity", "startLockTask not available — install as Device Owner for true kiosk mode", it) }
     }
 
     override fun onPause() {
+        // We deliberately DON'T stopLockTask here — the activity should keep
+        // its pinned state while the OS swaps focus (e.g. notification panel
+        // attempts). Only release on destroy / explicit unpair.
         webView.onPause()
         super.onPause()
     }

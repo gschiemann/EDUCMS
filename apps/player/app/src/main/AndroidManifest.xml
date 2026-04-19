@@ -54,6 +54,16 @@
                 <action android:name="com.educms.player.OPEN_PLAYER" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+            <!-- HOME launcher categories — Android offers this app as the
+                 default launcher. Once the user picks it (or the device is
+                 provisioned with us as the home app via ADB), pressing HOME
+                 re-launches the player instead of going to Android launcher.
+                 Combined with startLockTask() this is true kiosk-on-top. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
 
         <receiver
