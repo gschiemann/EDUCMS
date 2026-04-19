@@ -29,6 +29,18 @@ import { SYSTEM_TEMPLATE_PRESETS } from './system-presets';
 export async function ensureSystemPresets(prisma: PrismaService) {
   const logger = new Logger('SystemPresetSeed');
 
+  // Multi-pod boot race: two Railway replicas coming up at the same time
+  // would both see "missing preset X" and both try to create it,
+  // producing a P2002 unique-violation. A Postgres advisory lock
+  // serializes the window; on non-PG engines the call no-ops.
+  let haveLock = false;
+  try {
+    await prisma.client.$queryRaw`SELECT pg_advisory_lock(424242)`;
+    haveLock = true;
+  } catch {
+    /* non-fatal on non-PG */
+  }
+
   try {
     const existingIds = new Set(
       (await prisma.client.template.findMany({
@@ -84,8 +96,14 @@ export async function ensureSystemPresets(prisma: PrismaService) {
         created += 1;
         logger.log(`  + ${preset.name} (${preset.id})`);
       } catch (e) {
-        // One bad preset doesn't stop the rest. Loud log so we fix it.
-        logger.warn(`  ✕ Failed to seed ${preset.id}: ${(e as Error).message}`);
+        const code = (e as any)?.code;
+        if (code === 'P2002') {
+          // Another pod won the race — harmless, they inserted the same row.
+          logger.log(`  = ${preset.id} already created by another pod (P2002)`);
+        } else {
+          // One bad preset doesn't stop the rest. Loud log so we fix it.
+          logger.warn(`  ✕ Failed to seed ${preset.id}: ${(e as Error).message}`);
+        }
       }
     }
     logger.log(`System preset seed complete — ${created}/${missing.length} created.`);
@@ -115,5 +133,13 @@ export async function ensureSystemPresets(prisma: PrismaService) {
     }
   } catch (e) {
     logger.warn(`System preset seed failed (continuing anyway): ${(e as Error).message}`);
+  } finally {
+    if (haveLock) {
+      try {
+        await prisma.client.$queryRaw`SELECT pg_advisory_unlock(424242)`;
+      } catch {
+        /* best-effort release; lock auto-releases on session end */
+      }
+    }
   }
 }
