@@ -54,9 +54,16 @@ object UsbCacheIndex {
         val assets = manifest.optJSONArray("assets") ?: return
         for (i in 0 until assets.length()) {
             val a = assets.getJSONObject(i)
-            val url = a.optString("url", "").ifBlank { continue }
-            val sha = a.optString("sha256", "").ifBlank { continue }
-            val localPath = a.optString("localPath", "").ifBlank { continue }
+            // 'continue in inline lambda' is experimental in older Kotlin
+            // (causes the player APK CI build to fail). Use plain
+            // checks + continue from the for-loop instead — same effect,
+            // works on every Kotlin version.
+            val url = a.optString("url", "")
+            if (url.isBlank()) continue
+            val sha = a.optString("sha256", "")
+            if (sha.isBlank()) continue
+            val localPath = a.optString("localPath", "")
+            if (localPath.isBlank()) continue
             val f = File(root, localPath)
             if (f.exists()) {
                 urlMap[url] = f

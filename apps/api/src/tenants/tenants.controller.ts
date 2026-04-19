@@ -1,5 +1,6 @@
-import { Controller, Get, Put, Post, Body, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Put, Post, Patch, Delete, Body, Param, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
@@ -10,7 +11,10 @@ import { randomBytes, createHash, createHmac, timingSafeEqual } from 'crypto';
 @Controller('api/v1/tenants')
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class TenantsController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jwtService: JwtService,
+  ) {}
 
   /**
    * Returns the list of tenants (schools) the current user is allowed to switch into.
@@ -135,6 +139,205 @@ export class TenantsController {
     });
 
     return { success: true, child };
+  }
+
+  /**
+   * Switch the caller into a different tenant they're authorized to
+   * access (parent's children, or any tenant for SUPER_ADMIN). Issues
+   * a NEW JWT scoped to the target tenant — without this, navigating
+   * to /child-slug/dashboard leaves the old JWT in place and queries
+   * still scope to the original tenant.
+   *
+   * Auth rules:
+   *   - SUPER_ADMIN: can switch into any tenant
+   *   - DISTRICT_ADMIN: can switch into their own tenant + any child of it
+   *   - Other roles: 403
+   *
+   * The user's role is preserved on switch (DISTRICT_ADMIN of parent
+   * becomes DISTRICT_ADMIN of the child). They retain full admin
+   * powers in the child workspace.
+   */
+  @Post('switch')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  async switchTenant(
+    @Request() req: any,
+    @Body() body: { tenantId?: string },
+  ) {
+    const targetId = (body?.tenantId || '').trim();
+    if (!targetId) throw new HttpException('tenantId is required', HttpStatus.BAD_REQUEST);
+
+    const role = req.user.role as string;
+    const callerTenantId = req.user.tenantId as string;
+
+    const target = await this.prisma.client.tenant.findUnique({
+      where: { id: targetId },
+      select: { id: true, name: true, slug: true, parentId: true },
+    });
+    if (!target) throw new HttpException('Target tenant not found', HttpStatus.NOT_FOUND);
+
+    // Authorization
+    let authorized = false;
+    if (role === AppRole.SUPER_ADMIN) {
+      authorized = true;
+    } else if (role === AppRole.DISTRICT_ADMIN) {
+      // Allow if target is the caller's own tenant, the caller's parent,
+      // or a sibling/child of either (covers both directions of the tree).
+      const callerTenant = await this.prisma.client.tenant.findUnique({
+        where: { id: callerTenantId },
+        select: { id: true, parentId: true },
+      });
+      const districtId = callerTenant?.parentId ?? callerTenant?.id;
+      authorized = target.id === districtId || target.parentId === districtId;
+    }
+    if (!authorized) {
+      throw new HttpException('You are not authorized to switch into that tenant', HttpStatus.FORBIDDEN);
+    }
+
+    // Pull the user record so we have canTriggerPanic etc. in the new payload
+    const user = await this.prisma.client.user.findUnique({
+      where: { id: req.user.userId },
+      select: { id: true, email: true, role: true, canTriggerPanic: true },
+    });
+    if (!user) throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      tenantId: target.id,
+      role: user.role,
+      canTriggerPanic: user.canTriggerPanic,
+    };
+    const access_token = this.jwtService.sign(payload, { expiresIn: '30d' });
+
+    // Audit: this is a privileged action; log who switched into where.
+    await this.prisma.client.auditLog.create({
+      data: {
+        tenantId: target.id,
+        userId: user.id,
+        action: 'TENANT_SWITCH',
+        targetType: 'Tenant',
+        targetId: target.id,
+        details: JSON.stringify({ fromTenantId: callerTenantId, toTenantId: target.id, slug: target.slug }),
+      },
+    }).catch(() => { /* don't fail the switch on audit write */ });
+
+    return {
+      success: true,
+      access_token,
+      user: {
+        id: user.id, email: user.email, role: user.role,
+        tenantId: target.id, tenantSlug: target.slug,
+        canTriggerPanic: user.canTriggerPanic,
+      },
+      tenant: target,
+    };
+  }
+
+  /**
+   * Update mutable fields on the CALLER'S tenant (not children). Currently
+   * just `vertical` and `name`. DISTRICT_ADMIN + SUPER_ADMIN only.
+   */
+  @Patch('me')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN)
+  async updateMyTenant(
+    @Request() req: any,
+    @Body() body: { vertical?: string; name?: string },
+  ) {
+    const tenantId = req.user.tenantId;
+    const data: any = {};
+    if (body.vertical) {
+      const v = body.vertical.toUpperCase();
+      const allowed = ['K12', 'RESTAURANT', 'RETAIL', 'HEALTHCARE', 'FITNESS', 'CORPORATE', 'OTHER'];
+      if (!allowed.includes(v)) throw new HttpException('Invalid vertical', HttpStatus.BAD_REQUEST);
+      data.vertical = v;
+    }
+    if (body.name && body.name.trim()) data.name = body.name.trim();
+    if (Object.keys(data).length === 0) throw new HttpException('Nothing to update', HttpStatus.BAD_REQUEST);
+
+    const updated = await this.prisma.client.tenant.update({
+      where: { id: tenantId },
+      data,
+      select: { id: true, name: true, slug: true, vertical: true },
+    });
+    await this.prisma.client.auditLog.create({
+      data: {
+        tenantId, userId: req.user.userId,
+        action: 'TENANT_UPDATED',
+        targetType: 'Tenant', targetId: tenantId,
+        details: JSON.stringify(data),
+      },
+    }).catch(() => { /* noop */ });
+    return updated;
+  }
+
+  /**
+   * Delete a child tenant. SUPER_ADMIN + DISTRICT_ADMIN of the parent.
+   * Refuses to delete a tenant that:
+   *   - has its own children (delete those first)
+   *   - has any registered screens (would orphan paired devices)
+   *   - has an active emergency override (life-safety guard)
+   *   - is the caller's own current tenant (would lock them out)
+   * Cascades via Prisma onDelete: Cascade for things like users,
+   * playlists, assets, audit logs (per schema).
+   */
+  @Delete('children/:id')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN)
+  async deleteChild(
+    @Request() req: any,
+    @Param('id') id: string,
+  ) {
+    if (!id) throw new HttpException('Tenant id required', HttpStatus.BAD_REQUEST);
+    if (id === req.user.tenantId) {
+      throw new HttpException('You cannot delete the tenant you are currently in. Switch out first.', HttpStatus.BAD_REQUEST);
+    }
+
+    const target = await this.prisma.client.tenant.findUnique({
+      where: { id },
+      select: { id: true, name: true, slug: true, parentId: true, emergencyStatus: true },
+    });
+    if (!target) throw new HttpException('Tenant not found', HttpStatus.NOT_FOUND);
+
+    // Authorization — only SUPER_ADMIN or DISTRICT_ADMIN of the parent
+    if (req.user.role !== AppRole.SUPER_ADMIN) {
+      const callerTenant = await this.prisma.client.tenant.findUnique({
+        where: { id: req.user.tenantId },
+        select: { id: true, parentId: true },
+      });
+      const districtId = callerTenant?.parentId ?? callerTenant?.id;
+      if (target.parentId !== districtId) {
+        throw new HttpException('You are not authorized to delete that tenant', HttpStatus.FORBIDDEN);
+      }
+    }
+
+    // Safety checks
+    if (target.emergencyStatus && target.emergencyStatus !== 'NORMAL' && target.emergencyStatus !== '') {
+      throw new HttpException('Cannot delete a tenant with an active emergency. Clear the alert first.', HttpStatus.CONFLICT);
+    }
+    const [childCount, screenCount] = await Promise.all([
+      this.prisma.client.tenant.count({ where: { parentId: id } }),
+      this.prisma.client.screen.count({ where: { tenantId: id } }),
+    ]);
+    if (childCount > 0) {
+      throw new HttpException(`Cannot delete: this tenant has ${childCount} child tenant(s). Delete those first.`, HttpStatus.CONFLICT);
+    }
+    if (screenCount > 0) {
+      throw new HttpException(`Cannot delete: this tenant has ${screenCount} paired screen(s). Unpair them first or contact support to migrate.`, HttpStatus.CONFLICT);
+    }
+
+    // Audit BEFORE delete so the log entry survives the cascade
+    await this.prisma.client.auditLog.create({
+      data: {
+        tenantId: target.parentId || target.id,
+        userId: req.user.userId,
+        action: 'CHILD_TENANT_DELETED',
+        targetType: 'Tenant',
+        targetId: target.id,
+        details: JSON.stringify({ name: target.name, slug: target.slug, parentTenantId: target.parentId }),
+      },
+    }).catch(() => { /* noop */ });
+
+    await this.prisma.client.tenant.delete({ where: { id } });
+    return { success: true, deletedId: id };
   }
 
   @Get()
