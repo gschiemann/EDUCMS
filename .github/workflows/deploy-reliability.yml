@@ -51,18 +51,14 @@ jobs:
           node-version: 20
           cache: pnpm
       - name: Install
-        env:
-          # Skip the postinstall prisma generate during install since it
-          # needs DATABASE_URL; we run it explicitly below.
-          PRISMA_SKIP_POSTINSTALL_GENERATE: "true"
         run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Generate Prisma client (must run BEFORE workspace builds — auth-core imports @prisma/client transitively)
+        run: cd packages/database && npx prisma generate
       - name: Build workspace packages
         run: |
           pnpm --filter @cms/api-types build
           pnpm --filter @cms/auth-core build
           pnpm --filter @cms/ws-events build
-      - name: Generate Prisma client
-        run: cd packages/database && npx prisma generate
       - name: Build API
         run: pnpm --filter api build
 
@@ -80,8 +76,6 @@ jobs:
           node-version: 20
           cache: pnpm
       - name: Install
-        env:
-          PRISMA_SKIP_POSTINSTALL_GENERATE: "true"
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Generate Prisma client
         run: cd packages/database && npx prisma generate

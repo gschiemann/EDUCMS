@@ -3,26 +3,18 @@
 /**
  * AnimatedWelcomeWidget — full-screen elementary welcome scene.
  *
- * One widget that paints the entire stage: animated rainbow ribbon,
- * confetti, drifting clouds, sun-with-rays weather, cloud-puff
- * announcement, starburst countdown, polaroid teacher, balloon-cluster
- * birthdays, ribbon ticker. All animations are pure CSS keyframes
- * scoped to this component via a unique class root + a single <style>
- * tag, so they cannot leak into other widgets.
+ * APPROVED 2026-04-19 — matches scratch/design/animated-rainbow.html.
+ * Ported via the transform:scale pattern: a fixed 1920×1080 canvas
+ * with every pixel size copied verbatim from the HTML mockup, wrapped
+ * in a measuring container that scales it to fit any zone.
  *
- * Designed for one full-screen zone (x:0,y:0,width:100,height:100).
- *
- * Config fields (all optional, sensible defaults):
- *   logoEmoji, title, subtitle,
- *   weatherTemp, weatherDesc,
- *   announcementLabel, announcementMessage,
- *   countdownLabel, countdownNumber, countdownUnit,
- *   teacherEmoji, teacherName, teacherRole,
- *   birthdayNames (comma-separated string),
- *   tickerStamp, tickerMessages (string[] or comma-separated)
+ * DO NOT regress to vw/% units inside the scene — they read the
+ * browser viewport, not the widget container, and the design will
+ * break at 4K and on small previews. See CLAUDE.md "Template Design
+ * Workflow" for the full reasoning.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface Cfg {
   logoEmoji?: string;
@@ -41,33 +33,55 @@ interface Cfg {
   birthdayNames?: string;
   tickerStamp?: string;
   tickerMessages?: string[] | string;
-  clockNow?: string; // for live-updating clock
 }
+
+// Canonical canvas dimensions — every pixel size below is sized for
+// this and the wrapper scales to fit. Match the HTML mockup exactly.
+const CANVAS_W = 1920;
+const CANVAS_H = 1080;
 
 export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
   const c = config || {};
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const confettiRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0);
 
-  // Live clock — re-renders every minute via state-free interval
+  // Measure parent and scale the 1920×1080 canvas to fit
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el?.parentElement) return;
+    const compute = () => {
+      const rect = el.parentElement!.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      const sx = rect.width / CANVAS_W;
+      const sy = rect.height / CANVAS_H;
+      setScale(Math.min(sx, sy));
+    };
+    compute();
+    const raf = requestAnimationFrame(compute);
+    const ro = new ResizeObserver(compute);
+    ro.observe(el.parentElement);
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); };
+  }, []);
+
+  // Live clock — refresh every 30s
   useEffect(() => {
     const tick = () => {
-      const el = document.getElementById('aw-clock-time');
-      if (!el) return;
+      const t = document.getElementById('aw-clock-time');
+      const a = document.getElementById('aw-clock-ampm');
+      if (!t || !a) return;
       const d = new Date();
       const h = d.getHours();
       const m = d.getMinutes().toString().padStart(2, '0');
-      const ampm = h >= 12 ? 'PM' : 'AM';
-      const h12 = ((h + 11) % 12) + 1;
-      el.textContent = `${h12}:${m}`;
-      const ap = document.getElementById('aw-clock-ampm');
-      if (ap) ap.textContent = ampm;
+      a.textContent = h >= 12 ? 'PM' : 'AM';
+      t.textContent = `${((h + 11) % 12) + 1}:${m}`;
     };
     tick();
     const id = setInterval(tick, 30_000);
     return () => clearInterval(id);
   }, []);
 
-  // Spawn 80 confetti pieces once on mount
+  // Spawn confetti once
   useEffect(() => {
     const layer = confettiRef.current;
     if (!layer) return;
@@ -79,7 +93,6 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
       const color = colors[Math.floor(Math.random() * colors.length)];
       const size = 6 + Math.random() * 12;
       const dur = 5 + Math.random() * 7;
-      const delay = -Math.random() * dur;
       const isCircle = Math.random() < 0.3;
       el.style.left = (Math.random() * 100) + '%';
       el.style.width = size + 'px';
@@ -87,7 +100,7 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
       el.style.background = color;
       el.style.borderRadius = isCircle ? '50%' : '2px';
       el.style.animationDuration = dur + 's';
-      el.style.animationDelay = delay + 's';
+      el.style.animationDelay = (-Math.random() * dur) + 's';
       el.style.transform = `rotate(${Math.random() * 360}deg)`;
       layer.appendChild(el);
     }
@@ -100,95 +113,117 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
     ? tickerList.join('  ·  ')
     : 'Welcome back, Stars!  ·  Picture day is Friday  ·  Reading Challenge: 20 minutes a day';
 
+  // Outer div fills the zone; inner div is the fixed 1920x1080 canvas
+  // scaled by transform. transformOrigin top-left so it scales from
+  // the corner cleanly.
   return (
-    <div className="aw-stage">
+    <div
+      ref={wrapperRef}
+      style={{
+        position: 'absolute', inset: 0,
+        overflow: 'hidden',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: '#BFE8FF',
+      }}
+    >
       <style>{CSS}</style>
 
-      <div className="aw-rainbow" />
-      <div className="aw-confettiLayer" ref={confettiRef} />
+      <div
+        className="aw-stage"
+        style={{
+          width: CANVAS_W, height: CANVAS_H,
+          transform: scale > 0 ? `scale(${scale})` : 'scale(0)',
+          transformOrigin: 'center center',
+          flexShrink: 0,
+        }}
+      >
+        <div className="aw-rainbow" />
+        <div className="aw-confettiLayer" ref={confettiRef} />
 
-      <div className="aw-bgBalloon" style={{ left: '8%', background: '#f87171', animationDuration: '14s', animationDelay: '0s' }} />
-      <div className="aw-bgBalloon" style={{ left: '22%', background: '#fbbf24', animationDuration: '18s', animationDelay: '-6s' }} />
-      <div className="aw-bgBalloon" style={{ left: '78%', background: '#60a5fa', animationDuration: '16s', animationDelay: '-3s' }} />
-      <div className="aw-bgBalloon" style={{ left: '92%', background: '#a78bfa', animationDuration: '20s', animationDelay: '-10s' }} />
+        <div className="aw-bgBalloon" style={{ left: 154, background: '#f87171', animationDuration: '14s', animationDelay: '0s' }} />
+        <div className="aw-bgBalloon" style={{ left: 422, background: '#fbbf24', animationDuration: '18s', animationDelay: '-6s' }} />
+        <div className="aw-bgBalloon" style={{ left: 1498, background: '#60a5fa', animationDuration: '16s', animationDelay: '-3s' }} />
+        <div className="aw-bgBalloon" style={{ left: 1766, background: '#a78bfa', animationDuration: '20s', animationDelay: '-10s' }} />
 
-      <div className="aw-header">
-        <div className="aw-logo">{c.logoEmoji || '🍎'}</div>
-        <div className="aw-titleBox">
-          <h1>{c.title || 'Welcome, Friends!'}</h1>
-          <div className="aw-sub">{c.subtitle || 'today is going to be amazing ✨'}</div>
-        </div>
-        <div className="aw-clock">
-          <div className="aw-clockT" id="aw-clock-time">12:34</div>
-          <div className="aw-clockAp" id="aw-clock-ampm">PM</div>
-        </div>
-      </div>
-
-      <div className="aw-grid">
-        {/* WEATHER — sun + rays */}
-        <div className="aw-weather">
-          <div className="aw-sunDisc">
-            <div className="aw-sunFace">{c.weatherTemp || '68°'}</div>
+        <div className="aw-header">
+          <div className="aw-logo">{c.logoEmoji || '🍎'}</div>
+          <div className="aw-titleBox">
+            <h1>{c.title || 'Welcome, Friends!'}</h1>
+            <div className="aw-sub">{c.subtitle || 'today is going to be amazing ✨'}</div>
           </div>
-          <div className="aw-weatherDesc">{c.weatherDesc || '~ sunny + crisp ~'}</div>
-        </div>
-
-        {/* ANNOUNCEMENT — cloud puff */}
-        <div className="aw-announce">
-          <div className="aw-stars">
-            <span>⭐</span><span>✨</span><span>🌟</span><span>💫</span>
-          </div>
-          <div className="aw-megaphone">📣</div>
-          <div className="aw-annLbl">{c.announcementLabel || 'Big News'}</div>
-          <div className="aw-annMsg">{c.announcementMessage || 'Book Fair starts Monday! 📚 Come find your new favorite story.'}</div>
-        </div>
-
-        {/* COUNTDOWN — starburst */}
-        <div className="aw-countdown">
-          <div className="aw-badge">
-            <div className="aw-cdLbl">{c.countdownLabel || 'Field Trip in'}</div>
-            <div className="aw-cdNum">{c.countdownNumber ?? 3}</div>
-            <div className="aw-cdUnit">{c.countdownUnit || 'days'}</div>
+          <div className="aw-clock">
+            <div className="aw-clockT" id="aw-clock-time">12:34</div>
+            <div className="aw-clockAp" id="aw-clock-ampm">PM</div>
           </div>
         </div>
 
-        {/* TEACHER — polaroid */}
-        <div className="aw-teacher">
-          <div className="aw-polaroid">
-            <div className="aw-tFace">{c.teacherEmoji || '👩‍🏫'}</div>
-            <div className="aw-tName">{c.teacherName || 'Mrs. Johnson'}</div>
+        <div className="aw-grid">
+          <div className="aw-weather">
+            <div className="aw-sunDisc">
+              <div className="aw-sunFace">{c.weatherTemp || '68°'}</div>
+            </div>
+            <div className="aw-weatherDesc">{c.weatherDesc || '~ sunny + crisp ~'}</div>
           </div>
-          <div className="aw-tRole">{c.teacherRole || '~ Teacher of the Week ~'}</div>
+
+          <div className="aw-announce">
+            <div className="aw-stars">
+              <span>⭐</span><span>✨</span><span>🌟</span><span>💫</span>
+            </div>
+            <div className="aw-megaphone">📣</div>
+            <div className="aw-annLbl">{c.announcementLabel || 'Big News'}</div>
+            <div className="aw-annMsg">{c.announcementMessage || 'Book Fair starts Monday! 📚 Come find your new favorite story.'}</div>
+          </div>
+
+          <div className="aw-countdown">
+            <div className="aw-badge">
+              <div className="aw-cdLbl">{c.countdownLabel || 'Field Trip in'}</div>
+              <div className="aw-cdNum">{c.countdownNumber ?? 3}</div>
+              <div className="aw-cdUnit">{c.countdownUnit || 'days'}</div>
+            </div>
+          </div>
+
+          <div className="aw-teacher">
+            <div className="aw-polaroid">
+              <div className="aw-tFace">{c.teacherEmoji || '👩‍🏫'}</div>
+              <div className="aw-tName">{c.teacherName || 'Mrs. Johnson'}</div>
+            </div>
+            <div className="aw-tRole">{c.teacherRole || '~ Teacher of the Week ~'}</div>
+          </div>
+
+          <div className="aw-birthdays">
+            <div className="aw-cluster">
+              <div className="aw-bal aw-bal1" />
+              <div className="aw-bal aw-bal2" />
+              <div className="aw-bal aw-bal3" />
+              <div className="aw-cake">🎂</div>
+            </div>
+            <div className="aw-bdLbl">Today's Birthdays</div>
+            <div className="aw-bdNames">{c.birthdayNames || 'Maya · Eli · Sofia'}</div>
+          </div>
         </div>
 
-        {/* BIRTHDAYS — balloon cluster */}
-        <div className="aw-birthdays">
-          <div className="aw-cluster">
-            <div className="aw-bal aw-bal1" />
-            <div className="aw-bal aw-bal2" />
-            <div className="aw-bal aw-bal3" />
-            <div className="aw-cake">🎂</div>
-          </div>
-          <div className="aw-bdLbl">Today's Birthdays</div>
-          <div className="aw-bdNames">{c.birthdayNames || 'Maya · Eli · Sofia'}</div>
+        <div className="aw-ticker">
+          <div className="aw-tickerStamp">{c.tickerStamp || 'SCHOOL NEWS'}</div>
+          <div className="aw-tickerScroll">{tickerText}</div>
         </div>
-      </div>
-
-      <div className="aw-ticker">
-        <div className="aw-tickerStamp">{c.tickerStamp || 'SCHOOL NEWS'}</div>
-        <div className="aw-tickerScroll">{tickerText}</div>
       </div>
     </div>
   );
 }
 
+// CSS is identical to scratch/design/animated-rainbow.html. All sizes
+// in pixels — sized for the 1920×1080 canvas. Do NOT replace with vw/%.
 const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&family=Caveat:wght@700&family=Patrick+Hand&display=swap');
+
 .aw-stage {
-  position: absolute; inset: 0; overflow: hidden;
-  font-family: 'Fredoka', ui-rounded, system-ui, sans-serif; color: #2d1b4d;
+  position: relative;
+  font-family: 'Fredoka', ui-rounded, system-ui, sans-serif;
+  color: #2d1b4d;
   background:
     radial-gradient(ellipse at 50% 110%, #fef3c7 0%, transparent 50%),
     linear-gradient(180deg, #BFE8FF 0%, #FFE0EC 55%, #FFD8A8 100%);
+  overflow: hidden;
 }
 .aw-stage::before, .aw-stage::after {
   content: ''; position: absolute; pointer-events: none;
@@ -211,27 +246,29 @@ const CSS = `
 @keyframes aw-confettiFall {
   0% { transform: translateY(-30px) rotate(0deg); opacity: 0; }
   8% { opacity: 1; }
-  100% { transform: translateY(110vh) rotate(720deg); opacity: .8; }
+  100% { transform: translateY(1180px) rotate(720deg); opacity: .8; }
 }
 
 .aw-rainbow {
-  position: absolute; left: -10%; right: -10%; top: 18%; height: 9%; z-index: 1;
+  position: absolute; left: -200px; right: -200px; top: 200px; height: 90px; z-index: 1;
   background: repeating-linear-gradient(135deg,
     #ff5e7e 0 30px, #ffb950 30px 60px, #ffe66d 60px 90px,
     #6cd97e 90px 120px, #5cc5ff 120px 150px, #b48cff 150px 180px);
-  background-size: 360px 100%; animation: aw-rainbowSlide 8s linear infinite;
-  transform: rotate(-3deg); box-shadow: 0 6px 24px rgba(0,0,0,.18);
+  background-size: 360px 100%;
+  animation: aw-rainbowSlide 8s linear infinite;
+  transform: rotate(-3deg);
+  box-shadow: 0 6px 24px rgba(0,0,0,.18);
 }
 @keyframes aw-rainbowSlide { from { background-position: 0 0; } to { background-position: 360px 0; } }
 
 .aw-header {
-  position: absolute; top: 2.6%; left: 0; right: 0;
-  display: grid; grid-template-columns: 10% 1fr 10%;
-  gap: 1.8%; padding: 0 2.4%; z-index: 5; align-items: center;
+  position: absolute; top: 36px; left: 36px; right: 36px;
+  display: grid; grid-template-columns: 180px 1fr 180px;
+  gap: 36px; z-index: 5; align-items: center;
 }
 .aw-logo {
-  width: 100%; aspect-ratio: 1; max-height: 14vh; background: #fff; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center; font-size: 5vw;
+  width: 180px; height: 180px; background: #fff; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; font-size: 96px;
   box-shadow: 0 6px 16px rgba(0,0,0,.18), inset 0 0 0 6px #fcd34d;
   animation: aw-bounceLogo 2.4s ease-in-out infinite;
 }
@@ -241,26 +278,26 @@ const CSS = `
 }
 .aw-titleBox {
   background: rgba(255,255,255,.85); backdrop-filter: blur(4px);
-  border-radius: 28px; padding: 2% 3%; text-align: center;
+  border-radius: 28px; padding: 28px 36px; text-align: center;
   box-shadow: 0 8px 24px rgba(0,0,0,.12);
-  border: 4px dashed #ec4899;
+  border: 5px dashed #ec4899;
   animation: aw-breathe 3.5s ease-in-out infinite;
 }
 @keyframes aw-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.025); } }
 .aw-titleBox h1 {
   margin: 0; line-height: .95;
-  font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 5.5vw;
+  font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 110px;
   background: linear-gradient(90deg, #ec4899 0%, #f59e0b 33%, #10b981 66%, #6366f1 100%);
   background-size: 300% 100%;
   -webkit-background-clip: text; background-clip: text; color: transparent;
   animation: aw-gradientShift 6s linear infinite;
 }
 @keyframes aw-gradientShift { from { background-position: 0% 50%; } to { background-position: 300% 50%; } }
-.aw-sub { font-family: 'Caveat', cursive; font-size: 2.4vw; color: #92400e; margin-top: 4px; }
+.aw-sub { font-family: 'Caveat', cursive; font-size: 44px; color: #92400e; margin-top: 6px; }
 
 .aw-clock {
-  width: 100%; aspect-ratio: 1; max-height: 14vh;
-  background: #fff; border-radius: 50%; border: 8px solid #fcd34d;
+  width: 180px; height: 180px;
+  background: #fff; border-radius: 50%; border: 10px solid #fcd34d;
   box-shadow: 0 6px 16px rgba(0,0,0,.2);
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   font-family: 'Fredoka', sans-serif; font-weight: 700;
@@ -271,20 +308,20 @@ const CSS = `
   1%, 5% { transform: rotate(-12deg); }
   3% { transform: rotate(12deg); }
 }
-.aw-clockT { font-size: 3vw; color: #be185d; line-height: 1; }
-.aw-clockAp { font-size: 1.5vw; color: #92400e; }
+.aw-clockT { font-size: 56px; color: #be185d; line-height: 1; }
+.aw-clockAp { font-size: 28px; color: #92400e; }
 
 .aw-grid {
-  position: absolute; top: 22%; left: 2.4%; right: 2.4%; bottom: 13%;
-  display: grid; grid-template-columns: 22% 1fr 22%;
-  grid-template-rows: 1fr 1fr; gap: 1.6%; z-index: 3;
+  position: absolute; top: 270px; left: 36px; right: 36px; bottom: 130px;
+  display: grid; grid-template-columns: 380px 1fr 380px;
+  grid-template-rows: 1fr 1fr; gap: 28px; z-index: 3;
 }
 
 /* WEATHER — sun with rays */
-.aw-weather { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; padding: 1%; }
-.aw-sunDisc { position: relative; width: 70%; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; }
+.aw-weather { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; padding: 12px; }
+.aw-sunDisc { position: relative; width: 260px; height: 260px; display: flex; align-items: center; justify-content: center; }
 .aw-sunDisc::before {
-  content: ''; position: absolute; inset: -20%; border-radius: 50%;
+  content: ''; position: absolute; inset: -50px; border-radius: 50%;
   background:
     conic-gradient(from 0deg,
       transparent 0 18deg, #fcd34d 18deg 24deg,
@@ -300,32 +337,32 @@ const CSS = `
       transparent 294deg 318deg, #fcd34d 318deg 324deg,
       transparent 324deg 348deg, #fcd34d 348deg 354deg,
       transparent 354deg 360deg);
-  -webkit-mask: radial-gradient(circle, transparent 50%, #000 50%, #000 65%, transparent 65%);
-          mask: radial-gradient(circle, transparent 50%, #000 50%, #000 65%, transparent 65%);
+  -webkit-mask: radial-gradient(circle, transparent 130px, #000 130px, #000 165px, transparent 165px);
+          mask: radial-gradient(circle, transparent 130px, #000 130px, #000 165px, transparent 165px);
   animation: aw-spin 18s linear infinite; opacity: .85;
 }
 @keyframes aw-spin { to { transform: rotate(360deg); } }
 .aw-sunFace {
-  width: 90%; aspect-ratio: 1; border-radius: 50%;
+  width: 230px; height: 230px; border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #fef3c7, #fbbf24 70%, #d97706);
   box-shadow: 0 0 60px rgba(251, 191, 36, .65), inset 0 -12px 20px rgba(180, 83, 9, .25);
   display: flex; align-items: center; justify-content: center;
-  font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 3.5vw; color: #7c2d12;
+  font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 76px; color: #7c2d12;
   text-shadow: 0 2px 0 rgba(255,255,255,.4);
 }
-.aw-weatherDesc { font-family: 'Caveat', cursive; font-size: 1.8vw; color: #78350f; margin-top: 2%; text-align: center; text-shadow: 0 2px 0 rgba(255,255,255,.7); }
+.aw-weatherDesc { font-family: 'Caveat', cursive; font-size: 38px; color: #78350f; margin-top: 18px; text-align: center; text-shadow: 0 2px 0 rgba(255,255,255,.7); }
 
-/* ANNOUNCEMENT — cloud puff via box-shadow circles */
+/* ANNOUNCEMENT — cloud puff */
 .aw-announce {
   grid-column: 2; grid-row: 1 / span 2;
   display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;
-  position: relative; padding: 4%;
+  position: relative; padding: 50px 80px;
   animation: aw-floatUp 4s ease-in-out infinite;
 }
 @keyframes aw-floatUp { 0%, 100% { transform: translateY(0) rotate(-1deg); } 50% { transform: translateY(-10px) rotate(1deg); } }
 .aw-announce::before {
   content: ''; position: absolute; left: 50%; top: 50%;
-  width: 50%; aspect-ratio: 7 / 5; transform: translate(-50%, -50%);
+  width: 280px; height: 200px; transform: translate(-50%, -50%);
   background: #fff; border-radius: 50%;
   box-shadow:
     -190px 30px 0 -10px #fff, -130px -50px 0 -8px #fff, -50px -90px 0 -2px #fff,
@@ -339,28 +376,28 @@ const CSS = `
   z-index: -1;
 }
 .aw-stars { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
-.aw-stars span { position: absolute; font-size: 2.2vw; opacity: .9; animation: aw-twinkle 1.4s ease-in-out infinite; }
-.aw-stars span:nth-child(1) { top: 8%; left: 12%; }
-.aw-stars span:nth-child(2) { top: 14%; right: 14%; animation-delay: .3s; }
-.aw-stars span:nth-child(3) { bottom: 18%; left: 18%; animation-delay: .6s; }
-.aw-stars span:nth-child(4) { bottom: 12%; right: 18%; animation-delay: .9s; }
+.aw-stars span { position: absolute; font-size: 44px; opacity: .9; animation: aw-twinkle 1.4s ease-in-out infinite; }
+.aw-stars span:nth-child(1) { top: 50px; left: 130px; }
+.aw-stars span:nth-child(2) { top: 80px; right: 140px; animation-delay: .3s; }
+.aw-stars span:nth-child(3) { bottom: 80px; left: 160px; animation-delay: .6s; }
+.aw-stars span:nth-child(4) { bottom: 60px; right: 180px; animation-delay: .9s; }
 @keyframes aw-twinkle {
   0%, 100% { opacity: .25; transform: scale(.8) rotate(0deg); }
   50% { opacity: 1; transform: scale(1.2) rotate(20deg); }
 }
-.aw-megaphone { font-size: 5.5vw; line-height: 1; animation: aw-shake 1.6s ease-in-out infinite; transform-origin: 80% 80%; }
+.aw-megaphone { font-size: 96px; line-height: 1; animation: aw-shake 1.6s ease-in-out infinite; transform-origin: 80% 80%; }
 @keyframes aw-shake {
   0%, 100% { transform: rotate(-8deg); }
   20%, 60% { transform: rotate(10deg); }
   40%, 80% { transform: rotate(-10deg); }
 }
-.aw-annLbl { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 1.4vw; letter-spacing: .25em; color: #b45309; text-transform: uppercase; margin-top: 1%; }
-.aw-annMsg { font-family: 'Caveat', cursive; font-weight: 700; font-size: 4.5vw; color: #be185d; line-height: 1.05; margin-top: 1.5%; text-shadow: 2px 2px 0 #fff; max-width: 80%; }
+.aw-annLbl { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 28px; letter-spacing: .25em; color: #b45309; text-transform: uppercase; margin-top: 12px; }
+.aw-annMsg { font-family: 'Caveat', cursive; font-weight: 700; font-size: 90px; color: #be185d; line-height: 1.05; margin-top: 18px; text-shadow: 2px 2px 0 #fff; max-width: 800px; }
 
 /* COUNTDOWN — starburst */
 .aw-countdown { grid-column: 3; grid-row: 1; display: flex; align-items: center; justify-content: center; position: relative; }
 .aw-badge {
-  width: 75%; aspect-ratio: 1;
+  width: 280px; height: 280px;
   background: radial-gradient(circle at 35% 30%, #fef3c7, #fbbf24 75%, #d97706);
   clip-path: polygon(
     50% 0%, 60% 12%, 75% 8%, 73% 23%, 88% 25%, 80% 38%,
@@ -376,14 +413,14 @@ const CSS = `
   0%, 100% { transform: scale(1) rotate(-3deg); }
   50% { transform: scale(1.06) rotate(3deg); }
 }
-.aw-cdLbl { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 1vw; letter-spacing: .15em; color: #7c2d12; text-transform: uppercase; }
-.aw-cdNum { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 5.5vw; line-height: .9; color: #7c2d12; text-shadow: 0 3px 0 rgba(255,255,255,.5); }
-.aw-cdUnit { font-family: 'Caveat', cursive; font-size: 1.6vw; color: #7c2d12; }
+.aw-cdLbl { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 18px; letter-spacing: .15em; color: #7c2d12; text-transform: uppercase; }
+.aw-cdNum { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 110px; line-height: .9; color: #7c2d12; text-shadow: 0 3px 0 rgba(255,255,255,.5); }
+.aw-cdUnit { font-family: 'Caveat', cursive; font-size: 32px; color: #7c2d12; }
 
 /* TEACHER — polaroid */
 .aw-teacher { grid-column: 1; grid-row: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
 .aw-polaroid {
-  background: #fff; padding: 6% 6% 18%; width: 80%;
+  background: #fff; padding: 18px 18px 60px; width: 260px;
   box-shadow: 0 12px 24px rgba(0,0,0,.22);
   transform: rotate(-3deg); position: relative;
   animation: aw-slideX 5s ease-in-out infinite;
@@ -393,45 +430,45 @@ const CSS = `
   50% { transform: rotate(-3deg) translateX(4px); }
 }
 .aw-polaroid::before {
-  content: ''; position: absolute; top: -8%; left: 30%;
-  width: 60%; height: 14%; transform: rotate(-3deg);
+  content: ''; position: absolute; top: -16px; left: 80px;
+  width: 130px; height: 28px; transform: rotate(-3deg);
   background: repeating-linear-gradient(135deg, rgba(255,255,255,.5) 0 6px, transparent 6px 12px), #f9a8d4;
   box-shadow: 0 1px 4px rgba(0,0,0,.2);
 }
 .aw-tFace {
   width: 100%; aspect-ratio: 1;
   background: linear-gradient(135deg, #fce7f3, #ddd6fe);
-  display: flex; align-items: center; justify-content: center; font-size: 6vw;
+  display: flex; align-items: center; justify-content: center; font-size: 120px;
 }
 .aw-tName {
-  position: absolute; left: 0; right: 0; bottom: 6%; text-align: center;
-  font-family: 'Caveat', cursive; font-weight: 700; font-size: 1.5vw; color: #6d28d9;
+  position: absolute; left: 0; right: 0; bottom: 18px; text-align: center;
+  font-family: 'Caveat', cursive; font-weight: 700; font-size: 32px; color: #6d28d9;
 }
 .aw-tRole {
-  margin-top: 6px; text-align: center;
-  font-family: 'Caveat', cursive; font-size: 1.5vw; color: #831843;
+  margin-top: 14px; text-align: center;
+  font-family: 'Caveat', cursive; font-size: 32px; color: #831843;
   text-shadow: 0 2px 0 rgba(255,255,255,.7);
 }
 
 /* BIRTHDAYS — balloon cluster */
-.aw-birthdays { grid-column: 3; grid-row: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; padding: 1%; }
-.aw-cluster { position: relative; width: 60%; aspect-ratio: 10/9; animation: aw-bob 1.4s ease-in-out infinite; }
+.aw-birthdays { grid-column: 3; grid-row: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; padding: 12px; }
+.aw-cluster { position: relative; width: 230px; height: 200px; animation: aw-bob 1.4s ease-in-out infinite; }
 @keyframes aw-bob {
   0%, 100% { transform: translateY(0) rotate(-3deg); }
   50% { transform: translateY(-10px) rotate(3deg); }
 }
-.aw-bal { position: absolute; width: 38%; aspect-ratio: 4/5; border-radius: 50% 50% 48% 48%; box-shadow: inset -8px -10px 12px rgba(0,0,0,.18), 0 4px 8px rgba(0,0,0,.18); }
-.aw-bal::after { content: ''; position: absolute; left: 50%; top: 100%; width: 1px; height: 50px; background: rgba(0,0,0,.4); transform: translateX(-50%); }
-.aw-bal1 { left: 5%; top: 0; background: #f87171; }
-.aw-bal2 { left: 33%; top: 8%; background: #fbbf24; transform: rotate(-6deg); width: 34%; }
-.aw-bal3 { left: 60%; top: 0; background: #ec4899; }
-.aw-cake { position: absolute; bottom: -8%; left: 50%; transform: translateX(-50%); font-size: 2.6vw; line-height: 1; }
-.aw-bdLbl { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 1vw; letter-spacing: .12em; color: #be185d; text-transform: uppercase; margin-top: 3%; text-shadow: 0 2px 0 rgba(255,255,255,.7); }
-.aw-bdNames { font-family: 'Caveat', cursive; font-size: 1.8vw; color: #831843; line-height: 1.05; text-shadow: 0 2px 0 rgba(255,255,255,.7); }
+.aw-bal { position: absolute; width: 90px; height: 110px; border-radius: 50% 50% 48% 48%; box-shadow: inset -8px -10px 12px rgba(0,0,0,.18), 0 4px 8px rgba(0,0,0,.18); }
+.aw-bal::after { content: ''; position: absolute; left: 50%; top: 100%; width: 1px; height: 60px; background: rgba(0,0,0,.4); transform: translateX(-50%); }
+.aw-bal1 { left: 10px; top: 0; background: #f87171; }
+.aw-bal2 { left: 70px; top: 14px; background: #fbbf24; transform: rotate(-6deg); width: 80px; height: 100px; }
+.aw-bal3 { left: 130px; top: 0; background: #ec4899; }
+.aw-cake { position: absolute; bottom: -15px; left: 50%; transform: translateX(-50%); font-size: 60px; line-height: 1; }
+.aw-bdLbl { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 20px; letter-spacing: .12em; color: #be185d; text-transform: uppercase; margin-top: 22px; text-shadow: 0 2px 0 rgba(255,255,255,.7); }
+.aw-bdNames { font-family: 'Caveat', cursive; font-size: 38px; color: #831843; line-height: 1.05; text-shadow: 0 2px 0 rgba(255,255,255,.7); }
 
 /* TICKER — wavy ribbon */
 .aw-ticker {
-  position: absolute; left: 0; right: 0; bottom: 0; height: 11%;
+  position: absolute; left: 0; right: 0; bottom: 0; height: 110px;
   background: linear-gradient(90deg, #fcd34d, #fbbf24);
   display: flex; align-items: center; overflow: hidden; z-index: 6;
   border-top: 5px solid #ec4899;
@@ -442,14 +479,14 @@ const CSS = `
     90% 16%, 95% 0%, 100% 16%, 100% 100%, 0% 100%);
 }
 .aw-tickerStamp {
-  flex: 0 0 auto; padding: 0 2%; height: 100%;
+  flex: 0 0 auto; padding: 0 36px; height: 100%;
   background: #ec4899; color: #fff; display: flex; align-items: center;
-  font-family: 'Fredoka', sans-serif; font-weight: 700; letter-spacing: .15em; font-size: 1.4vw;
-  border-right: 3px dashed #fff; margin-top: 1.5%;
+  font-family: 'Fredoka', sans-serif; font-weight: 700; letter-spacing: .15em; font-size: 26px;
+  border-right: 3px dashed #fff; margin-top: 18px;
 }
 .aw-tickerScroll {
-  flex: 1; font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 2.2vw; color: #831843;
-  white-space: nowrap; padding-left: 100%; margin-top: 1.5%;
+  flex: 1; font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 44px; color: #831843;
+  white-space: nowrap; padding-left: 100%; margin-top: 18px;
   animation: aw-scrollText 28s linear infinite;
 }
 @keyframes aw-scrollText { from { transform: translateX(0); } to { transform: translateX(-100%); } }
@@ -465,7 +502,7 @@ const CSS = `
 @keyframes aw-balloonRise {
   0% { transform: translateY(0) translateX(0) rotate(0deg); opacity: 0; }
   10% { opacity: 1; }
-  50% { transform: translateY(-50vh) translateX(20px) rotate(8deg); }
-  100% { transform: translateY(-120vh) translateX(-20px) rotate(-8deg); opacity: .9; }
+  50% { transform: translateY(-540px) translateX(20px) rotate(8deg); }
+  100% { transform: translateY(-1300px) translateX(-20px) rotate(-8deg); opacity: .9; }
 }
 `;
