@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Animated Rainbow · Welcome (DEMO)</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&family=Caveat:wght@700&family=Patrick+Hand&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0f172a; }
+
+  /* ===== STAGE — animated rainbow sky ===== */
+  .stage {
+    width: 100vw; height: 100vh; position: relative; overflow: hidden;
+    font-family: 'Fredoka', sans-serif;
+    color: #2d1b4d;
+    background:
+      radial-gradient(ellipse at 50% 110%, #fef3c7 0%, transparent 50%),
+      linear-gradient(180deg, #BFE8FF 0%, #FFE0EC 55%, #FFD8A8 100%);
+  }
+
+  /* slow drifting clouds */
+  .stage::before, .stage::after {
+    content: ''; position: absolute; pointer-events: none;
+    width: 200%; height: 100%;
+    background-image:
+      radial-gradient(ellipse 80px 30px at 10% 20%, rgba(255,255,255,.7), transparent 60%),
+      radial-gradient(ellipse 120px 40px at 30% 35%, rgba(255,255,255,.6), transparent 60%),
+      radial-gradient(ellipse 90px 32px at 55% 18%, rgba(255,255,255,.7), transparent 60%),
+      radial-gradient(ellipse 110px 38px at 78% 28%, rgba(255,255,255,.6), transparent 60%),
+      radial-gradient(ellipse 70px 26px at 92% 14%, rgba(255,255,255,.65), transparent 60%);
+    animation: cloudDrift 90s linear infinite;
+    top: 0; left: -100%;
+  }
+  .stage::after { animation-duration: 130s; animation-delay: -40s; opacity: .65; }
+  @keyframes cloudDrift { from { transform: translateX(0); } to { transform: translateX(50%); } }
+
+  /* ===== CONFETTI — 80 particles, staggered ===== */
+  .confettiLayer { position: absolute; inset: 0; pointer-events: none; z-index: 4; overflow: hidden; }
+  .confetti {
+    position: absolute; top: -20px;
+    width: 12px; height: 18px; border-radius: 2px;
+    animation: confettiFall linear infinite;
+    will-change: transform;
+  }
+  @keyframes confettiFall {
+    0%   { transform: translateY(-30px) rotate(0deg);   opacity: 0; }
+    8%   { opacity: 1; }
+    100% { transform: translateY(110vh) rotate(720deg); opacity: .8; }
+  }
+
+  /* ===== ANIMATED RAINBOW RIBBON across the middle ===== */
+  .rainbow {
+    position: absolute; left: -10%; right: -10%; top: 16%;
+    height: 90px; z-index: 1;
+    background: repeating-linear-gradient(135deg,
+      #ff5e7e 0 30px, #ffb950 30px 60px, #ffe66d 60px 90px,
+      #6cd97e 90px 120px, #5cc5ff 120px 150px, #b48cff 150px 180px);
+    background-size: 360px 100%;
+    animation: rainbowSlide 8s linear infinite;
+    transform: rotate(-3deg);
+    box-shadow: 0 6px 24px rgba(0,0,0,.18);
+  }
+  @keyframes rainbowSlide { from { background-position: 0 0; } to { background-position: 360px 0; } }
+
+  /* ===== HEADER — logo + huge breathing title + clock ===== */
+  .header {
+    position: absolute; top: 28px; left: 0; right: 0;
+    display: grid; grid-template-columns: 160px 1fr 160px;
+    gap: 24px; padding: 0 36px; z-index: 5;
+    align-items: center;
+  }
+
+  .logo {
+    width: 150px; height: 150px;
+    background: #fff; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 80px;
+    box-shadow: 0 6px 16px rgba(0,0,0,.18), inset 0 0 0 6px #fcd34d;
+    animation: bounceLogo 2.4s ease-in-out infinite;
+  }
+  @keyframes bounceLogo {
+    0%, 100% { transform: translateY(0) rotate(-4deg); }
+    50%      { transform: translateY(-12px) rotate(4deg); }
+  }
+
+  .titleBox {
+    background: rgba(255,255,255,.85);
+    backdrop-filter: blur(4px);
+    border-radius: 28px;
+    padding: 22px 28px;
+    text-align: center;
+    box-shadow: 0 8px 24px rgba(0,0,0,.12);
+    border: 4px dashed #ec4899;
+    animation: breathe 3.5s ease-in-out infinite;
+  }
+  @keyframes breathe {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.025); }
+  }
+  .titleBox h1 {
+    margin: 0; line-height: .95;
+    font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 88px;
+    background: linear-gradient(90deg, #ec4899 0%, #f59e0b 33%, #10b981 66%, #6366f1 100%);
+    background-size: 300% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: gradientShift 6s linear infinite;
+    text-shadow: 0 4px 0 rgba(255,255,255,.5);
+  }
+  @keyframes gradientShift {
+    from { background-position: 0% 50%; }
+    to   { background-position: 300% 50%; }
+  }
+  .titleBox .sub {
+    font-family: 'Caveat', cursive; font-size: 36px; color: #92400e; margin-top: 4px;
+  }
+
+  /* CLOCK — wiggles every few seconds */
+  .clock {
+    width: 150px; height: 150px;
+    background: #fff; border-radius: 50%; border: 8px solid #fcd34d;
+    box-shadow: 0 6px 16px rgba(0,0,0,.2);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-family: 'Fredoka', sans-serif; font-weight: 700;
+    animation: wiggle 4s ease-in-out infinite;
+  }
+  @keyframes wiggle {
+    0%, 7%, 100% { transform: rotate(0deg); }
+    1%, 5%       { transform: rotate(-12deg); }
+    3%           { transform: rotate(12deg); }
+  }
+  .clock .t  { font-size: 44px; color: #be185d; line-height: 1; }
+  .clock .ap { font-size: 22px; color: #92400e; }
+
+  /* ===== MAIN GRID ===== */
+  .grid {
+    position: absolute;
+    top: 230px; left: 36px; right: 36px; bottom: 130px;
+    display: grid;
+    grid-template-columns: 1fr 2fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 20px;
+    z-index: 3;
+  }
+
+  /* WEATHER — sun spinning */
+  .weather {
+    grid-column: 1; grid-row: 1;
+    background: linear-gradient(135deg, #fef9c3, #fef3c7);
+    border-radius: 24px; padding: 16px;
+    box-shadow: 0 8px 18px rgba(0,0,0,.12);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    position: relative; overflow: hidden;
+  }
+  .weather .sun {
+    font-size: 80px; line-height: 1;
+    animation: spin 20s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .weather .temp { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 64px; color: #b45309; line-height: 1; margin-top: 4px; }
+  .weather .desc { font-family: 'Caveat', cursive; font-size: 28px; color: #78350f; }
+
+  /* ANNOUNCEMENT — center hero, pulses + floats */
+  .announce {
+    grid-column: 2; grid-row: 1 / span 2;
+    background: linear-gradient(135deg, #fff, #fef3c7);
+    border-radius: 32px; padding: 32px;
+    box-shadow: 0 12px 28px rgba(0,0,0,.18);
+    border: 5px dashed #f59e0b;
+    display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;
+    position: relative;
+    animation: floatUp 4s ease-in-out infinite;
+  }
+  @keyframes floatUp {
+    0%, 100% { transform: translateY(0) rotate(-1deg); }
+    50%      { transform: translateY(-10px) rotate(1deg); }
+  }
+  .announce .megaphone {
+    font-size: 72px;
+    animation: shake 1.6s ease-in-out infinite;
+    transform-origin: 80% 80%;
+  }
+  @keyframes shake {
+    0%, 100%      { transform: rotate(-8deg); }
+    20%, 60%      { transform: rotate(10deg); }
+    40%, 80%      { transform: rotate(-10deg); }
+  }
+  .announce .lbl {
+    font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 22px;
+    letter-spacing: .2em; color: #b45309; text-transform: uppercase; margin-top: 4px;
+  }
+  .announce .msg {
+    font-family: 'Caveat', cursive; font-weight: 700; font-size: 76px; color: #be185d;
+    line-height: 1.05; margin-top: 12px;
+    text-shadow: 2px 2px 0 #fff;
+  }
+  .announce .stars {
+    position: absolute; inset: 0; pointer-events: none;
+  }
+  .announce .stars span {
+    position: absolute; font-size: 28px; opacity: .8;
+    animation: twinkle 1.4s ease-in-out infinite;
+  }
+  .announce .stars span:nth-child(1) { top: 18px;  left: 24px;  animation-delay: 0s; }
+  .announce .stars span:nth-child(2) { top: 36px;  right: 36px; animation-delay: .3s; }
+  .announce .stars span:nth-child(3) { bottom: 36px; left: 40px; animation-delay: .6s; }
+  .announce .stars span:nth-child(4) { bottom: 24px; right: 48px; animation-delay: .9s; }
+  @keyframes twinkle {
+    0%, 100% { opacity: .25; transform: scale(.8) rotate(0deg); }
+    50%      { opacity: 1;   transform: scale(1.2) rotate(20deg); }
+  }
+
+  /* COUNTDOWN — number bounces */
+  .countdown {
+    grid-column: 3; grid-row: 1;
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border-radius: 24px; padding: 16px;
+    box-shadow: 0 8px 18px rgba(0,0,0,.12);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    border: 4px solid #f472b6;
+  }
+  .countdown .lbl { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: .15em; color: #be185d; text-transform: uppercase; }
+  .countdown .num {
+    font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 110px; line-height: 1; color: #be185d;
+    animation: bounceNum 1.6s ease-in-out infinite;
+  }
+  @keyframes bounceNum {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.12); }
+  }
+  .countdown .unit { font-family: 'Caveat', cursive; font-size: 32px; color: #92400e; }
+
+  /* TEACHER SPOTLIGHT — slides side to side */
+  .teacher {
+    grid-column: 1; grid-row: 2;
+    background: linear-gradient(135deg, #ddd6fe, #fbcfe8);
+    border-radius: 24px; padding: 16px;
+    box-shadow: 0 8px 18px rgba(0,0,0,.12);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    animation: slideX 5s ease-in-out infinite;
+  }
+  @keyframes slideX {
+    0%, 100% { transform: translateX(-4px); }
+    50%      { transform: translateX(4px); }
+  }
+  .teacher .face { font-size: 72px; line-height: 1; }
+  .teacher .name { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 22px; color: #6d28d9; margin-top: 4px; }
+  .teacher .role { font-family: 'Caveat', cursive; font-size: 26px; color: #831843; }
+
+  /* BIRTHDAYS — emoji bobs */
+  .birthdays {
+    grid-column: 3; grid-row: 2;
+    background: linear-gradient(135deg, #fce7f3, #fbcfe8);
+    border-radius: 24px; padding: 16px;
+    box-shadow: 0 8px 18px rgba(0,0,0,.12);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    border: 4px solid #ec4899;
+  }
+  .birthdays .cake {
+    font-size: 80px; line-height: 1;
+    animation: bob 1.4s ease-in-out infinite;
+  }
+  @keyframes bob {
+    0%, 100% { transform: translateY(0) rotate(-6deg); }
+    50%      { transform: translateY(-8px) rotate(6deg); }
+  }
+  .birthdays .lbl { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: .1em; color: #be185d; text-transform: uppercase; margin-top: 6px; }
+  .birthdays .names { font-family: 'Caveat', cursive; font-size: 30px; color: #831843; line-height: 1.05; }
+
+  /* ===== TICKER ===== */
+  .ticker {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 100px;
+    background: linear-gradient(90deg, #fcd34d, #fbbf24);
+    display: flex; align-items: center; overflow: hidden; z-index: 6;
+    border-top: 5px solid #ec4899;
+    box-shadow: 0 -4px 12px rgba(0,0,0,.12);
+  }
+  .ticker .stamp {
+    flex: 0 0 auto; padding: 0 28px; height: 100%;
+    background: #ec4899; color: #fff; display: flex; align-items: center;
+    font-family: 'Fredoka', sans-serif; font-weight: 700; letter-spacing: .15em; font-size: 22px;
+    border-right: 3px dashed #fff;
+  }
+  .ticker .scroll {
+    flex: 1; font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 36px; color: #831843;
+    white-space: nowrap;
+    padding-left: 100%;
+    animation: scrollText 28s linear infinite;
+  }
+  @keyframes scrollText {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-100%); }
+  }
+
+  /* ===== FLOATING BALLOONS ===== */
+  .balloon {
+    position: absolute; bottom: -120px;
+    width: 60px; height: 76px; border-radius: 50% 50% 48% 48%;
+    z-index: 2;
+    animation: balloonRise linear infinite;
+    will-change: transform;
+  }
+  .balloon::after {
+    content: ''; position: absolute; left: 50%; top: 100%;
+    width: 1px; height: 220px;
+    background: rgba(0,0,0,.3); transform: translateX(-50%);
+  }
+  @keyframes balloonRise {
+    0%   { transform: translateY(0)      translateX(0)   rotate(0deg);  opacity: 0; }
+    10%  { opacity: 1; }
+    50%  { transform: translateY(-50vh)  translateX(20px) rotate(8deg); }
+    100% { transform: translateY(-120vh) translateX(-20px) rotate(-8deg); opacity: .9; }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <!-- Drifting cloud layers from ::before/::after -->
+
+  <!-- Animated rainbow ribbon -->
+  <div class="rainbow"></div>
+
+  <!-- Confetti — generated by JS so we can stagger easily -->
+  <div class="confettiLayer" id="confetti"></div>
+
+  <!-- Floating balloons -->
+  <div class="balloon" style="left:8%;  background:#f87171; animation-duration:14s; animation-delay:0s;"></div>
+  <div class="balloon" style="left:22%; background:#fbbf24; animation-duration:18s; animation-delay:-6s;"></div>
+  <div class="balloon" style="left:78%; background:#60a5fa; animation-duration:16s; animation-delay:-3s;"></div>
+  <div class="balloon" style="left:92%; background:#a78bfa; animation-duration:20s; animation-delay:-10s;"></div>
+
+  <div class="header">
+    <div class="logo">🍎</div>
+    <div class="titleBox">
+      <h1>Welcome, Friends!</h1>
+      <div class="sub">today is going to be amazing ✨</div>
+    </div>
+    <div class="clock">
+      <div class="t">12:34</div>
+      <div class="ap">PM</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="weather">
+      <div class="sun">☀️</div>
+      <div class="temp">68°</div>
+      <div class="desc">~ sunny + crisp ~</div>
+    </div>
+
+    <div class="announce">
+      <div class="stars"><span>⭐</span><span>✨</span><span>🌟</span><span>💫</span></div>
+      <div class="megaphone">📣</div>
+      <div class="lbl">Big News</div>
+      <div class="msg">Book Fair starts Monday! 📚<br/>Come find your new favorite story.</div>
+    </div>
+
+    <div class="countdown">
+      <div class="lbl">Field Trip in</div>
+      <div class="num">3</div>
+      <div class="unit">days</div>
+    </div>
+
+    <div class="teacher">
+      <div class="face">👩‍🏫</div>
+      <div class="name">Mrs. Johnson</div>
+      <div class="role">~ Teacher of the Week ~</div>
+    </div>
+
+    <div class="birthdays">
+      <div class="cake">🎂</div>
+      <div class="lbl">Today's Birthdays</div>
+      <div class="names">Maya · Eli · Sofia</div>
+    </div>
+  </div>
+
+  <div class="ticker">
+    <div class="stamp">SCHOOL NEWS</div>
+    <div class="scroll">Welcome back, Stars! ⭐ &nbsp; · &nbsp; Picture day is Friday 📸 &nbsp; · &nbsp; Reading Challenge: 20 minutes a day 📖 &nbsp; · &nbsp; Parent-teacher conferences next Tuesday 👨‍👩‍👧</div>
+  </div>
+
+</div>
+
+<script>
+  // Spawn 80 confetti pieces with random colors, sizes, positions, durations
+  const layer = document.getElementById('confetti');
+  const colors = ['#ec4899','#f59e0b','#10b981','#6366f1','#f43f5e','#06b6d4','#fbbf24','#a78bfa'];
+  const shapes = ['rect','circle','tri'];
+  for (let i = 0; i < 80; i++) {
+    const c = document.createElement('div');
+    c.className = 'confetti';
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    const size = 6 + Math.random() * 12;
+    const dur = 5 + Math.random() * 7;
+    const delay = -Math.random() * dur;
+    const left = Math.random() * 100;
+    const isCircle = Math.random() < 0.3;
+    c.style.left = left + '%';
+    c.style.width = size + 'px';
+    c.style.height = (size * (isCircle ? 1 : 1.6)) + 'px';
+    c.style.background = color;
+    c.style.borderRadius = isCircle ? '50%' : '2px';
+    c.style.animationDuration = dur + 's';
+    c.style.animationDelay = delay + 's';
+    c.style.transform = `rotate(${Math.random() * 360}deg)`;
+    layer.appendChild(c);
+  }
+</script>
+</body>
+</html>
