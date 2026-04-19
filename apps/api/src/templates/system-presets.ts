@@ -1166,7 +1166,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
   {
     id: "preset-lobby-animated-rainbow",
     name: "🎉 Animated Rainbow · Welcome",
-    description: "Full-screen ANIMATED elementary welcome — confetti rain, spinning sun, drifting clouds, wiggling clock, floating balloons, scrolling ticker. The first preset with motion.",
+    description: "Animated elementary welcome — rainbow ribbon, drifting clouds, confetti, floating balloons. Built on the proven Rainbow Ribbon zone layout: every widget is individually editable, draggable, resizable.",
     category: "LOBBY",
     orientation: 'LANDSCAPE',
     schoolLevel: "ELEMENTARY",
@@ -1175,36 +1175,22 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     bgColor: "#BFE8FF",
     bgGradient: "linear-gradient(180deg,#BFE8FF 0%,#FFE0EC 55%,#FFD8A8 100%)",
     zones: [
-      {
-        "name": "Animated Welcome Scene",
-        "widgetType": "ANIMATED_WELCOME",
-        "x": 0, "y": 0, "width": 100, "height": 100,
-        "zIndex": 1,
-        "sortOrder": 0,
-        "defaultConfig": {
-          "logoEmoji": "🍎",
-          "title": "Welcome, Friends!",
-          "subtitle": "today is going to be amazing ✨",
-          "weatherTemp": "68°",
-          "weatherDesc": "~ sunny + crisp ~",
-          "announcementLabel": "Big News",
-          "announcementMessage": "Book Fair starts Monday! 📚 Come find your new favorite story.",
-          "countdownLabel": "Field Trip in",
-          "countdownNumber": 3,
-          "countdownUnit": "days",
-          "teacherEmoji": "👩‍🏫",
-          "teacherName": "Mrs. Johnson",
-          "teacherRole": "~ Teacher of the Week ~",
-          "birthdayNames": "Maya · Eli · Sofia",
-          "tickerStamp": "SCHOOL NEWS",
-          "tickerMessages": [
-            "Welcome back, Stars! ⭐",
-            "Picture day is Friday 📸",
-            "Reading Challenge: 20 minutes a day 📖",
-            "Parent-teacher conferences next Tuesday 👨‍👩‍👧"
-          ]
-        }
-      }
+      // Z-INDEX 0 — animated decoration layer (ribbon, clouds, confetti, balloons).
+      // Pure background, pointerEvents:none in the widget so it never blocks
+      // editor clicks on the foreground widgets above.
+      {"name":"Animated Background","widgetType":"ANIMATED_BACKGROUND","x":0,"y":0,"width":100,"height":100,"zIndex":0,"sortOrder":0,"defaultConfig":{"variant":"rainbow","confettiCount":80}},
+      // Z-INDEX 2+ — same proven zones as the static Rainbow Ribbon preset.
+      // Each widget is selectable, draggable, individually editable.
+      {"name":"Logo","widgetType":"LOGO","x":2,"y":2,"width":8,"height":13,"zIndex":5,"sortOrder":1,"defaultConfig":{"theme":"rainbow-ribbon"}},
+      {"name":"Welcome Banner","widgetType":"TEXT","x":10,"y":4,"width":78,"height":15,"zIndex":4,"sortOrder":2,"defaultConfig":{"theme":"rainbow-ribbon","content":"Welcome, Friends!","subtitle":"today is going to be amazing"}},
+      {"name":"Clock","widgetType":"CLOCK","x":89,"y":2,"width":9,"height":13,"zIndex":5,"sortOrder":3,"defaultConfig":{"theme":"rainbow-ribbon","format":"12h"}},
+      {"name":"Weather","widgetType":"WEATHER","x":2,"y":22,"width":20,"height":28,"zIndex":3,"sortOrder":4,"defaultConfig":{"theme":"rainbow-ribbon","location":"Springfield","units":"imperial"}},
+      {"name":"Announcement","widgetType":"ANNOUNCEMENT","x":24,"y":22,"width":52,"height":28,"zIndex":10,"sortOrder":5,"defaultConfig":{"theme":"rainbow-ribbon","message":"Book Fair starts Monday! 📚 Come find your new favorite story."}},
+      {"name":"Countdown","widgetType":"COUNTDOWN","x":78,"y":22,"width":20,"height":28,"zIndex":4,"sortOrder":6,"defaultConfig":{"theme":"rainbow-ribbon","label":"Field Trip in","targetDate":""}},
+      {"name":"Teacher","widgetType":"STAFF_SPOTLIGHT","x":2,"y":54,"width":30,"height":34,"zIndex":3,"sortOrder":7,"defaultConfig":{"theme":"rainbow-ribbon","staffName":"Mrs. Johnson","role":"Teacher of the Week","bio":"Inspiring students every day."}},
+      {"name":"Events","widgetType":"CALENDAR","x":34,"y":54,"width":36,"height":34,"zIndex":2,"sortOrder":8,"defaultConfig":{"theme":"rainbow-ribbon","maxEvents":3}},
+      {"name":"Birthdays","widgetType":"BIRTHDAYS","x":72,"y":54,"width":26,"height":34,"zIndex":3,"sortOrder":9,"defaultConfig":{}},
+      {"name":"Ticker","widgetType":"TICKER","x":0,"y":90,"width":100,"height":10,"zIndex":6,"sortOrder":10,"defaultConfig":{"theme":"rainbow-ribbon","speed":"medium","messages":["Welcome back, Stars! ⭐","Picture day is Friday 📸","Reading Challenge: 20 minutes a day 📖","Parent-teacher conferences next Tuesday 👨‍👩‍👧"]}},
     ],
   },
 ];

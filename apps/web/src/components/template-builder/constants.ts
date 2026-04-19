@@ -64,7 +64,8 @@ export const WIDGET_GROUPS = [
   {
     label: 'Animated Scenes',
     types: [
-      { type: 'ANIMATED_WELCOME', label: 'Animated Welcome', desc: 'Full-screen elementary scene — confetti, sun, cloud, balloons', icon: Cake },
+      { type: 'ANIMATED_BACKGROUND', label: 'Animated Background', desc: 'Pure-decoration backdrop: rainbow ribbon, drifting clouds, confetti, balloons', icon: Cake },
+      { type: 'ANIMATED_WELCOME', label: 'Animated Welcome (legacy monolith)', desc: 'Full-screen all-in-one scene — kept for back-compat', icon: Cake },
     ],
   },
   {
@@ -121,7 +122,8 @@ export const ZONE_COLORS: Record<string, { bg: string; border: string; text: str
   ON_SCREEN_KEYBOARD: { bg: '#f1f5f9', border: '#cbd5e1', text: '#334155', accent: '#475569' },
   WAYFINDING_MAP:     { bg: '#fef3c7', border: '#fcd34d', text: '#92400e', accent: '#f59e0b' },
   QUICK_POLL:         { bg: '#fdf2f8', border: '#f9a8d4', text: '#be185d', accent: '#ec4899' },
-  ANIMATED_WELCOME:   { bg: '#fbcfe8', border: '#ec4899', text: '#831843', accent: '#ec4899' },
+  ANIMATED_WELCOME:    { bg: '#fbcfe8', border: '#ec4899', text: '#831843', accent: '#ec4899' },
+  ANIMATED_BACKGROUND: { bg: '#fbcfe8', border: '#ec4899', text: '#831843', accent: '#ec4899' },
 };
 
 // Hit-target validator — warn if a zone would render smaller than WCAG 44px
