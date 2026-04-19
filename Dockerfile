@@ -3,6 +3,11 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Native build toolchain — argon2 + bcrypt compile from C/C++ on install.
+# Without these, `pnpm install` aborts inside Alpine with cryptic
+# `node-gyp` failures and Railway shows "Application failed to respond".
+RUN apk add --no-cache python3 make g++ openssl libc6-compat
+
 # Enable corepack for pnpm support
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
