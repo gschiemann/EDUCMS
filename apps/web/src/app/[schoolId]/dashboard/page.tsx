@@ -1,36 +1,32 @@
 "use client";
 
 /**
- * Dashboard — the Command Center the user lands on after login.
+ * Dashboard — fleet command center designed for customers running
+ * 50 to 50,000 screens across dozens of sites, not a 5-screen demo.
  *
- * The old page was titled "Network Dashboard" with 4 generic stat cards
- * (Screens / Library / Playlists / Locations) and no signal about what's
- * actually happening right now. That's useless for a school admin at
- * 7:30 AM — they want to know: is everything running? anything on fire?
- * what's playing on each screen? what needs my approval?
- *
- * This rewrite answers those questions in one glance, top to bottom:
- *
- *   1. Emergency status banner (red if active, green if clear) —
- *      ALWAYS visible, never scrolled past. Load-bearing for safety.
- *   2. Fleet-at-a-glance stat strip (online ratio, pending approvals,
- *      schedules running TODAY, active playlists).
- *   3. "What's playing now" — per-screen mini cards with the currently
- *      scheduled playlist resolved from the schedules+today+now window.
- *   4. Today's schedule timeline + recent activity.
- *   5. Pending approvals + offline devices (only if they have items).
- *   6. Quick actions.
- *
- * Role-aware: panic trigger button only shown if user.canTriggerPanic
- * or their role includes admin privileges.
+ * Design principles:
+ * - Aggregates over individuals. No per-screen tiles — useless at scale.
+ *   Show "4,847 / 5,000 online" with a sparkline, and a rollup table
+ *   GROUPED BY SITE so the admin can spot "Lincoln HS has 8 screens
+ *   dark" in one glance.
+ * - Sort exceptions to the top. If a site has offline screens, it
+ *   appears first in the rollup. If there are pending approvals, that
+ *   card renders. Empty state = nothing to deal with = no card.
+ * - No redundant actions. The top-right TopToolbar already has the
+ *   Emergency trigger button; don't duplicate it here. The old
+ *   "Trigger alert" link pointed at a non-existent route (/emergency
+ *   404s — only /emergency/broadcast exists) — removed.
+ * - Skimmable. Admins scan this while drinking coffee. Information
+ *   density high, visual noise low. Big numbers, small labels.
  */
 
 import {
   MonitorCheck, CloudOff, ListVideo, Upload, Plus, ArrowRight,
   Image as ImageIcon, MonitorPlay, Siren, CheckCircle2, Clock,
-  AlertTriangle, Calendar, Zap, Radio, Users as UsersIcon,
+  AlertTriangle, Calendar, Zap, Users as UsersIcon, Building2,
+  TrendingUp, TrendingDown, Activity,
 } from 'lucide-react';
-import { useDashboardStats, useRecentActivity } from '@/hooks/use-dashboard-data';
+import { useRecentActivity } from '@/hooks/use-dashboard-data';
 import {
   useScreens, useScreenGroups, usePlaylists, useAssets, useSchedules,
   useTenantStatus, useApproveAsset,
@@ -41,7 +37,6 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
 
 export default function DashboardPage() {
-  const { data: stats } = useDashboardStats();
   const { data: activity } = useRecentActivity();
   const { data: screens } = useScreens();
   const { data: screenGroups } = useScreenGroups();
@@ -53,8 +48,7 @@ export default function DashboardPage() {
   const pathname = usePathname();
   const tenantBase = pathname?.split('/').slice(0, 2).join('/') || '';
 
-  // Live clock — only ticks every minute; cheaper than the 30s the
-  // individual widgets use and this is just for the greeting.
+  // Minute-clock for the header greeting + "live" scheduling match.
   const [now, setNow] = useState<Date>(() => new Date());
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 60_000);
@@ -63,96 +57,131 @@ export default function DashboardPage() {
 
   const approveAsset = useApproveAsset();
 
-  // ──────────────────────────────────────────────────────────────
-  // Derived signals — all O(n) on already-fetched lists, no extra
-  // network calls. Memoized so typing in the nav doesn't re-compute.
-  // ──────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════
+  // Aggregate fleet computations — O(n) over already-fetched lists.
+  // Everything is memoized so this doesn't re-run on every minute tick.
+  // ══════════════════════════════════════════════════════════════════
   const allScreens = screens || [];
-  const onlineCount = allScreens.filter((s: any) => s.status === 'ONLINE').length;
-  const offlineScreens = allScreens.filter((s: any) => s.status && s.status !== 'ONLINE' && s.status !== 'PENDING');
-  const offlineCount = offlineScreens.length;
-  const totalScreens = allScreens.length;
-  const onlinePct = totalScreens > 0 ? Math.round((onlineCount / totalScreens) * 100) : 0;
+  const allGroups = screenGroups || [];
 
-  const pendingAssets = useMemo(
-    () => (assets || []).filter((a: any) => a.status === 'PENDING_APPROVAL'),
-    [assets],
-  );
-  const assetCount = assets?.length || 0;
-  const playlistCount = playlists?.length || 0;
+  const fleet = useMemo(() => {
+    const total = allScreens.length;
+    const online = allScreens.filter((s: any) => s.status === 'ONLINE').length;
+    const pending = allScreens.filter((s: any) => s.status === 'PENDING' || !s.status).length;
+    // "Stale" = online status but last ping >5min ago (suggests player
+    // process frozen, but OS/network still reachable).
+    const fiveMinAgo = Date.now() - 5 * 60_000;
+    const stale = allScreens.filter((s: any) => {
+      if (s.status !== 'ONLINE') return false;
+      const last = s.lastPingAt ? new Date(s.lastPingAt).getTime() : 0;
+      return last > 0 && last < fiveMinAgo;
+    }).length;
+    const offline = total - online - pending;
+    const onlinePct = total > 0 ? (online / total) * 100 : 0;
+    return { total, online, offline, pending, stale, onlinePct };
+  }, [allScreens]);
 
-  // Today's schedule rows — filter by daysOfWeek (0=Sun..6=Sat)
-  // matching today's local DOW. Sort by timeStart ASC. Active = now is
-  // between timeStart/timeEnd and isActive !== false.
-  const today = now.getDay();
-  const todaysSchedules = useMemo(() => {
-    const rows = (schedules || []).filter((s: any) => {
-      if (s.isActive === false) return false;
-      const dow: number[] | undefined = s.daysOfWeek;
-      // daysOfWeek is stored as integer array; some tenants stored it
-      // as bitmap in earlier seeds — treat empty/missing as "every day"
-      // so old rows don't disappear.
-      if (Array.isArray(dow) && dow.length > 0 && !dow.includes(today)) return false;
-      return true;
+  // Screens that are DOWN right now — sorted by how long they've been
+  // silent (worst first). Capped at 5 for the card; link to /screens
+  // for full list. This is the actionable exception list — no admin
+  // needs to see every screen at scale, they need to see the BROKEN ones.
+  const downScreens = useMemo(() => {
+    return allScreens
+      .filter((s: any) => s.status && s.status !== 'ONLINE' && s.status !== 'PENDING')
+      .sort((a: any, b: any) => {
+        const la = a.lastPingAt ? new Date(a.lastPingAt).getTime() : 0;
+        const lb = b.lastPingAt ? new Date(b.lastPingAt).getTime() : 0;
+        return la - lb; // Oldest ping first
+      });
+  }, [allScreens]);
+
+  // Site / group rollup — KEY for district dashboards. Group screens by
+  // screenGroup, compute online ratio, sort by "worst health" first so
+  // the admin sees trouble spots without hunting.
+  type SiteRow = { id: string; name: string; total: number; online: number; offline: number; pct: number };
+  const sites = useMemo<SiteRow[]>(() => {
+    const byGroupId: Record<string, SiteRow> = {};
+    const unassigned: SiteRow = { id: '_unassigned', name: 'Unassigned', total: 0, online: 0, offline: 0, pct: 0 };
+    for (const g of allGroups) {
+      byGroupId[g.id] = { id: g.id, name: g.name, total: 0, online: 0, offline: 0, pct: 0 };
+    }
+    for (const s of allScreens as any[]) {
+      const bucket = s.screenGroupId && byGroupId[s.screenGroupId] ? byGroupId[s.screenGroupId] : unassigned;
+      bucket.total += 1;
+      if (s.status === 'ONLINE') bucket.online += 1;
+      else if (s.status && s.status !== 'PENDING') bucket.offline += 1;
+    }
+    const rows: SiteRow[] = [];
+    for (const g of Object.values(byGroupId)) {
+      if (g.total === 0) continue;
+      g.pct = g.total > 0 ? (g.online / g.total) * 100 : 0;
+      rows.push(g);
+    }
+    if (unassigned.total > 0) {
+      unassigned.pct = unassigned.total > 0 ? (unassigned.online / unassigned.total) * 100 : 0;
+      rows.push(unassigned);
+    }
+    // Sort: problem sites first (any offline), then by pct asc, then by size desc.
+    rows.sort((a, b) => {
+      if ((a.offline > 0) !== (b.offline > 0)) return a.offline > 0 ? -1 : 1;
+      if (a.pct !== b.pct) return a.pct - b.pct;
+      return b.total - a.total;
     });
-    return rows.sort((a: any, b: any) => String(a.timeStart || '').localeCompare(String(b.timeStart || '')));
+    return rows;
+  }, [allGroups, allScreens]);
+
+  // Today's schedule — filter by DOW, sort by start time. Aggregate
+  // count is what scales; we only surface the first few rows as a
+  // preview, everything else is on /schedules.
+  const today = now.getDay();
+  const nowHM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const todaysSchedules = useMemo(() => {
+    return (schedules || [])
+      .filter((s: any) => {
+        if (s.isActive === false) return false;
+        const dow: number[] | undefined = s.daysOfWeek;
+        if (Array.isArray(dow) && dow.length > 0 && !dow.includes(today)) return false;
+        return true;
+      })
+      .sort((a: any, b: any) => String(a.timeStart || '').localeCompare(String(b.timeStart || '')));
   }, [schedules, today]);
 
-  const activeScheduleCount = useMemo(() => {
-    const nowHM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const liveNowCount = useMemo(() => {
     return todaysSchedules.filter((s: any) => {
       const start = s.timeStart || '00:00';
       const end = s.timeEnd || '23:59';
       return nowHM >= start && nowHM <= end;
     }).length;
-  }, [todaysSchedules, now]);
+  }, [todaysSchedules, nowHM]);
 
-  // Resolve "what's playing now" per screen — O(screens × schedules)
-  // but both lists are small in practice (<100 of each).
-  const nowHM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   const playlistById = useMemo(() => {
     const m: Record<string, any> = {};
     for (const p of (playlists || [])) m[p.id] = p;
     return m;
   }, [playlists]);
 
-  function currentPlaylistForScreen(screen: any): { name: string; id?: string } | null {
-    const candidates = (schedules || []).filter((s: any) => {
-      if (s.isActive === false) return false;
-      const dow: number[] | undefined = s.daysOfWeek;
-      if (Array.isArray(dow) && dow.length > 0 && !dow.includes(today)) return false;
-      const start = s.timeStart || '00:00';
-      const end = s.timeEnd || '23:59';
-      if (!(nowHM >= start && nowHM <= end)) return false;
-      // Target matches this screen directly OR via its group.
-      if (s.screenId && s.screenId === screen.id) return true;
-      if (s.screenGroupId && screen.screenGroupId && s.screenGroupId === screen.screenGroupId) return true;
-      return false;
-    });
-    if (candidates.length === 0) return null;
-    // Highest priority wins; tie-break by most-specific (screen over group).
-    candidates.sort((a: any, b: any) => {
-      const pDiff = (b.priority ?? 0) - (a.priority ?? 0);
-      if (pDiff !== 0) return pDiff;
-      return (a.screenId ? 0 : 1) - (b.screenId ? 0 : 1);
-    });
-    const winner = candidates[0];
-    const pl = playlistById[winner.playlistId];
-    return pl ? { name: pl.name, id: pl.id } : null;
-  }
+  const pendingAssets = useMemo(
+    () => (assets || []).filter((a: any) => a.status === 'PENDING_APPROVAL'),
+    [assets],
+  );
 
-  const isEmpty = assetCount === 0 && totalScreens === 0;
+  // Assets uploaded in the last 7 days — a proxy for "is anyone
+  // actually using this CMS" / "is content fresh".
+  const recentAssetCount = useMemo(() => {
+    const since = Date.now() - 7 * 24 * 60 * 60_000;
+    return (assets || []).filter((a: any) => new Date(a.createdAt).getTime() > since).length;
+  }, [assets]);
+
   const emergencyActive = !!(tenant?.emergencyStatus && tenant.emergencyStatus !== 'INACTIVE');
   const emergencyMode = tenant?.emergencyStatus as string | undefined;
-
-  // Role gate for panic trigger button (tenant admins + anyone with the
-  // explicit capability flag). Matches the backend guard semantics.
-  const canTriggerPanic = !!(user?.canTriggerPanic
-    || user?.role === 'SUPER_ADMIN'
-    || user?.role === 'DISTRICT_ADMIN'
-    || user?.role === 'SCHOOL_ADMIN');
-
+  const isEmpty = (assets?.length || 0) === 0 && fleet.total === 0;
   const tenantName = (tenant as any)?.name || (user as any)?.tenantName || 'Your Organization';
+  const firstName = (() => {
+    const e = (user as any)?.email || '';
+    const local = e.split('@')[0] || '';
+    const bit = local.split(/[._-]/)[0];
+    return bit ? bit.charAt(0).toUpperCase() + bit.slice(1) : 'there';
+  })();
   const greeting = (() => {
     const h = now.getHours();
     if (h < 5) return 'Working late';
@@ -161,16 +190,14 @@ export default function DashboardPage() {
     if (h < 21) return 'Good evening';
     return 'Good night';
   })();
-  const firstName = (() => {
-    const e = (user as any)?.email || '';
-    const local = e.split('@')[0] || '';
-    const bit = local.split(/[._-]/)[0];
-    return bit ? bit.charAt(0).toUpperCase() + bit.slice(1) : 'there';
-  })();
+
+  // Incident count rolls up everything actionable into one number —
+  // admin knows at a glance whether today needs attention.
+  const incidentCount = fleet.offline + pendingAssets.length;
 
   return (
     <div className="space-y-6 pb-12">
-      {/* ─── Header + live clock ──────────────────────────────── */}
+      {/* ─── Header ─────────────────────────────────────────── */}
       <header className="flex items-start justify-between gap-6 flex-wrap">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">
@@ -188,10 +215,11 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* ─── Emergency Status Banner ───────────────────────────────
-          Load-bearing — this is the first thing the admin should see.
-          Red + alarmed when active; quiet green "all clear" otherwise.
-          Never scrolled past. */}
+      {/* ─── Status strip — single line, no redundant CTA ──────────
+          The TopToolbar already carries the Emergency button in the top-
+          right of every page — don't duplicate the action here. If an
+          emergency is ACTIVE, we escalate to a full red banner. Otherwise
+          a quiet one-line health summary is enough. */}
       {emergencyActive ? (
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-red-600 to-red-500 text-white shadow-lg shadow-red-500/30 border border-red-400/50">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.2),transparent)]" />
@@ -201,38 +229,58 @@ export default function DashboardPage() {
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-[11px] font-bold tracking-widest uppercase opacity-90">Active Emergency</div>
-              <div className="text-xl font-bold mt-0.5">
-                {emergencyMode || 'Emergency Alert Active'}
-              </div>
+              <div className="text-xl font-bold mt-0.5">{emergencyMode || 'Emergency Alert Active'}</div>
               <div className="text-sm opacity-90 mt-0.5">All screens are displaying the emergency override.</div>
             </div>
             <Link
-              href={`${tenantBase}/emergency`}
+              href={`${tenantBase}/emergency/broadcast`}
               className="shrink-0 px-4 py-2.5 rounded-xl bg-white/95 text-red-600 text-sm font-bold hover:bg-white shadow-sm transition-colors"
             >
-              Open Emergency Console
+              Emergency Console
             </Link>
           </div>
         </div>
       ) : (
-        <div className="rounded-2xl bg-gradient-to-r from-emerald-50 to-white border border-emerald-100 px-5 py-3 flex items-center gap-3">
-          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-bold text-slate-800">All systems normal</div>
-            <div className="text-xs text-slate-500">No active alerts · {onlineCount}/{totalScreens} screens online</div>
+        <div className="rounded-xl bg-white border border-slate-200 px-5 py-3 flex items-center gap-6 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className={`relative flex h-2.5 w-2.5 ${incidentCount > 0 ? '' : ''}`}>
+              <span className={`absolute inset-0 rounded-full ${incidentCount > 0 ? 'bg-amber-400' : 'bg-emerald-400'} animate-ping opacity-75`} />
+              <span className={`relative rounded-full h-2.5 w-2.5 ${incidentCount > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+            </span>
+            <span className="text-sm font-bold text-slate-800">
+              {incidentCount > 0 ? `${incidentCount} ${incidentCount === 1 ? 'item needs' : 'items need'} attention` : 'All systems normal'}
+            </span>
           </div>
-          {canTriggerPanic && (
-            <Link
-              href={`${tenantBase}/emergency`}
-              className="shrink-0 text-xs font-semibold text-red-600 hover:text-red-700 flex items-center gap-1"
-            >
-              <Siren className="w-3.5 h-3.5" /> Trigger alert
-            </Link>
+          <div className="h-5 w-px bg-slate-200" />
+          <div className="flex items-center gap-2 text-xs text-slate-600">
+            <Activity className="w-3.5 h-3.5 text-slate-400" />
+            <span className="font-semibold">{fleet.online.toLocaleString()}</span>
+            <span className="text-slate-400">/ {fleet.total.toLocaleString()} screens online</span>
+          </div>
+          {liveNowCount > 0 && (
+            <>
+              <div className="h-5 w-px bg-slate-200" />
+              <div className="flex items-center gap-2 text-xs text-slate-600">
+                <MonitorPlay className="w-3.5 h-3.5 text-indigo-500" />
+                <span className="font-semibold">{liveNowCount}</span>
+                <span className="text-slate-400">schedule{liveNowCount === 1 ? '' : 's'} playing now</span>
+              </div>
+            </>
+          )}
+          {fleet.stale > 0 && (
+            <>
+              <div className="h-5 w-px bg-slate-200" />
+              <div className="flex items-center gap-2 text-xs text-amber-700">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span className="font-semibold">{fleet.stale}</span>
+                <span>reporting stale</span>
+              </div>
+            </>
           )}
         </div>
       )}
 
-      {/* ─── Getting Started (first-run only) ────────────────── */}
+      {/* ─── First-run onboarding (empty state) ────────────────── */}
       {isEmpty && (
         <div className="bg-gradient-to-br from-indigo-50 via-white to-violet-50 rounded-2xl border border-indigo-100 p-8 shadow-sm">
           <h2 className="text-lg font-bold text-slate-800 mb-2">Welcome to EduSignage</h2>
@@ -245,98 +293,130 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ─── Stat strip — fleet-at-a-glance ───────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
+      {/* ─── Fleet KPIs — aggregates, not counts ─────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <KpiCard
           href={`${tenantBase}/screens`}
-          label="Fleet Online"
-          value={`${onlineCount}/${totalScreens || 0}`}
-          hint={totalScreens === 0 ? 'No screens paired yet' : `${onlinePct}% of fleet reporting in`}
-          dotColor={onlineCount === totalScreens && totalScreens > 0 ? 'emerald' : offlineCount > 0 ? 'rose' : 'slate'}
+          label="Fleet Health"
+          bigValue={`${fleet.onlinePct.toFixed(fleet.onlinePct === 100 ? 0 : 1)}%`}
+          sub={`${fleet.online.toLocaleString()} / ${fleet.total.toLocaleString()} online`}
+          tone={fleet.onlinePct >= 99 ? 'emerald' : fleet.onlinePct >= 90 ? 'amber' : 'rose'}
           Icon={MonitorCheck}
-          iconTone="emerald"
+          emptyText={fleet.total === 0 ? 'No screens paired yet' : undefined}
         />
-        <StatCard
-          href={`${tenantBase}/assets`}
-          label={pendingAssets.length > 0 ? 'Pending Approval' : 'Content Library'}
-          value={pendingAssets.length > 0 ? String(pendingAssets.length) : String(assetCount)}
-          hint={pendingAssets.length > 0
-            ? `${pendingAssets.length} asset${pendingAssets.length === 1 ? '' : 's'} waiting for review`
-            : assetCount === 0 ? 'Library is empty' : `${assetCount} item${assetCount === 1 ? '' : 's'}`}
-          Icon={pendingAssets.length > 0 ? AlertTriangle : ImageIcon}
-          iconTone={pendingAssets.length > 0 ? 'amber' : 'sky'}
-          dotColor={pendingAssets.length > 0 ? 'amber' : 'slate'}
+        <KpiCard
+          href={`${tenantBase}/screens`}
+          label="Down"
+          bigValue={fleet.offline.toLocaleString()}
+          sub={fleet.offline > 0 ? `${fleet.stale} stale pings` : 'all reporting in'}
+          tone={fleet.offline > 0 ? 'rose' : 'slate'}
+          Icon={CloudOff}
+          mutedWhenZero
         />
-        <StatCard
+        <KpiCard
           href={`${tenantBase}/schedules`}
-          label="Running Today"
-          value={String(activeScheduleCount)}
-          hint={`${todaysSchedules.length} scheduled for today`}
-          Icon={Calendar}
-          iconTone="indigo"
-          dotColor={activeScheduleCount > 0 ? 'indigo' : 'slate'}
+          label="Playing Now"
+          bigValue={liveNowCount.toLocaleString()}
+          sub={`${todaysSchedules.length} scheduled today`}
+          tone="indigo"
+          Icon={MonitorPlay}
         />
-        <StatCard
-          href={`${tenantBase}/playlists`}
-          label="Playlists"
-          value={String(playlistCount)}
-          hint={`${screenGroups?.length || 0} screen group${(screenGroups?.length || 0) === 1 ? '' : 's'}`}
-          Icon={ListVideo}
-          iconTone="violet"
+        <KpiCard
+          href={`${tenantBase}/assets`}
+          label={pendingAssets.length > 0 ? 'Awaiting Approval' : 'Library'}
+          bigValue={pendingAssets.length > 0 ? pendingAssets.length.toLocaleString() : (assets?.length || 0).toLocaleString()}
+          sub={pendingAssets.length > 0
+            ? 'queued for review'
+            : recentAssetCount > 0 ? `+${recentAssetCount} this week` : 'total items'}
+          tone={pendingAssets.length > 0 ? 'amber' : 'sky'}
+          Icon={pendingAssets.length > 0 ? AlertTriangle : ImageIcon}
+        />
+        <KpiCard
+          href={`${tenantBase}/screens`}
+          label="Sites"
+          bigValue={sites.length.toLocaleString()}
+          sub={`${(playlists?.length || 0).toLocaleString()} playlists`}
+          tone="violet"
+          Icon={Building2}
         />
       </div>
 
-      {/* ─── What's playing now — per-screen mini tiles ─────────── */}
-      {totalScreens > 0 && (
-        <section>
-          <div className="flex items-center justify-between mb-3 px-1">
+      {/* ─── Sites rollup — the scalable equivalent of "per-screen tiles".
+          One row per screen group. Troubled sites (any offline) sort to
+          the top. This is what a district IT lead actually opens the
+          dashboard to see at 8 AM. ──────────────────────────────── */}
+      {sites.length > 0 && (
+        <section className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="relative">
-                <Radio className="w-4 h-4 text-emerald-600" />
-                <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              </div>
-              <h2 className="text-sm font-bold text-slate-700">Live Now</h2>
+              <Building2 className="w-4 h-4 text-slate-500" />
+              <h2 className="text-sm font-bold text-slate-700">Sites</h2>
               <span className="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">
-                What's on every screen
+                Health by location
               </span>
             </div>
-            <Link href={`${tenantBase}/screens`} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1">
-              View all {totalScreens} <ArrowRight className="w-3 h-3" />
+            <Link href={`${tenantBase}/screens`} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">
+              View all →
             </Link>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {allScreens.slice(0, 8).map((screen: any) => {
-              const playing = currentPlaylistForScreen(screen);
-              const isOnline = screen.status === 'ONLINE';
-              return (
-                <Link
-                  key={screen.id}
-                  href={`${tenantBase}/screens`}
-                  className="group bg-white rounded-xl border border-slate-200 p-4 hover:border-indigo-300 hover:shadow-md transition-all"
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className={`w-2 h-2 rounded-full shrink-0 ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
-                      <span className="text-sm font-bold text-slate-800 truncate">{screen.name}</span>
+          <div>
+            {/* Header row */}
+            <div className="px-5 py-2 border-b border-slate-100 grid grid-cols-12 gap-3 items-center bg-slate-50/50">
+              <div className="col-span-5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Location</div>
+              <div className="col-span-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">Online</div>
+              <div className="col-span-4 text-[10px] font-bold uppercase tracking-widest text-slate-400">Health</div>
+              <div className="col-span-1" />
+            </div>
+            <div className="divide-y divide-slate-50">
+              {sites.slice(0, 10).map((site) => {
+                const healthy = site.offline === 0;
+                return (
+                  <Link
+                    key={site.id}
+                    href={`${tenantBase}/screens`}
+                    className="px-5 py-3 grid grid-cols-12 gap-3 items-center hover:bg-slate-50 transition-colors group"
+                  >
+                    <div className="col-span-5 min-w-0 flex items-center gap-2.5">
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${
+                        healthy ? 'bg-emerald-500' : site.offline >= site.total / 2 ? 'bg-rose-500' : 'bg-amber-500'
+                      }`} />
+                      <span className="text-sm font-semibold text-slate-800 truncate">{site.name}</span>
                     </div>
-                    <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                      isOnline ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                    }`}>
-                      {screen.status || 'Offline'}
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-slate-500 mb-2 truncate">
-                    {screen.location || screen.screenGroup?.name || '—'}
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs">
-                    <ListVideo className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                    <span className={`truncate ${playing ? 'text-slate-700 font-semibold' : 'text-slate-400 italic'}`}>
-                      {playing ? playing.name : 'No schedule active'}
-                    </span>
-                  </div>
+                    <div className="col-span-2 text-right text-sm tabular-nums">
+                      <span className={healthy ? 'text-emerald-700 font-semibold' : 'text-slate-700 font-semibold'}>
+                        {site.online}
+                      </span>
+                      <span className="text-slate-400"> / {site.total}</span>
+                    </div>
+                    <div className="col-span-4 flex items-center gap-2">
+                      <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            site.pct >= 99 ? 'bg-emerald-500' : site.pct >= 90 ? 'bg-amber-500' : 'bg-rose-500'
+                          }`}
+                          style={{ width: `${Math.max(2, site.pct)}%` }}
+                        />
+                      </div>
+                      <span className={`text-[11px] font-bold tabular-nums shrink-0 ${
+                        site.pct >= 99 ? 'text-emerald-600' : site.pct >= 90 ? 'text-amber-600' : 'text-rose-600'
+                      }`}>
+                        {site.pct.toFixed(site.pct === 100 ? 0 : 1)}%
+                      </span>
+                    </div>
+                    <div className="col-span-1 flex justify-end">
+                      <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all" />
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+            {sites.length > 10 && (
+              <div className="px-5 py-3 text-center border-t border-slate-100 bg-slate-50/30">
+                <Link href={`${tenantBase}/screens`} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">
+                  View remaining {sites.length - 10} site{sites.length - 10 === 1 ? '' : 's'} →
                 </Link>
-              );
-            })}
+              </div>
+            )}
           </div>
         </section>
       )}
@@ -349,6 +429,11 @@ export default function DashboardPage() {
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-indigo-500" />
               <h2 className="text-sm font-bold text-slate-700">Today's Schedule</h2>
+              {todaysSchedules.length > 0 && (
+                <span className="text-[11px] text-slate-400 font-semibold">
+                  {liveNowCount} playing · {todaysSchedules.length} total
+                </span>
+              )}
             </div>
             <Link href={`${tenantBase}/schedules`} className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700">
               Manage →
@@ -391,6 +476,13 @@ export default function DashboardPage() {
                 );
               })
             )}
+            {todaysSchedules.length > 6 && (
+              <div className="px-5 py-3 text-center bg-slate-50/30">
+                <Link href={`${tenantBase}/schedules`} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">
+                  View remaining {todaysSchedules.length - 6} →
+                </Link>
+              </div>
+            )}
           </div>
         </div>
 
@@ -424,9 +516,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ─── Needs Attention + Quick Actions ─────────────────── */}
+      {/* ─── Exceptions + Quick Actions ─────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Needs Attention column — only renders cards that have items */}
         <div className="lg:col-span-2 space-y-5">
           {pendingAssets.length > 0 && (
             <div className="bg-white rounded-2xl border border-amber-200 overflow-hidden">
@@ -472,14 +563,14 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {offlineCount > 0 && (
+          {downScreens.length > 0 && (
             <div className="bg-white rounded-2xl border border-red-200 overflow-hidden">
               <div className="px-5 py-4 border-b border-red-100 flex items-center justify-between bg-red-50/50">
                 <div className="flex items-center gap-2">
                   <CloudOff className="w-4 h-4 text-red-600" />
-                  <h2 className="text-sm font-bold text-slate-800">Offline Devices</h2>
+                  <h2 className="text-sm font-bold text-slate-800">Screens Down</h2>
                   <span className="text-[11px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full">
-                    {offlineCount}
+                    {downScreens.length}
                   </span>
                 </div>
                 <Link href={`${tenantBase}/screens`} className="text-[11px] font-semibold text-red-700 hover:text-red-800">
@@ -487,7 +578,7 @@ export default function DashboardPage() {
                 </Link>
               </div>
               <div className="divide-y divide-slate-50">
-                {offlineScreens.slice(0, 5).map((screen: any) => (
+                {downScreens.slice(0, 5).map((screen: any) => (
                   <div key={screen.id} className="px-5 py-3 flex items-center gap-3">
                     <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)] shrink-0" />
                     <div className="flex-1 min-w-0">
@@ -503,7 +594,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {pendingAssets.length === 0 && offlineCount === 0 && !isEmpty && (
+          {pendingAssets.length === 0 && downScreens.length === 0 && !isEmpty && (
             <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
               <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
               <p className="text-sm font-semibold text-slate-700">Nothing needs attention.</p>
@@ -512,7 +603,6 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Quick Actions */}
         <div className="bg-white rounded-2xl border border-slate-200 p-5">
           <h2 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
             <Zap className="w-4 h-4 text-amber-500" /> Quick Actions
@@ -523,9 +613,6 @@ export default function DashboardPage() {
             <QuickLink href={`${tenantBase}/templates`} Icon={ListVideo} label="Pick a Template" tone="violet" />
             <QuickLink href={`${tenantBase}/screens`} Icon={MonitorPlay} label="Pair a Screen" tone="emerald" />
             <QuickLink href={`${tenantBase}/users`} Icon={UsersIcon} label="Invite Teammate" tone="slate" />
-            {canTriggerPanic && (
-              <QuickLink href={`${tenantBase}/emergency`} Icon={Siren} label="Emergency Console" tone="red" />
-            )}
           </div>
         </div>
       </div>
@@ -533,51 +620,52 @@ export default function DashboardPage() {
   );
 }
 
-// ────────────────────────────────────────────────────────────────
-// Presentational subcomponents — kept in-file so the whole dashboard
-// reads top-to-bottom without hunting through files. These are dumb
-// wrappers around Tailwind classes, no logic.
-// ────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════
+// Presentational subcomponents — kept in-file so the dashboard reads
+// top-to-bottom without hunting.
+// ════════════════════════════════════════════════════════════════════
 
-function StatCard({
-  href, label, value, hint, Icon, iconTone, dotColor = 'slate',
+function KpiCard({
+  href, label, bigValue, sub, Icon, tone, emptyText, mutedWhenZero,
 }: {
-  href: string; label: string; value: string; hint: string;
-  Icon: any; iconTone: 'emerald'|'sky'|'indigo'|'violet'|'amber'|'red';
-  dotColor?: 'emerald'|'rose'|'amber'|'indigo'|'slate';
+  href: string; label: string; bigValue: string; sub: string; Icon: any;
+  tone: 'emerald' | 'rose' | 'amber' | 'indigo' | 'sky' | 'violet' | 'slate';
+  emptyText?: string; mutedWhenZero?: boolean;
 }) {
-  const toneClasses: Record<string, string> = {
+  const toneIcon: Record<string, string> = {
     emerald: 'from-emerald-400 to-emerald-600 shadow-emerald-500/30',
-    sky:     'from-sky-400 to-sky-600 shadow-sky-500/30',
-    indigo:  'from-indigo-400 to-indigo-600 shadow-indigo-500/30',
-    violet:  'from-violet-400 to-violet-600 shadow-violet-500/30',
+    rose:    'from-rose-400 to-rose-600 shadow-rose-500/30',
     amber:   'from-amber-400 to-amber-600 shadow-amber-500/30',
-    red:     'from-red-400 to-red-600 shadow-red-500/30',
+    indigo:  'from-indigo-400 to-indigo-600 shadow-indigo-500/30',
+    sky:     'from-sky-400 to-sky-600 shadow-sky-500/30',
+    violet:  'from-violet-400 to-violet-600 shadow-violet-500/30',
+    slate:   'from-slate-300 to-slate-500 shadow-slate-400/20',
   };
-  const dotClasses: Record<string, string> = {
-    emerald: 'bg-emerald-500',
-    rose:    'bg-rose-500',
-    amber:   'bg-amber-500',
-    indigo:  'bg-indigo-500',
-    slate:   'bg-slate-300',
+  const toneValue: Record<string, string> = {
+    emerald: 'text-emerald-600',
+    rose:    'text-rose-600',
+    amber:   'text-amber-600',
+    indigo:  'text-indigo-600',
+    sky:     'text-sky-600',
+    violet:  'text-violet-600',
+    slate:   'text-slate-500',
   };
+  const isZero = bigValue === '0';
+  const valueClass = mutedWhenZero && isZero ? 'text-slate-400' : toneValue[tone];
   return (
     <Link
       href={href}
-      className="group bg-white rounded-2xl border border-slate-200 p-5 hover:border-indigo-300 hover:shadow-lg hover:-translate-y-0.5 transition-all"
+      className="group bg-white rounded-xl border border-slate-200 p-4 hover:border-indigo-300 hover:shadow-md hover:-translate-y-0.5 transition-all"
     >
       <div className="flex items-start justify-between mb-3">
-        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${toneClasses[iconTone]} flex items-center justify-center shadow-lg`}>
-          <Icon className="w-5 h-5 text-white" strokeWidth={2.5} />
+        <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${toneIcon[tone]} flex items-center justify-center shadow`}>
+          <Icon className="w-4 h-4 text-white" strokeWidth={2.5} />
         </div>
-        <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all" />
+        <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all" />
       </div>
-      <div className="text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-1">{label}</div>
-      <div className="text-3xl font-black tracking-tight text-slate-900">{value}</div>
-      <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
-        <span className={`w-1.5 h-1.5 rounded-full ${dotClasses[dotColor]}`} />
-        <span className="truncate">{hint}</span>
-      </div>
+      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">{label}</div>
+      <div className={`text-[28px] font-black tracking-tight leading-none tabular-nums ${valueClass}`}>{bigValue}</div>
+      <div className="mt-1 text-[11px] text-slate-500 truncate">{emptyText || sub}</div>
     </Link>
   );
 }
@@ -603,10 +691,10 @@ function QuickLink({ href, Icon, label, tone }: { href: string; Icon: any; label
 function OnboardStep({
   href, step, color, Icon, title, desc, cta,
 }: { href: string; step: number; color: 'sky'|'violet'|'emerald'; Icon: any; title: string; desc: string; cta: string }) {
-  const c: Record<string, { ring: string; icon: string; text: string; chip: string }> = {
-    sky:     { ring: 'hover:border-sky-300',     icon: 'bg-sky-50 text-sky-600 group-hover:bg-sky-100',         text: 'text-sky-600 group-hover:text-sky-700',         chip: 'bg-sky-50 text-sky-700' },
-    violet:  { ring: 'hover:border-violet-300',  icon: 'bg-violet-50 text-violet-600 group-hover:bg-violet-100', text: 'text-violet-600 group-hover:text-violet-700',   chip: 'bg-violet-50 text-violet-700' },
-    emerald: { ring: 'hover:border-emerald-300', icon: 'bg-emerald-50 text-emerald-600 group-hover:bg-emerald-100', text: 'text-emerald-600 group-hover:text-emerald-700', chip: 'bg-emerald-50 text-emerald-700' },
+  const c: Record<string, { ring: string; icon: string; text: string }> = {
+    sky:     { ring: 'hover:border-sky-300',     icon: 'bg-sky-50 text-sky-600 group-hover:bg-sky-100',         text: 'text-sky-600 group-hover:text-sky-700' },
+    violet:  { ring: 'hover:border-violet-300',  icon: 'bg-violet-50 text-violet-600 group-hover:bg-violet-100', text: 'text-violet-600 group-hover:text-violet-700' },
+    emerald: { ring: 'hover:border-emerald-300', icon: 'bg-emerald-50 text-emerald-600 group-hover:bg-emerald-100', text: 'text-emerald-600 group-hover:text-emerald-700' },
   };
   return (
     <Link href={href} className={`group p-5 bg-white/70 backdrop-blur-md rounded-xl border border-slate-200 ${c[color].ring} hover:shadow-lg hover:-translate-y-1 transition-all duration-300`}>
