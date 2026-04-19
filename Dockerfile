@@ -36,6 +36,14 @@ COPY packages/ ./packages/
 # Re-generate Prisma Client now that the full packages tree is present
 RUN cd packages/database && npx prisma generate
 
+# Build the three workspace packages BEFORE the API. The API's compiled
+# JS does `require("@cms/api-types")` which resolves via package.json
+# `main` to `dist/index.js`. Without this, Node tries to parse the raw
+# `src/index.ts` at runtime and crashes with `Unexpected token 'export'`.
+RUN cd packages/api-types && pnpm run build
+RUN cd packages/auth-core && pnpm run build
+RUN cd packages/ws-events && pnpm run build
+
 # Copy API source
 COPY apps/api/ ./apps/api/
 
