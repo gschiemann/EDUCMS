@@ -6,22 +6,41 @@
 <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Fredoka:wght@500;700&family=Caveat:wght@700&family=Permanent+Marker&display=swap" rel="stylesheet">
 
 <!--
-  SWAPPABLE ICONS — every emoji in this template is a single
-  character that any admin can change from the editor. Look for
-  a /* ICON-SWAP */ comment next to each. Common food options:
-
-    Pizza 🍕   Taco 🌮   Burger 🍔   Hot dog 🌭   Sandwich 🥪
-    Salad 🥗   Pasta 🍝   Sushi 🍣   Soup 🍲    Fries 🍟
-    Chicken 🍗 Drumstick 🦴 Apple 🍎 Milk 🥛    Cookie 🍪
-    Donut 🍩   Cupcake 🧁 Cake 🎂   Ice cream 🍦 Fruit 🍓
-    Broccoli 🥦 Carrot 🥕 Rice 🍚   Burrito 🌯  Pretzel 🥨
-
-  The 5 main swap points are:
-    • Today's Special food item (left card)
-    • 5 menu-line items (center card)
-    • Countdown big icon (right card)  — also change the LABEL
-    • Ticker emojis
-    • Background floater emojis
+  ┌─────────────────────────────────────────────────────────────────┐
+  │ EDITOR DATA SHAPE (for the React port)                          │
+  ├─────────────────────────────────────────────────────────────────┤
+  │                                                                 │
+  │ config.weekMenu = {                                             │
+  │   monday:    [ { emoji:'🍕', name:'Pepperoni Pizza',            │
+  │                  meta:'🌾 🧀 — $3.25' }, ... ],                 │
+  │   tuesday:   [ ... ],                                           │
+  │   wednesday: [ ... ],                                           │
+  │   thursday:  [ ... ],                                           │
+  │   friday:    [ ... ],                                           │
+  │ }                                                               │
+  │                                                                 │
+  │ The screen auto-picks the current day of the week (Mon-Fri)     │
+  │ and renders that day's items. Weekends fall back to Friday's    │
+  │ menu or a "Cafeteria closed" state (configurable).              │
+  │                                                                 │
+  │ The editor exposes a 5-tab interface so an admin can fill in    │
+  │ the whole week in one sitting — Monday tab, Tuesday tab, etc.   │
+  │ Each tab has an "Add item" button with no cap (schools run      │
+  │ 10+ items on some days). Drag-reorder within a day. Copy        │
+  │ Monday to the rest of the week with one click for "same menu    │
+  │ all week" customers (common for small charter schools).         │
+  │                                                                 │
+  ├─────────────────────────────────────────────────────────────────┤
+  │ SWAPPABLE ICONS — every emoji in this template is admin-        │
+  │ controlled. Look for /* ICON-SWAP */ comments. Common options:  │
+  │                                                                 │
+  │   Pizza 🍕   Taco 🌮   Burger 🍔   Hot dog 🌭   Sandwich 🥪     │
+  │   Salad 🥗   Pasta 🍝   Sushi 🍣   Soup 🍲    Fries 🍟          │
+  │   Chicken 🍗 Drumstick 🦴 Apple 🍎 Milk 🥛    Cookie 🍪         │
+  │   Donut 🍩   Cupcake 🧁 Cake 🎂   Ice cream 🍦 Fruit 🍓         │
+  │   Broccoli 🥦 Carrot 🥕 Rice 🍚   Burrito 🌯  Pretzel 🥨        │
+  │                                                                 │
+  └─────────────────────────────────────────────────────────────────┘
 -->
 
 <style>
@@ -281,35 +300,69 @@
   }
   .menu h2 {
     margin: 0; line-height: 1;
-    font-family: 'Bungee', cursive; font-size: 54px; text-align: center;
+    font-family: 'Bungee', cursive; font-size: 48px; text-align: center;
     background: linear-gradient(135deg, #dc2626, #f59e0b);
     -webkit-background-clip: text; background-clip: text; color: transparent;
   }
   .menu .date {
-    text-align: center; font-family: 'Permanent Marker', cursive; font-size: 24px;
-    color: #9d174d; margin-top: -4px; margin-bottom: 12px;
+    text-align: center; font-family: 'Permanent Marker', cursive; font-size: 22px;
+    color: #9d174d; margin-top: -2px; margin-bottom: 6px;
     transform: rotate(-1deg);
   }
-  .menu .items { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; flex: 1; min-height: 0; align-content: center; }
+  /* Day-of-week tabs — signals this is part of a full-week menu. Today
+     is bold + underlined. The screen auto-advances to match the real
+     day; admins fill each day's menu once in the editor. */
+  .menu .dayTabs {
+    display: flex; justify-content: center; gap: 6px; margin-bottom: 12px;
+  }
+  .menu .dayTabs .day {
+    font-family: 'Bungee', cursive; font-size: 18px;
+    padding: 6px 14px;
+    border: 3px solid #1f2937; border-radius: 10px;
+    background: #fef3c7; color: #92400e;
+    box-shadow: 2px 2px 0 #1f2937;
+    letter-spacing: .06em;
+  }
+  .menu .dayTabs .day.today {
+    background: linear-gradient(135deg, #dc2626, #f59e0b);
+    color: #fff;
+    transform: translateY(-2px);
+    box-shadow: 2px 4px 0 #1f2937, 0 0 0 3px #fbbf24;
+    text-shadow: 1px 1px 0 rgba(0,0,0,.2);
+  }
+  /* Items: single-column stack, much bigger. Fits 5 lines with room
+     to breathe; extras scroll with a fade if the day has 6+ items. */
+  .menu .items {
+    display: flex; flex-direction: column; gap: 10px;
+    flex: 1; min-height: 0; overflow: hidden;
+    padding-right: 4px;
+  }
   .menu .item {
-    display: flex; align-items: center; gap: 12px;
+    display: flex; align-items: center; gap: 18px;
     background: linear-gradient(135deg, #fef3c7, #fde68a);
-    border: 3px solid #1f2937; border-radius: 12px;
-    padding: 10px 14px;
-    box-shadow: 3px 3px 0 #1f2937;
+    border: 3px solid #1f2937; border-radius: 14px;
+    padding: 14px 22px;
+    box-shadow: 4px 4px 0 #1f2937;
   }
   .menu .item .emoji {
-    /* ICON-SWAP: per-menu-line food icon */
-    font-size: 40px; line-height: 1; flex: 0 0 auto;
+    /* ICON-SWAP: per-menu-line food icon. Bigger to read from across a cafeteria. */
+    font-size: 64px; line-height: 1; flex: 0 0 auto;
+    filter: drop-shadow(0 2px 3px rgba(0,0,0,.2));
   }
   .menu .item .body2 { flex: 1; min-width: 0; }
   .menu .item .nm {
-    font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 22px;
-    color: #1f2937; line-height: 1;
+    font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 34px;
+    color: #1f2937; line-height: 1.1;
+    text-overflow: ellipsis; overflow: hidden; white-space: nowrap;
   }
   .menu .item .meta {
-    font-family: 'Permanent Marker', cursive; font-size: 15px;
-    color: #b91c1c; margin-top: 2px;
+    font-family: 'Permanent Marker', cursive; font-size: 22px;
+    color: #b91c1c; margin-top: 4px;
+  }
+  .menu .item .price {
+    /* Dedicated price slot so it doesn't get buried in the meta line */
+    font-family: 'Bungee', cursive; font-size: 28px; color: #dc2626;
+    flex: 0 0 auto; padding-left: 8px;
   }
 
   /* COUNTDOWN — sunburst badge. Icon AND label both easy to swap. */
@@ -550,48 +603,55 @@
       <div class="body">
         <h2>Today's Menu</h2>
         <div class="date">monday · april 19</div>
+        <!-- Day tabs — today is highlighted. Editor fills each tab
+             independently; screen auto-selects based on real day. -->
+        <div class="dayTabs">
+          <span class="day today">MON</span>
+          <span class="day">TUE</span>
+          <span class="day">WED</span>
+          <span class="day">THU</span>
+          <span class="day">FRI</span>
+        </div>
         <div class="items">
           <div class="item">
             <span class="emoji">🍕</span><!-- ICON-SWAP -->
             <div class="body2">
               <div class="nm">Pepperoni Pizza</div>
-              <div class="meta">🌾 🧀 — $3.25</div>
+              <div class="meta">🌾 🧀</div>
             </div>
+            <span class="price">$3.25</span>
           </div>
           <div class="item">
-            <span class="emoji">🍔</span><!-- ICON-SWAP -->
+            <span class="emoji">🥗</span><!-- ICON-SWAP -->
             <div class="body2">
-              <div class="nm">Classic Burger</div>
-              <div class="meta">🌾 🧀 — $3.25</div>
+              <div class="nm">Build-a-Salad Bar</div>
+              <div class="meta">veg</div>
             </div>
+            <span class="price">$2.95</span>
           </div>
           <div class="item">
             <span class="emoji">🍟</span><!-- ICON-SWAP -->
             <div class="body2">
               <div class="nm">Crispy Fries</div>
-              <div class="meta">veg · gf — $1.75</div>
+              <div class="meta">veg · gf</div>
             </div>
-          </div>
-          <div class="item">
-            <span class="emoji">🥗</span><!-- ICON-SWAP -->
-            <div class="body2">
-              <div class="nm">Build-a-Salad</div>
-              <div class="meta">veg — $2.95</div>
-            </div>
+            <span class="price">$1.75</span>
           </div>
           <div class="item">
             <span class="emoji">🍎</span><!-- ICON-SWAP -->
             <div class="body2">
-              <div class="nm">Fruit Cup</div>
-              <div class="meta">gf — $1.50</div>
+              <div class="nm">Fresh Fruit Cup</div>
+              <div class="meta">veg · gf</div>
             </div>
+            <span class="price">$1.50</span>
           </div>
           <div class="item">
-            <span class="emoji">🥤</span><!-- ICON-SWAP -->
+            <span class="emoji">🥛</span><!-- ICON-SWAP -->
             <div class="body2">
-              <div class="nm">Milk · Juice · Water</div>
-              <div class="meta">varies — $0.75</div>
+              <div class="nm">Milk · White or Chocolate</div>
+              <div class="meta">🧀</div>
             </div>
+            <span class="price">$0.75</span>
           </div>
         </div>
       </div>
