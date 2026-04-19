@@ -180,7 +180,10 @@
 
   /* === MAIN GRID === */
   .grid {
-    position: absolute; top: 360px; left: 36px; right: 36px; bottom: 130px;
+    /* 2026-04-19: bumped top 360 -> 350 (tighter under title) + bottom
+       130 -> 160 (was a 20px buffer above the 110px ticker — too tight,
+       cake/patch/name lines were clipping). Now 50px clear. */
+    position: absolute; top: 350px; left: 36px; right: 36px; bottom: 160px;
     display: grid;
     grid-template-columns: 320px 1fr 320px;
     grid-template-rows: 1fr 1fr;

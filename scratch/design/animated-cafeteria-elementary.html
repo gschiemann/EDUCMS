@@ -527,13 +527,20 @@
   }
   @keyframes el-cakeSpin { to { transform: rotate(-360deg); } }
   .birthdays .lbl {
-    font-family: 'Bungee', cursive; font-size: 16px; color: #dc2626;
-    letter-spacing: .12em; text-transform: uppercase; margin-top: 10px;
+    /* Swapped Bungee -> Fredoka so the label doesn't fight the
+       big cursive names below — softer + more 'birthday-card' vibe */
+    font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 18px;
+    color: #dc2626; letter-spacing: .18em; text-transform: uppercase;
+    margin-top: 10px;
     text-shadow: 2px 2px 0 #fef3c7;
   }
   .birthdays .names {
-    font-family: 'Permanent Marker', cursive; font-size: 26px;
-    color: #1f2937; margin-top: 2px; line-height: 1.05;
+    /* Permanent Marker reads too 'sharpie on a wall'. Caveat is the
+       handwritten-birthday-card script — warmer, friendlier, and
+       matches the Caveat we use elsewhere in the design system. */
+    font-family: 'Caveat', cursive; font-weight: 700; font-size: 38px;
+    color: #1f2937; margin-top: 2px; line-height: 1;
+    text-shadow: 0 2px 0 rgba(255,255,255,.7);
   }
 
   /* TICKER — striped awning scroll. Fixed 110px total — grid.bottom=140 clears it. */
