@@ -5,62 +5,69 @@
 <title>EduCMS — Design Mockups</title>
 <style>
   body { font: 15px/1.5 system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 32px; }
-  h1 { font-weight: 800; letter-spacing: -0.02em; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-top: 24px; }
-  a.card { display: block; padding: 18px; background: #1e293b; border: 1px solid #334155; border-radius: 12px; color: inherit; text-decoration: none; transition: transform .15s, border-color .15s; }
+  h1 { font-weight: 800; letter-spacing: -0.02em; margin: 0 0 8px; }
+  p.lead { color: #94a3b8; max-width: 640px; margin: 0 0 24px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-top: 16px; }
+  a.card { display: block; padding: 18px; background: #1e293b; border: 1px solid #334155; border-radius: 12px; color: inherit; text-decoration: none; transition: transform .15s, border-color .15s; position: relative; }
   a.card:hover { transform: translateY(-2px); border-color: #818cf8; }
   a.card b { font-size: 17px; display: block; margin-bottom: 4px; }
-  a.card span { color: #94a3b8; font-size: 13px; }
-  a.card .badge { display: inline-block; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; margin-top: 8px; font-weight: 700; }
+  a.card span { color: #94a3b8; font-size: 13px; display: block; min-height: 36px; }
+  a.card .badge { display: inline-block; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; margin-top: 10px; font-weight: 700; }
   a.card .badge.approved { background: #14532d; color: #86efac; }
-  a.card .badge.review { background: #713f12; color: #fde68a; }
-  a.card .badge.legacy { background: #334155; color: #94a3b8; }
-  .group { margin-top: 32px; }
-  .group h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .15em; color: #64748b; margin: 0 0 8px; }
+  a.card .badge.review   { background: #713f12; color: #fde68a; }
+  a.card .badge.new      { background: #1e3a8a; color: #bfdbfe; }
+  a.card .badge.legacy   { background: #334155; color: #94a3b8; }
+  .group { margin-top: 36px; }
+  .group h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .15em; color: #64748b; margin: 0 0 8px; border-bottom: 1px solid #334155; padding-bottom: 8px; }
+  .group p { color: #64748b; margin: 0 0 12px; font-size: 13px; }
 </style>
 </head>
 <body>
   <h1>EduCMS — Design Mockups</h1>
-  <p style="color:#94a3b8;max-width:640px">Static HTML drafts. Click to preview, then tell me which to ship as React templates.</p>
+  <p class="lead">Static HTML drafts at 1920×1080. Click to open fullscreen, then tell me which to ship as React templates next.</p>
 
   <div class="group">
     <h2>🎉 Animated Welcome Series</h2>
+    <p>Full-screen lobby scenes, one per school level. All ported to React.</p>
     <div class="grid">
-      <a class="card" href="animated-rainbow.html"><b>Rainbow Welcome — Elementary</b><span>Confetti, wiggling clock, spinning sun, floating balloons. Already shipped + locked.</span><div class="badge approved">SHIPPED + APPROVED</div></a>
-      <a class="card" href="animated-middle-school.html"><b>Middle School — Pep Rally</b><span>Pennants, megaphone with sound waves, stadium scoreboard clock, varsity letter teacher patch, candle cake.</span><div class="badge review">FOR REVIEW</div></a>
-      <a class="card" href="animated-high-school.html"><b>High School — Senior Year</b><span>Sunset palette, graduation-cap logo, neon banner, trophy countdown, yearbook teacher, confetti birthdays.</span><div class="badge review">FOR REVIEW</div></a>
+      <a class="card" href="animated-rainbow.html"><b>Rainbow · Elementary</b><span>Confetti, wiggling clock, spinning sun, floating balloons, teacher polaroid.</span><div class="badge approved">SHIPPED</div></a>
+      <a class="card" href="animated-middle-school.html"><b>Pep Rally · Middle School</b><span>Pennants, megaphone with sound waves, scoreboard clock, varsity patch chef, candle cake.</span><div class="badge approved">SHIPPED</div></a>
+      <a class="card" href="animated-high-school.html"><b>Senior Year · High School</b><span>Sunset palette, graduation-cap logo, neon banner, trophy countdown, yearbook teacher.</span><div class="badge approved">SHIPPED</div></a>
     </div>
   </div>
 
   <div class="group">
-    <h2>🍱 Animated Cafeteria Series (v1 mockups — for review)</h2>
+    <h2>🚚 Animated Cafeteria Series · Food Truck</h2>
+    <p>Daily menu boards with day-of-week auto-pick. Elementary is ported to React; MS + HS are mockups for review.</p>
     <div class="grid">
-      <a class="card" href="animated-cafeteria-chalkboard.html"><b>Cafeteria · Chalkboard</b><span>Kraft + chalk menu board, chef-hat logo, pizza-slice countdown, chalked cake, handwritten items.</span><div class="badge review">FOR REVIEW</div></a>
-      <a class="card" href="animated-cafeteria-foodtruck.html"><b>Cafeteria · Food Truck</b><span>Bright sunset palette, hanging string lights, food-truck logo, striped awning menu, taco-day burst countdown.</span><div class="badge review">FOR REVIEW</div></a>
+      <a class="card" href="animated-cafeteria-elementary.html"><b>Food Truck · Elementary</b><span>Food-truck logo, sunset palette, weekly menu with day tabs, container-query auto-sizing, dotted leader, lunch chef polaroid.</span><div class="badge approved">SHIPPED</div></a>
+      <a class="card" href="animated-cafeteria-middle.html"><b>Eagle Eats · Middle School</b><span>Navy + red + gold stadium palette. Shield logo, pennant banner, scoreboard clock, pennant flag special, stopwatch countdown, varsity patch chef.</span><div class="badge new">NEW · FOR REVIEW</div></a>
+      <a class="card" href="animated-cafeteria-high.html"><b>Campus Café · High School</b><span>Bright sunset palette. Steaming coffee-cup logo, neon banner, sunburst clock, sun-disc special, trophy countdown, yearbook chef, confetti rain.</span><div class="badge new">NEW · FOR REVIEW</div></a>
     </div>
   </div>
 
   <div class="group">
-    <h2>📎 Scrapbook (legacy — needs redesign)</h2>
+    <h2>📺 Animated Utility Templates</h2>
+    <p>Single-purpose full-screen scenes for common signage jobs.</p>
     <div class="grid">
-      <a class="card" href="scrapbook-cafeteria.html"><b>Scrapbook · Cafeteria</b><span>Polaroid menu cards, washi tape, torn paper</span><div class="badge legacy">LEGACY</div></a>
-      <a class="card" href="scrapbook-hallway.html"><b>Scrapbook · Hallway</b><span>Taped schedule strip, ticket-stub attendance</span><div class="badge legacy">LEGACY</div></a>
+      <a class="card" href="animated-bus-board.html"><b>Bus Board</b><span>Animated cartoon bus drives across a dashed-line road. Routes list with ETAs, next-bus callout, weather, delays ticker.</span><div class="badge new">NEW · FOR REVIEW</div></a>
+      <a class="card" href="animated-morning-news.html"><b>Morning News / Daily Digest</b><span>TV newsroom vibe — REC dot, lead story with lower-third chyron, 'Up Next' queue, weather, BREAKING ticker, CRT scan lines.</span><div class="badge new">NEW · FOR REVIEW</div></a>
+      <a class="card" href="animated-event-countdown.html"><b>Event Countdown</b><span>Big single-focus D/H/M/S flip-clock for musicals, pep rallies, graduation. Confetti rain, sweeping spotlights, twinkling stars, info cards.</span><div class="badge new">NEW · FOR REVIEW</div></a>
+      <a class="card" href="animated-achievement-showcase.html"><b>Achievement Showcase</b><span>Student of the Week scene with spinning gold medal on ribbon, parchment citation, honor-roll wings, stats row, Wall of Fame ticker.</span><div class="badge new">NEW · FOR REVIEW</div></a>
+      <a class="card" href="animated-main-entrance.html"><b>Main Entrance Welcome</b><span>Big welcome sign with marquee bulbs on chains, twin crests, rising balloons, drifting clouds, 3 info tiles with tape corners.</span><div class="badge new">NEW · FOR REVIEW</div></a>
     </div>
   </div>
 
   <div class="group">
-    <h2>📖 Storybook (legacy — needs redesign)</h2>
+    <h2>📎 Legacy (pre-animation era)</h2>
+    <p>Earlier static designs. Keep for reference — needs redesign if promoted.</p>
     <div class="grid">
-      <a class="card" href="storybook-cafeteria.html"><b>Storybook · Cafeteria</b><span>Open-book spread, illustrated menu vignettes</span><div class="badge legacy">LEGACY</div></a>
-      <a class="card" href="storybook-hallway.html"><b>Storybook · Hallway</b><span>Chapter heading + numbered story schedule</span><div class="badge legacy">LEGACY</div></a>
-    </div>
-  </div>
-
-  <div class="group">
-    <h2>📌 Bulletin Board (legacy — needs redesign)</h2>
-    <div class="grid">
-      <a class="card" href="bulletin-cafeteria.html"><b>Bulletin Board · Cafeteria</b><span>Cork wall with pinned index cards + memos</span><div class="badge legacy">LEGACY</div></a>
-      <a class="card" href="bulletin-hallway.html"><b>Bulletin Board · Hallway</b><span>Pinned schedule sheet + manila attendance file</span><div class="badge legacy">LEGACY</div></a>
+      <a class="card" href="scrapbook-cafeteria.html"><b>Scrapbook · Cafeteria</b><span>Polaroid menu cards, washi tape, torn paper.</span><div class="badge legacy">LEGACY</div></a>
+      <a class="card" href="scrapbook-hallway.html"><b>Scrapbook · Hallway</b><span>Taped schedule strip, ticket-stub attendance.</span><div class="badge legacy">LEGACY</div></a>
+      <a class="card" href="storybook-cafeteria.html"><b>Storybook · Cafeteria</b><span>Open-book spread, illustrated menu vignettes.</span><div class="badge legacy">LEGACY</div></a>
+      <a class="card" href="storybook-hallway.html"><b>Storybook · Hallway</b><span>Chapter heading + numbered story schedule.</span><div class="badge legacy">LEGACY</div></a>
+      <a class="card" href="bulletin-cafeteria.html"><b>Bulletin Board · Cafeteria</b><span>Cork wall with pinned index cards + memos.</span><div class="badge legacy">LEGACY</div></a>
+      <a class="card" href="bulletin-hallway.html"><b>Bulletin Board · Hallway</b><span>Pinned schedule sheet + manila attendance file.</span><div class="badge legacy">LEGACY</div></a>
     </div>
   </div>
 </body>

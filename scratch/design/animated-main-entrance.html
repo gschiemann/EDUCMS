@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Animated Main Entrance · Welcome (DEMO v1)</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Bungee&family=Caveat:wght@700&family=Inter:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+
+  .stage {
+    width: 100vw; height: 100vh; position: relative; overflow: hidden;
+    font-family: 'Inter', sans-serif; color: #1f2937;
+    background:
+      radial-gradient(ellipse at 50% -20%, #fef3c7 0%, transparent 50%),
+      radial-gradient(ellipse at 20% 80%, rgba(59,130,246,.25) 0%, transparent 45%),
+      radial-gradient(ellipse at 80% 80%, rgba(236,72,153,.25) 0%, transparent 45%),
+      linear-gradient(180deg, #dbeafe 0%, #ffe4e6 50%, #fef3c7 100%);
+  }
+
+  /* Drifting clouds */
+  .cloud {
+    position: absolute; width: 180px; height: 60px;
+    background: #fff; border-radius: 40px;
+    box-shadow:
+      -50px -4px 0 -8px #fff, -100px 0 0 -14px #fff,
+       50px -6px 0 -6px #fff,  100px 0 0 -12px #fff;
+    animation: me-drift linear infinite;
+    opacity: .85;
+  }
+  .cloud.c1 { top: 60px; left: -10%; animation-duration: 110s; }
+  .cloud.c2 { top: 140px; left: -30%; animation-duration: 140s; animation-delay: -40s; transform: scale(.7); }
+  .cloud.c3 { top: 100px; left: -20%; animation-duration: 120s; animation-delay: -70s; transform: scale(1.1); }
+  @keyframes me-drift { from { transform: translateX(0); } to { transform: translateX(140vw); } }
+
+  /* Floating balloons rising from bottom */
+  .balloon {
+    position: absolute; bottom: -100px; width: 64px; height: 80px;
+    border-radius: 50% 50% 48% 48%;
+    animation: me-riseBalloon linear infinite;
+    z-index: 1;
+  }
+  .balloon::after {
+    content: ''; position: absolute; left: 50%; top: 100%; width: 1px; height: 200px;
+    background: rgba(0,0,0,.3); transform: translateX(-50%);
+  }
+  .balloon.b1 { left: 8%; background: #ec4899; animation-duration: 16s; animation-delay: 0s; }
+  .balloon.b2 { left: 18%; background: #fbbf24; animation-duration: 19s; animation-delay: -4s; }
+  .balloon.b3 { left: 86%; background: #06b6d4; animation-duration: 17s; animation-delay: -7s; }
+  .balloon.b4 { left: 92%; background: #a78bfa; animation-duration: 21s; animation-delay: -12s; }
+  @keyframes me-riseBalloon {
+    0%   { transform: translateY(0) translateX(0); opacity: 0; }
+    10%  { opacity: 1; }
+    100% { transform: translateY(-1300px) translateX(30px); opacity: .9; }
+  }
+
+  /* Header — welcome sign */
+  .signWrap {
+    position: absolute; top: 100px; left: 50%; transform: translateX(-50%); z-index: 5;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .signChains {
+    width: 60%; height: 40px;
+    background: repeating-linear-gradient(90deg,
+      #64748b 0 4px, transparent 4px 14px);
+    background-size: 14px 40px;
+    position: relative;
+  }
+  .sign {
+    position: relative;
+    background: linear-gradient(180deg, #fff 0%, #fef3c7 100%);
+    border: 8px solid #dc2626;
+    border-radius: 28px;
+    padding: 30px 80px;
+    text-align: center;
+    box-shadow:
+      0 0 0 5px #fff, 0 0 0 12px #dc2626,
+      0 0 40px rgba(220,38,38,.35),
+      0 24px 48px rgba(0,0,0,.3);
+    animation: me-signSway 5s ease-in-out infinite;
+    transform-origin: 50% -20px;
+  }
+  @keyframes me-signSway { 0%, 100% { transform: rotate(-1deg); } 50% { transform: rotate(1deg); } }
+  /* marquee bulbs around the sign border */
+  .sign::before {
+    content: ''; position: absolute; inset: -4px; border-radius: 24px;
+    background:
+      radial-gradient(circle at 0% 0%, #fbbf24 0 10px, transparent 10px),
+      radial-gradient(circle at 25% 0%, #fbbf24 0 10px, transparent 10px),
+      radial-gradient(circle at 50% 0%, #fbbf24 0 10px, transparent 10px),
+      radial-gradient(circle at 75% 0%, #fbbf24 0 10px, transparent 10px),
+      radial-gradient(circle at 100% 0%, #fbbf24 0 10px, transparent 10px),
+      radial-gradient(circle at 0% 100%, #fbbf24 0 10px, transparent 10px),
+      radial-gradient(circle at 25% 100%, #fbbf24 0 10px, transparent 10px),
+      radial-gradient(circle at 50% 100%, #fbbf24 0 10px, transparent 10px),
+      radial-gradient(circle at 75% 100%, #fbbf24 0 10px, transparent 10px),
+      radial-gradient(circle at 100% 100%, #fbbf24 0 10px, transparent 10px);
+    animation: me-bulbBlink 1.5s steps(2) infinite;
+    pointer-events: none;
+  }
+  @keyframes me-bulbBlink { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+  .eyebrow {
+    font-family: 'Inter', sans-serif; font-weight: 800; font-size: 24px;
+    color: #dc2626; letter-spacing: .35em; text-transform: uppercase;
+    position: relative; z-index: 1;
+  }
+  .sign h1 {
+    margin: 0;
+    font-family: 'Anton', sans-serif; font-size: 150px; line-height: .9;
+    background: linear-gradient(90deg, #dc2626 0%, #f59e0b 50%, #ec4899 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    letter-spacing: .02em;
+    text-shadow: 0 0 40px rgba(220,38,38,.2);
+    text-transform: uppercase;
+    position: relative; z-index: 1;
+  }
+  .sign .sub {
+    font-family: 'Caveat', cursive; font-size: 52px; color: #92400e;
+    margin-top: 2px; position: relative; z-index: 1;
+  }
+
+  /* Crest side art */
+  .crestWrap {
+    position: absolute; top: 260px; width: 180px; z-index: 4;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+  }
+  .crestWrap.left  { left: 4%;  animation: me-crestBobL 3.6s ease-in-out infinite; }
+  .crestWrap.right { right: 4%; animation: me-crestBobR 3.6s ease-in-out infinite -1s; }
+  @keyframes me-crestBobL { 0%, 100% { transform: translateY(0) rotate(-4deg); } 50% { transform: translateY(-12px) rotate(4deg); } }
+  @keyframes me-crestBobR { 0%, 100% { transform: translateY(0) rotate(4deg); } 50% { transform: translateY(-12px) rotate(-4deg); } }
+  .crest {
+    width: 160px; height: 180px;
+    background: radial-gradient(circle at 35% 30%, #fde68a, #fbbf24 60%, #b45309);
+    clip-path: polygon(50% 0%, 100% 12%, 100% 60%, 50% 100%, 0 60%, 0 12%);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 12px 24px rgba(0,0,0,.4);
+    position: relative;
+  }
+  .crest::before {
+    content: ''; position: absolute; inset: 12px;
+    clip-path: polygon(50% 0%, 100% 12%, 100% 60%, 50% 100%, 0 60%, 0 12%);
+    box-shadow: inset 0 0 0 4px #92400e;
+  }
+  .crest .icon {
+    font-size: 86px; line-height: 1; transform: translateY(-8px);
+    filter: drop-shadow(0 3px 6px rgba(0,0,0,.4));
+    position: relative; z-index: 1;
+  }
+  .crestLbl {
+    font-family: 'Bungee', cursive; font-size: 18px; color: #7c2d12;
+    letter-spacing: .1em; text-align: center;
+  }
+
+  /* Info grid — 3 tiles across middle/bottom */
+  .info {
+    position: absolute; top: 480px; left: 240px; right: 240px; bottom: 180px;
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px;
+    z-index: 3;
+  }
+
+  .tile {
+    background: #fff;
+    border: 5px solid #1f2937;
+    border-radius: 20px;
+    padding: 20px 24px;
+    box-shadow: 0 14px 28px rgba(0,0,0,.2), 8px 8px 0 rgba(0,0,0,.15);
+    position: relative;
+    display: flex; flex-direction: column;
+    animation: me-tileFloat 5s ease-in-out infinite;
+  }
+  .tile:nth-child(1) { animation-delay: 0s; border-color: #dc2626; box-shadow: 0 14px 28px rgba(0,0,0,.2), 8px 8px 0 #dc2626; }
+  .tile:nth-child(2) { animation-delay: -1s; border-color: #f59e0b; box-shadow: 0 14px 28px rgba(0,0,0,.2), 8px 8px 0 #f59e0b; }
+  .tile:nth-child(3) { animation-delay: -2s; border-color: #06b6d4; box-shadow: 0 14px 28px rgba(0,0,0,.2), 8px 8px 0 #06b6d4; }
+  @keyframes me-tileFloat {
+    0%, 100% { transform: translateY(0) rotate(-.5deg); }
+    50%      { transform: translateY(-6px) rotate(.5deg); }
+  }
+  .tile .bigIcon { font-size: 78px; line-height: 1; margin-bottom: 4px; filter: drop-shadow(0 4px 6px rgba(0,0,0,.2)); }
+  .tile .lbl {
+    font-family: 'Inter', sans-serif; font-weight: 800; font-size: 16px;
+    color: #92400e; letter-spacing: .2em; text-transform: uppercase;
+  }
+  .tile:nth-child(2) .lbl { color: #b45309; }
+  .tile:nth-child(3) .lbl { color: #0e7490; }
+  .tile .big {
+    font-family: 'Anton', sans-serif; font-size: 72px; line-height: 1;
+    color: #1f2937; margin-top: 2px;
+    letter-spacing: .01em;
+  }
+  .tile .sub {
+    font-family: 'Caveat', cursive; font-weight: 700; font-size: 26px;
+    color: #475569; margin-top: 4px; line-height: 1.1;
+  }
+  /* tape-like corner accent */
+  .tile::after {
+    content: ''; position: absolute; top: -12px; left: 30%; right: 30%; height: 22px;
+    background: repeating-linear-gradient(135deg, rgba(0,0,0,.15) 0 8px, rgba(0,0,0,.08) 8px 16px);
+    border: 2px solid rgba(0,0,0,.2);
+    opacity: .6;
+    transform: rotate(-2deg);
+  }
+
+  /* Ticker */
+  .ticker {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 110px;
+    background: linear-gradient(90deg, #dc2626 0%, #f59e0b 50%, #ec4899 100%);
+    display: flex; align-items: center; overflow: hidden; z-index: 6;
+    border-top: 4px solid #fff;
+    box-shadow: 0 -6px 18px rgba(0,0,0,.2);
+  }
+  .tickerStamp {
+    flex: 0 0 auto; padding: 0 28px; height: 100%;
+    background: #fff; color: #dc2626;
+    display: flex; align-items: center;
+    font-family: 'Bungee', cursive; font-size: 32px; letter-spacing: .15em;
+    border-right: 4px solid #dc2626;
+  }
+  .tickerScroll { flex: 1; overflow: hidden; }
+  .tickerText {
+    font-family: 'Inter', sans-serif; font-weight: 800; font-size: 40px;
+    color: #fff; white-space: nowrap; padding-left: 100%;
+    display: inline-block;
+    text-shadow: 2px 2px 0 rgba(0,0,0,.3);
+    animation: me-tickerScroll 48s linear infinite;
+  }
+  .tickerText .sep { color: #fef3c7; padding: 0 24px; }
+  @keyframes me-tickerScroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <div class="cloud c1"></div>
+  <div class="cloud c2"></div>
+  <div class="cloud c3"></div>
+
+  <div class="balloon b1"></div>
+  <div class="balloon b2"></div>
+  <div class="balloon b3"></div>
+  <div class="balloon b4"></div>
+
+  <div class="signWrap">
+    <div class="signChains"></div>
+    <div class="sign">
+      <div class="eyebrow">★ welcome to ★</div>
+      <h1>LINCOLN ELEMENTARY</h1>
+      <div class="sub">where curious minds begin · since 1962</div>
+    </div>
+  </div>
+
+  <div class="crestWrap left">
+    <div class="crest"><div class="icon">🦅</div></div>
+    <div class="crestLbl">GO EAGLES</div>
+  </div>
+
+  <div class="crestWrap right">
+    <div class="crest"><div class="icon">📚</div></div>
+    <div class="crestLbl">LEARN DAILY</div>
+  </div>
+
+  <div class="info">
+    <div class="tile">
+      <div class="bigIcon">🔔</div>
+      <div class="lbl">SCHOOL BELL</div>
+      <div class="big">8:15 AM</div>
+      <div class="sub">first bell · see you in class</div>
+    </div>
+    <div class="tile">
+      <div class="bigIcon">☀️</div>
+      <div class="lbl">TODAY'S FORECAST</div>
+      <div class="big">68°</div>
+      <div class="sub">sunny + crisp, recess outside!</div>
+    </div>
+    <div class="tile">
+      <div class="bigIcon">🎉</div>
+      <div class="lbl">COMING UP</div>
+      <div class="big">Spring Musical</div>
+      <div class="sub">Thursday April 28 · 7pm</div>
+    </div>
+  </div>
+
+  <div class="ticker">
+    <div class="tickerStamp">WELCOME</div>
+    <div class="tickerScroll">
+      <span class="tickerText">
+        Visitors: please check in at the front office · ID required
+        <span class="sep">★</span>
+        Early dismissal FRIDAY at 1:15 PM
+        <span class="sep">★</span>
+        Book fair extended through next Tuesday — library open 'til 4:30
+        <span class="sep">★</span>
+        Parent-teacher conferences begin April 29
+      </span>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
