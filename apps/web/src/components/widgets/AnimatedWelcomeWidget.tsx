@@ -30,13 +30,20 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { fetchWeather } from './WidgetRenderer';
 
 interface Cfg {
   logoEmoji?: string;
   title?: string;
   subtitle?: string;
-  weatherTemp?: string;
-  weatherDesc?: string;
+  // Live weather config — temp + desc are auto-fetched from Open-Meteo
+  // based on weatherLocation. The temp/desc strings are now overrides
+  // for offline previews / explicit testing only; default behavior is
+  // 100% pulled from the API.
+  weatherLocation?: string;
+  weatherUnits?: 'imperial' | 'metric';
+  weatherTemp?: string;  // optional override
+  weatherDesc?: string;  // optional override
   announcementLabel?: string;
   announcementMessage?: string;
   countdownLabel?: string;
@@ -60,12 +67,48 @@ interface Cfg {
 const CANVAS_W = 1920;
 const CANVAS_H = 1080;
 
+// Kid-friendly cute weather phrases keyed by Open-Meteo WMO code.
+// Tone matches the rainbow theme: warm, playful, never alarming.
+// Uses temperature qualifier when relevant (cold/cool/warm/hot).
+function cuteWeatherPhrase(wmoCode: number, tempF: number): string {
+  const cold  = tempF < 35;
+  const cool  = tempF >= 35 && tempF < 60;
+  const warm  = tempF >= 60 && tempF < 80;
+  const hot   = tempF >= 80;
+  const tempWord = cold ? 'chilly' : cool ? 'crisp' : warm ? 'warm' : 'sizzling';
+
+  switch (wmoCode) {
+    case 0:                          return `~ sunny + ${tempWord} ~`;
+    case 1:                          return `~ mostly sunny + ${tempWord} ~`;
+    case 2:                          return `~ partly cloudy ~`;
+    case 3:                          return `~ cloudy day ~`;
+    case 45: case 48:                return `~ foggy + cozy ~`;
+    case 51: case 53: case 55:       return `~ sprinkly day ~`;
+    case 56: case 57:                return `~ icy drizzle, bundle up! ~`;
+    case 61: case 80:                return `~ light rain, grab a hood ~`;
+    case 63: case 81:                return `~ rainy day, splash safely ~`;
+    case 65: case 82:                return `~ heavy rain, stay dry! ~`;
+    case 66: case 67:                return `~ icy rain, careful out there ~`;
+    case 71: case 85:                return `~ sprinkles of snow! ❄️ ~`;
+    case 73:                         return `~ snowy day, build a fort! ⛄ ~`;
+    case 75: case 86:                return `~ big snow day! ❄️❄️❄️ ~`;
+    case 77:                         return `~ snowflakes falling ~`;
+    case 95:                         return `~ thunder rumbles ⚡ ~`;
+    case 96: case 99:                return `~ stormy + hail, stay inside! ~`;
+    default:                         return hot ? `~ ${tempWord} day! ~` : `~ ${tempWord} ${cool || cold ? 'day' : 'and bright'} ~`;
+  }
+}
+
 export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
   const c = config || {};
   const wrapperRef = useRef<HTMLDivElement>(null);
   const confettiRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0);
   const [now, setNow] = useState<Date>(() => new Date());
+  // Live weather state — fetched from Open-Meteo for the configured
+  // location. Falls back to the temp/desc overrides if either fetch
+  // fails OR the user has set explicit overrides.
+  const [weather, setWeather] = useState<{ tempF: number; wmoCode: number } | null>(null);
 
   // Scale the 1920×1080 canvas to fit our zone. Use offsetWidth/Height
   // (LAYOUT size, unaffected by parent transforms) instead of
@@ -99,6 +142,30 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
     const id = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(id);
   }, []);
+
+  // Live weather — fetches from Open-Meteo when weatherLocation set.
+  // Refreshes every 15 min (fetchWeather caches internally too).
+  // Skipped entirely when an explicit weatherTemp override is provided.
+  useEffect(() => {
+    const loc = (c.weatherLocation || '').trim();
+    if (!loc || c.weatherTemp) return;
+    let cancelled = false;
+    const isCelsius = c.weatherUnits === 'metric';
+    const fetch = async () => {
+      try {
+        const data = await fetchWeather(loc, isCelsius);
+        if (cancelled || !data) return;
+        // Open-Meteo returns temp in the requested unit; convert C→F
+        // for the cute-phrase qualifier (which is keyed on F).
+        const tempVal = Math.round(data.temp);
+        const tempF = isCelsius ? Math.round(tempVal * 9/5 + 32) : tempVal;
+        setWeather({ tempF, wmoCode: data.weatherCode });
+      } catch { /* ignore — preview falls back to override or default */ }
+    };
+    fetch();
+    const id = setInterval(fetch, 15 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [c.weatherLocation, c.weatherUnits, c.weatherTemp]);
 
   // Spawn confetti once
   useEffect(() => {
@@ -226,9 +293,16 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
         <div className="aw-grid">
           <div className="aw-weather">
             <div className="aw-sunDisc">
-              <div className="aw-sunFace">{c.weatherTemp || '68°'}</div>
+              <div className="aw-sunFace">
+                {/* Live temp wins; explicit override second; static
+                    placeholder last so editor previews always show
+                    something even before the API call finishes. */}
+                {c.weatherTemp || (weather ? `${weather.tempF}°` : '68°')}
+              </div>
             </div>
-            <div className="aw-weatherDesc">{c.weatherDesc || '~ sunny + crisp ~'}</div>
+            <div className="aw-weatherDesc">
+              {c.weatherDesc || (weather ? cuteWeatherPhrase(weather.wmoCode, weather.tempF) : '~ sunny + crisp ~')}
+            </div>
           </div>
 
           <div className="aw-announce">

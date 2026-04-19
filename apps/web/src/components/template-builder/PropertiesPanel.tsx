@@ -529,9 +529,11 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="title" label="Big title" value={cfg.title || ''} placeholder="Welcome, Friends!" onChange={(v) => setField({ title: v })} />);
       fields.push(<TextField key="subtitle" label="Subtitle" value={cfg.subtitle || ''} placeholder="today is going to be amazing ✨" onChange={(v) => setField({ subtitle: v })} />);
 
-      fields.push(SH('Weather (left card)'));
-      fields.push(<TextField key="weatherTemp" label="Temperature" value={cfg.weatherTemp || ''} placeholder="68°" onChange={(v) => setField({ weatherTemp: v })} />);
-      fields.push(<TextField key="weatherDesc" label="Description" value={cfg.weatherDesc || ''} placeholder="~ sunny + crisp ~" onChange={(v) => setField({ weatherDesc: v })} />);
+      fields.push(SH('Weather (left card) — pulls live data'));
+      fields.push(<TextField key="weatherLocation" label="Location (city, state)" value={cfg.weatherLocation || ''} placeholder="Springfield, IL" onChange={(v) => setField({ weatherLocation: v })} />);
+      fields.push(<TextField key="weatherUnits" label="Units (imperial / metric)" value={cfg.weatherUnits || 'imperial'} placeholder="imperial" onChange={(v) => setField({ weatherUnits: (v.trim().toLowerCase() === 'metric' ? 'metric' : 'imperial') })} />);
+      fields.push(<TextField key="weatherTemp" label="Override temp (leave blank for live)" value={cfg.weatherTemp || ''} placeholder="68°" onChange={(v) => setField({ weatherTemp: v })} />);
+      fields.push(<TextField key="weatherDesc" label="Override description (leave blank for live)" value={cfg.weatherDesc || ''} placeholder="~ sunny + crisp ~" onChange={(v) => setField({ weatherDesc: v })} />);
 
       fields.push(SH('Big announcement (center cloud)'));
       fields.push(<TextField key="announcementLabel" label="Small label" value={cfg.announcementLabel || ''} placeholder="Big News" onChange={(v) => setField({ announcementLabel: v })} />);
