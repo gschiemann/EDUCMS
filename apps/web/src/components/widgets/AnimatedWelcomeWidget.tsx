@@ -587,7 +587,8 @@ const CSS = `
   overflow: hidden;
 }
 .aw-logoImg {
-  width: 76%; height: 76%; object-fit: contain;
+  width: 100%; height: 100%; object-fit: cover;
+  border-radius: 50%;
 }
 @keyframes aw-bounceLogo {
   0%, 100% { transform: translateY(0) rotate(-4deg); }
