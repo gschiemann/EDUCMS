@@ -29,7 +29,15 @@ async function main() {
     console.warn('⚠️  SEED_FULL_RESET=true — wiping ALL tenant data including custom templates.');
     await prisma.templateZone.deleteMany();
     await prisma.template.deleteMany();
-    await prisma.auditLog.deleteMany();
+    // AuditLog is immutable append-only. NEVER wipe in prod, and honor an
+    // explicit PRESERVE_AUDIT opt-out even in dev (e.g. debugging against a
+    // shared/prod-like DB where someone set NODE_ENV=development). Defense
+    // in depth: two independent env checks before any destructive delete.
+    if (process.env.NODE_ENV !== 'production' && !process.env.PRESERVE_AUDIT) {
+      await prisma.auditLog.deleteMany();
+    } else {
+      console.log('[seed] skipping auditLog.deleteMany (NODE_ENV=prod or PRESERVE_AUDIT=1)');
+    }
     await prisma.schedule.deleteMany();
     await prisma.playlistItem.deleteMany();
     await prisma.playlist.deleteMany();

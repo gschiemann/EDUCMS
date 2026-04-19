@@ -129,6 +129,32 @@ export class AssetsController {
     });
     if (!asset) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
 
+    // Protected-playlist guard: deleting an asset cascades to playlistItem
+    // rows, which could silently empty an emergency (protected) playlist.
+    // Block the delete and make the operator remove from the playlist
+    // explicitly first — same spirit as the playlist delete guard.
+    const affectedItems = await this.prisma.client.playlistItem.findMany({
+      where: { assetId: id },
+      select: { playlistId: true },
+    });
+    const affectedPlaylistIds = Array.from(new Set(affectedItems.map((i) => i.playlistId)));
+    if (affectedPlaylistIds.length > 0) {
+      const protectedPlaylists = await this.prisma.client.playlist.findMany({
+        where: { id: { in: affectedPlaylistIds }, isProtected: true },
+        select: { id: true, name: true, protectedKind: true },
+      });
+      if (protectedPlaylists.length > 0) {
+        throw new HttpException(
+          {
+            code: 'ASSET_IN_PROTECTED_PLAYLIST',
+            error: 'Asset is in a protected emergency playlist. Remove from the playlist first.',
+            playlists: protectedPlaylists.map((p) => ({ id: p.id, name: p.name, kind: p.protectedKind })),
+          },
+          HttpStatus.CONFLICT,
+        );
+      }
+    }
+
     // Delete playlist items referencing this asset
     await this.prisma.client.playlistItem.deleteMany({ where: { assetId: id } });
 
@@ -182,7 +208,20 @@ export class AssetsController {
       where: { id, tenantId: req.user.tenantId },
     });
     if (!asset) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
-    return this.prisma.client.asset.update({ where: { id }, data: { status: 'PUBLISHED' } });
+    // Idempotent approve: target the transition only, so a concurrent
+    // second call is a 0-row no-op instead of re-writing a duplicate
+    // status transition (and any downstream audit/webhook side effects).
+    const result = await this.prisma.client.asset.updateMany({
+      where: { id, tenantId: req.user.tenantId, status: 'PENDING_APPROVAL' },
+      data: { status: 'PUBLISHED' },
+    });
+    if (result.count === 0) {
+      throw new HttpException(
+        { code: 'ASSET_NOT_PENDING', message: 'Already approved or not pending.' },
+        HttpStatus.CONFLICT,
+      );
+    }
+    return this.prisma.client.asset.findUnique({ where: { id } });
   }
 
   @Put(':id/reject')

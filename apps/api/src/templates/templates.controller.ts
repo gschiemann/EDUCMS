@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Put, Delete, Body, Param, Query,
-  UseGuards, Request, HttpException, HttpStatus, Header,
+  UseGuards, Request, HttpException, HttpStatus, Header, Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -457,12 +457,28 @@ export class TemplatesController {
 // Helpers
 // ───────────────────────────────────────────────────────
 
+const mapTemplateLogger = new Logger('mapTemplate');
+
 function mapTemplate(template: any) {
   if (!template) return template;
   if (template.zones) {
     template.zones = template.zones.map((z: any) => ({
       ...z,
-      defaultConfig: z.defaultConfig ? JSON.parse(z.defaultConfig) : null,
+      // One malformed defaultConfig row used to 500 GET /templates for
+      // the entire tenant. Swallow the parse error, log it with the
+      // zone id, and fall through with an empty config so the rest of
+      // the template still renders.
+      defaultConfig: (() => {
+        if (!z.defaultConfig) return null;
+        try {
+          return JSON.parse(z.defaultConfig);
+        } catch (e) {
+          mapTemplateLogger.warn(
+            `malformed defaultConfig on zone ${z.id}: ${(e as Error).message}`,
+          );
+          return {};
+        }
+      })(),
     }));
   }
   return template;
