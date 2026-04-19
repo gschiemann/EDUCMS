@@ -211,24 +211,26 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
         : ['Maya', 'Eli', 'Sofia']);
   const bdInline = birthdayList.join('  ·  ');
 
-  // Hard rule: 1-3 names are STATIC and free to sprawl across the wide
-  // bottom slot. 4+ names ALWAYS marquee inside a narrower window so
-  // each name still gets readable airtime.
+  // Hard rule: 1-3 names are STATIC and sprawl across the wide bottom
+  // slot. 4+ names CONTINUOUSLY marquee — no pause at the end, just
+  // loops directly back to the first name. Achieved by rendering the
+  // inline text TWICE in the marquee track with a separator between
+  // copies and animating translateX from 0 to -50%, which moves the
+  // first copy completely off-screen exactly as the duplicate slides
+  // into the original position. Visually seamless infinite loop.
   const bdShouldScroll = birthdayList.length >= 4;
   const bdSlotRef = useRef<HTMLDivElement>(null);
   const bdTextRef = useRef<HTMLSpanElement>(null);
-  const [bdScrollDistance, setBdScrollDistance] = useState(0);
+  const [bdScrollDuration, setBdScrollDuration] = useState(20);
   useEffect(() => {
-    if (!bdShouldScroll) { setBdScrollDistance(0); return; }
+    if (!bdShouldScroll) return;
     const measure = () => {
-      const slot = bdSlotRef.current;
       const txt = bdTextRef.current;
-      if (!slot || !txt) return;
-      // When scrolling, slot is narrower (380px). Distance to scroll
-      // is the full overflow + a buffer so the last name fully clears
-      // before snapping back.
-      const overflow = Math.max(0, txt.scrollWidth - slot.clientWidth);
-      setBdScrollDistance(overflow + 40);
+      if (!txt) return;
+      // Pick a duration so scroll speed feels constant regardless of
+      // how many names. ~80px per second keeps it readable.
+      const halfWidth = txt.scrollWidth / 2;
+      setBdScrollDuration(Math.max(15, halfWidth / 80));
     };
     measure();
     const r1 = requestAnimationFrame(measure);
@@ -350,24 +352,25 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
               className="aw-bdNamesSlot"
               ref={bdSlotRef}
               style={{
-                // Wide slot for 1-3 names (sprawl right-to-left across
-                // the bottom). Narrow cell-width slot for 4+ names so
-                // the marquee window is intentionally tight and each
-                // name gets focused airtime as it passes through.
                 width: bdShouldScroll ? '380px' : '1100px',
                 justifyContent: bdShouldScroll ? 'flex-start' : 'flex-end',
               }}
             >
-              <span
-                ref={bdTextRef}
-                className="aw-bdNames"
-                style={bdShouldScroll ? {
-                  ['--bd-scroll-distance' as any]: `-${bdScrollDistance}px`,
-                  animation: `aw-bdMarquee ${Math.max(15, bdScrollDistance / 25)}s linear infinite`,
-                } : undefined}
-              >
-                {bdInline}
-              </span>
+              {bdShouldScroll ? (
+                /* Doubled content + translateX(0 → -50%) gives a seamless
+                   infinite loop with no pause. As the first copy exits
+                   left, the duplicate is exactly where the first started. */
+                <span
+                  ref={bdTextRef}
+                  className="aw-bdNames aw-bdNamesLoop"
+                  style={{ animation: `aw-bdLoop ${bdScrollDuration}s linear infinite` }}
+                >
+                  <span>{bdInline}</span>
+                  <span aria-hidden="true">&nbsp;&nbsp;·&nbsp;&nbsp;{bdInline}</span>
+                </span>
+              ) : (
+                <span ref={bdTextRef} className="aw-bdNames">{bdInline}</span>
+              )}
             </div>
           </div>
         </div>
@@ -703,14 +706,19 @@ const CSS = `
      measured text overflows, with a duration proportional to scroll
      distance so the speed feels constant regardless of list length. */
 }
-/* Marquee: pause at start, drift left to reveal the tail, hold at
-   end so the last names are readable, snap back. var(--bd-scroll-distance)
-   is the measured overflow in negative pixels. */
-@keyframes aw-bdMarquee {
-  0%   { transform: translateX(0); }
-  15%  { transform: translateX(0); }
-  85%  { transform: translateX(var(--bd-scroll-distance, 0)); }
-  100% { transform: translateX(var(--bd-scroll-distance, 0)); }
+/* Continuous loop marquee — content is duplicated in the JSX so
+   translating by -50% slides the first copy completely off-screen
+   exactly as the duplicate slides into the original position.
+   Visually seamless, no pause, no snap-back glitch. */
+@keyframes aw-bdLoop {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.aw-bdNamesLoop {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  will-change: transform;
 }
 
 /* TICKER — wavy ribbon */
