@@ -344,40 +344,57 @@
   .menu .item {
     container-type: size;
     flex: 1 1 0; min-height: 0;
-    display: flex; align-items: center; gap: clamp(10px, 3cqh + 8px, 20px);
+    display: flex; align-items: center; gap: clamp(12px, 3cqh + 10px, 22px);
     background: linear-gradient(135deg, #fef3c7, #fde68a);
     border: 3px solid #1f2937; border-radius: 14px;
-    padding: clamp(4px, 10cqh, 14px) clamp(12px, 4cqh + 12px, 22px);
+    padding: clamp(6px, 10cqh, 16px) clamp(16px, 4cqh + 14px, 26px);
     box-shadow: 4px 4px 0 #1f2937;
     overflow: hidden;
   }
   .menu .item .emoji {
-    /* ICON-SWAP: per-menu-line food icon. Size scales to row height
-       (60% of the row) so a 5-item menu shows huge emojis and a
-       10-item menu shrinks them automatically. Cap at 64px so a
-       short menu doesn't blow up ridiculously. */
-    font-size: clamp(28px, 60cqh, 64px);
+    /* ICON-SWAP: per-menu-line food icon. Scales up to 80px on short
+       menus, down to 36px on long ones. */
+    font-size: clamp(36px, 70cqh, 80px);
     line-height: 1; flex: 0 0 auto;
     filter: drop-shadow(0 2px 3px rgba(0,0,0,.2));
   }
-  .menu .item .body2 { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+  /* Name + allergens column — NOT flex:1 any more. Takes only the
+     space it needs so the dotted leader (next) can fill the gap
+     between the name and the price, classic restaurant-menu style. */
+  .menu .item .info {
+    flex: 0 1 auto; min-width: 0;
+    display: flex; flex-direction: column; justify-content: center;
+  }
   .menu .item .nm {
     font-family: 'Fredoka', sans-serif; font-weight: 700;
-    font-size: clamp(16px, 32cqh, 34px);
+    font-size: clamp(20px, 38cqh, 42px);
     color: #1f2937; line-height: 1.1;
     text-overflow: ellipsis; overflow: hidden; white-space: nowrap;
   }
   .menu .item .meta {
     font-family: 'Permanent Marker', cursive;
-    font-size: clamp(11px, 20cqh, 22px);
+    font-size: clamp(13px, 22cqh, 26px);
     color: #b91c1c; margin-top: clamp(0px, 1.5cqh, 4px);
     line-height: 1.1;
   }
+  /* Dotted leader — fills the gap between name and price so the eye
+     follows cleanly from 'Pepperoni Pizza' ............ $3.25. Sits
+     baseline-aligned with the name so dots read as an extension of
+     the text. Grows/shrinks with available width automatically. */
+  .menu .item .leader {
+    flex: 1 1 0; min-width: 12px;
+    height: 0;
+    border-bottom: 3px dotted rgba(220, 38, 38, .55);
+    align-self: center;
+    margin: 0 4px;
+    /* nudge dots down to baseline-height of the name row */
+    transform: translateY(calc(-1 * clamp(5px, 10cqh, 12px)));
+  }
   .menu .item .price {
-    /* Dedicated price slot — also scales with row height. */
+    /* Dedicated price slot — also scales up with row height. */
     font-family: 'Bungee', cursive;
-    font-size: clamp(16px, 28cqh, 30px);
-    color: #dc2626; flex: 0 0 auto; padding-left: 8px;
+    font-size: clamp(20px, 34cqh, 38px);
+    color: #dc2626; flex: 0 0 auto;
     line-height: 1;
   }
 
@@ -631,42 +648,47 @@
         <div class="items">
           <div class="item">
             <span class="emoji">🍕</span><!-- ICON-SWAP -->
-            <div class="body2">
+            <div class="info">
               <div class="nm">Pepperoni Pizza</div>
               <div class="meta">🌾 🧀</div>
             </div>
+            <div class="leader"></div>
             <span class="price">$3.25</span>
           </div>
           <div class="item">
             <span class="emoji">🥗</span><!-- ICON-SWAP -->
-            <div class="body2">
+            <div class="info">
               <div class="nm">Build-a-Salad Bar</div>
               <div class="meta">veg</div>
             </div>
+            <div class="leader"></div>
             <span class="price">$2.95</span>
           </div>
           <div class="item">
             <span class="emoji">🍟</span><!-- ICON-SWAP -->
-            <div class="body2">
+            <div class="info">
               <div class="nm">Crispy Fries</div>
               <div class="meta">veg · gf</div>
             </div>
+            <div class="leader"></div>
             <span class="price">$1.75</span>
           </div>
           <div class="item">
             <span class="emoji">🍎</span><!-- ICON-SWAP -->
-            <div class="body2">
+            <div class="info">
               <div class="nm">Fresh Fruit Cup</div>
               <div class="meta">veg · gf</div>
             </div>
+            <div class="leader"></div>
             <span class="price">$1.50</span>
           </div>
           <div class="item">
             <span class="emoji">🥛</span><!-- ICON-SWAP -->
-            <div class="body2">
+            <div class="info">
               <div class="nm">Milk · White or Chocolate</div>
               <div class="meta">🧀</div>
             </div>
+            <div class="leader"></div>
             <span class="price">$0.75</span>
           </div>
         </div>
