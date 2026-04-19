@@ -275,17 +275,29 @@ export function AnimatedCafeteriaElementaryWidget({ config, live }: { config: Cf
                 })}
               </div>
               <div className="cafe-items">
-                {menuItems.slice(0, 12).map((it, i) => (
-                  <div key={i} className="cafe-item">
-                    <span className="cafe-itemEmoji">{it.emoji || '🍽️'}</span>
-                    <div className="cafe-itemInfo">
-                      <div className="cafe-itemName">{it.name || ''}</div>
-                      {it.meta && <div className="cafe-itemMeta">{it.meta}</div>}
+                {menuItems.slice(0, 12).map((it, i) => {
+                  // emoji field doubles as an image url — admins can
+                  // upload a PNG per dish from the editor. Render <img>
+                  // when the value looks like a URL (http(s):, leading
+                  // '/', or data:image/), otherwise render as emoji text.
+                  const src = it.emoji || '';
+                  const isUrl = /^(https?:\/\/|\/|data:image\/)/.test(src);
+                  return (
+                    <div key={i} className="cafe-item">
+                      <span className="cafe-itemEmoji">
+                        {isUrl
+                          ? <img src={src} alt="" className="cafe-itemImg" />
+                          : (src || '🍽️')}
+                      </span>
+                      <div className="cafe-itemInfo">
+                        <div className="cafe-itemName">{it.name || ''}</div>
+                        {it.meta && <div className="cafe-itemMeta">{it.meta}</div>}
+                      </div>
+                      <div className="cafe-leader" />
+                      {it.price && <span className="cafe-itemPrice">{it.price}</span>}
                     </div>
-                    <div className="cafe-leader" />
-                    {it.price && <span className="cafe-itemPrice">{it.price}</span>}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -582,7 +594,19 @@ const CSS_CAFE = `
   box-shadow: 4px 4px 0 #1f2937;
   overflow: hidden;
 }
-.cafe-itemEmoji { font-size: clamp(36px, 70cqh, 80px); line-height: 1; flex: 0 0 auto; filter: drop-shadow(0 2px 3px rgba(0,0,0,.2)); }
+.cafe-itemEmoji {
+  font-size: clamp(36px, 70cqh, 80px); line-height: 1; flex: 0 0 auto;
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,.2));
+  display: inline-flex; align-items: center; justify-content: center;
+  /* Box the emoji AND uploaded image so they occupy the same slot */
+  width: clamp(40px, 80cqh, 90px); height: clamp(40px, 80cqh, 90px);
+}
+/* Uploaded image variant — fills the emoji slot, contain so aspect
+   is preserved. Little photo look: rounded corners + subtle border. */
+.cafe-itemImg {
+  width: 100%; height: 100%; object-fit: contain;
+  border-radius: 8px;
+}
 .cafe-itemInfo { flex: 0 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
 .cafe-itemName {
   font-family: 'Fredoka', sans-serif; font-weight: 700;

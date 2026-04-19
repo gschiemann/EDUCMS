@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, useEffect } from 'react';
+import { useId, useState, useEffect, useRef } from 'react';
 import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon } from 'lucide-react';
 import { useBuilderStore } from './useBuilderStore';
 import { widgetLabel } from './constants';
@@ -1248,6 +1248,166 @@ const CAFE_DAYS: Array<{ key: keyof CafeWeek; label: string }> = [
   { key: 'friday',    label: 'FRI' },
 ];
 
+// Standard lunch-item emoji picker — one-click replacement for typing
+// in an emoji by hand. Grouped by rough category so admins scan fast.
+// Keep this list flat + readable; we can grow it by user request.
+const LUNCH_EMOJI_GROUPS: Array<{ label: string; items: string[] }> = [
+  { label: 'Mains',    items: ['🍕','🍔','🌮','🌯','🥪','🥙','🌭','🍝','🍜','🍣','🍱','🍗','🍖','🥘','🍲','🍛','🍳','🥚','🍞','🥖','🥐'] },
+  { label: 'Sides',    items: ['🍟','🥗','🥙','🥣','🍚','🍜','🌽','🥔','🥦','🥕','🥒','🍅','🌶️','🌰','🧅','🫘','🥜','🫑'] },
+  { label: 'Fruit',    items: ['🍎','🍏','🍌','🍓','🍇','🍉','🍊','🍋','🍑','🍒','🥝','🍍','🥭','🫐','🍈','🫒'] },
+  { label: 'Drinks',   items: ['🥛','🧃','🧋','☕','🍵','🥤','💧'] },
+  { label: 'Desserts', items: ['🍪','🧁','🎂','🍰','🍩','🍦','🍨','🍫','🍬','🍭','🥧','🍮','🍯'] },
+];
+
+// Small popover emoji+upload picker for a single item's emoji slot.
+// Renders a button showing the current emoji (or a plate icon if unset)
+// that toggles a 2-tab pop: pick from common lunch emojis, or upload an
+// image. The cafeteria widget renders an <img> when the "emoji" field is
+// a URL (starts with http or /), otherwise renders it as text — so both
+// paths just write to the same `emoji` string on the item.
+function LunchEmojiPicker({ value, onChange }: { value: string | undefined; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<'emoji' | 'upload'>('emoji');
+  const pickerRef = useRef<HTMLDivElement | null>(null);
+  // Close on outside click so admins can click into the name field
+  // without the picker sitting there eating focus.
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const current = value || '';
+  const isUrl = /^(https?:|\/)/i.test(current);
+
+  return (
+    <div className="relative" ref={pickerRef}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-14 h-10 px-2 rounded border border-slate-200 bg-white text-center text-lg hover:border-indigo-300 hover:bg-indigo-50 transition flex items-center justify-center overflow-hidden"
+        aria-label={isUrl ? 'Change uploaded image' : 'Pick food emoji or upload image'}
+        title="Pick emoji / upload"
+      >
+        {isUrl
+          ? <img src={current} alt="" className="w-full h-full object-contain" />
+          : <span>{current || '🍽️'}</span>}
+      </button>
+      {open && (
+        <div
+          className="absolute z-50 mt-1 left-0 w-[320px] bg-white border border-slate-200 rounded-xl shadow-xl p-2"
+          role="dialog"
+          aria-label="Food emoji / image picker"
+        >
+          <div className="flex gap-1 mb-2 p-1 bg-slate-100 rounded-lg">
+            <button
+              type="button"
+              onClick={() => setTab('emoji')}
+              className={`flex-1 py-1.5 text-[11px] font-bold rounded-md transition ${
+                tab === 'emoji' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-800'
+              }`}
+            >
+              😀 Emoji
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab('upload')}
+              className={`flex-1 py-1.5 text-[11px] font-bold rounded-md transition ${
+                tab === 'upload' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-800'
+              }`}
+            >
+              🖼️ Upload image
+            </button>
+          </div>
+
+          {tab === 'emoji' && (
+            <div className="max-h-[320px] overflow-y-auto pr-1">
+              {LUNCH_EMOJI_GROUPS.map((group) => (
+                <div key={group.label} className="mb-3">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-1 mb-1.5">
+                    {group.label}
+                  </div>
+                  <div className="grid grid-cols-7 gap-1">
+                    {group.items.map((e) => (
+                      <button
+                        key={e}
+                        type="button"
+                        onClick={() => { onChange(e); setOpen(false); }}
+                        className={`text-2xl p-1 rounded-md transition ${
+                          current === e ? 'bg-indigo-100 ring-2 ring-indigo-400' : 'hover:bg-slate-100'
+                        }`}
+                        aria-label={`Pick ${e}`}
+                        title={e}
+                      >
+                        {e}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              <div className="border-t border-slate-100 pt-2 mt-1">
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Or type any emoji / text</label>
+                <input
+                  type="text"
+                  defaultValue={isUrl ? '' : current}
+                  placeholder="🍱 or any emoji"
+                  onBlur={(e) => onChange(e.target.value)}
+                  className="w-full px-2 py-1.5 rounded border border-slate-200 text-sm text-center"
+                />
+              </div>
+            </div>
+          )}
+
+          {tab === 'upload' && (
+            <div className="space-y-2 p-1">
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Upload a PNG, JPG, or SVG. Keep it square — it'll render at ~80px in the widget. Emojis still work; uploading replaces the emoji for this item only.
+              </p>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  // Read as data URL so the preview updates instantly. In
+                  // the production editor flow this would hand off to the
+                  // existing AssetPickerField / presigned-upload endpoint;
+                  // kept inline here so it works without an extra round-trip.
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    const result = reader.result;
+                    if (typeof result === 'string') {
+                      onChange(result);
+                      setOpen(false);
+                    }
+                  };
+                  reader.readAsDataURL(file);
+                }}
+                className="w-full text-xs"
+              />
+              {isUrl && (
+                <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                  <img src={current} alt="" className="w-10 h-10 object-contain rounded border border-slate-200" />
+                  <button
+                    type="button"
+                    onClick={() => { onChange('🍽️'); setOpen(false); }}
+                    className="text-[11px] text-rose-600 hover:text-rose-700 font-semibold"
+                  >
+                    Remove image · back to emoji
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function WeekMenuEditor({ value, onChange }: { value: Partial<CafeWeek> | undefined; onChange: (next: CafeWeek) => void }) {
   const [activeDay, setActiveDay] = useState<keyof CafeWeek>('monday');
   // Normalize to a full 5-day structure so we never fight undefineds.
@@ -1312,13 +1472,13 @@ function WeekMenuEditor({ value, onChange }: { value: Partial<CafeWeek> | undefi
       {items.map((it, idx) => (
         <div key={idx} className="bg-white border border-slate-200 rounded-lg p-2 space-y-1.5 shadow-sm">
           <div className="flex items-start gap-1.5">
-            <input
-              type="text"
-              value={it.emoji || ''}
-              placeholder="🍕"
-              onChange={(e) => update(idx, { emoji: e.target.value })}
-              className="w-14 px-2 py-1.5 rounded border border-slate-200 text-center text-lg"
-              aria-label="Food emoji"
+            {/* Emoji picker: click to open a 2-tab popover (common lunch
+                emojis grouped by category, or upload an image) — no more
+                typing emoji by hand. The `emoji` field accepts a string
+                OR a URL / data URL; the widget renders img if URL. */}
+            <LunchEmojiPicker
+              value={it.emoji}
+              onChange={(emoji) => update(idx, { emoji })}
             />
             <input
               type="text"

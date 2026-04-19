@@ -167,7 +167,16 @@ export class PlaylistsController {
       );
     }
 
-    await this.prisma.client.schedule.deleteMany({ where: { playlistId: id } });
+    // Soft-disable (don't hard-delete) schedules so the audit trail of
+    // "this schedule existed for playlist X" survives. Hard-deleting
+    // schedules loses the forensic record that a schedule was ever
+    // attached to an emergency drill playlist before it was removed.
+    // Prisma's @updatedAt directive refreshes updatedAt automatically on
+    // any write, so we only need to flip isActive here.
+    await this.prisma.client.schedule.updateMany({
+      where: { playlistId: id },
+      data: { isActive: false },
+    });
     await this.prisma.client.playlist.delete({ where: { id } });
     this.notifySync(req.user.tenantId);
     return { deleted: true };
