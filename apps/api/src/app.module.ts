@@ -26,6 +26,7 @@ import { OnboardingModule } from './onboarding/onboarding.module';
 import { EmailModule } from './email/email.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { LicenseModule } from './license/license.module';
+import { BrandingModule } from './branding/branding.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_FILTER, APP_GUARD, APP_PIPE, APP_INTERCEPTOR } from '@nestjs/core';
 import { SanitizationPipe } from './security/sanitization.pipe';
@@ -53,6 +54,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     OnboardingModule,
     NotificationsModule,
     LicenseModule,
+    BrandingModule,
     ThrottlerModule.forRoot([{
       ttl: 60000,
       limit: 100,

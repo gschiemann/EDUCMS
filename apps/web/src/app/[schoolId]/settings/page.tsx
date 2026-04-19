@@ -7,6 +7,7 @@ import { useState, useRef, useEffect } from 'react';
 import { UsbIngestCard } from '@/components/settings/UsbIngestCard';
 import { LicenseCard } from '@/components/settings/LicenseCard';
 import { PanicContentEditor } from '@/components/settings/PanicContentEditor';
+import { BrandingSettingsCard } from '@/components/settings/BrandingSettingsCard';
 
 const ROLES = ['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN', 'CONTRIBUTOR', 'RESTRICTED_VIEWER'] as const;
 
@@ -156,6 +157,11 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+
+        {/* Auto-branding — paste URL → CMS re-skins (Sprint 9) */}
+        <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}>
+          <BrandingSettingsCard />
+        </RoleGate>
 
         {/* License & Billing (Sprint 7E) — current tier, seats used, expiry */}
         <LicenseCard />

@@ -61,8 +61,54 @@ model Tenant {
   // "Pilot" (free tier with cap of 3 screens, no expiry). License flips
   // when an admin runs a Stripe checkout or the SUPER_ADMIN comps seats.
   license                 License?
+  // Auto-branding (Sprint 9). One-to-one; absence means "default theme."
+  branding                TenantBranding?
 
   @@map("tenants")
+}
+
+// Auto-branding — scraped or manually configured visual identity that
+// themes the admin UI (and, v1.5, player chrome / default templates).
+// `palette`, `confidenceScores`, `heroImages`, and `rawSnapshot` are
+// JSON blobs so we can iterate the schema of the design system without
+// migrations. Only `tenantId` is required; everything else is optional
+// to allow partial adoption (e.g., adopt the logo only, keep default
+// colors).
+model TenantBranding {
+  id                  String   @id @default(uuid())
+  tenantId            String   @unique @map("tenant_id")
+  // Human-readable product name for this tenant ("Lincoln HS Signage").
+  displayName         String?  @map("display_name")
+  tagline             String?
+  // Logo assets — all re-hosted in Supabase so we never hotlink the
+  // source. logoSvgInline holds inline SVG markup for pixel-perfect
+  // rendering when the source is SVG.
+  logoUrl             String?  @map("logo_url")
+  logoSvgInline       String?  @map("logo_svg_inline")
+  faviconUrl          String?  @map("favicon_url")
+  ogImageUrl          String?  @map("og_image_url")
+  // Full palette with derived shades. Shape:
+  // { primary, primaryHover, accent, accentHover, ink, surface,
+  //   surfaceAlt, success, warn, danger, extras?: string[] }
+  palette             Json?
+  // Google-Fonts-matched names + CSS import URLs
+  fontHeading         String?  @map("font_heading")
+  fontBody            String?  @map("font_body")
+  fontHeadingUrl      String?  @map("font_heading_url")
+  fontBodyUrl         String?  @map("font_body_url")
+  // Discovered hero photo candidates (up to 5, ranked)
+  heroImages          Json?    @map("hero_images")
+  // Provenance
+  sourceUrl           String?  @map("source_url")
+  scrapedAt           DateTime? @map("scraped_at")
+  confidenceScores    Json?    @map("confidence_scores")
+  // Raw scrape result stored for re-derive without re-scraping
+  rawSnapshot         Json?    @map("raw_snapshot")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at")
+  tenant              Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_branding")
 }
 
 model TenantSSOConfig {

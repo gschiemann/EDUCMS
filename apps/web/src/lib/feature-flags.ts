@@ -4,6 +4,7 @@ export const FLAGS = {
   EMERGENCY_NEW_UI: 'emergency_new_ui',
   TEMPLATE_BUILDER_V2: 'template_builder_v2',
   SIS_INTEGRATION: 'sis_integration',
+  AUTO_BRANDING: 'auto_branding',
 } as const;
 
 export type FlagKey = (typeof FLAGS)[keyof typeof FLAGS];
@@ -38,6 +39,12 @@ export function isFeatureEnabled(flag: FlagKey): boolean {
       return process.env.NEXT_PUBLIC_FF_TEMPLATE_BUILDER_V2 === 'true';
     case FLAGS.SIS_INTEGRATION:
       return process.env.NEXT_PUBLIC_FF_SIS_INTEGRATION === 'true';
+    case FLAGS.AUTO_BRANDING:
+      // Default-on in development (NODE_ENV === 'development') so the
+      // demo works out-of-the-box on localhost. Prod requires explicit opt-in.
+      if (process.env.NEXT_PUBLIC_FF_AUTO_BRANDING === 'false') return false;
+      if (process.env.NEXT_PUBLIC_FF_AUTO_BRANDING === 'true') return true;
+      return process.env.NODE_ENV !== 'production';
     default:
       return false;
   }
