@@ -444,12 +444,16 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
 
 function Hotspot({ section, x, y, w, h }: { section: string; x: number; y: number; w: number; h: number }) {
   return (
-    <button
-      type="button"
+    <div
       className="aw-hotspot"
       data-section={section}
-      onClick={(e) => {
-        e.stopPropagation();
+      role="button"
+      tabIndex={0}
+      onPointerDown={(e) => {
+        // Don't stopPropagation — the zone needs to be selected first
+        // (which mounts the ANIMATED_WELCOME fields in the panel) before
+        // we can scroll to a section. The CustomEvent fires after; the
+        // panel listener retries until the target element exists.
         try {
           window.dispatchEvent(new CustomEvent('aw-edit-section', { detail: { section } }));
         } catch { /* noop */ }
@@ -457,12 +461,7 @@ function Hotspot({ section, x, y, w, h }: { section: string; x: number; y: numbe
       style={{
         position: 'absolute',
         left: x, top: y, width: w, height: h,
-        background: 'transparent',
-        border: 'none',
-        padding: 0,
         cursor: 'pointer',
-        // High z-index so hotspots win the click over scene visuals.
-        // The animated decorations behind them still render normally.
         zIndex: 50,
       }}
       aria-label={`Edit ${section}`}

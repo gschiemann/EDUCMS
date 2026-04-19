@@ -12,19 +12,28 @@ export function PropertiesPanel() {
 
   // Hotspot listener — when the AnimatedWelcomeWidget dispatches an
   // 'aw-edit-section' CustomEvent (user clicked a region in the
-  // preview), scroll the matching section header into view and
-  // briefly pulse it pink so they can see what they're about to edit.
+  // preview), scroll the matching section header into view and pulse
+  // it pink. Retries the lookup for up to 1s because the zone may
+  // not have been selected yet (and therefore its fields not mounted)
+  // at the moment the click fires — both event types arrive on the
+  // same tick.
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as { section?: string } | undefined;
       const key = detail?.section;
       if (!key) return;
-      const el = document.getElementById(`aw-section-${key}`);
-      if (!el) return;
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      // Pulse highlight so the user sees what scrolled into view
-      el.classList.add('aw-section-flash');
-      setTimeout(() => el.classList.remove('aw-section-flash'), 1400);
+      let attempts = 0;
+      const tryScroll = () => {
+        const el = document.getElementById(`aw-section-${key}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          el.classList.add('aw-section-flash');
+          setTimeout(() => el.classList.remove('aw-section-flash'), 1400);
+          return;
+        }
+        if (++attempts < 20) setTimeout(tryScroll, 50); // ≤1s total
+      };
+      tryScroll();
     };
     window.addEventListener('aw-edit-section', handler);
     return () => window.removeEventListener('aw-edit-section', handler);
@@ -558,11 +567,9 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="title" label="Big title" value={cfg.title || ''} placeholder="Welcome, Friends!" onChange={(v) => setField({ title: v })} />);
       fields.push(<TextField key="subtitle" label="Subtitle" value={cfg.subtitle || ''} placeholder="today is going to be amazing ✨" onChange={(v) => setField({ subtitle: v })} />);
 
-      fields.push(SH('weather', 'Weather (left card) — pulls live data'));
-      fields.push(<TextField key="weatherLocation" label="ZIP code (leave blank to auto-detect from player location)" value={cfg.weatherLocation || ''} placeholder="auto-detect" onChange={(v) => setField({ weatherLocation: v })} />);
+      fields.push(SH('weather', 'Weather — auto-detected from the player'));
+      fields.push(<TextField key="weatherLocation" label="ZIP code override (leave blank to auto-detect)" value={cfg.weatherLocation || ''} placeholder="auto-detect" onChange={(v) => setField({ weatherLocation: v })} />);
       fields.push(<TextField key="weatherUnits" label="Units (imperial / metric)" value={cfg.weatherUnits || 'imperial'} placeholder="imperial" onChange={(v) => setField({ weatherUnits: (v.trim().toLowerCase() === 'metric' ? 'metric' : 'imperial') })} />);
-      fields.push(<TextField key="weatherTemp" label="Override temp (leave blank for live)" value={cfg.weatherTemp || ''} placeholder="68°" onChange={(v) => setField({ weatherTemp: v })} />);
-      fields.push(<TextField key="weatherDesc" label="Override description (leave blank for live)" value={cfg.weatherDesc || ''} placeholder="~ sunny + crisp ~" onChange={(v) => setField({ weatherDesc: v })} />);
 
       fields.push(SH('announcement', 'Big announcement (center cloud)'));
       fields.push(<TextField key="announcementLabel" label="Small label" value={cfg.announcementLabel || ''} placeholder="Big News" onChange={(v) => setField({ announcementLabel: v })} />);
