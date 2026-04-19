@@ -549,7 +549,23 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="teacherRole" label="Caption below" value={cfg.teacherRole || ''} placeholder="Teacher of the Week" onChange={(v) => setField({ teacherRole: v })} />);
 
       fields.push(SH('Birthdays (balloon cluster)'));
-      fields.push(<TextAreaField key="birthdayNames" label="Names — one per line OR separated by commas / center dots" value={Array.isArray(cfg.birthdayNames) ? cfg.birthdayNames.join('\n') : (cfg.birthdayNames || '')} placeholder={'Maya\nEli\nSofia'} rows={4} onChange={(v) => setField({ birthdayNames: v.split(/[\n,·]+/).map((s: string) => s.trim()).filter(Boolean) })} />);
+      // Normalize to one-name-per-line for display so it's obvious how
+      // to add another (just hit Enter). Save as a clean array.
+      fields.push(
+        <TextAreaField
+          key="birthdayNames"
+          label="Names — hit Enter to add another"
+          value={(() => {
+            const v = cfg.birthdayNames;
+            if (Array.isArray(v)) return v.join('\n');
+            if (typeof v === 'string') return v.split(/[\n,·]+/).map(s => s.trim()).filter(Boolean).join('\n');
+            return '';
+          })()}
+          placeholder={'Maya\nEli\nSofia'}
+          rows={5}
+          onChange={(v) => setField({ birthdayNames: v.split(/[\n,·]+/).map((s: string) => s.trim()).filter(Boolean) })}
+        />
+      );
 
       fields.push(SH('Bottom ticker'));
       fields.push(<TextField key="tickerStamp" label="Pink label" value={cfg.tickerStamp || ''} placeholder="SCHOOL NEWS" onChange={(v) => setField({ tickerStamp: v })} />);

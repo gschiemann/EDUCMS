@@ -133,34 +133,46 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
     : 'Welcome back, Stars!  ·  Picture day is Friday  ·  Reading Challenge: 20 minutes a day';
 
   // Birthdays — accept array or string (split on commas / center dots /
-  // newlines). Names stack VERTICALLY one per line. When there are
-  // too many to fit cleanly, switch to a carousel that rotates through
-  // groups of MAX_VISIBLE every BD_ROTATE_MS.
+  // newlines). Always render INLINE on a single line with " · " between
+  // names. If the line overflows the cell width, the CSS marquee in
+  // .aw-bdNames slowly scrolls it sideways. No carousel — single row,
+  // big text, infinite scroll.
   const birthdayList: string[] = Array.isArray(c.birthdayNames)
     ? c.birthdayNames.filter(Boolean)
     : (typeof c.birthdayNames === 'string'
         ? c.birthdayNames.split(/[,·\n]+/).map(s => s.trim()).filter(Boolean)
         : ['Maya', 'Eli', 'Sofia']);
-  const BD_MAX_VISIBLE = 3;            // hard ceiling — beyond this we rotate
-  const BD_ROTATE_MS = 5000;           // page swap cadence when carouseling
-  // Font ladder by visible count. Stays readable at distance — never goes
-  // smaller than 38px because beyond that you can't read it from across
-  // a hallway. Carousel handles the overflow instead of shrinking text.
-  const bdVisibleCount = Math.min(birthdayList.length, BD_MAX_VISIBLE);
-  const bdFontSize = bdVisibleCount <= 1 ? 56
-                   : bdVisibleCount === 2 ? 48 : 38;
-  // Carousel page index — only used when total > MAX_VISIBLE.
-  const [bdPage, setBdPage] = useState(0);
-  const bdNeedsCarousel = birthdayList.length > BD_MAX_VISIBLE;
-  const bdPageCount = bdNeedsCarousel ? Math.ceil(birthdayList.length / BD_MAX_VISIBLE) : 1;
+  const bdInline = birthdayList.join('  ·  ');
+
+  // Measure whether the inline names overflow the cell so we only
+  // animate the marquee when needed (otherwise short lists would
+  // jitter pointlessly).
+  const bdSlotRef = useRef<HTMLDivElement>(null);
+  const bdTextRef = useRef<HTMLSpanElement>(null);
+  const [bdShouldScroll, setBdShouldScroll] = useState(false);
+  const [bdScrollDistance, setBdScrollDistance] = useState(0);
   useEffect(() => {
-    if (!bdNeedsCarousel) { setBdPage(0); return; }
-    const id = setInterval(() => setBdPage((p) => (p + 1) % bdPageCount), BD_ROTATE_MS);
-    return () => clearInterval(id);
-  }, [bdNeedsCarousel, bdPageCount]);
-  const bdVisible = bdNeedsCarousel
-    ? birthdayList.slice(bdPage * BD_MAX_VISIBLE, bdPage * BD_MAX_VISIBLE + BD_MAX_VISIBLE)
-    : birthdayList;
+    const measure = () => {
+      const slot = bdSlotRef.current;
+      const txt = bdTextRef.current;
+      if (!slot || !txt) return;
+      const overflow = txt.scrollWidth - slot.clientWidth;
+      if (overflow > 4) {
+        setBdShouldScroll(true);
+        // Distance to scroll = the overflow amount + a small buffer
+        setBdScrollDistance(overflow + 20);
+      } else {
+        setBdShouldScroll(false);
+        setBdScrollDistance(0);
+      }
+    };
+    measure();
+    const r1 = requestAnimationFrame(measure);
+    const r2 = requestAnimationFrame(() => requestAnimationFrame(measure));
+    const ro = new ResizeObserver(measure);
+    if (bdSlotRef.current) ro.observe(bdSlotRef.current);
+    return () => { cancelAnimationFrame(r1); cancelAnimationFrame(r2); ro.disconnect(); };
+  }, [bdInline]);
 
   // Clock time
   const hh = ((now.getHours() + 11) % 12) + 1;
@@ -259,21 +271,23 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
               <div className="aw-cake">🎂</div>
             </div>
             <div className="aw-bdLbl">Today's Birthdays</div>
-            {/* Names container has a FIXED height (room for 3 lines at the
-                largest font) so the cluster + label stay locked in place
-                regardless of how many names are visible on a given carousel
-                page. Without this lock, recentering shifts the whole stack
-                up and down between rotations. */}
-            <div className="aw-bdNamesSlot">
-              <div
+            {/* Single-line marquee — names join on one row with center dots
+                and slowly scroll sideways if they overflow the cell width.
+                Always big text; never compresses. The slot has a fixed
+                height + overflow:hidden so neighboring widgets don't reflow. */}
+            <div className="aw-bdNamesSlot" ref={bdSlotRef}>
+              <span
+                ref={bdTextRef}
                 className="aw-bdNames"
-                key={`bd-page-${bdPage}`}
-                style={{ fontSize: bdFontSize }}
+                style={bdShouldScroll ? {
+                  // Custom property feeds the keyframe so the distance
+                  // matches actual overflow — no guessing.
+                  ['--bd-scroll-distance' as any]: `-${bdScrollDistance}px`,
+                  animation: `aw-bdMarquee ${Math.max(12, bdScrollDistance / 25)}s linear infinite`,
+                } : undefined}
               >
-                {bdVisible.map((name, i) => (
-                  <div key={`${bdPage}-${i}-${name}`} className="aw-bdName">{name}</div>
-                ))}
-              </div>
+                {bdInline}
+              </span>
             </div>
           </div>
         </div>
@@ -581,26 +595,35 @@ const CSS = `
   letter-spacing: .12em; color: #be185d; text-transform: uppercase;
   margin-top: 12px; text-shadow: 0 2px 0 rgba(255,255,255,.7);
 }
-/* Fixed-height slot. Reserves enough space for 3 lines at the smallest
-   font size (38px × 1.05 line-height ≈ 120px). Names render top-anchored
-   inside the slot. Empty space below when fewer names are visible — the
-   slot height itself never changes, so neighbors never shift. */
+/* Single-line slot. Big font, marquees sideways only if the names
+   overflow the cell width (measured by JS in the component). Fixed
+   height keeps the cluster + label anchored above; overflow:hidden
+   prevents bleed into neighboring widgets. */
 .aw-bdNamesSlot {
-  height: 130px;
-  display: flex; align-items: flex-start; justify-content: center;
-  margin-top: 6px;
+  height: 90px;
+  width: 100%;
+  display: flex; align-items: center; justify-content: center;
+  margin-top: 8px;
+  overflow: hidden;
 }
 .aw-bdNames {
-  display: flex; flex-direction: column; align-items: center;
   font-family: 'Caveat', cursive; font-weight: 700;
-  color: #831843; text-shadow: 0 2px 0 rgba(255,255,255,.7);
-  text-align: center;
-  animation: aw-bdFadeIn .55s ease-out;
+  font-size: 64px; line-height: 1; color: #831843;
+  text-shadow: 0 2px 0 rgba(255,255,255,.7);
+  white-space: nowrap;
+  display: inline-block;
+  /* Default: no animation. Component sets style.animation when the
+     measured text overflows, with a duration proportional to scroll
+     distance so the speed feels constant regardless of list length. */
 }
-.aw-bdName { line-height: 1.05; white-space: nowrap; }
-@keyframes aw-bdFadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
+/* Marquee: pause at start, drift left to reveal the tail, hold at
+   end so the last names are readable, snap back. var(--bd-scroll-distance)
+   is the measured overflow in negative pixels. */
+@keyframes aw-bdMarquee {
+  0%   { transform: translateX(0); }
+  15%  { transform: translateX(0); }
+  85%  { transform: translateX(var(--bd-scroll-distance, 0)); }
+  100% { transform: translateX(var(--bd-scroll-distance, 0)); }
 }
 
 /* TICKER — wavy ribbon */
