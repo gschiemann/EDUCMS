@@ -330,39 +330,55 @@
     box-shadow: 2px 4px 0 #1f2937, 0 0 0 3px #fbbf24;
     text-shadow: 1px 1px 0 rgba(0,0,0,.2);
   }
-  /* Items: single-column stack, much bigger. Fits 5 lines with room
-     to breathe; extras scroll with a fade if the day has 6+ items. */
+  /* Items: single-column stack. Auto-sizes by item count using
+     container queries — each row gets an equal share of the
+     available menu-card height (flex: 1 1 0 + min-height: 0), and
+     ALL typography scales with that row height via cqh. So 4 items
+     render huge; 8 items render compact; 10+ items stay readable.
+     Caps keep the design from going ridiculous at extreme sizes. */
   .menu .items {
-    display: flex; flex-direction: column; gap: 10px;
-    flex: 1; min-height: 0; overflow: hidden;
-    padding-right: 4px;
+    display: flex; flex-direction: column; gap: clamp(4px, 1.5%, 10px);
+    flex: 1 1 0; min-height: 0; overflow: hidden;
+    padding-right: 2px;
   }
   .menu .item {
-    display: flex; align-items: center; gap: 18px;
+    container-type: size;
+    flex: 1 1 0; min-height: 0;
+    display: flex; align-items: center; gap: clamp(10px, 3cqh + 8px, 20px);
     background: linear-gradient(135deg, #fef3c7, #fde68a);
     border: 3px solid #1f2937; border-radius: 14px;
-    padding: 14px 22px;
+    padding: clamp(4px, 10cqh, 14px) clamp(12px, 4cqh + 12px, 22px);
     box-shadow: 4px 4px 0 #1f2937;
+    overflow: hidden;
   }
   .menu .item .emoji {
-    /* ICON-SWAP: per-menu-line food icon. Bigger to read from across a cafeteria. */
-    font-size: 64px; line-height: 1; flex: 0 0 auto;
+    /* ICON-SWAP: per-menu-line food icon. Size scales to row height
+       (60% of the row) so a 5-item menu shows huge emojis and a
+       10-item menu shrinks them automatically. Cap at 64px so a
+       short menu doesn't blow up ridiculously. */
+    font-size: clamp(28px, 60cqh, 64px);
+    line-height: 1; flex: 0 0 auto;
     filter: drop-shadow(0 2px 3px rgba(0,0,0,.2));
   }
-  .menu .item .body2 { flex: 1; min-width: 0; }
+  .menu .item .body2 { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
   .menu .item .nm {
-    font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 34px;
+    font-family: 'Fredoka', sans-serif; font-weight: 700;
+    font-size: clamp(16px, 32cqh, 34px);
     color: #1f2937; line-height: 1.1;
     text-overflow: ellipsis; overflow: hidden; white-space: nowrap;
   }
   .menu .item .meta {
-    font-family: 'Permanent Marker', cursive; font-size: 22px;
-    color: #b91c1c; margin-top: 4px;
+    font-family: 'Permanent Marker', cursive;
+    font-size: clamp(11px, 20cqh, 22px);
+    color: #b91c1c; margin-top: clamp(0px, 1.5cqh, 4px);
+    line-height: 1.1;
   }
   .menu .item .price {
-    /* Dedicated price slot so it doesn't get buried in the meta line */
-    font-family: 'Bungee', cursive; font-size: 28px; color: #dc2626;
-    flex: 0 0 auto; padding-left: 8px;
+    /* Dedicated price slot — also scales with row height. */
+    font-family: 'Bungee', cursive;
+    font-size: clamp(16px, 28cqh, 30px);
+    color: #dc2626; flex: 0 0 auto; padding-left: 8px;
+    line-height: 1;
   }
 
   /* COUNTDOWN — sunburst badge. Icon AND label both easy to swap. */
