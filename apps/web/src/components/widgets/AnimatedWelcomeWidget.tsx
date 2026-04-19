@@ -46,22 +46,26 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
   const confettiRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0);
 
-  // Measure parent and scale the 1920×1080 canvas to fit
+  // Measure THIS element (which fills its zone) and scale the 1920×1080
+  // canvas to fit. Measure self instead of parent because the parent
+  // sometimes hasn't laid out yet (during thumbnail hydration) and
+  // returns 0×0, which collapses the canvas to invisible.
   useEffect(() => {
     const el = wrapperRef.current;
-    if (!el?.parentElement) return;
+    if (!el) return;
     const compute = () => {
-      const rect = el.parentElement!.getBoundingClientRect();
+      const rect = el.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return;
       const sx = rect.width / CANVAS_W;
       const sy = rect.height / CANVAS_H;
       setScale(Math.min(sx, sy));
     };
     compute();
-    const raf = requestAnimationFrame(compute);
+    const raf1 = requestAnimationFrame(compute);
+    const raf2 = requestAnimationFrame(() => requestAnimationFrame(compute));
     const ro = new ResizeObserver(compute);
-    ro.observe(el.parentElement);
-    return () => { cancelAnimationFrame(raf); ro.disconnect(); };
+    ro.observe(el);
+    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); ro.disconnect(); };
   }, []);
 
   // Live clock — refresh every 30s
@@ -187,7 +191,7 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
               <div className="aw-tFace">{c.teacherEmoji || '👩‍🏫'}</div>
               <div className="aw-tName">{c.teacherName || 'Mrs. Johnson'}</div>
             </div>
-            <div className="aw-tRole">{c.teacherRole || '~ Teacher of the Week ~'}</div>
+            <div className="aw-tRole">{c.teacherRole || 'Teacher of the Week'}</div>
           </div>
 
           <div className="aw-birthdays">
@@ -293,7 +297,7 @@ const CSS = `
   animation: aw-gradientShift 6s linear infinite;
 }
 @keyframes aw-gradientShift { from { background-position: 0% 50%; } to { background-position: 300% 50%; } }
-.aw-sub { font-family: 'Caveat', cursive; font-size: 44px; color: #92400e; margin-top: 6px; }
+.aw-sub { font-family: 'Caveat', cursive; font-size: 56px; color: #92400e; margin-top: 10px; }
 
 .aw-clock {
   width: 180px; height: 180px;
@@ -413,9 +417,9 @@ const CSS = `
   0%, 100% { transform: scale(1) rotate(-3deg); }
   50% { transform: scale(1.06) rotate(3deg); }
 }
-.aw-cdLbl { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 18px; letter-spacing: .15em; color: #7c2d12; text-transform: uppercase; }
-.aw-cdNum { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 110px; line-height: .9; color: #7c2d12; text-shadow: 0 3px 0 rgba(255,255,255,.5); }
-.aw-cdUnit { font-family: 'Caveat', cursive; font-size: 32px; color: #7c2d12; }
+.aw-cdLbl { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 22px; letter-spacing: .12em; color: #7c2d12; text-transform: uppercase; max-width: 180px; line-height: 1.05; }
+.aw-cdNum { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 90px; line-height: .9; color: #7c2d12; text-shadow: 0 3px 0 rgba(255,255,255,.5); margin: 4px 0; }
+.aw-cdUnit { font-family: 'Caveat', cursive; font-size: 36px; color: #7c2d12; }
 
 /* TEACHER — polaroid */
 .aw-teacher { grid-column: 1; grid-row: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
@@ -441,12 +445,14 @@ const CSS = `
   display: flex; align-items: center; justify-content: center; font-size: 120px;
 }
 .aw-tName {
-  position: absolute; left: 0; right: 0; bottom: 18px; text-align: center;
-  font-family: 'Caveat', cursive; font-weight: 700; font-size: 32px; color: #6d28d9;
+  position: absolute; left: 0; right: 0; bottom: 20px; text-align: center;
+  font-family: 'Caveat', cursive; font-weight: 700; font-size: 40px; color: #6d28d9;
+  line-height: 1;
 }
 .aw-tRole {
-  margin-top: 14px; text-align: center;
-  font-family: 'Caveat', cursive; font-size: 32px; color: #831843;
+  margin-top: 22px; text-align: center;
+  font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 22px; color: #be185d;
+  letter-spacing: .12em; text-transform: uppercase;
   text-shadow: 0 2px 0 rgba(255,255,255,.7);
 }
 
@@ -463,8 +469,8 @@ const CSS = `
 .aw-bal2 { left: 70px; top: 14px; background: #fbbf24; transform: rotate(-6deg); width: 80px; height: 100px; }
 .aw-bal3 { left: 130px; top: 0; background: #ec4899; }
 .aw-cake { position: absolute; bottom: -15px; left: 50%; transform: translateX(-50%); font-size: 60px; line-height: 1; }
-.aw-bdLbl { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 20px; letter-spacing: .12em; color: #be185d; text-transform: uppercase; margin-top: 22px; text-shadow: 0 2px 0 rgba(255,255,255,.7); }
-.aw-bdNames { font-family: 'Caveat', cursive; font-size: 38px; color: #831843; line-height: 1.05; text-shadow: 0 2px 0 rgba(255,255,255,.7); }
+.aw-bdLbl { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 24px; letter-spacing: .12em; color: #be185d; text-transform: uppercase; margin-top: 28px; text-shadow: 0 2px 0 rgba(255,255,255,.7); }
+.aw-bdNames { font-family: 'Caveat', cursive; font-weight: 700; font-size: 56px; color: #831843; line-height: 1.05; text-shadow: 0 2px 0 rgba(255,255,255,.7); margin-top: 4px; }
 
 /* TICKER — wavy ribbon */
 .aw-ticker {
