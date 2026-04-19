@@ -1,0 +1,14 @@
+#!/bin/sh
+# Block commits that drift pnpm-lock.yaml from package.json files.
+# Runs in <5s because --lockfile-only doesn't actually install anything.
+
+if ! pnpm install --frozen-lockfile --lockfile-only --silent 2>/tmp/pnpm-precommit-err; then
+  echo ""
+  echo "✗ pre-commit blocked: pnpm-lock.yaml is out of sync with a package.json."
+  echo ""
+  cat /tmp/pnpm-precommit-err
+  echo ""
+  echo "Fix: run 'pnpm install' to regenerate the lockfile, then 'git add pnpm-lock.yaml' before committing again."
+  echo ""
+  exit 1
+fi

@@ -1163,4 +1163,48 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
       {"name":"Ticker","widgetType":"TICKER","x":0,"y":92,"width":100,"height":8,"zIndex":6,"sortOrder":9,"defaultConfig":{"theme":"achievement-hall","speed":"medium","messages":["FINAL: Varsity 28 — Central 14","Girls volleyball advances to state finals","JV soccer moves on to regionals","Pep rally Friday @ 2:30 in the gym"]}},
     ],
   },
+  {
+    id: "preset-lobby-animated-rainbow",
+    name: "🎉 Animated Rainbow · Welcome",
+    description: "Full-screen ANIMATED elementary welcome — confetti rain, spinning sun, drifting clouds, wiggling clock, floating balloons, scrolling ticker. The first preset with motion.",
+    category: "LOBBY",
+    orientation: 'LANDSCAPE',
+    schoolLevel: "ELEMENTARY",
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: "#BFE8FF",
+    bgGradient: "linear-gradient(180deg,#BFE8FF 0%,#FFE0EC 55%,#FFD8A8 100%)",
+    zones: [
+      {
+        "name": "Animated Welcome Scene",
+        "widgetType": "ANIMATED_WELCOME",
+        "x": 0, "y": 0, "width": 100, "height": 100,
+        "zIndex": 1,
+        "sortOrder": 0,
+        "defaultConfig": {
+          "logoEmoji": "🍎",
+          "title": "Welcome, Friends!",
+          "subtitle": "today is going to be amazing ✨",
+          "weatherTemp": "68°",
+          "weatherDesc": "~ sunny + crisp ~",
+          "announcementLabel": "Big News",
+          "announcementMessage": "Book Fair starts Monday! 📚 Come find your new favorite story.",
+          "countdownLabel": "Field Trip in",
+          "countdownNumber": 3,
+          "countdownUnit": "days",
+          "teacherEmoji": "👩‍🏫",
+          "teacherName": "Mrs. Johnson",
+          "teacherRole": "~ Teacher of the Week ~",
+          "birthdayNames": "Maya · Eli · Sofia",
+          "tickerStamp": "SCHOOL NEWS",
+          "tickerMessages": [
+            "Welcome back, Stars! ⭐",
+            "Picture day is Friday 📸",
+            "Reading Challenge: 20 minutes a day 📖",
+            "Parent-teacher conferences next Tuesday 👨‍👩‍👧"
+          ]
+        }
+      }
+    ],
+  },
 ];

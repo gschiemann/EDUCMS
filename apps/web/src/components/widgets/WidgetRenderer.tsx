@@ -35,6 +35,7 @@ import { JumbotronProLogo, JumbotronProText, JumbotronProClock, JumbotronProWeat
 // 8 generic (theme-agnostic) widgets for launch: QUOTE, STATS,
 // MENU_ITEM, SCOREBOARD, SCHEDULE_GRID, ATTENDANCE, BIRTHDAYS, HONOR_ROLL.
 import { QuoteWidget, StatsWidget, MenuItemWidget, ScoreboardWidget, ScheduleGridWidget, AttendanceWidget, BirthdaysWidget, HonorRollWidget } from './themes/GenericWidgets';
+import { AnimatedWelcomeWidget } from './AnimatedWelcomeWidget';
 import { ScrapbookLogo, ScrapbookText, ScrapbookClock, ScrapbookWeather, ScrapbookCountdown, ScrapbookAnnouncement, ScrapbookCalendar, ScrapbookStaffSpotlight, ScrapbookImageCarousel, ScrapbookTicker } from './themes/scrapbook';
 import { LockerHallwayLogo, LockerHallwayText, LockerHallwayClock, LockerHallwayWeather, LockerHallwayCountdown, LockerHallwayAnnouncement, LockerHallwayCalendar, LockerHallwayStaffSpotlight, LockerHallwayImageCarousel, LockerHallwayTicker } from './themes/locker-hallway';
 import { SpiritRallyLogo, SpiritRallyText, SpiritRallyClock, SpiritRallyWeather, SpiritRallyCountdown, SpiritRallyAnnouncement, SpiritRallyCalendar, SpiritRallyStaffSpotlight, SpiritRallyImageCarousel, SpiritRallyTicker } from './themes/spirit-rally';
@@ -124,6 +125,8 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'ON_SCREEN_KEYBOARD': return <OnScreenKeyboardWidget config={cfg} />;
     case 'WAYFINDING_MAP':   return <WayfindingMapWidget config={cfg} />;
     case 'QUICK_POLL':       return <QuickPollWidget config={cfg} />;
+    // ── Animated full-screen scenes (one widget = whole template) ──
+    case 'ANIMATED_WELCOME': return <AnimatedWelcomeWidget config={cfg} />;
     default:             return null;
   }
 }

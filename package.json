@@ -18,7 +18,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "a11y:ci": "pnpm --filter web run a11y:ci",
-    "lhci": "pnpm --filter web run lhci"
+    "lhci": "pnpm --filter web run lhci",
+    "preflight": "pnpm install --frozen-lockfile --lockfile-only && pnpm --filter @cms/api-types build && pnpm --filter @cms/auth-core build && pnpm --filter @cms/ws-events build && pnpm --filter api build && pnpm --filter web build"
   },
   "dependencies": {
     "@cms/api-types": "workspace:*",

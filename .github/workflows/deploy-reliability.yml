@@ -1,0 +1,148 @@
+name: Deploy Reliability
+
+# Runs on every push to master + every PR. Blocks the bad-build classes
+# we hit in production debugging on 2026-04-19:
+#   - native deps not compiling on Alpine (argon2/bcrypt)
+#   - Prisma schema missing at install time
+#   - workspace TS packages not built before Node tries to require them
+#   - lockfile drift
+#   - TS errors in apps/web that break the Vercel build
+# See CLAUDE.md "Build failure modes" appendix for the full story.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+# Cancel in-progress runs when a newer commit arrives on the same ref.
+concurrency:
+  group: deploy-reliability-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lockfile-check:
+    name: pnpm lockfile drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Verify lockfile matches package.json
+        run: pnpm install --frozen-lockfile --lockfile-only
+
+  api-build:
+    name: API + workspace packages build
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install
+        env:
+          # Skip the postinstall prisma generate during install since it
+          # needs DATABASE_URL; we run it explicitly below.
+          PRISMA_SKIP_POSTINSTALL_GENERATE: "true"
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Build workspace packages
+        run: |
+          pnpm --filter @cms/api-types build
+          pnpm --filter @cms/auth-core build
+          pnpm --filter @cms/ws-events build
+      - name: Generate Prisma client
+        run: cd packages/database && npx prisma generate
+      - name: Build API
+        run: pnpm --filter api build
+
+  web-build:
+    name: Web typecheck + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install
+        env:
+          PRISMA_SKIP_POSTINSTALL_GENERATE: "true"
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Generate Prisma client
+        run: cd packages/database && npx prisma generate
+      - name: Build web
+        env:
+          NEXT_PUBLIC_API_URL: https://api-production-39a1.up.railway.app/api/v1
+        run: pnpm --filter web build
+
+  docker-build:
+    name: Docker build + boot smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the same image Railway will build
+        run: docker build -f Dockerfile -t educms-api:ci .
+      - name: Boot smoke test
+        run: |
+          docker run --rm -d --name api-smoke -p 18080:8080 \
+            -e NODE_ENV=production \
+            -e PORT=8080 \
+            -e DATABASE_URL='postgres://fake:fake@localhost:5432/fake?schema=public' \
+            -e DIRECT_URL='postgres://fake:fake@localhost:5432/fake?schema=public' \
+            -e JWT_SECRET='ci-fake-jwt-secret-please-do-not-use-in-prod-32chars' \
+            -e SESSION_SECRET='ci-fake-session-secret-please-do-not-use-in-prod-32chars' \
+            -e DEVICE_SECRET_KEY='ci-fake-device-secret-please-do-not-use-in-prod-32chars' \
+            -e DEVICE_JWT_SECRET='ci-fake-device-jwt-secret-please-do-not-use-in-prod-32chars' \
+            -e SUPABASE_URL='https://fake.supabase.co' \
+            -e SUPABASE_SERVICE_ROLE_KEY='fake' \
+            educms-api:ci
+          # Poll up to 60s for "API listening" or any fatal error.
+          for i in $(seq 1 30); do
+            if docker logs api-smoke 2>&1 | grep -q "API listening"; then
+              echo "API booted ✓"
+              exit_ok=1
+              break
+            fi
+            if docker logs api-smoke 2>&1 | grep -E "(\[bootstrap\] fatal|FATAL|Cannot find module|listen tcp)" >/dev/null; then
+              echo "API crashed at boot ✗"
+              docker logs api-smoke
+              docker stop api-smoke || true
+              exit 1
+            fi
+            sleep 2
+          done
+          if [ "${exit_ok:-0}" != "1" ]; then
+            echo "API never logged 'API listening' within 60s ✗"
+            docker logs api-smoke
+            docker stop api-smoke || true
+            exit 1
+          fi
+      - name: Healthcheck curl
+        run: |
+          # The /health endpoint is designed to 200 even with degraded
+          # downstream services. If it doesn't, the deploy will be wedged.
+          curl -fsS --max-time 10 http://localhost:18080/api/v1/health || {
+            echo "Healthcheck failed ✗"
+            docker logs api-smoke
+            exit 1
+          }
+          echo "Healthcheck OK ✓"
+      - name: Stop container
+        if: always()
+        run: docker stop api-smoke || true

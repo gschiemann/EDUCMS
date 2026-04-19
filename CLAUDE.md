@@ -234,6 +234,80 @@ Refer to `docs/BACKUP_AND_ROLLBACK.md` for full procedures. Summary:
 
 Keep 3 most recent tarballs; older ones can be deleted (git history is safe).
 
+## Deploy Reliability
+
+The `.github/workflows/deploy-reliability.yml` pipeline runs on every push
+to master + every PR with four parallel jobs. They catch the build
+failures we hit in production debugging on 2026-04-19 BEFORE the bad
+commit reaches Railway. **Always wait for the green CI check before
+shipping anything user-facing.**
+
+### Build failure modes we've seen, and how the CI catches them
+
+1. **argon2 / bcrypt fail to native-compile on Alpine.**
+   The Dockerfile builder stage is `node:20-alpine` which ships without a
+   C/C++ toolchain. Without `apk add python3 make g++ openssl libc6-compat`
+   before `pnpm install`, both packages fail their `node-gyp` build with
+   a cryptic `ELIFECYCLE` and Railway shows "Application failed to
+   respond." → Caught by the **`docker-build`** job which runs the same
+   image Railway will run.
+
+2. **Prisma schema not present at install time.**
+   The root `postinstall` runs `pnpm db:generate` which calls
+   `prisma generate`, which needs `packages/database/prisma/schema.prisma`
+   on disk. Dockerfile must `COPY packages/database/prisma` BEFORE
+   `pnpm install`. → Caught by **`docker-build`**.
+
+3. **Workspace TS packages need a build step.**
+   `packages/{api-types,auth-core,ws-events}` have `package.json` `main`
+   pointing at `dist/index.js`. The Dockerfile must build them before the
+   API or `node apps/api/dist/main.js` crashes with `SyntaxError:
+   Unexpected token 'export'` when it tries to require a raw `.ts` file.
+   → Caught by **`api-build`** and **`docker-build`**.
+
+4. **Lockfile drift.** Adding a devDep to a package.json without re-running
+   `pnpm install` breaks `pnpm install --frozen-lockfile` on Railway with
+   `ERR_PNPM_OUTDATED_LOCKFILE`. → Caught by **`lockfile-check`**, AND
+   pre-emptively blocked locally by `.husky/pre-commit`.
+
+5. **TypeScript errors in `apps/web`.** Next.js fails the production
+   build on type errors (`morning-news.tsx` hit this with a stale
+   `'dayperiod'` type). → Caught by **`web-build`**.
+
+### Local preflight
+
+Before pushing, run `pnpm preflight` from the repo root. It runs the same
+non-Docker checks the CI does (lockfile + workspace builds + API + web)
+in under 90 seconds. The Docker check is CI-only because spinning up
+Docker locally is slow.
+
+### Pre-commit hook (husky)
+
+`.husky/pre-commit` blocks any commit that would drift `pnpm-lock.yaml`.
+Activates automatically after `pnpm install` (via the `prepare` script).
+On Windows, Git for Windows runs the hook through its bundled `sh.exe`;
+no extra config needed.
+
+### When the demo breaks despite all this
+
+Check **Railway dashboard → Deployments → latest → Build Logs**, then
+**Deploy Logs**. Build Logs show Dockerfile failures; Deploy Logs show
+runtime crashes. The /api/v1/health endpoint always returns 200 even
+when DB or Redis are degraded — so if you get 502 "Application failed to
+respond," the container itself is down (not a downstream service).
+
+### What never to do
+
+- Add `healthcheckPath` to `railway.json` without first confirming the
+  container actually boots and `/api/v1/health` responds. The healthcheck
+  GATES the deploy — a never-responding endpoint blocks all new code.
+- Bump `bcrypt` or `argon2` major versions without testing on Alpine
+  Docker locally first. Both have changed their build requirements
+  multiple times.
+- Add a workspace package without a `tsconfig.json` and `dist/index.js`
+  in its `main`. The API's CommonJS `require()` cannot parse raw
+  TypeScript at runtime.
+
 ## Sprint Plan Context
 
 Zero-budget roadmap underway (6 sprints planned):
