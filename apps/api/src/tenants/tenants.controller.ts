@@ -146,6 +146,7 @@ export class TenantsController {
         id: true,
         name: true,
         slug: true,
+        vertical: true,
         emergencyStatus: true,
         panicLockdownPlaylistId: true,
         panicWeatherPlaylistId: true,

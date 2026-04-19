@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Animated High School · Welcome (DEMO)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=JetBrains+Mono:wght@500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+
+  /* === STAGE — modern news-studio dark aesthetic === */
+  .stage {
+    width: 100vw; height: 100vh; position: relative; overflow: hidden;
+    font-family: 'Inter', sans-serif; color: #fff;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(99, 102, 241, .15), transparent 70%),
+      radial-gradient(ellipse at 80% 90%, rgba(236, 72, 153, .08), transparent 50%),
+      linear-gradient(180deg, #0a0a1f 0%, #050514 100%);
+  }
+
+  /* Subtle moving grid pattern — gives a "live broadcast" feel */
+  .stage::before {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background:
+      linear-gradient(rgba(255, 255, 255, .025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, .025) 1px, transparent 1px);
+    background-size: 60px 60px;
+    animation: hs-gridDrift 40s linear infinite;
+  }
+  @keyframes hs-gridDrift {
+    from { background-position: 0 0, 0 0; }
+    to   { background-position: 60px 60px, 60px 60px; }
+  }
+
+  /* Ambient pulse glows */
+  .stage::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(circle at 50% 50%, rgba(99, 102, 241, .08), transparent 50%);
+    animation: hs-ambientPulse 8s ease-in-out infinite;
+  }
+  @keyframes hs-ambientPulse {
+    0%, 100% { opacity: .4; }
+    50%      { opacity: 1; }
+  }
+
+  /* Live indicator at the very top — broadcast feel */
+  .liveBar {
+    position: absolute; top: 0; left: 0; right: 0; height: 36px;
+    background: linear-gradient(90deg, #dc2626 0%, #991b1b 50%, transparent 100%);
+    display: flex; align-items: center; padding: 0 24px; gap: 12px; z-index: 10;
+    box-shadow: 0 4px 20px rgba(220, 38, 38, .3);
+  }
+  .liveBar .dot {
+    width: 12px; height: 12px; border-radius: 50%; background: #fff;
+    animation: hs-liveDot 1s ease-in-out infinite;
+    box-shadow: 0 0 12px rgba(255,255,255,.8);
+  }
+  @keyframes hs-liveDot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: .4; transform: scale(.85); }
+  }
+  .liveBar .label {
+    font-family: 'Inter', sans-serif; font-weight: 900; font-size: 14px;
+    letter-spacing: .25em; color: #fff;
+  }
+  .liveBar .feed {
+    margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 13px;
+    color: rgba(255,255,255,.85); letter-spacing: .1em;
+  }
+
+  /* === HEADER === */
+  .header {
+    position: absolute; top: 70px; left: 36px; right: 36px;
+    display: grid; grid-template-columns: 180px 1fr 220px;
+    gap: 32px; z-index: 5; align-items: center;
+  }
+
+  .logo {
+    width: 180px; height: 180px;
+    background: linear-gradient(135deg, #1e293b, #0f172a);
+    border: 3px solid rgba(99, 102, 241, .6);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 40px rgba(99, 102, 241, .4), inset 0 0 30px rgba(99, 102, 241, .1);
+    animation: hs-logoGlow 4s ease-in-out infinite;
+    position: relative;
+  }
+  .logo::before {
+    content: ''; position: absolute; inset: -8px; border-radius: 50%;
+    border: 1px solid rgba(99, 102, 241, .3);
+    animation: hs-logoRing 3s linear infinite;
+  }
+  @keyframes hs-logoRing {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+  @keyframes hs-logoGlow {
+    0%, 100% { box-shadow: 0 0 40px rgba(99, 102, 241, .4), inset 0 0 30px rgba(99, 102, 241, .1); }
+    50%      { box-shadow: 0 0 60px rgba(99, 102, 241, .7), inset 0 0 40px rgba(99, 102, 241, .2); }
+  }
+  .logo::after {
+    content: '🎓'; font-size: 96px; line-height: 1;
+    filter: drop-shadow(0 4px 12px rgba(99, 102, 241, .8));
+  }
+
+  .titleBox {
+    text-align: left;
+    border-left: 6px solid #6366f1;
+    padding: 12px 28px;
+  }
+  .titleBox h1 {
+    margin: 0; line-height: 1;
+    font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 96px;
+    background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    letter-spacing: -.02em;
+  }
+  .titleBox .sub {
+    font-family: 'JetBrains Mono', monospace; font-size: 22px;
+    color: #6366f1; margin-top: 8px;
+    letter-spacing: .15em; text-transform: uppercase;
+  }
+  .titleBox .sub::before { content: '> '; color: #94a3b8; }
+
+  /* Digital flip-card clock */
+  .clock {
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    border: 1px solid rgba(99, 102, 241, .4);
+    border-radius: 16px;
+    padding: 16px 20px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    box-shadow: 0 0 30px rgba(99, 102, 241, .2);
+  }
+  .clock .digits {
+    font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 64px;
+    color: #fff; line-height: 1;
+    text-shadow: 0 0 16px rgba(99, 102, 241, .6);
+    letter-spacing: .04em;
+  }
+  .clock .ap {
+    font-family: 'JetBrains Mono', monospace; font-size: 18px; color: #6366f1;
+    letter-spacing: .25em; margin-top: 6px;
+  }
+  .clock .tz {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #64748b;
+    letter-spacing: .15em; margin-top: 2px;
+  }
+
+  /* === MAIN GRID === */
+  .grid {
+    position: absolute; top: 290px; left: 36px; right: 36px; bottom: 130px;
+    display: grid;
+    grid-template-columns: 360px 1fr 360px;
+    grid-template-rows: 1fr 1fr;
+    gap: 20px;
+    z-index: 3;
+  }
+
+  /* WEATHER — sleek data card */
+  .weather {
+    grid-column: 1; grid-row: 1;
+    background: linear-gradient(135deg, rgba(15, 23, 42, .9), rgba(30, 41, 59, .9));
+    border: 1px solid rgba(99, 102, 241, .3);
+    border-radius: 20px;
+    padding: 24px;
+    display: grid; grid-template-columns: auto 1fr; gap: 20px;
+    align-items: center;
+    box-shadow: 0 8px 24px rgba(0,0,0,.6);
+    backdrop-filter: blur(10px);
+  }
+  .weather .iconWrap {
+    width: 110px; height: 110px;
+    background: radial-gradient(circle at 30% 30%, rgba(251, 191, 36, .3), transparent 60%);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    animation: hs-weatherSpin 12s linear infinite;
+  }
+  @keyframes hs-weatherSpin {
+    from { transform: rotate(-10deg); }
+    50%  { transform: rotate(10deg); }
+    to   { transform: rotate(-10deg); }
+  }
+  .weather .icon { font-size: 80px; line-height: 1; filter: drop-shadow(0 0 16px rgba(251, 191, 36, .6)); }
+  .weather .info { display: flex; flex-direction: column; }
+  .weather .temp {
+    font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 80px;
+    color: #fff; line-height: .9; letter-spacing: -.02em;
+  }
+  .weather .desc {
+    font-family: 'JetBrains Mono', monospace; font-size: 14px;
+    color: #94a3b8; letter-spacing: .12em; text-transform: uppercase;
+    margin-top: 6px;
+  }
+  .weather .meta {
+    font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #6366f1;
+    margin-top: 12px;
+  }
+
+  /* ANNOUNCEMENT — broadcast chyron */
+  .announce {
+    grid-column: 2; grid-row: 1 / span 2;
+    display: flex; flex-direction: column; justify-content: center;
+    position: relative;
+    background: linear-gradient(135deg, rgba(15, 23, 42, .85), rgba(30, 41, 59, .85));
+    border: 1px solid rgba(99, 102, 241, .4);
+    border-radius: 24px;
+    padding: 60px 56px;
+    box-shadow: 0 16px 48px rgba(0,0,0,.7), 0 0 60px rgba(99, 102, 241, .2);
+    backdrop-filter: blur(10px);
+  }
+  .announce::before {
+    content: 'BREAKING';
+    position: absolute; top: 32px; left: 56px;
+    background: linear-gradient(90deg, #dc2626, #991b1b);
+    color: #fff; padding: 6px 16px;
+    font-family: 'Inter', sans-serif; font-weight: 900; font-size: 14px;
+    letter-spacing: .25em;
+    box-shadow: 0 4px 16px rgba(220, 38, 38, .5);
+    animation: hs-breakingPulse 2s ease-in-out infinite;
+  }
+  @keyframes hs-breakingPulse {
+    0%, 100% { box-shadow: 0 4px 16px rgba(220, 38, 38, .5); }
+    50%      { box-shadow: 0 4px 24px rgba(220, 38, 38, .9); }
+  }
+  .announce .lbl {
+    font-family: 'JetBrains Mono', monospace; font-size: 16px;
+    color: #94a3b8; letter-spacing: .25em; text-transform: uppercase;
+    margin-top: 32px; margin-bottom: 16px;
+  }
+  .announce .msg {
+    font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 84px;
+    color: #fff; line-height: 1.05; letter-spacing: -.02em;
+    text-shadow: 0 4px 24px rgba(0,0,0,.6);
+  }
+  .announce .meta {
+    font-family: 'JetBrains Mono', monospace; font-size: 14px; color: #6366f1;
+    margin-top: 32px; padding-top: 20px;
+    border-top: 1px solid rgba(99, 102, 241, .3);
+    letter-spacing: .1em;
+  }
+  .announce .meta::before { content: '◉ '; color: #dc2626; animation: hs-liveDot 1.4s ease-in-out infinite; }
+
+  /* COUNTDOWN — sports broadcast clock */
+  .countdown {
+    grid-column: 3; grid-row: 1;
+    background: linear-gradient(135deg, rgba(15, 23, 42, .9), rgba(30, 41, 59, .9));
+    border: 1px solid rgba(99, 102, 241, .3);
+    border-radius: 20px;
+    padding: 20px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    box-shadow: 0 8px 24px rgba(0,0,0,.6);
+    backdrop-filter: blur(10px);
+    position: relative;
+  }
+  .countdown::before {
+    content: 'COUNTDOWN'; position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #6366f1;
+    letter-spacing: .25em;
+  }
+  .countdown .lbl {
+    font-family: 'Inter', sans-serif; font-weight: 700; font-size: 18px;
+    color: #94a3b8; letter-spacing: .1em; text-transform: uppercase;
+    margin-top: 24px;
+  }
+  .countdown .num {
+    font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 130px;
+    color: #fff; line-height: .9;
+    background: linear-gradient(135deg, #fff 0%, #6366f1 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    margin: 6px 0;
+    letter-spacing: -.04em;
+  }
+  .countdown .unit {
+    font-family: 'JetBrains Mono', monospace; font-size: 18px; color: #6366f1;
+    letter-spacing: .25em;
+  }
+
+  /* TEACHER — modern profile card */
+  .teacher {
+    grid-column: 1; grid-row: 2;
+    background: linear-gradient(135deg, rgba(15, 23, 42, .9), rgba(30, 41, 59, .9));
+    border: 1px solid rgba(99, 102, 241, .3);
+    border-radius: 20px;
+    padding: 20px;
+    display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center;
+    box-shadow: 0 8px 24px rgba(0,0,0,.6);
+    backdrop-filter: blur(10px);
+    position: relative;
+  }
+  .teacher::before {
+    content: 'STAFF SPOTLIGHT'; position: absolute; top: 12px; left: 20px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #6366f1;
+    letter-spacing: .25em;
+  }
+  .teacher .portrait {
+    width: 110px; height: 110px;
+    background: linear-gradient(135deg, #475569, #1e293b);
+    border-radius: 16px;
+    border: 2px solid rgba(99, 102, 241, .5);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 80px;
+    box-shadow: 0 0 24px rgba(99, 102, 241, .3);
+    margin-top: 16px;
+  }
+  .teacher .info { margin-top: 16px; }
+  .teacher .name {
+    font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 32px;
+    color: #fff; line-height: 1; letter-spacing: -.01em;
+  }
+  .teacher .role {
+    font-family: 'JetBrains Mono', monospace; font-size: 13px;
+    color: #6366f1; letter-spacing: .12em; text-transform: uppercase;
+    margin-top: 6px;
+  }
+  .teacher .bio {
+    font-family: 'Inter', sans-serif; font-size: 14px; color: #94a3b8;
+    margin-top: 8px; line-height: 1.4;
+  }
+
+  /* BIRTHDAYS — clean data list */
+  .birthdays {
+    grid-column: 3; grid-row: 2;
+    background: linear-gradient(135deg, rgba(15, 23, 42, .9), rgba(30, 41, 59, .9));
+    border: 1px solid rgba(236, 72, 153, .4);
+    border-radius: 20px;
+    padding: 20px;
+    display: flex; flex-direction: column; justify-content: flex-start;
+    box-shadow: 0 8px 24px rgba(0,0,0,.6);
+    backdrop-filter: blur(10px);
+    position: relative;
+  }
+  .birthdays .lbl {
+    font-family: 'JetBrains Mono', monospace; font-size: 13px;
+    color: #ec4899; letter-spacing: .25em; text-transform: uppercase;
+  }
+  .birthdays .lbl::before { content: '🎂  '; }
+  .birthdays .list { margin-top: 16px; flex: 1; display: flex; flex-direction: column; gap: 8px; }
+  .birthdays .item {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding-bottom: 8px; border-bottom: 1px dashed rgba(236, 72, 153, .25);
+  }
+  .birthdays .item .name {
+    font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 28px;
+    color: #fff; line-height: 1;
+  }
+  .birthdays .item .grade {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    color: #ec4899; letter-spacing: .15em;
+  }
+
+  /* TICKER — news-broadcast scroll */
+  .ticker {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 110px;
+    background: linear-gradient(180deg, #0a0a1f, #050514);
+    display: flex; align-items: center; overflow: hidden; z-index: 6;
+    border-top: 2px solid #6366f1;
+    box-shadow: 0 -8px 24px rgba(99, 102, 241, .3);
+  }
+  .ticker::before {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(99, 102, 241, .1) 50%, transparent 100%);
+    animation: hs-tickerGlow 4s ease-in-out infinite;
+  }
+  @keyframes hs-tickerGlow {
+    0%, 100% { opacity: .4; }
+    50%      { opacity: 1; }
+  }
+  .ticker .stamp {
+    flex: 0 0 auto; padding: 0 28px; height: 100%;
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
+    color: #fff; display: flex; align-items: center; gap: 10px;
+    font-family: 'Inter', sans-serif; font-weight: 900; letter-spacing: .25em; font-size: 16px;
+    z-index: 2;
+  }
+  .ticker .stamp::before {
+    content: ''; width: 8px; height: 8px; background: #fff; border-radius: 50%;
+    animation: hs-liveDot 1s ease-in-out infinite;
+  }
+  .ticker .scroll {
+    flex: 1; overflow: hidden; height: 100%; display: flex; align-items: center;
+    position: relative; z-index: 1;
+  }
+  .ticker .scrollText {
+    font-family: 'Inter', sans-serif; font-weight: 600; font-size: 32px; color: #fff;
+    white-space: nowrap;
+    padding-left: 100%;
+    display: inline-block;
+    animation: hs-tickerScroll 32s linear infinite;
+  }
+  .ticker .scrollText .sep { color: #6366f1; padding: 0 24px; }
+  @keyframes hs-tickerScroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-100%); }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <div class="liveBar">
+    <div class="dot"></div>
+    <div class="label">LIVE · CAMPUS WIRE</div>
+    <div class="feed">FRI · APR 19 · 2026 · ALL SYSTEMS NOMINAL</div>
+  </div>
+
+  <div class="header">
+    <div class="logo"></div>
+    <div class="titleBox">
+      <h1>Welcome, Class of 2026</h1>
+      <div class="sub">make it count</div>
+    </div>
+    <div class="clock">
+      <div class="digits">12:34</div>
+      <div class="ap">PM</div>
+      <div class="tz">CENTRAL</div>
+    </div>
+  </div>
+
+  <div class="grid">
+
+    <div class="weather">
+      <div class="iconWrap"><div class="icon">☀️</div></div>
+      <div class="info">
+        <div class="temp">68°</div>
+        <div class="desc">CLEAR · CRISP</div>
+        <div class="meta">H 72° · L 54° · WIND 8mph</div>
+      </div>
+    </div>
+
+    <div class="announce">
+      <div class="lbl">ANNOUNCEMENT</div>
+      <div class="msg">Senior portraits next week. Sign up in the main office.</div>
+      <div class="meta">UPDATED 7 MINUTES AGO · MAIN OFFICE</div>
+    </div>
+
+    <div class="countdown">
+      <div class="lbl">Graduation</div>
+      <div class="num">42</div>
+      <div class="unit">DAYS</div>
+    </div>
+
+    <div class="teacher">
+      <div class="portrait">👨‍🏫</div>
+      <div class="info">
+        <div class="name">Mr. Patel</div>
+        <div class="role">STAFF · PHYSICS</div>
+        <div class="bio">Inspiring students every day, one experiment at a time.</div>
+      </div>
+    </div>
+
+    <div class="birthdays">
+      <div class="lbl">BIRTHDAYS TODAY</div>
+      <div class="list">
+        <div class="item"><span class="name">Alex Rivera</span><span class="grade">SR</span></div>
+        <div class="item"><span class="name">Jordan Miller</span><span class="grade">JR</span></div>
+        <div class="item"><span class="name">Sam Chen</span><span class="grade">SO</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="ticker">
+    <div class="stamp">CAMPUS NEWS</div>
+    <div class="scroll">
+      <span class="scrollText">FINAL · VARSITY 28, CENTRAL 14<span class="sep">·</span>FAFSA WORKSHOP TUESDAY 6PM, LIBRARY<span class="sep">·</span>YEARBOOK ORDERS DUE END OF MONTH<span class="sep">·</span>COLLEGE FAIR THURSDAY, GYM<span class="sep">·</span>SENIOR TRIP SIGN-UPS CLOSE FRIDAY</span>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
