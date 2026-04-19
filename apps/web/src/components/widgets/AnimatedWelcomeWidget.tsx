@@ -344,7 +344,11 @@ const CSS = `
 .aw-grid {
   position: absolute; top: 270px; left: 36px; right: 36px; bottom: 160px;
   display: grid; grid-template-columns: 380px 1fr 380px;
-  grid-template-rows: 1fr 1fr; gap: 28px; z-index: 3;
+  grid-template-rows: 1fr 1fr; gap: 28px;
+  /* z-index 8 puts the whole grid (incl. birthdays) above the ticker
+     which is z-index 6, so the wavy ticker peaks no longer visually
+     clip the bottom of widget text (especially Caveat's descenders). */
+  z-index: 8;
 }
 
 /* WEATHER — sun with rays */
