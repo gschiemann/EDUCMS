@@ -249,48 +249,35 @@
     display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;
     position: relative; padding: 24px;
   }
+  /* Use the actual megaphone emoji at huge size — instantly recognizable
+     as a megaphone, no CSS gymnastics needed. 📣 emoji's mouth points
+     right by default, so we mirror it (scaleX -1) so the mouth points
+     LEFT toward the audience — sound waves shoot out the same side. */
   .announce .megaphone {
-    position: absolute; left: -40px; top: 50%; transform: translateY(-50%);
-    width: 220px; height: 260px;
-    /* megaphone cone shape */
-    background: linear-gradient(135deg, #f59e0b, #b45309);
-    clip-path: polygon(0 35%, 70% 0, 100% 0, 100% 100%, 70% 100%, 0 65%);
-    box-shadow: 0 8px 20px rgba(0,0,0,.4);
-    border: 4px solid #92400e;
+    position: absolute; left: -10px; top: 50%; transform: translate(0, -50%);
+    font-size: 180px; line-height: 1; z-index: 4;
+    filter: drop-shadow(0 8px 14px rgba(0,0,0,.5));
     animation: ms-megaShake 1.6s ease-in-out infinite;
-    transform-origin: 100% 50%;
-    z-index: 4;
+    transform-origin: 80% 50%;
   }
   @keyframes ms-megaShake {
-    0%, 100%      { transform: translateY(-50%) rotate(-6deg); }
-    25%, 75%      { transform: translateY(-50%) rotate(6deg); }
-    50%           { transform: translateY(-50%) rotate(-6deg); }
+    0%, 100%      { transform: translate(0, -50%) rotate(-12deg); }
+    25%, 75%      { transform: translate(0, -50%) rotate(12deg); }
+    50%           { transform: translate(0, -50%) rotate(-12deg); }
   }
-  /* Megaphone handle */
-  .announce .megaphone::after {
-    content: ''; position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
-    width: 30px; height: 60px;
-    background: linear-gradient(135deg, #78350f, #451a03);
-    border-radius: 0 8px 8px 0;
-    border: 4px solid #92400e;
-    border-left: none;
-  }
-  /* Sound waves emanating from the megaphone mouth */
+  /* Sound waves emanating from the megaphone mouth (left side) */
   .announce .wave1, .announce .wave2, .announce .wave3 {
-    position: absolute; left: 0; top: 50%; width: 80px; height: 80px;
-    border: 5px solid #fbbf24;
+    position: absolute; top: 50%; border: 6px solid #fbbf24;
     border-right: none;
     border-radius: 100%;
-    transform-origin: right center;
-    transform: translateY(-50%);
     z-index: 3;
   }
-  .announce .wave1 { left: -120px; opacity: .7; animation: ms-soundWave 1.2s ease-out infinite; }
-  .announce .wave2 { left: -150px; width: 100px; height: 100px; opacity: .5; animation: ms-soundWave 1.2s ease-out infinite .2s; }
-  .announce .wave3 { left: -180px; width: 120px; height: 120px; opacity: .3; animation: ms-soundWave 1.2s ease-out infinite .4s; }
+  .announce .wave1 { left: -120px; width: 80px; height: 80px; opacity: .8; animation: ms-soundWave 1.2s ease-out infinite; }
+  .announce .wave2 { left: -150px; width: 110px; height: 110px; opacity: .55; animation: ms-soundWave 1.2s ease-out infinite .2s; }
+  .announce .wave3 { left: -180px; width: 140px; height: 140px; opacity: .35; animation: ms-soundWave 1.2s ease-out infinite .4s; }
   @keyframes ms-soundWave {
-    0%   { transform: translateY(-50%) scale(.5); opacity: .8; }
-    100% { transform: translateY(-50%) scale(1.4); opacity: 0; }
+    0%   { transform: translateY(-50%) scale(.5); opacity: .9; }
+    100% { transform: translateY(-50%) scale(1.5); opacity: 0; }
   }
   /* The actual message bubble — to the right of the megaphone */
   .announce .bubble {
@@ -608,7 +595,7 @@
     </div>
 
     <div class="announce">
-      <div class="megaphone"></div>
+      <div class="megaphone">📣</div>
       <div class="wave1"></div>
       <div class="wave2"></div>
       <div class="wave3"></div>
