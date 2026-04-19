@@ -34,7 +34,7 @@
   /* Floating diploma scrolls in the background */
   .scroll {
     position: absolute; font-size: 80px; opacity: .2;
-    animation: hs-scrollFloat 12s ease-in-out infinite;
+    animation: hs-scrollFloat 21.6s ease-in-out infinite;
     z-index: 1;
     filter: drop-shadow(0 4px 8px rgba(0,0,0,.2));
   }
@@ -58,7 +58,7 @@
   .logo {
     position: relative; width: 220px; height: 220px;
     display: flex; align-items: center; justify-content: center;
-    animation: hs-capTilt 3s ease-in-out infinite;
+    animation: hs-capTilt 5.4s ease-in-out infinite;
   }
   @keyframes hs-capTilt {
     0%, 100% { transform: rotate(-6deg); }
@@ -94,7 +94,7 @@
     width: 4px; height: 70px;
     background: linear-gradient(180deg, #fbbf24, #f59e0b);
     transform-origin: top center;
-    animation: hs-tasselSwing 2s ease-in-out infinite;
+    animation: hs-tasselSwing 3.6s ease-in-out infinite;
     z-index: 2;
   }
   @keyframes hs-tasselSwing {
@@ -138,7 +138,7 @@
       0 0 0 10px #ec4899,
       0 0 30px rgba(236, 72, 153, .5),
       0 16px 32px rgba(0,0,0,.2);
-    animation: hs-neonBuzz 3s ease-in-out infinite;
+    animation: hs-neonBuzz 5.4s ease-in-out infinite;
     position: relative;
   }
   @keyframes hs-neonBuzz {
@@ -155,7 +155,7 @@
     background: linear-gradient(135deg, #ec4899 0%, #f59e0b 50%, #06b6d4 100%);
     background-size: 200% 100%;
     -webkit-background-clip: text; background-clip: text; color: transparent;
-    animation: hs-titleShift 5s linear infinite;
+    animation: hs-titleShift 9s linear infinite;
     letter-spacing: -.01em;
     text-transform: uppercase;
   }
@@ -187,7 +187,7 @@
       #06b6d4 320deg 340deg, transparent 340deg 360deg);
     -webkit-mask: radial-gradient(circle, transparent 70px, #000 70px, #000 100px, transparent 100px);
             mask: radial-gradient(circle, transparent 70px, #000 70px, #000 100px, transparent 100px);
-    animation: hs-raysSpin 30s linear infinite;
+    animation: hs-raysSpin 54s linear infinite;
   }
   @keyframes hs-raysSpin { to { transform: rotate(360deg); } }
   .clock .face {
@@ -197,7 +197,7 @@
     box-shadow: 0 8px 24px rgba(236, 72, 153, .4), inset 0 0 30px rgba(251, 191, 36, .3);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     position: relative; z-index: 1;
-    animation: hs-clockBob 2s ease-in-out infinite;
+    animation: hs-clockBob 3.6s ease-in-out infinite;
   }
   @keyframes hs-clockBob {
     0%, 100% { transform: translateY(0); }
@@ -249,7 +249,7 @@
       transparent 354deg 360deg);
     -webkit-mask: radial-gradient(circle, transparent 110px, #000 110px, #000 145px, transparent 145px);
             mask: radial-gradient(circle, transparent 110px, #000 110px, #000 145px, transparent 145px);
-    animation: hs-sunSpin 18s linear infinite;
+    animation: hs-sunSpin 32.4s linear infinite;
   }
   @keyframes hs-sunSpin { to { transform: rotate(360deg); } }
   .weather .face {
@@ -279,7 +279,7 @@
     border-radius: 32px;
     box-shadow: 0 16px 40px rgba(236, 72, 153, .3), 12px 12px 0 #fbbf24, 16px 16px 0 #1f2937;
     max-width: 800px;
-    animation: hs-bubbleFloat 3.5s ease-in-out infinite;
+    animation: hs-bubbleFloat 6.3s ease-in-out infinite;
     transform: rotate(-1deg);
   }
   @keyframes hs-bubbleFloat {
@@ -296,7 +296,7 @@
     border-bottom: 6px solid #ec4899;
   }
   .announce .stars { position: absolute; inset: 0; pointer-events: none; }
-  .announce .stars span { position: absolute; font-size: 40px; opacity: .9; animation: hs-twinkle 1.4s ease-in-out infinite; }
+  .announce .stars span { position: absolute; font-size: 40px; opacity: .9; animation: hs-twinkle 2.5s ease-in-out infinite; }
   .announce .stars span:nth-child(1) { top: 4%;  left: 8%; }
   .announce .stars span:nth-child(2) { top: 8%;  right: 12%; animation-delay: .3s; }
   .announce .stars span:nth-child(3) { bottom: 8%; left: 14%; animation-delay: .6s; }
@@ -327,7 +327,7 @@
   .countdown .trophy {
     position: relative; width: 240px; height: 280px;
     display: flex; flex-direction: column; align-items: center;
-    animation: hs-trophyShine 3s ease-in-out infinite;
+    animation: hs-trophyShine 5.4s ease-in-out infinite;
   }
   @keyframes hs-trophyShine {
     0%, 100% { transform: translateY(0) rotate(-2deg); }
@@ -395,7 +395,7 @@
     border: 4px solid #ec4899;
     box-shadow: 0 10px 24px rgba(0,0,0,.3);
     transform: rotate(-3deg);
-    animation: hs-yearbookSlide 5s ease-in-out infinite;
+    animation: hs-yearbookSlide 9s ease-in-out infinite;
   }
   @keyframes hs-yearbookSlide {
     0%, 100% { transform: rotate(-3deg) translateX(-3px); }
@@ -439,7 +439,7 @@
   .birthdays .burst {
     position: relative;
     width: 200px; height: 160px;
-    animation: hs-burstSpin 6s linear infinite;
+    animation: hs-burstSpin 10.8s linear infinite;
   }
   @keyframes hs-burstSpin {
     from { transform: rotate(-5deg); }
@@ -504,7 +504,7 @@
     text-shadow: 2px 2px 0 #1f2937;
     padding-left: 100%;
     display: inline-block;
-    animation: hs-tickerScroll 32s linear infinite;
+    animation: hs-tickerScroll 57.6s linear infinite;
   }
   .ticker .scrollText .sep { color: #1f2937; padding: 0 24px; }
   @keyframes hs-tickerScroll {

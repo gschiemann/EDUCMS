@@ -28,7 +28,7 @@
       transparent 90px 200px,
       rgba(220, 38, 38, .04) 200px 210px
     );
-    animation: ms-stripeDrift 30s linear infinite;
+    animation: ms-stripeDrift 54s linear infinite;
   }
   @keyframes ms-stripeDrift {
     from { transform: translateX(0); }
@@ -41,7 +41,7 @@
     width: 600px; height: 1100px;
     background: linear-gradient(180deg, transparent 0%, rgba(255,255,255,.08) 50%, transparent 100%);
     transform-origin: 50% 100%;
-    animation: ms-sweep 7s ease-in-out infinite;
+    animation: ms-sweep 12.6s ease-in-out infinite;
   }
   .spotlight.left  { left: 8%;  bottom: 0; transform: rotate(-15deg); animation-delay: 0s; }
   .spotlight.right { right: 8%; bottom: 0; transform: rotate(15deg);  animation-delay: -3.5s; }
@@ -53,7 +53,7 @@
   /* === Pennant bunting top === */
   .pennantBunting { position: absolute; top: 0; left: 0; right: 0; height: 100px; z-index: 1; }
   .pennantBunting svg { width: 100%; height: 100%; display: block; }
-  .pennantBunting .pennant { animation: ms-pennantSway 3s ease-in-out infinite; transform-origin: 50% 8px; }
+  .pennantBunting .pennant { animation: ms-pennantSway 5.4s ease-in-out infinite; transform-origin: 50% 8px; }
   @keyframes ms-pennantSway {
     0%, 100% { transform: rotate(-2deg); }
     50%      { transform: rotate(2deg); }
@@ -75,7 +75,7 @@
     clip-path: polygon(50% 0%, 100% 12%, 100% 60%, 50% 100%, 0 60%, 0 12%);
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 12px 32px rgba(0,0,0,.5);
-    animation: ms-shieldPulse 2.4s ease-in-out infinite;
+    animation: ms-shieldPulse 4.3s ease-in-out infinite;
     position: relative;
   }
   .logo::after {
@@ -113,7 +113,7 @@
     box-shadow: 0 16px 32px rgba(0,0,0,.4);
     /* Torn bottom edge — pennant point */
     clip-path: polygon(0 0, 100% 0, 100% 70%, 90% 100%, 80% 70%, 70% 100%, 60% 70%, 50% 100%, 40% 70%, 30% 100%, 20% 70%, 10% 100%, 0 70%);
-    animation: ms-bannerSway 3.5s ease-in-out infinite;
+    animation: ms-bannerSway 6.3s ease-in-out infinite;
     transform-origin: 50% 0%;
     border: 4px solid #fff;
     border-bottom: none;
@@ -166,7 +166,7 @@
     border-radius: 8px;
     box-shadow: 0 0 40px rgba(251, 191, 36, .5), inset 0 0 30px rgba(251, 191, 36, .15);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    animation: ms-scoreboardSway 4s ease-in-out infinite, ms-scoreboardFlicker 4s ease-in-out infinite;
+    animation: ms-scoreboardSway 7.2s ease-in-out infinite, ms-scoreboardFlicker 7.2s ease-in-out infinite;
     transform-origin: 50% -28px;
   }
   @keyframes ms-scoreboardSway {
@@ -222,7 +222,7 @@
     text-align: center;
     box-shadow: 0 8px 20px rgba(0,0,0,.5);
     transform-origin: left center;
-    animation: ms-flagWave 2.5s ease-in-out infinite;
+    animation: ms-flagWave 4.5s ease-in-out infinite;
     position: relative; z-index: 1;
   }
   @keyframes ms-flagWave {
@@ -258,7 +258,7 @@
     transform: translate(0, -50%) scaleX(-1);
     font-size: 160px; line-height: 1; z-index: 4;
     filter: drop-shadow(0 8px 14px rgba(0,0,0,.5));
-    animation: ms-megaShake 1.6s ease-in-out infinite;
+    animation: ms-megaShake 2.9s ease-in-out infinite;
     transform-origin: 20% 50%;
   }
   @keyframes ms-megaShake {
@@ -274,9 +274,9 @@
     border-radius: 100%;
     z-index: 3;
   }
-  .announce .wave1 { left: 30px;  width: 70px;  height: 70px;  opacity: .8;  animation: ms-soundWave 1.2s ease-out infinite; }
-  .announce .wave2 { left: 6px;   width: 95px;  height: 95px;  opacity: .55; animation: ms-soundWave 1.2s ease-out infinite .2s; }
-  .announce .wave3 { left: -22px; width: 120px; height: 120px; opacity: .35; animation: ms-soundWave 1.2s ease-out infinite .4s; }
+  .announce .wave1 { left: 30px;  width: 70px;  height: 70px;  opacity: .8;  animation: ms-soundWave 2.2s ease-out infinite; }
+  .announce .wave2 { left: 6px;   width: 95px;  height: 95px;  opacity: .55; animation: ms-soundWave 2.2s ease-out infinite .2s; }
+  .announce .wave3 { left: -22px; width: 120px; height: 120px; opacity: .35; animation: ms-soundWave 2.2s ease-out infinite .4s; }
   @keyframes ms-soundWave {
     0%   { transform: translateY(-50%) scale(.5); opacity: .9; }
     100% { transform: translateY(-50%) scale(1.5); opacity: 0; }
@@ -291,7 +291,7 @@
     box-shadow: 12px 12px 0 #fbbf24, 16px 16px 0 #000;
     max-width: 800px;
     transform: rotate(-1deg);
-    animation: ms-bubbleFloat 3s ease-in-out infinite;
+    animation: ms-bubbleFloat 5.4s ease-in-out infinite;
   }
   @keyframes ms-bubbleFloat {
     0%, 100% { transform: rotate(-1deg) translateY(0); }
@@ -332,7 +332,7 @@
     border-radius: 50%;
     box-shadow: 0 12px 24px rgba(0,0,0,.5), inset 0 0 0 4px #cbd5e1;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    animation: ms-stopwatchTick 1.6s ease-in-out infinite;
+    animation: ms-stopwatchTick 2.9s ease-in-out infinite;
   }
   @keyframes ms-stopwatchTick {
     0%, 100% { transform: rotate(-3deg); }
@@ -385,7 +385,7 @@
     padding: 32px 28px;
     text-align: center;
     box-shadow: 0 10px 24px rgba(0,0,0,.4);
-    animation: ms-patchSwing 4s ease-in-out infinite;
+    animation: ms-patchSwing 7.2s ease-in-out infinite;
     transform-origin: top center;
   }
   @keyframes ms-patchSwing {
@@ -424,7 +424,7 @@
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     position: relative; padding: 12px;
   }
-  .birthdays .cakeWrap { position: relative; width: 220px; height: 200px; animation: ms-cakeBob 1.8s ease-in-out infinite; }
+  .birthdays .cakeWrap { position: relative; width: 220px; height: 200px; animation: ms-cakeBob 3.2s ease-in-out infinite; }
   @keyframes ms-cakeBob {
     0%, 100% { transform: translateY(0) rotate(-2deg); }
     50%      { transform: translateY(-6px) rotate(2deg); }
@@ -471,7 +471,7 @@
     position: absolute; bottom: 116px; width: 14px; height: 22px;
     background: radial-gradient(circle at 50% 80%, #fbbf24, #ec4899 60%, transparent 80%);
     border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
-    animation: ms-flameDance .4s ease-in-out infinite alternate;
+    animation: ms-flameDance 0.7s ease-in-out infinite alternate;
   }
   .birthdays .flame.f1 { left: 47px; animation-delay: 0s; }
   .birthdays .flame.f2 { left: 50%; transform: translateX(-50%); animation-delay: .15s; }
@@ -517,7 +517,7 @@
     text-shadow: 0 0 20px rgba(251, 191, 36, .6);
     padding-left: 100%;
     display: inline-block;
-    animation: ms-tickerScroll 30s linear infinite;
+    animation: ms-tickerScroll 54s linear infinite;
   }
   @keyframes ms-tickerScroll {
     from { transform: translateX(0); }
