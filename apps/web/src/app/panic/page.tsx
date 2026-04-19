@@ -1,65 +1,57 @@
 "use client";
 
 import { useAppStore } from '@/lib/store';
-import { ShieldAlert, Loader2, AlertTriangle, CheckCircle2, Megaphone, ChevronLeft, LogIn, Siren, Mic, Square } from 'lucide-react';
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { ShieldAlert, Loader2, AlertTriangle, CheckCircle2, Megaphone, LogIn, Hand, Lock, HeartPulse, CloudLightning } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { broadcastEmergency } from '@/actions/trigger-emergency';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
+const HOLD_DURATION_MS = 1500;
+
+// Full SRP — same id strings + order as the dashboard EmergencyTriggerModal.
+const TYPES = [
+  { id: 'hold',     name: 'Hold',     icon: Hand,           color: 'bg-yellow-500',  hold: 'bg-yellow-600',  ring: 'stroke-yellow-300',  text: 'text-yellow-400' },
+  { id: 'secure',   name: 'Secure',   icon: Lock,           color: 'bg-blue-600',    hold: 'bg-blue-700',    ring: 'stroke-blue-300',    text: 'text-blue-400' },
+  { id: 'lockdown', name: 'Lockdown', icon: ShieldAlert,    color: 'bg-red-600',     hold: 'bg-red-700',     ring: 'stroke-red-300',     text: 'text-red-400' },
+  { id: 'evacuate', name: 'Evacuate', icon: Megaphone,      color: 'bg-orange-500',  hold: 'bg-orange-600',  ring: 'stroke-orange-300',  text: 'text-orange-400' },
+  { id: 'weather',  name: 'Shelter',  icon: CloudLightning, color: 'bg-amber-500',   hold: 'bg-amber-600',   ring: 'stroke-amber-300',   text: 'text-amber-400' },
+  { id: 'medical',  name: 'Medical',  icon: HeartPulse,     color: 'bg-emerald-600', hold: 'bg-emerald-700', ring: 'stroke-emerald-300', text: 'text-emerald-400' },
+];
+
 export default function MobilePanicPage() {
   const router = useRouter();
   const storeUser = useAppStore((s) => s.user);
   const storeToken = useAppStore((s) => s.token);
-  const login = useAppStore((s) => s.login);
-  const [phase, setPhase] = useState<'loading' | 'idle' | 'holding' | 'triggering' | 'triggered' | 'error'>('loading');
-  const [selectedType, setSelectedType] = useState<string | null>(null);
-  const [progress, setProgress] = useState(0);
+  const [phase, setPhase] = useState<'loading' | 'idle' | 'triggering' | 'triggered' | 'error'>('loading');
   const [errorMsg, setErrorMsg] = useState('');
+  const [firedType, setFiredType] = useState<string | null>(null);
 
-  // Verified user/token after re-validation
+  // Per-button hold state — keyed by type id
+  const [holdingId, setHoldingId] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+
   const [verifiedUser, setVerifiedUser] = useState<any>(null);
   const [verifiedToken, setVerifiedToken] = useState<string | null>(null);
 
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
   const progressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Sprint 5: voice memo recording for SOS
-  const [recording, setRecording] = useState(false);
-  const [voiceBlob, setVoiceBlob] = useState<Blob | null>(null);
-  const [voiceDataUrl, setVoiceDataUrl] = useState<string | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-
-  // On mount: verify the session is still valid by calling the API
+  // Verify session on mount
   useEffect(() => {
     async function verifySession() {
       const token = storeToken;
-
-      // No token at all → go to login
-      if (!token) {
-        router.push('/login?redirect=/panic');
-        return;
-      }
-
-      // Try to verify the token is still valid by hitting a lightweight endpoint
+      if (!token) { router.push('/login?redirect=/panic'); return; }
       try {
-        const res = await fetch(`${API_URL}/users`, {
-          headers: { 'Authorization': `Bearer ${token}` },
-        });
-
-        if (res.ok) {
-          // Token is valid — use stored user data
-          if (storeUser) {
-            setVerifiedUser(storeUser);
-            setVerifiedToken(token);
-            setPhase('idle');
-            return;
-          }
+        const res = await fetch(`${API_URL}/users`, { headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok && storeUser) {
+          setVerifiedUser(storeUser);
+          setVerifiedToken(token);
+          setPhase('idle');
+          return;
         }
       } catch {
-        // Network error — try to use cached data anyway (offline resilience for life-safety)
         if (storeUser) {
           setVerifiedUser(storeUser);
           setVerifiedToken(token);
@@ -67,133 +59,50 @@ export default function MobilePanicPage() {
           return;
         }
       }
-
-      // Token invalid or no user data → force re-login
       router.push('/login?redirect=/panic');
     }
-
     verifySession();
   }, [storeToken, storeUser, router]);
 
-  const HOLD_DURATION_MS = 1500;
-
-  const handlePointerDown = (e: React.PointerEvent) => {
-    e.preventDefault();
-    if (phase === 'triggering' || phase === 'triggered') return;
-
-    setPhase('holding');
+  const clearHold = () => {
+    if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
+    if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
+    setHoldingId(null);
     setProgress(0);
+  };
 
+  const handlePointerDown = (typeId: string) => (e: React.PointerEvent) => {
+    e.preventDefault();
+    if (phase !== 'idle') return;
+    setHoldingId(typeId);
+    setProgress(0);
     const startTime = Date.now();
-
     progressTimerRef.current = setInterval(() => {
-      const elapsed = Date.now() - startTime;
-      const pct = Math.min((elapsed / HOLD_DURATION_MS) * 100, 100);
+      const pct = Math.min(((Date.now() - startTime) / HOLD_DURATION_MS) * 100, 100);
       setProgress(pct);
     }, 50);
-
-    holdTimerRef.current = setTimeout(() => {
-      fireEmergency();
-    }, HOLD_DURATION_MS);
+    holdTimerRef.current = setTimeout(() => fireEmergency(typeId), HOLD_DURATION_MS);
   };
 
-  const cancelHold = () => {
-    if (phase === 'triggering' || phase === 'triggered') return;
-    setPhase('idle');
-    setProgress(0);
-    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
-  };
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const rec = new MediaRecorder(stream);
-      chunksRef.current = [];
-      rec.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
-      rec.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-        setVoiceBlob(blob);
-        const reader = new FileReader();
-        reader.onloadend = () => setVoiceDataUrl(reader.result as string);
-        reader.readAsDataURL(blob);
-        stream.getTracks().forEach((t) => t.stop());
-      };
-      mediaRecorderRef.current = rec;
-      rec.start();
-      setRecording(true);
-    } catch (e: any) {
-      setErrorMsg('Microphone unavailable: ' + (e?.message || 'permission denied'));
-    }
-  };
-
-  const stopRecording = () => {
-    const rec = mediaRecorderRef.current;
-    if (rec && rec.state !== 'inactive') rec.stop();
-    setRecording(false);
-  };
-
-  const fireSos = async () => {
+  const fireEmergency = async (typeId: string) => {
+    clearHold();
     setPhase('triggering');
-    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
-
-    try {
-      if (!verifiedToken) throw new Error('No auth token. Please log in again.');
-
-      // NOTE: voice memos are posted inline as data URLs for now; follow-up
-      // is to upload to Supabase storage and send a signed URL instead.
-      const body: any = {};
-      if (voiceDataUrl) body.voiceClipUrl = voiceDataUrl.slice(0, 2040);
-
-      const res = await fetch(`${API_URL}/emergency/sos`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${verifiedToken}`,
-        },
-        body: JSON.stringify(body),
-        credentials: 'include',
-      });
-
-      if (!res.ok) {
-        if (res.status === 401 || res.status === 403) throw new Error('Session expired. Please log out and log back in, then try again.');
-        throw new Error(`SOS failed: ${res.status}`);
-      }
-      setPhase('triggered');
-    } catch (e: any) {
-      console.error('[PANIC] SOS failed:', e);
-      setErrorMsg(e.message || 'Failed to send SOS.');
-      setPhase('error');
-    }
-  };
-
-  const fireEmergency = async () => {
-    if (selectedType === 'sos') return fireSos();
-
-    setPhase('triggering');
-    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
-
+    setFiredType(typeId);
     try {
       if (!verifiedToken) throw new Error('No auth token. Please log in again.');
       if (!verifiedUser?.tenantId) throw new Error('No school ID. Please log in again.');
-
       const result = await broadcastEmergency({
         schoolId: verifiedUser.tenantId,
-        type: selectedType || 'lockdown',
+        type: typeId,
         triggeredBy: verifiedUser.id || 'unknown',
-        token: verifiedToken
+        token: verifiedToken,
       });
-
       if (result?.error) {
-        // If it's a 401/403, tell the user to re-login
         if (result.error.includes('401') || result.error.includes('403')) {
           throw new Error('Session expired. Please log out and log back in, then try again.');
         }
         throw new Error(result.error);
       }
-
       setPhase('triggered');
     } catch (e: any) {
       console.error('[PANIC] Emergency trigger failed:', e);
@@ -202,17 +111,6 @@ export default function MobilePanicPage() {
     }
   };
 
-  const types = [
-    { id: 'lockdown', name: 'Lockdown', icon: ShieldAlert, activeColor: 'bg-red-600 hover:bg-red-500', holdColor: 'bg-red-700', outline: 'stroke-red-600', shadow: 'drop-shadow-[0_0_15px_rgba(220,38,38,0.5)]', text: 'text-red-500' },
-    { id: 'weather', name: 'Tornado', icon: AlertTriangle, activeColor: 'bg-amber-500 hover:bg-amber-400', holdColor: 'bg-amber-600', outline: 'stroke-amber-500', shadow: 'drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]', text: 'text-amber-500' },
-    { id: 'evacuate', name: 'Evacuate', icon: Megaphone, activeColor: 'bg-orange-500 hover:bg-orange-400', holdColor: 'bg-orange-600', outline: 'stroke-orange-500', shadow: 'drop-shadow-[0_0_15px_rgba(249,115,22,0.5)]', text: 'text-orange-500' },
-    // Sprint 5: Staff SOS — any authenticated user. Attaches optional voice memo.
-    { id: 'sos', name: 'SOS', icon: Siren, activeColor: 'bg-rose-600 hover:bg-rose-500', holdColor: 'bg-rose-700', outline: 'stroke-rose-600', shadow: 'drop-shadow-[0_0_15px_rgba(244,63,94,0.5)]', text: 'text-rose-500' },
-  ];
-
-  const activeConf = types.find(t => t.id === selectedType) || types[0];
-
-  // Loading state while verifying session
   if (phase === 'loading') {
     return (
       <div className="fixed inset-0 bg-slate-950 text-white flex flex-col items-center justify-center">
@@ -222,163 +120,107 @@ export default function MobilePanicPage() {
     );
   }
 
+  if (phase === 'error') {
+    return (
+      <div className="fixed inset-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
+        <AlertTriangle className="w-24 h-24 text-red-500 mb-6" />
+        <h1 className="text-3xl font-black mb-2 text-red-500">FAILED</h1>
+        <p className="text-slate-400 mb-8 max-w-[280px] text-center text-sm">{errorMsg}</p>
+        <div className="flex flex-col gap-3 w-full max-w-xs">
+          <button onClick={() => { setPhase('idle'); setErrorMsg(''); setFiredType(null); }} className="px-8 py-3 bg-slate-800 rounded-full font-bold uppercase tracking-wider text-sm">
+            Try Again
+          </button>
+          <button onClick={() => router.push('/login?redirect=/panic')} className="px-8 py-3 bg-slate-900 border border-slate-700 rounded-full font-bold uppercase tracking-wider text-sm flex items-center justify-center gap-2">
+            <LogIn className="w-4 h-4" /> Re-Login
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === 'triggered') {
+    const fired = TYPES.find((t) => t.id === firedType) || TYPES[2];
+    return (
+      <div className="fixed inset-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
+        <div className="relative mb-6">
+          <div className="absolute inset-0 bg-red-600 rounded-full animate-ping opacity-20 scale-150" />
+          <CheckCircle2 className="w-24 h-24 text-red-500 relative z-10" />
+        </div>
+        <h1 className="text-3xl font-black mb-2 text-red-500 uppercase text-center">{fired.name}<br/>Broadcasted</h1>
+        <p className="text-slate-400 mb-8 max-w-[260px] mx-auto text-center text-sm">
+          All screens are now locked to the emergency profile.
+        </p>
+        <p className="absolute bottom-8 italic text-slate-500 text-xs text-center w-full px-8">
+          The emergency must be cleared from a secure terminal by an administrator.
+        </p>
+      </div>
+    );
+  }
+
+  // Main grid — 6 circles, 2 rows × 3 columns, each press-and-hold triggers
   return (
-    <div className="fixed inset-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6 overscroll-none select-none">
-      <div className="absolute top-6 left-6 right-6 flex justify-between items-center opacity-50">
-        <ShieldAlert className="w-6 h-6" />
-        <span className="text-xs font-bold uppercase tracking-widest">{verifiedUser?.email || 'AUTHORIZED'}</span>
+    <div className="fixed inset-0 bg-slate-950 text-white flex flex-col overscroll-none select-none">
+      {/* Header */}
+      <div className="flex justify-between items-center px-5 pt-5 pb-3 opacity-60">
+        <ShieldAlert className="w-5 h-5" />
+        <span className="text-[10px] font-bold uppercase tracking-widest truncate max-w-[60%] text-right">{verifiedUser?.email || 'AUTHORIZED'}</span>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center w-full max-w-sm">
+      <div className="px-5 pb-2 text-center">
+        <h1 className="text-xl font-black tracking-tight">EMERGENCY TRIGGER</h1>
+        <p className="text-slate-500 text-[11px] mt-1">Press and hold any button for 1.5 seconds to broadcast.</p>
+      </div>
 
-        {phase === 'error' ? (
-          <div className="text-center animate-in zoom-in duration-300">
-            <AlertTriangle className="w-24 h-24 text-red-500 mx-auto mb-6" />
-            <h1 className="text-3xl font-black mb-2 text-red-500">FAILED</h1>
-            <p className="text-slate-400 mb-8 max-w-[280px] mx-auto text-sm">{errorMsg}</p>
-            <div className="flex flex-col gap-3">
-              <button onClick={() => { setPhase('idle'); setErrorMsg(''); }} className="px-8 py-3 bg-slate-800 rounded-full font-bold uppercase tracking-wider text-sm">
-                Try Again
-              </button>
-              <button
-                onClick={() => router.push('/login?redirect=/panic')}
-                className="px-8 py-3 bg-slate-900 border border-slate-700 rounded-full font-bold uppercase tracking-wider text-sm flex items-center justify-center gap-2"
-              >
-                <LogIn className="w-4 h-4" /> Re-Login
-              </button>
-            </div>
-          </div>
-        ) : phase === 'triggered' ? (
-          <div className="text-center animate-in zoom-in duration-300">
-            <div className="relative">
-              <div className="absolute inset-0 bg-red-600 rounded-full animate-ping opacity-20 scale-150" />
-              <CheckCircle2 className="w-24 h-24 text-red-500 mx-auto mb-6 relative z-10" />
-            </div>
-            <h1 className="text-3xl font-black mb-2 text-red-500 uppercase">Lockdown<br/>Broadcasted</h1>
-            <p className="text-slate-400 mb-8 max-w-[250px] mx-auto">
-              All screens are now locked to the emergency profile.
-            </p>
-          </div>
-        ) : !selectedType ? (
-          <div className="flex flex-col items-center justify-center text-center w-full animate-in fade-in slide-in-from-bottom-4 duration-300">
-            <h1 className="text-3xl font-black mb-3">SELECT INCIDENT</h1>
-            <p className="text-slate-400 text-sm mb-12 px-4 max-w-[280px]">
-              Tap the specific emergency type to arm the trigger mechanism.
-            </p>
-            <div className="grid grid-cols-1 gap-4 w-full px-6">
-              {types.map((type) => (
-                <button
-                  key={type.id}
-                  onClick={() => setSelectedType(type.id)}
-                  className={`flex items-center gap-4 p-5 rounded-2xl bg-slate-900 border border-slate-800 ${type.text} hover:bg-slate-800 active:scale-95 transition-all`}
-                >
-                  <type.icon className="w-8 h-8" />
-                  <span className="text-lg font-bold uppercase tracking-wider text-white">
-                    {type.name}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center text-center w-full animate-in fade-in zoom-in-95 duration-300">
+      {/* 2x3 grid — generous spacing so adjacent buttons aren't easy to fat-finger */}
+      <div className="flex-1 grid grid-cols-2 grid-rows-3 gap-x-6 gap-y-5 px-6 pb-6 pt-2 place-items-center">
+        {TYPES.map((type) => {
+          const isHolding = holdingId === type.id;
+          const isTriggering = phase === 'triggering' && firedType === type.id;
+          const dim = phase === 'triggering' && !isTriggering;
+          const Icon = type.icon;
+          return (
             <button
-              onClick={() => setSelectedType(null)}
-              className="absolute top-6 left-6 flex items-center justify-center w-10 h-10 rounded-full bg-slate-900 text-slate-400"
+              key={type.id}
+              onPointerDown={handlePointerDown(type.id)}
+              onPointerUp={clearHold}
+              onPointerLeave={clearHold}
+              onPointerCancel={clearHold}
+              onContextMenu={(e) => e.preventDefault()}
+              disabled={phase === 'triggering'}
+              className={`relative aspect-square w-full max-w-[160px] rounded-full flex flex-col items-center justify-center
+                shadow-[inset_0_-6px_0_rgba(0,0,0,0.25)] transition-all duration-150 outline-none
+                ${dim ? 'opacity-30' : ''}
+                ${isHolding ? `${type.hold} scale-95` : type.color}
+              `}
+              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'none' }}
             >
-              <ChevronLeft className="w-6 h-6" />
-            </button>
-            <h1 className="text-3xl font-black mb-3 uppercase">{activeConf.name} TRIGGER</h1>
-            <p className="text-slate-400 text-sm mb-6 px-4">
-              {selectedType === 'sos'
-                ? 'Silent SOS will page admins with your identity and location. Optionally record a short voice memo first.'
-                : 'Press and hold the button below until the ring fills entirely to instantly trigger a facility-wide override.'}
-            </p>
-
-            {selectedType === 'sos' && (
-              <div className="w-full max-w-xs mb-6 flex flex-col items-center gap-2">
-                {!recording && !voiceBlob && (
-                  <button
-                    type="button"
-                    onClick={startRecording}
-                    className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900 border border-slate-700 text-sm"
-                  >
-                    <Mic className="w-4 h-4" /> Record voice memo
-                  </button>
-                )}
-                {recording && (
-                  <button
-                    type="button"
-                    onClick={stopRecording}
-                    className="flex items-center gap-2 px-4 py-2 rounded-full bg-rose-700 text-sm animate-pulse"
-                  >
-                    <Square className="w-4 h-4" /> Stop recording
-                  </button>
-                )}
-                {voiceBlob && !recording && (
-                  <div className="flex items-center gap-2 text-xs text-slate-400">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Voice memo attached
-                    <button onClick={() => { setVoiceBlob(null); setVoiceDataUrl(null); }} className="underline">remove</button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Hold Button */}
-            <div className="relative w-64 h-64 flex items-center justify-center mt-4">
-              {/* Progress Ring */}
-              <svg className={`absolute inset-0 w-full h-full -rotate-90 pointer-events-none ${activeConf.shadow}`}>
+              {/* Progress ring */}
+              <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="46" className="stroke-black/20" strokeWidth="3" fill="none" />
                 <circle
-                  cx="128" cy="128" r="120"
-                  className="stroke-slate-800"
-                  strokeWidth="8" fill="none"
-                />
-                <circle
-                  cx="128" cy="128" r="120"
-                  className={`${activeConf.outline} transition-all duration-75 easelinear`}
-                  strokeWidth="10" fill="none"
-                  strokeDasharray="754"
-                  strokeDashoffset={754 - (754 * progress) / 100}
+                  cx="50" cy="50" r="46"
+                  className={`${type.ring} transition-[stroke-dashoffset] duration-75`}
+                  strokeWidth="4" fill="none"
+                  strokeDasharray="289"
+                  strokeDashoffset={isHolding ? 289 - (289 * progress) / 100 : 289}
                   strokeLinecap="round"
                 />
               </svg>
 
-              {/* Central Button */}
-              <button
-                onPointerDown={handlePointerDown}
-                onPointerUp={cancelHold}
-                onPointerLeave={cancelHold}
-                onContextMenu={e => e.preventDefault()}
-                disabled={phase === 'triggering'}
-                className={`
-                  relative z-10 w-48 h-48 rounded-full shadow-[inset_0_-8px_0_rgba(0,0,0,0.2)]
-                  flex flex-col items-center justify-center transition-all duration-200 outline-none
-                  ${phase === 'holding' ? `${activeConf.holdColor} scale-95 shadow-[inset_0_0_0_rgba(0,0,0,0)]` : activeConf.activeColor}
-                  ${phase === 'triggering' ? '!bg-slate-800 opacity-50 cursor-not-allowed border outline-none border-slate-700' : ''}
-                `}
-                style={{ WebkitTapHighlightColor: 'transparent' }}
-              >
-                {phase === 'triggering' ? (
-                  <Loader2 className="w-16 h-16 text-white animate-spin" />
-                ) : (
-                  <>
-                    <activeConf.icon className="w-16 h-16 text-white/90 drop-shadow-md mb-2" />
-                    <span className="font-bold text-white/90 uppercase tracking-widest text-sm drop-shadow-md">
-                      {phase === 'holding' ? 'Holding...' : 'Hold'}
-                    </span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        )}
+              {isTriggering ? (
+                <Loader2 className="w-10 h-10 text-white animate-spin" />
+              ) : (
+                <>
+                  <Icon className="w-10 h-10 text-white/95 drop-shadow-md mb-1" />
+                  <span className="font-bold text-white/95 uppercase tracking-wider text-xs drop-shadow-md">
+                    {isHolding ? 'Hold…' : type.name}
+                  </span>
+                </>
+              )}
+            </button>
+          );
+        })}
       </div>
-
-      {phase === 'triggered' && (
-        <div className="absolute bottom-8 italic text-slate-500 text-xs text-center w-full px-8">
-          The emergency must be cleared from a secure terminal by an administrator.
-        </div>
-      )}
     </div>
   );
 }

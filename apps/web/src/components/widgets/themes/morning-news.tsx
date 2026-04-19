@@ -222,7 +222,7 @@ export function MorningNewsClock({ config, compact }: { config: any; compact?: b
   const parts  = fmt.formatToParts(now);
   const hh     = parts.find(p => p.type === 'hour')?.value   || '12';
   const mm     = parts.find(p => p.type === 'minute')?.value || '00';
-  const ampm   = parts.find(p => p.type === 'dayperiod' || p.type === 'dayPeriod')?.value || 'AM';
+  const ampm   = parts.find(p => p.type === 'dayPeriod')?.value || 'AM';
 
   const dateFmt = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: tz });
   const dateStr = dateFmt.format(now).toUpperCase();

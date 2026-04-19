@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Storybook · Hallway</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;700&family=Quattrocento:wght@400;700&family=Italianno&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #1c1206; }
+  .stage {
+    width: 100vw; height: 100vh; position: relative; overflow: hidden;
+    background:
+      radial-gradient(ellipse at 50% 100%, rgba(120,53,15,.18), transparent 60%),
+      radial-gradient(ellipse at 50% 0%, rgba(120,53,15,.18), transparent 55%),
+      #faecc6;
+    font-family: 'Quattrocento', serif;
+    color: #3d2410;
+  }
+  .stage::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(120,53,15,.02) 3px 4px);
+    mix-blend-mode: multiply;
+  }
+
+  /* Outer double border */
+  .frame { position: absolute; inset: 24px; border: 2px solid #8b5a2b; pointer-events: none; }
+  .frame::after { content: ''; position: absolute; inset: 8px; border: 1px solid #8b5a2b; }
+
+  /* HEADER — title page style */
+  .header { position: absolute; top: 60px; left: 0; right: 0; text-align: center; }
+  .chapter { font-family: 'Italianno', cursive; font-size: 38px; color: #8b5a2b; letter-spacing: .05em; }
+  .chapter::before { content: '~ '; }
+  .chapter::after  { content: ' ~'; }
+  .header h1 { font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 86px; letter-spacing: .12em; margin: 4px 0 4px; color: #3d2410; line-height: 1; }
+  .header .sub { font-family: 'Italianno', cursive; font-size: 32px; color: #8b5a2b; }
+  .header .rule { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 8px; color: #8b5a2b; }
+  .header .rule .line { width: 140px; height: 1px; background: currentColor; }
+  .header .rule .orn { font-size: 18px; }
+
+  /* LEFT — schedule as a numbered story list with drop-cap rows */
+  .schedule {
+    position: absolute; left: 80px; top: 240px; width: 56%; max-width: 940px; height: 540px;
+    background: #fff8e1;
+    border: 1px solid #8b5a2b;
+    box-shadow: inset 0 0 0 8px #faecc6, inset 0 0 0 9px #8b5a2b, 0 8px 18px rgba(0,0,0,.18);
+    padding: 32px 40px;
+  }
+  .schedule h2 { font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 38px; margin: 0 0 4px; line-height: 1; color: #3d2410; letter-spacing: .04em; text-align: center; }
+  .schedule .sub { text-align: center; font-family: 'Italianno', cursive; font-size: 26px; color: #8b5a2b; margin-bottom: 12px; }
+  .schedule .row { display: flex; align-items: center; gap: 16px; padding: 8px 0; border-bottom: 1px dashed rgba(139,90,43,.45); }
+  .schedule .row:last-child { border-bottom: none; }
+  .schedule .num {
+    width: 56px; height: 56px;
+    font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 36px; color: #faecc6;
+    background: #8b5a2b; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: inset 0 0 0 3px #faecc6;
+    flex: 0 0 56px;
+  }
+  .schedule .time { font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 18px; color: #8b5a2b; width: 130px; }
+  .schedule .name { flex: 1; font-family: 'Quattrocento', serif; font-size: 22px; color: #3d2410; }
+  .schedule .room { font-family: 'Italianno', cursive; font-size: 26px; color: #8b5a2b; }
+  .schedule .row.hl { background: rgba(252,211,77,.4); margin: 0 -40px; padding: 8px 40px; }
+
+  /* RIGHT TOP — Attendance as an illuminated medallion */
+  .attendance {
+    position: absolute; right: 80px; top: 240px; width: 480px; height: 280px;
+    background: #fff8e1;
+    border: 1px solid #8b5a2b;
+    box-shadow: inset 0 0 0 8px #faecc6, inset 0 0 0 9px #8b5a2b, 0 8px 18px rgba(0,0,0,.18);
+    padding: 18px;
+    display: flex; align-items: center; justify-content: center; flex-direction: column;
+    position: relative;
+  }
+  .attendance .lbl-top {
+    font-family: 'Italianno', cursive; font-size: 28px; color: #8b5a2b; line-height: 1;
+  }
+  .attendance .pct { display: flex; align-items: baseline; }
+  .attendance .pct b { font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 130px; color: #15803d; line-height: 1; }
+  .attendance .pct sup { font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 60px; color: #15803d; }
+  .attendance .lbl-bot { font-family: 'Quattrocento', serif; font-style: italic; font-size: 18px; color: #5d3a1a; }
+  .attendance::before, .attendance::after {
+    content: '❦'; position: absolute; color: #8b5a2b; font-size: 22px;
+  }
+  .attendance::before { top: 18px; left: 24px; }
+  .attendance::after  { bottom: 18px; right: 24px; }
+
+  /* RIGHT MIDDLE — Clock + weather as twin medallions */
+  .stickerRow {
+    position: absolute; right: 80px; top: 540px; width: 480px; display: flex; gap: 18px;
+  }
+  .clock, .weather {
+    flex: 1; background: #fff8e1; padding: 14px;
+    border: 1px solid #8b5a2b;
+    box-shadow: inset 0 0 0 6px #faecc6, inset 0 0 0 7px #8b5a2b;
+    text-align: center;
+  }
+  .clock .t, .weather .t {
+    font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 52px; color: #3d2410; line-height: 1;
+  }
+  .clock .lbl, .weather .desc {
+    font-family: 'Italianno', cursive; font-size: 22px; color: #8b5a2b;
+  }
+
+  /* BOTTOM — announcement & countdown like a footnote */
+  .row {
+    position: absolute; left: 80px; right: 80px; bottom: 130px; display: flex; gap: 24px; align-items: stretch;
+  }
+  .ann {
+    flex: 1; background: linear-gradient(180deg, #faecc6, #f5d68a);
+    border: 1px solid #8b5a2b; padding: 14px 24px;
+    box-shadow: inset 0 0 0 4px #fff8e1, inset 0 0 0 5px #8b5a2b;
+    position: relative;
+  }
+  .ann::before { content: '✶'; position: absolute; top: 8px; left: 12px; color: #8b5a2b; font-size: 18px; }
+  .ann .lbl { font-family: 'Italianno', cursive; font-size: 26px; color: #8b5a2b; line-height: 1; }
+  .ann .msg { font-family: 'Cormorant Garamond', serif; font-size: 30px; font-weight: 500; color: #3d2410; line-height: 1.05; margin-top: 4px; }
+
+  .ctd {
+    flex: 0 0 280px; background: #fff8e1;
+    border: 1px solid #8b5a2b; padding: 12px 18px;
+    box-shadow: inset 0 0 0 4px #faecc6, inset 0 0 0 5px #8b5a2b;
+    text-align: center;
+  }
+  .ctd .lbl { font-family: 'Italianno', cursive; font-size: 24px; color: #8b5a2b; line-height: 1; }
+  .ctd .num { font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 56px; line-height: 1; color: #3d2410; }
+  .ctd .unit { font-family: 'Quattrocento', serif; font-style: italic; font-size: 16px; color: #5d3a1a; }
+
+  /* Ticker — printer's mark style */
+  .ticker {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 80px;
+    background: #3d2410; color: #faecc6;
+    display: flex; align-items: center; overflow: hidden;
+    border-top: 4px double #8b5a2b;
+  }
+  .ticker .stamp {
+    flex: 0 0 auto; padding: 0 24px; height: 100%;
+    background: #8b5a2b; color: #faecc6; display: flex; align-items: center;
+    font-family: 'Cormorant Garamond', serif; font-weight: 700; letter-spacing: .25em; font-size: 14px;
+  }
+  .ticker .scroll { flex: 1; font-family: 'Cormorant Garamond', serif; font-size: 28px; font-style: italic; padding-left: 28px; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="frame"></div>
+
+  <div class="header">
+    <div class="chapter">In which we begin our day</div>
+    <h1>LEARN · GROW · SHINE</h1>
+    <div class="sub">every day, a new adventure</div>
+    <div class="rule"><span class="line"></span><span class="orn">❦</span><span class="line"></span></div>
+  </div>
+
+  <div class="schedule">
+    <h2>Today's Schedule</h2>
+    <div class="sub">period by period, hour by hour</div>
+    <div class="row"><div class="num">I</div><div class="time">8:15 — 9:00</div><div class="name">Homeroom &amp; Morning Meeting</div><div class="room">Rm 12</div></div>
+    <div class="row"><div class="num">II</div><div class="time">9:05 — 9:55</div><div class="name">Mathematics with Mrs. Chen</div><div class="room">Rm 14</div></div>
+    <div class="row hl"><div class="num">III</div><div class="time">10:00 — 10:50</div><div class="name">Reading Workshop with Mrs. Hill</div><div class="room">Rm 12</div></div>
+    <div class="row"><div class="num">IV</div><div class="time">11:00 — 11:45</div><div class="name">Science — States of Matter</div><div class="room">Rm 21</div></div>
+    <div class="row"><div class="num">V</div><div class="time">11:50 — 12:30</div><div class="name">Lunch &amp; Recess</div><div class="room">Cafeteria</div></div>
+    <div class="row"><div class="num">VI</div><div class="time">12:35 — 1:25</div><div class="name">Art with Ms. Greene</div><div class="room">Rm 9</div></div>
+  </div>
+
+  <div class="attendance">
+    <div class="lbl-top">Attendance today</div>
+    <div class="pct"><b>97</b><sup>%</sup></div>
+    <div class="lbl-bot">— a fine showing —</div>
+  </div>
+
+  <div class="stickerRow">
+    <div class="clock"><div class="t">12:34 PM</div><div class="lbl">~ noon hour ~</div></div>
+    <div class="weather"><div class="t">42°</div><div class="desc">~ clear skies ~</div></div>
+  </div>
+
+  <div class="row">
+    <div class="ann">
+      <div class="lbl">An announcement —</div>
+      <div class="msg">Assembly in the gymnasium, Friday at two o'clock — all classes welcome!</div>
+    </div>
+    <div class="ctd">
+      <div class="lbl">until field day</div>
+      <div class="num">8</div>
+      <div class="unit">days hence</div>
+    </div>
+  </div>
+
+  <div class="ticker">
+    <div class="stamp">A WORD FROM THE HALLS</div>
+    <div class="scroll">Walk, do not run in the corridors &nbsp; · &nbsp; Reading challenge: twenty minutes a day &nbsp; · &nbsp; Wear school colours on Spirit Friday</div>
+  </div>
+</div>
+</body>
+</html>

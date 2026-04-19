@@ -396,6 +396,120 @@ leave it off.
 
 ---
 
+**Sprint 10 — PDF / PPTX / Slides import → auto-slideshow**
+
+Closes the #1 conversion objection from prospects: "I already make
+my menus / flyers / morning announcements in Canva (or PowerPoint
+/ Google Slides) — can I just publish that?" Yes. Drag the file in,
+we render it to a playlist of images automatically.
+
+- **Schema additions** to `Asset`:
+  - `processingStatus` (`PENDING | PROCESSING | READY | FAILED`)
+  - `parentAssetId` — original PDF/PPTX, so each rendered page
+    points back to its source for re-render at higher DPI later
+  - `pageNumber` — 1-indexed position inside the source doc
+  - `sourceFormat` — `PDF | PPTX | KEYNOTE | DOCX | OTHER`
+- **New endpoint** `POST /api/v1/assets/import-deck` accepting a
+  PDF or PPTX upload. Returns the parent Asset row immediately
+  with `PENDING` status; conversion runs as a background BullMQ job
+  on the existing Redis. UI polls or websocket-subscribes for
+  `READY`.
+- **Conversion pipeline (free / self-hosted):**
+  - PDF → PNG: `pdfjs-dist` (Mozilla's renderer, pure JS, no
+    binary). Render at 2× target screen height (4K screens get
+    4320px-wide images). 1-3 MB per page.
+  - PPTX → PDF → PNG: shell out to
+    `libreoffice --headless --convert-to pdf`, then PDF→PNG above.
+    LibreOffice handles ~95% of decks, fonts preserved if
+    embedded.
+  - Bound: max 100 pages per upload, 50MB file cap, 60s job
+    timeout per page. Reject files > caps with a friendly
+    "split into smaller decks" error.
+- **Auto-create Playlist** on completion. Named after the source
+  file (`Menu Week of April 19`). Default per-slide duration 8s,
+  override per item afterward. User drops the playlist on a screen
+  / schedule like any other.
+- **Asset-library UI:**
+  - "Import deck" tile next to "Upload" — accepts .pdf, .pptx,
+    .ppt, .key (Keynote falls back to "open in Keynote, export
+    PDF" message — Apple doesn't license a converter we can self-
+    host).
+  - Per-page thumbnails grouped under the parent asset (collapsible
+    tree row).
+  - Per-page "use as image" lets them grab one slide for a single
+    IMAGE zone instead of the whole playlist.
+- **What customers get for free** because Playlist is the output:
+  audit log, role gates, schedules, per-slide duration tuning,
+  reorder/delete, drag onto any screen.
+- **Honest limitations** (document in the import dialog so support
+  tickets don't pile up):
+  - Slide animations + transitions flatten to stills.
+  - Embedded video is dropped (workaround: separate VIDEO widget
+    on a different zone).
+  - Live edits don't sync — re-export and re-upload (Sprint 11
+    Canva Connect fixes that).
+  - Hyperlinks flatten.
+- **Why now (post-launch).** Yodeck, Rise Vision, OptiSigns, and
+  ScreenCloud all ship this as table stakes for paid signage.
+  Customers expect it; the absence is a real objection in pilot
+  conversations. Defer for launch only because it's not life-
+  safety; ship in Sprint 10 as the first big "buyer convenience"
+  feature.
+
+---
+
+**Sprint 11 — Direct Canva Connect (and Slides / PowerPoint Online)**
+
+Builds on Sprint 10. Same UX outcome (Canva design appears on the
+screen) but via OAuth so edits in Canva auto-sync — no re-export
+ritual. Same architectural pattern works for Google Slides and
+Microsoft PowerPoint Online; ship Canva first because that's what
+prospects ask for by name.
+
+- **OAuth flow:** Canva
+  [Connect API](https://www.canva.dev/docs/connect/) — register
+  EduCMS as a Canva integration, redirect URI on our domain,
+  store the user's refresh token encrypted in a new
+  `IntegrationToken` table scoped per-user-per-tenant.
+- **"Connect Canva" button** in `/settings/integrations`. After
+  consent, the asset library gains an "Import from Canva" tile.
+- **Picker UX:** modal lists the user's Canva designs (paginated
+  via Canva's `/v1/designs` endpoint), with thumbnails. Pick one →
+  server fetches the export (PNG or PDF, our choice — PDF for
+  multi-page decks, PNG for single designs) → routes through the
+  same Sprint 10 conversion pipeline → produces an Asset (or a
+  Playlist for multi-page).
+- **Auto-resync:** opt-in per imported design. A nightly cron
+  re-fetches the export; if Canva's `updated_at` is newer than
+  our last sync, re-render and update the Asset in-place. Player
+  cache invalidates by SHA mismatch (already covered by Sprint 7
+  offline-first).
+- **Resync cadence:** default daily, opt-in to hourly for high-
+  change designs (cafeteria menus). Hard cap at 4× per hour to
+  respect Canva rate limits.
+- **Sister integrations** (same pattern, different OAuth scope):
+  - **Google Slides** — Drive API + Slides API. Export as PDF.
+  - **PowerPoint Online** — Microsoft Graph API.
+    `/me/drive/items/{id}/content?format=pdf`.
+  - **Figma** — REST API. Designers love this for kiosk hero
+    art that gets iterated weekly.
+- **Security review (this is OAuth, treat carefully):**
+  - Refresh tokens encrypted at rest with `DEVICE_SECRET_KEY`-
+    style envelope encryption.
+  - Per-tenant feature flag `EXTERNAL_INTEGRATIONS_ENABLED`
+    (district admins can disable for their schools).
+  - Audit log entry on every connect / disconnect / sync.
+  - Disconnect button purges the refresh token immediately.
+- **Why a separate sprint from Sprint 10:** Sprint 10 is "drag a
+  file in" — zero new external dependencies, ships in days,
+  closes the objection. Sprint 11 is "live two-way connection
+  with a third-party service" — needs OAuth security review,
+  rate-limit handling, and ongoing maintenance as Canva's API
+  evolves. Don't entangle them; Sprint 10 stands alone and Sprint
+  11 is a delight upgrade on top.
+
+---
+
 **Sprint 7 — Offline-first player (download-and-play architecture)**
 
 The player MUST download all content locally and play from local cache.

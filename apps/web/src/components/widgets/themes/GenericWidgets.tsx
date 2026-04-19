@@ -11,7 +11,7 @@
  *   - MENU_ITEM   — food card: name + description + allergen chips
  *   - SCOREBOARD  — home-vs-away scorebug with scores + time
  *   - SCHEDULE_GRID — period-by-period schedule table
- *   - ATTENDANCE_TICKER — live attendance stat with percentage bar
+ *   - ATTENDANCE  — live attendance stat with percentage bar
  *   - BIRTHDAYS   — today's birthdays, cake emoji per student
  *   - HONOR_ROLL  — scrolling list of recognized students
  *

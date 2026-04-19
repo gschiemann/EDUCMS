@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Scrapbook · Hallway</title>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Patrick+Hand&family=Shadows+Into+Light&family=Kalam:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0f172a; }
+  .stage {
+    width: 100vw; height: 100vh; position: relative; overflow: hidden;
+    background:
+      radial-gradient(ellipse at 80% 10%, rgba(125,211,252,.12), transparent 55%),
+      radial-gradient(ellipse at 10% 90%, rgba(244,114,182,.1), transparent 55%),
+      repeating-linear-gradient(45deg, transparent 0 6px, rgba(120,53,15,.012) 6px 7px),
+      #fbf3df;
+    font-family: 'Patrick Hand', cursive;
+    color: #3a2614;
+  }
+
+  /* Banner — torn paper headline taped corner-to-corner */
+  .banner {
+    position: absolute; top: 36px; left: 60px; right: 60px; height: 130px;
+    background: #fff;
+    box-shadow: 0 6px 18px rgba(0,0,0,.18);
+    transform: rotate(-.6deg);
+    display: flex; align-items: center; justify-content: center; flex-direction: column;
+    /* torn bottom edge */
+    clip-path: polygon(0 0,100% 0,100% 92%,98% 100%,95% 91%,92% 100%,89% 92%,86% 100%,82% 91%,79% 100%,75% 92%,71% 100%,67% 91%,63% 100%,59% 92%,55% 100%,51% 91%,47% 100%,43% 91%,39% 100%,35% 92%,31% 100%,27% 91%,23% 100%,19% 92%,15% 100%,11% 91%,7% 100%,3% 92%,0 100%);
+  }
+  .banner h1 { font-family: 'Caveat', cursive; font-weight: 700; font-size: 78px; margin: 0; line-height: 1; color: #be185d; letter-spacing: -0.02em; }
+  .banner .sub { font-family: 'Shadows Into Light'; font-size: 22px; color: #92400e; margin-top: -2px; }
+  .banner::before, .banner::after { content: ''; position: absolute; top: -14px; height: 26px; width: 110px;
+    background: repeating-linear-gradient(135deg, rgba(255,255,255,.55) 0 6px, transparent 6px 12px), #fcd34d;
+    box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .banner::before { left: 60px; transform: rotate(-12deg); }
+  .banner::after  { right: 80px; transform: rotate(15deg); background-color: #93c5fd; }
+
+  /* LEFT — Schedule on a notebook page */
+  .schedule {
+    position: absolute; left: 60px; top: 200px; width: 56%; max-width: 920px; height: 540px;
+    background: #fffdf6;
+    background-image:
+      linear-gradient(to right, transparent 90px, rgba(244,63,94,.35) 90px 92px, transparent 92px),
+      repeating-linear-gradient(to bottom, transparent 0 50px, rgba(99,102,241,.18) 50px 51px);
+    box-shadow: 0 10px 26px rgba(0,0,0,.18);
+    transform: rotate(-.8deg);
+    padding: 28px 34px 28px 110px;
+  }
+  .schedule::before {
+    content: ''; position: absolute; left: 28px; top: 0; bottom: 0; width: 14px;
+    background:
+      radial-gradient(circle, #92400e 0 4px, transparent 5px) 0 28px / 14px 56px;
+  }
+  .schedule .pageLbl {
+    position: absolute; top: 14px; right: 28px;
+    font-family: 'Kalam', cursive; font-weight: 700; font-size: 13px; letter-spacing: .15em; color: #92400e; text-transform: uppercase;
+  }
+  .schedule h2 { font-family: 'Caveat', cursive; font-weight: 700; font-size: 46px; color: #be185d; margin: 0 0 12px; line-height: 1; }
+  .schedule .row { display: flex; align-items: baseline; gap: 14px; height: 50px; }
+  .schedule .num { width: 42px; font-family: 'Caveat', cursive; font-weight: 700; font-size: 30px; color: #f472b6; line-height: 1; }
+  .schedule .time { width: 130px; font-family: 'Kalam', cursive; font-weight: 700; font-size: 16px; color: #92400e; }
+  .schedule .name { flex: 1; font-family: 'Patrick Hand'; font-size: 26px; color: #3a2614; }
+  .schedule .room { font-family: 'Shadows Into Light'; font-size: 22px; color: #be185d; }
+  .schedule .row.hl { background: rgba(252,211,77,.45); margin: 0 -34px 0 -110px; padding: 0 34px 0 110px; }
+
+  /* RIGHT TOP — Attendance polaroid */
+  .attendance {
+    position: absolute; right: 60px; top: 200px; width: 480px;
+    background: #fff; padding: 18px 18px 60px;
+    box-shadow: 0 10px 24px rgba(0,0,0,.2);
+    transform: rotate(2.5deg);
+  }
+  .attendance::before { content: ''; position: absolute; top: -16px; left: 50%; transform: translateX(-50%) rotate(-3deg);
+    width: 130px; height: 28px;
+    background: repeating-linear-gradient(135deg, rgba(255,255,255,.55) 0 6px, transparent 6px 12px), #86efac;
+    box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .attendance .pct {
+    background: linear-gradient(180deg, #fef3c7, #fde68a);
+    border: 4px solid #fcd34d;
+    height: 200px; display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .attendance .pct b { font-family: 'Caveat', cursive; font-weight: 700; font-size: 130px; color: #15803d; line-height: 1; }
+  .attendance .pct sup { font-family: 'Caveat', cursive; font-size: 60px; color: #15803d; }
+  .attendance .lbl {
+    position: absolute; left: 0; right: 0; bottom: 14px; text-align: center;
+    font-family: 'Caveat', cursive; font-size: 32px; color: #92400e;
+  }
+  .attendance .day {
+    position: absolute; top: -24px; right: -10px; transform: rotate(8deg);
+    background: #fcd34d; padding: 2px 12px; font-family: 'Kalam', cursive; font-weight: 700; font-size: 14px; color: #78350f;
+    box-shadow: 0 2px 4px rgba(0,0,0,.18);
+  }
+
+  /* RIGHT BOTTOM — Clock + Weather as a pair of stickers */
+  .stickerRow { position: absolute; right: 60px; top: 540px; width: 480px; display: flex; gap: 18px; }
+  .clock, .weather {
+    flex: 1; background: #fff; padding: 14px;
+    box-shadow: 0 6px 14px rgba(0,0,0,.18);
+    text-align: center; position: relative;
+  }
+  .clock { transform: rotate(-3deg); border-top: 6px solid #93c5fd; }
+  .weather { transform: rotate(2deg); border-top: 6px solid #fcd34d; }
+  .clock::before { content: '⏰'; position: absolute; top: -22px; left: 12px; font-size: 28px; }
+  .weather::before { content: '☀️'; position: absolute; top: -22px; right: 12px; font-size: 28px; }
+  .clock .t, .weather .t { font-family: 'Caveat', cursive; font-weight: 700; font-size: 56px; color: #be185d; line-height: 1; }
+  .clock .ap, .weather .desc { font-family: 'Patrick Hand'; font-size: 18px; color: #92400e; }
+
+  /* BOTTOM — announcement (left) + countdown (right) */
+  .row {
+    position: absolute; left: 60px; right: 60px; bottom: 110px; display: flex; gap: 24px; align-items: center;
+  }
+  .ann {
+    flex: 1; background: #fef3c7; padding: 16px 24px; transform: rotate(-1deg);
+    border: 2px dashed #d97706;
+    box-shadow: 0 6px 14px rgba(0,0,0,.12);
+    position: relative;
+  }
+  .ann::before { content: '📣'; position: absolute; top: -18px; left: 16px; font-size: 30px; }
+  .ann .lbl { font-family: 'Kalam', cursive; font-weight: 700; font-size: 12px; letter-spacing: .15em; color: #92400e; text-transform: uppercase; }
+  .ann .msg { font-family: 'Caveat', cursive; font-size: 34px; color: #78350f; line-height: 1.05; margin-top: 2px; }
+
+  .ctd {
+    flex: 0 0 280px; background: #fff; padding: 14px 18px; transform: rotate(2deg);
+    box-shadow: 0 6px 14px rgba(0,0,0,.18);
+    text-align: center; border-top: 6px solid #f472b6; position: relative;
+  }
+  .ctd::before { content: '🎉'; position: absolute; top: -22px; left: 16px; font-size: 28px; }
+  .ctd .lbl { font-family: 'Kalam', cursive; font-weight: 700; font-size: 12px; color: #831843; letter-spacing: .12em; text-transform: uppercase; }
+  .ctd .num { font-family: 'Caveat', cursive; font-weight: 700; font-size: 56px; line-height: 1; color: #be185d; }
+  .ctd .unit { font-family: 'Patrick Hand'; font-size: 18px; color: #92400e; }
+
+  /* Ticker */
+  .ticker {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 80px;
+    background: #fff; border-top: 4px double #f9a8d4;
+    display: flex; align-items: center; overflow: hidden;
+    box-shadow: 0 -4px 12px rgba(0,0,0,.08);
+  }
+  .ticker .stamp {
+    flex: 0 0 auto; padding: 0 22px; height: 100%;
+    background: #93c5fd; color: #1e3a8a; display: flex; align-items: center;
+    font-family: 'Kalam', cursive; font-weight: 700; letter-spacing: .15em; font-size: 14px;
+    border-right: 2px dashed #fff;
+  }
+  .ticker .scroll { flex: 1; font-family: 'Caveat', cursive; font-size: 30px; color: #92400e; padding-left: 28px; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <div class="banner">
+    <h1>LEARN · GROW · SHINE</h1>
+    <div class="sub">every day a new adventure</div>
+  </div>
+
+  <div class="schedule">
+    <div class="pageLbl">~ Today's Schedule ~</div>
+    <h2>Period by Period</h2>
+    <div class="row"><div class="num">1</div><div class="time">8:15 — 9:00</div><div class="name">Homeroom + Morning Meeting</div><div class="room">Rm 12</div></div>
+    <div class="row"><div class="num">2</div><div class="time">9:05 — 9:55</div><div class="name">Math · Mrs. Chen</div><div class="room">Rm 14</div></div>
+    <div class="row hl"><div class="num">3</div><div class="time">10:00 — 10:50</div><div class="name">Reading Workshop · Mrs. Hill</div><div class="room">Rm 12</div></div>
+    <div class="row"><div class="num">4</div><div class="time">11:00 — 11:45</div><div class="name">Science Lab — STATES OF MATTER!</div><div class="room">Rm 21</div></div>
+    <div class="row"><div class="num">5</div><div class="time">11:50 — 12:30</div><div class="name">Lunch + Recess</div><div class="room">Cafeteria</div></div>
+    <div class="row"><div class="num">6</div><div class="time">12:35 — 1:25</div><div class="name">Art with Ms. Greene 🎨</div><div class="room">Rm 9</div></div>
+    <div class="row"><div class="num">7</div><div class="time">1:30 — 2:15</div><div class="name">PE — Field Day prep!</div><div class="room">Gym</div></div>
+  </div>
+
+  <div class="attendance">
+    <div class="day">Mon · 4/19</div>
+    <div class="pct"><b>97</b><sup>%</sup></div>
+    <div class="lbl">~ here today ~</div>
+  </div>
+
+  <div class="stickerRow">
+    <div class="clock"><div class="t">12:34</div><div class="ap">PM</div></div>
+    <div class="weather"><div class="t">42°</div><div class="desc">sunny + crisp</div></div>
+  </div>
+
+  <div class="row">
+    <div class="ann">
+      <div class="lbl">Announcement</div>
+      <div class="msg">Assembly in the gym Friday at 2 PM — all classes welcome!</div>
+    </div>
+    <div class="ctd">
+      <div class="lbl">Field Day in</div>
+      <div class="num">8</div>
+      <div class="unit">days</div>
+    </div>
+  </div>
+
+  <div class="ticker">
+    <div class="stamp">HALLWAY NEWS</div>
+    <div class="scroll">Walk, don't run in the halls 🚶 &nbsp; · &nbsp; Reading Challenge: 20 minutes a day &nbsp; · &nbsp; Wear school colors on Spirit Friday! 🎉</div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -50,9 +50,9 @@ const CATEGORY_TABS = [
 // for a different level. Empty key = show everything.
 const SCHOOL_LEVEL_CHIPS = [
   { key: '', label: 'All ages', emoji: '🏫' },
-  { key: 'ELEMENTARY', label: 'Elementary', emoji: '🎨' },
-  { key: 'MIDDLE', label: 'Middle', emoji: '📚' },
-  { key: 'HIGH', label: 'High', emoji: '🎓' },
+  { key: 'ELEMENTARY', label: 'Elementary School', emoji: '🎨' },
+  { key: 'MIDDLE', label: 'Middle School', emoji: '📚' },
+  { key: 'HIGH', label: 'High School', emoji: '🎓' },
 ];
 
 const RESOLUTION_PRESETS = [

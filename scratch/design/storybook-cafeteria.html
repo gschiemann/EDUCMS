@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Storybook · Cafeteria</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;700&family=Quattrocento:wght@400;700&family=Italianno&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #1c1206; }
+  .stage {
+    width: 100vw; height: 100vh; position: relative; overflow: hidden;
+    /* aged book paper */
+    background:
+      radial-gradient(ellipse at 50% 100%, rgba(120,53,15,.18), transparent 60%),
+      radial-gradient(ellipse at 50% 0%, rgba(120,53,15,.18), transparent 55%),
+      radial-gradient(ellipse at 0% 50%, rgba(120,53,15,.12), transparent 55%),
+      radial-gradient(ellipse at 100% 50%, rgba(120,53,15,.12), transparent 55%),
+      #faecc6;
+    font-family: 'Quattrocento', serif;
+    color: #3d2410;
+  }
+  /* Vignette + subtle paper grain */
+  .stage::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background:
+      repeating-linear-gradient(0deg, transparent 0 3px, rgba(120,53,15,.02) 3px 4px);
+    mix-blend-mode: multiply;
+  }
+
+  /* Center spine — open-book illusion */
+  .spine {
+    position: absolute; left: 50%; top: 0; bottom: 0; width: 36px; transform: translateX(-50%);
+    background:
+      linear-gradient(90deg, transparent, rgba(120,53,15,.35) 40%, rgba(120,53,15,.6) 50%, rgba(120,53,15,.35) 60%, transparent);
+    pointer-events: none;
+  }
+  /* Decorative double border around the entire spread */
+  .frame {
+    position: absolute; inset: 24px; border: 2px solid #8b5a2b; pointer-events: none;
+  }
+  .frame::after { content: ''; position: absolute; inset: 8px; border: 1px solid #8b5a2b; }
+
+  /* Flourish corners */
+  .corner { position: absolute; width: 80px; height: 80px; pointer-events: none; }
+  .corner svg { width: 100%; height: 100%; fill: #8b5a2b; opacity: .7; }
+  .corner.tl { top: 30px; left: 30px; }
+  .corner.tr { top: 30px; right: 30px; transform: scaleX(-1); }
+  .corner.bl { bottom: 90px; left: 30px; transform: scaleY(-1); }
+  .corner.br { bottom: 90px; right: 30px; transform: scale(-1,-1); }
+
+  /* HEADER — chapter title ribbon */
+  .header { position: absolute; top: 60px; left: 0; right: 0; text-align: center; }
+  .chapter { font-family: 'Italianno', cursive; font-size: 38px; color: #8b5a2b; letter-spacing: .04em; }
+  .chapter::before { content: '~ '; }
+  .chapter::after  { content: ' ~'; }
+  .header h1 { font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 76px; letter-spacing: .02em; margin: 6px 0 4px; color: #3d2410; line-height: 1; }
+  .header .sub { font-family: 'Italianno', cursive; font-size: 30px; color: #8b5a2b; }
+  .header .rule { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 8px; color: #8b5a2b; }
+  .header .rule .line { width: 120px; height: 1px; background: currentColor; }
+  .header .rule .orn { font-size: 18px; }
+
+  /* LEFT PAGE — illustrated vignette (the "carousel") */
+  .vignette {
+    position: absolute; left: 80px; top: 230px; width: 38%; max-width: 580px; height: 480px;
+    background: linear-gradient(180deg, #fff8e1, #f5deb3);
+    border: 2px solid #8b5a2b; padding: 28px;
+    box-shadow: inset 0 0 0 6px #faecc6, inset 0 0 0 7px #8b5a2b, 0 8px 18px rgba(0,0,0,.22);
+  }
+  .vignette .scene {
+    width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+    background:
+      radial-gradient(ellipse at 50% 80%, rgba(255,200,120,.65) 0 30%, transparent 55%),
+      linear-gradient(180deg, #fde68a, #fbbf24);
+    position: relative;
+    overflow: hidden;
+  }
+  .vignette .scene::before {
+    /* "sun rays" */
+    content: ''; position: absolute; inset: -50%;
+    background: repeating-conic-gradient(from 0deg, rgba(255,255,255,.18) 0 6deg, transparent 6deg 18deg);
+  }
+  .vignette .hero { font-size: 220px; filter: drop-shadow(0 6px 8px rgba(0,0,0,.25)); position: relative; z-index: 1; }
+  .vignette .caption {
+    position: absolute; left: 0; right: 0; bottom: -38px; text-align: center;
+    font-family: 'Italianno', cursive; font-size: 36px; color: #8b5a2b;
+  }
+
+  /* RIGHT PAGE — three menu vignettes as "story panels" */
+  .panels {
+    position: absolute; right: 80px; top: 230px; width: 38%; min-width: 360px; display: flex; flex-direction: column; gap: 22px;
+  }
+  .panel {
+    background: #fff8e1;
+    border: 1px solid #8b5a2b; padding: 16px 22px;
+    box-shadow: inset 0 0 0 4px #faecc6, inset 0 0 0 5px #8b5a2b, 0 4px 10px rgba(0,0,0,.15);
+    display: flex; gap: 18px; align-items: flex-start;
+    position: relative;
+  }
+  .panel .dropcap {
+    font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 78px; line-height: 1; color: #8b5a2b;
+    border-right: 2px solid #c89868; padding-right: 14px;
+  }
+  .panel .body { flex: 1; }
+  .panel h3 { font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 30px; line-height: 1; margin: 4px 0 4px; color: #3d2410; }
+  .panel p  { font-family: 'Quattrocento', serif; font-size: 16px; color: #5d3a1a; margin: 0 0 8px; line-height: 1.4; }
+  .badges { display: flex; gap: 6px; }
+  .badge {
+    font-family: 'Quattrocento', serif; font-weight: 700; font-size: 11px; letter-spacing: .12em;
+    padding: 3px 10px; border-radius: 2px; background: #faecc6; color: #5d3a1a;
+    border: 1px solid #8b5a2b;
+  }
+
+  /* BOTTOM — special + countdown like footnotes */
+  .footRow { position: absolute; left: 80px; right: 80px; bottom: 130px; display: flex; gap: 24px; align-items: stretch; }
+  .special {
+    flex: 1;
+    border: 1px solid #8b5a2b; padding: 14px 24px;
+    background: linear-gradient(180deg, #faecc6, #f5d68a);
+    box-shadow: inset 0 0 0 4px #fff8e1, inset 0 0 0 5px #8b5a2b;
+    position: relative;
+  }
+  .special::before { content: '✦'; position: absolute; top: 8px; left: 12px; color: #8b5a2b; font-size: 18px; }
+  .special .lbl {
+    font-family: 'Italianno', cursive; font-size: 26px; color: #8b5a2b; line-height: 1;
+  }
+  .special .msg { font-family: 'Cormorant Garamond', serif; font-size: 32px; font-weight: 500; color: #3d2410; line-height: 1.05; margin-top: 4px; }
+
+  .ctd {
+    flex: 0 0 280px;
+    border: 1px solid #8b5a2b; padding: 12px 18px;
+    background: #fff8e1;
+    box-shadow: inset 0 0 0 4px #faecc6, inset 0 0 0 5px #8b5a2b;
+    text-align: center;
+    position: relative;
+  }
+  .ctd .lbl { font-family: 'Italianno', cursive; font-size: 24px; color: #8b5a2b; line-height: 1; }
+  .ctd .num {
+    font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 56px; line-height: 1; color: #3d2410;
+  }
+  .ctd .unit { font-family: 'Quattrocento', serif; font-style: italic; font-size: 16px; color: #5d3a1a; }
+
+  /* TICKER — bottom banner like a printed bookplate */
+  .ticker {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 80px;
+    background: #3d2410; color: #faecc6;
+    display: flex; align-items: center; overflow: hidden;
+    border-top: 4px double #8b5a2b;
+  }
+  .ticker .stamp {
+    flex: 0 0 auto; padding: 0 24px; height: 100%;
+    background: #8b5a2b; color: #faecc6; display: flex; align-items: center;
+    font-family: 'Cormorant Garamond', serif; font-weight: 700; letter-spacing: .25em; font-size: 14px;
+  }
+  .ticker .scroll { flex: 1; font-family: 'Cormorant Garamond', serif; font-size: 28px; font-style: italic; padding-left: 28px; white-space: nowrap; }
+
+  /* CLOCK — small inset, top-right corner ornament */
+  .clock {
+    position: absolute; top: 80px; right: 80px; width: 130px; text-align: center;
+    border: 1px solid #8b5a2b; padding: 10px;
+    background: #fff8e1;
+    box-shadow: inset 0 0 0 4px #faecc6, inset 0 0 0 5px #8b5a2b;
+  }
+  .clock .t { font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 36px; line-height: 1; color: #3d2410; }
+  .clock .lbl { font-family: 'Italianno', cursive; font-size: 22px; color: #8b5a2b; line-height: 1; }
+
+  /* LOGO — small, top-left */
+  .logo {
+    position: absolute; top: 80px; left: 80px; width: 130px; height: 130px;
+    background: #fff8e1; border: 1px solid #8b5a2b; border-radius: 50%;
+    box-shadow: inset 0 0 0 6px #faecc6, inset 0 0 0 7px #8b5a2b;
+    display: flex; align-items: center; justify-content: center; font-size: 60px;
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="spine"></div>
+  <div class="frame"></div>
+
+  <div class="corner tl"><svg viewBox="0 0 80 80"><path d="M2 2 Q 40 2 40 40 M2 2 Q 2 40 40 40 M10 10 Q 30 10 30 30 M10 10 Q 10 30 30 30"/></svg></div>
+  <div class="corner tr"><svg viewBox="0 0 80 80"><path d="M2 2 Q 40 2 40 40 M2 2 Q 2 40 40 40 M10 10 Q 30 10 30 30 M10 10 Q 10 30 30 30"/></svg></div>
+  <div class="corner bl"><svg viewBox="0 0 80 80"><path d="M2 2 Q 40 2 40 40 M2 2 Q 2 40 40 40 M10 10 Q 30 10 30 30 M10 10 Q 10 30 30 30"/></svg></div>
+  <div class="corner br"><svg viewBox="0 0 80 80"><path d="M2 2 Q 40 2 40 40 M2 2 Q 2 40 40 40 M10 10 Q 30 10 30 30 M10 10 Q 10 30 30 30"/></svg></div>
+
+  <div class="logo">📖</div>
+
+  <div class="header">
+    <div class="chapter">Chapter Twelve</div>
+    <h1>Today's Menu</h1>
+    <div class="sub">in which the kitchen serves a feast</div>
+    <div class="rule"><span class="line"></span><span class="orn">❦</span><span class="line"></span></div>
+  </div>
+
+  <div class="clock"><div class="t">12:34 PM</div><div class="lbl">~ noon hour ~</div></div>
+
+  <div class="vignette">
+    <div class="scene"><div class="hero">🍝</div></div>
+    <div class="caption">— from the kitchen —</div>
+  </div>
+
+  <div class="panels">
+    <div class="panel">
+      <div class="dropcap">C</div>
+      <div class="body">
+        <h3>Chef Salad</h3>
+        <p>Romaine, grilled chicken, cherry tomatoes, shaved cheese, ranch.</p>
+        <div class="badges"><span class="badge">GLUTEN-FREE</span><span class="badge">DAIRY</span></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="dropcap">R</div>
+      <div class="body">
+        <h3>Roasted Veggies</h3>
+        <p>Carrots, zucchini, bell peppers — with olive oil &amp; sea salt.</p>
+        <div class="badges"><span class="badge">VEGAN</span><span class="badge">GLUTEN-FREE</span></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="dropcap">F</div>
+      <div class="body">
+        <h3>Fruit Cup</h3>
+        <p>Seasonal fresh fruit — watermelon, pineapple, summer berries.</p>
+        <div class="badges"><span class="badge">VEGAN</span><span class="badge">GLUTEN-FREE</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footRow">
+    <div class="special">
+      <div class="lbl">A note from the cook —</div>
+      <div class="msg">Pizza Friday returns at last! Cheese &amp; pepperoni await in line two.</div>
+    </div>
+    <div class="ctd">
+      <div class="lbl">until next meal</div>
+      <div class="num">12</div>
+      <div class="unit">days hence</div>
+    </div>
+  </div>
+
+  <div class="ticker">
+    <div class="stamp">FROM THE KITCHEN</div>
+    <div class="scroll">Eat the rainbow — fruits &amp; veggies every day &nbsp; · &nbsp; Drink water, stay hydrated &nbsp; · &nbsp; Free &amp; reduced meals — ask the office</div>
+  </div>
+</div>
+</body>
+</html>

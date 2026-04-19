@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Scrapbook · Cafeteria</title>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Patrick+Hand&family=Shadows+Into+Light&family=Kalam:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0f172a; }
+  .stage {
+    width: 100vw; height: 100vh; position: relative; overflow: hidden;
+    /* warm cream paper, slightly textured */
+    background:
+      radial-gradient(ellipse at 20% 10%, rgba(253,224,71,.08), transparent 50%),
+      radial-gradient(ellipse at 80% 90%, rgba(244,114,182,.07), transparent 55%),
+      repeating-linear-gradient(45deg, transparent 0 6px, rgba(120,53,15,.012) 6px 7px),
+      #fbf3df;
+    font-family: 'Patrick Hand', cursive;
+    color: #3a2614;
+  }
+
+  /* ----- washi tape utility ----- */
+  .tape {
+    position: absolute; height: 28px; width: 110px;
+    background: repeating-linear-gradient(135deg, rgba(255,255,255,.5) 0 6px, transparent 6px 12px), var(--c, #fbb6ce);
+    opacity: .85;
+    box-shadow: 0 1px 3px rgba(0,0,0,.12);
+    border-radius: 1px;
+  }
+
+  /* ----- HEADER STRIP — pinned banner ----- */
+  .header { position: absolute; top: 32px; left: 0; right: 0; display: flex; align-items: flex-start; padding: 0 40px; gap: 24px; }
+
+  /* Logo as a torn-paper sticker */
+  .logo {
+    width: 130px; height: 130px; flex: 0 0 130px;
+    background: #fff;
+    border-radius: 50%;
+    box-shadow: 0 4px 12px rgba(0,0,0,.15), inset 0 0 0 6px rgba(244,114,182,.3);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 56px;
+    transform: rotate(-6deg);
+    position: relative;
+  }
+  .logo::before, .logo::after { content: ''; position: absolute; height: 22px; width: 60px;
+    background: repeating-linear-gradient(135deg, rgba(255,255,255,.5) 0 5px, transparent 5px 10px), #93c5fd;
+    box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .logo::before { top: -10px; left: -8px; transform: rotate(-30deg); }
+  .logo::after  { bottom: -6px; right: -4px; transform: rotate(40deg); background-color: #fcd34d; }
+
+  /* Big handwritten title — paper banner on a ribbon */
+  .titleWrap {
+    flex: 1; position: relative; padding: 22px 36px;
+    background: #fff;
+    box-shadow: 0 6px 18px rgba(120,53,15,.18);
+    transform: rotate(-1deg);
+    border-top: 4px double #f9a8d4;
+    border-bottom: 4px double #f9a8d4;
+  }
+  .titleWrap::before, .titleWrap::after {
+    content: ''; position: absolute; top: -16px; height: 30px; width: 90px;
+    background: repeating-linear-gradient(135deg, rgba(255,255,255,.6) 0 5px, transparent 5px 10px), #fcd34d;
+    box-shadow: 0 1px 3px rgba(0,0,0,.12);
+  }
+  .titleWrap::before { left: 80px; transform: rotate(-15deg); }
+  .titleWrap::after  { right: 110px; transform: rotate(12deg); background-color: #86efac; }
+  .titleWrap h1 { font-family: 'Caveat', cursive; font-weight: 700; font-size: 64px; line-height: 1; margin: 0; color: #be185d; text-align: center; }
+  .titleWrap .sub { font-family: 'Shadows Into Light'; font-size: 22px; text-align: center; color: #92400e; margin-top: 4px; }
+
+  /* Clock as a wall clock sticker */
+  .clock {
+    width: 130px; height: 130px; flex: 0 0 130px;
+    background: #fff; border-radius: 50%;
+    border: 6px solid #fcd34d;
+    box-shadow: 0 4px 12px rgba(0,0,0,.18);
+    transform: rotate(7deg);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-family: 'Kalam', cursive; font-weight: 700;
+    position: relative;
+  }
+  .clock::before { content: ''; position: absolute; top: -12px; right: 30px; width: 70px; height: 22px; transform: rotate(28deg);
+    background: repeating-linear-gradient(135deg, rgba(255,255,255,.55) 0 5px, transparent 5px 10px), #f9a8d4; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  .clock .t { font-size: 32px; color: #be185d; line-height: 1; }
+  .clock .ap { font-size: 14px; color: #92400e; }
+
+  /* ----- LEFT — Polaroid food carousel ----- */
+  .polaroid {
+    position: absolute; left: 80px; top: 230px;
+    width: 50%; max-width: 640px; height: 470px;
+    background: #fff;
+    padding: 22px 22px 70px;
+    box-shadow: 0 14px 32px rgba(0,0,0,.22), 0 4px 8px rgba(0,0,0,.1);
+    transform: rotate(-2deg);
+  }
+  .polaroid::before { content: ''; position: absolute; top: -18px; left: 40%; width: 130px; height: 30px; transform: rotate(-4deg);
+    background: repeating-linear-gradient(135deg, rgba(255,255,255,.55) 0 6px, transparent 6px 12px), #93c5fd; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+  .polaroid .photo {
+    width: 100%; height: 100%;
+    background:
+      radial-gradient(circle at 30% 35%, #fde68a 0 60px, transparent 60px),
+      radial-gradient(circle at 65% 55%, #fca5a5 0 80px, transparent 80px),
+      radial-gradient(circle at 50% 70%, #86efac 0 70px, transparent 70px),
+      linear-gradient(135deg, #fef3c7, #fde68a 60%, #fcd34d);
+    position: relative;
+  }
+  .polaroid .photo::after {
+    content: '🍝'; position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 200px; filter: drop-shadow(0 8px 12px rgba(0,0,0,.2));
+  }
+  .polaroid .caption {
+    position: absolute; left: 0; right: 0; bottom: 18px;
+    text-align: center; font-family: 'Caveat', cursive; font-size: 32px; color: #92400e;
+  }
+
+  /* ----- RIGHT — Three index-card menu items, stacked ----- */
+  .menuStack { position: absolute; right: 60px; top: 230px; width: 32%; min-width: 360px; display: flex; flex-direction: column; gap: 26px; }
+  .card {
+    background: #fffaf0;
+    padding: 18px 22px 16px;
+    box-shadow: 0 6px 14px rgba(0,0,0,.15);
+    position: relative;
+    border-left: 4px solid var(--accent, #f472b6);
+    transform: rotate(var(--rot, -1deg));
+    /* notebook lines */
+    background-image: repeating-linear-gradient(to bottom, transparent 0 28px, rgba(180,83,9,.18) 28px 29px);
+    background-position: 0 12px;
+  }
+  .card::before { content: ''; position: absolute; top: -12px; left: 50%; transform: translateX(-50%) rotate(-3deg);
+    width: 80px; height: 18px;
+    background: repeating-linear-gradient(135deg, rgba(255,255,255,.5) 0 5px, transparent 5px 10px), var(--tape, #fcd34d);
+    box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .card h3 { margin: 0; font-family: 'Caveat', cursive; font-weight: 700; font-size: 38px; line-height: 1; color: #be185d; }
+  .card p { font-family: 'Patrick Hand'; font-size: 19px; color: #4b3220; margin: 8px 0 10px; line-height: 1.35; }
+  .badges { display: flex; gap: 6px; }
+  .badge { font-family: 'Kalam', cursive; font-weight: 700; font-size: 12px; padding: 3px 9px; border-radius: 999px; background: #f9a8d4; color: #831843; box-shadow: 0 1px 2px rgba(0,0,0,.15); letter-spacing: .03em; }
+  .badge.v   { background: #86efac; color: #14532d; }
+  .badge.gf  { background: #fcd34d; color: #78350f; }
+  .badge.dy  { background: #93c5fd; color: #1e3a8a; }
+
+  /* ----- BOTTOM — special + countdown ----- */
+  .strip { position: absolute; left: 80px; right: 60px; bottom: 100px; display: flex; gap: 24px; align-items: center; }
+  .special {
+    flex: 1; background: #fff8f0; padding: 18px 26px; transform: rotate(-1deg);
+    border: 2px dashed #ec4899;
+    box-shadow: 0 6px 14px rgba(0,0,0,.12);
+    position: relative;
+  }
+  .special::before { content: '★'; position: absolute; top: -22px; left: 24px; font-size: 38px; color: #f59e0b; text-shadow: 0 2px 0 #fff; }
+  .special .lbl { font-family: 'Kalam', cursive; font-weight: 700; font-size: 13px; color: #be185d; letter-spacing: .15em; text-transform: uppercase; }
+  .special .msg { font-family: 'Caveat', cursive; font-size: 36px; color: #831843; line-height: 1.05; margin-top: 2px; }
+
+  .countdown {
+    flex: 0 0 280px; background: #fff; padding: 14px 18px; transform: rotate(2deg);
+    box-shadow: 0 6px 14px rgba(0,0,0,.18);
+    text-align: center; border: 1px solid #fcd34d;
+    position: relative;
+  }
+  .countdown::before { content: '⏰'; position: absolute; top: -22px; left: 16px; font-size: 30px; }
+  .countdown .lbl { font-family: 'Kalam', cursive; font-weight: 700; font-size: 12px; color: #92400e; letter-spacing: .12em; text-transform: uppercase; }
+  .countdown .num { font-family: 'Caveat', cursive; font-weight: 700; font-size: 56px; line-height: 1; color: #be185d; }
+  .countdown .unit { font-family: 'Patrick Hand'; font-size: 18px; color: #92400e; }
+
+  /* ----- TICKER ----- */
+  .ticker {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 80px;
+    background: #fff;
+    border-top: 4px double #f9a8d4;
+    display: flex; align-items: center; overflow: hidden;
+    box-shadow: 0 -4px 12px rgba(0,0,0,.08);
+  }
+  .ticker .stamp {
+    flex: 0 0 auto; padding: 0 22px; height: 100%;
+    background: #fcd34d; color: #78350f; display: flex; align-items: center;
+    font-family: 'Kalam', cursive; font-weight: 700; letter-spacing: .15em; font-size: 14px;
+    border-right: 2px dashed #fff;
+  }
+  .ticker .scroll { flex: 1; font-family: 'Caveat', cursive; font-size: 30px; color: #92400e; padding-left: 28px; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <div class="header">
+    <div class="logo">🍎</div>
+    <div class="titleWrap">
+      <h1>Today's Menu</h1>
+      <div class="sub">what's cooking in the kitchen</div>
+    </div>
+    <div class="clock"><div class="t">12:34</div><div class="ap">PM</div></div>
+  </div>
+
+  <div class="polaroid">
+    <div class="photo"></div>
+    <div class="caption">~ snapped this morning ~</div>
+  </div>
+
+  <div class="menuStack">
+    <div class="card" style="--accent:#f472b6;--rot:-1.5deg;--tape:#fcd34d">
+      <h3>Chef Salad</h3>
+      <p>Romaine, grilled chicken, cherry tomatoes, shaved cheese, ranch.</p>
+      <div class="badges"><span class="badge gf">GF</span><span class="badge dy">DAIRY</span></div>
+    </div>
+    <div class="card" style="--accent:#86efac;--rot:1.2deg;--tape:#86efac">
+      <h3>Roasted Veggies</h3>
+      <p>Carrots, zucchini, bell peppers — olive oil, sea salt.</p>
+      <div class="badges"><span class="badge v">VEG</span><span class="badge gf">GF</span></div>
+    </div>
+    <div class="card" style="--accent:#fcd34d;--rot:-1deg;--tape:#93c5fd">
+      <h3>Fruit Cup</h3>
+      <p>Seasonal fresh fruit — watermelon, pineapple, berries.</p>
+      <div class="badges"><span class="badge v">VEG</span><span class="badge gf">GF</span></div>
+    </div>
+  </div>
+
+  <div class="strip">
+    <div class="special">
+      <div class="lbl">Today's Special</div>
+      <div class="msg">Pizza Friday is BACK! 🍕 Cheese + pepperoni in line 2.</div>
+    </div>
+    <div class="countdown">
+      <div class="lbl">Next meal in</div>
+      <div class="num">12</div>
+      <div class="unit">days</div>
+    </div>
+  </div>
+
+  <div class="ticker">
+    <div class="stamp">FROM THE KITCHEN</div>
+    <div class="scroll">Eat the rainbow — fruits + veggies every day 🌈 &nbsp; · &nbsp; Drink water, stay hydrated! 💧 &nbsp; · &nbsp; Free + reduced meals — ask the office</div>
+  </div>
+
+</div>
+</body>
+</html>

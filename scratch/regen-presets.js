@@ -15,27 +15,43 @@
 const fs = require('fs');
 const path = 'apps/api/src/templates/system-presets.ts';
 
+// `tone` drives which categories a theme is appropriate for.
+// - 'light' = bright/modern palette, safe anywhere
+// - 'dark'  = dark palette, only great for Athletics (stadium vibe)
+// - 'kid'   = playful elementary palette, never in High-school Athletics
+// - 'sport' = athletic aesthetic, only Athletics + Welcome
 const THEMES = [
-  // { slug, cls, schoolLevel, emoji, label }
-  { slug: 'rainbow-ribbon',   cls: 'RainbowRibbon',   level: 'ELEMENTARY', emoji: '🌈', label: 'Rainbow Ribbon',   bg: '#BFE8FF', bgGradient: 'linear-gradient(180deg,#BFE8FF 0%,#FFE0EC 55%,#FFD8A8 100%)' },
-  { slug: 'bulletin-board',   cls: 'BulletinBoard',   level: 'ELEMENTARY', emoji: '📌', label: 'Bulletin Board',   bg: '#C69C6D' },
-  { slug: 'field-day',        cls: 'FieldDay',        level: 'ELEMENTARY', emoji: '🏆', label: 'Field Day',        bg: '#1E2A4A' },
-  { slug: 'storybook',        cls: 'Storybook',       level: 'ELEMENTARY', emoji: '📖', label: 'Storybook',        bg: '#FBF0DC' },
-  { slug: 'scrapbook',        cls: 'Scrapbook',       level: 'ELEMENTARY', emoji: '📎', label: 'Scrapbook',        bg: '#FFF8E7' },
-  { slug: 'track-day',        cls: 'TrackDay',        level: 'ELEMENTARY', emoji: '🏃', label: 'Track Day',        bg: '#4FB06B' },
-  { slug: 'locker-hallway',   cls: 'LockerHallway',   level: 'MIDDLE',     emoji: '🔐', label: 'Locker Hallway',   bg: '#6B727C' },
-  { slug: 'spirit-rally',     cls: 'SpiritRally',     level: 'MIDDLE',     emoji: '📣', label: 'Spirit Rally',     bg: '#1A365D' },
-  { slug: 'stem-lab',         cls: 'StemLab',         level: 'MIDDLE',     emoji: '🔬', label: 'STEM Lab',         bg: '#0A192F' },
-  { slug: 'morning-news',     cls: 'MorningNews',     level: 'MIDDLE',     emoji: '📺', label: 'Morning News',     bg: '#0F172A' },
-  { slug: 'art-studio',       cls: 'ArtStudio',       level: 'MIDDLE',     emoji: '🎨', label: 'Art Studio',       bg: '#FBF7F0' },
-  { slug: 'scorebug',         cls: 'Scorebug',        level: 'MIDDLE',     emoji: '📊', label: 'Scorebug',         bg: '#0B111C' },
-  { slug: 'varsity-athletic', cls: 'VarsityAthletic', level: 'HIGH',       emoji: '🥇', label: 'Varsity',          bg: '#0F1F3A' },
-  { slug: 'senior-countdown', cls: 'SeniorCountdown', level: 'HIGH',       emoji: '🎓', label: 'Senior Countdown', bg: '#F5EFE1' },
-  { slug: 'news-studio-pro',  cls: 'NewsStudioPro',   level: 'HIGH',       emoji: '🎬', label: 'News Studio Pro',  bg: '#0B0F17' },
-  { slug: 'campus-quad',      cls: 'CampusQuad',      level: 'HIGH',       emoji: '🏛️', label: 'Campus Quad',      bg: '#F7F5F0' },
-  { slug: 'achievement-hall', cls: 'AchievementHall', level: 'HIGH',       emoji: '🏅', label: 'Achievement Hall', bg: '#3D2817' },
-  { slug: 'jumbotron-pro',    cls: 'JumbotronPro',    level: 'HIGH',       emoji: '🏟️', label: 'Jumbotron Pro',    bg: '#050A14' },
+  { slug: 'rainbow-ribbon',   cls: 'RainbowRibbon',   level: 'ELEMENTARY', emoji: '🌈', label: 'Rainbow Ribbon',   bg: '#BFE8FF', bgGradient: 'linear-gradient(180deg,#BFE8FF 0%,#FFE0EC 55%,#FFD8A8 100%)', tone: 'kid' },
+  { slug: 'bulletin-board',   cls: 'BulletinBoard',   level: 'ELEMENTARY', emoji: '📌', label: 'Bulletin Board',   bg: '#C69C6D', tone: 'light' },
+  { slug: 'storybook',        cls: 'Storybook',       level: 'ELEMENTARY', emoji: '📖', label: 'Storybook',        bg: '#FBF0DC', tone: 'light' },
+  { slug: 'scrapbook',        cls: 'Scrapbook',       level: 'ELEMENTARY', emoji: '📎', label: 'Scrapbook',        bg: '#FFF8E7', tone: 'light' },
+  { slug: 'field-day',        cls: 'FieldDay',        level: 'ELEMENTARY', emoji: '🏆', label: 'Field Day',        bg: '#1E2A4A', tone: 'sport' },
+  { slug: 'track-day',        cls: 'TrackDay',        level: 'ELEMENTARY', emoji: '🏃', label: 'Track Day',        bg: '#4FB06B', tone: 'sport' },
+  { slug: 'locker-hallway',   cls: 'LockerHallway',   level: 'MIDDLE',     emoji: '🔐', label: 'Locker Hallway',   bg: '#6B727C', tone: 'light' },
+  { slug: 'art-studio',       cls: 'ArtStudio',       level: 'MIDDLE',     emoji: '🎨', label: 'Art Studio',       bg: '#FBF7F0', tone: 'light' },
+  { slug: 'morning-news',     cls: 'MorningNews',     level: 'MIDDLE',     emoji: '📺', label: 'Morning News',     bg: '#0F172A', tone: 'dark' },
+  { slug: 'stem-lab',         cls: 'StemLab',         level: 'MIDDLE',     emoji: '🔬', label: 'STEM Lab',         bg: '#0A192F', tone: 'dark' },
+  { slug: 'spirit-rally',     cls: 'SpiritRally',     level: 'MIDDLE',     emoji: '📣', label: 'Spirit Rally',     bg: '#1A365D', tone: 'sport' },
+  { slug: 'scorebug',         cls: 'Scorebug',        level: 'MIDDLE',     emoji: '📊', label: 'Scorebug',         bg: '#0B111C', tone: 'sport' },
+  { slug: 'senior-countdown', cls: 'SeniorCountdown', level: 'HIGH',       emoji: '🎓', label: 'Senior Countdown', bg: '#F5EFE1', tone: 'light' },
+  { slug: 'campus-quad',      cls: 'CampusQuad',      level: 'HIGH',       emoji: '🏛️', label: 'Campus Quad',      bg: '#F7F5F0', tone: 'light' },
+  { slug: 'varsity-athletic', cls: 'VarsityAthletic', level: 'HIGH',       emoji: '🥇', label: 'Varsity',          bg: '#0F1F3A', tone: 'sport' },
+  { slug: 'jumbotron-pro',    cls: 'JumbotronPro',    level: 'HIGH',       emoji: '🏟️', label: 'Jumbotron Pro',    bg: '#050A14', tone: 'sport' },
+  { slug: 'news-studio-pro',  cls: 'NewsStudioPro',   level: 'HIGH',       emoji: '🎬', label: 'News Studio Pro',  bg: '#0B0F17', tone: 'dark' },
+  { slug: 'achievement-hall', cls: 'AchievementHall', level: 'HIGH',       emoji: '🏅', label: 'Achievement Hall', bg: '#3D2817', tone: 'dark' },
 ];
+
+// Which theme tones are allowed per category.
+// - Welcome:    anything
+// - Hallway:    anything light (dark themes make wayfinding hard)
+// - Cafeteria:  ONLY light/kid tones — food needs bright palettes
+// - Athletics:  any 'sport' theme + select others
+const CATEGORY_ALLOWED_TONES = {
+  LOBBY:     new Set(['light', 'kid', 'sport', 'dark']),
+  HALLWAY:   new Set(['light', 'kid']),
+  CAFETERIA: new Set(['light', 'kid']),
+  ATHLETICS: new Set(['sport', 'dark']),
+};
 
 function q(s) { return JSON.stringify(s); }
 
@@ -179,14 +195,10 @@ function buildPreset(t, category, zones, copy) {
 const presets = [];
 for (const t of THEMES) {
   const lvlCopy = COPY[t.level];
-  // WELCOME (lobby) — 18 total
-  presets.push(buildPreset(t, 'LOBBY',     welcomeZones(t, lvlCopy.welcome),       lvlCopy.welcome));
-  // HALLWAY — 18 total
-  presets.push(buildPreset(t, 'HALLWAY',   hallwayZones(t, lvlCopy.hallway),       lvlCopy.hallway));
-  // CAFETERIA — 18 total
-  presets.push(buildPreset(t, 'CAFETERIA', cafeteriaZones(t, lvlCopy.cafeteria),   lvlCopy.cafeteria));
-  // ATHLETICS — 18 total
-  presets.push(buildPreset(t, 'ATHLETICS', athleticsZones(t, lvlCopy.athletics),   lvlCopy.athletics));
+  if (CATEGORY_ALLOWED_TONES.LOBBY.has(t.tone))     presets.push(buildPreset(t, 'LOBBY',     welcomeZones(t, lvlCopy.welcome),       lvlCopy.welcome));
+  if (CATEGORY_ALLOWED_TONES.HALLWAY.has(t.tone))   presets.push(buildPreset(t, 'HALLWAY',   hallwayZones(t, lvlCopy.hallway),       lvlCopy.hallway));
+  if (CATEGORY_ALLOWED_TONES.CAFETERIA.has(t.tone)) presets.push(buildPreset(t, 'CAFETERIA', cafeteriaZones(t, lvlCopy.cafeteria),   lvlCopy.cafeteria));
+  if (CATEGORY_ALLOWED_TONES.ATHLETICS.has(t.tone)) presets.push(buildPreset(t, 'ATHLETICS', athleticsZones(t, lvlCopy.athletics),   lvlCopy.athletics));
 }
 
 // Serialize. We keep the existing file header up to the
