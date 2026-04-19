@@ -141,14 +141,14 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
     : (typeof c.birthdayNames === 'string'
         ? c.birthdayNames.split(/[,·\n]+/).map(s => s.trim()).filter(Boolean)
         : ['Maya', 'Eli', 'Sofia']);
-  const BD_MAX_VISIBLE = 4;            // hard ceiling — beyond this we rotate
+  const BD_MAX_VISIBLE = 3;            // hard ceiling — beyond this we rotate
   const BD_ROTATE_MS = 5000;           // page swap cadence when carouseling
-  // Font ladder by visible count (not total). Stacked vertically so each
-  // line eats vertical space; smaller font when more lines visible.
+  // Font ladder by visible count. Stays readable at distance — never goes
+  // smaller than 38px because beyond that you can't read it from across
+  // a hallway. Carousel handles the overflow instead of shrinking text.
   const bdVisibleCount = Math.min(birthdayList.length, BD_MAX_VISIBLE);
-  const bdFontSize = bdVisibleCount <= 1 ? 52
-                   : bdVisibleCount === 2 ? 42
-                   : bdVisibleCount === 3 ? 34 : 28;
+  const bdFontSize = bdVisibleCount <= 1 ? 56
+                   : bdVisibleCount === 2 ? 48 : 38;
   // Carousel page index — only used when total > MAX_VISIBLE.
   const [bdPage, setBdPage] = useState(0);
   const bdNeedsCarousel = birthdayList.length > BD_MAX_VISIBLE;
@@ -258,21 +258,22 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
               <div className="aw-bal aw-bal3" />
               <div className="aw-cake">🎂</div>
             </div>
-            <div className="aw-bdLbl">
-              Today's Birthdays
-              {bdNeedsCarousel && (
-                <span className="aw-bdPageBadge">
-                  {bdPage + 1} / {bdPageCount}
-                </span>
-              )}
-            </div>
-            {/* Stacked vertically — each name on its own line. With many
-                names, switches to a carousel that swaps a fresh page in
-                with a soft fade so the cell never overflows. */}
-            <div className="aw-bdNames" key={`bd-page-${bdPage}`} style={{ fontSize: bdFontSize }}>
-              {bdVisible.map((name, i) => (
-                <div key={`${bdPage}-${i}-${name}`} className="aw-bdName">{name}</div>
-              ))}
+            <div className="aw-bdLbl">Today's Birthdays</div>
+            {/* Names container has a FIXED height (room for 3 lines at the
+                largest font) so the cluster + label stay locked in place
+                regardless of how many names are visible on a given carousel
+                page. Without this lock, recentering shifts the whole stack
+                up and down between rotations. */}
+            <div className="aw-bdNamesSlot">
+              <div
+                className="aw-bdNames"
+                key={`bd-page-${bdPage}`}
+                style={{ fontSize: bdFontSize }}
+              >
+                {bdVisible.map((name, i) => (
+                  <div key={`${bdPage}-${i}-${name}`} className="aw-bdName">{name}</div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -498,8 +499,16 @@ const CSS = `
 .aw-cdNum { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 84px; line-height: .9; color: #7c2d12; text-shadow: 0 3px 0 rgba(255,255,255,.5); margin: 6px 0; }
 .aw-cdUnit { font-family: 'Caveat', cursive; font-size: 32px; color: #7c2d12; }
 
-/* TEACHER — polaroid */
-.aw-teacher { grid-column: 1; grid-row: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+/* TEACHER — polaroid. justify-content: flex-start + fixed padding-top
+   anchors the polaroid at a known position so it doesn't drift when
+   sibling cells (e.g. birthdays carousel) re-render. */
+.aw-teacher {
+  grid-column: 1; grid-row: 2;
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: flex-start;
+  padding-top: 28px;
+  position: relative;
+}
 .aw-polaroid {
   background: #fff; padding: 18px 18px 60px; width: 260px;
   box-shadow: 0 12px 24px rgba(0,0,0,.22);
@@ -545,7 +554,17 @@ const CSS = `
    on top of the polaroid, no longer a separate element below it. */
 
 /* BIRTHDAYS — balloon cluster */
-.aw-birthdays { grid-column: 3; grid-row: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px; position: relative; z-index: 7; }
+/* justify-content: flex-start + padding-top anchors the cluster at the
+   top of the cell. Then the names slot below has a FIXED height so the
+   cluster (and visually nearby cells) never shift between carousel
+   rotations regardless of how many names show on the current page. */
+.aw-birthdays {
+  grid-column: 3; grid-row: 2;
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: flex-start;
+  padding: 18px 12px 12px;
+  position: relative; z-index: 7;
+}
 .aw-cluster { position: relative; width: 200px; height: 160px; animation: aw-bob 1.4s ease-in-out infinite; }
 @keyframes aw-bob {
   0%, 100% { transform: translateY(0) rotate(-3deg); }
@@ -560,25 +579,21 @@ const CSS = `
 .aw-bdLbl {
   font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 22px;
   letter-spacing: .12em; color: #be185d; text-transform: uppercase;
-  margin-top: 14px; text-shadow: 0 2px 0 rgba(255,255,255,.7);
-  display: inline-flex; align-items: center; gap: 8px;
+  margin-top: 12px; text-shadow: 0 2px 0 rgba(255,255,255,.7);
 }
-/* Page badge that appears when carouseling — tells the operator there
-   are more birthdays than fit, currently showing page N of M. */
-.aw-bdPageBadge {
-  font-size: 12px; letter-spacing: .08em;
-  background: rgba(236, 72, 153, .15);
-  color: #be185d;
-  padding: 2px 8px; border-radius: 999px;
-  border: 1px solid rgba(236, 72, 153, .35);
+/* Fixed-height slot. Reserves enough space for 3 lines at the smallest
+   font size (38px × 1.05 line-height ≈ 120px). Names render top-anchored
+   inside the slot. Empty space below when fewer names are visible — the
+   slot height itself never changes, so neighbors never shift. */
+.aw-bdNamesSlot {
+  height: 130px;
+  display: flex; align-items: flex-start; justify-content: center;
+  margin-top: 6px;
 }
-/* Names container — stacked column with a fade animation that fires
-   each time the carousel page changes (key changes → React remount). */
 .aw-bdNames {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  display: flex; flex-direction: column; align-items: center;
   font-family: 'Caveat', cursive; font-weight: 700;
   color: #831843; text-shadow: 0 2px 0 rgba(255,255,255,.7);
-  margin-top: 4px;
   text-align: center;
   animation: aw-bdFadeIn .55s ease-out;
 }
