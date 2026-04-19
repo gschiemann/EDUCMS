@@ -2,22 +2,23 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Animated Middle School · Welcome (DEMO)</title>
-<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Bebas+Neue&family=Oswald:wght@500;700&family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
+<title>Animated Middle School · Welcome (DEMO v2 — REAL SHAPES)</title>
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Bebas+Neue&family=Oswald:wght@500;700&family=Permanent+Marker&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: #0a0e27; }
 
-  /* === STAGE — pep-rally spirit-banner sky === */
+  /* === STAGE === */
   .stage {
     width: 100vw; height: 100vh; position: relative; overflow: hidden;
     font-family: 'Oswald', sans-serif; color: #fff;
     background:
-      radial-gradient(ellipse at 50% 30%, rgba(59, 130, 246, .25), transparent 60%),
+      radial-gradient(ellipse at 50% 20%, rgba(59, 130, 246, .25), transparent 60%),
+      radial-gradient(ellipse at 20% 110%, rgba(251, 191, 36, .18), transparent 40%),
+      radial-gradient(ellipse at 80% 110%, rgba(220, 38, 38, .18), transparent 40%),
       linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #0f172a 100%);
   }
 
-  /* Diagonal pep-rally stripes pulsing across the background */
   .stage::before {
     content: ''; position: absolute; inset: -10%;
     background: repeating-linear-gradient(
@@ -34,96 +35,158 @@
     to   { transform: translateX(80px); }
   }
 
-  /* Light beams sweeping like stadium spotlights */
-  .stage::after {
-    content: ''; position: absolute; inset: 0; pointer-events: none;
-    background:
-      radial-gradient(ellipse at 20% 110%, rgba(251, 191, 36, .15), transparent 35%),
-      radial-gradient(ellipse at 80% 110%, rgba(220, 38, 38, .15), transparent 35%);
-    animation: ms-spotlightBreathe 6s ease-in-out infinite;
+  /* Stadium spotlights pulsing from below */
+  .spotlight {
+    position: absolute; pointer-events: none;
+    width: 600px; height: 1100px;
+    background: linear-gradient(180deg, transparent 0%, rgba(255,255,255,.08) 50%, transparent 100%);
+    transform-origin: 50% 100%;
+    animation: ms-sweep 7s ease-in-out infinite;
   }
-  @keyframes ms-spotlightBreathe {
-    0%, 100% { opacity: .6; }
-    50%      { opacity: 1; }
+  .spotlight.left  { left: 8%;  bottom: 0; transform: rotate(-15deg); animation-delay: 0s; }
+  .spotlight.right { right: 8%; bottom: 0; transform: rotate(15deg);  animation-delay: -3.5s; }
+  @keyframes ms-sweep {
+    0%, 100% { opacity: .25; transform-origin: 50% 100%; transform: rotate(var(--r, 0deg)) translateX(0); }
+    50%      { opacity: .55; }
   }
 
-  /* Pennant flag bunting along top */
-  .pennantBunting {
-    position: absolute; top: 0; left: 0; right: 0; height: 100px;
-    z-index: 1;
-  }
+  /* === Pennant bunting top === */
+  .pennantBunting { position: absolute; top: 0; left: 0; right: 0; height: 100px; z-index: 1; }
   .pennantBunting svg { width: 100%; height: 100%; display: block; }
+  .pennantBunting .pennant { animation: ms-pennantSway 3s ease-in-out infinite; transform-origin: 50% 8px; }
+  @keyframes ms-pennantSway {
+    0%, 100% { transform: rotate(-2deg); }
+    50%      { transform: rotate(2deg); }
+  }
 
   /* === HEADER === */
   .header {
-    position: absolute; top: 100px; left: 36px; right: 36px;
-    display: grid; grid-template-columns: 200px 1fr 200px;
-    gap: 36px; z-index: 5; align-items: center;
+    position: absolute; top: 110px; left: 36px; right: 36px;
+    display: grid; grid-template-columns: 200px 1fr 220px;
+    gap: 36px; z-index: 5; align-items: start;
   }
 
+  /* LOGO — actual shield with crest */
   .logo {
-    width: 200px; height: 200px;
-    background: linear-gradient(135deg, #fbbf24, #f59e0b);
-    clip-path: polygon(50% 0%, 100% 30%, 100% 100%, 0 100%, 0 30%);
+    width: 200px; height: 220px;
+    background:
+      radial-gradient(circle at 35% 30%, #fde68a, #fbbf24 60%, #d97706);
+    /* shield clip-path */
+    clip-path: polygon(50% 0%, 100% 12%, 100% 60%, 50% 100%, 0 60%, 0 12%);
     display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 12px 32px rgba(0,0,0,.4), inset 0 0 0 6px #92400e;
-    animation: ms-shieldPulse 2s ease-in-out infinite;
+    box-shadow: 0 12px 32px rgba(0,0,0,.5);
+    animation: ms-shieldPulse 2.4s ease-in-out infinite;
     position: relative;
   }
   .logo::after {
-    content: '🦅'; font-size: 90px; line-height: 1;
-    filter: drop-shadow(0 4px 6px rgba(0,0,0,.4));
+    content: '🦅'; font-size: 100px; line-height: 1;
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,.5));
+    transform: translateY(-12px);
+  }
+  /* Inner shield outline using a smaller pseudo */
+  .logo::before {
+    content: ''; position: absolute; inset: 14px;
+    background: transparent;
+    clip-path: polygon(50% 0%, 100% 12%, 100% 60%, 50% 100%, 0 60%, 0 12%);
+    box-shadow: inset 0 0 0 4px #92400e;
   }
   @keyframes ms-shieldPulse {
-    0%, 100% { transform: translateY(0); box-shadow: 0 12px 32px rgba(0,0,0,.4), inset 0 0 0 6px #92400e; }
-    50%      { transform: translateY(-6px); box-shadow: 0 18px 38px rgba(251,191,36,.5), inset 0 0 0 6px #92400e; }
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-8px); }
   }
 
-  .titleBox {
-    background: linear-gradient(135deg, #dc2626, #991b1b);
-    padding: 24px 36px; text-align: center;
-    border: 6px solid #fff;
-    box-shadow: 0 12px 28px rgba(0,0,0,.4);
+  /* TITLE — REAL torn-paper pennant banner hanging from rope */
+  .titleBanner {
     position: relative;
-    transform: skewX(-3deg);
+    padding-top: 20px;
   }
-  .titleBox h1 {
-    margin: 0; line-height: 1;
-    font-family: 'Bungee', cursive; font-size: 80px; color: #fff;
+  .titleBanner::before {
+    /* The rope it hangs from */
+    content: ''; position: absolute; top: 8px; left: -10%; right: -10%; height: 3px;
+    background: repeating-linear-gradient(90deg, #78350f 0 8px, transparent 8px 12px);
+    border-radius: 2px;
+  }
+  .titleBanner .ribbon {
+    background: #dc2626;
+    padding: 28px 40px 50px;
+    position: relative;
+    box-shadow: 0 16px 32px rgba(0,0,0,.4);
+    /* Torn bottom edge — pennant point */
+    clip-path: polygon(0 0, 100% 0, 100% 70%, 90% 100%, 80% 70%, 70% 100%, 60% 70%, 50% 100%, 40% 70%, 30% 100%, 20% 70%, 10% 100%, 0 70%);
+    animation: ms-bannerSway 3.5s ease-in-out infinite;
+    transform-origin: 50% 0%;
+    border: 4px solid #fff;
+    border-bottom: none;
+  }
+  @keyframes ms-bannerSway {
+    0%, 100% { transform: rotate(-1.5deg); }
+    50%      { transform: rotate(1.5deg); }
+  }
+  .titleBanner h1 {
+    margin: 0; line-height: .92;
+    font-family: 'Bungee', cursive; font-size: 88px; color: #fff;
     text-shadow: 4px 4px 0 #000, 8px 8px 0 #fbbf24;
-    letter-spacing: .04em;
-    transform: skewX(3deg); /* counter the parent skew */
+    letter-spacing: .04em; text-align: center;
   }
-  .titleBox .sub {
-    font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 28px;
-    color: #fbbf24; margin-top: 6px; letter-spacing: .15em; text-transform: uppercase;
-    transform: skewX(3deg);
+  .titleBanner .sub {
+    font-family: 'Permanent Marker', cursive; font-size: 32px;
+    color: #fbbf24; margin-top: 6px; text-align: center;
+    transform: rotate(-2deg);
+    text-shadow: 2px 2px 0 rgba(0,0,0,.4);
   }
+  /* Two thumbtacks pinning the banner to the rope */
+  .titleBanner .pin1, .titleBanner .pin2 {
+    position: absolute; top: 12px; width: 18px; height: 18px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #fef3c7, #d97706 70%, #78350f);
+    box-shadow: 0 2px 4px rgba(0,0,0,.5);
+    z-index: 2;
+  }
+  .titleBanner .pin1 { left: 8%; }
+  .titleBanner .pin2 { right: 8%; }
 
-  /* Stadium scoreboard clock */
+  /* CLOCK — hanging stadium scoreboard with chains */
   .clock {
-    width: 200px; height: 200px;
+    position: relative; padding-top: 28px;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .clock .chains {
+    position: absolute; top: 0; left: 30%; right: 30%; height: 32px;
+    display: flex; justify-content: space-between;
+  }
+  .clock .chain {
+    width: 4px; height: 100%;
+    background: linear-gradient(180deg, transparent, #94a3b8 20%, #64748b 80%, transparent);
+    border-radius: 2px;
+  }
+  .clock .scoreboard {
+    width: 200px; height: 140px;
     background: #000;
-    border: 8px solid #fbbf24;
-    box-shadow: 0 0 40px rgba(251, 191, 36, .5), inset 0 0 30px rgba(251, 191, 36, .2);
+    border: 6px solid #fbbf24;
+    border-radius: 8px;
+    box-shadow: 0 0 40px rgba(251, 191, 36, .5), inset 0 0 30px rgba(251, 191, 36, .15);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    font-family: 'Bebas Neue', sans-serif;
-    animation: ms-scoreboardFlicker 4s ease-in-out infinite;
+    animation: ms-scoreboardSway 4s ease-in-out infinite, ms-scoreboardFlicker 4s ease-in-out infinite;
+    transform-origin: 50% -28px;
+  }
+  @keyframes ms-scoreboardSway {
+    0%, 100% { transform: rotate(-2deg); }
+    50%      { transform: rotate(2deg); }
   }
   @keyframes ms-scoreboardFlicker {
-    0%, 4%, 8%, 100% { box-shadow: 0 0 40px rgba(251, 191, 36, .5), inset 0 0 30px rgba(251, 191, 36, .2); }
+    0%, 4%, 8%, 100% { box-shadow: 0 0 40px rgba(251, 191, 36, .5), inset 0 0 30px rgba(251, 191, 36, .15); }
     2%, 6%           { box-shadow: 0 0 20px rgba(251, 191, 36, .3), inset 0 0 15px rgba(251, 191, 36, .1); }
   }
   .clock .t {
-    font-size: 78px; color: #fbbf24; line-height: 1;
+    font-family: 'Bebas Neue', sans-serif; font-size: 78px; color: #fbbf24; line-height: 1;
     text-shadow: 0 0 20px rgba(251, 191, 36, .8);
     letter-spacing: .04em;
   }
-  .clock .ap { font-size: 28px; color: #f59e0b; letter-spacing: .25em; }
+  .clock .ap { font-family: 'Bebas Neue', sans-serif; font-size: 28px; color: #f59e0b; letter-spacing: .25em; }
 
   /* === MAIN GRID === */
   .grid {
-    position: absolute; top: 320px; left: 36px; right: 36px; bottom: 130px;
+    position: absolute; top: 360px; left: 36px; right: 36px; bottom: 130px;
     display: grid;
     grid-template-columns: 320px 1fr 320px;
     grid-template-rows: 1fr 1fr;
@@ -131,175 +194,312 @@
     z-index: 3;
   }
 
-  /* WEATHER — sleek dark sports card */
+  /* WEATHER — REAL pennant flag on a flagpole, with thermometer reading */
   .weather {
     grid-column: 1; grid-row: 1;
-    background: linear-gradient(135deg, #1e293b, #0f172a);
-    border: 4px solid #fbbf24;
-    border-radius: 16px;
-    padding: 20px;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    box-shadow: 0 8px 24px rgba(0,0,0,.5);
     position: relative;
   }
-  .weather .icon {
-    font-size: 96px; line-height: 1;
-    animation: ms-weatherFloat 3s ease-in-out infinite;
-    filter: drop-shadow(0 0 20px rgba(251, 191, 36, .6));
+  .weather .pole {
+    position: absolute; left: 50%; top: 0; bottom: 0;
+    width: 4px; background: linear-gradient(180deg, #94a3b8, #475569);
+    transform: translateX(-50%);
+    border-radius: 2px;
   }
-  @keyframes ms-weatherFloat {
-    0%, 100% { transform: translateY(0) rotate(-3deg); }
-    50%      { transform: translateY(-8px) rotate(3deg); }
+  .weather .pole::before {
+    content: ''; position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+    width: 18px; height: 18px; border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #fef3c7, #fbbf24 70%, #b45309);
   }
-  .weather .temp {
-    font-family: 'Bebas Neue', sans-serif; font-size: 90px; line-height: 1; color: #fff;
-    margin-top: 4px;
+  .weather .pennant {
+    background: linear-gradient(135deg, #dc2626, #991b1b);
+    border: 4px solid #fff;
+    border-right: none;
+    padding: 16px 36px 16px 16px;
+    /* triangular pennant shape */
+    clip-path: polygon(0 0, 100% 0, 80% 50%, 100% 100%, 0 100%);
+    width: 230px;
+    text-align: center;
+    box-shadow: 0 8px 20px rgba(0,0,0,.5);
+    transform-origin: left center;
+    animation: ms-flagWave 2.5s ease-in-out infinite;
+    position: relative; z-index: 1;
   }
-  .weather .desc {
-    font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 22px;
-    color: #fbbf24; letter-spacing: .12em; text-transform: uppercase; margin-top: 4px;
+  @keyframes ms-flagWave {
+    0%, 100% { transform: rotate(-2deg) skewY(-1deg); }
+    50%      { transform: rotate(2deg) skewY(1deg); }
+  }
+  .weather .pennant .icon {
+    font-size: 56px; line-height: 1;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,.5));
+  }
+  .weather .pennant .temp {
+    font-family: 'Bebas Neue', sans-serif; font-size: 62px; line-height: 1; color: #fbbf24;
+    text-shadow: 2px 2px 0 #000;
+  }
+  .weather .pennant .desc {
+    font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 16px;
+    color: #fff; letter-spacing: .12em; text-transform: uppercase;
+    text-shadow: 1px 1px 0 #000;
   }
 
-  /* ANNOUNCEMENT — bold breaking-news megaphone */
+  /* ANNOUNCEMENT — REAL MEGAPHONE shape (cone) with sound waves */
   .announce {
     grid-column: 2; grid-row: 1 / span 2;
     display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;
     position: relative; padding: 24px;
-    background:
-      linear-gradient(135deg, rgba(220, 38, 38, .9), rgba(127, 29, 29, .95));
-    border: 6px solid #fff;
-    border-radius: 24px;
-    box-shadow: 0 16px 40px rgba(0,0,0,.5), inset 0 0 0 3px #fbbf24;
-    animation: ms-announcePulse 3s ease-in-out infinite;
-  }
-  @keyframes ms-announcePulse {
-    0%, 100% { transform: scale(1); }
-    50%      { transform: scale(1.015); }
-  }
-  .announce::before {
-    content: 'BIG NEWS'; position: absolute; top: -22px; left: 50%; transform: translateX(-50%);
-    background: #fbbf24; color: #000; padding: 8px 24px;
-    font-family: 'Bungee', cursive; font-size: 22px; letter-spacing: .12em;
-    box-shadow: 0 4px 12px rgba(0,0,0,.3);
-    border: 3px solid #000;
   }
   .announce .megaphone {
-    font-size: 110px; line-height: 1;
-    animation: ms-megaShake 1.4s ease-in-out infinite;
-    transform-origin: 80% 80%;
-    filter: drop-shadow(0 8px 14px rgba(0,0,0,.4));
+    position: absolute; left: -40px; top: 50%; transform: translateY(-50%);
+    width: 220px; height: 260px;
+    /* megaphone cone shape */
+    background: linear-gradient(135deg, #f59e0b, #b45309);
+    clip-path: polygon(0 35%, 70% 0, 100% 0, 100% 100%, 70% 100%, 0 65%);
+    box-shadow: 0 8px 20px rgba(0,0,0,.4);
+    border: 4px solid #92400e;
+    animation: ms-megaShake 1.6s ease-in-out infinite;
+    transform-origin: 100% 50%;
+    z-index: 4;
   }
   @keyframes ms-megaShake {
-    0%, 100%      { transform: rotate(-12deg); }
-    25%, 75%      { transform: rotate(12deg); }
-    50%           { transform: rotate(-12deg); }
+    0%, 100%      { transform: translateY(-50%) rotate(-6deg); }
+    25%, 75%      { transform: translateY(-50%) rotate(6deg); }
+    50%           { transform: translateY(-50%) rotate(-6deg); }
   }
-  .announce .msg {
-    font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 76px; color: #fff;
-    line-height: 1.05; margin-top: 16px;
-    text-shadow: 4px 4px 0 #000;
-    letter-spacing: .02em;
-    max-width: 760px;
+  /* Megaphone handle */
+  .announce .megaphone::after {
+    content: ''; position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
+    width: 30px; height: 60px;
+    background: linear-gradient(135deg, #78350f, #451a03);
+    border-radius: 0 8px 8px 0;
+    border: 4px solid #92400e;
+    border-left: none;
+  }
+  /* Sound waves emanating from the megaphone mouth */
+  .announce .wave1, .announce .wave2, .announce .wave3 {
+    position: absolute; left: 0; top: 50%; width: 80px; height: 80px;
+    border: 5px solid #fbbf24;
+    border-right: none;
+    border-radius: 100%;
+    transform-origin: right center;
+    transform: translateY(-50%);
+    z-index: 3;
+  }
+  .announce .wave1 { left: -120px; opacity: .7; animation: ms-soundWave 1.2s ease-out infinite; }
+  .announce .wave2 { left: -150px; width: 100px; height: 100px; opacity: .5; animation: ms-soundWave 1.2s ease-out infinite .2s; }
+  .announce .wave3 { left: -180px; width: 120px; height: 120px; opacity: .3; animation: ms-soundWave 1.2s ease-out infinite .4s; }
+  @keyframes ms-soundWave {
+    0%   { transform: translateY(-50%) scale(.5); opacity: .8; }
+    100% { transform: translateY(-50%) scale(1.4); opacity: 0; }
+  }
+  /* The actual message bubble — to the right of the megaphone */
+  .announce .bubble {
+    position: relative; z-index: 1;
+    background: linear-gradient(135deg, #fff, #fef3c7);
+    padding: 40px 60px 40px 200px;
+    border: 6px solid #000;
+    border-radius: 32px;
+    box-shadow: 12px 12px 0 #fbbf24, 16px 16px 0 #000;
+    max-width: 800px;
+    transform: rotate(-1deg);
+    animation: ms-bubbleFloat 3s ease-in-out infinite;
+  }
+  @keyframes ms-bubbleFloat {
+    0%, 100% { transform: rotate(-1deg) translateY(0); }
+    50%      { transform: rotate(1deg) translateY(-6px); }
+  }
+  .announce .bubble .lbl {
+    font-family: 'Bungee', cursive; font-size: 22px; color: #dc2626;
+    letter-spacing: .15em;
+  }
+  .announce .bubble .msg {
+    font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 64px; color: #000;
+    line-height: 1.05; margin-top: 12px;
+    letter-spacing: .01em;
   }
 
-  /* COUNTDOWN — stadium scoreboard countdown */
+  /* COUNTDOWN — REAL stopwatch shape */
   .countdown {
     grid-column: 3; grid-row: 1;
-    background: #000;
-    border: 6px solid #dc2626;
-    border-radius: 12px;
-    box-shadow: 0 0 40px rgba(220, 38, 38, .4), inset 0 0 20px rgba(220, 38, 38, .15);
+    display: flex; align-items: center; justify-content: center; position: relative;
+  }
+  .countdown .stopwatch {
+    width: 240px; height: 280px; position: relative;
+  }
+  /* Crown / button on top */
+  .countdown .crown {
+    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 32px; height: 28px;
+    background: linear-gradient(135deg, #94a3b8, #475569);
+    border-radius: 4px 4px 2px 2px;
+    border: 3px solid #1e293b;
+    z-index: 2;
+  }
+  /* Stopwatch ring */
+  .countdown .ring {
+    position: absolute; top: 24px; left: 0; right: 0; bottom: 0;
+    background: radial-gradient(circle at 30% 30%, #fff, #cbd5e1 60%, #475569);
+    border: 8px solid #1e293b;
+    border-radius: 50%;
+    box-shadow: 0 12px 24px rgba(0,0,0,.5), inset 0 0 0 4px #cbd5e1;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    text-align: center;
-    padding: 16px;
+    animation: ms-stopwatchTick 1.6s ease-in-out infinite;
+  }
+  @keyframes ms-stopwatchTick {
+    0%, 100% { transform: rotate(-3deg); }
+    50%      { transform: rotate(3deg); }
+  }
+  /* Tick marks around the edge */
+  .countdown .ring::before {
+    content: ''; position: absolute; inset: 12px; border-radius: 50%;
+    background:
+      conic-gradient(from 0deg,
+        transparent 0 8deg, #1e293b 8deg 10deg, transparent 10deg 38deg,
+        transparent 38deg 70deg, #1e293b 70deg 72deg, transparent 72deg 100deg,
+        transparent 100deg 132deg, #1e293b 132deg 134deg, transparent 134deg 162deg,
+        transparent 162deg 194deg, #1e293b 194deg 196deg, transparent 196deg 224deg,
+        transparent 224deg 256deg, #1e293b 256deg 258deg, transparent 258deg 286deg,
+        transparent 286deg 318deg, #1e293b 318deg 320deg, transparent 320deg 360deg
+      );
+    -webkit-mask: radial-gradient(circle, transparent 78%, #000 78%, #000 92%, transparent 92%);
+            mask: radial-gradient(circle, transparent 78%, #000 78%, #000 92%, transparent 92%);
   }
   .countdown .lbl {
-    font-family: 'Bebas Neue', sans-serif; font-size: 26px; letter-spacing: .12em;
-    color: #dc2626; line-height: 1;
+    font-family: 'Bungee', cursive; font-size: 14px; color: #dc2626;
+    letter-spacing: .15em; text-transform: uppercase;
+    z-index: 1;
   }
   .countdown .num {
-    font-family: 'Bebas Neue', sans-serif; font-size: 130px; line-height: .9;
-    color: #fbbf24;
-    text-shadow: 0 0 30px rgba(251, 191, 36, .8);
-    margin: 6px 0;
-    animation: ms-countdownTick 1s ease-in-out infinite;
-  }
-  @keyframes ms-countdownTick {
-    0%, 100% { transform: scale(1); }
-    50%      { transform: scale(1.05); }
+    font-family: 'Bebas Neue', sans-serif; font-size: 110px; line-height: .9;
+    color: #dc2626;
+    text-shadow: 2px 2px 0 rgba(0,0,0,.15);
+    z-index: 1;
   }
   .countdown .unit {
-    font-family: 'Bebas Neue', sans-serif; font-size: 28px; color: #fff; letter-spacing: .15em;
+    font-family: 'Bebas Neue', sans-serif; font-size: 24px; color: #1e293b;
+    letter-spacing: .15em;
+    z-index: 1;
   }
 
-  /* TEACHER — varsity player card */
+  /* TEACHER — REAL varsity letter patch shape */
   .teacher {
     grid-column: 1; grid-row: 2;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     position: relative; padding: 12px;
   }
-  .teacher .card {
-    background: linear-gradient(135deg, #1e293b, #0f172a);
-    border: 4px solid #fbbf24;
-    border-radius: 12px;
-    width: 230px;
-    overflow: hidden;
-    box-shadow: 0 12px 28px rgba(0,0,0,.5);
+  .teacher .patch {
     position: relative;
-    animation: ms-cardTilt 4s ease-in-out infinite;
+    width: 240px;
+    background: linear-gradient(135deg, #fbbf24, #f59e0b);
+    /* Varsity letter shield shape */
+    clip-path: polygon(20% 0, 80% 0, 100% 50%, 80% 100%, 20% 100%, 0 50%);
+    padding: 32px 28px;
+    text-align: center;
+    box-shadow: 0 10px 24px rgba(0,0,0,.4);
+    animation: ms-patchSwing 4s ease-in-out infinite;
+    transform-origin: top center;
   }
-  @keyframes ms-cardTilt {
-    0%, 100% { transform: rotate(-2deg); }
-    50%      { transform: rotate(2deg); }
+  @keyframes ms-patchSwing {
+    0%, 100% { transform: rotate(-3deg); }
+    50%      { transform: rotate(3deg); }
   }
-  .teacher .roleBar {
-    background: linear-gradient(90deg, #dc2626, #991b1b);
-    padding: 8px 14px;
-    font-family: 'Bungee', cursive; font-size: 14px; color: #fff;
-    text-align: center; letter-spacing: .12em;
-    border-bottom: 2px solid #fbbf24;
+  /* Inner border on the patch (chenille effect) */
+  .teacher .patch::before {
+    content: ''; position: absolute; inset: 12px;
+    background: transparent;
+    clip-path: polygon(20% 0, 80% 0, 100% 50%, 80% 100%, 20% 100%, 0 50%);
+    box-shadow: inset 0 0 0 4px #dc2626;
   }
-  .teacher .face {
-    background: linear-gradient(135deg, #475569, #334155);
-    aspect-ratio: 1;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 130px;
+  .teacher .patch .role {
+    font-family: 'Bungee', cursive; font-size: 14px; color: #dc2626;
+    letter-spacing: .12em;
+    margin-bottom: 4px;
+    position: relative; z-index: 1;
   }
-  .teacher .name {
-    background: #000;
-    padding: 12px;
-    font-family: 'Bebas Neue', sans-serif; font-size: 32px; color: #fbbf24;
-    text-align: center; letter-spacing: .04em; line-height: 1;
+  .teacher .patch .face {
+    font-size: 90px; line-height: 1;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,.3));
+    position: relative; z-index: 1;
+  }
+  .teacher .patch .name {
+    font-family: 'Bungee', cursive; font-size: 30px; color: #000;
+    letter-spacing: .04em;
+    text-shadow: 2px 2px 0 rgba(255,255,255,.3);
+    margin-top: 4px;
+    position: relative; z-index: 1;
   }
 
-  /* BIRTHDAYS — varsity stat banner */
+  /* BIRTHDAYS — REAL cake shape with candles */
   .birthdays {
     grid-column: 3; grid-row: 2;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     position: relative; padding: 12px;
   }
-  .birthdays .banner {
-    background: linear-gradient(135deg, #fbbf24, #f59e0b);
-    border: 4px solid #000;
-    padding: 16px 22px;
-    text-align: center;
-    width: 100%;
-    box-shadow: 0 12px 28px rgba(0,0,0,.4);
-    transform: rotate(-2deg);
-    animation: ms-bannerWave 3s ease-in-out infinite;
+  .birthdays .cakeWrap { position: relative; width: 220px; height: 200px; animation: ms-cakeBob 1.8s ease-in-out infinite; }
+  @keyframes ms-cakeBob {
+    0%, 100% { transform: translateY(0) rotate(-2deg); }
+    50%      { transform: translateY(-6px) rotate(2deg); }
   }
-  @keyframes ms-bannerWave {
-    0%, 100% { transform: rotate(-2deg); }
-    50%      { transform: rotate(2deg); }
+  /* Cake top tier */
+  .birthdays .tier1 {
+    position: absolute; bottom: 0; left: 30px; right: 30px; height: 80px;
+    background: linear-gradient(180deg, #ec4899, #be185d);
+    border-radius: 8px 8px 0 0;
+    border: 4px solid #fff;
+    box-shadow: 0 8px 16px rgba(0,0,0,.4);
+  }
+  .birthdays .tier1::before {
+    /* Frosting drip on top */
+    content: ''; position: absolute; top: -10px; left: -4px; right: -4px; height: 20px;
+    background: #fff;
+    clip-path: polygon(
+      0 100%, 100% 100%, 100% 30%,
+      95% 50%, 90% 30%, 85% 50%, 80% 30%, 75% 50%, 70% 30%, 65% 50%, 60% 30%,
+      55% 50%, 50% 30%, 45% 50%, 40% 30%, 35% 50%, 30% 30%, 25% 50%, 20% 30%,
+      15% 50%, 10% 30%, 5% 50%, 0 30%
+    );
+  }
+  /* Cake bottom tier */
+  .birthdays .tier2 {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 50px;
+    background: linear-gradient(180deg, #fbbf24, #d97706);
+    border-radius: 0 0 8px 8px;
+    border: 4px solid #fff;
+    border-top: none;
+    box-shadow: 0 8px 16px rgba(0,0,0,.4);
+  }
+  /* 3 candles on top */
+  .birthdays .candle {
+    position: absolute; bottom: 80px; width: 8px; height: 36px;
+    background: repeating-linear-gradient(180deg, #fff 0 6px, #ec4899 6px 12px);
+    border-radius: 2px;
+  }
+  .birthdays .candle.c1 { left: 50px; }
+  .birthdays .candle.c2 { left: 50%; transform: translateX(-50%); }
+  .birthdays .candle.c3 { right: 50px; }
+  /* Flames */
+  .birthdays .flame {
+    position: absolute; bottom: 116px; width: 14px; height: 22px;
+    background: radial-gradient(circle at 50% 80%, #fbbf24, #ec4899 60%, transparent 80%);
+    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+    animation: ms-flameDance .4s ease-in-out infinite alternate;
+  }
+  .birthdays .flame.f1 { left: 47px; animation-delay: 0s; }
+  .birthdays .flame.f2 { left: 50%; transform: translateX(-50%); animation-delay: .15s; }
+  .birthdays .flame.f3 { right: 47px; animation-delay: .3s; }
+  @keyframes ms-flameDance {
+    from { transform: scaleY(1) translateX(var(--x, 0)); }
+    to   { transform: scaleY(1.2) translateX(var(--x, 0)) rotate(2deg); }
   }
   .birthdays .lbl {
-    font-family: 'Bungee', cursive; font-size: 22px; color: #000;
-    letter-spacing: .12em;
+    font-family: 'Bungee', cursive; font-size: 18px; color: #fbbf24;
+    letter-spacing: .12em; margin-top: 12px;
+    text-shadow: 2px 2px 0 #000;
   }
-  .birthdays .icon { font-size: 48px; margin: 4px 0; line-height: 1; }
   .birthdays .names {
-    font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 30px; color: #000;
-    line-height: 1.2;
+    font-family: 'Permanent Marker', cursive; font-size: 30px; color: #fff;
+    margin-top: 4px; line-height: 1.1; text-align: center;
+    text-shadow: 2px 2px 0 #000, 4px 4px 0 #dc2626;
   }
 
   /* TICKER — LED scoreboard scroll */
@@ -339,84 +539,119 @@
 <body>
 <div class="stage">
 
-  <!-- Pep-rally pennant bunting across the top -->
+  <div class="spotlight left"></div>
+  <div class="spotlight right"></div>
+
   <div class="pennantBunting">
     <svg viewBox="0 0 1920 100" preserveAspectRatio="none">
       <path d="M0 0 L1920 0 L1920 8 L0 8 Z" fill="#fbbf24"/>
       <g>
-        <polygon points="0,8 70,8 35,75" fill="#dc2626" stroke="#fff" stroke-width="3"/>
-        <polygon points="80,8 150,8 115,75" fill="#fbbf24" stroke="#fff" stroke-width="3"/>
-        <polygon points="160,8 230,8 195,75" fill="#3b82f6" stroke="#fff" stroke-width="3"/>
-        <polygon points="240,8 310,8 275,75" fill="#dc2626" stroke="#fff" stroke-width="3"/>
-        <polygon points="320,8 390,8 355,75" fill="#fbbf24" stroke="#fff" stroke-width="3"/>
-        <polygon points="400,8 470,8 435,75" fill="#3b82f6" stroke="#fff" stroke-width="3"/>
-        <polygon points="480,8 550,8 515,75" fill="#dc2626" stroke="#fff" stroke-width="3"/>
-        <polygon points="560,8 630,8 595,75" fill="#fbbf24" stroke="#fff" stroke-width="3"/>
-        <polygon points="640,8 710,8 675,75" fill="#3b82f6" stroke="#fff" stroke-width="3"/>
-        <polygon points="720,8 790,8 755,75" fill="#dc2626" stroke="#fff" stroke-width="3"/>
-        <polygon points="800,8 870,8 835,75" fill="#fbbf24" stroke="#fff" stroke-width="3"/>
-        <polygon points="880,8 950,8 915,75" fill="#3b82f6" stroke="#fff" stroke-width="3"/>
-        <polygon points="960,8 1030,8 995,75" fill="#dc2626" stroke="#fff" stroke-width="3"/>
-        <polygon points="1040,8 1110,8 1075,75" fill="#fbbf24" stroke="#fff" stroke-width="3"/>
-        <polygon points="1120,8 1190,8 1155,75" fill="#3b82f6" stroke="#fff" stroke-width="3"/>
-        <polygon points="1200,8 1270,8 1235,75" fill="#dc2626" stroke="#fff" stroke-width="3"/>
-        <polygon points="1280,8 1350,8 1315,75" fill="#fbbf24" stroke="#fff" stroke-width="3"/>
-        <polygon points="1360,8 1430,8 1395,75" fill="#3b82f6" stroke="#fff" stroke-width="3"/>
-        <polygon points="1440,8 1510,8 1475,75" fill="#dc2626" stroke="#fff" stroke-width="3"/>
-        <polygon points="1520,8 1590,8 1555,75" fill="#fbbf24" stroke="#fff" stroke-width="3"/>
-        <polygon points="1600,8 1670,8 1635,75" fill="#3b82f6" stroke="#fff" stroke-width="3"/>
-        <polygon points="1680,8 1750,8 1715,75" fill="#dc2626" stroke="#fff" stroke-width="3"/>
-        <polygon points="1760,8 1830,8 1795,75" fill="#fbbf24" stroke="#fff" stroke-width="3"/>
-        <polygon points="1840,8 1910,8 1875,75" fill="#3b82f6" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="0,8 70,8 35,75" fill="#dc2626" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="80,8 150,8 115,75" fill="#fbbf24" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="160,8 230,8 195,75" fill="#3b82f6" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="240,8 310,8 275,75" fill="#dc2626" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="320,8 390,8 355,75" fill="#fbbf24" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="400,8 470,8 435,75" fill="#3b82f6" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="480,8 550,8 515,75" fill="#dc2626" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="560,8 630,8 595,75" fill="#fbbf24" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="640,8 710,8 675,75" fill="#3b82f6" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="720,8 790,8 755,75" fill="#dc2626" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="800,8 870,8 835,75" fill="#fbbf24" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="880,8 950,8 915,75" fill="#3b82f6" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="960,8 1030,8 995,75" fill="#dc2626" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="1040,8 1110,8 1075,75" fill="#fbbf24" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="1120,8 1190,8 1155,75" fill="#3b82f6" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="1200,8 1270,8 1235,75" fill="#dc2626" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="1280,8 1350,8 1315,75" fill="#fbbf24" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="1360,8 1430,8 1395,75" fill="#3b82f6" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="1440,8 1510,8 1475,75" fill="#dc2626" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="1520,8 1590,8 1555,75" fill="#fbbf24" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="1600,8 1670,8 1635,75" fill="#3b82f6" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="1680,8 1750,8 1715,75" fill="#dc2626" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="1760,8 1830,8 1795,75" fill="#fbbf24" stroke="#fff" stroke-width="3"/>
+        <polygon class="pennant" points="1840,8 1910,8 1875,75" fill="#3b82f6" stroke="#fff" stroke-width="3"/>
       </g>
     </svg>
   </div>
 
   <div class="header">
     <div class="logo"></div>
-    <div class="titleBox">
-      <h1>GO EAGLES</h1>
-      <div class="sub">welcome back, Eagles</div>
+    <div class="titleBanner">
+      <div class="pin1"></div>
+      <div class="pin2"></div>
+      <div class="ribbon">
+        <h1>GO EAGLES</h1>
+        <div class="sub">~ welcome back, Eagles ~</div>
+      </div>
     </div>
     <div class="clock">
-      <div class="t">12:34</div>
-      <div class="ap">PM</div>
+      <div class="chains">
+        <div class="chain"></div>
+        <div class="chain"></div>
+      </div>
+      <div class="scoreboard">
+        <div class="t">12:34</div>
+        <div class="ap">PM</div>
+      </div>
     </div>
   </div>
 
   <div class="grid">
+
     <div class="weather">
-      <div class="icon">☀️</div>
-      <div class="temp">68°</div>
-      <div class="desc">SUNNY · CRISP</div>
+      <div class="pole"></div>
+      <div class="pennant">
+        <div class="icon">☀️</div>
+        <div class="temp">68°</div>
+        <div class="desc">SUNNY · CRISP</div>
+      </div>
     </div>
 
     <div class="announce">
-      <div class="megaphone">📣</div>
-      <div class="msg">Pep Rally Friday at 2:30 — be in the gym, bring your loudest!</div>
+      <div class="megaphone"></div>
+      <div class="wave1"></div>
+      <div class="wave2"></div>
+      <div class="wave3"></div>
+      <div class="bubble">
+        <div class="lbl">★ BIG NEWS ★</div>
+        <div class="msg">Pep Rally Friday at 2:30 — be in the gym, bring your loudest!</div>
+      </div>
     </div>
 
     <div class="countdown">
-      <div class="lbl">HOMECOMING IN</div>
-      <div class="num">12</div>
-      <div class="unit">DAYS</div>
+      <div class="stopwatch">
+        <div class="crown"></div>
+        <div class="ring">
+          <div class="lbl">HOMECOMING IN</div>
+          <div class="num">12</div>
+          <div class="unit">DAYS</div>
+        </div>
+      </div>
     </div>
 
     <div class="teacher">
-      <div class="card">
-        <div class="roleBar">★ TEACHER OF THE WEEK ★</div>
+      <div class="patch">
+        <div class="role">★ TEACHER OF THE WEEK ★</div>
         <div class="face">👨‍🏫</div>
         <div class="name">MR. RIVERA</div>
       </div>
     </div>
 
     <div class="birthdays">
-      <div class="banner">
-        <div class="lbl">★ BIRTHDAYS TODAY ★</div>
-        <div class="icon">🎂</div>
-        <div class="names">JORDAN · TYLER · ALEX</div>
+      <div class="cakeWrap">
+        <div class="candle c1"></div>
+        <div class="candle c2"></div>
+        <div class="candle c3"></div>
+        <div class="flame f1"></div>
+        <div class="flame f2"></div>
+        <div class="flame f3"></div>
+        <div class="tier1"></div>
+        <div class="tier2"></div>
       </div>
+      <div class="lbl">★ BIRTHDAYS TODAY ★</div>
+      <div class="names">JORDAN · TYLER · ALEX</div>
     </div>
+
   </div>
 
   <div class="ticker">
