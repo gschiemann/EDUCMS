@@ -13,6 +13,7 @@ import { Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { PrismaService } from './prisma/prisma.service';
+import { ensureSystemPresets } from './templates/ensure-system-presets';
 
 // Last-resort crash guards. ioredis, Prisma, and passport-saml can all
 // surface unhandled rejections on network flaps; we'd rather log than
@@ -125,7 +126,6 @@ async function bootstrap() {
     // Reconcile system presets — creates any preset defined in code that
     // doesn't have a matching DB row yet. Non-blocking background work so
     // the container is ready-to-serve before the seed finishes.
-    const { ensureSystemPresets } = await import('./templates/ensure-system-presets');
     ensureSystemPresets(prisma).catch((e) =>
       logger.warn(`ensureSystemPresets threw: ${(e as Error).message}`),
     );

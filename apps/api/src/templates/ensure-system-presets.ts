@@ -89,6 +89,29 @@ export async function ensureSystemPresets(prisma: PrismaService) {
       }
     }
     logger.log(`System preset seed complete — ${created}/${missing.length} created.`);
+
+    // Pin the curated animated-welcome set to the TOP of the gallery by
+    // refreshing their updatedAt. The templates list orders by
+    // (isSystem desc, updatedAt desc), so touching these pushes the
+    // elementary / middle / high animated scenes above every other
+    // system template as a cluster. Rerun this whenever we want the
+    // "featured" set to surface first — cheap UPDATE, idempotent.
+    const PINNED_TO_TOP = [
+      'preset-lobby-animated-high',
+      'preset-lobby-animated-middle',
+      'preset-lobby-animated-rainbow',
+    ];
+    try {
+      for (const id of PINNED_TO_TOP) {
+        await prisma.client.template.updateMany({
+          where: { id, isSystem: true },
+          data: { updatedAt: new Date() },
+        });
+      }
+      logger.log(`Pinned ${PINNED_TO_TOP.length} animated-welcome presets to top of gallery.`);
+    } catch (e) {
+      logger.warn(`Pin-to-top failed: ${(e as Error).message}`);
+    }
   } catch (e) {
     logger.warn(`System preset seed failed (continuing anyway): ${(e as Error).message}`);
   }
