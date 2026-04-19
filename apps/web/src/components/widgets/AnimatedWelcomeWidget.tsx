@@ -206,6 +206,10 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
 
           <div className="aw-teacher">
             <div className="aw-polaroid">
+              {/* Washi-tape banner above the photo, with the role text
+                  printed on it. Replaces the floating role caption that
+                  used to sit below the polaroid. */}
+              <div className="aw-tWashi">{c.teacherRole || 'Teacher of the Week'}</div>
               <div className="aw-tFace">
                 {c.teacherPhotoUrl
                   ? <img src={c.teacherPhotoUrl} alt="" className="aw-tPhoto" />
@@ -213,7 +217,6 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
               </div>
               <div className="aw-tName">{c.teacherName || 'Mrs. Johnson'}</div>
             </div>
-            <div className="aw-tRole">{c.teacherRole || 'Teacher of the Week'}</div>
           </div>
 
           <div className="aw-birthdays">
@@ -463,11 +466,22 @@ const CSS = `
   0%, 100% { transform: rotate(-3deg) translateX(-4px); }
   50% { transform: rotate(-3deg) translateX(4px); }
 }
-.aw-polaroid::before {
-  content: ''; position: absolute; top: -16px; left: 80px;
-  width: 130px; height: 28px; transform: rotate(-3deg);
+/* The washi tape banner that sits ON TOP of the polaroid and carries
+   the 'Teacher of the Week' caption. Replaces the old empty pseudo-
+   element so the text can ride along with the tape. */
+.aw-tWashi {
+  position: absolute; top: -22px; left: 50%;
+  transform: translateX(-50%) rotate(-3deg);
+  min-width: 90%;
+  padding: 8px 18px;
   background: repeating-linear-gradient(135deg, rgba(255,255,255,.5) 0 6px, transparent 6px 12px), #f9a8d4;
-  box-shadow: 0 1px 4px rgba(0,0,0,.2);
+  box-shadow: 0 2px 6px rgba(0,0,0,.22);
+  font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 18px;
+  letter-spacing: .14em; text-transform: uppercase; color: #831843;
+  text-align: center;
+  text-shadow: 0 1px 0 rgba(255,255,255,.4);
+  white-space: nowrap;
+  z-index: 2;
 }
 .aw-tFace {
   width: 100%; aspect-ratio: 1;
@@ -483,12 +497,8 @@ const CSS = `
   font-family: 'Caveat', cursive; font-weight: 700; font-size: 40px; color: #6d28d9;
   line-height: 1;
 }
-.aw-tRole {
-  margin-top: 22px; text-align: center;
-  font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 22px; color: #be185d;
-  letter-spacing: .12em; text-transform: uppercase;
-  text-shadow: 0 2px 0 rgba(255,255,255,.7);
-}
+/* .aw-tRole removed — role text is now rendered inside .aw-tWashi
+   on top of the polaroid, no longer a separate element below it. */
 
 /* BIRTHDAYS — balloon cluster */
 .aw-birthdays { grid-column: 3; grid-row: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px; position: relative; z-index: 7; }
