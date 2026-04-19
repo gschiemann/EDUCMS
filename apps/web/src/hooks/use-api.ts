@@ -6,7 +6,11 @@ export function useTenantStatus() {
   return useQuery({
     queryKey: ['tenant-status'],
     queryFn: () => apiFetch('/tenants'),
-    refetchInterval: 5000, // Poll every 5 seconds to sync emergency overrides
+    // 30s poll — emergency overrides are pushed via signed WebSocket
+    // messages (the load-bearing path). This poll is a FALLBACK for the
+    // rare case a client loses WS. 5s was overkill and was hammering the
+    // API on every page because this hook mounts in the global shell.
+    refetchInterval: 30_000,
     refetchIntervalInBackground: true,
   });
 }

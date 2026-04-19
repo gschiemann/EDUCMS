@@ -130,9 +130,9 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'WAYFINDING_MAP':   return <WayfindingMapWidget config={cfg} />;
     case 'QUICK_POLL':       return <QuickPollWidget config={cfg} />;
     // ── Animated full-screen scenes (one widget = whole template) ──
-    case 'ANIMATED_WELCOME':      return <AnimatedWelcomeWidget config={cfg} />;
-    case 'ANIMATED_WELCOME_MS':   return <AnimatedWelcomeMiddleWidget config={cfg} />;
-    case 'ANIMATED_WELCOME_HS':   return <AnimatedWelcomeHighWidget config={cfg} />;
+    case 'ANIMATED_WELCOME':      return <AnimatedWelcomeWidget config={cfg} live={live} />;
+    case 'ANIMATED_WELCOME_MS':   return <AnimatedWelcomeMiddleWidget config={cfg} live={live} />;
+    case 'ANIMATED_WELCOME_HS':   return <AnimatedWelcomeHighWidget config={cfg} live={live} />;
     case 'ANIMATED_BACKGROUND':   return <AnimatedBackgroundWidget config={cfg} />;
     default:             return null;
   }

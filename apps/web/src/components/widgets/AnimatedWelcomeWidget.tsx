@@ -112,8 +112,19 @@ function cuteWeatherPhrase(wmoCode: number, tempF: number): string {
   }
 }
 
-export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
+export function AnimatedWelcomeWidget({ config, live }: { config: Cfg; live?: boolean }) {
   const c = config || {};
+  // `live` = true on the player and inside the full-screen preview modal.
+  // `live` = undefined/false in gallery thumbnails (ScaledTemplateThumbnail
+  // passes false). When NOT live we still render every shape so the tile
+  // looks accurate, but we skip the expensive browser work:
+  //   - clock setInterval (30s, harmless alone but × 60 tiles = 2 tps)
+  //   - 3 external API fetches to resolve weather (ipapi.co is 1-3s and
+  //     often rate-limits; firing it from 60 thumbnails on /templates is
+  //     the #1 reason the gallery felt slow per 2026-04-19 audit)
+  //   - 80-element confetti DOM spawn (repaints on every compositor frame)
+  //   - 15-minute weather refetch setInterval
+  const isLive = !!live;
   const wrapperRef = useRef<HTMLDivElement>(null);
   const confettiRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0);
@@ -152,9 +163,10 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
   // getElementById so multiple widget instances on a page (gallery
   // thumb + preview modal) don't fight over a shared DOM id.
   useEffect(() => {
+    if (!isLive) return;
     const id = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(id);
-  }, []);
+  }, [isLive]);
 
   // Live weather — three-tier resolution:
   //   1. weatherLocation set on the widget    → ZIP-code lookup via zippopotam.us
@@ -163,6 +175,9 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
   //   3. Both fail OR weatherTemp override set → falls back to override / default
   // Open-Meteo gives current temp + WMO code from the resolved coords.
   useEffect(() => {
+    // Skip all weather network work in thumbnail mode — the static "68°"
+    // fallback below renders fine without any fetch.
+    if (!isLive) return;
     if (c.weatherTemp) return;
     let cancelled = false;
     const isCelsius = c.weatherUnits === 'metric';
@@ -218,10 +233,14 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
     fetchWx();
     const id = setInterval(fetchWx, 15 * 60 * 1000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [c.weatherLocation, c.weatherUnits, c.weatherTemp]);
+  }, [isLive, c.weatherLocation, c.weatherUnits, c.weatherTemp]);
 
-  // Spawn confetti once
+  // Spawn confetti once — skip entirely in thumbnail mode. 80 absolutely-
+  // positioned elements with continuous keyframe animations × N gallery
+  // tiles is a lot of compositor work for something the user can barely
+  // see at thumbnail resolution.
   useEffect(() => {
+    if (!isLive) return;
     const layer = confettiRef.current;
     if (!layer) return;
     layer.innerHTML = '';
@@ -243,7 +262,7 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
       el.style.transform = `rotate(${Math.random() * 360}deg)`;
       layer.appendChild(el);
     }
-  }, []);
+  }, [isLive]);
 
   const tickerList = Array.isArray(c.tickerMessages)
     ? c.tickerMessages

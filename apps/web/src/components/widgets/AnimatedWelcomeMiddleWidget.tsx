@@ -80,8 +80,11 @@ function msWeatherPhrase(wmo: number, tempF: number): string {
   }
 }
 
-export function AnimatedWelcomeMiddleWidget({ config }: { config: Cfg }) {
+export function AnimatedWelcomeMiddleWidget({ config, live }: { config: Cfg; live?: boolean }) {
   const c = config || {};
+  // Gallery thumbnails pass live=false — skip clock interval + 3 weather
+  // fetches so /templates doesn't fire N × ipapi.co calls on every visit.
+  const isLive = !!live;
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0);
   const [now, setNow] = useState<Date>(() => new Date());
@@ -107,12 +110,14 @@ export function AnimatedWelcomeMiddleWidget({ config }: { config: Cfg }) {
   }, []);
 
   useEffect(() => {
+    if (!isLive) return;
     const id = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(id);
-  }, []);
+  }, [isLive]);
 
   // Live weather — same 3-tier resolver as elementary.
   useEffect(() => {
+    if (!isLive) return;
     if (c.weatherTemp) return;
     let cancelled = false;
     const isCelsius = c.weatherUnits === 'metric';
@@ -159,7 +164,7 @@ export function AnimatedWelcomeMiddleWidget({ config }: { config: Cfg }) {
     fetchWx();
     const id = setInterval(fetchWx, 15 * 60 * 1000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [c.weatherLocation, c.weatherUnits, c.weatherTemp]);
+  }, [isLive, c.weatherLocation, c.weatherUnits, c.weatherTemp]);
 
   // Clock formatting (IANA tz-aware).
   const tz = (c.clockTimeZone || '').trim();

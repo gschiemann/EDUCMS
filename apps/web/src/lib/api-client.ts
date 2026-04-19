@@ -54,8 +54,15 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
   }
 
   const fullUrl = `${API_URL}${path}`;
+  // Don't force `cache: 'no-store'`. React Query is already the source of
+  // truth for client caching + invalidation; forcing no-store on top of it
+  // disables every layer of HTTP cache (browser memory cache, disk cache,
+  // Cloudflare/Vercel edge) even for endpoints that returned Cache-Control.
+  // Mutations still never hit any cache because POST/PUT/DELETE are never
+  // cached by spec. GETs now respect any Cache-Control the API sends. Per
+  // 2026-04-19 perf audit — one of the three root causes of the Vercel
+  // "click-to-click feels slow" report.
   const init: RequestInit = {
-    cache: 'no-store',
     credentials: 'include',
     ...options,
     headers: {

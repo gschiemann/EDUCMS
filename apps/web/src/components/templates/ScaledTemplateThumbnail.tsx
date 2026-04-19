@@ -68,6 +68,36 @@ export function ScaledTemplateThumbnail({
   const outerRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState<number>(0);
 
+  // IntersectionObserver gate — don't mount the widgets until the tile is
+  // actually near the viewport. Gallery pages render ~60 template cards at
+  // once; before this gate, every card mounted its full WidgetPreview tree
+  // (inline <style> blocks, keyframe animations, ResizeObservers) on initial
+  // paint even when it was 10 screens down. Now we render a cheap placeholder
+  // div until ~400px from the viewport, then hydrate the real widgets.
+  // Once mounted, stay mounted — remounting on scroll causes flicker.
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => {
+    const el = outerRef.current;
+    if (!el) return;
+    if (isVisible) return;
+    // SSR / old browsers: just show it.
+    if (typeof IntersectionObserver === 'undefined') { setIsVisible(true); return; }
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            setIsVisible(true);
+            io.disconnect();
+            break;
+          }
+        }
+      },
+      { rootMargin: '400px 0px', threshold: 0 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [isVisible]);
+
   useEffect(() => {
     const el = outerRef.current;
     if (!el) return;
@@ -136,7 +166,7 @@ export function ScaledTemplateThumbnail({
           pointerEvents: 'none',
         }}
       >
-        {zones.map((zone, i) => (
+        {isVisible && zones.map((zone, i) => (
           <div
             key={zone.id ?? i}
             className="absolute overflow-hidden"

@@ -78,8 +78,12 @@ function hsWeatherPhrase(wmo: number, tempF: number): string {
   }
 }
 
-export function AnimatedWelcomeHighWidget({ config }: { config: Cfg }) {
+export function AnimatedWelcomeHighWidget({ config, live }: { config: Cfg; live?: boolean }) {
   const c = config || {};
+  // Gallery thumbnails pass live=false. Skip clock tick, weather fetches,
+  // AND the 70-element confetti spawn — all invisible at thumb scale and
+  // expensive when 60 tiles mount simultaneously.
+  const isLive = !!live;
   const wrapperRef = useRef<HTMLDivElement>(null);
   const confettiRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0);
@@ -103,12 +107,14 @@ export function AnimatedWelcomeHighWidget({ config }: { config: Cfg }) {
   }, []);
 
   useEffect(() => {
+    if (!isLive) return;
     const id = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(id);
-  }, []);
+  }, [isLive]);
 
   // Live weather — 3-tier resolver (ZIP → IP → default).
   useEffect(() => {
+    if (!isLive) return;
     if (c.weatherTemp) return;
     let cancelled = false;
     const isCelsius = c.weatherUnits === 'metric';
@@ -155,10 +161,14 @@ export function AnimatedWelcomeHighWidget({ config }: { config: Cfg }) {
     fetchWx();
     const id = setInterval(fetchWx, 15 * 60 * 1000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [c.weatherLocation, c.weatherUnits, c.weatherTemp]);
+  }, [isLive, c.weatherLocation, c.weatherUnits, c.weatherTemp]);
 
   // Spawn confetti once — slightly bigger pieces than elementary.
+  // Skip entirely in thumbnail mode (70 pieces × 60 tiles = 4200 absolutely
+  // positioned elements with infinite keyframe animations, all repainting
+  // on every frame; murders scroll perf on the gallery).
   useEffect(() => {
+    if (!isLive) return;
     const layer = confettiRef.current;
     if (!layer) return;
     layer.innerHTML = '';
@@ -180,7 +190,7 @@ export function AnimatedWelcomeHighWidget({ config }: { config: Cfg }) {
       el.style.transform = `rotate(${Math.random() * 360}deg)`;
       layer.appendChild(el);
     }
-  }, []);
+  }, [isLive]);
 
   const tz = (c.clockTimeZone || '').trim();
   const fmt = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, ...(tz ? { timeZone: tz } : {}) });
