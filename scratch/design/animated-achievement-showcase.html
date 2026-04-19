@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Animated Achievement Showcase (DEMO v1)</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Bungee&family=Inter:wght@500;700;800&family=Caveat:wght@700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+
+  .stage {
+    width: 100vw; height: 100vh; position: relative; overflow: hidden;
+    font-family: 'Inter', sans-serif; color: #fff;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(251,191,36,.35) 0%, transparent 55%),
+      linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+  }
+
+  /* Faint gold starburst pattern in bg */
+  .stage::before {
+    content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .08;
+    background: conic-gradient(from 0deg at 50% 30%,
+      transparent 0 10deg, #fbbf24 10deg 12deg,
+      transparent 12deg 25deg, #fbbf24 25deg 27deg,
+      transparent 27deg 40deg, #fbbf24 40deg 42deg,
+      transparent 42deg 55deg, #fbbf24 55deg 57deg,
+      transparent 57deg 70deg, #fbbf24 70deg 72deg,
+      transparent 72deg 85deg, #fbbf24 85deg 87deg,
+      transparent 87deg 100deg, #fbbf24 100deg 102deg,
+      transparent 102deg 115deg, #fbbf24 115deg 117deg,
+      transparent 117deg 130deg, #fbbf24 130deg 132deg,
+      transparent 132deg 145deg, #fbbf24 145deg 147deg,
+      transparent 147deg 160deg, #fbbf24 160deg 162deg,
+      transparent 162deg 175deg, #fbbf24 175deg 177deg,
+      transparent 177deg 190deg, #fbbf24 190deg 192deg,
+      transparent 192deg 360deg);
+    animation: as-rayspin 60s linear infinite;
+  }
+  @keyframes as-rayspin { to { transform: rotate(360deg); } }
+
+  /* Header */
+  .header {
+    position: absolute; top: 40px; left: 0; right: 0;
+    text-align: center; z-index: 5;
+  }
+  .eyebrow {
+    font-family: 'Inter', sans-serif; font-weight: 800; font-size: 26px;
+    color: #fbbf24; letter-spacing: .4em; text-transform: uppercase;
+    text-shadow: 0 0 18px rgba(251,191,36,.4);
+  }
+  .h1 {
+    font-family: 'Anton', sans-serif; font-size: 110px; line-height: .95;
+    color: #fff;
+    letter-spacing: .02em;
+    text-shadow: 0 0 30px rgba(251,191,36,.25);
+    margin-top: 2px;
+    background: linear-gradient(180deg, #fef3c7 0%, #fbbf24 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 6px 12px rgba(0,0,0,.4));
+  }
+  .dateBar {
+    font-family: 'Caveat', cursive; font-size: 32px; color: #e0e7ff;
+    margin-top: 2px;
+  }
+
+  /* Featured star student — center stage */
+  .hero {
+    position: absolute; top: 240px; left: 50%; transform: translateX(-50%);
+    width: 500px; z-index: 4;
+    display: flex; flex-direction: column; align-items: center;
+  }
+
+  /* Medal ribbon hanging above the portrait */
+  .medalHanger {
+    position: relative;
+    width: 40px; height: 90px;
+    margin-bottom: -30px; z-index: 2;
+    background: linear-gradient(180deg, #dc2626 0%, #991b1b 50%, #dc2626 100%);
+    clip-path: polygon(0 0, 100% 0, 100% 85%, 50% 100%, 0 85%);
+    animation: as-medalSway 4s ease-in-out infinite;
+    transform-origin: 50% 0;
+    box-shadow: 4px 0 6px rgba(0,0,0,.4);
+  }
+  @keyframes as-medalSway { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
+  .medalHanger::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 100%;
+    background: repeating-linear-gradient(180deg,
+      rgba(255,255,255,.18) 0 4px,
+      transparent 4px 10px);
+  }
+
+  /* Medal disc */
+  .medal {
+    position: relative;
+    width: 220px; height: 220px; border-radius: 50%;
+    background:
+      conic-gradient(from 0deg,
+        #fef3c7 0 45deg, #fbbf24 45deg 135deg,
+        #d97706 135deg 225deg, #fbbf24 225deg 315deg,
+        #fef3c7 315deg 360deg);
+    border: 8px solid #92400e;
+    box-shadow: 0 20px 40px rgba(0,0,0,.5), inset 0 0 20px rgba(255,255,255,.3);
+    display: flex; align-items: center; justify-content: center;
+    animation: as-medalSpin 4s ease-in-out infinite, as-medalShine 2s ease-in-out infinite;
+  }
+  @keyframes as-medalSpin { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(6deg); } }
+  @keyframes as-medalShine {
+    0%, 100% { filter: drop-shadow(0 0 20px rgba(251,191,36,.6)); }
+    50%      { filter: drop-shadow(0 0 40px rgba(251,191,36,.9)); }
+  }
+  .medal::before {
+    /* inner star */
+    content: ''; position: absolute; inset: 30px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #fde68a, #fbbf24 70%, #b45309);
+    border: 4px solid #92400e;
+  }
+  .medal .icon {
+    position: relative; z-index: 2; font-size: 110px; line-height: 1;
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,.4));
+  }
+
+  /* Citation card */
+  .citation {
+    margin-top: 24px;
+    background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
+    border: 5px solid #fbbf24;
+    border-radius: 20px;
+    padding: 22px 40px;
+    text-align: center;
+    color: #1f2937;
+    box-shadow: 0 20px 40px rgba(0,0,0,.4), 0 0 0 3px rgba(251,191,36,.3);
+    position: relative;
+    max-width: 500px;
+    animation: as-cardFloat 5s ease-in-out infinite;
+  }
+  @keyframes as-cardFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+  .citation::before, .citation::after {
+    content: '★'; position: absolute; top: 50%; transform: translateY(-50%);
+    font-size: 40px; color: #dc2626;
+    animation: as-starTwinkle 1.6s ease-in-out infinite;
+  }
+  .citation::before { left: -26px; }
+  .citation::after { right: -26px; animation-delay: .3s; }
+  @keyframes as-starTwinkle { 0%, 100% { transform: translateY(-50%) scale(.9) rotate(-10deg); opacity: .7; } 50% { transform: translateY(-50%) scale(1.2) rotate(15deg); opacity: 1; } }
+  .citation .award {
+    font-family: 'Bungee', cursive; font-size: 22px; color: #dc2626;
+    letter-spacing: .15em; text-transform: uppercase;
+  }
+  .citation .name {
+    font-family: 'Anton', sans-serif; font-size: 74px; color: #1e293b; line-height: 1;
+    margin-top: 2px;
+    letter-spacing: .02em;
+  }
+  .citation .reason {
+    font-family: 'Caveat', cursive; font-weight: 700; font-size: 30px; color: #92400e;
+    line-height: 1.2; margin-top: 6px;
+  }
+
+  /* Honor-roll strip on left + right */
+  .honorRoll {
+    position: absolute; top: 300px; width: 280px; z-index: 3;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .honorRoll.left  { left: 36px;  transform: rotate(-2deg); }
+  .honorRoll.right { right: 36px; transform: rotate(2deg); }
+  .honorHeader {
+    font-family: 'Bungee', cursive; font-size: 20px; color: #fbbf24;
+    letter-spacing: .15em; text-align: center;
+    background: rgba(251,191,36,.15); padding: 10px;
+    border: 2px solid #fbbf24; border-radius: 10px;
+  }
+  .honor {
+    display: flex; align-items: center; gap: 12px;
+    background: rgba(255,255,255,.05);
+    backdrop-filter: blur(4px);
+    border: 2px solid rgba(251,191,36,.3);
+    border-radius: 10px; padding: 10px 12px;
+  }
+  .honor .rank {
+    font-family: 'Anton', sans-serif; font-size: 24px; color: #fbbf24;
+    width: 30px; text-align: center;
+    text-shadow: 0 0 8px rgba(251,191,36,.6);
+  }
+  .honor .nm {
+    flex: 1; font-family: 'Inter', sans-serif; font-weight: 700;
+    font-size: 18px; color: #fff; line-height: 1.1;
+  }
+  .honor .emoji { font-size: 28px; line-height: 1; }
+
+  /* Stats row across bottom */
+  .statsRow {
+    position: absolute; bottom: 180px; left: 36px; right: 36px;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px;
+    z-index: 3;
+  }
+  .stat {
+    background: linear-gradient(135deg, rgba(251,191,36,.15), rgba(236,72,153,.15));
+    backdrop-filter: blur(6px);
+    border: 2px solid rgba(251,191,36,.4);
+    border-radius: 16px;
+    padding: 18px 20px;
+    display: flex; align-items: center; gap: 16px;
+    box-shadow: 0 8px 18px rgba(0,0,0,.3);
+  }
+  .stat .emoji { font-size: 48px; line-height: 1; }
+  .stat .nums .big {
+    font-family: 'Anton', sans-serif; font-size: 46px; line-height: 1;
+    color: #fbbf24; text-shadow: 0 0 16px rgba(251,191,36,.5);
+  }
+  .stat .nums .lbl {
+    font-family: 'Inter', sans-serif; font-weight: 800; font-size: 12px;
+    color: #fef3c7; letter-spacing: .18em; text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  /* Ticker */
+  .ticker {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 110px;
+    background: linear-gradient(90deg, #fbbf24, #d97706);
+    display: flex; align-items: center; overflow: hidden; z-index: 6;
+    border-top: 4px solid #0f172a;
+    box-shadow: 0 -6px 18px rgba(0,0,0,.3);
+  }
+  .tickerStamp {
+    flex: 0 0 auto; padding: 0 28px; height: 100%;
+    background: #0f172a; color: #fbbf24;
+    display: flex; align-items: center;
+    font-family: 'Bungee', cursive; font-size: 32px; letter-spacing: .12em;
+  }
+  .tickerScroll { flex: 1; overflow: hidden; }
+  .tickerText {
+    font-family: 'Inter', sans-serif; font-weight: 800; font-size: 38px;
+    color: #0f172a; white-space: nowrap; padding-left: 100%;
+    display: inline-block;
+    animation: as-tickerScroll 52s linear infinite;
+  }
+  .tickerText .sep { color: #7c2d12; padding: 0 24px; }
+  @keyframes as-tickerScroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <div class="header">
+    <div class="eyebrow">★ Wall of Fame ★</div>
+    <div class="h1">Student of the Week</div>
+    <div class="dateBar">monday · april 19 · 2026</div>
+  </div>
+
+  <div class="hero">
+    <div class="medalHanger"></div>
+    <div class="medal">
+      <span class="icon">🏆</span>
+    </div>
+    <div class="citation">
+      <div class="award">Academic Excellence</div>
+      <div class="name">MAYA CHEN</div>
+      <div class="reason">perfect score on the state-wide spelling bee,<br>AND she tutors 3rd graders after school!</div>
+    </div>
+  </div>
+
+  <div class="honorRoll left">
+    <div class="honorHeader">★ HONOR ROLL ★</div>
+    <div class="honor"><span class="rank">1</span><span class="nm">Ethan Garcia</span><span class="emoji">📚</span></div>
+    <div class="honor"><span class="rank">2</span><span class="nm">Aisha Patel</span><span class="emoji">🎨</span></div>
+    <div class="honor"><span class="rank">3</span><span class="nm">Marcus Johnson</span><span class="emoji">⚽</span></div>
+    <div class="honor"><span class="rank">4</span><span class="nm">Lily Rodriguez</span><span class="emoji">🎵</span></div>
+    <div class="honor"><span class="rank">5</span><span class="nm">Dylan Kim</span><span class="emoji">🔬</span></div>
+  </div>
+
+  <div class="honorRoll right">
+    <div class="honorHeader">★ KINDNESS STARS ★</div>
+    <div class="honor"><span class="rank">★</span><span class="nm">Zoe Williams</span><span class="emoji">💖</span></div>
+    <div class="honor"><span class="rank">★</span><span class="nm">Jayden Park</span><span class="emoji">🤝</span></div>
+    <div class="honor"><span class="rank">★</span><span class="nm">Sofia Martinez</span><span class="emoji">🌟</span></div>
+    <div class="honor"><span class="rank">★</span><span class="nm">Noah Taylor</span><span class="emoji">🌈</span></div>
+    <div class="honor"><span class="rank">★</span><span class="nm">Ava Chen</span><span class="emoji">☀️</span></div>
+  </div>
+
+  <div class="statsRow">
+    <div class="stat">
+      <span class="emoji">🏆</span>
+      <div class="nums"><div class="big">247</div><div class="lbl">Awards This Year</div></div>
+    </div>
+    <div class="stat">
+      <span class="emoji">📚</span>
+      <div class="nums"><div class="big">89%</div><div class="lbl">Honor Roll Rate</div></div>
+    </div>
+    <div class="stat">
+      <span class="emoji">🎨</span>
+      <div class="nums"><div class="big">54</div><div class="lbl">Art Show Pieces</div></div>
+    </div>
+    <div class="stat">
+      <span class="emoji">🏅</span>
+      <div class="nums"><div class="big">12</div><div class="lbl">Team Championships</div></div>
+    </div>
+  </div>
+
+  <div class="ticker">
+    <div class="tickerStamp">WALL OF FAME</div>
+    <div class="tickerScroll">
+      <span class="tickerText">
+        CONGRATULATIONS MAYA CHEN — Student of the Week
+        <span class="sep">★</span>
+        Spelling Bee team wins District for the 3rd year running
+        <span class="sep">★</span>
+        Honor roll ceremony Friday 2:00 PM · Main Auditorium
+        <span class="sep">★</span>
+        Kindness Star nominations open — drop in the box outside the office
+      </span>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

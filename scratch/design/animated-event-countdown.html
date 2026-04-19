@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Animated Event Countdown (DEMO v1)</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Bungee&family=Caveat:wght@700&family=Inter:wght@600;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+
+  .stage {
+    width: 100vw; height: 100vh; position: relative; overflow: hidden;
+    font-family: 'Inter', sans-serif; color: #fff;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(251,191,36,.35) 0%, transparent 45%),
+      radial-gradient(ellipse at 50% 100%, rgba(236,72,153,.45) 0%, transparent 50%),
+      linear-gradient(180deg, #1e3a8a 0%, #7c3aed 50%, #be185d 100%);
+  }
+
+  /* Confetti rain */
+  .confetti { position: absolute; inset: 0; pointer-events: none; z-index: 2; overflow: hidden; }
+  .c { position: absolute; top: -30px; width: 14px; height: 22px; border-radius: 3px;
+    animation: ec-fall linear infinite; }
+  @keyframes ec-fall {
+    0%   { transform: translateY(-30px) rotate(0); opacity: 0; }
+    5%   { opacity: 1; }
+    100% { transform: translateY(1110px) rotate(720deg); opacity: .9; }
+  }
+
+  /* Spotlight sweep */
+  .spot {
+    position: absolute; width: 800px; height: 1200px;
+    background: linear-gradient(180deg, transparent 0%, rgba(255,255,255,.08) 40%, transparent 100%);
+    transform-origin: 50% 100%; pointer-events: none;
+    animation: ec-spot 14s ease-in-out infinite;
+    z-index: 1;
+  }
+  .spot.l { left: -10%; bottom: 0; transform: rotate(-20deg); }
+  .spot.r { right: -10%; bottom: 0; transform: rotate(20deg); animation-delay: -7s; }
+  @keyframes ec-spot { 0%, 100% { opacity: .25; } 50% { opacity: .6; } }
+
+  /* Star background */
+  .stars {
+    position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    background:
+      radial-gradient(1px 1px at 10% 12%, #fff, transparent),
+      radial-gradient(2px 2px at 24% 28%, #fff, transparent),
+      radial-gradient(1px 1px at 38% 8%, #fff, transparent),
+      radial-gradient(2px 2px at 56% 22%, #fff, transparent),
+      radial-gradient(1px 1px at 72% 14%, #fff, transparent),
+      radial-gradient(1px 1px at 88% 32%, #fff, transparent),
+      radial-gradient(2px 2px at 8% 48%, #fbbf24, transparent),
+      radial-gradient(1px 1px at 92% 60%, #fbbf24, transparent);
+    opacity: .7;
+    animation: ec-twinkle 3s ease-in-out infinite;
+  }
+  @keyframes ec-twinkle { 0%, 100% { opacity: .5; } 50% { opacity: .9; } }
+
+  /* Header */
+  .header { position: absolute; top: 60px; left: 0; right: 0; text-align: center; z-index: 4; }
+  .eyebrow {
+    font-family: 'Inter', sans-serif; font-weight: 800; font-size: 28px;
+    color: #fbbf24; letter-spacing: .4em; text-transform: uppercase;
+    margin-bottom: 6px;
+    text-shadow: 0 0 20px rgba(251,191,36,.6);
+  }
+  .title {
+    font-family: 'Anton', sans-serif; font-size: 150px; line-height: .92;
+    background: linear-gradient(90deg, #fbbf24 0%, #ec4899 50%, #06b6d4 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: ec-titleShift 6s linear infinite;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    filter: drop-shadow(0 10px 20px rgba(0,0,0,.4));
+  }
+  @keyframes ec-titleShift { from { background-position: 0% 50%; } to { background-position: 200% 50%; } }
+  .subtitle {
+    font-family: 'Caveat', cursive; font-size: 52px;
+    color: #fef3c7; margin-top: 4px;
+    text-shadow: 2px 2px 0 rgba(0,0,0,.3);
+  }
+
+  /* Big countdown block — the star of the show */
+  .countdown {
+    position: absolute; top: 340px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 24px; z-index: 5;
+    animation: ec-countdownBreathe 4s ease-in-out infinite;
+  }
+  @keyframes ec-countdownBreathe { 0%, 100% { transform: translateX(-50%) scale(1); } 50% { transform: translateX(-50%) scale(1.02); } }
+
+  .unit {
+    position: relative;
+    width: 240px; height: 260px;
+    background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+    border: 5px solid #fbbf24; border-radius: 20px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 4px rgba(251,191,36,.3), 0 20px 40px rgba(0,0,0,.5), inset 0 0 40px rgba(251,191,36,.12);
+  }
+  .unit::before {
+    /* flip-card seam */
+    content: ''; position: absolute; top: 50%; left: 8px; right: 8px; height: 2px;
+    background: rgba(255,255,255,.15); transform: translateY(-50%);
+  }
+  .unit .num {
+    font-family: 'Anton', sans-serif; font-size: 180px; line-height: 1;
+    color: #fbbf24;
+    text-shadow: 0 0 30px rgba(251,191,36,.8), 6px 6px 0 rgba(0,0,0,.3);
+    animation: ec-glow 2s ease-in-out infinite;
+  }
+  @keyframes ec-glow {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.2); }
+  }
+  .unit .label {
+    font-family: 'Bungee', cursive; font-size: 22px;
+    color: #fef3c7; letter-spacing: .2em; text-transform: uppercase;
+    margin-top: 4px;
+  }
+
+  /* Gap dividers between blocks */
+  .gap {
+    display: flex; flex-direction: column; justify-content: center; gap: 24px;
+    color: #fbbf24; font-family: 'Anton', sans-serif; font-size: 80px;
+    line-height: .6;
+    animation: ec-pulse 1s ease-in-out infinite;
+    padding-top: 60px;
+  }
+  @keyframes ec-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+
+  /* Event info row below countdown */
+  .infoRow {
+    position: absolute; bottom: 170px; left: 0; right: 0;
+    display: flex; justify-content: center; gap: 40px;
+    z-index: 4;
+  }
+  .infoCard {
+    background: rgba(255,255,255,.08); backdrop-filter: blur(12px);
+    border: 2px solid rgba(255,255,255,.2); border-radius: 16px;
+    padding: 16px 26px;
+    display: flex; align-items: center; gap: 16px;
+    min-width: 280px;
+  }
+  .infoCard .icon { font-size: 42px; line-height: 1; filter: drop-shadow(0 2px 4px rgba(0,0,0,.3)); }
+  .infoCard .label { font-family: 'Inter', sans-serif; font-weight: 800; font-size: 13px; color: #fbbf24; letter-spacing: .2em; text-transform: uppercase; }
+  .infoCard .value { font-family: 'Anton', sans-serif; font-size: 30px; color: #fff; line-height: 1; margin-top: 2px; letter-spacing: .02em; }
+
+  /* Bottom ticker */
+  .ticker {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 100px;
+    background: linear-gradient(135deg, #fbbf24, #ec4899);
+    display: flex; align-items: center; overflow: hidden;
+    z-index: 6; border-top: 4px solid #0f172a;
+  }
+  .ticker .stamp {
+    flex: 0 0 auto; padding: 0 28px; height: 100%;
+    background: #0f172a; color: #fbbf24;
+    display: flex; align-items: center;
+    font-family: 'Bungee', cursive; font-size: 32px; letter-spacing: .12em;
+  }
+  .ticker .scroll { flex: 1; overflow: hidden; }
+  .ticker .scrollText {
+    font-family: 'Inter', sans-serif; font-weight: 800; font-size: 36px;
+    color: #0f172a; white-space: nowrap; padding-left: 100%;
+    display: inline-block;
+    animation: ec-scroll 42s linear infinite;
+  }
+  .ticker .sep { color: #fff; padding: 0 22px; }
+  @keyframes ec-scroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <div class="stars"></div>
+  <div class="spot l"></div>
+  <div class="spot r"></div>
+  <div class="confetti" id="confetti"></div>
+
+  <div class="header">
+    <div class="eyebrow">The Countdown Begins</div>
+    <div class="title">Spring Musical</div>
+    <div class="subtitle">~ Into the Woods, April 28 @ 7pm ~</div>
+  </div>
+
+  <div class="countdown">
+    <div class="unit">
+      <div class="num">09</div>
+      <div class="label">Days</div>
+    </div>
+    <div class="gap">:<br>:</div>
+    <div class="unit">
+      <div class="num">07</div>
+      <div class="label">Hours</div>
+    </div>
+    <div class="gap">:<br>:</div>
+    <div class="unit">
+      <div class="num">14</div>
+      <div class="label">Min</div>
+    </div>
+    <div class="gap">:<br>:</div>
+    <div class="unit">
+      <div class="num">32</div>
+      <div class="label">Sec</div>
+    </div>
+  </div>
+
+  <div class="infoRow">
+    <div class="infoCard">
+      <span class="icon">📍</span>
+      <div><div class="label">Where</div><div class="value">Main Auditorium</div></div>
+    </div>
+    <div class="infoCard">
+      <span class="icon">🎭</span>
+      <div><div class="label">Starring</div><div class="value">The 7th Grade Cast</div></div>
+    </div>
+    <div class="infoCard">
+      <span class="icon">🎟️</span>
+      <div><div class="label">Tickets</div><div class="value">$5 at the door</div></div>
+    </div>
+  </div>
+
+  <div class="ticker">
+    <div class="stamp">SAVE THE DATE</div>
+    <div class="scroll">
+      <span class="scrollText">
+        Into the Woods — Thursday April 28 · 7:00 PM · Main Auditorium
+        <span class="sep">✦</span>
+        Tickets $5 at the door · cash or card
+        <span class="sep">✦</span>
+        Family matinee Saturday April 30 · 2:00 PM
+        <span class="sep">✦</span>
+        Help promote — flyers in the main office
+      </span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const layer = document.getElementById('confetti');
+  const colors = ['#fbbf24','#ec4899','#06b6d4','#f59e0b','#a78bfa','#10b981','#f43f5e'];
+  for (let i = 0; i < 80; i++) {
+    const c = document.createElement('div'); c.className = 'c';
+    const size = 6 + Math.random() * 14;
+    const dur = 5 + Math.random() * 9;
+    const circle = Math.random() < .3;
+    c.style.left = (Math.random() * 100) + '%';
+    c.style.width = size + 'px';
+    c.style.height = (size * (circle ? 1 : 1.6)) + 'px';
+    c.style.background = colors[Math.floor(Math.random() * colors.length)];
+    c.style.borderRadius = circle ? '50%' : '3px';
+    c.style.animationDuration = dur + 's';
+    c.style.animationDelay = (-Math.random() * dur) + 's';
+    c.style.transform = `rotate(${Math.random() * 360}deg)`;
+    layer.appendChild(c);
+  }
+</script>
+</body>
+</html>
