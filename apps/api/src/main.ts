@@ -121,6 +121,14 @@ async function bootstrap() {
     const t0 = Date.now();
     await prisma.client.$queryRaw`SELECT 1`;
     logger.log(`Prisma pool warm (${Date.now() - t0}ms)`);
+
+    // Reconcile system presets — creates any preset defined in code that
+    // doesn't have a matching DB row yet. Non-blocking background work so
+    // the container is ready-to-serve before the seed finishes.
+    const { ensureSystemPresets } = await import('./templates/ensure-system-presets');
+    ensureSystemPresets(prisma).catch((e) =>
+      logger.warn(`ensureSystemPresets threw: ${(e as Error).message}`),
+    );
   } catch (e) {
     logger.warn(`Prisma warm-up failed (continuing anyway): ${(e as Error).message}`);
   }
