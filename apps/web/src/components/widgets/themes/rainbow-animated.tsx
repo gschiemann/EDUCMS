@@ -48,12 +48,6 @@ function useScaleToFit(naturalW: number, naturalH: number) {
   return { ref, scale };
 }
 
-function Stage({
-  w, h, children, ref: _ignore, ...rest
-}: { w: number; h: number; children: any } & React.HTMLAttributes<HTMLDivElement>) {
-  return null as any; // placeholder — never used; left for type completeness
-}
-
 // Wraps a fixed-size inner canvas in a centered measuring container
 function ScaleWrap({ naturalW, naturalH, children, bg }: {
   naturalW: number; naturalH: number; children: React.ReactNode; bg?: string;
