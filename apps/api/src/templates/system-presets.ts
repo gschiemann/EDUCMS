@@ -1224,4 +1224,90 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
       }
     ],
   },
+  {
+    id: "preset-lobby-animated-middle",
+    name: "🏟️ Animated Middle School · Welcome",
+    description: "Full-screen ANIMATED middle-school welcome — stadium spotlights, pennant bunting, hanging scoreboard clock, varsity-patch teacher, megaphone announcement, stopwatch countdown, layered cake with candles, LED ticker. Live weather auto-detected.",
+    category: "LOBBY",
+    orientation: 'LANDSCAPE',
+    schoolLevel: "MIDDLE",
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: "#0f172a",
+    bgGradient: "linear-gradient(135deg,#0f172a 0%,#1e3a8a 50%,#0f172a 100%)",
+    zones: [
+      {
+        "name": "Animated Welcome Scene (Middle School)",
+        "widgetType": "ANIMATED_WELCOME_MS",
+        "x": 0, "y": 0, "width": 100, "height": 100,
+        "zIndex": 1,
+        "sortOrder": 0,
+        "defaultConfig": {
+          "logoEmoji": "🦅",
+          "title": "GO EAGLES",
+          "subtitle": "~ welcome back, Eagles ~",
+          "weatherLocation": "",
+          "weatherUnits": "imperial",
+          "announcementLabel": "Big News",
+          "announcementMessage": "Pep Rally Friday at 2:30 — be in the gym, bring your loudest!",
+          "countdownLabel": "Homecoming in",
+          "countdownDate": "2026-05-02",
+          "teacherGender": "male",
+          "teacherName": "Mr. Rivera",
+          "teacherRole": "Teacher of the Week",
+          "birthdayNames": "Jordan · Tyler · Alex",
+          "tickerStamp": "EAGLE NEWS",
+          "tickerMessages": [
+            "Varsity 28 — Central 14 🦅",
+            "Cheer tryouts Monday 3 PM",
+            "Yearbook orders due Friday",
+            "Student council elections next week"
+          ]
+        }
+      }
+    ],
+  },
+  {
+    id: "preset-lobby-animated-high",
+    name: "🎓 Animated High School · Welcome",
+    description: "Full-screen ANIMATED high-school welcome — bright sunset palette, grad-cap logo, neon-sign title, sunburst clock, trophy countdown, yearbook-page teacher, confetti-burst birthdays, speech-bubble announcement, confetti rain. Live weather auto-detected.",
+    category: "LOBBY",
+    orientation: 'LANDSCAPE',
+    schoolLevel: "HIGH",
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: "#fce7f3",
+    bgGradient: "linear-gradient(180deg,#fce7f3 0%,#ffe4e6 30%,#fef3c7 70%,#fed7aa 100%)",
+    zones: [
+      {
+        "name": "Animated Welcome Scene (High School)",
+        "widgetType": "ANIMATED_WELCOME_HS",
+        "x": 0, "y": 0, "width": 100, "height": 100,
+        "zIndex": 1,
+        "sortOrder": 0,
+        "defaultConfig": {
+          "title": "Class of 2026",
+          "subtitle": "make it count",
+          "weatherLocation": "",
+          "weatherUnits": "imperial",
+          "announcementLabel": "Announcement",
+          "announcementMessage": "Senior portraits next week — sign up in the office.",
+          "countdownLabel": "Graduation in",
+          "countdownDate": "2026-06-05",
+          "teacherGender": "male",
+          "teacherName": "Mr. Patel",
+          "teacherRole": "Teacher of the Week",
+          "birthdayNames": "Alex · Jordan · Sam",
+          "tickerStamp": "CAMPUS NEWS",
+          "tickerMessages": [
+            "FINAL · VARSITY 28, CENTRAL 14",
+            "FAFSA workshop Tuesday 6PM",
+            "Yearbook orders due Friday",
+            "College fair Thursday",
+            "Senior trip sign-ups close Friday"
+          ]
+        }
+      }
+    ],
+  },
 ];

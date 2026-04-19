@@ -37,6 +37,8 @@ import { JumbotronProLogo, JumbotronProText, JumbotronProClock, JumbotronProWeat
 // MENU_ITEM, SCOREBOARD, SCHEDULE_GRID, ATTENDANCE, BIRTHDAYS, HONOR_ROLL.
 import { QuoteWidget, StatsWidget, MenuItemWidget, ScoreboardWidget, ScheduleGridWidget, AttendanceWidget, BirthdaysWidget, HonorRollWidget } from './themes/GenericWidgets';
 import { AnimatedWelcomeWidget } from './AnimatedWelcomeWidget';
+import { AnimatedWelcomeMiddleWidget } from './AnimatedWelcomeMiddleWidget';
+import { AnimatedWelcomeHighWidget } from './AnimatedWelcomeHighWidget';
 import { AnimatedBackgroundWidget } from './AnimatedBackgroundWidget';
 import { ScrapbookLogo, ScrapbookText, ScrapbookClock, ScrapbookWeather, ScrapbookCountdown, ScrapbookAnnouncement, ScrapbookCalendar, ScrapbookStaffSpotlight, ScrapbookImageCarousel, ScrapbookTicker } from './themes/scrapbook';
 import { LockerHallwayLogo, LockerHallwayText, LockerHallwayClock, LockerHallwayWeather, LockerHallwayCountdown, LockerHallwayAnnouncement, LockerHallwayCalendar, LockerHallwayStaffSpotlight, LockerHallwayImageCarousel, LockerHallwayTicker } from './themes/locker-hallway';
@@ -128,8 +130,10 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'WAYFINDING_MAP':   return <WayfindingMapWidget config={cfg} />;
     case 'QUICK_POLL':       return <QuickPollWidget config={cfg} />;
     // ── Animated full-screen scenes (one widget = whole template) ──
-    case 'ANIMATED_WELCOME': return <AnimatedWelcomeWidget config={cfg} />;
-    case 'ANIMATED_BACKGROUND': return <AnimatedBackgroundWidget config={cfg} />;
+    case 'ANIMATED_WELCOME':      return <AnimatedWelcomeWidget config={cfg} />;
+    case 'ANIMATED_WELCOME_MS':   return <AnimatedWelcomeMiddleWidget config={cfg} />;
+    case 'ANIMATED_WELCOME_HS':   return <AnimatedWelcomeHighWidget config={cfg} />;
+    case 'ANIMATED_BACKGROUND':   return <AnimatedBackgroundWidget config={cfg} />;
     default:             return null;
   }
 }

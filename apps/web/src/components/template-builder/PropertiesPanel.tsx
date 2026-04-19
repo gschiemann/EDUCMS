@@ -569,7 +569,13 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="url" label="Profile / feed URL" value={cfg.url || ''} placeholder="https://twitter.com/sunnyside_elem" onChange={(v) => setField({ url: v })} />);
       fields.push(<TextField key="maxItems" label="Max posts to show" value={String(cfg.maxItems || 5)} placeholder="5" onChange={(v) => setField({ maxItems: parseInt(v) || 5 })} />);
       break;
+    case 'ANIMATED_WELCOME_MS':
+    case 'ANIMATED_WELCOME_HS':
     case 'ANIMATED_WELCOME': {
+      // All 3 ANIMATED_WELCOME variants share the same config shape —
+      // Elementary / Middle / High School — so the editor + hotspot
+      // section IDs can be reused verbatim. The widget component
+      // picks the theme; the fields are identical.
       // Section headings double as scroll-into-view targets so when the
       // user clicks a hotspot in the rendered preview, the panel jumps
       // to the matching section. Each header carries an id like
