@@ -30,7 +30,6 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { fetchWeather } from './WidgetRenderer';
 
 interface Cfg {
   logoEmoji?: string;
@@ -143,27 +142,67 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
     return () => clearInterval(id);
   }, []);
 
-  // Live weather — fetches from Open-Meteo when weatherLocation set.
-  // Refreshes every 15 min (fetchWeather caches internally too).
-  // Skipped entirely when an explicit weatherTemp override is provided.
+  // Live weather — three-tier resolution:
+  //   1. weatherLocation set on the widget    → ZIP-code lookup via zippopotam.us
+  //   2. weatherLocation empty                → IP geolocation via ipapi.co
+  //                                              (free, no key, returns lat/lng)
+  //   3. Both fail OR weatherTemp override set → falls back to override / default
+  // Open-Meteo gives current temp + WMO code from the resolved coords.
   useEffect(() => {
-    const loc = (c.weatherLocation || '').trim();
-    if (!loc || c.weatherTemp) return;
+    if (c.weatherTemp) return;
     let cancelled = false;
     const isCelsius = c.weatherUnits === 'metric';
-    const fetch = async () => {
+
+    const resolveCoords = async (): Promise<{ lat: number; lng: number } | null> => {
+      const zip = (c.weatherLocation || '').trim();
+      // Tier 1 — explicit ZIP
+      if (zip) {
+        try {
+          const m = zip.match(/^([a-z]{2})\s+(\S+)/i);
+          const country = m ? m[1].toLowerCase() : 'us';
+          const code = m ? m[2] : zip;
+          const r = await fetch(`https://api.zippopotam.us/${country}/${encodeURIComponent(code)}`);
+          if (r.ok) {
+            const j = await r.json();
+            const p = j?.places?.[0];
+            const lat = parseFloat(p?.latitude); const lng = parseFloat(p?.longitude);
+            if (isFinite(lat) && isFinite(lng)) return { lat, lng };
+          }
+        } catch { /* fall through to IP */ }
+      }
+      // Tier 2 — IP geolocation (player's network location)
       try {
-        const data = await fetchWeather(loc, isCelsius);
-        if (cancelled || !data) return;
-        // Open-Meteo returns temp in the requested unit; convert C→F
-        // for the cute-phrase qualifier (which is keyed on F).
-        const tempVal = Math.round(data.temp);
-        const tempF = isCelsius ? Math.round(tempVal * 9/5 + 32) : tempVal;
-        setWeather({ tempF, wmoCode: data.weatherCode });
-      } catch { /* ignore — preview falls back to override or default */ }
+        const r = await fetch('https://ipapi.co/json/');
+        if (r.ok) {
+          const j = await r.json();
+          const lat = parseFloat(j?.latitude); const lng = parseFloat(j?.longitude);
+          if (isFinite(lat) && isFinite(lng)) return { lat, lng };
+        }
+      } catch { /* noop */ }
+      return null;
     };
-    fetch();
-    const id = setInterval(fetch, 15 * 60 * 1000);
+
+    const fetchWx = async () => {
+      const coords = await resolveCoords();
+      if (cancelled || !coords) return;
+      try {
+        const tempUnit = isCelsius ? 'celsius' : 'fahrenheit';
+        const wxRes = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lng}` +
+          `&current=temperature_2m,weather_code&temperature_unit=${tempUnit}`
+        );
+        if (!wxRes.ok) return;
+        const wx = await wxRes.json();
+        const tempVal = wx?.current?.temperature_2m;
+        const code2 = wx?.current?.weather_code;
+        if (cancelled || tempVal == null || code2 == null) return;
+        const tempRound = Math.round(tempVal);
+        const tempF = isCelsius ? Math.round(tempRound * 9/5 + 32) : tempRound;
+        setWeather({ tempF, wmoCode: code2 });
+      } catch { /* falls back to default */ }
+    };
+    fetchWx();
+    const id = setInterval(fetchWx, 15 * 60 * 1000);
     return () => { cancelled = true; clearInterval(id); };
   }, [c.weatherLocation, c.weatherUnits, c.weatherTemp]);
 
@@ -381,8 +420,53 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
             <span className="aw-tickerScrollText">{tickerText}</span>
           </div>
         </div>
+
+        {/* ───── Click hotspots ──────────────────────────────────────
+            Transparent overlays sized to each visual section. Clicking
+            one fires a CustomEvent the PropertiesPanel listens for, so
+            the relevant editor section scrolls into view + briefly
+            highlights. Lets the user click "the birthday cluster" in
+            the preview and immediately see the names field, instead
+            of hunting through 16 fields in the side panel.
+            Positioned in canvas coordinates so they scale with the
+            rest of the scene. */}
+        <Hotspot section="header"       x={36}  y={28}  w={1848} h={195} />
+        <Hotspot section="weather"      x={36}  y={270} w={380}  h={310} />
+        <Hotspot section="announcement" x={444} y={270} w={1112} h={650} />
+        <Hotspot section="countdown"    x={1504} y={270} w={380} h={310} />
+        <Hotspot section="teacher"      x={36}  y={608} w={380}  h={312} />
+        <Hotspot section="birthdays"    x={1504} y={608} w={380} h={312} />
+        <Hotspot section="ticker"       x={0}   y={970} w={1920} h={110} />
       </div>
     </div>
+  );
+}
+
+function Hotspot({ section, x, y, w, h }: { section: string; x: number; y: number; w: number; h: number }) {
+  return (
+    <button
+      type="button"
+      className="aw-hotspot"
+      data-section={section}
+      onClick={(e) => {
+        e.stopPropagation();
+        try {
+          window.dispatchEvent(new CustomEvent('aw-edit-section', { detail: { section } }));
+        } catch { /* noop */ }
+      }}
+      style={{
+        position: 'absolute',
+        left: x, top: y, width: w, height: h,
+        background: 'transparent',
+        border: 'none',
+        padding: 0,
+        cursor: 'pointer',
+        // High z-index so hotspots win the click over scene visuals.
+        // The animated decorations behind them still render normally.
+        zIndex: 50,
+      }}
+      aria-label={`Edit ${section}`}
+    />
   );
 }
 
@@ -529,7 +613,21 @@ const CSS = `
   font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 76px; color: #7c2d12;
   text-shadow: 0 2px 0 rgba(255,255,255,.4);
 }
-.aw-weatherDesc { font-family: 'Caveat', cursive; font-weight: 700; font-size: 52px; color: #78350f; margin-top: 18px; text-align: center; text-shadow: 0 2px 0 rgba(255,255,255,.7); }
+/* Single-line, never wraps. Truncates with ellipsis if a phrase is
+   too long for the column. Fixed height keeps the row from pushing
+   the rest of the widget down (which previously shoved teacher down
+   into the ticker). */
+.aw-weatherDesc {
+  font-family: 'Caveat', cursive; font-weight: 700; font-size: 52px;
+  color: #78350f; margin-top: 18px; text-align: center;
+  text-shadow: 0 2px 0 rgba(255,255,255,.7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  height: 56px;
+  line-height: 56px;
+}
 
 /* ANNOUNCEMENT — cloud puff */
 .aw-announce {
@@ -766,6 +864,23 @@ const CSS = `
   position: absolute; bottom: -120px; width: 60px; height: 76px; border-radius: 50% 50% 48% 48%;
   z-index: 2; animation: aw-balloonRise linear infinite; will-change: transform;
 }
+/* Click hotspots — invisible by default, soft pink ring on hover so
+   the user knows the region is editable. Only visible when the
+   pointer is over them; doesn't intrude on the rendered design. */
+.aw-hotspot {
+  outline: none;
+  transition: box-shadow .15s ease, background-color .15s ease;
+  border-radius: 12px;
+}
+.aw-hotspot:hover {
+  background-color: rgba(236, 72, 153, .08);
+  box-shadow: inset 0 0 0 3px rgba(236, 72, 153, .55);
+}
+.aw-hotspot:focus-visible {
+  background-color: rgba(236, 72, 153, .12);
+  box-shadow: inset 0 0 0 3px rgba(236, 72, 153, .85);
+}
+
 .aw-bgBalloon::after {
   content: ''; position: absolute; left: 50%; top: 100%;
   width: 1px; height: 220px; background: rgba(0,0,0,.3); transform: translateX(-50%);

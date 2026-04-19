@@ -176,3 +176,17 @@
     @apply relative after:absolute after:-inset-1 after:-z-10 after:bg-primary/20 after:opacity-0 after:blur-xl after:transition-opacity hover:after:opacity-100;
   }
 }
+
+/* Hotspot flash — applied briefly to a PropertiesPanel section header
+   when the user clicks its matching hotspot in the AnimatedWelcome
+   preview. Visual confirmation that the click landed + scroll happened. */
+.aw-section-flash {
+  background: linear-gradient(90deg, rgba(236,72,153,.18), rgba(236,72,153,.05));
+  box-shadow: 0 0 0 3px rgba(236, 72, 153, .55), 0 4px 16px rgba(236, 72, 153, .25);
+  border-radius: 8px;
+  animation: aw-section-pulse 1.4s ease-out;
+}
+@keyframes aw-section-pulse {
+  0%   { background-color: rgba(236, 72, 153, .25); }
+  100% { background-color: transparent; }
+}

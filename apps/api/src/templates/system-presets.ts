@@ -1185,7 +1185,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
           "logoEmoji": "🍎",
           "title": "Welcome, Friends!",
           "subtitle": "today is going to be amazing ✨",
-          "weatherLocation": "Springfield, IL",
+          "weatherLocation": "",
           "weatherUnits": "imperial",
           "announcementLabel": "Big News",
           "announcementMessage": "Book Fair starts Monday! 📚 Come find your new favorite story.",

@@ -9,6 +9,27 @@ import { useAssets, usePlaylists } from '@/hooks/use-api';
 export function PropertiesPanel() {
   const { zones, selectedIds, updateZone, meta } = useBuilderStore();
   const nameId = useId();
+
+  // Hotspot listener — when the AnimatedWelcomeWidget dispatches an
+  // 'aw-edit-section' CustomEvent (user clicked a region in the
+  // preview), scroll the matching section header into view and
+  // briefly pulse it pink so they can see what they're about to edit.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { section?: string } | undefined;
+      const key = detail?.section;
+      if (!key) return;
+      const el = document.getElementById(`aw-section-${key}`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Pulse highlight so the user sees what scrolled into view
+      el.classList.add('aw-section-flash');
+      setTimeout(() => el.classList.remove('aw-section-flash'), 1400);
+    };
+    window.addEventListener('aw-edit-section', handler);
+    return () => window.removeEventListener('aw-edit-section', handler);
+  }, []);
+
   const xId = useId();
   const yId = useId();
   const wId = useId();
@@ -516,41 +537,49 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="maxItems" label="Max posts to show" value={String(cfg.maxItems || 5)} placeholder="5" onChange={(v) => setField({ maxItems: parseInt(v) || 5 })} />);
       break;
     case 'ANIMATED_WELCOME': {
-      // Section headings are dividers in the field stream so the operator
-      // can scan for the area they want to edit instead of hunting through
-      // 16 unlabeled text inputs.
-      const SH = (label: string) => (
-        <div key={`sh-${label}`} className="pt-3 pb-1 px-1 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200">
+      // Section headings double as scroll-into-view targets so when the
+      // user clicks a hotspot in the rendered preview, the panel jumps
+      // to the matching section. Each header carries an id like
+      // 'aw-section-weather' that the AnimatedWelcomeWidget's hotspot
+      // dispatches against. data-aw-section also enables the brief
+      // pink-ring highlight pulse on activation.
+      const SH = (key: string, label: string) => (
+        <div
+          key={`sh-${key}`}
+          id={`aw-section-${key}`}
+          data-aw-section={key}
+          className="aw-section-header pt-3 pb-1 px-1 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200 scroll-mt-24 transition-shadow"
+        >
           {label}
         </div>
       );
-      fields.push(SH('Header'));
+      fields.push(SH('header', 'Header'));
       fields.push(<TextField key="logoEmoji" label="Logo emoji" value={cfg.logoEmoji || '🍎'} placeholder="🍎" onChange={(v) => setField({ logoEmoji: v })} />);
       fields.push(<TextField key="title" label="Big title" value={cfg.title || ''} placeholder="Welcome, Friends!" onChange={(v) => setField({ title: v })} />);
       fields.push(<TextField key="subtitle" label="Subtitle" value={cfg.subtitle || ''} placeholder="today is going to be amazing ✨" onChange={(v) => setField({ subtitle: v })} />);
 
-      fields.push(SH('Weather (left card) — pulls live data'));
-      fields.push(<TextField key="weatherLocation" label="Location (city, state)" value={cfg.weatherLocation || ''} placeholder="Springfield, IL" onChange={(v) => setField({ weatherLocation: v })} />);
+      fields.push(SH('weather', 'Weather (left card) — pulls live data'));
+      fields.push(<TextField key="weatherLocation" label="ZIP code (leave blank to auto-detect from player location)" value={cfg.weatherLocation || ''} placeholder="auto-detect" onChange={(v) => setField({ weatherLocation: v })} />);
       fields.push(<TextField key="weatherUnits" label="Units (imperial / metric)" value={cfg.weatherUnits || 'imperial'} placeholder="imperial" onChange={(v) => setField({ weatherUnits: (v.trim().toLowerCase() === 'metric' ? 'metric' : 'imperial') })} />);
       fields.push(<TextField key="weatherTemp" label="Override temp (leave blank for live)" value={cfg.weatherTemp || ''} placeholder="68°" onChange={(v) => setField({ weatherTemp: v })} />);
       fields.push(<TextField key="weatherDesc" label="Override description (leave blank for live)" value={cfg.weatherDesc || ''} placeholder="~ sunny + crisp ~" onChange={(v) => setField({ weatherDesc: v })} />);
 
-      fields.push(SH('Big announcement (center cloud)'));
+      fields.push(SH('announcement', 'Big announcement (center cloud)'));
       fields.push(<TextField key="announcementLabel" label="Small label" value={cfg.announcementLabel || ''} placeholder="Big News" onChange={(v) => setField({ announcementLabel: v })} />);
       fields.push(<TextAreaField key="announcementMessage" label="Message" value={cfg.announcementMessage || ''} placeholder="Book Fair starts Monday!" onChange={(v) => setField({ announcementMessage: v })} />);
 
-      fields.push(SH('Countdown (starburst)'));
+      fields.push(SH('countdown', 'Countdown (starburst)'));
       fields.push(<TextField key="countdownLabel" label="Label" value={cfg.countdownLabel || ''} placeholder="Field Trip in" onChange={(v) => setField({ countdownLabel: v })} />);
       fields.push(<TextField key="countdownNumber" label="Big number" value={String(cfg.countdownNumber ?? '')} placeholder="3" onChange={(v) => setField({ countdownNumber: v })} />);
       fields.push(<TextField key="countdownUnit" label="Unit (days, hours…)" value={cfg.countdownUnit || ''} placeholder="days" onChange={(v) => setField({ countdownUnit: v })} />);
 
-      fields.push(SH('Teacher of the Week (polaroid)'));
+      fields.push(SH('teacher', 'Teacher of the Week (polaroid)'));
       fields.push(<AssetPickerField key="teacherPhotoUrl" label="Upload photo (optional)" value={cfg.teacherPhotoUrl || ''} kind="image" onChange={(v) => setField({ teacherPhotoUrl: v })} />);
       fields.push(<TextField key="teacherEmoji" label="Or use an emoji" value={cfg.teacherEmoji || ''} placeholder="👩‍🏫" onChange={(v) => setField({ teacherEmoji: v })} />);
       fields.push(<TextField key="teacherName" label="Name" value={cfg.teacherName || ''} placeholder="Mrs. Johnson" onChange={(v) => setField({ teacherName: v })} />);
       fields.push(<TextField key="teacherRole" label="Caption below" value={cfg.teacherRole || ''} placeholder="Teacher of the Week" onChange={(v) => setField({ teacherRole: v })} />);
 
-      fields.push(SH('Birthdays (balloon cluster)'));
+      fields.push(SH('birthdays', 'Birthdays (balloon cluster)'));
       // Normalize to one-name-per-line for display so it's obvious how
       // to add another (just hit Enter). Save as a clean array.
       fields.push(
@@ -569,7 +598,7 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
         />
       );
 
-      fields.push(SH('Bottom ticker'));
+      fields.push(SH('ticker', 'Bottom ticker'));
       fields.push(<TextField key="tickerStamp" label="Pink label" value={cfg.tickerStamp || ''} placeholder="SCHOOL NEWS" onChange={(v) => setField({ tickerStamp: v })} />);
       fields.push(<TextAreaField key="tickerMessages" label="Scrolling messages (one per line)" value={Array.isArray(cfg.tickerMessages) ? cfg.tickerMessages.join('\n') : (cfg.tickerMessages || '')} placeholder="Welcome back, Stars!" rows={4} onChange={(v) => setField({ tickerMessages: v.split(/\n+/).filter(Boolean) })} />);
       break;
