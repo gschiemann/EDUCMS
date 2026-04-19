@@ -118,10 +118,23 @@ jobs:
             fi
             if [ "$STATE" = "exited" ] || [ "$STATE" = "dead" ]; then
               EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' api-smoke 2>/dev/null || echo "?")
-              echo "✗ Container exited (state=$STATE, exit code=$EXIT_CODE)"
-              echo "::group::Last 200 lines of container logs"
-              docker logs --tail 200 api-smoke 2>&1 || true
-              echo "::endgroup::"
+              OOM=$(docker inspect -f '{{.State.OOMKilled}}' api-smoke 2>/dev/null || echo "?")
+              ERR=$(docker inspect -f '{{.State.Error}}' api-smoke 2>/dev/null || echo "")
+              echo "============================================================"
+              echo "CONTAINER EXITED  state=$STATE  exit=$EXIT_CODE  oom=$OOM"
+              [ -n "$ERR" ] && echo "Docker error: $ERR"
+              echo "============================================================"
+              echo "STDOUT+STDERR (raw, no grouping):"
+              echo "------------------------------------------------------------"
+              docker logs api-smoke 2>&1 || echo "(docker logs returned no output)"
+              echo "------------------------------------------------------------"
+              echo "Image filesystem listing of apps/api/dist:"
+              docker run --rm --entrypoint sh educms-api:ci -c 'ls -la apps/api/dist 2>&1 | head -20 || echo "dist dir missing"' || true
+              echo "Image filesystem listing of /app:"
+              docker run --rm --entrypoint sh educms-api:ci -c 'ls -la /app 2>&1 | head -20 || echo "app dir missing"' || true
+              echo "Image node version:"
+              docker run --rm --entrypoint node educms-api:ci --version || true
+              echo "============================================================"
               exit 1
             fi
             sleep 2
@@ -129,9 +142,8 @@ jobs:
           if [ "${exit_ok:-0}" != "1" ]; then
             echo "✗ API never logged 'API listening' within 60s"
             echo "Container state: $(docker inspect -f '{{.State.Status}}' api-smoke 2>/dev/null || echo missing)"
-            echo "::group::Last 200 lines of container logs"
-            docker logs --tail 200 api-smoke 2>&1 || true
-            echo "::endgroup::"
+            echo "STDOUT+STDERR (raw):"
+            docker logs api-smoke 2>&1 || echo "(docker logs returned no output)"
             exit 1
           fi
       - name: Healthcheck curl
