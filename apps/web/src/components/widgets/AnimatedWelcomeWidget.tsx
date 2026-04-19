@@ -133,17 +133,34 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
     : 'Welcome back, Stars!  ·  Picture day is Friday  ·  Reading Challenge: 20 minutes a day';
 
   // Birthdays — accept array or string (split on commas / center dots /
-  // newlines). Auto-shrink font when many names so the cell never
-  // overflows. Names rendered one per line when there's room.
+  // newlines). Names stack VERTICALLY one per line. When there are
+  // too many to fit cleanly, switch to a carousel that rotates through
+  // groups of MAX_VISIBLE every BD_ROTATE_MS.
   const birthdayList: string[] = Array.isArray(c.birthdayNames)
     ? c.birthdayNames.filter(Boolean)
     : (typeof c.birthdayNames === 'string'
         ? c.birthdayNames.split(/[,·\n]+/).map(s => s.trim()).filter(Boolean)
         : ['Maya', 'Eli', 'Sofia']);
-  // Font ladder by count: 1-2 names → 56px, 3-4 → 44px, 5-6 → 36px, 7+ → 30px
-  const bdFontSize = birthdayList.length <= 2 ? 56
-                   : birthdayList.length <= 4 ? 44
-                   : birthdayList.length <= 6 ? 36 : 30;
+  const BD_MAX_VISIBLE = 4;            // hard ceiling — beyond this we rotate
+  const BD_ROTATE_MS = 5000;           // page swap cadence when carouseling
+  // Font ladder by visible count (not total). Stacked vertically so each
+  // line eats vertical space; smaller font when more lines visible.
+  const bdVisibleCount = Math.min(birthdayList.length, BD_MAX_VISIBLE);
+  const bdFontSize = bdVisibleCount <= 1 ? 52
+                   : bdVisibleCount === 2 ? 42
+                   : bdVisibleCount === 3 ? 34 : 28;
+  // Carousel page index — only used when total > MAX_VISIBLE.
+  const [bdPage, setBdPage] = useState(0);
+  const bdNeedsCarousel = birthdayList.length > BD_MAX_VISIBLE;
+  const bdPageCount = bdNeedsCarousel ? Math.ceil(birthdayList.length / BD_MAX_VISIBLE) : 1;
+  useEffect(() => {
+    if (!bdNeedsCarousel) { setBdPage(0); return; }
+    const id = setInterval(() => setBdPage((p) => (p + 1) % bdPageCount), BD_ROTATE_MS);
+    return () => clearInterval(id);
+  }, [bdNeedsCarousel, bdPageCount]);
+  const bdVisible = bdNeedsCarousel
+    ? birthdayList.slice(bdPage * BD_MAX_VISIBLE, bdPage * BD_MAX_VISIBLE + BD_MAX_VISIBLE)
+    : birthdayList;
 
   // Clock time
   const hh = ((now.getHours() + 11) % 12) + 1;
@@ -241,9 +258,21 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
               <div className="aw-bal aw-bal3" />
               <div className="aw-cake">🎂</div>
             </div>
-            <div className="aw-bdLbl">Today's Birthdays</div>
-            <div className="aw-bdNames" style={{ fontSize: bdFontSize }}>
-              {birthdayList.join(' · ')}
+            <div className="aw-bdLbl">
+              Today's Birthdays
+              {bdNeedsCarousel && (
+                <span className="aw-bdPageBadge">
+                  {bdPage + 1} / {bdPageCount}
+                </span>
+              )}
+            </div>
+            {/* Stacked vertically — each name on its own line. With many
+                names, switches to a carousel that swaps a fresh page in
+                with a soft fade so the cell never overflows. */}
+            <div className="aw-bdNames" key={`bd-page-${bdPage}`} style={{ fontSize: bdFontSize }}>
+              {bdVisible.map((name, i) => (
+                <div key={`${bdPage}-${i}-${name}`} className="aw-bdName">{name}</div>
+              ))}
             </div>
           </div>
         </div>
@@ -528,8 +557,36 @@ const CSS = `
 .aw-bal2 { left: 60px; top: 12px; background: #fbbf24; transform: rotate(-6deg); width: 64px; height: 80px; }
 .aw-bal3 { left: 115px; top: 0; background: #ec4899; }
 .aw-cake { position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); font-size: 50px; line-height: 1; }
-.aw-bdLbl { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 22px; letter-spacing: .12em; color: #be185d; text-transform: uppercase; margin-top: 18px; text-shadow: 0 2px 0 rgba(255,255,255,.7); }
-.aw-bdNames { font-family: 'Caveat', cursive; font-weight: 700; font-size: 48px; color: #831843; line-height: 1.05; text-shadow: 0 2px 0 rgba(255,255,255,.7); margin-top: 6px; white-space: nowrap; }
+.aw-bdLbl {
+  font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 22px;
+  letter-spacing: .12em; color: #be185d; text-transform: uppercase;
+  margin-top: 14px; text-shadow: 0 2px 0 rgba(255,255,255,.7);
+  display: inline-flex; align-items: center; gap: 8px;
+}
+/* Page badge that appears when carouseling — tells the operator there
+   are more birthdays than fit, currently showing page N of M. */
+.aw-bdPageBadge {
+  font-size: 12px; letter-spacing: .08em;
+  background: rgba(236, 72, 153, .15);
+  color: #be185d;
+  padding: 2px 8px; border-radius: 999px;
+  border: 1px solid rgba(236, 72, 153, .35);
+}
+/* Names container — stacked column with a fade animation that fires
+   each time the carousel page changes (key changes → React remount). */
+.aw-bdNames {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-family: 'Caveat', cursive; font-weight: 700;
+  color: #831843; text-shadow: 0 2px 0 rgba(255,255,255,.7);
+  margin-top: 4px;
+  text-align: center;
+  animation: aw-bdFadeIn .55s ease-out;
+}
+.aw-bdName { line-height: 1.05; white-space: nowrap; }
+@keyframes aw-bdFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
 /* TICKER — wavy ribbon */
 .aw-ticker {
