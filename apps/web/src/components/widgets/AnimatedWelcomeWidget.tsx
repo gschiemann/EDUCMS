@@ -487,7 +487,7 @@ const CSS = `
 }
 
 /* BIRTHDAYS — balloon cluster */
-.aw-birthdays { grid-column: 3; grid-row: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px; position: relative; }
+.aw-birthdays { grid-column: 3; grid-row: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px; position: relative; z-index: 7; }
 .aw-cluster { position: relative; width: 200px; height: 160px; animation: aw-bob 1.4s ease-in-out infinite; }
 @keyframes aw-bob {
   0%, 100% { transform: translateY(0) rotate(-3deg); }
