@@ -36,7 +36,10 @@ export function isFeatureEnabled(flag: FlagKey): boolean {
     case FLAGS.EMERGENCY_NEW_UI:
       return process.env.NEXT_PUBLIC_FF_EMERGENCY_NEW_UI === 'true';
     case FLAGS.TEMPLATE_BUILDER_V2:
-      return process.env.NEXT_PUBLIC_FF_TEMPLATE_BUILDER_V2 === 'true';
+      // Default ON — the builder is the main editing experience and
+      // every preset's Customize button routes here.
+      if (process.env.NEXT_PUBLIC_FF_TEMPLATE_BUILDER_V2 === 'false') return false;
+      return true;
     case FLAGS.SIS_INTEGRATION:
       return process.env.NEXT_PUBLIC_FF_SIS_INTEGRATION === 'true';
     case FLAGS.AUTO_BRANDING:

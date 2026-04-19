@@ -30,7 +30,10 @@ interface Cfg {
   teacherEmoji?: string;
   teacherName?: string;
   teacherRole?: string;
-  birthdayNames?: string;
+  // Birthday names — accepts either a string ("Maya, Eli, Sofia" or
+  // "Maya · Eli · Sofia") or an array. Rendered with auto-shrinking
+  // font so 1-8 names fit cleanly.
+  birthdayNames?: string | string[];
   tickerStamp?: string;
   tickerMessages?: string[] | string;
 }
@@ -45,6 +48,7 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const confettiRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0);
+  const [now, setNow] = useState<Date>(() => new Date());
 
   // Scale the 1920×1080 canvas to fit our zone. Use offsetWidth/Height
   // (LAYOUT size, unaffected by parent transforms) instead of
@@ -71,20 +75,11 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
     return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); ro.disconnect(); };
   }, []);
 
-  // Live clock — refresh every 30s
+  // Live clock — re-render every 30s. Uses state instead of
+  // getElementById so multiple widget instances on a page (gallery
+  // thumb + preview modal) don't fight over a shared DOM id.
   useEffect(() => {
-    const tick = () => {
-      const t = document.getElementById('aw-clock-time');
-      const a = document.getElementById('aw-clock-ampm');
-      if (!t || !a) return;
-      const d = new Date();
-      const h = d.getHours();
-      const m = d.getMinutes().toString().padStart(2, '0');
-      a.textContent = h >= 12 ? 'PM' : 'AM';
-      t.textContent = `${((h + 11) % 12) + 1}:${m}`;
-    };
-    tick();
-    const id = setInterval(tick, 30_000);
+    const id = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(id);
   }, []);
 
@@ -119,6 +114,24 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
   const tickerText = tickerList.length
     ? tickerList.join('  ·  ')
     : 'Welcome back, Stars!  ·  Picture day is Friday  ·  Reading Challenge: 20 minutes a day';
+
+  // Birthdays — accept array or string (split on commas / center dots /
+  // newlines). Auto-shrink font when many names so the cell never
+  // overflows. Names rendered one per line when there's room.
+  const birthdayList: string[] = Array.isArray(c.birthdayNames)
+    ? c.birthdayNames.filter(Boolean)
+    : (typeof c.birthdayNames === 'string'
+        ? c.birthdayNames.split(/[,·\n]+/).map(s => s.trim()).filter(Boolean)
+        : ['Maya', 'Eli', 'Sofia']);
+  // Font ladder by count: 1-2 names → 56px, 3-4 → 44px, 5-6 → 36px, 7+ → 30px
+  const bdFontSize = birthdayList.length <= 2 ? 56
+                   : birthdayList.length <= 4 ? 44
+                   : birthdayList.length <= 6 ? 36 : 30;
+
+  // Clock time
+  const hh = ((now.getHours() + 11) % 12) + 1;
+  const mm = now.getMinutes().toString().padStart(2, '0');
+  const ampm = now.getHours() >= 12 ? 'PM' : 'AM';
 
   // Outer div fills the zone; inner div is the fixed 1920x1080 canvas
   // scaled by transform. transformOrigin top-left so it scales from
@@ -159,8 +172,8 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
             <div className="aw-sub">{c.subtitle || 'today is going to be amazing ✨'}</div>
           </div>
           <div className="aw-clock">
-            <div className="aw-clockT" id="aw-clock-time">12:34</div>
-            <div className="aw-clockAp" id="aw-clock-ampm">PM</div>
+            <div className="aw-clockT">{hh}:{mm}</div>
+            <div className="aw-clockAp">{ampm}</div>
           </div>
         </div>
 
@@ -205,7 +218,9 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
               <div className="aw-cake">🎂</div>
             </div>
             <div className="aw-bdLbl">Today's Birthdays</div>
-            <div className="aw-bdNames">{c.birthdayNames || 'Maya · Eli · Sofia'}</div>
+            <div className="aw-bdNames" style={{ fontSize: bdFontSize }}>
+              {birthdayList.join(' · ')}
+            </div>
           </div>
         </div>
 
@@ -493,7 +508,7 @@ const CSS = `
   flex: 0 0 auto; padding: 0 36px; height: 100%;
   background: #ec4899; color: #fff; display: flex; align-items: center;
   font-family: 'Fredoka', sans-serif; font-weight: 700; letter-spacing: .15em; font-size: 26px;
-  border-right: 3px dashed #fff; margin-top: 18px;
+  margin-top: 18px;
   position: relative; z-index: 2;
 }
 /* The scroll wrapper clips its OWN bounds so the text inside can never
