@@ -26,6 +26,7 @@ import { SunshineAcademyClock, SunshineAcademyWeather, SunshineAcademyCountdown,
 // Every widget is a real SVG shape (pennants, speech bubbles, stopwatches,
 // medals, jerseys) — not a rectangle with a background color.
 import { RainbowRibbonLogo, RainbowRibbonText, RainbowRibbonClock, RainbowRibbonWeather, RainbowRibbonCountdown, RainbowRibbonAnnouncement, RainbowRibbonCalendar, RainbowRibbonStaffSpotlight, RainbowRibbonImageCarousel, RainbowRibbonTicker } from './themes/rainbow-ribbon';
+import { RainbowAnimatedLogo, RainbowAnimatedTitle, RainbowAnimatedClock, RainbowAnimatedWeather, RainbowAnimatedCountdown, RainbowAnimatedAnnouncement, RainbowAnimatedStaff, RainbowAnimatedBirthdays, RainbowAnimatedTicker } from './themes/rainbow-animated';
 import { FieldDayLogo, FieldDayText, FieldDayClock, FieldDayWeather, FieldDayCountdown, FieldDayAnnouncement, FieldDayCalendar, FieldDayStaffSpotlight, FieldDayImageCarousel, FieldDayTicker } from './themes/field-day';
 import { BulletinBoardLogo, BulletinBoardText, BulletinBoardClock, BulletinBoardWeather, BulletinBoardCountdown, BulletinBoardAnnouncement, BulletinBoardCalendar, BulletinBoardStaffSpotlight, BulletinBoardImageCarousel, BulletinBoardTicker } from './themes/bulletin-board';
 import { StorybookLogo, StorybookText, StorybookClock, StorybookWeather, StorybookCountdown, StorybookAnnouncement, StorybookCalendar, StorybookStaffSpotlight, StorybookImageCarousel, StorybookTicker } from './themes/storybook';
@@ -117,7 +118,7 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'SCOREBOARD':   return <ScoreboardWidget config={cfg} onConfigChange={onConfigChange} />;
     case 'SCHEDULE_GRID': return <ScheduleGridWidget config={cfg} />;
     case 'ATTENDANCE':   return <AttendanceWidget config={cfg} />;
-    case 'BIRTHDAYS':    return <BirthdaysWidget config={cfg} />;
+    case 'BIRTHDAYS':    return cfg.theme === 'rainbow-animated' ? <RainbowAnimatedBirthdays config={cfg} /> : <BirthdaysWidget config={cfg} />;
     case 'HONOR_ROLL':   return <HonorRollWidget config={cfg} />;
     // ── Touch / Interactive (Sprint 4) ──────────────────────────
     case 'TOUCH_BUTTON':     return <TouchButtonWidget config={cfg} />;
@@ -143,6 +144,7 @@ function ClockWidget({ config, compact }: { config: any; compact: boolean }) {
   if (config.theme === 'back-to-school') return <BackToSchoolClock config={config} />;
   if (config.theme === 'bus-loop') return <BusLoopClock config={config} />;
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardClock config={config} />;
+  if (config.theme === 'rainbow-animated') return <RainbowAnimatedClock config={config} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonClock config={config} compact={compact} />;
   if (config.theme === 'field-day') return <FieldDayClock config={config} compact={compact} />;
   if (config.theme === 'bulletin-board') return <BulletinBoardClock config={config} compact={compact} />;
@@ -306,6 +308,7 @@ function WeatherWidget({ config, compact }: { config: any; compact: boolean }) {
   if (config.theme === 'back-to-school') return <BackToSchoolWeather config={config} />;
   if (config.theme === 'bus-loop') return <BusLoopWeather config={config} />;
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardWeather config={config} />;
+  if (config.theme === 'rainbow-animated') return <RainbowAnimatedWeather config={config} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonWeather config={config} compact={compact} />;
   if (config.theme === 'field-day') return <FieldDayWeather config={config} compact={compact} />;
   if (config.theme === 'bulletin-board') return <BulletinBoardWeather config={config} compact={compact} />;
@@ -432,6 +435,7 @@ function WeatherWidget({ config, compact }: { config: any; compact: boolean }) {
 function CountdownWidget({ config, compact, onConfigChange }: { config: any; compact: boolean; onConfigChange?: (patch: Record<string, any>) => void }) {
   if (config.theme === 'back-to-school') return <BackToSchoolCountdown config={config} />;
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardCountdown config={config} />;
+  if (config.theme === 'rainbow-animated') return <RainbowAnimatedCountdown config={config} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
   if (config.theme === 'field-day') return <FieldDayCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
   if (config.theme === 'bulletin-board') return <BulletinBoardCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
@@ -527,6 +531,7 @@ function TextWidget({ config, onConfigChange }: { config: any; onConfigChange?: 
   if (config.theme === 'back-to-school') return <BackToSchoolText config={config} />;
   if (config.theme === 'bus-loop') return <BusLoopText config={config} />;
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardText config={config} />;
+  if (config.theme === 'rainbow-animated') return <RainbowAnimatedTitle config={config} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonText config={config} onConfigChange={onConfigChange} />;
   if (config.theme === 'field-day') return <FieldDayText config={config} onConfigChange={onConfigChange} />;
   if (config.theme === 'bulletin-board') return <BulletinBoardText config={config} onConfigChange={onConfigChange} />;
@@ -586,6 +591,7 @@ function AnnouncementWidget({ config, compact, onConfigChange }: { config: any; 
   if (config.theme === 'back-to-school') return <BackToSchoolAnnouncement config={config} />;
   if (config.theme === 'bus-loop') return <BusLoopAnnouncement config={config} />;
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardAnnouncement config={config} />;
+  if (config.theme === 'rainbow-animated') return <RainbowAnimatedAnnouncement config={config} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
   if (config.theme === 'field-day') return <FieldDayAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
   if (config.theme === 'bulletin-board') return <BulletinBoardAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
@@ -657,6 +663,7 @@ function TickerWidget({ config }: { config: any }) {
   if (config.theme === 'back-to-school') return <BackToSchoolTicker config={config} />;
   if (config.theme === 'bus-loop') return <BusLoopTicker config={config} />;
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardTicker config={config} />;
+  if (config.theme === 'rainbow-animated') return <RainbowAnimatedTicker config={config} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonTicker config={config} />;
   if (config.theme === 'field-day') return <FieldDayTicker config={config} />;
   if (config.theme === 'bulletin-board') return <BulletinBoardTicker config={config} />;
@@ -867,6 +874,7 @@ function StaffSpotlightWidget({ config, compact, onConfigChange }: { config: any
   if (config.theme === 'office-dashboard') return <OfficeDashboardStaff config={config} compact={compact} />;
   if (config.theme === 'back-to-school') return <BackToSchoolStaff config={config} />;
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardStaff config={config} />;
+  if (config.theme === 'rainbow-animated') return <RainbowAnimatedStaff config={config} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
   if (config.theme === 'field-day') return <FieldDayStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
   if (config.theme === 'bulletin-board') return <BulletinBoardStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
@@ -931,6 +939,7 @@ function ImageWidget({ config }: { config: any }) {
   if (config.theme === 'office-dashboard') return <OfficeDashboardLogo config={config} />;
   if (config.theme === 'back-to-school') return <BackToSchoolLogo config={config} />;
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardLogo config={config} />;
+  if (config.theme === 'rainbow-animated') return <RainbowAnimatedLogo config={config} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonLogo config={config} />;
   if (config.theme === 'field-day') return <FieldDayLogo config={config} />;
   if (config.theme === 'bulletin-board') return <BulletinBoardLogo config={config} />;
@@ -1121,6 +1130,7 @@ function LogoWidget({ config }: { config: any }) {
   if (config.theme === 'office-dashboard') return <OfficeDashboardLogo config={config} />;
   if (config.theme === 'back-to-school') return <BackToSchoolLogo config={config} />;
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardLogo config={config} />;
+  if (config.theme === 'rainbow-animated') return <RainbowAnimatedLogo config={config} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonLogo config={config} />;
   if (config.theme === 'field-day') return <FieldDayLogo config={config} />;
   if (config.theme === 'bulletin-board') return <BulletinBoardLogo config={config} />;

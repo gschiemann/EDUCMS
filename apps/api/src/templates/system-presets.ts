@@ -1166,7 +1166,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
   {
     id: "preset-lobby-animated-rainbow",
     name: "🎉 Animated Rainbow · Welcome",
-    description: "Full-screen ANIMATED elementary welcome — confetti rain, spinning sun, drifting clouds, wiggling clock, floating balloons, scrolling ticker.",
+    description: "ANIMATED elementary welcome — every widget is its own zone (selectable, draggable, individually editable). Wiggling clock, breathing title, spinning sun, cloud-puff announcement, starburst countdown, polaroid teacher, balloon-cluster birthdays, scrolling ticker, confetti + drifting clouds + rising balloons in the background.",
     category: "LOBBY",
     orientation: 'LANDSCAPE',
     schoolLevel: "ELEMENTARY",
@@ -1175,36 +1175,22 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     bgColor: "#BFE8FF",
     bgGradient: "linear-gradient(180deg,#BFE8FF 0%,#FFE0EC 55%,#FFD8A8 100%)",
     zones: [
-      {
-        "name": "Animated Welcome Scene",
-        "widgetType": "ANIMATED_WELCOME",
-        "x": 0, "y": 0, "width": 100, "height": 100,
-        "zIndex": 1,
-        "sortOrder": 0,
-        "defaultConfig": {
-          "logoEmoji": "🍎",
-          "title": "Welcome, Friends!",
-          "subtitle": "today is going to be amazing ✨",
-          "weatherTemp": "68°",
-          "weatherDesc": "~ sunny + crisp ~",
-          "announcementLabel": "Big News",
-          "announcementMessage": "Book Fair starts Monday! 📚 Come find your new favorite story.",
-          "countdownLabel": "Field Trip in",
-          "countdownNumber": 3,
-          "countdownUnit": "days",
-          "teacherEmoji": "👩‍🏫",
-          "teacherName": "Mrs. Johnson",
-          "teacherRole": "Teacher of the Week",
-          "birthdayNames": "Maya · Eli · Sofia",
-          "tickerStamp": "SCHOOL NEWS",
-          "tickerMessages": [
-            "Welcome back, Stars! ⭐",
-            "Picture day is Friday 📸",
-            "Reading Challenge: 20 minutes a day 📖",
-            "Parent-teacher conferences next Tuesday 👨‍👩‍👧"
-          ]
-        }
-      }
+      // Z 0 — animated decoration backdrop (rainbow ribbon, drifting clouds,
+      // confetti, rising balloons). pointerEvents:none so editor clicks
+      // pass through to the foreground widgets above.
+      {"name":"Animated Background","widgetType":"ANIMATED_BACKGROUND","x":0,"y":0,"width":100,"height":100,"zIndex":0,"sortOrder":0,"defaultConfig":{"variant":"rainbow","confettiCount":80}},
+      // Z 2+ — individually editable foreground widgets, each themed
+      // 'rainbow-animated' so they render with the same locked-in design
+      // as the monolith (commit dc80f51) but as separate zones.
+      {"name":"Logo","widgetType":"LOGO","x":2,"y":2,"width":8,"height":13,"zIndex":5,"sortOrder":1,"defaultConfig":{"theme":"rainbow-animated","logoEmoji":"🍎"}},
+      {"name":"Welcome Banner","widgetType":"TEXT","x":12,"y":4,"width":76,"height":13,"zIndex":4,"sortOrder":2,"defaultConfig":{"theme":"rainbow-animated","content":"Welcome, Friends!","subtitle":"today is going to be amazing ✨"}},
+      {"name":"Clock","widgetType":"CLOCK","x":90,"y":2,"width":8,"height":13,"zIndex":5,"sortOrder":3,"defaultConfig":{"theme":"rainbow-animated"}},
+      {"name":"Weather","widgetType":"WEATHER","x":2,"y":24,"width":18,"height":40,"zIndex":3,"sortOrder":4,"defaultConfig":{"theme":"rainbow-animated","weatherTemp":"68°","weatherDesc":"~ sunny + crisp ~"}},
+      {"name":"Announcement","widgetType":"ANNOUNCEMENT","x":22,"y":24,"width":56,"height":40,"zIndex":4,"sortOrder":5,"defaultConfig":{"theme":"rainbow-animated","announcementLabel":"Big News","message":"Book Fair starts Monday! 📚 Come find your new favorite story."}},
+      {"name":"Countdown","widgetType":"COUNTDOWN","x":80,"y":24,"width":18,"height":26,"zIndex":4,"sortOrder":6,"defaultConfig":{"theme":"rainbow-animated","label":"Field Trip in","countdownNumber":3,"countdownUnit":"days"}},
+      {"name":"Teacher","widgetType":"STAFF_SPOTLIGHT","x":2,"y":66,"width":24,"height":24,"zIndex":3,"sortOrder":7,"defaultConfig":{"theme":"rainbow-animated","staffName":"Mrs. Johnson","role":"Teacher of the Week","teacherEmoji":"👩‍🏫"}},
+      {"name":"Birthdays","widgetType":"BIRTHDAYS","x":74,"y":54,"width":24,"height":36,"zIndex":7,"sortOrder":8,"defaultConfig":{"theme":"rainbow-animated","birthdayNames":"Maya · Eli · Sofia"}},
+      {"name":"Ticker","widgetType":"TICKER","x":0,"y":90,"width":100,"height":10,"zIndex":6,"sortOrder":9,"defaultConfig":{"theme":"rainbow-animated","label":"SCHOOL NEWS","messages":["Welcome back, Stars! ⭐","Picture day is Friday 📸","Reading Challenge: 20 minutes a day 📖","Parent-teacher conferences next Tuesday 👨‍👩‍👧"]}},
     ],
   },
 ];
