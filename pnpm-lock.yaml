@@ -159,6 +159,9 @@ importers:
       ioredis:
         specifier: ^5.10.1
         version: 5.10.1
+      isomorphic-dompurify:
+        specifier: ^3.8.0
+        version: 3.8.0(@noble/hashes@1.8.0)
       jsonwebtoken:
         specifier: ^9.0.3
         version: 9.0.3
