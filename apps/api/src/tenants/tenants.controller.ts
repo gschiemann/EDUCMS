@@ -55,6 +55,88 @@ export class TenantsController {
     return { current: tenantId, tenants: me ? [me] : [] };
   }
 
+  /**
+   * District-only — list child schools (tenants whose parentId === current
+   * district id). Includes a quick screen count per child so the UI can
+   * show "Lincoln HS · 12 screens" without a second query.
+   */
+  @Get('children')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN)
+  async listChildren(@Request() req: any) {
+    const tenantId = req.user.tenantId as string;
+    const me = await this.prisma.client.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, parentId: true },
+    });
+    if (!me) throw new HttpException('Tenant not found', HttpStatus.NOT_FOUND);
+    // If the current user is on a child tenant, treat their parent as the
+    // district. If they're already on the district itself, use their own id.
+    const districtId = me.parentId ?? me.id;
+    const children = await this.prisma.client.tenant.findMany({
+      where: { parentId: districtId },
+      select: {
+        id: true, name: true, slug: true, createdAt: true,
+        _count: { select: { screens: true, users: true } },
+      },
+      orderBy: { name: 'asc' },
+    });
+    return { districtId, children };
+  }
+
+  /**
+   * District-only — create a new child school under the current district.
+   * Caller must be DISTRICT_ADMIN of the parent (or SUPER_ADMIN). The new
+   * tenant inherits the parent's emergency settings as defaults but is
+   * otherwise independent.
+   */
+  @Post('children')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  async createChild(
+    @Request() req: any,
+    @Body() body: { name?: string; slug?: string },
+  ) {
+    const name = (body?.name || '').trim();
+    const rawSlug = (body?.slug || name).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
+    if (!name) throw new HttpException('School name is required', HttpStatus.BAD_REQUEST);
+    if (!rawSlug || rawSlug.length < 2) throw new HttpException('Slug must be at least 2 characters', HttpStatus.BAD_REQUEST);
+
+    const callerTenantId = req.user.tenantId as string;
+    const callerTenant = await this.prisma.client.tenant.findUnique({
+      where: { id: callerTenantId },
+      select: { id: true, parentId: true, name: true },
+    });
+    if (!callerTenant) throw new HttpException('Caller tenant not found', HttpStatus.NOT_FOUND);
+    // The district is either the caller (top-level) or its parent (if
+    // they're already a child). Enforces that DISTRICT_ADMIN of a child
+    // can't accidentally spawn siblings — they go to the district.
+    const districtId = callerTenant.parentId ?? callerTenant.id;
+
+    // Slug uniqueness is global across all tenants, not just per-district.
+    const existing = await this.prisma.client.tenant.findUnique({ where: { slug: rawSlug } });
+    if (existing) throw new HttpException('That slug is already taken', HttpStatus.CONFLICT);
+
+    const child = await this.prisma.client.$transaction(async (tx) => {
+      const created = await tx.tenant.create({
+        data: { name, slug: rawSlug, parentId: districtId },
+        select: { id: true, name: true, slug: true, parentId: true, createdAt: true },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId: districtId,
+          userId: req.user.userId,
+          action: 'CHILD_TENANT_CREATED',
+          targetType: 'Tenant',
+          targetId: created.id,
+          details: JSON.stringify({ name, slug: rawSlug, parentTenantId: districtId }),
+        },
+      });
+      return created;
+    });
+
+    return { success: true, child };
+  }
+
   @Get()
   async getTenantInfo(@Request() req: any) {
     const tenantId = req.user.tenantId;
