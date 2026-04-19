@@ -211,30 +211,24 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
         : ['Maya', 'Eli', 'Sofia']);
   const bdInline = birthdayList.join('  ·  ');
 
-  // Marquee only when 4+ names AND text overflows the wide names slot.
-  // 1-3 names render static at full size, free to extend beyond the
-  // birthdays cell column into the wider expanded slot. The slot is
-  // anchored right and expands leftward up to the announcement edge.
+  // Hard rule: 1-3 names are STATIC and free to sprawl across the wide
+  // bottom slot. 4+ names ALWAYS marquee inside a narrower window so
+  // each name still gets readable airtime.
+  const bdShouldScroll = birthdayList.length >= 4;
   const bdSlotRef = useRef<HTMLDivElement>(null);
   const bdTextRef = useRef<HTMLSpanElement>(null);
-  const [bdShouldScroll, setBdShouldScroll] = useState(false);
   const [bdScrollDistance, setBdScrollDistance] = useState(0);
   useEffect(() => {
+    if (!bdShouldScroll) { setBdScrollDistance(0); return; }
     const measure = () => {
       const slot = bdSlotRef.current;
       const txt = bdTextRef.current;
       if (!slot || !txt) return;
-      const overflow = txt.scrollWidth - slot.clientWidth;
-      // Only enable scroll if (a) 4 or more names AND (b) the line
-      // doesn't fit even in the wider slot. Three names just sit
-      // there full size — never scroll.
-      if (birthdayList.length >= 4 && overflow > 4) {
-        setBdShouldScroll(true);
-        setBdScrollDistance(overflow + 20);
-      } else {
-        setBdShouldScroll(false);
-        setBdScrollDistance(0);
-      }
+      // When scrolling, slot is narrower (380px). Distance to scroll
+      // is the full overflow + a buffer so the last name fully clears
+      // before snapping back.
+      const overflow = Math.max(0, txt.scrollWidth - slot.clientWidth);
+      setBdScrollDistance(overflow + 40);
     };
     measure();
     const r1 = requestAnimationFrame(measure);
@@ -242,7 +236,7 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
     const ro = new ResizeObserver(measure);
     if (bdSlotRef.current) ro.observe(bdSlotRef.current);
     return () => { cancelAnimationFrame(r1); cancelAnimationFrame(r2); ro.disconnect(); };
-  }, [bdInline, birthdayList.length]);
+  }, [bdInline, bdShouldScroll]);
 
   // Clock time
   const hh = ((now.getHours() + 11) % 12) + 1;
@@ -352,15 +346,24 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
                 and slowly scroll sideways if they overflow the cell width.
                 Always big text; never compresses. The slot has a fixed
                 height + overflow:hidden so neighboring widgets don't reflow. */}
-            <div className="aw-bdNamesSlot" ref={bdSlotRef}>
+            <div
+              className="aw-bdNamesSlot"
+              ref={bdSlotRef}
+              style={{
+                // Wide slot for 1-3 names (sprawl right-to-left across
+                // the bottom). Narrow cell-width slot for 4+ names so
+                // the marquee window is intentionally tight and each
+                // name gets focused airtime as it passes through.
+                width: bdShouldScroll ? '380px' : '1100px',
+                justifyContent: bdShouldScroll ? 'flex-start' : 'flex-end',
+              }}
+            >
               <span
                 ref={bdTextRef}
                 className="aw-bdNames"
                 style={bdShouldScroll ? {
-                  // Custom property feeds the keyframe so the distance
-                  // matches actual overflow — no guessing.
                   ['--bd-scroll-distance' as any]: `-${bdScrollDistance}px`,
-                  animation: `aw-bdMarquee ${Math.max(12, bdScrollDistance / 25)}s linear infinite`,
+                  animation: `aw-bdMarquee ${Math.max(15, bdScrollDistance / 25)}s linear infinite`,
                 } : undefined}
               >
                 {bdInline}
