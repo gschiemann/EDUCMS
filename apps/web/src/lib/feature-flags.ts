@@ -42,9 +42,10 @@ export function isFeatureEnabled(flag: FlagKey): boolean {
     case FLAGS.AUTO_BRANDING:
       // Default-on in development (NODE_ENV === 'development') so the
       // demo works out-of-the-box on localhost. Prod requires explicit opt-in.
+      // Default ON in all environments (the demo headliner). Set
+      // NEXT_PUBLIC_FF_AUTO_BRANDING=false on Vercel to disable.
       if (process.env.NEXT_PUBLIC_FF_AUTO_BRANDING === 'false') return false;
-      if (process.env.NEXT_PUBLIC_FF_AUTO_BRANDING === 'true') return true;
-      return process.env.NODE_ENV !== 'production';
+      return true;
     default:
       return false;
   }
