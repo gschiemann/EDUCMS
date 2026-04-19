@@ -15,7 +15,21 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
+import dynamic from 'next/dynamic';
+
+// Lazy-load the entire widget catalog (WidgetRenderer.tsx is 2000+ lines
+// that transitively imports ~40 theme modules + the 3 animated welcome
+// scenes + all generic widgets). Without dynamic() here, every route that
+// mounts the templates gallery SSR/CSR — and every component that imports
+// ScaledTemplateThumbnail — drags that entire bundle in. With dynamic()
+// Next splits it into a separate chunk that only loads when a tile
+// intersects the viewport (we already IO-gate the <WidgetPreview> call
+// below — see isVisible). Combined effect: /templates first paint cost
+// is decoupled from how many themes are installed.
+const WidgetPreview = dynamic(
+  () => import('@/components/widgets/WidgetRenderer').then((m) => ({ default: m.WidgetPreview })),
+  { ssr: false, loading: () => null },
+);
 
 interface Zone {
   id?: string;

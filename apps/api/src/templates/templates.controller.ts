@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Put, Delete, Body, Param, Query,
-  UseGuards, Request, HttpException, HttpStatus,
+  UseGuards, Request, HttpException, HttpStatus, Header,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -39,6 +39,9 @@ export class TemplatesController {
     if (category) where.category = category;
     if (status) where.status = status;
 
+    // Zones ARE included — the gallery needs them to render thumbnails.
+    // What we don't need is re-parsing `defaultConfig` for rows the UI
+    // never opens; that JSON parse is deferred to mapTemplate.
     const templates = await this.prisma.client.template.findMany({
       where,
       include: {
@@ -56,15 +59,21 @@ export class TemplatesController {
 
   @Get('system/presets')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  // Immutable in-memory catalog — shipped identically to every tenant.
+  // Cache on the browser + any edge CDN for 10 minutes; serve stale for
+  // an hour while revalidating. Before this the 130 KB payload was
+  // re-transferred on every /templates visit AND every other page that
+  // imports the Templates sidebar.
+  @Header('Cache-Control', 'private, max-age=600, stale-while-revalidate=3600')
   async getSystemPresets() {
-    // Return the in-memory preset definitions (for UI to show even before seeding)
     return SYSTEM_TEMPLATE_PRESETS;
   }
 
   @Get('widget-types')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  // Pure static JSON catalog — cache aggressively.
+  @Header('Cache-Control', 'private, max-age=600, stale-while-revalidate=3600')
   async getWidgetTypes() {
-    // Returns available widget types with metadata for the template builder UI
     return WIDGET_TYPE_CATALOG;
   }
 

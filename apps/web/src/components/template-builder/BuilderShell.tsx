@@ -29,11 +29,23 @@ type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 const AUTO_SAVE_IDLE_MS = 15_000;
 
 export function BuilderShell({ template, onBack, onSaved }: Props) {
-  const {
-    init, selectedIds, isDirty, previewMode,
-    updateZones, removeSelected, duplicateZone, select,
-    undo, redo, markClean, addZone,
-  } = useBuilderStore();
+  // Atomic selectors (per-key) — destructuring subscribes the whole
+  // BuilderShell to the entire store, so every zone tweak in the
+  // canvas re-renders this 500+ line shell. Zustand action refs are
+  // stable; state slices tracked individually only re-render when
+  // the specific slice actually changes.
+  const init = useBuilderStore((s) => s.init);
+  const selectedIds = useBuilderStore((s) => s.selectedIds);
+  const isDirty = useBuilderStore((s) => s.isDirty);
+  const previewMode = useBuilderStore((s) => s.previewMode);
+  const updateZones = useBuilderStore((s) => s.updateZones);
+  const removeSelected = useBuilderStore((s) => s.removeSelected);
+  const duplicateZone = useBuilderStore((s) => s.duplicateZone);
+  const select = useBuilderStore((s) => s.select);
+  const undo = useBuilderStore((s) => s.undo);
+  const redo = useBuilderStore((s) => s.redo);
+  const markClean = useBuilderStore((s) => s.markClean);
+  const addZone = useBuilderStore((s) => s.addZone);
   const [panel, setPanel] = useState<PanelKey>('widgets');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [saveError, setSaveError] = useState<string>();

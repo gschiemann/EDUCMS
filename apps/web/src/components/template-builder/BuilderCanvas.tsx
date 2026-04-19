@@ -7,10 +7,24 @@ import { snapMove, snapResize } from './snap-engine';
 import type { ResizeHandle, SnapLine, Zone } from './types';
 
 export function BuilderCanvas() {
-  const {
-    zones, meta, selectedIds, zoom, gridSize, showGrid, snapEnabled, showGuides,
-    previewMode, select, updateZone, updateZones, beginTransaction,
-  } = useBuilderStore();
+  // Atomic selectors — BuilderCanvas paints every frame of every drag,
+  // so subscribing to the whole store was forcing re-renders on every
+  // unrelated state tick (e.g. isDirty flag flipping). Per-key lets
+  // Zustand skip the render entirely when nothing this component cares
+  // about changed.
+  const zones = useBuilderStore((s) => s.zones);
+  const meta = useBuilderStore((s) => s.meta);
+  const selectedIds = useBuilderStore((s) => s.selectedIds);
+  const zoom = useBuilderStore((s) => s.zoom);
+  const gridSize = useBuilderStore((s) => s.gridSize);
+  const showGrid = useBuilderStore((s) => s.showGrid);
+  const snapEnabled = useBuilderStore((s) => s.snapEnabled);
+  const showGuides = useBuilderStore((s) => s.showGuides);
+  const previewMode = useBuilderStore((s) => s.previewMode);
+  const select = useBuilderStore((s) => s.select);
+  const updateZone = useBuilderStore((s) => s.updateZone);
+  const updateZones = useBuilderStore((s) => s.updateZones);
+  const beginTransaction = useBuilderStore((s) => s.beginTransaction);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const [dragState, setDragState] = useState<

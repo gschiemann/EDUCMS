@@ -5,7 +5,14 @@ import { useBuilderStore } from './useBuilderStore';
 import { getZoneColor, widgetIcon, widgetLabel } from './constants';
 
 export function LayersPanel() {
-  const { zones, selectedIds, select, moveLayer, toggleLock, duplicateZone, removeSelected } = useBuilderStore();
+  // Atomic selectors — one subscription per key.
+  const zones = useBuilderStore((s) => s.zones);
+  const selectedIds = useBuilderStore((s) => s.selectedIds);
+  const select = useBuilderStore((s) => s.select);
+  const moveLayer = useBuilderStore((s) => s.moveLayer);
+  const toggleLock = useBuilderStore((s) => s.toggleLock);
+  const duplicateZone = useBuilderStore((s) => s.duplicateZone);
+  const removeSelected = useBuilderStore((s) => s.removeSelected);
 
   const sorted = [...zones].sort((a, b) => b.zIndex - a.zIndex);
 

@@ -22,11 +22,28 @@ interface Props {
 }
 
 export function BuilderToolbar({ onBack, onSave, onSaveAs, onDiscard, saveStatus, saveError, lastSavedAt }: Props) {
-  const {
-    meta, zones, isDirty, isSystem, past, future, zoom, showGrid, snapEnabled, previewMode,
-    isTouchEnabled, setTouchEnabled,
-    undo, redo, flipCanvas, setZoom, setShowGrid, setSnapEnabled, setPreviewMode,
-  } = useBuilderStore();
+  // Atomic selectors — one subscription per key lets Zustand skip this
+  // toolbar's re-render when only zone geometry (BuilderCanvas concern)
+  // or property fields (PropertiesPanel concern) changed.
+  const meta = useBuilderStore((s) => s.meta);
+  const zones = useBuilderStore((s) => s.zones);
+  const isDirty = useBuilderStore((s) => s.isDirty);
+  const isSystem = useBuilderStore((s) => s.isSystem);
+  const past = useBuilderStore((s) => s.past);
+  const future = useBuilderStore((s) => s.future);
+  const zoom = useBuilderStore((s) => s.zoom);
+  const showGrid = useBuilderStore((s) => s.showGrid);
+  const snapEnabled = useBuilderStore((s) => s.snapEnabled);
+  const previewMode = useBuilderStore((s) => s.previewMode);
+  const isTouchEnabled = useBuilderStore((s) => s.isTouchEnabled);
+  const setTouchEnabled = useBuilderStore((s) => s.setTouchEnabled);
+  const undo = useBuilderStore((s) => s.undo);
+  const redo = useBuilderStore((s) => s.redo);
+  const flipCanvas = useBuilderStore((s) => s.flipCanvas);
+  const setZoom = useBuilderStore((s) => s.setZoom);
+  const setShowGrid = useBuilderStore((s) => s.setShowGrid);
+  const setSnapEnabled = useBuilderStore((s) => s.setSnapEnabled);
+  const setPreviewMode = useBuilderStore((s) => s.setPreviewMode);
 
   const touchWarnings = useMemo(
     () => isTouchEnabled ? validateTouchHitTargets(zones, meta.screenWidth, meta.screenHeight).warnings : [],

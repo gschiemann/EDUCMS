@@ -7,7 +7,18 @@ import { widgetLabel } from './constants';
 import { useAssets, usePlaylists } from '@/hooks/use-api';
 
 export function PropertiesPanel() {
-  const { zones, selectedIds, updateZone, meta } = useBuilderStore();
+  // Atomic selectors — the old `const { zones, selectedIds, updateZone,
+  // meta } = useBuilderStore()` subscribed this component (1000+ lines,
+  // 60+ form fields) to the ENTIRE store. Every keystroke in any input
+  // called updateZone, which mutated zones, which re-rendered the whole
+  // panel + BuilderCanvas + LayersPanel. Typing felt laggy. With atomic
+  // selectors Zustand only re-renders when the specific slice changes.
+  // Action refs (updateZone) are stable (created once in create()) so
+  // they never trigger re-renders.
+  const zones = useBuilderStore((s) => s.zones);
+  const selectedIds = useBuilderStore((s) => s.selectedIds);
+  const updateZone = useBuilderStore((s) => s.updateZone);
+  const meta = useBuilderStore((s) => s.meta);
   const nameId = useId();
 
   // Hotspot listener — when the AnimatedWelcomeWidget dispatches an
@@ -233,7 +244,9 @@ export function PropertiesPanel() {
 }
 
 function TemplateProperties() {
-  const { meta, setMeta } = useBuilderStore();
+  // Atomic selectors — see PropertiesPanel above.
+  const meta = useBuilderStore((s) => s.meta);
+  const setMeta = useBuilderStore((s) => s.setMeta);
   const nameId = useId();
   const descId = useId();
   const widthId = useId();
@@ -372,7 +385,9 @@ function IconBtn({ label, onClick, children }: { label: string; onClick: () => v
 }
 
 function MultiAlignButtons() {
-  const { zones, selectedIds, updateZones } = useBuilderStore();
+  const zones = useBuilderStore((s) => s.zones);
+  const selectedIds = useBuilderStore((s) => s.selectedIds);
+  const updateZones = useBuilderStore((s) => s.updateZones);
   const selected = zones.filter(z => selectedIds.includes(z.id));
   if (selected.length < 2) return null;
 
