@@ -708,6 +708,97 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextAreaField key="tickerMessages" label="Scrolling messages (one per line)" value={Array.isArray(cfg.tickerMessages) ? cfg.tickerMessages.join('\n') : (cfg.tickerMessages || '')} placeholder="Welcome back, Stars!" rows={4} onChange={(v) => setField({ tickerMessages: v.split(/\n+/).filter(Boolean) })} />);
       break;
     }
+    case 'ANIMATED_CAFETERIA': {
+      // Cafeteria template editor. Same hotspot scroll-into-view
+      // contract as ANIMATED_WELCOME (aw-section-* ids + flash on
+      // activation) but with cafeteria-specific sections: Special,
+      // Menu (5 day tabs, unlimited items per day), Chef, etc.
+      const SH = (key: string, label: string) => (
+        <div
+          key={`sh-${key}`}
+          id={`aw-section-${key}`}
+          data-aw-section={key}
+          className="aw-section-header pt-3 pb-1 px-1 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200 scroll-mt-24 transition-shadow"
+        >
+          {label}
+        </div>
+      );
+
+      fields.push(SH('header', 'Header'));
+      fields.push(<TextField key="title" label="Big title" value={cfg.title || ''} placeholder="LUNCH IS ON" onChange={(v) => setField({ title: v })} />);
+      fields.push(<TextField key="subtitle" label="Subtitle" value={cfg.subtitle || ''} placeholder="~ freshly rolled every day ~" onChange={(v) => setField({ subtitle: v })} />);
+      fields.push(
+        <div key="clockTimeZone" className="space-y-1">
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Clock timezone (blank = use player's local time)</label>
+          <select
+            value={cfg.clockTimeZone || ''}
+            onChange={(e) => setField({ clockTimeZone: e.target.value })}
+            className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+          >
+            <option value="">Use player's local time (default)</option>
+            <option value="America/New_York">Eastern (New York)</option>
+            <option value="America/Chicago">Central (Chicago)</option>
+            <option value="America/Denver">Mountain (Denver)</option>
+            <option value="America/Phoenix">Arizona (no DST)</option>
+            <option value="America/Los_Angeles">Pacific (Los Angeles)</option>
+            <option value="America/Anchorage">Alaska</option>
+            <option value="Pacific/Honolulu">Hawaii</option>
+            <option value="UTC">UTC</option>
+          </select>
+        </div>
+      );
+
+      fields.push(SH('special', "Today's Special"));
+      fields.push(<TextField key="specialEmoji" label="Food emoji (🍕 🌮 🍔 🥪 🥗 🍝 🍗 🌯 🥨)" value={cfg.specialEmoji || ''} placeholder="🍕" onChange={(v) => setField({ specialEmoji: v })} />);
+      fields.push(<TextField key="specialLabel" label="Small label" value={cfg.specialLabel || ''} placeholder="Pickup Special" onChange={(v) => setField({ specialLabel: v })} />);
+      fields.push(<TextField key="specialName" label="Dish name" value={cfg.specialName || ''} placeholder="Cheesy Pepperoni" onChange={(v) => setField({ specialName: v })} />);
+
+      fields.push(SH('menu', 'Weekly Menu'));
+      fields.push(<WeekMenuEditor key="weekMenu" value={cfg.weekMenu} onChange={(weekMenu) => setField({ weekMenu })} />);
+
+      fields.push(SH('countdown', 'Countdown'));
+      fields.push(<TextField key="countdownEmoji" label="Event icon (🍕 🌮 🌶 🎂 🍗 etc)" value={cfg.countdownEmoji || ''} placeholder="🌮" onChange={(v) => setField({ countdownEmoji: v })} />);
+      fields.push(<TextField key="countdownLabel" label="Label (e.g. Taco Tuesday in, Pizza Day in)" value={cfg.countdownLabel || ''} placeholder="Taco Tuesday in" onChange={(v) => setField({ countdownLabel: v })} />);
+      fields.push(
+        <div key="countdownDate" className="space-y-1">
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Target date</label>
+          <input
+            type="date"
+            value={cfg.countdownDate || ''}
+            onChange={(e) => setField({ countdownDate: e.target.value })}
+            className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+          />
+        </div>
+      );
+
+      fields.push(SH('chef', 'Lunch Chef'));
+      fields.push(<TextField key="chefName" label="Chef name" value={cfg.chefName || ''} placeholder="Ms. Rodriguez" onChange={(v) => setField({ chefName: v })} />);
+      fields.push(<TextField key="chefRole" label="Caption under name" value={cfg.chefRole || ''} placeholder="lunch hero of the week" onChange={(v) => setField({ chefRole: v })} />);
+      fields.push(<AssetPickerField key="chefPhotoUrl" label="Upload photo (optional)" value={cfg.chefPhotoUrl || ''} kind="image" onChange={(v) => setField({ chefPhotoUrl: v })} />);
+      fields.push(<TextField key="chefEmoji" label="…or pick an emoji (👩‍🍳 👨‍🍳 🧑‍🍳 🍳)" value={cfg.chefEmoji || ''} placeholder="👩‍🍳" onChange={(v) => setField({ chefEmoji: v })} />);
+
+      fields.push(SH('birthdays', 'Birthdays'));
+      fields.push(
+        <TextAreaField
+          key="birthdayNames"
+          label="Names — hit Enter to add another"
+          value={(() => {
+            const v = cfg.birthdayNames;
+            if (Array.isArray(v)) return v.join('\n');
+            if (typeof v === 'string') return v.split(/[\n,·]+/).map(s => s.trim()).filter(Boolean).join('\n');
+            return '';
+          })()}
+          placeholder={'Alex\nJordan\nSam'}
+          rows={5}
+          onChange={(v) => setField({ birthdayNames: v.split(/[\n,·]+/).map((s: string) => s.trim()).filter(Boolean) })}
+        />
+      );
+
+      fields.push(SH('ticker', 'Bottom ticker'));
+      fields.push(<TextField key="tickerStamp" label="Stamp text" value={cfg.tickerStamp || ''} placeholder="Café News" onChange={(v) => setField({ tickerStamp: v })} />);
+      fields.push(<TextAreaField key="tickerMessages" label="Scrolling messages (one per line)" value={Array.isArray(cfg.tickerMessages) ? cfg.tickerMessages.join('\n') : (cfg.tickerMessages || '')} placeholder="Taco Tuesday tomorrow! $3.50 tacos all day" rows={4} onChange={(v) => setField({ tickerMessages: v.split(/\n+/).filter(Boolean) })} />);
+      break;
+    }
     default:
       // Unknown widget — fall through to JSON-only editing in Advanced
       return null;
@@ -1137,6 +1228,156 @@ function PlaylistPickerField({ label, value, onChange }: { label: string; value:
       {!isLoading && (!playlists || playlists.length === 0) && (
         <p className="text-[10px] text-slate-400 mt-1">No playlists yet — create one in <strong>Playlists</strong>.</p>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// Weekly cafeteria menu editor — 5 day tabs, unlimited items per day.
+// Data shape: { monday: [{emoji,name,meta,price}], tuesday: [...], ... }
+// The rendered cafeteria widget picks today's day via new Date().getDay()
+// and shows that day's menu automatically.
+// ─────────────────────────────────────────────────────────
+type CafeItem = { emoji?: string; name?: string; meta?: string; price?: string };
+type CafeWeek = Record<'monday'|'tuesday'|'wednesday'|'thursday'|'friday', CafeItem[]>;
+const CAFE_DAYS: Array<{ key: keyof CafeWeek; label: string }> = [
+  { key: 'monday',    label: 'MON' },
+  { key: 'tuesday',   label: 'TUE' },
+  { key: 'wednesday', label: 'WED' },
+  { key: 'thursday',  label: 'THU' },
+  { key: 'friday',    label: 'FRI' },
+];
+
+function WeekMenuEditor({ value, onChange }: { value: Partial<CafeWeek> | undefined; onChange: (next: CafeWeek) => void }) {
+  const [activeDay, setActiveDay] = useState<keyof CafeWeek>('monday');
+  // Normalize to a full 5-day structure so we never fight undefineds.
+  const week: CafeWeek = {
+    monday:    value?.monday    || [],
+    tuesday:   value?.tuesday   || [],
+    wednesday: value?.wednesday || [],
+    thursday:  value?.thursday  || [],
+    friday:    value?.friday    || [],
+  };
+  const items = week[activeDay];
+
+  const update = (idx: number, patch: Partial<CafeItem>) => {
+    const next = { ...week, [activeDay]: week[activeDay].map((it, i) => i === idx ? { ...it, ...patch } : it) };
+    onChange(next);
+  };
+  const add = () => {
+    const next = { ...week, [activeDay]: [...week[activeDay], { emoji: '🍽️', name: '', meta: '', price: '' }] };
+    onChange(next);
+  };
+  const remove = (idx: number) => {
+    const next = { ...week, [activeDay]: week[activeDay].filter((_, i) => i !== idx) };
+    onChange(next);
+  };
+  const copyMondayToWeek = () => {
+    onChange({
+      monday:    week.monday,
+      tuesday:   week.monday.map(it => ({ ...it })),
+      wednesday: week.monday.map(it => ({ ...it })),
+      thursday:  week.monday.map(it => ({ ...it })),
+      friday:    week.monday.map(it => ({ ...it })),
+    });
+  };
+
+  return (
+    <div className="space-y-2">
+      {/* Day tabs */}
+      <div className="flex gap-1">
+        {CAFE_DAYS.map((d) => (
+          <button
+            key={d.key}
+            type="button"
+            onClick={() => setActiveDay(d.key)}
+            className={`flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold tracking-wider transition ${
+              activeDay === d.key
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            {d.label}
+            <span className={`ml-1 text-[9px] opacity-70`}>({week[d.key].length})</span>
+          </button>
+        ))}
+      </div>
+
+      {items.length === 0 && (
+        <div className="text-[11px] text-slate-400 italic px-1 py-3 text-center border border-dashed border-slate-200 rounded-md">
+          No items yet. Click + Add below to start the {activeDay} menu.
+        </div>
+      )}
+
+      {items.map((it, idx) => (
+        <div key={idx} className="bg-white border border-slate-200 rounded-lg p-2 space-y-1.5 shadow-sm">
+          <div className="flex items-start gap-1.5">
+            <input
+              type="text"
+              value={it.emoji || ''}
+              placeholder="🍕"
+              onChange={(e) => update(idx, { emoji: e.target.value })}
+              className="w-14 px-2 py-1.5 rounded border border-slate-200 text-center text-lg"
+              aria-label="Food emoji"
+            />
+            <input
+              type="text"
+              value={it.name || ''}
+              placeholder="Dish name"
+              onChange={(e) => update(idx, { name: e.target.value })}
+              className="flex-1 px-2 py-1.5 rounded border border-slate-200 text-xs font-semibold"
+              aria-label="Dish name"
+            />
+            <button
+              type="button"
+              onClick={() => remove(idx)}
+              className="px-2 py-1.5 rounded text-rose-500 hover:bg-rose-50 text-sm"
+              aria-label={`Remove ${it.name || 'item'}`}
+              title="Remove"
+            >
+              ×
+            </button>
+          </div>
+          <div className="flex gap-1.5">
+            <input
+              type="text"
+              value={it.meta || ''}
+              placeholder="🌾 🧀 or veg · gf"
+              onChange={(e) => update(idx, { meta: e.target.value })}
+              className="flex-1 px-2 py-1.5 rounded border border-slate-200 text-[11px]"
+              aria-label="Allergens or dietary tag"
+            />
+            <input
+              type="text"
+              value={it.price || ''}
+              placeholder="$3.25"
+              onChange={(e) => update(idx, { price: e.target.value })}
+              className="w-20 px-2 py-1.5 rounded border border-slate-200 text-[11px] text-right font-semibold"
+              aria-label="Price"
+            />
+          </div>
+        </div>
+      ))}
+
+      <div className="flex gap-1.5">
+        <button
+          type="button"
+          onClick={add}
+          className="flex-1 px-2 py-1.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold transition"
+        >
+          + Add item
+        </button>
+        {activeDay === 'monday' && week.monday.length > 0 && (
+          <button
+            type="button"
+            onClick={copyMondayToWeek}
+            className="px-2 py-1.5 rounded-md bg-amber-50 hover:bg-amber-100 text-amber-700 text-[11px] font-semibold transition"
+            title="Copy Monday's items to Tuesday through Friday"
+          >
+            Copy Mon → all week
+          </button>
+        )}
+      </div>
     </div>
   );
 }

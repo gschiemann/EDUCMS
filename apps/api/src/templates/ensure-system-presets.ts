@@ -97,6 +97,7 @@ export async function ensureSystemPresets(prisma: PrismaService) {
     // system template as a cluster. Rerun this whenever we want the
     // "featured" set to surface first — cheap UPDATE, idempotent.
     const PINNED_TO_TOP = [
+      'preset-cafeteria-animated-elementary',
       'preset-lobby-animated-high',
       'preset-lobby-animated-middle',
       'preset-lobby-animated-rainbow',

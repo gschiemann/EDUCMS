@@ -39,6 +39,7 @@ import { QuoteWidget, StatsWidget, MenuItemWidget, ScoreboardWidget, ScheduleGri
 import { AnimatedWelcomeWidget } from './AnimatedWelcomeWidget';
 import { AnimatedWelcomeMiddleWidget } from './AnimatedWelcomeMiddleWidget';
 import { AnimatedWelcomeHighWidget } from './AnimatedWelcomeHighWidget';
+import { AnimatedCafeteriaElementaryWidget } from './AnimatedCafeteriaElementaryWidget';
 import { AnimatedBackgroundWidget } from './AnimatedBackgroundWidget';
 import { ScrapbookLogo, ScrapbookText, ScrapbookClock, ScrapbookWeather, ScrapbookCountdown, ScrapbookAnnouncement, ScrapbookCalendar, ScrapbookStaffSpotlight, ScrapbookImageCarousel, ScrapbookTicker } from './themes/scrapbook';
 import { LockerHallwayLogo, LockerHallwayText, LockerHallwayClock, LockerHallwayWeather, LockerHallwayCountdown, LockerHallwayAnnouncement, LockerHallwayCalendar, LockerHallwayStaffSpotlight, LockerHallwayImageCarousel, LockerHallwayTicker } from './themes/locker-hallway';
@@ -133,6 +134,7 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'ANIMATED_WELCOME':      return <AnimatedWelcomeWidget config={cfg} live={live} />;
     case 'ANIMATED_WELCOME_MS':   return <AnimatedWelcomeMiddleWidget config={cfg} live={live} />;
     case 'ANIMATED_WELCOME_HS':   return <AnimatedWelcomeHighWidget config={cfg} live={live} />;
+    case 'ANIMATED_CAFETERIA':    return <AnimatedCafeteriaElementaryWidget config={cfg} live={live} />;
     case 'ANIMATED_BACKGROUND':   return <AnimatedBackgroundWidget config={cfg} />;
     default:             return null;
   }

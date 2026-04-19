@@ -1310,4 +1310,84 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
       }
     ],
   },
+  {
+    id: "preset-cafeteria-animated-elementary",
+    name: "🚚 Animated Cafeteria · Food Truck",
+    description: "Full-screen ANIMATED cafeteria menu board in food-truck theme. Food-truck logo, sunset palette, string lights, weekly menu editor (Mon-Fri tabs) with auto-picked today's day, swappable food emojis, container-query auto-sizing menu items (4 big, 10 compact), dotted-leader pricing, lunch chef polaroid, layered cake birthdays, allergen ticker.",
+    category: "CAFETERIA",
+    orientation: 'LANDSCAPE',
+    schoolLevel: "ELEMENTARY",
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: "#fce7f3",
+    bgGradient: "linear-gradient(180deg,#fce7f3 0%,#ffe4e6 35%,#fef3c7 75%,#fed7aa 100%)",
+    zones: [
+      {
+        "name": "Animated Cafeteria Scene",
+        "widgetType": "ANIMATED_CAFETERIA",
+        "x": 0, "y": 0, "width": 100, "height": 100,
+        "zIndex": 1,
+        "sortOrder": 0,
+        "defaultConfig": {
+          "title": "LUNCH IS ON",
+          "subtitle": "~ freshly rolled every day ~",
+          "specialEmoji": "🍕",
+          "specialLabel": "Pickup Special",
+          "specialName": "Cheesy Pepperoni",
+          "weekMenu": {
+            "monday": [
+              { "emoji": "🍕", "name": "Pepperoni Pizza",         "meta": "🌾 🧀",      "price": "$3.25" },
+              { "emoji": "🥗", "name": "Build-a-Salad Bar",       "meta": "veg",         "price": "$2.95" },
+              { "emoji": "🍟", "name": "Crispy Fries",            "meta": "veg · gf",    "price": "$1.75" },
+              { "emoji": "🍎", "name": "Fresh Fruit Cup",         "meta": "veg · gf",    "price": "$1.50" },
+              { "emoji": "🥛", "name": "Milk · White or Chocolate","meta": "🧀",          "price": "$0.75" }
+            ],
+            "tuesday": [
+              { "emoji": "🌮", "name": "Street Tacos",            "meta": "🌾 🧀",      "price": "$3.50" },
+              { "emoji": "🍚", "name": "Cilantro Lime Rice",      "meta": "veg · gf",    "price": "$1.50" },
+              { "emoji": "🌽", "name": "Corn on the Cob",         "meta": "veg · gf",    "price": "$1.25" },
+              { "emoji": "🍎", "name": "Fresh Fruit Cup",         "meta": "veg · gf",    "price": "$1.50" },
+              { "emoji": "🥛", "name": "Milk · White or Chocolate","meta": "🧀",          "price": "$0.75" }
+            ],
+            "wednesday": [
+              { "emoji": "🍝", "name": "Spaghetti & Meatballs",   "meta": "🌾 🧀",      "price": "$3.50" },
+              { "emoji": "🥖", "name": "Garlic Breadstick",       "meta": "🌾 🧀",      "price": "$1.00" },
+              { "emoji": "🥗", "name": "Caesar Salad",            "meta": "🌾 🧀",      "price": "$2.50" },
+              { "emoji": "🍎", "name": "Fresh Fruit Cup",         "meta": "veg · gf",    "price": "$1.50" },
+              { "emoji": "🥛", "name": "Milk · White or Chocolate","meta": "🧀",          "price": "$0.75" }
+            ],
+            "thursday": [
+              { "emoji": "🍔", "name": "Classic Burger",          "meta": "🌾 🧀",      "price": "$3.25" },
+              { "emoji": "🍟", "name": "Crispy Fries",            "meta": "veg · gf",    "price": "$1.75" },
+              { "emoji": "🥒", "name": "Pickle Spear",            "meta": "veg · gf",    "price": "$0.50" },
+              { "emoji": "🍎", "name": "Fresh Fruit Cup",         "meta": "veg · gf",    "price": "$1.50" },
+              { "emoji": "🥛", "name": "Milk · White or Chocolate","meta": "🧀",          "price": "$0.75" }
+            ],
+            "friday": [
+              { "emoji": "🍕", "name": "Pizza Friday!",           "meta": "🌾 🧀",      "price": "$3.25" },
+              { "emoji": "🥗", "name": "Build-a-Salad Bar",       "meta": "veg",         "price": "$2.95" },
+              { "emoji": "🍪", "name": "Chocolate Chip Cookie",   "meta": "🌾 🥜 🧀",    "price": "$1.00" },
+              { "emoji": "🍎", "name": "Fresh Fruit Cup",         "meta": "veg · gf",    "price": "$1.50" },
+              { "emoji": "🥛", "name": "Milk · White or Chocolate","meta": "🧀",          "price": "$0.75" }
+            ]
+          },
+          "countdownEmoji": "🌮",
+          "countdownLabel": "Taco Tuesday in",
+          "countdownDate": "",
+          "chefName": "Ms. Rodriguez",
+          "chefRole": "lunch hero of the week",
+          "chefEmoji": "👩‍🍳",
+          "birthdayNames": "Alex · Jordan · Sam",
+          "tickerStamp": "Café News",
+          "tickerMessages": [
+            "TACO TUESDAY tomorrow — $3.50 tacos all day",
+            "Free water refills at the salad bar",
+            "PIZZA FRIDAY returns — $3.25 slices",
+            "Reload your lunch card in the main office",
+            "Allergen key: 🌾 gluten · 🥜 nuts · 🧀 dairy · 🥚 egg"
+          ]
+        }
+      }
+    ],
+  },
 ];

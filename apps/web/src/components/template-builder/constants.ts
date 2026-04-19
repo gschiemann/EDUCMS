@@ -68,6 +68,7 @@ export const WIDGET_GROUPS = [
       { type: 'ANIMATED_WELCOME', label: 'Animated Welcome · Elementary', desc: 'Full-screen rainbow-ribbon scene — shapes, confetti, live weather', icon: Cake },
       { type: 'ANIMATED_WELCOME_MS', label: 'Animated Welcome · Middle School', desc: 'Stadium / varsity scene — pennants, scoreboard, megaphone, varsity patch', icon: Cake },
       { type: 'ANIMATED_WELCOME_HS', label: 'Animated Welcome · High School', desc: 'Neon sunset scene — grad cap, trophy, yearbook, confetti burst', icon: Cake },
+      { type: 'ANIMATED_CAFETERIA',  label: 'Animated Cafeteria · Food Truck', desc: 'Food-truck menu board — weekly menu, swappable food emojis, lunch chef, allergen ticker', icon: UtensilsCrossed },
     ],
   },
   {
@@ -127,6 +128,7 @@ export const ZONE_COLORS: Record<string, { bg: string; border: string; text: str
   ANIMATED_WELCOME:     { bg: '#fbcfe8', border: '#ec4899', text: '#831843', accent: '#ec4899' },
   ANIMATED_WELCOME_MS:  { bg: '#fef3c7', border: '#dc2626', text: '#7f1d1d', accent: '#dc2626' },
   ANIMATED_WELCOME_HS:  { bg: '#fef3c7', border: '#ec4899', text: '#831843', accent: '#f59e0b' },
+  ANIMATED_CAFETERIA:   { bg: '#fef3c7', border: '#dc2626', text: '#7c2d12', accent: '#dc2626' },
   ANIMATED_BACKGROUND:  { bg: '#fbcfe8', border: '#ec4899', text: '#831843', accent: '#ec4899' },
 };
 
