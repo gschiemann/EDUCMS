@@ -211,9 +211,10 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
         : ['Maya', 'Eli', 'Sofia']);
   const bdInline = birthdayList.join('  ·  ');
 
-  // Measure whether the inline names overflow the cell so we only
-  // animate the marquee when needed (otherwise short lists would
-  // jitter pointlessly).
+  // Marquee only when 4+ names AND text overflows the wide names slot.
+  // 1-3 names render static at full size, free to extend beyond the
+  // birthdays cell column into the wider expanded slot. The slot is
+  // anchored right and expands leftward up to the announcement edge.
   const bdSlotRef = useRef<HTMLDivElement>(null);
   const bdTextRef = useRef<HTMLSpanElement>(null);
   const [bdShouldScroll, setBdShouldScroll] = useState(false);
@@ -224,9 +225,11 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
       const txt = bdTextRef.current;
       if (!slot || !txt) return;
       const overflow = txt.scrollWidth - slot.clientWidth;
-      if (overflow > 4) {
+      // Only enable scroll if (a) 4 or more names AND (b) the line
+      // doesn't fit even in the wider slot. Three names just sit
+      // there full size — never scroll.
+      if (birthdayList.length >= 4 && overflow > 4) {
         setBdShouldScroll(true);
-        // Distance to scroll = the overflow amount + a small buffer
         setBdScrollDistance(overflow + 20);
       } else {
         setBdShouldScroll(false);
@@ -239,7 +242,7 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
     const ro = new ResizeObserver(measure);
     if (bdSlotRef.current) ro.observe(bdSlotRef.current);
     return () => { cancelAnimationFrame(r1); cancelAnimationFrame(r2); ro.disconnect(); };
-  }, [bdInline]);
+  }, [bdInline, birthdayList.length]);
 
   // Clock time
   const hh = ((now.getHours() + 11) % 12) + 1;
@@ -669,16 +672,23 @@ const CSS = `
   letter-spacing: .12em; color: #be185d; text-transform: uppercase;
   margin-top: 12px; text-shadow: 0 2px 0 rgba(255,255,255,.7);
 }
-/* Single-line slot. Big font, marquees sideways only if the names
-   overflow the cell width (measured by JS in the component). Fixed
-   height keeps the cluster + label anchored above; overflow:hidden
-   prevents bleed into neighboring widgets. */
+/* Names slot is positioned ABSOLUTELY relative to the birthdays cell
+   so 1-3 names can extend LEFT beyond the narrow column — long single
+   names get the full bottom width to breathe instead of being squished
+   or scrolling unnecessarily. Anchored to the right edge so it visually
+   belongs to the birthdays cell. Marquee only kicks in when 4+ names
+   AND the text still doesn't fit even in this wider slot. */
 .aw-bdNamesSlot {
+  position: absolute;
+  right: 14px;
+  bottom: 16px;
+  width: 1100px;
+  max-width: 1100px;
   height: 90px;
-  width: 100%;
-  display: flex; align-items: center; justify-content: center;
-  margin-top: 8px;
+  display: flex; align-items: center; justify-content: flex-end;
   overflow: hidden;
+  pointer-events: none;
+  z-index: 8;
 }
 .aw-bdNames {
   font-family: 'Caveat', cursive; font-weight: 700;
