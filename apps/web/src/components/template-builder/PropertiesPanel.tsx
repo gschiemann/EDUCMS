@@ -587,9 +587,30 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
         </div>
       );
       fields.push(SH('header', 'Header'));
-      fields.push(<TextField key="logoEmoji" label="Logo emoji" value={cfg.logoEmoji || '🍎'} placeholder="🍎" onChange={(v) => setField({ logoEmoji: v })} />);
+      fields.push(<AssetPickerField key="logoUrl" label="Logo (upload your school crest)" value={cfg.logoUrl || ''} kind="image" onChange={(v) => setField({ logoUrl: v })} />);
       fields.push(<TextField key="title" label="Big title" value={cfg.title || ''} placeholder="Welcome, Friends!" onChange={(v) => setField({ title: v })} />);
       fields.push(<TextField key="subtitle" label="Subtitle" value={cfg.subtitle || ''} placeholder="today is going to be amazing ✨" onChange={(v) => setField({ subtitle: v })} />);
+      // Clock timezone — defaults to player's local timezone if blank.
+      fields.push(
+        <div key="clockTimeZone" className="space-y-1">
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Clock timezone (blank = use player's local time)</label>
+          <select
+            value={cfg.clockTimeZone || ''}
+            onChange={(e) => setField({ clockTimeZone: e.target.value })}
+            className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+          >
+            <option value="">Use player's local time (default)</option>
+            <option value="America/New_York">Eastern (New York)</option>
+            <option value="America/Chicago">Central (Chicago)</option>
+            <option value="America/Denver">Mountain (Denver)</option>
+            <option value="America/Phoenix">Arizona (no DST)</option>
+            <option value="America/Los_Angeles">Pacific (Los Angeles)</option>
+            <option value="America/Anchorage">Alaska</option>
+            <option value="Pacific/Honolulu">Hawaii</option>
+            <option value="UTC">UTC</option>
+          </select>
+        </div>
+      );
 
       fields.push(SH('weather', 'Weather — auto-detected from the player'));
       fields.push(<TextField key="weatherLocation" label="ZIP code override (leave blank to auto-detect)" value={cfg.weatherLocation || ''} placeholder="auto-detect" onChange={(v) => setField({ weatherLocation: v })} />);
@@ -599,8 +620,8 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="announcementLabel" label="Small label" value={cfg.announcementLabel || ''} placeholder="Big News" onChange={(v) => setField({ announcementLabel: v })} />);
       fields.push(<TextAreaField key="announcementMessage" label="Message" value={cfg.announcementMessage || ''} placeholder="Book Fair starts Monday!" onChange={(v) => setField({ announcementMessage: v })} />);
 
-      fields.push(SH('countdown', 'Countdown (starburst) — auto-counts down to a date'));
-      fields.push(<TextField key="countdownLabel" label="What's the countdown for? (e.g. Spring Break in, Winter Break in)" value={cfg.countdownLabel || ''} placeholder="Field Trip in" onChange={(v) => setField({ countdownLabel: v })} />);
+      fields.push(SH('countdown', 'Countdown — auto-counts down to a date'));
+      fields.push(<TextField key="countdownLabel" label="Label (e.g. Spring Break in, Winter Break in, Graduation in)" value={cfg.countdownLabel || ''} placeholder="Field Trip in" onChange={(v) => setField({ countdownLabel: v })} />);
       fields.push(
         <div key="countdownDate" className="space-y-1">
           <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Target date</label>
@@ -610,11 +631,8 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
             onChange={(e) => setField({ countdownDate: e.target.value })}
             className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
           />
-          <div className="text-[11px] text-slate-400">Leaves the static number below if no date selected.</div>
         </div>
       );
-      fields.push(<TextField key="countdownNumber" label="Static number (only used if no date set)" value={String(cfg.countdownNumber ?? '')} placeholder="3" onChange={(v) => setField({ countdownNumber: v })} />);
-      fields.push(<TextField key="countdownUnit" label="Unit label" value={cfg.countdownUnit || ''} placeholder="days" onChange={(v) => setField({ countdownUnit: v })} />);
 
       fields.push(SH('teacher', 'Teacher of the Week (polaroid)'));
       fields.push(<TextField key="teacherRole" label="Caption above (the washi tape)" value={cfg.teacherRole || ''} placeholder="Teacher of the Week" onChange={(v) => setField({ teacherRole: v })} />);

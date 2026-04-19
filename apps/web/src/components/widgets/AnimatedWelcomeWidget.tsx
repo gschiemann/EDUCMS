@@ -32,9 +32,16 @@
 import { useEffect, useRef, useState } from 'react';
 
 interface Cfg {
+  // Logo — uploaded image preferred, emoji as fallback (used when no
+  // image is set, e.g. on a fresh preset before the customer uploads
+  // their school crest).
+  logoUrl?: string;
   logoEmoji?: string;
   title?: string;
   subtitle?: string;
+  // Clock timezone — IANA tz string (e.g. 'America/Chicago'). When
+  // empty, the player's local browser timezone is used.
+  clockTimeZone?: string;
   // Live weather config — temp + desc are auto-fetched from Open-Meteo
   // based on weatherLocation. The temp/desc strings are now overrides
   // for offline previews / explicit testing only; default behavior is
@@ -286,10 +293,18 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
     return () => { cancelAnimationFrame(r1); cancelAnimationFrame(r2); ro.disconnect(); };
   }, [bdInline, bdShouldScroll]);
 
-  // Clock time
-  const hh = ((now.getHours() + 11) % 12) + 1;
-  const mm = now.getMinutes().toString().padStart(2, '0');
-  const ampm = now.getHours() >= 12 ? 'PM' : 'AM';
+  // Clock time — local by default, or in a configured timezone.
+  // Uses Intl.DateTimeFormat with the requested IANA tz so DST etc
+  // is handled correctly without manual offset math.
+  const tz = (c.clockTimeZone || '').trim();
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric', minute: '2-digit', hour12: true,
+    ...(tz ? { timeZone: tz } : {}),
+  });
+  const parts = fmt.formatToParts(now);
+  const hh = parts.find(p => p.type === 'hour')?.value || '12';
+  const mm = parts.find(p => p.type === 'minute')?.value || '00';
+  const ampm = parts.find(p => p.type === 'dayPeriod')?.value || 'AM';
 
   // Outer div fills the zone; inner div is the fixed 1920x1080 canvas
   // scaled by transform. transformOrigin top-left so it scales from
@@ -324,7 +339,11 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
         <div className="aw-bgBalloon" style={{ left: 1766, background: '#a78bfa', animationDuration: '20s', animationDelay: '-10s' }} />
 
         <div className="aw-header">
-          <div className="aw-logo">{c.logoEmoji || '🍎'}</div>
+          <div className="aw-logo">
+            {c.logoUrl
+              ? <img src={c.logoUrl} alt="" className="aw-logoImg" />
+              : <span>{c.logoEmoji || '🍎'}</span>}
+          </div>
           <div className="aw-titleBox">
             <h1>{c.title || 'Welcome, Friends!'}</h1>
             <div className="aw-sub">{c.subtitle || 'today is going to be amazing ✨'}</div>
@@ -565,6 +584,10 @@ const CSS = `
   display: flex; align-items: center; justify-content: center; font-size: 96px;
   box-shadow: 0 6px 16px rgba(0,0,0,.18), inset 0 0 0 6px #fcd34d;
   animation: aw-bounceLogo 2.4s ease-in-out infinite;
+  overflow: hidden;
+}
+.aw-logoImg {
+  width: 76%; height: 76%; object-fit: contain;
 }
 @keyframes aw-bounceLogo {
   0%, 100% { transform: translateY(0) rotate(-4deg); }
