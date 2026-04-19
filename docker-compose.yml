@@ -11,6 +11,9 @@ services:
       - NODE_ENV=development
       - PORT=8080
       - DATABASE_URL=postgres://cms_user:cms_password@db:5432/school_cms
+      # DIRECT_URL is used by Prisma for migrations (bypasses any pooler).
+      # Local Postgres has no pgbouncer, so same value — keeps compose self-contained.
+      - DIRECT_URL=postgres://cms_user:cms_password@db:5432/school_cms
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=dev_only_jwt_secret_CHANGE_ME
       - SESSION_SECRET=dev_only_session_secret_CHANGE_ME

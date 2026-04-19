@@ -14,6 +14,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import DOMPurify from 'isomorphic-dompurify';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
 import { API_URL } from '@/lib/api-url';
@@ -26,6 +27,17 @@ import { cn } from '@/lib/utils';
 import { pushBrandingPreview } from './BrandStyleInjector';
 import { BrandingLivePreview } from './BrandingLivePreview';
 import { Search, Palette, Sparkles, Check, Loader2, ExternalLink, AlertTriangle, RefreshCw, Monitor, Wand2, Eye } from 'lucide-react';
+
+// Scraped SVGs come from arbitrary third-party URLs — treat every one
+// as hostile until proven otherwise. Server also sanitizes on adopt,
+// but we must not render dirty markup even in the preview step.
+const SVG_SANITIZE_OPTS = {
+  USE_PROFILES: { svg: true, svgFilters: true },
+  FORBID_TAGS: ['script', 'style', 'foreignObject'],
+} as const;
+function sanitizeSvg(raw: string): string {
+  return DOMPurify.sanitize(raw, SVG_SANITIZE_OPTS as any) as unknown as string;
+}
 
 export interface BrandingWizardProps {
   /** If 'demo', we hit /branding/demo/scrape and disable the Adopt button. */
@@ -299,9 +311,11 @@ export function BrandingWizard({ mode, initial, onAdopted }: BrandingWizardProps
                       // Many SVG wordmarks fill="currentColor" — set a dark
                       // text color on the wrapper so the mark actually shows
                       // against the light tile background.
+                      // XSS defense: sanitize before render; the SVG was
+                      // scraped from an untrusted URL.
                       <div
                         className="max-h-full max-w-full text-slate-800 [&_svg]:max-h-full [&_svg]:max-w-full [&_svg]:h-full [&_svg]:w-full"
-                        dangerouslySetInnerHTML={{ __html: l.svgInline }}
+                        dangerouslySetInnerHTML={{ __html: sanitizeSvg(l.svgInline) }}
                       />
                     ) : l.url ? (
                       <img src={l.url} alt="logo option" className="max-h-full max-w-full object-contain" loading="lazy" />

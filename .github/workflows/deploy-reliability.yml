@@ -15,6 +15,9 @@ on:
   pull_request:
     branches: [master, main]
 
+permissions:
+  contents: read
+
 # Cancel in-progress runs when a newer commit arrives on the same ref.
 concurrency:
   group: deploy-reliability-${{ github.ref }}
@@ -61,6 +64,12 @@ jobs:
           pnpm --filter @cms/ws-events build
       - name: Build API
         run: pnpm --filter api build
+
+      - name: Run API tests (Jest)
+        # Gated continue-on-error for one commit while we stabilize the
+        # suite in CI. Remove this flag once the suite is green end-to-end.
+        continue-on-error: true
+        run: pnpm --filter api run test
 
   web-build:
     name: Web typecheck + build

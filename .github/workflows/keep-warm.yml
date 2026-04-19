@@ -10,10 +10,15 @@ on:
     - cron: '*/5 * * * *'
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
 jobs:
   ping:
     runs-on: ubuntu-latest
     timeout-minutes: 1
+    permissions:
+      contents: read
     steps:
       - name: Curl /health
         run: |

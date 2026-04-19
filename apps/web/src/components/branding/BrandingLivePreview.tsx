@@ -7,8 +7,20 @@
  */
 'use client';
 
+import { useMemo } from 'react';
+import DOMPurify from 'isomorphic-dompurify';
 import { cn } from '@/lib/utils';
 import { LayoutDashboard, MonitorPlay, LayoutTemplate, Folders, Settings, Bell, ShieldAlert, Search, ChevronDown } from 'lucide-react';
+
+// Defense-in-depth: the API now sanitizes on write, but rows written
+// before the fix (or injected via a different code path) could still
+// contain hostile <svg onload=...>. Every render goes through this.
+function sanitizeSvg(raw: string): string {
+  return DOMPurify.sanitize(raw, {
+    USE_PROFILES: { svg: true, svgFilters: true },
+    FORBID_TAGS: ['script', 'style', 'foreignObject'],
+  }) as unknown as string;
+}
 
 export interface BrandingLivePreviewProps {
   branding: {
@@ -25,6 +37,10 @@ export interface BrandingLivePreviewProps {
 
 export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
   const p = branding?.palette || {};
+  const safeLogoSvg = useMemo(
+    () => (branding?.logoSvgInline ? sanitizeSvg(branding.logoSvgInline) : ''),
+    [branding?.logoSvgInline],
+  );
   const style: React.CSSProperties = {
     // Scope all brand tokens to just this preview
     // @ts-ignore
@@ -81,8 +97,8 @@ export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
         {/* Sidebar */}
         <aside className="preview-sidebar border-r min-h-[540px] p-3">
           <div className="flex items-center gap-2 px-2 py-2 mb-3 rounded-md">
-            {branding?.logoSvgInline ? (
-              <div className="h-8 w-8 flex items-center justify-center [&_svg]:max-h-8 [&_svg]:max-w-8" dangerouslySetInnerHTML={{ __html: branding.logoSvgInline }} />
+            {safeLogoSvg ? (
+              <div className="h-8 w-8 flex items-center justify-center [&_svg]:max-h-8 [&_svg]:max-w-8" dangerouslySetInnerHTML={{ __html: safeLogoSvg }} />
             ) : branding?.logoUrl ? (
               <img src={branding.logoUrl} alt="logo" className="h-8 max-w-[32px] object-contain" />
             ) : (

@@ -1,5 +1,20 @@
 # Backup & Rollback Runbook
 
+> **⚠️ SCALING CONSTRAINT — READ BEFORE SCALING API**
+>
+> **Do not scale the API above 1 replica** until a Redis-backed
+> WebSocket adapter is added. The NestJS WebSocket gateway is
+> currently single-pod: signed emergency messages published by
+> one pod won't fan out to clients connected to another pod,
+> which silently breaks the emergency system across replicas.
+>
+> `railway.json` pins `numReplicas: 1` to enforce this. If
+> Railway ever rejects that key, leave the service configured
+> to 1 replica in the Railway dashboard instead. See audit
+> notes 2026-04-19.
+
+
+
 ## Sprint 0 baseline backup
 
 Created: 2026-04-16
@@ -73,3 +88,65 @@ Before each sprint, the Integration Lead (or Claude on request) should:
 3. Append a row to the "What was backed up" table above
 
 Keep the 3 most recent tarballs; older ones can be deleted since the git tag covers committed history.
+
+---
+
+## Supabase PITR retention + manual `pg_dump` cadence
+
+Git backs up code — not the Postgres database. Data recovery depends on
+Supabase Point-In-Time Recovery (PITR) plus manual dumps as a belt-and-
+suspenders safety net. Review the plan below before any pilot customer
+onboards.
+
+### Supabase PITR
+
+- **Free tier:** 7 days of PITR retention. Adequate for the current
+  internal demo / scratch data, **not** enough for production pilots.
+- **Pro tier ($25/mo minimum):** 14-day PITR. **Upgrade before the
+  first pilot customer signs** — discovering data loss after the
+  free-tier window has closed is unrecoverable.
+- **How to restore:** Supabase dashboard → Database → Backups → pick
+  a timestamp → click "Restore to new project". Practice this at
+  least once before any customer depends on it.
+
+> Do NOT assume PITR protects against application-level corruption
+> (bad migration, rogue delete). PITR protects against time; it
+> cannot undo a commit you don't notice for 8 days.
+
+### Manual `pg_dump` cadence
+
+In addition to PITR, run a weekly `pg_dump` and store it off-Supabase.
+Cheap insurance against Supabase-side outages, accidental project
+deletion, or billing lapses.
+
+**Command** (run from any box with `pg_dump` 15+ and `DIRECT_URL` set):
+
+```bash
+# Use DIRECT_URL (not the pgbouncer pooler) — pg_dump needs session state.
+TS=$(date -u +%Y%m%d-%H%M%SZ)
+OUT="educms-${TS}.dump"
+pg_dump \
+  --format=custom \
+  --no-owner \
+  --no-privileges \
+  --compress=9 \
+  --file="${OUT}" \
+  "${DIRECT_URL}"
+
+# Restore (into an empty DB):
+# pg_restore --clean --if-exists --no-owner --no-privileges -d "$TARGET_URL" "$OUT"
+```
+
+**Storage:** upload to a private S3-compatible bucket (Backblaze B2,
+Cloudflare R2, or Wasabi — all cheap / free-tier for weekly dumps).
+Do **not** commit dumps to git and do **not** leave them on the
+laptop long-term (PII risk). Retain 12 weekly + 12 monthly dumps.
+
+**Automation:** once funded, wrap the command above in a cron job on a
+small VPS (or GitHub Actions with a scheduled workflow writing to R2
+via `rclone`). For now, a weekly calendar reminder + manual run is
+acceptable.
+
+**Restore drill:** run a full `pg_restore` into a throwaway Supabase
+project **every quarter**. An untested backup is a hope, not a plan.
+Log the drill date + duration + any gotchas in this doc when it runs.

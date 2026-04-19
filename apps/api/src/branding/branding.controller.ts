@@ -39,6 +39,7 @@ import { BrandingScraperService, BrandingPreview } from './branding-scraper.serv
 import { BrandingRateLimiter } from './branding-rate-limiter';
 import { safeFetch, SsrfError } from './safe-fetch';
 import { derivePalette, parseColor } from './color-utils';
+import { sanitizeLogoSvg } from './sanitize-svg';
 
 import { createHash } from 'crypto';
 
@@ -98,9 +99,19 @@ export class BrandingController {
     const chosenSvg = body.logoOverride?.svgInline ?? body.logos?.[0]?.svgInline ?? null;
 
     if (chosenSvg) {
-      logoSvgInline = chosenSvg;
+      // XSS defense: strip scripts, event handlers, <foreignObject>, and
+      // anything not in DOMPurify's SVG profile BEFORE persisting.
+      // Admin "A" can otherwise store <svg onload=...> that fires in
+      // admin "B"'s session when they view settings.
+      const cleaned = sanitizeLogoSvg(chosenSvg);
+      if (cleaned !== chosenSvg) {
+        this.logger.warn(
+          `Branding SVG sanitized for tenant ${tenantId} — unsafe markup stripped (user ${req.user.id})`,
+        );
+      }
+      logoSvgInline = cleaned;
       try {
-        logoUrl = await this.rehost(chosenSvg, `branding/${tenantId}/logo.svg`, 'image/svg+xml');
+        logoUrl = await this.rehost(cleaned, `branding/${tenantId}/logo.svg`, 'image/svg+xml');
       } catch (e: any) {
         this.logger.warn(`Inline SVG logo upload failed, falling back to inline: ${e?.message}`);
       }

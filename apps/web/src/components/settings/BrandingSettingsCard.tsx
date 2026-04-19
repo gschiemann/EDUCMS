@@ -10,7 +10,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import DOMPurify from 'isomorphic-dompurify';
 import { usePathname } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
 import { Paintbrush, Sparkles, RotateCcw, AlertTriangle } from 'lucide-react';
@@ -25,6 +26,19 @@ export function BrandingSettingsCard() {
   const [resetError, setResetError] = useState<string | null>(null);
   const pathname = usePathname() || '';
   const schoolId = pathname.split('/')[1] || '';
+
+  // Defense-in-depth: sanitize at render even though API now cleans on
+  // write. Rows written before the XSS fix might still be dirty.
+  const safeLogoSvg = useMemo(
+    () =>
+      branding?.logoSvgInline
+        ? (DOMPurify.sanitize(branding.logoSvgInline, {
+            USE_PROFILES: { svg: true, svgFilters: true },
+            FORBID_TAGS: ['script', 'style', 'foreignObject'],
+          }) as unknown as string)
+        : '',
+    [branding?.logoSvgInline],
+  );
 
   useEffect(() => {
     if (!isFeatureEnabled(FLAGS.AUTO_BRANDING)) { setLoading(false); return; }
@@ -75,8 +89,8 @@ export function BrandingSettingsCard() {
           <>
             <div className="flex items-center gap-4">
               <div className="h-14 w-14 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center overflow-hidden text-slate-800">
-                {branding.logoSvgInline ? (
-                  <div dangerouslySetInnerHTML={{ __html: branding.logoSvgInline }} className="max-h-12 max-w-12 [&_svg]:max-h-12 [&_svg]:max-w-12" />
+                {safeLogoSvg ? (
+                  <div dangerouslySetInnerHTML={{ __html: safeLogoSvg }} className="max-h-12 max-w-12 [&_svg]:max-h-12 [&_svg]:max-w-12" />
                 ) : branding.logoUrl ? (
                   <img src={branding.logoUrl} alt="logo" className="max-h-12 max-w-12 object-contain" />
                 ) : (
