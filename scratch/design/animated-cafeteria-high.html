@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Animated Cafeteria · High School (DEMO v1)</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo+Black&family=Inter:wght@600;800&family=Caveat:wght@700&display=swap" rel="stylesheet">
+
+<!--
+  High-school cafeteria: food-truck vibe x bright sunset palette.
+  Peach + coral + teal + yellow. Campus-café feel, modern neon sign,
+  confetti, yearbook-style chef, trophy countdown. Menu is the
+  same day-tabbed layout with container-query sizing and dotted
+  leader between dish name and price.
+-->
+
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+
+  .stage {
+    width: 100vw; height: 100vh; position: relative; overflow: hidden;
+    font-family: 'Inter', sans-serif; color: #1f2937;
+    background:
+      radial-gradient(ellipse at 50% 100%, #fbbf24 0%, transparent 55%),
+      radial-gradient(ellipse at 0% 0%, #ec4899 0%, transparent 45%),
+      radial-gradient(ellipse at 100% 0%, #06b6d4 0%, transparent 45%),
+      linear-gradient(180deg, #fce7f3 0%, #ffe4e6 35%, #fef3c7 75%, #fed7aa 100%);
+  }
+
+  /* Confetti rain */
+  .confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 2; }
+  .c { position: absolute; top: -30px; width: 12px; height: 20px; border-radius: 3px;
+    animation: hs-fall linear infinite; }
+  @keyframes hs-fall {
+    0% { transform: translateY(-30px) rotate(0); opacity: 0; }
+    8% { opacity: 1; }
+    100% { transform: translateY(1110px) rotate(720deg); opacity: .85; }
+  }
+
+  /* Floating diploma scrolls */
+  .scroll { position: absolute; font-size: 64px; opacity: .25; animation: hs-float 22s ease-in-out infinite; z-index: 1; filter: drop-shadow(0 4px 8px rgba(0,0,0,.2)); }
+  .scroll.s1 { top: 14%; left: 4%; }
+  .scroll.s2 { top: 72%; left: 7%; animation-delay: -3s; font-size: 52px; }
+  .scroll.s3 { top: 22%; right: 3%; animation-delay: -6s; }
+  .scroll.s4 { top: 62%; right: 6%; animation-delay: -9s; font-size: 56px; }
+  @keyframes hs-float { 0%, 100% { transform: translateY(0) rotate(-8deg); } 50% { transform: translateY(-28px) rotate(8deg); } }
+
+  .header {
+    position: absolute; top: 36px; left: 36px; right: 36px;
+    display: grid; grid-template-columns: 220px 1fr 220px;
+    gap: 36px; z-index: 5; align-items: start;
+  }
+
+  /* LOGO — coffee cup with steam (modern campus cafe) */
+  .cup {
+    position: relative; width: 200px; height: 200px;
+    display: flex; align-items: center; justify-content: center;
+    animation: hs-cupTilt 5.4s ease-in-out infinite;
+  }
+  @keyframes hs-cupTilt { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
+  .cup .body {
+    position: absolute; top: 60px; left: 24px; width: 152px; height: 120px;
+    background: linear-gradient(180deg, #fff 0%, #fef3c7 60%, #fbbf24 100%);
+    border: 5px solid #1f2937;
+    border-radius: 8px 8px 40px 40%;
+    box-shadow: 0 8px 18px rgba(0,0,0,.2), inset 0 0 0 4px #ec4899;
+  }
+  .cup .body::before {
+    /* coffee surface */
+    content: ''; position: absolute; top: 10px; left: 10px; right: 10px; height: 18px;
+    background: linear-gradient(180deg, #78350f, #451a03);
+    border-radius: 4px;
+  }
+  .cup .handle {
+    position: absolute; top: 80px; right: 0;
+    width: 30px; height: 60px;
+    border: 8px solid #1f2937; border-left: none;
+    border-radius: 0 30px 30px 0;
+    z-index: -1;
+  }
+  .cup .steam {
+    position: absolute; left: 50%; top: 10px; transform: translateX(-50%);
+    display: flex; gap: 12px;
+  }
+  .cup .steam span {
+    display: inline-block; width: 8px; height: 40px;
+    background: linear-gradient(180deg, transparent 0%, rgba(255,255,255,.8) 50%, transparent 100%);
+    border-radius: 6px;
+    animation: hs-steam 2s ease-in-out infinite;
+  }
+  .cup .steam span:nth-child(2) { animation-delay: .3s; height: 50px; }
+  .cup .steam span:nth-child(3) { animation-delay: .6s; }
+  @keyframes hs-steam {
+    0% { transform: translateY(10px) scaleY(.8); opacity: 0; }
+    50% { opacity: .8; }
+    100% { transform: translateY(-20px) scaleY(1.2); opacity: 0; }
+  }
+
+  /* TITLE — neon sign banner */
+  .title { position: relative; padding-top: 20px; }
+  .neon {
+    background: linear-gradient(135deg, #fff 0%, #fef3c7 100%);
+    border: 6px solid #ec4899; border-radius: 24px;
+    padding: 22px 36px; text-align: center;
+    box-shadow: 0 0 0 4px #fff, 0 0 0 10px #ec4899,
+      0 0 30px rgba(236,72,153,.5), 0 16px 32px rgba(0,0,0,.2);
+    animation: hs-neon 5.4s ease-in-out infinite;
+    position: relative;
+  }
+  @keyframes hs-neon {
+    0%, 95%, 100% { box-shadow: 0 0 0 4px #fff, 0 0 0 10px #ec4899, 0 0 30px rgba(236,72,153,.5), 0 16px 32px rgba(0,0,0,.2); }
+    97%           { box-shadow: 0 0 0 4px #fff, 0 0 0 10px #ec4899, 0 0 60px rgba(236,72,153,.9), 0 16px 32px rgba(0,0,0,.2); }
+  }
+  .neon h1 {
+    margin: 0; line-height: .9;
+    font-family: 'Anton', sans-serif; font-size: 84px;
+    background: linear-gradient(135deg, #ec4899 0%, #f59e0b 50%, #06b6d4 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: hs-shift 9s linear infinite;
+    letter-spacing: -.01em; text-transform: uppercase;
+  }
+  @keyframes hs-shift { from { background-position: 0% 50%; } to { background-position: 200% 50%; } }
+  .neon .sub { font-family: 'Caveat', cursive; font-size: 34px; color: #ec4899; margin-top: 4px; }
+
+  /* CLOCK — sunburst */
+  .clock {
+    position: relative; width: 200px; height: 200px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .rays {
+    position: absolute; inset: 0; border-radius: 50%;
+    background: conic-gradient(from 0deg,
+      #fbbf24 0 20deg, transparent 20deg 40deg,
+      #ec4899 40deg 60deg, transparent 60deg 80deg,
+      #06b6d4 80deg 100deg, transparent 100deg 120deg,
+      #fbbf24 120deg 140deg, transparent 140deg 160deg,
+      #ec4899 160deg 180deg, transparent 180deg 200deg,
+      #06b6d4 200deg 220deg, transparent 220deg 240deg,
+      #fbbf24 240deg 260deg, transparent 260deg 280deg,
+      #ec4899 280deg 300deg, transparent 300deg 320deg,
+      #06b6d4 320deg 340deg, transparent 340deg 360deg);
+    -webkit-mask: radial-gradient(circle, transparent 64px, #000 64px, #000 92px, transparent 92px);
+            mask: radial-gradient(circle, transparent 64px, #000 64px, #000 92px, transparent 92px);
+    animation: hs-spin 54s linear infinite;
+  }
+  @keyframes hs-spin { to { transform: rotate(360deg); } }
+  .face {
+    width: 150px; height: 150px; border-radius: 50%;
+    background: linear-gradient(135deg, #fff, #fef3c7);
+    border: 6px solid #ec4899;
+    box-shadow: 0 8px 24px rgba(236,72,153,.4), inset 0 0 30px rgba(251,191,36,.3);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    position: relative; z-index: 1;
+    animation: hs-bob 3.6s ease-in-out infinite;
+  }
+  @keyframes hs-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+  .face .t {
+    font-family: 'Anton', sans-serif; font-size: 48px; line-height: 1;
+    background: linear-gradient(135deg, #ec4899, #f59e0b);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .face .ap { font-family: 'Inter', sans-serif; font-weight: 800; font-size: 18px; color: #ec4899; letter-spacing: .15em; }
+
+  /* GRID */
+  .grid {
+    position: absolute; top: 280px; left: 36px; right: 36px; bottom: 140px;
+    display: grid; grid-template-columns: 300px 1fr 300px;
+    grid-template-rows: 1fr 1fr; gap: 24px; z-index: 3;
+  }
+
+  /* TODAY'S SPECIAL — sun disc with food */
+  .special { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; position: relative; }
+  .sunDisc { position: relative; width: 220px; height: 220px; display: flex; align-items: center; justify-content: center; }
+  .sunDisc::before {
+    content: ''; position: absolute; inset: -32px; border-radius: 50%;
+    background: conic-gradient(from 0deg,
+      transparent 0 18deg, #fbbf24 18deg 24deg,
+      transparent 24deg 48deg, #f59e0b 48deg 54deg,
+      transparent 54deg 78deg, #fbbf24 78deg 84deg,
+      transparent 84deg 108deg, #f59e0b 108deg 114deg,
+      transparent 114deg 138deg, #fbbf24 138deg 144deg,
+      transparent 144deg 168deg, #f59e0b 168deg 174deg,
+      transparent 174deg 198deg, #fbbf24 198deg 204deg,
+      transparent 204deg 228deg, #f59e0b 228deg 234deg,
+      transparent 234deg 258deg, #fbbf24 258deg 264deg,
+      transparent 264deg 288deg, #f59e0b 288deg 294deg,
+      transparent 294deg 318deg, #fbbf24 318deg 324deg,
+      transparent 324deg 348deg, #f59e0b 348deg 354deg,
+      transparent 354deg 360deg);
+    -webkit-mask: radial-gradient(circle, transparent 100px, #000 100px, #000 130px, transparent 130px);
+            mask: radial-gradient(circle, transparent 100px, #000 100px, #000 130px, transparent 130px);
+    animation: hs-spin 30s linear infinite;
+  }
+  .sunFace {
+    width: 180px; height: 180px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #fef3c7, #fbbf24 70%, #d97706);
+    box-shadow: 0 0 50px rgba(251,191,36,.6), inset 0 -10px 18px rgba(180,83,9,.25);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 110px; line-height: 1;
+    filter: drop-shadow(0 3px 6px rgba(0,0,0,.25));
+  }
+  .special .lbl { font-family: 'Inter', sans-serif; font-weight: 800; font-size: 18px; color: #ec4899; letter-spacing: .2em; text-transform: uppercase; margin-top: 14px; }
+  .special .name { font-family: 'Anton', sans-serif; font-size: 34px; color: #1f2937; line-height: 1; margin-top: 2px; letter-spacing: .01em; }
+
+  /* MENU CARD — modern chalkboard with bright frame */
+  .menu {
+    grid-column: 2; grid-row: 1 / span 2;
+    position: relative; background: #fff;
+    border: 6px solid #1f2937;
+    border-radius: 24px;
+    box-shadow: 0 16px 32px rgba(0,0,0,.25), 12px 12px 0 #fbbf24, 16px 16px 0 #ec4899;
+    display: flex; flex-direction: column; overflow: hidden;
+    animation: hs-float 5.4s ease-in-out infinite;
+  }
+  @keyframes hs-float { 0%, 100% { transform: rotate(-.5deg) translateY(0); } 50% { transform: rotate(.5deg) translateY(-5px); } }
+  .menuHeader {
+    flex: 0 0 auto; padding: 20px 36px 8px;
+    background: linear-gradient(180deg, #fef3c7 0%, #fff 100%);
+    border-bottom: 3px dashed #ec4899;
+  }
+  .menu h2 {
+    margin: 0; line-height: 1; text-align: center;
+    font-family: 'Anton', sans-serif; font-size: 56px;
+    background: linear-gradient(135deg, #ec4899, #f59e0b);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-transform: uppercase;
+  }
+  .menu .date { text-align: center; font-family: 'Caveat', cursive; font-size: 28px; color: #9d174d; margin-top: -2px; }
+
+  .dayTabs { display: flex; justify-content: center; gap: 6px; padding: 10px 0 0; }
+  .day {
+    font-family: 'Inter', sans-serif; font-weight: 800; font-size: 16px;
+    padding: 6px 16px;
+    border: 3px solid #1f2937; border-radius: 999px;
+    background: #fef3c7; color: #92400e;
+    letter-spacing: .1em;
+  }
+  .day.today {
+    background: linear-gradient(135deg, #ec4899, #f59e0b);
+    color: #fff; border-color: #1f2937;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 0 #1f2937, 0 0 0 3px #fbbf24;
+  }
+
+  .menuBody { flex: 1; padding: 12px 36px 18px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .items { display: flex; flex-direction: column; gap: clamp(4px, 1.5%, 10px); flex: 1 1 0; min-height: 0; overflow: hidden; }
+  .item {
+    container-type: size;
+    flex: 1 1 0; min-height: 0;
+    display: flex; align-items: center; gap: clamp(12px, 3cqh + 10px, 22px);
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border: 3px solid #1f2937; border-radius: 14px;
+    padding: clamp(6px, 10cqh, 16px) clamp(16px, 4cqh + 14px, 26px);
+    box-shadow: 3px 3px 0 #ec4899;
+    overflow: hidden;
+  }
+  .item .emoji { font-size: clamp(36px, 70cqh, 80px); line-height: 1; flex: 0 0 auto; }
+  .item .info { flex: 0 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+  .item .nm { font-family: 'Anton', sans-serif; font-size: clamp(20px, 38cqh, 42px); color: #1f2937; line-height: 1.05; letter-spacing: .01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .meta { font-family: 'Inter', sans-serif; font-weight: 600; font-size: clamp(14px, 26cqh, 26px); color: #9d174d; margin-top: clamp(1px, 2cqh, 6px); }
+  .item .leader { flex: 1 1 0; min-width: 12px; height: 0; border-bottom: 3px dotted rgba(236,72,153,.5); align-self: center; margin: 0 6px; transform: translateY(calc(-1 * clamp(5px, 10cqh, 12px))); }
+  .item .price { font-family: 'Anton', sans-serif; font-size: clamp(22px, 36cqh, 40px); color: #ec4899; flex: 0 0 auto; text-shadow: 1px 1px 0 #1f2937; }
+
+  /* COUNTDOWN — trophy */
+  .countdown { grid-column: 3; grid-row: 1; display: flex; align-items: center; justify-content: center; position: relative; }
+  .trophy { position: relative; width: 240px; height: 260px; display: flex; flex-direction: column; align-items: center; animation: hs-trophy 5.4s ease-in-out infinite; }
+  @keyframes hs-trophy { 0%, 100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-8px) rotate(2deg); } }
+  .handleL, .handleR { position: absolute; top: 28px; width: 50px; height: 68px; border: 10px solid #fbbf24; border-radius: 50%; z-index: 0; }
+  .handleL { left: 0; border-right: none; border-radius: 50% 0 0 50%; }
+  .handleR { right: 0; border-left: none; border-radius: 0 50% 50% 0; }
+  .cupBody {
+    width: 180px; height: 150px;
+    background: linear-gradient(180deg, #fde68a 0%, #fbbf24 50%, #d97706 100%);
+    border: 6px solid #92400e;
+    border-radius: 12px 12px 50% 50% / 12px 12px 30% 30%;
+    box-shadow: 0 12px 24px rgba(0,0,0,.3), inset 0 0 20px rgba(255,255,255,.3);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; position: relative; z-index: 1;
+    padding: 14px 8px;
+  }
+  .cupBody .icon { font-size: 40px; line-height: 1; }
+  .cupBody .lbl { font-family: 'Inter', sans-serif; font-weight: 800; font-size: 12px; color: #92400e; letter-spacing: .12em; text-transform: uppercase; line-height: 1.1; max-width: 140px; margin-top: 2px; }
+  .cupBody .num { font-family: 'Anton', sans-serif; font-size: 64px; line-height: .9; color: #fff; text-shadow: 2px 2px 0 #92400e; }
+  .cupBody .unit { font-family: 'Inter', sans-serif; font-weight: 800; font-size: 12px; color: #92400e; letter-spacing: .15em; }
+  .stem { width: 40px; height: 28px; background: linear-gradient(180deg, #fbbf24, #d97706); border-left: 4px solid #92400e; border-right: 4px solid #92400e; margin-top: -4px; position: relative; z-index: 1; }
+  .base { width: 130px; height: 26px; background: linear-gradient(180deg, #fbbf24, #b45309); border: 5px solid #92400e; border-radius: 8px; box-shadow: 0 6px 12px rgba(0,0,0,.3); position: relative; z-index: 1; }
+
+  /* CHEF — yearbook page */
+  .chef { grid-column: 1; grid-row: 2; display: flex; align-items: center; justify-content: center; position: relative; padding: 8px; }
+  .yearbook { position: relative; width: 240px; padding: 12px; background: #fff; border: 4px solid #ec4899; box-shadow: 0 10px 24px rgba(0,0,0,.3); transform: rotate(-3deg); animation: hs-yearbook 9s ease-in-out infinite; }
+  @keyframes hs-yearbook { 0%, 100% { transform: rotate(-3deg) translateX(-3px); } 50% { transform: rotate(-3deg) translateX(3px); } }
+  .yearbook::before { content: ''; position: absolute; bottom: 0; right: 0; width: 28px; height: 28px; background: linear-gradient(135deg, transparent 50%, #ec4899 50%); }
+  .yearbook .photo { width: 100%; aspect-ratio: 1; background: linear-gradient(135deg, #06b6d4, #0e7490); display: flex; align-items: center; justify-content: center; font-size: 100px; line-height: 1; }
+  .yearbook .pageInfo { margin-top: 10px; text-align: center; }
+  .yearbook .name { font-family: 'Anton', sans-serif; font-size: 22px; color: #1f2937; line-height: 1; letter-spacing: .02em; }
+  .yearbook .role { font-family: 'Caveat', cursive; font-weight: 700; font-size: 20px; color: #ec4899; margin-top: 2px; }
+
+  /* BIRTHDAYS — confetti burst */
+  .birthdays { grid-column: 3; grid-row: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; position: relative; padding: 8px; }
+  .burst { position: relative; width: 170px; height: 140px; animation: hs-burst 10s linear infinite; }
+  @keyframes hs-burst { from { transform: rotate(-5deg); } 50% { transform: rotate(5deg); } to { transform: rotate(-5deg); } }
+  .burst::before {
+    content: ''; position: absolute; inset: -24px;
+    background: conic-gradient(from 0deg,
+      #fbbf24 0 12deg, transparent 12deg 30deg,
+      #ec4899 30deg 42deg, transparent 42deg 60deg,
+      #06b6d4 60deg 72deg, transparent 72deg 90deg,
+      #fbbf24 90deg 102deg, transparent 102deg 120deg,
+      #ec4899 120deg 132deg, transparent 132deg 150deg,
+      #06b6d4 150deg 162deg, transparent 162deg 180deg,
+      #fbbf24 180deg 192deg, transparent 192deg 210deg,
+      #ec4899 210deg 222deg, transparent 222deg 240deg,
+      #06b6d4 240deg 252deg, transparent 252deg 270deg,
+      #fbbf24 270deg 282deg, transparent 282deg 300deg,
+      #ec4899 300deg 312deg, transparent 312deg 330deg,
+      #06b6d4 330deg 342deg, transparent 342deg 360deg);
+    border-radius: 50%;
+    -webkit-mask: radial-gradient(circle, #000 54px, transparent 88px);
+            mask: radial-gradient(circle, #000 54px, transparent 88px);
+    opacity: .5;
+  }
+  .cake { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 88px; line-height: 1; filter: drop-shadow(0 5px 10px rgba(0,0,0,.3)); }
+  .bdLbl { font-family: 'Inter', sans-serif; font-weight: 800; font-size: 16px; color: #ec4899; letter-spacing: .15em; text-transform: uppercase; margin-top: 12px; }
+  .bdNames { font-family: 'Caveat', cursive; font-weight: 700; font-size: 34px; color: #1f2937; margin-top: 2px; line-height: 1.05; }
+
+  /* TICKER */
+  .ticker {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 110px;
+    background: linear-gradient(90deg, #ec4899 0%, #f59e0b 100%);
+    display: flex; align-items: center; overflow: hidden; z-index: 6;
+    border-top: 5px solid #fff;
+    box-shadow: 0 -8px 24px rgba(236,72,153,.3);
+  }
+  .tickerStamp {
+    flex: 0 0 auto; padding: 0 32px; height: 100%;
+    background: #1f2937; color: #fbbf24;
+    display: flex; align-items: center;
+    font-family: 'Anton', sans-serif; letter-spacing: .15em; font-size: 30px;
+  }
+  .tickerScroll { flex: 1; overflow: hidden; }
+  .tickerText {
+    font-family: 'Inter', sans-serif; font-weight: 800; font-size: 36px; color: #fff;
+    white-space: nowrap; padding-left: 100%; display: inline-block;
+    text-shadow: 2px 2px 0 #1f2937;
+    animation: hs-tickerScroll 54s linear infinite;
+  }
+  .tickerText .sep { color: #1f2937; padding: 0 24px; }
+  @keyframes hs-tickerScroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <div class="scroll s1">📜</div>
+  <div class="scroll s2">🎓</div>
+  <div class="scroll s3">📜</div>
+  <div class="scroll s4">🎓</div>
+
+  <div class="confetti" id="confetti"></div>
+
+  <div class="header">
+    <div class="cup">
+      <div class="handle"></div>
+      <div class="steam"><span></span><span></span><span></span></div>
+      <div class="body"></div>
+    </div>
+    <div class="title">
+      <div class="neon">
+        <h1>CAMPUS CAFÉ</h1>
+        <div class="sub">open 7am · closes at the bell</div>
+      </div>
+    </div>
+    <div class="clock">
+      <div class="rays"></div>
+      <div class="face"><div class="t">11:45</div><div class="ap">AM</div></div>
+    </div>
+  </div>
+
+  <div class="grid">
+
+    <div class="special">
+      <div class="sunDisc">
+        <div class="sunFace">🥪</div>
+      </div>
+      <div class="lbl">★ Today's Pick ★</div>
+      <div class="name">Turkey Club<br>Wrap</div>
+    </div>
+
+    <div class="menu">
+      <div class="menuHeader">
+        <h2>Today's Menu</h2>
+        <div class="date">monday · april 19</div>
+        <div class="dayTabs">
+          <span class="day today">MON</span>
+          <span class="day">TUE</span>
+          <span class="day">WED</span>
+          <span class="day">THU</span>
+          <span class="day">FRI</span>
+        </div>
+      </div>
+      <div class="menuBody">
+        <div class="items">
+          <div class="item">
+            <span class="emoji">🥪</span>
+            <div class="info"><div class="nm">Turkey Club Wrap</div><div class="meta">🌾 🧀 · 480 cal</div></div>
+            <div class="leader"></div>
+            <span class="price">$4.50</span>
+          </div>
+          <div class="item">
+            <span class="emoji">🥗</span>
+            <div class="info"><div class="nm">Power Bowl</div><div class="meta">veg · gf · 420 cal</div></div>
+            <div class="leader"></div>
+            <span class="price">$5.25</span>
+          </div>
+          <div class="item">
+            <span class="emoji">🍕</span>
+            <div class="info"><div class="nm">Pepperoni Pizza</div><div class="meta">🌾 🧀 · 520 cal</div></div>
+            <div class="leader"></div>
+            <span class="price">$3.75</span>
+          </div>
+          <div class="item">
+            <span class="emoji">☕</span>
+            <div class="info"><div class="nm">Coffee · Tea · Matcha</div><div class="meta">varies · sizes 8-16oz</div></div>
+            <div class="leader"></div>
+            <span class="price">$2.50</span>
+          </div>
+          <div class="item">
+            <span class="emoji">🍪</span>
+            <div class="info"><div class="nm">Bakery Cookie</div><div class="meta">🌾 🥜 🧀</div></div>
+            <div class="leader"></div>
+            <span class="price">$1.50</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="countdown">
+      <div class="trophy">
+        <div class="handleL"></div>
+        <div class="handleR"></div>
+        <div class="cupBody">
+          <div class="icon">🎓</div>
+          <div class="lbl">Graduation in</div>
+          <div class="num">42</div>
+          <div class="unit">DAYS</div>
+        </div>
+        <div class="stem"></div>
+        <div class="base"></div>
+      </div>
+    </div>
+
+    <div class="chef">
+      <div class="yearbook">
+        <div class="photo">👨‍🍳</div>
+        <div class="pageInfo">
+          <div class="name">MR. PATEL</div>
+          <div class="role">~ café chef ~</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="birthdays">
+      <div class="burst">
+        <div class="cake">🎂</div>
+      </div>
+      <div class="bdLbl">★ Birthdays Today ★</div>
+      <div class="bdNames">Alex · Jordan · Sam</div>
+    </div>
+
+  </div>
+
+  <div class="ticker">
+    <div class="tickerStamp">CAMPUS NEWS</div>
+    <div class="tickerScroll">
+      <span class="tickerText">
+        Senior portraits next week — sign up in the office
+        <span class="sep">★</span>
+        FAFSA workshop Tuesday 6pm
+        <span class="sep">★</span>
+        Pizza Friday — $3.75 slices
+        <span class="sep">★</span>
+        Coffee shop open 7am-bell
+      </span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const layer = document.getElementById('confetti');
+  const colors = ['#ec4899','#f59e0b','#06b6d4','#fbbf24','#f43f5e','#8b5cf6','#10b981'];
+  for (let i = 0; i < 50; i++) {
+    const c = document.createElement('div'); c.className = 'c';
+    const size = 6 + Math.random() * 12;
+    const dur = 6 + Math.random() * 8;
+    const circle = Math.random() < .3;
+    c.style.left = (Math.random() * 100) + '%';
+    c.style.width = size + 'px';
+    c.style.height = (size * (circle ? 1 : 1.6)) + 'px';
+    c.style.background = colors[Math.floor(Math.random() * colors.length)];
+    c.style.borderRadius = circle ? '50%' : '3px';
+    c.style.animationDuration = dur + 's';
+    c.style.animationDelay = (-Math.random() * dur) + 's';
+    c.style.transform = `rotate(${Math.random() * 360}deg)`;
+    layer.appendChild(c);
+  }
+</script>
+</body>
+</html>
