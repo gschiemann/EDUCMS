@@ -372,10 +372,16 @@
     text-overflow: ellipsis; overflow: hidden; white-space: nowrap;
   }
   .menu .item .meta {
+    /* Allergen / veg / gf tagline under the dish name. Bumped so it
+       reads from across a cafeteria — was floored at 13px which
+       looked like small print next to a 42px dish name. Now scales
+       28% of row height with a 32px cap and an 18px floor. */
     font-family: 'Permanent Marker', cursive;
-    font-size: clamp(13px, 22cqh, 26px);
-    color: #b91c1c; margin-top: clamp(0px, 1.5cqh, 4px);
+    font-size: clamp(18px, 28cqh, 32px);
+    color: #b91c1c;
+    margin-top: clamp(2px, 2.5cqh, 6px);
     line-height: 1.1;
+    letter-spacing: .02em;
   }
   /* Dotted leader — fills the gap between name and price so the eye
      follows cleanly from 'Pepperoni Pizza' ............ $3.25. Sits
