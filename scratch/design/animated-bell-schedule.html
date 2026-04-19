@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Animated Bell Schedule (DEMO v1)</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Bungee&family=Inter:wght@500;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+
+  .stage {
+    width: 100vw; height: 100vh; position: relative; overflow: hidden;
+    font-family: 'Inter', sans-serif; color: #fff;
+    background:
+      radial-gradient(ellipse at 30% 10%, rgba(99,102,241,.25) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 90%, rgba(236,72,153,.25) 0%, transparent 50%),
+      linear-gradient(180deg, #0f172a 0%, #1e1b4b 100%);
+  }
+
+  /* Subtle grid */
+  .stage::before {
+    content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .08;
+    background:
+      linear-gradient(rgba(255,255,255,.5) 1px, transparent 1px) 0 0 / 60px 60px,
+      linear-gradient(90deg, rgba(255,255,255,.5) 1px, transparent 1px) 0 0 / 60px 60px;
+  }
+
+  /* Header */
+  .header {
+    position: absolute; top: 36px; left: 36px; right: 36px;
+    display: flex; align-items: center; justify-content: space-between; z-index: 5;
+  }
+  .title .eyebrow {
+    font-family: 'Inter', sans-serif; font-weight: 800; font-size: 22px;
+    color: #a78bfa; letter-spacing: .35em; text-transform: uppercase;
+  }
+  .title h1 {
+    margin: 0; line-height: .95;
+    font-family: 'Anton', sans-serif; font-size: 110px;
+    background: linear-gradient(90deg, #fbbf24 0%, #ec4899 50%, #06b6d4 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    letter-spacing: .02em; text-transform: uppercase;
+  }
+  .title .sub { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 20px; color: #94a3b8; margin-top: -4px; letter-spacing: .05em; }
+
+  .nowClock {
+    background: rgba(15,23,42,.8);
+    border: 3px solid #fbbf24;
+    border-radius: 16px;
+    padding: 16px 28px; text-align: center;
+    box-shadow: 0 0 40px rgba(251,191,36,.3);
+    backdrop-filter: blur(6px);
+  }
+  .nowClock .lbl { font-family: 'Inter', sans-serif; font-weight: 800; font-size: 13px; color: #fbbf24; letter-spacing: .3em; text-transform: uppercase; }
+  .nowClock .t { font-family: 'Anton', sans-serif; font-size: 72px; color: #fff; line-height: 1; text-shadow: 0 0 20px rgba(251,191,36,.4); }
+  .nowClock .date { font-family: 'JetBrains Mono', monospace; font-size: 15px; color: #94a3b8; letter-spacing: .08em; }
+
+  /* Current period card — BIG and prominent */
+  .currentCard {
+    position: absolute; top: 260px; left: 36px; right: 36px; height: 200px;
+    background: linear-gradient(135deg, #ec4899 0%, #f59e0b 60%, #fbbf24 100%);
+    border: 5px solid #fff;
+    border-radius: 22px;
+    padding: 24px 36px;
+    display: flex; align-items: center; gap: 40px;
+    box-shadow: 0 20px 40px rgba(236,72,153,.4), 0 0 0 3px rgba(236,72,153,.3);
+    z-index: 4;
+    animation: bs-currentPulse 2.5s ease-in-out infinite;
+  }
+  @keyframes bs-currentPulse {
+    0%, 100% { box-shadow: 0 20px 40px rgba(236,72,153,.4), 0 0 0 3px rgba(236,72,153,.3); }
+    50%      { box-shadow: 0 20px 50px rgba(236,72,153,.6), 0 0 0 6px rgba(236,72,153,.4); }
+  }
+  .currentCard .badge {
+    font-family: 'Bungee', cursive; font-size: 18px; color: #fff;
+    background: rgba(0,0,0,.3); padding: 6px 16px; border-radius: 999px;
+    letter-spacing: .18em;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .currentCard .badge::before {
+    content: ''; width: 10px; height: 10px; border-radius: 50%; background: #fff;
+    animation: bs-recDot 1.2s ease-in-out infinite;
+  }
+  @keyframes bs-recDot { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+  .currentCard .info { flex: 1; }
+  .currentCard .period {
+    font-family: 'Anton', sans-serif; font-size: 72px; color: #fff; line-height: .95;
+    text-shadow: 3px 3px 0 rgba(0,0,0,.2);
+    letter-spacing: .02em; text-transform: uppercase;
+  }
+  .currentCard .when {
+    font-family: 'Inter', sans-serif; font-weight: 700; font-size: 22px;
+    color: #fef3c7; margin-top: 4px; letter-spacing: .08em;
+  }
+  /* Progress bar + bell-ring countdown */
+  .currentCard .timer {
+    display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+    min-width: 260px;
+  }
+  .currentCard .timer .bigNum {
+    font-family: 'Anton', sans-serif; font-size: 80px; color: #fff;
+    line-height: 1; text-shadow: 3px 3px 0 rgba(0,0,0,.2);
+  }
+  .currentCard .timer .until {
+    font-family: 'Inter', sans-serif; font-weight: 800; font-size: 14px;
+    color: rgba(255,255,255,.9); letter-spacing: .2em; text-transform: uppercase;
+  }
+  .currentCard .progress {
+    width: 100%; height: 10px; background: rgba(0,0,0,.25); border-radius: 999px;
+    overflow: hidden;
+  }
+  .currentCard .progressFill {
+    height: 100%; width: 64%;
+    background: linear-gradient(90deg, #fef3c7, #fff);
+    border-radius: 999px;
+    box-shadow: 0 0 12px rgba(255,255,255,.5);
+    animation: bs-progressSheen 2s linear infinite;
+  }
+  @keyframes bs-progressSheen {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: .7; }
+  }
+
+  /* Period timeline */
+  .timeline {
+    position: absolute; top: 510px; left: 36px; right: 36px; bottom: 150px;
+    display: flex; flex-direction: column; gap: 10px;
+    z-index: 3;
+  }
+  .timeline .tHeader {
+    font-family: 'Inter', sans-serif; font-weight: 800; font-size: 16px;
+    color: #94a3b8; letter-spacing: .3em; text-transform: uppercase;
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 4px;
+  }
+  .timeline .tHeader::after { content: ''; flex: 1; height: 2px; background: linear-gradient(90deg, rgba(148,163,184,.4) 0%, transparent 100%); }
+  .rows { flex: 1; display: flex; flex-direction: column; gap: clamp(4px, 1.5%, 10px); min-height: 0; overflow: hidden; }
+  .row {
+    container-type: size;
+    flex: 1 1 0; min-height: 0;
+    display: flex; align-items: center; gap: 20px;
+    background: rgba(255,255,255,.05);
+    border: 2px solid rgba(255,255,255,.1);
+    border-radius: 12px;
+    padding: clamp(6px, 10cqh, 14px) clamp(16px, 4cqh + 10px, 24px);
+    transition: background .2s;
+  }
+  .row.done { opacity: .5; }
+  .row.done .time, .row.done .pname, .row.done .room { text-decoration: line-through; text-decoration-color: rgba(255,255,255,.3); }
+  .row.upcoming { opacity: .95; }
+  .row.nowRow {
+    background: linear-gradient(90deg, rgba(236,72,153,.25), rgba(251,191,36,.15));
+    border-color: #fbbf24; border-width: 3px;
+    box-shadow: 0 0 20px rgba(236,72,153,.3);
+  }
+  .row .time {
+    font-family: 'JetBrains Mono', monospace; font-weight: 700;
+    font-size: clamp(18px, 30cqh, 32px);
+    color: #fbbf24;
+    letter-spacing: .04em; min-width: 180px;
+    line-height: 1.1;
+  }
+  .row .num {
+    font-family: 'Anton', sans-serif; font-size: clamp(24px, 48cqh, 52px);
+    color: rgba(255,255,255,.3); line-height: .85;
+    min-width: 50px; text-align: center;
+    flex: 0 0 auto;
+  }
+  .row.nowRow .num { color: #fbbf24; text-shadow: 0 0 16px rgba(251,191,36,.6); }
+  .row .content { flex: 1; min-width: 0; }
+  .row .pname {
+    font-family: 'Anton', sans-serif; font-size: clamp(20px, 36cqh, 40px);
+    color: #fff; line-height: 1.05;
+    letter-spacing: .01em; text-transform: uppercase;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .row .room {
+    font-family: 'Inter', sans-serif; font-weight: 600;
+    font-size: clamp(12px, 18cqh, 18px);
+    color: #94a3b8; margin-top: 2px;
+  }
+  .row .status {
+    font-family: 'Inter', sans-serif; font-weight: 800;
+    font-size: clamp(10px, 16cqh, 14px);
+    padding: 4px 12px; border-radius: 999px;
+    letter-spacing: .15em; text-transform: uppercase;
+    flex: 0 0 auto;
+  }
+  .row.done .status    { background: rgba(148,163,184,.2); color: #94a3b8; }
+  .row.nowRow .status  { background: #fbbf24; color: #0f172a; animation: bs-statusPulse 1.2s ease-in-out infinite; }
+  .row.upcoming .status{ background: rgba(99,102,241,.25); color: #a5b4fc; }
+  @keyframes bs-statusPulse { 0%, 100% { opacity: 1; } 50% { opacity: .75; } }
+
+  /* Bottom ticker */
+  .ticker {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 110px;
+    background: linear-gradient(135deg, #6366f1, #ec4899);
+    display: flex; align-items: center; overflow: hidden; z-index: 6;
+    border-top: 3px solid #fbbf24;
+  }
+  .tickerStamp {
+    flex: 0 0 auto; padding: 0 28px; height: 100%;
+    background: #0f172a; color: #fbbf24;
+    display: flex; align-items: center; gap: 10px;
+    font-family: 'Bungee', cursive; font-size: 28px; letter-spacing: .12em;
+  }
+  .tickerStamp::before {
+    content: '🔔'; font-size: 28px;
+    animation: bs-bellRing 2s ease-in-out infinite;
+    transform-origin: 50% 20%;
+  }
+  @keyframes bs-bellRing {
+    0%, 100% { transform: rotate(0); }
+    10%, 30% { transform: rotate(-10deg); }
+    20%, 40% { transform: rotate(10deg); }
+    60%      { transform: rotate(0); }
+  }
+  .tickerScroll { flex: 1; overflow: hidden; }
+  .tickerText {
+    font-family: 'Inter', sans-serif; font-weight: 800; font-size: 36px;
+    color: #fff; white-space: nowrap; padding-left: 100%;
+    display: inline-block;
+    text-shadow: 2px 2px 0 rgba(0,0,0,.3);
+    animation: bs-scroll 50s linear infinite;
+  }
+  .tickerText .sep { color: #fbbf24; padding: 0 24px; }
+  @keyframes bs-scroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <div class="header">
+    <div class="title">
+      <div class="eyebrow">★ Today's Bell Schedule ★</div>
+      <h1>Period 4</h1>
+      <div class="sub">Monday · April 19 · 2026 · REGULAR BELL</div>
+    </div>
+    <div class="nowClock">
+      <div class="lbl">Now</div>
+      <div class="t">11:45</div>
+      <div class="date">MON · APR 19</div>
+    </div>
+  </div>
+
+  <div class="currentCard">
+    <div class="info">
+      <div class="badge">LIVE · IN SESSION</div>
+      <div class="period">Period 4 · Science</div>
+      <div class="when">11:15 AM — 12:00 PM · Room 214</div>
+    </div>
+    <div class="timer">
+      <div class="until">Bell in</div>
+      <div class="bigNum">15:23</div>
+      <div class="progress"><div class="progressFill"></div></div>
+    </div>
+  </div>
+
+  <div class="timeline">
+    <div class="tHeader">Today's Full Schedule</div>
+    <div class="rows">
+      <div class="row done">
+        <span class="time">8:15 — 9:00</span>
+        <span class="num">1</span>
+        <div class="content"><div class="pname">Homeroom</div><div class="room">Room 101 · Mr. Johnson</div></div>
+        <span class="status">Done</span>
+      </div>
+      <div class="row done">
+        <span class="time">9:05 — 9:55</span>
+        <span class="num">2</span>
+        <div class="content"><div class="pname">Math</div><div class="room">Room 118 · Ms. Park</div></div>
+        <span class="status">Done</span>
+      </div>
+      <div class="row done">
+        <span class="time">10:00 — 10:50</span>
+        <span class="num">3</span>
+        <div class="content"><div class="pname">English</div><div class="room">Room 205 · Mrs. Chen</div></div>
+        <span class="status">Done</span>
+      </div>
+      <div class="row nowRow">
+        <span class="time">11:15 — 12:00</span>
+        <span class="num">4</span>
+        <div class="content"><div class="pname">Science</div><div class="room">Room 214 · Dr. Rivera</div></div>
+        <span class="status">NOW</span>
+      </div>
+      <div class="row upcoming">
+        <span class="time">12:05 — 12:45</span>
+        <span class="num">5</span>
+        <div class="content"><div class="pname">Lunch · Wave B</div><div class="room">Cafeteria</div></div>
+        <span class="status">Next</span>
+      </div>
+      <div class="row upcoming">
+        <span class="time">12:50 — 1:40</span>
+        <span class="num">6</span>
+        <div class="content"><div class="pname">History</div><div class="room">Room 312 · Mr. Patel</div></div>
+        <span class="status">Upcoming</span>
+      </div>
+      <div class="row upcoming">
+        <span class="time">1:45 — 2:35</span>
+        <span class="num">7</span>
+        <div class="content"><div class="pname">Gym / PE</div><div class="room">Gymnasium · Coach Brooks</div></div>
+        <span class="status">Upcoming</span>
+      </div>
+      <div class="row upcoming">
+        <span class="time">2:40 — 3:25</span>
+        <span class="num">8</span>
+        <div class="content"><div class="pname">Art</div><div class="room">Art Studio · Ms. Delacroix</div></div>
+        <span class="status">Upcoming</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="ticker">
+    <div class="tickerStamp">BELL SCHEDULE</div>
+    <div class="tickerScroll">
+      <span class="tickerText">
+        Wednesday is an assembly day — shortened schedule, lunch at 11:45
+        <span class="sep">✦</span>
+        Period 4 runs long today for science lab
+        <span class="sep">✦</span>
+        Early dismissal Friday — bell schedule A, out at 1:15
+        <span class="sep">✦</span>
+        Check your hallway display for the full weekly bell pattern
+      </span>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
