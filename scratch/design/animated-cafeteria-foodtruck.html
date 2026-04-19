@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Animated Cafeteria · Food Truck (DEMO v1)</title>
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Fredoka:wght@500;700&family=Permanent+Marker&family=Righteous&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0a0e27; }
+
+  /* === SUNSET STREET-FOOD STAGE === */
+  .stage {
+    width: 100vw; height: 100vh; position: relative; overflow: hidden;
+    font-family: 'Fredoka', sans-serif; color: #1f2937;
+    background:
+      radial-gradient(ellipse at 50% 90%, #fbbf24 0%, transparent 55%),
+      linear-gradient(180deg, #fde68a 0%, #fca5a5 40%, #c084fc 100%);
+  }
+
+  /* Hanging string lights across the top */
+  .lights {
+    position: absolute; top: 30px; left: 0; right: 0; height: 80px;
+    pointer-events: none; z-index: 2;
+  }
+  .lights .wire {
+    position: absolute; top: 50%; left: 0; right: 0; height: 3px;
+    background: #1f2937;
+    border-radius: 2px;
+  }
+  .lights .bulb {
+    position: absolute; top: 48%; width: 22px; height: 32px;
+    background: radial-gradient(circle at 30% 30%, #fef3c7, #fbbf24 70%, #d97706);
+    border-radius: 50% 50% 40% 40%;
+    box-shadow: 0 0 20px #fbbf24, 0 0 40px rgba(251, 191, 36, .4);
+    animation: ft-blink 3s ease-in-out infinite;
+  }
+  .lights .bulb:nth-child(even) {
+    background: radial-gradient(circle at 30% 30%, #fecaca, #ec4899 70%, #9d174d);
+    box-shadow: 0 0 20px #ec4899, 0 0 40px rgba(236, 72, 153, .4);
+    animation-delay: .5s;
+  }
+  .lights .bulb:nth-child(3n) {
+    background: radial-gradient(circle at 30% 30%, #bfdbfe, #06b6d4 70%, #0e7490);
+    box-shadow: 0 0 20px #06b6d4, 0 0 40px rgba(6, 182, 212, .4);
+    animation-delay: 1s;
+  }
+  @keyframes ft-blink {
+    0%, 100% { opacity: 1; }
+    48%, 52% { opacity: .5; }
+  }
+  .lights .bulb::before {
+    content: ''; position: absolute; top: -6px; left: 50%; transform: translateX(-50%);
+    width: 6px; height: 8px;
+    background: #374151; border-radius: 2px 2px 0 0;
+  }
+
+  /* Floating food emojis drifting across background */
+  .floater {
+    position: absolute; font-size: 72px; opacity: .55;
+    animation: ft-drift 24s linear infinite;
+    z-index: 1;
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,.2));
+  }
+  .floater.a { top: 12%; left: -10%; animation-delay: 0s; }
+  .floater.b { top: 28%; left: -10%; animation-delay: -8s; font-size: 56px; }
+  .floater.c { top: 40%; left: -10%; animation-delay: -14s; font-size: 64px; }
+  .floater.d { top: 58%; left: -10%; animation-delay: -3s; font-size: 60px; }
+  @keyframes ft-drift {
+    from { transform: translateX(0) rotate(0deg); }
+    to   { transform: translateX(120vw) rotate(360deg); }
+  }
+
+  /* === HEADER === */
+  .header {
+    position: absolute; top: 140px; left: 36px; right: 36px;
+    display: grid; grid-template-columns: 220px 1fr 220px;
+    gap: 36px; z-index: 5; align-items: start;
+  }
+
+  /* LOGO — food truck silhouette */
+  .truck {
+    position: relative; width: 220px; height: 200px;
+    animation: ft-truckBounce 2s ease-in-out infinite;
+  }
+  @keyframes ft-truckBounce {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-6px); }
+  }
+  /* Cab */
+  .truck .cab {
+    position: absolute; top: 40px; left: 10px; width: 70px; height: 80px;
+    background: linear-gradient(180deg, #ec4899, #9d174d);
+    border: 4px solid #1f2937;
+    border-radius: 14px 6px 6px 6px;
+    box-shadow: 0 8px 16px rgba(0,0,0,.3);
+  }
+  /* Window in cab */
+  .truck .cab::before {
+    content: ''; position: absolute; top: 8px; left: 8px; right: 8px; height: 30px;
+    background: linear-gradient(135deg, #dbeafe, #93c5fd);
+    border-radius: 4px;
+  }
+  /* Body */
+  .truck .body {
+    position: absolute; top: 20px; left: 70px; right: 0; height: 100px;
+    background: linear-gradient(180deg, #fbbf24, #d97706);
+    border: 4px solid #1f2937;
+    border-radius: 6px 18px 6px 6px;
+    box-shadow: 0 8px 16px rgba(0,0,0,.3);
+  }
+  /* Serving window */
+  .truck .body::before {
+    content: ''; position: absolute; top: 14px; left: 18px; right: 18px; height: 56px;
+    background: #1f2937;
+    border-radius: 4px;
+  }
+  .truck .body::after {
+    content: 'EAT!'; position: absolute; top: 14px; left: 18px; right: 18px; height: 56px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Bungee', cursive; font-size: 32px;
+    color: #fef3c7;
+    text-shadow: 2px 2px 0 #ec4899;
+    letter-spacing: .08em;
+  }
+  /* Awning stripes */
+  .truck .awning {
+    position: absolute; top: 8px; left: 70px; right: 0; height: 18px;
+    background:
+      repeating-linear-gradient(90deg, #ec4899 0 14px, #fef3c7 14px 28px);
+    border: 3px solid #1f2937;
+    border-bottom: none;
+    clip-path: polygon(0 0, 100% 0, 98% 100%, 93% 50%, 88% 100%, 83% 50%, 78% 100%, 73% 50%, 68% 100%, 63% 50%, 58% 100%, 53% 50%, 48% 100%, 43% 50%, 38% 100%, 33% 50%, 28% 100%, 23% 50%, 18% 100%, 13% 50%, 8% 100%, 3% 50%, 0 100%);
+  }
+  /* Wheels */
+  .truck .wheel {
+    position: absolute; bottom: 0; width: 40px; height: 40px;
+    background: radial-gradient(circle at 40% 40%, #94a3b8, #1f2937 70%);
+    border-radius: 50%;
+    border: 4px solid #111827;
+  }
+  .truck .wheel.l { left: 20px; }
+  .truck .wheel.r { right: 30px; }
+
+  /* TITLE — marquee-style sign */
+  .title {
+    position: relative; text-align: center; padding-top: 20px;
+  }
+  .title .board {
+    background: linear-gradient(180deg, #fef3c7, #fbbf24);
+    border: 6px solid #1f2937;
+    border-radius: 20px;
+    padding: 18px 40px;
+    position: relative;
+    box-shadow:
+      0 0 0 4px #fef3c7,
+      0 0 0 10px #ec4899,
+      0 16px 32px rgba(0,0,0,.25);
+    animation: ft-bannerBob 4s ease-in-out infinite;
+  }
+  @keyframes ft-bannerBob {
+    0%, 100% { transform: rotate(-1deg) translateY(0); }
+    50%      { transform: rotate(1deg) translateY(-4px); }
+  }
+  .title h1 {
+    margin: 0; line-height: .95;
+    font-family: 'Bungee', cursive; font-size: 92px; color: #dc2626;
+    text-shadow: 4px 4px 0 #1f2937, 6px 6px 0 #fbbf24;
+    letter-spacing: .03em;
+  }
+  .title .sub {
+    font-family: 'Permanent Marker', cursive; font-size: 34px;
+    color: #7c2d12; margin-top: 2px;
+  }
+  /* Corner star decorations */
+  .title .star {
+    position: absolute; font-size: 40px; line-height: 1;
+    animation: ft-twinkle 1.4s ease-in-out infinite;
+  }
+  .title .star.s1 { top: -10px; left: 10%; }
+  .title .star.s2 { top: -10px; right: 10%; animation-delay: .3s; }
+  .title .star.s3 { bottom: -14px; left: 20%; animation-delay: .6s; }
+  .title .star.s4 { bottom: -14px; right: 20%; animation-delay: .9s; }
+  @keyframes ft-twinkle {
+    0%, 100% { opacity: .4; transform: scale(.9) rotate(-10deg); }
+    50%      { opacity: 1;  transform: scale(1.2) rotate(15deg); }
+  }
+
+  /* CLOCK — analog-style plate clock */
+  .clock {
+    position: relative; width: 220px; height: 220px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 35% 30%, #fafafa 0%, #fef3c7 60%, #fde68a 100%);
+    border-radius: 50%;
+    border: 8px solid #1f2937;
+    box-shadow: 0 12px 24px rgba(0,0,0,.3), inset 0 0 20px rgba(251, 191, 36, .3);
+    animation: ft-clockBob 3.6s ease-in-out infinite;
+  }
+  @keyframes ft-clockBob {
+    0%, 100% { transform: rotate(-3deg); }
+    50%      { transform: rotate(3deg); }
+  }
+  /* Tick marks (via conic gradient) */
+  .clock::before {
+    content: ''; position: absolute; inset: 10px; border-radius: 50%;
+    background: conic-gradient(from 0deg,
+      #1f2937 0 2deg, transparent 2deg 30deg,
+      #1f2937 30deg 32deg, transparent 32deg 60deg,
+      #1f2937 60deg 62deg, transparent 62deg 90deg,
+      #1f2937 90deg 92deg, transparent 92deg 120deg,
+      #1f2937 120deg 122deg, transparent 122deg 150deg,
+      #1f2937 150deg 152deg, transparent 152deg 180deg,
+      #1f2937 180deg 182deg, transparent 182deg 210deg,
+      #1f2937 210deg 212deg, transparent 212deg 240deg,
+      #1f2937 240deg 242deg, transparent 242deg 270deg,
+      #1f2937 270deg 272deg, transparent 272deg 300deg,
+      #1f2937 300deg 302deg, transparent 302deg 330deg,
+      #1f2937 330deg 332deg, transparent 332deg 360deg);
+    -webkit-mask: radial-gradient(circle, transparent 82%, #000 82%, #000 94%, transparent 94%);
+            mask: radial-gradient(circle, transparent 82%, #000 82%, #000 94%, transparent 94%);
+  }
+  .clock .t {
+    font-family: 'Bungee', cursive; font-size: 56px; line-height: 1;
+    color: #dc2626; text-shadow: 2px 2px 0 rgba(0,0,0,.15);
+    position: relative; z-index: 1;
+  }
+  .clock .ap {
+    font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 22px;
+    color: #7c2d12; letter-spacing: .15em;
+    position: relative; z-index: 1;
+  }
+
+  /* === MAIN GRID === */
+  .grid {
+    position: absolute; top: 370px; left: 36px; right: 36px; bottom: 180px;
+    display: grid;
+    grid-template-columns: 320px 1fr 320px;
+    grid-template-rows: 1fr 1fr;
+    gap: 28px;
+    z-index: 3;
+  }
+
+  /* SPECIAL (left top) — food tag with swinging string */
+  .special {
+    grid-column: 1; grid-row: 1;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    padding-top: 16px; position: relative;
+  }
+  .special .string {
+    width: 2px; height: 40px; background: #1f2937;
+    border-radius: 1px;
+  }
+  .special .tag {
+    background: linear-gradient(135deg, #fef3c7, #fbbf24);
+    border: 4px solid #1f2937;
+    padding: 20px 30px;
+    /* Price-tag shape — notched left edge */
+    clip-path: polygon(0 50%, 12% 0, 100% 0, 100% 100%, 12% 100%);
+    padding-left: 48px;
+    text-align: center;
+    box-shadow: 0 8px 20px rgba(0,0,0,.3);
+    animation: ft-tagSwing 3.6s ease-in-out infinite;
+    transform-origin: 10% 0;
+    position: relative;
+  }
+  @keyframes ft-tagSwing {
+    0%, 100% { transform: rotate(-4deg); }
+    50%      { transform: rotate(4deg); }
+  }
+  /* Hole punch */
+  .special .tag::before {
+    content: ''; position: absolute; left: 24px; top: 50%; transform: translateY(-50%);
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #1f2937;
+  }
+  .special .tag .emoji { font-size: 96px; line-height: 1; display: block; }
+  .special .tag .lbl {
+    font-family: 'Bungee', cursive; font-size: 18px; color: #dc2626;
+    letter-spacing: .12em; margin-top: 6px;
+  }
+  .special .tag .name {
+    font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 28px;
+    color: #7c2d12; line-height: 1; margin-top: 2px;
+  }
+
+  /* MENU (center) — big board */
+  .menu {
+    grid-column: 2; grid-row: 1 / span 2;
+    background: #fafafa;
+    border: 6px solid #1f2937;
+    border-radius: 24px;
+    box-shadow: 0 16px 32px rgba(0,0,0,.25), 12px 12px 0 #ec4899, 18px 18px 0 #1f2937;
+    padding: 30px 40px;
+    position: relative;
+    display: flex; flex-direction: column;
+    animation: ft-menuFloat 5.4s ease-in-out infinite;
+  }
+  @keyframes ft-menuFloat {
+    0%, 100% { transform: rotate(-.5deg) translateY(0); }
+    50%      { transform: rotate(.5deg) translateY(-6px); }
+  }
+  /* Striped awning above menu */
+  .menu::before {
+    content: ''; position: absolute; top: -34px; left: -6px; right: -6px; height: 36px;
+    background:
+      repeating-linear-gradient(90deg, #dc2626 0 28px, #fef3c7 28px 56px);
+    border: 4px solid #1f2937;
+    border-bottom: none;
+    border-radius: 10px 10px 0 0;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 97% 70%, 91% 100%, 85% 70%, 79% 100%, 73% 70%, 67% 100%, 61% 70%, 55% 100%, 49% 70%, 43% 100%, 37% 70%, 31% 100%, 25% 70%, 19% 100%, 13% 70%, 7% 100%, 3% 70%, 0 100%);
+  }
+  .menu h2 {
+    margin: 0 0 18px; line-height: 1;
+    font-family: 'Bungee', cursive; font-size: 64px; text-align: center;
+    background: linear-gradient(135deg, #dc2626, #f59e0b);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    letter-spacing: .04em;
+  }
+  .menu .date {
+    text-align: center; font-family: 'Permanent Marker', cursive; font-size: 28px;
+    color: #9d174d; margin-top: -12px; margin-bottom: 16px;
+    transform: rotate(-1deg);
+  }
+  .menu .items {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px;
+  }
+  .menu .item {
+    display: flex; align-items: center; gap: 14px;
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border: 3px solid #1f2937;
+    border-radius: 14px;
+    padding: 10px 14px;
+    box-shadow: 3px 3px 0 #1f2937;
+    transition: transform .3s ease;
+    animation: ft-itemPop .6s ease-out both;
+  }
+  .menu .item:nth-child(1) { animation-delay: .1s; }
+  .menu .item:nth-child(2) { animation-delay: .2s; }
+  .menu .item:nth-child(3) { animation-delay: .3s; }
+  .menu .item:nth-child(4) { animation-delay: .4s; }
+  .menu .item:nth-child(5) { animation-delay: .5s; }
+  .menu .item:nth-child(6) { animation-delay: .6s; }
+  @keyframes ft-itemPop {
+    from { opacity: 0; transform: scale(.9); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+  .menu .item .emoji { font-size: 46px; line-height: 1; }
+  .menu .item .body { flex: 1; min-width: 0; }
+  .menu .item .nm {
+    font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 22px;
+    color: #1f2937; line-height: 1;
+  }
+  .menu .item .allergen {
+    font-family: 'Permanent Marker', cursive; font-size: 16px;
+    color: #b91c1c; margin-top: 2px;
+  }
+  .menu .item .price {
+    font-family: 'Bungee', cursive; font-size: 20px; color: #dc2626;
+  }
+
+  /* COUNTDOWN (right top) — taco-day burst */
+  .countdown {
+    grid-column: 3; grid-row: 1;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .countdown .burst {
+    position: relative; width: 260px; height: 260px;
+    animation: ft-burstSpin 16s linear infinite;
+  }
+  @keyframes ft-burstSpin { to { transform: rotate(360deg); } }
+  /* Sunburst */
+  .countdown .rays {
+    position: absolute; inset: 0; border-radius: 50%;
+    background: conic-gradient(from 0deg,
+      #fde68a 0 20deg, #fbbf24 20deg 40deg,
+      #fde68a 40deg 60deg, #fbbf24 60deg 80deg,
+      #fde68a 80deg 100deg, #fbbf24 100deg 120deg,
+      #fde68a 120deg 140deg, #fbbf24 140deg 160deg,
+      #fde68a 160deg 180deg, #fbbf24 180deg 200deg,
+      #fde68a 200deg 220deg, #fbbf24 220deg 240deg,
+      #fde68a 240deg 260deg, #fbbf24 260deg 280deg,
+      #fde68a 280deg 300deg, #fbbf24 300deg 320deg,
+      #fde68a 320deg 340deg, #fbbf24 340deg 360deg);
+    border: 6px solid #1f2937;
+    filter: drop-shadow(0 12px 20px rgba(0,0,0,.3));
+  }
+  .countdown .center {
+    position: absolute; inset: 34px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #fafafa, #fde68a 70%);
+    border: 5px solid #1f2937;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
+    animation: ft-burstCounter 16s linear infinite reverse;
+  }
+  .countdown .lbl {
+    font-family: 'Bungee', cursive; font-size: 14px;
+    color: #9d174d; letter-spacing: .14em; text-transform: uppercase;
+    max-width: 150px; line-height: 1.1;
+  }
+  .countdown .num {
+    font-family: 'Bungee', cursive; font-size: 80px; line-height: .9;
+    color: #dc2626; text-shadow: 3px 3px 0 rgba(0,0,0,.2);
+  }
+  .countdown .unit {
+    font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 20px;
+    color: #1f2937; letter-spacing: .15em;
+  }
+
+  /* CHEF (left bottom) */
+  .chef {
+    grid-column: 1; grid-row: 2;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    position: relative; padding: 12px; text-align: center;
+  }
+  .chef .card {
+    position: relative;
+    background: linear-gradient(135deg, #fef3c7, #fbbf24);
+    border: 5px solid #1f2937;
+    border-radius: 18px;
+    padding: 18px 16px 16px;
+    width: 280px;
+    box-shadow: 0 10px 24px rgba(0,0,0,.3), 8px 8px 0 #ec4899;
+    transform: rotate(-3deg);
+    animation: ft-chefSway 6s ease-in-out infinite;
+  }
+  @keyframes ft-chefSway {
+    0%, 100% { transform: rotate(-3deg) translateY(0); }
+    50%      { transform: rotate(-1deg) translateY(-4px); }
+  }
+  .chef .face {
+    width: 100%; aspect-ratio: 1.1;
+    background: radial-gradient(circle at 50% 40%, #fef3c7, #fbbf24 70%);
+    border: 4px solid #1f2937;
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 140px; line-height: 1;
+    box-shadow: inset 0 0 20px rgba(0,0,0,.15);
+  }
+  .chef .name {
+    font-family: 'Bungee', cursive; font-size: 28px; color: #7c2d12;
+    margin-top: 8px; line-height: 1;
+  }
+  .chef .role {
+    font-family: 'Permanent Marker', cursive; font-size: 20px; color: #9d174d;
+    margin-top: 2px; line-height: 1;
+  }
+
+  /* BIRTHDAYS (right bottom) — candy-ring */
+  .birthdays {
+    grid-column: 3; grid-row: 2;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    position: relative; padding: 12px; text-align: center;
+  }
+  .birthdays .ring {
+    position: relative; width: 180px; height: 180px;
+    display: flex; align-items: center; justify-content: center;
+    animation: ft-ringSpin 18s linear infinite;
+  }
+  @keyframes ft-ringSpin { to { transform: rotate(360deg); } }
+  .birthdays .ring::before {
+    /* Confetti dots around */
+    content: ''; position: absolute; inset: -20px; border-radius: 50%;
+    background:
+      radial-gradient(circle at 50% 0, #ec4899 0 8px, transparent 9px),
+      radial-gradient(circle at 100% 50%, #06b6d4 0 8px, transparent 9px),
+      radial-gradient(circle at 50% 100%, #fbbf24 0 8px, transparent 9px),
+      radial-gradient(circle at 0 50%, #10b981 0 8px, transparent 9px),
+      radial-gradient(circle at 15% 15%, #a78bfa 0 6px, transparent 7px),
+      radial-gradient(circle at 85% 15%, #f43f5e 0 6px, transparent 7px),
+      radial-gradient(circle at 85% 85%, #f97316 0 6px, transparent 7px),
+      radial-gradient(circle at 15% 85%, #3b82f6 0 6px, transparent 7px);
+  }
+  .birthdays .cake {
+    font-size: 120px; line-height: 1;
+    filter: drop-shadow(0 6px 10px rgba(0,0,0,.3));
+    animation: ft-cakeSpin 18s linear infinite reverse;
+  }
+  @keyframes ft-cakeSpin { to { transform: rotate(-360deg); } }
+  .birthdays .lbl {
+    font-family: 'Bungee', cursive; font-size: 18px; color: #dc2626;
+    letter-spacing: .12em; text-transform: uppercase; margin-top: 12px;
+    text-shadow: 2px 2px 0 #fef3c7;
+  }
+  .birthdays .names {
+    font-family: 'Permanent Marker', cursive; font-size: 30px;
+    color: #1f2937; margin-top: 4px; line-height: 1.05;
+  }
+
+  /* TICKER — striped awning scroll */
+  .ticker {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 150px;
+    background: #fafafa;
+    display: flex; flex-direction: column;
+    z-index: 6;
+    box-shadow: 0 -8px 24px rgba(0,0,0,.15);
+  }
+  .ticker::before {
+    content: ''; display: block; height: 30px;
+    background:
+      repeating-linear-gradient(90deg, #dc2626 0 30px, #fef3c7 30px 60px);
+    border-bottom: 4px solid #1f2937;
+    clip-path: polygon(0 0, 100% 0, 100% 50%, 96% 100%, 92% 50%, 88% 100%, 84% 50%, 80% 100%, 76% 50%, 72% 100%, 68% 50%, 64% 100%, 60% 50%, 56% 100%, 52% 50%, 48% 100%, 44% 50%, 40% 100%, 36% 50%, 32% 100%, 28% 50%, 24% 100%, 20% 50%, 16% 100%, 12% 50%, 8% 100%, 4% 50%, 0 100%);
+  }
+  .ticker .bar {
+    flex: 1; display: flex; align-items: center; overflow: hidden;
+    background: linear-gradient(180deg, #fafafa 0%, #fde68a 100%);
+  }
+  .ticker .stamp {
+    flex: 0 0 auto; padding: 0 36px; height: 100%;
+    background: linear-gradient(135deg, #dc2626, #9d174d);
+    color: #fef3c7; display: flex; align-items: center;
+    font-family: 'Bungee', cursive; letter-spacing: .12em; font-size: 36px;
+    text-shadow: 2px 2px 0 #1f2937;
+  }
+  .ticker .scroll { flex: 1; overflow: hidden; }
+  .ticker .scrollText {
+    font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 46px;
+    color: #1f2937;
+    white-space: nowrap; padding-left: 100%;
+    display: inline-block;
+    animation: ft-tickerScroll 52s linear infinite;
+  }
+  .ticker .scrollText .em { color: #dc2626; }
+  .ticker .scrollText .sep { color: #ec4899; padding: 0 24px; }
+  @keyframes ft-tickerScroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-100%); }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <!-- Floating food in bg -->
+  <div class="floater a">🌮</div>
+  <div class="floater b">🍔</div>
+  <div class="floater c">🥨</div>
+  <div class="floater d">🍟</div>
+
+  <!-- String lights -->
+  <div class="lights">
+    <div class="wire"></div>
+    <div class="bulb" style="left: 6%;"></div>
+    <div class="bulb" style="left: 14%;"></div>
+    <div class="bulb" style="left: 22%;"></div>
+    <div class="bulb" style="left: 30%;"></div>
+    <div class="bulb" style="left: 38%;"></div>
+    <div class="bulb" style="left: 46%;"></div>
+    <div class="bulb" style="left: 54%;"></div>
+    <div class="bulb" style="left: 62%;"></div>
+    <div class="bulb" style="left: 70%;"></div>
+    <div class="bulb" style="left: 78%;"></div>
+    <div class="bulb" style="left: 86%;"></div>
+    <div class="bulb" style="left: 94%;"></div>
+  </div>
+
+  <div class="header">
+    <div class="truck">
+      <div class="awning"></div>
+      <div class="cab"></div>
+      <div class="body"></div>
+      <div class="wheel l"></div>
+      <div class="wheel r"></div>
+    </div>
+    <div class="title">
+      <div class="board">
+        <span class="star s1">✨</span>
+        <span class="star s2">⭐</span>
+        <span class="star s3">🌟</span>
+        <span class="star s4">💫</span>
+        <h1>LUNCH IS ON</h1>
+        <div class="sub">~ freshly rolled every day ~</div>
+      </div>
+    </div>
+    <div class="clock">
+      <div class="t">11:45</div>
+      <div class="ap">AM</div>
+    </div>
+  </div>
+
+  <div class="grid">
+
+    <div class="special">
+      <div class="string"></div>
+      <div class="tag">
+        <span class="emoji">🌮</span>
+        <div class="lbl">★ Pickup Special ★</div>
+        <div class="name">Street Taco<br>Bowl</div>
+      </div>
+    </div>
+
+    <div class="menu">
+      <h2>Today's Menu</h2>
+      <div class="date">monday · april 19</div>
+      <div class="items">
+        <div class="item">
+          <span class="emoji">🌮</span>
+          <div class="body">
+            <div class="nm">Street Tacos</div>
+            <div class="allergen">🌾 🧀 — $3.50</div>
+          </div>
+        </div>
+        <div class="item">
+          <span class="emoji">🍔</span>
+          <div class="body">
+            <div class="nm">Classic Burger</div>
+            <div class="allergen">🌾 🧀 — $3.25</div>
+          </div>
+        </div>
+        <div class="item">
+          <span class="emoji">🍟</span>
+          <div class="body">
+            <div class="nm">Crispy Fries</div>
+            <div class="allergen">veg · gf — $1.75</div>
+          </div>
+        </div>
+        <div class="item">
+          <span class="emoji">🥗</span>
+          <div class="body">
+            <div class="nm">Build-a-Salad</div>
+            <div class="allergen">veg — $2.95</div>
+          </div>
+        </div>
+        <div class="item">
+          <span class="emoji">🍎</span>
+          <div class="body">
+            <div class="nm">Fruit Cup</div>
+            <div class="allergen">gf — $1.50</div>
+          </div>
+        </div>
+        <div class="item">
+          <span class="emoji">🥤</span>
+          <div class="body">
+            <div class="nm">Milk · Juice · Water</div>
+            <div class="allergen">varies — $0.75</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="countdown">
+      <div class="burst">
+        <div class="rays"></div>
+        <div class="center">
+          <div class="lbl">Taco Tuesday in</div>
+          <div class="num">1</div>
+          <div class="unit">DAY</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="chef">
+      <div class="card">
+        <div class="face">👩‍🍳</div>
+        <div class="name">MS. RODRIGUEZ</div>
+        <div class="role">~ lunch hero of the week ~</div>
+      </div>
+    </div>
+
+    <div class="birthdays">
+      <div class="ring">
+        <div class="cake">🎂</div>
+      </div>
+      <div class="lbl">★ Birthdays Today ★</div>
+      <div class="names">Alex · Jordan · Sam</div>
+    </div>
+
+  </div>
+
+  <div class="ticker">
+    <div class="bar">
+      <div class="stamp">CAFÉ NEWS</div>
+      <div class="scroll">
+        <span class="scrollText">
+          <span class="em">TACO TUESDAY</span> tomorrow — $3.50 tacos all day
+          <span class="sep">✦</span>
+          Free water refills at the salad bar
+          <span class="sep">✦</span>
+          <span class="em">PIZZA FRIDAY</span> returns — $3.25 slices
+          <span class="sep">✦</span>
+          Reload your lunch card in the main office
+          <span class="sep">✦</span>
+          Allergen key: 🌾 = gluten · 🥜 = nuts · 🧀 = dairy · 🥚 = egg
+        </span>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
