@@ -515,24 +515,47 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="url" label="Profile / feed URL" value={cfg.url || ''} placeholder="https://twitter.com/sunnyside_elem" onChange={(v) => setField({ url: v })} />);
       fields.push(<TextField key="maxItems" label="Max posts to show" value={String(cfg.maxItems || 5)} placeholder="5" onChange={(v) => setField({ maxItems: parseInt(v) || 5 })} />);
       break;
-    case 'ANIMATED_WELCOME':
+    case 'ANIMATED_WELCOME': {
+      // Section headings are dividers in the field stream so the operator
+      // can scan for the area they want to edit instead of hunting through
+      // 16 unlabeled text inputs.
+      const SH = (label: string) => (
+        <div key={`sh-${label}`} className="pt-3 pb-1 px-1 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200">
+          {label}
+        </div>
+      );
+      fields.push(SH('Header'));
       fields.push(<TextField key="logoEmoji" label="Logo emoji" value={cfg.logoEmoji || '🍎'} placeholder="🍎" onChange={(v) => setField({ logoEmoji: v })} />);
       fields.push(<TextField key="title" label="Big title" value={cfg.title || ''} placeholder="Welcome, Friends!" onChange={(v) => setField({ title: v })} />);
       fields.push(<TextField key="subtitle" label="Subtitle" value={cfg.subtitle || ''} placeholder="today is going to be amazing ✨" onChange={(v) => setField({ subtitle: v })} />);
-      fields.push(<TextField key="weatherTemp" label="Weather temp" value={cfg.weatherTemp || ''} placeholder="68°" onChange={(v) => setField({ weatherTemp: v })} />);
-      fields.push(<TextField key="weatherDesc" label="Weather description" value={cfg.weatherDesc || ''} placeholder="~ sunny + crisp ~" onChange={(v) => setField({ weatherDesc: v })} />);
-      fields.push(<TextField key="announcementLabel" label="Announcement label" value={cfg.announcementLabel || ''} placeholder="Big News" onChange={(v) => setField({ announcementLabel: v })} />);
-      fields.push(<TextAreaField key="announcementMessage" label="Announcement message" value={cfg.announcementMessage || ''} placeholder="Book Fair starts Monday!" onChange={(v) => setField({ announcementMessage: v })} />);
-      fields.push(<TextField key="countdownLabel" label="Countdown label" value={cfg.countdownLabel || ''} placeholder="Field Trip in" onChange={(v) => setField({ countdownLabel: v })} />);
-      fields.push(<TextField key="countdownNumber" label="Countdown number" value={String(cfg.countdownNumber ?? '')} placeholder="3" onChange={(v) => setField({ countdownNumber: v })} />);
-      fields.push(<TextField key="countdownUnit" label="Countdown unit" value={cfg.countdownUnit || ''} placeholder="days" onChange={(v) => setField({ countdownUnit: v })} />);
-      fields.push(<TextField key="teacherEmoji" label="Teacher emoji" value={cfg.teacherEmoji || ''} placeholder="👩‍🏫" onChange={(v) => setField({ teacherEmoji: v })} />);
-      fields.push(<TextField key="teacherName" label="Teacher name" value={cfg.teacherName || ''} placeholder="Mrs. Johnson" onChange={(v) => setField({ teacherName: v })} />);
-      fields.push(<TextField key="teacherRole" label="Teacher caption" value={cfg.teacherRole || ''} placeholder="Teacher of the Week" onChange={(v) => setField({ teacherRole: v })} />);
-      fields.push(<TextField key="birthdayNames" label="Birthday names" value={cfg.birthdayNames || ''} placeholder="Maya · Eli · Sofia" onChange={(v) => setField({ birthdayNames: v })} />);
-      fields.push(<TextField key="tickerStamp" label="Ticker label" value={cfg.tickerStamp || ''} placeholder="SCHOOL NEWS" onChange={(v) => setField({ tickerStamp: v })} />);
-      fields.push(<TextAreaField key="tickerMessages" label="Ticker messages (one per line)" value={Array.isArray(cfg.tickerMessages) ? cfg.tickerMessages.join('\n') : (cfg.tickerMessages || '')} placeholder="Welcome back, Stars!" onChange={(v) => setField({ tickerMessages: v.split(/\n+/).filter(Boolean) })} />);
+
+      fields.push(SH('Weather (left card)'));
+      fields.push(<TextField key="weatherTemp" label="Temperature" value={cfg.weatherTemp || ''} placeholder="68°" onChange={(v) => setField({ weatherTemp: v })} />);
+      fields.push(<TextField key="weatherDesc" label="Description" value={cfg.weatherDesc || ''} placeholder="~ sunny + crisp ~" onChange={(v) => setField({ weatherDesc: v })} />);
+
+      fields.push(SH('Big announcement (center cloud)'));
+      fields.push(<TextField key="announcementLabel" label="Small label" value={cfg.announcementLabel || ''} placeholder="Big News" onChange={(v) => setField({ announcementLabel: v })} />);
+      fields.push(<TextAreaField key="announcementMessage" label="Message" value={cfg.announcementMessage || ''} placeholder="Book Fair starts Monday!" onChange={(v) => setField({ announcementMessage: v })} />);
+
+      fields.push(SH('Countdown (starburst)'));
+      fields.push(<TextField key="countdownLabel" label="Label" value={cfg.countdownLabel || ''} placeholder="Field Trip in" onChange={(v) => setField({ countdownLabel: v })} />);
+      fields.push(<TextField key="countdownNumber" label="Big number" value={String(cfg.countdownNumber ?? '')} placeholder="3" onChange={(v) => setField({ countdownNumber: v })} />);
+      fields.push(<TextField key="countdownUnit" label="Unit (days, hours…)" value={cfg.countdownUnit || ''} placeholder="days" onChange={(v) => setField({ countdownUnit: v })} />);
+
+      fields.push(SH('Teacher of the Week (polaroid)'));
+      fields.push(<AssetPickerField key="teacherPhotoUrl" label="Upload photo (optional)" value={cfg.teacherPhotoUrl || ''} kind="image" onChange={(v) => setField({ teacherPhotoUrl: v })} />);
+      fields.push(<TextField key="teacherEmoji" label="Or use an emoji" value={cfg.teacherEmoji || ''} placeholder="👩‍🏫" onChange={(v) => setField({ teacherEmoji: v })} />);
+      fields.push(<TextField key="teacherName" label="Name" value={cfg.teacherName || ''} placeholder="Mrs. Johnson" onChange={(v) => setField({ teacherName: v })} />);
+      fields.push(<TextField key="teacherRole" label="Caption below" value={cfg.teacherRole || ''} placeholder="Teacher of the Week" onChange={(v) => setField({ teacherRole: v })} />);
+
+      fields.push(SH('Birthdays (balloon cluster)'));
+      fields.push(<TextAreaField key="birthdayNames" label="Names — one per line OR separated by commas / center dots" value={Array.isArray(cfg.birthdayNames) ? cfg.birthdayNames.join('\n') : (cfg.birthdayNames || '')} placeholder={'Maya\nEli\nSofia'} rows={4} onChange={(v) => setField({ birthdayNames: v.split(/[\n,·]+/).map((s: string) => s.trim()).filter(Boolean) })} />);
+
+      fields.push(SH('Bottom ticker'));
+      fields.push(<TextField key="tickerStamp" label="Pink label" value={cfg.tickerStamp || ''} placeholder="SCHOOL NEWS" onChange={(v) => setField({ tickerStamp: v })} />);
+      fields.push(<TextAreaField key="tickerMessages" label="Scrolling messages (one per line)" value={Array.isArray(cfg.tickerMessages) ? cfg.tickerMessages.join('\n') : (cfg.tickerMessages || '')} placeholder="Welcome back, Stars!" rows={4} onChange={(v) => setField({ tickerMessages: v.split(/\n+/).filter(Boolean) })} />);
       break;
+    }
     default:
       // Unknown widget — fall through to JSON-only editing in Advanced
       return null;

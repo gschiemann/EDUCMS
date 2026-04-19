@@ -34,6 +34,8 @@ interface Cfg {
   // "Maya · Eli · Sofia") or an array. Rendered with auto-shrinking
   // font so 1-8 names fit cleanly.
   birthdayNames?: string | string[];
+  // Optional teacher photo URL — replaces the emoji face when set.
+  teacherPhotoUrl?: string;
   tickerStamp?: string;
   tickerMessages?: string[] | string;
 }
@@ -204,22 +206,31 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
 
           <div className="aw-teacher">
             <div className="aw-polaroid">
-              <div className="aw-tFace">{c.teacherEmoji || '👩‍🏫'}</div>
+              <div className="aw-tFace">
+                {c.teacherPhotoUrl
+                  ? <img src={c.teacherPhotoUrl} alt="" className="aw-tPhoto" />
+                  : <span>{c.teacherEmoji || '👩‍🏫'}</span>}
+              </div>
               <div className="aw-tName">{c.teacherName || 'Mrs. Johnson'}</div>
             </div>
             <div className="aw-tRole">{c.teacherRole || 'Teacher of the Week'}</div>
           </div>
 
           <div className="aw-birthdays">
+            {/* Cluster + cake fill the cell as a backdrop. Names overlay on
+                top with their own white pill so they're always readable
+                regardless of the layout chrome below. No more clipping. */}
             <div className="aw-cluster">
               <div className="aw-bal aw-bal1" />
               <div className="aw-bal aw-bal2" />
               <div className="aw-bal aw-bal3" />
               <div className="aw-cake">🎂</div>
             </div>
-            <div className="aw-bdLbl">Today's Birthdays</div>
-            <div className="aw-bdNames" style={{ fontSize: bdFontSize }}>
-              {birthdayList.join(' · ')}
+            <div className="aw-bdOverlay">
+              <div className="aw-bdLbl">Today's Birthdays</div>
+              <div className="aw-bdNames" style={{ fontSize: bdFontSize }}>
+                {birthdayList.join(' · ')}
+              </div>
             </div>
           </div>
         </div>
@@ -463,6 +474,10 @@ const CSS = `
   width: 100%; aspect-ratio: 1;
   background: linear-gradient(135deg, #fce7f3, #ddd6fe);
   display: flex; align-items: center; justify-content: center; font-size: 120px;
+  overflow: hidden;
+}
+.aw-tPhoto {
+  width: 100%; height: 100%; object-fit: cover;
 }
 .aw-tName {
   position: absolute; left: 0; right: 0; bottom: 20px; text-align: center;
@@ -477,7 +492,7 @@ const CSS = `
 }
 
 /* BIRTHDAYS — balloon cluster */
-.aw-birthdays { grid-column: 3; grid-row: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; padding: 12px; }
+.aw-birthdays { grid-column: 3; grid-row: 2; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 16px; position: relative; overflow: visible; }
 .aw-cluster { position: relative; width: 200px; height: 160px; animation: aw-bob 1.4s ease-in-out infinite; }
 @keyframes aw-bob {
   0%, 100% { transform: translateY(0) rotate(-3deg); }
@@ -489,8 +504,22 @@ const CSS = `
 .aw-bal2 { left: 60px; top: 12px; background: #fbbf24; transform: rotate(-6deg); width: 64px; height: 80px; }
 .aw-bal3 { left: 115px; top: 0; background: #ec4899; }
 .aw-cake { position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); font-size: 50px; line-height: 1; }
-.aw-bdLbl { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 22px; letter-spacing: .12em; color: #be185d; text-transform: uppercase; margin-top: 18px; text-shadow: 0 2px 0 rgba(255,255,255,.7); }
-.aw-bdNames { font-family: 'Caveat', cursive; font-weight: 700; font-size: 48px; color: #831843; line-height: 1; text-shadow: 0 2px 0 rgba(255,255,255,.7); margin-top: 6px; }
+/* The names overlay sits ON TOP of the cluster image with a soft white
+   pill background so it can NEVER clip out of the cell. Cluster + cake
+   become decorative backdrop; names are first-class content above. */
+.aw-bdOverlay {
+  position: absolute; left: 50%; bottom: 8%; transform: translateX(-50%);
+  background: rgba(255, 255, 255, .92);
+  border: 4px solid #ec4899;
+  border-radius: 24px;
+  padding: 10px 22px 14px;
+  text-align: center;
+  box-shadow: 0 6px 16px rgba(0,0,0,.18);
+  max-width: 92%;
+  z-index: 5;
+}
+.aw-bdLbl { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 18px; letter-spacing: .12em; color: #be185d; text-transform: uppercase; }
+.aw-bdNames { font-family: 'Caveat', cursive; font-weight: 700; font-size: 48px; color: #831843; line-height: 1; margin-top: 4px; }
 
 /* TICKER — wavy ribbon */
 .aw-ticker {
