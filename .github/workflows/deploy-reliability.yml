@@ -94,11 +94,13 @@ jobs:
         run: docker build -f Dockerfile -t educms-api:ci .
       - name: Boot smoke test
         run: |
-          docker run --rm -d --name api-smoke -p 18080:8080 \
+          # NOTE: no --rm so we can still read logs after the container
+          # exits. We auto-delete in the cleanup step below.
+          docker run -d --name api-smoke -p 18080:8080 \
             -e NODE_ENV=production \
             -e PORT=8080 \
-            -e DATABASE_URL='postgres://fake:fake@localhost:5432/fake?schema=public' \
-            -e DIRECT_URL='postgres://fake:fake@localhost:5432/fake?schema=public' \
+            -e DATABASE_URL='postgres://fake:fake@127.0.0.1:5432/fake?schema=public' \
+            -e DIRECT_URL='postgres://fake:fake@127.0.0.1:5432/fake?schema=public' \
             -e JWT_SECRET='ci-fake-jwt-secret-please-do-not-use-in-prod-32chars' \
             -e SESSION_SECRET='ci-fake-session-secret-please-do-not-use-in-prod-32chars' \
             -e DEVICE_SECRET_KEY='ci-fake-device-secret-please-do-not-use-in-prod-32chars' \
@@ -106,37 +108,44 @@ jobs:
             -e SUPABASE_URL='https://fake.supabase.co' \
             -e SUPABASE_SERVICE_ROLE_KEY='fake' \
             educms-api:ci
-          # Poll up to 60s for "API listening" or any fatal error.
+          # Poll up to 60s for "API listening" or container exit.
           for i in $(seq 1 30); do
+            STATE=$(docker inspect -f '{{.State.Status}}' api-smoke 2>/dev/null || echo "missing")
             if docker logs api-smoke 2>&1 | grep -q "API listening"; then
               echo "API booted ✓"
               exit_ok=1
               break
             fi
-            if docker logs api-smoke 2>&1 | grep -E "(\[bootstrap\] fatal|FATAL|Cannot find module|listen tcp)" >/dev/null; then
-              echo "API crashed at boot ✗"
-              docker logs api-smoke
-              docker stop api-smoke || true
+            if [ "$STATE" = "exited" ] || [ "$STATE" = "dead" ]; then
+              EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' api-smoke 2>/dev/null || echo "?")
+              echo "✗ Container exited (state=$STATE, exit code=$EXIT_CODE)"
+              echo "::group::Last 200 lines of container logs"
+              docker logs --tail 200 api-smoke 2>&1 || true
+              echo "::endgroup::"
               exit 1
             fi
             sleep 2
           done
           if [ "${exit_ok:-0}" != "1" ]; then
-            echo "API never logged 'API listening' within 60s ✗"
-            docker logs api-smoke
-            docker stop api-smoke || true
+            echo "✗ API never logged 'API listening' within 60s"
+            echo "Container state: $(docker inspect -f '{{.State.Status}}' api-smoke 2>/dev/null || echo missing)"
+            echo "::group::Last 200 lines of container logs"
+            docker logs --tail 200 api-smoke 2>&1 || true
+            echo "::endgroup::"
             exit 1
           fi
       - name: Healthcheck curl
         run: |
-          # The /health endpoint is designed to 200 even with degraded
-          # downstream services. If it doesn't, the deploy will be wedged.
           curl -fsS --max-time 10 http://localhost:18080/api/v1/health || {
-            echo "Healthcheck failed ✗"
-            docker logs api-smoke
+            echo "✗ Healthcheck failed"
+            echo "::group::Container logs"
+            docker logs --tail 200 api-smoke 2>&1 || true
+            echo "::endgroup::"
             exit 1
           }
           echo "Healthcheck OK ✓"
-      - name: Stop container
+      - name: Cleanup container
         if: always()
-        run: docker stop api-smoke || true
+        run: |
+          docker stop api-smoke 2>/dev/null || true
+          docker rm api-smoke 2>/dev/null || true
