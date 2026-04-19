@@ -451,13 +451,11 @@ export function FieldDayAnnouncement({ config, compact, onConfigChange }: { conf
           transform: 'rotate(-0.8deg)', transformOrigin: 'center center',
         }}>
           <div style={{ flex: '0 0 28%', width: '100%', minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <FitText max={72} min={10} style={{
+            <EditableText configKey="title" onConfigChange={onConfigChange} max={72} min={10} style={{
               fontFamily: FD_FONT_DISPLAY,
               color: FD.red, WebkitTextStroke: `2px ${FD.ink}`,
               letterSpacing: '0.05em', textAlign: 'center',
-            }}>
-              {title}
-            </FitText>
+            }}>{title}</EditableText>
           </div>
           <div style={{ flex: '0 0 55%', width: '100%', minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <EditableText configKey="message" onConfigChange={onConfigChange}

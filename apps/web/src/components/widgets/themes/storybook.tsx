@@ -590,10 +590,8 @@ export function StorybookAnnouncement({ config, compact, onConfigChange }: { con
           </div>
           {!compact && date && (
             <div style={{ flex: '0 0 18%', minHeight: 0 }}>
-              <FitText max={120} min={10} wrap={false}
-                style={{ fontFamily: SB_FONT_SCRIPT, color: SB.red }}>
-                {date}
-              </FitText>
+              <EditableText configKey="date" onConfigChange={onConfigChange} max={120} min={10} wrap={false}
+                style={{ fontFamily: SB_FONT_SCRIPT, color: SB.red }}>{date}</EditableText>
             </div>
           )}
         </div>
@@ -897,7 +895,7 @@ export function StorybookImageCarousel({ config }: { config: any; compact?: bool
 // TICKER — library banner strip with rope tassels
 // ═══════════════════════════════════════════════════════════
 export function StorybookTicker({ config, compact }: { config: any; compact?: boolean }) {
-  const messages: string[] = config.messages?.length ? config.messages : ['~ Library open until 4pm today ~'];
+  const messages: string[] = ((config.messages as string[]) || []).map((s) => (s || '').trim()).filter(Boolean).length ? ((config.messages as string[]) || []).map((s) => (s || '').trim()).filter(Boolean) : ['~ Library open until 4pm today ~'];
   const speed = (config.speed as string) || 'medium';
   const secs = speed === 'fast' ? 4 : speed === 'slow' ? 10 : 6;
   const [idx, setIdx] = useState(0);

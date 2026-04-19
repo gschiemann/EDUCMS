@@ -594,10 +594,8 @@ export function SpiritRallyAnnouncement({
           </div>
           {!compact && date && (
             <div style={{ flex: '0 0 20%', minHeight: 0 }}>
-              <FitText max={100} min={9} wrap={false}
-                style={{ fontFamily: SR_FONT_SCRIPT, color: SR.gold }}>
-                {date}
-              </FitText>
+              <EditableText configKey="date" onConfigChange={onConfigChange} max={100} min={9} wrap={false}
+                style={{ fontFamily: SR_FONT_SCRIPT, color: SR.gold }}>{date}</EditableText>
             </div>
           )}
         </div>

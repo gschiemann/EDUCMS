@@ -517,12 +517,10 @@ export function RainbowRibbonAnnouncement({ config, compact, onConfigChange }: {
           </div>
           {!compact && date && (
             <div style={{ flex: '0 0 18%', minHeight: 0 }}>
-              <FitText
+              <EditableText configKey="date" onConfigChange={onConfigChange}
                 max={120} min={10} wrap={false}
                 style={{ fontFamily: RR_FONT_SCRIPT, color: RR.pinkDk }}
-              >
-                {date}
-              </FitText>
+              >{date}</EditableText>
             </div>
           )}
         </div>
@@ -791,7 +789,7 @@ export function RainbowRibbonImageCarousel({ config }: { config: any; compact?: 
 // TICKER — pennant-flag bunting across the bottom
 // ═══════════════════════════════════════════════════════════
 export function RainbowRibbonTicker({ config, compact }: { config: any; compact?: boolean }) {
-  const messages: string[] = config.messages?.length ? config.messages : ['☆ Lost & Found cleanout Friday ☆'];
+  const messages: string[] = ((config.messages as string[]) || []).map((s) => (s || '').trim()).filter(Boolean).length ? ((config.messages as string[]) || []).map((s) => (s || '').trim()).filter(Boolean) : ['☆ Lost & Found cleanout Friday ☆'];
   // Cycle through every message — speed maps to seconds per line. Panel
   // lets teachers edit the full list; we render each in turn instead of
   // dropping [1..N] on the floor like the old single-message version.

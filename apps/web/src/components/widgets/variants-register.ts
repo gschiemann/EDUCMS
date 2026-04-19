@@ -579,3 +579,40 @@ registerVariant({ id: 'logo-achievement-hall', widgetType: 'LOGO', name: 'Achiev
 registerVariant({ id: 'ticker-achievement-hall', widgetType: 'TICKER', name: 'Achievement Hall', description: 'Achievement Hall themed Ticker', category: 'HIGH', render: AchievementHallTicker, defaultConfig: { theme: 'achievement-hall' } });
 registerVariant({ id: 'image_carousel-achievement-hall', widgetType: 'IMAGE_CAROUSEL', name: 'Achievement Hall', description: 'Achievement Hall themed ImageCarousel', category: 'HIGH', render: AchievementHallImageCarousel, defaultConfig: { theme: 'achievement-hall' } });
 
+// ─── Athletics set (3 themes) ───
+import { TrackDayLogo, TrackDayText, TrackDayClock, TrackDayWeather, TrackDayCountdown, TrackDayAnnouncement, TrackDayCalendar, TrackDayStaffSpotlight, TrackDayImageCarousel, TrackDayTicker } from './themes/track-day';
+registerVariant({ id: 'clock-track-day', widgetType: 'CLOCK', name: 'Track Day', description: 'Track Day themed Clock', category: 'ELEMENTARY', render: TrackDayClock, defaultConfig: { theme: 'track-day' } });
+registerVariant({ id: 'text-track-day', widgetType: 'TEXT', name: 'Track Day', description: 'Track Day themed Text', category: 'ELEMENTARY', render: TrackDayText, defaultConfig: { theme: 'track-day' } });
+registerVariant({ id: 'weather-track-day', widgetType: 'WEATHER', name: 'Track Day', description: 'Track Day themed Weather', category: 'ELEMENTARY', render: TrackDayWeather, defaultConfig: { theme: 'track-day' } });
+registerVariant({ id: 'announcement-track-day', widgetType: 'ANNOUNCEMENT', name: 'Track Day', description: 'Track Day themed Announcement', category: 'ELEMENTARY', render: TrackDayAnnouncement, defaultConfig: { theme: 'track-day' } });
+registerVariant({ id: 'calendar-track-day', widgetType: 'CALENDAR', name: 'Track Day', description: 'Track Day themed Calendar', category: 'ELEMENTARY', render: TrackDayCalendar, defaultConfig: { theme: 'track-day' } });
+registerVariant({ id: 'staff_spotlight-track-day', widgetType: 'STAFF_SPOTLIGHT', name: 'Track Day', description: 'Track Day themed StaffSpotlight', category: 'ELEMENTARY', render: TrackDayStaffSpotlight, defaultConfig: { theme: 'track-day' } });
+registerVariant({ id: 'countdown-track-day', widgetType: 'COUNTDOWN', name: 'Track Day', description: 'Track Day themed Countdown', category: 'ELEMENTARY', render: TrackDayCountdown, defaultConfig: { theme: 'track-day' } });
+registerVariant({ id: 'logo-track-day', widgetType: 'LOGO', name: 'Track Day', description: 'Track Day themed Logo', category: 'ELEMENTARY', render: TrackDayLogo, defaultConfig: { theme: 'track-day' } });
+registerVariant({ id: 'ticker-track-day', widgetType: 'TICKER', name: 'Track Day', description: 'Track Day themed Ticker', category: 'ELEMENTARY', render: TrackDayTicker, defaultConfig: { theme: 'track-day' } });
+registerVariant({ id: 'image_carousel-track-day', widgetType: 'IMAGE_CAROUSEL', name: 'Track Day', description: 'Track Day themed ImageCarousel', category: 'ELEMENTARY', render: TrackDayImageCarousel, defaultConfig: { theme: 'track-day' } });
+
+import { ScorebugLogo, ScorebugText, ScorebugClock, ScorebugWeather, ScorebugCountdown, ScorebugAnnouncement, ScorebugCalendar, ScorebugStaffSpotlight, ScorebugImageCarousel, ScorebugTicker } from './themes/scorebug';
+registerVariant({ id: 'clock-scorebug', widgetType: 'CLOCK', name: 'Scorebug', description: 'Scorebug themed Clock', category: 'MIDDLE', render: ScorebugClock, defaultConfig: { theme: 'scorebug' } });
+registerVariant({ id: 'text-scorebug', widgetType: 'TEXT', name: 'Scorebug', description: 'Scorebug themed Text', category: 'MIDDLE', render: ScorebugText, defaultConfig: { theme: 'scorebug' } });
+registerVariant({ id: 'weather-scorebug', widgetType: 'WEATHER', name: 'Scorebug', description: 'Scorebug themed Weather', category: 'MIDDLE', render: ScorebugWeather, defaultConfig: { theme: 'scorebug' } });
+registerVariant({ id: 'announcement-scorebug', widgetType: 'ANNOUNCEMENT', name: 'Scorebug', description: 'Scorebug themed Announcement', category: 'MIDDLE', render: ScorebugAnnouncement, defaultConfig: { theme: 'scorebug' } });
+registerVariant({ id: 'calendar-scorebug', widgetType: 'CALENDAR', name: 'Scorebug', description: 'Scorebug themed Calendar', category: 'MIDDLE', render: ScorebugCalendar, defaultConfig: { theme: 'scorebug' } });
+registerVariant({ id: 'staff_spotlight-scorebug', widgetType: 'STAFF_SPOTLIGHT', name: 'Scorebug', description: 'Scorebug themed StaffSpotlight', category: 'MIDDLE', render: ScorebugStaffSpotlight, defaultConfig: { theme: 'scorebug' } });
+registerVariant({ id: 'countdown-scorebug', widgetType: 'COUNTDOWN', name: 'Scorebug', description: 'Scorebug themed Countdown', category: 'MIDDLE', render: ScorebugCountdown, defaultConfig: { theme: 'scorebug' } });
+registerVariant({ id: 'logo-scorebug', widgetType: 'LOGO', name: 'Scorebug', description: 'Scorebug themed Logo', category: 'MIDDLE', render: ScorebugLogo, defaultConfig: { theme: 'scorebug' } });
+registerVariant({ id: 'ticker-scorebug', widgetType: 'TICKER', name: 'Scorebug', description: 'Scorebug themed Ticker', category: 'MIDDLE', render: ScorebugTicker, defaultConfig: { theme: 'scorebug' } });
+registerVariant({ id: 'image_carousel-scorebug', widgetType: 'IMAGE_CAROUSEL', name: 'Scorebug', description: 'Scorebug themed ImageCarousel', category: 'MIDDLE', render: ScorebugImageCarousel, defaultConfig: { theme: 'scorebug' } });
+
+import { JumbotronProLogo, JumbotronProText, JumbotronProClock, JumbotronProWeather, JumbotronProCountdown, JumbotronProAnnouncement, JumbotronProCalendar, JumbotronProStaffSpotlight, JumbotronProImageCarousel, JumbotronProTicker } from './themes/jumbotron-pro';
+registerVariant({ id: 'clock-jumbotron-pro', widgetType: 'CLOCK', name: 'Jumbotron Pro', description: 'Jumbotron Pro themed Clock', category: 'HIGH', render: JumbotronProClock, defaultConfig: { theme: 'jumbotron-pro' } });
+registerVariant({ id: 'text-jumbotron-pro', widgetType: 'TEXT', name: 'Jumbotron Pro', description: 'Jumbotron Pro themed Text', category: 'HIGH', render: JumbotronProText, defaultConfig: { theme: 'jumbotron-pro' } });
+registerVariant({ id: 'weather-jumbotron-pro', widgetType: 'WEATHER', name: 'Jumbotron Pro', description: 'Jumbotron Pro themed Weather', category: 'HIGH', render: JumbotronProWeather, defaultConfig: { theme: 'jumbotron-pro' } });
+registerVariant({ id: 'announcement-jumbotron-pro', widgetType: 'ANNOUNCEMENT', name: 'Jumbotron Pro', description: 'Jumbotron Pro themed Announcement', category: 'HIGH', render: JumbotronProAnnouncement, defaultConfig: { theme: 'jumbotron-pro' } });
+registerVariant({ id: 'calendar-jumbotron-pro', widgetType: 'CALENDAR', name: 'Jumbotron Pro', description: 'Jumbotron Pro themed Calendar', category: 'HIGH', render: JumbotronProCalendar, defaultConfig: { theme: 'jumbotron-pro' } });
+registerVariant({ id: 'staff_spotlight-jumbotron-pro', widgetType: 'STAFF_SPOTLIGHT', name: 'Jumbotron Pro', description: 'Jumbotron Pro themed StaffSpotlight', category: 'HIGH', render: JumbotronProStaffSpotlight, defaultConfig: { theme: 'jumbotron-pro' } });
+registerVariant({ id: 'countdown-jumbotron-pro', widgetType: 'COUNTDOWN', name: 'Jumbotron Pro', description: 'Jumbotron Pro themed Countdown', category: 'HIGH', render: JumbotronProCountdown, defaultConfig: { theme: 'jumbotron-pro' } });
+registerVariant({ id: 'logo-jumbotron-pro', widgetType: 'LOGO', name: 'Jumbotron Pro', description: 'Jumbotron Pro themed Logo', category: 'HIGH', render: JumbotronProLogo, defaultConfig: { theme: 'jumbotron-pro' } });
+registerVariant({ id: 'ticker-jumbotron-pro', widgetType: 'TICKER', name: 'Jumbotron Pro', description: 'Jumbotron Pro themed Ticker', category: 'HIGH', render: JumbotronProTicker, defaultConfig: { theme: 'jumbotron-pro' } });
+registerVariant({ id: 'image_carousel-jumbotron-pro', widgetType: 'IMAGE_CAROUSEL', name: 'Jumbotron Pro', description: 'Jumbotron Pro themed ImageCarousel', category: 'HIGH', render: JumbotronProImageCarousel, defaultConfig: { theme: 'jumbotron-pro' } });
+

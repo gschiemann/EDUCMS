@@ -661,10 +661,8 @@ export function LockerHallwayAnnouncement({
         }}>
           {!compact && (
             <div style={{ flex: '0 0 22%', minHeight: 0 }}>
-              <FitText max={80} min={10} wrap={false}
-                style={{ fontWeight: 900, color: LH.red, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-                {title}
-              </FitText>
+              <EditableText configKey="title" onConfigChange={onConfigChange} max={80} min={10} wrap={false}
+                style={{ fontWeight: 900, color: LH.red, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{title}</EditableText>
             </div>
           )}
           <div style={{ flex: !compact && date ? '1 1 60%' : '1 1 100%', minHeight: 0 }}>
@@ -678,10 +676,8 @@ export function LockerHallwayAnnouncement({
           </div>
           {!compact && date && (
             <div style={{ flex: '0 0 18%', minHeight: 0 }}>
-              <FitText max={60} min={9} wrap={false}
-                style={{ fontFamily: LH_FONT_HAND, color: LH.steelDark }}>
-                {date}
-              </FitText>
+              <EditableText configKey="date" onConfigChange={onConfigChange} max={60} min={9} wrap={false}
+                style={{ fontFamily: LH_FONT_HAND, color: LH.steelDark }}>{date}</EditableText>
             </div>
           )}
         </div>

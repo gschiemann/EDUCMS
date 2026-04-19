@@ -561,10 +561,8 @@ export function ArtStudioAnnouncement({ config, compact, onConfigChange }: { con
           {/* Title */}
           {!compact && (
             <div style={{ flex: '0 0 22%', minHeight: 0 }}>
-              <FitText max={80} min={10} wrap={false} center={false}
-                style={{ fontWeight: 700, color: AS.paintPurple, letterSpacing: '0.02em' }}>
-                {title}
-              </FitText>
+              <EditableText configKey="title" onConfigChange={onConfigChange} max={80} min={10} wrap={false} center={false}
+                style={{ fontWeight: 700, color: AS.paintPurple, letterSpacing: '0.02em' }}>{title}</EditableText>
             </div>
           )}
           {/* Message — handwritten feel */}
@@ -580,10 +578,8 @@ export function ArtStudioAnnouncement({ config, compact, onConfigChange }: { con
           </div>
           {!compact && date && (
             <div style={{ flex: '0 0 18%', minHeight: 0 }}>
-              <FitText max={60} min={9} wrap={false} center={false}
-                style={{ fontFamily: AS_FONT_SERIF, fontStyle: 'italic', color: AS.pencil }}>
-                {date}
-              </FitText>
+              <EditableText configKey="date" onConfigChange={onConfigChange} max={60} min={9} wrap={false} center={false}
+                style={{ fontFamily: AS_FONT_SERIF, fontStyle: 'italic', color: AS.pencil }}>{date}</EditableText>
             </div>
           )}
         </div>

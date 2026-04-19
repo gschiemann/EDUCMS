@@ -517,10 +517,8 @@ export function StemLabAnnouncement({
           <div style={{ width: 12, height: 12, borderRadius: '50%', background: SL.amber, flexShrink: 0 }} />
           <div style={{ width: 12, height: 12, borderRadius: '50%', background: SL.neonGreen, flexShrink: 0 }} />
           <div style={{ flex: 1, minWidth: 0, paddingLeft: '3%' }}>
-            <FitText max={28} min={8} wrap={false} center={false}
-              style={{ fontFamily: SL_FONT_MONO, color: SL.inkOnDark, opacity: 0.7 }}>
-              {title}
-            </FitText>
+            <EditableText configKey="title" onConfigChange={onConfigChange} max={28} min={8} wrap={false} center={false}
+              style={{ fontFamily: SL_FONT_MONO, color: SL.inkOnDark, opacity: 0.7 }}>{title}</EditableText>
           </div>
         </div>
         {/* Terminal body */}

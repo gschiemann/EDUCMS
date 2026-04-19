@@ -544,10 +544,8 @@ export function SeniorCountdownAnnouncement({ config, compact, onConfigChange }:
           </div>
           {!compact && date && (
             <div style={{ flex: '0 0 20%', minHeight: 0 }}>
-              <FitText max={100} min={10} wrap={false}
-                style={{ fontFamily: SCD_FONT_SCRIPT, color: SCD.maroon }}>
-                {date}
-              </FitText>
+              <EditableText configKey="date" onConfigChange={onConfigChange} max={100} min={10} wrap={false}
+                style={{ fontFamily: SCD_FONT_SCRIPT, color: SCD.maroon }}>{date}</EditableText>
             </div>
           )}
         </div>

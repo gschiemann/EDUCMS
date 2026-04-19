@@ -212,6 +212,17 @@ export function BuilderCanvas() {
               onPointerDown={onZonePointerDown}
               onResizePointerDown={onResizePointerDown}
               onSelect={onZoneSelect}
+              // Inline-edit hook: when a widget's EditableText commits a
+              // change, patch the zone's defaultConfig. `true` marks the
+              // update dirty/undoable. Without this, double-clicking a
+              // text node did nothing — the whole EditableText chain
+              // short-circuits to read-only when onConfigChange is
+              // undefined.
+              onConfigChange={(zoneId, patch) => {
+                const z = zones.find(z => z.id === zoneId);
+                if (!z) return;
+                updateZone(zoneId, { defaultConfig: { ...(z.defaultConfig || {}), ...patch } }, true);
+              }}
             />
           ))}
 

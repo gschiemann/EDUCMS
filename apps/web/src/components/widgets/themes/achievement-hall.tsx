@@ -353,7 +353,7 @@ export function AchievementHallClock({ config, compact }: { config: any; compact
         {!compact && (
           <text x="160" y="198" textAnchor="middle" fontSize="9"
             fontFamily={AH_FONT_DISPLAY} fill={AH.brassDark}
-            letterSpacing="0.08em" textTransform="uppercase">
+            letterSpacing="0.08em">
             {dateLabel.toUpperCase()}
           </text>
         )}
@@ -684,15 +684,13 @@ export function AchievementHallAnnouncement({ config, compact, onConfigChange }:
           {/* Date footer */}
           {!compact && date && (
             <div style={{ flex: '0 0 16%', minHeight: 0, marginTop: '2%' }}>
-              <FitText max={60} min={8} wrap={false}
+              <EditableText configKey="date" onConfigChange={onConfigChange} max={60} min={8} wrap={false}
                 style={{
                   color: AH.brassLight,
                   letterSpacing: '0.12em',
                   textTransform: 'uppercase',
                   fontVariant: 'small-caps',
-                }}>
-                {date}
-              </FitText>
+                }}>{date}</EditableText>
             </div>
           )}
         </div>

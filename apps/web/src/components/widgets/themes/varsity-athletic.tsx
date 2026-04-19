@@ -669,15 +669,13 @@ export function VarsityAthleticAnnouncement({ config, compact, onConfigChange }:
           borderBottom: `3px solid ${VA.gold}`,
           padding: '0 4%',
         }}>
-          <FitText max={80} min={8} wrap={false}
+          <EditableText configKey="title" onConfigChange={onConfigChange} max={80} min={8} wrap={false}
             style={{
               fontFamily: VA_FONT_DISPLAY, fontWeight: 900,
               color: VA.stadiumDark, letterSpacing: '0.06em',
               textTransform: 'uppercase',
             }}
-          >
-            {title}
-          </FitText>
+          >{title}</EditableText>
         </div>
 
         {/* Message on dark chalkboard field */}
@@ -696,10 +694,8 @@ export function VarsityAthleticAnnouncement({ config, compact, onConfigChange }:
           </div>
           {!compact && date && (
             <div style={{ flex: '0 0 20%', minHeight: 0 }}>
-              <FitText max={50} min={8} wrap={false}
-                style={{ fontFamily: VA_FONT_DISPLAY, color: VA.goldLight, letterSpacing: '0.05em' }}>
-                {date}
-              </FitText>
+              <EditableText configKey="date" onConfigChange={onConfigChange} max={50} min={8} wrap={false}
+                style={{ fontFamily: VA_FONT_DISPLAY, color: VA.goldLight, letterSpacing: '0.05em' }}>{date}</EditableText>
             </div>
           )}
         </div>

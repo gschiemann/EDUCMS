@@ -526,10 +526,8 @@ export function BulletinBoardAnnouncement({ config, compact, onConfigChange }: {
           </div>
           {!compact && date && (
             <div style={{ flex: '0 0 20%', minHeight: 0 }}>
-              <FitText max={110} min={10} wrap={false}
-                style={{ fontFamily: BB_FONT_SCRIPT, color: BB.pinRed }}>
-                {date}
-              </FitText>
+              <EditableText configKey="date" onConfigChange={onConfigChange} max={110} min={10} wrap={false}
+                style={{ fontFamily: BB_FONT_SCRIPT, color: BB.pinRed }}>{date}</EditableText>
             </div>
           )}
         </div>
@@ -791,7 +789,7 @@ export function BulletinBoardImageCarousel({ config }: { config: any; compact?: 
 // TICKER — scalloped paper strip banner taped across
 // ═══════════════════════════════════════════════════════════
 export function BulletinBoardTicker({ config, compact }: { config: any; compact?: boolean }) {
-  const messages: string[] = config.messages?.length ? config.messages : ['★ Lost & Found cleanout Friday ★'];
+  const messages: string[] = ((config.messages as string[]) || []).map((s) => (s || '').trim()).filter(Boolean).length ? ((config.messages as string[]) || []).map((s) => (s || '').trim()).filter(Boolean) : ['★ Lost & Found cleanout Friday ★'];
   const speed = (config.speed as string) || 'medium';
   const secs = speed === 'fast' ? 4 : speed === 'slow' ? 10 : 6;
   const [idx, setIdx] = useState(0);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from 'react';
+import { useId, useState, useEffect } from 'react';
 import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon } from 'lucide-react';
 import { useBuilderStore } from './useBuilderStore';
 import { widgetLabel } from './constants';
@@ -89,6 +89,7 @@ export function PropertiesPanel() {
                 <option value="field-day">🏆 Field Day</option>
                 <option value="storybook">📖 Storybook</option>
                 <option value="scrapbook">📎 Scrapbook</option>
+                <option value="track-day">🏃 Track Day</option>
               </optgroup>
               <optgroup label="Middle School">
                 <option value="locker-hallway">🔐 Locker Hallway</option>
@@ -96,6 +97,7 @@ export function PropertiesPanel() {
                 <option value="stem-lab">🔬 STEM Lab</option>
                 <option value="morning-news">📺 Morning News</option>
                 <option value="art-studio">🎨 Art Studio</option>
+                <option value="scorebug">📊 Scorebug Dashboard</option>
               </optgroup>
               <optgroup label="High School">
                 <option value="varsity-athletic">🥇 Varsity Athletic</option>
@@ -103,6 +105,7 @@ export function PropertiesPanel() {
                 <option value="news-studio-pro">🎬 News Studio Pro</option>
                 <option value="campus-quad">🏛️ Campus Quad</option>
                 <option value="achievement-hall">🏅 Achievement Hall</option>
+                <option value="jumbotron-pro">🏟️ Jumbotron Pro</option>
               </optgroup>
               <optgroup label="Legacy">
                 <option value="sunny-meadow">☀️ Sunny Meadow</option>
@@ -357,11 +360,11 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
   // user about controls that do nothing.
   const SHAPE_THEMES = new Set([
     // Elementary
-    'rainbow-ribbon', 'bulletin-board', 'field-day', 'storybook', 'scrapbook',
+    'rainbow-ribbon', 'bulletin-board', 'field-day', 'storybook', 'scrapbook', 'track-day',
     // Middle school
-    'locker-hallway', 'spirit-rally', 'stem-lab', 'morning-news', 'art-studio',
+    'locker-hallway', 'spirit-rally', 'stem-lab', 'morning-news', 'art-studio', 'scorebug',
     // High school
-    'varsity-athletic', 'senior-countdown', 'news-studio-pro', 'campus-quad', 'achievement-hall',
+    'varsity-athletic', 'senior-countdown', 'news-studio-pro', 'campus-quad', 'achievement-hall', 'jumbotron-pro',
   ]);
   const isShapeTheme = SHAPE_THEMES.has(cfg.theme);
 
@@ -446,11 +449,19 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="low" label="Low" value={String(cfg.low ?? '')} placeholder="64" onChange={(v) => setField({ low: parseInt(v) || 0 })} />);
       fields.push(<TextField key="condition" label="Condition" value={cfg.condition || ''} placeholder="Sunny" onChange={(v) => setField({ condition: v })} />);
       break;
-    case 'TICKER':
-      fields.push(<TextAreaField key="messages" label="Messages (one per line)" value={(cfg.messages || []).join('\n')} placeholder="Welcome back!" onChange={(v) => setField({ messages: v.split('\n').filter(Boolean) })} rows={5} />);
+    case 'TICKER': {
+      const msgs = Array.isArray(cfg.messages) ? cfg.messages : [];
+      const label = `Messages (one per line) — ${msgs.length} saved`;
+      // Preserve blank lines while the user is actively typing (the
+      // user needs an empty line to exist briefly when pressing Enter
+      // before typing the next message). Filter happens only on save,
+      // not on every keystroke. We keep trailing empty as-is too;
+      // saving an all-empty doesn't hurt anything.
+      fields.push(<TextAreaField key="messages" label={label} value={msgs.join('\n')} placeholder="Welcome back!" onChange={(v) => setField({ messages: v.split('\n') })} rows={6} />);
       fields.push(<SelectField key="speed" label="Speed" value={cfg.speed || 'medium'} options={[['slow','Slow'],['medium','Medium'],['fast','Fast']]} onChange={(v) => setField({ speed: v })} />);
       fields.push(<ToggleField key="scrollEnabled" label="Animate scroll" value={cfg.scrollEnabled !== false} onChange={(v) => setField({ scrollEnabled: v })} />);
       break;
+    }
     case 'CALENDAR':
       fields.push(<TextAreaField key="events" label="Events (date | title — one per line)" value={(cfg.events || []).map((e: any) => `${e.date || ''} | ${e.title || ''}`).join('\n')} placeholder="Today | Spring Concert&#10;Tomorrow | PTA Meeting" onChange={(v) => setField({ events: v.split('\n').filter(Boolean).map(line => { const [date, title] = line.split('|').map(s => s.trim()); return { date, title }; }) })} rows={5} />);
       fields.push(<TextField key="maxEvents" label="Max events to show" value={String(cfg.maxEvents || 4)} placeholder="4" onChange={(v) => setField({ maxEvents: parseInt(v) || 4 })} />);
@@ -531,12 +542,25 @@ function TextField({ label, value, placeholder, onChange }: { label: string; val
 }
 
 function TextAreaField({ label, value, placeholder, onChange, rows = 3 }: { label: string; value: string; placeholder?: string; onChange: (v: string) => void; rows?: number }) {
+  // Controlled textarea — local state mirrors the incoming value so we
+  // can honor external updates (undo/redo, zone switch, preset load)
+  // while saving on every keystroke. Previous `defaultValue` +
+  // `onBlur`-only was eating keystrokes when users clicked away via
+  // keyboard shortcuts or window lost focus before blur fired, which
+  // is exactly why "add a 4th line" appeared to do nothing.
+  const [local, setLocal] = useState(value);
+  // Sync when the prop changes (e.g. user selected a different zone).
+  useEffect(() => { setLocal(value); }, [value]);
   return (
     <div>
       <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
-      <textarea defaultValue={value} placeholder={placeholder} rows={rows}
-        onBlur={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm resize-y" />
+      <textarea
+        value={local}
+        placeholder={placeholder}
+        rows={rows}
+        onChange={(e) => { setLocal(e.target.value); onChange(e.target.value); }}
+        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm resize-y"
+      />
     </div>
   );
 }
