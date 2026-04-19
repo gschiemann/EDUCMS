@@ -7,235 +7,263 @@
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: #1c1206; }
-  .stage {
+  /* The whole page IS an open book — left page, spine, right page. Every widget sits
+     on the page like it was printed there. No floating cards. */
+  .book {
     width: 100vw; height: 100vh; position: relative; overflow: hidden;
-    /* aged book paper */
     background:
-      radial-gradient(ellipse at 50% 100%, rgba(120,53,15,.18), transparent 60%),
-      radial-gradient(ellipse at 50% 0%, rgba(120,53,15,.18), transparent 55%),
-      radial-gradient(ellipse at 0% 50%, rgba(120,53,15,.12), transparent 55%),
-      radial-gradient(ellipse at 100% 50%, rgba(120,53,15,.12), transparent 55%),
+      /* center spine shadow */
+      linear-gradient(90deg, transparent 48%, rgba(70,40,15,.0) 48%, rgba(70,40,15,.35) 50%, rgba(70,40,15,.0) 52%, transparent 52%),
+      /* page lighting falloff toward gutter */
+      linear-gradient(90deg, #faecc6 0%, #f5dca0 45%, #d4a86a 50%, #f5dca0 55%, #faecc6 100%),
       #faecc6;
-    font-family: 'Quattrocento', serif;
-    color: #3d2410;
+    font-family: 'Quattrocento', serif; color: #3d2410;
   }
-  /* Vignette + subtle paper grain */
-  .stage::after {
+  .book::before {
+    /* gentle paper grain over everything */
     content: ''; position: absolute; inset: 0; pointer-events: none;
-    background:
-      repeating-linear-gradient(0deg, transparent 0 3px, rgba(120,53,15,.02) 3px 4px);
+    background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(120,53,15,.025) 3px 4px);
     mix-blend-mode: multiply;
   }
-
-  /* Center spine — open-book illusion */
-  .spine {
-    position: absolute; left: 50%; top: 0; bottom: 0; width: 36px; transform: translateX(-50%);
-    background:
-      linear-gradient(90deg, transparent, rgba(120,53,15,.35) 40%, rgba(120,53,15,.6) 50%, rgba(120,53,15,.35) 60%, transparent);
-    pointer-events: none;
+  .book::after {
+    /* outer page-edge shadow */
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    box-shadow: inset 0 0 80px rgba(120,53,15,.35);
   }
-  /* Decorative double border around the entire spread */
-  .frame {
-    position: absolute; inset: 24px; border: 2px solid #8b5a2b; pointer-events: none;
+
+  /* Outer double border on each page */
+  .pageFrames { position: absolute; inset: 28px; pointer-events: none; }
+  .pageFrames .left, .pageFrames .right {
+    position: absolute; top: 0; bottom: 0; width: calc(50% - 24px);
+    border: 2px solid #8b5a2b;
   }
-  .frame::after { content: ''; position: absolute; inset: 8px; border: 1px solid #8b5a2b; }
-
-  /* Flourish corners */
-  .corner { position: absolute; width: 80px; height: 80px; pointer-events: none; }
-  .corner svg { width: 100%; height: 100%; fill: #8b5a2b; opacity: .7; }
-  .corner.tl { top: 30px; left: 30px; }
-  .corner.tr { top: 30px; right: 30px; transform: scaleX(-1); }
-  .corner.bl { bottom: 90px; left: 30px; transform: scaleY(-1); }
-  .corner.br { bottom: 90px; right: 30px; transform: scale(-1,-1); }
-
-  /* HEADER — chapter title ribbon */
-  .header { position: absolute; top: 60px; left: 0; right: 0; text-align: center; }
-  .chapter { font-family: 'Italianno', cursive; font-size: 38px; color: #8b5a2b; letter-spacing: .04em; }
-  .chapter::before { content: '~ '; }
-  .chapter::after  { content: ' ~'; }
-  .header h1 { font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 76px; letter-spacing: .02em; margin: 6px 0 4px; color: #3d2410; line-height: 1; }
-  .header .sub { font-family: 'Italianno', cursive; font-size: 30px; color: #8b5a2b; }
-  .header .rule { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 8px; color: #8b5a2b; }
-  .header .rule .line { width: 120px; height: 1px; background: currentColor; }
-  .header .rule .orn { font-size: 18px; }
-
-  /* LEFT PAGE — illustrated vignette (the "carousel") */
-  .vignette {
-    position: absolute; left: 80px; top: 230px; width: 38%; max-width: 580px; height: 480px;
-    background: linear-gradient(180deg, #fff8e1, #f5deb3);
-    border: 2px solid #8b5a2b; padding: 28px;
-    box-shadow: inset 0 0 0 6px #faecc6, inset 0 0 0 7px #8b5a2b, 0 8px 18px rgba(0,0,0,.22);
+  .pageFrames .left  { left: 0; }
+  .pageFrames .right { right: 0; }
+  .pageFrames .left::after, .pageFrames .right::after {
+    content: ''; position: absolute; inset: 8px; border: 1px solid #8b5a2b;
   }
-  .vignette .scene {
-    width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
-    background:
-      radial-gradient(ellipse at 50% 80%, rgba(255,200,120,.65) 0 30%, transparent 55%),
-      linear-gradient(180deg, #fde68a, #fbbf24);
+
+  /* Decorative corner flourishes */
+  .corner { position: absolute; width: 70px; height: 70px; pointer-events: none; }
+  .corner svg { width: 100%; height: 100%; fill: none; stroke: #8b5a2b; stroke-width: 2; opacity: .8; }
+  .corner.tl { top: 36px; left: 36px; }
+  .corner.tr { top: 36px; right: 36px; transform: scaleX(-1); }
+  .corner.bl { bottom: 36px; left: 36px; transform: scaleY(-1); }
+  .corner.br { bottom: 36px; right: 36px; transform: scale(-1,-1); }
+
+  /* Layout grid sitting INSIDE the book */
+  .pages {
+    position: absolute; inset: 70px 80px 70px;
+    display: grid;
+    grid-template-columns: 1fr 80px 1fr;
+    grid-template-rows: auto 1fr auto;
+    gap: 20px 0;
+  }
+
+  /* HEADER spans both pages — chapter heading printed across the spine */
+  .header {
+    grid-column: 1 / -1; text-align: center;
+    padding: 0 0 10px;
+    border-bottom: 1px solid #8b5a2b;
     position: relative;
-    overflow: hidden;
   }
-  .vignette .scene::before {
-    /* "sun rays" */
+  .header::after {
+    content: ''; position: absolute; left: 0; right: 0; bottom: -6px; height: 1px; background: #8b5a2b;
+  }
+  .chapter { font-family: 'Italianno', cursive; font-size: 56px; color: #8b5a2b; line-height: 1; }
+  .chapter::before { content: '~ '; } .chapter::after { content: ' ~'; }
+  .header h1 {
+    font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 110px;
+    margin: 0; line-height: 1; color: #3d2410; letter-spacing: .02em;
+  }
+  .header .sub { font-family: 'Italianno', cursive; font-size: 40px; color: #8b5a2b; }
+
+  /* Marginalia — clock + logo small in corners */
+  .clock {
+    position: absolute; top: 36px; right: 90px;
+    font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 36px; color: #3d2410; line-height: 1;
+    text-align: right;
+  }
+  .clock .lbl { font-family: 'Italianno', cursive; font-size: 26px; color: #8b5a2b; line-height: 1; }
+  .logo {
+    position: absolute; top: 36px; left: 90px;
+    width: 90px; height: 90px;
+    background: radial-gradient(circle, #faecc6, #d4a86a);
+    border: 2px solid #8b5a2b; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-size: 50px;
+    box-shadow: inset 0 0 0 4px #faecc6;
+  }
+
+  /* LEFT PAGE — illustrated vignette inside an illuminated frame */
+  .vignette {
+    grid-column: 1; grid-row: 2;
+    display: flex; flex-direction: column; align-items: stretch;
+    padding: 20px 12px;
+  }
+  .vignette .frame {
+    flex: 1;
+    border: 3px double #8b5a2b;
+    background: linear-gradient(180deg, #fff8e1, #f5deb3);
+    box-shadow: inset 0 0 0 6px #faecc6, inset 0 0 0 7px #8b5a2b;
+    padding: 24px;
+    display: flex; align-items: center; justify-content: center;
+    position: relative; overflow: hidden;
+  }
+  .vignette .frame::before {
     content: ''; position: absolute; inset: -50%;
     background: repeating-conic-gradient(from 0deg, rgba(255,255,255,.18) 0 6deg, transparent 6deg 18deg);
   }
-  .vignette .hero { font-size: 220px; filter: drop-shadow(0 6px 8px rgba(0,0,0,.25)); position: relative; z-index: 1; }
+  .vignette .hero { font-size: 320px; filter: drop-shadow(0 6px 8px rgba(0,0,0,.25)); position: relative; z-index: 1; }
   .vignette .caption {
-    position: absolute; left: 0; right: 0; bottom: -38px; text-align: center;
-    font-family: 'Italianno', cursive; font-size: 36px; color: #8b5a2b;
+    text-align: center; font-family: 'Italianno', cursive; font-size: 50px; color: #8b5a2b; padding-top: 14px;
   }
 
-  /* RIGHT PAGE — three menu vignettes as "story panels" */
+  /* SPINE COLUMN — visual divider only */
+  .spine { grid-column: 2; grid-row: 2; }
+
+  /* RIGHT PAGE — three menu items printed as story panels */
   .panels {
-    position: absolute; right: 80px; top: 230px; width: 38%; min-width: 360px; display: flex; flex-direction: column; gap: 22px;
+    grid-column: 3; grid-row: 2;
+    display: flex; flex-direction: column; gap: 18px; padding: 20px 12px;
   }
   .panel {
-    background: #fff8e1;
-    border: 1px solid #8b5a2b; padding: 16px 22px;
-    box-shadow: inset 0 0 0 4px #faecc6, inset 0 0 0 5px #8b5a2b, 0 4px 10px rgba(0,0,0,.15);
-    display: flex; gap: 18px; align-items: flex-start;
-    position: relative;
+    flex: 1;
+    border: 2px solid #8b5a2b;
+    background: rgba(255,248,225,.5);
+    box-shadow: inset 0 0 0 5px #faecc6, inset 0 0 0 6px #8b5a2b;
+    padding: 16px 22px;
+    display: flex; gap: 18px; align-items: center;
   }
   .panel .dropcap {
-    font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 78px; line-height: 1; color: #8b5a2b;
-    border-right: 2px solid #c89868; padding-right: 14px;
+    font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 110px;
+    line-height: 1; color: #8b5a2b;
+    border-right: 2px solid #c89868; padding-right: 18px;
   }
   .panel .body { flex: 1; }
-  .panel h3 { font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 30px; line-height: 1; margin: 4px 0 4px; color: #3d2410; }
-  .panel p  { font-family: 'Quattrocento', serif; font-size: 16px; color: #5d3a1a; margin: 0 0 8px; line-height: 1.4; }
-  .badges { display: flex; gap: 6px; }
+  .panel h3 { font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 46px; line-height: 1; margin: 0 0 6px; color: #3d2410; }
+  .panel p  { font-family: 'Quattrocento', serif; font-size: 22px; color: #5d3a1a; margin: 0 0 10px; line-height: 1.3; }
+  .badges { display: flex; gap: 8px; flex-wrap: wrap; }
   .badge {
-    font-family: 'Quattrocento', serif; font-weight: 700; font-size: 11px; letter-spacing: .12em;
-    padding: 3px 10px; border-radius: 2px; background: #faecc6; color: #5d3a1a;
+    font-family: 'Quattrocento', serif; font-weight: 700; font-size: 14px; letter-spacing: .12em;
+    padding: 4px 12px; background: #faecc6; color: #5d3a1a;
     border: 1px solid #8b5a2b;
   }
 
-  /* BOTTOM — special + countdown like footnotes */
-  .footRow { position: absolute; left: 80px; right: 80px; bottom: 130px; display: flex; gap: 24px; align-items: stretch; }
-  .special {
-    flex: 1;
-    border: 1px solid #8b5a2b; padding: 14px 24px;
-    background: linear-gradient(180deg, #faecc6, #f5d68a);
-    box-shadow: inset 0 0 0 4px #fff8e1, inset 0 0 0 5px #8b5a2b;
+  /* FOOTER spans both pages — special + countdown printed in the gutter */
+  .footer {
+    grid-column: 1 / -1; grid-row: 3;
+    display: grid; grid-template-columns: 1fr 320px; gap: 0;
+    border-top: 1px solid #8b5a2b; padding-top: 12px; position: relative;
+  }
+  .footer::before {
+    content: ''; position: absolute; left: 0; right: 0; top: 6px; height: 1px; background: #8b5a2b;
+  }
+  .footer .special {
+    padding: 10px 24px;
+    border-right: 1px solid #8b5a2b;
+    background: linear-gradient(180deg, transparent, rgba(250,236,198,.6));
     position: relative;
   }
-  .special::before { content: '✦'; position: absolute; top: 8px; left: 12px; color: #8b5a2b; font-size: 18px; }
-  .special .lbl {
-    font-family: 'Italianno', cursive; font-size: 26px; color: #8b5a2b; line-height: 1;
-  }
-  .special .msg { font-family: 'Cormorant Garamond', serif; font-size: 32px; font-weight: 500; color: #3d2410; line-height: 1.05; margin-top: 4px; }
+  .footer .special::before { content: '✦'; position: absolute; top: 14px; left: 4px; color: #8b5a2b; font-size: 22px; }
+  .footer .special .lbl { font-family: 'Italianno', cursive; font-size: 36px; color: #8b5a2b; line-height: 1; padding-left: 30px; }
+  .footer .special .msg { font-family: 'Cormorant Garamond', serif; font-weight: 500; font-size: 44px; color: #3d2410; line-height: 1.05; padding-left: 30px; margin-top: 4px; }
 
-  .ctd {
-    flex: 0 0 280px;
-    border: 1px solid #8b5a2b; padding: 12px 18px;
-    background: #fff8e1;
-    box-shadow: inset 0 0 0 4px #faecc6, inset 0 0 0 5px #8b5a2b;
-    text-align: center;
-    position: relative;
+  .footer .ctd {
+    text-align: center; padding: 10px 18px;
   }
-  .ctd .lbl { font-family: 'Italianno', cursive; font-size: 24px; color: #8b5a2b; line-height: 1; }
-  .ctd .num {
-    font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 56px; line-height: 1; color: #3d2410;
-  }
-  .ctd .unit { font-family: 'Quattrocento', serif; font-style: italic; font-size: 16px; color: #5d3a1a; }
+  .footer .ctd .lbl { font-family: 'Italianno', cursive; font-size: 32px; color: #8b5a2b; line-height: 1; }
+  .footer .ctd .num { font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 78px; line-height: 1; color: #3d2410; }
+  .footer .ctd .unit { font-family: 'Quattrocento', serif; font-style: italic; font-size: 22px; color: #5d3a1a; }
 
-  /* TICKER — bottom banner like a printed bookplate */
+  /* Page number flourishes */
+  .pgnum {
+    position: absolute; bottom: 96px; font-family: 'Cormorant Garamond', serif; font-style: italic; color: #8b5a2b; font-size: 22px;
+  }
+  .pgnum.l { left: 100px; }
+  .pgnum.r { right: 100px; }
+
+  /* TICKER — bottom printers' mark across the bottom of both pages */
   .ticker {
-    position: absolute; left: 0; right: 0; bottom: 0; height: 80px;
+    position: absolute; left: 0; right: 0; bottom: 0; height: 76px;
     background: #3d2410; color: #faecc6;
     display: flex; align-items: center; overflow: hidden;
     border-top: 4px double #8b5a2b;
   }
   .ticker .stamp {
-    flex: 0 0 auto; padding: 0 24px; height: 100%;
+    flex: 0 0 auto; padding: 0 28px; height: 100%;
     background: #8b5a2b; color: #faecc6; display: flex; align-items: center;
-    font-family: 'Cormorant Garamond', serif; font-weight: 700; letter-spacing: .25em; font-size: 14px;
+    font-family: 'Cormorant Garamond', serif; font-weight: 700; letter-spacing: .25em; font-size: 18px;
   }
-  .ticker .scroll { flex: 1; font-family: 'Cormorant Garamond', serif; font-size: 28px; font-style: italic; padding-left: 28px; white-space: nowrap; }
-
-  /* CLOCK — small inset, top-right corner ornament */
-  .clock {
-    position: absolute; top: 80px; right: 80px; width: 130px; text-align: center;
-    border: 1px solid #8b5a2b; padding: 10px;
-    background: #fff8e1;
-    box-shadow: inset 0 0 0 4px #faecc6, inset 0 0 0 5px #8b5a2b;
-  }
-  .clock .t { font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 36px; line-height: 1; color: #3d2410; }
-  .clock .lbl { font-family: 'Italianno', cursive; font-size: 22px; color: #8b5a2b; line-height: 1; }
-
-  /* LOGO — small, top-left */
-  .logo {
-    position: absolute; top: 80px; left: 80px; width: 130px; height: 130px;
-    background: #fff8e1; border: 1px solid #8b5a2b; border-radius: 50%;
-    box-shadow: inset 0 0 0 6px #faecc6, inset 0 0 0 7px #8b5a2b;
-    display: flex; align-items: center; justify-content: center; font-size: 60px;
-  }
+  .ticker .scroll { flex: 1; font-family: 'Cormorant Garamond', serif; font-size: 38px; font-style: italic; padding-left: 28px; white-space: nowrap; }
 </style>
 </head>
 <body>
-<div class="stage">
-  <div class="spine"></div>
-  <div class="frame"></div>
+<div class="book">
 
-  <div class="corner tl"><svg viewBox="0 0 80 80"><path d="M2 2 Q 40 2 40 40 M2 2 Q 2 40 40 40 M10 10 Q 30 10 30 30 M10 10 Q 10 30 30 30"/></svg></div>
-  <div class="corner tr"><svg viewBox="0 0 80 80"><path d="M2 2 Q 40 2 40 40 M2 2 Q 2 40 40 40 M10 10 Q 30 10 30 30 M10 10 Q 10 30 30 30"/></svg></div>
-  <div class="corner bl"><svg viewBox="0 0 80 80"><path d="M2 2 Q 40 2 40 40 M2 2 Q 2 40 40 40 M10 10 Q 30 10 30 30 M10 10 Q 10 30 30 30"/></svg></div>
-  <div class="corner br"><svg viewBox="0 0 80 80"><path d="M2 2 Q 40 2 40 40 M2 2 Q 2 40 40 40 M10 10 Q 30 10 30 30 M10 10 Q 10 30 30 30"/></svg></div>
+  <div class="pageFrames"><div class="left"></div><div class="right"></div></div>
+
+  <div class="corner tl"><svg viewBox="0 0 70 70"><path d="M2 2 Q 35 2 35 35 M2 2 Q 2 35 35 35 M10 10 Q 26 10 26 26 M10 10 Q 10 26 26 26"/></svg></div>
+  <div class="corner tr"><svg viewBox="0 0 70 70"><path d="M2 2 Q 35 2 35 35 M2 2 Q 2 35 35 35 M10 10 Q 26 10 26 26 M10 10 Q 10 26 26 26"/></svg></div>
+  <div class="corner bl"><svg viewBox="0 0 70 70"><path d="M2 2 Q 35 2 35 35 M2 2 Q 2 35 35 35 M10 10 Q 26 10 26 26 M10 10 Q 10 26 26 26"/></svg></div>
+  <div class="corner br"><svg viewBox="0 0 70 70"><path d="M2 2 Q 35 2 35 35 M2 2 Q 2 35 35 35 M10 10 Q 26 10 26 26 M10 10 Q 10 26 26 26"/></svg></div>
 
   <div class="logo">📖</div>
+  <div class="clock"><div>12:34 PM</div><div class="lbl">~ noon hour ~</div></div>
 
-  <div class="header">
-    <div class="chapter">Chapter Twelve</div>
-    <h1>Today's Menu</h1>
-    <div class="sub">in which the kitchen serves a feast</div>
-    <div class="rule"><span class="line"></span><span class="orn">❦</span><span class="line"></span></div>
-  </div>
+  <div class="pages">
+    <div class="header">
+      <div class="chapter">Chapter Twelve</div>
+      <h1>Today's Menu</h1>
+      <div class="sub">in which the kitchen serves a feast</div>
+    </div>
 
-  <div class="clock"><div class="t">12:34 PM</div><div class="lbl">~ noon hour ~</div></div>
-
-  <div class="vignette">
-    <div class="scene"><div class="hero">🍝</div></div>
-    <div class="caption">— from the kitchen —</div>
-  </div>
-
-  <div class="panels">
-    <div class="panel">
-      <div class="dropcap">C</div>
-      <div class="body">
-        <h3>Chef Salad</h3>
-        <p>Romaine, grilled chicken, cherry tomatoes, shaved cheese, ranch.</p>
-        <div class="badges"><span class="badge">GLUTEN-FREE</span><span class="badge">DAIRY</span></div>
+    <div class="vignette">
+      <div class="frame"><div class="hero">🍝</div></div>
+      <div class="caption">— from the kitchen —</div>
+    </div>
+    <div class="spine"></div>
+    <div class="panels">
+      <div class="panel">
+        <div class="dropcap">C</div>
+        <div class="body">
+          <h3>Chef Salad</h3>
+          <p>Romaine, grilled chicken, tomatoes, cheese, ranch.</p>
+          <div class="badges"><span class="badge">GLUTEN-FREE</span><span class="badge">DAIRY</span></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="dropcap">R</div>
+        <div class="body">
+          <h3>Roasted Veggies</h3>
+          <p>Carrots, zucchini, peppers — olive oil &amp; sea salt.</p>
+          <div class="badges"><span class="badge">VEGAN</span><span class="badge">GLUTEN-FREE</span></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="dropcap">F</div>
+        <div class="body">
+          <h3>Fruit Cup</h3>
+          <p>Watermelon, pineapple, fresh summer berries.</p>
+          <div class="badges"><span class="badge">VEGAN</span><span class="badge">GLUTEN-FREE</span></div>
+        </div>
       </div>
     </div>
-    <div class="panel">
-      <div class="dropcap">R</div>
-      <div class="body">
-        <h3>Roasted Veggies</h3>
-        <p>Carrots, zucchini, bell peppers — with olive oil &amp; sea salt.</p>
-        <div class="badges"><span class="badge">VEGAN</span><span class="badge">GLUTEN-FREE</span></div>
+
+    <div class="footer">
+      <div class="special">
+        <div class="lbl">A note from the cook —</div>
+        <div class="msg">Pizza Friday returns at last! Cheese &amp; pepperoni in line two.</div>
       </div>
-    </div>
-    <div class="panel">
-      <div class="dropcap">F</div>
-      <div class="body">
-        <h3>Fruit Cup</h3>
-        <p>Seasonal fresh fruit — watermelon, pineapple, summer berries.</p>
-        <div class="badges"><span class="badge">VEGAN</span><span class="badge">GLUTEN-FREE</span></div>
+      <div class="ctd">
+        <div class="lbl">until next meal</div>
+        <div class="num">12</div>
+        <div class="unit">days hence</div>
       </div>
     </div>
   </div>
 
-  <div class="footRow">
-    <div class="special">
-      <div class="lbl">A note from the cook —</div>
-      <div class="msg">Pizza Friday returns at last! Cheese &amp; pepperoni await in line two.</div>
-    </div>
-    <div class="ctd">
-      <div class="lbl">until next meal</div>
-      <div class="num">12</div>
-      <div class="unit">days hence</div>
-    </div>
-  </div>
+  <div class="pgnum l">— xii —</div>
+  <div class="pgnum r">— xiii —</div>
 
   <div class="ticker">
     <div class="stamp">FROM THE KITCHEN</div>

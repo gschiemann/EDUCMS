@@ -9,8 +9,22 @@ config({ path: resolve(__dirname, '..', '..', '..', '.env') });
 import './sentry';
 
 import { NestFactory } from '@nestjs/core';
+import { Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { WsAdapter } from '@nestjs/platform-ws';
+import { PrismaService } from './prisma/prisma.service';
+
+// Last-resort crash guards. ioredis, Prisma, and passport-saml can all
+// surface unhandled rejections on network flaps; we'd rather log than
+// let Railway restart the container mid-demo.
+process.on('unhandledRejection', (reason) => {
+  // eslint-disable-next-line no-console
+  console.error('[unhandledRejection]', reason);
+});
+process.on('uncaughtException', (err) => {
+  // eslint-disable-next-line no-console
+  console.error('[uncaughtException]', err);
+});
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const helmet = require('helmet');
@@ -88,6 +102,31 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-CSRF-Token'],
   });
 
-  await app.listen(process.env.PORT ?? 8080, '0.0.0.0');
+  // Enable graceful shutdown — Railway sends SIGTERM on redeploy; without this,
+  // in-flight requests are truncated and the next deploy races a half-dead pod.
+  app.enableShutdownHooks();
+
+  const port = Number(process.env.PORT ?? 8080);
+  await app.listen(port, '0.0.0.0');
+
+  const logger = new Logger('Bootstrap');
+  logger.log(`API listening on 0.0.0.0:${port}`);
+
+  // Warm the Prisma connection pool before declaring the container ready.
+  // Supabase pgbouncer + cold Prisma client can add 1.5s to the first query;
+  // doing this here keeps the first real user request fast and surfaces any
+  // DATABASE_URL misconfiguration in the boot log instead of a 500 later.
+  try {
+    const prisma = app.get(PrismaService);
+    const t0 = Date.now();
+    await prisma.client.$queryRaw`SELECT 1`;
+    logger.log(`Prisma pool warm (${Date.now() - t0}ms)`);
+  } catch (e) {
+    logger.warn(`Prisma warm-up failed (continuing anyway): ${(e as Error).message}`);
+  }
 }
-bootstrap();
+bootstrap().catch((err) => {
+  // eslint-disable-next-line no-console
+  console.error('[bootstrap] fatal', err);
+  process.exit(1);
+});

@@ -202,6 +202,28 @@ Each widget can have a `theme` variant in config (e.g., Sunny Meadow theme for c
 - **Async Patterns:** RxJS in NestJS, async/await in Next.js
 - **Secrets:** Use env vars, never hardcode. .env is gitignored.
 
+## Deploy reliability (Railway + Vercel)
+
+Every Railway redeploy must come up without hand-holding. Below is how to verify and recover.
+
+**Health endpoints** (all under `/api/v1`):
+- `GET /health` — liveness. Always 200 (even if DB/Redis degraded). Railway healthcheck uses this. Returns `{ status, db, redis, uptime, version, timestamp }`.
+- `GET /health/ready` — readiness. 503 when DB unreachable. Use for monitoring, NOT Railway.
+- `GET /health/emergency-path` — verifies DB + WS signer chain before a drill.
+
+**Verify a deploy succeeded:**
+1. `curl https://<railway-api>/api/v1/health` returns 200 with `db:"ok"`.
+2. Railway dashboard: deployment shows "Healthy" (green). `healthcheckPath` is set in `railway.json`.
+3. Vercel cron `/api/cron/keepwarm` logs a 200 every 5 minutes — Vercel → Logs.
+
+**If the demo breaks:**
+- API unreachable → Railway → Deployments → Restart latest. Auto-restart covers most blips (10 retries, 300s window).
+- UI says "Can't reach the server" → check `NEXT_PUBLIC_API_URL` in Vercel env. If unset the frontend falls back to localhost — set it and redeploy web.
+- DB errors in Railway logs → Supabase pooler hiccup. Boot warm-up logs `Prisma pool warm (Nms)`; if consistently >2s, check `DATABASE_URL` / `DIRECT_URL` split.
+- Redis missing → API boots anyway (HTTP-polling realtime fallback). Emergency trigger still works.
+
+**Never do:** weaken the 10-retry restart policy, add DB checks to liveness, or remove the 7s Redis hard-cap in `redis.service.ts`. Those three keep Railway from pod-thrashing.
+
 ## Backup & Rollback
 
 Refer to `docs/BACKUP_AND_ROLLBACK.md` for full procedures. Summary:

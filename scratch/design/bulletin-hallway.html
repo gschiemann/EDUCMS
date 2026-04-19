@@ -21,8 +21,12 @@
       radial-gradient(circle at 86% 92%, #a56a3e 0 5px, transparent 6px),
       repeating-radial-gradient(circle at 50% 50%, #a56a3e 0 1px, transparent 2px 5px),
       linear-gradient(135deg, #c79268 0%, #b07442 50%, #a56a3e 100%);
-    color: #2a1808;
-    font-family: 'Indie Flower', cursive;
+    color: #2a1808; font-family: 'Indie Flower', cursive;
+    display: grid;
+    grid-template-columns: 1.6fr 1fr;
+    grid-template-rows: auto 1fr auto auto;
+    gap: 28px;
+    padding: 56px 80px 12px;
   }
   .frame {
     position: absolute; inset: 14px;
@@ -32,165 +36,162 @@
     pointer-events: none;
   }
   .pin {
-    position: absolute; width: 22px; height: 22px; border-radius: 50%;
+    position: absolute; width: 26px; height: 26px; border-radius: 50%;
     background: radial-gradient(circle at 30% 30%, #ff8a8a, #c0392b 60%, #5a0e0e);
-    box-shadow: 0 3px 4px rgba(0,0,0,.5), inset -2px -2px 3px rgba(0,0,0,.3), inset 2px 2px 3px rgba(255,255,255,.4);
+    box-shadow: 0 4px 5px rgba(0,0,0,.55), inset -2px -2px 3px rgba(0,0,0,.3), inset 2px 2px 3px rgba(255,255,255,.4);
     z-index: 5;
   }
   .pin.blue   { background: radial-gradient(circle at 30% 30%, #93c5fd, #1d4ed8 60%, #0c1f5a); }
   .pin.green  { background: radial-gradient(circle at 30% 30%, #86efac, #15803d 60%, #0c3a1a); }
   .pin.yellow { background: radial-gradient(circle at 30% 30%, #fde68a, #d97706 60%, #4a2a08); }
 
-  /* HEADER — printed banner pinned across the top */
+  /* HEADER */
   .banner {
-    position: absolute; top: 60px; left: 100px; right: 100px; height: 130px;
-    background: #fff; padding: 22px 32px;
+    grid-column: 1 / -1;
+    background: #fff; padding: 22px 36px;
     box-shadow: 0 8px 22px rgba(0,0,0,.45);
-    border-top: 8px solid #b91c1c;
+    border-top: 10px solid #b91c1c;
     transform: rotate(-.4deg);
     text-align: center;
+    position: relative;
   }
-  .banner h1 { font-family: 'Permanent Marker', cursive; font-size: 64px; line-height: 1; margin: 0; color: #1f2937; letter-spacing: .03em; }
-  .banner .sub { font-family: 'Indie Flower'; font-size: 22px; color: #57534e; margin-top: 6px; }
+  .banner h1 { font-family: 'Permanent Marker', cursive; font-size: 84px; line-height: 1; margin: 0; color: #1f2937; letter-spacing: .03em; }
+  .banner .sub { font-family: 'Indie Flower'; font-size: 30px; color: #57534e; margin-top: 8px; }
 
-  /* LEFT — schedule on a pinned printer-paper sheet */
+  /* LEFT — schedule on a printed legal pad */
   .schedule {
-    position: absolute; left: 100px; top: 220px; width: 56%; max-width: 920px; height: 540px;
     background: #fffefa;
     box-shadow: 0 12px 28px rgba(0,0,0,.45);
     transform: rotate(-.4deg);
     padding: 22px 32px;
-    /* legal-pad lines */
     background-image:
-      linear-gradient(to right, transparent 60px, rgba(220,38,38,.3) 60px 61px, transparent 61px),
-      repeating-linear-gradient(to bottom, transparent 0 38px, rgba(59,130,246,.18) 38px 39px);
-    background-position: 0 50px;
+      linear-gradient(to right, transparent 70px, rgba(220,38,38,.35) 70px 73px, transparent 73px),
+      repeating-linear-gradient(to bottom, transparent 0 56px, rgba(59,130,246,.18) 56px 57px);
+    background-position: 0 60px;
+    position: relative;
+    display: flex; flex-direction: column;
+    overflow: hidden;
   }
   .schedule .stamp {
-    position: absolute; top: 12px; right: 22px; transform: rotate(8deg);
-    font-family: 'Special Elite'; font-size: 11px; letter-spacing: .25em; color: #fef3c7;
-    background: #b91c1c; padding: 4px 12px;
-    box-shadow: 0 2px 4px rgba(0,0,0,.3);
+    position: absolute; top: 14px; right: 24px; transform: rotate(8deg);
+    font-family: 'Special Elite'; font-size: 16px; letter-spacing: .25em; color: #fef3c7;
+    background: #b91c1c; padding: 6px 14px; box-shadow: 0 2px 4px rgba(0,0,0,.3); z-index: 1;
   }
   .schedule h2 {
-    font-family: 'Permanent Marker', cursive; font-size: 38px; color: #1f2937; line-height: 1; margin: 0 0 6px;
-    border-bottom: 3px double #1f2937; padding-bottom: 8px;
+    font-family: 'Permanent Marker', cursive; font-size: 50px; color: #1f2937; line-height: 1; margin: 0 0 8px;
+    border-bottom: 3px double #1f2937; padding-bottom: 10px;
   }
+  .schedule .rows { flex: 1; display: flex; flex-direction: column; padding-top: 6px; }
   .schedule .row {
-    display: flex; align-items: baseline; gap: 14px; height: 50px; padding-left: 10px;
+    display: flex; align-items: center; gap: 18px; padding: 6px 8px;
+    flex: 1 1 0; min-height: 0;
   }
   .schedule .num {
-    width: 40px; flex: 0 0 40px;
-    font-family: 'Permanent Marker', cursive; font-size: 24px; color: #b91c1c; line-height: 1;
+    width: 50px; flex: 0 0 50px;
+    font-family: 'Permanent Marker', cursive; font-size: 36px; color: #b91c1c; line-height: 1; text-align: center;
   }
   .schedule .time {
-    width: 130px; font-family: 'Special Elite'; font-size: 14px; color: #44403c; letter-spacing: .05em;
+    width: 180px; flex: 0 0 180px;
+    font-family: 'Special Elite'; font-size: 18px; color: #44403c; letter-spacing: .04em;
   }
-  .schedule .name { flex: 1; font-family: 'Indie Flower'; font-size: 24px; color: #1f2937; }
+  .schedule .name { flex: 1; font-family: 'Indie Flower'; font-size: 32px; color: #1f2937; line-height: 1.1; }
   .schedule .room {
-    font-family: 'Special Elite'; font-size: 13px; color: #44403c;
-    background: #fef3c7; padding: 2px 8px; border: 1px solid #d97706;
+    font-family: 'Special Elite'; font-size: 16px; color: #44403c;
+    background: #fef3c7; padding: 4px 10px; border: 1px solid #d97706;
   }
   .schedule .row.hl {
-    background: rgba(254,240,138,.6);
-    margin: 0 -32px; padding: 0 32px 0 42px;
-    border-left: 6px solid #b91c1c;
+    background: rgba(254,240,138,.65);
+    margin: 0 -32px; padding: 6px 32px 6px 40px;
+    border-left: 8px solid #b91c1c;
   }
 
-  /* RIGHT TOP — Attendance pinned manila card */
+  /* RIGHT TOP — Attendance manila card */
+  .right { display: flex; flex-direction: column; gap: 22px; }
   .attendance {
-    position: absolute; right: 100px; top: 220px; width: 480px; height: 280px;
     background: #fef3c7;
     box-shadow: 0 12px 24px rgba(0,0,0,.45);
     transform: rotate(2deg);
     padding: 18px 22px;
-    border-top: 12px solid #d97706;
-    position: absolute;
+    border-top: 14px solid #d97706;
+    position: relative;
+    flex: 2;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
   }
   .attendance::after {
-    content: ''; position: absolute; top: -12px; left: 0; width: 80px; height: 12px;
-    background: #d97706;
-    border-radius: 6px 6px 0 0;
-    /* manila tab */
+    content: ''; position: absolute; top: -14px; left: 0; width: 90px; height: 14px;
+    background: #d97706; border-radius: 6px 6px 0 0;
   }
-  .attendance .lbl {
-    font-family: 'Special Elite'; font-size: 14px; letter-spacing: .25em; color: #78350f;
-  }
-  .attendance .pct { display: flex; align-items: baseline; justify-content: center; margin-top: 4px; }
-  .attendance .pct b { font-family: 'Permanent Marker', cursive; font-size: 130px; color: #15803d; line-height: 1; }
-  .attendance .pct sup { font-family: 'Permanent Marker', cursive; font-size: 60px; color: #15803d; }
-  .attendance .day {
-    text-align: center; font-family: 'Indie Flower'; font-size: 22px; color: #44403c;
-  }
+  .attendance .lbl { font-family: 'Special Elite'; font-size: 18px; letter-spacing: .25em; color: #78350f; }
+  .attendance .pct { display: flex; align-items: baseline; }
+  .attendance .pct b { font-family: 'Permanent Marker', cursive; font-size: 200px; color: #15803d; line-height: 1; }
+  .attendance .pct sup { font-family: 'Permanent Marker', cursive; font-size: 90px; color: #15803d; }
+  .attendance .day { font-family: 'Indie Flower'; font-size: 28px; color: #44403c; }
 
-  /* RIGHT MIDDLE — Clock & Weather as paired pinned cards */
-  .stickerRow {
-    position: absolute; right: 100px; top: 520px; width: 480px; display: flex; gap: 18px;
-  }
-  .stickerRow > div {
-    flex: 1; background: #fff; padding: 12px;
+  /* RIGHT BOTTOM — clock + weather */
+  .miniRow { display: flex; gap: 16px; flex: 1; }
+  .miniRow > div {
+    flex: 1; background: #fff; padding: 16px 12px;
     box-shadow: 0 6px 14px rgba(0,0,0,.35);
     text-align: center;
     position: relative;
+    display: flex; flex-direction: column; justify-content: center;
   }
-  .stickerRow .clock { transform: rotate(-2deg); border-top: 6px solid #2563eb; }
-  .stickerRow .weather { transform: rotate(2deg); border-top: 6px solid #f59e0b; }
-  .stickerRow .t { font-family: 'Permanent Marker', cursive; font-size: 48px; line-height: 1; color: #1f2937; }
-  .stickerRow .lbl { font-family: 'Indie Flower'; font-size: 18px; color: #57534e; }
+  .miniRow .clock { transform: rotate(-2deg); border-top: 8px solid #2563eb; }
+  .miniRow .weather { transform: rotate(2deg); border-top: 8px solid #f59e0b; }
+  .miniRow .t { font-family: 'Permanent Marker', cursive; font-size: 64px; line-height: 1; color: #1f2937; }
+  .miniRow .lbl { font-family: 'Indie Flower'; font-size: 24px; color: #57534e; }
 
-  /* BOTTOM — Announcement memo + Countdown ticket */
-  .row {
-    position: absolute; left: 100px; right: 100px; bottom: 110px; display: flex; gap: 22px; align-items: stretch;
-  }
-
+  /* BOTTOM */
   .memo {
-    flex: 1; padding: 16px 24px;
+    grid-column: 1; padding: 22px 32px;
     background: #fef9c3;
     box-shadow: 0 6px 14px rgba(0,0,0,.3);
     transform: rotate(-1.2deg);
     position: relative;
+    display: flex; flex-direction: column; justify-content: center;
   }
   .memo::before {
-    content: 'ANNOUNCEMENT'; position: absolute; top: 8px; left: 16px;
-    font-family: 'Special Elite'; font-size: 12px; letter-spacing: .25em; color: #92400e;
+    content: 'ANNOUNCEMENT'; position: absolute; top: 10px; left: 18px;
+    font-family: 'Special Elite'; font-size: 16px; letter-spacing: .25em; color: #92400e;
   }
   .memo::after {
-    content: ''; position: absolute; left: 0; right: 0; top: 30px; height: 2px;
+    content: ''; position: absolute; left: 0; right: 0; top: 38px; height: 2px;
     background: repeating-linear-gradient(90deg, #ca8a04 0 8px, transparent 8px 14px);
   }
-  .memo .msg { font-family: 'Permanent Marker', cursive; font-size: 28px; color: #b91c1c; line-height: 1.05; margin-top: 36px; }
+  .memo .msg { font-family: 'Permanent Marker', cursive; font-size: 44px; color: #b91c1c; line-height: 1.05; margin-top: 44px; }
 
   .ticket {
-    flex: 0 0 280px; background: #fff; padding: 14px 18px;
+    grid-column: 2;
+    background: #fff; padding: 18px 22px;
     box-shadow: 0 6px 14px rgba(0,0,0,.3);
     transform: rotate(2deg);
     text-align: center;
-    border-left: 6px dashed #2563eb;
+    border-left: 8px dashed #2563eb;
     position: relative;
+    display: flex; flex-direction: column; justify-content: center;
   }
   .ticket::before, .ticket::after {
-    content: ''; position: absolute; top: 50%; width: 16px; height: 16px; border-radius: 50%; background: #b88251; transform: translateY(-50%);
+    content: ''; position: absolute; top: 50%; width: 18px; height: 18px; border-radius: 50%; background: #b88251; transform: translateY(-50%);
   }
-  .ticket::before { left: -8px; }
-  .ticket::after  { right: -8px; }
-  .ticket .lbl  { font-family: 'Special Elite'; font-size: 11px; letter-spacing: .2em; color: #57534e; }
-  .ticket .num  { font-family: 'Permanent Marker', cursive; font-size: 56px; line-height: 1; color: #2563eb; }
-  .ticket .unit { font-family: 'Indie Flower'; font-size: 18px; color: #57534e; }
+  .ticket::before { left: -9px; } .ticket::after  { right: -9px; }
+  .ticket .lbl  { font-family: 'Special Elite'; font-size: 16px; letter-spacing: .2em; color: #57534e; }
+  .ticket .num  { font-family: 'Permanent Marker', cursive; font-size: 90px; line-height: 1; color: #2563eb; }
+  .ticket .unit { font-family: 'Indie Flower'; font-size: 26px; color: #57534e; }
 
-  /* Ticker */
   .ticker {
-    position: absolute; left: 0; right: 0; bottom: 0; height: 80px;
+    grid-column: 1 / -1;
+    margin: 0 -80px;
     background: #fff;
-    border-top: 4px solid #1f2937;
-    display: flex; align-items: center; overflow: hidden;
+    border-top: 5px solid #1f2937;
+    display: flex; align-items: center; overflow: hidden; height: 80px;
     box-shadow: 0 -4px 14px rgba(0,0,0,.2);
   }
   .ticker .stamp {
-    flex: 0 0 auto; padding: 0 22px; height: 100%;
+    flex: 0 0 auto; padding: 0 28px; height: 100%;
     background: #1f2937; color: #fef3c7; display: flex; align-items: center;
-    font-family: 'Special Elite'; letter-spacing: .25em; font-size: 14px;
+    font-family: 'Special Elite'; letter-spacing: .25em; font-size: 20px;
   }
-  .ticker .scroll { flex: 1; font-family: 'Indie Flower'; font-size: 28px; color: #44403c; padding-left: 28px; white-space: nowrap; }
+  .ticker .scroll { flex: 1; font-family: 'Indie Flower'; font-size: 38px; color: #44403c; padding-left: 28px; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -200,47 +201,48 @@
   <div class="banner">
     <h1>LEARN · GROW · SHINE</h1>
     <div class="sub">~ every day a new adventure ~</div>
-    <div class="pin" style="top:-10px;left:-10px;"></div>
-    <div class="pin blue" style="top:-10px;right:-10px;"></div>
+    <div class="pin" style="top:-13px;left:-13px;"></div>
+    <div class="pin blue" style="top:-13px;right:-13px;"></div>
   </div>
 
   <div class="schedule">
     <div class="stamp">~ TODAY ~</div>
     <h2>Today's Schedule</h2>
-    <div class="row"><div class="num">1</div><div class="time">8:15 — 9:00</div><div class="name">Homeroom + Morning Meeting</div><div class="room">RM 12</div></div>
-    <div class="row"><div class="num">2</div><div class="time">9:05 — 9:55</div><div class="name">Math · Mrs. Chen</div><div class="room">RM 14</div></div>
-    <div class="row hl"><div class="num">3</div><div class="time">10:00 — 10:50</div><div class="name">Reading Workshop · Mrs. Hill</div><div class="room">RM 12</div></div>
-    <div class="row"><div class="num">4</div><div class="time">11:00 — 11:45</div><div class="name">Science Lab — STATES OF MATTER</div><div class="room">RM 21</div></div>
-    <div class="row"><div class="num">5</div><div class="time">11:50 — 12:30</div><div class="name">Lunch + Recess</div><div class="room">CAFE</div></div>
-    <div class="row"><div class="num">6</div><div class="time">12:35 — 1:25</div><div class="name">Art with Ms. Greene</div><div class="room">RM 9</div></div>
-    <div class="row"><div class="num">7</div><div class="time">1:30 — 2:15</div><div class="name">PE — Field Day prep</div><div class="room">GYM</div></div>
-    <div class="pin yellow" style="top:-10px;left:50%;transform:translateX(-50%);"></div>
-  </div>
-
-  <div class="attendance">
-    <div class="lbl">ATTENDANCE TODAY</div>
-    <div class="pct"><b>97</b><sup>%</sup></div>
-    <div class="day">Mon · April 19</div>
-    <div class="pin green" style="top:-10px;right:14px;"></div>
-  </div>
-
-  <div class="stickerRow">
-    <div class="clock"><div class="t">12:34 PM</div><div class="lbl">~ time check ~</div><div class="pin blue" style="top:-10px;left:50%;transform:translateX(-50%);"></div></div>
-    <div class="weather"><div class="t">42°</div><div class="lbl">~ sunny + crisp ~</div><div class="pin yellow" style="top:-10px;left:50%;transform:translateX(-50%);"></div></div>
-  </div>
-
-  <div class="row">
-    <div class="memo">
-      <div class="msg">Assembly in the gym Friday at 2 PM — all classes welcome!</div>
-      <div class="pin" style="top:-10px;left:14px;"></div>
-      <div class="pin yellow" style="top:-10px;right:14px;"></div>
+    <div class="rows">
+      <div class="row"><div class="num">1</div><div class="time">8:15 — 9:00</div><div class="name">Homeroom + Morning Meeting</div><div class="room">RM 12</div></div>
+      <div class="row"><div class="num">2</div><div class="time">9:05 — 9:55</div><div class="name">Math · Mrs. Chen</div><div class="room">RM 14</div></div>
+      <div class="row hl"><div class="num">3</div><div class="time">10:00 — 10:50</div><div class="name">Reading · Mrs. Hill</div><div class="room">RM 12</div></div>
+      <div class="row"><div class="num">4</div><div class="time">11:00 — 11:45</div><div class="name">Science Lab — STATES OF MATTER</div><div class="room">RM 21</div></div>
+      <div class="row"><div class="num">5</div><div class="time">11:50 — 12:30</div><div class="name">Lunch + Recess</div><div class="room">CAFE</div></div>
+      <div class="row"><div class="num">6</div><div class="time">12:35 — 1:25</div><div class="name">Art with Ms. Greene</div><div class="room">RM 9</div></div>
+      <div class="row"><div class="num">7</div><div class="time">1:30 — 2:15</div><div class="name">PE — Field Day prep</div><div class="room">GYM</div></div>
     </div>
-    <div class="ticket">
-      <div class="lbl">FIELD DAY IN</div>
-      <div class="num">8</div>
-      <div class="unit">days</div>
-      <div class="pin blue" style="top:-10px;left:50%;transform:translateX(-50%);"></div>
+    <div class="pin yellow" style="top:-13px;left:50%;transform:translateX(-50%);"></div>
+  </div>
+
+  <div class="right">
+    <div class="attendance">
+      <div class="lbl">ATTENDANCE TODAY</div>
+      <div class="pct"><b>97</b><sup>%</sup></div>
+      <div class="day">Mon · April 19</div>
+      <div class="pin green" style="top:-13px;right:18px;"></div>
     </div>
+    <div class="miniRow">
+      <div class="clock"><div class="t">12:34 PM</div><div class="lbl">~ time check ~</div><div class="pin blue" style="top:-13px;left:50%;transform:translateX(-50%);"></div></div>
+      <div class="weather"><div class="t">42°</div><div class="lbl">~ sunny + crisp ~</div><div class="pin yellow" style="top:-13px;left:50%;transform:translateX(-50%);"></div></div>
+    </div>
+  </div>
+
+  <div class="memo">
+    <div class="msg">Assembly in the gym Friday at 2 PM — all classes welcome!</div>
+    <div class="pin" style="top:-13px;left:18px;"></div>
+    <div class="pin yellow" style="top:-13px;right:18px;"></div>
+  </div>
+  <div class="ticket">
+    <div class="lbl">FIELD DAY IN</div>
+    <div class="num">8</div>
+    <div class="unit">days</div>
+    <div class="pin blue" style="top:-13px;left:50%;transform:translateX(-50%);"></div>
   </div>
 
   <div class="ticker">

@@ -2,11 +2,28 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "DOCKERFILE",
-    "dockerfilePath": "Dockerfile"
+    "dockerfilePath": "Dockerfile",
+    "watchPatterns": [
+      "apps/api/**",
+      "packages/database/**",
+      "packages/api-types/**",
+      "packages/auth-core/**",
+      "packages/ws-events/**",
+      "Dockerfile",
+      "railway.json",
+      "package.json",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+      "turbo.json"
+    ]
   },
   "deploy": {
     "startCommand": "node apps/api/dist/main.js",
+    "healthcheckPath": "/api/v1/health",
+    "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 3
+    "restartPolicyMaxRetries": 10,
+    "numReplicas": 1,
+    "sleepApplication": false
   }
 }

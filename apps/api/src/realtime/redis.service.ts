@@ -10,29 +10,47 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   private connected = false;
 
   constructor() {
-    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+    // Skip Redis entirely when explicitly disabled OR when no URL is set in production.
+    // Railway deploys without a Redis plugin should boot cleanly and fall through
+    // to HTTP-polling realtime — we do NOT want a missing REDIS_URL to crash the API.
+    const redisUrl = process.env.REDIS_URL;
+    if (!redisUrl || process.env.REDIS_DISABLED === 'true') {
+      this.logger.warn(
+        `Redis disabled (REDIS_URL ${redisUrl ? 'present but REDIS_DISABLED=true' : 'not set'}) — running with HTTP-polling realtime fallback`,
+      );
+      return;
+    }
+
     try {
-      this.publisher = new Redis(redisUrl, {
+      const baseOpts = {
         maxRetriesPerRequest: 3,
-        retryStrategy: (times) => {
+        connectTimeout: 5000,
+        enableOfflineQueue: false,
+        lazyConnect: true,
+        retryStrategy: (times: number) => {
           if (times > 3) {
             this.logger.warn('Redis unavailable — running without realtime features');
             return null; // Stop retrying
           }
           return Math.min(times * 200, 2000);
         },
-        lazyConnect: true,
+        reconnectOnError: () => false,
+      };
+      this.publisher = new Redis(redisUrl, baseOpts);
+      this.subscriber = new Redis(redisUrl, baseOpts);
+
+      // Swallow error events — ioredis emits 'error' on every reconnect attempt,
+      // and an unhandled 'error' event crashes the Node process.
+      this.publisher.on('error', (err) => {
+        this.logger.debug(`Redis publisher error (non-fatal): ${err.message}`);
       });
-      this.subscriber = new Redis(redisUrl, {
-        maxRetriesPerRequest: 3,
-        retryStrategy: (times) => {
-          if (times > 3) return null;
-          return Math.min(times * 200, 2000);
-        },
-        lazyConnect: true,
+      this.subscriber.on('error', (err) => {
+        this.logger.debug(`Redis subscriber error (non-fatal): ${err.message}`);
       });
     } catch (e) {
       this.logger.warn('Redis client creation failed — running without realtime features');
+      this.publisher = null;
+      this.subscriber = null;
     }
   }
 
@@ -43,21 +61,33 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     if (!this.publisher || !this.subscriber) return;
 
-    try {
-      await this.publisher.connect();
-      await this.subscriber.connect();
-      this.connected = true;
-      this.logger.log('Redis connected successfully');
+    // Absolute wall-clock cap on Redis bring-up. Boot must never hang
+    // on Redis — we'd rather ship realtime over HTTP polling than
+    // fail Railway's healthcheck window because ioredis is retrying.
+    const hardCap = new Promise<void>((resolve) => setTimeout(resolve, 7000));
 
-      this.subscriber.on('message', this.handleRedisMessage.bind(this));
-      await this.subscriber.psubscribe('tenant:*', 'group:*', 'device:*');
+    const bringUp = (async () => {
+      try {
+        await this.publisher!.connect();
+        await this.subscriber!.connect();
+        this.connected = true;
+        this.logger.log('Redis connected successfully');
 
-      this.subscriber.on('pmessage', (_pattern, channel, message) => {
-        this.handleRedisMessage(channel, message);
-      });
-    } catch (e) {
-      this.logger.warn('Redis connection failed — running without realtime features');
-      this.connected = false;
+        this.subscriber!.on('message', this.handleRedisMessage.bind(this));
+        await this.subscriber!.psubscribe('tenant:*', 'group:*', 'device:*');
+
+        this.subscriber!.on('pmessage', (_pattern, channel, message) => {
+          this.handleRedisMessage(channel, message);
+        });
+      } catch (e) {
+        this.logger.warn('Redis connection failed — running without realtime features');
+        this.connected = false;
+      }
+    })();
+
+    await Promise.race([bringUp, hardCap]);
+    if (!this.connected) {
+      this.logger.warn('Redis did not come up within 7s — proceeding with HTTP-polling fallback');
     }
   }
 

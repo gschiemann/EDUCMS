@@ -7,7 +7,6 @@
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: #1c0e02; }
-  /* Realistic cork using layered radial-gradient flecks */
   .stage {
     width: 100vw; height: 100vh; position: relative; overflow: hidden;
     background-color: #b88251;
@@ -20,14 +19,15 @@
       radial-gradient(circle at 71% 71%, #8e5828 0 4px, transparent 5px),
       radial-gradient(circle at 41% 88%, #c79268 0 3px, transparent 4px),
       radial-gradient(circle at 86% 92%, #a56a3e 0 5px, transparent 6px),
-      radial-gradient(circle at 6% 92%, #b07442 0 3px, transparent 4px),
-      radial-gradient(circle at 95% 50%, #d6a072 0 3px, transparent 4px),
       repeating-radial-gradient(circle at 50% 50%, #a56a3e 0 1px, transparent 2px 5px),
       linear-gradient(135deg, #c79268 0%, #b07442 50%, #a56a3e 100%);
-    color: #2a1808;
-    font-family: 'Indie Flower', cursive;
+    color: #2a1808; font-family: 'Indie Flower', cursive;
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    grid-template-rows: auto 1fr auto auto;
+    gap: 32px;
+    padding: 56px 80px 12px;
   }
-  /* Wooden frame */
   .frame {
     position: absolute; inset: 14px;
     border: 22px solid;
@@ -35,154 +35,150 @@
     box-shadow: inset 0 0 0 3px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.4);
     pointer-events: none;
   }
-
-  /* ----- pushpin utility ----- */
   .pin {
-    position: absolute; width: 22px; height: 22px; border-radius: 50%;
+    position: absolute; width: 26px; height: 26px; border-radius: 50%;
     background: radial-gradient(circle at 30% 30%, #ff8a8a, #c0392b 60%, #5a0e0e);
-    box-shadow: 0 3px 4px rgba(0,0,0,.5), inset -2px -2px 3px rgba(0,0,0,.3), inset 2px 2px 3px rgba(255,255,255,.4);
+    box-shadow: 0 4px 5px rgba(0,0,0,.55), inset -2px -2px 3px rgba(0,0,0,.3), inset 2px 2px 3px rgba(255,255,255,.4);
     z-index: 5;
   }
   .pin.blue   { background: radial-gradient(circle at 30% 30%, #93c5fd, #1d4ed8 60%, #0c1f5a); }
   .pin.green  { background: radial-gradient(circle at 30% 30%, #86efac, #15803d 60%, #0c3a1a); }
   .pin.yellow { background: radial-gradient(circle at 30% 30%, #fde68a, #d97706 60%, #4a2a08); }
 
-  /* ----- HEADER — banner pinned at corners ----- */
+  /* HEADER */
   .header {
-    position: absolute; top: 70px; left: 100px; right: 100px; height: 130px;
+    grid-column: 1 / -1;
     background: #fff;
     box-shadow: 0 8px 22px rgba(0,0,0,.45);
     border: 1px solid #cbd5e1;
     transform: rotate(-.4deg);
-    display: flex; align-items: center; padding: 0 36px; gap: 24px;
+    display: grid; grid-template-columns: 110px 1fr 130px;
+    align-items: center; padding: 18px 36px; gap: 24px;
+    position: relative;
   }
   .header .logoCircle {
-    width: 96px; height: 96px; border-radius: 50%;
-    background: #fef3c7;
-    border: 4px solid #d97706;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 48px; flex: 0 0 96px;
+    width: 110px; height: 110px; border-radius: 50%;
+    background: #fef3c7; border: 5px solid #d97706;
+    display: flex; align-items: center; justify-content: center; font-size: 56px;
     box-shadow: inset 0 -4px 0 rgba(0,0,0,.08);
   }
-  .header .titleBlock { flex: 1; text-align: center; }
-  .header h1 { font-family: 'Permanent Marker', cursive; font-size: 56px; line-height: 1; margin: 0; color: #b91c1c; letter-spacing: .04em; }
-  .header .sub { font-family: 'Indie Flower'; font-size: 22px; color: #44403c; margin-top: 4px; }
-  .header .clockBlock {
-    width: 110px; flex: 0 0 110px; text-align: center;
-    border-left: 2px dashed #94a3b8; padding-left: 18px;
-  }
-  .header .clockBlock .t { font-family: 'Special Elite'; font-size: 32px; line-height: 1; color: #1f2937; }
-  .header .clockBlock .ap { font-family: 'Indie Flower'; font-size: 16px; color: #57534e; }
+  .header .titleBlock { text-align: center; }
+  .header h1 { font-family: 'Permanent Marker', cursive; font-size: 76px; line-height: 1; margin: 0; color: #b91c1c; letter-spacing: .03em; }
+  .header .sub { font-family: 'Indie Flower'; font-size: 30px; color: #44403c; margin-top: 4px; }
+  .header .clockBlock { text-align: center; border-left: 2px dashed #94a3b8; padding-left: 18px; }
+  .header .clockBlock .t { font-family: 'Special Elite'; font-size: 46px; line-height: 1; color: #1f2937; }
+  .header .clockBlock .ap { font-family: 'Indie Flower'; font-size: 22px; color: #57534e; }
 
-  /* ----- LEFT — printed photo of today's special, pinned ----- */
+  /* PHOTO of today's special */
   .photo {
-    position: absolute; left: 100px; top: 230px; width: 50%; max-width: 640px; height: 470px;
-    background: #fff;
-    padding: 16px 16px 16px;
+    background: #fff; padding: 20px 20px 18px;
     box-shadow: 0 12px 28px rgba(0,0,0,.45);
     transform: rotate(-1.5deg);
+    position: relative;
+    display: flex; flex-direction: column;
   }
   .photo::before {
     content: '~ TODAY IN THE KITCHEN ~';
-    position: absolute; top: -24px; left: 16px; right: 16px;
-    font-family: 'Special Elite'; font-size: 14px; letter-spacing: .25em; color: #fef3c7;
-    background: #b91c1c; padding: 4px 12px;
-    box-shadow: 0 2px 4px rgba(0,0,0,.3);
+    position: absolute; top: -28px; left: 16px; right: 16px;
+    font-family: 'Special Elite'; font-size: 18px; letter-spacing: .25em; color: #fef3c7;
+    background: #b91c1c; padding: 6px 14px; box-shadow: 0 2px 4px rgba(0,0,0,.3);
   }
   .photo .img {
-    width: 100%; height: 380px;
+    flex: 1;
     background:
-      radial-gradient(circle at 30% 35%, #fde68a 0 60px, transparent 60px),
-      radial-gradient(circle at 65% 55%, #fca5a5 0 80px, transparent 80px),
-      radial-gradient(circle at 50% 70%, #86efac 0 70px, transparent 70px),
+      radial-gradient(circle at 30% 35%, #fde68a 0 80px, transparent 80px),
+      radial-gradient(circle at 65% 55%, #fca5a5 0 100px, transparent 100px),
+      radial-gradient(circle at 50% 70%, #86efac 0 90px, transparent 90px),
       linear-gradient(135deg, #fef3c7, #fde68a 60%, #fcd34d);
     position: relative;
   }
   .photo .img::after {
     content: '🍝'; position: absolute; inset: 0;
-    display: flex; align-items: center; justify-content: center; font-size: 200px;
+    display: flex; align-items: center; justify-content: center; font-size: 280px;
     filter: drop-shadow(0 8px 12px rgba(0,0,0,.2));
   }
   .photo .caption {
-    margin-top: 8px;
-    font-family: 'Indie Flower'; font-size: 22px; color: #44403c; text-align: center;
+    margin-top: 12px;
+    font-family: 'Indie Flower'; font-size: 32px; color: #44403c; text-align: center;
   }
 
-  /* ----- RIGHT — three index cards pinned ----- */
-  .cards { position: absolute; right: 100px; top: 230px; width: 32%; min-width: 360px; display: flex; flex-direction: column; gap: 28px; }
+  /* RIGHT — three index cards */
+  .cards { display: flex; flex-direction: column; gap: 26px; }
   .card {
-    background: #fffefa;
-    padding: 14px 18px 16px;
+    background: #fffefa; padding: 16px 22px 18px;
     box-shadow: 0 8px 18px rgba(0,0,0,.4);
     transform: rotate(var(--rot, -1deg));
-    /* index card lines */
     background-image:
-      linear-gradient(to right, transparent 30px, rgba(220,38,38,.25) 30px 31px, transparent 31px),
-      repeating-linear-gradient(to bottom, transparent 0 28px, rgba(59,130,246,.18) 28px 29px);
+      linear-gradient(to right, transparent 36px, rgba(220,38,38,.3) 36px 38px, transparent 38px),
+      repeating-linear-gradient(to bottom, transparent 0 36px, rgba(59,130,246,.2) 36px 37px);
     background-position: 0 14px;
+    flex: 1;
+    display: flex; flex-direction: column; justify-content: center;
+    position: relative;
   }
-  .card .title { font-family: 'Permanent Marker', cursive; font-size: 28px; color: #1f2937; line-height: 1; margin-bottom: 4px; padding-left: 38px; }
-  .card .desc  { font-family: 'Indie Flower'; font-size: 18px; color: #44403c; margin: 6px 0 8px; padding-left: 38px; line-height: 1.35; }
-  .card .badges { display: flex; gap: 6px; padding-left: 38px; }
+  .card .title { font-family: 'Permanent Marker', cursive; font-size: 42px; color: #1f2937; line-height: 1; margin-bottom: 6px; padding-left: 50px; }
+  .card .desc  { font-family: 'Indie Flower'; font-size: 26px; color: #44403c; margin: 6px 0 12px; padding-left: 50px; line-height: 1.25; }
+  .card .badges { display: flex; gap: 8px; padding-left: 50px; flex-wrap: wrap; }
   .badge {
-    font-family: 'Special Elite'; font-size: 10px; letter-spacing: .12em;
-    padding: 3px 8px; background: #fef3c7; color: #78350f; border: 1px solid #d97706;
+    font-family: 'Special Elite'; font-size: 14px; letter-spacing: .12em;
+    padding: 5px 12px; background: #fef3c7; color: #78350f; border: 1px solid #d97706;
   }
   .badge.v  { background: #d1fae5; color: #065f46; border-color: #10b981; }
   .badge.gf { background: #fef3c7; color: #92400e; border-color: #d97706; }
   .badge.dy { background: #dbeafe; color: #1e40af; border-color: #2563eb; }
 
-  /* ----- BOTTOM ROW — special memo + countdown ticket ----- */
-  .row { position: absolute; left: 100px; right: 100px; bottom: 110px; display: flex; gap: 22px; align-items: stretch; }
-
+  /* BOTTOM */
   .memo {
-    flex: 1; padding: 16px 24px;
+    grid-column: 1; padding: 22px 32px;
     background: #fef9c3;
     box-shadow: 0 6px 14px rgba(0,0,0,.3);
     transform: rotate(-1.2deg);
     position: relative;
+    display: flex; flex-direction: column; justify-content: center;
   }
   .memo::before {
-    content: 'MEMO'; position: absolute; top: 8px; left: 16px;
-    font-family: 'Special Elite'; font-size: 12px; letter-spacing: .25em; color: #92400e;
+    content: 'MEMO'; position: absolute; top: 10px; left: 18px;
+    font-family: 'Special Elite'; font-size: 16px; letter-spacing: .25em; color: #92400e;
   }
   .memo::after {
-    content: ''; position: absolute; left: 0; right: 0; top: 30px; height: 2px;
+    content: ''; position: absolute; left: 0; right: 0; top: 38px; height: 2px;
     background: repeating-linear-gradient(90deg, #ca8a04 0 8px, transparent 8px 14px);
   }
-  .memo .msg { font-family: 'Permanent Marker', cursive; font-size: 32px; color: #b91c1c; line-height: 1.05; margin-top: 36px; }
+  .memo .msg { font-family: 'Permanent Marker', cursive; font-size: 48px; color: #b91c1c; line-height: 1.05; margin-top: 44px; }
 
   .ticket {
-    flex: 0 0 280px; background: #fff; padding: 14px 18px;
+    grid-column: 2;
+    background: #fff; padding: 18px 22px;
     box-shadow: 0 6px 14px rgba(0,0,0,.3);
     transform: rotate(2deg);
     text-align: center;
-    border-left: 6px dashed #b91c1c;
+    border-left: 8px dashed #b91c1c;
     position: relative;
+    display: flex; flex-direction: column; justify-content: center;
   }
   .ticket::before, .ticket::after {
-    content: ''; position: absolute; top: 50%; width: 16px; height: 16px; border-radius: 50%; background: #b88251; transform: translateY(-50%);
+    content: ''; position: absolute; top: 50%; width: 18px; height: 18px; border-radius: 50%; background: #b88251; transform: translateY(-50%);
   }
-  .ticket::before { left: -8px; }
-  .ticket::after  { right: -8px; }
-  .ticket .lbl  { font-family: 'Special Elite'; font-size: 11px; letter-spacing: .2em; color: #57534e; }
-  .ticket .num  { font-family: 'Permanent Marker', cursive; font-size: 56px; line-height: 1; color: #b91c1c; }
-  .ticket .unit { font-family: 'Indie Flower'; font-size: 18px; color: #57534e; }
+  .ticket::before { left: -9px; } .ticket::after  { right: -9px; }
+  .ticket .lbl  { font-family: 'Special Elite'; font-size: 16px; letter-spacing: .2em; color: #57534e; }
+  .ticket .num  { font-family: 'Permanent Marker', cursive; font-size: 90px; line-height: 1; color: #b91c1c; }
+  .ticket .unit { font-family: 'Indie Flower'; font-size: 26px; color: #57534e; }
 
-  /* ----- TICKER — printed paper strip pinned along the bottom ----- */
+  /* TICKER */
   .ticker {
-    position: absolute; left: 0; right: 0; bottom: 0; height: 80px;
+    grid-column: 1 / -1;
+    margin: 0 -80px;
     background: #fff;
-    border-top: 4px solid #1f2937;
-    display: flex; align-items: center; overflow: hidden;
+    border-top: 5px solid #1f2937;
+    display: flex; align-items: center; overflow: hidden; height: 80px;
     box-shadow: 0 -4px 14px rgba(0,0,0,.2);
   }
   .ticker .stamp {
-    flex: 0 0 auto; padding: 0 22px; height: 100%;
+    flex: 0 0 auto; padding: 0 28px; height: 100%;
     background: #1f2937; color: #fef3c7; display: flex; align-items: center;
-    font-family: 'Special Elite'; letter-spacing: .25em; font-size: 14px;
+    font-family: 'Special Elite'; letter-spacing: .25em; font-size: 20px;
   }
-  .ticker .scroll { flex: 1; font-family: 'Indie Flower'; font-size: 28px; color: #44403c; padding-left: 28px; white-space: nowrap; }
+  .ticker .scroll { flex: 1; font-family: 'Indie Flower'; font-size: 38px; color: #44403c; padding-left: 28px; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -199,49 +195,47 @@
       <div class="t">12:34</div>
       <div class="ap">PM</div>
     </div>
-    <div class="pin" style="top:-10px;left:-10px;"></div>
-    <div class="pin blue" style="top:-10px;right:-10px;"></div>
+    <div class="pin" style="top:-13px;left:-13px;"></div>
+    <div class="pin blue" style="top:-13px;right:-13px;"></div>
   </div>
 
   <div class="photo">
     <div class="img"></div>
     <div class="caption">— served fresh today —</div>
-    <div class="pin yellow" style="top:-10px;left:50%;transform:translateX(-50%);"></div>
+    <div class="pin yellow" style="top:-13px;left:50%;transform:translateX(-50%);"></div>
   </div>
 
   <div class="cards">
     <div class="card" style="--rot:-1.2deg">
       <div class="title">Chef Salad</div>
-      <div class="desc">Romaine, grilled chicken, cherry tomatoes, shaved cheese, ranch.</div>
+      <div class="desc">Romaine, grilled chicken, tomatoes, cheese, ranch.</div>
       <div class="badges"><span class="badge gf">GF</span><span class="badge dy">DAIRY</span></div>
-      <div class="pin" style="top:-10px;left:14px;"></div>
+      <div class="pin" style="top:-13px;left:18px;"></div>
     </div>
     <div class="card" style="--rot:1.4deg">
       <div class="title">Roasted Veggies</div>
-      <div class="desc">Carrots, zucchini, bell peppers — olive oil, sea salt.</div>
-      <div class="badges"><span class="badge v">VEG</span><span class="badge gf">GF</span></div>
-      <div class="pin green" style="top:-10px;right:14px;"></div>
+      <div class="desc">Carrots, zucchini, peppers — olive oil, sea salt.</div>
+      <div class="badges"><span class="badge v">VEGAN</span><span class="badge gf">GF</span></div>
+      <div class="pin green" style="top:-13px;right:18px;"></div>
     </div>
     <div class="card" style="--rot:-1deg">
       <div class="title">Fruit Cup</div>
-      <div class="desc">Seasonal fresh fruit — watermelon, pineapple, berries.</div>
-      <div class="badges"><span class="badge v">VEG</span><span class="badge gf">GF</span></div>
-      <div class="pin yellow" style="top:-10px;left:14px;"></div>
+      <div class="desc">Watermelon, pineapple, fresh summer berries.</div>
+      <div class="badges"><span class="badge v">VEGAN</span><span class="badge gf">GF</span></div>
+      <div class="pin yellow" style="top:-13px;left:18px;"></div>
     </div>
   </div>
 
-  <div class="row">
-    <div class="memo">
-      <div class="msg">Pizza Friday is BACK! Cheese + pepperoni in line 2.</div>
-      <div class="pin" style="top:-10px;left:14px;"></div>
-      <div class="pin yellow" style="top:-10px;right:14px;"></div>
-    </div>
-    <div class="ticket">
-      <div class="lbl">NEXT MEAL IN</div>
-      <div class="num">12</div>
-      <div class="unit">days</div>
-      <div class="pin blue" style="top:-10px;left:50%;transform:translateX(-50%);"></div>
-    </div>
+  <div class="memo">
+    <div class="msg">Pizza Friday is BACK! Cheese + pepperoni in line 2.</div>
+    <div class="pin" style="top:-13px;left:18px;"></div>
+    <div class="pin yellow" style="top:-13px;right:18px;"></div>
+  </div>
+  <div class="ticket">
+    <div class="lbl">NEXT MEAL IN</div>
+    <div class="num">12</div>
+    <div class="unit">days</div>
+    <div class="pin blue" style="top:-13px;left:50%;transform:translateX(-50%);"></div>
   </div>
 
   <div class="ticker">
