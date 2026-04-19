@@ -9,6 +9,8 @@ import { Server, WebSocket } from 'ws';
 import { RedisService } from './redis.service';
 import * as jwt from 'jsonwebtoken';
 import * as crypto from 'crypto';
+import * as Sentry from '@sentry/nestjs';
+import { requireSecret } from '../security/required-secret';
 
 interface ClientContext {
   connectionId: string;
@@ -100,12 +102,23 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       if (!token) throw new Error('Missing token');
 
       let decoded: any;
-      if (token.startsWith('dev_')) {
-        // TEMPORARY BETA BYPASS: dev_ tokens for beta test phase
+      // SECURITY (sec-fix wave1 #1): unauthenticated `dev_` token branch
+      // used to accept ANY client claiming to be a device without JWT
+      // verification. In production this is NEVER allowed. In dev it's
+      // off by default and must be opted into via DEV_WS_ALLOW=true —
+      // and even then we log a loud warning every time it's used.
+      const isProd = process.env.NODE_ENV === 'production';
+      const devWsAllow = process.env.DEV_WS_ALLOW === 'true';
+      if (token.startsWith('dev_') && !isProd && devWsAllow) {
+        this.logger.warn(
+          `[WS][SECURITY] DEV_WS_ALLOW is enabled — accepting unsigned dev_ token for ${ctx.connectionId}. This path MUST be disabled in production.`,
+        );
         const parts = token.split('_');
         decoded = { deviceId: parts[1], tenantId: parts.slice(2).join('_') };
       } else {
-        const jwtSecret = process.env.DEVICE_JWT_SECRET || 'dev_secret';
+        const jwtSecret = requireSecret('DEVICE_JWT_SECRET', {
+          devFallback: 'dev_only_device_jwt_secret_CHANGE_ME',
+        });
         decoded = jwt.verify(token, jwtSecret) as any;
       }
 
@@ -151,7 +164,13 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       this.redisService.publisher.hset(`device:${ctx.deviceId}:status`,
         'lastSeen', Date.now(),
         'metrics', JSON.stringify(payload.metrics || {})
-      ).catch(() => {});
+      ).catch((err: Error) => {
+        Sentry.withScope((s) => {
+          s.setTag('realtime.publish', `device:${ctx.deviceId}:status`);
+          Sentry.captureException(err);
+        });
+        this.logger.warn(`realtime publish failed: ${err?.message ?? err}`);
+      });
     }
   }
 
@@ -166,7 +185,13 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       eventId: payload.receivedEventId,
       status: payload.status,
       timestamp: Date.now()
-    }).catch(() => {});
+    }).catch((err: Error) => {
+      Sentry.withScope((s) => {
+        s.setTag('realtime.publish', 'metrics:ack');
+        Sentry.captureException(err);
+      });
+      this.logger.warn(`realtime publish failed: ${err?.message ?? err}`);
+    });
   }
 
   // ─── Broadcast to all clients matching a scope ───

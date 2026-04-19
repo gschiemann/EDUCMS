@@ -14,6 +14,8 @@ import { AppModule } from './app.module';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { PrismaService } from './prisma/prisma.service';
 import { ensureSystemPresets } from './templates/ensure-system-presets';
+import { requireSecret } from './security/required-secret';
+import { AllExceptionsFilter } from './common/all-exceptions.filter';
 
 // Last-resort crash guards. ioredis, Prisma, and passport-saml can all
 // surface unhandled rejections on network flaps; we'd rather log than
@@ -35,6 +37,11 @@ const session = require('express-session');
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.useWebSocketAdapter(new WsAdapter(app));
+
+  // Global exception filter — normalizes all error responses, scrubs
+  // stack traces in prod, and captures 5xx to Sentry with route tags.
+  // Registered BEFORE listen so it catches startup-adjacent errors too.
+  app.useGlobalFilters(new AllExceptionsFilter());
 
   // Mandatory: Helmet for basic strict transport + CSP
   app.use(
@@ -63,7 +70,10 @@ async function bootstrap() {
   // Manadatory: Secure cookie strategy & session mechanics
   app.use(
     session({
-      secret: process.env.SESSION_SECRET || 'edu_cms_beta_session_secret_CHANGE_FOR_PROD',
+      // sec-fix(wave1) #2: throws at boot in prod if SESSION_SECRET is unset.
+      secret: requireSecret('SESSION_SECRET', {
+        devFallback: 'edu_cms_dev_only_session_secret_CHANGE_FOR_PROD',
+      }),
       resave: false,
       saveUninitialized: false,
       cookie: {
@@ -77,11 +87,24 @@ async function bootstrap() {
   );
 
   // Mandatory: CORS limited to tenant portals in production
+  //
+  // sec-fix(wave1) #8: in production we refuse to boot without an explicit
+  // ALLOWED_ORIGINS allowlist. Previously we silently fell through to a
+  // wildcard that accepted any *.vercel.app — which means anybody could
+  // host a malicious page on a throwaway Vercel project and make
+  // authenticated cross-origin requests against our API. Fail-closed now.
+  if (process.env.NODE_ENV === 'production' && !process.env.ALLOWED_ORIGINS) {
+    throw new Error(
+      '[security] refusing to start: ALLOWED_ORIGINS is not set in production. Set a comma-separated list of allowed frontend origins (e.g. https://app.educms.com).',
+    );
+  }
   app.enableCors({
     origin: process.env.ALLOWED_ORIGINS
-      ? process.env.ALLOWED_ORIGINS.split(',')
+      ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
       : (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-          // In dev, allow localhost, LAN, and tunnel origins
+          // DEV ONLY: allow localhost, LAN, and tunnel origins. Production
+          // never reaches this branch — we threw above if ALLOWED_ORIGINS
+          // wasn't set.
           if (
             !origin ||
             origin.startsWith('http://localhost') ||

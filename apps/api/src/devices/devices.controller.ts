@@ -1,6 +1,7 @@
 import { Controller, Post, Body, HttpException, HttpStatus } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '../prisma/prisma.service';
+import { requireSecret } from '../security/required-secret';
 
 /**
  * Device-side endpoints — called by the Android player APK without admin
@@ -45,26 +46,16 @@ export class DevicesController {
       },
     });
 
-    // Two valid states the device might land in:
-    //   (a) Found by current pairingCode  → admin hasn't claimed yet → 428
-    //   (b) Already claimed (pairingCode cleared) → we should still let the
-    //       device pair via deviceFingerprint match; this happens after a
-    //       reinstall.
-    let target = screen;
-    if (!target && fp) {
-      const byFp = await this.prisma.client.screen.findUnique({
-        where: { deviceFingerprint: fp },
-        include: {
-          tenant: {
-            select: {
-              id: true, slug: true, name: true,
-              usbIngestEnabled: true, usbIngestKey: true,
-            },
-          },
-        },
-      });
-      if (byFp?.tenantId) target = byFp;
-    }
+    // sec-fix(wave1) #6: the deviceFingerprint-only fallback path (used
+    // to silently re-pair an already-paired screen after a reinstall) has
+    // been removed. An attacker who can guess/recover a device
+    // fingerprint could otherwise mint a fresh 365-day device JWT for
+    // any screen in the fleet — effectively a takeover of the kiosk
+    // without ever going through an admin. Going forward, every re-pair
+    // requires a fresh pairing code. Document this in operator
+    // onboarding notes: "Reinstalling the player? Ask an admin for a
+    // new pairing code."
+    const target = screen;
 
     if (!target) {
       throw new HttpException('Invalid or expired pairing code', HttpStatus.NOT_FOUND);
@@ -87,7 +78,8 @@ export class DevicesController {
 
     const token = jwt.sign(
       { sub: target.id, tenantId: target.tenantId, kind: 'device', fp },
-      process.env.DEVICE_JWT_SECRET || 'dev_secret',
+      // sec-fix(wave1) #2: fail at boot in prod rather than sign with a default.
+      requireSecret('DEVICE_JWT_SECRET', { devFallback: 'dev_only_device_jwt_secret_CHANGE_ME' }),
       { expiresIn: '365d' }, // 1-year — kiosks shouldn't re-pair often
     );
 

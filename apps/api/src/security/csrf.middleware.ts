@@ -71,8 +71,16 @@ function safeEquals(a: string, b: string): boolean {
 export class CsrfMiddleware implements NestMiddleware {
   private readonly logger = new Logger('CSRF');
 
+  // sec-fix(wave1) #7: default to ENFORCE. Previously the middleware ran
+  // in warn-mode unless CSRF_ENFORCE=true, which meant a forgotten env
+  // var in any new environment silently disabled CSRF protection on
+  // every mutation. Now:
+  //   - CSRF_ENFORCE=false OR CSRF_WARN=true → warn-mode (legacy off-switch)
+  //   - anything else (including missing env) → enforced
   // Cached per-instance; re-reads .env are unnecessary at runtime.
-  private readonly enforce = process.env.CSRF_ENFORCE === 'true';
+  private readonly enforce = !(
+    process.env.CSRF_ENFORCE === 'false' || process.env.CSRF_WARN === 'true'
+  );
 
   use(req: Request, res: Response, next: NextFunction) {
     // Always make sure a browser has a csrf-token cookie. First-touch GET
@@ -124,7 +132,7 @@ export class CsrfMiddleware implements NestMiddleware {
     this.logger.warn(
       JSON.stringify({
         ...logPayload,
-        note: 'CSRF_ENFORCE is not true — request allowed. Set CSRF_ENFORCE=true in production to enforce.',
+        note: 'CSRF warn-mode is active (CSRF_ENFORCE=false or CSRF_WARN=true). Unset those to enforce — enforce is the default.',
       }),
     );
     return next();

@@ -1,6 +1,7 @@
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
 import { Injectable } from '@nestjs/common';
+import { requireSecret } from '../security/required-secret';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -8,7 +9,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET || 'dev_only_jwt_secret_CHANGE_ME',
+      // sec-fix(wave1) #2: no silent default in production.
+      secretOrKey: requireSecret('JWT_SECRET', {
+        devFallback: 'dev_only_jwt_secret_CHANGE_ME',
+      }),
     });
   }
 

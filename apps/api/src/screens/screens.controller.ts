@@ -6,18 +6,68 @@ import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import * as crypto from 'crypto';
+import * as jwt from 'jsonwebtoken';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { LicenseService } from '../license/license.service';
+import { requireSecret } from '../security/required-secret';
+
+const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 function generatePairingCode(): string {
-  // 6-char alphanumeric, uppercase, easy to read (no 0/O/I/1)
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  // sec-fix(wave1) #3: use crypto.randomInt (CSPRNG) instead of
+  // Math.random() (predictable xorshift). Same 6-char alphabet & length.
   let code = '';
   for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
+    code += PAIRING_CODE_ALPHABET[crypto.randomInt(0, PAIRING_CODE_ALPHABET.length)];
   }
   return code;
+}
+
+/**
+ * Verify a device JWT from the Authorization: Bearer header against the
+ * given screenId. Returns { ok: true, sub } on success or { ok: false, reason }.
+ * Used by the player-side endpoints that used to be unauthenticated
+ * (#4 emergency-assets, #5 cache-status).
+ *
+ * Backward-compat: also accepts a short-lived HMAC of `${screenId}:${ts}`
+ * signed with DEVICE_SECRET_KEY, passed as header X-Device-Auth:
+ *   `${timestampMs}.${hex(hmac_sha256(DEVICE_SECRET_KEY, screenId + ':' + timestampMs))}`
+ * Valid for 2 minutes from the signed timestamp. Preferred path is the
+ * device JWT — this alt exists so already-shipped player binaries can
+ * keep posting while they roll forward to the JWT-required build.
+ */
+function verifyDeviceForScreen(req: ExpressReq, screenId: string): { ok: true; sub: string } | { ok: false; reason: string } {
+  const auth = req.headers.authorization;
+  if (auth && auth.toLowerCase().startsWith('bearer ')) {
+    const token = auth.slice(7).trim();
+    try {
+      const secret = requireSecret('DEVICE_JWT_SECRET', { devFallback: 'dev_only_device_jwt_secret_CHANGE_ME' });
+      const decoded = jwt.verify(token, secret) as any;
+      if (decoded?.kind !== 'device') return { ok: false, reason: 'wrong_token_kind' };
+      if (decoded?.sub !== screenId) return { ok: false, reason: 'subject_mismatch' };
+      return { ok: true, sub: decoded.sub };
+    } catch (e) {
+      return { ok: false, reason: `jwt_invalid:${(e as Error).message}` };
+    }
+  }
+
+  const hmacHeader = req.headers['x-device-auth'];
+  if (typeof hmacHeader === 'string' && hmacHeader.includes('.')) {
+    const [tsStr, sig] = hmacHeader.split('.');
+    const ts = Number(tsStr);
+    if (!Number.isFinite(ts)) return { ok: false, reason: 'hmac_ts_bad' };
+    if (Math.abs(Date.now() - ts) > 2 * 60 * 1000) return { ok: false, reason: 'hmac_expired' };
+    const secret = requireSecret('DEVICE_SECRET_KEY', { devFallback: 'dev_only_device_secret_CHANGE_ME' });
+    const expected = crypto.createHmac('sha256', secret).update(`${screenId}:${ts}`).digest('hex');
+    const a = Buffer.from(expected);
+    const b = Buffer.from(sig);
+    if (a.length !== b.length) return { ok: false, reason: 'hmac_sig_bad' };
+    if (!crypto.timingSafeEqual(a, b)) return { ok: false, reason: 'hmac_sig_bad' };
+    return { ok: true, sub: screenId };
+  }
+
+  return { ok: false, reason: 'no_auth' };
 }
 
 @Controller('api/v1/screens')
@@ -563,13 +613,22 @@ export class ScreensController {
   }
 
   // The player POSTs a small status payload here ~every 30s so admins can
-  // see which screens are actually serving offline. No auth needed (the
-  // payload is harmless metadata) but rate-limited via global throttler.
+  // see which screens are actually serving offline.
+  //
+  // sec-fix(wave1) #5: now requires a device JWT whose `sub` equals the
+  // screenId. Without this, any unauthenticated client could spoof
+  // "offline" or "emergency cached" statuses for any screen in the fleet
+  // and cripple the admin dashboard's ability to detect real outages.
   @Post(':id/cache-status')
   async reportCacheStatus(
     @Param('id') id: string,
+    @Req() req: ExpressReq,
     @Body() body: { playlist?: { count: number; bytes: number }; emergency?: { count: number; bytes: number } },
   ) {
+    const authResult = verifyDeviceForScreen(req, id);
+    if (!authResult.ok) {
+      throw new HttpException(`Device auth required (${authResult.reason})`, HttpStatus.UNAUTHORIZED);
+    }
     const screen = await this.prisma.client.screen.findUnique({ where: { id }, select: { id: true } });
     if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
     await this.prisma.client.screen.update({
@@ -592,7 +651,18 @@ export class ScreensController {
   // tenant (lockdown / evacuate / weather / emergency-default), each with a
   // SHA-256 hash so the SW can detect tampered or stale files and re-download.
   @Get(':id/emergency-assets')
-  async getEmergencyAssets(@Param('id') id: string) {
+  async getEmergencyAssets(@Param('id') id: string, @Req() req: ExpressReq) {
+    // sec-fix(wave1) #4: this endpoint previously had NO auth — any
+    // unauthenticated caller could enumerate emergency media URLs for
+    // any screen in any tenant. Now requires a device JWT bound to the
+    // screenId (or the short-lived HMAC fallback for backward compat).
+    // Every successful fetch is audit-logged so we can forensically
+    // answer "who asked for the lockdown video set, and when?"
+    const authResult = verifyDeviceForScreen(req, id);
+    if (!authResult.ok) {
+      throw new HttpException(`Device auth required (${authResult.reason})`, HttpStatus.UNAUTHORIZED);
+    }
+
     const screen = await this.prisma.client.screen.findUnique({
       where: { id },
       select: { tenantId: true },
@@ -663,6 +733,25 @@ export class ScreensController {
       .createHash('sha256')
       .update(assets.map(a => `${a.url}:${a.sha256}`).sort().join('|'))
       .digest('hex');
+
+    // sec-fix(wave1) #4: audit every emergency-asset fetch. Forensically
+    // crucial — if someone abuses a stolen device token to enumerate
+    // lockdown media, we need the log trail.
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          action: 'DEVICE_FETCH_EMERGENCY_ASSETS',
+          targetType: 'screen',
+          targetId: id,
+          tenantId: tenant.id,
+          details: JSON.stringify({ assetCount: assets.length, setHash }),
+        },
+      });
+    } catch (e) {
+      // Non-fatal: we prefer to serve the player even if audit logging
+      // is degraded.
+      console.warn('[emergency-assets] audit log failed', (e as Error).message);
+    }
 
     return {
       tenantId: tenant.id,

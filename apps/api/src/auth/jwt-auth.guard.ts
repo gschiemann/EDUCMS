@@ -8,6 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 
 import { RedisService } from '../realtime/redis.service';
+import { requireSecret } from '../security/required-secret';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -27,7 +28,8 @@ export class JwtAuthGuard implements CanActivate {
     try {
       // Decode and verify via standard NestJS JWT Service
       const payload = await this.jwtService.verifyAsync(token, {
-        secret: process.env.JWT_SECRET || 'dev_only_jwt_secret_CHANGE_ME'
+        // sec-fix(wave1) #2: throws at boot in prod if JWT_SECRET is unset.
+        secret: requireSecret('JWT_SECRET', { devFallback: 'dev_only_jwt_secret_CHANGE_ME' }),
       });
 
       // THE BYPASS: Only check Redis if we are deployed to production.

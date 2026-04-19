@@ -86,11 +86,22 @@ All required env vars for `.env` (gitignored):
 | `DEVICE_SECRET_KEY` | Signing device tokens (64-char hex) | (random) |
 | `DEVICE_JWT_SECRET` | Device JWT signing (64-char hex) | (random) |
 | `REDIS_URL` | Redis pub/sub for realtime | `redis://localhost:6379` |
-| `ALLOWED_ORIGINS` | CORS whitelist (comma-sep) | `https://yourdomain.vercel.app,http://localhost:3000` |
+| `ALLOWED_ORIGINS` | CORS whitelist (comma-sep). **REQUIRED in production** — API refuses to boot if unset (sec-fix wave1 #8). | `https://yourdomain.vercel.app,http://localhost:3000` |
 | `PORT` | API server port | `8080` |
 | `NODE_ENV` | `development` \| `production` | `development` |
+| `CSRF_ENFORCE` | `false` → warn-mode. Default (unset) = enforced (sec-fix wave1 #7). | `false` |
+| `CSRF_WARN` | `true` → warn-mode (alias for `CSRF_ENFORCE=false`). | `true` |
+| `DEV_WS_ALLOW` | Dev-only: `true` enables unsigned `dev_` WebSocket tokens. **Never set in production.** | `true` |
 
 Never commit `.env`. Use `.env.example` as a template.
+
+**Secret boot-time validation (sec-fix wave1 #2).** In production
+(`NODE_ENV=production`) the API refuses to start if any of these are
+missing or empty: `JWT_SECRET`, `SESSION_SECRET`, `DEVICE_SECRET_KEY`,
+`DEVICE_JWT_SECRET`. The old `process.env.FOO || 'default_secret_...'`
+fallbacks were removed — see `apps/api/src/security/required-secret.ts`.
+In dev a loud warning is logged and a fixed dev fallback is used; never
+rely on that value for anything reachable from the internet.
 
 ## Core Domain Models
 

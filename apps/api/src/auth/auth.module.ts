@@ -5,6 +5,7 @@ import { PassportModule } from '@nestjs/passport';
 import { JwtModule } from '@nestjs/jwt';
 import { JwtStrategy } from './jwt.strategy';
 import { PrismaModule } from '../prisma/prisma.module';
+import { requireSecret } from '../security/required-secret';
 
 // @Global so JwtService (re-exported via JwtModule) is available
 // everywhere JwtAuthGuard is used. Pairs with the @Global on
@@ -18,7 +19,8 @@ import { PrismaModule } from '../prisma/prisma.module';
     PrismaModule,
     PassportModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'dev_only_jwt_secret_CHANGE_ME',
+      // sec-fix(wave1) #2: throws at boot in prod if JWT_SECRET is unset.
+      secret: requireSecret('JWT_SECRET', { devFallback: 'dev_only_jwt_secret_CHANGE_ME' }),
       signOptions: { expiresIn: '1h' },
     }),
   ],
