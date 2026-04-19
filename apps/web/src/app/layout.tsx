@@ -3,6 +3,7 @@ import { Inter, Fredoka, Caveat } from 'next/font/google';
 import './globals.css';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import Providers from '@/components/providers';
+import { BrandStyleInjector } from '@/components/branding/BrandStyleInjector';
 
 // Development-only axe accessibility overlay — never shipped in production builds.
 if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
@@ -45,6 +46,7 @@ export default function RootLayout({
       <body className={`${inter.className} ${fredoka.variable} ${caveat.variable} min-h-screen bg-slate-50 text-slate-900 antialiased`} suppressHydrationWarning>
         <Providers>
           <TooltipProvider>
+            <BrandStyleInjector />
             <main className="w-full min-h-screen relative flex flex-col">
               <div className="absolute top-0 inset-x-0 h-96 bg-gradient-to-b from-indigo-50 to-transparent pointer-events-none -z-10" />
               {children}

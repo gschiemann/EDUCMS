@@ -48,6 +48,45 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* ── Auto-branding CSS variables (Sprint 9) ───────────────────────
+   These are the canonical "brand" knobs overridden at request time by
+   <BrandStyleInjector /> — every piece of chrome that should re-skin
+   with the tenant's palette reads from var(--brand-*).
+   Defaults match the indigo baseline so unbranded tenants look the
+   same as before. */
+:root {
+  --brand-primary: #4f46e5;
+  --brand-primary-hover: #4338ca;
+  --brand-primary-active: #3730a3;
+  --brand-primary-soft: #e0e7ff;
+  --brand-primary-ink: #ffffff;
+  --brand-accent: #ec4899;
+  --brand-accent-hover: #db2777;
+  --brand-accent-soft: #fce7f3;
+  --brand-accent-ink: #ffffff;
+  --brand-ink: #0f172a;
+  --brand-ink-muted: #475569;
+  --brand-surface: #ffffff;
+  --brand-surface-alt: #f8fafc;
+  --brand-border: #e2e8f0;
+  --brand-success: #16a34a;
+  --brand-warn: #f59e0b;
+  --brand-danger: #dc2626;
+  --brand-font-heading: "", ui-sans-serif, system-ui, sans-serif;
+  --brand-font-body: "", ui-sans-serif, system-ui, sans-serif;
+  --brand-radius: 0.75rem;
+}
+
+/* Utility classes so feature code can opt-in by classname */
+.bg-brand { background-color: var(--brand-primary); color: var(--brand-primary-ink); }
+.bg-brand-soft { background-color: var(--brand-primary-soft); color: var(--brand-ink); }
+.text-brand { color: var(--brand-primary); }
+.border-brand { border-color: var(--brand-primary); }
+.ring-brand { --tw-ring-color: var(--brand-primary); }
+.hover\:bg-brand-hover:hover { background-color: var(--brand-primary-hover); }
+.font-brand-heading { font-family: var(--brand-font-heading); }
+.font-brand-body { font-family: var(--brand-font-body); }
+
 :root {
   --background: oklch(0.985 0.01 260);
   --foreground: oklch(0.15 0.02 260);

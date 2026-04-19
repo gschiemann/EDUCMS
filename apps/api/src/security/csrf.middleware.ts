@@ -37,6 +37,8 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   (p) => p === '/api/v1/screens/register',
   (p) => /^\/api\/v1\/screens\/[^/]+\/cache-status$/.test(p),
   (p) => /^\/api\/v1\/tenants\/me\/usb-ingest\/screens\/[^/]+\/event$/.test(p),
+  // Public branding demo — no prior session; throttled + never persists.
+  (p) => p === '/api/v1/branding/demo/scrape',
 ];
 
 export function isCsrfExempt(method: string, path: string): boolean {

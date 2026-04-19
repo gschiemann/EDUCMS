@@ -61,6 +61,13 @@ function Hero() {
             <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
           </Link>
           <Link
+            href="/demo/branding"
+            className="group inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl text-sm font-semibold text-indigo-700 bg-white border-2 border-indigo-200 hover:border-indigo-400 hover:bg-indigo-50 transition"
+          >
+            <Sparkles className="w-4 h-4" />
+            Try auto-branding live
+          </Link>
+          <Link
             href="/help"
             className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl text-sm font-semibold text-slate-700 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition"
           >
