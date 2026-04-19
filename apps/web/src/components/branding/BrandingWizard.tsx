@@ -93,7 +93,8 @@ export function BrandingWizard({ mode, initial, onAdopted }: BrandingWizardProps
     setError(null);
     setScraping(true);
     try {
-      const path = mode === 'demo' ? '/api/v1/branding/demo/scrape' : '/api/v1/branding/scrape';
+      // API_URL already includes /api/v1, so just append the route segment
+      const path = mode === 'demo' ? '/branding/demo/scrape' : '/branding/scrape';
       const body = JSON.stringify({ url: finalUrl });
       // demo endpoint is unauth'd; skip apiFetch's auth header to avoid 401 loop
       const res = mode === 'demo'
@@ -131,7 +132,7 @@ export function BrandingWizard({ mode, initial, onAdopted }: BrandingWizardProps
               const { derivePaletteClient } = await import('./palette-client');
               return derivePaletteClient(primary, accent);
             })()
-          : await apiFetch<any>('/api/v1/branding/derive-palette', {
+          : await apiFetch<any>('/branding/derive-palette', {
               method: 'POST',
               body: JSON.stringify({ primaryHex: primary, accentHex: accent }),
             });
@@ -154,7 +155,7 @@ export function BrandingWizard({ mode, initial, onAdopted }: BrandingWizardProps
         palette: derivedPalette,
         logoOverride: chosen ? { url: chosen.url, svgInline: chosen.svgInline } : undefined,
       };
-      const res = await apiFetch<any>('/api/v1/branding/adopt', {
+      const res = await apiFetch<any>('/branding/adopt', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
@@ -295,7 +296,13 @@ export function BrandingWizard({ mode, initial, onAdopted }: BrandingWizardProps
                     aria-label={`Choose logo ${i+1}`}
                   >
                     {l.svgInline ? (
-                      <div className="max-h-full max-w-full [&_svg]:max-h-full [&_svg]:max-w-full" dangerouslySetInnerHTML={{ __html: l.svgInline }} />
+                      // Many SVG wordmarks fill="currentColor" — set a dark
+                      // text color on the wrapper so the mark actually shows
+                      // against the light tile background.
+                      <div
+                        className="max-h-full max-w-full text-slate-800 [&_svg]:max-h-full [&_svg]:max-w-full [&_svg]:h-full [&_svg]:w-full"
+                        dangerouslySetInnerHTML={{ __html: l.svgInline }}
+                      />
                     ) : l.url ? (
                       <img src={l.url} alt="logo option" className="max-h-full max-w-full object-contain" loading="lazy" />
                     ) : null}

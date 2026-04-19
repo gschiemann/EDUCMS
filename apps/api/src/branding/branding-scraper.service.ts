@@ -221,11 +221,46 @@ export class BrandingScraperService {
     if (ogImage) pushLogo({ url: ogImage, kind: 'og', score: 60 });
     if (twitterImage) pushLogo({ url: twitterImage, kind: 'twitter', score: 55 });
 
-    // Inline SVGs inside the header/nav with logo-ish classes
-    $('header svg, nav svg, [class*="logo"] svg, [class*="brand"] svg, [class*="wordmark"] svg').each((_, el) => {
+    // Inline SVGs that look like the brand mark. Broader net than just
+    // `header svg` because many sites put the wordmark in <a class="logo">
+    // outside any header tag, or as a top-of-body element.
+    $(
+      // Brand-named ancestors
+      '[class*="logo"] svg, [class*="brand"] svg, [class*="wordmark"] svg, [class*="masthead"] svg, [class*="navbar-brand"] svg, ' +
+      // Brand-named SVGs themselves
+      'svg[class*="logo"], svg[class*="brand"], svg[class*="wordmark"], ' +
+      // Anchor/link wrappers commonly used on the wordmark
+      'a[href="/"] svg, a[aria-label*="home" i] svg, ' +
+      // Header / nav fallback
+      'header > a svg, header > div > a svg, nav > a svg, [role="banner"] svg'
+    ).each((_, el) => {
+      const $el = $(el);
       const outer = $.html(el);
       if (!outer || outer.length > 20_000) return;
-      pushLogo({ url: '', kind: 'svg-inline', score: 95, isSvg: true, svgInline: outer });
+
+      // Reject obvious icons (star, phone, social, hamburger, search, cart, chevron).
+      const ancestorCls = ($el.parents('a, button, span, div').first().attr('class') || '').toLowerCase();
+      const ownCls = ($el.attr('class') || '').toLowerCase();
+      const ariaLabel = ($el.attr('aria-label') || '').toLowerCase();
+      const combined = `${ancestorCls} ${ownCls} ${ariaLabel}`;
+      const iconHints = /(\b|-)(star|rating|phone|tel|search|cart|menu|hamburger|chevron|arrow|caret|close|facebook|twitter|instagram|youtube|linkedin|tiktok|social|share|toggle|spinner|loading|chat)\b/;
+      if (iconHints.test(combined)) return;
+
+      // Reject tiny icons by viewBox (e.g. 24x24 social glyphs).
+      const viewBox = ($el.attr('viewBox') || '').split(/[ ,]+/).map(Number);
+      if (viewBox.length === 4) {
+        const vbW = viewBox[2], vbH = viewBox[3];
+        const aspect = vbW && vbH ? vbW / vbH : 1;
+        // Pure square ≤ 32px is almost always an icon, not a wordmark.
+        if (vbW <= 32 && vbH <= 32 && aspect > 0.7 && aspect < 1.4) return;
+      }
+
+      // Wordmark heuristic: wide aspect (>2:1) bumps the score.
+      let score = 90;
+      if (viewBox.length === 4 && viewBox[2] / Math.max(viewBox[3], 1) > 2) score += 10;
+      if (/wordmark/.test(combined)) score += 5;
+
+      pushLogo({ url: '', kind: 'svg-inline', score, isSvg: true, svgInline: outer });
     });
 
     // <img> candidates that look like logos. Score by area + position +

@@ -36,7 +36,7 @@ export function BrandStyleInjector() {
     let cancelled = false;
     (async () => {
       try {
-        const branding = await apiFetch<TenantBranding | null>('/api/v1/branding/me');
+        const branding = await apiFetch<TenantBranding | null>('/branding/me');
         if (cancelled) return;
         if (branding) {
           localStorage.setItem(LS_KEY, JSON.stringify(branding));

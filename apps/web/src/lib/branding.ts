@@ -50,7 +50,7 @@ export interface TenantBranding {
 /** Fetch current tenant branding by slug. Returns null on 404 / any error. */
 export async function getBrandingBySlug(slug: string): Promise<TenantBranding | null> {
   try {
-    const res = await fetch(`${API_URL}/api/v1/branding/public/by-slug/${encodeURIComponent(slug)}`, {
+    const res = await fetch(`${API_URL}/branding/public/by-slug/${encodeURIComponent(slug)}`, {
       cache: 'no-store',
     });
     if (!res.ok) return null;

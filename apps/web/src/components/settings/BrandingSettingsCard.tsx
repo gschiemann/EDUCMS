@@ -23,7 +23,7 @@ export function BrandingSettingsCard() {
     if (!isFeatureEnabled(FLAGS.AUTO_BRANDING)) { setLoading(false); return; }
     (async () => {
       try {
-        const b = await apiFetch<TenantBranding | null>('/api/v1/branding/me');
+        const b = await apiFetch<TenantBranding | null>('/branding/me');
         setBranding(b);
       } finally { setLoading(false); }
     })();

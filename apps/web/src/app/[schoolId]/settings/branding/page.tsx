@@ -21,7 +21,7 @@ export default function SettingsBrandingPage() {
   useEffect(() => {
     (async () => {
       try {
-        const b = await apiFetch<any>('/api/v1/branding/me');
+        const b = await apiFetch<any>('/branding/me');
         if (b) {
           // Shape-coerce the stored record into a BrandingPreview enough for
           // the wizard's editing mode
@@ -56,7 +56,7 @@ export default function SettingsBrandingPage() {
 
   const revert = async () => {
     try {
-      await apiFetch('/api/v1/branding/me', { method: 'DELETE' });
+      await apiFetch('/branding/me', { method: 'DELETE' });
       setCurrent(null);
       pushBrandingPreview({ palette: null, displayName: null, tagline: null, logoUrl: null, faviconUrl: null, fontHeading: null, fontBody: null });
       setConfirmRevert(false);
