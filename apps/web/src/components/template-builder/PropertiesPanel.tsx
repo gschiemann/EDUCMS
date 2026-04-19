@@ -12,12 +12,25 @@ export function PropertiesPanel() {
 
   // Hotspot listener — when the AnimatedWelcomeWidget dispatches an
   // 'aw-edit-section' CustomEvent (user clicked a region in the
-  // preview), scroll the matching section header into view and pulse
-  // it pink. Retries the lookup for up to 1s because the zone may
-  // not have been selected yet (and therefore its fields not mounted)
-  // at the moment the click fires — both event types arrive on the
-  // same tick.
+  // preview), scroll the matching section header to the top of its
+  // scroll container + pulse pink. Retries up to 1.5s because the
+  // zone selection re-renders the panel with new fields and the
+  // target won't exist immediately.
+  //
+  // Walks up to find the actual scrollable ancestor (overflow auto/scroll
+  // with vertical overflow) instead of relying on scrollIntoView, which
+  // sometimes hits the wrong container in nested transformed layouts.
   useEffect(() => {
+    const findScrollParent = (node: HTMLElement | null): HTMLElement | null => {
+      let cur = node?.parentElement;
+      while (cur) {
+        const cs = window.getComputedStyle(cur);
+        const oy = cs.overflowY;
+        if ((oy === 'auto' || oy === 'scroll') && cur.scrollHeight > cur.clientHeight) return cur;
+        cur = cur.parentElement;
+      }
+      return document.scrollingElement as HTMLElement | null;
+    };
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as { section?: string } | undefined;
       const key = detail?.section;
@@ -26,12 +39,23 @@ export function PropertiesPanel() {
       const tryScroll = () => {
         const el = document.getElementById(`aw-section-${key}`);
         if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          const scroller = findScrollParent(el);
+          if (scroller) {
+            const elRect = el.getBoundingClientRect();
+            const scRect = scroller.getBoundingClientRect();
+            // Position the section ~16px below the scroller's top edge
+            scroller.scrollTo({
+              top: scroller.scrollTop + (elRect.top - scRect.top) - 16,
+              behavior: 'smooth',
+            });
+          } else {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
           el.classList.add('aw-section-flash');
           setTimeout(() => el.classList.remove('aw-section-flash'), 1400);
           return;
         }
-        if (++attempts < 20) setTimeout(tryScroll, 50); // ≤1s total
+        if (++attempts < 30) setTimeout(tryScroll, 50); // ≤1.5s total
       };
       tryScroll();
     };
