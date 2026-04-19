@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Animated Cafeteria · Elementary Food Truck (DEMO v2)</title>
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Fredoka:wght@500;700&family=Caveat:wght@700&family=Permanent+Marker&display=swap" rel="stylesheet">
+
+<!--
+  SWAPPABLE ICONS — every emoji in this template is a single
+  character that any admin can change from the editor. Look for
+  a /* ICON-SWAP */ comment next to each. Common food options:
+
+    Pizza 🍕   Taco 🌮   Burger 🍔   Hot dog 🌭   Sandwich 🥪
+    Salad 🥗   Pasta 🍝   Sushi 🍣   Soup 🍲    Fries 🍟
+    Chicken 🍗 Drumstick 🦴 Apple 🍎 Milk 🥛    Cookie 🍪
+    Donut 🍩   Cupcake 🧁 Cake 🎂   Ice cream 🍦 Fruit 🍓
+    Broccoli 🥦 Carrot 🥕 Rice 🍚   Burrito 🌯  Pretzel 🥨
+
+  The 5 main swap points are:
+    • Today's Special food item (left card)
+    • 5 menu-line items (center card)
+    • Countdown big icon (right card)  — also change the LABEL
+    • Ticker emojis
+    • Background floater emojis
+-->
+
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+
+  /* === SUNSET FOOD-TRUCK STAGE === */
+  .stage {
+    width: 100vw; height: 100vh; position: relative; overflow: hidden;
+    font-family: 'Fredoka', ui-rounded, sans-serif; color: #1f2937;
+    background:
+      radial-gradient(ellipse at 50% 100%, #fbbf24 0%, transparent 55%),
+      radial-gradient(ellipse at 0% 0%, #ec4899 0%, transparent 45%),
+      radial-gradient(ellipse at 100% 0%, #06b6d4 0%, transparent 45%),
+      linear-gradient(180deg, #fce7f3 0%, #ffe4e6 35%, #fef3c7 75%, #fed7aa 100%);
+  }
+
+  /* Ground — asphalt strip with lane markings under the truck scene */
+  .ground {
+    position: absolute; left: 0; right: 0; bottom: 120px; height: 160px;
+    background:
+      repeating-linear-gradient(90deg,
+        transparent 0 60px, rgba(31,41,55,.25) 60px 100px, transparent 100px 160px),
+      linear-gradient(180deg, #64748b 0%, #334155 100%);
+    border-top: 4px solid #1f2937;
+    box-shadow: 0 -8px 20px rgba(0,0,0,.2);
+    z-index: 1;
+  }
+
+  /* String lights hanging across the top */
+  .lights { position: absolute; top: 24px; left: 0; right: 0; height: 60px; pointer-events: none; z-index: 2; }
+  .lights .wire {
+    position: absolute; top: 30%; left: 0; right: 0; height: 3px;
+    background: #1f2937; border-radius: 2px;
+  }
+  .lights .bulb {
+    position: absolute; top: 26%; width: 22px; height: 30px;
+    border-radius: 50% 50% 40% 40%;
+    animation: el-blink 3s ease-in-out infinite;
+  }
+  .lights .bulb::before {
+    content: ''; position: absolute; top: -6px; left: 50%; transform: translateX(-50%);
+    width: 6px; height: 8px; background: #374151; border-radius: 2px 2px 0 0;
+  }
+  .lights .bulb.y { background: radial-gradient(circle at 30% 30%, #fef3c7, #fbbf24 70%, #d97706); box-shadow: 0 0 18px #fbbf24; }
+  .lights .bulb.p { background: radial-gradient(circle at 30% 30%, #fecaca, #ec4899 70%, #9d174d); box-shadow: 0 0 18px #ec4899; animation-delay: .5s; }
+  .lights .bulb.c { background: radial-gradient(circle at 30% 30%, #bfdbfe, #06b6d4 70%, #0e7490); box-shadow: 0 0 18px #06b6d4; animation-delay: 1s; }
+  @keyframes el-blink { 0%, 100% { opacity: 1; } 48%, 52% { opacity: .45; } }
+
+  /* Floating food emojis drifting across background */
+  .floater { position: absolute; font-size: 56px; opacity: .55; z-index: 1; animation: el-drift 24s linear infinite; filter: drop-shadow(0 3px 5px rgba(0,0,0,.2)); }
+  .floater.a { top: 12%;  left: -10%; animation-delay: 0s; }
+  .floater.b { top: 28%; left: -10%; animation-delay: -8s; font-size: 48px; }
+  .floater.c { top: 36%; left: -10%; animation-delay: -14s; font-size: 54px; }
+  .floater.d { top: 48%; left: -10%; animation-delay: -3s; font-size: 50px; }
+  @keyframes el-drift { from { transform: translateX(0) rotate(0); } to { transform: translateX(120vw) rotate(360deg); } }
+
+  /* === HEADER === */
+  .header {
+    position: absolute; top: 110px; left: 36px; right: 36px;
+    display: grid; grid-template-columns: 260px 1fr 220px;
+    gap: 36px; z-index: 5; align-items: center;
+  }
+
+  /* LOGO — actual food truck silhouette */
+  .truck { position: relative; width: 260px; height: 180px; animation: el-truckBounce 2.2s ease-in-out infinite; }
+  @keyframes el-truckBounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+  .truck .cab {
+    position: absolute; top: 36px; left: 8px; width: 74px; height: 90px;
+    background: linear-gradient(180deg, #ec4899, #9d174d);
+    border: 4px solid #1f2937; border-radius: 16px 6px 6px 6px;
+    box-shadow: 0 8px 14px rgba(0,0,0,.3);
+  }
+  .truck .cab::before {
+    content: ''; position: absolute; top: 8px; left: 8px; right: 8px; height: 36px;
+    background: linear-gradient(135deg, #dbeafe, #93c5fd); border-radius: 4px;
+  }
+  .truck .cab::after {
+    /* little driver smiley */
+    content: '😊'; position: absolute; top: 12px; left: 8px; right: 8px;
+    font-size: 26px; text-align: center; line-height: 28px;
+  }
+  .truck .body {
+    position: absolute; top: 14px; left: 72px; right: 8px; height: 112px;
+    background: linear-gradient(180deg, #fbbf24, #d97706);
+    border: 4px solid #1f2937; border-radius: 6px 20px 6px 6px;
+    box-shadow: 0 8px 14px rgba(0,0,0,.3);
+  }
+  .truck .body .window {
+    position: absolute; top: 18px; left: 16px; right: 16px; height: 62px;
+    background: #1f2937; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Bungee', cursive; font-size: 34px;
+    color: #fef3c7;
+    text-shadow: 2px 2px 0 #ec4899;
+    letter-spacing: .06em;
+  }
+  .truck .awn {
+    position: absolute; top: 0; left: 72px; right: 8px; height: 20px;
+    background: repeating-linear-gradient(90deg, #dc2626 0 14px, #fef3c7 14px 28px);
+    border: 3px solid #1f2937; border-bottom: none;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 96% 40%, 92% 100%, 88% 40%, 84% 100%, 80% 40%, 76% 100%, 72% 40%, 68% 100%, 64% 40%, 60% 100%, 56% 40%, 52% 100%, 48% 40%, 44% 100%, 40% 40%, 36% 100%, 32% 40%, 28% 100%, 24% 40%, 20% 100%, 16% 40%, 12% 100%, 8% 40%, 4% 100%, 0 40%);
+  }
+  .truck .wheel {
+    position: absolute; bottom: 4px; width: 38px; height: 38px;
+    background: radial-gradient(circle at 40% 40%, #94a3b8 0%, #1f2937 70%);
+    border-radius: 50%;
+    border: 4px solid #111827;
+    animation: el-wheel 2s linear infinite;
+  }
+  .truck .wheel.l { left: 28px; }
+  .truck .wheel.r { right: 44px; }
+  @keyframes el-wheel { to { transform: rotate(360deg); } }
+
+  /* TITLE — sign above the serving window. No overlapping awning below. */
+  .title {
+    position: relative; text-align: center;
+    background: linear-gradient(180deg, #fef3c7, #fbbf24);
+    border: 6px solid #1f2937;
+    border-radius: 20px;
+    padding: 18px 40px;
+    box-shadow:
+      0 0 0 4px #fef3c7,
+      0 0 0 10px #ec4899,
+      0 16px 28px rgba(0,0,0,.22);
+    animation: el-sign 4s ease-in-out infinite;
+  }
+  @keyframes el-sign {
+    0%, 100% { transform: rotate(-1deg) translateY(0); }
+    50%      { transform: rotate(1deg) translateY(-4px); }
+  }
+  .title h1 {
+    margin: 0; line-height: .95;
+    font-family: 'Bungee', cursive; font-size: 84px; color: #dc2626;
+    text-shadow: 3px 3px 0 #1f2937, 5px 5px 0 #fbbf24;
+    letter-spacing: .03em;
+  }
+  .title .sub {
+    font-family: 'Permanent Marker', cursive; font-size: 30px;
+    color: #7c2d12; margin-top: 2px;
+  }
+  .title .star {
+    position: absolute; font-size: 32px;
+    animation: el-twinkle 1.4s ease-in-out infinite;
+  }
+  .title .star.s1 { top: -10px; left: 10%; }
+  .title .star.s2 { top: -10px; right: 10%; animation-delay: .3s; }
+  .title .star.s3 { bottom: -14px; left: 20%; animation-delay: .6s; }
+  .title .star.s4 { bottom: -14px; right: 20%; animation-delay: .9s; }
+  @keyframes el-twinkle {
+    0%, 100% { opacity: .4; transform: scale(.9) rotate(-10deg); }
+    50%      { opacity: 1;  transform: scale(1.15) rotate(15deg); }
+  }
+
+  /* CLOCK — order-window round sign */
+  .clock {
+    position: relative; width: 180px; height: 180px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 35% 30%, #fff, #fef3c7 70%);
+    border: 8px solid #1f2937;
+    border-radius: 50%;
+    box-shadow: 0 12px 24px rgba(0,0,0,.28), inset 0 0 20px rgba(251,191,36,.3);
+    animation: el-clockBob 3.6s ease-in-out infinite;
+  }
+  @keyframes el-clockBob { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+  .clock .t {
+    font-family: 'Bungee', cursive; font-size: 56px; line-height: 1;
+    color: #dc2626; text-shadow: 2px 2px 0 rgba(0,0,0,.12);
+  }
+  .clock .ap {
+    font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 22px;
+    color: #7c2d12; letter-spacing: .15em;
+  }
+
+  /* === GRID === */
+  /* Top clears the title (110+200=310 give +20 buffer = 330). */
+  /* Bottom clears the ticker (110 + 30 buffer = 140). */
+  .grid {
+    position: absolute; top: 330px; left: 36px; right: 36px; bottom: 140px;
+    display: grid;
+    grid-template-columns: 290px 1fr 290px;
+    grid-template-rows: 1fr 1fr;
+    gap: 24px;
+    z-index: 3;
+  }
+
+  /* TODAY'S SPECIAL — big price tag hanging from string */
+  .special {
+    grid-column: 1; grid-row: 1;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: flex-start; padding-top: 10px;
+    position: relative;
+  }
+  .special .string { width: 2px; height: 28px; background: #1f2937; border-radius: 1px; }
+  .special .tag {
+    position: relative;
+    background: linear-gradient(135deg, #fef3c7, #fbbf24);
+    border: 4px solid #1f2937;
+    clip-path: polygon(0 50%, 12% 0, 100% 0, 100% 100%, 12% 100%);
+    padding: 22px 26px 22px 48px;
+    text-align: center;
+    box-shadow: 0 8px 18px rgba(0,0,0,.3);
+    animation: el-tagSwing 3.6s ease-in-out infinite;
+    transform-origin: 10% 0;
+    min-width: 240px;
+  }
+  @keyframes el-tagSwing {
+    0%, 100% { transform: rotate(-4deg); }
+    50%      { transform: rotate(4deg); }
+  }
+  .special .tag::before {
+    content: ''; position: absolute; left: 22px; top: 50%; transform: translateY(-50%);
+    width: 10px; height: 10px; border-radius: 50%; background: #1f2937;
+  }
+  .special .tag .emoji {
+    /* ICON-SWAP: today's special food */
+    font-size: 100px; line-height: 1; display: block;
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,.3));
+  }
+  .special .tag .lbl {
+    font-family: 'Bungee', cursive; font-size: 18px; color: #dc2626;
+    letter-spacing: .12em; margin-top: 4px;
+  }
+  .special .tag .name {
+    font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 26px;
+    color: #7c2d12; line-height: 1.05; margin-top: 2px;
+  }
+
+  /* CENTER MENU — food-truck order board. NO overlapping awning inside;
+     a standalone striped header SITS ON TOP but is part of the menu card,
+     not an absolute overlay — no clipping. */
+  .menu {
+    grid-column: 2; grid-row: 1 / span 2;
+    position: relative;
+    background: #fafafa;
+    border: 6px solid #1f2937;
+    border-radius: 18px;
+    box-shadow: 0 16px 30px rgba(0,0,0,.25), 10px 10px 0 #ec4899, 14px 14px 0 #1f2937;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    animation: el-menuFloat 5.4s ease-in-out infinite;
+  }
+  @keyframes el-menuFloat {
+    0%, 100% { transform: rotate(-.5deg) translateY(0); }
+    50%      { transform: rotate(.5deg) translateY(-5px); }
+  }
+  .menu .awning {
+    flex: 0 0 auto; height: 36px;
+    background: repeating-linear-gradient(90deg, #dc2626 0 28px, #fef3c7 28px 56px);
+    border-bottom: 4px solid #1f2937;
+    clip-path: polygon(0 0, 100% 0, 100% 50%, 96% 100%, 92% 50%, 88% 100%, 84% 50%, 80% 100%, 76% 50%, 72% 100%, 68% 50%, 64% 100%, 60% 50%, 56% 100%, 52% 50%, 48% 100%, 44% 50%, 40% 100%, 36% 50%, 32% 100%, 28% 50%, 24% 100%, 20% 50%, 16% 100%, 12% 50%, 8% 100%, 4% 50%, 0 100%);
+  }
+  .menu .body {
+    flex: 1; padding: 18px 38px 22px;
+    display: flex; flex-direction: column; min-height: 0;
+    overflow: hidden;
+  }
+  .menu h2 {
+    margin: 0; line-height: 1;
+    font-family: 'Bungee', cursive; font-size: 54px; text-align: center;
+    background: linear-gradient(135deg, #dc2626, #f59e0b);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .menu .date {
+    text-align: center; font-family: 'Permanent Marker', cursive; font-size: 24px;
+    color: #9d174d; margin-top: -4px; margin-bottom: 12px;
+    transform: rotate(-1deg);
+  }
+  .menu .items { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; flex: 1; min-height: 0; align-content: center; }
+  .menu .item {
+    display: flex; align-items: center; gap: 12px;
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border: 3px solid #1f2937; border-radius: 12px;
+    padding: 10px 14px;
+    box-shadow: 3px 3px 0 #1f2937;
+  }
+  .menu .item .emoji {
+    /* ICON-SWAP: per-menu-line food icon */
+    font-size: 40px; line-height: 1; flex: 0 0 auto;
+  }
+  .menu .item .body2 { flex: 1; min-width: 0; }
+  .menu .item .nm {
+    font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 22px;
+    color: #1f2937; line-height: 1;
+  }
+  .menu .item .meta {
+    font-family: 'Permanent Marker', cursive; font-size: 15px;
+    color: #b91c1c; margin-top: 2px;
+  }
+
+  /* COUNTDOWN — sunburst badge. Icon AND label both easy to swap. */
+  .countdown {
+    grid-column: 3; grid-row: 1;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .countdown .burst {
+    position: relative; width: 240px; height: 240px;
+    animation: el-burst 14s linear infinite;
+  }
+  @keyframes el-burst { to { transform: rotate(360deg); } }
+  .countdown .rays {
+    position: absolute; inset: 0; border-radius: 50%;
+    background: conic-gradient(from 0deg,
+      #fde68a 0 20deg, #fbbf24 20deg 40deg,
+      #fde68a 40deg 60deg, #fbbf24 60deg 80deg,
+      #fde68a 80deg 100deg, #fbbf24 100deg 120deg,
+      #fde68a 120deg 140deg, #fbbf24 140deg 160deg,
+      #fde68a 160deg 180deg, #fbbf24 180deg 200deg,
+      #fde68a 200deg 220deg, #fbbf24 220deg 240deg,
+      #fde68a 240deg 260deg, #fbbf24 260deg 280deg,
+      #fde68a 280deg 300deg, #fbbf24 300deg 320deg,
+      #fde68a 320deg 340deg, #fbbf24 340deg 360deg);
+    border: 5px solid #1f2937;
+    filter: drop-shadow(0 10px 18px rgba(0,0,0,.3));
+  }
+  .countdown .center {
+    position: absolute; inset: 30px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #fff, #fef3c7 70%);
+    border: 5px solid #1f2937;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
+    animation: el-burstCounter 14s linear infinite reverse;
+    padding: 14px;
+  }
+  .countdown .icon {
+    /* ICON-SWAP: big countdown icon — pizza/taco/burger/whatever the event is */
+    font-size: 44px; line-height: 1; margin-bottom: 2px;
+  }
+  .countdown .lbl {
+    font-family: 'Bungee', cursive; font-size: 14px;
+    color: #9d174d; letter-spacing: .12em; text-transform: uppercase;
+    max-width: 140px; line-height: 1.1;
+  }
+  .countdown .num {
+    font-family: 'Bungee', cursive; font-size: 66px; line-height: .9;
+    color: #dc2626; text-shadow: 2px 2px 0 rgba(0,0,0,.15);
+    margin: 2px 0;
+  }
+  .countdown .unit {
+    font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 16px;
+    color: #1f2937; letter-spacing: .15em;
+  }
+
+  /* LUNCH CHEF — chef card */
+  .chef {
+    grid-column: 1; grid-row: 2;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    position: relative; padding: 8px;
+  }
+  .chef .card {
+    position: relative;
+    background: linear-gradient(135deg, #fef3c7, #fbbf24);
+    border: 5px solid #1f2937; border-radius: 16px;
+    padding: 14px 12px 12px;
+    width: 240px;
+    box-shadow: 0 10px 22px rgba(0,0,0,.28), 6px 6px 0 #ec4899;
+    transform: rotate(-3deg);
+    animation: el-chefSway 6s ease-in-out infinite;
+  }
+  @keyframes el-chefSway {
+    0%, 100% { transform: rotate(-3deg) translateY(0); }
+    50%      { transform: rotate(-1deg) translateY(-4px); }
+  }
+  .chef .face {
+    width: 100%; aspect-ratio: 1.15;
+    background: radial-gradient(circle at 50% 40%, #fef3c7, #fbbf24 70%);
+    border: 4px solid #1f2937; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 120px; line-height: 1;
+    /* ICON-SWAP: chef emoji (default 👩‍🍳 or 👨‍🍳) */
+  }
+  .chef .name {
+    font-family: 'Bungee', cursive; font-size: 24px; color: #7c2d12;
+    margin-top: 8px; line-height: 1; text-align: center;
+  }
+  .chef .role {
+    font-family: 'Permanent Marker', cursive; font-size: 18px; color: #9d174d;
+    margin-top: 2px; line-height: 1; text-align: center;
+  }
+
+  /* BIRTHDAYS — candy ring spinning cake */
+  .birthdays {
+    grid-column: 3; grid-row: 2;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    position: relative; padding: 8px; text-align: center;
+  }
+  .birthdays .ring {
+    position: relative; width: 160px; height: 160px;
+    display: flex; align-items: center; justify-content: center;
+    animation: el-ringSpin 16s linear infinite;
+  }
+  @keyframes el-ringSpin { to { transform: rotate(360deg); } }
+  .birthdays .ring::before {
+    content: ''; position: absolute; inset: -18px; border-radius: 50%;
+    background:
+      radial-gradient(circle at 50% 0, #ec4899 0 8px, transparent 9px),
+      radial-gradient(circle at 100% 50%, #06b6d4 0 8px, transparent 9px),
+      radial-gradient(circle at 50% 100%, #fbbf24 0 8px, transparent 9px),
+      radial-gradient(circle at 0 50%, #10b981 0 8px, transparent 9px),
+      radial-gradient(circle at 15% 15%, #a78bfa 0 6px, transparent 7px),
+      radial-gradient(circle at 85% 15%, #f43f5e 0 6px, transparent 7px),
+      radial-gradient(circle at 85% 85%, #f97316 0 6px, transparent 7px),
+      radial-gradient(circle at 15% 85%, #3b82f6 0 6px, transparent 7px);
+  }
+  .birthdays .cake {
+    /* ICON-SWAP: party icon 🎂 🧁 🍰 🎉 */
+    font-size: 100px; line-height: 1;
+    filter: drop-shadow(0 5px 9px rgba(0,0,0,.3));
+    animation: el-cakeSpin 16s linear infinite reverse;
+  }
+  @keyframes el-cakeSpin { to { transform: rotate(-360deg); } }
+  .birthdays .lbl {
+    font-family: 'Bungee', cursive; font-size: 16px; color: #dc2626;
+    letter-spacing: .12em; text-transform: uppercase; margin-top: 10px;
+    text-shadow: 2px 2px 0 #fef3c7;
+  }
+  .birthdays .names {
+    font-family: 'Permanent Marker', cursive; font-size: 26px;
+    color: #1f2937; margin-top: 2px; line-height: 1.05;
+  }
+
+  /* TICKER — striped awning scroll. Fixed 110px total — grid.bottom=140 clears it. */
+  .ticker {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 110px;
+    background: #fafafa;
+    display: flex; flex-direction: column;
+    z-index: 6;
+    box-shadow: 0 -6px 18px rgba(0,0,0,.18);
+  }
+  .ticker::before {
+    content: ''; display: block; height: 24px; flex: 0 0 auto;
+    background: repeating-linear-gradient(90deg, #dc2626 0 24px, #fef3c7 24px 48px);
+    border-bottom: 3px solid #1f2937;
+    clip-path: polygon(0 0, 100% 0, 100% 55%, 96% 100%, 92% 55%, 88% 100%, 84% 55%, 80% 100%, 76% 55%, 72% 100%, 68% 55%, 64% 100%, 60% 55%, 56% 100%, 52% 55%, 48% 100%, 44% 55%, 40% 100%, 36% 55%, 32% 100%, 28% 55%, 24% 100%, 20% 55%, 16% 100%, 12% 55%, 8% 100%, 4% 55%, 0 100%);
+  }
+  .ticker .bar {
+    flex: 1; display: flex; align-items: center; overflow: hidden;
+    background: linear-gradient(180deg, #fafafa 0%, #fde68a 100%);
+  }
+  .ticker .stamp {
+    flex: 0 0 auto; padding: 0 28px; height: 100%;
+    background: linear-gradient(135deg, #dc2626, #9d174d);
+    color: #fef3c7; display: flex; align-items: center;
+    font-family: 'Bungee', cursive; letter-spacing: .12em; font-size: 28px;
+    text-shadow: 1px 1px 0 #1f2937;
+  }
+  .ticker .scroll { flex: 1; overflow: hidden; }
+  .ticker .scrollText {
+    font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 34px;
+    color: #1f2937; white-space: nowrap; padding-left: 100%;
+    display: inline-block;
+    animation: el-tickerScroll 44s linear infinite;
+  }
+  .ticker .scrollText .em { color: #dc2626; }
+  .ticker .scrollText .sep { color: #ec4899; padding: 0 20px; }
+  @keyframes el-tickerScroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <!-- Background floaters (ICON-SWAP: any emoji) -->
+  <div class="floater a">🌮</div>
+  <div class="floater b">🍔</div>
+  <div class="floater c">🥨</div>
+  <div class="floater d">🍟</div>
+
+  <!-- String lights -->
+  <div class="lights">
+    <div class="wire"></div>
+    <div class="bulb y" style="left: 6%;"></div>
+    <div class="bulb p" style="left: 14%;"></div>
+    <div class="bulb c" style="left: 22%;"></div>
+    <div class="bulb y" style="left: 30%;"></div>
+    <div class="bulb p" style="left: 38%;"></div>
+    <div class="bulb c" style="left: 46%;"></div>
+    <div class="bulb y" style="left: 54%;"></div>
+    <div class="bulb p" style="left: 62%;"></div>
+    <div class="bulb c" style="left: 70%;"></div>
+    <div class="bulb y" style="left: 78%;"></div>
+    <div class="bulb p" style="left: 86%;"></div>
+    <div class="bulb c" style="left: 94%;"></div>
+  </div>
+
+  <!-- Asphalt under the truck -->
+  <div class="ground"></div>
+
+  <div class="header">
+    <div class="truck">
+      <div class="awn"></div>
+      <div class="cab"></div>
+      <div class="body"><div class="window">EAT UP!</div></div>
+      <div class="wheel l"></div>
+      <div class="wheel r"></div>
+    </div>
+    <div class="title">
+      <span class="star s1">✨</span>
+      <span class="star s2">⭐</span>
+      <span class="star s3">🌟</span>
+      <span class="star s4">💫</span>
+      <h1>LUNCH IS ON</h1>
+      <div class="sub">~ freshly rolled every day ~</div>
+    </div>
+    <div class="clock">
+      <div class="t">11:45</div>
+      <div class="ap">AM</div>
+    </div>
+  </div>
+
+  <div class="grid">
+
+    <!-- TODAY'S SPECIAL — single food emoji, easily swapped -->
+    <div class="special">
+      <div class="string"></div>
+      <div class="tag">
+        <span class="emoji">🍕</span><!-- ICON-SWAP -->
+        <div class="lbl">★ Pickup Special ★</div>
+        <div class="name">Cheesy<br>Pepperoni</div>
+      </div>
+    </div>
+
+    <!-- MENU — each item emoji is swappable -->
+    <div class="menu">
+      <div class="awning"></div>
+      <div class="body">
+        <h2>Today's Menu</h2>
+        <div class="date">monday · april 19</div>
+        <div class="items">
+          <div class="item">
+            <span class="emoji">🍕</span><!-- ICON-SWAP -->
+            <div class="body2">
+              <div class="nm">Pepperoni Pizza</div>
+              <div class="meta">🌾 🧀 — $3.25</div>
+            </div>
+          </div>
+          <div class="item">
+            <span class="emoji">🍔</span><!-- ICON-SWAP -->
+            <div class="body2">
+              <div class="nm">Classic Burger</div>
+              <div class="meta">🌾 🧀 — $3.25</div>
+            </div>
+          </div>
+          <div class="item">
+            <span class="emoji">🍟</span><!-- ICON-SWAP -->
+            <div class="body2">
+              <div class="nm">Crispy Fries</div>
+              <div class="meta">veg · gf — $1.75</div>
+            </div>
+          </div>
+          <div class="item">
+            <span class="emoji">🥗</span><!-- ICON-SWAP -->
+            <div class="body2">
+              <div class="nm">Build-a-Salad</div>
+              <div class="meta">veg — $2.95</div>
+            </div>
+          </div>
+          <div class="item">
+            <span class="emoji">🍎</span><!-- ICON-SWAP -->
+            <div class="body2">
+              <div class="nm">Fruit Cup</div>
+              <div class="meta">gf — $1.50</div>
+            </div>
+          </div>
+          <div class="item">
+            <span class="emoji">🥤</span><!-- ICON-SWAP -->
+            <div class="body2">
+              <div class="nm">Milk · Juice · Water</div>
+              <div class="meta">varies — $0.75</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COUNTDOWN — icon + label + number all swap. Try 🌮/Taco Tuesday, 🍕/Pizza Day, 🎂/Birthday Bash, 🌶/Chili Day -->
+    <div class="countdown">
+      <div class="burst">
+        <div class="rays"></div>
+        <div class="center">
+          <div class="icon">🌮</div><!-- ICON-SWAP -->
+          <div class="lbl">Taco Tuesday in</div><!-- LABEL-SWAP -->
+          <div class="num">1</div>
+          <div class="unit">DAY</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="chef">
+      <div class="card">
+        <div class="face">👩‍🍳</div><!-- ICON-SWAP -->
+        <div class="name">MS. RODRIGUEZ</div>
+        <div class="role">~ lunch hero of the week ~</div>
+      </div>
+    </div>
+
+    <div class="birthdays">
+      <div class="ring">
+        <div class="cake">🎂</div><!-- ICON-SWAP -->
+      </div>
+      <div class="lbl">★ Birthdays Today ★</div>
+      <div class="names">Alex · Jordan · Sam</div>
+    </div>
+
+  </div>
+
+  <div class="ticker">
+    <div class="bar">
+      <div class="stamp">CAFÉ NEWS</div>
+      <div class="scroll">
+        <span class="scrollText">
+          <span class="em">TACO TUESDAY</span> tomorrow — $3.50 tacos all day
+          <span class="sep">✦</span>
+          Free water refills at the salad bar
+          <span class="sep">✦</span>
+          <span class="em">PIZZA FRIDAY</span> returns — $3.25 slices
+          <span class="sep">✦</span>
+          Reload your lunch card in the main office
+          <span class="sep">✦</span>
+          Allergen key: 🌾 gluten · 🥜 nuts · 🧀 dairy · 🥚 egg
+        </span>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
