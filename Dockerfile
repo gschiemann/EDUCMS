@@ -22,13 +22,18 @@ COPY packages/api-types/package.json ./packages/api-types/package.json
 COPY packages/auth-core/package.json ./packages/auth-core/package.json
 COPY packages/ws-events/package.json ./packages/ws-events/package.json
 
+# Prisma schema must exist before `pnpm install` because the root
+# postinstall hook runs `prisma generate`. Without these files the
+# whole install bails with "Could not find Prisma Schema".
+COPY packages/database/prisma ./packages/database/prisma
+
 # Install dependencies (frozen lockfile to ensure deterministic builds)
 RUN pnpm install --frozen-lockfile
 
 # Copy shared packages source
 COPY packages/ ./packages/
 
-# Generate Prisma Client
+# Re-generate Prisma Client now that the full packages tree is present
 RUN cd packages/database && npx prisma generate
 
 # Copy API source
