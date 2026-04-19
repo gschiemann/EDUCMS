@@ -3,15 +3,30 @@
 /**
  * AnimatedWelcomeWidget — full-screen elementary welcome scene.
  *
- * APPROVED 2026-04-19 — matches scratch/design/animated-rainbow.html.
- * Ported via the transform:scale pattern: a fixed 1920×1080 canvas
- * with every pixel size copied verbatim from the HTML mockup, wrapped
- * in a measuring container that scales it to fit any zone.
+ * ════════════════════════════════════════════════════════════════
+ *  ✓ APPROVED 2026-04-19 — Integration Lead signed off on commit dc80f51
+ *  This is the GOLD STANDARD reference for shape-based animated
+ *  templates. Use this as the design + structural reference for
+ *  every future animated theme.
  *
- * DO NOT regress to vw/% units inside the scene — they read the
- * browser viewport, not the widget container, and the design will
- * break at 4K and on small previews. See CLAUDE.md "Template Design
- * Workflow" for the full reasoning.
+ *  Key patterns to copy:
+ *  - Fixed 1920×1080 canvas + transform:scale via offsetWidth/Height
+ *    measurement (never vw/%, never getBoundingClientRect — both
+ *    break inside scaled parents).
+ *  - z-index 8 on the foreground grid so widget text renders ABOVE
+ *    the wavy ticker peaks.
+ *  - Birthdays: cluster art + label + names below, dynamic font
+ *    ladder 56→44→36→30 by name count, white-space:nowrap.
+ *  - Teacher caption rides on the washi-tape banner above the
+ *    polaroid (.aw-tWashi) — never below where it can collide
+ *    with the ticker.
+ *  - Clock + birthdays use React state, not document.getElementById
+ *    (multiple widget instances on a page would fight over a
+ *    shared DOM id otherwise).
+ *
+ *  DO NOT regress any of the above. See CLAUDE.md "Template Design
+ *  Workflow" for the full reasoning.
+ * ════════════════════════════════════════════════════════════════
  */
 
 import { useEffect, useRef, useState } from 'react';
