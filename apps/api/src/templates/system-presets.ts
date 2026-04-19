@@ -164,6 +164,22 @@ const _RETIRED_SUNNY_MEADOW_BG = (() => {
 })();
 
 export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
+  // ════════════════════════════════════════════════════════════════
+  // ✓ APPROVED — these two presets are the gold-standard reference
+  //   for elementary lobby/welcome templates. Integration Lead signed
+  //   off on the visual design + interaction model. Use these as the
+  //   pattern when building any future templates in the same family.
+  //
+  //   - 🌈 Rainbow Ribbon · Welcome (this one)        — multi-zone
+  //     editable in the builder, shape-based widgets via the rainbow-
+  //     ribbon theme.
+  //   - 🎉 Animated Rainbow · Welcome (next entry)    — monolithic
+  //     animated scene with hotspot-driven editing, live weather
+  //     auto-detect, date-driven countdown, gender-aware teacher icon,
+  //     birthday marquee with auto-scroll on 4+ names.
+  //
+  //   DO NOT regress either of these without explicit re-approval.
+  // ════════════════════════════════════════════════════════════════
   {
     id: "preset-lobby-rainbow-ribbon",
     name: "🌈 Rainbow Ribbon · Welcome",
@@ -186,6 +202,52 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
       {"name":"Events","widgetType":"CALENDAR","x":34,"y":54,"width":36,"height":34,"zIndex":2,"sortOrder":7,"defaultConfig":{"theme":"rainbow-ribbon","maxEvents":3}},
       {"name":"Birthdays","widgetType":"BIRTHDAYS","x":72,"y":54,"width":26,"height":34,"zIndex":3,"sortOrder":8,"defaultConfig":{}},
       {"name":"Ticker","widgetType":"TICKER","x":0,"y":90,"width":100,"height":10,"zIndex":6,"sortOrder":9,"defaultConfig":{"theme":"rainbow-ribbon","speed":"medium","messages":["Welcome back, Stars! ⭐","Picture day is Friday","Reading Challenge: 20 minutes a day! 📖","Parent-teacher conferences next Tuesday"]}},
+    ],
+  },
+  // ✓ APPROVED — animated sibling of Rainbow Ribbon. Same family,
+  //   adds motion + live data integrations. See the block at the top
+  //   of this file for the full sign-off context.
+  {
+    id: "preset-lobby-animated-rainbow",
+    name: "🎉 Animated Rainbow · Welcome",
+    description: "Full-screen ANIMATED elementary welcome — confetti rain, spinning sun, drifting clouds, wiggling clock, floating balloons, scrolling birthday marquee. Live weather auto-detected from the player. Date-driven countdown.",
+    category: "LOBBY",
+    orientation: 'LANDSCAPE',
+    schoolLevel: "ELEMENTARY",
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: "#BFE8FF",
+    bgGradient: "linear-gradient(180deg,#BFE8FF 0%,#FFE0EC 55%,#FFD8A8 100%)",
+    zones: [
+      {
+        "name": "Animated Welcome Scene",
+        "widgetType": "ANIMATED_WELCOME",
+        "x": 0, "y": 0, "width": 100, "height": 100,
+        "zIndex": 1,
+        "sortOrder": 0,
+        "defaultConfig": {
+          "logoEmoji": "🍎",
+          "title": "Welcome, Friends!",
+          "subtitle": "today is going to be amazing ✨",
+          "weatherLocation": "",
+          "weatherUnits": "imperial",
+          "announcementLabel": "Big News",
+          "announcementMessage": "Book Fair starts Monday! 📚 Come find your new favorite story.",
+          "countdownLabel": "Field Trip in",
+          "countdownDate": "2026-05-30",
+          "teacherGender": "female",
+          "teacherName": "Mrs. Johnson",
+          "teacherRole": "Teacher of the Week",
+          "birthdayNames": "Maya · Eli · Sofia",
+          "tickerStamp": "SCHOOL NEWS",
+          "tickerMessages": [
+            "Welcome back, Stars! ⭐",
+            "Picture day is Friday 📸",
+            "Reading Challenge: 20 minutes a day 📖",
+            "Parent-teacher conferences next Tuesday 👨‍👩‍👧"
+          ]
+        }
+      }
     ],
   },
   {
@@ -1161,49 +1223,6 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
       {"name":"Coach's Message","widgetType":"ANNOUNCEMENT","x":2,"y":80,"width":60,"height":10,"zIndex":10,"sortOrder":7,"defaultConfig":{"theme":"achievement-hall","message":"GO EAGLES. Play smart, play hard, play together."}},
       {"name":"Next Game Countdown","widgetType":"COUNTDOWN","x":64,"y":80,"width":34,"height":10,"zIndex":4,"sortOrder":8,"defaultConfig":{"theme":"achievement-hall","label":"Kickoff in","targetDate":""}},
       {"name":"Ticker","widgetType":"TICKER","x":0,"y":92,"width":100,"height":8,"zIndex":6,"sortOrder":9,"defaultConfig":{"theme":"achievement-hall","speed":"medium","messages":["FINAL: Varsity 28 — Central 14","Girls volleyball advances to state finals","JV soccer moves on to regionals","Pep rally Friday @ 2:30 in the gym"]}},
-    ],
-  },
-  {
-    id: "preset-lobby-animated-rainbow",
-    name: "🎉 Animated Rainbow · Welcome",
-    description: "Full-screen ANIMATED elementary welcome — confetti rain, spinning sun, drifting clouds, wiggling clock, floating balloons, scrolling ticker.",
-    category: "LOBBY",
-    orientation: 'LANDSCAPE',
-    schoolLevel: "ELEMENTARY",
-    screenWidth: 3840,
-    screenHeight: 2160,
-    bgColor: "#BFE8FF",
-    bgGradient: "linear-gradient(180deg,#BFE8FF 0%,#FFE0EC 55%,#FFD8A8 100%)",
-    zones: [
-      {
-        "name": "Animated Welcome Scene",
-        "widgetType": "ANIMATED_WELCOME",
-        "x": 0, "y": 0, "width": 100, "height": 100,
-        "zIndex": 1,
-        "sortOrder": 0,
-        "defaultConfig": {
-          "logoEmoji": "🍎",
-          "title": "Welcome, Friends!",
-          "subtitle": "today is going to be amazing ✨",
-          "weatherLocation": "",
-          "weatherUnits": "imperial",
-          "announcementLabel": "Big News",
-          "announcementMessage": "Book Fair starts Monday! 📚 Come find your new favorite story.",
-          "countdownLabel": "Field Trip in",
-          "countdownDate": "2026-05-30",
-          "teacherGender": "female",
-          "teacherName": "Mrs. Johnson",
-          "teacherRole": "Teacher of the Week",
-          "birthdayNames": "Maya · Eli · Sofia",
-          "tickerStamp": "SCHOOL NEWS",
-          "tickerMessages": [
-            "Welcome back, Stars! ⭐",
-            "Picture day is Friday 📸",
-            "Reading Challenge: 20 minutes a day 📖",
-            "Parent-teacher conferences next Tuesday 👨‍👩‍👧"
-          ]
-        }
-      }
     ],
   },
 ];
