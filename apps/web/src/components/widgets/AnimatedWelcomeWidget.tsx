@@ -46,18 +46,21 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
   const confettiRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0);
 
-  // Measure THIS element (which fills its zone) and scale the 1920×1080
-  // canvas to fit. Measure self instead of parent because the parent
-  // sometimes hasn't laid out yet (during thumbnail hydration) and
-  // returns 0×0, which collapses the canvas to invisible.
+  // Scale the 1920×1080 canvas to fit our zone. Use offsetWidth/Height
+  // (LAYOUT size, unaffected by parent transforms) instead of
+  // getBoundingClientRect (which returns the SCALED size when an
+  // ancestor has transform:scale applied — e.g. ScaledTemplateThumbnail
+  // wraps everything in scale(0.13), causing double-scale collapse and
+  // a tiny dot in the thumbnail).
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
     const compute = () => {
-      const rect = el.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) return;
-      const sx = rect.width / CANVAS_W;
-      const sy = rect.height / CANVAS_H;
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
+      if (w <= 0 || h <= 0) return;
+      const sx = w / CANVAS_W;
+      const sy = h / CANVAS_H;
       setScale(Math.min(sx, sy));
     };
     compute();
@@ -354,7 +357,7 @@ const CSS = `
   font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 76px; color: #7c2d12;
   text-shadow: 0 2px 0 rgba(255,255,255,.4);
 }
-.aw-weatherDesc { font-family: 'Caveat', cursive; font-size: 38px; color: #78350f; margin-top: 18px; text-align: center; text-shadow: 0 2px 0 rgba(255,255,255,.7); }
+.aw-weatherDesc { font-family: 'Caveat', cursive; font-weight: 700; font-size: 52px; color: #78350f; margin-top: 18px; text-align: center; text-shadow: 0 2px 0 rgba(255,255,255,.7); }
 
 /* ANNOUNCEMENT — cloud puff */
 .aw-announce {
@@ -417,9 +420,9 @@ const CSS = `
   0%, 100% { transform: scale(1) rotate(-3deg); }
   50% { transform: scale(1.06) rotate(3deg); }
 }
-.aw-cdLbl { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 22px; letter-spacing: .12em; color: #7c2d12; text-transform: uppercase; max-width: 180px; line-height: 1.05; }
-.aw-cdNum { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 90px; line-height: .9; color: #7c2d12; text-shadow: 0 3px 0 rgba(255,255,255,.5); margin: 4px 0; }
-.aw-cdUnit { font-family: 'Caveat', cursive; font-size: 36px; color: #7c2d12; }
+.aw-cdLbl { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 18px; letter-spacing: .08em; color: #7c2d12; text-transform: uppercase; max-width: 150px; line-height: 1.1; }
+.aw-cdNum { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 84px; line-height: .9; color: #7c2d12; text-shadow: 0 3px 0 rgba(255,255,255,.5); margin: 6px 0; }
+.aw-cdUnit { font-family: 'Caveat', cursive; font-size: 32px; color: #7c2d12; }
 
 /* TEACHER — polaroid */
 .aw-teacher { grid-column: 1; grid-row: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
@@ -458,19 +461,19 @@ const CSS = `
 
 /* BIRTHDAYS — balloon cluster */
 .aw-birthdays { grid-column: 3; grid-row: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; padding: 12px; }
-.aw-cluster { position: relative; width: 230px; height: 200px; animation: aw-bob 1.4s ease-in-out infinite; }
+.aw-cluster { position: relative; width: 200px; height: 160px; animation: aw-bob 1.4s ease-in-out infinite; }
 @keyframes aw-bob {
   0%, 100% { transform: translateY(0) rotate(-3deg); }
   50% { transform: translateY(-10px) rotate(3deg); }
 }
-.aw-bal { position: absolute; width: 90px; height: 110px; border-radius: 50% 50% 48% 48%; box-shadow: inset -8px -10px 12px rgba(0,0,0,.18), 0 4px 8px rgba(0,0,0,.18); }
-.aw-bal::after { content: ''; position: absolute; left: 50%; top: 100%; width: 1px; height: 60px; background: rgba(0,0,0,.4); transform: translateX(-50%); }
+.aw-bal { position: absolute; width: 70px; height: 88px; border-radius: 50% 50% 48% 48%; box-shadow: inset -8px -10px 12px rgba(0,0,0,.18), 0 4px 8px rgba(0,0,0,.18); }
+.aw-bal::after { content: ''; position: absolute; left: 50%; top: 100%; width: 1px; height: 50px; background: rgba(0,0,0,.4); transform: translateX(-50%); }
 .aw-bal1 { left: 10px; top: 0; background: #f87171; }
-.aw-bal2 { left: 70px; top: 14px; background: #fbbf24; transform: rotate(-6deg); width: 80px; height: 100px; }
-.aw-bal3 { left: 130px; top: 0; background: #ec4899; }
-.aw-cake { position: absolute; bottom: -15px; left: 50%; transform: translateX(-50%); font-size: 60px; line-height: 1; }
-.aw-bdLbl { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 24px; letter-spacing: .12em; color: #be185d; text-transform: uppercase; margin-top: 28px; text-shadow: 0 2px 0 rgba(255,255,255,.7); }
-.aw-bdNames { font-family: 'Caveat', cursive; font-weight: 700; font-size: 56px; color: #831843; line-height: 1.05; text-shadow: 0 2px 0 rgba(255,255,255,.7); margin-top: 4px; }
+.aw-bal2 { left: 60px; top: 12px; background: #fbbf24; transform: rotate(-6deg); width: 64px; height: 80px; }
+.aw-bal3 { left: 115px; top: 0; background: #ec4899; }
+.aw-cake { position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); font-size: 50px; line-height: 1; }
+.aw-bdLbl { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 22px; letter-spacing: .12em; color: #be185d; text-transform: uppercase; margin-top: 18px; text-shadow: 0 2px 0 rgba(255,255,255,.7); }
+.aw-bdNames { font-family: 'Caveat', cursive; font-weight: 700; font-size: 48px; color: #831843; line-height: 1; text-shadow: 0 2px 0 rgba(255,255,255,.7); margin-top: 6px; }
 
 /* TICKER — wavy ribbon */
 .aw-ticker {
