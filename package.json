@@ -19,7 +19,8 @@
     "test:e2e:ui": "playwright test --ui",
     "a11y:ci": "pnpm --filter web run a11y:ci",
     "lhci": "pnpm --filter web run lhci",
-    "preflight": "pnpm install --frozen-lockfile --lockfile-only && pnpm --filter @cms/api-types build && pnpm --filter @cms/auth-core build && pnpm --filter @cms/ws-events build && pnpm --filter api build && pnpm --filter web build"
+    "preflight": "pnpm install --frozen-lockfile --lockfile-only && pnpm --filter @cms/api-types build && pnpm --filter @cms/auth-core build && pnpm --filter @cms/ws-events build && pnpm --filter api build && pnpm --filter web build",
+    "prepare": "husky || true"
   },
   "dependencies": {
     "@cms/api-types": "workspace:*",
@@ -41,6 +42,7 @@
     "@types/pg": "^8.10.9",
     "@types/supertest": "^7.2.0",
     "@wdio/cli": "^9.27.0",
+    "husky": "^9.1.7",
     "jest": "^29.7.0",
     "supertest": "^7.2.2",
     "ts-jest": "^29.1.1",
