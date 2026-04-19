@@ -4,6 +4,7 @@ import {
   CalendarDays, Megaphone, UtensilsCrossed, Users, Rss, Share2, Shield,
   ArrowRight, Square, FileText, ListVideo,
   MousePointerClick, Menu as MenuIcon, MapPin, Keyboard, Map, BarChart3,
+  Quote, Trophy, Cake, Award, Table2, UserCheck,
 } from 'lucide-react';
 
 export const WIDGET_GROUPS = [
@@ -45,6 +46,19 @@ export const WIDGET_GROUPS = [
       { type: 'LOGO', label: 'School Logo', desc: 'Display your logo', icon: Shield },
       { type: 'TICKER', label: 'Scrolling Ticker', desc: 'Scrolling text banner', icon: ArrowRight },
       { type: 'EMPTY', label: 'Placeholder', desc: 'Reserve a zone for later', icon: Square },
+    ],
+  },
+  {
+    label: 'School Life',
+    types: [
+      { type: 'QUOTE',          label: 'Quote Card',       desc: 'Inspirational pull-quote + author',   icon: Quote },
+      { type: 'STATS',          label: 'Stats Row',        desc: '3-5 big-number stat cards',           icon: BarChart3 },
+      { type: 'SCOREBOARD',     label: 'Scoreboard',       desc: 'Home vs away game scorebug',          icon: Trophy },
+      { type: 'MENU_ITEM',      label: 'Menu Item',        desc: 'Cafeteria dish card with allergens',  icon: UtensilsCrossed },
+      { type: 'SCHEDULE_GRID',  label: 'Schedule Grid',    desc: 'Period-by-period daily schedule',     icon: Table2 },
+      { type: 'ATTENDANCE',     label: 'Attendance',       desc: 'Live daily attendance percentage',    icon: UserCheck },
+      { type: 'BIRTHDAYS',      label: 'Birthdays',        desc: "Today's birthday shout-outs",         icon: Cake },
+      { type: 'HONOR_ROLL',     label: 'Honor Roll',       desc: 'Recognized students + reason',        icon: Award },
     ],
   },
   {

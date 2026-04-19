@@ -32,6 +32,9 @@ import { StorybookLogo, StorybookText, StorybookClock, StorybookWeather, Storybo
 import { TrackDayLogo, TrackDayText, TrackDayClock, TrackDayWeather, TrackDayCountdown, TrackDayAnnouncement, TrackDayCalendar, TrackDayStaffSpotlight, TrackDayImageCarousel, TrackDayTicker } from './themes/track-day';
 import { ScorebugLogo, ScorebugText, ScorebugClock, ScorebugWeather, ScorebugCountdown, ScorebugAnnouncement, ScorebugCalendar, ScorebugStaffSpotlight, ScorebugImageCarousel, ScorebugTicker } from './themes/scorebug';
 import { JumbotronProLogo, JumbotronProText, JumbotronProClock, JumbotronProWeather, JumbotronProCountdown, JumbotronProAnnouncement, JumbotronProCalendar, JumbotronProStaffSpotlight, JumbotronProImageCarousel, JumbotronProTicker } from './themes/jumbotron-pro';
+// 8 generic (theme-agnostic) widgets for launch: QUOTE, STATS,
+// MENU_ITEM, SCOREBOARD, SCHEDULE_GRID, ATTENDANCE, BIRTHDAYS, HONOR_ROLL.
+import { QuoteWidget, StatsWidget, MenuItemWidget, ScoreboardWidget, ScheduleGridWidget, AttendanceWidget, BirthdaysWidget, HonorRollWidget } from './themes/GenericWidgets';
 import { ScrapbookLogo, ScrapbookText, ScrapbookClock, ScrapbookWeather, ScrapbookCountdown, ScrapbookAnnouncement, ScrapbookCalendar, ScrapbookStaffSpotlight, ScrapbookImageCarousel, ScrapbookTicker } from './themes/scrapbook';
 import { LockerHallwayLogo, LockerHallwayText, LockerHallwayClock, LockerHallwayWeather, LockerHallwayCountdown, LockerHallwayAnnouncement, LockerHallwayCalendar, LockerHallwayStaffSpotlight, LockerHallwayImageCarousel, LockerHallwayTicker } from './themes/locker-hallway';
 import { SpiritRallyLogo, SpiritRallyText, SpiritRallyClock, SpiritRallyWeather, SpiritRallyCountdown, SpiritRallyAnnouncement, SpiritRallyCalendar, SpiritRallyStaffSpotlight, SpiritRallyImageCarousel, SpiritRallyTicker } from './themes/spirit-rally';
@@ -105,6 +108,15 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'RSS_FEED':     return <RSSWidget config={cfg} compact={compact} />;
     case 'SOCIAL_FEED':  return <SocialWidget config={cfg} />;
     case 'PLAYLIST':     return <PlaylistWidget config={cfg} />;
+    // Generic category widgets (theme-agnostic).
+    case 'QUOTE':        return <QuoteWidget config={cfg} onConfigChange={onConfigChange} />;
+    case 'STATS':        return <StatsWidget config={cfg} />;
+    case 'MENU_ITEM':    return <MenuItemWidget config={cfg} onConfigChange={onConfigChange} />;
+    case 'SCOREBOARD':   return <ScoreboardWidget config={cfg} onConfigChange={onConfigChange} />;
+    case 'SCHEDULE_GRID': return <ScheduleGridWidget config={cfg} />;
+    case 'ATTENDANCE':   return <AttendanceWidget config={cfg} />;
+    case 'BIRTHDAYS':    return <BirthdaysWidget config={cfg} />;
+    case 'HONOR_ROLL':   return <HonorRollWidget config={cfg} />;
     // ── Touch / Interactive (Sprint 4) ──────────────────────────
     case 'TOUCH_BUTTON':     return <TouchButtonWidget config={cfg} />;
     case 'TOUCH_MENU':       return <TouchMenuWidget config={cfg} />;

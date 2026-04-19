@@ -32,16 +32,17 @@ import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 // Constants & Helpers
 // ─────────────────────────────────────────────────────
 
+// Four main categories. Everything else was clutter at launch — we can
+// reintroduce niche ones (Classroom, Office, Library) later when the
+// library is deeper. These four match the physical spots a school
+// actually installs a sign: main entrance, hallway wayfinding, lunch
+// line, and the gym/athletic area.
 const CATEGORY_TABS = [
-  { key: '', label: 'All' },
-  { key: 'LOBBY', label: 'Lobby' },
-  { key: 'HALLWAY', label: 'Hallway' },
+  { key: '',          label: 'All' },
+  { key: 'LOBBY',     label: 'Welcome' },
+  { key: 'HALLWAY',   label: 'Hallway' },
   { key: 'CAFETERIA', label: 'Cafeteria' },
-  { key: 'CLASSROOM', label: 'Classroom' },
-  { key: 'OFFICE', label: 'Office' },
-  { key: 'GYM', label: 'Gym' },
-  { key: 'LIBRARY', label: 'Library' },
-  { key: 'CUSTOM', label: 'Custom' },
+  { key: 'ATHLETICS', label: 'Athletics' },
 ];
 
 // School-level filter chips. UNIVERSAL templates always show (no level
