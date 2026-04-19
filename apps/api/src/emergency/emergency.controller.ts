@@ -7,6 +7,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AllowPanicBypass } from '../auth/panic-bypass.decorator';
 import * as crypto from 'crypto';
+import * as Sentry from '@sentry/nestjs';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import {
@@ -121,6 +122,14 @@ export class EmergencyController {
     try {
       await this.redisService.publish(channel, signedMessage);
     } catch (error) {
+      Sentry.withScope((s) => {
+        s.setTag('emergency.action', 'trigger');
+        s.setTag('emergency.scopeType', scopeType);
+        s.setUser({ id: req.user?.id });
+        s.setExtra('overrideId', overrideId);
+        s.setExtra('channel', channel);
+        Sentry.captureException(error);
+      });
       console.warn(`[Emergency] Redis publish failed for ${channel}. Realtime bypass disabled. Screens will pull via HTTP polling. Error: ${error}`);
     }
 
@@ -189,6 +198,14 @@ export class EmergencyController {
     try {
       await this.redisService.publish(channel, message);
     } catch (error) {
+      Sentry.withScope((s) => {
+        s.setTag('emergency.action', 'all-clear');
+        s.setTag('emergency.scopeType', scopeType);
+        s.setUser({ id: req.user?.id });
+        s.setExtra('overrideId', overrideId);
+        s.setExtra('channel', channel);
+        Sentry.captureException(error);
+      });
       console.warn(`[Emergency] Redis publish failed for ${channel}.`);
     }
 
@@ -238,38 +255,42 @@ export class EmergencyController {
       ? `SOS from ${user.email || 'staff'} — ${body.location}`
       : `SOS from ${user.email || 'staff'}`;
 
-    await this.prisma.client.emergencyMessage.create({
-      data: {
-        id: messageId,
-        tenantId,
-        triggeredByUserId: user.id || null,
-        type: 'SOS',
-        severity,
-        textBlob,
-        mediaUrls: null,
-        audioUrl: body.voiceClipUrl || null,
-        scopeType: 'tenant',
-        scopeId: tenantId,
-        expiresAt,
-      },
-    });
-
-    await this.prisma.client.auditLog.create({
-      data: {
-        action: 'SOS_TRIGGER',
-        targetType: 'tenant',
-        targetId: tenantId,
-        tenantId,
-        userId: user.id,
-        details: JSON.stringify({
-          messageId,
+    // Wrap message + audit in one transaction so a failure in either
+    // one rolls both back — no orphan EmergencyMessage without audit,
+    // no audit row referencing a message that never persisted.
+    await this.prisma.client.$transaction([
+      this.prisma.client.emergencyMessage.create({
+        data: {
+          id: messageId,
+          tenantId,
+          triggeredByUserId: user.id || null,
+          type: 'SOS',
           severity,
-          location: body.location || null,
-          hasVoiceClip: !!body.voiceClipUrl,
-          triggerAt: new Date().toISOString(),
-        }),
-      },
-    });
+          textBlob,
+          mediaUrls: null,
+          audioUrl: body.voiceClipUrl || null,
+          scopeType: 'tenant',
+          scopeId: tenantId,
+          expiresAt,
+        },
+      }),
+      this.prisma.client.auditLog.create({
+        data: {
+          action: 'SOS_TRIGGER',
+          targetType: 'tenant',
+          targetId: tenantId,
+          tenantId,
+          userId: user.id,
+          details: JSON.stringify({
+            messageId,
+            severity,
+            location: body.location || null,
+            hasVoiceClip: !!body.voiceClipUrl,
+            triggerAt: new Date().toISOString(),
+          }),
+        },
+      }),
+    ]);
 
     const signedMessage = this.signer.signMessage('SOS', {
       messageId,
@@ -285,6 +306,14 @@ export class EmergencyController {
     try {
       await this.redisService.publish(channel, signedMessage);
     } catch (error) {
+      Sentry.withScope((s) => {
+        s.setTag('emergency.action', 'sos');
+        s.setTag('emergency.scopeType', 'tenant');
+        s.setUser({ id: user.id });
+        s.setExtra('messageId', messageId);
+        s.setExtra('channel', channel);
+        Sentry.captureException(error);
+      });
       console.warn(`[Emergency] SOS redis publish failed for ${channel}. Falling back to HTTP polling. Error: ${error}`);
     }
 
@@ -314,32 +343,34 @@ export class EmergencyController {
 
     const resolvedTenantId = user.schoolId || user.districtId || scopeId;
 
-    await this.prisma.client.emergencyMessage.create({
-      data: {
-        id: messageId,
-        tenantId: resolvedTenantId,
-        triggeredByUserId: user.id || null,
-        type: 'TEXT_BROADCAST',
-        severity,
-        textBlob: text,
-        mediaUrls: null,
-        audioUrl: null,
-        scopeType,
-        scopeId,
-        expiresAt: expiresAtDate,
-      },
-    });
-
-    await this.prisma.client.auditLog.create({
-      data: {
-        action: 'BROADCAST_TEXT',
-        targetType: scopeType,
-        targetId: scopeId,
-        tenantId: resolvedTenantId,
-        userId: user.id,
-        details: JSON.stringify({ messageId, severity, len: text.length, durationMs }),
-      },
-    });
+    // Atomic message + audit so a partial failure can't orphan either row.
+    await this.prisma.client.$transaction([
+      this.prisma.client.emergencyMessage.create({
+        data: {
+          id: messageId,
+          tenantId: resolvedTenantId,
+          triggeredByUserId: user.id || null,
+          type: 'TEXT_BROADCAST',
+          severity,
+          textBlob: text,
+          mediaUrls: null,
+          audioUrl: null,
+          scopeType,
+          scopeId,
+          expiresAt: expiresAtDate,
+        },
+      }),
+      this.prisma.client.auditLog.create({
+        data: {
+          action: 'BROADCAST_TEXT',
+          targetType: scopeType,
+          targetId: scopeId,
+          tenantId: resolvedTenantId,
+          userId: user.id,
+          details: JSON.stringify({ messageId, severity, len: text.length, durationMs }),
+        },
+      }),
+    ]);
 
     const signedMessage = this.signer.signMessage('TEXT_BROADCAST', {
       messageId,
@@ -352,6 +383,14 @@ export class EmergencyController {
     try {
       await this.redisService.publish(channel, signedMessage);
     } catch (error) {
+      Sentry.withScope((s) => {
+        s.setTag('emergency.action', 'broadcast');
+        s.setTag('emergency.scopeType', scopeType);
+        s.setUser({ id: user.id });
+        s.setExtra('messageId', messageId);
+        s.setExtra('channel', channel);
+        Sentry.captureException(error);
+      });
       console.warn(`[Emergency] Broadcast redis publish failed for ${channel}. Falling back to HTTP polling. Error: ${error}`);
     }
 
@@ -378,37 +417,39 @@ export class EmergencyController {
 
     const resolvedTenantId = user.schoolId || user.districtId || scopeId;
 
-    await this.prisma.client.emergencyMessage.create({
-      data: {
-        id: messageId,
-        tenantId: resolvedTenantId,
-        triggeredByUserId: user.id || null,
-        type: 'MEDIA_ALERT',
-        severity,
-        textBlob,
-        mediaUrls: mediaUrls && mediaUrls.length ? JSON.stringify(mediaUrls) : null,
-        audioUrl: audioUrl || null,
-        scopeType,
-        scopeId,
-        expiresAt: expiresAtDate,
-      },
-    });
-
-    await this.prisma.client.auditLog.create({
-      data: {
-        action: 'MEDIA_ALERT',
-        targetType: scopeType,
-        targetId: scopeId,
-        tenantId: resolvedTenantId,
-        userId: user.id,
-        details: JSON.stringify({
-          messageId,
+    // Atomic message + audit — matches the other emergency endpoints.
+    await this.prisma.client.$transaction([
+      this.prisma.client.emergencyMessage.create({
+        data: {
+          id: messageId,
+          tenantId: resolvedTenantId,
+          triggeredByUserId: user.id || null,
+          type: 'MEDIA_ALERT',
           severity,
-          mediaCount: mediaUrls.length,
-          hasAudio: !!audioUrl,
-        }),
-      },
-    });
+          textBlob,
+          mediaUrls: mediaUrls && mediaUrls.length ? JSON.stringify(mediaUrls) : null,
+          audioUrl: audioUrl || null,
+          scopeType,
+          scopeId,
+          expiresAt: expiresAtDate,
+        },
+      }),
+      this.prisma.client.auditLog.create({
+        data: {
+          action: 'MEDIA_ALERT',
+          targetType: scopeType,
+          targetId: scopeId,
+          tenantId: resolvedTenantId,
+          userId: user.id,
+          details: JSON.stringify({
+            messageId,
+            severity,
+            mediaCount: mediaUrls.length,
+            hasAudio: !!audioUrl,
+          }),
+        },
+      }),
+    ]);
 
     const signedMessage = this.signer.signMessage('MEDIA_ALERT', {
       messageId,
@@ -423,6 +464,14 @@ export class EmergencyController {
     try {
       await this.redisService.publish(channel, signedMessage);
     } catch (error) {
+      Sentry.withScope((s) => {
+        s.setTag('emergency.action', 'media-alert');
+        s.setTag('emergency.scopeType', scopeType);
+        s.setUser({ id: user.id });
+        s.setExtra('messageId', messageId);
+        s.setExtra('channel', channel);
+        Sentry.captureException(error);
+      });
       console.warn(`[Emergency] Media alert redis publish failed for ${channel}. Falling back to HTTP polling. Error: ${error}`);
     }
 
@@ -446,21 +495,24 @@ export class EmergencyController {
       return { success: false, message: 'Emergency message not found' };
     }
 
-    await this.prisma.client.emergencyMessage.update({
-      where: { id: messageId },
-      data: { clearedAt: new Date(), clearedByUserId: user.id || null },
-    });
-
-    await this.prisma.client.auditLog.create({
-      data: {
-        action: 'CLEAR_EMERGENCY_MESSAGE',
-        targetType: existing.scopeType,
-        targetId: existing.scopeId,
-        tenantId: existing.tenantId,
-        userId: user.id,
-        details: JSON.stringify({ messageId, type: existing.type }),
-      },
-    });
+    // Atomic clear + audit — if audit fails we must not leave the
+    // message marked cleared with no trail of who did it.
+    await this.prisma.client.$transaction([
+      this.prisma.client.emergencyMessage.update({
+        where: { id: messageId },
+        data: { clearedAt: new Date(), clearedByUserId: user.id || null },
+      }),
+      this.prisma.client.auditLog.create({
+        data: {
+          action: 'CLEAR_EMERGENCY_MESSAGE',
+          targetType: existing.scopeType,
+          targetId: existing.scopeId,
+          tenantId: existing.tenantId,
+          userId: user.id,
+          details: JSON.stringify({ messageId, type: existing.type }),
+        },
+      }),
+    ]);
 
     const channel = `${existing.scopeType}:${existing.scopeId}`;
     const signedMessage = this.signer.signMessage('ALL_CLEAR', {
@@ -470,6 +522,14 @@ export class EmergencyController {
     try {
       await this.redisService.publish(channel, signedMessage);
     } catch (error) {
+      Sentry.withScope((s) => {
+        s.setTag('emergency.action', 'clear-message');
+        s.setTag('emergency.scopeType', existing.scopeType);
+        s.setUser({ id: user.id });
+        s.setExtra('messageId', messageId);
+        s.setExtra('channel', channel);
+        Sentry.captureException(error);
+      });
       console.warn(`[Emergency] Clear publish failed for ${channel}. Error: ${error}`);
     }
 
