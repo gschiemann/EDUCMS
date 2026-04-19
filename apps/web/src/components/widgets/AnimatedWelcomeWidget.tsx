@@ -211,7 +211,9 @@ export function AnimatedWelcomeWidget({ config }: { config: Cfg }) {
 
         <div className="aw-ticker">
           <div className="aw-tickerStamp">{c.tickerStamp || 'SCHOOL NEWS'}</div>
-          <div className="aw-tickerScroll">{tickerText}</div>
+          <div className="aw-tickerScrollWrap">
+            <span className="aw-tickerScrollText">{tickerText}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -319,7 +321,7 @@ const CSS = `
 .aw-clockAp { font-size: 28px; color: #92400e; }
 
 .aw-grid {
-  position: absolute; top: 270px; left: 36px; right: 36px; bottom: 130px;
+  position: absolute; top: 270px; left: 36px; right: 36px; bottom: 160px;
   display: grid; grid-template-columns: 380px 1fr 380px;
   grid-template-rows: 1fr 1fr; gap: 28px; z-index: 3;
 }
@@ -492,13 +494,29 @@ const CSS = `
   background: #ec4899; color: #fff; display: flex; align-items: center;
   font-family: 'Fredoka', sans-serif; font-weight: 700; letter-spacing: .15em; font-size: 26px;
   border-right: 3px dashed #fff; margin-top: 18px;
+  position: relative; z-index: 2;
 }
-.aw-tickerScroll {
-  flex: 1; font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 44px; color: #831843;
-  white-space: nowrap; padding-left: 100%; margin-top: 18px;
+/* The scroll wrapper clips its OWN bounds so the text inside can never
+   bleed past the stamp on the left. The text starts off-screen on the
+   right and slides into view, then off the left edge of the wrapper. */
+.aw-tickerScrollWrap {
+  flex: 1; height: 100%; overflow: hidden;
+  display: flex; align-items: center; margin-top: 18px;
+  position: relative;
+}
+.aw-tickerScrollText {
+  display: inline-block;
+  font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 44px; color: #831843;
+  white-space: nowrap; padding-left: 60px;
   animation: aw-scrollText 28s linear infinite;
+  will-change: transform;
 }
-@keyframes aw-scrollText { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+/* Start with the text shifted fully right (100% of wrapper width = off-screen),
+   end with text shifted fully left (-100% of its own width = off-screen). */
+@keyframes aw-scrollText {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(-100%); }
+}
 
 .aw-bgBalloon {
   position: absolute; bottom: -120px; width: 60px; height: 76px; border-radius: 50% 50% 48% 48%;
