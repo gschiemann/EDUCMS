@@ -249,16 +249,14 @@
     display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;
     position: relative; padding: 24px;
   }
-  /* Use the actual megaphone emoji at huge size — instantly recognizable
-     as a megaphone, no CSS gymnastics needed. 📣 emoji's mouth points
-     right by default, so we mirror it (scaleX -1) so the mouth points
-     LEFT toward the audience — sound waves shoot out the same side. */
-  /* scaleX(-1) flips the megaphone horizontally so its mouth points
-     LEFT — matching the direction the sound waves emit from. */
+  /* Megaphone tucked just outside the speech bubble's left edge so the
+     'shouting into the bubble' visual reads correctly. scaleX(-1)
+     flips the emoji so its mouth points LEFT toward the bubble + the
+     sound waves emerging on its left side. */
   .announce .megaphone {
-    position: absolute; left: -10px; top: 50%;
+    position: absolute; left: 80px; top: 50%;
     transform: translate(0, -50%) scaleX(-1);
-    font-size: 180px; line-height: 1; z-index: 4;
+    font-size: 160px; line-height: 1; z-index: 4;
     filter: drop-shadow(0 8px 14px rgba(0,0,0,.5));
     animation: ms-megaShake 1.6s ease-in-out infinite;
     transform-origin: 20% 50%;
@@ -268,16 +266,17 @@
     25%, 75%      { transform: translate(0, -50%) scaleX(-1) rotate(12deg); }
     50%           { transform: translate(0, -50%) scaleX(-1) rotate(-12deg); }
   }
-  /* Sound waves emanating from the megaphone mouth (left side) */
+  /* Sound waves emanating from the megaphone mouth (left side) — tucked
+     close so they sit between the megaphone and the bubble area. */
   .announce .wave1, .announce .wave2, .announce .wave3 {
     position: absolute; top: 50%; border: 6px solid #fbbf24;
     border-right: none;
     border-radius: 100%;
     z-index: 3;
   }
-  .announce .wave1 { left: -120px; width: 80px; height: 80px; opacity: .8; animation: ms-soundWave 1.2s ease-out infinite; }
-  .announce .wave2 { left: -150px; width: 110px; height: 110px; opacity: .55; animation: ms-soundWave 1.2s ease-out infinite .2s; }
-  .announce .wave3 { left: -180px; width: 140px; height: 140px; opacity: .35; animation: ms-soundWave 1.2s ease-out infinite .4s; }
+  .announce .wave1 { left: 30px;  width: 70px;  height: 70px;  opacity: .8;  animation: ms-soundWave 1.2s ease-out infinite; }
+  .announce .wave2 { left: 6px;   width: 95px;  height: 95px;  opacity: .55; animation: ms-soundWave 1.2s ease-out infinite .2s; }
+  .announce .wave3 { left: -22px; width: 120px; height: 120px; opacity: .35; animation: ms-soundWave 1.2s ease-out infinite .4s; }
   @keyframes ms-soundWave {
     0%   { transform: translateY(-50%) scale(.5); opacity: .9; }
     100% { transform: translateY(-50%) scale(1.5); opacity: 0; }
