@@ -114,20 +114,40 @@
   .chain { width: 4px; height: 100%;
     background: linear-gradient(180deg, transparent, #94a3b8 20%, #64748b 80%, transparent);
     border-radius: 2px; }
-  .screen {
-    width: 200px; height: 140px; background: #000;
+  /* ms-board — scoreboard display. Inner solid-black surface via a
+     nested ::before so the yellow inset glow can't expose the page
+     gradient behind it (the prior `.screen` version was showing navy
+     bands around each text line on some renders). Renamed away from
+     `.screen` to kill any chance of collision with other classes. */
+  .msBoard {
+    position: relative;
+    width: 200px; height: 140px;
+    background-color: #000;
     border: 6px solid #fbbf24; border-radius: 8px;
-    box-shadow: 0 0 40px rgba(251,191,36,.5), inset 0 0 30px rgba(251,191,36,.15);
+    box-shadow: 0 0 40px rgba(251,191,36,.5);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     animation: ms-sway 7.2s ease-in-out infinite;
     transform-origin: 50% -28px;
+    overflow: hidden;
+  }
+  .msBoard::before {
+    /* solid black inner — guaranteed opaque beneath text + isolates
+       the text from the outer yellow inset glow */
+    content: ''; position: absolute; inset: 0;
+    background: #000;
+    box-shadow: inset 0 0 30px rgba(251,191,36,.12);
+    z-index: 0;
   }
   @keyframes ms-sway { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }
-  .screen .t {
+  .msBoard .t, .msBoard .ap {
+    position: relative; z-index: 1;
+    background: transparent;
+  }
+  .msBoard .t {
     font-family: 'Bebas Neue', sans-serif; font-size: 76px; color: #fbbf24; line-height: 1;
     text-shadow: 0 0 20px rgba(251,191,36,.8);
   }
-  .screen .ap { font-family: 'Bebas Neue', sans-serif; font-size: 26px; color: #f59e0b; letter-spacing: .25em; }
+  .msBoard .ap { font-family: 'Bebas Neue', sans-serif; font-size: 26px; color: #f59e0b; letter-spacing: .25em; }
 
   /* GRID */
   .grid {
@@ -410,7 +430,7 @@
     </div>
     <div class="scoreboard">
       <div class="chains"><div class="chain"></div><div class="chain"></div></div>
-      <div class="screen"><div class="t">11:45</div><div class="ap">AM</div></div>
+      <div class="msBoard"><div class="t">11:45</div><div class="ap">AM</div></div>
     </div>
   </div>
 
