@@ -1,6 +1,10 @@
 import { Logger } from '@nestjs/common';
 import type { PrismaService } from '../prisma/prisma.service';
 import { SYSTEM_TEMPLATE_PRESETS } from './system-presets';
+import { FITNESS_TEMPLATE_PRESETS } from './fitness-presets';
+
+// Fitness presets are appended additively; EDU vertical behavior unchanged.
+const ALL_PRESETS = [...SYSTEM_TEMPLATE_PRESETS, ...FITNESS_TEMPLATE_PRESETS];
 
 /**
  * Idempotent system-preset seeder. Runs once on API startup.
@@ -49,9 +53,9 @@ export async function ensureSystemPresets(prisma: PrismaService) {
       })).map((r: { id: string }) => r.id),
     );
 
-    const missing = SYSTEM_TEMPLATE_PRESETS.filter((p) => !existingIds.has(p.id));
+    const missing = ALL_PRESETS.filter((p) => !existingIds.has(p.id));
     if (missing.length === 0) {
-      logger.log(`All ${SYSTEM_TEMPLATE_PRESETS.length} system presets present.`);
+      logger.log(`All ${ALL_PRESETS.length} system presets present.`);
     } else {
       logger.log(`Seeding ${missing.length} missing system preset(s)…`);
     }
@@ -113,8 +117,8 @@ export async function ensureSystemPresets(prisma: PrismaService) {
       logger.log(`System preset seed complete — ${created}/${missing.length} created.`);
     }
 
-    // ─── Archive presets that were deleted from system-presets.ts ───
-    // Source-of-truth is the SYSTEM_TEMPLATE_PRESETS array. Any system
+    // ─── Archive presets that were deleted from system-presets.ts or fitness-presets.ts ───
+    // Source-of-truth is the ALL_PRESETS array. Any system
     // template row in the DB whose id no longer appears there gets
     // archived (status=ARCHIVED) so it disappears from the gallery
     // without breaking any playlist that already references it. We do
@@ -122,7 +126,7 @@ export async function ensureSystemPresets(prisma: PrismaService) {
     // template id, and the live manifest needs to keep rendering it
     // until the tenant rebuilds with the new set. Cascade-delete would
     // wipe content unexpectedly.
-    const wantedIds = new Set(SYSTEM_TEMPLATE_PRESETS.map((p) => p.id));
+    const wantedIds = new Set(ALL_PRESETS.map((p) => p.id));
     try {
       const stale = await prisma.client.template.findMany({
         where: { isSystem: true, status: 'ACTIVE' as any },

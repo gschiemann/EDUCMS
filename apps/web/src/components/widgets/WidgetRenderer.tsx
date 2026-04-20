@@ -38,6 +38,17 @@ import { JumbotronProLogo, JumbotronProText, JumbotronProClock, JumbotronProWeat
 import { QuoteWidget, StatsWidget, MenuItemWidget, ScoreboardWidget, ScheduleGridWidget, AttendanceWidget, BirthdaysWidget, HonorRollWidget } from './themes/GenericWidgets';
 import { AnimatedWelcomeWidget } from './AnimatedWelcomeWidget';
 import { AnimatedWelcomePortraitWidget } from './AnimatedWelcomePortraitWidget';
+// ── Fitness vertical (Phase 1) — these are the first widgets for a
+// non-EDU vertical. Kept in a dedicated /fitness subdir so the EDU
+// import list up top stays readable + so we can fan these into
+// `variants-register` later without mixing verticals. ──
+import { FitnessMusicPlayerWidget } from './fitness/FitnessMusicPlayerWidget';
+import { FitnessLiveTVWidget } from './fitness/FitnessLiveTVWidget';
+import { FitnessAdBannerWidget } from './fitness/FitnessAdBannerWidget';
+import { FitnessClassScheduleWidget } from './fitness/FitnessClassScheduleWidget';
+import { FitnessTrainingVideoWidget } from './fitness/FitnessTrainingVideoWidget';
+import { FitnessWorkoutTimerWidget } from './fitness/FitnessWorkoutTimerWidget';
+import { FitnessMotivationalQuoteWidget } from './fitness/FitnessMotivationalQuoteWidget';
 import { AnimatedWelcomeMiddleWidget } from './AnimatedWelcomeMiddleWidget';
 import { AnimatedWelcomeHighWidget } from './AnimatedWelcomeHighWidget';
 import { AnimatedCafeteriaElementaryWidget } from './AnimatedCafeteriaElementaryWidget';
@@ -174,6 +185,14 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'BULLETIN_HALLWAY':              return <BulletinHallwayWidget config={cfg} live={live} />;
     case 'BULLETIN_CAFETERIA':            return <BulletinCafeteriaWidget config={cfg} live={live} />;
     case 'ANIMATED_BACKGROUND':           return <AnimatedBackgroundWidget config={cfg} />;
+    // ── Fitness vertical widgets ──
+    case 'FITNESS_MUSIC_PLAYER':          return <FitnessMusicPlayerWidget config={cfg} live={live} />;
+    case 'FITNESS_LIVE_TV':               return <FitnessLiveTVWidget config={cfg} live={live} />;
+    case 'FITNESS_AD_BANNER':             return <FitnessAdBannerWidget config={cfg} live={live} />;
+    case 'FITNESS_CLASS_SCHEDULE':        return <FitnessClassScheduleWidget config={cfg} live={live} />;
+    case 'FITNESS_TRAINING_VIDEO':        return <FitnessTrainingVideoWidget config={cfg} live={live} />;
+    case 'FITNESS_WORKOUT_TIMER':         return <FitnessWorkoutTimerWidget config={cfg} live={live} />;
+    case 'FITNESS_MOTIVATIONAL_QUOTE':    return <FitnessMotivationalQuoteWidget config={cfg} live={live} />;
     default:             return null;
   }
 }

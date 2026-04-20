@@ -4,26 +4,28 @@
  * ScreenLocationModal — address-autocomplete UI for setting a screen's
  * physical location on the fleet map.
  *
- * Provider: **Photon** (https://photon.komoot.io). Photon is purpose-
- * built for partial-string autocomplete over OpenStreetMap — it
- * returns matches from the first few characters of a street name or
- * house number. Previous iteration hit Nominatim, which is a full
- * geocoder (whole-address → coords) NOT an autocomplete. User report:
- * "i type my home address and it doesnt pick it up...its like its not
- * picking up numbers" — that's the Nominatim behavior on partial
- * queries. Photon handles the same input cleanly.
+ * Provider strategy (learned the hard way across two pivots):
+ *   • **Photon** is an autocomplete layer — good for "fire something
+ *     as soon as 2 chars are typed" latency-wise, BUT its index has
+ *     coverage gaps on specific US residential addresses (e.g.
+ *     "2748 Emory Oak Ct" returned 0 matches while Nominatim with
+ *     countrycodes=us had 3 exact hits).
+ *   • **Nominatim** is a full geocoder — SLOWER to accept partials,
+ *     BUT has way better coverage of specific US addresses when you
+ *     pin it with `countrycodes=us`. Without the country filter it
+ *     searches globally and returns nothing for informal queries.
  *
- * Flow:
- *   1. Admin types an address (debounced 280ms).
- *   2. Query Photon /api for up to 5 suggestions. Each feature carries
- *      its own lat/lng in GeoJSON coordinates [lon, lat].
- *   3. Admin picks one; we send lat/lng + a readable display string
- *      to PUT /screens/:id/location. No server-side re-geocode.
- *   4. If the admin types but doesn't pick, a last-ditch Photon
- *      limit=1 search runs on Save; still no hit → save address-only
- *      with a warning.
+ * So we use BOTH in parallel on each keystroke and merge results:
+ *   — Photon first for partial-street autocomplete ("main st" hits).
+ *   — Nominatim second (US-only) so specific house-number addresses
+ *     still resolve even when Photon's index misses them.
+ *   — Dedupe on lat+lon so overlapping results don't show twice.
  *
- * Free, no API key. OSM attribution linked at the bottom of the modal.
+ * Country defaults to US because every pilot today is US-based; if
+ * we expand internationally we'll surface a country selector at the
+ * top of the modal + pass the code through to Nominatim.
+ *
+ * Both APIs are free + no key. OSM attribution linked at the bottom.
  */
 
 import { useState, useEffect, useRef } from 'react';
@@ -41,6 +43,13 @@ interface PhotonFeature {
     country?: string;
     postcode?: string;
   };
+}
+
+interface NominatimRaw {
+  place_id?: number | string;
+  display_name?: string;
+  lat?: string;
+  lon?: string;
 }
 
 interface NominatimResult {
@@ -61,11 +70,43 @@ function formatPhotonFeature(f: PhotonFeature, idx: number): NominatimResult | n
   const display_name = [streetLine, tail].filter(Boolean).join(', ') + country;
   if (!display_name.trim()) return null;
   return {
-    id: p.osm_id ? `${p.osm_id}-${idx}` : `photon-${idx}-${lat}-${lon}`,
+    id: p.osm_id ? `photon-${p.osm_id}-${idx}` : `photon-${idx}-${lat}-${lon}`,
     display_name,
     lat: String(lat),
     lon: String(lon),
   };
+}
+
+function formatNominatim(n: NominatimRaw, idx: number): NominatimResult | null {
+  const lat = parseFloat(n.lat || '');
+  const lon = parseFloat(n.lon || '');
+  if (!isFinite(lat) || !isFinite(lon) || !n.display_name) return null;
+  return {
+    id: `nom-${n.place_id || idx}-${lat}-${lon}`,
+    display_name: n.display_name,
+    lat: String(lat),
+    lon: String(lon),
+  };
+}
+
+/**
+ * Merge Photon + Nominatim results, dedupe by rounded coord. Photon
+ * ordering is kept first because its results are ranked by partial-
+ * match relevance; Nominatim fills the gaps with specific addresses.
+ */
+function mergeResults(photon: NominatimResult[], nominatim: NominatimResult[]): NominatimResult[] {
+  const seen = new Set<string>();
+  const out: NominatimResult[] = [];
+  const key = (r: NominatimResult) =>
+    `${parseFloat(r.lat).toFixed(4)},${parseFloat(r.lon).toFixed(4)}`;
+  for (const r of [...photon, ...nominatim]) {
+    const k = key(r);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(r);
+    if (out.length >= 6) break;
+  }
+  return out;
 }
 
 interface Props {
@@ -98,13 +139,13 @@ export function ScreenLocationModal({ screenName, currentAddress, onClose, onSav
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  // Debounced Photon autocomplete on every keystroke. Threshold is
-  // 2 chars so "50" or a partial street name already surfaces
-  // suggestions (Nominatim's 3-char + whole-address requirement was
-  // what made the previous version feel dead).
+  // Debounced hybrid search (Photon + Nominatim US) on each keystroke.
+  // Fires both requests in parallel, merges results, dedupes on coord.
+  // 3-char threshold because Nominatim is brittle on shorter queries;
+  // 300ms debounce so normal typing doesn't hammer either provider.
   useEffect(() => {
     const q = query.trim();
-    if (q.length < 2) {
+    if (q.length < 3) {
       setResults([]);
       setNoMatch(false);
       return;
@@ -119,31 +160,41 @@ export function ScreenLocationModal({ screenName, currentAddress, onClose, onSav
       lastQueryRef.current = q;
       setSearching(true);
       setNoMatch(false);
+
+      // Photon (autocomplete-strong, US-biased via bbox) and Nominatim
+      // (whole-address strong, hard-pinned to US via countrycodes).
+      // Fire both in parallel; first to land populates; the second
+      // fills any gaps on dedupe merge. Either failing is fine —
+      // we just use whatever came back.
+      const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=5&lang=en&bbox=-125,24,-66,49`;
+      const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=0&countrycodes=us&limit=5&q=${encodeURIComponent(q)}`;
+
+      const photonP = fetch(photonUrl, { headers: { 'Accept': 'application/json' } })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: { features?: PhotonFeature[] } | null) => {
+          const feats = Array.isArray(d?.features) ? d!.features! : [];
+          return feats.map((f, i) => formatPhotonFeature(f, i)).filter((x): x is NominatimResult => x !== null);
+        })
+        .catch(() => [] as NominatimResult[]);
+
+      const nomP = fetch(nomUrl, { headers: { 'Accept': 'application/json' } })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((arr: NominatimRaw[] | null) => {
+          const a = Array.isArray(arr) ? arr : [];
+          return a.map((n, i) => formatNominatim(n, i)).filter((x): x is NominatimResult => x !== null);
+        })
+        .catch(() => [] as NominatimResult[]);
+
       try {
-        const r = await fetch(
-          `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=5&lang=en`,
-          { headers: { 'Accept': 'application/json' } },
-        );
-        // If the user already typed more since this request fired,
-        // ignore the stale response so we don't overwrite fresh results.
-        if (lastQueryRef.current !== q) return;
-        if (r.ok) {
-          const data = await r.json() as { features?: PhotonFeature[] };
-          const features = Array.isArray(data?.features) ? data.features : [];
-          const mapped = features
-            .map((f, i) => formatPhotonFeature(f, i))
-            .filter((x): x is NominatimResult => x !== null);
-          setResults(mapped);
-          setNoMatch(mapped.length === 0);
-        } else {
-          setResults([]);
-        }
-      } catch {
-        setResults([]);
+        const [photonHits, nomHits] = await Promise.all([photonP, nomP]);
+        if (lastQueryRef.current !== q) return; // stale
+        const merged = mergeResults(photonHits, nomHits);
+        setResults(merged);
+        setNoMatch(merged.length === 0);
       } finally {
         if (lastQueryRef.current === q) setSearching(false);
       }
-    }, 280);
+    }, 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, selected]);
 
@@ -171,16 +222,18 @@ export function ScreenLocationModal({ screenName, currentAddress, onClose, onSav
         onClose();
         return;
       }
-      // User typed but didn't pick — one more Photon attempt at limit=1.
+      // User typed but didn't pick — one more Nominatim US attempt
+      // (it has better coverage of specific house-numbered addresses
+      // than Photon). Photon-only fallback dropped because it silently
+      // returned 0 for real addresses like "2748 Emory Oak Ct".
       try {
         const r = await fetch(
-          `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=1&lang=en`,
+          `https://nominatim.openstreetmap.org/search?format=json&countrycodes=us&limit=1&q=${encodeURIComponent(q)}`,
           { headers: { 'Accept': 'application/json' } },
         );
         if (r.ok) {
-          const data = await r.json() as { features?: PhotonFeature[] };
-          const first = Array.isArray(data?.features) ? data.features[0] : null;
-          const mapped = first ? formatPhotonFeature(first, 0) : null;
+          const arr = (await r.json()) as NominatimRaw[];
+          const mapped = arr[0] ? formatNominatim(arr[0], 0) : null;
           if (mapped) {
             await onSave({
               address: mapped.display_name,
