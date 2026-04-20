@@ -139,11 +139,120 @@ export class EmailService {
   }
 
   /**
-   * Actually send the email. Stub: logs to console.
-   * Swap this for SendGrid/Resend/SES SDK calls in production.
+   * Review-workflow notifications. Sent alongside the in-app
+   * Notification row from AssetsController when CONTRIBUTOR uploads go
+   * to PENDING_APPROVAL status. Each admin gets one email.
+   */
+  async sendAssetPendingReview(params: {
+    to: string;
+    uploaderEmail: string;
+    assetName: string;
+    reviewLink: string;
+  }): Promise<void> {
+    const subject = `Review needed: "${params.assetName}"`;
+    const body = [
+      `${params.uploaderEmail} uploaded a new asset and it's waiting for your review before it can be scheduled.`,
+      ``,
+      `Asset: ${params.assetName}`,
+      ``,
+      `Open the review queue to approve or reject:`,
+      params.reviewLink,
+      ``,
+      `— EduSignage`,
+    ].join('\n');
+    await this.#enqueue({ to: params.to, subject, body, kind: 'ASSET_PENDING_REVIEW' });
+  }
+
+  async sendAssetDecision(params: {
+    to: string;
+    decision: 'APPROVED' | 'REJECTED';
+    assetName: string;
+    reviewerEmail: string;
+    reason?: string;
+    assetsLink: string;
+  }): Promise<void> {
+    const subject = params.decision === 'APPROVED'
+      ? `Approved: "${params.assetName}"`
+      : `Rejected: "${params.assetName}"`;
+    const body = params.decision === 'APPROVED'
+      ? [
+          `"${params.assetName}" was approved by ${params.reviewerEmail} and is now published.`,
+          ``,
+          `You can add it to playlists and schedule it on screens.`,
+          ``,
+          `Manage your assets:`,
+          params.assetsLink,
+          ``,
+          `— EduSignage`,
+        ].join('\n')
+      : [
+          `"${params.assetName}" was rejected by ${params.reviewerEmail}.`,
+          params.reason ? `\nReason: ${params.reason}\n` : ``,
+          `You can edit and re-upload, or open the assets page for details:`,
+          params.assetsLink,
+          ``,
+          `— EduSignage`,
+        ].join('\n');
+    const kind = params.decision === 'APPROVED' ? 'ASSET_APPROVED' : 'ASSET_REJECTED';
+    await this.#enqueue({ to: params.to, subject, body, kind });
+  }
+
+  /**
+   * Dispatch an email via Resend. Swap-in target for the old stub.
+   *
+   * Config (all optional — unset = dev-mode logging only):
+   *   RESEND_API_KEY    your re_... API key from https://resend.com
+   *   EMAIL_FROM        "EduSignage <noreply@yourdomain.com>", defaults
+   *                     to "EduSignage <onboarding@resend.dev>" which
+   *                     works without domain verification but carries
+   *                     the Resend branding and goes to spam on many
+   *                     providers. Verify a custom sender domain in the
+   *                     Resend dashboard for production.
+   *   EMAIL_REPLY_TO    optional Reply-To, e.g. district IT help alias
+   *
+   * When RESEND_API_KEY is unset we log instead of calling the API —
+   * preserves the zero-config dev experience while prod just works the
+   * moment the env var lands on Railway.
    */
   async #dispatch(params: { to: string; subject: string; body: string; kind: string }): Promise<void> {
-    // Stub. In dev we simply log — the durable copy is in `email_logs`.
-    this.logger.log(`[email:${params.kind}] to=${params.to} subject="${params.subject}"`);
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      // Dev / unconfigured mode — the email_logs row is still the
+      // durable record (#enqueue already wrote it), so recovery is just
+      // "set the env var + replay QUEUED rows" if we ever need to.
+      this.logger.log(`[email stub:${params.kind}] to=${params.to} subject="${params.subject}" — set RESEND_API_KEY to actually send`);
+      return;
+    }
+
+    const from = process.env.EMAIL_FROM || 'EduSignage <onboarding@resend.dev>';
+    const replyTo = process.env.EMAIL_REPLY_TO || undefined;
+    // Body is plain text today — Resend accepts `text` without `html`
+    // and the few inline links still render as clickable in every major
+    // client. When we ship templated transactional email we'll add
+    // an HTML variant alongside.
+    const payload: Record<string, any> = {
+      from,
+      to: [params.to],
+      subject: params.subject,
+      text: params.body,
+    };
+    if (replyTo) payload.reply_to = replyTo;
+
+    const resp = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!resp.ok) {
+      // Resend returns { name, message, statusCode } on failure. Surface
+      // both so the #enqueue failure-branch has useful context for
+      // ops / the FAILED email_logs row.
+      const text = await resp.text().catch(() => '');
+      throw new Error(`Resend ${resp.status}: ${text.slice(0, 500)}`);
+    }
   }
 }

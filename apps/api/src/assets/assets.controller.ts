@@ -12,6 +12,7 @@ import { AppRole } from '@cms/database';
 import { extname } from 'path';
 import { randomUUID, createHash } from 'crypto';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
+import { EmailService } from '../email/email.service';
 
 const ALLOWED_TYPES = [
   'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml', 'image/x-icon', 'image/bmp',
@@ -26,7 +27,12 @@ export class AssetsController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: SupabaseStorageService,
+    private readonly email: EmailService,
   ) {}
+
+  private appPublicUrl(): string {
+    return process.env.APP_PUBLIC_URL || 'http://localhost:3000';
+  }
 
   /**
    * Role-gated initial asset status. CONTRIBUTOR uploads must pass
@@ -59,17 +65,19 @@ export class AssetsController {
           role: { in: [AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN] },
           status: 'ACTIVE',
         },
-        select: { id: true },
+        select: { id: true, email: true },
       });
       const uploader = await this.prisma.client.user.findUnique({
         where: { id: asset.uploadedByUserId },
         select: { email: true },
       });
       const title = 'New asset pending review';
-      const body = `${uploader?.email || 'A contributor'} uploaded "${asset.originalName || 'an asset'}" — review needed before it can be scheduled.`;
+      const assetName = asset.originalName || 'an asset';
+      const uploaderEmail = uploader?.email || 'A contributor';
+      const body = `${uploaderEmail} uploaded "${assetName}" — review needed before it can be scheduled.`;
       if (admins.length > 0) {
         await this.prisma.client.notification.createMany({
-          data: admins.map((a: { id: string }) => ({
+          data: admins.map((a) => ({
             tenantId,
             userId: a.id,
             kind: 'ASSET_PENDING_REVIEW',
@@ -78,6 +86,28 @@ export class AssetsController {
             link: `/assets/review`,
           })),
         }).catch(() => { /* notification table may be missing in dev */ });
+
+        // Fan out the same event over email too. Looks up the tenant
+        // slug so the review link points at the right schoolId segment.
+        // Failures are swallowed per admin — one bad inbox can't block
+        // the others, and the durable email_logs row is what ops relies
+        // on for replay.
+        const tenant = await this.prisma.client.tenant.findUnique({
+          where: { id: tenantId },
+          select: { slug: true },
+        });
+        const reviewLink = `${this.appPublicUrl()}/${tenant?.slug || tenantId}/assets/review`;
+        await Promise.all(admins.map(async (a) => {
+          if (!a.email) return;
+          try {
+            await this.email.sendAssetPendingReview({
+              to: a.email,
+              uploaderEmail,
+              assetName,
+              reviewLink,
+            });
+          } catch { /* per-admin failures are fine — others still get mail */ }
+        }));
       }
     } catch {
       /* non-fatal — upload still succeeds */
@@ -107,6 +137,32 @@ export class AssetsController {
           link: `/assets`,
         },
       }).catch(() => {});
+
+      // Also email the uploader. Grab their address + the tenant slug
+      // for the asset-page link. Missing email (edge case — user
+      // deleted, service account, etc.) silently skips the send — the
+      // in-app notification is still posted.
+      const uploader = await this.prisma.client.user.findUnique({
+        where: { id: uploaderId },
+        select: { email: true },
+      });
+      if (uploader?.email) {
+        const tenant = await this.prisma.client.tenant.findUnique({
+          where: { id: tenantId },
+          select: { slug: true },
+        });
+        const assetsLink = `${this.appPublicUrl()}/${tenant?.slug || tenantId}/assets`;
+        try {
+          await this.email.sendAssetDecision({
+            to: uploader.email,
+            decision,
+            assetName,
+            reviewerEmail,
+            reason,
+            assetsLink,
+          });
+        } catch { /* non-fatal */ }
+      }
     } catch { /* non-fatal */ }
   }
 
