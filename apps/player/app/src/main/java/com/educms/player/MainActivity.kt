@@ -42,7 +42,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        // FULL sensor rotation — user mounts the display however they
+        // want (portrait, landscape, reverse). The WebView handles any
+        // orientation; the web player's CSS scales 1920×1080 scenes to
+        // fit either aspect via transform:scale.
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
@@ -66,14 +70,15 @@ class MainActivity : ComponentActivity() {
             override fun handleOnBackPressed() { /* swallow */ }
         })
 
+        // Always load /player — the web player handles its own
+        // register → show pairing code → poll → play flow. No native
+        // PairingActivity redirect; the APK is a kiosk shell, not a
+        // parallel pairing implementation. If a legacy native token is
+        // already in DataStore we pass it along so the player can skip
+        // the register step.
         lifecycleScope.launch {
             val token = deviceStore.deviceToken.first()
-            if (token.isNullOrBlank()) {
-                startActivity(Intent(this@MainActivity, PairingActivity::class.java))
-                finish()
-                return@launch
-            }
-            loadPlayer(token)
+            loadPlayer(token.orEmpty())
         }
     }
 
@@ -131,12 +136,15 @@ class MainActivity : ComponentActivity() {
 
     private fun loadPlayer(token: String) {
         val base = BuildConfig.PLAYER_BASE_URL.trimEnd('/')
-        val url = Uri.parse(base).buildUpon()
-            .appendQueryParameter("token", token)
+        val builder = Uri.parse(base).buildUpon()
             .appendQueryParameter("client", "android")
             .appendQueryParameter("v", BuildConfig.VERSION_NAME)
-            .build()
-            .toString()
+        // Pass token only if we already have one (legacy paired device).
+        // For a fresh install the web player's /screens/register flow
+        // takes over, shows a pairing code on screen, polls for pairing,
+        // and writes the device token into WebView localStorage.
+        if (token.isNotBlank()) builder.appendQueryParameter("token", token)
+        val url = builder.build().toString()
         Log.i("Player", "Loading $url")
         webView.loadUrl(url)
     }

@@ -38,39 +38,52 @@
         android:usesCleartextTraffic="false"
         tools:targetApi="34">
 
-        <activity
-            android:name=".PairingActivity"
-            android:exported="true"
-            android:launchMode="singleTask"
-            android:screenOrientation="sensorLandscape">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-
+        <!-- MainActivity is the LAUNCHER — the WebView loads /player which
+             already handles the whole register → show pairing code →
+             poll → play flow natively. No separate native pairing step
+             is needed; the APK is a kiosk shell around the web player,
+             not a parallel reimplementation. PairingActivity still
+             exists for legacy/manual code entry via ACTION_PAIR
+             intent, but it's no longer the default entry point. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
-            android:screenOrientation="sensorLandscape"
+            android:screenOrientation="fullSensor"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|smallestScreenSize"
             android:showWhenLocked="true"
             android:turnScreenOn="true"
             android:resizeableActivity="false"
             tools:ignore="LockedOrientationActivity">
             <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
                 <action android:name="com.educms.player.OPEN_PLAYER" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
-            <!-- HOME launcher categories — Android offers this app as the
-                 default launcher. Once the user picks it (or the device is
-                 provisioned with us as the home app via ADB), pressing HOME
-                 re-launches the player instead of going to Android launcher.
-                 Combined with startLockTask() this is true kiosk-on-top. -->
+            <!-- HOME launcher category — Android offers this app as the
+                 default launcher so pressing HOME relaunches the kiosk
+                 instead of dropping to the Android launcher. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Legacy manual-code pairing. Reachable only via explicit
+             intent ACTION_LEGACY_PAIR for the rare case an operator
+             needs to type a code generated on another device. Main flow
+             is WebView-driven on MainActivity. -->
+        <activity
+            android:name=".PairingActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:screenOrientation="fullSensor">
+            <intent-filter>
+                <action android:name="com.educms.player.LEGACY_PAIR" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
@@ -106,7 +119,7 @@
             android:name=".usb.UsbIngestActivity"
             android:exported="false"
             android:launchMode="singleTask"
-            android:screenOrientation="sensorLandscape"
+            android:screenOrientation="fullSensor"
             android:theme="@style/Theme.EduCmsPlayer" />
 
         <!-- Foreground heartbeat service. Pings /screens/status every 30s

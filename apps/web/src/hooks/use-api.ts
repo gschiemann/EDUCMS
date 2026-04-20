@@ -256,15 +256,40 @@ export function useApproveAsset() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/assets/${id}/approve`, { method: 'PUT' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['assets'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['assets'] });
+      qc.invalidateQueries({ queryKey: ['assets', 'pending'] });
+    },
   });
 }
 
 export function useRejectAsset() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => apiFetch(`/assets/${id}/reject`, { method: 'PUT' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['assets'] }),
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      apiFetch(`/assets/${id}/reject`, {
+        method: 'PUT',
+        body: JSON.stringify({ reason: reason || '' }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['assets'] });
+      qc.invalidateQueries({ queryKey: ['assets', 'pending'] });
+    },
+  });
+}
+
+/**
+ * Pending-review queue — lists every asset in PENDING_APPROVAL status
+ * for the current tenant. Admin-only route. Polled every 30s so a
+ * freshly-uploaded contributor asset shows up in the reviewer's queue
+ * without a manual refresh.
+ */
+export function usePendingAssets() {
+  return useQuery({
+    queryKey: ['assets', 'pending'],
+    queryFn: () => apiFetch<any[]>('/assets/pending'),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
 }
 

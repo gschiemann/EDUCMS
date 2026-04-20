@@ -28,6 +28,88 @@ export class AssetsController {
     private readonly storage: SupabaseStorageService,
   ) {}
 
+  /**
+   * Role-gated initial asset status. CONTRIBUTOR uploads must pass
+   * through the review queue before content can be scheduled; admins
+   * are trusted and auto-publish.
+   */
+  private initialAssetStatus(role: string | undefined): 'PUBLISHED' | 'PENDING_APPROVAL' {
+    if (
+      role === AppRole.SUPER_ADMIN ||
+      role === AppRole.DISTRICT_ADMIN ||
+      role === AppRole.SCHOOL_ADMIN
+    ) return 'PUBLISHED';
+    return 'PENDING_APPROVAL';
+  }
+
+  /**
+   * Notify every tenant admin that a new asset is awaiting review.
+   * Uses the Notification table so the bell icon lights up immediately;
+   * a follow-up sprint can bridge the same rows to email/Slack when a
+   * transactional provider is wired.
+   */
+  private async notifyAdminsOfPendingReview(
+    tenantId: string,
+    asset: { id: string; originalName: string | null; uploadedByUserId: string },
+  ): Promise<void> {
+    try {
+      const admins = await this.prisma.client.user.findMany({
+        where: {
+          tenantId,
+          role: { in: [AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN] },
+          status: 'ACTIVE',
+        },
+        select: { id: true },
+      });
+      const uploader = await this.prisma.client.user.findUnique({
+        where: { id: asset.uploadedByUserId },
+        select: { email: true },
+      });
+      const title = 'New asset pending review';
+      const body = `${uploader?.email || 'A contributor'} uploaded "${asset.originalName || 'an asset'}" — review needed before it can be scheduled.`;
+      if (admins.length > 0) {
+        await this.prisma.client.notification.createMany({
+          data: admins.map((a: { id: string }) => ({
+            tenantId,
+            userId: a.id,
+            kind: 'ASSET_PENDING_REVIEW',
+            title,
+            body,
+            link: `/assets/review`,
+          })),
+        }).catch(() => { /* notification table may be missing in dev */ });
+      }
+    } catch {
+      /* non-fatal — upload still succeeds */
+    }
+  }
+
+  private async notifyUploaderOfDecision(
+    tenantId: string,
+    uploaderId: string,
+    assetName: string,
+    decision: 'APPROVED' | 'REJECTED',
+    reviewerEmail: string,
+    reason?: string,
+  ): Promise<void> {
+    try {
+      const title = decision === 'APPROVED' ? 'Your asset was approved' : 'Your asset was rejected';
+      const body = decision === 'APPROVED'
+        ? `"${assetName}" is now published and can be added to playlists.`
+        : `"${assetName}" was rejected by ${reviewerEmail}${reason ? ` — "${reason}"` : ''}.`;
+      await this.prisma.client.notification.create({
+        data: {
+          tenantId,
+          userId: uploaderId,
+          kind: decision === 'APPROVED' ? 'ASSET_APPROVED' : 'ASSET_REJECTED',
+          title,
+          body,
+          link: `/assets`,
+        },
+      }).catch(() => {});
+    } catch { /* non-fatal */ }
+  }
+
   @Get()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   async list(@Request() req: any) {
@@ -120,10 +202,20 @@ export class AssetsController {
         fileSize: file.size,
         fileHash,
         originalName: file.originalname,
-        status: 'PUBLISHED',
+        // Role-gated publish: CONTRIBUTOR uploads land in the review
+        // queue (PENDING_APPROVAL); admins auto-publish. Player's
+        // manifest filters out non-PUBLISHED assets so unapproved
+        // content never reaches a screen.
+        status: this.initialAssetStatus(req.user.role),
         folderId,
       },
     });
+
+    if (asset.status === 'PENDING_APPROVAL') {
+      // Fire-and-forget — don't block the upload response on
+      // notification fan-out.
+      this.notifyAdminsOfPendingReview(req.user.tenantId, asset);
+    }
 
     return {
       id: asset.id,
@@ -212,11 +304,29 @@ export class AssetsController {
         fileUrl: url,
         mimeType: 'text/html',
         originalName: body.name || hostname,
-        status: 'PUBLISHED',
+        status: this.initialAssetStatus(req.user.role),
       },
     });
 
+    if (asset.status === 'PENDING_APPROVAL') {
+      this.notifyAdminsOfPendingReview(req.user.tenantId, asset);
+    }
+
     return { id: asset.id, fileUrl: url };
+  }
+
+  // ─── Review queue listing ──────────────────────────────────────
+  @Get('pending')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async listPending(@Request() req: any) {
+    return this.prisma.client.asset.findMany({
+      where: { tenantId: req.user.tenantId, status: 'PENDING_APPROVAL' },
+      include: {
+        uploadedBy: { select: { id: true, email: true, role: true } },
+        folder: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
   }
 
   @Put(':id/approve')
@@ -239,17 +349,51 @@ export class AssetsController {
         HttpStatus.CONFLICT,
       );
     }
+    // Audit + notify the uploader so they know their content is live
+    await this.prisma.client.auditLog.create({
+      data: {
+        tenantId: req.user.tenantId, userId: req.user.id,
+        action: 'ASSET_APPROVED', targetType: 'Asset', targetId: id,
+        details: JSON.stringify({ name: asset.originalName }),
+      },
+    }).catch(() => {});
+    this.notifyUploaderOfDecision(
+      req.user.tenantId, asset.uploadedByUserId,
+      asset.originalName || 'your asset',
+      'APPROVED', req.user.email || 'a reviewer',
+    );
     return this.prisma.client.asset.findUnique({ where: { id } });
   }
 
   @Put(':id/reject')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async reject(@Request() req: any, @Param('id') id: string) {
+  async reject(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { reason?: string } = {},
+  ) {
     const asset = await this.prisma.client.asset.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
     if (!asset) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
-    return this.prisma.client.asset.update({ where: { id }, data: { status: 'ARCHIVED' } });
+    const updated = await this.prisma.client.asset.update({
+      where: { id },
+      data: { status: 'ARCHIVED' },
+    });
+    await this.prisma.client.auditLog.create({
+      data: {
+        tenantId: req.user.tenantId, userId: req.user.id,
+        action: 'ASSET_REJECTED', targetType: 'Asset', targetId: id,
+        details: JSON.stringify({ name: asset.originalName, reason: body.reason || '' }),
+      },
+    }).catch(() => {});
+    this.notifyUploaderOfDecision(
+      req.user.tenantId, asset.uploadedByUserId,
+      asset.originalName || 'your asset',
+      'REJECTED', req.user.email || 'a reviewer',
+      body.reason,
+    );
+    return updated;
   }
 
   /**
