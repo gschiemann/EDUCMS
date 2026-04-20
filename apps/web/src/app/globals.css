@@ -96,6 +96,8 @@
    that in one pass. Once we finish the brand-class migration these
    overrides can narrow to just the shades actually in use. */
 @theme {
+  /* Primary brand — hijack the whole indigo scale. Most of the dashboard
+     uses bg-indigo-600 / text-indigo-700 for CTAs. */
   --color-indigo-50:  var(--brand-primary-soft, #eef2ff);
   --color-indigo-100: var(--brand-primary-soft, #e0e7ff);
   --color-indigo-200: var(--brand-primary-soft, #c7d2fe);
@@ -107,6 +109,8 @@
   --color-indigo-800: var(--brand-primary-active, #3730a3);
   --color-indigo-900: var(--brand-primary-active, #312e81);
   --color-indigo-950: var(--brand-primary-active, #1e1b4b);
+
+  /* Accent — violet scale also remaps to brand accent. */
   --color-violet-50:  var(--brand-accent-soft, #f5f3ff);
   --color-violet-100: var(--brand-accent-soft, #ede9fe);
   --color-violet-200: var(--brand-accent-soft, #ddd6fe);
@@ -117,6 +121,34 @@
   --color-violet-700: var(--brand-accent-hover, #6d28d9);
   --color-violet-800: var(--brand-accent-hover, #5b21b6);
   --color-violet-900: var(--brand-accent-hover, #4c1d95);
+
+  /* Schedule / playlist pages + several modals use bg-sky-* as a
+     secondary CTA color, not semantic blue. Without this remap the
+     'Schedule to Screen' + 'Add Schedule' buttons stayed default
+     Tailwind sky-blue even on branded tenants. */
+  --color-sky-50:  var(--brand-primary-soft, #f0f9ff);
+  --color-sky-100: var(--brand-primary-soft, #e0f2fe);
+  --color-sky-200: var(--brand-primary-soft, #bae6fd);
+  --color-sky-300: var(--brand-primary-hover, #7dd3fc);
+  --color-sky-400: var(--brand-primary-hover, #38bdf8);
+  --color-sky-500: var(--brand-primary, #0ea5e9);
+  --color-sky-600: var(--brand-primary, #0284c7);
+  --color-sky-700: var(--brand-primary-hover, #0369a1);
+  --color-sky-800: var(--brand-primary-active, #075985);
+  --color-sky-900: var(--brand-primary-active, #0c4a6e);
+
+  /* Same story for bg-blue-* — 'Publish' / 'Apply' modals in the
+     schedule builder, some legacy pages. Hijack to brand primary. */
+  --color-blue-50:  var(--brand-primary-soft, #eff6ff);
+  --color-blue-100: var(--brand-primary-soft, #dbeafe);
+  --color-blue-200: var(--brand-primary-soft, #bfdbfe);
+  --color-blue-300: var(--brand-primary-hover, #93c5fd);
+  --color-blue-400: var(--brand-primary-hover, #60a5fa);
+  --color-blue-500: var(--brand-primary, #3b82f6);
+  --color-blue-600: var(--brand-primary, #2563eb);
+  --color-blue-700: var(--brand-primary-hover, #1d4ed8);
+  --color-blue-800: var(--brand-primary-active, #1e40af);
+  --color-blue-900: var(--brand-primary-active, #1e3a8a);
 }
 
 :root {
