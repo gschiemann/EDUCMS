@@ -255,6 +255,15 @@ export class BrandingScraperService {
         if (vbW <= 32 && vbH <= 32 && aspect > 0.7 && aspect < 1.4) return;
       }
 
+      // Reject SVGs with no shape primitives — these are almost always
+      // decorative text-only elements the site embeds as a label, not
+      // the real wordmark. Chardon's site has one such sibling <svg>
+      // that cheerio finds first; without this check it wins score 90
+      // and the branding adopt ships 224 bytes of whitespace + alt
+      // text to Supabase.
+      const hasShape = /<(path|circle|rect|polygon|polyline|ellipse|image|use)\b/i.test(outer);
+      if (!hasShape) return;
+
       // Wordmark heuristic: wide aspect (>2:1) bumps the score.
       let score = 90;
       if (viewBox.length === 4 && viewBox[2] / Math.max(viewBox[3], 1) > 2) score += 10;

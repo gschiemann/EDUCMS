@@ -98,7 +98,25 @@ export class BrandingController {
     const chosenLogo = body.logoOverride?.url ?? body.logos?.[0]?.url ?? null;
     const chosenSvg = body.logoOverride?.svgInline ?? body.logos?.[0]?.svgInline ?? null;
 
-    if (chosenSvg) {
+    // Validate the SVG has real content BEFORE storing. Chardon's
+    // scrape kept landing a ~224-byte file that was just whitespace +
+    // the alt text 'Chardon Footer Logo@100' — cheerio picked up a
+    // sibling <svg> that was a decorative text-only element, not the
+    // real wordmark. A valid logo must contain at least one shape
+    // primitive (path, circle, rect, polygon, image, use). If it
+    // doesn't, fall through to the rasterized <img> candidate below.
+    const isRealSvg = (s: string | null): boolean => {
+      if (!s || s.length < 200) return false;
+      return /<(path|circle|rect|polygon|polyline|ellipse|image|use)\b/i.test(s);
+    };
+    const chosenSvgValid = isRealSvg(chosenSvg);
+    if (chosenSvg && !chosenSvgValid) {
+      this.logger.warn(
+        `Branding SVG rejected for tenant ${tenantId} — no shape primitives (len=${chosenSvg.length}). Falling back to logoUrl.`,
+      );
+    }
+
+    if (chosenSvg && chosenSvgValid) {
       // Two storage paths with different trust models:
       //
       // 1) logoSvgInline — rendered by admins via dangerouslySetInnerHTML
@@ -131,12 +149,31 @@ export class BrandingController {
       } catch (e: any) {
         this.logger.warn(`Inline SVG logo upload failed, falling back to inline: ${e?.message}`);
       }
-    } else if (chosenLogo) {
+    }
+    // Also try the raster logoUrl as a fallback OR primary (when the
+    // SVG was rejected). If logoUrl is already set from the SVG branch,
+    // skip — the SVG wins.
+    if (!logoUrl && chosenLogo) {
       try {
         logoUrl = await this.rehostUrl(chosenLogo, `branding/${tenantId}/logo`);
       } catch (e: any) {
         this.logger.warn(`Logo rehost failed, storing source URL directly: ${e?.message}`);
         logoUrl = chosenLogo;
+      }
+    }
+
+    // If the SVG was rejected AND we had other logo candidates, try
+    // them in score order. The client's logoOverride may have pinned
+    // the bad one — fall back to the next best candidate on the server
+    // so branding still succeeds without a re-scrape.
+    if (!logoUrl && Array.isArray(body.logos)) {
+      for (const cand of body.logos.slice(1)) {
+        if (!cand?.url) continue;
+        try {
+          logoUrl = await this.rehostUrl(cand.url, `branding/${tenantId}/logo-fb`);
+          this.logger.log(`Logo fallback: used candidate #${body.logos.indexOf(cand)} (${cand.kind || '?'})`);
+          break;
+        } catch { /* try next */ }
       }
     }
 
