@@ -108,6 +108,33 @@ export async function ensureSystemPresets(prisma: PrismaService) {
     }
     logger.log(`System preset seed complete — ${created}/${missing.length} created.`);
 
+    // ─── Archive presets that were deleted from system-presets.ts ───
+    // Source-of-truth is the SYSTEM_TEMPLATE_PRESETS array. Any system
+    // template row in the DB whose id no longer appears there gets
+    // archived (status=ARCHIVED) so it disappears from the gallery
+    // without breaking any playlist that already references it. We do
+    // NOT hard-delete — a tenant playlist could still point at the old
+    // template id, and the live manifest needs to keep rendering it
+    // until the tenant rebuilds with the new set. Cascade-delete would
+    // wipe content unexpectedly.
+    const wantedIds = new Set(SYSTEM_TEMPLATE_PRESETS.map((p) => p.id));
+    try {
+      const stale = await prisma.client.template.findMany({
+        where: { isSystem: true, status: 'ACTIVE' as any },
+        select: { id: true, name: true },
+      });
+      const toArchive = stale.filter((t: { id: string }) => !wantedIds.has(t.id));
+      if (toArchive.length > 0) {
+        await prisma.client.template.updateMany({
+          where: { id: { in: toArchive.map((t: { id: string }) => t.id) } },
+          data: { status: 'ARCHIVED' as any },
+        });
+        logger.log(`Archived ${toArchive.length} legacy system preset(s) no longer in source.`);
+      }
+    } catch (e) {
+      logger.warn(`Archive pass failed: ${(e as Error).message}`);
+    }
+
     // Pin the curated animated-welcome set to the TOP of the gallery by
     // refreshing their updatedAt. The templates list orders by
     // (isSystem desc, updatedAt desc), so touching these pushes the
