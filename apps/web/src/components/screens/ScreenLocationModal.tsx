@@ -197,6 +197,13 @@ export function ScreenLocationModal({ screenName, currentAddress, onClose, onSav
           drops on the fleet map immediately.
         </p>
 
+        {/* WAI-ARIA 1.2 combobox pattern — all the combobox semantics
+            live on the <input> itself (not a wrapper), which is the
+            form jsx-a11y's role-has-required-aria-props + role-
+            supports-aria-props rules accept cleanly. The suggestion
+            list uses role="listbox"/"option" on divs (not ul/li) so
+            the no-noninteractive-element-to-interactive-role rule
+            doesn't trip. */}
         <div className="relative">
           <div className="flex items-center gap-2 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus-within:ring-2 focus-within:ring-indigo-500 focus-within:bg-white">
             <Search className="w-4 h-4 text-slate-400 shrink-0" />
@@ -210,18 +217,22 @@ export function ScreenLocationModal({ screenName, currentAddress, onClose, onSav
               spellCheck={false}
               aria-label="Address"
               aria-autocomplete="list"
+              aria-controls="screen-location-results"
               aria-expanded={results.length > 0}
+              role="combobox"
             />
             {searching && <Loader2 className="w-4 h-4 text-indigo-500 animate-spin shrink-0" />}
           </div>
 
           {results.length > 0 && (
-            <ul
-              className="absolute z-10 top-full left-0 right-0 mt-1 bg-white rounded-xl border border-slate-200 shadow-xl max-h-64 overflow-y-auto"
+            <div
+              id="screen-location-results"
               role="listbox"
+              aria-label="Address suggestions"
+              className="absolute z-10 top-full left-0 right-0 mt-1 bg-white rounded-xl border border-slate-200 shadow-xl max-h-64 overflow-y-auto"
             >
               {results.map((r) => (
-                <li key={r.place_id} role="option" aria-selected={false}>
+                <div key={r.place_id} role="option" aria-selected={false}>
                   <button
                     type="button"
                     onClick={() => pick(r)}
@@ -230,9 +241,9 @@ export function ScreenLocationModal({ screenName, currentAddress, onClose, onSav
                     <MapPin className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
                     <span className="flex-1 text-slate-700 leading-tight">{r.display_name}</span>
                   </button>
-                </li>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
         </div>
 
