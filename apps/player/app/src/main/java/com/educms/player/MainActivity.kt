@@ -146,12 +146,32 @@ class MainActivity : ComponentActivity() {
         val (wPx, hPx) = getRealDisplaySize()
         val density = resources.displayMetrics.density
 
+        // Stable device fingerprint that survives app reinstalls.
+        // Settings.Secure.ANDROID_ID persists across an uninstall +
+        // reinstall cycle (only factory reset rotates it on Android 8+).
+        // Without this the web player generates a random UUID in
+        // localStorage — which gets wiped on reinstall → device looks
+        // brand new → admin has to re-pair every time. Passing the
+        // Android ID via ?fp= lets the web player use the same
+        // fingerprint across reinstalls so the paired screen comes
+        // back online automatically.
+        val androidId = try {
+            android.provider.Settings.Secure.getString(
+                contentResolver, android.provider.Settings.Secure.ANDROID_ID,
+            ) ?: ""
+        } catch (_: Exception) { "" }
+
         val builder = Uri.parse(base).buildUpon()
             .appendQueryParameter("client", "android")
             .appendQueryParameter("v", BuildConfig.VERSION_NAME)
             .appendQueryParameter("w", wPx.toString())
             .appendQueryParameter("h", hPx.toString())
             .appendQueryParameter("dpr", density.toString())
+        if (androidId.isNotBlank()) {
+            // Prefix so the web player can tell an APK-provided fp from a
+            // browser-generated one in logs / device cards.
+            builder.appendQueryParameter("fp", "android-$androidId")
+        }
         // Pass token only if we already have one (legacy paired device).
         // For a fresh install the web player's /screens/register flow
         // takes over, shows a pairing code on screen, polls for pairing,

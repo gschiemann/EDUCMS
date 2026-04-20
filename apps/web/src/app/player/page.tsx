@@ -138,20 +138,33 @@ function getApiRoot(): string {
   return env.replace('/api/v1', '');
 }
 
-// Generate a stable device fingerprint using the browser
+// Generate a stable device fingerprint for this physical device.
+//
+// PRECEDENCE (first match wins):
+//   1. URL ?fp= — passed by the Android APK using Settings.Secure.ANDROID_ID
+//      which survives app uninstalls + reinstalls (it only rotates on
+//      factory reset). This is what lets a re-sideloaded kiosk come back
+//      paired without a fresh pairing dance.
+//   2. URL ?deviceId= — legacy alias used by dev test paths
+//   3. localStorage 'edu_device_fp' — fallback for pure browser players
+//      (plain Chrome tab). Gets a random UUID on first run and sticks
+//      as long as the browser profile lasts.
 function getDeviceFingerprint(): string {
   const key = 'edu_device_fp';
-  
-  // Allow overriding fingerprint via URL for testing previously paired devices
   if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search);
+    // Android APK passes the stable Android ID as ?fp=
+    const apkFp = params.get('fp');
+    if (apkFp && apkFp.length >= 8) {
+      localStorage.setItem(key, apkFp);
+      return apkFp;
+    }
     const idParam = params.get('deviceId');
     if (idParam) {
       localStorage.setItem(key, idParam);
       return idParam;
     }
   }
-
   let fp = localStorage.getItem(key);
   if (!fp) {
     fp = `device-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
@@ -1075,7 +1088,7 @@ function PlayerPage() {
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div>
                 <span className="text-slate-500">Resolution: </span>
-                <span className="text-slate-300 font-medium">{typeof window !== 'undefined' ? `${window.screen.width}×${window.screen.height}` : ''}</span>
+                <span className="text-slate-300 font-medium">{typeof window !== 'undefined' ? (() => { const qp=new URLSearchParams(window.location.search); const w=parseInt(qp.get('w')||'0',10)||window.screen.width; const h=parseInt(qp.get('h')||'0',10)||window.screen.height; return `${w}×${h}`; })() : ''}</span>
               </div>
               <div>
                 <span className="text-slate-500">Browser: </span>
@@ -1320,7 +1333,7 @@ function PlayerPage() {
                   <Monitor className="w-6 h-6 text-indigo-500" />
                 </div>
                 <h3 className="text-sm font-bold text-slate-800">{screenName || 'Display Screen'}</h3>
-                <p className="text-xs font-semibold text-slate-400 mt-1">{typeof window !== 'undefined' ? `${window.screen.width}×${window.screen.height}` : 'Unknown'} • {typeof navigator !== 'undefined' ? (navigator.userAgent.includes('Chrome') ? 'Chrome' : 'Other') : ''}</p>
+                <p className="text-xs font-semibold text-slate-400 mt-1">{typeof window !== 'undefined' ? (() => { const qp=new URLSearchParams(window.location.search); const w=parseInt(qp.get('w')||'0',10)||window.screen.width; const h=parseInt(qp.get('h')||'0',10)||window.screen.height; return `${w}×${h}`; })() : 'Unknown'} • {typeof navigator !== 'undefined' ? (navigator.userAgent.includes('Chrome') ? 'Chrome' : 'Other') : ''}</p>
                 <div className="mt-4 flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-bold">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Online
                 </div>
