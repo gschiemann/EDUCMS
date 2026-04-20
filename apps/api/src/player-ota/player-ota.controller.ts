@@ -84,16 +84,69 @@ export class PlayerOtaController {
   }
 
   @Get('apk/latest')
-  redirectToLatestApk(@Res() res: Response) {
-    const apkUrl = process.env.PLAYER_APK_URL;
-    if (!apkUrl) {
-      res.status(503).json({
-        error: true,
-        message:
-          'Player APK URL not configured on this deployment. Set PLAYER_APK_URL to the GitHub Release asset URL.',
-      });
+  async redirectToLatestApk(@Res() res: Response) {
+    // Self-healing: prefer an explicit env override, but fall back to
+    // pulling the latest release asset from GitHub's public API so the
+    // 'Download APK' button works the moment a release is published,
+    // with zero Railway env config. Cached 5 min in-memory so we don't
+    // hammer GitHub.
+    const explicit = process.env.PLAYER_APK_URL;
+    if (explicit) {
+      res.redirect(302, explicit);
       return;
     }
-    res.redirect(302, apkUrl);
+
+    try {
+      const url = await resolveLatestReleaseApk();
+      if (url) {
+        res.redirect(302, url);
+        return;
+      }
+    } catch (e: any) {
+      this.logger.warn(`GitHub release lookup failed: ${e?.message}`);
+    }
+
+    res.status(503).json({
+      error: true,
+      message:
+        'No player APK is published yet. Tag a GitHub Release on gschiemann/EDUCMS with the built APK attached (the android-player-apk workflow uploads artifacts — promote one to a release), or set PLAYER_APK_URL on Railway to a direct download URL.',
+    });
   }
+}
+
+// ─── GitHub Release asset resolution (cached) ──────────────────────
+interface ReleaseCache { url: string | null; fetchedAt: number }
+let releaseCache: ReleaseCache | null = null;
+const RELEASE_TTL_MS = 5 * 60 * 1000;
+
+async function resolveLatestReleaseApk(): Promise<string | null> {
+  const now = Date.now();
+  if (releaseCache && now - releaseCache.fetchedAt < RELEASE_TTL_MS) {
+    return releaseCache.url;
+  }
+  // Public repo — no token needed for read. If we hit rate limits we can
+  // pass GITHUB_TOKEN via env later, but 60 req/hr anonymous is plenty.
+  const repo = process.env.PLAYER_APK_GITHUB_REPO || 'gschiemann/EDUCMS';
+  const resp = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
+    headers: { 'User-Agent': 'edu-cms-player-ota' },
+  });
+  if (!resp.ok) {
+    releaseCache = { url: null, fetchedAt: now };
+    return null;
+  }
+  const body = await resp.json() as { assets?: Array<{ name: string; browser_download_url: string }> };
+  const assets = body.assets || [];
+  // Prefer arm64 APK (modern Taurus + most 64-bit Android), fall back to
+  // universal, then anything ending in .apk. Don't pick x86_64 — that's
+  // emulator-only and would fail to install on a real device.
+  const pick = (pred: (name: string) => boolean) =>
+    assets.find((a) => pred(a.name.toLowerCase()));
+  const chosen =
+    pick((n) => n.includes('arm64-v8a') && n.endsWith('.apk')) ||
+    pick((n) => n.includes('universal') && n.endsWith('.apk')) ||
+    pick((n) => n.includes('armeabi-v7a') && n.endsWith('.apk')) ||
+    pick((n) => n.endsWith('.apk') && !n.includes('x86'));
+  const url = chosen?.browser_download_url ?? null;
+  releaseCache = { url, fetchedAt: now };
+  return url;
 }

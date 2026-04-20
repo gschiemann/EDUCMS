@@ -52,10 +52,13 @@ export async function ensureSystemPresets(prisma: PrismaService) {
     const missing = SYSTEM_TEMPLATE_PRESETS.filter((p) => !existingIds.has(p.id));
     if (missing.length === 0) {
       logger.log(`All ${SYSTEM_TEMPLATE_PRESETS.length} system presets present.`);
-      return;
+    } else {
+      logger.log(`Seeding ${missing.length} missing system preset(s)…`);
     }
-
-    logger.log(`Seeding ${missing.length} missing system preset(s)…`);
+    // NOTE: do NOT early-return when missing.length===0. The archive
+    // + pin passes below MUST run on every boot so deletions from
+    // system-presets.ts propagate to the DB and the pin-to-top set
+    // stays fresh.
     let created = 0;
     for (const preset of missing) {
       try {
@@ -106,7 +109,9 @@ export async function ensureSystemPresets(prisma: PrismaService) {
         }
       }
     }
-    logger.log(`System preset seed complete — ${created}/${missing.length} created.`);
+    if (missing.length > 0) {
+      logger.log(`System preset seed complete — ${created}/${missing.length} created.`);
+    }
 
     // ─── Archive presets that were deleted from system-presets.ts ───
     // Source-of-truth is the SYSTEM_TEMPLATE_PRESETS array. Any system
