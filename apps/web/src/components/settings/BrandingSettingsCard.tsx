@@ -14,11 +14,71 @@ import { useEffect, useMemo, useState } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
 import { usePathname } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
-import { Paintbrush, Sparkles, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Paintbrush, Sparkles, RotateCcw, AlertTriangle, Upload, Check, Loader2 } from 'lucide-react';
 import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
+import { useAppStore } from '@/lib/store';
+import { useTenant } from '@/hooks/use-api';
+import { pushBrandingPreview } from '@/components/branding/BrandStyleInjector';
 import type { TenantBranding } from '@/lib/branding';
 
 export function BrandingSettingsCard() {
+  const { data: tenant } = useTenant();
+  const user = useAppStore((s) => s.user);
+  // Manual-mode state — escape hatch when the auto-scraper can't produce
+  // a usable logo (common for sites with SVG-inside-SVG <image> refs,
+  // .ico-only favicons, or JS-rendered logos).
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualName, setManualName] = useState('');
+  const [manualTagline, setManualTagline] = useState('');
+  const [manualPrimary, setManualPrimary] = useState('#4f46e5');
+  const [manualAccent, setManualAccent] = useState('#ec4899');
+  const [manualLogoFile, setManualLogoFile] = useState<File | null>(null);
+  const [manualLogoUrl, setManualLogoUrl] = useState('');
+  const [manualSaving, setManualSaving] = useState(false);
+  const [manualStatus, setManualStatus] = useState<{kind: 'ok' | 'err', msg: string} | null>(null);
+
+  const handleManualSave = async () => {
+    setManualSaving(true);
+    setManualStatus(null);
+    try {
+      let logoDataUrl: string | undefined;
+      if (manualLogoFile) {
+        if (manualLogoFile.size > 2 * 1024 * 1024) throw new Error('Logo too large (max 2MB)');
+        logoDataUrl = await new Promise<string>((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result as string);
+          r.onerror = () => rej(new Error('Could not read file'));
+          r.readAsDataURL(manualLogoFile);
+        });
+      }
+      const payload = {
+        displayName: manualName || undefined,
+        tagline: manualTagline || undefined,
+        primaryHex: manualPrimary,
+        accentHex: manualAccent,
+        ...(logoDataUrl ? { logoDataUrl } : manualLogoUrl ? { logoUrl: manualLogoUrl } : {}),
+      };
+      const res: any = await apiFetch('/branding/me/manual', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      // Update local cache + fire event so sidebar + injector repaint now
+      try {
+        const key = `edu-cms-branding-cache-v1:${(user as any)?.tenantId || ''}`;
+        localStorage.setItem(key, JSON.stringify(res.branding));
+      } catch {}
+      pushBrandingPreview(res.branding);
+      setBranding(res.branding);
+      setManualStatus({ kind: 'ok', msg: 'Branding saved — repainting the dashboard now.' });
+      setManualOpen(false);
+      setManualLogoFile(null);
+    } catch (e: any) {
+      setManualStatus({ kind: 'err', msg: e?.message || 'Save failed' });
+    } finally {
+      setManualSaving(false);
+    }
+  };
+
   const [branding, setBranding] = useState<TenantBranding | null>(null);
   const [loading, setLoading] = useState(true);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -72,16 +132,146 @@ export function BrandingSettingsCard() {
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-        <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2">
-          <Paintbrush className="w-4 h-4 text-indigo-500" /> Brand your CMS
-        </h2>
-        <Link
-          href={`/${schoolId}/settings/branding`}
-          className="text-xs font-semibold px-3 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5"
-        >
-          <Sparkles className="h-3.5 w-3.5" /> {branding ? 'Re-skin' : 'Auto-brand from URL'}
-        </Link>
+        <div className="min-w-0">
+          <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+            <Paintbrush className="w-4 h-4 text-indigo-500" /> Brand your CMS
+          </h2>
+          {/* Big tenant indicator so the user knows which org they're
+              branding — was a cross-tenant-bleed vector when users
+              adopted Chardon's URL while logged into Springfield. */}
+          <div className="text-[11px] text-slate-500 mt-1">
+            Branding: <span className="font-semibold text-indigo-700">{(tenant as any)?.name || '(unknown tenant)'}</span>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setManualOpen((v) => !v)}
+            className="text-xs font-semibold px-3 py-1.5 rounded-md bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 flex items-center gap-1.5"
+          >
+            <Upload className="h-3.5 w-3.5" /> {manualOpen ? 'Cancel' : 'Upload logo manually'}
+          </button>
+          <Link
+            href={`/${schoolId}/settings/branding`}
+            className="text-xs font-semibold px-3 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5"
+          >
+            <Sparkles className="h-3.5 w-3.5" /> {branding ? 'Re-skin' : 'Auto-brand from URL'}
+          </Link>
+        </div>
       </div>
+
+      {manualOpen && (
+        <div className="px-6 py-5 border-b border-slate-100 bg-slate-50 space-y-4">
+          <p className="text-xs text-slate-600">
+            Set branding for <strong className="text-indigo-700">{(tenant as any)?.name || 'this tenant'}</strong> directly — no scraper. Upload a logo image (PNG, JPG, SVG) or paste a URL.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label className="text-[11px] font-bold text-slate-600 flex flex-col gap-1">
+              Display name
+              <input
+                value={manualName}
+                onChange={(e) => setManualName(e.target.value)}
+                placeholder={(tenant as any)?.name || ''}
+                className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-normal text-slate-800"
+              />
+            </label>
+            <label className="text-[11px] font-bold text-slate-600 flex flex-col gap-1">
+              Tagline (optional)
+              <input
+                value={manualTagline}
+                onChange={(e) => setManualTagline(e.target.value)}
+                placeholder="Digital Signage"
+                className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-normal text-slate-800"
+              />
+            </label>
+            <label className="text-[11px] font-bold text-slate-600 flex flex-col gap-1">
+              Primary color
+              <div className="flex gap-2">
+                <input
+                  type="color"
+                  value={manualPrimary}
+                  onChange={(e) => setManualPrimary(e.target.value)}
+                  className="w-10 h-10 border border-slate-200 rounded cursor-pointer"
+                />
+                <input
+                  type="text"
+                  value={manualPrimary}
+                  onChange={(e) => setManualPrimary(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono text-slate-800"
+                />
+              </div>
+            </label>
+            <label className="text-[11px] font-bold text-slate-600 flex flex-col gap-1">
+              Accent color
+              <div className="flex gap-2">
+                <input
+                  type="color"
+                  value={manualAccent}
+                  onChange={(e) => setManualAccent(e.target.value)}
+                  className="w-10 h-10 border border-slate-200 rounded cursor-pointer"
+                />
+                <input
+                  type="text"
+                  value={manualAccent}
+                  onChange={(e) => setManualAccent(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono text-slate-800"
+                />
+              </div>
+            </label>
+          </div>
+
+          <div className="pt-2 border-t border-slate-200">
+            <label className="text-[11px] font-bold text-slate-600 flex flex-col gap-1">
+              Logo — upload file (PNG / JPG / SVG, max 2MB)
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                onChange={(e) => setManualLogoFile(e.target.files?.[0] || null)}
+                className="text-xs text-slate-700"
+              />
+              {manualLogoFile && (
+                <span className="text-[11px] text-emerald-700 font-semibold">
+                  <Check className="inline w-3 h-3" /> {manualLogoFile.name} ({Math.round(manualLogoFile.size / 1024)} KB)
+                </span>
+              )}
+            </label>
+            <label className="text-[11px] font-bold text-slate-600 flex flex-col gap-1 mt-3">
+              …or paste a logo URL
+              <input
+                value={manualLogoUrl}
+                onChange={(e) => setManualLogoUrl(e.target.value)}
+                placeholder="https://example.com/logo.png"
+                className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-normal text-slate-800"
+              />
+            </label>
+          </div>
+
+          {manualStatus && (
+            <div className={`text-xs px-3 py-2 rounded-lg ${manualStatus.kind === 'ok' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'}`}>
+              {manualStatus.msg}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleManualSave}
+              disabled={manualSaving}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white text-xs font-bold rounded-lg flex items-center gap-2"
+            >
+              {manualSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+              Save branding
+            </button>
+            <button
+              type="button"
+              onClick={() => { setManualOpen(false); setManualStatus(null); }}
+              className="px-4 py-2 text-slate-500 hover:text-slate-700 text-xs font-semibold"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       <div className="p-6">
         {loading ? (
           <div className="text-sm text-slate-400">Loading…</div>

@@ -274,6 +274,109 @@ export class BrandingController {
   }
 
   // ── Revert to defaults ──────────────────────────────────────────
+  // ── Manual branding override — escape hatch when the scraper can't
+  // produce a usable logo (common: SVG uses external <image> refs the
+  // sanitizer strips, or the site serves only a favicon). Admin pastes
+  // a displayName + primary color + uploads a logo file or pastes a
+  // URL, and we upsert tenant_branding directly. No scraping, no
+  // guessing, no cross-tenant bleed — the tenantId comes from the
+  // caller's JWT, not from the body.
+  @Post('me/manual')
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  async manualAdopt(
+    @Request() req: any,
+    @Body() body: {
+      displayName?: string;
+      tagline?: string;
+      primaryHex?: string;
+      accentHex?: string;
+      logoDataUrl?: string;   // data:image/png;base64,...  (uploaded file)
+      logoUrl?: string;       // https://.../logo.png      (pasted URL)
+    },
+  ) {
+    const tenantId = req.user.tenantId;
+    if (!tenantId) throw new HttpException('No tenant scope on session', HttpStatus.FORBIDDEN);
+
+    // Palette — derive from primary (+ optional accent) the same way
+    // the scraper-adopt path does, so themes look consistent.
+    const primary = parseColor(body?.primaryHex || '#4f46e5')?.hex || '#4f46e5';
+    const accent = body?.accentHex ? (parseColor(body.accentHex)?.hex || null) : null;
+    const palette = derivePalette(primary, accent || undefined);
+
+    let logoUrl: string | null = null;
+
+    // (1) Uploaded file — data URL. Decode, rehost to Supabase.
+    if (body.logoDataUrl && /^data:image\/[a-z+.-]+;base64,/.test(body.logoDataUrl)) {
+      try {
+        const match = body.logoDataUrl.match(/^data:(image\/[a-z+.-]+);base64,(.+)$/)!;
+        const mimeType = match[1];
+        const b64 = match[2];
+        const buf = Buffer.from(b64, 'base64');
+        if (buf.byteLength > 2 * 1024 * 1024) {
+          throw new HttpException('Logo too large (max 2MB)', HttpStatus.BAD_REQUEST);
+        }
+        const ext = mimeType.split('/')[1].split('+')[0].replace(/[^a-z0-9]/gi, '') || 'png';
+        const hash = createHash('sha256').update(buf).digest('hex').slice(0, 12);
+        const path = `branding/${tenantId}/manual-${hash}.${ext}`;
+        logoUrl = await this.storage.upload(path, buf, mimeType);
+      } catch (e: any) {
+        this.logger.warn(`Manual logo upload failed for tenant ${tenantId}: ${e?.message}`);
+        throw new HttpException(`Logo upload failed: ${e?.message}`, HttpStatus.BAD_REQUEST);
+      }
+    } else if (body.logoUrl) {
+      // (2) Pasted URL — rehost so we don't hotlink.
+      try {
+        const r = await safeFetch(body.logoUrl, { maxBytes: 2 * 1024 * 1024, timeoutMs: 8000 });
+        const ext = (r.contentType || '').split('/')[1]?.split(';')[0]?.replace(/[^a-z0-9]/gi, '') || 'png';
+        if (/\.(ico|icns)(\?|#|$)/i.test(body.logoUrl)) {
+          throw new Error('favicon URLs are too small to use as logos — paste a full-size image URL');
+        }
+        const hash = createHash('sha256').update(r.body).digest('hex').slice(0, 12);
+        const path = `branding/${tenantId}/manual-${hash}.${ext}`;
+        logoUrl = await this.storage.upload(path, r.body, r.contentType || 'application/octet-stream');
+      } catch (e: any) {
+        this.logger.warn(`Manual logo URL rehost failed for tenant ${tenantId}: ${e?.message}`);
+        throw new HttpException(`Logo URL fetch failed: ${e?.message}`, HttpStatus.BAD_REQUEST);
+      }
+    }
+
+    const record = await this.prisma.client.tenantBranding.upsert({
+      where: { tenantId },
+      create: {
+        tenantId,
+        displayName: body.displayName || null,
+        tagline: body.tagline || null,
+        logoUrl,
+        palette: palette as any,
+        sourceUrl: 'manual://admin',
+        scrapedAt: new Date(),
+      },
+      update: {
+        displayName: body.displayName ?? undefined,
+        tagline: body.tagline ?? undefined,
+        ...(logoUrl ? { logoUrl } : {}),
+        palette: palette as any,
+        sourceUrl: 'manual://admin',
+        scrapedAt: new Date(),
+      },
+    });
+
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'ADOPT_BRANDING_MANUAL',
+        targetType: 'tenant',
+        targetId: tenantId,
+        tenantId,
+        userId: req.user.id,
+        details: JSON.stringify({ displayName: body.displayName, hasLogo: !!logoUrl, primary }),
+      },
+    });
+
+    return { ok: true, branding: record };
+  }
+
   @Delete('me')
   @UseGuards(JwtAuthGuard, RbacGuard)
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
