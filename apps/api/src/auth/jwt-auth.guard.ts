@@ -81,8 +81,13 @@ export class JwtAuthGuard implements CanActivate {
       } else {
         // Assign the structured payload to Request object for RbacGuard to consume
         // Token contains: { sub: user.id, tenantId, role } — see auth.service.ts
+        // NOTE: both `id` and `userId` are populated. Most controllers read
+        // req.user.id; a couple of older ones (tenants/switchTenant) still
+        // read req.user.userId. Populating both avoids switch-500s when a
+        // refactor only updates one call-site.
         request['user'] = {
           id: payload.sub,
+          userId: payload.sub,
           email: payload.email,
           role: payload.role,
           tenantId: payload.tenantId,
