@@ -1390,4 +1390,141 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
       }
     ],
   },
+
+  // ────────────────────────────────────────────────────────────────
+  // 16 templates ported from scratch/design/*.html (2026-04-20).
+  // Each is a single full-canvas zone; the widget carries every
+  // visual (transform:scale 1920x1080 internal). Admins edit the
+  // zone's defaultConfig via the PropertiesPanel; live scheduling
+  // pushes config changes to paired screens immediately.
+  // ────────────────────────────────────────────────────────────────
+
+  {
+    id: 'preset-cafeteria-animated-middle',
+    name: '🏟️ Animated Cafeteria · Middle School',
+    description: 'Varsity / stadium-styled cafeteria menu board — pennants, scoreboard, weekly menu, chef polaroid, birthdays, allergen ticker.',
+    category: 'CAFETERIA', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0f172a',
+    zones: [{ name: 'Scene', widgetType: 'ANIMATED_CAFETERIA_MS', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-cafeteria-animated-high',
+    name: '☕ Animated Cafeteria · High School',
+    description: 'Neon-sunset café menu board — steaming coffee cup logo, weekly menu, trophy + yearbook accents, allergen ticker.',
+    category: 'CAFETERIA', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#111827',
+    zones: [{ name: 'Scene', widgetType: 'ANIMATED_CAFETERIA_HS', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-cafeteria-chalkboard',
+    name: '🌿 Animated Cafeteria · Chalkboard',
+    description: 'Green-chalkboard menu board — chalk-textured text, erased highlights, wooden frame, weekly menu editor.',
+    category: 'CAFETERIA', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#1f3b2a',
+    zones: [{ name: 'Scene', widgetType: 'ANIMATED_CAFETERIA_CHALKBOARD', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-cafeteria-foodtruck',
+    name: '🚚 Animated Cafeteria · Food Truck (Classic)',
+    description: 'Food-truck service window — striped awning, order-window frame, chalkboard menu, weekly menu editor.',
+    category: 'CAFETERIA', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#fef3c7',
+    zones: [{ name: 'Scene', widgetType: 'ANIMATED_CAFETERIA_FOODTRUCK', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-bus-board',
+    name: '🚌 Animated Bus Route Board',
+    description: 'School-bus route board — driving-bus graphic, animated road, route rows with ETAs, late warnings, next-bus countdown.',
+    category: 'INFO', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#fde68a',
+    zones: [{ name: 'Scene', widgetType: 'ANIMATED_BUS_BOARD', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-main-entrance',
+    name: '🏛️ Animated Main Entrance Welcome',
+    description: 'Grand-entrance welcome board — marquee bulbs, heraldic crests, three info tiles, balloon cluster, ticker.',
+    category: 'ENTRY', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#1e1b4b',
+    zones: [{ name: 'Scene', widgetType: 'ANIMATED_MAIN_ENTRANCE', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-hallway-schedule',
+    name: '📘 Animated Hallway Schedule',
+    description: 'Notebook-paper hallway schedule — class periods list, current-period auto-highlight, weather + announcement cards, ticker.',
+    category: 'HALLWAY', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#fef3c7',
+    zones: [{ name: 'Scene', widgetType: 'ANIMATED_HALLWAY_SCHEDULE', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-bell-schedule',
+    name: '🔔 Animated Bell Schedule',
+    description: 'Live bell-schedule board — current period highlighted, countdown to next bell, progress bar, period timeline.',
+    category: 'HALLWAY', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0f172a',
+    zones: [{ name: 'Scene', widgetType: 'ANIMATED_BELL_SCHEDULE', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-morning-news',
+    name: '📺 Animated Morning News',
+    description: 'TV-newsroom daily digest — breaking-news stories with time chips, REC indicator, anchor desk feel.',
+    category: 'LOBBY', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0b1220',
+    zones: [{ name: 'Scene', widgetType: 'ANIMATED_MORNING_NEWS', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-achievement-showcase',
+    name: '🏆 Animated Achievement Showcase',
+    description: 'Award ceremony scene — medals, honor-roll columns, stats, student-of-the-week spotlight with citation.',
+    category: 'LOBBY', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#fef3c7',
+    zones: [{ name: 'Scene', widgetType: 'ANIMATED_ACHIEVEMENT_SHOWCASE', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-scrapbook-hallway',
+    name: '📸 Scrapbook · Hallway',
+    description: 'Scrapbook hallway board — polaroids, washi tape, handwritten fonts, attendance, announcements, ticker.',
+    category: 'HALLWAY', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#fff7ed',
+    zones: [{ name: 'Scene', widgetType: 'SCRAPBOOK_HALLWAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-scrapbook-cafeteria',
+    name: '📸 Scrapbook · Cafeteria',
+    description: 'Scrapbook cafeteria menu — polaroid plate, washi-tape menu cards, handwritten allergen notes.',
+    category: 'CAFETERIA', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#fff7ed',
+    zones: [{ name: 'Scene', widgetType: 'SCRAPBOOK_CAFETERIA', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-storybook-hallway',
+    name: '📖 Storybook · Hallway',
+    description: 'Open-book hallway layout — center spine, illuminated drop cap, parchment pages, schedule + attendance, page numbers.',
+    category: 'HALLWAY', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#f5f0dc',
+    zones: [{ name: 'Scene', widgetType: 'STORYBOOK_HALLWAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-storybook-cafeteria',
+    name: '📖 Storybook · Cafeteria',
+    description: 'Open-book cafeteria menu — parchment pages, illuminated drop cap, chef’s note, multi-period countdown.',
+    category: 'CAFETERIA', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#f5f0dc',
+    zones: [{ name: 'Scene', widgetType: 'STORYBOOK_CAFETERIA', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-bulletin-hallway',
+    name: '📌 Bulletin Board · Hallway',
+    description: 'Cork-board hallway layout — pinned index cards, washi tape corners, schedule rows, attendance pin.',
+    category: 'HALLWAY', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#c08457',
+    zones: [{ name: 'Scene', widgetType: 'BULLETIN_HALLWAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-bulletin-cafeteria',
+    name: '📌 Bulletin Board · Cafeteria',
+    description: 'Cork-board cafeteria menu — pinned plate polaroid, index-card menu items, chef’s memo card.',
+    category: 'CAFETERIA', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#c08457',
+    zones: [{ name: 'Scene', widgetType: 'BULLETIN_CAFETERIA', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
 ];

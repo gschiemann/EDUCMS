@@ -41,6 +41,26 @@ import { AnimatedWelcomeMiddleWidget } from './AnimatedWelcomeMiddleWidget';
 import { AnimatedWelcomeHighWidget } from './AnimatedWelcomeHighWidget';
 import { AnimatedCafeteriaElementaryWidget } from './AnimatedCafeteriaElementaryWidget';
 import { AnimatedBackgroundWidget } from './AnimatedBackgroundWidget';
+// 16 templates ported from scratch/design/*.html (4 parallel agents, 2026-04-20).
+// Each widget is a full-screen scene (transform:scale 1920×1080 pattern, live-
+// gated hotspots, ticker-speed helper). See CLAUDE.md "Template Design
+// Workflow" for the port rules.
+import { AnimatedCafeteriaMiddleWidget } from './AnimatedCafeteriaMiddleWidget';
+import { AnimatedCafeteriaHighWidget } from './AnimatedCafeteriaHighWidget';
+import { AnimatedBusBoardWidget } from './AnimatedBusBoardWidget';
+import { AnimatedMainEntranceWidget } from './AnimatedMainEntranceWidget';
+import { AnimatedHallwayScheduleWidget } from './AnimatedHallwayScheduleWidget';
+import { AnimatedBellScheduleWidget } from './AnimatedBellScheduleWidget';
+import { AnimatedMorningNewsWidget } from './AnimatedMorningNewsWidget';
+import { AnimatedAchievementShowcaseWidget } from './AnimatedAchievementShowcaseWidget';
+import { ScrapbookHallwayWidget } from './ScrapbookHallwayWidget';
+import { ScrapbookCafeteriaWidget } from './ScrapbookCafeteriaWidget';
+import { StorybookHallwayWidget } from './StorybookHallwayWidget';
+import { BulletinHallwayWidget } from './BulletinHallwayWidget';
+import { StorybookCafeteriaWidget } from './StorybookCafeteriaWidget';
+import { BulletinCafeteriaWidget } from './BulletinCafeteriaWidget';
+import { AnimatedCafeteriaChalkboardWidget } from './AnimatedCafeteriaChalkboardWidget';
+import { AnimatedCafeteriaFoodtruckWidget } from './AnimatedCafeteriaFoodtruckWidget';
 import { ScrapbookLogo, ScrapbookText, ScrapbookClock, ScrapbookWeather, ScrapbookCountdown, ScrapbookAnnouncement, ScrapbookCalendar, ScrapbookStaffSpotlight, ScrapbookImageCarousel, ScrapbookTicker } from './themes/scrapbook';
 import { LockerHallwayLogo, LockerHallwayText, LockerHallwayClock, LockerHallwayWeather, LockerHallwayCountdown, LockerHallwayAnnouncement, LockerHallwayCalendar, LockerHallwayStaffSpotlight, LockerHallwayImageCarousel, LockerHallwayTicker } from './themes/locker-hallway';
 import { SpiritRallyLogo, SpiritRallyText, SpiritRallyClock, SpiritRallyWeather, SpiritRallyCountdown, SpiritRallyAnnouncement, SpiritRallyCalendar, SpiritRallyStaffSpotlight, SpiritRallyImageCarousel, SpiritRallyTicker } from './themes/spirit-rally';
@@ -131,11 +151,27 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'WAYFINDING_MAP':   return <WayfindingMapWidget config={cfg} />;
     case 'QUICK_POLL':       return <QuickPollWidget config={cfg} />;
     // ── Animated full-screen scenes (one widget = whole template) ──
-    case 'ANIMATED_WELCOME':      return <AnimatedWelcomeWidget config={cfg} live={live} />;
-    case 'ANIMATED_WELCOME_MS':   return <AnimatedWelcomeMiddleWidget config={cfg} live={live} />;
-    case 'ANIMATED_WELCOME_HS':   return <AnimatedWelcomeHighWidget config={cfg} live={live} />;
-    case 'ANIMATED_CAFETERIA':    return <AnimatedCafeteriaElementaryWidget config={cfg} live={live} />;
-    case 'ANIMATED_BACKGROUND':   return <AnimatedBackgroundWidget config={cfg} />;
+    case 'ANIMATED_WELCOME':              return <AnimatedWelcomeWidget config={cfg} live={live} />;
+    case 'ANIMATED_WELCOME_MS':           return <AnimatedWelcomeMiddleWidget config={cfg} live={live} />;
+    case 'ANIMATED_WELCOME_HS':           return <AnimatedWelcomeHighWidget config={cfg} live={live} />;
+    case 'ANIMATED_CAFETERIA':            return <AnimatedCafeteriaElementaryWidget config={cfg} live={live} />;
+    case 'ANIMATED_CAFETERIA_MS':         return <AnimatedCafeteriaMiddleWidget config={cfg} live={live} />;
+    case 'ANIMATED_CAFETERIA_HS':         return <AnimatedCafeteriaHighWidget config={cfg} live={live} />;
+    case 'ANIMATED_CAFETERIA_CHALKBOARD': return <AnimatedCafeteriaChalkboardWidget config={cfg} live={live} />;
+    case 'ANIMATED_CAFETERIA_FOODTRUCK':  return <AnimatedCafeteriaFoodtruckWidget config={cfg} live={live} />;
+    case 'ANIMATED_BUS_BOARD':            return <AnimatedBusBoardWidget config={cfg} live={live} />;
+    case 'ANIMATED_MAIN_ENTRANCE':        return <AnimatedMainEntranceWidget config={cfg} live={live} />;
+    case 'ANIMATED_HALLWAY_SCHEDULE':     return <AnimatedHallwayScheduleWidget config={cfg} live={live} />;
+    case 'ANIMATED_BELL_SCHEDULE':        return <AnimatedBellScheduleWidget config={cfg} live={live} />;
+    case 'ANIMATED_MORNING_NEWS':         return <AnimatedMorningNewsWidget config={cfg} live={live} />;
+    case 'ANIMATED_ACHIEVEMENT_SHOWCASE': return <AnimatedAchievementShowcaseWidget config={cfg} live={live} />;
+    case 'SCRAPBOOK_HALLWAY':             return <ScrapbookHallwayWidget config={cfg} live={live} />;
+    case 'SCRAPBOOK_CAFETERIA':           return <ScrapbookCafeteriaWidget config={cfg} live={live} />;
+    case 'STORYBOOK_HALLWAY':             return <StorybookHallwayWidget config={cfg} live={live} />;
+    case 'STORYBOOK_CAFETERIA':           return <StorybookCafeteriaWidget config={cfg} live={live} />;
+    case 'BULLETIN_HALLWAY':              return <BulletinHallwayWidget config={cfg} live={live} />;
+    case 'BULLETIN_CAFETERIA':            return <BulletinCafeteriaWidget config={cfg} live={live} />;
+    case 'ANIMATED_BACKGROUND':           return <AnimatedBackgroundWidget config={cfg} />;
     default:             return null;
   }
 }

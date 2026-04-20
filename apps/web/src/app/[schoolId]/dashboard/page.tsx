@@ -174,6 +174,9 @@ export default function DashboardPage() {
 
   const emergencyActive = !!(tenant?.emergencyStatus && tenant.emergencyStatus !== 'INACTIVE');
   const emergencyMode = tenant?.emergencyStatus as string | undefined;
+  // Backwards-compat — some downstream sections still reference
+  // `isEmpty` for "nothing to do here" empty states. Kept as an alias.
+  const isEmpty = (assets?.length || 0) === 0 && fleet.total === 0;
 
   // "Getting started" 3-step card visibility. Previously gated on
   // isEmpty (no assets + no screens) which meant:
