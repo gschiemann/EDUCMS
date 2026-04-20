@@ -200,7 +200,15 @@ export class ScreensController {
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Get()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
-  async list(@Request() req: any) {
+  async list(@Request() req: any, @Res({ passthrough: true }) res?: any) {
+    // Force-no-cache — the fleet list is a live feed. Without this some
+    // intermediaries / service workers were serving the same payload
+    // for minutes after it changed, so a user who uninstalled an APK
+    // still saw ONLINE until they manually cleared site data.
+    if (res?.setHeader) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+    }
     const rows = await this.prisma.client.screen.findMany({
       where: { tenantId: req.user.tenantId },
       include: { screenGroup: { select: { id: true, name: true } } },
