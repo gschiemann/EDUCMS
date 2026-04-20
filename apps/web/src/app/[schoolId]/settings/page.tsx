@@ -1,6 +1,7 @@
 "use client";
 
-import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon } from 'lucide-react';
+import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon, Usb } from 'lucide-react';
+import { usePathname } from 'next/navigation';
 import { RoleGate } from '@/components/RoleGate';
 import { useUsers, useInviteUser, useCreateUserDirect, useDeleteUser, useUpdateUserRole, useTenant, useUpdateTenantPanicSettings, usePlaylists } from '@/hooks/use-api';
 import { useState, useRef, useEffect } from 'react';
@@ -29,6 +30,7 @@ const ROLE_COLORS: Record<string, string> = {
 };
 
 export default function SettingsPage() {
+  const pathname = usePathname();
   const { data: users, isLoading: usersLoading } = useUsers();
   const { data: tenant, isLoading: tenantLoading } = useTenant();
   const { data: playlists } = usePlaylists();
@@ -200,6 +202,26 @@ export default function SettingsPage() {
         {/* USB Sneakernet Ingest (Sprint 7B) — admins enable + rotate HMAC key + see ingest events */}
         <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}>
           <UsbIngestCard />
+          {/* Quick link to the in-app export flow. The card above is
+              the config + key-rotation surface; the dedicated page
+              handles playlist picking + writing directly to USB. */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between mt-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center">
+                <Usb className="w-4 h-4 text-indigo-600" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-slate-800">Export playlists to USB</div>
+                <div className="text-[11px] text-slate-500">Pick playlists, we&rsquo;ll sign &amp; write them to the stick.</div>
+              </div>
+            </div>
+            <a
+              href={`/${pathname?.split('/')[1] || ''}/settings/usb`}
+              className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg"
+            >
+              Open export
+            </a>
+          </div>
         </RoleGate>
 
         {/* Team Members */}
