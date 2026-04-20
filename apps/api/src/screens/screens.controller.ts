@@ -559,7 +559,21 @@ export class ScreensController {
     });
 
     if (!schedules.length) {
-      return res.status(404).json({ error: 'No active content mapped' });
+      // 200 with empty playlists — NOT 404. A paired screen with no
+      // scheduled content is a valid "waiting for assignment" state,
+      // not a connection failure. Previously the player saw 404 and
+      // displayed 'Unable to Connect' which looked identical to a
+      // real network/auth error — admin had no way to tell the
+      // difference.
+      return res.status(200).json({
+        screenId: screen.id,
+        tenantId: screen.tenantId,
+        playlists: [],
+        emergencyStatus: 'INACTIVE',
+        emptyReason: 'NO_SCHEDULE',
+        message: 'This screen is paired but no playlist is scheduled. Assign a playlist from the dashboard.',
+        hash: 'empty',
+      });
     }
 
     const dynamicPlaylists = schedules.map(s => ({
