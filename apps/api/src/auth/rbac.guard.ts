@@ -28,7 +28,17 @@ export class RbacGuard implements CanActivate {
       return true;
     }
 
-    const { user, params, query, body } = context.switchToHttp().getRequest();
+    // Default the optional fields — Express doesn't populate req.body on
+    // methods without a body (GET/HEAD), and a controller route without
+    // URL params would leave req.params as an empty object. Without these
+    // defaults, `body.districtId` throws
+    // `Cannot read properties of undefined (reading 'districtId')` on
+    // every GET with an RBAC decorator — every /assets/folders list 500'd.
+    const req = context.switchToHttp().getRequest();
+    const user = req.user;
+    const params = req.params || {};
+    const query = req.query || {};
+    const body = req.body || {};
 
     if (!user) {
       throw new ForbiddenException('No user identity found in request');
