@@ -91,7 +91,14 @@ export class CsrfMiddleware implements NestMiddleware {
       (req as any).csrfToken = token;
     }
 
-    if (isCsrfExempt(req.method, req.path)) {
+    // Use originalUrl (stripped of query string) rather than `req.path` —
+    // under some Nest middleware mount modes `req.path` can be relative to
+    // the middleware's mount point and no longer equal the full
+    // `/api/v1/...` prefix, which means the EXEMPT_PATHS list never
+    // matches and public endpoints like /screens/register start 403'ing.
+    // originalUrl is always the untouched request path from the client.
+    const pathForCheck = (req.originalUrl || req.url || req.path || '').split('?')[0];
+    if (isCsrfExempt(req.method, pathForCheck)) {
       return next();
     }
 
