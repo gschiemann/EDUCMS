@@ -175,6 +175,25 @@ export class BrandingController {
       }
     }
 
+    // If NO new logo was produced, preserve whatever the tenant already
+    // has stored. Matters when the user opens /settings/branding (which
+    // pre-fills the wizard with their existing logoUrl) and clicks
+    // Adopt to tweak ONLY colors or displayName — we shouldn't wipe
+    // their logo just because the wizard didn't re-scrape.
+    if (!logoUrl) {
+      try {
+        const existing = await this.prisma.client.tenantBranding.findUnique({
+          where: { tenantId },
+          select: { logoUrl: true, logoSvgInline: true },
+        });
+        if (existing?.logoUrl) {
+          logoUrl = existing.logoUrl;
+          if (!logoSvgInline && existing.logoSvgInline) logoSvgInline = existing.logoSvgInline;
+          this.logger.log(`[adopt] preserving existing logoUrl for tenant ${tenantId}`);
+        }
+      } catch { /* best-effort */ }
+    }
+
     // If the SVG was rejected AND we had other logo candidates, try
     // them in score order. The client's logoOverride may have pinned
     // the bad one — fall back to the next best candidate on the server

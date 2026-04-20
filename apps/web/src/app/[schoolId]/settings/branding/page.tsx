@@ -30,7 +30,15 @@ export default function SettingsBrandingPage() {
             finalUrl: b.sourceUrl || '',
             displayName: b.displayName,
             tagline: b.tagline,
-            logos: b.logoUrl || b.logoSvgInline ? [{ url: b.logoUrl || '', kind: 'icon', score: 100, svgInline: b.logoSvgInline || undefined }] : [],
+            // IMPORTANT: never prefill svgInline from b.logoSvgInline —
+            // the stored value is the DOMPurify-sanitized version, which
+            // has had <image>/<use> refs stripped out. If the user hits
+            // Adopt without re-scanning, the wizard would POST that
+            // stripped string and the server rejects it ("no shape
+            // primitives"). Prefill URL-only so the adopt endpoint
+            // preserves the existing Supabase logo rather than trying
+            // to re-validate a stripped svg.
+            logos: b.logoUrl ? [{ url: b.logoUrl, kind: 'icon', score: 100 }] : [],
             favicon: b.faviconUrl,
             ogImage: b.ogImageUrl,
             colors: [],
