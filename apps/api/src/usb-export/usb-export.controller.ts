@@ -161,16 +161,28 @@ export class UsbExportController {
       },
     });
     if (!tenant) throw new HttpException('Tenant not found', HttpStatus.NOT_FOUND);
-    if (!tenant.usbIngestEnabled) {
-      throw new HttpException(
-        'USB ingest is disabled for this tenant. Enable it in Settings → USB before exporting a bundle.',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-    if (!tenant.usbIngestKey) {
-      throw new HttpException(
-        'Tenant has no USB signing key. Generate one in Settings → USB before exporting.',
-        HttpStatus.BAD_REQUEST,
+
+    // Auto-provision on first use — the user asked for the USB flow to
+    // 'just work' from a single Download button on the playlist page
+    // with zero visits to a settings screen. Enable ingest + mint a
+    // signing key silently if either is missing. Both operations are
+    // RBAC-gated by the @RequireRoles decorator above, so only an
+    // admin can trigger the provisioning.
+    let usbIngestKey = tenant.usbIngestKey;
+    if (!tenant.usbIngestEnabled || !usbIngestKey) {
+      const { randomBytes } = await import('crypto');
+      const newKey = usbIngestKey || randomBytes(32).toString('hex');
+      await this.prisma.client.tenant.update({
+        where: { id: tenantId },
+        data: {
+          usbIngestEnabled: true,
+          usbIngestKey: newKey,
+          usbIngestKeyRotatedAt: usbIngestKey ? undefined : new Date(),
+        },
+      });
+      usbIngestKey = newKey;
+      this.logger.log(
+        `[usb-export] auto-provisioned tenant ${tenantId} (enabled=${!tenant.usbIngestEnabled}, keyMinted=${!tenant.usbIngestKey})`,
       );
     }
 
@@ -331,7 +343,7 @@ export class UsbExportController {
       truncated,
     };
     const manifestJson = JSON.stringify(manifest, null, 2);
-    const signature = createHmac('sha256', Buffer.from(tenant.usbIngestKey, 'hex'))
+    const signature = createHmac('sha256', Buffer.from(usbIngestKey!, 'hex'))
       .update(manifestJson, 'utf-8')
       .digest('hex');
 

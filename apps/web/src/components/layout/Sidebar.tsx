@@ -135,12 +135,27 @@ export function Sidebar() {
                 onError={() => setLogoImgBroken(true)}
                 className="flex-shrink-0 w-11 h-11 object-contain bg-white rounded-xl p-0.5 shadow-sm"
               />
-            ) : brandLogoSvg ? (
+            ) : brandLogoSvg && /<(path|circle|rect|polygon|polyline|ellipse|image|use)\b/i.test(brandLogoSvg) ? (
+              // Only inline the SVG if it actually has shape primitives.
+              // Chardon's first scrape caught a text-only decorative SVG
+              // which rendered as bleeding 'Chardon Footer Logo@100' text
+              // outside the 44px tile — user-visible regression.
               <div
                 className="flex-shrink-0 w-11 h-11 overflow-hidden rounded-xl bg-white shadow-sm flex items-center justify-center [&_svg]:w-full [&_svg]:h-full [&_svg]:max-h-11"
                 aria-hidden
                 dangerouslySetInnerHTML={{ __html: brandLogoSvg }}
               />
+            ) : brandName && brandName !== 'EduSignage' ? (
+              // Last-resort: branded tenant but logo scrape failed or
+              // hasn't been adopted yet. Show initials in a circle using
+              // the brand primary color so the chrome still feels like
+              // their tenant, not like a broken-image placeholder.
+              <div className="flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center text-white text-[15px] font-black shadow-sm"
+                style={{ background: 'var(--brand-primary, #4f46e5)' }}
+                aria-hidden
+              >
+                {brandName.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase()}
+              </div>
             ) : (
               <div className="bg-gradient-to-br from-indigo-500 to-violet-500 p-2 rounded-2xl text-white shadow-md shadow-indigo-500/20 flex-shrink-0 w-10 h-10 flex items-center justify-center">
                 <MonitorPlay className="w-5 h-5" />

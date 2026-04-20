@@ -657,6 +657,25 @@ function PlayerPage() {
   useEffect(() => {
     if (phase !== 'playing') return;
 
+    // HTTP status heartbeat — independent of the WebSocket. Calls
+    // /screens/status/:fp every 45s which causes the server to update
+    // `lastPingAt` on the Screen row. The dashboard's list endpoint
+    // derives ONLINE/OFFLINE from that column (<2min = ONLINE), so
+    // without this periodic ping the row went OFFLINE after the
+    // player finished pairing even though content was still playing.
+    // Fires immediately on mount so the dashboard sees us ONLINE the
+    // second we hit the playing phase.
+    const fp = getDeviceFingerprint();
+    const pingStatus = async () => {
+      try {
+        await fetch(`${getApiRoot()}/api/v1/screens/status/${fp}`, {
+          method: 'GET', cache: 'no-store',
+        });
+      } catch { /* silently tolerate — WS + next tick will retry */ }
+    };
+    pingStatus();
+    const httpHeartbeat = setInterval(pingStatus, 45_000);
+
     const clearTimers = () => {
       if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
       if (wsReconnectRef.current) { clearTimeout(wsReconnectRef.current); wsReconnectRef.current = null; }
@@ -806,6 +825,7 @@ function PlayerPage() {
 
     return () => {
       clearTimers();
+      clearInterval(httpHeartbeat);
       if (httpFallbackRef.current) { clearInterval(httpFallbackRef.current); httpFallbackRef.current = null; }
       if (wsRef.current) {
         wsRef.current.onclose = null;

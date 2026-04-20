@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Play, Plus, Clock, Loader2, Trash2, Save, GripVertical, Image as ImageIcon, Video, Music, Globe, File, Calendar, CalendarDays, Power, Eye, LayoutTemplate, Pencil, Monitor, Layers, ChevronRight, ChevronLeft, Tv2, Wifi, WifiOff, ArrowLeft, Smartphone, FolderOpen, Home, CheckSquare, Search, Settings, Upload, AlertCircle } from 'lucide-react';
+import { Play, Plus, Clock, Loader2, Trash2, Save, GripVertical, Image as ImageIcon, Video, Music, Globe, File, Calendar, CalendarDays, Power, Eye, LayoutTemplate, Pencil, Monitor, Layers, ChevronRight, ChevronLeft, Tv2, Wifi, WifiOff, ArrowLeft, Smartphone, FolderOpen, Home, CheckSquare, Search, Settings, Upload, AlertCircle, Download, Usb, Check } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -716,6 +716,7 @@ export default function PlaylistsPage() {
                 )}
               </>
             )}
+            <InlineDownloadButton playlistId={selectedPlaylist.id} playlistName={selectedPlaylist.name} />
             <button onClick={() => { setEditingScheduleId(null); setSchedTargets([]); setSchedMode('always'); setShowPublishModal(true); }} className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shadow-sm">
               <CalendarDays className="w-3.5 h-3.5" /> Schedule to Screen
             </button>
@@ -1484,6 +1485,152 @@ export default function PlaylistsPage() {
           <button onClick={() => { setShowCreate(true); setCreateMode('choose'); }} className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-1.5">
             <Plus className="w-4 h-4" /> Create First Playlist
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Inline Download button — sits on every playlist header. Dropdown
+ * gives the admin two verbs:
+ *   • Download to Desktop — plain .zip download, user takes it
+ *     wherever they want.
+ *   • Download to USB — uses the File System Access API to write the
+ *     extracted bundle contents straight onto the USB stick the user
+ *     picks. Browser prompts for the folder, we stream file-by-file
+ *     and show progress.
+ *
+ * No settings page needed — USB signing is auto-provisioned server-side
+ * on first export if the tenant doesn't have a key yet. This was the
+ * user ask: "I plug it in, click download, pick USB, you do the rest."
+ *
+ * Falls back to plain download if the browser doesn't support
+ * showDirectoryPicker (Safari / Firefox).
+ */
+function InlineDownloadButton({ playlistId, playlistName }: { playlistId: string; playlistName: string }) {
+  const token = useUIStore((s) => s.token);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<null | 'desktop' | 'usb'>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const fsAccess = typeof window !== 'undefined' && 'showDirectoryPicker' in window;
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  const fetchBundle = async (): Promise<ArrayBuffer> => {
+    const base = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace(/\/+$/, '');
+    const res = await fetch(`${base}/usb-export/bundle`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ playlistIds: [playlistId], includeEmergency: true, bundleLabel: playlistName }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.message || `Bundle failed (${res.status})`);
+    }
+    return res.arrayBuffer();
+  };
+
+  const downloadDesktop = async () => {
+    setOpen(false); setBusy('desktop'); setErr(null);
+    try {
+      const buf = await fetchBundle();
+      const blob = new Blob([buf], { type: 'application/zip' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      a.href = url;
+      a.download = `${playlistName.replace(/[^\w.-]+/g, '_')}-${stamp}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) { setErr(e?.message || 'Download failed'); }
+    finally { setBusy(null); }
+  };
+
+  const downloadUsb = async () => {
+    setOpen(false);
+    if (!fsAccess) { await downloadDesktop(); return; }
+    setBusy('usb'); setErr(null); setProgress(null);
+    try {
+      const dir: any = await (window as any).showDirectoryPicker({ mode: 'readwrite', id: 'edu-cms-usb', startIn: 'desktop' });
+      const buf = await fetchBundle();
+      const JSZip = (await import('jszip')).default;
+      const zip = await JSZip.loadAsync(buf);
+      const entries = Object.entries(zip.files).filter(([, f]: any) => !f.dir);
+      let done = 0;
+      for (const [path, file] of entries as Array<[string, any]>) {
+        const segs = path.split('/').filter(Boolean);
+        let d = dir;
+        for (let i = 0; i < segs.length - 1; i++) d = await d.getDirectoryHandle(segs[i], { create: true });
+        const fh = await d.getFileHandle(segs[segs.length - 1], { create: true });
+        const w = await fh.createWritable();
+        await w.write(await file.async('uint8array'));
+        await w.close();
+        done += 1;
+        setProgress({ done, total: entries.length });
+      }
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') setErr(e?.message || 'USB write failed');
+    } finally { setBusy(null); setTimeout(() => setProgress(null), 4000); }
+  };
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => { if (!busy) setOpen((v) => !v); }}
+        disabled={!!busy}
+        className="px-3 py-1.5 bg-white border border-slate-200 hover:border-sky-400 hover:bg-sky-50 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1 shadow-sm disabled:opacity-50"
+      >
+        {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+        {busy === 'desktop' ? 'Building…' : busy === 'usb' ? (progress ? `Writing ${progress.done}/${progress.total}` : 'Building…') : 'Download'}
+        {!busy && <ChevronRight className="w-3 h-3 opacity-50 rotate-90" />}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-9 w-64 bg-white border border-slate-200 rounded-xl shadow-xl py-1 z-50">
+          <button
+            type="button"
+            onClick={downloadDesktop}
+            className="w-full flex items-center gap-3 px-3 py-2 hover:bg-slate-50 text-sm text-left"
+          >
+            <Monitor className="w-4 h-4 text-slate-500" />
+            <div className="flex-1">
+              <div className="text-xs font-semibold text-slate-800">Download to Desktop</div>
+              <div className="text-[10px] text-slate-400">Plain .zip</div>
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={downloadUsb}
+            className="w-full flex items-center gap-3 px-3 py-2 hover:bg-slate-50 text-sm text-left border-t border-slate-100"
+          >
+            <Usb className="w-4 h-4 text-indigo-600" />
+            <div className="flex-1">
+              <div className="text-xs font-semibold text-slate-800">Download to USB</div>
+              <div className="text-[10px] text-slate-400">
+                {fsAccess ? 'Pick a USB folder, we write straight in' : '.zip fallback — extract manually'}
+              </div>
+            </div>
+          </button>
+        </div>
+      )}
+      {err && (
+        <div className="absolute right-0 top-10 w-72 p-2 bg-red-50 border border-red-200 rounded-lg text-[11px] text-red-700 z-50 flex items-start gap-1.5">
+          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" /> {err}
+        </div>
+      )}
+      {progress && !err && progress.done === progress.total && (
+        <div className="absolute right-0 top-10 w-64 p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-[11px] text-emerald-800 z-50 flex items-center gap-1.5">
+          <Check className="w-3.5 h-3.5" /> Wrote {progress.total} files to USB ✓
         </div>
       )}
     </div>

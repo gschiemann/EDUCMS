@@ -201,27 +201,14 @@ export default function SettingsPage() {
 
         {/* USB Sneakernet Ingest (Sprint 7B) — admins enable + rotate HMAC key + see ingest events */}
         <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}>
+          {/* USB export was moved to an inline 'Download' button on each
+              playlist header — the user wanted a single-click flow with
+              no separate USB settings page. Signing key + enable flag
+              are now auto-provisioned on first export, so nothing here
+              to configure. The UsbIngestCard below stays for power users
+              who want to rotate/revoke, but isn't required for the
+              basic workflow. */}
           <UsbIngestCard />
-          {/* Quick link to the in-app export flow. The card above is
-              the config + key-rotation surface; the dedicated page
-              handles playlist picking + writing directly to USB. */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between mt-4">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center">
-                <Usb className="w-4 h-4 text-indigo-600" />
-              </div>
-              <div>
-                <div className="text-sm font-bold text-slate-800">Export playlists to USB</div>
-                <div className="text-[11px] text-slate-500">Pick playlists, we&rsquo;ll sign &amp; write them to the stick.</div>
-              </div>
-            </div>
-            <a
-              href={`/${pathname?.split('/')[1] || ''}/settings/usb`}
-              className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg"
-            >
-              Open export
-            </a>
-          </div>
 
           {/* Android Player APK download — Nova Taurus, BrightSign, any
               Android 7+ kiosk. Redirects to the latest signed release
