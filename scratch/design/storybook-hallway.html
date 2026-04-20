@@ -106,11 +106,13 @@
     box-shadow: inset 0 0 0 5px #faecc6, inset 0 0 0 6px #8b5a2b;
     position: relative;
   }
-  .attendance .lbl-top { font-family: 'Italianno', cursive; font-size: 40px; color: #8b5a2b; line-height: 1; }
-  .attendance .pct { display: flex; align-items: baseline; }
-  .attendance .pct b { font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 200px; color: #15803d; line-height: 1; }
-  .attendance .pct sup { font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 90px; color: #15803d; }
-  .attendance .lbl-bot { font-family: 'Quattrocento', serif; font-style: italic; font-size: 22px; color: #5d3a1a; }
+  .attendance .lbl-top { font-family: 'Italianno', cursive; font-size: 36px; color: #8b5a2b; line-height: 1; }
+  .attendance .pct { display: flex; align-items: baseline; line-height: .85; margin: 4px 0; }
+  /* Shrunk 200/90 -> 140/62 — was overflowing the card and stacking
+     on top of the clock + weather tiles below. */
+  .attendance .pct b { font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 140px; color: #15803d; line-height: .9; }
+  .attendance .pct sup { font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 62px; color: #15803d; }
+  .attendance .lbl-bot { font-family: 'Quattrocento', serif; font-style: italic; font-size: 20px; color: #5d3a1a; }
   .attendance::before, .attendance::after { content: '❦'; position: absolute; color: #8b5a2b; font-size: 26px; }
   .attendance::before { top: 18px; left: 24px; } .attendance::after { bottom: 18px; right: 24px; }
 
@@ -144,6 +146,32 @@
   .footer .ann .lbl { font-family: 'Italianno', cursive; font-size: 36px; color: #8b5a2b; line-height: 1; padding-left: 30px; }
   .footer .ann .msg { font-family: 'Cormorant Garamond', serif; font-weight: 500; font-size: 40px; color: #3d2410; line-height: 1.05; padding-left: 30px; margin-top: 4px; }
 
+  /* ─── MULTI-PERIOD COUNTDOWN (design note for React port) ──────
+     Per user request 2026-04-19: cafeteria + schedule templates that
+     have a countdown need to support MULTIPLE periods in the day
+     (e.g. Lunch Wave A 11:30, Wave B 12:05, Wave C 12:40).
+
+     Editor data shape:
+       config.countdownPeriods = [
+         { label: 'Lunch A', start: '11:30' },
+         { label: 'Lunch B', start: '12:05' },
+         { label: 'Lunch C', start: '12:40' },
+       ]
+
+     Widget behavior:
+       - On live tick, find the NEXT period whose start > now.
+       - Render "until Lunch B" / "3 min" countdown to that period.
+       - If all periods are in the past, roll over to tomorrow's first
+         (or show "next meal tomorrow").
+       - If currently IN a period (between start and the next start),
+         show "Lunch A in progress · next wave 12:05".
+
+     Applies to this template (field-day countdown is single-shot so
+     it stays as the existing countdownDate field), bell-schedule
+     template (multi-period), and cafeteria templates (lunch waves).
+     Single-period templates keep the existing countdownDate shape —
+     countdownPeriods is additive.
+  */
   .footer .ctd { text-align: center; padding: 10px 18px; }
   .footer .ctd .lbl { font-family: 'Italianno', cursive; font-size: 32px; color: #8b5a2b; line-height: 1; }
   .footer .ctd .num { font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 78px; line-height: 1; color: #3d2410; }
@@ -163,7 +191,15 @@
     background: #8b5a2b; color: #faecc6; display: flex; align-items: center;
     font-family: 'Cormorant Garamond', serif; font-weight: 700; letter-spacing: .25em; font-size: 18px;
   }
-  .ticker .scroll { flex: 1; font-family: 'Cormorant Garamond', serif; font-size: 38px; font-style: italic; padding-left: 28px; white-space: nowrap; }
+  .ticker .scroll { flex: 1; overflow: hidden; position: relative; }
+  .ticker .scrollText {
+    display: inline-block; white-space: nowrap;
+    font-family: 'Cormorant Garamond', serif; font-size: 38px; font-style: italic;
+    color: #faecc6; padding-left: 100%;
+    animation: sh-tickerScroll 52s linear infinite;
+  }
+  .ticker .scrollText .sep { color: #d4a558; padding: 0 22px; }
+  @keyframes sh-tickerScroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
 </style>
 </head>
 <body>
@@ -227,7 +263,19 @@
 
   <div class="ticker">
     <div class="stamp">A WORD FROM THE HALLS</div>
-    <div class="scroll">Walk, do not run in the corridors &nbsp; · &nbsp; Reading challenge: twenty minutes a day &nbsp; · &nbsp; Wear school colours on Spirit Friday</div>
+    <div class="scroll">
+      <span class="scrollText">
+        Walk, do not run in the corridors
+        <span class="sep">·</span>
+        Reading challenge: twenty minutes a day
+        <span class="sep">·</span>
+        Wear school colours on Spirit Friday
+        <span class="sep">·</span>
+        Field Day in eight days — sign up at the office
+        <span class="sep">·</span>
+        Lunch Wave A at 11:30, Wave B at 12:05, Wave C at 12:40
+      </span>
+    </div>
   </div>
 </div>
 </body>
