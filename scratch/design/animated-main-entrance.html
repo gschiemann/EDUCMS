@@ -106,22 +106,29 @@
   }
   .sign h1 {
     margin: 0;
-    font-family: 'Anton', sans-serif; font-size: 150px; line-height: .9;
+    /* Was 150px — wrapped long school names to 2 lines + overflowed the
+       3 tiles below. 110px fits 'Lincoln Elementary' on one line at
+       1920 canvas + 1280 browser viewport. white-space: nowrap on the
+       sign container forces one line; if the name is very long the
+       container will widen, not grow taller. */
+    font-family: 'Anton', sans-serif; font-size: 110px; line-height: .9;
     background: linear-gradient(90deg, #dc2626 0%, #f59e0b 50%, #ec4899 100%);
     -webkit-background-clip: text; background-clip: text; color: transparent;
     letter-spacing: .02em;
     text-shadow: 0 0 40px rgba(220,38,38,.2);
     text-transform: uppercase;
     position: relative; z-index: 1;
+    white-space: nowrap;
   }
   .sign .sub {
     font-family: 'Caveat', cursive; font-size: 52px; color: #92400e;
     margin-top: 2px; position: relative; z-index: 1;
   }
 
-  /* Crest side art */
+  /* Crest side art — pushed down from 260 -> 340 so they never tuck
+     up against the sign when the sign grows on a small viewport. */
   .crestWrap {
-    position: absolute; top: 260px; width: 180px; z-index: 4;
+    position: absolute; top: 340px; width: 180px; z-index: 4;
     display: flex; flex-direction: column; align-items: center; gap: 6px;
   }
   .crestWrap.left  { left: 4%;  animation: me-crestBobL 3.6s ease-in-out infinite; }
@@ -151,9 +158,11 @@
     letter-spacing: .1em; text-align: center;
   }
 
-  /* Info grid — 3 tiles across middle/bottom */
+  /* Info grid — 3 tiles across middle/bottom. top:480 -> 600 to leave
+     clear space under the welcome sign (sign was covering the tile
+     label rows on smaller viewports). */
   .info {
-    position: absolute; top: 480px; left: 240px; right: 240px; bottom: 180px;
+    position: absolute; top: 600px; left: 240px; right: 240px; bottom: 160px;
     display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px;
     z-index: 3;
   }

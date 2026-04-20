@@ -63,9 +63,12 @@
     margin-top: 2px;
   }
 
-  /* Featured star student — center stage */
+  /* Featured star student — center stage. Bumped up 240 -> 210 so
+     the citation card has room under it before the stats row at
+     bottom: 180. Added explicit max-height on the citation below to
+     prevent a long reason text from bleeding into the stats. */
   .hero {
-    position: absolute; top: 240px; left: 50%; transform: translateX(-50%);
+    position: absolute; top: 210px; left: 50%; transform: translateX(-50%);
     width: 500px; z-index: 4;
     display: flex; flex-direction: column; align-items: center;
   }
@@ -121,16 +124,20 @@
 
   /* Citation card */
   .citation {
-    margin-top: 24px;
+    margin-top: 18px;
     background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
     border: 5px solid #fbbf24;
     border-radius: 20px;
-    padding: 22px 40px;
+    padding: 18px 40px 22px;
     text-align: center;
     color: #1f2937;
     box-shadow: 0 20px 40px rgba(0,0,0,.4), 0 0 0 3px rgba(251,191,36,.3);
     position: relative;
     max-width: 500px;
+    /* Hard cap so a long reason can't push into the stats row.
+       Reason line below also clamps to 3 lines. */
+    max-height: 240px;
+    overflow: hidden;
     animation: as-cardFloat 5s ease-in-out infinite;
   }
   @keyframes as-cardFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
