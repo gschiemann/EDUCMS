@@ -24,9 +24,11 @@
     color: #2a1808; font-family: 'Indie Flower', cursive;
     display: grid;
     grid-template-columns: 1.6fr 1fr;
-    grid-template-rows: auto 1fr auto auto;
+    grid-template-rows: auto 1fr auto;
     gap: 28px;
-    padding: 56px 80px 12px;
+    /* bottom padding now reserves the ticker's 80px fixed height +
+       a breathing gap so content can't crowd into the ticker band */
+    padding: 56px 80px 96px;
   }
   .frame {
     position: absolute; inset: 14px;
@@ -178,20 +180,32 @@
   .ticket .num  { font-family: 'Permanent Marker', cursive; font-size: 90px; line-height: 1; color: #2563eb; }
   .ticket .unit { font-family: 'Indie Flower'; font-size: 26px; color: #57534e; }
 
+  /* Ticker pulled OUT of the grid and pinned to the viewport bottom
+     so heavy upper content can't squeeze it off-screen (was clipped
+     at the bottom before). Inside the brown cork frame still, but
+     now anchored via position:absolute + bottom:0. */
   .ticker {
-    grid-column: 1 / -1;
-    margin: 0 -80px;
+    position: absolute; left: 14px; right: 14px; bottom: 14px; height: 80px;
     background: #fff;
     border-top: 5px solid #1f2937;
-    display: flex; align-items: center; overflow: hidden; height: 80px;
+    display: flex; align-items: center; overflow: hidden;
     box-shadow: 0 -4px 14px rgba(0,0,0,.2);
+    z-index: 4;
   }
   .ticker .stamp {
     flex: 0 0 auto; padding: 0 28px; height: 100%;
     background: #1f2937; color: #fef3c7; display: flex; align-items: center;
     font-family: 'Special Elite'; letter-spacing: .25em; font-size: 20px;
   }
-  .ticker .scroll { flex: 1; font-family: 'Indie Flower'; font-size: 38px; color: #44403c; padding-left: 28px; white-space: nowrap; }
+  .ticker .scroll { flex: 1; overflow: hidden; position: relative; height: 100%; display: flex; align-items: center; }
+  .ticker .scrollText {
+    display: inline-block; white-space: nowrap;
+    font-family: 'Indie Flower'; font-size: 38px; color: #44403c;
+    padding-left: 100%;
+    animation: bh-tickerScroll 50s linear infinite;
+  }
+  .ticker .scrollText .sep { color: #b91c1c; padding: 0 22px; }
+  @keyframes bh-tickerScroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
 </style>
 </head>
 <body>
@@ -247,7 +261,19 @@
 
   <div class="ticker">
     <div class="stamp">HALLWAY NEWS</div>
-    <div class="scroll">Walk, don't run in the halls &nbsp; · &nbsp; Reading Challenge: 20 minutes a day &nbsp; · &nbsp; Wear school colors on Spirit Friday</div>
+    <div class="scroll">
+      <span class="scrollText">
+        Walk, don't run in the halls
+        <span class="sep">·</span>
+        Reading Challenge: 20 minutes a day
+        <span class="sep">·</span>
+        Wear school colors on Spirit Friday
+        <span class="sep">·</span>
+        Field Day in 8 days — sign up at the office
+        <span class="sep">·</span>
+        Lunch Wave A 11:30, Wave B 12:05, Wave C 12:40
+      </span>
+    </div>
   </div>
 </div>
 </body>
