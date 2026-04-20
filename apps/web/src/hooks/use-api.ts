@@ -21,6 +21,15 @@ export function useScreenGroups() {
   return useQuery({
     queryKey: ['screen-groups'],
     queryFn: () => apiFetch('/screen-groups'),
+    // The Screens page renders screen status from the nested
+    // `group.screens[]` (not from /screens), so this query drives the
+    // ONLINE/OFFLINE pills in the grouped list. Same 10s cadence as
+    // useScreens() so the two don't drift; 5s staleTime guarantees a
+    // screen that just changed state flips in the UI within ~10-15s.
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    staleTime: 5_000,
   });
 }
 

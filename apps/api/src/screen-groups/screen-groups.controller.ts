@@ -1,9 +1,18 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Res, UseGuards, Request } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
+
+// Same staleness threshold as screens.controller.ts list() — keep in
+// sync. Source of truth is the screens controller; this duplicate
+// exists because the dashboard's Screens page renders from
+// /screen-groups (not /screens), and the stored `status` column only
+// updates on register/pair/ping and never back to OFFLINE. Without
+// this derivation a screen that silently dies shows ONLINE forever in
+// the grouped list.
+const STALE_MS = 35 * 1000;
 
 @Controller('api/v1/screen-groups')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -12,13 +21,20 @@ export class ScreenGroupsController {
 
   @Get()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
-  async list(@Request() req: any) {
+  async list(@Request() req: any, @Res({ passthrough: true }) res?: any) {
+    // Force-no-cache — fleet state is live. Without this some
+    // intermediaries / service workers held the previous payload for
+    // minutes after the screens actually went down.
+    if (res?.setHeader) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+    }
     const tenantId = req.user.tenantId;
-    return this.prisma.client.screenGroup.findMany({
+    const groups = await this.prisma.client.screenGroup.findMany({
       where: { tenantId },
       include: {
         screens: {
-          select: { id: true, name: true, location: true, status: true, lastPingAt: true, resolution: true, osInfo: true, browserInfo: true, ipAddress: true, pairedAt: true, deviceFingerprint: true },
+          select: { id: true, name: true, location: true, status: true, lastPingAt: true, resolution: true, osInfo: true, browserInfo: true, ipAddress: true, pairedAt: true, deviceFingerprint: true, tenantId: true, screenGroupId: true, latitude: true, longitude: true, address: true, lastCacheReport: true },
         },
         schedules: {
           where: { isActive: true },
@@ -29,6 +45,24 @@ export class ScreenGroupsController {
       },
       orderBy: { name: 'asc' },
     });
+    // Apply the same live-derive logic as screens.controller.ts list().
+    // A paired screen whose lastPingAt is stale flips to OFFLINE; a
+    // screen with fresh ping stays ONLINE. Unpaired/REVOKED states
+    // pass through unchanged.
+    const now = Date.now();
+    return groups.map((g) => ({
+      ...g,
+      screens: g.screens.map((s) => {
+        let liveStatus: string = s.status;
+        if (s.status !== 'REVOKED') {
+          const last = s.lastPingAt ? new Date(s.lastPingAt).getTime() : 0;
+          const isAlive = last && (now - last) < STALE_MS;
+          if (isAlive && s.tenantId) liveStatus = 'ONLINE';
+          else if (s.status === 'ONLINE' || s.tenantId) liveStatus = 'OFFLINE';
+        }
+        return { ...s, status: liveStatus };
+      }),
+    }));
   }
 
   @Post()
