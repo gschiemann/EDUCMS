@@ -136,17 +136,61 @@ class MainActivity : ComponentActivity() {
 
     private fun loadPlayer(token: String) {
         val base = BuildConfig.PLAYER_BASE_URL.trimEnd('/')
+
+        // Detect NATIVE display resolution. window.screen.width inside
+        // the WebView returns DPI-adjusted CSS pixels (e.g. 1920 becomes
+        // 640 at 3x density) which makes every template render at 1/3
+        // fidelity on a 4K LED wall. Reading DisplayMetrics + the real
+        // display size gives us true physical pixels; we pass them as
+        // URL params so the player sizes scenes to actual hardware.
+        val (wPx, hPx) = getRealDisplaySize()
+        val density = resources.displayMetrics.density
+
         val builder = Uri.parse(base).buildUpon()
             .appendQueryParameter("client", "android")
             .appendQueryParameter("v", BuildConfig.VERSION_NAME)
+            .appendQueryParameter("w", wPx.toString())
+            .appendQueryParameter("h", hPx.toString())
+            .appendQueryParameter("dpr", density.toString())
         // Pass token only if we already have one (legacy paired device).
         // For a fresh install the web player's /screens/register flow
         // takes over, shows a pairing code on screen, polls for pairing,
         // and writes the device token into WebView localStorage.
         if (token.isNotBlank()) builder.appendQueryParameter("token", token)
         val url = builder.build().toString()
-        Log.i("Player", "Loading $url")
+        Log.i("Player", "Loading $url  (native ${wPx}x${hPx} @ ${density}x)")
+
+        // Tell the WebView to render at native resolution, not the
+        // default CSS-pixel-scaled size. setInitialScale(100) disables
+        // Android's auto-shrink; wide-viewport + overview mode makes
+        // the 1920x1080 scene map to physical pixels on large displays.
+        webView.setInitialScale(100)
         webView.loadUrl(url)
+    }
+
+    /**
+     * Read the device's real display size in PHYSICAL pixels. On modern
+     * Android 11+ we prefer WindowMetrics (includes navigation bars).
+     * Falls back to Display.getRealSize() on older versions, and finally
+     * DisplayMetrics.widthPixels for anything exotic.
+     */
+    private fun getRealDisplaySize(): Pair<Int, Int> {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val metrics = windowManager.maximumWindowMetrics
+                val b = metrics.bounds
+                Pair(b.width(), b.height())
+            } else {
+                @Suppress("DEPRECATION")
+                val d = windowManager.defaultDisplay
+                val size = android.graphics.Point()
+                @Suppress("DEPRECATION") d.getRealSize(size)
+                Pair(size.x, size.y)
+            }
+        } catch (_: Exception) {
+            val dm = resources.displayMetrics
+            Pair(dm.widthPixels, dm.heightPixels)
+        }
     }
 
     private fun unpairAndRestart() {

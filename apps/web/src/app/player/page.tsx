@@ -176,8 +176,24 @@ function getDeviceInfo() {
   else if (/firefox/i.test(ua)) browser = 'Firefox';
   else if (/safari/i.test(ua)) browser = 'Safari';
 
+  // Prefer URL-supplied native resolution (Android APK detects the
+  // real physical pixel count via WindowManager.maximumWindowMetrics
+  // and passes it as ?w=...&h=... — window.screen.width returns
+  // DPI-scaled CSS pixels which lie by 2-3x on HiDPI displays).
+  // Fall back to window.screen for plain browser players.
+  let pxW = 0, pxH = 0;
+  try {
+    const qp = new URLSearchParams(window.location.search);
+    pxW = parseInt(qp.get('w') || '0', 10) || 0;
+    pxH = parseInt(qp.get('h') || '0', 10) || 0;
+  } catch {}
+  if (!pxW || !pxH) {
+    pxW = window.screen.width;
+    pxH = window.screen.height;
+  }
+
   return {
-    resolution: `${window.screen.width}×${window.screen.height}`,
+    resolution: `${pxW}×${pxH}`,
     osInfo: os,
     browserInfo: `${browser} ${navigator.language}`,
     userAgent: ua,
