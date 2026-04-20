@@ -1,11 +1,14 @@
 package com.educms.player
 
 import android.annotation.SuppressLint
+import android.app.AlertDialog
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
@@ -80,6 +83,68 @@ class MainActivity : ComponentActivity() {
             val token = deviceStore.deviceToken.first()
             loadPlayer(token.orEmpty())
         }
+
+        // One-time setup prompt for OTA install permission. Every
+        // Android ≥ 8 app that wants to install APKs needs the user
+        // to toggle "Install unknown apps" for that specific app —
+        // same thing Yodeck / OptiSigns / Xibo ask for on their first
+        // launch. We fire this ONCE at cold boot; if the user grants
+        // it, future OTA updates show the streamlined system prompt
+        // (or skip it entirely on some OEMs) instead of the scary
+        // "app can't be installed" dialog that greeted them tonight.
+        maybePromptForInstallPermission()
+    }
+
+    /**
+     * First-run permission prompt. Android ≥ 8 gates ACTION_INSTALL_PACKAGE
+     * behind a per-app user toggle in Settings (NOT developer mode — a
+     * standard end-user permission). Without it, OTAs fail with a vague
+     * "For your security, your phone isn't allowed to install unknown
+     * apps from this source" dialog that confuses operators.
+     *
+     * Flow:
+     *   1. Check packageManager.canRequestPackageInstalls()
+     *   2. If false AND we haven't asked yet this install, show a friendly
+     *      dialog explaining what's needed.
+     *   3. On Allow: deep-link to the per-app settings page pre-filtered
+     *      to this package via ACTION_MANAGE_UNKNOWN_APP_SOURCES.
+     *   4. User toggles the switch, hits Back, we're in business.
+     *
+     * We only nag once per install (tracked in SharedPreferences)
+     * because operators SHOULD be able to defer this without the kiosk
+     * pestering them every reboot. Re-offer the dialog from the web
+     * player's overlay if they ever try to Check-for-updates and it
+     * still isn't granted — see SoftwareInfoRow on the web side.
+     */
+    private fun maybePromptForInstallPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        if (packageManager.canRequestPackageInstalls()) return
+        val prefs = getSharedPreferences("edu_player", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("installPromptShown", false)) return
+
+        AlertDialog.Builder(this)
+            .setTitle("One-time setup")
+            .setMessage(
+                "To apply player updates automatically, EduCMS needs permission " +
+                "to install updates. Tap Allow to open the setting — you'll " +
+                "only need to do this once. After you grant it, future updates " +
+                "install with a quick confirmation."
+            )
+            .setPositiveButton("Allow") { _, _ ->
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
+                        .setData(Uri.parse("package:$packageName"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Log.w("MainActivity", "Could not open install-sources settings", e)
+                }
+            }
+            .setNegativeButton("Later") { _, _ -> /* remind from overlay */ }
+            .setCancelable(true)
+            .show()
+
+        prefs.edit().putBoolean("installPromptShown", true).apply()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
