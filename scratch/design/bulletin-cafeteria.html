@@ -24,9 +24,12 @@
     color: #2a1808; font-family: 'Indie Flower', cursive;
     display: grid;
     grid-template-columns: 1.4fr 1fr;
-    grid-template-rows: auto 1fr auto auto;
+    /* Dropped the trailing `auto` row for the ticker — ticker is now
+       position:absolute anchored to the bottom 80px. Padding-bottom
+       reserved so content can't crowd into the ticker band. */
+    grid-template-rows: auto 1fr auto;
     gap: 32px;
-    padding: 56px 80px 12px;
+    padding: 56px 80px 96px;
   }
   .frame {
     position: absolute; inset: 14px;
@@ -164,21 +167,32 @@
   .ticket .num  { font-family: 'Permanent Marker', cursive; font-size: 90px; line-height: 1; color: #b91c1c; }
   .ticket .unit { font-family: 'Indie Flower'; font-size: 26px; color: #57534e; }
 
-  /* TICKER */
+  /* TICKER — pulled out of the grid and pinned to viewport bottom
+     so a tall upper stack (image card + 3 menu tickets + memo +
+     countdown) can never squeeze it off-screen. Inside the brown
+     cork frame's 14px inset. */
   .ticker {
-    grid-column: 1 / -1;
-    margin: 0 -80px;
+    position: absolute; left: 14px; right: 14px; bottom: 14px; height: 80px;
     background: #fff;
     border-top: 5px solid #1f2937;
-    display: flex; align-items: center; overflow: hidden; height: 80px;
+    display: flex; align-items: center; overflow: hidden;
     box-shadow: 0 -4px 14px rgba(0,0,0,.2);
+    z-index: 4;
   }
   .ticker .stamp {
     flex: 0 0 auto; padding: 0 28px; height: 100%;
     background: #1f2937; color: #fef3c7; display: flex; align-items: center;
     font-family: 'Special Elite'; letter-spacing: .25em; font-size: 20px;
   }
-  .ticker .scroll { flex: 1; font-family: 'Indie Flower'; font-size: 38px; color: #44403c; padding-left: 28px; white-space: nowrap; }
+  .ticker .scroll { flex: 1; overflow: hidden; position: relative; height: 100%; display: flex; align-items: center; }
+  .ticker .scrollText {
+    display: inline-block; white-space: nowrap;
+    font-family: 'Indie Flower'; font-size: 38px; color: #44403c;
+    padding-left: 100%;
+    animation: bc-tickerScroll 50s linear infinite;
+  }
+  .ticker .scrollText .sep { color: #b91c1c; padding: 0 22px; }
+  @keyframes bc-tickerScroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
 </style>
 </head>
 <body>
@@ -240,7 +254,19 @@
 
   <div class="ticker">
     <div class="stamp">FROM THE KITCHEN</div>
-    <div class="scroll">Eat the rainbow — fruits + veggies every day &nbsp; · &nbsp; Drink water, stay hydrated &nbsp; · &nbsp; Free + reduced meals — ask the office</div>
+    <div class="scroll">
+      <span class="scrollText">
+        Eat the rainbow — fruits + veggies every day
+        <span class="sep">·</span>
+        Drink water, stay hydrated
+        <span class="sep">·</span>
+        Free + reduced meals — ask the office
+        <span class="sep">·</span>
+        Pizza Friday is back — cheese + pepperoni in line 2
+        <span class="sep">·</span>
+        Lunch Wave A 11:30, Wave B 12:05, Wave C 12:40
+      </span>
+    </div>
   </div>
 </div>
 </body>
