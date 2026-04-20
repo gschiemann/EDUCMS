@@ -98,6 +98,19 @@ export class BrandingController {
     const chosenLogo = body.logoOverride?.url ?? body.logos?.[0]?.url ?? null;
     const chosenSvg = body.logoOverride?.svgInline ?? body.logos?.[0]?.svgInline ?? null;
 
+    // Diagnostic — so we can see exactly what the client is sending.
+    // Enough signal to tell apart "body corrupted in transit" from
+    // "client is sanitizing before POST" from "scraper returned junk".
+    this.logger.log(
+      `[adopt] tenant=${tenantId} ` +
+      `overrideUrl=${body.logoOverride?.url?.slice(0,60) || '(none)'} ` +
+      `overrideSvgLen=${(body.logoOverride?.svgInline || '').length} ` +
+      `logos[0].svgLen=${(body.logos?.[0]?.svgInline || '').length} ` +
+      `logos.count=${body.logos?.length ?? 0} ` +
+      `chosenSvgLen=${(chosenSvg || '').length} ` +
+      `chosenSvgStart=${(chosenSvg || '').slice(0, 80).replace(/\n/g, ' ')}`,
+    );
+
     // Validate the SVG has real content BEFORE storing. Chardon's
     // scrape kept landing a ~224-byte file that was just whitespace +
     // the alt text 'Chardon Footer Logo@100' — cheerio picked up a

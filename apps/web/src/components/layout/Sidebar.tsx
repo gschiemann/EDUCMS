@@ -128,23 +128,21 @@ export function Sidebar() {
         <div className="h-[73px] flex items-center px-5 justify-between gap-2">
           <h1 className="text-xl font-extrabold tracking-tight text-slate-800 flex items-center gap-3 min-w-0">
             {brandLogoUrl && !logoImgBroken && !/\.(ico|icns)(\?|#|$)/i.test(brandLogoUrl) ? (
-              // Reject .ico even if backend stored one in logoUrl — a
-              // 32px favicon scaled up to 44px is a blurry mess. Fall
-              // through to the initials-in-a-circle branch instead.
+              // Wider box lets wide wordmarks (Chardon's tree + "CHARDON
+              // LOCAL SCHOOLS") render at actual aspect ratio instead of
+              // being squished into a 44px square.  max-w-[140px] caps
+              // the width so a ridiculously wide logo can't push the
+              // tenant name off the sidebar.
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={brandLogoUrl}
                 alt=""
                 onError={() => setLogoImgBroken(true)}
-                className="flex-shrink-0 w-11 h-11 object-contain bg-white rounded-xl p-0.5 shadow-sm"
+                className="flex-shrink-0 h-12 max-w-[140px] object-contain"
               />
             ) : brandLogoSvg && /<(path|circle|rect|polygon|polyline|ellipse|image|use)\b/i.test(brandLogoSvg) ? (
-              // Only inline the SVG if it actually has shape primitives.
-              // Chardon's first scrape caught a text-only decorative SVG
-              // which rendered as bleeding 'Chardon Footer Logo@100' text
-              // outside the 44px tile — user-visible regression.
               <div
-                className="flex-shrink-0 w-11 h-11 overflow-hidden rounded-xl bg-white shadow-sm flex items-center justify-center [&_svg]:w-full [&_svg]:h-full [&_svg]:max-h-11"
+                className="flex-shrink-0 h-12 max-w-[140px] [&_svg]:h-full [&_svg]:max-h-12 [&_svg]:w-auto"
                 aria-hidden
                 dangerouslySetInnerHTML={{ __html: brandLogoSvg }}
               />
