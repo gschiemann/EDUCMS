@@ -489,17 +489,47 @@ export class ScreensController {
     if (screen.tenantId) {
       const tenant = await this.prisma.client.tenant.findUnique({
         where: { id: screen.tenantId },
-        select: { emergencyStatus: true, emergencyPlaylistId: true }
-      });
+        // Pull both orientation pointers so we can pick the right one
+        // for this specific screen. Cast select through `any` so the
+        // controller compiles even before @prisma/client picks up the
+        // new emergency_portrait_playlist_id column (handled by the
+        // 20260420180000_add_emergency_portrait_variants migration +
+        // db:generate on next boot).
+        select: {
+          emergencyStatus: true,
+          emergencyPlaylistId: true,
+          emergencyPortraitPlaylistId: true,
+        } as any,
+      }) as any;
 
       // If an emergency is active, ALWAYS force an emergency override
       if (tenant?.emergencyStatus && tenant.emergencyStatus !== 'INACTIVE') {
         let playlists: any[] = [];
-        
-        // Try to load the assigned emergency media if it exists
-        if (tenant.emergencyPlaylistId) {
+
+        // Parse the screen's stored resolution ("2160×3840" / "2160x3840")
+        // to decide which playlist variant to serve. Portrait = height
+        // strictly greater than width. If resolution is null or
+        // unparseable we default to landscape (safe: the original
+        // emergencyPlaylistId is what every tenant already has wired up).
+        const isPortrait = (() => {
+          const r = (screen.resolution || '').trim();
+          const m = r.match(/^(\d+)\s*[x×]\s*(\d+)$/i);
+          if (!m) return false;
+          return parseInt(m[2], 10) > parseInt(m[1], 10);
+        })();
+
+        // Pick the playlist for this screen's orientation. Graceful
+        // fallback in BOTH directions: a portrait screen uses the
+        // landscape playlist if no portrait was configured, and
+        // vice-versa. Admin only has to configure one to get every
+        // screen covered; configuring both is the polished path.
+        const chosenPlaylistId = isPortrait
+          ? (tenant.emergencyPortraitPlaylistId || tenant.emergencyPlaylistId || null)
+          : (tenant.emergencyPlaylistId || tenant.emergencyPortraitPlaylistId || null);
+
+        if (chosenPlaylistId) {
           const emergencyPlaylist = await this.prisma.client.playlist.findUnique({
-            where: { id: tenant.emergencyPlaylistId },
+            where: { id: chosenPlaylistId },
             include: {
               items: {
                 include: { asset: true },
@@ -521,17 +551,21 @@ export class ScreensController {
           }
         }
 
-        // BULLETPROOF FALLBACK: If the admin failed to assign an emergency playlist or it was empty, 
+        // BULLETPROOF FALLBACK: If the admin failed to assign an emergency playlist or it was empty,
         // we MUST still lock the screen down to protect the school.
+        // Swap template width/height for portrait screens so the TEXT
+        // zone fills the full canvas correctly (1920×1080 → 1080×1920).
         if (playlists.length === 0) {
+          const canvasW = isPortrait ? 1080 : 1920;
+          const canvasH = isPortrait ? 1920 : 1080;
           playlists = [{
              id: "DEFAULT_EMERGENCY",
              name: `SYSTEM DEFAULT - ${tenant.emergencyStatus}`,
              template: {
                name: "EMERGENCY OVERRIDE",
                bgColor: tenant.emergencyStatus === 'CRITICAL' ? '#dc2626' : '#d97706',
-               screenWidth: 1920,
-               screenHeight: 1080,
+               screenWidth: canvasW,
+               screenHeight: canvasH,
                zones: [
                  {
                    id: "emergency-zone",
@@ -539,7 +573,7 @@ export class ScreensController {
                    widgetType: "TEXT",
                    defaultConfig: {
                      content: `EMERGENCY NOTIFICATION\n\n${tenant.emergencyStatus} PROTOCOL ACTIVE\n\nPlease follow standard procedures`,
-                     fontSize: 100,
+                     fontSize: isPortrait ? 140 : 100,
                      color: "white",
                      alignment: "center",
                      bold: true
@@ -555,6 +589,7 @@ export class ScreensController {
           screenId: screen.id,
           generatedAt: new Date().toISOString(),
           isEmergency: true,
+          orientation: isPortrait ? 'portrait' : 'landscape',
           playlists
         });
       }

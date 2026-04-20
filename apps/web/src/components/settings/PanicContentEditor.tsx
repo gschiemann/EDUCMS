@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useRef } from 'react';
-import { Loader2, Trash2, Upload, Image as ImageIcon, Video, Music, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Loader2, Trash2, Upload, Image as ImageIcon, Video, Music, AlertTriangle, ShieldCheck, Monitor, Smartphone } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 import { useQueryClient } from '@tanstack/react-query';
-import { usePanicContent, useAddPanicAsset, useRemovePanicAsset, type PanicKind } from '@/hooks/use-api';
+import { usePanicContent, useAddPanicAsset, useRemovePanicAsset, type PanicKind, type PanicOrientation } from '@/hooks/use-api';
 import { appConfirm } from '@/components/ui/app-dialog';
 
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
@@ -35,18 +35,38 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024;
  * regular /playlists surface so emergency content can never be
  * accidentally deleted from the playlists list. Operators just see
  * "drop assets here" and a list of what's currently set.
+ *
+ * Orientation split: each bucket now stores TWO playlists — a landscape
+ * variant and a portrait variant. The toggle at the top of the card
+ * flips between them; each variant has its own asset list + drop zone.
+ * At emergency trigger time the manifest controller picks whichever
+ * variant matches each individual screen's resolution, and falls back
+ * to the other if only one is configured. Admin only has to configure
+ * what they actually have; zero friction when there's only one
+ * orientation in play.
  */
 export function PanicContentEditor({ kind, label, accent, hint }: Props) {
   const a = ACCENT_MAP[accent];
-  const { data, isLoading } = usePanicContent(kind);
-  const addAsset = useAddPanicAsset(kind);
-  const removeAsset = useRemovePanicAsset(kind);
+  const [orientation, setOrientation] = useState<PanicOrientation>('landscape');
+  // Read BOTH variants so the toggle labels can show a count for each
+  // side. The inactive variant still hits the API once but that's a
+  // tiny cached list lookup — worth it so the operator sees at a
+  // glance whether portrait is empty vs has content. The active one
+  // drives the drop zone + item list below.
+  const landscapeQ = usePanicContent(kind, 'landscape');
+  const portraitQ  = usePanicContent(kind, 'portrait');
+  const data = orientation === 'portrait' ? portraitQ.data : landscapeQ.data;
+  const isLoading = orientation === 'portrait' ? portraitQ.isLoading : landscapeQ.isLoading;
+  const addAsset = useAddPanicAsset(kind, orientation);
+  const removeAsset = useRemovePanicAsset(kind, orientation);
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [uploads, setUploads] = useState<Array<{ id: string; name: string; progress: number; phase: 'uploading' | 'error'; error?: string }>>([]);
 
   const items = data?.items ?? [];
+  const landscapeCount = landscapeQ.data?.items?.length ?? 0;
+  const portraitCount  = portraitQ.data?.items?.length ?? 0;
 
   const handleFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -113,6 +133,11 @@ export function PanicContentEditor({ kind, label, accent, hint }: Props) {
     removeAsset.mutate(item.id);
   };
 
+  // Overall-status pill — GREEN if EITHER variant is populated, AMBER
+  // only when both are empty. A tenant that only has landscape screens
+  // legitimately should not be pestered about an empty portrait slot.
+  const anyConfigured = landscapeCount > 0 || portraitCount > 0;
+
   return (
     <div className={`p-4 rounded-xl border ${a.border} ${a.bg} flex flex-col gap-3 min-h-[180px]`}>
       <div>
@@ -121,12 +146,48 @@ export function PanicContentEditor({ kind, label, accent, hint }: Props) {
             <div className={`w-3 h-3 rounded-full ${a.dot}`} />
             <h3 className="text-sm font-bold text-slate-800">{label}</h3>
           </div>
-          <span className={`text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 ${items.length > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
-            {items.length > 0 ? <ShieldCheck className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
-            {items.length > 0 ? `${items.length} asset${items.length === 1 ? '' : 's'}` : 'No content'}
+          <span className={`text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 ${anyConfigured ? 'text-emerald-600' : 'text-amber-600'}`}>
+            {anyConfigured ? <ShieldCheck className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+            {anyConfigured ? `${landscapeCount}L · ${portraitCount}P` : 'No content'}
           </span>
         </div>
         {hint && <p className="text-[11px] text-slate-500 mt-0.5 ml-5">{hint}</p>}
+      </div>
+
+      {/* Orientation toggle — which variant the drop zone + list below
+          is showing. Each screen auto-picks the matching variant at
+          emergency trigger time (and falls back to the other if
+          only one is configured), so this toggle is just an authoring
+          switch; operators don't choose "which one to send." */}
+      <div className="inline-flex bg-white border border-slate-200 rounded-lg p-0.5 text-[11px] self-start" role="tablist" aria-label="Emergency content orientation">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={orientation === 'landscape'}
+          onClick={() => setOrientation('landscape')}
+          className={`px-2.5 py-1 rounded-md flex items-center gap-1.5 font-bold transition-colors ${
+            orientation === 'landscape'
+              ? 'bg-slate-800 text-white'
+              : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Monitor className="w-3 h-3" /> Landscape
+          <span className={`ml-1 px-1 rounded ${landscapeCount > 0 ? (orientation === 'landscape' ? 'bg-white/20' : 'bg-emerald-100 text-emerald-700') : 'bg-slate-100 text-slate-400'}`}>{landscapeCount}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={orientation === 'portrait'}
+          onClick={() => setOrientation('portrait')}
+          className={`px-2.5 py-1 rounded-md flex items-center gap-1.5 font-bold transition-colors ${
+            orientation === 'portrait'
+              ? 'bg-slate-800 text-white'
+              : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Smartphone className="w-3 h-3" /> Portrait
+          <span className={`ml-1 px-1 rounded ${portraitCount > 0 ? (orientation === 'portrait' ? 'bg-white/20' : 'bg-emerald-100 text-emerald-700') : 'bg-slate-100 text-slate-400'}`}>{portraitCount}</span>
+        </button>
       </div>
 
       {/* Drop zone */}

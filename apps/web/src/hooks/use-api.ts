@@ -635,6 +635,12 @@ export function useUpdateTenantPanicSettings() {
 
 // ─── Panic content (emergency assets, protected from /playlists) ───
 export type PanicKind = 'lockdown' | 'weather' | 'evacuate' | 'hold' | 'secure' | 'medical' | 'default';
+// Per-orientation variants. Each panic-kind bucket now carries an
+// independent playlist for portrait vs landscape so a tenant with both
+// a 4K vertical wall and standard 1920×1080 hallway screens gets each
+// orientation's emergency media rendered natively. Defaults to
+// landscape so every existing caller keeps the old behavior.
+export type PanicOrientation = 'landscape' | 'portrait';
 export type PanicAssetItem = {
   id: string;
   assetId: string;
@@ -644,30 +650,31 @@ export type PanicAssetItem = {
 };
 export type PanicBucket = {
   kind: PanicKind;
+  orientation?: PanicOrientation;
   label: string;
   playlistId: string;
   items: PanicAssetItem[];
 };
-export function usePanicContent(kind: PanicKind) {
+export function usePanicContent(kind: PanicKind, orientation: PanicOrientation = 'landscape') {
   return useQuery<PanicBucket>({
-    queryKey: ['panic-content', kind],
-    queryFn: () => apiFetch(`/panic-content/${kind}/assets`),
+    queryKey: ['panic-content', kind, orientation],
+    queryFn: () => apiFetch(`/panic-content/${kind}/assets?orientation=${orientation}`),
   });
 }
-export function useAddPanicAsset(kind: PanicKind) {
+export function useAddPanicAsset(kind: PanicKind, orientation: PanicOrientation = 'landscape') {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { assetId: string; durationMs?: number }) =>
-      apiFetch(`/panic-content/${kind}/assets`, { method: 'POST', body: JSON.stringify(body) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['panic-content', kind] }),
+      apiFetch(`/panic-content/${kind}/assets?orientation=${orientation}`, { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['panic-content', kind, orientation] }),
   });
 }
-export function useRemovePanicAsset(kind: PanicKind) {
+export function useRemovePanicAsset(kind: PanicKind, orientation: PanicOrientation = 'landscape') {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (itemId: string) =>
-      apiFetch(`/panic-content/${kind}/assets/${itemId}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['panic-content', kind] }),
+      apiFetch(`/panic-content/${kind}/assets/${itemId}?orientation=${orientation}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['panic-content', kind, orientation] }),
   });
 }
 

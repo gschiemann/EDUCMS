@@ -27,6 +27,20 @@ model Tenant {
   panicHoldPlaylistId     String?       @map("panic_hold_playlist_id")
   panicSecurePlaylistId   String?       @map("panic_secure_playlist_id")
   panicMedicalPlaylistId  String?       @map("panic_medical_playlist_id")
+  // Per-orientation portrait variants. When a portrait screen (Nova
+  // 4K vertical wall, hallway pillar, etc.) fetches the manifest
+  // during an emergency, the controller prefers the *_portrait_*
+  // playlist if configured and falls back to the landscape playlist
+  // above if not. Admin configures both once; each screen auto-picks.
+  // `emergencyPortraitPlaylistId` is the currently-active portrait
+  // playlist (set atomically at trigger time alongside emergencyPlaylistId).
+  emergencyPortraitPlaylistId      String? @map("emergency_portrait_playlist_id")
+  panicEvacuatePortraitPlaylistId  String? @map("panic_evacuate_portrait_playlist_id")
+  panicLockdownPortraitPlaylistId  String? @map("panic_lockdown_portrait_playlist_id")
+  panicWeatherPortraitPlaylistId   String? @map("panic_weather_portrait_playlist_id")
+  panicHoldPortraitPlaylistId      String? @map("panic_hold_portrait_playlist_id")
+  panicSecurePortraitPlaylistId    String? @map("panic_secure_portrait_playlist_id")
+  panicMedicalPortraitPlaylistId   String? @map("panic_medical_portrait_playlist_id")
   assetFolders            AssetFolder[]
   assets                  Asset[]
   auditLogs               AuditLog[]

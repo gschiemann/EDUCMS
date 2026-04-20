@@ -59,19 +59,43 @@ export class EmergencyController {
     // If targeting a tenant (e.g., a school), update its emergencyStatus persistently
     if (scopeType === 'tenant') {
       let activePlaylistId = overridePayload.playlistId || null;
+      // Portrait variant resolved alongside the landscape playlist so
+      // each screen can auto-pick the right one at manifest time.
+      // null-safe: if a tenant hasn't configured a portrait variant,
+      // this stays null and the manifest falls back to landscape.
+      let activePortraitPlaylistId: string | null = null;
 
       // If no playlist was explicitly provided, auto-resolve based on
       // the configured Panic Button content for this panic type.
       if (!activePlaylistId) {
         const tenantInfo = await this.prisma.client.tenant.findUnique({ where: { id: scopeId } });
         if (tenantInfo) {
+          const t = tenantInfo as any;
           switch (overridePayload.type) {
-            case 'lockdown': activePlaylistId = tenantInfo.panicLockdownPlaylistId; break;
-            case 'weather':  activePlaylistId = tenantInfo.panicWeatherPlaylistId;  break;
-            case 'evacuate': activePlaylistId = tenantInfo.panicEvacuatePlaylistId; break;
-            case 'hold':     activePlaylistId = (tenantInfo as any).panicHoldPlaylistId    ?? null; break;
-            case 'secure':   activePlaylistId = (tenantInfo as any).panicSecurePlaylistId  ?? null; break;
-            case 'medical':  activePlaylistId = (tenantInfo as any).panicMedicalPlaylistId ?? null; break;
+            case 'lockdown':
+              activePlaylistId = tenantInfo.panicLockdownPlaylistId;
+              activePortraitPlaylistId = t.panicLockdownPortraitPlaylistId ?? null;
+              break;
+            case 'weather':
+              activePlaylistId = tenantInfo.panicWeatherPlaylistId;
+              activePortraitPlaylistId = t.panicWeatherPortraitPlaylistId ?? null;
+              break;
+            case 'evacuate':
+              activePlaylistId = tenantInfo.panicEvacuatePlaylistId;
+              activePortraitPlaylistId = t.panicEvacuatePortraitPlaylistId ?? null;
+              break;
+            case 'hold':
+              activePlaylistId = t.panicHoldPlaylistId ?? null;
+              activePortraitPlaylistId = t.panicHoldPortraitPlaylistId ?? null;
+              break;
+            case 'secure':
+              activePlaylistId = t.panicSecurePlaylistId ?? null;
+              activePortraitPlaylistId = t.panicSecurePortraitPlaylistId ?? null;
+              break;
+            case 'medical':
+              activePlaylistId = t.panicMedicalPlaylistId ?? null;
+              activePortraitPlaylistId = t.panicMedicalPortraitPlaylistId ?? null;
+              break;
           }
         }
       }
@@ -79,14 +103,17 @@ export class EmergencyController {
       // Wrap state mutation + audit in one transaction so a concurrent
       // trigger or all-clear can't leave the Tenant in a half-updated
       // state where emergencyStatus says CRITICAL but emergencyPlaylistId
-      // is null (or vice versa). All-or-nothing.
+      // is null (or vice versa). All-or-nothing. Both orientation
+      // pointers flip together so portrait + landscape screens see the
+      // same emergency transition at the same moment.
       await this.prisma.client.$transaction([
         this.prisma.client.tenant.update({
           where: { id: scopeId },
           data: {
             emergencyStatus: severity,
             emergencyPlaylistId: activePlaylistId || null,
-          },
+            emergencyPortraitPlaylistId: activePortraitPlaylistId || null,
+          } as any,
         }),
         this.prisma.client.auditLog.create({
           data: {
@@ -95,7 +122,7 @@ export class EmergencyController {
             targetId: scopeId,
             tenantId: req.user?.schoolId || req.user?.districtId || scopeId,
             userId: req.user?.id,
-            details: JSON.stringify({ overrideId, severity }),
+            details: JSON.stringify({ overrideId, severity, portraitPlaylistId: activePortraitPlaylistId }),
           },
         }),
       ]);
@@ -160,6 +187,8 @@ export class EmergencyController {
     };
 
     // If targeting a tenant, clear its emergencyStatus + audit atomically.
+    // Clear BOTH orientation pointers so a portrait screen doesn't keep
+    // rendering an emergency after the admin hit all-clear.
     if (scopeType === 'tenant') {
       await this.prisma.client.$transaction([
         this.prisma.client.tenant.update({
@@ -167,7 +196,8 @@ export class EmergencyController {
           data: {
             emergencyStatus: 'INACTIVE',
             emergencyPlaylistId: null,
-          },
+            emergencyPortraitPlaylistId: null,
+          } as any,
         }),
         this.prisma.client.auditLog.create({
           data: {
