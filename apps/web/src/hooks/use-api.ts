@@ -302,12 +302,17 @@ export function useRejectAsset() {
  * freshly-uploaded contributor asset shows up in the reviewer's queue
  * without a manual refresh.
  */
-export function usePendingAssets() {
+export function usePendingAssets(enabled: boolean = true) {
   return useQuery({
     queryKey: ['assets', 'pending'],
     queryFn: () => apiFetch<any[]>('/assets/pending'),
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
+    // Off-switch so non-admin tabs (CONTRIBUTOR / RESTRICTED_VIEWER)
+    // don't fire a recurring 403 every 30s when the sidebar wants a
+    // badge count — keep the query dormant until we know the caller
+    // can see the pending queue at all.
+    enabled,
   });
 }
 

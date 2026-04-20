@@ -4,7 +4,7 @@ import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff
 import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation } from '@/hooks/use-api';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
-import { appPrompt } from '@/components/ui/app-dialog';
+import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
 import { apiFetch } from '@/lib/api-client';
 import QRCode from 'qrcode';
 import { appConfirm } from '@/components/ui/app-dialog';
@@ -40,14 +40,14 @@ export default function ScreensPage() {
   const updateLocation = useUpdateScreenLocation();
   const flatScreens = useMemo(() => (allScreens || []) as any[], [allScreens]);
 
-  const handleSetLocation = async (screenId: string, screenName: string, currentAddress?: string | null) => {
-    const address = await appPrompt({
-      title: `Where is "${screenName}"?`,
-      message: 'Type the building address or paste a street address. We auto-geocode via OpenStreetMap so the screen drops on the fleet map.',
-      defaultValue: currentAddress || '',
-    });
-    if (address === null) return; // cancelled
-    updateLocation.mutate({ id: screenId, address: address || null });
+  // Autocomplete-driven location modal. The previous appPrompt-only flow
+  // silently failed when Nominatim couldn't geocode the free-text string
+  // (address saved, lat/lng null, map filtered the row out, operator
+  // saw "nothing happened"). Modal forces a structured pick + sends the
+  // suggestion's own lat/lng so the pin reliably drops.
+  const [locationModal, setLocationModal] = useState<{ id: string; name: string; address?: string | null } | null>(null);
+  const handleSetLocation = (screenId: string, screenName: string, currentAddress?: string | null) => {
+    setLocationModal({ id: screenId, name: screenName, address: currentAddress });
   };
   const createGroup = useCreateScreenGroup();
   const deleteGroup = useDeleteScreenGroup();
@@ -613,6 +613,22 @@ export default function ScreensPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Address-autocomplete modal (replaces the old free-text appPrompt
+          that silently dropped rows from the map when Nominatim couldn't
+          geocode the typed string). */}
+      {locationModal && (
+        <ScreenLocationModal
+          screenName={locationModal.name}
+          currentAddress={locationModal.address}
+          onClose={() => setLocationModal(null)}
+          onSave={async (body) => {
+            await updateLocation.mutateAsync({ id: locationModal.id, ...body });
+            refetch();
+            refetchScreens();
+          }}
+        />
       )}
     </div>
   );

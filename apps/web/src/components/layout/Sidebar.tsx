@@ -6,9 +6,10 @@ import { useState, useEffect } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
-import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, FileClock, Crown } from 'lucide-react';
+import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, FileClock, Crown, ClipboardCheck } from 'lucide-react';
 import { RoleGate } from '../RoleGate';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
+import { usePendingAssets } from '@/hooks/use-api';
 import type { TenantBranding } from '@/lib/branding';
 
 // Must match the PER-TENANT key format BrandStyleInjector writes to.
@@ -106,10 +107,6 @@ export function Sidebar() {
     { name: 'Settings', href: `/${activeTenant}/settings`, icon: Settings },
   ];
 
-  const adminNavItems = [
-    { name: 'Audit Log', href: `/${activeTenant}/audit`, icon: FileClock },
-  ];
-
   // Hydration safety: `user` is loaded from localStorage on the client
   // only, so SSR sees `isAdmin = false`. Without the `mounted` gate the
   // admin links would appear on the client only after hydration,
@@ -117,6 +114,18 @@ export function Sidebar() {
   // render the same nav set on server + client's first paint; flip
   // to the admin set on the next render after mount.
   const isAdmin = mounted && (user?.role === 'SUPER_ADMIN' || user?.role === 'DISTRICT_ADMIN' || user?.role === 'SCHOOL_ADMIN');
+
+  // Pending-review badge count. Hook is gated on isAdmin so the query
+  // stays dormant for CONTRIBUTOR / RESTRICTED_VIEWER tabs (otherwise
+  // every non-admin would fire a recurring 403 against /assets/pending
+  // every 30s just to render a sidebar they don't even see).
+  const pendingAssetsQ = usePendingAssets(isAdmin);
+  const pendingCount = Array.isArray(pendingAssetsQ.data) ? pendingAssetsQ.data.length : 0;
+
+  const adminNavItems = [
+    { name: 'Review Queue', href: `/${activeTenant}/assets/review`, icon: ClipboardCheck, badge: pendingCount > 0 ? pendingCount : null },
+    { name: 'Audit Log', href: `/${activeTenant}/audit`, icon: FileClock, badge: null as number | null },
+  ];
 
   return (
     <>
@@ -201,7 +210,7 @@ export function Sidebar() {
           <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-4 px-4">
             Main Menu
           </div>
-          {navItems.concat(isAdmin ? adminNavItems : []).map((item) => {
+          {(navItems.map(i => ({ ...i, badge: null as number | null })).concat(isAdmin ? adminNavItems : [])).map((item) => {
             const isActive = pathname.startsWith(item.href);
             return (
               <Link
@@ -223,7 +232,15 @@ export function Sidebar() {
                   "w-[22px] h-[22px] transition-transform duration-300",
                   isActive ? "scale-110 drop-shadow-sm" : "group-hover:scale-110"
                 )} />
-                {item.name}
+                <span className="flex-1">{item.name}</span>
+                {/* Admin-only pending-review count. Shown on the Review
+                    Queue row when there's at least one asset waiting on
+                    approval so admins don't have to navigate in to check. */}
+                {item.badge != null && item.badge > 0 && (
+                  <span className="ml-auto inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-rose-500 text-white text-[11px] font-bold shadow-sm">
+                    {item.badge > 99 ? '99+' : item.badge}
+                  </span>
+                )}
               </Link>
             );
           })}
