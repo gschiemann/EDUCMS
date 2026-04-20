@@ -265,6 +265,21 @@ function PlayerPage() {
   const [phase, setPhase] = useState<Phase>('registering');
   const [storageInfo, setStorageInfo] = useState({ used: '1.2 GB', total: '32 GB', percent: 4 });
 
+  // Read the tenant display name from the LS branding cache if this
+  // machine has ever been used as an admin browser with that tenant.
+  // Pre-pair the player has no tenant scope, so this is best-effort —
+  // falls back to "EduSignage" when no brand is cached.
+  const [brandName, setBrandName] = useState<string>('EduSignage');
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('edu-cms-branding-cache-v1');
+      if (raw) {
+        const b = JSON.parse(raw);
+        if (b?.displayName) setBrandName(b.displayName);
+      }
+    } catch {}
+  }, []);
+
   useEffect(() => {
     if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.estimate) {
       navigator.storage.estimate().then(({ usage, quota }) => {
@@ -957,7 +972,7 @@ function PlayerPage() {
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 mb-6">
             <MonitorPlay className="w-10 h-10 text-indigo-400" />
           </div>
-          <h1 className="text-2xl font-bold text-white mb-2">EduSignage Player</h1>
+          <h1 className="text-2xl font-bold text-white mb-2">{brandName} Player</h1>
           <p className="text-slate-400 mb-8">Enter this code in your CMS dashboard to pair this screen</p>
 
           {/* Big pairing code */}
