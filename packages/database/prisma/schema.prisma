@@ -70,7 +70,7 @@ model Tenant {
   // Industry vertical — drives default templates, widget palette, and
   // pricing tier. Tenants are isolated regardless; this is just metadata
   // + UI personalization.
-  vertical                String        @default("K12") // K12 | RESTAURANT | RETAIL | HEALTHCARE | CORPORATE | OTHER
+  vertical                String        @default("K12") // K12 | FITNESS | RESTAURANT | RETAIL | HEALTHCARE | CORPORATE | OTHER
   // Per-screen billing meter. One License row per Tenant; absence means
   // "Pilot" (free tier with cap of 3 screens, no expiry). License flips
   // when an admin runs a Stripe checkout or the SUPER_ADMIN comps seats.
@@ -477,6 +477,14 @@ model Template {
   // a new level (PRE_K, ADULT_ED, etc.) comes along. Defaults to UNIVERSAL
   // so existing templates stay visible under every filter.
   schoolLevel  String         @default("UNIVERSAL") @map("school_level")
+  // Industry vertical — gates which templates appear in a tenant's
+  // gallery. System templates are tagged with the vertical they were
+  // designed for; the /templates list endpoint filters by the
+  // requesting tenant's `Tenant.vertical` so a gym never sees EDU
+  // templates and vice versa. Custom tenant templates inherit the
+  // tenant's own vertical. Defaults K12 because that's the original
+  // product + the vast majority of pre-existing rows.
+  vertical     String         @default("K12") @map("vertical") // K12 | FITNESS | RESTAURANT | RETAIL | HEALTHCARE | CORPORATE | OTHER
   screenWidth  Int            @default(1920) @map("screen_width")
   screenHeight Int            @default(1080) @map("screen_height")
   isSystem     Boolean        @default(false) @map("is_system")

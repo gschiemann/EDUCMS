@@ -3,8 +3,17 @@ import type { PrismaService } from '../prisma/prisma.service';
 import { SYSTEM_TEMPLATE_PRESETS } from './system-presets';
 import { FITNESS_TEMPLATE_PRESETS } from './fitness-presets';
 
-// Fitness presets are appended additively; EDU vertical behavior unchanged.
+// Fitness presets live in their own file so the EDU pack stays
+// uncontaminated. At seed time we tag each row with the vertical it
+// was designed for (Template.vertical column); the templates list
+// endpoint then filters by the requesting tenant's Tenant.vertical
+// so a gym never sees K-12 templates and a school never sees fitness
+// ones. `ALL_PRESETS` is the union we reconcile against the DB; the
+// per-preset vertical is resolved via the map below.
 const ALL_PRESETS = [...SYSTEM_TEMPLATE_PRESETS, ...FITNESS_TEMPLATE_PRESETS];
+const PRESET_VERTICAL: Map<string, string> = new Map();
+SYSTEM_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'K12'));
+FITNESS_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'FITNESS'));
 
 /**
  * Idempotent system-preset seeder. Runs once on API startup.
@@ -85,6 +94,9 @@ export async function ensureSystemPresets(prisma: PrismaService) {
             isSystem: true,
             status: 'ACTIVE' as any,
             tenantId: null,
+            // Tag each preset with its vertical so the templates list
+            // endpoint can filter it out for tenants in other verticals.
+            vertical: PRESET_VERTICAL.get(preset.id) ?? 'K12',
             zones: {
               create: preset.zones.map((z: any, i: number) => ({
                 name: z.name,

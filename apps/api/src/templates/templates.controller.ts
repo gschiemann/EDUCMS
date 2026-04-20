@@ -8,6 +8,7 @@ import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { SYSTEM_TEMPLATE_PRESETS } from './system-presets';
+import { FITNESS_TEMPLATE_PRESETS } from './fitness-presets';
 
 @Controller('api/v1/templates')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -28,11 +29,44 @@ export class TemplatesController {
   ) {
     const tenantId = req.user.tenantId;
 
+    // Resolve caller's vertical so we only surface templates that
+    // belong in their product surface. A gym tenant must never see
+    // EDU templates in the gallery and vice-versa — that was the
+    // user feedback after the first fitness commit mixed the two.
+    // Super-admins see everything when they switch into a tenant;
+    // the tenant-switch endpoint stamps their session with the
+    // target tenant's vertical, so this check works for them too.
+    let callerVertical: string | null = null;
+    try {
+      const tenant = await this.prisma.client.tenant.findUnique({
+        where: { id: tenantId },
+        select: { vertical: true } as any,
+      });
+      callerVertical = (tenant as any)?.vertical || 'K12';
+    } catch {
+      callerVertical = 'K12';
+    }
+
     const where: any = {
-      OR: [
-        { tenantId },
-        // Always include system templates so teachers see presets
-        ...(includeSystem !== 'false' ? [{ isSystem: true }] : []),
+      AND: [
+        {
+          OR: [
+            { tenantId },
+            // Always include system templates so teachers see presets
+            ...(includeSystem !== 'false' ? [{ isSystem: true }] : []),
+          ],
+        },
+        // Vertical gate: tenant templates are always shown (they
+        // belong to this tenant); system templates must match the
+        // caller's vertical. The `OR` expands both sides so a gym
+        // still sees its own custom templates even if one slipped
+        // through with a non-fitness vertical tag.
+        {
+          OR: [
+            { tenantId }, // tenant's own — always theirs
+            { isSystem: true, vertical: callerVertical },
+          ],
+        },
       ],
     };
 
@@ -59,13 +93,21 @@ export class TemplatesController {
 
   @Get('system/presets')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
-  // Immutable in-memory catalog — shipped identically to every tenant.
-  // Cache on the browser + any edge CDN for 10 minutes; serve stale for
-  // an hour while revalidating. Before this the 130 KB payload was
-  // re-transferred on every /templates visit AND every other page that
-  // imports the Templates sidebar.
+  // Immutable in-memory catalog — filtered by caller's vertical so a
+  // gym tenant gets the fitness preset list and an EDU tenant gets
+  // the K-12 list. Cache is `private` (per-user) to respect that
+  // scoping at the edge.
   @Header('Cache-Control', 'private, max-age=600, stale-while-revalidate=3600')
-  async getSystemPresets() {
+  async getSystemPresets(@Request() req: any) {
+    let vertical = 'K12';
+    try {
+      const tenant = await this.prisma.client.tenant.findUnique({
+        where: { id: req.user.tenantId },
+        select: { vertical: true } as any,
+      });
+      vertical = (tenant as any)?.vertical || 'K12';
+    } catch { /* default to K12 */ }
+    if (vertical === 'FITNESS') return FITNESS_TEMPLATE_PRESETS;
     return SYSTEM_TEMPLATE_PRESETS;
   }
 
@@ -196,7 +238,12 @@ export class TemplatesController {
 
     // Fall back to in-memory presets
     if (!source) {
-      const preset = SYSTEM_TEMPLATE_PRESETS.find((p) => p.id === presetId);
+      // Search both vertical packs — the preset id is globally
+      // unique across files, and "clone this preset" still works even
+      // if an admin bookmarks a preset id outside their own vertical.
+      const preset =
+        SYSTEM_TEMPLATE_PRESETS.find((p) => p.id === presetId) ||
+        FITNESS_TEMPLATE_PRESETS.find((p) => p.id === presetId);
       if (!preset) {
         throw new HttpException('Preset not found', HttpStatus.NOT_FOUND);
       }

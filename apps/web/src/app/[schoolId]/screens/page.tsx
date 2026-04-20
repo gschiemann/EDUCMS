@@ -180,19 +180,14 @@ export default function ScreensPage() {
               <MapIcon className="w-3.5 h-3.5" /> Map
             </button>
           </div>
-          {/* Tenant-wide OTA push. Fires a signed WebSocket message to
-              every paired kiosk; each Android shell (APK ≥ 1.0.6) picks
-              it up and runs an immediate OtaUpdateWorker check. Older
-              APKs ignore the message and update on their own 6h tick. */}
-          <button
-            onClick={() => handlePushApkUpdate()}
-            disabled={forceApkUpdate.isPending}
-            title="Tell every paired kiosk to check for an APK update right now"
-            className="px-4 py-2 bg-slate-800 hover:bg-slate-900 disabled:opacity-60 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2"
-          >
-            {forceApkUpdate.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            Push APK update
-          </button>
+          {/* Per-device OTA push lives inline on each row (download
+              icon, hover-visible). Intentionally no tenant-wide
+              "Push to all kiosks" button — the blast version was loud
+              and duplicated the per-row action; if an operator wants
+              to update all screens they can still do it one click per
+              row, which matches the audit-trail pattern used
+              elsewhere (one force-update log per device, not a vague
+              "sent to everyone"). */}
           <button onClick={() => { setShowPairModal(true); setPairGroupId(''); setPairCode(''); setPairName(''); setPairError(''); }}
             className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2">
             <Wifi className="w-4 h-4" /> Pair Screen
