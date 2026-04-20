@@ -124,24 +124,16 @@
 
   /* Citation card */
   .citation {
-    margin-top: 18px;
+    margin-top: 24px;
     background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
     border: 5px solid #fbbf24;
     border-radius: 20px;
-    padding: 18px 40px 22px;
+    padding: 22px 40px 26px;
     text-align: center;
     color: #1f2937;
     box-shadow: 0 20px 40px rgba(0,0,0,.4), 0 0 0 3px rgba(251,191,36,.3);
     position: relative;
     max-width: 500px;
-    /* Container-queries on the citation so the reason text inside
-       scales with available height. No hard max-height / no clip:
-       as admin types more, the reason font-size shrinks proportionally
-       and nothing gets cut off. Breathing buffer below via
-       margin-bottom reserved against the stats row. */
-    container-type: size;
-    min-height: 180px;
-    max-height: 260px;
     animation: as-cardFloat 5s ease-in-out infinite;
   }
   @keyframes as-cardFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
@@ -165,6 +157,13 @@
   .citation .reason {
     font-family: 'Caveat', cursive; font-weight: 700; font-size: 30px; color: #92400e;
     line-height: 1.2; margin-top: 6px;
+    /* small buffer: cap at 3 lines so a long reason can't creep past
+       the yellow border into the stats row. Ellipsis at line 3 if the
+       admin types more. */
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 
   /* Honor-roll strip on left + right */
