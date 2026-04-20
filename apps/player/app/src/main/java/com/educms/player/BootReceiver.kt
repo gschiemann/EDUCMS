@@ -24,6 +24,12 @@ class BootReceiver : BroadcastReceiver() {
         if (action !in BOOT_ACTIONS) return
         Log.i("BootReceiver", "Boot detected ($action) — routing to player")
 
+        // Bring up the foreground services BEFORE the activity so the
+        // dashboard sees ONLINE the moment the kiosk boots, even if the
+        // activity launch is briefly delayed by display init.
+        com.educms.player.heartbeat.HeartbeatService.ensureRunning(context.applicationContext)
+        com.educms.player.watchdog.Watchdog.arm(context.applicationContext)
+
         // Async lookup — DataStore is suspend-only. Use a goAsync pattern via
         // a one-shot coroutine; BroadcastReceiver lifecycle gives us ~10s.
         val pendingResult = goAsync()

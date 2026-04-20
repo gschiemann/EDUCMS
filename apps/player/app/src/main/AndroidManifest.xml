@@ -8,7 +8,16 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Android 14+ requires a typed FGS permission. dataSync covers the
+         heartbeat ping payload; if we ever add live audio/video capture
+         we'd need 'mediaProjection' or similar. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- OTA self-install. Without this the install intent silently no-ops
+         on Android 8+. Tenant must accept the install prompt OR set us
+         as the default installer via `pm set-installer com.educms.player`
+         (one-shot ADB), which makes installs silent.  -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- USB OTG sneakernet ingest (Sprint 7B) — Android 7+ supports USB host mode -->
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
@@ -99,6 +108,42 @@
             android:launchMode="singleTask"
             android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.EduCmsPlayer" />
+
+        <!-- Foreground heartbeat service. Pings /screens/status every 30s
+             so the dashboard sees ONLINE; foregroundServiceType=dataSync
+             is the Android 14 contract for periodic network jobs. -->
+        <service
+            android:name=".heartbeat.HeartbeatService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- Watchdog alarm receiver — fires every 15min to ensure
+             HeartbeatService + the kiosk activity are alive even after
+             OEM battery-saver kills. -->
+        <receiver
+            android:name=".watchdog.WatchdogReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.educms.player.WATCHDOG_TICK" />
+            </intent-filter>
+        </receiver>
+
+        <!-- FileProvider for the OTA install intent. Android 7+ refuses
+             to grant install permission to a file:// uri; everything must
+             be served from a content://<authority>/<path> via FileProvider.
+             The xml/file_paths.xml whitelist exposes only our private
+             external-files /updates dir, never the rest of the device. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 </manifest>

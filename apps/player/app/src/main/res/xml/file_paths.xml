@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FileProvider whitelist. Only the OTA download dir is exposed via
+  content:// URIs — never the full app sandbox, never external storage,
+  never SD card. Android grants the install intent read access to
+  exactly this one directory.
+-->
+<paths>
+    <!-- Maps to: getExternalFilesDir(null) + /updates  -->
+    <external-files-path
+        name="updates"
+        path="updates/" />
+</paths>
