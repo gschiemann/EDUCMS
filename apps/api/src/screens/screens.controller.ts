@@ -432,6 +432,16 @@ export class ScreensController {
       return res.status(403).json({ error: 'Device invalid or revoked' });
     }
 
+    // Any successful manifest fetch means the device is alive + talking
+    // to us — touch lastPingAt so the dashboard list endpoint (which
+    // derives ONLINE/OFFLINE from lastPingAt < 2min) reflects reality
+    // without depending on the older web-player bundle that only polls
+    // /screens/status/:fp. Non-blocking — if Prisma hiccups we still
+    // return the manifest; next fetch will update.
+    this.prisma.client.screen
+      .update({ where: { id: screen.id }, data: { lastPingAt: new Date() } })
+      .catch(() => { /* non-fatal; next manifest fetch will retry */ });
+
     // MED-1 audit fix: tenant-scope the read so a user from Tenant A can't
     // fetch Tenant B's manifest by guessing the screen UUID. Three valid
     // callers:
