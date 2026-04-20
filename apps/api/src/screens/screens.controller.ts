@@ -210,23 +210,23 @@ export class ScreensController {
     // `status` column only flips on register/pair/ping and never back,
     // so a player that dies silently was showing ONLINE forever. Two
     // minutes matches the heartbeat cadence (30s) + 4x grace.
-    const STALE_MS = 2 * 60 * 1000;
+    // Near-real-time fleet status. Heartbeat cadence is 30s; grace is
+    // 45s so a SINGLE missed ping flips a screen OFFLINE. Combined with
+    // the dashboard's 10s refetch, worst case lag between device-dies
+    // and admin-sees-OFFLINE is ~55s.
+    const STALE_MS = 45 * 1000;
     const now = Date.now();
     return rows.map((s) => {
-      // If a device is actively pinging (within 2min) it's ONLINE
-      // regardless of what the stored status column says. This covers
-      // the case where an admin paired the screen but the stored status
-      // was never bumped from PENDING to ONLINE (happens when the
-      // player registered first, the admin paired via code, and the
-      // pair handler forgot to bump status — Nova Taurus board
-      // reported as PENDING even though playing).
-      // REVOKED trumps all — a revoked device stays revoked.
+      // If a device is actively pinging, mark ONLINE regardless of
+      // stored column. If stale, flip to OFFLINE unless the stored
+      // state is something stronger (PENDING means never paired, keep;
+      // REVOKED trumps all; ONLINE that's gone stale becomes OFFLINE).
       let liveStatus: string = s.status;
       if (s.status !== 'REVOKED') {
         const last = s.lastPingAt ? new Date(s.lastPingAt).getTime() : 0;
         const isAlive = last && (now - last) < STALE_MS;
         if (isAlive && s.tenantId) liveStatus = 'ONLINE';
-        else if (s.status === 'ONLINE') liveStatus = 'OFFLINE';
+        else if (s.status === 'ONLINE' || s.tenantId) liveStatus = 'OFFLINE';
       }
       return { ...s, status: liveStatus };
     });

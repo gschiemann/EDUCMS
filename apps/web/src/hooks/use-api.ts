@@ -73,10 +73,15 @@ export function useScreens() {
     // within this single query, so there's no duplicate polling.
     // Also refetch on window focus so switching back to the tab updates
     // immediately instead of showing stale state.
-    refetchInterval: 15_000,
+    // Near-real-time fleet status: dashboard polls every 10s so the
+    // admin sees state changes within ~10s of them happening on the
+    // wire (API-side staleness threshold is 45s). Combined worst case:
+    // device dies → server marks OFFLINE on next list call → dashboard
+    // picks it up within 10s = ~55s total lag.
+    refetchInterval: 10_000,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
-    staleTime: 10_000,
+    staleTime: 5_000,
   });
 }
 
