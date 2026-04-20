@@ -359,16 +359,21 @@ export function AnimatedCafeteriaElementaryWidget({ config, live }: { config: Cf
           </div>
         </div>
 
-        {/* Hotspots — same aw-edit-section contract as Welcome series */}
-        <Hotspot section="header"       x={36}   y={110} w={260}  h={180} />
-        <Hotspot section="header"       x={320}  y={110} w={1300} h={180} />
-        <Hotspot section="header"       x={1660} y={110} w={200}  h={180} />
-        <Hotspot section="special"      x={36}   y={330} w={290}  h={340} />
-        <Hotspot section="menu"         x={350}  y={330} w={1220} h={590} />
-        <Hotspot section="countdown"    x={1594} y={330} w={290}  h={340} />
-        <Hotspot section="chef"         x={36}   y={680} w={290}  h={240} />
-        <Hotspot section="birthdays"    x={1594} y={680} w={290}  h={240} />
-        <Hotspot section="ticker"       x={0}    y={970} w={1920} h={110} />
+        {/* Hotspots — builder-only, gated on !isLive so published
+            content doesn't leak edit affordances onto the signage. */}
+        {!isLive && (
+          <>
+            <Hotspot section="header"       x={36}   y={110} w={260}  h={180} />
+            <Hotspot section="header"       x={320}  y={110} w={1300} h={180} />
+            <Hotspot section="header"       x={1660} y={110} w={200}  h={180} />
+            <Hotspot section="special"      x={36}   y={330} w={290}  h={340} />
+            <Hotspot section="menu"         x={350}  y={330} w={1220} h={590} />
+            <Hotspot section="countdown"    x={1594} y={330} w={290}  h={340} />
+            <Hotspot section="chef"         x={36}   y={680} w={290}  h={240} />
+            <Hotspot section="birthdays"    x={1594} y={680} w={290}  h={240} />
+            <Hotspot section="ticker"       x={0}    y={970} w={1920} h={110} />
+          </>
+        )}
       </div>
     </div>
   );

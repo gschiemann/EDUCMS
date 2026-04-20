@@ -505,30 +505,34 @@ export function AnimatedWelcomeWidget({ config, live }: { config: Cfg; live?: bo
         </div>
 
         {/* ───── Click hotspots ──────────────────────────────────────
-            Transparent overlays sized to each visual section. Clicking
-            one fires a CustomEvent the PropertiesPanel listens for, so
-            the relevant editor section scrolls into view + briefly
-            highlights. Lets the user click "the birthday cluster" in
-            the preview and immediately see the names field, instead
-            of hunting through 16 fields in the side panel.
-            Positioned in canvas coordinates so they scale with the
-            rest of the scene. */}
-        {/* Logo (left of header) — small dedicated hotspot so a click
-            on the apple opens the Header section without grabbing the
-            whole top strip. */}
-        <Hotspot section="header"       x={36}   y={28}  w={216}  h={195} />
-        {/* Title block — center of the header */}
-        <Hotspot section="header"       x={264}  y={28}  w={1392} h={195} />
-        {/* Clock — small dedicated hotspot at the right of the header.
-            Routes to 'header' because the clock has no editable config
-            of its own; clicking it lands on the header section anyway. */}
-        <Hotspot section="header"       x={1668} y={28}  w={216}  h={195} />
-        <Hotspot section="weather"      x={36}   y={270} w={380}  h={310} />
-        <Hotspot section="announcement" x={444}  y={270} w={1112} h={650} />
-        <Hotspot section="countdown"    x={1504} y={270} w={380}  h={310} />
-        <Hotspot section="teacher"      x={36}   y={608} w={380}  h={312} />
-        <Hotspot section="birthdays"    x={1504} y={608} w={380}  h={312} />
-        <Hotspot section="ticker"       x={0}    y={970} w={1920} h={110} />
+            Transparent overlays for the BUILDER ONLY — clicking a
+            hotspot fires a CustomEvent the PropertiesPanel listens for
+            so the matching editor section scrolls into view. When the
+            widget is rendered on a paired screen / published player
+            (live=true), the hotspots must NOT be there: they steal
+            pointer/keyboard events from content underneath (ticker,
+            video clicks, touch) and show the 'button' role to screen
+            readers on a signage display that isn't actually interactive.
+            Gated on !isLive below — user found published content was
+            still showing edit hotspots after publishing. */}
+        {!isLive && (
+          <>
+            {/* Logo (left of header) — small dedicated hotspot so a click
+                on the apple opens the Header section without grabbing the
+                whole top strip. */}
+            <Hotspot section="header"       x={36}   y={28}  w={216}  h={195} />
+            {/* Title block — center of the header */}
+            <Hotspot section="header"       x={264}  y={28}  w={1392} h={195} />
+            {/* Clock — small dedicated hotspot at the right of the header. */}
+            <Hotspot section="header"       x={1668} y={28}  w={216}  h={195} />
+            <Hotspot section="weather"      x={36}   y={270} w={380}  h={310} />
+            <Hotspot section="announcement" x={444}  y={270} w={1112} h={650} />
+            <Hotspot section="countdown"    x={1504} y={270} w={380}  h={310} />
+            <Hotspot section="teacher"      x={36}   y={608} w={380}  h={312} />
+            <Hotspot section="birthdays"    x={1504} y={608} w={380}  h={312} />
+            <Hotspot section="ticker"       x={0}    y={970} w={1920} h={110} />
+          </>
+        )}
       </div>
     </div>
   );

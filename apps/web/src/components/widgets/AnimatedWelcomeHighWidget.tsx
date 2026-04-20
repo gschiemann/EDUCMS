@@ -376,18 +376,20 @@ export function AnimatedWelcomeHighWidget({ config, live }: { config: Cfg; live?
           </div>
         </div>
 
-        {/* Hotspots — same aw-edit-section event the existing
-            PropertiesPanel listener handles. Section keys match the
-            editor's SH() ids (aw-section-header / weather / etc.). */}
-        <Hotspot section="header"       x={36}   y={36}  w={220}  h={220} />
-        <Hotspot section="header"       x={284}  y={36}  w={1352} h={220} />
-        <Hotspot section="header"       x={1664} y={36}  w={220}  h={220} />
-        <Hotspot section="weather"      x={36}   y={290} w={320}  h={320} />
-        <Hotspot section="announcement" x={384}  y={290} w={1152} h={650} />
-        <Hotspot section="countdown"    x={1564} y={290} w={320}  h={320} />
-        <Hotspot section="teacher"      x={36}   y={620} w={320}  h={320} />
-        <Hotspot section="birthdays"    x={1564} y={620} w={320}  h={320} />
-        <Hotspot section="ticker"       x={0}    y={970} w={1920} h={110} />
+        {/* Hotspots — builder-only, gated on !isLive. */}
+        {!isLive && (
+          <>
+            <Hotspot section="header"       x={36}   y={36}  w={220}  h={220} />
+            <Hotspot section="header"       x={284}  y={36}  w={1352} h={220} />
+            <Hotspot section="header"       x={1664} y={36}  w={220}  h={220} />
+            <Hotspot section="weather"      x={36}   y={290} w={320}  h={320} />
+            <Hotspot section="announcement" x={384}  y={290} w={1152} h={650} />
+            <Hotspot section="countdown"    x={1564} y={290} w={320}  h={320} />
+            <Hotspot section="teacher"      x={36}   y={620} w={320}  h={320} />
+            <Hotspot section="birthdays"    x={1564} y={620} w={320}  h={320} />
+            <Hotspot section="ticker"       x={0}    y={970} w={1920} h={110} />
+          </>
+        )}
       </div>
     </div>
   );

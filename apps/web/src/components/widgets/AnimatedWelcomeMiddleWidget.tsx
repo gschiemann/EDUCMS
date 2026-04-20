@@ -357,16 +357,20 @@ export function AnimatedWelcomeMiddleWidget({ config, live }: { config: Cfg; liv
           </div>
         </div>
 
-        {/* Click hotspots — same aw-edit-section contract as elementary */}
-        <Hotspot section="header"       x={36}   y={110} w={200}  h={220} />
-        <Hotspot section="header"       x={260}  y={110} w={1400} h={220} />
-        <Hotspot section="header"       x={1684} y={110} w={200}  h={220} />
-        <Hotspot section="weather"      x={36}   y={360} w={320}  h={295} />
-        <Hotspot section="announcement" x={380}  y={360} w={1160} h={590} />
-        <Hotspot section="countdown"    x={1564} y={360} w={320}  h={295} />
-        <Hotspot section="teacher"      x={36}   y={660} w={320}  h={290} />
-        <Hotspot section="birthdays"    x={1564} y={660} w={320}  h={290} />
-        <Hotspot section="ticker"       x={0}    y={970} w={1920} h={110} />
+        {/* Click hotspots — builder-only, gated on !isLive. */}
+        {!isLive && (
+          <>
+            <Hotspot section="header"       x={36}   y={110} w={200}  h={220} />
+            <Hotspot section="header"       x={260}  y={110} w={1400} h={220} />
+            <Hotspot section="header"       x={1684} y={110} w={200}  h={220} />
+            <Hotspot section="weather"      x={36}   y={360} w={320}  h={295} />
+            <Hotspot section="announcement" x={380}  y={360} w={1160} h={590} />
+            <Hotspot section="countdown"    x={1564} y={360} w={320}  h={295} />
+            <Hotspot section="teacher"      x={36}   y={660} w={320}  h={290} />
+            <Hotspot section="birthdays"    x={1564} y={660} w={320}  h={290} />
+            <Hotspot section="ticker"       x={0}    y={970} w={1920} h={110} />
+          </>
+        )}
       </div>
     </div>
   );
