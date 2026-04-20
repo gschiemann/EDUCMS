@@ -194,31 +194,33 @@ export function Sidebar() {
               </Link>
             );
           })}
+
+          {/* Emergency trigger — sits right under the last nav item
+              (Audit Log for admins, Settings otherwise), matching the
+              live-preview mockup. Keeps it in the eye-scan-path of the
+              menu rather than buried at the bottom. */}
+          <RoleGate allowedRoles={['admin']}>
+            <div className="pt-3 mt-3 border-t border-slate-100">
+              {isEmergencyActive ? (
+                <div className="w-full px-4 py-3 rounded-2xl bg-red-600 text-white text-sm font-bold flex items-center gap-2 shadow-lg shadow-red-600/20 animate-pulse">
+                  <ShieldAlert className="w-5 h-5" />
+                  Emergency Active
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setEmergencyModalOpen(true)}
+                  className="w-full px-4 py-3 rounded-2xl bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-red-600/20 transition-colors focus:outline-none focus:ring-2 focus:ring-red-400"
+                >
+                  <ShieldAlert className="w-5 h-5" />
+                  Emergency
+                </button>
+              )}
+            </div>
+          </RoleGate>
         </nav>
 
         <div className="px-4 pb-5 space-y-2">
-          {/* Emergency trigger — moved from the top toolbar to a
-              prominent sidebar placement. Emergency is the load-bearing
-              action in this product; it should be big, red, and always
-              thumb-reachable without hunting in a corner. */}
-          <RoleGate allowedRoles={['admin']}>
-            {isEmergencyActive ? (
-              <div className="w-full px-4 py-3 rounded-2xl bg-red-600 text-white text-sm font-bold flex items-center gap-2 shadow-lg shadow-red-600/20 animate-pulse">
-                <ShieldAlert className="w-5 h-5" />
-                Emergency Active
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setEmergencyModalOpen(true)}
-                className="w-full px-4 py-3 rounded-2xl bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-red-600/20 transition-colors focus:outline-none focus:ring-2 focus:ring-red-400"
-              >
-                <ShieldAlert className="w-5 h-5" />
-                Emergency
-              </button>
-            )}
-          </RoleGate>
-
           {/* User info + Logout */}
           <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white text-[10px] font-bold shrink-0 shadow-sm" suppressHydrationWarning>

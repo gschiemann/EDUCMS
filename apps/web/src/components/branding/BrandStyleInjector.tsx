@@ -59,6 +59,13 @@ export function BrandStyleInjector() {
     return () => {
       cancelled = true;
       window.removeEventListener('branding:update', onUpdate as EventListener);
+      // Reset tenant CSS vars on unmount — when the user signs out and
+      // the dashboard unmounts, the public marketing site / login must
+      // render in the vendor's default palette (not the last tenant's
+      // red theme). Without this the style attributes the injector wrote
+      // to document.documentElement persist for the lifetime of the
+      // page load.
+      resetBranding();
     };
   }, [activeTenant, token]);
 

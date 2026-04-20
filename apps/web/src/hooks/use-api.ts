@@ -67,6 +67,16 @@ export function useScreens() {
   return useQuery({
     queryKey: ['screens'],
     queryFn: () => apiFetch('/screens'),
+    // Auto-refresh so a screen coming back online flips from OFFLINE to
+    // ONLINE in the dashboard without a manual reload. 15s balances
+    // freshness with backend load; screens page + dashboard both render
+    // within this single query, so there's no duplicate polling.
+    // Also refetch on window focus so switching back to the tab updates
+    // immediately instead of showing stale state.
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    staleTime: 10_000,
   });
 }
 

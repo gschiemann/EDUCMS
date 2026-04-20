@@ -9,6 +9,7 @@ import { TopToolbar } from './TopToolbar';
 import { EmergencyOverlay } from './EmergencyOverlay';
 import { useTenantStatus } from '@/hooks/use-api';
 import { AppDialogHost } from '@/components/ui/app-dialog';
+import { BrandStyleInjector } from '@/components/branding/BrandStyleInjector';
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const isEmergencyActive = useAppStore((state) => state.isEmergencyActive);
@@ -57,6 +58,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen w-full bg-slate-50 overflow-hidden text-slate-900 font-sans relative">
+      {/* Tenant brand paint — scoped to authed dashboard only so the
+          public marketing site + /login stay in the vendor palette. */}
+      <BrandStyleInjector />
       {/* Skip-to-content link — visible only on focus */}
       <a
         href="#main-content"
