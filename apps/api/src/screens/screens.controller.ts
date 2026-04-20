@@ -186,10 +186,24 @@ export class ScreensController {
   @Get()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   async list(@Request() req: any) {
-    return this.prisma.client.screen.findMany({
+    const rows = await this.prisma.client.screen.findMany({
       where: { tenantId: req.user.tenantId },
       include: { screenGroup: { select: { id: true, name: true } } },
       orderBy: { name: 'asc' },
+    });
+    // Compute live online/offline from lastPingAt recency. The stored
+    // `status` column only flips on register/pair/ping and never back,
+    // so a player that dies silently was showing ONLINE forever. Two
+    // minutes matches the heartbeat cadence (30s) + 4x grace.
+    const STALE_MS = 2 * 60 * 1000;
+    const now = Date.now();
+    return rows.map((s) => {
+      let liveStatus: string = s.status;
+      if (s.status === 'ONLINE' || s.status === 'OFFLINE') {
+        const last = s.lastPingAt ? new Date(s.lastPingAt).getTime() : 0;
+        liveStatus = last && now - last < STALE_MS ? 'ONLINE' : 'OFFLINE';
+      }
+      return { ...s, status: liveStatus };
     });
   }
 

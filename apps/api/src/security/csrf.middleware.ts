@@ -95,6 +95,22 @@ export class CsrfMiddleware implements NestMiddleware {
       return next();
     }
 
+    // sec-fix(wave1.1): Requests bearing `Authorization: Bearer <jwt>` are
+    // not vulnerable to CSRF. Browsers never attach a Bearer header
+    // automatically to cross-site requests — only JS on the same origin
+    // that has the token can do so. CSRF's threat model is ambient
+    // credentials (cookies, HTTP basic, client certs), not explicit ones.
+    //
+    // This unblocks cross-origin deployments (Vercel web → Railway API)
+    // where the `csrf-token` cookie is third-party and gets dropped by
+    // Safari ITP / Chrome third-party-cookie phaseout — which surfaced
+    // as "every mutation 403s" on production. Cookie-session flows still
+    // get full CSRF enforcement.
+    const authHeader = req.headers.authorization;
+    if (typeof authHeader === 'string' && /^Bearer\s+\S+/i.test(authHeader)) {
+      return next();
+    }
+
     const cookieToken = req.cookies?.[CSRF_COOKIE_NAME];
     const headerRaw = req.headers[CSRF_HEADER_NAME];
     const headerToken = Array.isArray(headerRaw) ? headerRaw[0] : headerRaw;

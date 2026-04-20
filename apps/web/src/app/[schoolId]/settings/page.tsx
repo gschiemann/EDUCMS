@@ -40,7 +40,7 @@ export default function SettingsPage() {
   const [showAddUser, setShowAddUser] = useState(false);
   const [newEmail, setNewEmail] = useState('');
   const [newRole, setNewRole] = useState<string>('CONTRIBUTOR');
-  const [inviteStatus, setInviteStatus] = useState<{ kind: 'ok' | 'err'; message: string } | null>(null);
+  const [inviteStatus, setInviteStatus] = useState<{ kind: 'ok' | 'err' | 'copy'; message: string; acceptUrl?: string } | null>(null);
   const inviteEmailRef = useRef<HTMLInputElement>(null);
 
   // Focus invite email input when the add-user form opens
@@ -54,10 +54,21 @@ export default function SettingsPage() {
     if (!newEmail.trim()) return;
     setInviteStatus(null);
     try {
-      await inviteUser.mutateAsync({ email: newEmail.trim(), role: newRole });
-      setInviteStatus({ kind: 'ok', message: `Invitation sent to ${newEmail.trim()}.` });
+      const res: any = await inviteUser.mutateAsync({ email: newEmail.trim(), role: newRole });
+      // API returns { acceptUrl, emailDelivered }. If email isn't wired up
+      // we surface the accept link so the admin can paste it into their own
+      // email / Slack rather than the invite disappearing into the void.
+      if (res?.emailDelivered === false && res?.acceptUrl) {
+        setInviteStatus({
+          kind: 'copy',
+          message: `Invitation created for ${newEmail.trim()}. Email isn't configured yet — copy this link and send it to them:`,
+          acceptUrl: res.acceptUrl,
+        });
+      } else {
+        setInviteStatus({ kind: 'ok', message: `Invitation sent to ${newEmail.trim()}.` });
+        setShowAddUser(false);
+      }
       setNewEmail('');
-      setShowAddUser(false);
     } catch (err: any) {
       setInviteStatus({ kind: 'err', message: err?.message || 'Could not send invitation.' });
     }
@@ -195,9 +206,28 @@ export default function SettingsPage() {
             <div className={`px-6 py-2.5 text-xs font-medium border-b ${
               inviteStatus.kind === 'ok'
                 ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                : 'bg-red-50 text-red-700 border-red-100'
+                : inviteStatus.kind === 'copy'
+                  ? 'bg-amber-50 text-amber-900 border-amber-200'
+                  : 'bg-red-50 text-red-700 border-red-100'
             }`}>
-              {inviteStatus.message}
+              <div>{inviteStatus.message}</div>
+              {inviteStatus.kind === 'copy' && inviteStatus.acceptUrl && (
+                <div className="flex items-center gap-2 mt-2">
+                  <input
+                    readOnly
+                    value={inviteStatus.acceptUrl}
+                    onFocus={(e) => e.currentTarget.select()}
+                    className="flex-1 px-2 py-1.5 text-[11px] font-mono bg-white border border-amber-300 rounded"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => { navigator.clipboard?.writeText(inviteStatus.acceptUrl || ''); }}
+                    className="px-3 py-1.5 text-[11px] font-semibold rounded bg-amber-600 hover:bg-amber-700 text-white"
+                  >
+                    Copy link
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

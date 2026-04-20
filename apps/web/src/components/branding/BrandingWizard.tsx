@@ -171,6 +171,15 @@ export function BrandingWizard({ mode, initial, onAdopted }: BrandingWizardProps
         method: 'POST',
         body: JSON.stringify(payload),
       });
+      // Belt-and-suspenders: dispatch the live-update event AND seed the
+      // LS cache BrandStyleInjector reads on mount. Previously, if the
+      // user navigated before the event fired (e.g. onAdopted redirect),
+      // the next render repainted from empty cache and fell back to
+      // defaults until the next /branding/me poll. Writing the cache
+      // here guarantees the next route renders with the new theme.
+      try {
+        localStorage.setItem('edu-cms-branding-cache-v1', JSON.stringify(res.branding));
+      } catch {}
       pushBrandingPreview(res.branding);
       onAdopted?.(res.branding);
     } catch (e: any) {

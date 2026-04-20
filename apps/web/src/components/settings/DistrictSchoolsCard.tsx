@@ -10,7 +10,7 @@
  * sees "Add a gym," and a school district admin sees "Add a school."
  * One UI, every industry. Pulled from Tenant.vertical (K12 default).
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api-client';
 import { useAppStore } from '@/lib/store';
@@ -160,6 +160,10 @@ export function DistrictSchoolsCard() {
     }
   };
 
+  // Was a plain object declared in function body — re-created every render,
+  // so `lastAutoSlug.current` was always '' after the first character and
+  // the slug froze at one letter. useRef persists across renders.
+  const lastAutoSlug = useRef('');
   const onNameChange = (v: string) => {
     setName(v);
     const auto = v.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
@@ -168,7 +172,6 @@ export function DistrictSchoolsCard() {
       lastAutoSlug.current = auto;
     }
   };
-  const lastAutoSlug = { current: '' } as { current: string };
 
   if (!visible) return null;
 

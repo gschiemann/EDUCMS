@@ -270,7 +270,26 @@ export class OnboardingService {
       inviteToken: token,
     });
 
-    return { id: invite.id, email, role, expiresAt };
+    // Email dispatch is a stub in most deployments (no SMTP/Resend/SendGrid
+    // wired up yet). Return the accept URL to the caller so the admin can
+    // copy + send it manually — otherwise invited users never learn they
+    // were invited. Once a transactional email provider is configured,
+    // the UI can hide the "copy link" panel based on EMAIL_PROVIDER env.
+    const baseUrl =
+      process.env.PUBLIC_WEB_URL ||
+      process.env.NEXT_PUBLIC_WEB_URL ||
+      process.env.ALLOWED_ORIGINS?.split(',')[0]?.trim() ||
+      '';
+    const acceptUrl = baseUrl ? `${baseUrl.replace(/\/$/, '')}/accept-invite/${token}` : `/accept-invite/${token}`;
+
+    return {
+      id: invite.id,
+      email,
+      role,
+      expiresAt,
+      acceptUrl,
+      emailDelivered: !!process.env.EMAIL_PROVIDER,
+    };
   }
 
   async getInvitePreview(token: string) {
