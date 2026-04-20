@@ -23,13 +23,16 @@ export function useScreenGroups() {
     queryFn: () => apiFetch('/screen-groups'),
     // The Screens page renders screen status from the nested
     // `group.screens[]` (not from /screens), so this query drives the
-    // ONLINE/OFFLINE pills in the grouped list. Same 10s cadence as
-    // useScreens() so the two don't drift; 5s staleTime guarantees a
-    // screen that just changed state flips in the UI within ~10-15s.
+    // ONLINE/OFFLINE pills in the grouped list. 10s cadence + REFETCH
+    // IN BACKGROUND so a tab that's not the active focus (user walked
+    // over to the actual screen to turn it off) still flips the pill
+    // without requiring a hard refresh or window-focus event. staleTime
+    // 0 so every interval hits the network — fleet state changes fast.
     refetchInterval: 10_000,
-    refetchIntervalInBackground: false,
+    refetchIntervalInBackground: true,
     refetchOnWindowFocus: true,
-    staleTime: 5_000,
+    refetchOnReconnect: true,
+    staleTime: 0,
   });
 }
 
@@ -88,9 +91,10 @@ export function useScreens() {
     // device dies → server marks OFFLINE on next list call → dashboard
     // picks it up within 10s = ~55s total lag.
     refetchInterval: 10_000,
-    refetchIntervalInBackground: false,
+    refetchIntervalInBackground: true,
     refetchOnWindowFocus: true,
-    staleTime: 5_000,
+    refetchOnReconnect: true,
+    staleTime: 0,
   });
 }
 
