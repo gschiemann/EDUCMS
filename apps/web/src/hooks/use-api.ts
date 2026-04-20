@@ -697,6 +697,23 @@ export function useUpdateScreenLocation() {
   });
 }
 
+// ─── Push an OTA APK update check to kiosks ───
+// Publishes a signed CHECK_FOR_UPDATES WebSocket message that the
+// Android shell relays to its native OtaUpdateWorker. Pass a screenId
+// to target a single kiosk, or omit it to fan out to every screen in
+// the tenant. Requires APK ≥ 1.0.6 on the receiving side; older APKs
+// ignore the event and update on their next 6h periodic poll.
+export function useForceApkUpdate() {
+  return useMutation({
+    mutationFn: async (args: { screenId?: string | null } = {}) => {
+      const path = args.screenId
+        ? `/screens/${args.screenId}/force-update`
+        : `/screens/force-update`;
+      return apiFetch(path, { method: 'POST' });
+    },
+  });
+}
+
 // ─── License + billing (Sprint 7E) ───
 export type LicenseSummary = {
   tier: string;

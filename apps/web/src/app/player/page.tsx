@@ -866,6 +866,36 @@ function PlayerPage() {
             if (msg.type === 'SYNC' || msg.type === 'OVERRIDE' || msg.type === 'ALL_CLEAR') {
               fetchContent();
             }
+            // Admin hit "Push APK update" in the dashboard. Messages are
+            // fanned out to the whole tenant channel; we only act if
+            // this device is actually targeted.
+            //   payload.scope === 'tenant' → every kiosk in the tenant
+            //   payload.scope === 'screen' + scopeId matches this screen
+            // If we're NOT running inside the Android kiosk shell, the
+            // bridge isn't present — plain browser players just log + no-op.
+            if (msg.type === 'CHECK_FOR_UPDATES') {
+              const pl = msg.payload || msg;
+              const scope = pl?.scope;
+              const scopeId = pl?.scopeId;
+              const targetsUs =
+                scope === 'tenant' ||
+                (scope === 'screen' && screenId && scopeId === screenId);
+              if (!targetsUs) {
+                console.log('[Player] CHECK_FOR_UPDATES ignored — not our scope', scope, scopeId);
+              } else {
+                try {
+                  const bridge = (window as any).EduCmsNative;
+                  if (bridge && typeof bridge.checkForUpdates === 'function') {
+                    const v = bridge.checkForUpdates();
+                    console.log('[Player] CHECK_FOR_UPDATES relayed to native, currentVersion=', v);
+                  } else {
+                    console.log('[Player] CHECK_FOR_UPDATES ignored — no native bridge (browser player)');
+                  }
+                } catch (e) {
+                  console.warn('[Player] CHECK_FOR_UPDATES bridge call failed', e);
+                }
+              }
+            }
           } catch (e) {
             console.error('[Player WS] Parse error:', e);
           }

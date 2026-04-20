@@ -5,9 +5,12 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import android.util.Log
+import android.content.Context
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.educms.player.heartbeat.HeartbeatService
@@ -86,5 +89,33 @@ class PlayerApp : Application() {
 
     companion object {
         const val CHANNEL_HEARTBEAT = "edu_cms_player_heartbeat"
+
+        /**
+         * Fire a one-time OTA check NOW, out of band from the 6h periodic
+         * worker. Used by the "Push APK update" button in the dashboard,
+         * which publishes a CHECK_FOR_UPDATES WebSocket message the web
+         * player receives + relays through the JS bridge
+         * (WebAppBridge.checkForUpdates → this call).
+         * REPLACE policy means repeated button clicks don't pile up queued
+         * checks — only the most recent request runs.
+         */
+        fun fireOtaCheckNow(ctx: Context) {
+            try {
+                val constraints = Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+                val req = OneTimeWorkRequestBuilder<OtaUpdateWorker>()
+                    .setConstraints(constraints)
+                    .build()
+                WorkManager.getInstance(ctx).enqueueUniqueWork(
+                    "edu-ota-check-oneshot",
+                    ExistingWorkPolicy.REPLACE,
+                    req,
+                )
+                Log.i("PlayerApp", "OTA one-shot check enqueued (manual trigger)")
+            } catch (e: Exception) {
+                Log.w("PlayerApp", "fireOtaCheckNow failed", e)
+            }
+        }
     }
 }

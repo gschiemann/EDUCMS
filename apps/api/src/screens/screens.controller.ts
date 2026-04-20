@@ -422,6 +422,78 @@ export class ScreensController {
     return updated;
   }
 
+  // ─── ADMIN: Push an OTA update check to paired screens ───
+  // When an admin clicks "Push APK update" in the dashboard we fire a
+  // signed CHECK_FOR_UPDATES WebSocket message scoped to either one
+  // screen or the whole tenant. The web player's WS handler relays to
+  // the native APK shell via WebAppBridge.checkForUpdates → enqueues a
+  // one-shot OtaUpdateWorker run on the kiosk. Requires APK ≥ 1.0.6
+  // (the bridge method didn't exist before that build); older installs
+  // silently ignore the event and pick up the update on their next
+  // 6h periodic poll instead.
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @Post('force-update')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async forceUpdateAll(@Request() req: any) {
+    const tenantId = req.user.tenantId;
+    if (!tenantId) throw new HttpException('No tenant context', HttpStatus.BAD_REQUEST);
+    const signed = this.signer.signMessage('CHECK_FOR_UPDATES', {
+      scope: 'tenant',
+      scopeId: tenantId,
+      requestedBy: req.user.userId || req.user.id || null,
+    });
+    try {
+      await this.redisService.publish(`tenant:${tenantId}`, signed);
+    } catch (e) {
+      console.warn('[force-update] redis publish failed', (e as Error).message);
+    }
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'FORCE_APK_UPDATE',
+        targetType: 'tenant',
+        targetId: tenantId,
+        tenantId,
+        userId: req.user.id,
+        details: JSON.stringify({ scope: 'tenant' }),
+      },
+    }).catch(() => { /* audit best-effort */ });
+    return { ok: true, scope: 'tenant' };
+  }
+
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @Post(':id/force-update')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async forceUpdateOne(@Request() req: any, @Param('id') id: string) {
+    const screen = await this.prisma.client.screen.findFirst({
+      where: { id, tenantId: req.user.tenantId },
+    });
+    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    const signed = this.signer.signMessage('CHECK_FOR_UPDATES', {
+      scope: 'screen',
+      scopeId: id,
+      tenantId: screen.tenantId,
+      requestedBy: req.user.userId || req.user.id || null,
+    });
+    // Publish on the tenant channel — all kiosks receive, but only the
+    // targeted screen acts on it (the payload includes scopeId).
+    try {
+      await this.redisService.publish(`tenant:${screen.tenantId}`, signed);
+    } catch (e) {
+      console.warn('[force-update one] redis publish failed', (e as Error).message);
+    }
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'FORCE_APK_UPDATE',
+        targetType: 'screen',
+        targetId: id,
+        tenantId: screen.tenantId!,
+        userId: req.user.id,
+        details: JSON.stringify({ scope: 'screen', screenName: screen.name }),
+      },
+    }).catch(() => { /* audit best-effort */ });
+    return { ok: true, scope: 'screen', screenId: id };
+  }
+
   // ─── ADMIN: Delete a screen ───
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Delete(':id')

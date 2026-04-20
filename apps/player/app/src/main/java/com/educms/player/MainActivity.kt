@@ -108,7 +108,8 @@ class MainActivity : ComponentActivity() {
             WebAppBridge(
                 onUnpair = { unpairAndRestart() },
                 onReload = { runOnUiThread { wv.reload() } },
-                getDeviceInfo = { deviceInfoJson() }
+                getDeviceInfo = { deviceInfoJson() },
+                onCheckForUpdates = { PlayerApp.fireOtaCheckNow(applicationContext) },
             ),
             "EduCmsNative"
         )

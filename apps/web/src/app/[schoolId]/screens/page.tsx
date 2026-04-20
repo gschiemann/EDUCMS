@@ -1,7 +1,7 @@
 "use client";
 
-import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon } from 'lucide-react';
-import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation } from '@/hooks/use-api';
+import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2 } from 'lucide-react';
+import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate } from '@/hooks/use-api';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
@@ -53,6 +53,23 @@ export default function ScreensPage() {
   const deleteGroup = useDeleteScreenGroup();
   const deleteScreen = useDeleteScreen();
   const updateScreen = useUpdateScreen();
+  const forceApkUpdate = useForceApkUpdate();
+  const [apkUpdateToast, setApkUpdateToast] = useState<string | null>(null);
+
+  const handlePushApkUpdate = async (screenId?: string, screenName?: string) => {
+    try {
+      await forceApkUpdate.mutateAsync({ screenId });
+      setApkUpdateToast(
+        screenId
+          ? `Update request sent to "${screenName}". Kiosk will pull + install within ~1 min.`
+          : 'Update request sent to every paired kiosk. Each will pull + install within ~1 min.',
+      );
+      setTimeout(() => setApkUpdateToast(null), 6000);
+    } catch (e: any) {
+      setApkUpdateToast(`Push failed: ${e?.message || 'unknown error'}`);
+      setTimeout(() => setApkUpdateToast(null), 8000);
+    }
+  };
 
   // Screens not assigned to any group
   const ungroupedScreens = (allScreens || []).filter((s: any) => !s.screenGroupId);
@@ -163,6 +180,19 @@ export default function ScreensPage() {
               <MapIcon className="w-3.5 h-3.5" /> Map
             </button>
           </div>
+          {/* Tenant-wide OTA push. Fires a signed WebSocket message to
+              every paired kiosk; each Android shell (APK ≥ 1.0.6) picks
+              it up and runs an immediate OtaUpdateWorker check. Older
+              APKs ignore the message and update on their own 6h tick. */}
+          <button
+            onClick={() => handlePushApkUpdate()}
+            disabled={forceApkUpdate.isPending}
+            title="Tell every paired kiosk to check for an APK update right now"
+            className="px-4 py-2 bg-slate-800 hover:bg-slate-900 disabled:opacity-60 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2"
+          >
+            {forceApkUpdate.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            Push APK update
+          </button>
           <button onClick={() => { setShowPairModal(true); setPairGroupId(''); setPairCode(''); setPairName(''); setPairError(''); }}
             className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2">
             <Wifi className="w-4 h-4" /> Pair Screen
@@ -363,6 +393,14 @@ export default function ScreensPage() {
                           title={(screen as any).latitude != null ? `On map: ${(screen as any).address || 'set'}` : 'Set map location'}
                         >
                           <MapPin className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handlePushApkUpdate(screen.id, screen.name)}
+                          disabled={forceApkUpdate.isPending}
+                          title="Push APK update to this screen only"
+                          className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-slate-800 hover:border-slate-300 hover:bg-slate-50 opacity-0 group-hover/item:opacity-100 transition-all shadow-sm disabled:opacity-40"
+                        >
+                          <Download className="w-4 h-4" />
                         </button>
                         <button onClick={() => deleteScreen.mutate(screen.id)}
                           className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 opacity-0 group-hover/item:opacity-100 transition-all shadow-sm">
@@ -612,6 +650,14 @@ export default function ScreensPage() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Toast shown after "Push APK update". Auto-dismisses in 6s. */}
+      {apkUpdateToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 max-w-md animate-in slide-in-from-bottom-4 duration-200">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span className="text-sm font-medium">{apkUpdateToast}</span>
         </div>
       )}
 
