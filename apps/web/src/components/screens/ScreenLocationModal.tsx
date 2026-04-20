@@ -2,42 +2,70 @@
 
 /**
  * ScreenLocationModal — address-autocomplete UI for setting a screen's
- * physical location on the fleet map. Replaces the previous free-text
- * appPrompt that silently failed when Nominatim couldn't geocode the
- * typed string (user saw "nothing happened" because the row saved with
- * address but no lat/lng, so the map filtered it out).
+ * physical location on the fleet map.
+ *
+ * Provider: **Photon** (https://photon.komoot.io). Photon is purpose-
+ * built for partial-string autocomplete over OpenStreetMap — it
+ * returns matches from the first few characters of a street name or
+ * house number. Previous iteration hit Nominatim, which is a full
+ * geocoder (whole-address → coords) NOT an autocomplete. User report:
+ * "i type my home address and it doesnt pick it up...its like its not
+ * picking up numbers" — that's the Nominatim behavior on partial
+ * queries. Photon handles the same input cleanly.
  *
  * Flow:
- *   1. Admin types an address (debounced 300ms).
- *   2. We hit Nominatim's /search endpoint client-side for up to 5
- *      structured suggestions. Each suggestion carries its own lat/lon.
- *   3. Admin picks one; we send lat/lng + the full `display_name` to
- *      PUT /screens/:id/location. No server-side re-geocode needed.
- *   4. If the admin didn't pick a suggestion but typed something, we
- *      do a last-ditch /search?limit=1 on save. If THAT fails we save
- *      address-only + warn the operator the pin won't appear.
+ *   1. Admin types an address (debounced 280ms).
+ *   2. Query Photon /api for up to 5 suggestions. Each feature carries
+ *      its own lat/lng in GeoJSON coordinates [lon, lat].
+ *   3. Admin picks one; we send lat/lng + a readable display string
+ *      to PUT /screens/:id/location. No server-side re-geocode.
+ *   4. If the admin types but doesn't pick, a last-ditch Photon
+ *      limit=1 search runs on Save; still no hit → save address-only
+ *      with a warning.
  *
- * Nominatim usage:
- *   - Free, no API key, no signup. Rate-limited to ~1 req/sec/IP per
- *     their ToS; we debounce 300ms so normal typing stays well under.
- *   - They ask for a descriptive User-Agent, but browsers forbid
- *     setting that header. Instead we pass an `Accept: application/json`
- *     header + our `Referer` is implicit from Vercel, which is the
- *     documented alternate-identification path.
- *   - ToS requires attribution; bottom of the modal links back to the
- *     OSM copyright page.
+ * Free, no API key. OSM attribution linked at the bottom of the modal.
  */
 
 import { useState, useEffect, useRef } from 'react';
 import { Search, MapPin, X, Loader2, CheckCircle2 } from 'lucide-react';
 
+interface PhotonFeature {
+  geometry: { coordinates: [number, number] };
+  properties: {
+    osm_id?: number;
+    name?: string;
+    housenumber?: string;
+    street?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    postcode?: string;
+  };
+}
+
 interface NominatimResult {
-  place_id: number;
+  id: string;
   display_name: string;
   lat: string;
   lon: string;
-  type?: string;
-  class?: string;
+}
+
+function formatPhotonFeature(f: PhotonFeature, idx: number): NominatimResult | null {
+  const [lon, lat] = f.geometry?.coordinates || [];
+  if (typeof lat !== 'number' || typeof lon !== 'number') return null;
+  const p = f.properties || {};
+  const streetLine = [p.housenumber, p.street].filter(Boolean).join(' ') || p.name || '';
+  const cityState = [p.city, p.state].filter(Boolean).join(', ');
+  const tail = [cityState, p.postcode].filter(Boolean).join(' ');
+  const country = p.country && p.country !== 'United States' ? `, ${p.country}` : '';
+  const display_name = [streetLine, tail].filter(Boolean).join(', ') + country;
+  if (!display_name.trim()) return null;
+  return {
+    id: p.osm_id ? `${p.osm_id}-${idx}` : `photon-${idx}-${lat}-${lon}`,
+    display_name,
+    lat: String(lat),
+    lon: String(lon),
+  };
 }
 
 interface Props {
@@ -70,10 +98,13 @@ export function ScreenLocationModal({ screenName, currentAddress, onClose, onSav
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  // Debounced Nominatim search on every keystroke.
+  // Debounced Photon autocomplete on every keystroke. Threshold is
+  // 2 chars so "50" or a partial street name already surfaces
+  // suggestions (Nominatim's 3-char + whole-address requirement was
+  // what made the previous version feel dead).
   useEffect(() => {
     const q = query.trim();
-    if (q.length < 3) {
+    if (q.length < 2) {
       setResults([]);
       setNoMatch(false);
       return;
@@ -90,17 +121,20 @@ export function ScreenLocationModal({ screenName, currentAddress, onClose, onSav
       setNoMatch(false);
       try {
         const r = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&addressdetails=0&limit=5&q=${encodeURIComponent(q)}`,
+          `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=5&lang=en`,
           { headers: { 'Accept': 'application/json' } },
         );
         // If the user already typed more since this request fired,
         // ignore the stale response so we don't overwrite fresh results.
         if (lastQueryRef.current !== q) return;
         if (r.ok) {
-          const data = (await r.json()) as NominatimResult[];
-          const arr = Array.isArray(data) ? data : [];
-          setResults(arr);
-          setNoMatch(arr.length === 0);
+          const data = await r.json() as { features?: PhotonFeature[] };
+          const features = Array.isArray(data?.features) ? data.features : [];
+          const mapped = features
+            .map((f, i) => formatPhotonFeature(f, i))
+            .filter((x): x is NominatimResult => x !== null);
+          setResults(mapped);
+          setNoMatch(mapped.length === 0);
         } else {
           setResults([]);
         }
@@ -109,7 +143,7 @@ export function ScreenLocationModal({ screenName, currentAddress, onClose, onSav
       } finally {
         if (lastQueryRef.current === q) setSearching(false);
       }
-    }, 300);
+    }, 280);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, selected]);
 
@@ -137,19 +171,21 @@ export function ScreenLocationModal({ screenName, currentAddress, onClose, onSav
         onClose();
         return;
       }
-      // User typed but didn't pick — one more server-side geocode attempt.
+      // User typed but didn't pick — one more Photon attempt at limit=1.
       try {
         const r = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`,
+          `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=1&lang=en`,
           { headers: { 'Accept': 'application/json' } },
         );
         if (r.ok) {
-          const data = (await r.json()) as NominatimResult[];
-          if (data[0]) {
+          const data = await r.json() as { features?: PhotonFeature[] };
+          const first = Array.isArray(data?.features) ? data.features[0] : null;
+          const mapped = first ? formatPhotonFeature(first, 0) : null;
+          if (mapped) {
             await onSave({
-              address: data[0].display_name,
-              latitude: parseFloat(data[0].lat),
-              longitude: parseFloat(data[0].lon),
+              address: mapped.display_name,
+              latitude: parseFloat(mapped.lat),
+              longitude: parseFloat(mapped.lon),
             });
             onClose();
             return;
@@ -232,7 +268,7 @@ export function ScreenLocationModal({ screenName, currentAddress, onClose, onSav
               className="absolute z-10 top-full left-0 right-0 mt-1 bg-white rounded-xl border border-slate-200 shadow-xl max-h-64 overflow-y-auto"
             >
               {results.map((r) => (
-                <div key={r.place_id} role="option" aria-selected={false}>
+                <div key={r.id} role="option" aria-selected={false}>
                   <button
                     type="button"
                     onClick={() => pick(r)}

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Component, ReactNode } from 'react';
 import '@/components/widgets/variants-register'; // Boot-time registration for custom themes
 import { MonitorPlay, Wifi, WifiOff, AlertTriangle, Loader2, Settings, CheckCircle2, HardDrive, Cpu, Server, Network, Play, Monitor, Info, Power } from 'lucide-react';
+import { KioskSplash } from '@/components/player/KioskSplash';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import {
   registerOfflineCache,
@@ -1264,73 +1265,53 @@ function PlayerPage() {
     return true;
   }, []);
 
+  // Shared splash resolution string — used by all three pre-content phases.
+  const splashResolution = typeof window !== 'undefined'
+    ? (() => {
+        const qp = new URLSearchParams(window.location.search);
+        const w = parseInt(qp.get('w') || '0', 10) || window.screen.width;
+        const h = parseInt(qp.get('h') || '0', 10) || window.screen.height;
+        return `${w}×${h}`;
+      })()
+    : null;
+
   // ─── Render: Registering ───
   if (phase === 'registering') {
     return (
-      <div className="fixed inset-0 bg-slate-950 flex flex-col items-center justify-center">
-        <Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-4" />
-        <p className="text-xl text-white font-medium">Registering device...</p>
-      </div>
+      <KioskSplash
+        mode="registering"
+        brandName={brandName}
+        resolution={splashResolution}
+      />
     );
   }
 
   // ─── Render: Pairing Code Screen ───
   if (phase === 'pairing') {
     return (
-      <div className="fixed inset-0 bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-950 flex flex-col items-center justify-center">
-        <div className="text-center max-w-lg px-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 mb-6">
-            <MonitorPlay className="w-10 h-10 text-indigo-400" />
-          </div>
-          <h1 className="text-2xl font-bold text-white mb-2">{brandName} Player</h1>
-          <p className="text-slate-400 mb-8">Enter this code in your CMS dashboard to pair this screen</p>
-
-          {/* Big pairing code */}
-          <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl px-12 py-8 mb-8 shadow-2xl shadow-indigo-500/10">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-[0.3em] mb-3">Pairing Code</p>
-            <p className="text-6xl font-black text-white tracking-[0.3em] font-mono">
-              {pairingCode}
-            </p>
-          </div>
-
-          {/* Device info */}
-          <div className="bg-slate-900/40 rounded-xl border border-slate-800 p-4 text-left space-y-2">
-            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Device Info</p>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div>
-                <span className="text-slate-500">Resolution: </span>
-                <span className="text-slate-300 font-medium">{typeof window !== 'undefined' ? (() => { const qp=new URLSearchParams(window.location.search); const w=parseInt(qp.get('w')||'0',10)||window.screen.width; const h=parseInt(qp.get('h')||'0',10)||window.screen.height; return `${w}×${h}`; })() : ''}</span>
-              </div>
-              <div>
-                <span className="text-slate-500">Browser: </span>
-                <span className="text-slate-300 font-medium">{typeof window !== 'undefined' ? (navigator.userAgent.includes('Chrome') ? 'Chrome' : 'Other') : ''}</span>
-              </div>
-              <div>
-                <span className="text-slate-500">Platform: </span>
-                <span className="text-slate-300 font-medium">{typeof navigator !== 'undefined' ? navigator.platform : ''}</span>
-              </div>
-              <div>
-                <span className="text-slate-500">Status: </span>
-                <span className="text-amber-400 font-medium flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />
-                  Waiting for pairing...
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <KioskSplash
+        mode="pairing"
+        brandName={brandName}
+        pairingCode={pairingCode}
+        resolution={splashResolution}
+        pairDeepLinkUrl={
+          typeof window !== 'undefined' && pairingCode
+            ? `${window.location.origin}/pair?code=${encodeURIComponent(pairingCode)}`
+            : null
+        }
+      />
     );
   }
 
   // ─── Render: Connecting ───
   if (phase === 'connecting') {
     return (
-      <div className="fixed inset-0 bg-slate-950 flex flex-col items-center justify-center">
-        <Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-4" />
-        <p className="text-xl text-white font-medium">Loading content...</p>
-        <p className="text-slate-500 text-sm mt-2">{screenName}</p>
-      </div>
+      <KioskSplash
+        mode="connecting"
+        brandName={brandName}
+        screenName={screenName}
+        resolution={splashResolution}
+      />
     );
   }
 
