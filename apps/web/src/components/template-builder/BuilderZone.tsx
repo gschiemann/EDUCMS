@@ -2,7 +2,8 @@
 
 import { createElement, memo, useState } from 'react';
 import { Lock, Loader2, Upload } from 'lucide-react';
-import { uploadAsset } from '@/actions/upload-asset';
+import { useUIStore } from '@/store/ui-store';
+import { API_URL } from '@/lib/api-url';
 import type { Zone, ResizeHandle } from './types';
 import { getZoneColor, widgetIcon, widgetLabel } from './constants';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
@@ -66,7 +67,17 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const { url } = await uploadAsset(formData);
+      // Was going through a Next server action that called the API
+      // without a Bearer token — API rejected the upload. Call the API
+      // directly from the browser with the user's JWT instead.
+      const token = useUIStore.getState().token;
+      const res = await fetch(`${API_URL}/assets/upload`, {
+        method: 'POST',
+        body: formData,
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+      const { url } = await res.json();
       
       if (zone.widgetType === 'IMAGE_CAROUSEL') {
         const existing = Array.isArray(zone.defaultConfig?.urls) ? zone.defaultConfig.urls : [];

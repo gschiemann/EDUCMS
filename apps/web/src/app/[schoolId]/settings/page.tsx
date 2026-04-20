@@ -2,7 +2,7 @@
 
 import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
-import { useUsers, useInviteUser, useDeleteUser, useUpdateUserRole, useTenant, useUpdateTenantPanicSettings, usePlaylists } from '@/hooks/use-api';
+import { useUsers, useInviteUser, useCreateUserDirect, useDeleteUser, useUpdateUserRole, useTenant, useUpdateTenantPanicSettings, usePlaylists } from '@/hooks/use-api';
 import { useState, useRef, useEffect } from 'react';
 import { UsbIngestCard } from '@/components/settings/UsbIngestCard';
 import { LicenseCard } from '@/components/settings/LicenseCard';
@@ -34,6 +34,9 @@ export default function SettingsPage() {
   const { data: playlists } = usePlaylists();
   
   const inviteUser = useInviteUser();
+  const createDirect = useCreateUserDirect();
+  const [inviteMode, setInviteMode] = useState<'email' | 'password'>('password');
+  const [newPassword, setNewPassword] = useState('');
   const deleteUser = useDeleteUser();
   const updateRole = useUpdateUserRole();
   const updatePanicSettings = useUpdateTenantPanicSettings();
@@ -54,6 +57,17 @@ export default function SettingsPage() {
     if (!newEmail.trim()) return;
     setInviteStatus(null);
     try {
+      if (inviteMode === 'password') {
+        if (newPassword.length < 8) {
+          setInviteStatus({ kind: 'err', message: 'Password must be at least 8 characters.' });
+          return;
+        }
+        await createDirect.mutateAsync({ email: newEmail.trim(), role: newRole, password: newPassword });
+        setInviteStatus({ kind: 'ok', message: `Added ${newEmail.trim()}. They can log in with the password you set.` });
+        setNewEmail(''); setNewPassword('');
+        setShowAddUser(false);
+        return;
+      }
       const res: any = await inviteUser.mutateAsync({ email: newEmail.trim(), role: newRole });
       // API returns { acceptUrl, emailDelivered }. If email isn't wired up
       // we surface the accept link so the admin can paste it into their own
@@ -233,8 +247,27 @@ export default function SettingsPage() {
 
           {showAddUser && (
             <div className="px-6 py-4 bg-slate-50 border-b border-slate-100">
+              {/* Mode toggle */}
+              <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 mb-3 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setInviteMode('password')}
+                  className={`px-3 py-1.5 rounded-md font-semibold transition-colors ${inviteMode === 'password' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                  Set password now
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInviteMode('email')}
+                  className={`px-3 py-1.5 rounded-md font-semibold transition-colors ${inviteMode === 'email' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                  Email invite link
+                </button>
+              </div>
               <p className="text-xs text-slate-500 mb-3">
-                We&apos;ll email an invitation link. The recipient sets their own password — you never see it.
+                {inviteMode === 'password'
+                  ? 'Create the user immediately with a password you set. Give it to them in person or over chat — they can change it after first login.'
+                  : 'We\u2019ll generate an invite link. The recipient sets their own password via the link — you never see it.'}
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <input ref={inviteEmailRef} value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="teacher@school.edu" type="email"
@@ -243,13 +276,27 @@ export default function SettingsPage() {
                   className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500">
                   {ROLES.filter(r => r !== 'SUPER_ADMIN').map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                 </select>
+                {inviteMode === 'password' && (
+                  <input
+                    type="text"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Temporary password (min 8 chars)"
+                    autoComplete="new-password"
+                    className="md:col-span-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-mono outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                )}
               </div>
               <div className="flex gap-2 mt-3">
-                <button onClick={handleInvite} disabled={inviteUser.isPending || !newEmail.trim()}
+                <button
+                  onClick={handleInvite}
+                  disabled={inviteUser.isPending || createDirect.isPending || !newEmail.trim() || (inviteMode === 'password' && newPassword.length < 8)}
                   className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg">
-                  {inviteUser.isPending ? 'Sending…' : 'Send invitation'}
+                  {(inviteUser.isPending || createDirect.isPending)
+                    ? (inviteMode === 'password' ? 'Creating\u2026' : 'Sending\u2026')
+                    : (inviteMode === 'password' ? 'Create user' : 'Send invitation')}
                 </button>
-                <button onClick={() => { setShowAddUser(false); setInviteStatus(null); }}
+                <button onClick={() => { setShowAddUser(false); setInviteStatus(null); setNewPassword(''); }}
                   className="px-4 py-2 text-slate-500 hover:text-slate-700 text-xs font-semibold">
                   Cancel
                 </button>

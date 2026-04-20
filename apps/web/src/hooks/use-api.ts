@@ -485,6 +485,16 @@ export function useInviteUser() {
   });
 }
 
+// Admin-sets-password path: create a user directly, skip the email invite.
+export function useCreateUserDirect() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { email: string; role: string; password: string }) =>
+      apiFetch('/users', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+}
+
 export function useUpdateUserRole() {
   const qc = useQueryClient();
   return useMutation({

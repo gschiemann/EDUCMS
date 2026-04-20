@@ -47,6 +47,26 @@ export class OnboardingController {
     });
   }
 
+  // Admin-sets-password path — skips the email invite round-trip. Useful
+  // until a transactional email provider is wired up; lets the admin hand
+  // credentials to a user in-person or over chat.
+  @Post('users')
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  async createUserDirect(
+    @Request() req: any,
+    @Body() body: { email: string; role: string; password: string },
+  ) {
+    return this.onboarding.createUserDirect({
+      inviterId: req.user.id,
+      tenantId: req.user.tenantId,
+      email: body.email,
+      role: body.role,
+      password: body.password,
+    });
+  }
+
   // --- Invites (recipient side) ----------------------------------------
   @Get('invites/:token')
   @Throttle({ default: { ttl: 60_000, limit: 20 } })

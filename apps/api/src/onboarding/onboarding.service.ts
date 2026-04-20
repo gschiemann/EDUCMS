@@ -292,6 +292,91 @@ export class OnboardingService {
     };
   }
 
+  /**
+   * Admin creates a user with a password directly — skips the email-invite
+   * round-trip entirely. Useful while no transactional email provider is
+   * wired up, or for environments where the admin wants to hand the
+   * credentials over in-person / via Slack. Same RBAC + cross-tenant
+   * rules as createInvite.
+   */
+  async createUserDirect(input: {
+    inviterId: string;
+    tenantId: string;
+    email: string;
+    role: string;
+    password: string;
+  }) {
+    const email = (input.email || '').trim().toLowerCase();
+    const role = input.role;
+    if (!isValidEmail(email)) throw new BadRequestException('A valid email is required.');
+    if (!ALLOWED_INVITE_ROLES.includes(role)) {
+      throw new BadRequestException(`Role must be one of: ${ALLOWED_INVITE_ROLES.join(', ')}`);
+    }
+    validatePassword(input.password);
+
+    const inviter = await this.prisma.client.user.findUnique({ where: { id: input.inviterId } });
+    if (!inviter) throw new NotFoundException('Inviter not found.');
+    const tenant = await this.prisma.client.tenant.findUnique({ where: { id: input.tenantId } });
+    if (!tenant) throw new NotFoundException('Tenant not found.');
+
+    // Same cross-tenant guard as createInvite.
+    if (inviter.role !== 'SUPER_ADMIN' && inviter.tenantId !== input.tenantId) {
+      if (inviter.role === 'DISTRICT_ADMIN') {
+        if (tenant.parentId !== inviter.tenantId) {
+          throw new BadRequestException("You can only add users to tenants in your district.");
+        }
+      } else {
+        throw new BadRequestException("You can only add users to your own tenant.");
+      }
+    }
+
+    const existing = await this.prisma.client.user.findUnique({ where: { email } });
+    if (existing && existing.status === 'ACTIVE') {
+      throw new ConflictException('A user with that email already exists.');
+    }
+
+    const passwordHash = await this.authService.hashPassword(input.password);
+
+    const user = await this.prisma.client.$transaction(async (tx) => {
+      let u = existing;
+      if (u) {
+        u = await tx.user.update({
+          where: { id: u.id },
+          data: { role, status: 'ACTIVE', passwordHash, tenantId: input.tenantId },
+        });
+      } else {
+        u = await tx.user.create({
+          data: {
+            tenantId: input.tenantId,
+            email,
+            passwordHash,
+            role,
+            status: 'ACTIVE',
+          },
+        });
+      }
+      await tx.auditLog.create({
+        data: {
+          tenantId: input.tenantId,
+          userId: input.inviterId,
+          action: 'USER_CREATED_DIRECT',
+          targetType: 'User',
+          targetId: u.id,
+          details: JSON.stringify({ email, role, method: 'admin-set-password' }),
+        },
+      });
+      return u;
+    });
+
+    return {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      status: user.status,
+      createdAt: user.createdAt,
+    };
+  }
+
   async getInvitePreview(token: string) {
     if (!token) throw new BadRequestException('Invite token is required.');
     const tokenHash = hashToken(token);

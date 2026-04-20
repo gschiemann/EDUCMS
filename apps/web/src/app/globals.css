@@ -87,6 +87,38 @@
 .font-brand-heading { font-family: var(--brand-font-heading); }
 .font-brand-body { font-family: var(--brand-font-body); }
 
+/* Auto-branding: hijack the indigo + violet Tailwind palettes so existing
+   `bg-indigo-600`, `text-indigo-700`, `border-violet-500`, etc. follow the
+   tenant's brand without refactoring 300+ hard-coded color classes across
+   the dashboard. Previously <BrandStyleInjector> set `--brand-*` but
+   nothing READ them (only 3 files used bg-brand / text-brand) — so the
+   palette changed on :root and the UI looked identical. This remap fixes
+   that in one pass. Once we finish the brand-class migration these
+   overrides can narrow to just the shades actually in use. */
+@theme {
+  --color-indigo-50:  var(--brand-primary-soft, #eef2ff);
+  --color-indigo-100: var(--brand-primary-soft, #e0e7ff);
+  --color-indigo-200: var(--brand-primary-soft, #c7d2fe);
+  --color-indigo-300: var(--brand-primary-hover, #a5b4fc);
+  --color-indigo-400: var(--brand-primary-hover, #818cf8);
+  --color-indigo-500: var(--brand-primary, #6366f1);
+  --color-indigo-600: var(--brand-primary, #4f46e5);
+  --color-indigo-700: var(--brand-primary-hover, #4338ca);
+  --color-indigo-800: var(--brand-primary-active, #3730a3);
+  --color-indigo-900: var(--brand-primary-active, #312e81);
+  --color-indigo-950: var(--brand-primary-active, #1e1b4b);
+  --color-violet-50:  var(--brand-accent-soft, #f5f3ff);
+  --color-violet-100: var(--brand-accent-soft, #ede9fe);
+  --color-violet-200: var(--brand-accent-soft, #ddd6fe);
+  --color-violet-300: var(--brand-accent-hover, #c4b5fd);
+  --color-violet-400: var(--brand-accent-hover, #a78bfa);
+  --color-violet-500: var(--brand-accent, #8b5cf6);
+  --color-violet-600: var(--brand-accent, #7c3aed);
+  --color-violet-700: var(--brand-accent-hover, #6d28d9);
+  --color-violet-800: var(--brand-accent-hover, #5b21b6);
+  --color-violet-900: var(--brand-accent-hover, #4c1d95);
+}
+
 :root {
   --background: oklch(0.985 0.01 260);
   --foreground: oklch(0.15 0.02 260);
