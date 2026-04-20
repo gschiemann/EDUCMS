@@ -222,6 +222,29 @@ export default function SettingsPage() {
               Open export
             </a>
           </div>
+
+          {/* Android Player APK download — Nova Taurus, BrightSign, any
+              Android 7+ kiosk. Redirects to the latest signed release
+              asset. Once sideloaded, the APK OTA-updates itself every
+              6h via /api/v1/player/update-check. */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between mt-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center">
+                <MonitorPlay className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-slate-800">Download Player APK</div>
+                <div className="text-[11px] text-slate-500">Android kiosk build — Nova Taurus, generic Android 7+. Auto-updates over-the-air after install.</div>
+              </div>
+            </div>
+            <a
+              href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1'}/player/apk/latest`}
+              target="_blank" rel="noopener"
+              className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg"
+            >
+              Download APK
+            </a>
+          </div>
         </RoleGate>
 
         {/* Team Members */}

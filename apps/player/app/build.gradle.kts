@@ -27,6 +27,23 @@ android {
         viewBinding = true
     }
 
+    // ABI targeting for the hardware we deploy on:
+    //   - arm64-v8a     Most modern Android media players, Nova Taurus
+    //                   TB40/50/60 (Rockchip RK3399/RK3588, 64-bit ARM)
+    //   - armeabi-v7a   Older / lower-end Taurus (TB30, some TB40) on
+    //                   32-bit Rockchip RK3288
+    //   - x86_64        Emulator + desktop dev only (debug APKs only)
+    // Splits produce per-ABI APKs so the operator downloads ~40% smaller
+    // files; also a universal APK as a safety net for unknown boards.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a", "x86_64")
+            isUniversalApk = true
+        }
+    }
+
     buildTypes {
         getByName("debug") {
             isMinifyEnabled = false
