@@ -46,18 +46,17 @@ export default function ReviewQueuePage() {
     } finally { setBusyId(null); }
   };
   const handleReject = async (id: string, name: string) => {
-    const reason = await appConfirm({
+    const ok = await appConfirm({
       title: `Reject "${name}"?`,
-      message: 'Reviewer rejection archives the asset — it can\'t be scheduled. Optional reason will be sent to the uploader.',
+      message: 'Reviewer rejection archives the asset — it can\'t be scheduled.',
       tone: 'warn',
       confirmLabel: 'Reject',
       cancelLabel: 'Cancel',
-      textInput: { label: 'Reason (optional)', placeholder: 'e.g. wrong size, off-brand colors…', required: false } as any,
-    } as any);
-    if (!reason && reason !== '') return;
+    });
+    if (!ok) return;
     setBusyId(id);
     try {
-      await reject.mutateAsync({ id, reason: typeof reason === 'string' ? reason : '' });
+      await reject.mutateAsync({ id, reason: '' });
     } finally { setBusyId(null); }
   };
 
