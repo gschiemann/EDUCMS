@@ -82,7 +82,7 @@ jobs:
           cd apps/player
           ./gradlew --no-daemon assembleDebug -PplayerBaseUrl="$PLAYER_BASE_URL"
 
-      - name: Locate APK
+      - name: Locate + version-rename APK
         id: locate
         run: |
           APK=$(find apps/player/app/build/outputs/apk/debug -name '*.apk' | head -1)
@@ -90,8 +90,26 @@ jobs:
             echo "::error::No APK was produced"
             exit 1
           fi
-          echo "apk=$APK" >> $GITHUB_OUTPUT
-          ls -la "$APK"
+          # Extract versionName from build.gradle.kts so operators can
+          # tell at a glance which build they downloaded — bare
+          # "app-debug.apk" told them nothing. If a tag triggered this
+          # run, use the tag instead so the filename matches the
+          # GitHub Release tag.
+          VN=$(grep -oP 'versionName\s*=\s*"\K[^"]+' apps/player/app/build.gradle.kts | head -1)
+          TAG="${GITHUB_REF_NAME}"
+          if [[ "$TAG" == player-v* ]]; then
+            VERSION="${TAG#player-v}"
+          elif [ -n "$VN" ]; then
+            VERSION="$VN-${GITHUB_SHA:0:7}"
+          else
+            VERSION="${GITHUB_SHA:0:7}"
+          fi
+          NEW_NAME="edu-cms-player-v${VERSION}.apk"
+          NEW_PATH="apps/player/app/build/outputs/apk/debug/${NEW_NAME}"
+          mv "$APK" "$NEW_PATH"
+          echo "apk=$NEW_PATH" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          ls -la "$NEW_PATH"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
