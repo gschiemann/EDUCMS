@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
-import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, FileClock } from 'lucide-react';
+import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, FileClock, Crown } from 'lucide-react';
 import { RoleGate } from '../RoleGate';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
 import type { TenantBranding } from '@/lib/branding';
@@ -250,7 +250,14 @@ export function Sidebar() {
             </div>
             <div className="flex-1 min-w-0" suppressHydrationWarning>
               <p className="text-[11px] font-semibold text-slate-700 truncate">{mounted ? (user?.email || 'User') : '\u00A0'}</p>
-              <p className="text-[9px] text-slate-400">{mounted ? (user?.role?.replace(/_/g, ' ') || 'Role') : '\u00A0'}</p>
+              {mounted && user?.role === 'SUPER_ADMIN' ? (
+                <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-[1px] rounded bg-amber-500 text-amber-950 text-[8px] font-bold uppercase tracking-wider">
+                  <Crown className="w-2.5 h-2.5" aria-hidden="true" />
+                  Super Admin
+                </span>
+              ) : (
+                <p className="text-[9px] text-slate-400">{mounted ? (user?.role?.replace(/_/g, ' ') || 'Role') : '\u00A0'}</p>
+              )}
             </div>
             <button
               onClick={() => { logout(); router.push('/login'); }}

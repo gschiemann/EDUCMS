@@ -18,20 +18,44 @@ import { useAppStore } from '@/lib/store';
 import { apiFetch } from '@/lib/api-client';
 import { TenantBranding, cssVarsFromPalette } from '@/lib/branding';
 
-const LS_KEY = 'edu-cms-branding-cache-v1';
+// Per-tenant cache prefix. The key used to be a single global
+// `edu-cms-branding-cache-v1` which caused a cross-tenant theme bleed:
+// Tenant A's palette would paint over Tenant B on tenant switch (or
+// after SUPER_ADMIN impersonation) until /branding/me returned, and
+// would stick permanently if that fetch errored. Scoping the cache per
+// tenantId means each tenant — root or child, parent or sibling —
+// hydrates its own theme and never sees another tenant's.
+const LS_KEY_PREFIX = 'edu-cms-branding-cache-v1:';
+const LS_KEY_LEGACY = 'edu-cms-branding-cache-v1';
+
+function cacheKeyFor(tenantId: string) {
+  return `${LS_KEY_PREFIX}${tenantId}`;
+}
 
 export function BrandStyleInjector() {
   const activeTenant = useAppStore((s) => s.activeTenant);
-  const token = useAppStore((s) => s.user);
+  const user = useAppStore((s) => s.user);
+  const tenantId = user?.tenantId || null;
 
   useEffect(() => {
-    // Paint from localStorage cache first (zero-flicker on route changes)
+    // One-time migration: purge the legacy global cache on every mount.
+    // Harmless once it's gone; prevents the old value ever being applied.
+    try { localStorage.removeItem(LS_KEY_LEGACY); } catch {}
+
+    // Always wipe vars left over from a prior tenant before painting the
+    // current one. Without this, switching A→B would briefly show A's
+    // palette (vars still on :root) until B's cache/fetch overwrote them.
+    resetBranding();
+
+    if (!tenantId || !user) return;
+
+    const key = cacheKeyFor(tenantId);
+
+    // Paint from this tenant's cache first (zero-flicker on route changes)
     try {
-      const cached = localStorage.getItem(LS_KEY);
+      const cached = localStorage.getItem(key);
       if (cached) applyBranding(JSON.parse(cached));
     } catch {}
-
-    if (!activeTenant || !token) return;
 
     let cancelled = false;
     (async () => {
@@ -39,14 +63,17 @@ export function BrandStyleInjector() {
         const branding = await apiFetch<TenantBranding | null>('/branding/me');
         if (cancelled) return;
         if (branding) {
-          localStorage.setItem(LS_KEY, JSON.stringify(branding));
+          localStorage.setItem(key, JSON.stringify(branding));
           applyBranding(branding);
         } else {
-          localStorage.removeItem(LS_KEY);
+          localStorage.removeItem(key);
           resetBranding();
         }
       } catch {
-        // no branding yet; keep defaults
+        // Fetch failed — drop this tenant's stale cache so a broken
+        // backend can't leave a neighbor-tenant's theme on screen.
+        localStorage.removeItem(key);
+        resetBranding();
       }
     })();
 
@@ -67,7 +94,7 @@ export function BrandStyleInjector() {
       // page load.
       resetBranding();
     };
-  }, [activeTenant, token]);
+  }, [tenantId, activeTenant, user]);
 
   return null;
 }

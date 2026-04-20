@@ -6,6 +6,7 @@ import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { Sidebar } from './Sidebar';
 import { TopToolbar } from './TopToolbar';
+import { SuperAdminBanner } from './SuperAdminBanner';
 import { EmergencyOverlay } from './EmergencyOverlay';
 import { useTenantStatus } from '@/hooks/use-api';
 import { AppDialogHost } from '@/components/ui/app-dialog';
@@ -74,6 +75,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       <div className="absolute bottom-0 left-64 w-[500px] h-[500px] bg-emerald-50/50 rounded-full blur-[120px] pointer-events-none -z-0" />
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0 relative">
+        <SuperAdminBanner />
         <TopToolbar />
         <main
           id="main-content"
