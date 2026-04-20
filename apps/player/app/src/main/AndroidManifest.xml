@@ -38,13 +38,15 @@
         android:usesCleartextTraffic="false"
         tools:targetApi="34">
 
-        <!-- MainActivity is the LAUNCHER — the WebView loads /player which
-             already handles the whole register → show pairing code →
-             poll → play flow natively. No separate native pairing step
-             is needed; the APK is a kiosk shell around the web player,
-             not a parallel reimplementation. PairingActivity still
-             exists for legacy/manual code entry via ACTION_PAIR
-             intent, but it's no longer the default entry point. -->
+        <!-- MainActivity is THE ONLY entry point. The WebView loads
+             /player which handles the whole register → show pairing
+             code → poll → play flow inside the web app. The APK is a
+             kiosk shell; there is NO native pairing screen.
+             PairingActivity was removed entirely (commit addressing
+             operator-report 2026-04-20: some TV auto-launchers cached
+             it as the default activity across app updates and showed
+             the old "type your code" keyboard prompt on boot instead
+             of the WebView). -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -71,17 +73,10 @@
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
-        </activity>
-
-        <!-- Legacy manual-code pairing. Reachable only via explicit
-             intent ACTION_LEGACY_PAIR for the rare case an operator
-             needs to type a code generated on another device. Main flow
-             is WebView-driven on MainActivity. -->
-        <activity
-            android:name=".PairingActivity"
-            android:exported="false"
-            android:launchMode="singleTask"
-            android:screenOrientation="fullSensor">
+            <!-- Backstop intent alias for the old com.educms.player.LEGACY_PAIR
+                 action. TV auto-launchers that pinned that action at some
+                 point in the past now route to MainActivity instead of
+                 trying to resolve a missing activity (which would crash). -->
             <intent-filter>
                 <action android:name="com.educms.player.LEGACY_PAIR" />
                 <category android:name="android.intent.category.DEFAULT" />

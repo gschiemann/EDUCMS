@@ -4,8 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import com.educms.player.PairingActivity
-import com.educms.player.MainActivity
 
 /**
  * Fires when a USB mass-storage device is attached. We don't try to read

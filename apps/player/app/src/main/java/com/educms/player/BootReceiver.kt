@@ -4,25 +4,25 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 
 /**
- * Re-launches the player on device boot so wall-mounted signs come back automatically
- * after a power cycle. Honors several boot-completed actions for OEM compatibility.
+ * Re-launches the player on device boot so wall-mounted signs come back
+ * automatically after a power cycle. Honors several boot-completed actions
+ * for OEM compatibility (ACTION_BOOT_COMPLETED is the spec; QUICKBOOT_POWERON
+ * variants are how HTC and some Chinese OEMs signal warm boot).
  *
- * Routes intelligently: if the device already has a pairing token, jumps straight
- * into the kiosk MainActivity. If not, opens PairingActivity so the operator can
- * enter a code. Either way the screen comes alive automatically — no human touch
- * needed after the wall switch flips.
+ * Always routes to MainActivity. MainActivity hosts the WebView which itself
+ * handles paired-vs-unpaired states — paired devices go straight to manifest;
+ * unpaired devices show the 6-digit pairing code inside the WebView. There
+ * is no longer a separate native PairingActivity (it got pinned as a default
+ * LAUNCHER by some TV auto-launch utilities and ambushed operators with a
+ * "type your code" keyboard prompt that the web player already obsoleted).
  */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action ?: return
         if (action !in BOOT_ACTIONS) return
-        Log.i("BootReceiver", "Boot detected ($action) — routing to player")
+        Log.i("BootReceiver", "Boot detected ($action) — launching MainActivity")
 
         // Bring up the foreground services BEFORE the activity so the
         // dashboard sees ONLINE the moment the kiosk boots, even if the
@@ -30,29 +30,12 @@ class BootReceiver : BroadcastReceiver() {
         com.educms.player.heartbeat.HeartbeatService.ensureRunning(context.applicationContext)
         com.educms.player.watchdog.Watchdog.arm(context.applicationContext)
 
-        // Async lookup — DataStore is suspend-only. Use a goAsync pattern via
-        // a one-shot coroutine; BroadcastReceiver lifecycle gives us ~10s.
-        val pendingResult = goAsync()
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val token = DeviceStore(context.applicationContext).deviceToken.first()
-                val target = if (token.isNullOrBlank()) {
-                    PairingActivity::class.java
-                } else {
-                    MainActivity::class.java
-                }
-                val launch = Intent(context, target).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                }
-                context.startActivity(launch)
-                Log.i("BootReceiver", "Launched ${target.simpleName}")
-            } catch (t: Throwable) {
-                Log.w("BootReceiver", "Failed to launch player on boot", t)
-            } finally {
-                pendingResult.finish()
-            }
+        val launch = Intent(context, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
+        runCatching { context.startActivity(launch) }
+            .onFailure { Log.w("BootReceiver", "Failed to launch MainActivity on boot", it) }
     }
 
     companion object {

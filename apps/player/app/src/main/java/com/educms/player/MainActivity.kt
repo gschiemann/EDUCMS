@@ -214,10 +214,19 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun unpairAndRestart() {
+        // Clear the native DataStore token so the web player re-registers
+        // on next manifest call, then reload the WebView. The web player
+        // itself handles the show-pairing-code UI — we don't bounce to a
+        // separate native activity anymore (PairingActivity was removed;
+        // it was getting pinned as the TV auto-launcher target on some
+        // devices and stealing the boot flow).
         lifecycleScope.launch {
             deviceStore.clear()
-            startActivity(Intent(this@MainActivity, PairingActivity::class.java))
-            finish()
+            runOnUiThread {
+                webView.loadUrl("about:blank")
+                val token = ""
+                loadPlayer(token)
+            }
         }
     }
 
