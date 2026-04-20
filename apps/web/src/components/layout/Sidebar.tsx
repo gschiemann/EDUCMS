@@ -122,18 +122,25 @@ export function Sidebar() {
       >
         <div className="h-[73px] flex items-center px-5 justify-between gap-2">
           <h1 className="text-xl font-extrabold tracking-tight text-slate-800 flex items-center gap-3 min-w-0">
-            {brandLogoSvg ? (
-              // No colored wrapper — the brand's own SVG (may have text,
-              // multiple colors) is the whole mark. Bigger box so the logo
-              // is readable rather than squished to 36px.
+            {brandLogoUrl ? (
+              // Prefer the rehosted raster/SVG URL — rendered as <img> it
+              // letterboxes the whole asset into the box regardless of
+              // the source's internal viewBox / text elements. Previously
+              // we preferred the inline SVG string, which on logos with
+              // embedded text ('Chardon Footer Logo@100') bled the text
+              // out past the 44px sidebar tile and broke the header.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={brandLogoUrl}
+                alt=""
+                className="flex-shrink-0 w-11 h-11 object-contain bg-white rounded-xl p-0.5 shadow-sm"
+              />
+            ) : brandLogoSvg ? (
               <div
-                className="flex-shrink-0 w-11 h-11 flex items-center justify-center [&_svg]:w-full [&_svg]:h-full [&_svg]:max-h-11"
+                className="flex-shrink-0 w-11 h-11 overflow-hidden rounded-xl bg-white shadow-sm flex items-center justify-center [&_svg]:w-full [&_svg]:h-full [&_svg]:max-h-11"
                 aria-hidden
                 dangerouslySetInnerHTML={{ __html: brandLogoSvg }}
               />
-            ) : brandLogoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={brandLogoUrl} alt="" className="flex-shrink-0 w-11 h-11 object-contain" />
             ) : (
               <div className="bg-gradient-to-br from-indigo-500 to-violet-500 p-2 rounded-2xl text-white shadow-md shadow-indigo-500/20 flex-shrink-0 w-10 h-10 flex items-center justify-center">
                 <MonitorPlay className="w-5 h-5" />
