@@ -359,4 +359,61 @@ export const FITNESS_TEMPLATE_PRESETS: SystemPreset[] = [
       },
     ],
   },
+
+  // ════════════════════════════════════════════════════════════════
+  // Preset 4 — Streaming Hub
+  // A Google-TV-style "app launcher" display — members see every
+  // streaming service the gym has configured as a big visual grid.
+  // Pair this with a connected streaming stick and the gym can
+  // launch Netflix, Peacock, YouTube TV, or any FAST channel on
+  // any TV from the dashboard.
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'fitness-streaming-hub',
+    name: 'Streaming Hub',
+    description:
+      'A Google-TV-style "app launcher" display — members see every streaming service the gym has configured as a big visual grid. Pair this with a connected streaming stick and the gym can launch Netflix, Peacock, YouTube TV, or any FAST channel on any TV from the dashboard.',
+    category: 'FITNESS',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#07070c',
+    bgGradient:
+      'radial-gradient(900px 500px at 20% 10%, rgba(0,212,255,0.10), transparent 60%),' +
+      'radial-gradient(800px 450px at 80% 90%, rgba(168,85,247,0.08), transparent 60%),' +
+      'linear-gradient(135deg, #07070c 0%, #0f0f16 50%, #07070c 100%)',
+    zones: [
+      {
+        name: 'App Library',
+        widgetType: 'FITNESS_APP_LIBRARY',
+        x: 0, y: 0, width: 100, height: 88,
+        zIndex: 2,
+        sortOrder: 1,
+        defaultConfig: {
+          title: 'STREAMING LIBRARY',
+          stickStatus: 'online',
+          stickCount: 1,
+          accentColor: '#00d4ff',
+        },
+      },
+      {
+        name: 'Motivational Ticker',
+        widgetType: 'TICKER',
+        x: 0, y: 90, width: 100, height: 10,
+        zIndex: 2,
+        sortOrder: 2,
+        defaultConfig: {
+          messages: [
+            '🎬 Pick any service · Watch on any TV',
+            '💪 Scheduled Netflix at 6pm · CNN at 7am',
+            '📺 300+ free channels · Plus all your subscriptions',
+          ],
+          speed: 'normal',
+          theme: 'default',
+          textColor: '#ffffff',
+          bgColor: 'rgba(0,0,0,0.4)',
+        },
+      },
+    ],
+  },
 ];

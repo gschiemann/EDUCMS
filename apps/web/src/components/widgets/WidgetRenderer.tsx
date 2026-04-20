@@ -49,6 +49,8 @@ import { FitnessClassScheduleWidget } from './fitness/FitnessClassScheduleWidget
 import { FitnessTrainingVideoWidget } from './fitness/FitnessTrainingVideoWidget';
 import { FitnessWorkoutTimerWidget } from './fitness/FitnessWorkoutTimerWidget';
 import { FitnessMotivationalQuoteWidget } from './fitness/FitnessMotivationalQuoteWidget';
+import { FitnessAppLibraryWidget } from './fitness/FitnessAppLibraryWidget';
+import { FitnessStickLauncherWidget } from './fitness/FitnessStickLauncherWidget';
 import { AnimatedWelcomeMiddleWidget } from './AnimatedWelcomeMiddleWidget';
 import { AnimatedWelcomeHighWidget } from './AnimatedWelcomeHighWidget';
 import { AnimatedCafeteriaElementaryWidget } from './AnimatedCafeteriaElementaryWidget';
@@ -193,6 +195,8 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'FITNESS_TRAINING_VIDEO':        return <FitnessTrainingVideoWidget config={cfg} live={live} />;
     case 'FITNESS_WORKOUT_TIMER':         return <FitnessWorkoutTimerWidget config={cfg} live={live} />;
     case 'FITNESS_MOTIVATIONAL_QUOTE':    return <FitnessMotivationalQuoteWidget config={cfg} live={live} />;
+    case 'FITNESS_APP_LIBRARY':           return <FitnessAppLibraryWidget config={cfg} live={live} />;
+    case 'FITNESS_STICK_LAUNCHER':        return <FitnessStickLauncherWidget config={cfg} live={live} />;
     default:             return null;
   }
 }
