@@ -105,6 +105,19 @@ export class ScreensController {
       where: { deviceFingerprint: body.deviceFingerprint },
     });
 
+    // Device JWT — tied to this screenId + fingerprint. Browser players
+    // have no /devices/pair code-exchange flow (the pairing code is null'd
+    // as soon as an admin claims), so /screens/register mints the token
+    // here and the player stores it. Before admin claim the token can't
+    // see any tenant data (manifest 404s); after claim the same token
+    // gains access to the newly-bound tenant's manifest automatically.
+    const mintDeviceJwt = (screenId: string) =>
+      jwt.sign(
+        { sub: screenId, kind: 'device', fp: body.deviceFingerprint },
+        requireSecret('DEVICE_JWT_SECRET', { devFallback: 'dev_only_device_jwt_secret_CHANGE_ME' }),
+        { expiresIn: '365d' },
+      );
+
     if (existing) {
       // Update device info + last ping
       const updated = await this.prisma.client.screen.update({
@@ -124,6 +137,7 @@ export class ScreensController {
         pairingCode: updated.pairingCode,
         paired: !!updated.tenantId,
         name: updated.name,
+        deviceToken: mintDeviceJwt(updated.id),
       };
     }
 
@@ -156,6 +170,7 @@ export class ScreensController {
       pairingCode: screen.pairingCode,
       paired: false,
       name: screen.name,
+      deviceToken: mintDeviceJwt(screen.id),
     };
   }
 

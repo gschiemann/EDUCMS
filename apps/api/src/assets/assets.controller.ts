@@ -59,12 +59,29 @@ export class AssetsController {
       }
     },
   }))
-  async upload(@Request() req: any, @UploadedFile() file: Express.Multer.File) {
+  async upload(
+    @Request() req: any,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: { folderId?: string } = {},
+  ) {
     if (!file) {
       throw new HttpException(
         'No file uploaded, or file type is not supported. Allowed: images, video, audio, PDF.',
         HttpStatus.BAD_REQUEST,
       );
+    }
+
+    // Validate the optional folderId — must belong to the caller's tenant.
+    // Prevents multipart-form field tampering from dropping a file into
+    // another tenant's folder. Ignored if absent; asset lands at root.
+    let folderId: string | null = null;
+    const bodyFolderId = (body?.folderId || '').trim();
+    if (bodyFolderId) {
+      const folder = await this.prisma.client.assetFolder.findFirst({
+        where: { id: bodyFolderId, tenantId: req.user.tenantId },
+      });
+      if (!folder) throw new HttpException('Folder not found', HttpStatus.NOT_FOUND);
+      folderId = folder.id;
     }
 
     // Upload to Supabase Storage: tenant/<tenantId>/<uuid>.<ext>
@@ -104,6 +121,7 @@ export class AssetsController {
         fileHash,
         originalName: file.originalname,
         status: 'PUBLISHED',
+        folderId,
       },
     });
 

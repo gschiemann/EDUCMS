@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { appConfirm } from '@/components/ui/app-dialog';
-import { UploadCloud, Globe, X, CheckCircle2, File, Link2, Trash2, Grid3X3, List, Search, Eye, Image as ImageIcon, Video, Music, FileText, Download, Clock, HardDrive, Maximize2, Info, FolderPlus, Folder, FolderOpen, ChevronRight, Pencil, Home, MoreVertical, Check, Trash } from 'lucide-react';
+import { UploadCloud, Globe, X, CheckCircle2, File, Link2, Trash2, Grid3X3, List, Search, Eye, Image as ImageIcon, Video, Music, FileText, Download, Clock, HardDrive, Maximize2, Info, FolderPlus, Folder, FolderOpen, FolderInput, ChevronRight, Pencil, Home, MoreVertical, Check, Trash } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAssets, useAddWebUrl, useDeleteAsset, useAssetFolders, useCreateAssetFolder, useRenameAssetFolder, useDeleteAssetFolder, useMoveAsset } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
@@ -167,6 +167,21 @@ export default function AssetsPage() {
     }
   };
 
+  // Bulk-move picker state — opens a dropdown letting the user pick a
+  // destination folder (including "All Files" root) for every selected
+  // asset. Previously the only way to move assets was one-at-a-time
+  // drag-and-drop; unusable once a tenant has 100+ files.
+  const [showMovePicker, setShowMovePicker] = useState(false);
+  const handleBulkMove = async (targetFolderId: string | null) => {
+    if (selectedIds.length === 0) return;
+    setShowMovePicker(false);
+    await Promise.all(
+      selectedIds.map((id) => moveAsset.mutateAsync({ id, folderId: targetFolderId }).catch((e) => console.error(e))),
+    );
+    setSelectedIds([]);
+    queryClient.invalidateQueries({ queryKey: ['assets'] });
+  };
+
   const handleFiles = useCallback((files: FileList | null) => {
     if (!files) return;
     const genId = () => { try { return crypto.randomUUID(); } catch { return Math.random().toString(36).substring(2, 10); } };
@@ -184,6 +199,10 @@ export default function AssetsPage() {
   const doUpload = (item: UploadItem) => {
     const fd = new FormData();
     fd.append('file', item.file);
+    // Upload into the folder the user is currently viewing — previously
+    // every upload landed at root and the user had to drag files into a
+    // folder one at a time. Server validates folder tenant-scope.
+    if (currentFolderId) fd.append('folderId', currentFolderId);
     const xhr = new XMLHttpRequest();
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) setUploads(p => p.map(u => u.id === item.id ? { ...u, progress: Math.round(e.loaded * 100 / e.total) } : u)); };
     xhr.onload = () => {
@@ -256,9 +275,49 @@ export default function AssetsPage() {
         </div>
         <div className="flex gap-2">
           {selectedIds.length > 0 && (
-            <button onClick={handleBulkDelete} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5">
-              <Trash2 className="w-4 h-4" /> Delete ({selectedIds.length})
-            </button>
+            <>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowMovePicker((v) => !v)}
+                  className="px-4 py-2 bg-white border border-indigo-300 hover:bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5"
+                >
+                  <FolderInput className="w-4 h-4" /> Move to folder ({selectedIds.length})
+                </button>
+                {showMovePicker && (
+                  <div
+                    className="absolute right-0 mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-20 py-1 max-h-80 overflow-y-auto"
+                    onMouseLeave={() => setShowMovePicker(false)}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleBulkMove(null)}
+                      className="w-full text-left px-3 py-2 text-xs font-medium hover:bg-slate-50 flex items-center gap-2"
+                    >
+                      <Home className="w-3.5 h-3.5 text-slate-500" /> All Files (root)
+                    </button>
+                    {(folders || []).filter((f: any) => !selectedIds.includes(f.id)).map((f: any) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => handleBulkMove(f.id)}
+                        className="w-full text-left px-3 py-2 text-xs font-medium hover:bg-slate-50 flex items-center gap-2"
+                      >
+                        <Folder className="w-3.5 h-3.5 text-indigo-500" /> {f.name}
+                      </button>
+                    ))}
+                    {(folders || []).length === 0 && (
+                      <div className="px-3 py-2 text-[11px] text-slate-400">
+                        No folders yet. Create one from the sidebar.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <button onClick={handleBulkDelete} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5">
+                <Trash2 className="w-4 h-4" /> Delete ({selectedIds.length})
+              </button>
+            </>
           )}
           <button onClick={() => setShowUrlForm(!showUrlForm)} className="px-3 py-2 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-sm">
             <Link2 className="w-3.5 h-3.5 text-indigo-500" /> Add URL

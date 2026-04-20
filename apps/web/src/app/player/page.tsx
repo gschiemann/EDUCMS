@@ -420,6 +420,15 @@ function PlayerPage() {
         setScreenId(data.screenId);
         setScreenName(data.name);
 
+        // Persist the device JWT the API now mints at register time.
+        // Before this fix the browser player had no device token, so
+        // manifest fetches fell back to a hardcoded demo admin login
+        // (that doesn't exist in production) and every paired screen
+        // showed 'unable to connect'.
+        if (data.deviceToken) {
+          try { localStorage.setItem(LS_TOKEN, data.deviceToken); } catch {}
+        }
+
         if (data.paired) {
           // Already paired — go straight to connecting
           setPhase('connecting');
