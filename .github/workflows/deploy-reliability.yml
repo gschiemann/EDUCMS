@@ -116,6 +116,7 @@ jobs:
             -e DEVICE_JWT_SECRET='ci-fake-device-jwt-secret-please-do-not-use-in-prod-32chars' \
             -e SUPABASE_URL='https://fake.supabase.co' \
             -e SUPABASE_SERVICE_ROLE_KEY='fake' \
+            -e ALLOWED_ORIGINS='http://localhost:3000' \
             educms-api:ci
           # Poll up to 60s for "API listening" or container exit.
           for i in $(seq 1 30); do
