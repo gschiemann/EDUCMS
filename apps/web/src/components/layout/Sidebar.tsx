@@ -11,7 +11,13 @@ import { RoleGate } from '../RoleGate';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
 import type { TenantBranding } from '@/lib/branding';
 
-const BRAND_LS_KEY = 'edu-cms-branding-cache-v1';
+// Must match the PER-TENANT key format BrandStyleInjector writes to.
+// Mobile-Claude's cross-tenant fix moved the injector to per-tenant
+// keys but the Sidebar was still reading the legacy global key, which
+// is always empty after migration. That left the sidebar stuck on
+// default "EduSignage" branding no matter what the tenant adopted.
+const BRAND_LS_PREFIX = 'edu-cms-branding-cache-v1:';
+const BRAND_LS_LEGACY = 'edu-cms-branding-cache-v1';
 
 export function Sidebar() {
   const pathname = usePathname() || '';
@@ -30,16 +36,27 @@ export function Sidebar() {
   const [emergencyModalOpen, setEmergencyModalOpen] = useState(false);
   const isEmergencyActive = useAppStore((s) => s.isEmergencyActive);
 
-  // Tenant branding for sidebar header. Reads from the LS cache written
-  // by <BrandStyleInjector> + re-fires on the 'branding:update' event so
-  // newly-adopted brands repaint the header live. Defaults to
-  // EduSignage when no branding is set for this tenant.
+  // Tenant branding for sidebar header. Reads from the PER-TENANT LS
+  // cache written by <BrandStyleInjector> + re-fires on the
+  // 'branding:update' event so newly-adopted brands repaint the header
+  // live. Defaults to EduSignage when no branding is set for this
+  // tenant. The cache key depends on the active tenantId; re-reads
+  // whenever that changes so tenant-switch picks up the other
+  // tenant's brand immediately.
+  const userTenantId = user?.tenantId || null;
   const [branding, setBranding] = useState<TenantBranding | null>(null);
   useEffect(() => {
     const read = () => {
       try {
-        const raw = localStorage.getItem(BRAND_LS_KEY);
-        setBranding(raw ? JSON.parse(raw) : null);
+        if (userTenantId) {
+          const raw = localStorage.getItem(BRAND_LS_PREFIX + userTenantId);
+          if (raw) { setBranding(JSON.parse(raw)); return; }
+        }
+        // Legacy single-key fallback (mobile-Claude's migration wipes
+        // this on BrandStyleInjector mount; read in case the injector
+        // hasn't run yet on a fresh tab).
+        const legacy = localStorage.getItem(BRAND_LS_LEGACY);
+        setBranding(legacy ? JSON.parse(legacy) : null);
       } catch { setBranding(null); }
     };
     read();
@@ -53,7 +70,7 @@ export function Sidebar() {
       window.removeEventListener('branding:update', onUpdate as EventListener);
       window.removeEventListener('storage', read);
     };
-  }, []);
+  }, [userTenantId]);
 
   const brandName = (mounted && branding?.displayName) || 'EduSignage';
   const brandLogoUrl = mounted ? branding?.logoUrl || null : null;
