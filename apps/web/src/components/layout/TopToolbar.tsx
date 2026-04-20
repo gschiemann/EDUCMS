@@ -46,20 +46,16 @@ export function TopToolbar() {
         <div className="flex items-center gap-3">
           <SchoolSwitcher />
           <NotificationsBell />
+          {/* Emergency button lives in the Sidebar now (design spec update).
+              Active-state indicator stays here as a small chip so the
+              emergency status is visible even when the sidebar is
+              collapsed on mobile. */}
           <RoleGate allowedRoles={['admin']}>
-            {isEmergencyActive ? (
-              <div className="px-4 py-2 bg-red-50 text-red-600 text-xs font-bold rounded-lg flex items-center gap-2 animate-pulse">
-                <ShieldAlert className="w-4 h-4" />
+            {isEmergencyActive && (
+              <div className="px-3 py-1.5 bg-red-50 text-red-600 text-[11px] font-bold rounded-lg flex items-center gap-1.5 animate-pulse">
+                <ShieldAlert className="w-3.5 h-3.5" />
                 Emergency Active
               </div>
-            ) : (
-              <button
-                onClick={() => setIsModalOpen(true)}
-                className="px-4 py-2 bg-white border border-red-200 hover:bg-red-50 text-red-600 text-xs font-bold rounded-lg transition-all flex items-center gap-2"
-              >
-                <ShieldAlert className="w-4 h-4" />
-                Emergency
-              </button>
             )}
           </RoleGate>
 

@@ -8,6 +8,7 @@ import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, FileClock } from 'lucide-react';
 import { RoleGate } from '../RoleGate';
+import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
 import type { TenantBranding } from '@/lib/branding';
 
 const BRAND_LS_KEY = 'edu-cms-branding-cache-v1';
@@ -24,6 +25,10 @@ export function Sidebar() {
   // Client-only hydration gate — prevents SSR/client mismatch for user-dependent content
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
+
+  // Emergency modal trigger (moved from TopToolbar to match design spec)
+  const [emergencyModalOpen, setEmergencyModalOpen] = useState(false);
+  const isEmergencyActive = useAppStore((s) => s.isEmergencyActive);
 
   // Tenant branding for sidebar header. Reads from the LS cache written
   // by <BrandStyleInjector> + re-fires on the 'branding:update' event so
@@ -115,22 +120,25 @@ export function Sidebar() {
         aria-label="Primary navigation"
         aria-hidden={!mobileSidebarOpen && typeof window !== 'undefined' && window.innerWidth < 768 ? true : undefined}
       >
-        <div className="h-[73px] flex items-center px-6 justify-between">
-          <h1 className="text-2xl font-extrabold tracking-tight text-slate-800 flex items-center gap-2.5 min-w-0">
-            <div className="bg-gradient-to-br from-indigo-500 to-violet-500 p-2 rounded-2xl text-white shadow-md shadow-indigo-500/20 flex-shrink-0 overflow-hidden w-9 h-9 flex items-center justify-center">
-              {brandLogoSvg ? (
-                <div
-                  className="w-full h-full [&_svg]:w-full [&_svg]:h-full"
-                  aria-hidden
-                  dangerouslySetInnerHTML={{ __html: brandLogoSvg }}
-                />
-              ) : brandLogoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={brandLogoUrl} alt="" className="w-full h-full object-contain" />
-              ) : (
+        <div className="h-[73px] flex items-center px-5 justify-between gap-2">
+          <h1 className="text-xl font-extrabold tracking-tight text-slate-800 flex items-center gap-3 min-w-0">
+            {brandLogoSvg ? (
+              // No colored wrapper — the brand's own SVG (may have text,
+              // multiple colors) is the whole mark. Bigger box so the logo
+              // is readable rather than squished to 36px.
+              <div
+                className="flex-shrink-0 w-11 h-11 flex items-center justify-center [&_svg]:w-full [&_svg]:h-full [&_svg]:max-h-11"
+                aria-hidden
+                dangerouslySetInnerHTML={{ __html: brandLogoSvg }}
+              />
+            ) : brandLogoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={brandLogoUrl} alt="" className="flex-shrink-0 w-11 h-11 object-contain" />
+            ) : (
+              <div className="bg-gradient-to-br from-indigo-500 to-violet-500 p-2 rounded-2xl text-white shadow-md shadow-indigo-500/20 flex-shrink-0 w-10 h-10 flex items-center justify-center">
                 <MonitorPlay className="w-5 h-5" />
-              )}
-            </div>
+              </div>
+            )}
             <span
               title={brandName}
               className="bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700 truncate"
@@ -182,9 +190,27 @@ export function Sidebar() {
         </nav>
 
         <div className="px-4 pb-5 space-y-2">
-          {/* Admin chip removed — role is already visible in the user
-              info card's sub-line and an extra shield was visual
-              clutter. User-requested cleanup. */}
+          {/* Emergency trigger — moved from the top toolbar to a
+              prominent sidebar placement. Emergency is the load-bearing
+              action in this product; it should be big, red, and always
+              thumb-reachable without hunting in a corner. */}
+          <RoleGate allowedRoles={['admin']}>
+            {isEmergencyActive ? (
+              <div className="w-full px-4 py-3 rounded-2xl bg-red-600 text-white text-sm font-bold flex items-center gap-2 shadow-lg shadow-red-600/20 animate-pulse">
+                <ShieldAlert className="w-5 h-5" />
+                Emergency Active
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setEmergencyModalOpen(true)}
+                className="w-full px-4 py-3 rounded-2xl bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-red-600/20 transition-colors focus:outline-none focus:ring-2 focus:ring-red-400"
+              >
+                <ShieldAlert className="w-5 h-5" />
+                Emergency
+              </button>
+            )}
+          </RoleGate>
 
           {/* User info + Logout */}
           <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
@@ -206,6 +232,8 @@ export function Sidebar() {
           </div>
         </div>
       </aside>
+
+      {emergencyModalOpen && <EmergencyTriggerModal onClose={() => setEmergencyModalOpen(false)} />}
     </>
   );
 }
