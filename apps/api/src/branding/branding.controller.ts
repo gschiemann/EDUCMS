@@ -99,10 +99,24 @@ export class BrandingController {
     const chosenSvg = body.logoOverride?.svgInline ?? body.logos?.[0]?.svgInline ?? null;
 
     if (chosenSvg) {
-      // XSS defense: strip scripts, event handlers, <foreignObject>, and
-      // anything not in DOMPurify's SVG profile BEFORE persisting.
-      // Admin "A" can otherwise store <svg onload=...> that fires in
-      // admin "B"'s session when they view settings.
+      // Two storage paths with different trust models:
+      //
+      // 1) logoSvgInline — rendered by admins via dangerouslySetInnerHTML
+      //    in the same origin, so DOMPurify has to strip scripts + event
+      //    handlers + foreignObject. Aggressive sanitization is correct.
+      //
+      // 2) logoUrl — served as a separate asset via <img src>. The browser
+      //    sandboxes img sources: no script execution, no DOM access to
+      //    the parent page. So the file stored on Supabase can be the
+      //    RAW scraped SVG, preserving every <image>, <use xlink:href>,
+      //    CSS filter, and embedded bitmap the real logo relies on.
+      //
+      // Before this fix we ran DOMPurify BEFORE the rehost. On SVGs with
+      // lots of <image> + xlink:href (Chardon's 12.8KB tree+text
+      // wordmark is 95% external references), sanitization shrank the
+      // file to a ~224-byte empty wrapper and the sidebar <img>
+      // rendered a blank/broken glyph even though the Supabase upload
+      // technically succeeded.
       const cleaned = sanitizeLogoSvg(chosenSvg);
       if (cleaned !== chosenSvg) {
         this.logger.warn(
@@ -111,7 +125,9 @@ export class BrandingController {
       }
       logoSvgInline = cleaned;
       try {
-        logoUrl = await this.rehost(cleaned, `branding/${tenantId}/logo.svg`, 'image/svg+xml');
+        // Upload the RAW SVG (untrusted content served in a sandboxed
+        // <img>; XSS threat model is contained by the browser).
+        logoUrl = await this.rehost(chosenSvg, `branding/${tenantId}/logo.svg`, 'image/svg+xml');
       } catch (e: any) {
         this.logger.warn(`Inline SVG logo upload failed, falling back to inline: ${e?.message}`);
       }
