@@ -38,6 +38,53 @@ export default function MobilePanicPage() {
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
   const progressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Was-cleared flag — briefly surfaces an "All Clear" banner before
+  // we transition back to idle so staff get visual confirmation that
+  // the event was resolved (rather than the screen silently flipping
+  // out of the triggered view).
+  const [justCleared, setJustCleared] = useState(false);
+
+  // Poll /emergency/status while sitting on the 'triggered' or
+  // 'idle-with-active-emergency' screen so the mobile app mirrors
+  // all-clear events fired from the desktop dashboard. User ask:
+  // "once an emergency is cleared, it should clear the mobile app
+  // as well". Cadence 5s is fast enough for operator comfort without
+  // hammering the API — this page only loads when staff actively
+  // open it, so concurrent pollers are few.
+  useEffect(() => {
+    // Only poll once we have a session + only in states where an
+    // emergency COULD be active.
+    if (phase !== 'triggered' && phase !== 'idle') return;
+    if (!verifiedToken || !verifiedUser?.tenantId) return;
+
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const r = await fetch(
+          `${API_URL}/emergency/status?tenantId=${encodeURIComponent(verifiedUser.tenantId)}`,
+          { headers: { Authorization: `Bearer ${verifiedToken}` }, cache: 'no-store' },
+        );
+        if (!r.ok || cancelled) return;
+        const data = await r.json();
+        const isActive = data?.tenantStatus && data.tenantStatus !== 'INACTIVE';
+        if (!isActive && phase === 'triggered') {
+          // Admin cleared it. Flash All Clear, then return to idle so
+          // staff can re-fire if they need to.
+          setJustCleared(true);
+          setTimeout(() => {
+            if (cancelled) return;
+            setPhase('idle');
+            setFiredType(null);
+            setJustCleared(false);
+          }, 2500);
+        }
+      } catch { /* network blip — next tick retries */ }
+    };
+    check();
+    const t = setInterval(check, 5000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [phase, verifiedToken, verifiedUser?.tenantId]);
+
   // Verify session on mount
   useEffect(() => {
     async function verifySession() {
@@ -140,6 +187,25 @@ export default function MobilePanicPage() {
 
   if (phase === 'triggered') {
     const fired = TYPES.find((t) => t.id === firedType) || TYPES[2];
+
+    // Admin just fired all-clear from the dashboard. Flash a green
+    // "All Clear" confirmation before the polling effect transitions
+    // us back to idle so staff see the resolution land.
+    if (justCleared) {
+      return (
+        <div className="fixed inset-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
+          <div className="relative mb-6">
+            <div className="absolute inset-0 bg-emerald-500 rounded-full animate-ping opacity-20 scale-150" />
+            <CheckCircle2 className="w-24 h-24 text-emerald-400 relative z-10" />
+          </div>
+          <h1 className="text-3xl font-black mb-2 text-emerald-400 uppercase text-center">All Clear</h1>
+          <p className="text-slate-400 max-w-[260px] mx-auto text-center text-sm">
+            An administrator cleared the {fired.name.toLowerCase()} alert. Returning to the trigger panel.
+          </p>
+        </div>
+      );
+    }
+
     return (
       <div className="fixed inset-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
         <div className="relative mb-6">
@@ -151,7 +217,8 @@ export default function MobilePanicPage() {
           All screens are now locked to the emergency profile.
         </p>
         <p className="absolute bottom-8 italic text-slate-500 text-xs text-center w-full px-8">
-          The emergency must be cleared from a secure terminal by an administrator.
+          Waiting for an administrator to clear from a secure terminal. This screen will
+          return to the trigger panel automatically once that happens.
         </p>
       </div>
     );
