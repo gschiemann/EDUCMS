@@ -159,8 +159,14 @@ async function serveLatestArtifactApk(res: Response): Promise<boolean> {
     artifactCache = { buf: apkBuf, etag: String(usable.id), ts: now };
   }
   if (!artifactCache?.buf) return false;
+  // Versioned filename so operators can see which build they got.
+  // Prefers PLAYER_APK_LATEST_VERSION_NAME env if set; otherwise
+  // embeds the GitHub artifact id as a fallback "build number".
+  const versionTag = process.env.PLAYER_APK_LATEST_VERSION_NAME
+    || `build${artifactCache.etag}`;
+  const filename = `edu-cms-player-v${versionTag}.apk`;
   res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-  res.setHeader('Content-Disposition', 'attachment; filename="edu-cms-player.apk"');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.setHeader('Cache-Control', 'public, max-age=600');
   res.setHeader('ETag', artifactCache.etag);
   res.end(artifactCache.buf);
