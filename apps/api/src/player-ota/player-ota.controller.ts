@@ -49,7 +49,7 @@ export class PlayerOtaController {
 
   @Post('update-check')
   @Throttle({ default: { limit: 120, ttl: 60_000 } })
-  updateCheck(@Body() body: UpdateCheckBody) {
+  async updateCheck(@Body() body: UpdateCheckBody) {
     const latestVc = parseInt(process.env.PLAYER_APK_LATEST_VERSION_CODE || '0', 10);
     const latestVn = process.env.PLAYER_APK_LATEST_VERSION_NAME || '';
     const apkUrl = process.env.PLAYER_APK_URL || '';
@@ -58,29 +58,67 @@ export class PlayerOtaController {
     // that fail the install still get re-tried on the next check.
     const forced = process.env.PLAYER_APK_FORCED === 'true';
 
-    if (!latestVc || !apkUrl) {
-      // Not configured yet — tell the device everything's fine.
+    // ── Path A: explicit env-var pinning (production release train) ──
+    // Ops set these after a deliberate rollout; wins over auto-resolve.
+    if (latestVc && apkUrl) {
+      const current = Number(body?.versionCode) || 0;
+      if (current >= latestVc) {
+        return { uptoDate: true, latestVersionCode: latestVc };
+      }
+      this.logger.log(
+        `[ota env] upgrade ${current}→${latestVc} | fp=${(body?.fingerprint || '').slice(0, 10)} | abi=${body?.abi}`,
+      );
+      return { latest: { versionCode: latestVc, versionName: latestVn, apkUrl, sha256, forced } };
+    }
+
+    // ── Path B: auto-resolve from the latest GitHub Release ──
+    // Zero env config required. Mirrors /apk/latest so every tagged
+    // player-v* release is live for OTA within ~5 min of publish (the
+    // GitHub API lookup cache TTL). Operators just push the tag and
+    // every paired kiosk pulls the update on its next 6h poll.
+    try {
+      const info = await resolveLatestReleaseInfo();
+      if (!info) return { uptoDate: true };
+
+      const callerVn = String(body?.versionName || '').trim();
+      // Compare versionNames semver-style. If the caller is already at
+      // or past the release tag, no update needed — this is the loop
+      // breaker (the client's BuildConfig.VERSION_CODE is typically much
+      // smaller than the derived versionCode we return below, so we
+      // CANNOT rely on versionCode alone for the uptoDate check).
+      if (callerVn && semverGte(callerVn, info.versionName)) {
+        return { uptoDate: true, latestVersionName: info.versionName };
+      }
+
+      const callerVc = Number(body?.versionCode) || 0;
+      // Return a versionCode strictly greater than the caller's so the
+      // APK's own `latestVc <= BuildConfig.VERSION_CODE` gate clears
+      // and it proceeds with the download (see OtaUpdateWorker.kt:91).
+      // If the derived value is somehow smaller than the caller's —
+      // e.g. someone hand-installed a dev build with versionCode 9999 —
+      // bump it to caller+1 so they still update to the tag build.
+      const derivedVc = Math.max(info.derivedVersionCode, callerVc + 1);
+
+      this.logger.log(
+        `[ota gh] upgrade ${callerVn || callerVc}→${info.versionName} | fp=${(body?.fingerprint || '').slice(0, 10)} | abi=${body?.abi}`,
+      );
+      return {
+        latest: {
+          versionCode: derivedVc,
+          versionName: info.versionName,
+          apkUrl: info.apkUrl,
+          // Empty sha — OtaUpdateWorker.kt:111 skips verification when
+          // the field is empty. GitHub downloads over HTTPS so the
+          // bytes are integrity-protected by TLS; add server-computed
+          // SHA later when we pre-fetch + hash releases on publish.
+          sha256: '',
+          forced: false,
+        },
+      };
+    } catch (e: any) {
+      this.logger.warn(`GitHub OTA lookup failed, reporting uptoDate: ${e?.message}`);
       return { uptoDate: true };
     }
-
-    const current = Number(body?.versionCode) || 0;
-    if (current >= latestVc) {
-      return { uptoDate: true, latestVersionCode: latestVc };
-    }
-
-    this.logger.log(
-      `[ota] upgrade ${current}→${latestVc} | fp=${(body?.fingerprint || '').slice(0, 10)} | abi=${body?.abi}`,
-    );
-
-    return {
-      latest: {
-        versionCode: latestVc,
-        versionName: latestVn,
-        apkUrl,
-        sha256,
-        forced,
-      },
-    };
   }
 
   @Get('apk/latest')
@@ -179,25 +217,44 @@ let releaseCache: ReleaseCache | null = null;
 const RELEASE_TTL_MS = 5 * 60 * 1000;
 
 async function resolveLatestReleaseApk(): Promise<string | null> {
+  const info = await resolveLatestReleaseInfo();
+  return info?.apkUrl ?? null;
+}
+
+// Richer release lookup used by /update-check — returns the APK URL,
+// the tag-derived versionName, AND a derived versionCode in the
+// A*10000 + B*100 + C scheme (1.0.5 → 10005) so we can give kiosk
+// clients a number strictly greater than the versionCode they shipped
+// with (BuildConfig.VERSION_CODE in build.gradle.kts). Same 5-min
+// cache as the simple URL lookup to keep anonymous GitHub API usage
+// well under the 60 req/hr limit.
+interface ReleaseInfo {
+  apkUrl: string;
+  versionName: string;      // "1.0.5"
+  derivedVersionCode: number; // 10005 for "1.0.5"
+}
+interface ReleaseInfoCache { info: ReleaseInfo | null; fetchedAt: number }
+let releaseInfoCache: ReleaseInfoCache | null = null;
+
+async function resolveLatestReleaseInfo(): Promise<ReleaseInfo | null> {
   const now = Date.now();
-  if (releaseCache && now - releaseCache.fetchedAt < RELEASE_TTL_MS) {
-    return releaseCache.url;
+  if (releaseInfoCache && now - releaseInfoCache.fetchedAt < RELEASE_TTL_MS) {
+    return releaseInfoCache.info;
   }
-  // Public repo — no token needed for read. If we hit rate limits we can
-  // pass GITHUB_TOKEN via env later, but 60 req/hr anonymous is plenty.
   const repo = process.env.PLAYER_APK_GITHUB_REPO || 'gschiemann/EDUCMS';
   const resp = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
     headers: { 'User-Agent': 'edu-cms-player-ota' },
   });
   if (!resp.ok) {
-    releaseCache = { url: null, fetchedAt: now };
+    releaseInfoCache = { info: null, fetchedAt: now };
     return null;
   }
-  const body = await resp.json() as { assets?: Array<{ name: string; browser_download_url: string }> };
+  const body = await resp.json() as {
+    tag_name?: string;
+    name?: string;
+    assets?: Array<{ name: string; browser_download_url: string }>;
+  };
   const assets = body.assets || [];
-  // Prefer arm64 APK (modern Taurus + most 64-bit Android), fall back to
-  // universal, then anything ending in .apk. Don't pick x86_64 — that's
-  // emulator-only and would fail to install on a real device.
   const pick = (pred: (name: string) => boolean) =>
     assets.find((a) => pred(a.name.toLowerCase()));
   const chosen =
@@ -205,7 +262,33 @@ async function resolveLatestReleaseApk(): Promise<string | null> {
     pick((n) => n.includes('universal') && n.endsWith('.apk')) ||
     pick((n) => n.includes('armeabi-v7a') && n.endsWith('.apk')) ||
     pick((n) => n.endsWith('.apk') && !n.includes('x86'));
-  const url = chosen?.browser_download_url ?? null;
-  releaseCache = { url, fetchedAt: now };
-  return url;
+  const apkUrl = chosen?.browser_download_url ?? null;
+  const tag = (body.tag_name || body.name || '').trim();
+  // Strip `player-v` / leading `v`, leaving bare semver like "1.0.5".
+  const versionName = tag.replace(/^player-v/, '').replace(/^v/, '');
+  const match = versionName.match(/^(\d+)\.(\d+)\.(\d+)/);
+  const derivedVersionCode = match
+    ? parseInt(match[1], 10) * 10000 + parseInt(match[2], 10) * 100 + parseInt(match[3], 10)
+    : 0;
+
+  const info: ReleaseInfo | null = apkUrl && versionName && derivedVersionCode
+    ? { apkUrl, versionName, derivedVersionCode }
+    : null;
+  releaseInfoCache = { info, fetchedAt: now };
+  // Also fill the legacy URL cache so /apk/latest stays fast.
+  releaseCache = { url: apkUrl, fetchedAt: now };
+  return info;
+}
+
+// Semver-style "a >= b" for 3-part version strings (no pre-release or
+// build-metadata support — EduCMS APKs don't use them). Unparseable
+// parts compare as 0 so bad input fails safely as "not greater".
+function semverGte(a: string, b: string): boolean {
+  const pa = a.split('.').map((n) => parseInt(n, 10) || 0);
+  const pb = b.split('.').map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] || 0) - (pb[i] || 0);
+    if (diff !== 0) return diff > 0;
+  }
+  return true; // equal counts as gte
 }
