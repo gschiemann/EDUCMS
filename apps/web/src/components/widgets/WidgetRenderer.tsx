@@ -37,6 +37,7 @@ import { JumbotronProLogo, JumbotronProText, JumbotronProClock, JumbotronProWeat
 // MENU_ITEM, SCOREBOARD, SCHEDULE_GRID, ATTENDANCE, BIRTHDAYS, HONOR_ROLL.
 import { QuoteWidget, StatsWidget, MenuItemWidget, ScoreboardWidget, ScheduleGridWidget, AttendanceWidget, BirthdaysWidget, HonorRollWidget } from './themes/GenericWidgets';
 import { AnimatedWelcomeWidget } from './AnimatedWelcomeWidget';
+import { AnimatedWelcomePortraitWidget } from './AnimatedWelcomePortraitWidget';
 import { AnimatedWelcomeMiddleWidget } from './AnimatedWelcomeMiddleWidget';
 import { AnimatedWelcomeHighWidget } from './AnimatedWelcomeHighWidget';
 import { AnimatedCafeteriaElementaryWidget } from './AnimatedCafeteriaElementaryWidget';
@@ -152,6 +153,7 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'QUICK_POLL':       return <QuickPollWidget config={cfg} />;
     // ── Animated full-screen scenes (one widget = whole template) ──
     case 'ANIMATED_WELCOME':              return <AnimatedWelcomeWidget config={cfg} live={live} />;
+    case 'ANIMATED_WELCOME_PORTRAIT':     return <AnimatedWelcomePortraitWidget config={cfg} live={live} />;
     case 'ANIMATED_WELCOME_MS':           return <AnimatedWelcomeMiddleWidget config={cfg} live={live} />;
     case 'ANIMATED_WELCOME_HS':           return <AnimatedWelcomeHighWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA':            return <AnimatedCafeteriaElementaryWidget config={cfg} live={live} />;
