@@ -18,7 +18,7 @@
     ]
   },
   "deploy": {
-    "startCommand": "pnpm --filter @cms/database db:deploy && node apps/api/dist/main.js",
+    "startCommand": "node apps/api/dist/main.js",
     "healthcheckPath": "/api/v1/health",
     "healthcheckTimeout": 60,
     "numReplicas": 1,
