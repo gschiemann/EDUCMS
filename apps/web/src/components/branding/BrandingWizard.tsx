@@ -25,6 +25,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
 import { pushBrandingPreview } from './BrandStyleInjector';
+import { useAppStore } from '@/lib/store';
 import { BrandingLivePreview } from './BrandingLivePreview';
 import { Search, Palette, Sparkles, Check, Loader2, ExternalLink, AlertTriangle, RefreshCw, Monitor, Wand2, Eye } from 'lucide-react';
 
@@ -82,6 +83,13 @@ const EXAMPLES = [
 
 export function BrandingWizard({ mode, initial, onAdopted }: BrandingWizardProps) {
   const router = useRouter();
+  // BrandStyleInjector reads the LS cache per-tenant as
+  // `edu-cms-branding-cache-v1:<tenantId>` (see commit 14a91fa which
+  // fixed a cross-tenant theme bleed). We must write to the same key on
+  // adopt or the next route render reads nothing and paints defaults
+  // (the "every deploy wipes my custom logo" bug). Fall back to the
+  // legacy single key in demo mode where there is no user.
+  const user = useAppStore((s) => s.user);
   const [url, setUrl] = useState<string>(initial?.sourceUrl || '');
   const [scraping, setScraping] = useState(false);
   const [adopting, setAdopting] = useState(false);
@@ -177,8 +185,15 @@ export function BrandingWizard({ mode, initial, onAdopted }: BrandingWizardProps
       // the next render repainted from empty cache and fell back to
       // defaults until the next /branding/me poll. Writing the cache
       // here guarantees the next route renders with the new theme.
+      //
+      // KEY: scope by tenantId (matches BrandStyleInjector + Sidebar).
+      // The legacy global key is ALSO written as a demo-mode fallback
+      // and for tabs whose user hydration races the adopt call.
       try {
-        localStorage.setItem('edu-cms-branding-cache-v1', JSON.stringify(res.branding));
+        const json = JSON.stringify(res.branding);
+        const tenantId = user?.tenantId;
+        if (tenantId) localStorage.setItem(`edu-cms-branding-cache-v1:${tenantId}`, json);
+        else localStorage.setItem('edu-cms-branding-cache-v1', json);
       } catch {}
       pushBrandingPreview(res.branding);
       onAdopted?.(res.branding);

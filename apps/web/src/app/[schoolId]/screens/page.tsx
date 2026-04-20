@@ -9,14 +9,26 @@ import { apiFetch } from '@/lib/api-client';
 import QRCode from 'qrcode';
 import { appConfirm } from '@/components/ui/app-dialog';
 
-function OsIcon({ os }: { os?: string }) {
-  if (!os) return <Monitor className="w-4 h-4 text-slate-400" />;
+// OS-shape icon colored by CURRENT screen status (not OS type). Previously
+// we used emerald for Android, sky for Windows, amber for Linux — which
+// meant a Windows laptop showed a blue icon while its status pill was
+// green, and a Linux kiosk showed a red-ish amber icon while the status
+// dot glowed green. Operators read the color mismatch as "something's
+// wrong". Making icon color mirror liveStatus kills the confusion: green
+// dot → green icon, slate dot → slate icon.
+function OsIcon({ os, status }: { os?: string; status?: string }) {
+  const colorCls =
+    status === 'ONLINE' ? 'text-emerald-500'
+    : status === 'PENDING' ? 'text-amber-500'
+    : 'text-slate-400';
+  const cls = `w-4 h-4 ${colorCls}`;
+  if (!os) return <Monitor className={cls} />;
   const l = os.toLowerCase();
-  if (l.includes('android')) return <Smartphone className="w-4 h-4 text-emerald-500" />;
-  if (l.includes('ios') || l.includes('mac')) return <Laptop className="w-4 h-4 text-slate-600" />;
-  if (l.includes('windows')) return <Monitor className="w-4 h-4 text-sky-500" />;
-  if (l.includes('linux') || l.includes('chrome os')) return <Tv className="w-4 h-4 text-amber-500" />;
-  return <Monitor className="w-4 h-4 text-slate-400" />;
+  if (l.includes('android')) return <Smartphone className={cls} />;
+  if (l.includes('ios') || l.includes('mac')) return <Laptop className={cls} />;
+  if (l.includes('windows')) return <Monitor className={cls} />;
+  if (l.includes('linux') || l.includes('chrome os')) return <Tv className={cls} />;
+  return <Monitor className={cls} />;
 }
 
 export default function ScreensPage() {
@@ -286,7 +298,7 @@ export default function ScreensPage() {
                       <div key={screen.id} className="px-4 py-3 flex items-center gap-3.5 group/item hover:bg-slate-50 rounded-2xl transition-colors cursor-default">
                         <div className={`w-2.5 h-2.5 rounded-full shrink-0 shadow-sm ${screen.status === 'ONLINE' ? 'bg-emerald-500 shadow-emerald-500/50 animate-pulse' : 'bg-slate-300'}`} />
                         <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
-                          <OsIcon os={screen.osInfo} />
+                          <OsIcon os={screen.osInfo} status={screen.status} />
                         </div>
                         <div className="flex-1 min-w-0">
                           {editingScreen === screen.id ? (
@@ -424,7 +436,7 @@ export default function ScreensPage() {
                   <div key={screen.id} className="px-4 py-3 flex items-center gap-3.5 group/item hover:bg-slate-50 rounded-2xl transition-colors cursor-default">
                     <div className={`w-2.5 h-2.5 rounded-full shrink-0 shadow-sm ${screen.status === 'ONLINE' ? 'bg-emerald-500 shadow-emerald-500/50 animate-pulse' : 'bg-slate-300'}`} />
                     <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
-                      <OsIcon os={screen.osInfo} />
+                      <OsIcon os={screen.osInfo} status={screen.status} />
                     </div>
                     <div className="flex-1 min-w-0">
                       {editingScreen === screen.id ? (

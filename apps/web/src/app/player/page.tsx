@@ -377,15 +377,24 @@ function PlayerPage() {
 
   // Report cache status to the server every 30s so admins can see in the
   // dashboard which screens actually have emergency content on disk.
+  //
+  // sec-fix(wave1) #5 made /cache-status require a device JWT whose `sub`
+  // equals the screenId. Without a Bearer header the POST was 401-ing
+  // silently, so the `lastCacheReport` column never populated and the
+  // dashboard's cache pill was stuck on "?" forever. The device token is
+  // minted at /register time and cached in localStorage as LS_TOKEN.
   useEffect(() => {
     if (!screenId) return;
     const post = async () => {
       try {
         const status = await getCacheStatus();
         if (!status?.supported) return;
+        const tok = getDeviceToken();
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (tok) headers['Authorization'] = `Bearer ${tok}`;
         await fetch(`${getApiRoot()}/api/v1/screens/${screenId}/cache-status`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({
             playlist: status.playlist,
             emergency: status.emergency,

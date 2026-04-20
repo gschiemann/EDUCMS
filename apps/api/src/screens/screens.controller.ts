@@ -219,10 +219,13 @@ export class ScreensController {
     // so a player that dies silently was showing ONLINE forever. Two
     // minutes matches the heartbeat cadence (30s) + 4x grace.
     // Near-real-time fleet status. Heartbeat cadence is 30s; grace is
-    // 45s so a SINGLE missed ping flips a screen OFFLINE. Combined with
-    // the dashboard's 10s refetch, worst case lag between device-dies
-    // and admin-sees-OFFLINE is ~55s.
-    const STALE_MS = 45 * 1000;
+    // tightened to 35s (was 45s) so a dead player flips OFFLINE ~5s after
+    // its first missed ping. Paired with the dashboard's 10s refetch,
+    // worst case device-dies → admin-sees-OFFLINE is ~45s (previously
+    // 55s). 5s buffer is enough for normal network jitter without
+    // causing false offlines; a screen that legitimately loses a single
+    // ping will recover by the next 30s tick.
+    const STALE_MS = 35 * 1000;
     const now = Date.now();
     return rows.map((s) => {
       // If a device is actively pinging, mark ONLINE regardless of
