@@ -9,11 +9,13 @@ name: Android Player APK
 # pushing.
 
 on:
+  # IMPORTANT: do NOT mix `paths:` with `tags:` under a single push key.
+  # GitHub treats the paths filter as applying to EVERY push including
+  # tag pushes; tags don't have a branch diff so the paths check blocks
+  # the tag event silently. Remove paths so tag pushes always build.
+  # With the gradle cache + sdk cache the cost of extra runs is minimal.
   push:
     branches: [master, main]
-    paths:
-      - 'apps/player/**'
-      - '.github/workflows/android-player-apk.yml'
     tags:
       - 'player-v*'
   workflow_dispatch:

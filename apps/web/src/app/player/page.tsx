@@ -628,27 +628,66 @@ function PlayerPage() {
         setPhase('playing');
         setError(`Offline — showing last sync (${ageMin}m ago)`);
       } else {
-        setError(e?.message || 'Network error');
-        setPhase('offline');
+        // Never-give-up: keep the current playlist on screen and show a
+        // subtle 'reconnecting' banner, but do NOT flip to the 'offline'
+        // phase which freezes playback. A kiosk must keep showing
+        // content even across day-long WiFi outages — the user ask was
+        // 'never breaks'. Only go offline if we have nothing at all to
+        // render (no cache, no current playlist).
+        if (playlist || currentItem) {
+          setError(`Reconnecting… (${fetchFailCountRef.current})`);
+          // Stay in 'playing' — the playlist loop keeps running
+        } else {
+          setError(e?.message || 'Network error — retrying');
+          setPhase('offline');
+        }
       }
 
-      // Self-heal escalation:
+      // Self-heal escalation — capped retry, never gives up:
       //   3 failures → quick retry (3s + jitter)
-      //   5 failures → ask the Android shell to hard-reload the WebView (last resort)
-      //   otherwise  → standard 7.5s retry
+      //   5 failures → ask the Android shell to hard-reload the WebView
+      //   10+ failures → keep retrying at 30s cadence forever
       const retryDelay = backoffMs(fetchFailCountRef.current, 1500, 30_000);
-      if (fetchFailCountRef.current >= 5 && isAndroidWebView()) {
-        console.warn('[Player] 5 consecutive fetch failures — asking native shell to reload');
+      if (fetchFailCountRef.current >= 5 && fetchFailCountRef.current % 5 === 0 && isAndroidWebView()) {
+        console.warn(`[Player] ${fetchFailCountRef.current} consecutive fetch failures — asking native shell to reload`);
         nativeReload();
-      } else {
-        setTimeout(() => setPhase('connecting'), Math.max(2_000, retryDelay));
       }
+      // ALWAYS schedule another connecting transition. Even the native
+      // reload path needs a backup — a WebView reload can fail silently
+      // on some Android OEMs if the renderer process is wedged, so we
+      // keep the timer armed either way.
+      setTimeout(() => setPhase('connecting'), Math.max(2_000, retryDelay));
     }
-  }, [screenId]);
+  }, [screenId, playlist, currentItem]);
 
   useEffect(() => {
     if (phase === 'connecting') fetchContent();
   }, [phase, fetchContent]);
+
+  // ─── Always-on heartbeat (phase-independent) ───
+  // Fires every 30s from the moment we have a deviceFingerprint and
+  // continues FOREVER regardless of phase — including during 'offline'
+  // recovery. The prior heartbeat only ran in 'playing' phase, so a
+  // player stuck in 'connecting' retry or 'offline' showed as OFFLINE
+  // in the dashboard even though it was reachable. User ask was
+  // 'never give up, never show false offline'.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const fp = getDeviceFingerprint();
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled) return;
+      try {
+        await fetch(`${getApiRoot()}/api/v1/screens/status/${fp}`, {
+          method: 'GET', cache: 'no-store',
+        });
+      } catch { /* tolerated — next tick retries, forever */ }
+    };
+    // Kick immediately so dashboard flips ONLINE within seconds of load
+    tick();
+    const iv = setInterval(tick, 30_000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, []);
 
   // ─── Realtime WebSocket Connection ───
   // Hardened: exponential backoff with jitter, refs (not effect-locals) for timers
