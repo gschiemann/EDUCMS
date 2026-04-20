@@ -634,9 +634,11 @@ function PlayerPage() {
         // content even across day-long WiFi outages — the user ask was
         // 'never breaks'. Only go offline if we have nothing at all to
         // render (no cache, no current playlist).
-        if (playlist || currentItem) {
+        if (playlist) {
+          // Keep current playlist on screen — don't flip to 'offline' phase
+          // which would freeze playback. A kiosk keeps playing across WiFi
+          // outages.
           setError(`Reconnecting… (${fetchFailCountRef.current})`);
-          // Stay in 'playing' — the playlist loop keeps running
         } else {
           setError(e?.message || 'Network error — retrying');
           setPhase('offline');
@@ -658,7 +660,7 @@ function PlayerPage() {
       // keep the timer armed either way.
       setTimeout(() => setPhase('connecting'), Math.max(2_000, retryDelay));
     }
-  }, [screenId, playlist, currentItem]);
+  }, [screenId, playlist]);
 
   useEffect(() => {
     if (phase === 'connecting') fetchContent();
