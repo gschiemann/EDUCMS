@@ -37,6 +37,14 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   (p) => p === '/api/v1/screens/register',
   (p) => /^\/api\/v1\/screens\/[^/]+\/cache-status$/.test(p),
   (p) => /^\/api\/v1\/tenants\/me\/usb-ingest\/screens\/[^/]+\/event$/.test(p),
+  // Native APK OTA poll — Kotlin HttpURLConnection has no cookie jar,
+  // so a CSRF token round-trip is impossible. Previously every
+  // OtaUpdateWorker POST got 403'd silently (kiosk logs "update-check
+  // returned 403" and returns success per OtaUpdateWorker.kt:83) which
+  // meant OTA updates NEVER rolled out, regardless of what tags were
+  // published. CSRF's threat model doesn't apply here anyway — the
+  // caller is a native app, not a browser with ambient cookies.
+  (p) => p === '/api/v1/player/update-check',
   // Public branding demo — no prior session; throttled + never persists.
   (p) => p === '/api/v1/branding/demo/scrape',
 ];

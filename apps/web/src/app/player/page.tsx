@@ -336,6 +336,17 @@ function PlayerPage() {
   const wsRef = useRef<WebSocket | null>(null);
   // Bullet-proof refs (Phase 1)
   const fetchFailCountRef = useRef(0);
+  // Registration retry counter — NEVER GIVES UP. Increments on every
+  // failed /screens/register call so backoffMs climbs toward its cap.
+  // When Railway is deploying the player could hit a few 502s in a row;
+  // these are expected and we want to self-heal without the operator
+  // having to touch the Retry button.
+  const registerFailCountRef = useRef(0);
+  const registerRetryTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Seconds remaining until the next auto-retry attempt, for display on
+  // the Unable-to-Connect screen so the user knows we're working on it.
+  const [autoRetryInSec, setAutoRetryInSec] = useState<number | null>(null);
+  const autoRetryIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const wsFailCountRef = useRef(0);
   const lastWsMessageAtRef = useRef<number>(Date.now());
   // Audit fix #2 (partial): WebSocket message replay/dupe protection.
@@ -438,9 +449,26 @@ function PlayerPage() {
   }, [refreshEmergencyCache]);
 
   // ─── Phase 1: Register device ───
+  // NEVER GIVES UP. If /screens/register fails (Railway restarting,
+  // WiFi dropped during boot, whatever) we schedule an auto-retry with
+  // exponential backoff. The kiosk must come back online on its own
+  // once the server is reachable again — user ask: "make sure the
+  // player is constantly checking in to get reconnected and not
+  // waiting for me".
   useEffect(() => {
     if (phase !== 'registering') return;
+    // Clear any pending retry — we're actively trying right now.
+    if (registerRetryTimerRef.current) {
+      clearTimeout(registerRetryTimerRef.current);
+      registerRetryTimerRef.current = null;
+    }
+    if (autoRetryIntervalRef.current) {
+      clearInterval(autoRetryIntervalRef.current);
+      autoRetryIntervalRef.current = null;
+    }
+    setAutoRetryInSec(null);
 
+    let cancelled = false;
     const register = async () => {
       try {
         const fp = getDeviceFingerprint();
@@ -452,7 +480,8 @@ function PlayerPage() {
           body: JSON.stringify({ deviceFingerprint: fp, ...deviceInfo }),
         });
 
-        if (!res.ok) throw new Error('Registration failed');
+        if (cancelled) return;
+        if (!res.ok) throw new Error(`Registration HTTP ${res.status}`);
         const data = await res.json();
 
         setScreenId(data.screenId);
@@ -467,6 +496,8 @@ function PlayerPage() {
           try { localStorage.setItem(LS_TOKEN, data.deviceToken); } catch {}
         }
 
+        registerFailCountRef.current = 0;
+
         if (data.paired) {
           // Already paired — go straight to connecting
           setPhase('connecting');
@@ -476,12 +507,46 @@ function PlayerPage() {
           setPhase('pairing');
         }
       } catch (e: any) {
-        setError(e.message);
+        if (cancelled) return;
+        registerFailCountRef.current += 1;
+        const delayMs = backoffMs(registerFailCountRef.current, 2_000, 30_000);
+        console.warn(
+          `[Player] register failed (#${registerFailCountRef.current}): ${e?.message || e} — retrying in ${Math.round(delayMs / 1000)}s`,
+        );
+        setError(e?.message || 'Cannot reach the server');
         setPhase('offline');
+        // Schedule the re-attempt. phase flip to 'registering' re-runs
+        // this useEffect and the whole dance starts over. Guard via
+        // cancelled in case we unmount mid-timer.
+        const targetAt = Date.now() + delayMs;
+        setAutoRetryInSec(Math.ceil(delayMs / 1000));
+        autoRetryIntervalRef.current = setInterval(() => {
+          const remain = Math.max(0, Math.ceil((targetAt - Date.now()) / 1000));
+          setAutoRetryInSec(remain);
+          if (remain === 0 && autoRetryIntervalRef.current) {
+            clearInterval(autoRetryIntervalRef.current);
+            autoRetryIntervalRef.current = null;
+          }
+        }, 1000);
+        registerRetryTimerRef.current = setTimeout(() => {
+          if (!cancelled) setPhase('registering');
+        }, delayMs);
       }
     };
 
     register();
+
+    return () => {
+      cancelled = true;
+      if (registerRetryTimerRef.current) {
+        clearTimeout(registerRetryTimerRef.current);
+        registerRetryTimerRef.current = null;
+      }
+      if (autoRetryIntervalRef.current) {
+        clearInterval(autoRetryIntervalRef.current);
+        autoRetryIntervalRef.current = null;
+      }
+    };
   }, [phase]);
 
   // ─── Phase 2: Poll while showing pairing code (with backoff on errors) ───
@@ -1163,17 +1228,51 @@ function PlayerPage() {
   }
 
   // ─── Render: Offline ───
+  // Still auto-reconnecting in the background — the registration
+  // useEffect's retry timer + fetchContent's retry timer keep firing
+  // regardless of what this screen says. The UI just surfaces the
+  // countdown so the operator knows we're working on it and doesn't
+  // need to touch anything. User ask: "make sure the player is
+  // constantly checking in to get reconnected and not waiting for me".
   if (phase === 'offline') {
+    const nextIn = autoRetryInSec != null && autoRetryInSec > 0 ? autoRetryInSec : null;
     return (
-      <div className="fixed inset-0 bg-slate-950 flex flex-col items-center justify-center">
+      <div className="fixed inset-0 bg-slate-950 flex flex-col items-center justify-center px-8">
         <WifiOff className="w-16 h-16 text-red-500 mb-4" />
-        <h2 className="text-2xl text-white font-bold mb-2">Unable to Connect</h2>
-        <p className="text-slate-400 mb-6">{error}</p>
+        <h2 className="text-2xl text-white font-bold mb-2">Reconnecting…</h2>
+        <p className="text-slate-400 mb-1 text-center max-w-xl">{error || 'Cannot reach the server right now.'}</p>
+        <p className="text-slate-500 text-sm mb-6">
+          {nextIn != null
+            ? `Next attempt in ${nextIn}s — we'll keep trying.`
+            : 'Retrying now…'}
+        </p>
         <div className="flex gap-3">
-          <button onClick={() => { setError(null); setPhase('connecting'); }} className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium">
-            Retry
+          <button
+            onClick={() => {
+              // Smart retry — if we never got a screenId through
+              // registration (because /register failed), go all the
+              // way back to 'registering'. Otherwise jump straight
+              // to 'connecting' which re-fires fetchContent.
+              setError(null);
+              setAutoRetryInSec(null);
+              if (registerRetryTimerRef.current) {
+                clearTimeout(registerRetryTimerRef.current);
+                registerRetryTimerRef.current = null;
+              }
+              if (autoRetryIntervalRef.current) {
+                clearInterval(autoRetryIntervalRef.current);
+                autoRetryIntervalRef.current = null;
+              }
+              setPhase(screenId ? 'connecting' : 'registering');
+            }}
+            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium"
+          >
+            Retry now
           </button>
-          <button onClick={() => { localStorage.removeItem('edu_device_fp'); setPhase('registering'); }} className="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-medium">
+          <button
+            onClick={() => { localStorage.removeItem('edu_device_fp'); setPhase('registering'); }}
+            className="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-medium"
+          >
             Reset Device
           </button>
         </div>
