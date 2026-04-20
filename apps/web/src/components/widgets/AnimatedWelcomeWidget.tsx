@@ -73,6 +73,21 @@ interface Cfg {
   teacherPhotoUrl?: string;
   tickerStamp?: string;
   tickerMessages?: string[] | string;
+  // Ticker scroll speed. 'normal' matches the originally approved
+  // 28s cycle; 'slow' multiplies by 1.8, 'fast' by 0.6. A numeric
+  // value (seconds) is also accepted for power users. Applied
+  // inline so the same CSS animation can take per-instance speeds.
+  tickerSpeed?: 'slow' | 'normal' | 'fast' | number;
+}
+
+// Duration helper — SHARED SEMANTICS with the other 3 animated widgets
+// (MS / HS / Cafeteria). Keep slow=×1.8, fast=×0.6 so admins get a
+// consistent control across every animated template.
+function tickerDurationSec(speed: Cfg['tickerSpeed'], baseSec: number): number {
+  if (typeof speed === 'number' && speed > 0) return speed;
+  if (speed === 'slow') return baseSec * 1.8;
+  if (speed === 'fast') return baseSec * 0.6;
+  return baseSec;
 }
 
 // Canonical canvas dimensions — every pixel size below is sized for
@@ -482,7 +497,10 @@ export function AnimatedWelcomeWidget({ config, live }: { config: Cfg; live?: bo
         <div className="aw-ticker">
           <div className="aw-tickerStamp">{c.tickerStamp || 'SCHOOL NEWS'}</div>
           <div className="aw-tickerScrollWrap">
-            <span className="aw-tickerScrollText">{tickerText}</span>
+            <span
+              className="aw-tickerScrollText"
+              style={{ animationDuration: `${tickerDurationSec(c.tickerSpeed, 28)}s` }}
+            >{tickerText}</span>
           </div>
         </div>
 

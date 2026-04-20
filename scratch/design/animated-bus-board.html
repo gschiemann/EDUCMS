@@ -16,9 +16,9 @@
       linear-gradient(180deg, #bae6fd 0%, #a7f3d0 60%, #86efac 100%);
   }
 
-  /* Sun */
+  /* Sun — top-left corner so it never crashes into the clock */
   .sun {
-    position: absolute; top: 60px; right: 140px; width: 120px; height: 120px;
+    position: absolute; top: 60px; left: 55%; width: 120px; height: 120px;
     border-radius: 50%;
     background: radial-gradient(circle at 35% 30%, #fef3c7, #fbbf24 60%, #d97706);
     box-shadow: 0 0 60px rgba(251,191,36,.65);
@@ -322,7 +322,7 @@
     font-family: 'Bebas Neue', sans-serif; font-size: 48px; color: #fff;
     white-space: nowrap; padding-left: 100%; display: inline-block;
     letter-spacing: .04em;
-    animation: bb-tickerScroll 48s linear infinite;
+    animation: bb-tickerScroll 90s linear infinite;
   }
   .tickerText .sep { color: #fbbf24; padding: 0 22px; }
   @keyframes bb-tickerScroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }

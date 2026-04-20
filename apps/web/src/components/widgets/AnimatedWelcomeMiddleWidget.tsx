@@ -52,6 +52,14 @@ interface Cfg {
   teacherPhotoUrl?: string;
   tickerStamp?: string;
   tickerMessages?: string[] | string;
+  tickerSpeed?: 'slow' | 'normal' | 'fast' | number;
+}
+
+function tickerDurationSec(speed: Cfg['tickerSpeed'], baseSec: number): number {
+  if (typeof speed === 'number' && speed > 0) return speed;
+  if (speed === 'slow') return baseSec * 1.8;
+  if (speed === 'fast') return baseSec * 0.6;
+  return baseSec;
 }
 
 const CANVAS_W = 1920;
@@ -342,7 +350,10 @@ export function AnimatedWelcomeMiddleWidget({ config, live }: { config: Cfg; liv
         <div className="ms-ticker">
           <div className="ms-tickerStamp">{(c.tickerStamp || 'EAGLE NEWS').toUpperCase()}</div>
           <div className="ms-tickerScrollWrap">
-            <span className="ms-tickerScrollText">{tickerText}</span>
+            <span
+              className="ms-tickerScrollText"
+              style={{ animationDuration: `${tickerDurationSec(c.tickerSpeed, 54)}s` }}
+            >{tickerText}</span>
           </div>
         </div>
 

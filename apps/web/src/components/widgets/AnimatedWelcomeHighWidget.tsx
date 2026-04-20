@@ -51,6 +51,14 @@ interface Cfg {
   teacherPhotoUrl?: string;
   tickerStamp?: string;
   tickerMessages?: string[] | string;
+  tickerSpeed?: 'slow' | 'normal' | 'fast' | number;
+}
+
+function tickerDurationSec(speed: Cfg['tickerSpeed'], baseSec: number): number {
+  if (typeof speed === 'number' && speed > 0) return speed;
+  if (speed === 'slow') return baseSec * 1.8;
+  if (speed === 'fast') return baseSec * 0.6;
+  return baseSec;
 }
 
 const CANVAS_W = 1920;
@@ -361,7 +369,10 @@ export function AnimatedWelcomeHighWidget({ config, live }: { config: Cfg; live?
         <div className="hs-ticker">
           <div className="hs-tickerStamp">{(c.tickerStamp || 'CAMPUS NEWS').toUpperCase()}</div>
           <div className="hs-tickerScrollWrap">
-            <span className="hs-tickerScrollText">{tickerText}</span>
+            <span
+              className="hs-tickerScrollText"
+              style={{ animationDuration: `${tickerDurationSec(c.tickerSpeed, 57.6)}s` }}
+            >{tickerText}</span>
           </div>
         </div>
 

@@ -706,6 +706,7 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(SH('ticker', 'Bottom ticker'));
       fields.push(<TextField key="tickerStamp" label="Pink label" value={cfg.tickerStamp || ''} placeholder="SCHOOL NEWS" onChange={(v) => setField({ tickerStamp: v })} />);
       fields.push(<TextAreaField key="tickerMessages" label="Scrolling messages (one per line)" value={Array.isArray(cfg.tickerMessages) ? cfg.tickerMessages.join('\n') : (cfg.tickerMessages || '')} placeholder="Welcome back, Stars!" rows={4} onChange={(v) => setField({ tickerMessages: v.split(/\n+/).filter(Boolean) })} />);
+      fields.push(<TickerSpeedField key="tickerSpeed" value={cfg.tickerSpeed} onChange={(v) => setField({ tickerSpeed: v })} />);
       break;
     }
     case 'ANIMATED_CAFETERIA': {
@@ -797,6 +798,7 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(SH('ticker', 'Bottom ticker'));
       fields.push(<TextField key="tickerStamp" label="Stamp text" value={cfg.tickerStamp || ''} placeholder="Café News" onChange={(v) => setField({ tickerStamp: v })} />);
       fields.push(<TextAreaField key="tickerMessages" label="Scrolling messages (one per line)" value={Array.isArray(cfg.tickerMessages) ? cfg.tickerMessages.join('\n') : (cfg.tickerMessages || '')} placeholder="Taco Tuesday tomorrow! $3.50 tacos all day" rows={4} onChange={(v) => setField({ tickerMessages: v.split(/\n+/).filter(Boolean) })} />);
+      fields.push(<TickerSpeedField key="tickerSpeed" value={cfg.tickerSpeed} onChange={(v) => setField({ tickerSpeed: v })} />);
       break;
     }
     default:
@@ -1228,6 +1230,44 @@ function PlaylistPickerField({ label, value, onChange }: { label: string; value:
       {!isLoading && (!playlists || playlists.length === 0) && (
         <p className="text-[10px] text-slate-400 mt-1">No playlists yet — create one in <strong>Playlists</strong>.</p>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// TickerSpeedField — shared across every animated widget that has
+// a bottom ticker (3 welcomes + cafeteria). Stores 'slow' | 'normal'
+// | 'fast' in config.tickerSpeed. The widget multiplies its own
+// base animation duration by 1.8 (slow) or 0.6 (fast); 'normal' is
+// the originally-approved speed. Keep the 3-option UX simple — this
+// is an admin-facing knob, not a video editor.
+// ─────────────────────────────────────────────────────────
+function TickerSpeedField({ value, onChange }: { value: 'slow' | 'normal' | 'fast' | number | undefined; onChange: (v: 'slow' | 'normal' | 'fast') => void }) {
+  const active = (typeof value === 'string' && (value === 'slow' || value === 'fast')) ? value : 'normal';
+  return (
+    <div className="space-y-1">
+      <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+        Scroll speed
+      </label>
+      <div className="flex gap-1">
+        {(['slow', 'normal', 'fast'] as const).map((opt) => (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => onChange(opt)}
+            className={`flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold tracking-wider uppercase transition ${
+              active === opt
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            {opt === 'slow' ? '🐢 Slow' : opt === 'fast' ? '⚡ Fast' : 'Normal'}
+          </button>
+        ))}
+      </div>
+      <div className="text-[10px] text-slate-400 italic pl-1">
+        {active === 'slow' ? 'Easier to read — good for cafeteria + hallway screens.' : active === 'fast' ? 'Quick cycles — good for dashboards with lots of items.' : 'Default comfortable reading pace.'}
+      </div>
     </div>
   );
 }
