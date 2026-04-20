@@ -63,6 +63,11 @@ export function Sidebar() {
         FORBID_TAGS: ['script', 'style', 'foreignObject'],
       }) as unknown as string)
     : '';
+  // If the rehosted logoUrl 404s (Supabase rehost failed silently on
+  // adopt; common when the rehost bucket / policy is misconfigured), we
+  // get a broken-image icon. Track a load error so we can fall back to
+  // the inline SVG or the MonitorPlay default.
+  const [logoImgBroken, setLogoImgBroken] = useState(false);
 
   // Close the mobile sidebar whenever the route changes
   useEffect(() => { setMobileSidebarOpen(false); }, [pathname, setMobileSidebarOpen]);
@@ -122,17 +127,12 @@ export function Sidebar() {
       >
         <div className="h-[73px] flex items-center px-5 justify-between gap-2">
           <h1 className="text-xl font-extrabold tracking-tight text-slate-800 flex items-center gap-3 min-w-0">
-            {brandLogoUrl ? (
-              // Prefer the rehosted raster/SVG URL — rendered as <img> it
-              // letterboxes the whole asset into the box regardless of
-              // the source's internal viewBox / text elements. Previously
-              // we preferred the inline SVG string, which on logos with
-              // embedded text ('Chardon Footer Logo@100') bled the text
-              // out past the 44px sidebar tile and broke the header.
+            {brandLogoUrl && !logoImgBroken ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={brandLogoUrl}
                 alt=""
+                onError={() => setLogoImgBroken(true)}
                 className="flex-shrink-0 w-11 h-11 object-contain bg-white rounded-xl p-0.5 shadow-sm"
               />
             ) : brandLogoSvg ? (
@@ -200,19 +200,19 @@ export function Sidebar() {
               live-preview mockup. Keeps it in the eye-scan-path of the
               menu rather than buried at the bottom. */}
           <RoleGate allowedRoles={['admin']}>
-            <div className="pt-3 mt-3 border-t border-slate-100">
+            <div className="pt-3 mt-3 border-t border-slate-100 flex justify-center">
               {isEmergencyActive ? (
-                <div className="w-full px-4 py-3 rounded-2xl bg-red-600 text-white text-sm font-bold flex items-center gap-2 shadow-lg shadow-red-600/20 animate-pulse">
-                  <ShieldAlert className="w-5 h-5" />
+                <div className="px-5 py-2 rounded-full bg-red-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-red-600/20 animate-pulse">
+                  <ShieldAlert className="w-3.5 h-3.5" />
                   Emergency Active
                 </div>
               ) : (
                 <button
                   type="button"
                   onClick={() => setEmergencyModalOpen(true)}
-                  className="w-full px-4 py-3 rounded-2xl bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-red-600/20 transition-colors focus:outline-none focus:ring-2 focus:ring-red-400"
+                  className="px-5 py-2 rounded-full bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-md shadow-red-600/20 transition-colors focus:outline-none focus:ring-2 focus:ring-red-400"
                 >
-                  <ShieldAlert className="w-5 h-5" />
+                  <ShieldAlert className="w-3.5 h-3.5" />
                   Emergency
                 </button>
               )}
