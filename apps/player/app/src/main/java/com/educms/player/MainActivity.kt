@@ -211,15 +211,23 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         webView.onResume()
         webView.resumeTimers()
-        // Lock-task / screen-pinning. When the device is set as Device Owner
-        // (one-shot ADB command, see README), this puts the player in true
-        // kiosk mode — home button, recents, status bar swipe all disabled.
-        // No prompt to the user.
-        // Without Device Owner, falls back to user-confirmable pinning so
-        // the operator at least gets the dialog. Catch + log so a non-DO
-        // device never crashes here.
-        runCatching { startLockTask() }
-            .onFailure { Log.w("MainActivity", "startLockTask not available — install as Device Owner for true kiosk mode", it) }
+        // Kiosk pinning is now OPT-IN via a manifest flag (default: off).
+        // Unconditionally calling startLockTask() was trapping operators
+        // who sideloaded the APK for testing — without Device Owner
+        // provisioning Android shows a "App is pinned" dialog that
+        // swallows the back button, kills the TV remote, and has no
+        // on-screen way out.
+        //
+        // To enable real kiosk lock-in, provision the device as Device
+        // Owner via ADB:
+        //   adb shell dpm set-device-owner com.educms.player/.KioskAdminReceiver
+        // then set `android:requiredLockTaskFeatures` or call
+        // startLockTask() from a boot config. For normal installs we
+        // just leave the activity running full-screen / immersive,
+        // which is enough for a paired signage player.
+        if (BuildConfig.DEBUG) {
+            Log.i("MainActivity", "Kiosk pin disabled (not auto-enabled). Use Device Owner provisioning for true lock-in.")
+        }
     }
 
     override fun onPause() {
