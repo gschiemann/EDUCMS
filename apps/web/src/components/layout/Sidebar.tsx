@@ -127,7 +127,10 @@ export function Sidebar() {
       >
         <div className="h-[73px] flex items-center px-5 justify-between gap-2">
           <h1 className="text-xl font-extrabold tracking-tight text-slate-800 flex items-center gap-3 min-w-0">
-            {brandLogoUrl && !logoImgBroken ? (
+            {brandLogoUrl && !logoImgBroken && !/\.(ico|icns)(\?|#|$)/i.test(brandLogoUrl) ? (
+              // Reject .ico even if backend stored one in logoUrl — a
+              // 32px favicon scaled up to 44px is a blurry mess. Fall
+              // through to the initials-in-a-circle branch instead.
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={brandLogoUrl}

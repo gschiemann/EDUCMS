@@ -169,6 +169,16 @@ export class BrandingController {
     if (!logoUrl && Array.isArray(body.logos)) {
       for (const cand of body.logos.slice(1)) {
         if (!cand?.url) continue;
+        // Skip favicons (.ico) — these are 16-32px icons designed for
+        // browser tabs, not logos. Rendering one inside a 44px sidebar
+        // tile looks like a blurry broken thumbnail. Chardon's scrape
+        // returned an .ico in position #2 and my earlier fallback
+        // loop happily stored it as the logo — that was the bug that
+        // made the sidebar look empty.
+        if (/\.(ico|icns)(\?|#|$)/i.test(cand.url)) {
+          this.logger.log(`Logo fallback: skipping favicon candidate ${cand.url}`);
+          continue;
+        }
         try {
           logoUrl = await this.rehostUrl(cand.url, `branding/${tenantId}/logo-fb`);
           this.logger.log(`Logo fallback: used candidate #${body.logos.indexOf(cand)} (${cand.kind || '?'})`);

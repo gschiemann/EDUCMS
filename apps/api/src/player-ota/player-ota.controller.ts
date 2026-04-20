@@ -106,12 +106,65 @@ export class PlayerOtaController {
       this.logger.warn(`GitHub release lookup failed: ${e?.message}`);
     }
 
+    // Artifact fallback — if no Releases exist yet, serve the most
+    // recent successful workflow artifact directly. Requires GH_TOKEN
+    // env on Railway (same token scope the release lookup uses).
+    // Unlike Releases (public), artifacts require auth even for public
+    // repos, so we proxy the bytes through the server. Cached so we
+    // don't re-download on every hit.
+    try {
+      const proxied = await serveLatestArtifactApk(res);
+      if (proxied) return;
+    } catch (e: any) {
+      this.logger.warn(`Artifact proxy failed: ${e?.message}`);
+    }
+
     res.status(503).json({
       error: true,
       message:
-        'No player APK is published yet. Tag a GitHub Release on gschiemann/EDUCMS with the built APK attached (the android-player-apk workflow uploads artifacts — promote one to a release), or set PLAYER_APK_URL on Railway to a direct download URL.',
+        'No player APK is published yet. Tag a GitHub Release on gschiemann/EDUCMS with the built APK attached, or set PLAYER_APK_URL on Railway, or set GH_TOKEN so we can proxy the latest CI artifact.',
     });
   }
+}
+
+interface ArtifactCache { buf: Buffer | null; etag: string; ts: number }
+let artifactCache: ArtifactCache | null = null;
+const ARTIFACT_TTL_MS = 10 * 60 * 1000;
+
+async function serveLatestArtifactApk(res: Response): Promise<boolean> {
+  const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+  if (!token) return false;
+  const repo = process.env.PLAYER_APK_GITHUB_REPO || 'gschiemann/EDUCMS';
+  const now = Date.now();
+  if (!artifactCache || now - artifactCache.ts > ARTIFACT_TTL_MS) {
+    const listResp = await fetch(
+      `https://api.github.com/repos/${repo}/actions/artifacts?name=edu-cms-player-apk&per_page=5`,
+      { headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'edu-cms-player-ota' } },
+    );
+    if (!listResp.ok) return false;
+    const list = await listResp.json() as { artifacts?: Array<{ id: number; expired: boolean; archive_download_url: string }> };
+    const usable = (list.artifacts || []).find((a) => !a.expired);
+    if (!usable) return false;
+    const dlResp = await fetch(usable.archive_download_url, {
+      headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'edu-cms-player-ota' },
+    });
+    if (!dlResp.ok) return false;
+    const zipBuf = Buffer.from(await dlResp.arrayBuffer());
+    // Extract the .apk from the artifact ZIP (GitHub wraps everything).
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(zipBuf);
+    const apkFile = Object.keys(zip.files).find((n) => n.endsWith('.apk'));
+    if (!apkFile) return false;
+    const apkBuf = Buffer.from(await zip.file(apkFile)!.async('arraybuffer'));
+    artifactCache = { buf: apkBuf, etag: String(usable.id), ts: now };
+  }
+  if (!artifactCache?.buf) return false;
+  res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+  res.setHeader('Content-Disposition', 'attachment; filename="edu-cms-player.apk"');
+  res.setHeader('Cache-Control', 'public, max-age=600');
+  res.setHeader('ETag', artifactCache.etag);
+  res.end(artifactCache.buf);
+  return true;
 }
 
 // ─── GitHub Release asset resolution (cached) ──────────────────────

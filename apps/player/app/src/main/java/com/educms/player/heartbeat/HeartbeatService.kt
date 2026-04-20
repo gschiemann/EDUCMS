@@ -129,7 +129,7 @@ class HeartbeatService : Service() {
     private suspend fun runLoop() {
         val ctx = applicationContext
         val prefs = ctx.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
-        while (coroutineContext.isActive) {
+        while (scope.isActive) {
             val fp = prefs.getString("device_fingerprint", null)
             val apiRoot = prefs.getString("api_root", null)
             if (!fp.isNullOrBlank() && !apiRoot.isNullOrBlank()) {
