@@ -18,9 +18,11 @@
     color: #3a2614;
     display: grid;
     grid-template-columns: 1.4fr 1fr;
-    grid-template-rows: auto 1fr auto auto;
+    /* Trailing 'auto' row dropped — ticker is now position:absolute
+       at viewport bottom so a tall upper grid can't clip it. */
+    grid-template-rows: auto 1fr auto;
     gap: 28px;
-    padding: 28px 48px 12px;
+    padding: 28px 48px 96px;
   }
 
   /* HEADER row */

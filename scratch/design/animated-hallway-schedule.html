@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Animated Hallway Schedule · Learn Grow Shine (DEMO v1)</title>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Fredoka:wght@500;700&family=Shadows+Into+Light&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+
+  .stage {
+    width: 100vw; height: 100vh; position: relative; overflow: hidden;
+    font-family: 'Caveat', cursive; color: #4a2818;
+    /* Warm cream paper texture */
+    background:
+      radial-gradient(ellipse at 20% 30%, rgba(251,191,36,.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 70%, rgba(236,72,153,.06) 0%, transparent 50%),
+      linear-gradient(180deg, #fef8e7 0%, #fdf4d4 60%, #fef3c7 100%);
+  }
+  /* Paper grain */
+  .stage::before {
+    content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .35;
+    background:
+      repeating-radial-gradient(circle at 10% 20%, transparent 0 2px, rgba(180,83,9,.015) 2px 3px),
+      repeating-radial-gradient(circle at 70% 80%, transparent 0 3px, rgba(180,83,9,.015) 3px 4px);
+  }
+
+  /* Washi-tape decorations */
+  .tape {
+    position: absolute; pointer-events: none; opacity: .9; z-index: 1;
+    box-shadow: 0 2px 6px rgba(0,0,0,.15);
+  }
+  .tape.t1 {
+    top: 28px; left: 180px; width: 140px; height: 32px;
+    background: repeating-linear-gradient(135deg, rgba(255,255,255,.5) 0 6px, transparent 6px 12px), #fbbf24;
+    transform: rotate(-5deg);
+  }
+  .tape.t2 {
+    top: 40px; right: 240px; width: 120px; height: 28px;
+    background: repeating-linear-gradient(135deg, rgba(255,255,255,.5) 0 6px, transparent 6px 12px), #93c5fd;
+    transform: rotate(4deg);
+  }
+  .tape.t3 {
+    top: 234px; right: 94px; width: 100px; height: 26px;
+    background: repeating-linear-gradient(135deg, rgba(255,255,255,.5) 0 6px, transparent 6px 12px), #86efac;
+    transform: rotate(-2deg);
+  }
+  .tape.t4 {
+    top: 634px; right: 280px; width: 100px; height: 24px;
+    background: repeating-linear-gradient(135deg, rgba(255,255,255,.5) 0 6px, transparent 6px 12px), #93c5fd;
+    transform: rotate(3deg);
+  }
+  .tape.t5 {
+    top: 254px; left: 100px; width: 100px; height: 24px;
+    background: repeating-linear-gradient(135deg, rgba(255,255,255,.5) 0 6px, transparent 6px 12px), #93c5fd;
+    transform: rotate(-3deg);
+  }
+
+  /* Header title */
+  .topBand {
+    position: absolute; top: 40px; left: 0; right: 0; text-align: center; z-index: 3;
+  }
+  .topBand h1 {
+    margin: 0; line-height: 1;
+    font-family: 'Caveat', cursive; font-weight: 700; font-size: 128px;
+    color: #be185d;
+    text-shadow: 4px 4px 0 rgba(251,191,36,.3);
+    animation: hs-titleBob 4s ease-in-out infinite;
+    letter-spacing: .02em;
+  }
+  @keyframes hs-titleBob { 0%, 100% { transform: translateY(0) rotate(-.5deg); } 50% { transform: translateY(-4px) rotate(.5deg); } }
+  .topBand .tagline {
+    font-family: 'Caveat', cursive; font-size: 36px; color: #92400e;
+    margin-top: -4px;
+  }
+  /* Torn paper edge below title */
+  .tornEdge {
+    position: absolute; top: 220px; left: 0; right: 0; height: 16px; z-index: 2;
+    background: #fef8e7;
+    clip-path: polygon(0 0, 100% 0, 100% 20%, 97% 80%, 94% 30%, 91% 90%, 88% 40%, 85% 100%, 82% 50%, 79% 90%, 76% 40%, 73% 100%, 70% 50%, 67% 90%, 64% 30%, 61% 100%, 58% 50%, 55% 80%, 52% 30%, 49% 100%, 46% 50%, 43% 90%, 40% 40%, 37% 100%, 34% 50%, 31% 90%, 28% 30%, 25% 100%, 22% 50%, 19% 90%, 16% 30%, 13% 100%, 10% 50%, 7% 90%, 4% 30%, 2% 100%, 0 50%);
+    filter: drop-shadow(0 3px 4px rgba(0,0,0,.1));
+  }
+
+  /* Date tag in top-right */
+  .dateTag {
+    position: absolute; top: 220px; right: 40px; z-index: 4;
+    background: linear-gradient(180deg, #fde68a, #fbbf24);
+    padding: 8px 22px;
+    border: 3px solid #fef8e7;
+    box-shadow: 0 4px 10px rgba(0,0,0,.15);
+    transform: rotate(6deg);
+    font-family: 'Caveat', cursive; font-weight: 700; font-size: 22px; color: #7c2d12;
+    letter-spacing: .04em;
+  }
+
+  /* Two-column layout */
+  .body {
+    position: absolute; top: 260px; left: 40px; right: 40px; bottom: 140px;
+    display: grid; grid-template-columns: 1fr 420px; gap: 32px;
+    z-index: 3;
+  }
+
+  /* LEFT COLUMN — notebook + announcement */
+  .leftCol { display: flex; flex-direction: column; gap: 20px; min-height: 0; }
+
+  /* Notebook paper */
+  .notebook {
+    position: relative;
+    flex: 1;
+    background: #fffdf5;
+    border: 1px solid rgba(180,83,9,.15);
+    border-radius: 4px;
+    box-shadow: 0 10px 24px rgba(0,0,0,.1), 0 0 0 3px rgba(251,191,36,.18);
+    padding: 20px 28px 24px 96px;
+    overflow: hidden;
+  }
+  /* Blue horizontal ruled lines */
+  .notebook::before {
+    content: ''; position: absolute; inset: 0;
+    background: repeating-linear-gradient(180deg, transparent 0 50px, rgba(59,130,246,.22) 50px 51px);
+    pointer-events: none;
+    opacity: .8;
+  }
+  /* Red margin line */
+  .notebook::after {
+    content: ''; position: absolute; top: 0; bottom: 0; left: 80px; width: 2px;
+    background: rgba(220,38,38,.35);
+    pointer-events: none;
+  }
+  /* Hole punches */
+  .holes {
+    position: absolute; top: 50px; bottom: 40px; left: 24px; width: 24px;
+    display: flex; flex-direction: column; justify-content: space-around;
+    align-items: center; z-index: 2;
+  }
+  .holes span {
+    display: block; width: 22px; height: 22px; border-radius: 50%;
+    background: #fef8e7;
+    box-shadow: inset 0 2px 3px rgba(0,0,0,.2);
+  }
+
+  .notebookHeader {
+    display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 10px;
+    position: relative; z-index: 1;
+  }
+  .notebookHeader h2 {
+    margin: 0; font-family: 'Caveat', cursive; font-weight: 700; font-size: 56px;
+    color: #be185d; line-height: 1; padding-right: 12px;
+  }
+  .notebookHeader .sub {
+    font-family: 'Caveat', cursive; font-size: 22px; color: #92400e;
+  }
+
+  .rows {
+    position: relative; z-index: 1;
+    display: flex; flex-direction: column;
+    container-type: size;
+    flex: 1; min-height: 0; overflow: hidden;
+  }
+  .row {
+    container-type: size;
+    flex: 1 1 0; min-height: 0;
+    display: grid; grid-template-columns: 42px 200px 1fr 120px;
+    align-items: center; gap: 18px;
+    font-family: 'Caveat', cursive;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: background .2s;
+  }
+  .row.now {
+    background: linear-gradient(90deg, rgba(251,191,36,.3) 0%, rgba(253,224,71,.25) 80%, transparent 100%);
+    box-shadow: inset 3px 0 0 #fbbf24;
+  }
+  .row .num {
+    font-family: 'Caveat', cursive; font-weight: 700;
+    font-size: clamp(22px, 42cqh, 36px);
+    color: #be185d; text-align: center;
+    line-height: 1;
+  }
+  .row .time {
+    font-family: 'Caveat', cursive; font-weight: 700;
+    font-size: clamp(18px, 32cqh, 30px);
+    color: #92400e; letter-spacing: .02em;
+  }
+  .row .name {
+    font-family: 'Caveat', cursive; font-weight: 700;
+    font-size: clamp(20px, 36cqh, 34px);
+    color: #4a2818; line-height: 1.1;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .row .room {
+    font-family: 'Caveat', cursive; font-weight: 500;
+    font-size: clamp(16px, 28cqh, 26px);
+    color: #b45309; text-align: right;
+  }
+  /* Bullet dots in the margin */
+  .row::before {
+    content: '•'; position: absolute; left: 54px;
+    color: rgba(74,40,24,.6); font-size: 22px;
+  }
+
+  /* Announcement card */
+  .announce {
+    flex: 0 0 auto;
+    background: linear-gradient(180deg, #fef3c7 0%, #fde68a 100%);
+    border: 2px dashed #ec4899;
+    border-radius: 14px;
+    padding: 16px 24px;
+    position: relative;
+    box-shadow: 0 6px 16px rgba(0,0,0,.1);
+  }
+  .announce .badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 13px;
+    color: #dc2626; letter-spacing: .2em; text-transform: uppercase;
+  }
+  .announce .badge::before {
+    content: '📣'; font-size: 20px;
+  }
+  .announce .msg {
+    font-family: 'Caveat', cursive; font-weight: 700; font-size: 34px;
+    color: #4a2818; line-height: 1.1; margin-top: 6px;
+  }
+
+  /* RIGHT COLUMN — 4 stacked cards */
+  .rightCol { display: flex; flex-direction: column; gap: 18px; min-height: 0; }
+
+  .card {
+    position: relative;
+    background: #fffdf5;
+    border-radius: 12px;
+    padding: 18px 22px;
+    box-shadow: 0 8px 20px rgba(0,0,0,.12), 0 0 0 2px rgba(251,191,36,.2);
+    border: 1px solid rgba(180,83,9,.1);
+  }
+
+  /* Attendance — hero card, biggest */
+  .attendance {
+    flex: 2 1 0;
+    background: linear-gradient(135deg, #fde68a 0%, #fbbf24 100%);
+    border: 3px solid #fef8e7;
+    padding: 20px 24px; text-align: center;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    box-shadow: 0 10px 24px rgba(180,83,9,.2), 0 0 0 3px rgba(251,191,36,.35);
+  }
+  .attendance .big {
+    font-family: 'Caveat', cursive; font-weight: 700; font-size: 180px;
+    color: #15803d; line-height: .9;
+    text-shadow: 4px 4px 0 rgba(255,255,255,.5);
+    animation: hs-numPulse 2.4s ease-in-out infinite;
+  }
+  @keyframes hs-numPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } }
+  .attendance .sub {
+    font-family: 'Caveat', cursive; font-size: 30px; color: #166534;
+    margin-top: -4px;
+  }
+
+  /* Bottom row: clock + weather */
+  .twoUp { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; flex: 1 1 0; }
+  .clock, .weather {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 14px;
+  }
+  .clock::before {
+    content: '⏰'; position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+    font-size: 28px;
+    animation: hs-clockShake 3s ease-in-out infinite;
+  }
+  @keyframes hs-clockShake {
+    0%, 90%, 100% { transform: translateX(-50%) rotate(0); }
+    92%, 96%      { transform: translateX(-50%) rotate(-10deg); }
+    94%, 98%      { transform: translateX(-50%) rotate(10deg); }
+  }
+  .clock .t { font-family: 'Caveat', cursive; font-weight: 700; font-size: 52px; color: #be185d; line-height: 1; }
+  .clock .ap { font-family: 'Caveat', cursive; font-size: 22px; color: #92400e; letter-spacing: .18em; margin-top: 2px; }
+
+  .weather::before {
+    content: '☀️'; position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+    font-size: 28px;
+    animation: hs-sunBob 3.6s ease-in-out infinite;
+  }
+  @keyframes hs-sunBob { 0%, 100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(-4px); } }
+  .weather .temp { font-family: 'Caveat', cursive; font-weight: 700; font-size: 52px; color: #be185d; line-height: 1; }
+  .weather .desc { font-family: 'Caveat', cursive; font-size: 22px; color: #92400e; margin-top: 2px; }
+
+  /* Countdown card */
+  .countdown {
+    flex: 1.2 1 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 16px 20px;
+  }
+  .countdown::before {
+    content: '🎉'; position: absolute; top: -16px; left: 20px;
+    font-size: 32px; animation: hs-confettiBob 2s ease-in-out infinite;
+  }
+  @keyframes hs-confettiBob { 0%, 100% { transform: rotate(-10deg); } 50% { transform: rotate(10deg); } }
+  .countdown::after {
+    content: ''; position: absolute; top: 12px; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, #60a5fa 0%, #ec4899 100%);
+  }
+  .countdown .lbl {
+    font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 14px;
+    color: #92400e; letter-spacing: .25em; text-transform: uppercase;
+    margin-top: 6px;
+  }
+  .countdown .num {
+    font-family: 'Caveat', cursive; font-weight: 700; font-size: 82px;
+    color: #be185d; line-height: .9;
+    animation: hs-cdPulse 1.4s ease-in-out infinite;
+  }
+  @keyframes hs-cdPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+  .countdown .unit {
+    font-family: 'Caveat', cursive; font-size: 22px; color: #92400e;
+  }
+
+  /* Ticker */
+  .ticker {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 100px;
+    background: linear-gradient(90deg, #dbeafe 0%, #fef3c7 100%);
+    display: flex; align-items: center; overflow: hidden;
+    border-top: 3px dashed #ec4899;
+    z-index: 6;
+  }
+  .tickerStamp {
+    flex: 0 0 auto; padding: 0 30px; height: 100%;
+    background: linear-gradient(135deg, #fde68a, #fbbf24);
+    display: flex; align-items: center;
+    font-family: 'Caveat', cursive; font-weight: 700; font-size: 32px; color: #7c2d12;
+    letter-spacing: .05em;
+    border-right: 3px dashed #ec4899;
+  }
+  /* Ticker track — bulletproof scroll. The inner .tickerText starts
+     off-screen at translateX(100vw) and slides to translateX(-100%)
+     so content always moves regardless of whether it's shorter or
+     longer than the container. will-change: transform keeps it on
+     its own compositor layer. */
+  .tickerScroll { flex: 1; overflow: hidden; position: relative; height: 100%; display: flex; align-items: center; }
+  .tickerText {
+    font-family: 'Caveat', cursive; font-weight: 700; font-size: 42px;
+    color: #4a2818; white-space: nowrap;
+    display: inline-block;
+    will-change: transform;
+    animation: hs-tickerScroll 52s linear infinite;
+  }
+  .tickerText .sep { color: #be185d; padding: 0 18px; }
+  @keyframes hs-tickerScroll {
+    from { transform: translateX(100vw); }
+    to   { transform: translateX(-100%); }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <div class="tape t1"></div>
+  <div class="tape t2"></div>
+  <div class="tape t3"></div>
+  <div class="tape t4"></div>
+  <div class="tape t5"></div>
+
+  <div class="topBand">
+    <h1>LEARN · GROW · SHINE</h1>
+    <div class="tagline">every day a new adventure</div>
+  </div>
+
+  <div class="tornEdge"></div>
+
+  <div class="dateTag">Mon · 4/19</div>
+
+  <div class="body">
+    <div class="leftCol">
+
+      <div class="notebook">
+        <div class="holes">
+          <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+        </div>
+        <div class="notebookHeader">
+          <h2>Period by Period</h2>
+          <div class="sub">~ today's schedule ~</div>
+        </div>
+        <div class="rows">
+          <div class="row">
+            <span class="num">1</span>
+            <span class="time">8:15 — 9:00</span>
+            <span class="name">Homeroom + Morning Meeting</span>
+            <span class="room">Rm 12</span>
+          </div>
+          <div class="row">
+            <span class="num">2</span>
+            <span class="time">9:05 — 9:55</span>
+            <span class="name">Math · Mrs. Chen</span>
+            <span class="room">Rm 14</span>
+          </div>
+          <div class="row now">
+            <span class="num">3</span>
+            <span class="time">10:00 — 10:50</span>
+            <span class="name">Reading · Mrs. Hill</span>
+            <span class="room">Rm 12</span>
+          </div>
+          <div class="row">
+            <span class="num">4</span>
+            <span class="time">11:00 — 11:45</span>
+            <span class="name">Science — STATES OF MATTER!</span>
+            <span class="room">Rm 21</span>
+          </div>
+          <div class="row">
+            <span class="num">5</span>
+            <span class="time">11:50 — 12:30</span>
+            <span class="name">Lunch + Recess</span>
+            <span class="room">Cafe</span>
+          </div>
+          <div class="row">
+            <span class="num">6</span>
+            <span class="time">12:35 — 1:25</span>
+            <span class="name">Art with Ms. Greene 🎨</span>
+            <span class="room">Rm 9</span>
+          </div>
+          <div class="row">
+            <span class="num">7</span>
+            <span class="time">1:30 — 2:15</span>
+            <span class="name">PE — Field Day prep!</span>
+            <span class="room">Gym</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="announce">
+        <div class="badge">Announcement</div>
+        <div class="msg">Assembly in the gym Friday at 2 PM — all classes welcome!</div>
+      </div>
+
+    </div>
+
+    <div class="rightCol">
+      <div class="card attendance">
+        <div class="big">97%</div>
+        <div class="sub">~ here today ~</div>
+      </div>
+
+      <div class="twoUp">
+        <div class="card clock">
+          <div class="t">12:34</div>
+          <div class="ap">PM</div>
+        </div>
+        <div class="card weather">
+          <div class="temp">42°</div>
+          <div class="desc">sunny + crisp</div>
+        </div>
+      </div>
+
+      <div class="card countdown">
+        <div class="lbl">Field Day in</div>
+        <div class="num">8</div>
+        <div class="unit">days</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ticker">
+    <div class="tickerStamp">Hallway News</div>
+    <div class="tickerScroll">
+      <span class="tickerText">
+        Walk, don't run in the halls 🚶
+        <span class="sep">·</span>
+        Reading Challenge: 20 minutes a day
+        <span class="sep">·</span>
+        Wear school colors on Spirit Friday! 🎉
+        <span class="sep">·</span>
+        Field Day in 8 days — sign up at the office
+      </span>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

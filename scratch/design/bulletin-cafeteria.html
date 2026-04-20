@@ -29,7 +29,11 @@
        reserved so content can't crowd into the ticker band. */
     grid-template-rows: auto 1fr auto;
     gap: 32px;
-    padding: 56px 80px 96px;
+    /* bottom 96 -> 140. The auto-sized row 3 (2-line MEMO paragraph
+       + NEXT MEAL countdown ticket) was overlapping the pinned
+       ticker band. 140 = 80 ticker + 14 inset + 46 breathing room so
+       a multi-line memo won't crash into 'FROM THE KITCHEN'. */
+    padding: 56px 80px 140px;
   }
   .frame {
     position: absolute; inset: 14px;
