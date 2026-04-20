@@ -3,10 +3,14 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import DOMPurify from 'isomorphic-dompurify';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, FileClock } from 'lucide-react';
 import { RoleGate } from '../RoleGate';
+import type { TenantBranding } from '@/lib/branding';
+
+const BRAND_LS_KEY = 'edu-cms-branding-cache-v1';
 
 export function Sidebar() {
   const pathname = usePathname() || '';
@@ -20,6 +24,40 @@ export function Sidebar() {
   // Client-only hydration gate — prevents SSR/client mismatch for user-dependent content
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
+
+  // Tenant branding for sidebar header. Reads from the LS cache written
+  // by <BrandStyleInjector> + re-fires on the 'branding:update' event so
+  // newly-adopted brands repaint the header live. Defaults to
+  // EduSignage when no branding is set for this tenant.
+  const [branding, setBranding] = useState<TenantBranding | null>(null);
+  useEffect(() => {
+    const read = () => {
+      try {
+        const raw = localStorage.getItem(BRAND_LS_KEY);
+        setBranding(raw ? JSON.parse(raw) : null);
+      } catch { setBranding(null); }
+    };
+    read();
+    const onUpdate = (e: Event) => {
+      const detail = (e as CustomEvent<TenantBranding>).detail;
+      if (detail) setBranding(detail);
+    };
+    window.addEventListener('branding:update', onUpdate as EventListener);
+    window.addEventListener('storage', read);
+    return () => {
+      window.removeEventListener('branding:update', onUpdate as EventListener);
+      window.removeEventListener('storage', read);
+    };
+  }, []);
+
+  const brandName = (mounted && branding?.displayName) || 'EduSignage';
+  const brandLogoUrl = mounted ? branding?.logoUrl || null : null;
+  const brandLogoSvg = mounted && branding?.logoSvgInline
+    ? (DOMPurify.sanitize(branding.logoSvgInline, {
+        USE_PROFILES: { svg: true, svgFilters: true },
+        FORBID_TAGS: ['script', 'style', 'foreignObject'],
+      }) as unknown as string)
+    : '';
 
   // Close the mobile sidebar whenever the route changes
   useEffect(() => { setMobileSidebarOpen(false); }, [pathname, setMobileSidebarOpen]);
@@ -78,11 +116,27 @@ export function Sidebar() {
         aria-hidden={!mobileSidebarOpen && typeof window !== 'undefined' && window.innerWidth < 768 ? true : undefined}
       >
         <div className="h-[73px] flex items-center px-6 justify-between">
-          <h1 className="text-2xl font-extrabold tracking-tight text-slate-800 flex items-center gap-2.5">
-            <div className="bg-gradient-to-br from-indigo-500 to-violet-500 p-2 rounded-2xl text-white shadow-md shadow-indigo-500/20">
-              <MonitorPlay className="w-5 h-5" />
+          <h1 className="text-2xl font-extrabold tracking-tight text-slate-800 flex items-center gap-2.5 min-w-0">
+            <div className="bg-gradient-to-br from-indigo-500 to-violet-500 p-2 rounded-2xl text-white shadow-md shadow-indigo-500/20 flex-shrink-0 overflow-hidden w-9 h-9 flex items-center justify-center">
+              {brandLogoSvg ? (
+                <div
+                  className="w-full h-full [&_svg]:w-full [&_svg]:h-full"
+                  aria-hidden
+                  dangerouslySetInnerHTML={{ __html: brandLogoSvg }}
+                />
+              ) : brandLogoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={brandLogoUrl} alt="" className="w-full h-full object-contain" />
+              ) : (
+                <MonitorPlay className="w-5 h-5" />
+              )}
             </div>
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700">EduSignage</span>
+            <span
+              title={brandName}
+              className="bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700 truncate"
+            >
+              {brandName}
+            </span>
           </h1>
           {/* Close button — only on mobile */}
           <button
