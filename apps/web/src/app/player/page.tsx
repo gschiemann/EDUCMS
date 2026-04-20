@@ -215,6 +215,113 @@ function getDeviceInfo() {
 
 type Phase = 'registering' | 'pairing' | 'connecting' | 'playing' | 'offline' | 'emergency';
 
+// ─── Software version + manual OTA trigger inside the info overlay ───
+// User ask 2026-04-20: "stop/start with the TV remote, see the software
+// version, maybe trigger the update from there". Enter key already toggles
+// the overlay (onKeyDown handler on the playlist container); this row
+// puts the missing version info + a Check-for-updates button in reach.
+function SoftwareInfoRow() {
+  const [apkVersion, setApkVersion] = useState<string | null>(null);
+  const [webVersion] = useState<string>(
+    (process.env.NEXT_PUBLIC_BUILD_SHA || '').slice(0, 7) || 'dev',
+  );
+  const [checking, setChecking] = useState(false);
+  const [lastCheckMsg, setLastCheckMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const bridge = (window as any).EduCmsNative;
+      if (bridge && typeof bridge.deviceInfo === 'function') {
+        const raw = bridge.deviceInfo();
+        const info = JSON.parse(raw);
+        if (info?.appVersion) setApkVersion(info.appVersion);
+      }
+    } catch { /* browser player — leave as null */ }
+  }, []);
+
+  const handleCheck = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setChecking(true);
+    setLastCheckMsg(null);
+    try {
+      // Preferred path: 1.0.6+ native bridge enqueues the OTA worker
+      // right now. The worker handles the full download+install dance,
+      // so we just tell the operator we've asked.
+      const bridge = (window as any).EduCmsNative;
+      if (bridge && typeof bridge.checkForUpdates === 'function') {
+        const ver = bridge.checkForUpdates();
+        setLastCheckMsg(`Checking… (currently on ${ver || apkVersion || '?'})`);
+        // After ~8s the worker has usually either begun downloading
+        // (install prompt pops separately) OR reported uptoDate.
+        setTimeout(() => setLastCheckMsg((prev) => prev ? 'Check complete — watch for install prompt if an update was available.' : prev), 8_000);
+        return;
+      }
+      // Fallback for 1.0.5 (no bridge method): POST /update-check directly
+      // from JS, show the result. If an update is available, open the
+      // APK URL so Android's downloader + installer kick in manually.
+      const payload = {
+        versionName: apkVersion || 'browser',
+        versionCode: 0,
+        fingerprint: localStorage.getItem('edu_device_fp') || '',
+        abi: 'browser',
+      };
+      const r = await fetch(`${getApiRoot()}/api/v1/player/update-check`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) {
+        setLastCheckMsg(`Check failed — HTTP ${r.status}. Try rebooting the kiosk.`);
+        return;
+      }
+      const data = await r.json();
+      if (data?.uptoDate) {
+        setLastCheckMsg(`Up to date — running ${apkVersion || 'web build'}.`);
+        return;
+      }
+      if (data?.latest?.apkUrl) {
+        setLastCheckMsg(`Update available: ${data.latest.versionName}. Opening installer…`);
+        // Navigate to the APK URL — on Android this kicks off the
+        // download + install flow even for older APK builds that
+        // don't have the native OTA bridge.
+        try { window.location.href = data.latest.apkUrl; } catch { /* noop */ }
+        return;
+      }
+      setLastCheckMsg('Check complete — no update info returned.');
+    } catch (err: any) {
+      setLastCheckMsg(`Check error: ${err?.message || err}`);
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="flex justify-between">
+        <span className="text-slate-400">APK version</span>
+        <span className="text-white font-medium text-xs">{apkVersion || '(browser — no APK)'}</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-slate-400">Web build</span>
+        <span className="text-white font-mono text-[11px]">{webVersion}</span>
+      </div>
+      {apkVersion && (
+        <button
+          onClick={handleCheck}
+          disabled={checking}
+          className="w-full mt-1 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white rounded-lg font-medium text-xs transition-colors flex items-center justify-center gap-1.5"
+        >
+          {checking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+          {checking ? 'Checking…' : 'Check for updates'}
+        </button>
+      )}
+      {lastCheckMsg && (
+        <p className="text-[11px] text-slate-400 leading-snug px-0.5">{lastCheckMsg}</p>
+      )}
+    </>
+  );
+}
+
 // ─── Cache status chip shown inside the info overlay. Surfaces both tiers
 // ─── so admins can verify the player is actually serving emergencies from
 // ─── disk (not network) — critical sanity check during drills.
@@ -1367,6 +1474,7 @@ function PlayerPage() {
                 <div className="flex justify-between"><span className="text-slate-400">Resolution</span><span className="text-white font-medium">{tpl.screenWidth}×{tpl.screenHeight}</span></div>
                 <div className="flex justify-between"><span className="text-slate-400">Last Sync</span><span className="text-white font-medium">{lastSync || 'Never'}</span></div>
                 <CacheStatusRow status={cacheStatus} />
+                <SoftwareInfoRow />
               </div>
               <div className="flex gap-2 pt-2">
                 <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm transition-colors">Sync Now</button>
@@ -1540,6 +1648,7 @@ function PlayerPage() {
               <div className="flex justify-between"><span className="text-slate-400">Slide</span><span className="text-white font-medium">{(currentIndex % (sorted.length || 1)) + 1} / {sorted.length}</span></div>
               <div className="flex justify-between"><span className="text-slate-400">Last Sync</span><span className="text-white font-medium">{lastSync || 'Never'}</span></div>
               <CacheStatusRow status={cacheStatus} />
+              <SoftwareInfoRow />
             </div>
             <div className="flex gap-2 pt-2">
               <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm transition-colors">Sync Now</button>
