@@ -200,9 +200,13 @@ export function Sidebar() {
               live-preview mockup. Keeps it in the eye-scan-path of the
               menu rather than buried at the bottom. */}
           <RoleGate allowedRoles={['admin']}>
-            <div className="pt-3 mt-3 border-t border-slate-100 flex justify-center">
+            {/* Wrapper matches the nav-item padding (px-4) so the button's
+                left edge and icon line up with 'Audit Log' above it, not
+                floated to the center. User asked for left-justified
+                alignment with the nav text. */}
+            <div className="pt-3 mt-3 border-t border-slate-100 px-4">
               {isEmergencyActive ? (
-                <div className="px-5 py-2 rounded-full bg-red-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-red-600/20 animate-pulse">
+                <div className="inline-flex px-5 py-2 rounded-full bg-red-600 text-white text-xs font-bold items-center gap-1.5 shadow-md shadow-red-600/20 animate-pulse">
                   <ShieldAlert className="w-3.5 h-3.5" />
                   Emergency Active
                 </div>
@@ -210,7 +214,7 @@ export function Sidebar() {
                 <button
                   type="button"
                   onClick={() => setEmergencyModalOpen(true)}
-                  className="px-5 py-2 rounded-full bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-md shadow-red-600/20 transition-colors focus:outline-none focus:ring-2 focus:ring-red-400"
+                  className="inline-flex px-5 py-2 rounded-full bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-bold items-center gap-1.5 shadow-md shadow-red-600/20 transition-colors focus:outline-none focus:ring-2 focus:ring-red-400"
                 >
                   <ShieldAlert className="w-3.5 h-3.5" />
                   Emergency
