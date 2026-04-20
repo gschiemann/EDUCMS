@@ -2,7 +2,7 @@
 
 import {
   ArrowLeft, Save, Copy, Undo2, Redo2, Eye, EyeOff, Grid3X3, Magnet,
-  ZoomIn, ZoomOut, RotateCw, Loader2, CheckCircle2, AlertCircle, Hand, Trash2,
+  ZoomIn, ZoomOut, RotateCw, Loader2, CheckCircle2, AlertCircle, Hand, Trash2, X,
 } from 'lucide-react';
 import { useMemo } from 'react';
 import { useBuilderStore } from './useBuilderStore';
@@ -184,14 +184,21 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, onDiscard, saveStatus
 
         {/* The primary "Save" writes into the current template. Hidden
             for system presets — those can never be overwritten; the
-            operator can only Save-as-copy into their tenant. */}
+            operator can only Save-as-copy into their tenant. Disabled
+            until there are actual changes — previously the bright
+            indigo button was always active even on a freshly-opened
+            template, which made 'Save' look like a required step. */}
         {!isSystem && (
           <button
             type="button"
             onClick={onSave}
-            disabled={saveStatus === 'saving'}
-            title="Save (Ctrl+S)"
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5 transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            disabled={saveStatus === 'saving' || !isDirty}
+            title={isDirty ? 'Save (Ctrl+S)' : 'No changes to save'}
+            className={`px-4 py-2 text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400 ${
+              isDirty && saveStatus !== 'saving'
+                ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+            }`}
           >
             {saveStatus === 'saving'
               ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
@@ -199,6 +206,21 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, onDiscard, saveStatus
             Save
           </button>
         )}
+
+        {/* Explicit Close button — user feedback: the top-left back arrow
+            wasn't obvious after landing on a new Save-as-copy. A labeled
+            Close on the right-cluster where the save actions are gives
+            the operator a clear exit. Falls through to onBack() which
+            prompts for unsaved changes. */}
+        <button
+          type="button"
+          onClick={onBack}
+          title="Close template"
+          className="px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-400"
+        >
+          <X className="w-3.5 h-3.5" aria-hidden />
+          Close
+        </button>
       </div>
     </div>
   );
