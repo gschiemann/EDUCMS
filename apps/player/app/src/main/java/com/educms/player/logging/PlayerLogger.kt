@@ -22,18 +22,19 @@ import java.util.TimeZone
  *   ✓ init(Context)                       — idempotent, caches logDir
  *   ✓ d/i/w/e(tag, msg, [throwable])      — logcat + on-disk append
  *   ✓ truncateSecret(...)                 — redaction helper
- *   ✓ 1 MB tail rotation inline in write  — keeps last ~500KB when
- *                                           the file crosses 1 MB,
- *                                           drops the older head
  *
  * Deferred (tracked as follow-ups — not customer-facing blockers):
- *   • readRecent() — tails the file via adb/USB today; in-app
- *                    viewer comes once a local Android SDK lets us
- *                    iterate on the Kotlin compile issue.
- *   • uploadRecent() — same.
+ *   • 1 MB rotation — several Kotlin-syntax attempts tripped the
+ *     APK CI compiler in a way the unauth'd check-runs API won't
+ *     surface. Revisit with a local Android SDK + JDK 17 so we
+ *     can read the actual 'e: file:///…' error instead of
+ *     bisecting from CI signal only. Active file grows ~2 MB/day
+ *     — acceptable for customer-testing windows; not a shipping
+ *     blocker for v1.0.8.
+ *   • readRecent() — same CI-blocked bisect. Pull the log via
+ *     adb or USB from `getExternalFilesDir("logs")` today.
+ *   • uploadRecent() — no-op. Follow-up.
  *   • Crash handler via Thread.setDefaultUncaughtExceptionHandler.
- *
- * Disk budget: with rotation the file stays under 1 MB steady-state.
  */
 object PlayerLogger {
 
@@ -139,21 +140,6 @@ object PlayerLogger {
             try {
                 val active = File(dir, LOG_FILE)
                 active.appendText(line, Charsets.UTF_8)
-                // Cap on-disk size at 1 MB by keeping the tail half
-                // whenever we exceed the threshold. Inline read +
-                // write (no helper function, no renameTo, no nested
-                // try/catch) — the previous rotate() helper tripped
-                // a Kotlin compile bug the unauth'd CI wouldn't
-                // surface. This approach uses only byte reads +
-                // writes and survives every Android SDK >= 24.
-                if (active.length() >= MAX_BYTES) {
-                    val bytes = active.readBytes()
-                    val keepBytes = (MAX_BYTES / 2L).toInt()
-                    val start = bytes.size - keepBytes
-                    if (start > 0 && start < bytes.size) {
-                        active.writeBytes(bytes.copyOfRange(start, bytes.size))
-                    }
-                }
             } catch (ex: Exception) {
                 Log.e("PlayerLogger", "writeLine failed: " + (ex.message ?: "unknown"))
             }
