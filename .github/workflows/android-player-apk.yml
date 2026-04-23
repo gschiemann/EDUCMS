@@ -80,7 +80,29 @@ jobs:
           PLAYER_BASE_URL: ${{ github.event.inputs.playerBaseUrl != '' && github.event.inputs.playerBaseUrl || 'https://educms-five.vercel.app/player' }}
         run: |
           cd apps/player
-          ./gradlew --no-daemon assembleDebug -PplayerBaseUrl="$PLAYER_BASE_URL"
+          # Tee full build output so failures leave a readable artifact for
+          # debugging without needing `gh auth` just to read CI logs.
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace assembleDebug -PplayerBaseUrl="$PLAYER_BASE_URL" 2>&1 | tee gradle-build.log
+          status=${PIPESTATUS[0]}
+          exit $status
+
+      - name: Dump gradle log tail on failure
+        if: failure()
+        run: |
+          echo "### Gradle build failed — last 200 lines of output" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -n 200 apps/player/gradle-build.log >> $GITHUB_STEP_SUMMARY || echo "(no gradle-build.log produced)" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload gradle log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-build-log
+          path: apps/player/gradle-build.log
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Locate + version-rename APK
         id: locate
