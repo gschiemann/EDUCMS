@@ -8,6 +8,7 @@ import { MonitorPlay, Loader2, AlertCircle, KeyRound } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { API_URL, warnIfMisconfigured, isLikelyMisconfigured } from '@/lib/api-url';
+import { clog } from '@/lib/client-logger';
 
 export default function LoginPage() {
   return (
@@ -26,6 +27,7 @@ function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTarget = searchParams.get('redirect');
+  const authReason = searchParams.get('reason'); // 'session-expired' | 'explicit-logout'
   const [rememberMe, setRememberMe] = useState(false);
   const [ssoOpen, setSsoOpen] = useState(false);
   const [ssoSlug, setSsoSlug] = useState('');
@@ -62,6 +64,7 @@ function LoginContent() {
     setError('');
     setLoading(true);
     warnIfMisconfigured();
+    clog.info('auth', 'Login attempt', { email, rememberMe, redirectTarget });
     try {
       const res = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
@@ -73,6 +76,7 @@ function LoginContent() {
         login(data.access_token, data.user);
         router.push(redirectTarget || `/${data.user.tenantSlug || data.user.tenantId}/dashboard`);
       } else {
+        clog.warn('auth', 'Login rejected', { status: res.status, message: data?.message });
         setError(data.message || 'Invalid email or password. Please try again.');
       }
     } catch {
@@ -158,6 +162,15 @@ function LoginContent() {
                 Forgot password?
               </Link>
             </div>
+
+            {!error && authReason === 'session-expired' && (
+              <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
+                <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-800 font-medium">
+                  Your session expired. Please sign in again to continue.
+                </p>
+              </div>
+            )}
 
             {error && (
               <div className="flex items-start gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-xl">
