@@ -41,6 +41,34 @@ import { Wifi, QrCode, MonitorPlay } from 'lucide-react';
 
 type Mode = 'registering' | 'pairing' | 'connecting';
 
+/**
+ * Progress state the player pipes into the 'connecting' mode so the
+ * splash can tell the operator WHY the kiosk is still on the splash.
+ * Previously the splash just said "Loading content…" even if the WS
+ * handshake was stuck or a 50MB asset was mid-download; field reports
+ * read that as "the player is hung" when it wasn't.
+ */
+export type LoadPhase =
+  | 'manifest'       // fetching /screens/:id/manifest
+  | 'assets'         // service-worker is pre-caching media
+  | 'emergency'      // topping up the emergency-assets cache tier
+  | 'connecting-ws'  // manifest ok, waiting for WS AUTH_OK
+  | 'ready';         // about to flip to playing
+
+export interface LoadProgress {
+  phase: LoadPhase;
+  /** Count of items downloaded (or 0 if we don't know yet). */
+  loaded?: number;
+  /** Total items to download — undefined = indeterminate (spinner). */
+  total?: number;
+  /** Current item's human-readable name (file name, playlist title…). */
+  currentItem?: string | null;
+  /** Non-fatal failures that auto-retry — number of items currently retrying. */
+  retrying?: number;
+  /** Last error message surfaced by the fetcher — rendered subtle-small. */
+  lastError?: string | null;
+}
+
 export interface KioskSplashProps {
   mode: Mode;
   brandName?: string | null;
@@ -53,6 +81,9 @@ export interface KioskSplashProps {
    *  pointing to /pair?code=... so an admin can scan from their phone
    *  instead of typing. Pass the fully qualified URL. */
   pairDeepLinkUrl?: string | null;
+  /** Connecting-mode progress breakdown. Omit for old behaviour
+   *  ("Loading content…" + pulse). */
+  loadProgress?: LoadProgress | null;
 }
 
 export function KioskSplash({
@@ -63,6 +94,7 @@ export function KioskSplash({
   screenName,
   resolution,
   pairDeepLinkUrl,
+  loadProgress,
 }: KioskSplashProps) {
   const displayName = brandName && brandName.trim() ? brandName : 'EduSignage';
 
@@ -191,8 +223,73 @@ export function KioskSplash({
               <div />
             </div>
             <p className="kiosk-phase-copy">
-              {screenName ? <>Loading content for <strong>{screenName}</strong>&hellip;</> : 'Loading content…'}
+              {(() => {
+                // Phase-specific copy. Falls back to the generic
+                // 'Loading content…' when no progress payload yet.
+                if (!loadProgress) {
+                  return screenName
+                    ? <>Loading content for <strong>{screenName}</strong>&hellip;</>
+                    : 'Loading content…';
+                }
+                switch (loadProgress.phase) {
+                  case 'manifest':
+                    return <>Fetching playlist{screenName ? <> for <strong>{screenName}</strong></> : null}&hellip;</>;
+                  case 'assets':
+                    return <>Downloading content&hellip;</>;
+                  case 'emergency':
+                    return <>Caching emergency content&hellip;</>;
+                  case 'connecting-ws':
+                    return <>Connecting to live updates&hellip;</>;
+                  case 'ready':
+                    return <>Starting playback&hellip;</>;
+                  default:
+                    return 'Loading content…';
+                }
+              })()}
             </p>
+
+            {/* Progress bar — only when we have real counts to show.
+                'total' unknown = indeterminate shimmer; 'total' known =
+                fill proportion of loaded/total. */}
+            {loadProgress && (loadProgress.total || loadProgress.loaded) ? (
+              <div className="kiosk-progress-wrap">
+                <div
+                  className={
+                    'kiosk-progress-bar ' +
+                    (loadProgress.total ? 'kiosk-progress-bar--determinate' : 'kiosk-progress-bar--indeterminate')
+                  }
+                  style={
+                    loadProgress.total
+                      ? { width: `${Math.min(100, Math.round(((loadProgress.loaded ?? 0) / loadProgress.total) * 100))}%` }
+                      : undefined
+                  }
+                />
+              </div>
+            ) : null}
+
+            {/* Count + current-item line. Kept small so it doesn't
+                compete with the phase copy. */}
+            {loadProgress && (loadProgress.total || loadProgress.currentItem) ? (
+              <p className="kiosk-progress-detail">
+                {loadProgress.total ? (
+                  <span>
+                    {loadProgress.loaded ?? 0} of {loadProgress.total}
+                    {loadProgress.retrying ? <> · {loadProgress.retrying} retrying</> : null}
+                  </span>
+                ) : null}
+                {loadProgress.currentItem ? (
+                  <span className="kiosk-progress-current">
+                    {' '}· {loadProgress.currentItem}
+                  </span>
+                ) : null}
+              </p>
+            ) : null}
+
+            {/* Last error — shown subtle; the kiosk keeps trying but
+                the operator deserves to know something failed. */}
+            {loadProgress?.lastError ? (
+              <p className="kiosk-progress-error">⚠ {loadProgress.lastError}</p>
+            ) : null}
           </>
         )}
 
@@ -545,6 +642,60 @@ const CSS = `
   font-weight: 500;
 }
 .kiosk-phase-copy strong { color: #ffffff; font-weight: 600; }
+
+/* ─── Download progress bar (connecting mode) ───────────────── */
+.kiosk-progress-wrap {
+  width: clamp(240px, 34vw, 480px);
+  height: 6px;
+  margin-top: 18px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+.kiosk-progress-bar {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--splash-primary, #6366f1),
+    var(--splash-accent, #a855f7)
+  );
+  transition: width 0.35s ease-out;
+}
+.kiosk-progress-bar--determinate { width: 0%; }
+.kiosk-progress-bar--indeterminate {
+  width: 40%;
+  animation: kioskProgressSlide 1.6s ease-in-out infinite;
+}
+@keyframes kioskProgressSlide {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(280%); }
+}
+.kiosk-progress-detail {
+  margin: 10px 0 0 0;
+  font-size: clamp(11px, 1.5vh, 13px);
+  color: #94a3b8;
+  font-weight: 500;
+  max-width: clamp(260px, 40vw, 520px);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kiosk-progress-current {
+  color: #cbd5e1;
+  font-family: 'Inter', ui-monospace, sans-serif;
+  font-size: 0.95em;
+}
+.kiosk-progress-error {
+  margin: 8px 0 0 0;
+  font-size: clamp(11px, 1.5vh, 13px);
+  color: #fca5a5;
+  font-weight: 500;
+  max-width: clamp(260px, 40vw, 520px);
+  text-align: center;
+}
 
 /* ─── Tech chips (bottom of stage) ──────────────────────────── */
 .kiosk-tech-chips {

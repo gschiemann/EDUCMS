@@ -144,9 +144,20 @@ async function precachePlaylist(assets, softCapBytes) {
     }
   }
 
-  // 2. Pre-fetch missing assets, respecting hash changes.
+  // 2. Pre-fetch missing assets, respecting hash changes. Emit a
+  //    progress event per completed asset so the splash can show a
+  //    real download bar instead of an indeterminate pulse.
+  let loaded = 0;
   for (const asset of assets) {
     await fetchAndStore(asset, cache, meta);
+    loaded += 1;
+    await broadcast({
+      type: 'PRECACHE_PROGRESS',
+      tier: 'playlist',
+      loaded,
+      total: assets.length,
+      currentItem: asset.url ? asset.url.split('/').pop() : null,
+    });
   }
 
   // 3. Honor soft cap by evicting oldest. We don't track real LRU, so we
@@ -189,9 +200,18 @@ async function precacheEmergency(assets, setHash) {
   }
 
   // Fetch + store. Force re-download if our stored hash doesn't match the
-  // expected hash.
+  // expected hash. Emit per-asset progress for the splash bar.
+  let loaded = 0;
   for (const asset of assets) {
     await fetchAndStore(asset, cache, meta);
+    loaded += 1;
+    await broadcast({
+      type: 'PRECACHE_PROGRESS',
+      tier: 'emergency',
+      loaded,
+      total: assets.length,
+      currentItem: asset.url ? asset.url.split('/').pop() : null,
+    });
   }
 
   const total = await sumCacheBytes(cache);

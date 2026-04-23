@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Component, ReactNode } from 'react';
 import '@/components/widgets/variants-register'; // Boot-time registration for custom themes
 import { MonitorPlay, Wifi, WifiOff, AlertTriangle, Loader2, Settings, CheckCircle2, HardDrive, Cpu, Server, Network, Play, Monitor, Info, Power } from 'lucide-react';
-import { KioskSplash } from '@/components/player/KioskSplash';
+import { KioskSplash, type LoadProgress } from '@/components/player/KioskSplash';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import {
   registerOfflineCache,
@@ -618,6 +618,14 @@ function PlayerPage() {
   // otherwise drop every emergency. Offset is "server - local"; apply
   // by ADDING to local Date.now() before comparing.
   const serverClockOffsetRef = useRef<number>(0);
+
+  // Connecting-phase download progress. Fed by the fetch pipeline
+  // (manifest/ws stages) and by the service worker (per-asset cache
+  // events). KioskSplash renders a phase-specific message + progress
+  // bar + current-item line — previously said only "Loading content…"
+  // with no feedback while a 50 MB asset downloaded, which operators
+  // read as a hung player.
+  const [loadProgress, setLoadProgress] = useState<LoadProgress | null>(null);
   const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
   const wsReconnectRef = useRef<NodeJS.Timeout | null>(null);
   const httpFallbackRef = useRef<NodeJS.Timeout | null>(null);
@@ -649,6 +657,33 @@ function PlayerPage() {
       getCacheStatus().then(setCacheStatus).catch(() => {});
     }, 30_000);
     return () => clearInterval(t);
+  }, []);
+
+  // Listen for SW cache-progress events. The SW emits PRECACHE_PROGRESS
+  // for every asset as it's pulled into the cache; we pipe that into
+  // loadProgress so KioskSplash's bar moves in real time.
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.serviceWorker) return;
+    const onMessage = (ev: MessageEvent) => {
+      const msg: any = ev.data;
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.type === 'PRECACHE_PROGRESS') {
+        setLoadProgress((prev) => ({
+          phase: msg.tier === 'emergency' ? 'emergency' : 'assets',
+          loaded: msg.loaded,
+          total: msg.total,
+          currentItem: msg.currentItem ?? null,
+          retrying: prev?.retrying ?? 0,
+          lastError: null,
+        }));
+      } else if (msg.type === 'PRECACHE_PLAYLIST_DONE' || msg.type === 'PRECACHE_EMERGENCY_DONE') {
+        // Keep a brief "ready" state so the bar hits 100% before
+        // KioskSplash unmounts on phase flip to 'playing'.
+        setLoadProgress({ phase: 'ready' });
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
   }, []);
 
   // Report cache status to the server every 30s so admins can see in the
@@ -934,6 +969,9 @@ function PlayerPage() {
           const setHash = playlistAssets.map(a => a.url).sort().join('|');
           if (setHash !== lastPlaylistSetHashRef.current) {
             lastPlaylistSetHashRef.current = setHash;
+            // Kick the SW pre-cache AND seed the splash with the total so
+            // the bar can fill as PRECACHE_PROGRESS events arrive.
+            setLoadProgress({ phase: 'assets', loaded: 0, total: playlistAssets.length });
             precachePlaylist(playlistAssets).catch(() => {});
           }
         }
@@ -1522,6 +1560,7 @@ function PlayerPage() {
         brandName={brandName}
         screenName={screenName}
         resolution={splashResolution}
+        loadProgress={loadProgress}
       />
     );
   }
