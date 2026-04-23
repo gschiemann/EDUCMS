@@ -3,6 +3,7 @@ import { Inter, Fredoka, Caveat } from 'next/font/google';
 import './globals.css';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import Providers from '@/components/providers';
+import { LogViewer } from '@/components/debug/LogViewer';
 
 // Development-only axe accessibility overlay — never shipped in production builds.
 if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
@@ -55,6 +56,9 @@ export default function RootLayout({
               <div className="absolute top-0 inset-x-0 h-96 bg-gradient-to-b from-indigo-50 to-transparent pointer-events-none -z-10" />
               {children}
             </main>
+            {/* Toggle with Ctrl+Shift+L (Cmd+Shift+L on macOS). Zero
+                footprint when closed — just a keydown listener. */}
+            <LogViewer />
           </TooltipProvider>
         </Providers>
       </body>
