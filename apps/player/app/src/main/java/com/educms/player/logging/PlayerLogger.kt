@@ -11,33 +11,30 @@ import java.util.Locale
 import java.util.TimeZone
 
 /**
- * Rotating file logger.
+ * File logger — conservative customer-testing build (2026-04-23).
  *
- * Bisected 2026-04-23 — the previous rotate() helper function broke the
- * Kotlin compile in a way that GitHub's unauth'd check-runs API didn't
- * expose. Inlined rotation into writeLine instead: `runCatching { ... }`
- * around delete + renameTo avoids the nested-try-catch pattern that was
- * the likely culprit (bisect showed rotate()'s body specifically was
- * the failure; writeLine-without-rotation built clean).
- *
- * Shipped features:
+ * What works:
  *   ✓ init(Context)                       — idempotent, caches logDir
  *   ✓ d/i/w/e(tag, msg, [throwable])      — forwards to logcat AND
  *                                           appends to on-disk log
- *   ✓ readRecent(maxLines)                — tail of active file
  *   ✓ truncateSecret(...)                 — redaction helper
- *   ✓ 1 MB rotation on write              — player.log → player.1.log
- *                                           once it crosses the cap
  *
- * Deferred (follow-up once APK baseline is stable on customer boxes):
- *   • Daemon-thread uploadRecent — currently no-op
- *   • Crash handler via setDefaultUncaughtExceptionHandler
- *   • Reading rotated file in readRecent (currently active file only)
+ * Known-deferred (tracked as a follow-up; kiosk still functions):
+ *   • readRecent()  — returns a stub string. Bisect tried to enable
+ *                     real reading; the nested synchronized + return
+ *                     pattern tripped the Kotlin compile in a way the
+ *                     unauth'd CI didn't expose. Reinstate after an
+ *                     Android SDK is available to reproduce locally.
+ *   • uploadRecent()— no-op. Follow-up.
+ *   • 1 MB rotation — same CI-blocked bisect issue. File grows
+ *                     unbounded (~2 MB/day) until rotation lands.
+ *
+ * Operator workaround for missing readRecent/rotation: pull the log
+ * file directly via adb or USB from `getExternalFilesDir("logs")`.
  */
 object PlayerLogger {
 
     private const val LOG_FILE = "player.log"
-    private const val ROTATED_FILE = "player.1.log"
     private const val MAX_BYTES = 1_048_576L
 
     private val LOCK = Any()
@@ -54,8 +51,9 @@ object PlayerLogger {
             logDir = dir
             initialized = true
         }
-        // Direct-to-logcat so init never recurses through writeLine —
-        // kept on boot so tail -f logcat still shows the logDir path.
+        // Don't call i() from here in bisect 3 — that recursion through
+        // write() can hide a stacktrace when the root cause lives in
+        // write(). Keeping it direct-to-logcat for now.
         Log.i("PlayerLogger", "Logger initialised. logDir=" + (logDir?.absolutePath ?: "(null)"))
     }
 
@@ -66,37 +64,19 @@ object PlayerLogger {
 
     fun readRecent(maxLines: Int = 500): String {
         val dir = logDir ?: return "(logger not initialised)"
-        val active = File(dir, LOG_FILE)
-        if (!active.exists()) return "(no log file yet)"
-        synchronized(LOCK) {
-            val lines = ArrayList<String>()
-            val reader = active.bufferedReader()
-            try {
-                while (true) {
-                    val line = reader.readLine() ?: break
-                    lines.add(line)
-                }
-            } catch (ex: Exception) {
-                return "(readRecent failed: " + (ex.message ?: "unknown") + ")"
-            } finally {
-                try { reader.close() } catch (_: Exception) {}
-            }
-            return if (lines.size <= maxLines) {
-                lines.joinToString("\n")
-            } else {
-                val start = lines.size - maxLines
-                lines.subList(start, lines.size).joinToString("\n")
-            }
-        }
+        return "(in-app log tail pending — pull " + File(dir, LOG_FILE).absolutePath +
+            " via adb or USB for the full trace; on-device view coming in next build)"
     }
 
     fun uploadRecent(apiRoot: String, deviceJwt: String?, screenId: String?) {
-        // Deferred — see header. No-op for this customer-testing build
-        // so the call site compiles and an operator hitting the
-        // "Upload diagnostics" button in the info overlay just gets a
-        // clean logcat note instead of a crash.
-        Log.i("PlayerLogger", "uploadRecent deferred — apiRoot=" + apiRoot +
-            " screen=" + (screenId ?: "none"))
+        // Upload deferred — see file header. Kept as a compiling no-op
+        // so every caller (MainActivity, WebAppBridge, etc.) still
+        // resolves.
+        Log.i(
+            "PlayerLogger",
+            "uploadRecent deferred — apiRoot=" + apiRoot +
+                " screen=" + (screenId ?: "none"),
+        )
     }
 
     fun truncateSecret(value: String?, n: Int = 8): String {
@@ -110,7 +90,11 @@ object PlayerLogger {
         return sdf.format(Date())
     }
 
+    // Forward to logcat AND append a formatted line to the active
+    // log file. No rotation yet — that comes in bisect step 4 once we
+    // know write itself compiles.
     private fun writeLine(level: String, tag: String, msg: String, throwable: Throwable?) {
+        // Logcat first — always works regardless of init state.
         if (throwable != null) {
             when (level) {
                 "DEBUG" -> Log.d(tag, msg, throwable)
@@ -145,16 +129,6 @@ object PlayerLogger {
             try {
                 val active = File(dir, LOG_FILE)
                 active.appendText(line, Charsets.UTF_8)
-                // Rotation on write: keep player.log under 1 MB by
-                // flipping it to player.1.log once it crosses the
-                // threshold. Using two sequential try-blocks (instead of
-                // nested) because the previous nested-try version broke
-                // CI with a compile error that hid in the bisect.
-                if (active.length() >= MAX_BYTES) {
-                    val rotated = File(dir, ROTATED_FILE)
-                    runCatching { rotated.delete() }
-                    runCatching { active.renameTo(rotated) }
-                }
             } catch (ex: Exception) {
                 Log.e("PlayerLogger", "writeLine failed: " + (ex.message ?: "unknown"))
             }
