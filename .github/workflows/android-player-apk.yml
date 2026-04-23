@@ -98,15 +98,23 @@ jobs:
           # ALSO push errors as workflow-command annotations so the
           # public check-runs API surfaces them — that way `curl` can
           # read the Kotlin compile error without a GitHub token.
-          # Grep anything that looks like a compile error; keep a cap
-          # so a runaway stack trace doesn't flood the annotations.
+          # Strategy: grab the LAST 120 lines of the gradle log. That's
+          # where FAILURE:/What went wrong/compile errors live. Narrow
+          # regexes catch progress output before the actual error, so
+          # tail-slice instead.
           if [ -f apps/player/gradle-build.log ]; then
-            grep -E '^(e:|error:|FAILURE:|\* What went wrong:|\* Where:|\s+at .*\.kt:|Execution failed|> Task .+ FAILED|Compilation error|> [A-Z])' apps/player/gradle-build.log | head -n 80 | while IFS= read -r L; do
-              # Strip anything that looks like a percent-encoded char
-              # and escape `%` for ::error::
-              clean=$(echo "$L" | sed 's/%/%25/g; s/\r/%0D/g')
-              echo "::error::GRADLE: $clean"
-            done
+            # Strip ANSI escapes so annotations render cleanly.
+            tail -n 120 apps/player/gradle-build.log \
+              | sed -r 's/\x1b\[[0-9;]*[a-zA-Z]//g' \
+              | while IFS= read -r L; do
+                # Skip empty lines and noisy progress lines that aren't
+                # part of the failure report.
+                case "$L" in
+                  ""|"> Task :"*" UP-TO-DATE"|"> Task :"*" NO-SOURCE") continue ;;
+                esac
+                clean=$(printf '%s' "$L" | sed 's/%/%25/g; s/\r/%0D/g')
+                echo "::error::APK: $clean"
+              done
           fi
 
       - name: Upload gradle log on failure
