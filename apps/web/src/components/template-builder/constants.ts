@@ -68,6 +68,7 @@ export const WIDGET_GROUPS = [
       { type: 'ANIMATED_WELCOME', label: 'Animated Welcome · Elementary', desc: 'Full-screen rainbow-ribbon scene — shapes, confetti, live weather', icon: Cake },
       { type: 'ANIMATED_WELCOME_MS', label: 'Animated Welcome · Middle School', desc: 'Stadium / varsity scene — pennants, scoreboard, megaphone, varsity patch', icon: Cake },
       { type: 'ANIMATED_WELCOME_HS', label: 'Animated Welcome · High School', desc: 'Neon sunset scene — grad cap, trophy, yearbook, confetti burst', icon: Cake },
+      { type: 'HS_VARSITY',          label: 'HS · Varsity (Athletic)',     desc: '4K scoreboard lobby — jersey chest, game-of-the-week, coach spotlight, pennants, PA ticker', icon: Cake },
       { type: 'ANIMATED_CAFETERIA',  label: 'Animated Cafeteria · Food Truck', desc: 'Food-truck menu board — weekly menu, swappable food emojis, lunch chef, allergen ticker', icon: UtensilsCrossed },
     ],
   },

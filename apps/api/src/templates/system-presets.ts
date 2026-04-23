@@ -451,6 +451,19 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     screenWidth: 3840, screenHeight: 2160, bgColor: '#111827',
     zones: [{ name: 'Scene', widgetType: 'ANIMATED_CAFETERIA_HS', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
+  // ── Claude-designed HS lobby pack (2026-04-23) ──────────────────
+  // Eight 4K themes (Varsity first; Broadcast, Yearbook, Terminal,
+  // Transit, Gallery, Blueprint, Zine follow in subsequent commits
+  // once each React port ships). Each theme is a single full-screen
+  // scene widget rendered via HsStage transform:scale.
+  {
+    id: 'preset-hs-varsity',
+    name: '🏟️ Varsity — Athletic Department',
+    description: 'Game-day scoreboard lobby: jersey chest greeting, game-of-the-week card, coach spotlight, pep-rally announcement, pennants, PA-system ticker.',
+    category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0d1b3d',
+    zones: [{ name: 'Scene', widgetType: 'HS_VARSITY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
   {
     id: 'preset-cafeteria-chalkboard',
     name: '🌿 Animated Cafeteria · Chalkboard',
