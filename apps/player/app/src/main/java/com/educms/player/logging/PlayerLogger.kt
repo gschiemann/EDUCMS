@@ -11,38 +11,34 @@ import java.util.Locale
 import java.util.TimeZone
 
 /**
- * Rotating file logger — customer-testing build.
+ * Rotating file logger.
  *
- * Bisected 2026-04-23 through 5 CI iterations to narrow down the Kotlin
- * compile error. The error was in rotate()'s body — still tracking the
- * exact root cause, but the rotation-free version compiles cleanly and
- * is strictly more useful than the previous stub (which only hit
- * logcat — lost on Goodview / NovaStar / TCL boxes that have no
- * ADB access).
+ * Bisected 2026-04-23 — the previous rotate() helper function broke the
+ * Kotlin compile in a way that GitHub's unauth'd check-runs API didn't
+ * expose. Inlined rotation into writeLine instead: `runCatching { ... }`
+ * around delete + renameTo avoids the nested-try-catch pattern that was
+ * the likely culprit (bisect showed rotate()'s body specifically was
+ * the failure; writeLine-without-rotation built clean).
  *
- * What ships in this build:
+ * Shipped features:
  *   ✓ init(Context)                       — idempotent, caches logDir
  *   ✓ d/i/w/e(tag, msg, [throwable])      — forwards to logcat AND
  *                                           appends to on-disk log
  *   ✓ readRecent(maxLines)                — tail of active file
- *   ✓ uploadRecent(...)                   — no-op (next commit)
  *   ✓ truncateSecret(...)                 — redaction helper
+ *   ✓ 1 MB rotation on write              — player.log → player.1.log
+ *                                           once it crosses the cap
  *
- * Deferred to follow-ups (won't block customer testing):
- *   • 1 MB rotation — rotate() body broke CI on bisect 5; reinstate
- *     once I can reproduce locally with an Android SDK
- *   • Daemon-thread uploadRecent — needs local test too
+ * Deferred (follow-up once APK baseline is stable on customer boxes):
+ *   • Daemon-thread uploadRecent — currently no-op
  *   • Crash handler via setDefaultUncaughtExceptionHandler
- *
- * Disk budget note: without rotation the file grows unbounded. At
- * typical heartbeat/OTA/boot volumes that's ~2 MB/day, fine for weeks
- * of customer testing but will eventually fill external storage. Boot
- * logs `logDir` so an operator can manually wipe if needed. Do not
- * leave on a pilot device past ~60 days without the rotation fix.
+ *   • Reading rotated file in readRecent (currently active file only)
  */
 object PlayerLogger {
 
     private const val LOG_FILE = "player.log"
+    private const val ROTATED_FILE = "player.1.log"
+    private const val MAX_BYTES = 1_048_576L
 
     private val LOCK = Any()
     private var logDir: File? = null
@@ -149,6 +145,16 @@ object PlayerLogger {
             try {
                 val active = File(dir, LOG_FILE)
                 active.appendText(line, Charsets.UTF_8)
+                // Rotation on write: keep player.log under 1 MB by
+                // flipping it to player.1.log once it crosses the
+                // threshold. Using two sequential try-blocks (instead of
+                // nested) because the previous nested-try version broke
+                // CI with a compile error that hid in the bisect.
+                if (active.length() >= MAX_BYTES) {
+                    val rotated = File(dir, ROTATED_FILE)
+                    runCatching { rotated.delete() }
+                    runCatching { active.renameTo(rotated) }
+                }
             } catch (ex: Exception) {
                 Log.e("PlayerLogger", "writeLine failed: " + (ex.message ?: "unknown"))
             }
