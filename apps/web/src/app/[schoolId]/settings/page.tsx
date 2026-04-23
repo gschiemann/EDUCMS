@@ -96,7 +96,7 @@ export default function SettingsPage() {
     <div className="max-w-4xl space-y-8">
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-800 flex items-center gap-2">
-          <SettingsIcon className="w-7 h-7 text-indigo-500" />
+          <SettingsIcon className="w-7 h-7" style={{ color: 'var(--brand-primary, #6366f1)' }} />
           Settings
         </h1>
         <p className="text-sm text-slate-500 mt-0.5">Manage team members, roles, and system info.</p>
@@ -115,7 +115,7 @@ export default function SettingsPage() {
         {/* System Info */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
           <h2 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
-            <MonitorPlay className="w-4 h-4 text-indigo-500" /> System Info
+            <MonitorPlay className="w-4 h-4" style={{ color: 'var(--brand-primary, #6366f1)' }} /> System Info
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-slate-50 rounded-lg p-3">
@@ -238,11 +238,12 @@ export default function SettingsPage() {
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
             <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2">
-              <Shield className="w-4 h-4 text-indigo-500" /> Team Members
+              <Shield className="w-4 h-4" style={{ color: 'var(--brand-primary, #6366f1)' }} /> Team Members
             </h2>
             <button
               onClick={() => setShowAddUser(true)}
-              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5"
+              className="px-3 py-1.5 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5"
+              style={{ background: 'var(--brand-primary, #4f46e5)' }}
             >
               <UserPlus className="w-3.5 h-3.5" /> Invite by email
             </button>
@@ -284,14 +285,16 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   onClick={() => setInviteMode('password')}
-                  className={`px-3 py-1.5 rounded-md font-semibold transition-colors ${inviteMode === 'password' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:text-slate-900'}`}
+                  className={`px-3 py-1.5 rounded-md font-semibold transition-colors ${inviteMode === 'password' ? 'text-white' : 'text-slate-600 hover:text-slate-900'}`}
+                  style={inviteMode === 'password' ? { background: 'var(--brand-primary, #4f46e5)' } : undefined}
                 >
                   Set password now
                 </button>
                 <button
                   type="button"
                   onClick={() => setInviteMode('email')}
-                  className={`px-3 py-1.5 rounded-md font-semibold transition-colors ${inviteMode === 'email' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:text-slate-900'}`}
+                  className={`px-3 py-1.5 rounded-md font-semibold transition-colors ${inviteMode === 'email' ? 'text-white' : 'text-slate-600 hover:text-slate-900'}`}
+                  style={inviteMode === 'email' ? { background: 'var(--brand-primary, #4f46e5)' } : undefined}
                 >
                   Email invite link
                 </button>
@@ -323,7 +326,8 @@ export default function SettingsPage() {
                 <button
                   onClick={handleInvite}
                   disabled={inviteUser.isPending || createDirect.isPending || !newEmail.trim() || (inviteMode === 'password' && newPassword.length < 8)}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg">
+                  className="px-4 py-2 disabled:opacity-50 text-white text-xs font-semibold rounded-lg"
+                  style={{ background: 'var(--brand-primary, #4f46e5)' }}>
                   {(inviteUser.isPending || createDirect.isPending)
                     ? (inviteMode === 'password' ? 'Creating\u2026' : 'Sending\u2026')
                     : (inviteMode === 'password' ? 'Create user' : 'Send invitation')}
@@ -338,7 +342,7 @@ export default function SettingsPage() {
 
           {usersLoading && (
             <div className="flex justify-center py-8">
-              <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+              <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--brand-primary, #6366f1)' }} />
             </div>
           )}
 
@@ -347,7 +351,7 @@ export default function SettingsPage() {
               {users.map((user: any) => (
                 <div key={user.id} className="flex items-center justify-between px-6 py-3 hover:bg-slate-50/50 transition-colors">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-violet-500 flex items-center justify-center text-white text-[10px] font-bold">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-[10px] font-bold" style={{ background: 'linear-gradient(135deg, var(--brand-primary, #6366f1), color-mix(in srgb, var(--brand-primary, #6366f1) 60%, #8b5cf6))' }}>
                       {user.email?.substring(0, 2).toUpperCase()}
                     </div>
                     <div>

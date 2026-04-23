@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.educms.player.logging.PlayerLogger
 
 /**
  * Re-launches the player on device boot so wall-mounted signs come back
@@ -23,19 +24,24 @@ class BootReceiver : BroadcastReceiver() {
         val action = intent.action ?: return
         if (action !in BOOT_ACTIONS) return
         Log.i("BootReceiver", "Boot detected ($action) — launching MainActivity")
+        PlayerLogger.i("BootReceiver", "Boot completed ($action) — starting player services")
 
         // Bring up the foreground services BEFORE the activity so the
         // dashboard sees ONLINE the moment the kiosk boots, even if the
         // activity launch is briefly delayed by display init.
         com.educms.player.heartbeat.HeartbeatService.ensureRunning(context.applicationContext)
         com.educms.player.watchdog.Watchdog.arm(context.applicationContext)
+        PlayerLogger.i("BootReceiver", "HeartbeatService and Watchdog armed")
 
         val launch = Intent(context, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
         runCatching { context.startActivity(launch) }
-            .onFailure { Log.w("BootReceiver", "Failed to launch MainActivity on boot", it) }
+            .onFailure {
+                PlayerLogger.w("BootReceiver", "Failed to launch MainActivity on boot", it)
+                Log.w("BootReceiver", "Failed to launch MainActivity on boot", it)
+            }
     }
 
     companion object {

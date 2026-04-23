@@ -129,6 +129,11 @@ export function Sidebar() {
 
   return (
     <>
+      {/* Brand-aware hover rule injected inline so Tailwind arbitrary-value
+          classes don't fight with the CSS var. Scoped to this sidebar only. */}
+      <style>{`
+        .sidebar-nav-item:hover { color: var(--brand-primary, #4f46e5); }
+      `}</style>
       {/* Mobile backdrop — only shown when drawer is open */}
       {mobileSidebarOpen && (
         <button
@@ -184,7 +189,7 @@ export function Sidebar() {
                 {brandName.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase()}
               </div>
             ) : (
-              <div className="bg-gradient-to-br from-indigo-500 to-violet-500 p-2 rounded-2xl text-white shadow-md shadow-indigo-500/20 flex-shrink-0 w-10 h-10 flex items-center justify-center">
+              <div className="p-2 rounded-2xl text-white shadow-md flex-shrink-0 w-10 h-10 flex items-center justify-center" style={{ background: 'linear-gradient(135deg, var(--brand-primary, #6366f1), color-mix(in srgb, var(--brand-primary, #6366f1) 70%, #8b5cf6))' }}>
                 <MonitorPlay className="w-5 h-5" />
               </div>
             )}
@@ -220,13 +225,14 @@ export function Sidebar() {
                 className={cn(
                   "flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-[14px] font-bold transition-all duration-300 group relative overflow-hidden",
                   isActive
-                    ? "text-indigo-700 bg-indigo-50/80 shadow-[0_2px_10px_rgba(99,102,241,0.05)]"
-                    : "text-slate-500 hover:text-indigo-600 hover:bg-slate-50"
+                    ? "bg-[color-mix(in_srgb,var(--brand-primary,#4f46e5)_8%,transparent)] shadow-[0_2px_10px_rgba(99,102,241,0.05)]"
+                    : "sidebar-nav-item text-slate-500 hover:bg-slate-50"
                 )}
+                style={isActive ? { color: 'var(--brand-primary, #3730a3)' } : undefined}
               >
                 {/* Active Indicator Bar */}
                 {isActive && (
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-indigo-500 rounded-r-full shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
+                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full" style={{ background: 'var(--brand-primary, #6366f1)', boxShadow: '0 0 8px color-mix(in srgb, var(--brand-primary, #6366f1) 50%, transparent)' }} />
                 )}
                 <item.icon className={cn(
                   "w-[22px] h-[22px] transition-transform duration-300",
@@ -277,7 +283,7 @@ export function Sidebar() {
         <div className="px-4 pb-5 space-y-2">
           {/* User info + Logout */}
           <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white text-[10px] font-bold shrink-0 shadow-sm" suppressHydrationWarning>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-[10px] font-bold shrink-0 shadow-sm" style={{ background: 'linear-gradient(135deg, var(--brand-primary, #4f46e5), color-mix(in srgb, var(--brand-primary, #4f46e5) 60%, #8b5cf6))' }} suppressHydrationWarning>
               {mounted ? (user?.email?.substring(0, 2).toUpperCase() || '??') : ''}
             </div>
             <div className="flex-1 min-w-0" suppressHydrationWarning>

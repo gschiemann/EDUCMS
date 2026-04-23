@@ -220,6 +220,14 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6 pb-12">
+      {/* Brand-aware overrides — swaps hardcoded indigo for CSS vars */}
+      <style>{`
+        .dash-link { color: var(--brand-primary, #4f46e5); }
+        .dash-link:hover { color: color-mix(in srgb, var(--brand-primary, #4f46e5) 80%, black); }
+        .dash-kpi-card:hover { border-color: color-mix(in srgb, var(--brand-primary, #6366f1) 50%, transparent); }
+        .group:hover .dash-arrow { color: var(--brand-primary, #6366f1); }
+        .dash-quick-brand:hover { background: color-mix(in srgb, var(--brand-primary, #6366f1) 8%, white); }
+      `}</style>
       {/* ─── Header ─────────────────────────────────────────── */}
       <header className="flex items-start justify-between gap-6 flex-wrap">
         <div>
@@ -284,7 +292,7 @@ export default function DashboardPage() {
             <>
               <div className="h-5 w-px bg-slate-200" />
               <div className="flex items-center gap-2 text-xs text-slate-600">
-                <MonitorPlay className="w-3.5 h-3.5 text-indigo-500" />
+                <MonitorPlay className="w-3.5 h-3.5" style={{ color: 'var(--brand-primary, #6366f1)' }} />
                 <span className="font-semibold">{liveNowCount}</span>
                 <span className="text-slate-400">schedule{liveNowCount === 1 ? '' : 's'} playing now</span>
               </div>
@@ -387,7 +395,7 @@ export default function DashboardPage() {
                 Health by location
               </span>
             </div>
-            <Link href={`${tenantBase}/screens`} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">
+            <Link href={`${tenantBase}/screens`} className="dash-link text-xs font-semibold">
               View all →
             </Link>
           </div>
@@ -436,7 +444,7 @@ export default function DashboardPage() {
                       </span>
                     </div>
                     <div className="col-span-1 flex justify-end">
-                      <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all" />
+                      <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:translate-x-0.5 transition-all dash-arrow" />
                     </div>
                   </Link>
                 );
@@ -444,7 +452,7 @@ export default function DashboardPage() {
             </div>
             {sites.length > 10 && (
               <div className="px-5 py-3 text-center border-t border-slate-100 bg-slate-50/30">
-                <Link href={`${tenantBase}/screens`} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">
+                <Link href={`${tenantBase}/screens`} className="dash-link text-xs font-semibold">
                   View remaining {sites.length - 10} site{sites.length - 10 === 1 ? '' : 's'} →
                 </Link>
               </div>
@@ -459,7 +467,7 @@ export default function DashboardPage() {
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-indigo-500" />
+              <Calendar className="w-4 h-4" style={{ color: 'var(--brand-primary, #6366f1)' }} />
               <h2 className="text-sm font-bold text-slate-700">Today's Schedule</h2>
               {todaysSchedules.length > 0 && (
                 <span className="text-[11px] text-slate-400 font-semibold">
@@ -467,7 +475,7 @@ export default function DashboardPage() {
                 </span>
               )}
             </div>
-            <Link href={`${tenantBase}/schedules`} className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700">
+            <Link href={`${tenantBase}/schedules`} className="dash-link text-[11px] font-semibold">
               Manage →
             </Link>
           </div>
@@ -476,7 +484,7 @@ export default function DashboardPage() {
               <div className="p-8 text-center">
                 <Calendar className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                 <p className="text-sm text-slate-500">Nothing scheduled for today.</p>
-                <Link href={`${tenantBase}/schedules`} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 mt-2 inline-flex items-center gap-1">
+                <Link href={`${tenantBase}/schedules`} className="dash-link text-xs font-semibold mt-2 inline-flex items-center gap-1">
                   Create schedule <ArrowRight className="w-3 h-3" />
                 </Link>
               </div>
@@ -510,7 +518,7 @@ export default function DashboardPage() {
             )}
             {todaysSchedules.length > 6 && (
               <div className="px-5 py-3 text-center bg-slate-50/30">
-                <Link href={`${tenantBase}/schedules`} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">
+                <Link href={`${tenantBase}/schedules`} className="dash-link text-xs font-semibold">
                   View remaining {todaysSchedules.length - 6} →
                 </Link>
               </div>
@@ -528,7 +536,7 @@ export default function DashboardPage() {
             {activity && activity.length > 0 ? (
               activity.slice(0, 8).map((log: any) => (
                 <div key={log.id} className="px-5 py-3 flex items-start gap-3">
-                  <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-1.5 shrink-0" />
+                  <div className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{ background: 'var(--brand-primary, #818cf8)' }} />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold text-slate-700 truncate">
                       {String(log.action || '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())}
@@ -668,7 +676,7 @@ function KpiCard({
     emerald: 'from-emerald-400 to-emerald-600 shadow-emerald-500/30',
     rose:    'from-rose-400 to-rose-600 shadow-rose-500/30',
     amber:   'from-amber-400 to-amber-600 shadow-amber-500/30',
-    indigo:  'from-indigo-400 to-indigo-600 shadow-indigo-500/30',
+    // indigo tone intentionally omitted — handled via inline style below
     sky:     'from-sky-400 to-sky-600 shadow-sky-500/30',
     violet:  'from-violet-400 to-violet-600 shadow-violet-500/30',
     slate:   'from-slate-300 to-slate-500 shadow-slate-400/20',
@@ -677,26 +685,36 @@ function KpiCard({
     emerald: 'text-emerald-600',
     rose:    'text-rose-600',
     amber:   'text-amber-600',
-    indigo:  'text-indigo-600',
+    // indigo tone intentionally omitted — handled via inline style below
     sky:     'text-sky-600',
     violet:  'text-violet-600',
     slate:   'text-slate-500',
   };
   const isZero = bigValue === '0';
-  const valueClass = mutedWhenZero && isZero ? 'text-slate-400' : toneValue[tone];
+  const isBrandTone = tone === 'indigo';
+  const valueClass = mutedWhenZero && isZero ? 'text-slate-400' : (isBrandTone ? '' : toneValue[tone]);
+  const valueStyle = isBrandTone && !(mutedWhenZero && isZero)
+    ? { color: 'var(--brand-primary, #4f46e5)' }
+    : undefined;
+  const iconBoxStyle = isBrandTone
+    ? { background: 'linear-gradient(135deg, var(--brand-primary, #6366f1), color-mix(in srgb, var(--brand-primary, #6366f1) 70%, #4338ca))' }
+    : undefined;
   return (
     <Link
       href={href}
-      className="group bg-white rounded-xl border border-slate-200 p-4 hover:border-indigo-300 hover:shadow-md hover:-translate-y-0.5 transition-all"
+      className="dash-kpi-card group bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md hover:-translate-y-0.5 transition-all"
     >
       <div className="flex items-start justify-between mb-3">
-        <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${toneIcon[tone]} flex items-center justify-center shadow`}>
+        <div
+          className={`w-9 h-9 rounded-lg flex items-center justify-center shadow ${isBrandTone ? '' : `bg-gradient-to-br ${toneIcon[tone]}`}`}
+          style={iconBoxStyle}
+        >
           <Icon className="w-4 h-4 text-white" strokeWidth={2.5} />
         </div>
-        <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all" />
+        <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:translate-x-0.5 transition-all dash-arrow" />
       </div>
       <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">{label}</div>
-      <div className={`text-[28px] font-black tracking-tight leading-none tabular-nums ${valueClass}`}>{bigValue}</div>
+      <div className={`text-[28px] font-black tracking-tight leading-none tabular-nums ${valueClass}`} style={valueStyle}>{bigValue}</div>
       <div className="mt-1 text-[11px] text-slate-500 truncate">{emptyText || sub}</div>
     </Link>
   );
@@ -705,14 +723,15 @@ function KpiCard({
 function QuickLink({ href, Icon, label, tone }: { href: string; Icon: any; label: string; tone: 'sky'|'indigo'|'violet'|'emerald'|'red'|'slate' }) {
   const toneBg: Record<string, string> = {
     sky: 'hover:bg-sky-50 text-sky-600',
-    indigo: 'hover:bg-indigo-50 text-indigo-600',
+    // indigo: handled via brandedClass below
     violet: 'hover:bg-violet-50 text-violet-600',
     emerald: 'hover:bg-emerald-50 text-emerald-600',
     red: 'hover:bg-red-50 text-red-600',
     slate: 'hover:bg-slate-50 text-slate-600',
   };
+  const isBrand = tone === 'indigo';
   return (
-    <Link href={href} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors group ${toneBg[tone]}`}>
+    <Link href={href} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors group ${isBrand ? 'dash-quick-brand' : toneBg[tone]}`} style={isBrand ? { color: 'var(--brand-primary, #4f46e5)' } : undefined}>
       <Icon className="w-4 h-4 shrink-0" />
       <span className="text-sm font-semibold text-slate-700 flex-1">{label}</span>
       <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:translate-x-0.5 transition-all" />

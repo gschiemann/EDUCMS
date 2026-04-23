@@ -47,6 +47,12 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   (p) => p === '/api/v1/player/update-check',
   // Public branding demo — no prior session; throttled + never persists.
   (p) => p === '/api/v1/branding/demo/scrape',
+  // Android kiosk APK log upload — Kotlin HttpURLConnection has no cookie
+  // jar, making a CSRF token round-trip impossible. The endpoint is
+  // protected by device JWT (Authorization: Bearer) instead, which is
+  // immune to CSRF by definition (browsers cannot attach Bearer headers
+  // cross-site automatically). See player-logs.controller.ts.
+  (p) => /^\/api\/v1\/player-logs\/[^/]+$/.test(p),
 ];
 
 export function isCsrfExempt(method: string, path: string): boolean {

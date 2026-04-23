@@ -2,7 +2,7 @@
 
 import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2 } from 'lucide-react';
 import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate } from '@/hooks/use-api';
-import { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
 import { apiFetch } from '@/lib/api-client';
@@ -160,10 +160,18 @@ export default function ScreensPage() {
 
   return (
     <div className="space-y-6">
+      {/* Brand-aware hover rules for pair action buttons. Using inline
+          <style> keeps the brand var in play without fighting Tailwind. */}
+      <style>{`
+        .screens-pair-btn { background: color-mix(in srgb, var(--brand-primary, #059669) 10%, white); color: var(--brand-primary, #059669); }
+        .screens-pair-btn:hover { background: var(--brand-primary, #059669); color: white; }
+        .screens-name-btn:hover { color: var(--brand-primary, #4f46e5); }
+        .screens-ext-link:hover { color: var(--brand-primary, #4f46e5); border-color: color-mix(in srgb, var(--brand-primary, #4f46e5) 30%, transparent); background: color-mix(in srgb, var(--brand-primary, #4f46e5) 5%, white); }
+      `}</style>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-800 flex items-center gap-2">
-            <MonitorPlay className="w-7 h-7 text-indigo-500" />
+            <MonitorPlay className="w-7 h-7" style={{ color: 'var(--brand-primary, #6366f1)' }} />
             Screens
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">Pair devices, organize into groups, and manage your display fleet.</p>
@@ -189,11 +197,13 @@ export default function ScreensPage() {
               elsewhere (one force-update log per device, not a vague
               "sent to everyone"). */}
           <button onClick={() => { setShowPairModal(true); setPairGroupId(''); setPairCode(''); setPairName(''); setPairError(''); }}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2">
+            className="px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2"
+            style={{ background: 'var(--brand-accent, var(--brand-primary, #059669))' }}>
             <Wifi className="w-4 h-4" /> Pair Screen
           </button>
           <button onClick={() => setShowCreateGroup(true)}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2">
+            className="px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2"
+            style={{ background: 'var(--brand-primary, #4f46e5)' }}>
             <Plus className="w-4 h-4" /> New Group
           </button>
         </div>
@@ -204,7 +214,7 @@ export default function ScreensPage() {
         <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-5 space-y-3">
           <div>
             <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-              <MapIcon className="w-4 h-4 text-indigo-500" /> Fleet map
+              <MapIcon className="w-4 h-4" style={{ color: 'var(--brand-primary, #6366f1)' }} /> Fleet map
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
               Every screen with an address. Pin colors show live status — emergency-active screens pulse red. Click a pin for details.
@@ -231,21 +241,21 @@ export default function ScreensPage() {
         <h3 className="text-sm font-bold text-slate-800 mb-4">How to Connect a Screen</h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           <div className="flex gap-3.5 items-center">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-500 shadow-sm shadow-emerald-500/20 text-white flex items-center justify-center text-sm font-black shrink-0">1</div>
+            <div className="w-10 h-10 rounded-2xl text-white flex items-center justify-center text-sm font-black shrink-0" style={{ background: 'var(--brand-primary, #059669)', boxShadow: '0 1px 2px color-mix(in srgb, var(--brand-primary, #059669) 30%, transparent)' }}>1</div>
             <div>
               <p className="text-sm font-bold text-slate-700">Open the Player URL</p>
               <p className="text-xs text-slate-500">On any device browser</p>
             </div>
           </div>
           <div className="flex gap-3.5 items-center">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-500 shadow-sm shadow-emerald-500/20 text-white flex items-center justify-center text-sm font-black shrink-0">2</div>
+            <div className="w-10 h-10 rounded-2xl text-white flex items-center justify-center text-sm font-black shrink-0" style={{ background: 'var(--brand-primary, #059669)', boxShadow: '0 1px 2px color-mix(in srgb, var(--brand-primary, #059669) 30%, transparent)' }}>2</div>
             <div>
               <p className="text-sm font-bold text-slate-700">Get Pairing Code</p>
               <p className="text-xs text-slate-500">6 digits on screen</p>
             </div>
           </div>
           <div className="flex gap-3.5 items-center">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-500 shadow-sm shadow-emerald-500/20 text-white flex items-center justify-center text-sm font-black shrink-0">3</div>
+            <div className="w-10 h-10 rounded-2xl text-white flex items-center justify-center text-sm font-black shrink-0" style={{ background: 'var(--brand-primary, #059669)', boxShadow: '0 1px 2px color-mix(in srgb, var(--brand-primary, #059669) 30%, transparent)' }}>3</div>
             <div>
               <p className="text-sm font-bold text-slate-700">Pair it Here</p>
               <p className="text-xs text-slate-500">Click &quot;Pair Screen&quot;</p>
@@ -257,7 +267,8 @@ export default function ScreensPage() {
             {playerUrl}
           </code>
           <button onClick={() => navigator.clipboard?.writeText(playerUrl)}
-            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl shrink-0 shadow-sm transition-all focus:scale-95">
+            className="px-4 py-2.5 text-white text-sm font-bold rounded-xl shrink-0 shadow-sm transition-all focus:scale-95"
+            style={{ background: 'var(--brand-primary, #059669)' }}>
             Copy URL
           </button>
         </div>
@@ -270,10 +281,12 @@ export default function ScreensPage() {
           <div className="flex gap-3">
             <input ref={newGroupInputRef} value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)}
               placeholder="e.g., Main Hallway, Cafeteria, Library"
-              className="flex-1 px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+              className="flex-1 px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2"
+              style={{ '--tw-ring-color': 'var(--brand-primary, #6366f1)' } as React.CSSProperties}
               onKeyDown={(e) => e.key === 'Enter' && handleCreateGroup()} />
             <button onClick={handleCreateGroup} disabled={createGroup.isPending}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold rounded-lg">
+              className="px-4 py-2 disabled:opacity-50 text-white text-sm font-semibold rounded-lg"
+              style={{ background: 'var(--brand-primary, #4f46e5)' }}>
               {createGroup.isPending ? 'Creating...' : 'Create'}
             </button>
             <button onClick={() => setShowCreateGroup(false)} className="px-3 py-2 text-slate-400 hover:text-slate-600 text-sm">Cancel</button>
@@ -281,7 +294,7 @@ export default function ScreensPage() {
         </div>
       )}
 
-      {isLoading && <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>}
+      {isLoading && <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--brand-primary, #6366f1)' }} /></div>}
 
       {/* Groups */}
       {groups && (
@@ -294,8 +307,8 @@ export default function ScreensPage() {
               <div key={group.id} className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
                 <div className="px-6 py-5 flex justify-between items-center bg-slate-50/30">
                   <div className="flex items-center gap-4">
-                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-50 to-indigo-100/50 flex items-center justify-center">
-                      <MonitorPlay className="w-5 h-5 text-indigo-600" />
+                    <div className="w-11 h-11 rounded-2xl flex items-center justify-center" style={{ background: 'color-mix(in srgb, var(--brand-primary, #6366f1) 10%, white)' }}>
+                      <MonitorPlay className="w-5 h-5" style={{ color: 'var(--brand-primary, #4f46e5)' }} />
                     </div>
                     <div>
                       <h3 className="text-[15px] font-bold text-slate-800">{group.name}</h3>
@@ -307,7 +320,7 @@ export default function ScreensPage() {
                   </div>
                   <div className="flex gap-2.5">
                     <button onClick={() => { setShowPairModal(true); setPairGroupId(group.id); setPairCode(''); setPairName(''); setPairError(''); }}
-                      className="px-4 py-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white transition-colors text-xs font-bold rounded-xl flex items-center gap-1.5">
+                      className="screens-pair-btn px-4 py-2 transition-colors text-xs font-bold rounded-xl flex items-center gap-1.5">
                       <Wifi className="w-4 h-4" /> Pair to Group
                     </button>
                     <button onClick={async () => { if (await appConfirm({ title: 'Delete group?', message: `"${group.name}" will be deleted. Screens in it won't be deleted.`, tone: 'danger', confirmLabel: 'Delete' })) deleteGroup.mutate(group.id); }}
@@ -336,7 +349,7 @@ export default function ScreensPage() {
                             </div>
                           ) : (
                             <button
-                              className="text-sm font-bold text-slate-700 hover:text-indigo-600 transition-colors text-left"
+                              className="screens-name-btn text-sm font-bold text-slate-700 transition-colors text-left"
                               onClick={() => { setEditingScreen(screen.id); setEditName(screen.name); }}
                               title="Click to rename"
                             >
@@ -383,7 +396,7 @@ export default function ScreensPage() {
                           className={`p-2 bg-white border border-slate-100 rounded-lg transition-all shadow-sm opacity-0 group-hover/item:opacity-100 ${
                             (screen as any).latitude != null
                               ? 'text-emerald-600 border-emerald-100 hover:bg-emerald-50'
-                              : 'text-slate-400 hover:text-indigo-600 hover:border-indigo-100 hover:bg-indigo-50'
+                              : 'screens-ext-link text-slate-400'
                           }`}
                           title={(screen as any).latitude != null ? `On map: ${(screen as any).address || 'set'}` : 'Set map location'}
                         >
@@ -402,11 +415,11 @@ export default function ScreensPage() {
                           <Trash2 className="w-4 h-4" />
                         </button>
                         <a
-                          href={`${playerUrl}?deviceId=${screen.deviceFingerprint}`}
+                          href={`${playerUrl}?deviceId=${screen.deviceFingerprint}&preview=1`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-indigo-600 hover:border-indigo-100 hover:bg-indigo-50 opacity-0 group-hover/item:opacity-100 transition-all shadow-sm"
-                          title="Open Screen in Browser"
+                          className="screens-ext-link p-2 bg-white border border-slate-100 rounded-lg text-slate-400 opacity-0 group-hover/item:opacity-100 transition-all shadow-sm"
+                          title="Open Screen in Browser (Preview — won't affect screen status)"
                         >
                           <ExternalLink className="w-4 h-4" />
                         </a>
@@ -445,7 +458,8 @@ export default function ScreensPage() {
               <h3 className="text-lg font-semibold text-slate-700">No Screen Groups Yet</h3>
               <p className="text-sm text-slate-500 mt-2 mb-4">Create a group, then pair screens to it.</p>
               <button onClick={() => setShowCreateGroup(true)}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg inline-flex items-center gap-1.5">
+                className="px-4 py-2 text-white text-sm font-semibold rounded-lg inline-flex items-center gap-1.5"
+                style={{ background: 'var(--brand-primary, #4f46e5)' }}>
                 <Plus className="w-4 h-4" /> Create First Group
               </button>
             </div>
@@ -482,7 +496,7 @@ export default function ScreensPage() {
                         </div>
                       ) : (
                         <button
-                          className="text-sm font-bold text-slate-700 hover:text-indigo-600 transition-colors text-left"
+                          className="screens-name-btn text-sm font-bold text-slate-700 transition-colors text-left"
                           onClick={() => { setEditingScreen(screen.id); setEditName(screen.name); }}
                           title="Click to rename"
                         >
@@ -531,12 +545,12 @@ export default function ScreensPage() {
                       className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 opacity-0 group-hover/item:opacity-100 transition-all shadow-sm">
                       <Trash2 className="w-4 h-4" />
                     </button>
-                    <a 
-                      href={`${playerUrl}?deviceId=${screen.deviceFingerprint}`} 
-                      target="_blank" 
+                    <a
+                      href={`${playerUrl}?deviceId=${screen.deviceFingerprint}&preview=1`}
+                      target="_blank"
                       rel="noopener noreferrer"
-                      className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-indigo-600 hover:border-indigo-100 hover:bg-indigo-50 opacity-0 group-hover/item:opacity-100 transition-all shadow-sm"
-                      title="Open Screen in Browser"
+                      className="screens-ext-link p-2 bg-white border border-slate-100 rounded-lg text-slate-400 opacity-0 group-hover/item:opacity-100 transition-all shadow-sm"
+                      title="Open Screen in Browser (Preview — won't affect screen status)"
                     >
                       <ExternalLink className="w-4 h-4" />
                     </a>

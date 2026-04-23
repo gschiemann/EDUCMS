@@ -100,6 +100,21 @@ export class ScreensController {
       throw new HttpException('Device fingerprint is required', HttpStatus.BAD_REQUEST);
     }
 
+    // Preview mode fingerprints (set by the dashboard's "Open in Browser" button)
+    // must NEVER create a Screen row or update lastPingAt on an existing row.
+    // Return a synthetic not-paired payload so the preview player can still
+    // render content via the manifest endpoint (using its admin JWT).
+    if (body.deviceFingerprint.startsWith('preview-')) {
+      return {
+        screenId: null,
+        pairingCode: null,
+        paired: false,
+        name: 'Preview',
+        deviceToken: null,
+        isPreview: true,
+      };
+    }
+
     // Check if this device is already registered
     const existing = await this.prisma.client.screen.findUnique({
       where: { deviceFingerprint: body.deviceFingerprint },
@@ -177,6 +192,12 @@ export class ScreensController {
   // ─── PUBLIC: Device heartbeat / status check ───
   @Get('status/:deviceFingerprint')
   async deviceStatus(@Param('deviceFingerprint') fingerprint: string) {
+    // Preview fingerprints must never write lastPingAt — they would push
+    // the real paired kiosk's status to ONLINE even after closing the tab.
+    if (fingerprint.startsWith('preview-')) {
+      return { screenId: null, paired: false, name: 'Preview', pairingCode: null, isPreview: true };
+    }
+
     const screen = await this.prisma.client.screen.findUnique({
       where: { deviceFingerprint: fingerprint },
     });

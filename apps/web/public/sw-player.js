@@ -79,9 +79,22 @@ self.addEventListener('fetch', (event) => {
               ?? (altReq && await plCache.match(altReq, { ignoreSearch: true }));
     if (plHit) return plHit;
 
-    // Fall through to network. If the response is OK and looks cacheable,
-    // store it in the playlist tier opportunistically (covers assets the
-    // page asked for but didn't pre-cache).
+    // Bug fix (Android images): for cross-origin URLs that are NOT in any
+    // cache tier, bail out of the SW and let the browser fetch them natively.
+    // Inside a Service Worker, fetch() on a cross-origin URL uses CORS rules
+    // from the SW origin — this can fail on Android WebView for assets served
+    // from a CDN (e.g. Supabase Storage) if CORS headers aren't perfectly
+    // configured. Browser-native <img>/<video> fetches don't enforce CORS at
+    // all (they use no-cors mode by default), so the asset always loads fine
+    // when the SW doesn't intercept. We still intercept to serve FROM cache;
+    // we just avoid the SW-level network fetch for uncached cross-origin media.
+    const isCrossOrigin = url.origin !== self.location.origin;
+    if (isCrossOrigin) {
+      // Let the browser handle it natively — no SW network hop.
+      return fetch(req.clone());
+    }
+
+    // Same-origin fallback to network + opportunistic cache write.
     try {
       const res = await fetch(req);
       if (res && res.ok && (res.type === 'basic' || res.type === 'cors')) {

@@ -29,6 +29,19 @@ function qp(name: string): string | null {
   return new URLSearchParams(window.location.search).get(name);
 }
 
+/**
+ * True when the player was opened via the dashboard's "Open Screen in Browser"
+ * ExternalLink button (which appends &preview=1). In preview mode we:
+ *   - Use a synthetic `preview-<random>` fingerprint so we don't stomp the
+ *     real kiosk's heartbeat or lastPingAt.
+ *   - Skip the /screens/register call entirely (returns a fake paired=false response).
+ *   - Skip the 30s /screens/status heartbeat entirely.
+ *   - Show a PREVIEW MODE chip so it's visually obvious.
+ */
+function isPreviewMode(): boolean {
+  return qp('preview') === '1';
+}
+
 /** True when running inside the Android player WebView (passed via ?client=android). */
 function isAndroidWebView(): boolean {
   if (typeof window === 'undefined') return false;
@@ -142,17 +155,26 @@ function getApiRoot(): string {
 // Generate a stable device fingerprint for this physical device.
 //
 // PRECEDENCE (first match wins):
-//   1. URL ?fp= — passed by the Android APK using Settings.Secure.ANDROID_ID
+//   1. Preview mode (?preview=1) — returns a throw-away `preview-<random>`
+//      fingerprint that starts with 'preview-'. The API ignores these so the
+//      dashboard's "Open Screen in Browser" button never poisons the real
+//      kiosk's heartbeat or lastPingAt.
+//   2. URL ?fp= — passed by the Android APK using Settings.Secure.ANDROID_ID
 //      which survives app uninstalls + reinstalls (it only rotates on
 //      factory reset). This is what lets a re-sideloaded kiosk come back
 //      paired without a fresh pairing dance.
-//   2. URL ?deviceId= — legacy alias used by dev test paths
-//   3. localStorage 'edu_device_fp' — fallback for pure browser players
+//   3. URL ?deviceId= — legacy alias used by dev test paths
+//   4. localStorage 'edu_device_fp' — fallback for pure browser players
 //      (plain Chrome tab). Gets a random UUID on first run and sticks
 //      as long as the browser profile lasts.
 function getDeviceFingerprint(): string {
   const key = 'edu_device_fp';
   if (typeof window !== 'undefined') {
+    // Preview mode: return a synthetic fingerprint so we don't write to
+    // localStorage and never stomp the real paired device's identity.
+    if (isPreviewMode()) {
+      return `preview-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+    }
     const params = new URLSearchParams(window.location.search);
     // Android APK passes the stable Android ID as ?fp=
     const apkFp = params.get('fp');
@@ -320,6 +342,104 @@ function SoftwareInfoRow() {
         <p className="text-[11px] text-slate-400 leading-snug px-0.5">{lastCheckMsg}</p>
       )}
     </>
+  );
+}
+
+// ─── Diagnostics section inside the info overlay ───────────────────────────────
+// Calls window.EduCmsNative.getRecentLogs() (Kotlin bridge) to pull the
+// tail of the on-device rotating log file and display it in a scrollable
+// pre block. Two action buttons:
+//   "Upload to Support" — calls uploadDiagnostics() to POST /api/v1/player-logs
+//   "Copy"             — copies the raw log text to the clipboard
+// Only rendered when the native bridge is present (inside the APK WebView).
+// Hidden in plain browser player builds.
+function DiagnosticsRow() {
+  const [logs, setLogs] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const bridge = typeof window !== 'undefined' ? (window as any).EduCmsNative : null;
+  if (!bridge || typeof bridge.getRecentLogs !== 'function') return null;
+
+  const loadLogs = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const raw = bridge.getRecentLogs();
+      setLogs(typeof raw === 'string' ? raw : JSON.stringify(raw));
+    } catch (err: any) {
+      setLogs('(error reading logs: ' + (err?.message || String(err)) + ')');
+    }
+    setExpanded(true);
+  };
+
+  const handleUpload = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setUploading(true);
+    setUploadMsg(null);
+    try {
+      const result = typeof bridge.uploadDiagnostics === 'function'
+        ? bridge.uploadDiagnostics()
+        : 'uploadDiagnostics not available';
+      setUploadMsg(result || 'upload triggered');
+    } catch (err: any) {
+      setUploadMsg('error: ' + (err?.message || String(err)));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!logs) return;
+    try {
+      await navigator.clipboard.writeText(logs);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API unavailable on some older WebViews — fail silently.
+    }
+  };
+
+  return (
+    <div className="pt-1 border-t border-slate-700/60 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-slate-400 text-xs font-medium uppercase tracking-wide">Diagnostics</span>
+        <button
+          onClick={expanded ? (e) => { e.stopPropagation(); setExpanded(false); } : loadLogs}
+          className="text-[11px] text-indigo-400 hover:text-indigo-300 transition-colors"
+        >
+          {expanded ? 'Hide logs' : 'Show device logs'}
+        </button>
+      </div>
+
+      {expanded && (
+        <>
+          <pre className="bg-slate-950 rounded-lg p-2 text-[10px] font-mono text-slate-300 overflow-y-auto max-h-48 whitespace-pre-wrap break-all leading-relaxed">
+            {logs || '(loading...)'}
+          </pre>
+          <div className="flex gap-2">
+            <button
+              onClick={handleUpload}
+              disabled={uploading}
+              className="flex-1 py-1.5 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 text-white rounded-md text-[11px] font-medium transition-colors"
+            >
+              {uploading ? 'Uploading...' : 'Upload to Support'}
+            </button>
+            <button
+              onClick={handleCopy}
+              className="py-1.5 px-3 bg-slate-700 hover:bg-slate-600 text-white rounded-md text-[11px] font-medium transition-colors"
+            >
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+          {uploadMsg && (
+            <p className="text-[10px] text-slate-400 leading-snug">{uploadMsg}</p>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -502,8 +622,11 @@ function PlayerPage() {
   // silently, so the `lastCacheReport` column never populated and the
   // dashboard's cache pill was stuck on "?" forever. The device token is
   // minted at /register time and cached in localStorage as LS_TOKEN.
+  //
+  // Preview mode: skip — never write cache status on behalf of the real device.
   useEffect(() => {
     if (!screenId) return;
+    if (isPreviewMode()) return;
     const post = async () => {
       try {
         const status = await getCacheStatus();
@@ -581,6 +704,33 @@ function PlayerPage() {
       try {
         const fp = getDeviceFingerprint();
         const deviceInfo = getDeviceInfo();
+
+        // Preview mode: skip the real register call entirely. Use the deviceId
+        // from the URL to fetch the manifest (content still renders) but don't
+        // touch the DB row. The API returns a fake not-paired payload for
+        // preview-* fingerprints so we still get a screenId to fetch from.
+        if (isPreviewMode()) {
+          const deviceId = qp('deviceId') || '';
+          // Surface the paired device's content by moving straight to connecting
+          // with the real screenId from the URL. The manifest fetch uses the
+          // admin JWT (not a device token) so auth still works.
+          if (deviceId) {
+            // We need to find the screenId for this fingerprint. Use the
+            // status endpoint which is public and returns the screenId.
+            const statusRes = await fetch(`${getApiRoot()}/api/v1/screens/status/${deviceId}`, { cache: 'no-store' });
+            if (statusRes.ok) {
+              const statusData = await statusRes.json();
+              setScreenId(statusData.screenId);
+              setScreenName(statusData.name || 'Preview Screen');
+              setPhase('connecting');
+              return;
+            }
+          }
+          // Fallback: nothing to show. Stay on registering to show splash.
+          setPairingCode(null);
+          setPhase('pairing');
+          return;
+        }
 
         const res = await fetch(`${getApiRoot()}/api/v1/screens/register`, {
           method: 'POST',
@@ -884,8 +1034,14 @@ function PlayerPage() {
   // player stuck in 'connecting' retry or 'offline' showed as OFFLINE
   // in the dashboard even though it was reachable. User ask was
   // 'never give up, never show false offline'.
+  //
+  // Preview mode: skip entirely — a browser tab opened via the dashboard's
+  // "Open Screen in Browser" button must NEVER write lastPingAt on the
+  // real device's DB row. The real kiosk would then show ONLINE even after
+  // the browser tab is closed.
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (isPreviewMode()) return; // preview tabs don't heartbeat
     const fp = getDeviceFingerprint();
     let cancelled = false;
     const tick = async () => {
@@ -1438,6 +1594,15 @@ function PlayerPage() {
           );
         })}
 
+        {/* Preview mode chip — always visible in the top-right corner so
+            it's obvious the browser tab is a preview, not the real kiosk. */}
+        {isPreviewMode() && (
+          <div className="absolute top-3 right-3 z-[1000] flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/90 backdrop-blur-sm text-white text-xs font-black uppercase tracking-wider rounded-full shadow-lg pointer-events-none select-none">
+            <Monitor className="w-3.5 h-3.5" />
+            Preview Mode
+          </div>
+        )}
+
         {/* Info overlay */}
         {showOverlay && (
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[999]">
@@ -1445,6 +1610,7 @@ function PlayerPage() {
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-bold text-white">{screenName || 'Screen'}</h3>
                 <div className="flex items-center gap-2">
+                  {isPreviewMode() && <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded-full">Preview</span>}
                   <Wifi className="w-4 h-4 text-emerald-400" />
                   <span className="text-sm text-emerald-400 font-medium">Connected</span>
                 </div>
@@ -1456,15 +1622,36 @@ function PlayerPage() {
                 <div className="flex justify-between"><span className="text-slate-400">Last Sync</span><span className="text-white font-medium">{lastSync || 'Never'}</span></div>
                 <CacheStatusRow status={cacheStatus} />
                 <SoftwareInfoRow />
+                <DiagnosticsRow />
               </div>
               <div className="flex gap-2 pt-2">
                 <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm transition-colors">Sync Now</button>
-                <button onClick={(e) => { 
-                  e.stopPropagation(); 
+                {/* Exit to OEM launcher — only shown when the native
+                    bridge is present (i.e. we're running inside the
+                    Android kiosk APK). Lets operators on signage boxes
+                    with a vendor CMS underneath (Goodview / NovaStar /
+                    TCL) get back to the vendor launcher to tweak
+                    network/device settings without reflashing. */}
+                {typeof window !== 'undefined' && (window as any).EduCmsNative?.exitToDeviceHome && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (window.confirm('Exit to device home screen? You can relaunch EduCMS from your OEM launcher (Goodview / NovaStar / TCL CMS) when ready.')) {
+                        try { (window as any).EduCmsNative.exitToDeviceHome(); } catch {}
+                      }
+                    }}
+                    title="Exit to OEM launcher"
+                    className="py-2 px-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Exit
+                  </button>
+                )}
+                <button onClick={(e) => {
+                  e.stopPropagation();
                   if(window.confirm('Are you sure you want to unpair this screen?')) {
-                    localStorage.removeItem('edu_device_fp'); 
-                    setPhase('registering'); 
-                    setShowOverlay(false); 
+                    localStorage.removeItem('edu_device_fp');
+                    setPhase('registering');
+                    setShowOverlay(false);
                   }
                 }} title="Unpair Device" className="py-2 px-4 bg-red-950/40 hover:bg-red-900 border border-red-900/50 text-red-200 hover:text-white rounded-lg text-sm transition-colors">
                   <Power className="w-4 h-4" />
@@ -1613,6 +1800,15 @@ function PlayerPage() {
 
       {/* Slide level restriction overlay logic goes here if desired, but UI logic removes the bottom progress bar. */}
 
+      {/* Preview mode chip — always visible so the browser preview tab is
+          unmistakably distinct from the real kiosk. */}
+      {isPreviewMode() && (
+        <div className="absolute top-3 right-3 z-50 flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/90 backdrop-blur-sm text-white text-xs font-black uppercase tracking-wider rounded-full shadow-lg pointer-events-none select-none">
+          <Monitor className="w-3.5 h-3.5" />
+          Preview Mode
+        </div>
+      )}
+
       {/* Overlay */}
       {showOverlay && (
         <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
@@ -1620,6 +1816,7 @@ function PlayerPage() {
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-white">{screenName || 'Screen'}</h3>
               <div className="flex items-center gap-2">
+                {isPreviewMode() && <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded-full">Preview</span>}
                 <Wifi className="w-4 h-4 text-emerald-400" />
                 <span className="text-sm text-emerald-400 font-medium">Connected</span>
               </div>
@@ -1630,14 +1827,32 @@ function PlayerPage() {
               <div className="flex justify-between"><span className="text-slate-400">Last Sync</span><span className="text-white font-medium">{lastSync || 'Never'}</span></div>
               <CacheStatusRow status={cacheStatus} />
               <SoftwareInfoRow />
+              <DiagnosticsRow />
             </div>
             <div className="flex gap-2 pt-2">
               <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm transition-colors">Sync Now</button>
-              <button onClick={(e) => { 
-                e.stopPropagation(); 
+              {/* Exit to OEM launcher — bridge-gated; see the matching block
+                  above in the template render path for the rationale
+                  (Goodview / NovaStar / TCL CMSes). */}
+              {typeof window !== 'undefined' && (window as any).EduCmsNative?.exitToDeviceHome && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (window.confirm('Exit to device home screen? You can relaunch EduCMS from your OEM launcher (Goodview / NovaStar / TCL CMS) when ready.')) {
+                      try { (window as any).EduCmsNative.exitToDeviceHome(); } catch {}
+                    }
+                  }}
+                  title="Exit to OEM launcher"
+                  className="py-2 px-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  Exit
+                </button>
+              )}
+              <button onClick={(e) => {
+                e.stopPropagation();
                 if(window.confirm('Are you sure you want to completely unpair this device from the CMS?')) {
-                  localStorage.removeItem('edu_device_fp'); 
-                  setPhase('registering'); 
+                  localStorage.removeItem('edu_device_fp');
+                  setPhase('registering');
                   setShowOverlay(false);
                 }
               }} title="Unpair Device" className="py-2 px-4 bg-red-950/40 hover:bg-red-900 border border-red-900/50 text-red-200 hover:text-white rounded-lg text-sm transition-colors group">

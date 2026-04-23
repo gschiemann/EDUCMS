@@ -14,6 +14,8 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.educms.player.heartbeat.HeartbeatService
+import com.educms.player.logging.PlayerLogger
+import com.educms.player.logging.PlayerLoggerCtx
 import com.educms.player.ota.OtaUpdateWorker
 import com.educms.player.usb.UsbCacheIndex
 import com.educms.player.watchdog.Watchdog
@@ -39,6 +41,17 @@ import java.util.concurrent.TimeUnit
 class PlayerApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        // Initialise the file logger FIRST so every subsequent call can write.
+        // PlayerLoggerCtx holds a reference so the logger can resolve the
+        // screen fingerprint for upload URLs without a constructor Context.
+        PlayerLoggerCtx.appCtx = applicationContext
+        PlayerLogger.init(applicationContext)
+
+        PlayerLogger.i(
+            "PlayerApp",
+            "EduCMS Player ${BuildConfig.VERSION_NAME} booting " +
+            "(SDK ${Build.VERSION.SDK_INT}, ${Build.MANUFACTURER} ${Build.MODEL})",
+        )
         Log.i(
             "PlayerApp",
             "EduCMS Player ${BuildConfig.VERSION_NAME} starting (SDK ${Build.VERSION.SDK_INT}, ${Build.MANUFACTURER} ${Build.MODEL})",
@@ -48,6 +61,7 @@ class PlayerApp : Application() {
         HeartbeatService.ensureRunning(this)
         Watchdog.arm(this)
         scheduleOtaWorker()
+        PlayerLogger.i("PlayerApp", "All background services started successfully")
     }
 
     private fun ensureNotificationChannels() {
@@ -81,8 +95,10 @@ class PlayerApp : Application() {
                 ExistingPeriodicWorkPolicy.KEEP,
                 req,
             )
+            PlayerLogger.i("PlayerApp", "OTA worker scheduled (every 6h, requires network)")
             Log.i("PlayerApp", "OTA worker scheduled (every 6h, requires network)")
         } catch (e: Exception) {
+            PlayerLogger.w("PlayerApp", "Failed to schedule OTA worker", e)
             Log.w("PlayerApp", "Failed to schedule OTA worker", e)
         }
     }
@@ -112,8 +128,10 @@ class PlayerApp : Application() {
                     ExistingWorkPolicy.REPLACE,
                     req,
                 )
+                PlayerLogger.i("PlayerApp", "OTA one-shot check enqueued (manual trigger via dashboard)")
                 Log.i("PlayerApp", "OTA one-shot check enqueued (manual trigger)")
             } catch (e: Exception) {
+                PlayerLogger.w("PlayerApp", "fireOtaCheckNow failed", e)
                 Log.w("PlayerApp", "fireOtaCheckNow failed", e)
             }
         }

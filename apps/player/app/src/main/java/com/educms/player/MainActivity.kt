@@ -27,6 +27,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import com.educms.player.databinding.ActivityMainBinding
+import com.educms.player.logging.PlayerLogger
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -44,6 +45,7 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        PlayerLogger.i("MainActivity", "onCreate — ${Build.MANUFACTURER} ${Build.MODEL} SDK ${Build.VERSION.SDK_INT}")
 
         // FULL sensor rotation — user mounts the display however they
         // want (portrait, landscape, reverse). The WebView handles any
@@ -175,6 +177,42 @@ class MainActivity : ComponentActivity() {
                 onReload = { runOnUiThread { wv.reload() } },
                 getDeviceInfo = { deviceInfoJson() },
                 onCheckForUpdates = { PlayerApp.fireOtaCheckNow(applicationContext) },
+                getRecentLogsImpl = {
+                    PlayerLogger.i("MainActivity", "getRecentLogs requested via JS bridge")
+                    PlayerLogger.readRecent()
+                },
+                uploadDiagnosticsImpl = {
+                    val prefs = applicationContext.getSharedPreferences("edu_player", android.content.Context.MODE_PRIVATE)
+                    val apiRoot = prefs.getString("api_root", null)
+                    val jwt = prefs.getString("device_jwt", null)
+                    if (apiRoot.isNullOrBlank()) {
+                        PlayerLogger.w("MainActivity", "uploadDiagnostics: api_root not set — cannot upload")
+                        "error: api_root not configured"
+                    } else {
+                        // Security: log only truncated token hint, never the full JWT.
+                        PlayerLogger.i("MainActivity", "uploadDiagnostics triggered via JS bridge (jwt=${PlayerLogger.truncateSecret(jwt)})")
+                        PlayerLogger.uploadRecent(apiRoot, jwt)
+                        "upload started — check server AuditLog"
+                    }
+                },
+                onExitToDeviceHome = {
+                    // Escape hatch back to the OEM launcher (Goodview/NovaStar/TCL).
+                    // Customer feedback 2026-04-21: once the EduCMS app launches they
+                    // had no way back to the OEM CMS to check network settings /
+                    // reboot the screen. Calling `finishAffinity()` kills our entire
+                    // task stack; Android then shows the device's HOME, which on an
+                    // OEM signage box is the vendor's launcher.
+                    PlayerLogger.i("MainActivity", "Exit to device home requested via JS bridge")
+                    runOnUiThread {
+                        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                            addCategory(Intent.CATEGORY_HOME)
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                        }
+                        runCatching { startActivity(homeIntent) }
+                            .onFailure { PlayerLogger.w("MainActivity", "home intent failed", it) }
+                        finishAffinity()
+                    }
+                },
             ),
             "EduCmsNative"
         )

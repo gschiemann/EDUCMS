@@ -17,6 +17,7 @@ import com.educms.player.BuildConfig
 import com.educms.player.MainActivity
 import com.educms.player.PlayerApp
 import com.educms.player.R
+import com.educms.player.logging.PlayerLogger
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -60,6 +61,7 @@ class HeartbeatService : Service() {
     override fun onCreate() {
         super.onCreate()
         Log.i(TAG, "HeartbeatService.onCreate")
+        PlayerLogger.i(TAG, "HeartbeatService started (register loop beginning)")
         startForegroundCompat()
         loopJob?.cancel()
         loopJob = scope.launch { runLoop() }
@@ -85,6 +87,7 @@ class HeartbeatService : Service() {
 
     override fun onDestroy() {
         Log.w(TAG, "HeartbeatService.onDestroy — scheduling restart")
+        PlayerLogger.w(TAG, "HeartbeatService destroyed — rescheduling in 30s")
         rescheduleSelf(30_000)
         loopJob?.cancel()
         scope.cancel()
@@ -163,11 +166,13 @@ class HeartbeatService : Service() {
                 } else {
                     consecutiveFailures += 1
                     Log.w(TAG, "Heartbeat returned HTTP $code (consecutive=$consecutiveFailures)")
+                    PlayerLogger.w(TAG, "Heartbeat tick failed: HTTP $code (consecutive=$consecutiveFailures)")
                 }
             }
         } catch (e: Exception) {
             consecutiveFailures += 1
             Log.w(TAG, "Heartbeat failed (consecutive=$consecutiveFailures): ${e.message}")
+            PlayerLogger.w(TAG, "Heartbeat tick exception (consecutive=$consecutiveFailures): ${e.message}")
         } finally {
             try { if (wl.isHeld) wl.release() } catch (_: Exception) {}
         }

@@ -12,6 +12,7 @@ import androidx.core.content.FileProvider
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.educms.player.BuildConfig
+import com.educms.player.logging.PlayerLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -54,9 +55,13 @@ class OtaUpdateWorker(
 ) : CoroutineWorker(ctx, params) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        PlayerLogger.i(TAG, "OTA check starting (versionCode=${BuildConfig.VERSION_CODE}, versionName=${BuildConfig.VERSION_NAME})")
         try {
             val apiRoot = applicationContext.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
-                .getString("api_root", null) ?: return@withContext Result.retry()
+                .getString("api_root", null) ?: run {
+                    PlayerLogger.w(TAG, "OTA check aborted — api_root not set in SharedPreferences")
+                    return@withContext Result.retry()
+                }
 
             val deviceFingerprint = applicationContext.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
                 .getString("device_fingerprint", null) ?: "unknown"
@@ -81,6 +86,7 @@ class OtaUpdateWorker(
             conn.outputStream.use { it.write(payload.toString().toByteArray()) }
             if (conn.responseCode !in 200..299) {
                 Log.w(TAG, "update-check returned ${conn.responseCode}")
+                PlayerLogger.w(TAG, "OTA update-check returned HTTP ${conn.responseCode}")
                 return@withContext Result.success()
             }
 
@@ -88,12 +94,17 @@ class OtaUpdateWorker(
             val json = JSONObject(body)
             val latest = json.optJSONObject("latest") ?: return@withContext Result.success()
             val latestVc = latest.optInt("versionCode")
-            if (latestVc <= BuildConfig.VERSION_CODE) return@withContext Result.success()
+            if (latestVc <= BuildConfig.VERSION_CODE) {
+                PlayerLogger.i(TAG, "OTA check: up to date (current=${BuildConfig.VERSION_CODE}, latest=$latestVc)")
+                return@withContext Result.success()
+            }
 
             val apkUrl = latest.optString("apkUrl")
             if (apkUrl.isEmpty()) return@withContext Result.success()
             val expectedSha = latest.optString("sha256")
             val forced = latest.optBoolean("forced", false)
+            val latestVn = latest.optString("versionName", "$latestVc")
+            PlayerLogger.i(TAG, "OTA update available: $latestVn (versionCode=$latestVc, forced=$forced) — downloading")
 
             // Download into this app's external-files cache — survives
             // app updates, auto-cleared on uninstall, no permission
@@ -112,15 +123,18 @@ class OtaUpdateWorker(
                 val actual = sha256(outFile)
                 if (!actual.equals(expectedSha, ignoreCase = true)) {
                     Log.e(TAG, "APK sha256 mismatch. expected=$expectedSha actual=$actual — discarding")
+                    PlayerLogger.e(TAG, "APK sha256 mismatch — discarding download (expected=${expectedSha.take(16)}…)")
                     outFile.delete()
                     return@withContext Result.retry()
                 }
             }
 
+            PlayerLogger.i(TAG, "APK download complete and verified — firing install intent")
             triggerInstall(outFile, forced)
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "OTA worker failed", e)
+            PlayerLogger.e(TAG, "OTA worker failed", e)
             Result.retry()
         }
     }

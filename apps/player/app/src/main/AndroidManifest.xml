@@ -65,14 +65,23 @@
                 <action android:name="com.educms.player.OPEN_PLAYER" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
-            <!-- HOME launcher category — Android offers this app as the
-                 default launcher so pressing HOME relaunches the kiosk
-                 instead of dropping to the Android launcher. -->
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.HOME" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
+            <!-- DELIBERATELY NO HOME category. We learned the hard way
+                 2026-04-21 that registering `category.HOME` makes Android
+                 treat us as a candidate launcher replacement. On OEM
+                 signage boxes (Goodview, NovaStar, TCL) that already ship
+                 a proprietary CMS/launcher, Android promptly asks the
+                 user to pick a default — and if our app ever wins that
+                 vote (or if we're the only launcher registered), we
+                 DISPLACE the OEM launcher entirely. Goodview's own CMS
+                 stops being reachable, their network-settings flow
+                 breaks, and the screen drops off their dashboard. We
+                 are a guest on the device, NOT the host. The OEM's CMS
+                 is the launcher; we are an app they start. Leave this
+                 comment in place; do NOT re-add HOME. If a customer
+                 explicitly wants us as the kiosk launcher (no OEM CMS
+                 underneath), ship a separate build flavor with the
+                 HOME filter gated behind a `isKioskOnly` gradle flag.
+              -->
             <!-- Backstop intent alias for the old com.educms.player.LEGACY_PAIR
                  action. TV auto-launchers that pinned that action at some
                  point in the past now route to MainActivity instead of
