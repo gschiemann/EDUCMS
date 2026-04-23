@@ -162,5 +162,21 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- Catches PackageInstaller.Session commit results. When the
+             OTA worker commits an install, this receiver gets the
+             STATUS_SUCCESS / STATUS_PENDING_USER_ACTION / FAILURE_*
+             callback, launches the consent prompt if needed, and logs
+             the outcome. Exported=false because it's targeted by a
+             PendingIntent we ourselves minted, not by any external
+             caller. -->
+        <receiver
+            android:name=".ota.OtaInstallReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.educms.player.OTA_INSTALL_RESULT" />
+            </intent-filter>
+        </receiver>
+
     </application>
 </manifest>

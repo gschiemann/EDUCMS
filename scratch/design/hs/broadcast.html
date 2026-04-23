@@ -1,0 +1,827 @@
+<!--
+  TEMPLATE 01 — BROADCAST
+  Campus news desk. Lower-thirds, live indicator, timecode HUD, ticker.
+  High-school vibe: grown-up, newsroom, bold primary/secondary typography.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Broadcast — Lobby 4K</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700;900&family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+/* Shared stage scaling for EDU CMS lobby templates.
+ * Templates set their own stage size via --stage-w / --stage-h (defaults 3840x2160).
+ * We use two wrappers: .viewport does flex centering, .stage is fixed-size with transform-origin center.
+ * Critically, .stage-outer has the scaled size so layout math agrees with visual size.
+ */
+:root { --stage-w: 3840px; --stage-h: 2160px; --stage-scale: 1; }
+html, body { margin: 0; padding: 0; overflow: hidden; width:100%; height:100%; }
+.viewport { position: fixed; inset: 0; display: grid; place-items: center; overflow: hidden; }
+.stage-outer {
+  width: calc(var(--stage-w) * var(--stage-scale));
+  height: calc(var(--stage-h) * var(--stage-scale));
+}
+.stage {
+  width: var(--stage-w); height: var(--stage-h);
+  transform: scale(var(--stage-scale));
+  transform-origin: 0 0;
+  position: relative;
+  box-shadow: 0 80px 200px rgba(0,0,0,.65);
+  overflow: hidden;
+}
+
+</style>
+<style>
+  :root {
+    --brand: #ef2b2b;
+    --ink: #0a0f1a;
+    --paper: #f3f5f9;
+    --accent: #ffd83d;
+    --muted: #8a93a6;
+  }
+  html, body { background: #06080f; font-family: 'Inter', system-ui, sans-serif; color: var(--paper); }
+  .stage {
+    background:
+      radial-gradient(ellipse at 50% -10%, #1a2545 0%, #0b1025 55%, #05070f 100%);
+  }
+  /* Scan / light leak */
+  .stage::before {
+    content:''; position:absolute; inset:0; pointer-events:none;
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,.015) 0 2px, transparent 2px 5px),
+      radial-gradient(ellipse at 70% 90%, rgba(239,43,43,.12), transparent 60%);
+  }
+
+  /* Top network bar */
+  .netbar {
+    position:absolute; top:0; left:0; right:0; height:120px;
+    background: linear-gradient(180deg, #0a0f1a, #0a0f1a 80%, rgba(10,15,26,0));
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 0 80px; box-sizing:border-box; z-index:5;
+  }
+  .netbar .brandmark {
+    display:flex; align-items:center; gap:24px;
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    font-size:64px; letter-spacing:.04em; color:#fff;
+  }
+  .netbar .brandmark .chip {
+    background: var(--brand); color:#fff; padding: 6px 20px 8px;
+    font-size:44px; letter-spacing:.12em;
+  }
+  .netbar .brandmark .sub {
+    font-family:'JetBrains Mono', monospace; font-weight:500;
+    font-size:26px; letter-spacing:.24em; color: var(--muted);
+    text-transform:uppercase;
+  }
+  .netbar .live {
+    display:flex; align-items:center; gap:18px;
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    font-size:48px; letter-spacing:.12em; color:#fff;
+  }
+  .netbar .live .dot {
+    width:28px; height:28px; border-radius:50%; background: var(--brand);
+    box-shadow: 0 0 0 6px rgba(239,43,43,.25);
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(239,43,43,.6); }
+    50% { box-shadow: 0 0 0 18px rgba(239,43,43,0); }
+  }
+  .netbar .tc {
+    font-family:'JetBrains Mono', monospace; font-weight:500;
+    font-size:40px; color: var(--accent); letter-spacing:.1em;
+  }
+
+  /* Main headline block — lower third style */
+  .headline {
+    position:absolute; top:220px; left:80px; right:80px;
+    display:grid; grid-template-columns: 3fr 2fr; gap:60px;
+  }
+  .headline .eyebrow {
+    display:inline-block;
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    background: var(--brand); color:#fff; padding: 10px 24px 12px;
+    font-size: 44px; letter-spacing: .14em; text-transform:uppercase;
+  }
+  .headline h1 {
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    font-size: 260px; line-height:.9; margin: 16px 0 0;
+    letter-spacing:-.01em; color:#fff; text-transform:uppercase;
+    text-wrap: balance;
+  }
+  .headline .subtitle {
+    font-family:'Inter', sans-serif; font-weight:600;
+    font-size: 44px; color:#cbd5e1; margin-top: 24px;
+    max-width: 1400px; line-height:1.2;
+  }
+
+  /* Panels column (right of headline) */
+  .panel-col { display:grid; gap:28px; }
+  .panel {
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.08);
+    backdrop-filter: blur(8px);
+    padding: 24px 32px; position:relative;
+  }
+  .panel h3 {
+    font-family:'JetBrains Mono', monospace; font-weight:700;
+    font-size: 24px; letter-spacing:.2em; text-transform:uppercase;
+    color: var(--muted); margin: 0 0 10px;
+  }
+  .panel .big {
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    font-size: 140px; line-height:.9; color:#fff; letter-spacing:-.01em;
+  }
+  .panel .cap {
+    font-family:'Inter', sans-serif; font-weight:600;
+    font-size: 28px; color:#cbd5e1; margin-top: 6px;
+  }
+  .panel.clock .big::after {
+    content:''; display:inline-block; width:14px; height:14px; background: var(--brand);
+    border-radius:50%; margin-left:14px; vertical-align: middle;
+    animation: blink 1s steps(2) infinite;
+  }
+  @keyframes blink { 0%,49% { opacity:1; } 50%,100% { opacity:0; } }
+
+  .panel.weather .row { display:flex; align-items:flex-end; gap:20px; }
+  .panel.weather .big { font-size: 160px; }
+  .panel.weather .ico { font-family:'Barlow Condensed'; font-size:56px; color: var(--accent); }
+
+  /* Middle — segment: teacher of the week as "featured guest" */
+  .guest {
+    position:absolute; top: 1080px; left:80px; width: 1820px;
+    background: #f3f5f9; color: var(--ink);
+    padding: 40px 48px; display:grid; grid-template-columns: 360px 1fr; gap: 48px; align-items:center;
+  }
+  .guest::before {
+    content:''; position:absolute; left:0; top:0; bottom:0; width:16px; background: var(--brand);
+  }
+  .guest .portrait {
+    width:360px; height:360px; background:
+      linear-gradient(135deg, #cbd5e1 0%, #94a3b8 100%);
+    position:relative; overflow:hidden;
+    display:grid; place-items:center;
+  }
+  .guest .portrait::after {
+    content:''; position:absolute; inset:0;
+    background: repeating-linear-gradient(45deg, rgba(0,0,0,.04) 0 6px, transparent 6px 12px);
+  }
+  .guest .portrait .mono {
+    font-family:'JetBrains Mono', monospace; font-weight:700;
+    font-size: 24px; color: var(--ink); background:#fff; padding:6px 12px;
+    z-index:1; position:relative;
+  }
+  .guest .eyebrow {
+    display:inline-block;
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    background: var(--ink); color:#fff; padding: 6px 18px;
+    font-size: 32px; letter-spacing:.18em; text-transform:uppercase;
+  }
+  .guest h2 {
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    font-size: 150px; line-height:.9; margin: 10px 0 6px;
+    color: var(--ink); text-transform:uppercase;
+  }
+  .guest .meta {
+    font-family:'JetBrains Mono', monospace; font-weight:500;
+    font-size: 28px; color: #475569; letter-spacing:.1em; text-transform:uppercase;
+  }
+  .guest .quote {
+    font-family:'Inter', sans-serif; font-weight:500;
+    font-size: 36px; color:#334155; margin-top: 18px; line-height:1.25;
+    font-style: italic;
+  }
+
+  /* Announcement — breaking story card */
+  .breaking {
+    position:absolute; top: 1080px; right: 80px; width: 1780px;
+    background: #0a0f1a; border: 1px solid rgba(255,255,255,.08);
+    padding: 36px 40px;
+  }
+  .breaking .tag {
+    display:inline-block;
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    background: var(--accent); color: var(--ink); padding: 8px 20px 10px;
+    font-size: 36px; letter-spacing:.14em; text-transform:uppercase;
+  }
+  .breaking h2 {
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    font-size: 110px; line-height:.95; margin: 12px 0 10px;
+    color:#fff; text-transform:uppercase;
+  }
+  .breaking p {
+    font-family:'Inter', sans-serif; font-weight:500;
+    font-size: 34px; color:#cbd5e1; margin: 0; line-height:1.3;
+  }
+  .breaking .date {
+    font-family:'JetBrains Mono', monospace; font-weight:700;
+    font-size: 28px; color: var(--accent); letter-spacing:.16em;
+    margin-top: 20px; text-transform:uppercase;
+  }
+
+  /* Schedule grid — 3 events + countdown */
+  .schedule {
+    position:absolute; top: 1560px; left: 80px; right: 80px;
+    display:grid; grid-template-columns: repeat(3, 1fr) 620px; gap: 32px;
+  }
+  .ev {
+    background: rgba(255,255,255,.03);
+    border-left: 6px solid var(--brand);
+    padding: 24px 28px;
+  }
+  .ev:nth-child(2) { border-color: var(--accent); }
+  .ev:nth-child(3) { border-color: #4ade80; }
+  .ev .when {
+    font-family:'JetBrains Mono', monospace; font-weight:700;
+    font-size: 28px; color:#94a3b8; letter-spacing:.14em; text-transform:uppercase;
+  }
+  .ev .what {
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    font-size: 68px; line-height:.95; color:#fff; margin-top: 10px;
+    text-transform: uppercase;
+  }
+  .countdown {
+    background: var(--brand);
+    padding: 28px 36px; color:#fff; position:relative;
+    display:flex; flex-direction:column; justify-content:space-between;
+  }
+  .countdown .lbl {
+    font-family:'JetBrains Mono', monospace; font-weight:700;
+    font-size: 26px; letter-spacing:.2em; text-transform:uppercase; opacity:.9;
+  }
+  .countdown .val {
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    font-size: 280px; line-height:.85; letter-spacing:-.03em;
+  }
+  .countdown .unit {
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    font-size: 56px; letter-spacing:.1em; text-transform:uppercase;
+    margin-top: -20px;
+  }
+
+  /* Bottom crawl / ticker */
+  .ticker {
+    position:absolute; left:0; right:0; bottom:0; height: 120px;
+    background: var(--ink); display:flex; align-items:center;
+    border-top: 4px solid var(--brand);
+    overflow:hidden;
+  }
+  .ticker .tag {
+    background: var(--brand); color:#fff;
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    font-size: 52px; letter-spacing:.14em; text-transform:uppercase;
+    padding: 0 40px; height:100%; display:flex; align-items:center;
+    flex-shrink:0;
+  }
+  .ticker .track {
+    flex:1; overflow:hidden; position:relative; height:100%;
+    display:flex; align-items:center;
+  }
+  .ticker .msg {
+    font-family:'Barlow Condensed', sans-serif; font-weight:700;
+    font-size: 52px; color:#fff; letter-spacing:.04em; text-transform:uppercase;
+    padding-left: 40px; white-space: nowrap;
+    animation: scroll 40s linear infinite;
+  }
+  @keyframes scroll {
+    0%   { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  /* Animated background stars (news sat uplink vibe) */
+  .sat { position:absolute; right:80px; top: 40px; width: 120px; height: 80px; opacity:.7; z-index:4; }
+  .sat .arc { fill:none; stroke:#ffd83d; stroke-width:3; animation: arc 2.2s ease-in-out infinite; opacity:.7; }
+  .sat .arc.a2 { animation-delay:.4s; }
+  .sat .arc.a3 { animation-delay:.8s; }
+  @keyframes arc { 0%,100% { opacity:.15; } 50% { opacity:.85; } }
+</style>
+</head>
+<body>
+<script>
+  // Editor persistence block (JSON between markers).
+  const __TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+    "schema": "edu-cms-broadcast-v1"
+  }/*EDITMODE-END*/;
+</script>
+
+<div class="viewport">
+<div class="stage-outer">
+<div class="stage" id="stage">
+
+  <!-- Net bar -->
+  <div class="netbar" data-widget="school">
+    <div class="brandmark">
+      <span class="chip" data-field="school.chip">WHS</span>
+      <span data-field="school.name">WESTRIDGE HIGH</span>
+      <span class="sub" data-field="school.sub">CAMPUS NEWS NETWORK</span>
+    </div>
+    <div class="live" data-widget="status">
+      <span class="dot"></span>
+      <span data-field="status.label">ON AIR · MORNING REPORT</span>
+    </div>
+  </div>
+
+  <!-- Sat uplink ornament -->
+  <svg class="sat" viewBox="0 0 120 80">
+    <circle cx="60" cy="60" r="6" fill="#ffd83d"/>
+    <path class="arc"    d="M60 60 Q30 30 10 50"/>
+    <path class="arc a2" d="M60 60 Q30 15 10 40"/>
+    <path class="arc a3" d="M60 60 Q30  0 10 30"/>
+    <path class="arc"    d="M60 60 Q90 30 110 50" transform="translate(0)"/>
+  </svg>
+
+  <!-- Headline + right panels -->
+  <div class="headline">
+    <div data-widget="greeting">
+      <span class="eyebrow" data-field="greeting.eyebrow">TOP STORY · TUESDAY</span>
+      <h1 data-field="greeting.headline">GOOD MORNING, WESTRIDGE.</h1>
+      <div class="subtitle" data-field="greeting.subtitle">Doors open at 7:45. First bell rings at 8:05. Let's make it a great one.</div>
+    </div>
+    <div class="panel-col">
+      <div class="panel clock" data-widget="clock">
+        <h3>LOCAL TIME</h3>
+        <div class="big" data-field="clock.time">7:53</div>
+        <div class="cap" data-field="clock.caption">Tuesday, April 21 · AM Broadcast</div>
+      </div>
+      <div class="panel weather" data-widget="weather">
+        <h3>FORECAST</h3>
+        <div class="row">
+          <div class="big" data-field="weather.temp">46°</div>
+          <div class="ico" data-field="weather.condition">☀ CLEAR · HI 62°</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Featured guest / teacher of the week -->
+  <div class="guest" data-widget="teacher">
+    <div class="portrait">
+      <div class="mono" data-field="teacher.portraitTag">[ portrait ]</div>
+    </div>
+    <div>
+      <span class="eyebrow" data-field="teacher.label">FEATURED GUEST · TEACHER OF THE WEEK</span>
+      <h2 data-field="teacher.name">MS. KOWALSKI</h2>
+      <div class="meta" data-field="teacher.grade">AP PHYSICS · ROOM 214 · 14 YEARS AT WHS</div>
+      <div class="quote" data-field="teacher.quote">"The answer is in the free-body diagram. If you can draw it, you can solve it."</div>
+    </div>
+  </div>
+
+  <!-- Breaking story / announcement -->
+  <div class="breaking" data-widget="announcement">
+    <span class="tag" data-field="announcement.title">★ BREAKING · TODAY</span>
+    <h2 data-field="announcement.headline">COLLEGE FAIR IN THE GYM, 3rd PERIOD.</h2>
+    <p data-field="announcement.body">48 schools, 60 programs, 3 food trucks. Pre-registered seniors go first — bring your pass.</p>
+    <div class="date" data-field="announcement.date">04.21 · 10:15 AM – 1:00 PM · MAIN GYM</div>
+  </div>
+
+  <!-- Schedule + countdown -->
+  <div class="schedule">
+    <div class="ev" data-widget="events.0">
+      <div class="when" data-field="events.0.when">MON · 3:30 PM</div>
+      <div class="what" data-field="events.0.name">Varsity Soccer vs. Central</div>
+    </div>
+    <div class="ev" data-widget="events.1">
+      <div class="when" data-field="events.1.when">WED · 7:00 PM</div>
+      <div class="what" data-field="events.1.name">Spring Band Concert</div>
+    </div>
+    <div class="ev" data-widget="events.2">
+      <div class="when" data-field="events.2.when">FRI · ALL DAY</div>
+      <div class="what" data-field="events.2.name">Prom Ticket Sales — Cafe</div>
+    </div>
+    <div class="countdown" data-widget="countdown">
+      <div class="lbl" data-field="countdown.label">DAYS TO PROM</div>
+      <div class="val" data-field="countdown.value">24</div>
+      <div class="unit" data-field="countdown.unit">DAYS · SAVE THE DATE</div>
+    </div>
+  </div>
+
+  <!-- Ticker crawl -->
+  <div class="ticker" data-widget="ticker">
+    <div class="tag" data-field="ticker.tag">LATEST</div>
+    <div class="track">
+      <div class="msg">
+        <span data-field="ticker.message">LUNCH TODAY · CHICKEN BOWL · SALAD BAR · VEGAN OPTION AVAILABLE  ●  SAT PRACTICE SIGN-UPS CLOSE FRIDAY  ●  LOST: SILVER EARBUDS IN LIBRARY — SEE FRONT OFFICE  ●  DRAMA CLUB AUDITIONS MONDAY 3:30 IN THE AUDITORIUM  ●  </span>
+        <span data-field="ticker.message">LUNCH TODAY · CHICKEN BOWL · SALAD BAR · VEGAN OPTION AVAILABLE  ●  SAT PRACTICE SIGN-UPS CLOSE FRIDAY  ●  LOST: SILVER EARBUDS IN LIBRARY — SEE FRONT OFFICE  ●  DRAMA CLUB AUDITIONS MONDAY 3:30 IN THE AUDITORIUM  ●  </span>
+      </div>
+    </div>
+  </div>
+
+</div></div></div>
+
+<script>
+/* Fit the fixed-size .stage to the viewport by setting --stage-scale on :root. */
+(function () {
+  function fit() {
+    const s = document.getElementById('stage');
+    if (!s) return;
+    const cs = getComputedStyle(document.documentElement);
+    const w = parseFloat(cs.getPropertyValue('--stage-w')) || 3840;
+    const h = parseFloat(cs.getPropertyValue('--stage-h')) || 2160;
+    const k = Math.min(window.innerWidth / w, window.innerHeight / h);
+    document.documentElement.style.setProperty('--stage-scale', k);
+  }
+  window.addEventListener('resize', fit);
+  window.addEventListener('load', fit);
+  setTimeout(fit, 10); setTimeout(fit, 300);
+})();
+
+</script>
+<script>
+/* Shared widget editor harness for EDU CMS lobby templates.
+ *
+ * Capabilities:
+ *   1. Live text editing of [data-field] nodes, grouped by [data-widget].
+ *   2. Drag widgets (snap to 40px grid) and resize via SE handle.
+ *   3. Auto-fit: shrink text to fit its container, with a readable floor.
+ *   4. Persist layout + content to the EDITMODE JSON block via
+ *      __edit_mode_set_keys postMessage.
+ *
+ * Activation follows the tweaks protocol: register listener FIRST, then
+ * announce __edit_mode_available.
+ */
+(function () {
+  const GRID = 40;
+  const MIN_FONT = 18;            // px — anything smaller is unreadable on lobby displays
+  const AUTOFIT_ATTR = 'data-autofit';   // opt-out with data-autofit="off"
+
+  const PANEL_ID = '__edu_cms_editor_panel';
+  let active = false;
+  let panel = null;
+
+  /* -------- layout persistence (runtime) --------
+     Positions are stored as: layout[widgetKey] = { x, y, w, h }
+     Applied to the [data-widget] element as inline styles in "absolute" mode. */
+  const layout = {};
+
+  /* -------- utilities -------- */
+  function $(q, el = document) { return el.querySelector(q); }
+  function $$(q, el = document) { return Array.from(el.querySelectorAll(q)); }
+  function snap(v) { return Math.round(v / GRID) * GRID; }
+  function widgets() { return $$('[data-widget]'); }
+  function fields() { return $$('[data-field]'); }
+
+  /* -------- autofit -------- */
+  // For every [data-field], remember its designed font-size (the CSS max) and
+  // shrink only if necessary. We measure against the FIELD's own box, so a
+  // multi-line headline wraps as designed and only shrinks when truly overflowing.
+  const autofitObservers = new Map();
+
+  function ensureBaseFontSize(el) {
+    if (el.dataset.autofitBase) return parseFloat(el.dataset.autofitBase);
+    const fs = parseFloat(getComputedStyle(el).fontSize);
+    el.dataset.autofitBase = String(fs);
+    return fs;
+  }
+
+  function fitField(el) {
+    if (el.getAttribute(AUTOFIT_ATTR) === 'off') return;
+    const base = ensureBaseFontSize(el);
+    el.style.fontSize = base + 'px';
+    const host = el.closest('[data-widget]') || el.parentElement;
+    if (!host) return;
+    // Cap height = the widget's declared/designed box. Recorded on first fit
+    // so we measure overflow against the INTENDED size, not a stretched one.
+    const capH = getCapHeight(host);
+    const capW = getCapWidth(host);
+    if (!boxOverflows(host, capW, capH)) return;
+    let lo = MIN_FONT, hi = base;
+    for (let i = 0; i < 14; i++) {
+      const mid = (lo + hi) / 2;
+      el.style.fontSize = mid + 'px';
+      if (boxOverflows(host, capW, capH)) hi = mid; else lo = mid;
+      if (hi - lo < 0.5) break;
+    }
+    el.style.fontSize = lo + 'px';
+  }
+
+  function getCapHeight(host) {
+    if (host.dataset.capH) return parseFloat(host.dataset.capH);
+    // If inline height is set (snapshot mode), use it. Else use offsetHeight now.
+    const h = parseFloat(host.style.height) || host.offsetHeight;
+    host.dataset.capH = String(h);
+    return h;
+  }
+  function getCapWidth(host) {
+    if (host.dataset.capW) return parseFloat(host.dataset.capW);
+    const w = parseFloat(host.style.width) || host.offsetWidth;
+    host.dataset.capW = String(w);
+    return w;
+  }
+  function boxOverflows(host, capW, capH) {
+    // scrollHeight/Width always reflect content size regardless of box height.
+    return (host.scrollHeight - capH) > 2 || (host.scrollWidth - capW) > 2;
+  }
+
+  function fitAll() { fields().forEach(fitField); }
+
+  function observeAutofit() {
+    // ResizeObserver on each widget re-fits when its size changes (user drag/resize).
+    if (!('ResizeObserver' in window)) { window.addEventListener('resize', fitAll); return; }
+    const ro = new ResizeObserver(entries => {
+      entries.forEach(e => {
+        $$('[data-field]', e.target).forEach(fitField);
+      });
+    });
+    widgets().forEach(w => { ro.observe(w); autofitObservers.set(w, ro); });
+    // Also re-fit on window resize (for stage scale changes)
+    window.addEventListener('resize', () => requestAnimationFrame(fitAll));
+  }
+
+  /* -------- layout (drag / resize) -------- */
+  // Entering edit mode: snapshot each widget's current geometry (relative to stage),
+  // switch it to absolute positioning at those coords. On exit, restore.
+  let stage = null;
+  const savedStyles = new Map();
+
+  function getStage() {
+    return stage || (stage = document.querySelector('.stage') || document.body);
+  }
+
+  function snapshotWidgets() {
+    const s = getStage();
+    const sr = s.getBoundingClientRect();
+    widgets().forEach(w => {
+      const r = w.getBoundingClientRect();
+      // Undo the stage's scale to get canvas-space coords.
+      const scale = (sr.width / s.offsetWidth) || 1;
+      const x = (r.left - sr.left) / scale;
+      const y = (r.top - sr.top) / scale;
+      const width = r.width / scale;
+      const height = r.height / scale;
+      savedStyles.set(w, { cssText: w.style.cssText });
+      // Only switch to absolute if it isn't already
+      const cs = getComputedStyle(w);
+      if (cs.position !== 'absolute') {
+        w.style.position = 'absolute';
+        w.style.left = x + 'px';
+        w.style.top = y + 'px';
+        w.style.width = width + 'px';
+        w.style.height = height + 'px';
+        w.style.margin = '0';
+      }
+      // Apply any persisted layout
+      const key = w.getAttribute('data-widget');
+      if (layout[key]) applyLayout(w, layout[key]);
+    });
+  }
+
+  function restoreWidgets() {
+    savedStyles.forEach((v, w) => { w.style.cssText = v.cssText; });
+    savedStyles.clear();
+  }
+
+  function applyLayout(w, pos) {
+    if (pos.x != null) w.style.left = pos.x + 'px';
+    if (pos.y != null) w.style.top = pos.y + 'px';
+    if (pos.w != null) w.style.width = pos.w + 'px';
+    if (pos.h != null) w.style.height = pos.h + 'px';
+  }
+
+  function attachHandles() {
+    widgets().forEach(w => {
+      if (w.querySelector('.__ed_handles')) return;
+      const h = document.createElement('div');
+      h.className = '__ed_handles';
+      h.innerHTML = `
+        <div class="__ed_move" title="Drag to move"></div>
+        <div class="__ed_resize" title="Drag corner to resize"></div>
+        <div class="__ed_label"></div>`;
+      const lbl = h.querySelector('.__ed_label');
+      lbl.textContent = w.getAttribute('data-widget');
+      w.appendChild(h);
+
+      dragify(h.querySelector('.__ed_move'), w, 'move');
+      dragify(h.querySelector('.__ed_resize'), w, 'resize');
+    });
+  }
+
+  function removeHandles() {
+    $$('.__ed_handles').forEach(n => n.remove());
+  }
+
+  function dragify(handle, target, mode) {
+    let startX, startY, startL, startT, startW, startH, scale = 1;
+    handle.addEventListener('pointerdown', e => {
+      e.preventDefault(); e.stopPropagation();
+      handle.setPointerCapture(e.pointerId);
+      const s = getStage();
+      scale = s.getBoundingClientRect().width / s.offsetWidth || 1;
+      startX = e.clientX; startY = e.clientY;
+      startL = parseFloat(target.style.left) || 0;
+      startT = parseFloat(target.style.top) || 0;
+      startW = target.offsetWidth;
+      startH = target.offsetHeight;
+      target.classList.add('__ed_active');
+    });
+    handle.addEventListener('pointermove', e => {
+      if (!handle.hasPointerCapture?.(e.pointerId)) return;
+      const dx = (e.clientX - startX) / scale;
+      const dy = (e.clientY - startY) / scale;
+      if (mode === 'move') {
+        target.style.left = snap(startL + dx) + 'px';
+        target.style.top = snap(startT + dy) + 'px';
+      } else {
+        target.style.width = Math.max(120, snap(startW + dx)) + 'px';
+        target.style.height = Math.max(80, snap(startH + dy)) + 'px';
+      }
+      // Re-fit text during drag
+      $$('[data-field]', target).forEach(fitField);
+    });
+    handle.addEventListener('pointerup', e => {
+      handle.releasePointerCapture?.(e.pointerId);
+      target.classList.remove('__ed_active');
+      persist();
+    });
+  }
+
+  /* -------- panel (text editing) -------- */
+  function buildPanel() {
+    panel = document.createElement('div');
+    panel.id = PANEL_ID;
+    panel.innerHTML = `
+      <style>
+        #${PANEL_ID} {
+          position: fixed; top: 20px; right: 20px; width: 440px; max-height: 92vh;
+          background: #0f172a; color: #e2e8f0; font: 13px/1.45 -apple-system, 'Inter', sans-serif;
+          border: 1px solid #334155; border-radius: 12px; z-index: 2147483000;
+          display: flex; flex-direction: column; overflow: hidden;
+          box-shadow: 0 20px 60px rgba(0,0,0,.55);
+        }
+        #${PANEL_ID} header {
+          padding: 12px 16px; background: #1e293b; border-bottom: 1px solid #334155;
+          display: flex; align-items: center; justify-content: space-between;
+        }
+        #${PANEL_ID} header h3 { margin:0; font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: #cbd5e1; }
+        #${PANEL_ID} header button { background:#334155; color:#e2e8f0; border:0; border-radius:6px; padding:4px 10px; font-size:12px; cursor:pointer; }
+        #${PANEL_ID} header button:hover { background:#475569; }
+        #${PANEL_ID} .__ed_body { padding: 10px 12px; overflow: auto; flex:1; }
+        #${PANEL_ID} details { border: 1px solid #1e293b; border-radius: 8px; margin-bottom: 10px; background:#0b1324; }
+        #${PANEL_ID} summary { padding: 8px 12px; cursor: pointer; font-weight: 600; color:#fde68a; list-style:none; display:flex; justify-content:space-between; align-items:center; }
+        #${PANEL_ID} summary::-webkit-details-marker { display:none; }
+        #${PANEL_ID} summary .__cnt { font-size: 11px; color:#64748b; font-weight:500; }
+        #${PANEL_ID} .__field { padding: 6px 12px 10px; border-top: 1px solid #1e293b; }
+        #${PANEL_ID} .__field label { display:block; font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing:.08em; margin-bottom: 4px; }
+        #${PANEL_ID} .__field textarea, #${PANEL_ID} .__field input {
+          width: 100%; box-sizing: border-box;
+          background: #020617; color: #f1f5f9; border: 1px solid #334155; border-radius: 6px;
+          padding: 6px 8px; font: inherit; font-size: 13px; resize: vertical;
+        }
+        #${PANEL_ID} .__field textarea { min-height: 38px; }
+        #${PANEL_ID} .__field textarea:focus, #${PANEL_ID} .__field input:focus { outline: 2px solid #6366f1; border-color: transparent; }
+        #${PANEL_ID} .__hint { font-size: 11px; color:#64748b; padding: 4px 4px 10px; }
+      </style>
+      <header>
+        <h3>Widgets</h3>
+        <div>
+          <button type="button" id="__ed_reset">Reset layout</button>
+        </div>
+      </header>
+      <div class="__ed_body"></div>
+      <div class="__hint" style="padding: 8px 14px; background:#0b1324; border-top:1px solid #1e293b;">Drag a widget's header to move · corner handle to resize · grid 40px.</div>
+    `;
+    document.body.appendChild(panel);
+    panel.querySelector('#__ed_reset').addEventListener('click', resetLayout);
+    renderPanel();
+  }
+
+  function renderPanel() {
+    const body = panel.querySelector('.__ed_body');
+    body.innerHTML = '';
+    const byWidget = new Map();
+    fields().forEach(f => {
+      const w = f.closest('[data-widget]')?.getAttribute('data-widget') || 'other';
+      if (!byWidget.has(w)) byWidget.set(w, []);
+      byWidget.get(w).push(f);
+    });
+    const keys = Array.from(byWidget.keys()).sort();
+    keys.forEach((k, i) => {
+      const grp = byWidget.get(k);
+      const det = document.createElement('details');
+      if (i < 3) det.open = true;
+      det.innerHTML = `<summary><span>${k}</span><span class="__cnt">${grp.length} field${grp.length===1?'':'s'}</span></summary>`;
+      // Dedupe field keys (ticker has duplicated spans for the scroll effect)
+      const seen = new Set();
+      grp.forEach(f => {
+        const key = f.getAttribute('data-field');
+        if (seen.has(key)) return; seen.add(key);
+        const wrap = document.createElement('div');
+        wrap.className = '__field';
+        const isLong = (f.textContent || '').length > 60;
+        const ctl = isLong ? 'textarea' : 'input';
+        wrap.innerHTML = `<label>${key}</label><${ctl} data-key="${key}">${isLong ? (f.textContent || '').trim() : ''}</${ctl}>`;
+        const ctrl = wrap.querySelector('[data-key]');
+        if (!isLong) ctrl.value = (f.textContent || '').trim();
+        ctrl.addEventListener('input', () => {
+          // Update every field node with this key (handles duplicates e.g. ticker)
+          $$(`[data-field="${CSS.escape(key)}"]`).forEach(n => { n.textContent = ctrl.value; fitField(n); });
+          persist();
+        });
+        det.appendChild(wrap);
+      });
+      body.appendChild(det);
+    });
+  }
+
+  /* -------- persistence -------- */
+  function persist() {
+    const out = {};
+    // text content
+    const seen = new Set();
+    fields().forEach(f => {
+      const k = f.getAttribute('data-field');
+      if (seen.has(k)) return; seen.add(k);
+      out[k] = (f.textContent || '').trim();
+    });
+    // layout — only include widgets whose pos is set
+    const layoutOut = {};
+    widgets().forEach(w => {
+      const k = w.getAttribute('data-widget');
+      if (!w.style.left) return;
+      layoutOut[k] = {
+        x: parseFloat(w.style.left),
+        y: parseFloat(w.style.top),
+        w: parseFloat(w.style.width),
+        h: parseFloat(w.style.height)
+      };
+    });
+    out.__layout = layoutOut;
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: out }, '*');
+  }
+
+  function resetLayout() {
+    // clear inline positioning and re-snapshot
+    widgets().forEach(w => { w.style.cssText = savedStyles.get(w)?.cssText || ''; });
+    savedStyles.clear();
+    snapshotWidgets();
+    fitAll();
+    persist();
+  }
+
+  /* -------- activation -------- */
+  function activate() {
+    if (active) return; active = true;
+    document.body.classList.add('__ed_active_mode');
+    snapshotWidgets();
+    attachHandles();
+    if (!panel) buildPanel(); else panel.style.display = 'flex';
+    fitAll();
+  }
+  function deactivate() {
+    if (!active) return; active = false;
+    document.body.classList.remove('__ed_active_mode');
+    removeHandles();
+    restoreWidgets();
+    if (panel) panel.style.display = 'none';
+    fitAll();
+  }
+
+  /* -------- boot -------- */
+  function boot() {
+    // inject drag/handle styles
+    const st = document.createElement('style');
+    st.textContent = `
+      [data-widget] { box-sizing: border-box; }
+      .__ed_active_mode [data-widget] { outline: 1px dashed rgba(99,102,241,.35); outline-offset: -1px; }
+      .__ed_handles { position: absolute; inset: 0; pointer-events: none; z-index: 2147482000; }
+      .__ed_move {
+        position: absolute; top: 0; left: 0; right: 0; height: 36px; pointer-events: auto;
+        background: linear-gradient(180deg, rgba(99,102,241,.35), rgba(99,102,241,0));
+        cursor: move;
+      }
+      .__ed_resize {
+        position: absolute; bottom: 0; right: 0; width: 36px; height: 36px; pointer-events: auto;
+        background: linear-gradient(135deg, transparent 50%, rgba(99,102,241,.7) 50%);
+        cursor: se-resize;
+      }
+      .__ed_label {
+        position: absolute; top: 4px; left: 8px; font: 600 11px/1 -apple-system, Inter, sans-serif;
+        color: #fff; background: #6366f1; padding: 3px 8px; border-radius: 4px; pointer-events: none;
+        letter-spacing: .04em; text-transform: uppercase;
+      }
+      [data-widget].__ed_active { outline: 2px solid #6366f1 !important; outline-offset: -2px; }
+    `;
+    document.head.appendChild(st);
+
+    // Listener first
+    window.addEventListener('message', e => {
+      const d = e.data || {};
+      if (d.type === '__activate_edit_mode') activate();
+      else if (d.type === '__deactivate_edit_mode') deactivate();
+    });
+    // Autofit once on load (passive — no mutations), then observe.
+    const start = () => { fitAll(); observeAutofit(); };
+    if (document.readyState === 'complete') start(); else window.addEventListener('load', start);
+    // Announce availability AFTER listener is live
+    try { window.parent.postMessage({ type: '__edit_mode_available' }, '*'); } catch (e) {}
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+
+</script>
+</body></html>

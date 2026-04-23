@@ -1,0 +1,694 @@
+<!--
+  TEMPLATE 04 — TERMINAL
+  CRT/phosphor. Monospace everything. Scanlines, blinking cursor, ASCII borders.
+  Special: teacher card as a "whoami" session, ticker as a syslog.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Terminal — Lobby 4K</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=VT323&display=swap" rel="stylesheet">
+<style>
+  :root { --stage-w: 3840px; --stage-h: 2160px; --stage-scale: 1; }
+  html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; }
+  .viewport { position:fixed; inset:0; display:grid; place-items:center; overflow:hidden; }
+  .stage-outer { width:calc(var(--stage-w)*var(--stage-scale)); height:calc(var(--stage-h)*var(--stage-scale)); }
+  .stage { width:var(--stage-w); height:var(--stage-h); transform:scale(var(--stage-scale)); transform-origin:0 0; position:relative; box-shadow:0 80px 200px rgba(0,0,0,.65); overflow:hidden; }
+
+  :root {
+    --phos: #9bff9b;    /* primary phosphor */
+    --dim:  #4a7a4a;    /* dimmed text */
+    --hot:  #ffe37a;    /* amber highlight */
+    --red:  #ff7a7a;    /* alert */
+    --cyan: #7adfff;    /* link/link-visited feel */
+    --bg:   #0a1a0a;    /* CRT black-green */
+  }
+  html, body { background:#000; color:var(--phos); font-family:'JetBrains Mono', monospace; }
+  .stage { background: radial-gradient(ellipse at center, #0e2410 0%, #060f06 80%, #000 100%); }
+  /* Scanlines + vignette */
+  .stage::before {
+    content:''; position:absolute; inset:0;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0 2px, transparent 2px 4px);
+    pointer-events:none; z-index:3;
+  }
+  .stage::after {
+    content:''; position:absolute; inset:0;
+    box-shadow: inset 0 0 400px rgba(0,0,0,.7);
+    pointer-events:none; z-index:2;
+  }
+  /* CRT flicker */
+  @keyframes flicker { 0%,96%,100% { opacity:1; } 97% { opacity:.85; } 98% { opacity:1; } 99% { opacity:.92; } }
+  .stage > * { animation: flicker 6s infinite; }
+
+  /* Shell header bar */
+  .topbar {
+    position:absolute; top:40px; left:40px; right:40px; height:80px;
+    border: 3px solid var(--phos);
+    padding: 0 28px;
+    display:flex; align-items:center; justify-content:space-between;
+    font-size: 38px; letter-spacing: .08em;
+    background: rgba(0,20,0,.4);
+  }
+  .topbar .left { display:flex; gap:36px; align-items:center; }
+  .topbar .left .host { color:var(--hot); font-weight:700; }
+  .topbar .left .sep { color:var(--dim); }
+  .topbar .right { display:flex; gap:28px; color:var(--dim); font-weight:500; }
+  .topbar .right .on { color:var(--phos); }
+  .topbar .dot { width:16px; height:16px; background:var(--phos); border-radius:50%; display:inline-block;
+    box-shadow:0 0 20px var(--phos); animation: pulse 1.8s infinite; margin-right:12px; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.35;} }
+
+  /* Main prompt / greeting */
+  .prompt {
+    position:absolute; top:160px; left:40px; right:40px; border: 3px solid var(--phos);
+    padding: 36px 44px; background: rgba(0,20,0,.35);
+  }
+  .prompt .line1 { font-size:36px; color:var(--dim); letter-spacing:.06em; }
+  .prompt .line1 .p { color:var(--phos); }
+  .prompt .line1 .arg { color:var(--hot); }
+  .prompt .banner {
+    font-family:'VT323', monospace;
+    font-size: 260px; line-height:.88; color:var(--phos);
+    text-shadow: 0 0 40px rgba(155,255,155,.55), 0 0 80px rgba(155,255,155,.25);
+    margin:14px 0 8px; letter-spacing:-.01em; text-wrap: balance;
+  }
+  .prompt .cursor {
+    display:inline-block; width:60px; height:220px; background:var(--phos);
+    vertical-align:middle; margin-left:18px;
+    animation: blink 1s steps(2) infinite;
+    box-shadow:0 0 40px rgba(155,255,155,.7);
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  .prompt .sub {
+    font-size:40px; color:var(--phos); opacity:.85; margin-top: 8px; letter-spacing:.03em;
+    max-width: 3200px;
+  }
+  .prompt .sub::before { content:'// '; color:var(--dim); }
+
+  /* Stats row — ASCII-box style */
+  .stats {
+    position:absolute; top: 1020px; left: 40px; right: 40px;
+    display:grid; grid-template-columns: repeat(4, 1fr); gap: 28px;
+  }
+  .stat {
+    border: 3px solid var(--phos); padding: 24px 28px; background: rgba(0,20,0,.35);
+    position:relative;
+  }
+  .stat::before {
+    content: attr(data-box);
+    position:absolute; top:-20px; left:30px; background:#081a08; padding:0 14px;
+    font-size:22px; color:var(--hot); letter-spacing:.2em; text-transform:uppercase;
+  }
+  .stat .big {
+    font-family:'VT323',monospace; font-size: 150px; line-height:.9; color:var(--phos);
+    text-shadow: 0 0 30px rgba(155,255,155,.5); margin: 2px 0;
+  }
+  .stat .cap { font-size: 28px; color: var(--dim); line-height:1.3; }
+
+  /* Teacher / whoami card */
+  .whoami {
+    position:absolute; top: 1300px; left:40px; width: 1700px;
+    border:3px solid var(--phos); background: rgba(0,20,0,.35);
+    padding: 24px 32px;
+  }
+  .whoami .cmd { font-size:32px; color: var(--dim); }
+  .whoami .cmd .p { color:var(--phos); } .whoami .cmd .a { color:var(--hot); }
+  .whoami .out { font-size:32px; color:var(--phos); margin-top:10px; line-height:1.35; }
+  .whoami .kv { display:grid; grid-template-columns: 240px 1fr; gap: 0 24px; margin-top:14px; }
+  .whoami .kv dt { color: var(--dim); }
+  .whoami .kv dd { margin:0; color: var(--phos); }
+  .whoami .name { font-family:'VT323',monospace; font-size:140px; line-height:.9; color:var(--hot);
+    text-shadow:0 0 30px rgba(255,227,122,.5); margin: 18px 0 4px; }
+  .whoami .quote { border-left: 4px solid var(--hot); padding-left:22px; margin-top:20px;
+    font-size: 34px; color:#cfe9cf; font-style: italic; line-height:1.35; }
+
+  /* Right column: announcement + countdown */
+  .right {
+    position:absolute; top: 1300px; right: 40px; width: 2020px;
+    display:grid; gap: 24px;
+  }
+  .box { border:3px solid var(--phos); background: rgba(0,20,0,.35); padding: 24px 32px; position:relative; }
+  .box::before {
+    content: attr(data-box); position:absolute; top:-20px; left:30px; background:#081a08;
+    padding:0 14px; font-size:22px; color:var(--hot); letter-spacing:.2em; text-transform:uppercase;
+  }
+  .alert { border-color: var(--red); }
+  .alert::before { color: var(--red); }
+  .alert .hd { font-size: 30px; color: var(--red); letter-spacing:.14em; }
+  .alert h3 { font-family:'VT323',monospace; font-size:100px; line-height:.95; margin: 8px 0 0;
+    color: var(--hot); text-shadow:0 0 30px rgba(255,227,122,.45); }
+  .alert p { font-size:28px; color:#cfe9cf; margin: 10px 0 0; line-height:1.35; }
+  .alert .when { font-size:28px; color: var(--red); margin-top:10px; letter-spacing:.12em; }
+
+  .countdown { display:grid; grid-template-columns: auto 1fr; gap: 30px; align-items:center; }
+  .countdown .val { font-family:'VT323',monospace; font-size: 260px; line-height:.8; color: var(--hot);
+    text-shadow:0 0 40px rgba(255,227,122,.6); }
+  .countdown .lbl { font-size: 36px; color: var(--phos); line-height:1.2; }
+  .countdown .lbl .dim { color: var(--dim); display:block; font-size: 28px; margin-top:8px; }
+
+  /* Events log */
+  .events {
+    position:absolute; bottom: 140px; left: 40px; right: 40px; height: 300px;
+    border:3px solid var(--phos); background: rgba(0,20,0,.35);
+    padding: 24px 32px; position:absolute;
+  }
+  .events::before {
+    content: '[ cron -l /var/school/events ]'; position:absolute; top:-20px; left:30px; background:#081a08;
+    padding:0 14px; font-size:22px; color:var(--hot); letter-spacing:.14em;
+  }
+  .events .row { display:grid; grid-template-columns: 220px 260px 1fr 260px;
+    font-size:32px; color: var(--phos); padding: 10px 0;
+    border-bottom: 1px dashed rgba(155,255,155,.22);
+  }
+  .events .row:last-child { border-bottom:0; }
+  .events .row .t { color: var(--dim); }
+  .events .row .d { color: var(--hot); letter-spacing:.1em; }
+  .events .row .n { color: var(--phos); }
+  .events .row .l { color: var(--cyan); text-align:right; }
+  .events .head { font-size: 26px; color: var(--dim); letter-spacing:.14em;
+    display:grid; grid-template-columns: 220px 260px 1fr 260px;
+    padding-bottom: 8px; border-bottom: 2px solid rgba(155,255,155,.35); }
+
+  /* Syslog ticker */
+  .ticker {
+    position:absolute; bottom:0; left:0; right:0; height: 80px;
+    background: var(--phos); color:#061506;
+    display:flex; align-items:center; overflow:hidden; border-top: 3px solid #000;
+  }
+  .ticker .tag { background:#061506; color: var(--phos); height:100%; display:flex; align-items:center;
+    padding: 0 34px; font-weight:700; font-size:28px; letter-spacing:.16em; flex-shrink:0; }
+  .ticker .msg { font-weight:700; font-size:28px; padding-left:40px; white-space:nowrap;
+    letter-spacing:.08em; animation: scroll 60s linear infinite; text-transform:uppercase; }
+  @keyframes scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+  /* Decorative ASCII corners — skipped for cleanliness */
+</style>
+</head>
+<body>
+<script>
+  const __TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "schema": "edu-cms-terminal-v1" }/*EDITMODE-END*/;
+</script>
+
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+  <div class="topbar" data-widget="school">
+    <div class="left">
+      <span><span class="dot"></span><span class="host" data-field="school.host">westridge-hs</span><span class="sep">:</span><span data-field="school.path">~/lobby/morning</span><span class="sep">$</span></span>
+      <span style="color:var(--cyan);" data-field="school.session">session #2 · term spring-26</span>
+    </div>
+    <div class="right">
+      <span data-widget="clock"><span data-field="clock.time">07:53:21</span></span>
+      <span data-widget="weather"><span class="on" data-field="weather.temp">46°F</span> <span data-field="weather.condition">clear</span></span>
+      <span class="on">UP 184d</span>
+    </div>
+  </div>
+
+  <div class="prompt" data-widget="greeting">
+    <div class="line1">
+      <span class="p">&gt; </span><span data-field="greeting.cmd">./say-morning</span> <span class="arg" data-field="greeting.arg">--to=everyone --loud</span>
+    </div>
+    <div class="banner"><span data-field="greeting.headline">HELLO, WESTRIDGE.</span><span class="cursor"></span></div>
+    <div class="sub" data-field="greeting.subtitle">okay — late passes reset, printers are up, the soda machine isn't. have a good one.</div>
+  </div>
+
+  <div class="stats">
+    <div class="stat" data-box="[ clock ]" data-widget="clockbig">
+      <div class="big" data-field="clockbig.val">07:53</div>
+      <div class="cap" data-field="clockbig.cap">tue · apr 21 · period 1 @ 08:05</div>
+    </div>
+    <div class="stat" data-box="[ weatherd ]" data-widget="weatherd">
+      <div class="big" data-field="weatherd.val">46°F</div>
+      <div class="cap" data-field="weatherd.cap">clear · hi 62 · lo 38 · wind 6mph</div>
+    </div>
+    <div class="stat" data-box="[ attendance ]" data-widget="attendance">
+      <div class="big" data-field="attendance.val">1217</div>
+      <div class="cap" data-field="attendance.cap">students checked in · 98.2%</div>
+    </div>
+    <div class="stat" data-box="[ lunch ]" data-widget="lunch">
+      <div class="big" style="font-size:80px; padding-top: 24px;" data-field="lunch.val">chicken bowl</div>
+      <div class="cap" data-field="lunch.cap">+ salad bar · vegan option · $3.75</div>
+    </div>
+  </div>
+
+  <div class="whoami" data-widget="teacher">
+    <div class="cmd"><span class="p">&gt; </span><span data-field="teacher.cmd">whoami --featured</span></div>
+    <div class="name" data-field="teacher.name">ms.kowalski</div>
+    <dl class="kv">
+      <dt>role</dt><dd data-field="teacher.role">teacher_of_week · ap physics</dd>
+      <dt>room</dt><dd data-field="teacher.room">214 / science wing</dd>
+      <dt>years</dt><dd data-field="teacher.years">14 at WHS · alumna '02</dd>
+      <dt>groups</dt><dd data-field="teacher.groups">faculty, physics, science-olympiad-coach</dd>
+    </dl>
+    <div class="quote" data-field="teacher.quote">"the answer is in the free-body diagram. draw the picture — every time. the math always follows."</div>
+  </div>
+
+  <div class="right">
+    <div class="box alert" data-box="[ ! priority ]" data-widget="announcement">
+      <div class="hd">&gt; WARN · <span data-field="announcement.tag">pep rally scheduled</span></div>
+      <h3 data-field="announcement.headline">PEP RALLY — 7TH PERIOD, GYM A</h3>
+      <p data-field="announcement.body">seniors front row. marching band enters from the south doors. return to 8th period when the bell rings. no backpacks in the gym.</p>
+      <div class="when" data-field="announcement.date">today · 14:15 — 15:00 · gym-a</div>
+    </div>
+    <div class="box" data-box="[ countdown ]" data-widget="countdown">
+      <div class="countdown">
+        <div class="val" data-field="countdown.value">41</div>
+        <div class="lbl">
+          <span data-field="countdown.label">days until graduation</span>
+          <span class="dim" data-field="countdown.sub">seniors — order caps by fri · 17:00</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="events">
+    <div class="head">
+      <span>when</span><span>where</span><span>what</span><span>who</span>
+    </div>
+    <div class="row" data-widget="events.0">
+      <span class="t" data-field="events.0.when">tue 15:30</span>
+      <span class="d" data-field="events.0.where">rm 102</span>
+      <span class="n" data-field="events.0.name">mathletes — regionals prep</span>
+      <span class="l" data-field="events.0.who">@ms.devereaux</span>
+    </div>
+    <div class="row" data-widget="events.1">
+      <span class="t" data-field="events.1.when">wed 19:00</span>
+      <span class="d" data-field="events.1.where">auditorium</span>
+      <span class="n" data-field="events.1.name">spring band concert — all grades</span>
+      <span class="l" data-field="events.1.who">@mr.thornton</span>
+    </div>
+    <div class="row" data-widget="events.2">
+      <span class="t" data-field="events.2.when">fri 19:00</span>
+      <span class="d" data-field="events.2.where">theater</span>
+      <span class="n" data-field="events.2.name">"into the woods" — opening night</span>
+      <span class="l" data-field="events.2.who">@ms.park</span>
+    </div>
+  </div>
+
+  <div class="ticker" data-widget="ticker">
+    <div class="tag" data-field="ticker.tag">/var/log/syslog</div>
+    <div class="msg"><span data-field="ticker.message">[info] bus-14 delayed 10m · [warn] printer rm-210 out of toner · [info] lost-and-found: silver earbuds · [info] ap psych study hall moved to library · [info] sports photos tomorrow — bring jerseys · </span><span data-field="ticker.message">[info] bus-14 delayed 10m · [warn] printer rm-210 out of toner · [info] lost-and-found: silver earbuds · [info] ap psych study hall moved to library · [info] sports photos tomorrow — bring jerseys · </span></div>
+  </div>
+
+</div></div></div>
+
+<script>
+(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const cs=getComputedStyle(document.documentElement);const w=parseFloat(cs.getPropertyValue('--stage-w'))||3840;const h=parseFloat(cs.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();
+</script>
+<script>
+/* Shared widget editor harness for EDU CMS lobby templates.
+ *
+ * Capabilities:
+ *   1. Live text editing of [data-field] nodes, grouped by [data-widget].
+ *   2. Drag widgets (snap to 40px grid) and resize via SE handle.
+ *   3. Auto-fit: shrink text to fit its container, with a readable floor.
+ *   4. Persist layout + content to the EDITMODE JSON block via
+ *      __edit_mode_set_keys postMessage.
+ *
+ * Activation follows the tweaks protocol: register listener FIRST, then
+ * announce __edit_mode_available.
+ */
+(function () {
+  const GRID = 40;
+  const MIN_FONT = 18;            // px — anything smaller is unreadable on lobby displays
+  const AUTOFIT_ATTR = 'data-autofit';   // opt-out with data-autofit="off"
+
+  const PANEL_ID = '__edu_cms_editor_panel';
+  let active = false;
+  let panel = null;
+
+  /* -------- layout persistence (runtime) --------
+     Positions are stored as: layout[widgetKey] = { x, y, w, h }
+     Applied to the [data-widget] element as inline styles in "absolute" mode. */
+  const layout = {};
+
+  /* -------- utilities -------- */
+  function $(q, el = document) { return el.querySelector(q); }
+  function $$(q, el = document) { return Array.from(el.querySelectorAll(q)); }
+  function snap(v) { return Math.round(v / GRID) * GRID; }
+  function widgets() { return $$('[data-widget]'); }
+  function fields() { return $$('[data-field]'); }
+
+  /* -------- autofit -------- */
+  // For every [data-field], remember its designed font-size (the CSS max) and
+  // shrink only if necessary. We measure against the FIELD's own box, so a
+  // multi-line headline wraps as designed and only shrinks when truly overflowing.
+  const autofitObservers = new Map();
+
+  function ensureBaseFontSize(el) {
+    if (el.dataset.autofitBase) return parseFloat(el.dataset.autofitBase);
+    const fs = parseFloat(getComputedStyle(el).fontSize);
+    el.dataset.autofitBase = String(fs);
+    return fs;
+  }
+
+  function fitField(el) {
+    if (el.getAttribute(AUTOFIT_ATTR) === 'off') return;
+    const base = ensureBaseFontSize(el);
+    el.style.fontSize = base + 'px';
+    const host = el.closest('[data-widget]') || el.parentElement;
+    if (!host) return;
+    // Cap height = the widget's declared/designed box. Recorded on first fit
+    // so we measure overflow against the INTENDED size, not a stretched one.
+    const capH = getCapHeight(host);
+    const capW = getCapWidth(host);
+    if (!boxOverflows(host, capW, capH)) return;
+    let lo = MIN_FONT, hi = base;
+    for (let i = 0; i < 14; i++) {
+      const mid = (lo + hi) / 2;
+      el.style.fontSize = mid + 'px';
+      if (boxOverflows(host, capW, capH)) hi = mid; else lo = mid;
+      if (hi - lo < 0.5) break;
+    }
+    el.style.fontSize = lo + 'px';
+  }
+
+  function getCapHeight(host) {
+    if (host.dataset.capH) return parseFloat(host.dataset.capH);
+    // If inline height is set (snapshot mode), use it. Else use offsetHeight now.
+    const h = parseFloat(host.style.height) || host.offsetHeight;
+    host.dataset.capH = String(h);
+    return h;
+  }
+  function getCapWidth(host) {
+    if (host.dataset.capW) return parseFloat(host.dataset.capW);
+    const w = parseFloat(host.style.width) || host.offsetWidth;
+    host.dataset.capW = String(w);
+    return w;
+  }
+  function boxOverflows(host, capW, capH) {
+    // scrollHeight/Width always reflect content size regardless of box height.
+    return (host.scrollHeight - capH) > 2 || (host.scrollWidth - capW) > 2;
+  }
+
+  function fitAll() { fields().forEach(fitField); }
+
+  function observeAutofit() {
+    // ResizeObserver on each widget re-fits when its size changes (user drag/resize).
+    if (!('ResizeObserver' in window)) { window.addEventListener('resize', fitAll); return; }
+    const ro = new ResizeObserver(entries => {
+      entries.forEach(e => {
+        $$('[data-field]', e.target).forEach(fitField);
+      });
+    });
+    widgets().forEach(w => { ro.observe(w); autofitObservers.set(w, ro); });
+    // Also re-fit on window resize (for stage scale changes)
+    window.addEventListener('resize', () => requestAnimationFrame(fitAll));
+  }
+
+  /* -------- layout (drag / resize) -------- */
+  // Entering edit mode: snapshot each widget's current geometry (relative to stage),
+  // switch it to absolute positioning at those coords. On exit, restore.
+  let stage = null;
+  const savedStyles = new Map();
+
+  function getStage() {
+    return stage || (stage = document.querySelector('.stage') || document.body);
+  }
+
+  function snapshotWidgets() {
+    const s = getStage();
+    const sr = s.getBoundingClientRect();
+    widgets().forEach(w => {
+      const r = w.getBoundingClientRect();
+      // Undo the stage's scale to get canvas-space coords.
+      const scale = (sr.width / s.offsetWidth) || 1;
+      const x = (r.left - sr.left) / scale;
+      const y = (r.top - sr.top) / scale;
+      const width = r.width / scale;
+      const height = r.height / scale;
+      savedStyles.set(w, { cssText: w.style.cssText });
+      // Only switch to absolute if it isn't already
+      const cs = getComputedStyle(w);
+      if (cs.position !== 'absolute') {
+        w.style.position = 'absolute';
+        w.style.left = x + 'px';
+        w.style.top = y + 'px';
+        w.style.width = width + 'px';
+        w.style.height = height + 'px';
+        w.style.margin = '0';
+      }
+      // Apply any persisted layout
+      const key = w.getAttribute('data-widget');
+      if (layout[key]) applyLayout(w, layout[key]);
+    });
+  }
+
+  function restoreWidgets() {
+    savedStyles.forEach((v, w) => { w.style.cssText = v.cssText; });
+    savedStyles.clear();
+  }
+
+  function applyLayout(w, pos) {
+    if (pos.x != null) w.style.left = pos.x + 'px';
+    if (pos.y != null) w.style.top = pos.y + 'px';
+    if (pos.w != null) w.style.width = pos.w + 'px';
+    if (pos.h != null) w.style.height = pos.h + 'px';
+  }
+
+  function attachHandles() {
+    widgets().forEach(w => {
+      if (w.querySelector('.__ed_handles')) return;
+      const h = document.createElement('div');
+      h.className = '__ed_handles';
+      h.innerHTML = `
+        <div class="__ed_move" title="Drag to move"></div>
+        <div class="__ed_resize" title="Drag corner to resize"></div>
+        <div class="__ed_label"></div>`;
+      const lbl = h.querySelector('.__ed_label');
+      lbl.textContent = w.getAttribute('data-widget');
+      w.appendChild(h);
+
+      dragify(h.querySelector('.__ed_move'), w, 'move');
+      dragify(h.querySelector('.__ed_resize'), w, 'resize');
+    });
+  }
+
+  function removeHandles() {
+    $$('.__ed_handles').forEach(n => n.remove());
+  }
+
+  function dragify(handle, target, mode) {
+    let startX, startY, startL, startT, startW, startH, scale = 1;
+    handle.addEventListener('pointerdown', e => {
+      e.preventDefault(); e.stopPropagation();
+      handle.setPointerCapture(e.pointerId);
+      const s = getStage();
+      scale = s.getBoundingClientRect().width / s.offsetWidth || 1;
+      startX = e.clientX; startY = e.clientY;
+      startL = parseFloat(target.style.left) || 0;
+      startT = parseFloat(target.style.top) || 0;
+      startW = target.offsetWidth;
+      startH = target.offsetHeight;
+      target.classList.add('__ed_active');
+    });
+    handle.addEventListener('pointermove', e => {
+      if (!handle.hasPointerCapture?.(e.pointerId)) return;
+      const dx = (e.clientX - startX) / scale;
+      const dy = (e.clientY - startY) / scale;
+      if (mode === 'move') {
+        target.style.left = snap(startL + dx) + 'px';
+        target.style.top = snap(startT + dy) + 'px';
+      } else {
+        target.style.width = Math.max(120, snap(startW + dx)) + 'px';
+        target.style.height = Math.max(80, snap(startH + dy)) + 'px';
+      }
+      // Re-fit text during drag
+      $$('[data-field]', target).forEach(fitField);
+    });
+    handle.addEventListener('pointerup', e => {
+      handle.releasePointerCapture?.(e.pointerId);
+      target.classList.remove('__ed_active');
+      persist();
+    });
+  }
+
+  /* -------- panel (text editing) -------- */
+  function buildPanel() {
+    panel = document.createElement('div');
+    panel.id = PANEL_ID;
+    panel.innerHTML = `
+      <style>
+        #${PANEL_ID} {
+          position: fixed; top: 20px; right: 20px; width: 440px; max-height: 92vh;
+          background: #0f172a; color: #e2e8f0; font: 13px/1.45 -apple-system, 'Inter', sans-serif;
+          border: 1px solid #334155; border-radius: 12px; z-index: 2147483000;
+          display: flex; flex-direction: column; overflow: hidden;
+          box-shadow: 0 20px 60px rgba(0,0,0,.55);
+        }
+        #${PANEL_ID} header {
+          padding: 12px 16px; background: #1e293b; border-bottom: 1px solid #334155;
+          display: flex; align-items: center; justify-content: space-between;
+        }
+        #${PANEL_ID} header h3 { margin:0; font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: #cbd5e1; }
+        #${PANEL_ID} header button { background:#334155; color:#e2e8f0; border:0; border-radius:6px; padding:4px 10px; font-size:12px; cursor:pointer; }
+        #${PANEL_ID} header button:hover { background:#475569; }
+        #${PANEL_ID} .__ed_body { padding: 10px 12px; overflow: auto; flex:1; }
+        #${PANEL_ID} details { border: 1px solid #1e293b; border-radius: 8px; margin-bottom: 10px; background:#0b1324; }
+        #${PANEL_ID} summary { padding: 8px 12px; cursor: pointer; font-weight: 600; color:#fde68a; list-style:none; display:flex; justify-content:space-between; align-items:center; }
+        #${PANEL_ID} summary::-webkit-details-marker { display:none; }
+        #${PANEL_ID} summary .__cnt { font-size: 11px; color:#64748b; font-weight:500; }
+        #${PANEL_ID} .__field { padding: 6px 12px 10px; border-top: 1px solid #1e293b; }
+        #${PANEL_ID} .__field label { display:block; font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing:.08em; margin-bottom: 4px; }
+        #${PANEL_ID} .__field textarea, #${PANEL_ID} .__field input {
+          width: 100%; box-sizing: border-box;
+          background: #020617; color: #f1f5f9; border: 1px solid #334155; border-radius: 6px;
+          padding: 6px 8px; font: inherit; font-size: 13px; resize: vertical;
+        }
+        #${PANEL_ID} .__field textarea { min-height: 38px; }
+        #${PANEL_ID} .__field textarea:focus, #${PANEL_ID} .__field input:focus { outline: 2px solid #6366f1; border-color: transparent; }
+        #${PANEL_ID} .__hint { font-size: 11px; color:#64748b; padding: 4px 4px 10px; }
+      </style>
+      <header>
+        <h3>Widgets</h3>
+        <div>
+          <button type="button" id="__ed_reset">Reset layout</button>
+        </div>
+      </header>
+      <div class="__ed_body"></div>
+      <div class="__hint" style="padding: 8px 14px; background:#0b1324; border-top:1px solid #1e293b;">Drag a widget's header to move · corner handle to resize · grid 40px.</div>
+    `;
+    document.body.appendChild(panel);
+    panel.querySelector('#__ed_reset').addEventListener('click', resetLayout);
+    renderPanel();
+  }
+
+  function renderPanel() {
+    const body = panel.querySelector('.__ed_body');
+    body.innerHTML = '';
+    const byWidget = new Map();
+    fields().forEach(f => {
+      const w = f.closest('[data-widget]')?.getAttribute('data-widget') || 'other';
+      if (!byWidget.has(w)) byWidget.set(w, []);
+      byWidget.get(w).push(f);
+    });
+    const keys = Array.from(byWidget.keys()).sort();
+    keys.forEach((k, i) => {
+      const grp = byWidget.get(k);
+      const det = document.createElement('details');
+      if (i < 3) det.open = true;
+      det.innerHTML = `<summary><span>${k}</span><span class="__cnt">${grp.length} field${grp.length===1?'':'s'}</span></summary>`;
+      // Dedupe field keys (ticker has duplicated spans for the scroll effect)
+      const seen = new Set();
+      grp.forEach(f => {
+        const key = f.getAttribute('data-field');
+        if (seen.has(key)) return; seen.add(key);
+        const wrap = document.createElement('div');
+        wrap.className = '__field';
+        const isLong = (f.textContent || '').length > 60;
+        const ctl = isLong ? 'textarea' : 'input';
+        wrap.innerHTML = `<label>${key}</label><${ctl} data-key="${key}">${isLong ? (f.textContent || '').trim() : ''}</${ctl}>`;
+        const ctrl = wrap.querySelector('[data-key]');
+        if (!isLong) ctrl.value = (f.textContent || '').trim();
+        ctrl.addEventListener('input', () => {
+          // Update every field node with this key (handles duplicates e.g. ticker)
+          $$(`[data-field="${CSS.escape(key)}"]`).forEach(n => { n.textContent = ctrl.value; fitField(n); });
+          persist();
+        });
+        det.appendChild(wrap);
+      });
+      body.appendChild(det);
+    });
+  }
+
+  /* -------- persistence -------- */
+  function persist() {
+    const out = {};
+    // text content
+    const seen = new Set();
+    fields().forEach(f => {
+      const k = f.getAttribute('data-field');
+      if (seen.has(k)) return; seen.add(k);
+      out[k] = (f.textContent || '').trim();
+    });
+    // layout — only include widgets whose pos is set
+    const layoutOut = {};
+    widgets().forEach(w => {
+      const k = w.getAttribute('data-widget');
+      if (!w.style.left) return;
+      layoutOut[k] = {
+        x: parseFloat(w.style.left),
+        y: parseFloat(w.style.top),
+        w: parseFloat(w.style.width),
+        h: parseFloat(w.style.height)
+      };
+    });
+    out.__layout = layoutOut;
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: out }, '*');
+  }
+
+  function resetLayout() {
+    // clear inline positioning and re-snapshot
+    widgets().forEach(w => { w.style.cssText = savedStyles.get(w)?.cssText || ''; });
+    savedStyles.clear();
+    snapshotWidgets();
+    fitAll();
+    persist();
+  }
+
+  /* -------- activation -------- */
+  function activate() {
+    if (active) return; active = true;
+    document.body.classList.add('__ed_active_mode');
+    snapshotWidgets();
+    attachHandles();
+    if (!panel) buildPanel(); else panel.style.display = 'flex';
+    fitAll();
+  }
+  function deactivate() {
+    if (!active) return; active = false;
+    document.body.classList.remove('__ed_active_mode');
+    removeHandles();
+    restoreWidgets();
+    if (panel) panel.style.display = 'none';
+    fitAll();
+  }
+
+  /* -------- boot -------- */
+  function boot() {
+    // inject drag/handle styles
+    const st = document.createElement('style');
+    st.textContent = `
+      [data-widget] { box-sizing: border-box; }
+      .__ed_active_mode [data-widget] { outline: 1px dashed rgba(99,102,241,.35); outline-offset: -1px; }
+      .__ed_handles { position: absolute; inset: 0; pointer-events: none; z-index: 2147482000; }
+      .__ed_move {
+        position: absolute; top: 0; left: 0; right: 0; height: 36px; pointer-events: auto;
+        background: linear-gradient(180deg, rgba(99,102,241,.35), rgba(99,102,241,0));
+        cursor: move;
+      }
+      .__ed_resize {
+        position: absolute; bottom: 0; right: 0; width: 36px; height: 36px; pointer-events: auto;
+        background: linear-gradient(135deg, transparent 50%, rgba(99,102,241,.7) 50%);
+        cursor: se-resize;
+      }
+      .__ed_label {
+        position: absolute; top: 4px; left: 8px; font: 600 11px/1 -apple-system, Inter, sans-serif;
+        color: #fff; background: #6366f1; padding: 3px 8px; border-radius: 4px; pointer-events: none;
+        letter-spacing: .04em; text-transform: uppercase;
+      }
+      [data-widget].__ed_active { outline: 2px solid #6366f1 !important; outline-offset: -2px; }
+    `;
+    document.head.appendChild(st);
+
+    // Listener first
+    window.addEventListener('message', e => {
+      const d = e.data || {};
+      if (d.type === '__activate_edit_mode') activate();
+      else if (d.type === '__deactivate_edit_mode') deactivate();
+    });
+    // Autofit once on load (passive — no mutations), then observe.
+    const start = () => { fitAll(); observeAutofit(); };
+    if (document.readyState === 'complete') start(); else window.addEventListener('load', start);
+    // Announce availability AFTER listener is live
+    try { window.parent.postMessage({ type: '__edit_mode_available' }, '*'); } catch (e) {}
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+
+</script>
+</body></html>

@@ -1,0 +1,709 @@
+<!--
+  TEMPLATE 06 — GALLERY
+  Museum wall labels. Generous whitespace, serif-romain numerals, hairline rules.
+  Hero: today's "acquisition." Teacher panel as artist statement.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Gallery — Lobby 4K</title>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,700;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root { --stage-w: 3840px; --stage-h: 2160px; --stage-scale: 1; }
+  html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; }
+  .viewport { position:fixed; inset:0; display:grid; place-items:center; overflow:hidden; }
+  .stage-outer { width:calc(var(--stage-w)*var(--stage-scale)); height:calc(var(--stage-h)*var(--stage-scale)); }
+  .stage { width:var(--stage-w); height:var(--stage-h); transform:scale(var(--stage-scale)); transform-origin:0 0; position:relative; box-shadow:0 80px 200px rgba(0,0,0,.65); overflow:hidden; }
+
+  :root { --ink:#1a1814; --paper:#f5f1e8; --muted:#8a8275; --rule:#2a2724; --accent:#a84630; }
+  html, body { background:#1a1814; color:var(--ink); font-family:'Inter',sans-serif; }
+  .stage { background:var(--paper); }
+  .stage::before {
+    content:''; position:absolute; inset:0;
+    background: radial-gradient(circle at 30% 30%, rgba(0,0,0,.015), transparent 40%),
+                radial-gradient(circle at 70% 80%, rgba(0,0,0,.03), transparent 50%);
+    pointer-events:none;
+  }
+
+  /* Masthead — museum */
+  .mast { position:absolute; top:80px; left:120px; right:120px; display:flex; justify-content:space-between; align-items:baseline;
+    border-bottom: 1px solid var(--rule); padding-bottom: 30px; }
+  .mast .logo { font-family:'EB Garamond',serif; font-weight:400; font-style:italic; font-size:80px; letter-spacing:-.01em; color:var(--ink); }
+  .mast .nav { font-family:'Inter'; font-weight:500; font-size:24px; color:var(--muted); letter-spacing:.24em; text-transform:uppercase; display:flex; gap:60px; }
+  .mast .nav span { border-bottom: 1px solid transparent; padding-bottom:4px; }
+  .mast .nav .on { color:var(--ink); border-bottom-color:var(--accent); }
+
+  /* Hero plaque */
+  .plaque {
+    position:absolute; top: 230px; left: 120px; width: 1820px;
+  }
+  .plaque .num {
+    font-family:'EB Garamond',serif; font-size: 36px; letter-spacing:.3em; color: var(--muted);
+    text-transform: uppercase; margin-bottom: 30px;
+  }
+  .plaque h1 {
+    font-family:'EB Garamond',serif; font-weight:400; font-size: 280px; line-height:.95;
+    letter-spacing:-.02em; color: var(--ink); margin: 0;
+    text-wrap: balance;
+  }
+  .plaque h1 em { font-style: italic; color: var(--accent); }
+  .plaque .sub {
+    font-family:'EB Garamond',serif; font-size: 56px; line-height: 1.35;
+    color: var(--ink); margin-top: 40px; max-width: 1600px; font-weight: 400;
+  }
+
+  /* Right column: today "acquisitions" */
+  .acq {
+    position:absolute; top: 230px; right: 120px; width: 1680px; display: grid; gap: 40px;
+  }
+  .acq .card {
+    border-top: 1px solid var(--rule); padding-top: 28px;
+    display:grid; grid-template-columns: 180px 1fr 240px; gap: 40px;
+    align-items: start;
+  }
+  .acq .card .n {
+    font-family:'EB Garamond',serif; font-style: italic; font-weight: 400;
+    font-size: 100px; line-height: .85; color: var(--accent); letter-spacing:-.02em;
+  }
+  .acq .card .title {
+    font-family:'EB Garamond',serif; font-weight: 500; font-size: 56px; line-height: 1.1;
+    color: var(--ink); margin: 0 0 10px;
+  }
+  .acq .card .meta {
+    font-family:'Inter'; font-weight:500; font-size: 24px; color: var(--muted);
+    letter-spacing:.14em; text-transform: uppercase; line-height: 1.4;
+  }
+  .acq .card .time {
+    font-family:'EB Garamond',serif; font-style: italic; font-size: 44px;
+    color: var(--ink); text-align: right; line-height: 1;
+  }
+  .acq .card .time .d { display:block; font-family:'Inter'; font-size:22px; color: var(--muted);
+    letter-spacing:.2em; text-transform:uppercase; margin-top: 6px; font-style:normal; }
+
+  /* Mid row: wall labels — stats */
+  .wall {
+    position:absolute; top: 1280px; left: 120px; right: 120px;
+    display:grid; grid-template-columns: repeat(4, 1fr); gap: 60px;
+    border-top: 1px solid var(--rule); padding-top: 36px;
+  }
+  .label {
+    font-family:'Inter'; font-weight:500; font-size:22px; letter-spacing:.24em; color:var(--muted);
+    text-transform: uppercase; margin-bottom: 14px;
+  }
+  .val {
+    font-family:'EB Garamond',serif; font-weight:400; font-size: 150px; line-height:.9;
+    color: var(--ink); letter-spacing:-.01em;
+  }
+  .val em { font-style: italic; color: var(--accent); }
+  .cap {
+    font-family:'EB Garamond',serif; font-style: italic; font-weight: 400; font-size: 32px;
+    color: var(--ink); margin-top: 12px; line-height: 1.3; opacity: .7;
+  }
+
+  /* Featured artist statement */
+  .feature {
+    position:absolute; bottom: 200px; left: 120px; width: 2100px; height: 620px;
+    display: grid; grid-template-columns: 520px 1fr; gap: 60px;
+    border-top: 1px solid var(--rule); padding-top: 40px;
+  }
+  .feature .portrait {
+    width: 520px; height: 580px;
+    background:
+      linear-gradient(160deg, #d8cfba, #b5a88d);
+    position: relative; overflow: hidden;
+  }
+  .feature .portrait::after {
+    content:''; position:absolute; inset:0;
+    background:
+      radial-gradient(circle at 35% 35%, rgba(0,0,0,.1), transparent 40%),
+      repeating-linear-gradient(35deg, rgba(0,0,0,.03) 0 10px, transparent 10px 20px);
+  }
+  .feature .portrait .tag {
+    position:absolute; bottom: 24px; left: 24px;
+    font-family:'Inter'; font-weight:500; font-size: 20px; color: var(--ink);
+    background: var(--paper); padding: 8px 16px; letter-spacing:.2em; text-transform:uppercase;
+  }
+  .feature .text .label { margin-bottom: 22px; }
+  .feature .text h2 {
+    font-family:'EB Garamond',serif; font-weight: 400; font-style: italic;
+    font-size: 160px; line-height: .92; margin: 0 0 14px; color: var(--ink); letter-spacing:-.02em;
+  }
+  .feature .text .meta {
+    font-family:'Inter'; font-weight: 500; font-size: 26px; color: var(--muted);
+    letter-spacing: .22em; text-transform: uppercase; line-height: 1.4; margin-bottom: 28px;
+  }
+  .feature .text .statement {
+    font-family:'EB Garamond',serif; font-size: 44px; font-style: italic; color: var(--ink);
+    line-height: 1.3; max-width: 1400px; border-left: 2px solid var(--accent); padding-left: 32px;
+  }
+  .feature .text .byline {
+    font-family:'Inter'; font-weight: 500; font-size: 22px; color: var(--muted);
+    letter-spacing: .2em; text-transform: uppercase; margin-top: 22px;
+  }
+
+  /* Right feature — advisory / announcement */
+  .advisory {
+    position:absolute; bottom: 200px; right: 120px; width: 1220px; height: 620px;
+    border-top: 1px solid var(--rule); padding-top: 40px;
+    background: var(--ink); color: var(--paper);
+    box-sizing: border-box; padding: 48px 56px;
+  }
+  .advisory .label { color: var(--accent); margin-bottom: 18px; }
+  .advisory h3 {
+    font-family:'EB Garamond',serif; font-weight: 500; font-size: 92px; line-height: 1;
+    letter-spacing: -.01em; margin: 0 0 24px; color: var(--paper);
+  }
+  .advisory p {
+    font-family:'EB Garamond',serif; font-size: 36px; line-height: 1.35; color: #d9d2c3;
+    margin: 0 0 24px; font-weight: 400;
+  }
+  .advisory .when {
+    font-family:'Inter'; font-weight: 500; font-size: 24px; color: var(--accent);
+    letter-spacing: .2em; text-transform: uppercase; border-top: 1px solid #444038; padding-top: 20px;
+  }
+
+  /* Footer — hours, docent ticker */
+  .hours {
+    position: absolute; bottom: 80px; left: 120px; right: 120px; height: 80px;
+    border-top: 1px solid var(--rule); padding-top: 24px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .hours .h {
+    font-family:'Inter'; font-weight: 500; font-size: 22px; color: var(--muted);
+    letter-spacing: .22em; text-transform: uppercase;
+  }
+  .hours .h strong { color: var(--ink); font-weight: 600; }
+  .hours .sep { color: var(--rule); }
+  .hours .coda {
+    font-family:'EB Garamond',serif; font-style: italic; font-size: 32px; color: var(--accent);
+  }
+
+  .ticker {
+    position:absolute; bottom: 0; left:0; right:0; height: 60px;
+    background: var(--ink); color: var(--paper);
+    display: flex; align-items: center; overflow: hidden;
+  }
+  .ticker .tag {
+    background: var(--accent); color: var(--paper); padding: 0 30px; height: 100%;
+    display: flex; align-items: center; font-family:'Inter'; font-weight: 500; font-size: 20px;
+    letter-spacing: .3em; flex-shrink: 0;
+  }
+  .ticker .msg {
+    font-family:'EB Garamond',serif; font-style: italic; font-size: 30px; white-space: nowrap;
+    padding-left: 36px; animation: scroll 70s linear infinite;
+  }
+  @keyframes scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+  /* Clock */
+  .clock {
+    position: absolute; top: 230px; right: 120px; text-align: right;
+    width: 1680px;
+    font-family:'EB Garamond',serif; font-size: 40px; font-style: italic; color: var(--muted);
+    border-bottom: 0; /* handled by acq */
+  }
+  /* Actually place clock in a minimal corner — repurpose: show in mast */
+</style>
+</head>
+<body>
+<script>
+  const __TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "schema": "edu-cms-gallery-v1" }/*EDITMODE-END*/;
+</script>
+
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+  <div class="mast" data-widget="school">
+    <div class="logo" data-field="school.name">The Westridge High School Review</div>
+    <div class="nav" data-widget="clock">
+      <span data-field="clock.date">Tuesday, April 21</span>
+      <span class="on" data-field="clock.time">7:53 a.m.</span>
+      <span data-widget="weather"><span data-field="weather.condition">Clear, 46°</span></span>
+    </div>
+  </div>
+
+  <div class="plaque" data-widget="greeting">
+    <div class="num" data-field="greeting.eyebrow">Exhibition No. 142 · Spring 2026</div>
+    <h1><span data-field="greeting.headline1">Today,</span> <em data-field="greeting.headline2">as ever,</em> <span data-field="greeting.headline3">begins here.</span></h1>
+    <p class="sub" data-field="greeting.subtitle">A morning arrangement of bells, books, and bright fluorescent halls — curated daily by the students, faculty, and custodial staff of Westridge High School.</p>
+  </div>
+
+  <div class="acq">
+    <div class="card" data-widget="events.0">
+      <div class="n" data-field="events.0.num">I.</div>
+      <div>
+        <div class="title" data-field="events.0.name">Student Government — Open Meeting</div>
+        <div class="meta" data-field="events.0.meta">Library · All Grades Welcome · Snacks Provided</div>
+      </div>
+      <div class="time"><span data-field="events.0.time">3:30</span><span class="d" data-field="events.0.day">Today</span></div>
+    </div>
+    <div class="card" data-widget="events.1">
+      <div class="n" data-field="events.1.num">II.</div>
+      <div>
+        <div class="title" data-field="events.1.name">Spring Band Concert</div>
+        <div class="meta" data-field="events.1.meta">Auditorium · All Grades · $5 Suggested Donation</div>
+      </div>
+      <div class="time"><span data-field="events.1.time">7:00</span><span class="d" data-field="events.1.day">Wednesday</span></div>
+    </div>
+    <div class="card" data-widget="events.2">
+      <div class="n" data-field="events.2.num">III.</div>
+      <div>
+        <div class="title" data-field="events.2.name">"Into the Woods" — Opening Night</div>
+        <div class="meta" data-field="events.2.meta">Theater · Directed by Ms. Park · Tix at Door</div>
+      </div>
+      <div class="time"><span data-field="events.2.time">7:00</span><span class="d" data-field="events.2.day">Friday</span></div>
+    </div>
+  </div>
+
+  <div class="wall">
+    <div data-widget="clockbig">
+      <div class="label">Local Time</div>
+      <div class="val" data-field="clockbig.val">7<em>:</em>53</div>
+      <div class="cap" data-field="clockbig.cap">First period begins at eight-oh-five</div>
+    </div>
+    <div data-widget="weatherbig">
+      <div class="label">Today's Weather</div>
+      <div class="val" data-field="weatherbig.val">46<em>°</em></div>
+      <div class="cap" data-field="weatherbig.cap">Clear skies, high of sixty-two</div>
+    </div>
+    <div data-widget="attendance">
+      <div class="label">Present &amp; Accounted For</div>
+      <div class="val" data-field="attendance.val">1,217</div>
+      <div class="cap" data-field="attendance.cap">Ninety-eight point two percent</div>
+    </div>
+    <div data-widget="countdown">
+      <div class="label" data-field="countdown.label">Days Until Commencement</div>
+      <div class="val" data-field="countdown.value">41</div>
+      <div class="cap" data-field="countdown.sub">Seniors: caps ordered by Friday afternoon</div>
+    </div>
+  </div>
+
+  <div class="feature" data-widget="teacher">
+    <div class="portrait">
+      <div class="tag" data-field="teacher.tag">Plate 14 · Kowalski, J.</div>
+    </div>
+    <div class="text">
+      <div class="label" data-field="teacher.label">Teacher of the Week · Resident Faculty</div>
+      <h2 data-field="teacher.name">Ms. Kowalski</h2>
+      <div class="meta" data-field="teacher.meta">AP Physics · Room 214 · Est. 2012</div>
+      <div class="statement" data-field="teacher.quote">"The answer is in the free-body diagram. Draw the picture — every time. The math always follows."</div>
+      <div class="byline" data-field="teacher.byline">Interviewed by the Editorial Staff · Page 12</div>
+    </div>
+  </div>
+
+  <div class="advisory" data-widget="announcement">
+    <div class="label" data-field="announcement.tag">Curator's Note · Today</div>
+    <h3 data-field="announcement.headline">Pep Rally, 7th Period — Gymnasium A.</h3>
+    <p data-field="announcement.body">Seniors seated first. The marching band will enter from the southern doors. Please return to 8th period promptly at the final bell. Backpacks may not be brought into the gym.</p>
+    <div class="when" data-field="announcement.date">2:15 p.m. — 3:00 p.m. · Today</div>
+  </div>
+
+  <div class="hours">
+    <div class="h"><strong data-widget="brand"><span data-field="brand.hours">Galleries Open</span></strong> <span class="sep">·</span> <span data-field="brand.span">Monday — Friday, 7:30 to 3:30</span> <span class="sep">·</span> <span data-field="brand.closed">Closed Weekends &amp; Holidays</span></div>
+    <div class="coda" data-field="brand.coda">— Admission is free &amp; always has been.</div>
+  </div>
+
+  <div class="ticker" data-widget="ticker">
+    <div class="tag" data-field="ticker.tag">Docent's Note</div>
+    <div class="msg"><span data-field="ticker.message">Bus 14 delayed ten minutes · Lunch today: chicken bowl, salad bar, vegan option · AP Psychology study hall moved to the library · Lost: silver earbuds — inquire at the front office · Spring sports photos tomorrow; please wear your jerseys ·  </span><span data-field="ticker.message">Bus 14 delayed ten minutes · Lunch today: chicken bowl, salad bar, vegan option · AP Psychology study hall moved to the library · Lost: silver earbuds — inquire at the front office · Spring sports photos tomorrow; please wear your jerseys ·  </span></div>
+  </div>
+
+</div></div></div>
+
+<script>
+(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const cs=getComputedStyle(document.documentElement);const w=parseFloat(cs.getPropertyValue('--stage-w'))||3840;const h=parseFloat(cs.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();
+</script>
+<script>
+/* Shared widget editor harness for EDU CMS lobby templates.
+ *
+ * Capabilities:
+ *   1. Live text editing of [data-field] nodes, grouped by [data-widget].
+ *   2. Drag widgets (snap to 40px grid) and resize via SE handle.
+ *   3. Auto-fit: shrink text to fit its container, with a readable floor.
+ *   4. Persist layout + content to the EDITMODE JSON block via
+ *      __edit_mode_set_keys postMessage.
+ *
+ * Activation follows the tweaks protocol: register listener FIRST, then
+ * announce __edit_mode_available.
+ */
+(function () {
+  const GRID = 40;
+  const MIN_FONT = 18;            // px — anything smaller is unreadable on lobby displays
+  const AUTOFIT_ATTR = 'data-autofit';   // opt-out with data-autofit="off"
+
+  const PANEL_ID = '__edu_cms_editor_panel';
+  let active = false;
+  let panel = null;
+
+  /* -------- layout persistence (runtime) --------
+     Positions are stored as: layout[widgetKey] = { x, y, w, h }
+     Applied to the [data-widget] element as inline styles in "absolute" mode. */
+  const layout = {};
+
+  /* -------- utilities -------- */
+  function $(q, el = document) { return el.querySelector(q); }
+  function $(q, el = document) { return Array.from(el.querySelectorAll(q)); }
+  function snap(v) { return Math.round(v / GRID) * GRID; }
+  function widgets() { return $('[data-widget]'); }
+  function fields() { return $('[data-field]'); }
+
+  /* -------- autofit -------- */
+  // For every [data-field], remember its designed font-size (the CSS max) and
+  // shrink only if necessary. We measure against the FIELD's own box, so a
+  // multi-line headline wraps as designed and only shrinks when truly overflowing.
+  const autofitObservers = new Map();
+
+  function ensureBaseFontSize(el) {
+    if (el.dataset.autofitBase) return parseFloat(el.dataset.autofitBase);
+    const fs = parseFloat(getComputedStyle(el).fontSize);
+    el.dataset.autofitBase = String(fs);
+    return fs;
+  }
+
+  function fitField(el) {
+    if (el.getAttribute(AUTOFIT_ATTR) === 'off') return;
+    const base = ensureBaseFontSize(el);
+    el.style.fontSize = base + 'px';
+    const host = el.closest('[data-widget]') || el.parentElement;
+    if (!host) return;
+    // Cap height = the widget's declared/designed box. Recorded on first fit
+    // so we measure overflow against the INTENDED size, not a stretched one.
+    const capH = getCapHeight(host);
+    const capW = getCapWidth(host);
+    if (!boxOverflows(host, capW, capH)) return;
+    let lo = MIN_FONT, hi = base;
+    for (let i = 0; i < 14; i++) {
+      const mid = (lo + hi) / 2;
+      el.style.fontSize = mid + 'px';
+      if (boxOverflows(host, capW, capH)) hi = mid; else lo = mid;
+      if (hi - lo < 0.5) break;
+    }
+    el.style.fontSize = lo + 'px';
+  }
+
+  function getCapHeight(host) {
+    if (host.dataset.capH) return parseFloat(host.dataset.capH);
+    // If inline height is set (snapshot mode), use it. Else use offsetHeight now.
+    const h = parseFloat(host.style.height) || host.offsetHeight;
+    host.dataset.capH = String(h);
+    return h;
+  }
+  function getCapWidth(host) {
+    if (host.dataset.capW) return parseFloat(host.dataset.capW);
+    const w = parseFloat(host.style.width) || host.offsetWidth;
+    host.dataset.capW = String(w);
+    return w;
+  }
+  function boxOverflows(host, capW, capH) {
+    // scrollHeight/Width always reflect content size regardless of box height.
+    return (host.scrollHeight - capH) > 2 || (host.scrollWidth - capW) > 2;
+  }
+
+  function fitAll() { fields().forEach(fitField); }
+
+  function observeAutofit() {
+    // ResizeObserver on each widget re-fits when its size changes (user drag/resize).
+    if (!('ResizeObserver' in window)) { window.addEventListener('resize', fitAll); return; }
+    const ro = new ResizeObserver(entries => {
+      entries.forEach(e => {
+        $('[data-field]', e.target).forEach(fitField);
+      });
+    });
+    widgets().forEach(w => { ro.observe(w); autofitObservers.set(w, ro); });
+    // Also re-fit on window resize (for stage scale changes)
+    window.addEventListener('resize', () => requestAnimationFrame(fitAll));
+  }
+
+  /* -------- layout (drag / resize) -------- */
+  // Entering edit mode: snapshot each widget's current geometry (relative to stage),
+  // switch it to absolute positioning at those coords. On exit, restore.
+  let stage = null;
+  const savedStyles = new Map();
+
+  function getStage() {
+    return stage || (stage = document.querySelector('.stage') || document.body);
+  }
+
+  function snapshotWidgets() {
+    const s = getStage();
+    const sr = s.getBoundingClientRect();
+    widgets().forEach(w => {
+      const r = w.getBoundingClientRect();
+      // Undo the stage's scale to get canvas-space coords.
+      const scale = (sr.width / s.offsetWidth) || 1;
+      const x = (r.left - sr.left) / scale;
+      const y = (r.top - sr.top) / scale;
+      const width = r.width / scale;
+      const height = r.height / scale;
+      savedStyles.set(w, { cssText: w.style.cssText });
+      // Only switch to absolute if it isn't already
+      const cs = getComputedStyle(w);
+      if (cs.position !== 'absolute') {
+        w.style.position = 'absolute';
+        w.style.left = x + 'px';
+        w.style.top = y + 'px';
+        w.style.width = width + 'px';
+        w.style.height = height + 'px';
+        w.style.margin = '0';
+      }
+      // Apply any persisted layout
+      const key = w.getAttribute('data-widget');
+      if (layout[key]) applyLayout(w, layout[key]);
+    });
+  }
+
+  function restoreWidgets() {
+    savedStyles.forEach((v, w) => { w.style.cssText = v.cssText; });
+    savedStyles.clear();
+  }
+
+  function applyLayout(w, pos) {
+    if (pos.x != null) w.style.left = pos.x + 'px';
+    if (pos.y != null) w.style.top = pos.y + 'px';
+    if (pos.w != null) w.style.width = pos.w + 'px';
+    if (pos.h != null) w.style.height = pos.h + 'px';
+  }
+
+  function attachHandles() {
+    widgets().forEach(w => {
+      if (w.querySelector('.__ed_handles')) return;
+      const h = document.createElement('div');
+      h.className = '__ed_handles';
+      h.innerHTML = `
+        <div class="__ed_move" title="Drag to move"></div>
+        <div class="__ed_resize" title="Drag corner to resize"></div>
+        <div class="__ed_label"></div>`;
+      const lbl = h.querySelector('.__ed_label');
+      lbl.textContent = w.getAttribute('data-widget');
+      w.appendChild(h);
+
+      dragify(h.querySelector('.__ed_move'), w, 'move');
+      dragify(h.querySelector('.__ed_resize'), w, 'resize');
+    });
+  }
+
+  function removeHandles() {
+    $('.__ed_handles').forEach(n => n.remove());
+  }
+
+  function dragify(handle, target, mode) {
+    let startX, startY, startL, startT, startW, startH, scale = 1;
+    handle.addEventListener('pointerdown', e => {
+      e.preventDefault(); e.stopPropagation();
+      handle.setPointerCapture(e.pointerId);
+      const s = getStage();
+      scale = s.getBoundingClientRect().width / s.offsetWidth || 1;
+      startX = e.clientX; startY = e.clientY;
+      startL = parseFloat(target.style.left) || 0;
+      startT = parseFloat(target.style.top) || 0;
+      startW = target.offsetWidth;
+      startH = target.offsetHeight;
+      target.classList.add('__ed_active');
+    });
+    handle.addEventListener('pointermove', e => {
+      if (!handle.hasPointerCapture?.(e.pointerId)) return;
+      const dx = (e.clientX - startX) / scale;
+      const dy = (e.clientY - startY) / scale;
+      if (mode === 'move') {
+        target.style.left = snap(startL + dx) + 'px';
+        target.style.top = snap(startT + dy) + 'px';
+      } else {
+        target.style.width = Math.max(120, snap(startW + dx)) + 'px';
+        target.style.height = Math.max(80, snap(startH + dy)) + 'px';
+      }
+      // Re-fit text during drag
+      $('[data-field]', target).forEach(fitField);
+    });
+    handle.addEventListener('pointerup', e => {
+      handle.releasePointerCapture?.(e.pointerId);
+      target.classList.remove('__ed_active');
+      persist();
+    });
+  }
+
+  /* -------- panel (text editing) -------- */
+  function buildPanel() {
+    panel = document.createElement('div');
+    panel.id = PANEL_ID;
+    panel.innerHTML = `
+      <style>
+        #${PANEL_ID} {
+          position: fixed; top: 20px; right: 20px; width: 440px; max-height: 92vh;
+          background: #0f172a; color: #e2e8f0; font: 13px/1.45 -apple-system, 'Inter', sans-serif;
+          border: 1px solid #334155; border-radius: 12px; z-index: 2147483000;
+          display: flex; flex-direction: column; overflow: hidden;
+          box-shadow: 0 20px 60px rgba(0,0,0,.55);
+        }
+        #${PANEL_ID} header {
+          padding: 12px 16px; background: #1e293b; border-bottom: 1px solid #334155;
+          display: flex; align-items: center; justify-content: space-between;
+        }
+        #${PANEL_ID} header h3 { margin:0; font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: #cbd5e1; }
+        #${PANEL_ID} header button { background:#334155; color:#e2e8f0; border:0; border-radius:6px; padding:4px 10px; font-size:12px; cursor:pointer; }
+        #${PANEL_ID} header button:hover { background:#475569; }
+        #${PANEL_ID} .__ed_body { padding: 10px 12px; overflow: auto; flex:1; }
+        #${PANEL_ID} details { border: 1px solid #1e293b; border-radius: 8px; margin-bottom: 10px; background:#0b1324; }
+        #${PANEL_ID} summary { padding: 8px 12px; cursor: pointer; font-weight: 600; color:#fde68a; list-style:none; display:flex; justify-content:space-between; align-items:center; }
+        #${PANEL_ID} summary::-webkit-details-marker { display:none; }
+        #${PANEL_ID} summary .__cnt { font-size: 11px; color:#64748b; font-weight:500; }
+        #${PANEL_ID} .__field { padding: 6px 12px 10px; border-top: 1px solid #1e293b; }
+        #${PANEL_ID} .__field label { display:block; font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing:.08em; margin-bottom: 4px; }
+        #${PANEL_ID} .__field textarea, #${PANEL_ID} .__field input {
+          width: 100%; box-sizing: border-box;
+          background: #020617; color: #f1f5f9; border: 1px solid #334155; border-radius: 6px;
+          padding: 6px 8px; font: inherit; font-size: 13px; resize: vertical;
+        }
+        #${PANEL_ID} .__field textarea { min-height: 38px; }
+        #${PANEL_ID} .__field textarea:focus, #${PANEL_ID} .__field input:focus { outline: 2px solid #6366f1; border-color: transparent; }
+        #${PANEL_ID} .__hint { font-size: 11px; color:#64748b; padding: 4px 4px 10px; }
+      </style>
+      <header>
+        <h3>Widgets</h3>
+        <div>
+          <button type="button" id="__ed_reset">Reset layout</button>
+        </div>
+      </header>
+      <div class="__ed_body"></div>
+      <div class="__hint" style="padding: 8px 14px; background:#0b1324; border-top:1px solid #1e293b;">Drag a widget's header to move · corner handle to resize · grid 40px.</div>
+    `;
+    document.body.appendChild(panel);
+    panel.querySelector('#__ed_reset').addEventListener('click', resetLayout);
+    renderPanel();
+  }
+
+  function renderPanel() {
+    const body = panel.querySelector('.__ed_body');
+    body.innerHTML = '';
+    const byWidget = new Map();
+    fields().forEach(f => {
+      const w = f.closest('[data-widget]')?.getAttribute('data-widget') || 'other';
+      if (!byWidget.has(w)) byWidget.set(w, []);
+      byWidget.get(w).push(f);
+    });
+    const keys = Array.from(byWidget.keys()).sort();
+    keys.forEach((k, i) => {
+      const grp = byWidget.get(k);
+      const det = document.createElement('details');
+      if (i < 3) det.open = true;
+      det.innerHTML = `<summary><span>${k}</span><span class="__cnt">${grp.length} field${grp.length===1?'':'s'}</span></summary>`;
+      // Dedupe field keys (ticker has duplicated spans for the scroll effect)
+      const seen = new Set();
+      grp.forEach(f => {
+        const key = f.getAttribute('data-field');
+        if (seen.has(key)) return; seen.add(key);
+        const wrap = document.createElement('div');
+        wrap.className = '__field';
+        const isLong = (f.textContent || '').length > 60;
+        const ctl = isLong ? 'textarea' : 'input';
+        wrap.innerHTML = `<label>${key}</label><${ctl} data-key="${key}">${isLong ? (f.textContent || '').trim() : ''}</${ctl}>`;
+        const ctrl = wrap.querySelector('[data-key]');
+        if (!isLong) ctrl.value = (f.textContent || '').trim();
+        ctrl.addEventListener('input', () => {
+          // Update every field node with this key (handles duplicates e.g. ticker)
+          $(`[data-field="${CSS.escape(key)}"]`).forEach(n => { n.textContent = ctrl.value; fitField(n); });
+          persist();
+        });
+        det.appendChild(wrap);
+      });
+      body.appendChild(det);
+    });
+  }
+
+  /* -------- persistence -------- */
+  function persist() {
+    const out = {};
+    // text content
+    const seen = new Set();
+    fields().forEach(f => {
+      const k = f.getAttribute('data-field');
+      if (seen.has(k)) return; seen.add(k);
+      out[k] = (f.textContent || '').trim();
+    });
+    // layout — only include widgets whose pos is set
+    const layoutOut = {};
+    widgets().forEach(w => {
+      const k = w.getAttribute('data-widget');
+      if (!w.style.left) return;
+      layoutOut[k] = {
+        x: parseFloat(w.style.left),
+        y: parseFloat(w.style.top),
+        w: parseFloat(w.style.width),
+        h: parseFloat(w.style.height)
+      };
+    });
+    out.__layout = layoutOut;
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: out }, '*');
+  }
+
+  function resetLayout() {
+    // clear inline positioning and re-snapshot
+    widgets().forEach(w => { w.style.cssText = savedStyles.get(w)?.cssText || ''; });
+    savedStyles.clear();
+    snapshotWidgets();
+    fitAll();
+    persist();
+  }
+
+  /* -------- activation -------- */
+  function activate() {
+    if (active) return; active = true;
+    document.body.classList.add('__ed_active_mode');
+    snapshotWidgets();
+    attachHandles();
+    if (!panel) buildPanel(); else panel.style.display = 'flex';
+    fitAll();
+  }
+  function deactivate() {
+    if (!active) return; active = false;
+    document.body.classList.remove('__ed_active_mode');
+    removeHandles();
+    restoreWidgets();
+    if (panel) panel.style.display = 'none';
+    fitAll();
+  }
+
+  /* -------- boot -------- */
+  function boot() {
+    // inject drag/handle styles
+    const st = document.createElement('style');
+    st.textContent = `
+      [data-widget] { box-sizing: border-box; }
+      .__ed_active_mode [data-widget] { outline: 1px dashed rgba(99,102,241,.35); outline-offset: -1px; }
+      .__ed_handles { position: absolute; inset: 0; pointer-events: none; z-index: 2147482000; }
+      .__ed_move {
+        position: absolute; top: 0; left: 0; right: 0; height: 36px; pointer-events: auto;
+        background: linear-gradient(180deg, rgba(99,102,241,.35), rgba(99,102,241,0));
+        cursor: move;
+      }
+      .__ed_resize {
+        position: absolute; bottom: 0; right: 0; width: 36px; height: 36px; pointer-events: auto;
+        background: linear-gradient(135deg, transparent 50%, rgba(99,102,241,.7) 50%);
+        cursor: se-resize;
+      }
+      .__ed_label {
+        position: absolute; top: 4px; left: 8px; font: 600 11px/1 -apple-system, Inter, sans-serif;
+        color: #fff; background: #6366f1; padding: 3px 8px; border-radius: 4px; pointer-events: none;
+        letter-spacing: .04em; text-transform: uppercase;
+      }
+      [data-widget].__ed_active { outline: 2px solid #6366f1 !important; outline-offset: -2px; }
+    `;
+    document.head.appendChild(st);
+
+    // Listener first
+    window.addEventListener('message', e => {
+      const d = e.data || {};
+      if (d.type === '__activate_edit_mode') activate();
+      else if (d.type === '__deactivate_edit_mode') deactivate();
+    });
+    // Autofit once on load (passive — no mutations), then observe.
+    const start = () => { fitAll(); observeAutofit(); };
+    if (document.readyState === 'complete') start(); else window.addEventListener('load', start);
+    // Announce availability AFTER listener is live
+    try { window.parent.postMessage({ type: '__edit_mode_available' }, '*'); } catch (e) {}
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+
+</script>
+</body></html>

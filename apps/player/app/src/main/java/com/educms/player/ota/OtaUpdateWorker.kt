@@ -2,8 +2,10 @@ package com.educms.player.ota
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
 import android.util.Log
@@ -163,36 +165,93 @@ class OtaUpdateWorker(
         return md.digest().joinToString("") { "%02x".format(it) }
     }
 
+    /**
+     * Install the downloaded APK via Android's PackageInstaller.Session.
+     *
+     * Why rewritten 2026-04-23: the previous implementation fired
+     * Intent.ACTION_INSTALL_PACKAGE + ctx.startActivity. That intent
+     * has been deprecated since Android 8 and silently no-ops without
+     * user interaction. On a kiosk with nobody in front of it, the
+     * system install prompt sits forever and the update never lands.
+     *
+     * PackageInstaller.Session is the supported path and behaves
+     * correctly in three deployment modes:
+     *   1. Device-owner kiosk (pm set-installer com.educms.player)
+     *      → silent install, no prompt.
+     *   2. Signed installer on A12+ (Play Protect trusted)
+     *      → silent install for same-signature upgrades.
+     *   3. Regular sideload
+     *      → PackageInstaller posts STATUS_PENDING_USER_ACTION with
+     *        a follow-up Intent the OtaInstallReceiver launches to
+     *        show the consent prompt. Operator taps "Install".
+     *
+     * The notification remains as a user-visible fallback for case 3
+     * if the prompt gets dismissed.
+     */
     private fun triggerInstall(apk: File, forced: Boolean) {
         val ctx = applicationContext
-        val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", apk)
-        val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
-            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
-        }
-        // User-visible notification so the operator can tap-to-install
-        // if the system prompt gets dismissed / hidden in kiosk mode.
         val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val chan = NotificationChannel("ota", "Player updates", NotificationManager.IMPORTANCE_HIGH)
             nm.createNotificationChannel(chan)
         }
-        val pi = android.app.PendingIntent.getActivity(
-            ctx, 0, intent,
-            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
+
+        // Tap-to-install notification — falls back through FileProvider
+        // so if the PackageInstaller route fails entirely we still have
+        // an operator-visible install path.
+        val fallbackUri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", apk)
+        val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(fallbackUri, "application/vnd.android.package-archive")
+            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        val fallbackPi = PendingIntent.getActivity(
+            ctx, 0, fallbackIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val notif = NotificationCompat.Builder(ctx, "ota")
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setContentTitle(if (forced) "Required player update ready" else "Player update ready")
             .setContentText("Tap to install.")
-            .setContentIntent(pi)
+            .setContentIntent(fallbackPi)
             .setAutoCancel(true)
             .build()
         nm.notify(42, notif)
 
-        // Also fire the install intent directly so provisioned kiosks
-        // (set via pm set-installer) just apply it.
-        try { ctx.startActivity(intent) } catch (_: Exception) { /* notification remains */ }
+        // Primary path: PackageInstaller.Session.
+        try {
+            val installer = ctx.packageManager.packageInstaller
+            val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+            // Only set the package name when we know it matches ours —
+            // guards against an attacker swapping a different APK into
+            // the updates dir and using this session to replace us.
+            params.setAppPackageName(ctx.packageName)
+            val sessionId = installer.createSession(params)
+            val session = installer.openSession(sessionId)
+            try {
+                apk.inputStream().use { input ->
+                    session.openWrite("base.apk", 0, apk.length()).use { output ->
+                        input.copyTo(output)
+                        session.fsync(output)
+                    }
+                }
+                val resultIntent = Intent(ctx, OtaInstallReceiver::class.java).apply {
+                    action = "com.educms.player.OTA_INSTALL_RESULT"
+                }
+                val statusPi = PendingIntent.getBroadcast(
+                    ctx,
+                    sessionId,
+                    resultIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
+                )
+                session.commit(statusPi.intentSender)
+                PlayerLogger.i(TAG, "OTA install committed via PackageInstaller.Session (sessionId=$sessionId)")
+            } finally {
+                session.close()
+            }
+        } catch (ex: Exception) {
+            Log.w(TAG, "PackageInstaller.Session path failed — operator can use notification to install", ex)
+            PlayerLogger.w(TAG, "PackageInstaller.Session install failed; tap-to-install notification posted", ex)
+        }
     }
 
     companion object { private const val TAG = "OtaUpdateWorker" }
