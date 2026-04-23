@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
 import { apiFetch } from '@/lib/api-client';
+import { clog } from '@/lib/client-logger';
 
 type Phase = 'idle' | 'scanning' | 'pairing' | 'success' | 'error';
 
@@ -41,14 +42,17 @@ export default function PairPage() {
   const submitPairingCode = async (code: string) => {
     setPhase('pairing');
     setError('');
+    clog.info('pair', 'Submitting pairing code', { code: code.trim().toUpperCase().slice(0, 6) });
     try {
       const res: any = await apiFetch('/screens/pair', {
         method: 'POST',
         body: JSON.stringify({ pairingCode: code.trim().toUpperCase() }),
       });
+      clog.info('pair', 'Pair success', { screenId: res?.id, name: res?.name });
       setPairedName(res?.name || 'Screen');
       setPhase('success');
     } catch (e: any) {
+      clog.error('pair', 'Pair failed', { message: e?.message });
       setError(e?.message || 'Invalid pairing code');
       setPhase('error');
     }
