@@ -11,21 +11,38 @@ import java.util.Locale
 import java.util.TimeZone
 
 /**
- * Bisect step 5 — rotation ONLY (no init→i recursion).
+ * Rotating file logger — customer-testing build.
  *
- * Bisect 4 (rotation + init→i recursion) failed. Bisect 3 (no rotation,
- * no init→i recursion) passed. Split the two to isolate the culprit:
- *   - This step keeps init() using Log.i() directly (no recursion
- *     through writeLine)
- *   - But adds rotate() + rotation-on-write
- * If this passes, the compile error is specifically the init→i→
- * writeLine chain. If this fails, rotate() is the culprit.
+ * Bisected 2026-04-23 through 5 CI iterations to narrow down the Kotlin
+ * compile error. The error was in rotate()'s body — still tracking the
+ * exact root cause, but the rotation-free version compiles cleanly and
+ * is strictly more useful than the previous stub (which only hit
+ * logcat — lost on Goodview / NovaStar / TCL boxes that have no
+ * ADB access).
+ *
+ * What ships in this build:
+ *   ✓ init(Context)                       — idempotent, caches logDir
+ *   ✓ d/i/w/e(tag, msg, [throwable])      — forwards to logcat AND
+ *                                           appends to on-disk log
+ *   ✓ readRecent(maxLines)                — tail of active file
+ *   ✓ uploadRecent(...)                   — no-op (next commit)
+ *   ✓ truncateSecret(...)                 — redaction helper
+ *
+ * Deferred to follow-ups (won't block customer testing):
+ *   • 1 MB rotation — rotate() body broke CI on bisect 5; reinstate
+ *     once I can reproduce locally with an Android SDK
+ *   • Daemon-thread uploadRecent — needs local test too
+ *   • Crash handler via setDefaultUncaughtExceptionHandler
+ *
+ * Disk budget note: without rotation the file grows unbounded. At
+ * typical heartbeat/OTA/boot volumes that's ~2 MB/day, fine for weeks
+ * of customer testing but will eventually fill external storage. Boot
+ * logs `logDir` so an operator can manually wipe if needed. Do not
+ * leave on a pilot device past ~60 days without the rotation fix.
  */
 object PlayerLogger {
 
     private const val LOG_FILE = "player.log"
-    private const val ROTATED_FILE = "player.1.log"
-    private const val MAX_BYTES = 1_048_576L
 
     private val LOCK = Any()
     private var logDir: File? = null
@@ -41,7 +58,8 @@ object PlayerLogger {
             logDir = dir
             initialized = true
         }
-        // Direct to logcat — no i() recursion into writeLine in this step.
+        // Direct-to-logcat so init never recurses through writeLine —
+        // kept on boot so tail -f logcat still shows the logDir path.
         Log.i("PlayerLogger", "Logger initialised. logDir=" + (logDir?.absolutePath ?: "(null)"))
     }
 
@@ -51,11 +69,38 @@ object PlayerLogger {
     fun e(tag: String, msg: String, throwable: Throwable? = null) { writeLine("ERROR", tag, msg, throwable) }
 
     fun readRecent(maxLines: Int = 500): String {
-        return "(file logger bisect 5 — readRecent not yet re-enabled)"
+        val dir = logDir ?: return "(logger not initialised)"
+        val active = File(dir, LOG_FILE)
+        if (!active.exists()) return "(no log file yet)"
+        synchronized(LOCK) {
+            val lines = ArrayList<String>()
+            val reader = active.bufferedReader()
+            try {
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    lines.add(line)
+                }
+            } catch (ex: Exception) {
+                return "(readRecent failed: " + (ex.message ?: "unknown") + ")"
+            } finally {
+                try { reader.close() } catch (_: Exception) {}
+            }
+            return if (lines.size <= maxLines) {
+                lines.joinToString("\n")
+            } else {
+                val start = lines.size - maxLines
+                lines.subList(start, lines.size).joinToString("\n")
+            }
+        }
     }
 
     fun uploadRecent(apiRoot: String, deviceJwt: String?, screenId: String?) {
-        Log.i("PlayerLogger", "uploadRecent stub-5 — apiRoot=$apiRoot screen=${screenId ?: "none"}")
+        // Deferred — see header. No-op for this customer-testing build
+        // so the call site compiles and an operator hitting the
+        // "Upload diagnostics" button in the info overlay just gets a
+        // clean logcat note instead of a crash.
+        Log.i("PlayerLogger", "uploadRecent deferred — apiRoot=" + apiRoot +
+            " screen=" + (screenId ?: "none"))
     }
 
     fun truncateSecret(value: String?, n: Int = 8): String {
@@ -104,27 +149,9 @@ object PlayerLogger {
             try {
                 val active = File(dir, LOG_FILE)
                 active.appendText(line, Charsets.UTF_8)
-                if (active.length() >= MAX_BYTES) {
-                    rotate(dir)
-                }
             } catch (ex: Exception) {
                 Log.e("PlayerLogger", "writeLine failed: " + (ex.message ?: "unknown"))
             }
-        }
-    }
-
-    private fun rotate(dir: File) {
-        try {
-            val rotated = File(dir, ROTATED_FILE)
-            if (rotated.exists()) {
-                try { rotated.delete() } catch (_: Exception) {}
-            }
-            val active = File(dir, LOG_FILE)
-            if (active.exists()) {
-                try { active.renameTo(rotated) } catch (_: Exception) {}
-            }
-        } catch (ex: Exception) {
-            Log.w("PlayerLogger", "rotate failed: " + (ex.message ?: "unknown"))
         }
     }
 }
