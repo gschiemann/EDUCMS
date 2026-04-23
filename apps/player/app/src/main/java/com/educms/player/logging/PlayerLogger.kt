@@ -11,15 +11,15 @@ import java.util.Locale
 import java.util.TimeZone
 
 /**
- * Bisect step 4 — add 1MB rotation on write.
+ * Bisect step 5 — rotation ONLY (no init→i recursion).
  *
- * 600eaf8 passed: imports + fields + writeLine + file append all
- * compile. Adding the rotation path next (player.log → player.1.log
- * when active file exceeds 1MB) but keeping readRecent still stubbed
- * so if this fails the culprit is definitively in rotate().
- *
- * Also re-enable i() being called from init() — the recursion through
- * writeLine() is one of the few code paths we haven't exercised yet.
+ * Bisect 4 (rotation + init→i recursion) failed. Bisect 3 (no rotation,
+ * no init→i recursion) passed. Split the two to isolate the culprit:
+ *   - This step keeps init() using Log.i() directly (no recursion
+ *     through writeLine)
+ *   - But adds rotate() + rotation-on-write
+ * If this passes, the compile error is specifically the init→i→
+ * writeLine chain. If this fails, rotate() is the culprit.
  */
 object PlayerLogger {
 
@@ -41,9 +41,8 @@ object PlayerLogger {
             logDir = dir
             initialized = true
         }
-        // Recursive-into-writeLine now re-enabled — bisect 3 passed
-        // without it so if this step fails, rotate() is the culprit.
-        i("PlayerLogger", "Logger initialised. logDir=" + (logDir?.absolutePath ?: "(null)"))
+        // Direct to logcat — no i() recursion into writeLine in this step.
+        Log.i("PlayerLogger", "Logger initialised. logDir=" + (logDir?.absolutePath ?: "(null)"))
     }
 
     fun d(tag: String, msg: String) { writeLine("DEBUG", tag, msg, null) }
@@ -52,12 +51,11 @@ object PlayerLogger {
     fun e(tag: String, msg: String, throwable: Throwable? = null) { writeLine("ERROR", tag, msg, throwable) }
 
     fun readRecent(maxLines: Int = 500): String {
-        // Bisect step 5 will wire real file reading.
-        return "(file logger bisect 4 — readRecent not yet re-enabled)"
+        return "(file logger bisect 5 — readRecent not yet re-enabled)"
     }
 
     fun uploadRecent(apiRoot: String, deviceJwt: String?, screenId: String?) {
-        Log.i("PlayerLogger", "uploadRecent stub-4 — apiRoot=$apiRoot screen=${screenId ?: "none"}")
+        Log.i("PlayerLogger", "uploadRecent stub-5 — apiRoot=$apiRoot screen=${screenId ?: "none"}")
     }
 
     fun truncateSecret(value: String?, n: Int = 8): String {
@@ -115,10 +113,6 @@ object PlayerLogger {
         }
     }
 
-    // Rotation: drop the old rotated file (if any), move active → rotated.
-    // Active file is recreated empty on the next write.
-    // Caller MUST hold LOCK (we're already inside the lock when writeLine
-    // calls this).
     private fun rotate(dir: File) {
         try {
             val rotated = File(dir, ROTATED_FILE)
