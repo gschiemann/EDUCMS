@@ -38,8 +38,15 @@ object PlayerLogger {
     private const val MAX_BYTES = 1_048_576L
 
     private val LOCK = Any()
-    private var logDir: File? = null
-    private var initialized = false
+    // @Volatile guarantees cross-thread visibility without the full
+    // synchronized-block cost on every read. logDir + initialized are
+    // READ from every writeLine call but only WRITTEN from init().
+    // Without @Volatile, a worker thread's read of `initialized=true`
+    // could legally see the older `logDir=null` on some JVMs and
+    // skip the file write silently — the exact issue the audit
+    // flagged.
+    @Volatile private var logDir: File? = null
+    @Volatile private var initialized = false
 
     fun init(ctx: Context) {
         synchronized(LOCK) {

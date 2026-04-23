@@ -76,11 +76,23 @@ async function bootstrap() {
       }),
       resave: false,
       saveUninitialized: false,
+      // Rolling session: every authenticated request bumps the
+      // cookie's expiry, so an active user never sees a surprise
+      // logout while working. Previously the cookie had a flat 15min
+      // TTL — users who clicked "Remember me" (which only extends the
+      // JWT) still got CSRF-bearing 403s on mutations 15 minutes in
+      // because the session cookie was gone. Inactive users still
+      // time out (per the cookie maxAge below) which is the real
+      // security guarantee we want.
+      rolling: true,
       cookie: {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production', // true over HTTPS
         sameSite: process.env.NODE_ENV === 'production' ? 'none' as const : 'strict' as const, // 'none' needed for cross-origin (Vercel→Railway)
-        maxAge: 15 * 60 * 1000, // 15 mins (Aligns with short-lived tokens requirement)
+        // 8h idle timeout — covers a typical school workday. Combined
+        // with rolling:true, an active session stays alive all day;
+        // leaving the tab idle 8h closes it.
+        maxAge: 8 * 60 * 60 * 1000,
       },
       name: 'edu_cms_sid',
     }),

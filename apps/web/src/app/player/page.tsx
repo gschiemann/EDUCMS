@@ -480,15 +480,42 @@ function CacheStatusRow({ status }: { status: CacheStatus | null }) {
 // ─── emergency (if any) and start a recovery countdown, then auto-reload.
 class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; err?: any }> {
   state = { hasError: false, err: undefined as any };
+  private reloadTimer: ReturnType<typeof setTimeout> | null = null;
+  private reloadCount = 0;
   static getDerivedStateFromError(err: any) { return { hasError: true, err }; }
   componentDidCatch(err: any, info: any) {
     console.error('[Player] FATAL render error', err, info);
-    // Auto-recover after 8s. In the Android shell, ask the native side to do a
-    // hard reload (clears WebView caches + GPU state).
-    setTimeout(() => {
+    // Bound the reload loop. If the widget keeps crashing on mount,
+    // a naked setTimeout(reload, 8s) becomes an infinite crash-reload
+    // loop that burns CPU and prevents operator intervention. After
+    // 3 reloads in a row we STOP auto-reloading and leave the
+    // "Player recovering…" screen up so someone can manually
+    // intervene. The counter resets when the app successfully
+    // mounts without hitting the boundary (Component instance gets
+    // discarded by React).
+    try {
+      const k = '__edu_player_reloadcount';
+      const prev = parseInt(sessionStorage.getItem(k) || '0', 10) || 0;
+      this.reloadCount = prev + 1;
+      sessionStorage.setItem(k, String(this.reloadCount));
+    } catch { /* sessionStorage unavailable */ }
+
+    if (this.reloadCount >= 3) {
+      console.warn('[Player] Error boundary hit >=3 times — pausing auto-reload for operator intervention');
+      return;
+    }
+
+    if (this.reloadTimer) clearTimeout(this.reloadTimer);
+    this.reloadTimer = setTimeout(() => {
       if (isAndroidWebView()) nativeReload();
       else if (typeof window !== 'undefined') window.location.reload();
     }, 8_000);
+  }
+  componentWillUnmount() {
+    if (this.reloadTimer) { clearTimeout(this.reloadTimer); this.reloadTimer = null; }
+    // Healthy unmount — reset the crash counter so one bad render
+    // doesn't permanently pin us to the "pause auto-reload" state.
+    try { sessionStorage.removeItem('__edu_player_reloadcount'); } catch {}
   }
   render() {
     if (!this.state.hasError) return this.props.children;

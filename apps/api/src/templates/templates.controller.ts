@@ -123,8 +123,10 @@ export class TemplatesController {
 
   @Get('widget-types')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
-  // Pure static JSON catalog — cache aggressively.
-  @Header('Cache-Control', 'private, max-age=600, stale-while-revalidate=3600')
+  // Pure static JSON catalog — same for every tenant. `public` lets
+  // the Vercel edge + any upstream CDN cache-share this payload
+  // across users instead of fetching it per-user as `private` did.
+  @Header('Cache-Control', 'public, max-age=600, stale-while-revalidate=3600')
   async getWidgetTypes() {
     return WIDGET_TYPE_CATALOG;
   }
