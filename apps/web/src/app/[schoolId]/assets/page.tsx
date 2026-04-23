@@ -7,6 +7,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAssets, useAddWebUrl, useDeleteAsset, useAssetFolders, useCreateAssetFolder, useRenameAssetFolder, useDeleteAssetFolder, useMoveAsset } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { clog } from '@/lib/client-logger';
+import { FolderPicker } from '@/components/assets/FolderPicker';
 
 const MAX_FILE_SIZE = 200 * 1024 * 1024;
 const ACCEPT_STRING = '.jpg,.jpeg,.png,.webp,.gif,.svg,.bmp,.mp4,.webm,.mov,.avi,.mp3,.ogg,.wav,.pdf';
@@ -98,6 +99,14 @@ export default function AssetsPage() {
   const [renamingFolder, setRenamingFolder] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [folderMenuOpen, setFolderMenuOpen] = useState<string | null>(null);
+  // Searchable folder picker state:
+  //   - showFolderPicker: 'upload' | 'bulk-move' | null — which flow requested it
+  //   - uploadOverrideFolderRef: when the picker resolves, stashes the
+  //     chosen folderId (or null = root) so the follow-up file-chooser
+  //     change event knows where to deposit the files. `undefined` =
+  //     no override (plain "Upload here" click uses currentFolderId).
+  const [showFolderPicker, setShowFolderPicker] = useState<'upload' | 'bulk-move' | null>(null);
+  const uploadOverrideFolderRef = useRef<string | null | undefined>(undefined);
   const { data: folders } = useAssetFolders();
   const createFolder = useCreateAssetFolder();
   const renameFolder = useRenameAssetFolder();
@@ -168,14 +177,10 @@ export default function AssetsPage() {
     }
   };
 
-  // Bulk-move picker state — opens a dropdown letting the user pick a
-  // destination folder (including "All Files" root) for every selected
-  // asset. Previously the only way to move assets was one-at-a-time
-  // drag-and-drop; unusable once a tenant has 100+ files.
-  const [showMovePicker, setShowMovePicker] = useState(false);
+  // Bulk-move handler — fed by the searchable FolderPicker. Replaces
+  // the old flat dropdown that stopped being usable past ~20 folders.
   const handleBulkMove = async (targetFolderId: string | null) => {
     if (selectedIds.length === 0) return;
-    setShowMovePicker(false);
     await Promise.all(
       selectedIds.map((id) => moveAsset.mutateAsync({ id, folderId: targetFolderId }).catch((e) => console.error(e))),
     );
@@ -183,7 +188,21 @@ export default function AssetsPage() {
     queryClient.invalidateQueries({ queryKey: ['assets'] });
   };
 
-  const handleFiles = useCallback((files: FileList | null) => {
+  // Called by FolderPicker on confirm. Routes the chosen destination
+  // into the right follow-up based on which flow triggered the picker.
+  const handleFolderPicked = (folderId: string | null) => {
+    const mode = showFolderPicker;
+    setShowFolderPicker(null);
+    if (mode === 'upload') {
+      uploadOverrideFolderRef.current = folderId;
+      // Kick the hidden file input — onChange reads the override.
+      fileInputRef.current?.click();
+    } else if (mode === 'bulk-move') {
+      void handleBulkMove(folderId);
+    }
+  };
+
+  const handleFiles = useCallback((files: FileList | null, targetFolderIdOverride?: string | null) => {
     if (!files) return;
     const genId = () => { try { return crypto.randomUUID(); } catch { return Math.random().toString(36).substring(2, 10); } };
     const items = Array.from(files).map((file) => {
@@ -193,17 +212,22 @@ export default function AssetsPage() {
       return item;
     });
     setUploads(prev => [...items, ...prev]);
-    items.filter(u => u.phase === 'uploading').forEach(doUpload);
+    items.filter(u => u.phase === 'uploading').forEach((u) => doUpload(u, targetFolderIdOverride));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const doUpload = (item: UploadItem) => {
+  const doUpload = (item: UploadItem, targetFolderIdOverride?: string | null) => {
     const fd = new FormData();
     fd.append('file', item.file);
-    // Upload into the folder the user is currently viewing — previously
-    // every upload landed at root and the user had to drag files into a
-    // folder one at a time. Server validates folder tenant-scope.
-    if (currentFolderId) fd.append('folderId', currentFolderId);
+    // Destination precedence:
+    //   1. Explicit override from the FolderPicker ("upload to X")
+    //   2. Current browsed folder (uploads into whatever is open)
+    //   3. Root
+    // `targetFolderIdOverride === undefined` means no override; use
+    // currentFolderId. `null` means "explicit root".
+    const targetFolderId =
+      targetFolderIdOverride !== undefined ? targetFolderIdOverride : currentFolderId;
+    if (targetFolderId) fd.append('folderId', targetFolderId);
 
     const started = performance.now();
     clog.info('upload', 'Start', {
@@ -211,7 +235,7 @@ export default function AssetsPage() {
       name: item.file.name,
       size: item.file.size,
       mime: item.file.type,
-      folderId: currentFolderId || '(root)',
+      folderId: targetFolderId || '(root)',
     });
 
     const xhr = new XMLHttpRequest();
@@ -293,44 +317,13 @@ export default function AssetsPage() {
         <div className="flex gap-2">
           {selectedIds.length > 0 && (
             <>
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowMovePicker((v) => !v)}
-                  className="px-4 py-2 bg-white border border-indigo-300 hover:bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5"
-                >
-                  <FolderInput className="w-4 h-4" /> Move to folder ({selectedIds.length})
-                </button>
-                {showMovePicker && (
-                  <div
-                    className="absolute right-0 mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-20 py-1 max-h-80 overflow-y-auto"
-                    onMouseLeave={() => setShowMovePicker(false)}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => handleBulkMove(null)}
-                      className="w-full text-left px-3 py-2 text-xs font-medium hover:bg-slate-50 flex items-center gap-2"
-                    >
-                      <Home className="w-3.5 h-3.5 text-slate-500" /> All Files (root)
-                    </button>
-                    {(folders || []).filter((f: any) => !selectedIds.includes(f.id)).map((f: any) => (
-                      <button
-                        key={f.id}
-                        type="button"
-                        onClick={() => handleBulkMove(f.id)}
-                        className="w-full text-left px-3 py-2 text-xs font-medium hover:bg-slate-50 flex items-center gap-2"
-                      >
-                        <Folder className="w-3.5 h-3.5 text-indigo-500" /> {f.name}
-                      </button>
-                    ))}
-                    {(folders || []).length === 0 && (
-                      <div className="px-3 py-2 text-[11px] text-slate-400">
-                        No folders yet. Create one from the sidebar.
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowFolderPicker('bulk-move')}
+                className="px-4 py-2 bg-white border border-indigo-300 hover:bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5"
+              >
+                <FolderInput className="w-4 h-4" /> Move to folder ({selectedIds.length})
+              </button>
               <button onClick={handleBulkDelete} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5">
                 <Trash2 className="w-4 h-4" /> Delete ({selectedIds.length})
               </button>
@@ -339,10 +332,46 @@ export default function AssetsPage() {
           <button onClick={() => setShowUrlForm(!showUrlForm)} className="px-3 py-2 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-sm">
             <Link2 className="w-3.5 h-3.5 text-indigo-500" /> Add URL
           </button>
-          <button onClick={() => fileInputRef.current?.click()} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5">
-            <UploadCloud className="w-4 h-4" /> Upload
+          {/* Default Upload button uses the CURRENT folder as destination —
+              fast path when the operator has already navigated into a
+              folder. The secondary 'Upload to…' button opens the
+              searchable folder picker for ops with 100s of folders
+              who don't want to navigate first. */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5"
+            title={currentFolderId ? 'Upload into the folder you have open' : 'Upload to All Files (root)'}
+          >
+            <UploadCloud className="w-4 h-4" />
+            Upload{currentFolderId ? ' here' : ''}
           </button>
-          <input type="file" multiple className="hidden" ref={fileInputRef} accept={ACCEPT_STRING} onChange={e => handleFiles(e.target.files)} />
+          <button
+            onClick={() => setShowFolderPicker('upload')}
+            className="px-3 py-2 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-sm"
+            title="Pick a destination folder — searchable if you have hundreds"
+          >
+            <FolderInput className="w-3.5 h-3.5 text-indigo-500" />
+            Upload to…
+          </button>
+          <input
+            type="file"
+            multiple
+            className="hidden"
+            ref={fileInputRef}
+            accept={ACCEPT_STRING}
+            onChange={e => {
+              // uploadOverrideFolderRef is set by the FolderPicker
+              // ('Upload to…' flow). undefined = no picker fired,
+              // use current folder. null = explicit root.
+              // <folderId> = specific folder selected.
+              const override = uploadOverrideFolderRef.current;
+              handleFiles(e.target.files, override);
+              uploadOverrideFolderRef.current = undefined;
+              // Reset the input so re-selecting the same file fires
+              // onChange again.
+              e.currentTarget.value = '';
+            }}
+          />
         </div>
       </div>
 
@@ -779,6 +808,31 @@ export default function AssetsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Searchable folder picker — one component, two flows:
+          - 'upload'    : chose destination before opening file chooser
+          - 'bulk-move' : chose destination for selectedIds                     */}
+      {showFolderPicker && (
+        <FolderPicker
+          folders={(folders || []).map((f: any) => ({
+            id: f.id,
+            name: f.name,
+            parentId: f.parentId ?? null,
+          }))}
+          initialSelectedId={showFolderPicker === 'upload' ? currentFolderId : null}
+          // Disable moving a folder into itself in bulk-move (we only
+          // move assets, not folders, so this is actually a no-op —
+          // but useful if we ever extend to folder moves).
+          disabledIds={showFolderPicker === 'bulk-move' ? [] : []}
+          title={
+            showFolderPicker === 'upload'
+              ? 'Upload files to which folder?'
+              : `Move ${selectedIds.length} item${selectedIds.length === 1 ? '' : 's'} to which folder?`
+          }
+          onConfirm={handleFolderPicked}
+          onClose={() => setShowFolderPicker(null)}
+        />
       )}
     </div>
   );
