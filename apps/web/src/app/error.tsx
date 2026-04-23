@@ -2,6 +2,7 @@
 
 import * as Sentry from '@sentry/nextjs';
 import { useEffect } from 'react';
+import { clog } from '@/lib/client-logger';
 
 /**
  * Root-route error boundary — catches errors below the root layout so
@@ -15,6 +16,11 @@ export default function RootError({
   reset: () => void;
 }) {
   useEffect(() => {
+    clog.error('react', 'Route error boundary caught', {
+      message: error?.message,
+      digest: error?.digest,
+      stack: error?.stack?.slice(0, 2000),
+    });
     Sentry.captureException(error);
   }, [error]);
 

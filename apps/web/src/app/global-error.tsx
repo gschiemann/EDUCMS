@@ -2,6 +2,7 @@
 
 import * as Sentry from '@sentry/nextjs';
 import { useEffect } from 'react';
+import { clog } from '@/lib/client-logger';
 
 /**
  * Top-level global error boundary. Catches errors in the root layout
@@ -15,6 +16,14 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
+    // Mirror to client-logger so the operator's downloadable log
+    // captures the crash even if Sentry isn't configured for this
+    // tenant yet.
+    clog.error('react', 'Unhandled render error (global boundary)', {
+      message: error?.message,
+      digest: error?.digest,
+      stack: error?.stack?.slice(0, 2000),
+    });
     Sentry.captureException(error);
   }, [error]);
 
