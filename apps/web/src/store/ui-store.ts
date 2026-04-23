@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { notifyExplicitLogout } from '@/lib/auth-events';
+import { clog } from '@/lib/client-logger';
 
 /**
  * Unified application state store.
@@ -117,6 +119,7 @@ export const useUIStore = create<AppState>((set) => ({
       ls.removeItem(TOKEN_KEY);
       ls.removeItem(USER_KEY);
     }
+    clog.info('auth', 'Login success', { userId: user?.id, role: user?.role, tenantId: user?.tenantId });
     set({ token, user, activeTenant: user.tenantSlug || user.tenantId });
   },
   logout: () => {
@@ -130,8 +133,14 @@ export const useUIStore = create<AppState>((set) => ({
       ls.removeItem(TOKEN_KEY);
       ls.removeItem(USER_KEY);
     }
+    clog.info('auth', 'Logout — clearing state', {});
     set({ token: null, user: null, activeTenant: null });
-    // Redirect handled by the page-level useEffect
+    // Fire the same event apiFetch fires on 401 so the
+    // AuthExpirationGuard mounted in DashboardLayout redirects to
+    // /login. Previously the comment "Redirect handled by the
+    // page-level useEffect" was aspirational — no such effect existed,
+    // which is why users got stuck on the same page after logout.
+    try { notifyExplicitLogout(); } catch {}
   },
 
   // UI actions

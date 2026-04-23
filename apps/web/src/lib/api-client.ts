@@ -1,6 +1,12 @@
 import { useUIStore } from '@/store/ui-store';
 import { ensureCsrfToken, invalidateCsrfToken } from './csrf';
 import { API_URL, warnIfMisconfigured } from './api-url';
+import { clog } from './client-logger';
+import { emitAuthEvent, subscribeAuthEvents } from './auth-events';
+
+// Re-export subscribeAuthEvents so existing callers that import from
+// '@/lib/api-client' don't need to change. (Previously defined here.)
+export { subscribeAuthEvents };
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -31,6 +37,9 @@ function emit(status: ApiStatus, attempt: number, lastUrl: string, message?: str
     }
   });
 }
+
+// Event bus for session-expired (401) / explicit-logout lives in
+// ./auth-events to avoid a circular import with ui-store.
 
 export function getApiUrl(): string {
   return API_URL;
@@ -85,8 +94,13 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
       const res = await fetch(fullUrl, init);
 
       if (res.status === 401) {
+        clog.warn('api', 'Session expired (401) — logging out + redirect', { url: fullUrl, method });
         useUIStore.getState().logout();
         emit('ok', attempt, fullUrl);
+        // Notify the AuthExpirationGuard (mounted in DashboardLayout) so
+        // it can router.push('/login'). apiFetch runs outside React so
+        // can't call useRouter() directly — event bus is the bridge.
+        emitAuthEvent({ reason: 'session-expired', url: fullUrl });
         throw new Error('Session expired. Please log in again.');
       }
 
@@ -100,6 +114,7 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
       }
 
       if (retryOn5xx && RETRYABLE_STATUS.has(res.status) && attempt < maxRetries) {
+        clog.warn('api', `Retrying after ${res.status}`, { url: fullUrl, attempt: attempt + 1 });
         emit('retrying', attempt + 1, fullUrl, `API returned ${res.status}`);
         await sleep(RETRY_DELAYS_MS[attempt]);
         continue;
@@ -107,6 +122,7 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
+        clog.error('api', `API error ${res.status}`, { url: fullUrl, method, message: body?.message });
         emit('ok', attempt, fullUrl);
         throw new Error(body.message || `API error: ${res.status}`);
       }
@@ -120,16 +136,19 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
       // want to paper over for the user.
       const isNetwork = err instanceof TypeError;
       if (isNetwork && attempt < maxRetries) {
+        clog.warn('api', 'Network error — retrying', { url: fullUrl, attempt: attempt + 1 });
         emit('retrying', attempt + 1, fullUrl, 'Network error — API may be starting up');
         await sleep(RETRY_DELAYS_MS[attempt]);
         continue;
       }
       if (isNetwork) {
+        clog.error('api', 'API unreachable after retries', { url: fullUrl, attempts: attempt });
         emit('unreachable', attempt, fullUrl, 'API unreachable after retries');
         throw new Error(
           `Can't reach the server at ${API_URL}. The API may be restarting — please try again in a moment.`,
         );
       }
+      clog.error('api', 'Request failed (non-network)', { url: fullUrl, err: String(err) });
       throw err;
     }
   }

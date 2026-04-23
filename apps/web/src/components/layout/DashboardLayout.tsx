@@ -8,6 +8,7 @@ import { Sidebar } from './Sidebar';
 import { TopToolbar } from './TopToolbar';
 import { SuperAdminBanner } from './SuperAdminBanner';
 import { EmergencyOverlay } from './EmergencyOverlay';
+import { AuthExpirationGuard } from './AuthExpirationGuard';
 import { useTenantStatus } from '@/hooks/use-api';
 import { AppDialogHost } from '@/components/ui/app-dialog';
 import { BrandStyleInjector } from '@/components/branding/BrandStyleInjector';
@@ -59,6 +60,10 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen w-full bg-slate-50 overflow-hidden text-slate-900 font-sans relative">
+      {/* AuthExpirationGuard redirects to /login when the session 401s
+          or the user is explicitly logged out. Mounted high in the tree
+          so every dashboard page is protected. */}
+      <AuthExpirationGuard />
       {/* Tenant brand paint — scoped to authed dashboard only so the
           public marketing site + /login stay in the vendor palette. */}
       <BrandStyleInjector />
