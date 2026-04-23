@@ -161,6 +161,13 @@ export function FolderPicker({
             setSelectedId(id);
             if (hasChildren) toggleExpand(id);
           }}
+          onKeyDown={(e) => {
+            if (isDisabled) return;
+            if (e.key === 'Enter') { e.preventDefault(); onConfirm(id); }
+            if (e.key === ' ')      { e.preventDefault(); setSelectedId(id); if (hasChildren) toggleExpand(id); }
+            if (e.key === 'ArrowRight' && hasChildren && !isExpanded) { e.preventDefault(); toggleExpand(id); }
+            if (e.key === 'ArrowLeft'  && hasChildren &&  isExpanded) { e.preventDefault(); toggleExpand(id); }
+          }}
           onDoubleClick={() => {
             if (!isDisabled) onConfirm(id);
           }}
@@ -204,17 +211,24 @@ export function FolderPicker({
   );
 
   return (
-    <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4"
-      onClick={onClose}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[85vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-[9999] p-4">
+      {/* Click-away dismiss as a real <button> so jsx-a11y is happy +
+          screen readers skip it. Esc closes via the top-level keyDown
+          listener installed in useEffect. */}
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={onClose}
+        className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm cursor-default"
+        tabIndex={-1}
+      />
+      <div className="relative h-full w-full flex items-center justify-center pointer-events-none">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={title}
+          className="pointer-events-auto bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[85vh]"
+        >
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
           <h2 className="text-sm font-bold text-slate-800">{title}</h2>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-700 rounded" aria-label="Close">
@@ -241,6 +255,10 @@ export function FolderPicker({
             role="button"
             tabIndex={0}
             onClick={() => setSelectedId(null)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); onConfirm(null); }
+              if (e.key === ' ')     { e.preventDefault(); setSelectedId(null); }
+            }}
             onDoubleClick={() => onConfirm(null)}
             className={cn(
               'flex items-center gap-2 py-1.5 px-3 rounded-lg cursor-pointer',
@@ -290,6 +308,7 @@ export function FolderPicker({
             </button>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );
