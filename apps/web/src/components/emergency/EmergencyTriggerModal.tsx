@@ -2,6 +2,7 @@ import { useAppStore } from '@/lib/store';
 import { X, Megaphone, ShieldAlert, WifiOff, Hand, Lock, HeartPulse, CloudLightning } from 'lucide-react';
 import { useState, useTransition } from 'react';
 import { broadcastEmergency } from '@/actions/trigger-emergency';
+import { clog } from '@/lib/client-logger';
 
 /**
  * Emergency Trigger — the red button on the dashboard.
@@ -51,16 +52,33 @@ export function EmergencyTriggerModal({ onClose }: Props) {
   const handleTrigger = () => {
     if (!selectedType || confirmKey !== confirmWord) return;
     startTransition(async () => {
-      await broadcastEmergency({
-        schoolId: user?.tenantId || 'global',
-        type: selectedType,
-        // No playlistId — the server resolves the right panic playlist
-        // for this type from the tenant's stored settings.
-        triggeredBy: user?.id || 'unknown',
-        token: token || undefined,
+      const started = performance.now();
+      clog.warn('emergency', `TRIGGER: ${selectedType}`, {
+        schoolId: user?.tenantId,
+        triggeredBy: user?.id,
+        role: user?.role,
       });
-      setEmergencyActive(true);
-      onClose();
+      try {
+        await broadcastEmergency({
+          schoolId: user?.tenantId || 'global',
+          type: selectedType,
+          // No playlistId — the server resolves the right panic playlist
+          // for this type from the tenant's stored settings.
+          triggeredBy: user?.id || 'unknown',
+          token: token || undefined,
+        });
+        clog.info('emergency', `TRIGGER success: ${selectedType}`, {
+          elapsedMs: Math.round(performance.now() - started),
+        });
+        setEmergencyActive(true);
+        onClose();
+      } catch (err) {
+        clog.error('emergency', `TRIGGER FAILED: ${selectedType}`, {
+          err: err instanceof Error ? err.message : String(err),
+          elapsedMs: Math.round(performance.now() - started),
+        });
+        throw err;
+      }
     });
   };
 

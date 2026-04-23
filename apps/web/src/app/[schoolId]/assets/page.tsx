@@ -6,6 +6,7 @@ import { UploadCloud, Globe, X, CheckCircle2, File, Link2, Trash2, Grid3X3, List
 import { useQueryClient } from '@tanstack/react-query';
 import { useAssets, useAddWebUrl, useDeleteAsset, useAssetFolders, useCreateAssetFolder, useRenameAssetFolder, useDeleteAssetFolder, useMoveAsset } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
+import { clog } from '@/lib/client-logger';
 
 const MAX_FILE_SIZE = 200 * 1024 * 1024;
 const ACCEPT_STRING = '.jpg,.jpeg,.png,.webp,.gif,.svg,.bmp,.mp4,.webm,.mov,.avi,.mp3,.ogg,.wav,.pdf';
@@ -203,19 +204,35 @@ export default function AssetsPage() {
     // every upload landed at root and the user had to drag files into a
     // folder one at a time. Server validates folder tenant-scope.
     if (currentFolderId) fd.append('folderId', currentFolderId);
+
+    const started = performance.now();
+    clog.info('upload', 'Start', {
+      id: item.id,
+      name: item.file.name,
+      size: item.file.size,
+      mime: item.file.type,
+      folderId: currentFolderId || '(root)',
+    });
+
     const xhr = new XMLHttpRequest();
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) setUploads(p => p.map(u => u.id === item.id ? { ...u, progress: Math.round(e.loaded * 100 / e.total) } : u)); };
     xhr.onload = () => {
+      const elapsedMs = Math.round(performance.now() - started);
       if (xhr.status >= 200 && xhr.status < 300) {
+        clog.info('upload', 'Success', { id: item.id, name: item.file.name, status: xhr.status, elapsedMs });
         setUploads(p => p.map(u => u.id === item.id ? { ...u, progress: 100, phase: 'success' } : u));
         queryClient.invalidateQueries({ queryKey: ['assets'] });
       } else {
         let msg = `Upload failed (${xhr.status})`;
         try { const r = JSON.parse(xhr.responseText); msg = r.message || msg; } catch {}
+        clog.error('upload', 'Failed', { id: item.id, name: item.file.name, status: xhr.status, msg, elapsedMs });
         setUploads(p => p.map(u => u.id === item.id ? { ...u, phase: 'error', error: msg } : u));
       }
     };
-    xhr.onerror = () => setUploads(p => p.map(u => u.id === item.id ? { ...u, phase: 'error', error: 'Network error' } : u));
+    xhr.onerror = () => {
+      clog.error('upload', 'Network error', { id: item.id, name: item.file.name });
+      setUploads(p => p.map(u => u.id === item.id ? { ...u, phase: 'error', error: 'Network error' } : u));
+    };
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
     xhr.open('POST', `${apiUrl}/assets/upload`);
     const token = useUIStore.getState().token;
