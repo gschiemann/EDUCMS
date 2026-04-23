@@ -98,23 +98,31 @@ jobs:
           # ALSO push errors as workflow-command annotations so the
           # public check-runs API surfaces them — that way `curl` can
           # read the Kotlin compile error without a GitHub token.
-          # Strategy: grab the LAST 120 lines of the gradle log. That's
-          # where FAILURE:/What went wrong/compile errors live. Narrow
-          # regexes catch progress output before the actual error, so
-          # tail-slice instead.
+          # GitHub caps annotations at 10 per step, so we must be
+          # surgical: pick the MOST useful Kotlin/Gradle error lines
+          # with grep, not a dumb tail slice.
           if [ -f apps/player/gradle-build.log ]; then
-            # Strip ANSI escapes so annotations render cleanly.
-            tail -n 120 apps/player/gradle-build.log \
-              | sed -r 's/\x1b\[[0-9;]*[a-zA-Z]//g' \
-              | while IFS= read -r L; do
-                # Skip empty lines and noisy progress lines that aren't
-                # part of the failure report.
-                case "$L" in
-                  ""|"> Task :"*" UP-TO-DATE"|"> Task :"*" NO-SOURCE") continue ;;
-                esac
-                clean=$(printf '%s' "$L" | sed 's/%/%25/g; s/\r/%0D/g')
-                echo "::error::APK: $clean"
-              done
+            # Strip ANSI escapes before grepping.
+            sed -r 's/\x1b\[[0-9;]*[a-zA-Z]//g' apps/player/gradle-build.log \
+              > /tmp/gradle-build.clean.log
+            # 1. Kotlin compile errors:   "e: file:///... .kt:LINE:COL <msg>"
+            # 2. Plain "error:" prefixed lines (AGP, lint)
+            # 3. Gradle FAILURE block lines
+            # 4. "What went wrong" + following Compilation error
+            # 5. Task :...FAILED (the one that failed)
+            {
+              grep -E '^e: ' /tmp/gradle-build.clean.log | head -n 5
+              grep -E '^error: ' /tmp/gradle-build.clean.log | head -n 2
+              grep -E '^FAILURE:' /tmp/gradle-build.clean.log | head -n 1
+              grep -E '^\* What went wrong:' /tmp/gradle-build.clean.log | head -n 1
+              grep -E 'Task .+ FAILED$' /tmp/gradle-build.clean.log | head -n 1
+              # Line after "What went wrong:" is the actual failure reason
+              grep -A 1 -E '^\* What went wrong:' /tmp/gradle-build.clean.log | tail -n 1 | head -n 1
+            } | awk '!seen[$0]++' | head -n 10 | while IFS= read -r L; do
+              [ -z "$L" ] && continue
+              clean=$(printf '%s' "$L" | sed 's/%/%25/g; s/\r/%0D/g')
+              echo "::error::APK: $clean"
+            done
           fi
 
       - name: Upload gradle log on failure
