@@ -11,16 +11,20 @@ import java.util.Locale
 import java.util.TimeZone
 
 /**
- * Bisect step 3 — add real write() with file append (no rotation).
+ * Bisect step 4 — add 1MB rotation on write.
  *
- * abbb296 confirmed imports + fields + init + stub methods all compile.
- * Now add back the ACTUAL file-write path for d/i/w/e without any
- * rotation logic or readRecent file-read. If this fails the compile
- * error is in the write() body itself.
+ * 600eaf8 passed: imports + fields + writeLine + file append all
+ * compile. Adding the rotation path next (player.log → player.1.log
+ * when active file exceeds 1MB) but keeping readRecent still stubbed
+ * so if this fails the culprit is definitively in rotate().
+ *
+ * Also re-enable i() being called from init() — the recursion through
+ * writeLine() is one of the few code paths we haven't exercised yet.
  */
 object PlayerLogger {
 
     private const val LOG_FILE = "player.log"
+    private const val ROTATED_FILE = "player.1.log"
     private const val MAX_BYTES = 1_048_576L
 
     private val LOCK = Any()
@@ -37,10 +41,9 @@ object PlayerLogger {
             logDir = dir
             initialized = true
         }
-        // Don't call i() from here in bisect 3 — that recursion through
-        // write() can hide a stacktrace when the root cause lives in
-        // write(). Keeping it direct-to-logcat for now.
-        Log.i("PlayerLogger", "Logger initialised. logDir=" + (logDir?.absolutePath ?: "(null)"))
+        // Recursive-into-writeLine now re-enabled — bisect 3 passed
+        // without it so if this step fails, rotate() is the culprit.
+        i("PlayerLogger", "Logger initialised. logDir=" + (logDir?.absolutePath ?: "(null)"))
     }
 
     fun d(tag: String, msg: String) { writeLine("DEBUG", tag, msg, null) }
@@ -49,12 +52,12 @@ object PlayerLogger {
     fun e(tag: String, msg: String, throwable: Throwable? = null) { writeLine("ERROR", tag, msg, throwable) }
 
     fun readRecent(maxLines: Int = 500): String {
-        // Still stubbed — bisect step 5 will wire real file reading.
-        return "(file logger bisect 3 — readRecent not yet re-enabled)"
+        // Bisect step 5 will wire real file reading.
+        return "(file logger bisect 4 — readRecent not yet re-enabled)"
     }
 
     fun uploadRecent(apiRoot: String, deviceJwt: String?, screenId: String?) {
-        Log.i("PlayerLogger", "uploadRecent stub-3 — apiRoot=$apiRoot screen=${screenId ?: "none"}")
+        Log.i("PlayerLogger", "uploadRecent stub-4 — apiRoot=$apiRoot screen=${screenId ?: "none"}")
     }
 
     fun truncateSecret(value: String?, n: Int = 8): String {
@@ -68,11 +71,7 @@ object PlayerLogger {
         return sdf.format(Date())
     }
 
-    // Forward to logcat AND append a formatted line to the active
-    // log file. No rotation yet — that comes in bisect step 4 once we
-    // know write itself compiles.
     private fun writeLine(level: String, tag: String, msg: String, throwable: Throwable?) {
-        // Logcat first — always works regardless of init state.
         if (throwable != null) {
             when (level) {
                 "DEBUG" -> Log.d(tag, msg, throwable)
@@ -107,9 +106,31 @@ object PlayerLogger {
             try {
                 val active = File(dir, LOG_FILE)
                 active.appendText(line, Charsets.UTF_8)
+                if (active.length() >= MAX_BYTES) {
+                    rotate(dir)
+                }
             } catch (ex: Exception) {
                 Log.e("PlayerLogger", "writeLine failed: " + (ex.message ?: "unknown"))
             }
+        }
+    }
+
+    // Rotation: drop the old rotated file (if any), move active → rotated.
+    // Active file is recreated empty on the next write.
+    // Caller MUST hold LOCK (we're already inside the lock when writeLine
+    // calls this).
+    private fun rotate(dir: File) {
+        try {
+            val rotated = File(dir, ROTATED_FILE)
+            if (rotated.exists()) {
+                try { rotated.delete() } catch (_: Exception) {}
+            }
+            val active = File(dir, LOG_FILE)
+            if (active.exists()) {
+                try { active.renameTo(rotated) } catch (_: Exception) {}
+            }
+        } catch (ex: Exception) {
+            Log.w("PlayerLogger", "rotate failed: " + (ex.message ?: "unknown"))
         }
     }
 }
