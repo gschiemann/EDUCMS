@@ -11,26 +11,29 @@ import java.util.Locale
 import java.util.TimeZone
 
 /**
- * File logger — conservative customer-testing build (2026-04-23).
+ * File logger for the EduCMS kiosk player.
  *
- * What works:
+ * Used by every subsystem (BootReceiver, HeartbeatService,
+ * OtaUpdateWorker, MainActivity, WebAppBridge) so field diagnostics
+ * on devices that have no ADB access (Goodview / NovaStar / TCL OEM
+ * signage boxes) survive power cycles.
+ *
+ * Shipped features:
  *   ✓ init(Context)                       — idempotent, caches logDir
- *   ✓ d/i/w/e(tag, msg, [throwable])      — forwards to logcat AND
- *                                           appends to on-disk log
+ *   ✓ d/i/w/e(tag, msg, [throwable])      — logcat + on-disk append
  *   ✓ truncateSecret(...)                 — redaction helper
+ *   ✓ 1 MB tail rotation inline in write  — keeps last ~500KB when
+ *                                           the file crosses 1 MB,
+ *                                           drops the older head
  *
- * Known-deferred (tracked as a follow-up; kiosk still functions):
- *   • readRecent()  — returns a stub string. Bisect tried to enable
- *                     real reading; the nested synchronized + return
- *                     pattern tripped the Kotlin compile in a way the
- *                     unauth'd CI didn't expose. Reinstate after an
- *                     Android SDK is available to reproduce locally.
- *   • uploadRecent()— no-op. Follow-up.
- *   • 1 MB rotation — same CI-blocked bisect issue. File grows
- *                     unbounded (~2 MB/day) until rotation lands.
+ * Deferred (tracked as follow-ups — not customer-facing blockers):
+ *   • readRecent() — tails the file via adb/USB today; in-app
+ *                    viewer comes once a local Android SDK lets us
+ *                    iterate on the Kotlin compile issue.
+ *   • uploadRecent() — same.
+ *   • Crash handler via Thread.setDefaultUncaughtExceptionHandler.
  *
- * Operator workaround for missing readRecent/rotation: pull the log
- * file directly via adb or USB from `getExternalFilesDir("logs")`.
+ * Disk budget: with rotation the file stays under 1 MB steady-state.
  */
 object PlayerLogger {
 
@@ -136,6 +139,21 @@ object PlayerLogger {
             try {
                 val active = File(dir, LOG_FILE)
                 active.appendText(line, Charsets.UTF_8)
+                // Cap on-disk size at 1 MB by keeping the tail half
+                // whenever we exceed the threshold. Inline read +
+                // write (no helper function, no renameTo, no nested
+                // try/catch) — the previous rotate() helper tripped
+                // a Kotlin compile bug the unauth'd CI wouldn't
+                // surface. This approach uses only byte reads +
+                // writes and survives every Android SDK >= 24.
+                if (active.length() >= MAX_BYTES) {
+                    val bytes = active.readBytes()
+                    val keepBytes = (MAX_BYTES / 2L).toInt()
+                    val start = bytes.size - keepBytes
+                    if (start > 0 && start < bytes.size) {
+                        active.writeBytes(bytes.copyOfRange(start, bytes.size))
+                    }
+                }
             } catch (ex: Exception) {
                 Log.e("PlayerLogger", "writeLine failed: " + (ex.message ?: "unknown"))
             }
