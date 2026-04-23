@@ -185,13 +185,14 @@ class MainActivity : ComponentActivity() {
                     val prefs = applicationContext.getSharedPreferences("edu_player", android.content.Context.MODE_PRIVATE)
                     val apiRoot = prefs.getString("api_root", null)
                     val jwt = prefs.getString("device_jwt", null)
+                    val fp = prefs.getString("device_fingerprint", null)
                     if (apiRoot.isNullOrBlank()) {
                         PlayerLogger.w("MainActivity", "uploadDiagnostics: api_root not set — cannot upload")
                         "error: api_root not configured"
                     } else {
                         // Security: log only truncated token hint, never the full JWT.
                         PlayerLogger.i("MainActivity", "uploadDiagnostics triggered via JS bridge (jwt=${PlayerLogger.truncateSecret(jwt)})")
-                        PlayerLogger.uploadRecent(apiRoot, jwt)
+                        PlayerLogger.uploadRecent(apiRoot, jwt, fp)
                         "upload started — check server AuditLog"
                     }
                 },

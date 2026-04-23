@@ -15,7 +15,6 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.educms.player.heartbeat.HeartbeatService
 import com.educms.player.logging.PlayerLogger
-import com.educms.player.logging.PlayerLoggerCtx
 import com.educms.player.ota.OtaUpdateWorker
 import com.educms.player.usb.UsbCacheIndex
 import com.educms.player.watchdog.Watchdog
@@ -42,9 +41,8 @@ class PlayerApp : Application() {
     override fun onCreate() {
         super.onCreate()
         // Initialise the file logger FIRST so every subsequent call can write.
-        // PlayerLoggerCtx holds a reference so the logger can resolve the
-        // screen fingerprint for upload URLs without a constructor Context.
-        PlayerLoggerCtx.appCtx = applicationContext
+        // Callers that invoke PlayerLogger.uploadRecent(...) pass the screen
+        // fingerprint explicitly — no need for a static Context holder.
         PlayerLogger.init(applicationContext)
 
         PlayerLogger.i(

@@ -148,7 +148,7 @@ object PlayerLogger {
      * Security: never log the full [deviceJwt] value here. We log only the
      * first 8 chars so support can cross-reference the token family.
      */
-    fun uploadRecent(apiRoot: String, deviceJwt: String?) {
+    fun uploadRecent(apiRoot: String, deviceJwt: String?, screenId: String?) {
         scope.launch {
             val jwtHint = deviceJwt?.take(8)?.let { "$it…" } ?: "none"
             i("PlayerLogger", "uploadRecent: starting upload to $apiRoot (jwt=${jwtHint})")
@@ -157,11 +157,11 @@ object PlayerLogger {
                     .toByteArray(Charsets.UTF_8)
                     .let { if (it.size > MAX_UPLOAD_BYTES) it.takeLast(MAX_UPLOAD_BYTES).toByteArray() else it }
 
-                // Derive the screenId from the stored fingerprint for the URL segment.
-                // We use "unknown" when the device isn't yet paired — the server will
-                // still log via AuditLog; it just won't have a screen association.
-                val screenId = getStoredScreenId() ?: "unknown"
-                val url = URL("${apiRoot.trimEnd('/')}$UPLOAD_PATH/$screenId")
+                // Caller supplies the screen identifier used as the URL
+                // segment. Empty → "unknown" so the server can still accept
+                // the log (it just logs to AuditLog without a Screen row link).
+                val seg = screenId?.takeIf { it.isNotBlank() } ?: "unknown"
+                val url = URL("${apiRoot.trimEnd('/')}$UPLOAD_PATH/$seg")
 
                 val conn = (url.openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"
@@ -274,29 +274,4 @@ object PlayerLogger {
         }
     }
 
-    /**
-     * Reads the stored device fingerprint from the app's SharedPreferences.
-     * This is the same key the heartbeat service + web player use, so IDs
-     * are consistent across components.
-     *
-     * Returns null if the device has not yet been paired (fresh install).
-     * In that case the upload URL will use "unknown" as the segment and
-     * the server logs it to AuditLog without a Screen association.
-     */
-    private fun getStoredScreenId(): String? = try {
-        // We don't have a Context inside the singleton, but PlayerApp stores
-        // a static reference that the workers use. Mirror that pattern.
-        // If null, the upload URL falls back to "unknown".
-        PlayerLoggerCtx.appCtx?.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
-            ?.getString("device_fingerprint", null)
-            ?.takeIf { it.isNotBlank() }
-    } catch (_: Exception) { null }
-}
-
-/**
- * Thin holder so PlayerLogger can access the application context without
- * receiving it on every call. Set once in PlayerApp.onCreate().
- */
-internal object PlayerLoggerCtx {
-    @Volatile var appCtx: Context? = null
 }
