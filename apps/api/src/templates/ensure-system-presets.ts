@@ -156,6 +156,60 @@ export async function ensureSystemPresets(prisma: PrismaService) {
       logger.warn(`Archive pass failed: ${(e as Error).message}`);
     }
 
+    // ─── Same-name duplicate cleanup ───
+    // Operator reported seeing two system templates with identical
+    // display names (e.g. "Varsity Athletics", "Campus Quad — Welcome")
+    // in the gallery. Root cause: earlier seed runs inserted rows whose
+    // ids have since been superseded by newer rewrites under different
+    // ids. The archive pass above catches ids that are no longer in
+    // source, but if both the old AND the new id survive in source
+    // (or the operator manually created a clone), the gallery keeps
+    // rendering both.
+    //
+    // Rule: for every (case-insensitive) duplicate name among ACTIVE
+    // isSystem=true rows, keep the row whose id appears in the
+    // canonical ALL_PRESETS list; if multiple match, keep the most
+    // recently updated; archive the rest.
+    try {
+      const allActive = await prisma.client.template.findMany({
+        where: { isSystem: true, status: 'ACTIVE' as any },
+        select: { id: true, name: true, updatedAt: true },
+      });
+      const byName = new Map<string, { id: string; name: string; updatedAt: Date }[]>();
+      for (const t of allActive) {
+        const key = (t.name || '').trim().toLowerCase();
+        if (!key) continue;
+        if (!byName.has(key)) byName.set(key, []);
+        byName.get(key)!.push(t);
+      }
+      const toArchive: string[] = [];
+      for (const [name, rows] of byName) {
+        if (rows.length < 2) continue;
+        // Preferred winner: the row whose id is in ALL_PRESETS and has
+        // the latest updatedAt. Everyone else in the group loses.
+        const inSource = rows.filter((r) => wantedIds.has(r.id));
+        const candidates = inSource.length > 0 ? inSource : rows;
+        const keeper = candidates.slice().sort(
+          (a, b) => (b.updatedAt?.getTime?.() ?? 0) - (a.updatedAt?.getTime?.() ?? 0),
+        )[0];
+        for (const r of rows) {
+          if (r.id !== keeper.id) toArchive.push(r.id);
+        }
+        logger.log(
+          `Dedup "${name}": keeping ${keeper.id}, archiving ${rows.length - 1} twin(s)`,
+        );
+      }
+      if (toArchive.length > 0) {
+        await prisma.client.template.updateMany({
+          where: { id: { in: toArchive } },
+          data: { status: 'ARCHIVED' as any },
+        });
+        logger.log(`Archived ${toArchive.length} duplicate-name system preset(s).`);
+      }
+    } catch (e) {
+      logger.warn(`Duplicate-name cleanup failed: ${(e as Error).message}`);
+    }
+
     // Pin the curated animated-welcome set to the TOP of the gallery by
     // refreshing their updatedAt. The templates list orders by
     // (isSystem desc, updatedAt desc), so touching these pushes the

@@ -71,7 +71,17 @@ export class TemplatesController {
     };
 
     if (category) where.category = category;
-    if (status) where.status = status;
+    if (status) {
+      where.status = status;
+    } else {
+      // Gallery must never show ARCHIVED templates. The boot seed
+      // archives stale / deduplicated system presets via
+      // ensure-system-presets.ts so the IDs stay referenceable by
+      // older playlists, but they MUST disappear from the gallery
+      // list so teachers don't see the 2025 draft next to the 2026
+      // final. Explicit ?status=archived still works for admin UIs.
+      where.AND.push({ status: { not: 'ARCHIVED' as any } });
+    }
 
     // Zones ARE included — the gallery needs them to render thumbnails.
     // What we don't need is re-parsing `defaultConfig` for rows the UI
