@@ -137,6 +137,14 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       this.send(client, 'AUTH_OK', {
         deviceId: ctx.deviceId,
         expiresAt: decoded.exp,
+        // Ship server-time so the player can compute a local-clock
+        // offset. Android signage devices frequently boot with no
+        // NTP sync and drift minutes from wall-clock; without this
+        // the player's Math.abs(Date.now() - msg.timestamp) > 30s
+        // staleness gate would drop every emergency event on a
+        // wrong-clock kiosk. Player applies the offset before
+        // comparing.
+        serverTime: Date.now(),
       });
 
       // Register in redis for metrics

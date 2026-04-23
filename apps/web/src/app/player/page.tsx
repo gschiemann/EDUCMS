@@ -560,7 +560,11 @@ function PlayerPage() {
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [showOverlay, setShowOverlay] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const pollRef = useRef<NodeJS.Timeout | null>(null);
+  // Split refs: interval runs at steady cadence, timeout is the one-
+  // shot backoff retry. Previously both shared `pollRef` which caused
+  // races when a failing tick reassigned the same handle.
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   // Bullet-proof refs (Phase 1)
   const fetchFailCountRef = useRef(0);
@@ -581,6 +585,12 @@ function PlayerPage() {
   // Tracks recent eventIds so an attacker who captures a signed message
   // can't replay it. Eviction is a soft cap to bound memory.
   const recentEventIdsRef = useRef<Map<string, number>>(new Map());
+  // Server-clock offset learned at AUTH_OK. Needed because Android
+  // signage devices frequently boot without NTP sync and drift from
+  // wall-clock — the staleness gate on SENSITIVE WS events would
+  // otherwise drop every emergency. Offset is "server - local"; apply
+  // by ADDING to local Date.now() before comparing.
+  const serverClockOffsetRef = useRef<number>(0);
   const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
   const wsReconnectRef = useRef<NodeJS.Timeout | null>(null);
   const httpFallbackRef = useRef<NodeJS.Timeout | null>(null);
@@ -811,7 +821,13 @@ function PlayerPage() {
   useEffect(() => {
     if (phase !== 'pairing') return;
     // Defensively clear any prior interval before scheduling a new one.
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    // Split interval + timeout refs so we never confuse the two. The
+    // previous single-ref code juggled both via clearInterval/
+    // clearTimeout on the same handle, which made it easy for a
+    // concurrent tick invocation to cancel a just-scheduled retry
+    // while racing with the interval it thought it had just cleared.
+    if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
+    if (pollTimeoutRef.current) { clearTimeout(pollTimeoutRef.current); pollTimeoutRef.current = null; }
 
     const fp = getDeviceFingerprint();
     let pollFails = 0;
@@ -829,18 +845,21 @@ function PlayerPage() {
       } catch { pollFails += 1; }
       // Stretch the interval after repeated failures so we don't hammer a down server.
       if (pollFails >= 3) {
-        if (pollRef.current) clearInterval(pollRef.current);
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
         const delay = backoffMs(pollFails, 3000, 30_000);
-        pollRef.current = setTimeout(tick as any, delay) as any;
+        // Schedule one retry via timeout; retry itself re-arms the
+        // interval on a successful tick.
+        if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+        pollTimeoutRef.current = setTimeout(tick as any, delay);
       }
     };
-    pollRef.current = setInterval(tick, 3000);
+    pollIntervalRef.current = setInterval(tick, 3000);
     return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        clearTimeout(pollRef.current as any);
-        pollRef.current = null;
-      }
+      if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
+      if (pollTimeoutRef.current) { clearTimeout(pollTimeoutRef.current); pollTimeoutRef.current = null; }
     };
   }, [phase]);
 
@@ -1118,6 +1137,20 @@ function PlayerPage() {
             const msg = JSON.parse(event.data as string);
             console.log('[Player WS] Received:', msg.type);
 
+            // Capture server-time offset at AUTH_OK. Android signage
+            // devices often ship without NTP sync and can drift minutes
+            // from wall-clock; without this the staleness gate below
+            // would drop every emergency event on a wrong-clock kiosk.
+            // The offset is "what to ADD to local Date.now() to match
+            // the server's clock".
+            if (msg.type === 'AUTH_OK' && typeof msg?.data?.serverTime === 'number') {
+              const srv = msg.data.serverTime as number;
+              serverClockOffsetRef.current = srv - Date.now();
+              if (Math.abs(serverClockOffsetRef.current) > 5000) {
+                console.warn('[Player WS] Large clock skew detected — offset=', serverClockOffsetRef.current, 'ms');
+              }
+            }
+
             // ─── Audit fix #2: client-side replay + freshness gate ───
             // The full HMAC signature uses a server-only secret we
             // intentionally don't ship to the player (would defeat the
@@ -1137,8 +1170,11 @@ function PlayerPage() {
                 console.warn('[Player WS] dropped unsigned sensitive event:', msg.type);
                 return;
               }
-              if (typeof msg.timestamp !== 'number' || Math.abs(Date.now() - msg.timestamp) > 30_000) {
-                console.warn('[Player WS] dropped stale/future event:', msg.type, msg.timestamp);
+              // Apply server-clock offset so kiosks with wrong local
+              // clocks still accept events that are actually fresh.
+              const adjustedNow = Date.now() + serverClockOffsetRef.current;
+              if (typeof msg.timestamp !== 'number' || Math.abs(adjustedNow - msg.timestamp) > 30_000) {
+                console.warn('[Player WS] dropped stale/future event:', msg.type, msg.timestamp, 'offset=', serverClockOffsetRef.current);
                 return;
               }
               if (msg.eventId && typeof msg.eventId === 'string') {

@@ -332,6 +332,14 @@ model Screen {
   screenGroup       ScreenGroup? @relation(fields: [screenGroupId], references: [id])
   tenant            Tenant?      @relation(fields: [tenantId], references: [id])
 
+  // Hot-path queries driving these indexes (all added 2026-04-23 after
+  // customer-readiness audit flagged sequential scans at scale):
+  //   - GET /screens           → where: { tenantId } order by lastPingAt
+  //   - GET /screens/map       → where: { tenantId, status }
+  //   - Manifest + status      → derive ONLINE from lastPingAt recency
+  @@index([tenantId, status])
+  @@index([tenantId, lastPingAt])
+  @@index([screenGroupId])
   @@map("screens")
 }
 
@@ -368,6 +376,13 @@ model Asset {
   folder           AssetFolder?   @relation(fields: [folderId], references: [id])
   playlistItems    PlaylistItem[]
 
+  // Hot-path:
+  //   - GET /assets            → where: { tenantId } order by createdAt
+  //   - GET /assets/pending    → where: { tenantId, status } order by createdAt
+  //   - Folder view            → where: { tenantId, folderId }
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
+  @@index([tenantId, folderId])
   @@map("assets")
 }
 
@@ -406,6 +421,9 @@ model PlaylistItem {
   asset         Asset    @relation(fields: [assetId], references: [id])
   playlist      Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
 
+  // Manifest endpoint fetches playlist items by playlistId in sequence
+  // order on every player poll — this is the most-read query in the app.
+  @@index([playlistId, sequenceOrder])
   @@map("playlist_items")
 }
 
@@ -427,6 +445,13 @@ model Schedule {
   playlist      Playlist     @relation(fields: [playlistId], references: [id])
   tenant        Tenant       @relation(fields: [tenantId], references: [id])
 
+  // Hot-path — manifest resolver filters schedules by tenant + active +
+  // time range to decide which playlist a screen should be playing
+  // right now.
+  @@index([tenantId, isActive, startTime])
+  @@index([screenId])
+  @@index([screenGroupId])
+  @@index([playlistId])
   @@map("schedules")
 }
 
@@ -442,6 +467,12 @@ model AuditLog {
   user       User?    @relation(fields: [userId], references: [id])
   tenant     Tenant   @relation(fields: [tenantId], references: [id])
 
+  // /audit page + /audit/export sort by createdAt desc per tenant.
+  // Without this index that's a sequential scan over every tenant's
+  // rows — 100-school district hitting the page ran for multiple
+  // seconds post-pilot.
+  @@index([tenantId, createdAt])
+  @@index([tenantId, action])
   @@map("audit_logs")
 }
 
@@ -503,6 +534,11 @@ model Template {
   createdBy    User?          @relation("TemplateCreator", fields: [createdById], references: [id])
   tenant       Tenant?        @relation(fields: [tenantId], references: [id])
 
+  // Gallery orders by (isSystem desc, updatedAt desc) filtered by
+  // tenantId + status + vertical. Composite index covers the common
+  // combinations.
+  @@index([tenantId, status])
+  @@index([isSystem, status, vertical, updatedAt])
   @@map("templates")
 }
 

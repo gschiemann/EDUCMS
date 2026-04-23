@@ -10,6 +10,7 @@ import * as crypto from 'crypto';
 import * as Sentry from '@sentry/nestjs';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
+import { invalidateTenantState } from '../screens/manifest-hot-cache';
 import {
   TriggerEmergencyInputSchema,
   ClearEmergencyInputSchema,
@@ -33,6 +34,53 @@ export class EmergencyController {
     private readonly prisma: PrismaService,
     private readonly signer: WebsocketSignerService
   ) {}
+
+  /**
+   * Resolve the CANONICAL tenantId for an audit-log row given the
+   * emergency scope. Audit rows must be tenant-scoped so the incident
+   * forensics live with the affected school, not the acting admin's
+   * home tenant.
+   *
+   * Why this matters: previously every audit row used
+   *   `req.user?.schoolId || req.user?.districtId || scopeId`
+   * which for a SUPER_ADMIN triggering lockdown on a partner tenant
+   * stamped the admin's OWN tenant in the audit log. Responders
+   * reviewing the scope tenant's audit trail would see no record of
+   * the trigger.
+   *
+   * Rules:
+   *   - scopeType='tenant'  → scopeId IS the tenantId
+   *   - scopeType='group'   → look up ScreenGroup.tenantId
+   *   - scopeType='device'  → look up Screen.tenantId
+   *   - fallback            → req.user's own tenant (defensible for
+   *                           scope types we haven't built yet)
+   */
+  private async resolveAuditTenantId(
+    scopeType: string,
+    scopeId: string,
+    reqUser: any,
+  ): Promise<string> {
+    try {
+      if (scopeType === 'tenant') return scopeId;
+      if (scopeType === 'group') {
+        const g = await this.prisma.client.screenGroup.findUnique({
+          where: { id: scopeId },
+          select: { tenantId: true },
+        });
+        if (g?.tenantId) return g.tenantId;
+      }
+      if (scopeType === 'device') {
+        const s = await this.prisma.client.screen.findUnique({
+          where: { id: scopeId },
+          select: { tenantId: true },
+        });
+        if (s?.tenantId) return s.tenantId;
+      }
+    } catch {
+      /* fall through to caller's tenant */
+    }
+    return reqUser?.schoolId || reqUser?.districtId || reqUser?.tenantId || scopeId;
+  }
 
   @Post('trigger')
   @AllowPanicBypass()
@@ -100,6 +148,11 @@ export class EmergencyController {
         }
       }
 
+      // Resolve the CANONICAL tenantId for the audit row — must be the
+      // scope's tenant, not the acting admin's home tenant (see
+      // resolveAuditTenantId JSDoc).
+      const auditTenantId = await this.resolveAuditTenantId(scopeType, scopeId, req.user);
+
       // Wrap state mutation + audit in one transaction so a concurrent
       // trigger or all-clear can't leave the Tenant in a half-updated
       // state where emergencyStatus says CRITICAL but emergencyPlaylistId
@@ -120,29 +173,37 @@ export class EmergencyController {
             action: 'TRIGGER_EMERGENCY',
             targetType: scopeType,
             targetId: scopeId,
-            tenantId: req.user?.schoolId || req.user?.districtId || scopeId,
+            tenantId: auditTenantId,
             userId: req.user?.id,
-            details: JSON.stringify({ overrideId, severity, portraitPlaylistId: activePortraitPlaylistId }),
+            details: JSON.stringify({ overrideId, severity, portraitPlaylistId: activePortraitPlaylistId, triggeredByTenant: req.user?.tenantId }),
           },
         }),
       ]);
     } else {
       // Non-tenant scope (group / device) — still need an audit row but
       // no Tenant.update is involved so a single insert is fine.
+      const auditTenantId = await this.resolveAuditTenantId(scopeType, scopeId, req.user);
       await this.prisma.client.auditLog.create({
         data: {
           action: 'TRIGGER_EMERGENCY',
           targetType: scopeType,
           targetId: scopeId,
-          tenantId: req.user?.schoolId || req.user?.districtId || scopeId,
+          tenantId: auditTenantId,
           userId: req.user?.id,
-          details: JSON.stringify({ overrideId, severity }),
+          details: JSON.stringify({ overrideId, severity, triggeredByTenant: req.user?.tenantId }),
         },
       });
     }
 
     // Create WSSP envelope before transmission (Mitigates RT-01)
     const signedMessage = this.signer.signMessage('OVERRIDE', message.payload);
+
+    // Hot-path cache invalidation — the manifest endpoint caches
+    // tenant emergency state for 2s per tenant to dodge the polling
+    // herd. Emergency trigger is the moment we MUST bust that cache
+    // so the next poll from any screen in the tenant sees the new
+    // state without waiting for the 2s TTL.
+    if (scopeType === 'tenant') invalidateTenantState(scopeId);
 
     // Publish via Redis for WebSocket fanout (graceful fallback if offline)
     const channel = `${scopeType}:${scopeId}`;
@@ -189,6 +250,11 @@ export class EmergencyController {
       clearedBy,
     });
 
+    // Resolve audit row's tenantId to the SCOPE's tenant (see
+    // resolveAuditTenantId) so an ALL_CLEAR by a SUPER_ADMIN on a
+    // partner tenant is logged under that tenant's audit trail.
+    const auditTenantId = await this.resolveAuditTenantId(scopeType, scopeId, req.user);
+
     // If targeting a tenant, clear its emergencyStatus + audit atomically.
     // Clear BOTH orientation pointers so a portrait screen doesn't keep
     // rendering an emergency after the admin hit all-clear.
@@ -207,9 +273,9 @@ export class EmergencyController {
             action: 'CLEAR_EMERGENCY',
             targetType: scopeType,
             targetId: scopeId,
-            tenantId: req.user?.schoolId || req.user?.districtId || scopeId,
+            tenantId: auditTenantId,
             userId: req.user?.id,
-            details: JSON.stringify({ overrideId }),
+            details: JSON.stringify({ overrideId, triggeredByTenant: req.user?.tenantId }),
           },
         }),
       ]);
@@ -219,12 +285,16 @@ export class EmergencyController {
           action: 'CLEAR_EMERGENCY',
           targetType: scopeType,
           targetId: scopeId,
-          tenantId: req.user?.schoolId || req.user?.districtId || scopeId,
+          tenantId: auditTenantId,
           userId: req.user?.id,
-          details: JSON.stringify({ overrideId }),
+          details: JSON.stringify({ overrideId, triggeredByTenant: req.user?.tenantId }),
         },
       });
     }
+
+    // Hot-path cache invalidation so the next manifest poll from any
+    // screen in the tenant picks up INACTIVE without waiting for TTL.
+    if (scopeType === 'tenant') invalidateTenantState(scopeId);
 
     // Publish via Redis for fanout
     const channel = `${scopeType}:${scopeId}`;

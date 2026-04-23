@@ -59,8 +59,20 @@ class OtaUpdateWorker(
         try {
             val apiRoot = applicationContext.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
                 .getString("api_root", null) ?: run {
-                    PlayerLogger.w(TAG, "OTA check aborted — api_root not set in SharedPreferences")
-                    return@withContext Result.retry()
+                    // Was Result.retry() — caused WorkManager to burn
+                    // exponential-backoff retries forever on a fresh
+                    // install where the WebView hasn't persisted
+                    // `api_root` yet. That drained battery on unpaired
+                    // devices + filled the retry queue with no-op
+                    // work. Result.success() exits cleanly; the next
+                    // 6h periodic tick will re-check once the WebView
+                    // has had a chance to set api_root.
+                    PlayerLogger.i(
+                        TAG,
+                        "OTA check skipped — api_root not set yet (device likely not paired). " +
+                            "Will retry on next scheduled tick."
+                    )
+                    return@withContext Result.success()
                 }
 
             val deviceFingerprint = applicationContext.getSharedPreferences("edu_player", Context.MODE_PRIVATE)

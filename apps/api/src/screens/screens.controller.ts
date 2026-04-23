@@ -11,6 +11,12 @@ import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { LicenseService } from '../license/license.service';
 import { requireSecret } from '../security/required-secret';
+import {
+  getTenantState,
+  setTenantState,
+  shouldSkipLastPingWrite,
+  markLastPingWritten,
+} from './manifest-hot-cache';
 
 const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -548,13 +554,19 @@ export class ScreensController {
 
     // Any successful manifest fetch means the device is alive + talking
     // to us — touch lastPingAt so the dashboard list endpoint (which
-    // derives ONLINE/OFFLINE from lastPingAt < 2min) reflects reality
-    // without depending on the older web-player bundle that only polls
-    // /screens/status/:fp. Non-blocking — if Prisma hiccups we still
-    // return the manifest; next fetch will update.
-    this.prisma.client.screen
-      .update({ where: { id: screen.id }, data: { lastPingAt: new Date() } })
-      .catch(() => { /* non-fatal; next manifest fetch will retry */ });
+    // derives ONLINE/OFFLINE from lastPingAt < 2min) reflects reality.
+    // DEBOUNCED to at most once per 25s per screen: the 2min ONLINE
+    // threshold tolerates up to 25s of staleness, and the previous
+    // unthrottled write-per-poll pattern was saturating the Supabase
+    // pool (500 screens × 5s polls = 100 writes/sec, each grabbing a
+    // connection). Non-blocking either way — if Prisma hiccups we
+    // still return the manifest; next fetch re-checks the debounce.
+    if (!shouldSkipLastPingWrite(screen.id)) {
+      markLastPingWritten(screen.id);
+      this.prisma.client.screen
+        .update({ where: { id: screen.id }, data: { lastPingAt: new Date() } })
+        .catch(() => { /* non-fatal; next manifest fetch will retry */ });
+    }
 
     // MED-1 audit fix: tenant-scope the read so a user from Tenant A can't
     // fetch Tenant B's manifest by guessing the screen UUID. Three valid
@@ -580,20 +592,28 @@ export class ScreensController {
     }
 
     if (screen.tenantId) {
-      const tenant = await this.prisma.client.tenant.findUnique({
-        where: { id: screen.tenantId },
-        // Pull both orientation pointers so we can pick the right one
-        // for this specific screen. Cast select through `any` so the
-        // controller compiles even before @prisma/client picks up the
-        // new emergency_portrait_playlist_id column (handled by the
-        // 20260420180000_add_emergency_portrait_variants migration +
-        // db:generate on next boot).
-        select: {
-          emergencyStatus: true,
-          emergencyPlaylistId: true,
-          emergencyPortraitPlaylistId: true,
-        } as any,
-      }) as any;
+      // Hot-path cache: the emergency-state lookup for this tenant is
+      // shared across every screen in the tenant polling manifest.
+      // Cache for 2s; emergency controllers explicitly invalidate on
+      // trigger/all-clear so the state propagates faster than TTL.
+      let tenant = getTenantState(screen.tenantId) as any;
+      if (!tenant) {
+        tenant = await this.prisma.client.tenant.findUnique({
+          where: { id: screen.tenantId },
+          // Pull both orientation pointers so we can pick the right one
+          // for this specific screen. Cast select through `any` so the
+          // controller compiles even before @prisma/client picks up the
+          // new emergency_portrait_playlist_id column (handled by the
+          // 20260420180000_add_emergency_portrait_variants migration +
+          // db:generate on next boot).
+          select: {
+            emergencyStatus: true,
+            emergencyPlaylistId: true,
+            emergencyPortraitPlaylistId: true,
+          } as any,
+        }) as any;
+        if (tenant) setTenantState(screen.tenantId, tenant);
+      }
 
       // If an emergency is active, ALWAYS force an emergency override
       if (tenant?.emergencyStatus && tenant.emergencyStatus !== 'INACTIVE') {
