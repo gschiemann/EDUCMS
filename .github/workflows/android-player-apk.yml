@@ -95,6 +95,20 @@ jobs:
           tail -n 200 apps/player/gradle-build.log >> $GITHUB_STEP_SUMMARY || echo "(no gradle-build.log produced)" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
+          # ALSO push errors as workflow-command annotations so the
+          # public check-runs API surfaces them — that way `curl` can
+          # read the Kotlin compile error without a GitHub token.
+          # Grep anything that looks like a compile error; keep a cap
+          # so a runaway stack trace doesn't flood the annotations.
+          if [ -f apps/player/gradle-build.log ]; then
+            grep -E '^(e:|error:|FAILURE:|\* What went wrong:|\* Where:|\s+at .*\.kt:|Execution failed|> Task .+ FAILED|Compilation error|> [A-Z])' apps/player/gradle-build.log | head -n 80 | while IFS= read -r L; do
+              # Strip anything that looks like a percent-encoded char
+              # and escape `%` for ::error::
+              clean=$(echo "$L" | sed 's/%/%25/g; s/\r/%0D/g')
+              echo "::error::GRADLE: $clean"
+            done
+          fi
+
       - name: Upload gradle log on failure
         if: failure()
         uses: actions/upload-artifact@v4
