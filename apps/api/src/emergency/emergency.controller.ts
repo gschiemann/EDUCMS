@@ -178,13 +178,16 @@ export class EmergencyController {
     const { scopeType, scopeId } = body;
     const clearedBy = req.user?.id || 'admin_system';
 
-    const message = {
-      type: 'ALL_CLEAR',
-      payload: {
-        overrideId,
-        clearedBy
-      }
-    };
+    // ALL_CLEAR is classified as SENSITIVE on the player. The player
+    // DROPS any SENSITIVE event missing a `signature` field — so if we
+    // publish this plain, screens stay stuck on lockdown until the 10s
+    // HTTP manifest poll notices emergencyStatus=INACTIVE. That's the
+    // "stuck on lockdown after all-clear" life-safety bug. Sign the
+    // payload through the same signer every other emergency type uses.
+    const signedMessage = this.signer.signMessage('ALL_CLEAR', {
+      overrideId,
+      clearedBy,
+    });
 
     // If targeting a tenant, clear its emergencyStatus + audit atomically.
     // Clear BOTH orientation pointers so a portrait screen doesn't keep
@@ -226,7 +229,7 @@ export class EmergencyController {
     // Publish via Redis for fanout
     const channel = `${scopeType}:${scopeId}`;
     try {
-      await this.redisService.publish(channel, message);
+      await this.redisService.publish(channel, signedMessage);
     } catch (error) {
       Sentry.withScope((s) => {
         s.setTag('emergency.action', 'all-clear');

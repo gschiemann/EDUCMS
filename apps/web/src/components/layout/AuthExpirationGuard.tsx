@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { subscribeAuthEvents } from '@/lib/auth-events';
 import { useUIStore } from '@/store/ui-store';
 import { clog } from '@/lib/client-logger';
@@ -23,6 +24,7 @@ export function AuthExpirationGuard() {
   const pathname = usePathname() || '';
   const user = useUIStore((s) => s.user);
   const token = useUIStore((s) => s.token);
+  const queryClient = useQueryClient();
 
   // On mount + whenever user/token goes null, redirect if we're on a
   // protected route.
@@ -44,16 +46,25 @@ export function AuthExpirationGuard() {
   // Listen for session-expired events from apiFetch so the redirect
   // happens the moment the 401 lands, without waiting for the next
   // render cycle to notice user/token flipped to null.
+  //
+  // ALSO clear the React Query cache so the NEXT user (on a shared
+  // school computer) doesn't see the previous user's cached screens,
+  // assets, playlists, notifications for the 5-minute staleTime
+  // window. SchoolSwitcher already does this on tenant switch;
+  // logout needs the same treatment.
   useEffect(() => {
     const unsub = subscribeAuthEvents((ev) => {
       clog.info('auth', `Auth event: ${ev.reason}`, { url: ev.url });
       if (ev.reason === 'session-expired' || ev.reason === 'explicit-logout') {
+        try {
+          queryClient.clear();
+        } catch { /* swallow — shouldn't block the redirect */ }
         const redirectTo = encodeURIComponent(pathname);
         router.replace(`/login?redirect=${redirectTo}&reason=${ev.reason}`);
       }
     });
     return unsub;
-  }, [router, pathname]);
+  }, [router, pathname, queryClient]);
 
   return null;
 }

@@ -848,25 +848,17 @@ function PlayerPage() {
   const fetchContent = useCallback(async () => {
     if (!screenId) return;
 
-    // Resolve auth token for this fetch:
-    //   1. Device pairing token from URL/localStorage (production path)
-    //   2. Cached short-lived admin JWT (cuts login round-trip on subsequent polls)
-    //   3. Fresh admin login (dev fallback, kept so browser testing still works)
+    // Resolve auth token for this fetch. Device-pairing token only —
+    // the old "admin fallback login" with hardcoded creds was baked
+    // into the production Vercel bundle and was viewable via
+    // view-source, which is exactly the kind of thing a pilot IT
+    // team code-audits on day one. If no device token is available
+    // the player MUST fall through to the pairing screen.
     const resolveAuthToken = async (): Promise<string> => {
       const deviceTok = getDeviceToken();
       if (deviceTok) return deviceTok;
       if (cachedAuthTokenRef.current) return cachedAuthTokenRef.current;
-      const loginRes = await fetch(`${getApiRoot()}/api/v1/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'admin@springfield.edu', password: 'admin123' }),
-      });
-      if (!loginRes.ok) throw new Error('Auth failed');
-      const { access_token } = await loginRes.json();
-      cachedAuthTokenRef.current = access_token;
-      // Auto-expire the cached token after 50 minutes (JWTs in this app are 1h).
-      setTimeout(() => { cachedAuthTokenRef.current = null; }, 50 * 60 * 1000);
-      return access_token;
+      throw new Error('NO_DEVICE_TOKEN');
     };
 
     // Apply manifest payload to player state. Extracted so we can replay it
