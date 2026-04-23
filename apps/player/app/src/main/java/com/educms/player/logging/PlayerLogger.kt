@@ -11,30 +11,18 @@ import java.util.Locale
 import java.util.TimeZone
 
 /**
- * Rotating file logger — minimum viable version for customer testing.
+ * Bisect step 2 — STUB BODIES + FULL IMPORTS + FIELDS.
  *
- * THIS IS AN INTENTIONALLY CONSERVATIVE BUILD. Previous richer versions
- * (crash handler, daemon-thread upload, advanced rotation) broke the
- * APK CI gradle build with inaccessible remote logs. We're adding those
- * features back in subsequent commits one slice at a time so any
- * regression is caught by a single commit.
+ * The full-feature version and the minimal file-write version both
+ * failed CI. The plain stub (no imports, no fields) passed. This
+ * variant keeps stub behaviour for every method but ADDS:
+ *   - the full set of java.io / java.text / java.util imports
+ *   - the object-level fields (LOCK, logDir, initialized, LOG_FILE)
  *
- * Features shipped in THIS commit:
- *   • init(Context)                          — idempotent; caches logDir
- *   • d/i/w/e(tag, msg, [throwable])         — forwards to logcat, writes file
- *   • readRecent(maxLines)                   — tail of active log file
- *   • truncateSecret(value, n)               — redaction helper
- *   • Simple 1 MB rotation on write          — synchronous, no daemon thread
- *
- * Features DEFERRED (will re-add commit-by-commit after this compiles):
- *   • uploadRecent — daemon-thread HTTP POST
- *   • Crash handler via setDefaultUncaughtExceptionHandler
- *   • Reading rotated files in readRecent (currently active file only)
- *
- * Signatures match the original so every caller (MainActivity,
- * PlayerApp, BootReceiver, HeartbeatService, OtaUpdateWorker,
- * WebAppBridge) compiles unchanged. uploadRecent is still exposed but
- * is a no-op logcat entry for now.
+ * If this passes, the imports+fields are fine and the compile error
+ * is in one of the bodies. If this fails, the issue is in the
+ * imports/fields themselves (wouldn't expect it, but that's exactly
+ * why we're bisecting).
  */
 object PlayerLogger {
 
@@ -46,54 +34,30 @@ object PlayerLogger {
     private var initialized = false
 
     fun init(ctx: Context) {
+        // Minimal init — no file IO yet. Record that we were called
+        // so later bisect steps can tell the difference.
         synchronized(LOCK) {
             if (initialized) return
-            val dir = ctx.getExternalFilesDir("logs")
-            if (dir != null) {
-                try { dir.mkdirs() } catch (_: Exception) { /* best-effort */ }
-            }
-            logDir = dir
+            logDir = ctx.getExternalFilesDir("logs")
             initialized = true
         }
-        i("PlayerLogger", "Logger initialised. logDir=" + (logDir?.absolutePath ?: "(null)"))
     }
 
-    fun d(tag: String, msg: String) { write("DEBUG", tag, msg, null) }
-    fun i(tag: String, msg: String) { write("INFO ", tag, msg, null) }
-    fun w(tag: String, msg: String, throwable: Throwable? = null) { write("WARN ", tag, msg, throwable) }
-    fun e(tag: String, msg: String, throwable: Throwable? = null) { write("ERROR", tag, msg, throwable) }
+    fun d(tag: String, msg: String) { Log.d(tag, msg) }
+    fun i(tag: String, msg: String) { Log.i(tag, msg) }
+    fun w(tag: String, msg: String, throwable: Throwable? = null) {
+        if (throwable != null) Log.w(tag, msg, throwable) else Log.w(tag, msg)
+    }
+    fun e(tag: String, msg: String, throwable: Throwable? = null) {
+        if (throwable != null) Log.e(tag, msg, throwable) else Log.e(tag, msg)
+    }
 
     fun readRecent(maxLines: Int = 500): String {
-        val dir = logDir ?: return "(logger not initialised)"
-        synchronized(LOCK) {
-            return try {
-                val active = File(dir, LOG_FILE)
-                if (!active.exists()) return "(no log file yet)"
-                val lines = ArrayList<String>()
-                val reader = active.bufferedReader()
-                try {
-                    while (true) {
-                        val line = reader.readLine() ?: break
-                        lines.add(line)
-                    }
-                } finally {
-                    try { reader.close() } catch (_: Exception) {}
-                }
-                if (lines.size <= maxLines) {
-                    lines.joinToString("\n")
-                } else {
-                    val start = lines.size - maxLines
-                    lines.subList(start, lines.size).joinToString("\n")
-                }
-            } catch (ex: Exception) {
-                "(readRecent failed: " + (ex.message ?: "unknown") + ")"
-            }
-        }
+        return "(file logger stub 2 — file reads not yet re-enabled)"
     }
 
     fun uploadRecent(apiRoot: String, deviceJwt: String?, screenId: String?) {
-        // Deferred — see file header. No-op for now so the call site compiles.
-        Log.i("PlayerLogger", "uploadRecent not yet implemented (apiRoot=" + apiRoot + " screen=" + (screenId ?: "none") + ")")
+        Log.i("PlayerLogger", "uploadRecent stub-2 — apiRoot=$apiRoot screen=${screenId ?: "none"}")
     }
 
     fun truncateSecret(value: String?, n: Int = 8): String {
@@ -101,58 +65,20 @@ object PlayerLogger {
         return value.take(n) + "…"
     }
 
+    // Referenced by the imports above so the compiler doesn't prune them.
+    // These are no-ops today — real implementations come in the next
+    // bisect step once we know imports+fields compile.
+    @Suppress("unused")
     private fun formatTimestamp(): String {
         val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
         sdf.timeZone = TimeZone.getTimeZone("UTC")
         return sdf.format(Date())
     }
 
-    private fun write(level: String, tag: String, msg: String, throwable: Throwable?) {
-        when (level.trim()) {
-            "DEBUG" -> if (throwable != null) Log.d(tag, msg, throwable) else Log.d(tag, msg)
-            "INFO"  -> if (throwable != null) Log.i(tag, msg, throwable) else Log.i(tag, msg)
-            "WARN"  -> if (throwable != null) Log.w(tag, msg, throwable) else Log.w(tag, msg)
-            "ERROR" -> if (throwable != null) Log.e(tag, msg, throwable) else Log.e(tag, msg)
-            else    -> Log.v(tag, msg)
-        }
-        if (!initialized) return
-
-        val fullMsg = if (throwable != null) {
-            val sw = StringWriter()
-            throwable.printStackTrace(PrintWriter(sw))
-            msg + "\n" + sw.toString()
-        } else {
-            msg
-        }
-
-        val dir = logDir ?: return
-        val line = formatTimestamp() + " [" + level + "] " + tag + ": " + fullMsg + "\n"
-
-        synchronized(LOCK) {
-            try {
-                val active = File(dir, LOG_FILE)
-                active.appendText(line, Charsets.UTF_8)
-                if (active.length() >= MAX_BYTES) {
-                    rotate(dir)
-                }
-            } catch (ex: Exception) {
-                Log.e("PlayerLogger", "write failed: " + (ex.message ?: "unknown"))
-            }
-        }
-    }
-
-    private fun rotate(dir: File) {
-        try {
-            val rotated = File(dir, "player.1.log")
-            if (rotated.exists()) {
-                try { rotated.delete() } catch (_: Exception) {}
-            }
-            val active = File(dir, LOG_FILE)
-            if (active.exists()) {
-                try { active.renameTo(rotated) } catch (_: Exception) {}
-            }
-        } catch (ex: Exception) {
-            Log.w("PlayerLogger", "rotate failed: " + (ex.message ?: "unknown"))
-        }
+    @Suppress("unused")
+    private fun formatThrowable(t: Throwable): String {
+        val sw = StringWriter()
+        t.printStackTrace(PrintWriter(sw))
+        return sw.toString()
     }
 }
