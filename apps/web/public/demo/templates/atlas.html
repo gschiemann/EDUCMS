@@ -1,0 +1,888 @@
+<!--
+  MS TEMPLATE 03 — ATLAS
+  Map-and-wayfinding aesthetic. Hallway map, bus routes as transit lines, compass rose.
+  Clean cartographic style — legend chips, route colors, pin markers.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Atlas — MS Lobby 4K (v1)</title>
+<link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* v1 port from the downloaded MS pack — same pattern as the shipped
+     arcade-ms-v2 and every approved HS template:
+       - box-sizing:border-box globally so panels with fixed width +
+         padding + border render at the declared edge-to-edge size
+         (no sneaky 100+px horizontal drift that'd collide with the
+         map on the right)
+       - fit() JS at the bottom of the file scales the 3840×2160
+         stage to whatever window the mockup is viewed in. Raw source
+         left --stage-scale at 1 and required a 4K browser to see
+         anything. */
+  *, *::before, *::after { box-sizing: border-box; }
+  :root { --stage-w: 3840px; --stage-h: 2160px; --stage-scale: 1; }
+  html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; }
+  .viewport { position:fixed; inset:0; display:grid; place-items:center; overflow:hidden; }
+  .stage-outer { width:calc(var(--stage-w)*var(--stage-scale)); height:calc(var(--stage-h)*var(--stage-scale)); }
+  .stage { width:var(--stage-w); height:var(--stage-h); transform:scale(var(--stage-scale)); transform-origin:0 0; position:relative; box-shadow:0 80px 200px rgba(0,0,0,.55); overflow:hidden; }
+
+  :root {
+    --paper:#f1ece0;
+    --ink:#0c1824;
+    --ink2:#3a4a5e;
+    --muted:#7e8a9a;
+    --land:#e6dfc9;
+    --water:#bcd6dc;
+    --red:#d64c34;
+    --blue:#2e6ed0;
+    --green:#3f8d5d;
+    --yellow:#e9ae23;
+    --purple:#7d4fa8;
+  }
+  html, body { background:#0a0f14; color:var(--ink); font-family:'Work Sans',system-ui,sans-serif; }
+  .stage {
+    background: var(--paper);
+    background-image:
+      radial-gradient(rgba(12,24,36,.06) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  /* Top banner */
+  .top { position:absolute; top:56px; left:64px; right:64px; height:160px;
+    display:flex; justify-content:space-between; align-items:center; border-bottom: 3px solid var(--ink); padding-bottom: 20px; }
+  .brand { display:flex; align-items:center; gap: 28px; }
+  .compass {
+    width: 130px; height: 130px; border: 3px solid var(--ink); border-radius: 50%; position: relative;
+    background: #fff;
+    flex-shrink: 0;
+  }
+  .compass::before {
+    content:''; position:absolute; inset:12px; border-radius:50%; border: 1px dashed var(--ink2);
+  }
+  .compass::after {
+    content:''; position:absolute; top: 10px; left: 50%; width: 0; height: 0; transform: translateX(-50%);
+    border: 18px solid transparent; border-bottom-color: var(--red); border-top: 0;
+  }
+  .compass i {
+    position:absolute; bottom: 10px; left: 50%; width: 0; height: 0; transform: translateX(-50%);
+    border: 18px solid transparent; border-top-color: var(--ink); border-bottom: 0;
+  }
+  .compass span { position:absolute; font-family:'Work Sans'; font-weight: 800; font-size: 18px; color: var(--ink); }
+  .compass .n { top: -26px; left: 50%; transform: translateX(-50%); }
+  .compass .s { bottom: -26px; left: 50%; transform: translateX(-50%); }
+  .compass .e { right: -22px; top: 50%; transform: translateY(-50%); }
+  .compass .w { left: -24px; top: 50%; transform: translateY(-50%); }
+
+  .brand .info .name { font-family:'Work Sans'; font-weight: 900; font-size: 72px; color: var(--ink); line-height: .95; letter-spacing: -.02em; }
+  .brand .info .sub { font-family:'DM Mono'; font-size: 22px; color: var(--ink2); letter-spacing: .16em; text-transform: uppercase; margin-top: 6px; }
+  .brand .info .sub b { color: var(--red); font-weight: 500; }
+
+  .coords { display:flex; gap: 32px; align-items:center; }
+  .coord { font-family:'DM Mono'; font-size: 22px; color: var(--ink2); letter-spacing: .08em; }
+  .coord .k { text-transform: uppercase; display:block; color: var(--muted); }
+  .coord .v { font-family:'Work Sans'; font-weight: 800; font-size: 56px; color: var(--ink); letter-spacing: -.01em; line-height: 1; margin-top: 4px; }
+  .coord .v.warm { color: var(--red); }
+
+  /* Hero greeting — map title block */
+  .hero {
+    position:absolute; top: 280px; left: 64px; width: 1500px; padding: 48px 56px;
+    background: #fff; border: 3px solid var(--ink);
+    box-shadow: 10px 10px 0 var(--ink);
+  }
+  .hero::before {
+    content:''; position:absolute; top: 16px; left: 16px; right: 16px; bottom: 16px;
+    border: 1px solid var(--ink2); pointer-events:none;
+  }
+  .hero .ey {
+    font-family:'DM Mono'; font-size: 26px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--red); font-weight: 500;
+  }
+  .hero h1 {
+    font-family:'Work Sans'; font-weight: 900; font-size: 180px; line-height: .9;
+    margin: 10px 0 0; color: var(--ink); letter-spacing: -.03em; text-wrap: balance;
+  }
+  .hero h1 em { font-style: normal; color: var(--blue); }
+  .hero .sub {
+    font-family:'Work Sans'; font-weight: 500; font-size: 34px; line-height: 1.35;
+    color: var(--ink2); margin-top: 28px;
+  }
+
+  /* THE MAP — hallway floorplan */
+  .map {
+    position:absolute; top: 280px; right: 64px; width: 2140px; height: 1020px;
+    background: #fff; border: 3px solid var(--ink);
+    box-shadow: 10px 10px 0 var(--ink);
+    overflow: hidden;
+  }
+  .map .head {
+    position: absolute; top: 24px; left: 32px; right: 32px;
+    display:flex; justify-content:space-between; align-items:flex-start; pointer-events:none; z-index: 5;
+  }
+  .map .head .t { font-family:'Work Sans'; font-weight: 900; font-size: 48px; color: var(--ink); letter-spacing: -.01em; line-height: 1; }
+  .map .head .sc { font-family:'DM Mono'; font-size: 18px; color: var(--ink2); letter-spacing: .12em; text-transform: uppercase; }
+  .map .head .sc .bar { display:inline-block; width: 80px; height: 8px; border: 2px solid var(--ink); background: repeating-linear-gradient(90deg, var(--ink) 0 10px, #fff 10px 20px); margin: 0 8px; vertical-align: middle; }
+
+  /* Floorplan SVG area */
+  .floor { position: absolute; top: 120px; left: 48px; right: 48px; bottom: 120px; }
+  .floor svg { width: 100%; height: 100%; display: block; }
+
+  .legend {
+    position: absolute; bottom: 28px; left: 32px; right: 32px;
+    display:flex; justify-content:space-between; align-items:center;
+    font-family:'DM Mono'; font-size: 22px; color: var(--ink2); letter-spacing: .08em;
+  }
+  .legend .items { display: flex; gap: 28px; flex-wrap: wrap; }
+  .legend .it { display:inline-flex; align-items:center; gap: 10px; }
+  .legend .it .sw { width: 24px; height: 24px; border-radius: 6px; border: 2px solid var(--ink); }
+
+  /* Route board - transit lines */
+  .routes {
+    position:absolute; top: 1330px; left: 64px; width: 2400px; height: 720px;
+    background: #fff; border: 3px solid var(--ink); box-shadow: 10px 10px 0 var(--ink);
+    padding: 40px 48px;
+  }
+  .routes .head { display:flex; justify-content:space-between; align-items:flex-end; border-bottom: 3px solid var(--ink); padding-bottom: 18px; margin-bottom: 26px; }
+  .routes .head h2 { font-family:'Work Sans'; font-weight: 900; font-size: 72px; color: var(--ink); margin: 0; letter-spacing: -.02em; line-height: 1; }
+  .routes .head .meta { font-family:'DM Mono'; font-size: 20px; color: var(--ink2); letter-spacing: .14em; text-transform: uppercase; }
+
+  .routes .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px; }
+  .route { display: grid; grid-template-rows: auto auto auto; gap: 12px; }
+  .route .line { display:flex; align-items:center; gap: 18px; }
+  .route .badge {
+    width: 76px; height: 76px; border-radius: 50%; display: grid; place-items:center;
+    color: #fff; font-family:'Work Sans'; font-weight: 900; font-size: 32px;
+    border: 3px solid var(--ink);
+  }
+  .route .name { font-family:'Work Sans'; font-weight: 800; font-size: 34px; color: var(--ink); line-height: 1.05; letter-spacing: -.01em; }
+  .route .name span { display:block; font-family:'DM Mono'; font-weight: 500; font-size: 20px; color: var(--ink2); letter-spacing: .08em; text-transform: uppercase; margin-top: 4px; }
+  .route .stops {
+    display:flex; align-items:center; padding: 10px 0; border-top: 2px solid var(--ink); border-bottom: 2px solid var(--ink);
+    overflow: hidden;
+  }
+  .route .stops .st { flex:1; display:flex; flex-direction:column; align-items:center; position: relative; }
+  .route .stops .st::before {
+    content:''; position: absolute; top: 11px; left: 0; right: 0; height: 4px; background: var(--ink);
+  }
+  .route .stops .st:first-child::before { left: 50%; }
+  .route .stops .st:last-child::before { right: 50%; }
+  .route .stops .st .pt {
+    width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 3px solid var(--ink); z-index: 1;
+  }
+  .route .stops .st .lb { font-family:'DM Mono'; font-size: 16px; color: var(--ink2); letter-spacing: .08em; margin-top: 8px; text-align:center; }
+  .route .status {
+    font-family:'Work Sans'; font-weight: 700; font-size: 22px; padding: 6px 16px; border-radius: 4px;
+    justify-self: start; letter-spacing: .06em; text-transform: uppercase; border: 2px solid var(--ink);
+  }
+  .route .status.on { background: #d8eadb; color: #1f6a3f; }
+  .route .status.late { background: #fde3de; color: #a33618; }
+  .route .status.sched { background: #dfe9f9; color: #264f99; }
+
+  /* Bottom row — lunch (destination marker), clubs (landmarks), announcement */
+  .bottom { position:absolute; top: 1330px; right: 64px; width: 1280px; height: 720px; display:grid; gap: 20px; grid-template-rows: auto auto 1fr; }
+  .panel { background: #fff; border: 3px solid var(--ink); padding: 28px 36px; box-shadow: 8px 8px 0 var(--ink); }
+  .panel h3 { font-family:'Work Sans'; font-weight: 900; font-size: 40px; color: var(--ink); margin: 0; line-height: 1; letter-spacing: -.01em; }
+  .panel .ey { font-family:'DM Mono'; font-size: 20px; color: var(--red); letter-spacing: .16em; text-transform: uppercase; font-weight: 500; }
+  .lunchpin { display:grid; grid-template-columns: 80px 1fr; gap: 24px; align-items:center; padding-top: 6px; }
+  .lunchpin .pin {
+    width: 72px; height: 92px; position: relative; flex-shrink: 0;
+    background: var(--red); clip-path: path('M36 0C16.1 0 0 16.1 0 36c0 27 36 56 36 56s36-29 36-56C72 16.1 55.9 0 36 0z');
+    display: grid; place-items:center;
+  }
+  .lunchpin .pin::after {
+    content:''; position: absolute; top: 26px; left: 50%; transform: translateX(-50%);
+    width: 24px; height: 24px; border-radius: 50%; background: #fff;
+  }
+  .lunchpin .info .e { font-family:'Work Sans'; font-weight: 900; font-size: 48px; color: var(--ink); line-height: 1; letter-spacing: -.01em; }
+  .lunchpin .info .s { font-family:'Work Sans'; font-weight: 500; font-size: 22px; color: var(--ink2); margin-top: 8px; line-height: 1.3; }
+  .lunchpin .tags { margin-top: 10px; display:flex; gap: 8px; }
+  .lunchpin .tags span { font-family:'Work Sans'; font-weight: 700; font-size: 18px; padding: 4px 10px; border-radius: 4px; border: 2px solid var(--ink); }
+
+  .landmarks { display: grid; gap: 8px; margin-top: 10px; }
+  .landmarks .lm { display:grid; grid-template-columns: 50px 1fr auto; gap: 14px; align-items:center; padding: 8px 0; border-bottom: 1px dashed var(--muted); }
+  .landmarks .lm:last-child { border-bottom: 0; }
+  .landmarks .lm .n { width: 36px; height: 36px; border-radius: 50%; display:grid; place-items:center; background: var(--yellow); border: 2px solid var(--ink); font-family:'Work Sans'; font-weight: 900; font-size: 20px; color: var(--ink); }
+  .landmarks .lm .t { font-family:'Work Sans'; font-weight: 700; font-size: 24px; color: var(--ink); line-height: 1.15; }
+  .landmarks .lm .t span { display:block; font-family:'DM Mono'; font-weight: 500; font-size: 16px; color: var(--ink2); letter-spacing: .06em; }
+  .landmarks .lm .w { font-family:'DM Mono'; font-weight: 500; font-size: 20px; color: var(--ink2); letter-spacing: .06em; }
+
+  .alert { background: var(--ink); color: var(--paper); }
+  .alert h3 { color: #fff; }
+  .alert .ey { color: var(--yellow); }
+  .alert .msg { font-family:'Work Sans'; font-weight: 500; font-size: 24px; line-height: 1.3; color: rgba(255,255,255,.85); margin-top: 8px; }
+  .alert .when { font-family:'DM Mono'; font-size: 20px; color: var(--yellow); letter-spacing: .08em; margin-top: 8px; }
+
+  /* Ticker */
+  .ticker { position:absolute; bottom: 0; left: 0; right: 0; height: 70px;
+    background: var(--ink); color: var(--paper); display:flex; align-items:center; overflow:hidden; }
+  .ticker .tag { background: var(--red); color: #fff; height: 100%; display:flex; align-items:center;
+    padding: 0 30px; font-family:'DM Mono'; font-weight: 500; font-size: 22px; flex-shrink:0; letter-spacing: .16em; text-transform: uppercase; }
+  .ticker .msg { font-family:'DM Mono'; font-size: 26px; padding-left: 34px; white-space: nowrap;
+    letter-spacing: .06em; animation: scroll 60s linear infinite; }
+  @keyframes scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+  /* Map svg styles */
+  .rm { fill: var(--land); stroke: var(--ink); stroke-width: 3; }
+  .rm.hl { fill: #ffe8a4; }
+  .hall { fill: #f6eeda; stroke: var(--ink); stroke-width: 3; }
+  .lbl { font-family:'Work Sans'; font-weight: 800; font-size: 22px; fill: var(--ink); text-anchor: middle; }
+  .lbl.sm { font-size: 16px; font-weight: 600; fill: var(--ink2); letter-spacing: .08em; }
+  .lbl.rm { font-size: 18px; font-weight: 700; fill: var(--ink); }
+  .pin-c { fill: var(--red); stroke: var(--ink); stroke-width: 3; }
+  .you-pulse { fill: var(--red); animation: pulse 1.5s ease-out infinite; transform-origin: center; }
+  @keyframes pulse { 0%{r:14;opacity:1;} 100%{r:40;opacity:0;} }
+</style>
+</head>
+<body>
+<script>
+  const __TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "schema": "edu-cms-ms-atlas-v1" }/*EDITMODE-END*/;
+</script>
+
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+  <div class="top">
+    <div class="brand" data-widget="school">
+      <div class="compass" aria-hidden="true"><i></i><span class="n">N</span><span class="s">S</span><span class="e">E</span><span class="w">W</span></div>
+      <div class="info">
+        <div class="name" data-field="school.name">Westridge Middle School</div>
+        <div class="sub"><span data-field="school.coord">42.3601° N · 71.0589° W</span> · <b data-field="school.note">HOME OF THE OTTERS · EST. 1962</b></div>
+      </div>
+    </div>
+    <div class="coords">
+      <div class="coord" data-widget="clock">
+        <span class="k" data-field="clock.label">LOCAL TIME</span>
+        <span class="v" data-field="clock.time">7:53 AM</span>
+      </div>
+      <div class="coord" data-widget="weather">
+        <span class="k" data-field="weather.label">OUTDOOR</span>
+        <span class="v warm" data-field="weather.temp">46°F</span>
+      </div>
+      <div class="coord" data-widget="countdown">
+        <span class="k" data-field="countdown.label">TO FIELD DAY</span>
+        <span class="v" data-field="countdown.value">12 days</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="hero" data-widget="greeting">
+    <div class="ey" data-field="greeting.eyebrow">MORNING BRIEFING · DAY B</div>
+    <h1 data-field="greeting.headline">Find your <em>way.</em></h1>
+    <p class="sub" data-field="greeting.subtitle">New to the building? Follow the colored lines — blue goes to the gym, green to the labs, yellow to the arts wing. Your first-period classroom is marked in red. We'll meet you there.</p>
+  </div>
+
+  <div class="map" data-widget="map">
+    <div class="head">
+      <div class="t" data-field="map.title">First Floor · Building A</div>
+      <div class="sc"><span data-field="map.scaleText">SCALE</span><span class="bar"></span><span data-field="map.scaleLabel">≈ 20 ft</span></div>
+    </div>
+    <div class="floor" aria-hidden="true">
+      <svg viewBox="0 0 2000 720" preserveAspectRatio="xMidYMid meet">
+        <!-- outer -->
+        <rect x="20" y="20" width="1960" height="680" class="hall"/>
+        <!-- main corridor -->
+        <rect x="20" y="330" width="1960" height="80" class="hall" fill="#fff"/>
+        <!-- rooms top row -->
+        <rect x="40" y="40" width="280" height="280" class="rm"/>
+        <text x="180" y="170" class="lbl">CAFETERIA</text>
+        <text x="180" y="200" class="lbl sm">A · LUNCH</text>
+        <rect x="340" y="40" width="240" height="280" class="rm"/>
+        <text x="460" y="170" class="lbl">GYM</text>
+        <text x="460" y="200" class="lbl sm">PE · COURT</text>
+        <rect x="600" y="40" width="200" height="280" class="rm hl"/>
+        <text x="700" y="160" class="lbl rm">RM 108</text>
+        <text x="700" y="190" class="lbl sm">ENGLISH · P2</text>
+        <circle cx="700" cy="220" r="14" class="pin-c"/>
+        <circle cx="700" cy="220" r="14" class="you-pulse"/>
+        <text x="700" y="260" class="lbl sm" style="fill:var(--red);">YOU ARE HERE</text>
+        <rect x="820" y="40" width="200" height="280" class="rm"/>
+        <text x="920" y="170" class="lbl rm">RM 115</text>
+        <text x="920" y="200" class="lbl sm">SOCIAL STUDIES</text>
+        <rect x="1040" y="40" width="200" height="280" class="rm"/>
+        <text x="1140" y="170" class="lbl rm">RM 207</text>
+        <text x="1140" y="200" class="lbl sm">SCIENCE LAB</text>
+        <rect x="1260" y="40" width="200" height="280" class="rm"/>
+        <text x="1360" y="170" class="lbl rm">RM 214</text>
+        <text x="1360" y="200" class="lbl sm">MATH</text>
+        <rect x="1480" y="40" width="260" height="280" class="rm"/>
+        <text x="1610" y="160" class="lbl">LIBRARY</text>
+        <text x="1610" y="190" class="lbl sm">MEDIA CENTER</text>
+        <rect x="1760" y="40" width="200" height="280" class="rm"/>
+        <text x="1860" y="170" class="lbl">OFFICE</text>
+        <text x="1860" y="200" class="lbl sm">FRONT DESK</text>
+
+        <!-- rooms bottom row -->
+        <rect x="40" y="420" width="220" height="260" class="rm"/>
+        <text x="150" y="540" class="lbl">AUDITORIUM</text>
+        <text x="150" y="570" class="lbl sm">DRAMA · BAND</text>
+        <rect x="280" y="420" width="240" height="260" class="rm"/>
+        <text x="400" y="540" class="lbl rm">RM B-12</text>
+        <text x="400" y="570" class="lbl sm">ART STUDIO</text>
+        <rect x="540" y="420" width="200" height="260" class="rm"/>
+        <text x="640" y="540" class="lbl rm">COMP LAB B</text>
+        <text x="640" y="570" class="lbl sm">COMPUTERS</text>
+        <rect x="760" y="420" width="200" height="260" class="rm"/>
+        <text x="860" y="540" class="lbl">NURSE</text>
+        <rect x="980" y="420" width="240" height="260" class="rm"/>
+        <text x="1100" y="540" class="lbl">COUNSELOR</text>
+        <text x="1100" y="570" class="lbl sm">WELLNESS</text>
+        <rect x="1240" y="420" width="200" height="260" class="rm"/>
+        <text x="1340" y="540" class="lbl">LOCKERS</text>
+        <text x="1340" y="570" class="lbl sm">6TH GRADE</text>
+        <rect x="1460" y="420" width="200" height="260" class="rm"/>
+        <text x="1560" y="540" class="lbl">LOCKERS</text>
+        <text x="1560" y="570" class="lbl sm">7TH GRADE</text>
+        <rect x="1680" y="420" width="280" height="260" class="rm"/>
+        <text x="1820" y="540" class="lbl">GREENHOUSE</text>
+        <text x="1820" y="570" class="lbl sm">GARDEN CLUB</text>
+
+        <!-- transit lines overlay -->
+        <polyline points="40,370 1960,370" stroke="var(--blue)" stroke-width="8" fill="none" stroke-linecap="round"/>
+        <polyline points="460,320 460,370" stroke="var(--blue)" stroke-width="8" fill="none"/>
+        <polyline points="1140,370 1140,320" stroke="var(--green)" stroke-width="8" fill="none"/>
+        <polyline points="400,420 400,370" stroke="var(--yellow)" stroke-width="8" fill="none"/>
+        <polyline points="150,420 150,370" stroke="var(--yellow)" stroke-width="8" fill="none"/>
+        <polyline points="700,320 700,370" stroke="var(--red)" stroke-width="10" fill="none"/>
+
+        <!-- numbered landmarks -->
+        <g><circle cx="460" cy="370" r="18" fill="var(--yellow)" stroke="var(--ink)" stroke-width="3"/><text x="460" y="377" class="lbl" style="font-size:18px;">1</text></g>
+        <g><circle cx="1140" cy="370" r="18" fill="var(--yellow)" stroke="var(--ink)" stroke-width="3"/><text x="1140" y="377" class="lbl" style="font-size:18px;">2</text></g>
+        <g><circle cx="1610" cy="370" r="18" fill="var(--yellow)" stroke="var(--ink)" stroke-width="3"/><text x="1610" y="377" class="lbl" style="font-size:18px;">3</text></g>
+        <g><circle cx="180" cy="370" r="18" fill="var(--yellow)" stroke="var(--ink)" stroke-width="3"/><text x="180" y="377" class="lbl" style="font-size:18px;">4</text></g>
+      </svg>
+    </div>
+    <div class="legend">
+      <div class="items">
+        <span class="it"><span class="sw" style="background:var(--red);"></span><span data-field="map.legend0">Homeroom route</span></span>
+        <span class="it"><span class="sw" style="background:var(--blue);"></span><span data-field="map.legend1">Main corridor</span></span>
+        <span class="it"><span class="sw" style="background:var(--green);"></span><span data-field="map.legend2">To labs</span></span>
+        <span class="it"><span class="sw" style="background:var(--yellow);"></span><span data-field="map.legend3">To arts wing</span></span>
+      </div>
+      <span data-field="map.footer">Updated 7:45am · Rm B-12 sub today</span>
+    </div>
+  </div>
+
+  <div class="routes" data-widget="buses">
+    <div class="head">
+      <h2 data-field="buses.title">Afternoon Bus Lines</h2>
+      <div class="meta" data-field="buses.meta">DEPARTURES · 2:45 PM · FRONT CIRCLE</div>
+    </div>
+    <div class="grid">
+      <div class="route" data-widget="buses.0">
+        <div class="line">
+          <span class="badge" style="background:var(--blue);" data-field="buses.0.num">12</span>
+          <span class="name"><span data-field="buses.0.name">Oakdale Line</span><span data-field="buses.0.sub">pine ridge · 14 stops</span></span>
+        </div>
+        <div class="stops">
+          <div class="st"><span class="pt"></span><span class="lb" data-field="buses.0.st0">SCHOOL</span></div>
+          <div class="st"><span class="pt"></span><span class="lb" data-field="buses.0.st1">MAPLE</span></div>
+          <div class="st"><span class="pt"></span><span class="lb" data-field="buses.0.st2">OAKDALE</span></div>
+          <div class="st"><span class="pt"></span><span class="lb" data-field="buses.0.st3">PINE RIDGE</span></div>
+        </div>
+        <span class="status on" data-field="buses.0.status">ON TIME</span>
+      </div>
+      <div class="route" data-widget="buses.1">
+        <div class="line">
+          <span class="badge" style="background:var(--red);" data-field="buses.1.num">14</span>
+          <span class="name"><span data-field="buses.1.name">Heights Line</span><span data-field="buses.1.sub">westridge heights loop</span></span>
+        </div>
+        <div class="stops">
+          <div class="st"><span class="pt"></span><span class="lb" data-field="buses.1.st0">SCHOOL</span></div>
+          <div class="st"><span class="pt"></span><span class="lb" data-field="buses.1.st1">RIVER RD</span></div>
+          <div class="st"><span class="pt"></span><span class="lb" data-field="buses.1.st2">HEIGHTS</span></div>
+          <div class="st"><span class="pt"></span><span class="lb" data-field="buses.1.st3">CENTER</span></div>
+        </div>
+        <span class="status late" data-field="buses.1.status">+10 MIN</span>
+      </div>
+      <div class="route" data-widget="buses.2">
+        <div class="line">
+          <span class="badge" style="background:var(--green);" data-field="buses.2.num">27</span>
+          <span class="name"><span data-field="buses.2.name">Clark Line</span><span data-field="buses.2.sub">clark · downtown</span></span>
+        </div>
+        <div class="stops">
+          <div class="st"><span class="pt"></span><span class="lb" data-field="buses.2.st0">SCHOOL</span></div>
+          <div class="st"><span class="pt"></span><span class="lb" data-field="buses.2.st1">CLARK ST</span></div>
+          <div class="st"><span class="pt"></span><span class="lb" data-field="buses.2.st2">DOWNTOWN</span></div>
+          <div class="st"><span class="pt"></span><span class="lb" data-field="buses.2.st3">LIBRARY</span></div>
+        </div>
+        <span class="status sched" data-field="buses.2.status">SCHEDULED</span>
+      </div>
+      <div class="route" data-widget="buses.3">
+        <div class="line">
+          <span class="badge" style="background:var(--purple);" data-field="buses.3.num">31</span>
+          <span class="name"><span data-field="buses.3.name">Maple Line</span><span data-field="buses.3.sub">maple ave loop</span></span>
+        </div>
+        <div class="stops">
+          <div class="st"><span class="pt"></span><span class="lb" data-field="buses.3.st0">SCHOOL</span></div>
+          <div class="st"><span class="pt"></span><span class="lb" data-field="buses.3.st1">ELM ST</span></div>
+          <div class="st"><span class="pt"></span><span class="lb" data-field="buses.3.st2">MAPLE</span></div>
+          <div class="st"><span class="pt"></span><span class="lb" data-field="buses.3.st3">BIRCH</span></div>
+        </div>
+        <span class="status on" data-field="buses.3.status">ON TIME</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <div class="panel" data-widget="lunch">
+      <div class="ey" data-field="lunch.label">LUNCH · DESTINATION MARKER</div>
+      <h3 data-field="lunch.title">In the cafeteria — A lunch</h3>
+      <div class="lunchpin">
+        <div class="pin" aria-hidden="true"></div>
+        <div class="info">
+          <div class="e" data-field="lunch.entree">Chicken &amp; rice bowl</div>
+          <div class="s" data-field="lunch.sides">with broccoli, garlic bread, fresh fruit. Salad bar all period.</div>
+          <div class="tags">
+            <span data-field="lunch.tag1">VEG</span>
+            <span data-field="lunch.tag2">GF</span>
+            <span data-field="lunch.tag3">DF</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="panel" data-widget="clubs">
+      <div class="ey" data-field="clubs.label">NUMBERED LANDMARKS · AFTER-SCHOOL</div>
+      <h3 data-field="clubs.title">Today's waypoints</h3>
+      <div class="landmarks">
+        <div class="lm" data-widget="clubs.0"><span class="n">1</span><span class="t"><span data-field="clubs.0.n">Robotics Club</span><span data-field="clubs.0.r">rm 207 · science lab</span></span><span class="w" data-field="clubs.0.w">3:00–4:30</span></div>
+        <div class="lm" data-widget="clubs.1"><span class="n">2</span><span class="t"><span data-field="clubs.1.n">Drama auditions</span><span data-field="clubs.1.r">auditorium · sign-in at door</span></span><span class="w" data-field="clubs.1.w">3:15–4:30</span></div>
+        <div class="lm" data-widget="clubs.2"><span class="n">3</span><span class="t"><span data-field="clubs.2.n">Garden Club</span><span data-field="clubs.2.r">greenhouse · east wing</span></span><span class="w" data-field="clubs.2.w">3:00–4:00</span></div>
+      </div>
+    </div>
+    <div class="panel alert" data-widget="announcement">
+      <div class="ey" data-field="announcement.tag">ADVISORY · ALL GRADES</div>
+      <h3 data-field="announcement.headline">Picture day → moved to Thursday</h3>
+      <div class="msg" data-field="announcement.body">Full uniform. Permission slips to front office by Wednesday end of day. 6th grade goes first, by homeroom.</div>
+      <div class="when" data-field="announcement.when">▶ THU · APR 23 · ALL DAY</div>
+    </div>
+  </div>
+
+  <div class="ticker" data-widget="ticker">
+    <div class="tag" data-field="ticker.tag">▶ XEROX ADVISORY</div>
+    <div class="msg">
+      <span data-field="ticker.message">Bus 14 running +10 · Ms. Park out today, sub in B-12 · Spelling bee sign-ups close Friday · Library returns due this week · 8th grade field trip forms due tomorrow · Lost blue water bottle with otter sticker → front office · </span>
+      <span data-field="ticker.message">Bus 14 running +10 · Ms. Park out today, sub in B-12 · Spelling bee sign-ups close Friday · Library returns due this week · 8th grade field trip forms due tomorrow · Lost blue water bottle with otter sticker → front office · </span>
+    </div>
+  </div>
+
+</div></div></div>
+
+<script>
+(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const cs=getComputedStyle(document.documentElement);const w=parseFloat(cs.getPropertyValue('--stage-w'))||3840;const h=parseFloat(cs.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();
+</script>
+<script>
+/* Shared widget editor harness for EDU CMS lobby templates.
+ *
+ * Capabilities:
+ *   1. Live text editing of [data-field] nodes, grouped by [data-widget].
+ *   2. Drag widgets (snap to 40px grid) and resize via SE handle.
+ *   3. Auto-fit: shrink text to fit its container, with a readable floor.
+ *   4. Persist layout + content to the EDITMODE JSON block via
+ *      __edit_mode_set_keys postMessage.
+ *
+ * Activation follows the tweaks protocol: register listener FIRST, then
+ * announce __edit_mode_available.
+ */
+(function () {
+  const GRID = 40;
+  const MIN_FONT = 18;            // px — anything smaller is unreadable on lobby displays
+  const AUTOFIT_ATTR = 'data-autofit';   // opt-out with data-autofit="off"
+
+  const PANEL_ID = '__edu_cms_editor_panel';
+  let active = false;
+  let panel = null;
+
+  /* -------- layout persistence (runtime) --------
+     Positions are stored as: layout[widgetKey] = { x, y, w, h }
+     Applied to the [data-widget] element as inline styles in "absolute" mode. */
+  const layout = {};
+
+  /* -------- utilities -------- */
+  function $(q, el = document) { return el.querySelector(q); }
+  function $(q, el = document) { return Array.from(el.querySelectorAll(q)); }
+  function snap(v) { return Math.round(v / GRID) * GRID; }
+  function widgets() { return $('[data-widget]'); }
+  function fields() { return $('[data-field]'); }
+
+  /* -------- autofit -------- */
+  // For every [data-field], remember its designed font-size (the CSS max) and
+  // shrink only if necessary. We measure against the FIELD's own box, so a
+  // multi-line headline wraps as designed and only shrinks when truly overflowing.
+  const autofitObservers = new Map();
+
+  function ensureBaseFontSize(el) {
+    if (el.dataset.autofitBase) return parseFloat(el.dataset.autofitBase);
+    const fs = parseFloat(getComputedStyle(el).fontSize);
+    el.dataset.autofitBase = String(fs);
+    return fs;
+  }
+
+  function fitField(el) {
+    if (el.getAttribute(AUTOFIT_ATTR) === 'off') return;
+    const base = ensureBaseFontSize(el);
+    el.style.fontSize = base + 'px';
+    const host = el.closest('[data-widget]') || el.parentElement;
+    if (!host) return;
+    // Cap height = the widget's declared/designed box. Recorded on first fit
+    // so we measure overflow against the INTENDED size, not a stretched one.
+    const capH = getCapHeight(host);
+    const capW = getCapWidth(host);
+    if (!boxOverflows(host, capW, capH)) return;
+    let lo = MIN_FONT, hi = base;
+    for (let i = 0; i < 14; i++) {
+      const mid = (lo + hi) / 2;
+      el.style.fontSize = mid + 'px';
+      if (boxOverflows(host, capW, capH)) hi = mid; else lo = mid;
+      if (hi - lo < 0.5) break;
+    }
+    el.style.fontSize = lo + 'px';
+  }
+
+  function getCapHeight(host) {
+    if (host.dataset.capH) return parseFloat(host.dataset.capH);
+    // If inline height is set (snapshot mode), use it. Else use offsetHeight now.
+    const h = parseFloat(host.style.height) || host.offsetHeight;
+    host.dataset.capH = String(h);
+    return h;
+  }
+  function getCapWidth(host) {
+    if (host.dataset.capW) return parseFloat(host.dataset.capW);
+    const w = parseFloat(host.style.width) || host.offsetWidth;
+    host.dataset.capW = String(w);
+    return w;
+  }
+  function boxOverflows(host, capW, capH) {
+    // scrollHeight/Width always reflect content size regardless of box height.
+    return (host.scrollHeight - capH) > 2 || (host.scrollWidth - capW) > 2;
+  }
+
+  function fitAll() { fields().forEach(fitField); }
+
+  function observeAutofit() {
+    // ResizeObserver on each widget re-fits when its size changes (user drag/resize).
+    if (!('ResizeObserver' in window)) { window.addEventListener('resize', fitAll); return; }
+    const ro = new ResizeObserver(entries => {
+      entries.forEach(e => {
+        $('[data-field]', e.target).forEach(fitField);
+      });
+    });
+    widgets().forEach(w => { ro.observe(w); autofitObservers.set(w, ro); });
+    // Also re-fit on window resize (for stage scale changes)
+    window.addEventListener('resize', () => requestAnimationFrame(fitAll));
+  }
+
+  /* -------- layout (drag / resize) -------- */
+  // Entering edit mode: snapshot each widget's current geometry (relative to stage),
+  // switch it to absolute positioning at those coords. On exit, restore.
+  let stage = null;
+  const savedStyles = new Map();
+
+  function getStage() {
+    return stage || (stage = document.querySelector('.stage') || document.body);
+  }
+
+  function snapshotWidgets() {
+    const s = getStage();
+    const sr = s.getBoundingClientRect();
+    widgets().forEach(w => {
+      const r = w.getBoundingClientRect();
+      // Undo the stage's scale to get canvas-space coords.
+      const scale = (sr.width / s.offsetWidth) || 1;
+      const x = (r.left - sr.left) / scale;
+      const y = (r.top - sr.top) / scale;
+      const width = r.width / scale;
+      const height = r.height / scale;
+      savedStyles.set(w, { cssText: w.style.cssText });
+      // Only switch to absolute if it isn't already
+      const cs = getComputedStyle(w);
+      if (cs.position !== 'absolute') {
+        w.style.position = 'absolute';
+        w.style.left = x + 'px';
+        w.style.top = y + 'px';
+        w.style.width = width + 'px';
+        w.style.height = height + 'px';
+        w.style.margin = '0';
+      }
+      // Apply any persisted layout
+      const key = w.getAttribute('data-widget');
+      if (layout[key]) applyLayout(w, layout[key]);
+    });
+  }
+
+  function restoreWidgets() {
+    savedStyles.forEach((v, w) => { w.style.cssText = v.cssText; });
+    savedStyles.clear();
+  }
+
+  function applyLayout(w, pos) {
+    if (pos.x != null) w.style.left = pos.x + 'px';
+    if (pos.y != null) w.style.top = pos.y + 'px';
+    if (pos.w != null) w.style.width = pos.w + 'px';
+    if (pos.h != null) w.style.height = pos.h + 'px';
+  }
+
+  function attachHandles() {
+    widgets().forEach(w => {
+      if (w.querySelector('.__ed_handles')) return;
+      const h = document.createElement('div');
+      h.className = '__ed_handles';
+      h.innerHTML = `
+        <div class="__ed_move" title="Drag to move"></div>
+        <div class="__ed_resize" title="Drag corner to resize"></div>
+        <div class="__ed_label"></div>`;
+      const lbl = h.querySelector('.__ed_label');
+      lbl.textContent = w.getAttribute('data-widget');
+      w.appendChild(h);
+
+      dragify(h.querySelector('.__ed_move'), w, 'move');
+      dragify(h.querySelector('.__ed_resize'), w, 'resize');
+    });
+  }
+
+  function removeHandles() {
+    $('.__ed_handles').forEach(n => n.remove());
+  }
+
+  function dragify(handle, target, mode) {
+    let startX, startY, startL, startT, startW, startH, scale = 1;
+    handle.addEventListener('pointerdown', e => {
+      e.preventDefault(); e.stopPropagation();
+      handle.setPointerCapture(e.pointerId);
+      const s = getStage();
+      scale = s.getBoundingClientRect().width / s.offsetWidth || 1;
+      startX = e.clientX; startY = e.clientY;
+      startL = parseFloat(target.style.left) || 0;
+      startT = parseFloat(target.style.top) || 0;
+      startW = target.offsetWidth;
+      startH = target.offsetHeight;
+      target.classList.add('__ed_active');
+    });
+    handle.addEventListener('pointermove', e => {
+      if (!handle.hasPointerCapture?.(e.pointerId)) return;
+      const dx = (e.clientX - startX) / scale;
+      const dy = (e.clientY - startY) / scale;
+      if (mode === 'move') {
+        target.style.left = snap(startL + dx) + 'px';
+        target.style.top = snap(startT + dy) + 'px';
+      } else {
+        target.style.width = Math.max(120, snap(startW + dx)) + 'px';
+        target.style.height = Math.max(80, snap(startH + dy)) + 'px';
+      }
+      // Re-fit text during drag
+      $('[data-field]', target).forEach(fitField);
+    });
+    handle.addEventListener('pointerup', e => {
+      handle.releasePointerCapture?.(e.pointerId);
+      target.classList.remove('__ed_active');
+      persist();
+    });
+  }
+
+  /* -------- panel (text editing) -------- */
+  function buildPanel() {
+    panel = document.createElement('div');
+    panel.id = PANEL_ID;
+    panel.innerHTML = `
+      <style>
+        #${PANEL_ID} {
+          position: fixed; top: 20px; right: 20px; width: 440px; max-height: 92vh;
+          background: #0f172a; color: #e2e8f0; font: 13px/1.45 -apple-system, 'Inter', sans-serif;
+          border: 1px solid #334155; border-radius: 12px; z-index: 2147483000;
+          display: flex; flex-direction: column; overflow: hidden;
+          box-shadow: 0 20px 60px rgba(0,0,0,.55);
+        }
+        #${PANEL_ID} header {
+          padding: 12px 16px; background: #1e293b; border-bottom: 1px solid #334155;
+          display: flex; align-items: center; justify-content: space-between;
+        }
+        #${PANEL_ID} header h3 { margin:0; font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: #cbd5e1; }
+        #${PANEL_ID} header button { background:#334155; color:#e2e8f0; border:0; border-radius:6px; padding:4px 10px; font-size:12px; cursor:pointer; }
+        #${PANEL_ID} header button:hover { background:#475569; }
+        #${PANEL_ID} .__ed_body { padding: 10px 12px; overflow: auto; flex:1; }
+        #${PANEL_ID} details { border: 1px solid #1e293b; border-radius: 8px; margin-bottom: 10px; background:#0b1324; }
+        #${PANEL_ID} summary { padding: 8px 12px; cursor: pointer; font-weight: 600; color:#fde68a; list-style:none; display:flex; justify-content:space-between; align-items:center; }
+        #${PANEL_ID} summary::-webkit-details-marker { display:none; }
+        #${PANEL_ID} summary .__cnt { font-size: 11px; color:#64748b; font-weight:500; }
+        #${PANEL_ID} .__field { padding: 6px 12px 10px; border-top: 1px solid #1e293b; }
+        #${PANEL_ID} .__field label { display:block; font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing:.08em; margin-bottom: 4px; }
+        #${PANEL_ID} .__field textarea, #${PANEL_ID} .__field input {
+          width: 100%; box-sizing: border-box;
+          background: #020617; color: #f1f5f9; border: 1px solid #334155; border-radius: 6px;
+          padding: 6px 8px; font: inherit; font-size: 13px; resize: vertical;
+        }
+        #${PANEL_ID} .__field textarea { min-height: 38px; }
+        #${PANEL_ID} .__field textarea:focus, #${PANEL_ID} .__field input:focus { outline: 2px solid #6366f1; border-color: transparent; }
+        #${PANEL_ID} .__hint { font-size: 11px; color:#64748b; padding: 4px 4px 10px; }
+      </style>
+      <header>
+        <h3>Widgets</h3>
+        <div>
+          <button type="button" id="__ed_reset">Reset layout</button>
+        </div>
+      </header>
+      <div class="__ed_body"></div>
+      <div class="__hint" style="padding: 8px 14px; background:#0b1324; border-top:1px solid #1e293b;">Drag a widget's header to move · corner handle to resize · grid 40px.</div>
+    `;
+    document.body.appendChild(panel);
+    panel.querySelector('#__ed_reset').addEventListener('click', resetLayout);
+    renderPanel();
+  }
+
+  function renderPanel() {
+    const body = panel.querySelector('.__ed_body');
+    body.innerHTML = '';
+    const byWidget = new Map();
+    fields().forEach(f => {
+      const w = f.closest('[data-widget]')?.getAttribute('data-widget') || 'other';
+      if (!byWidget.has(w)) byWidget.set(w, []);
+      byWidget.get(w).push(f);
+    });
+    const keys = Array.from(byWidget.keys()).sort();
+    keys.forEach((k, i) => {
+      const grp = byWidget.get(k);
+      const det = document.createElement('details');
+      if (i < 3) det.open = true;
+      det.innerHTML = `<summary><span>${k}</span><span class="__cnt">${grp.length} field${grp.length===1?'':'s'}</span></summary>`;
+      // Dedupe field keys (ticker has duplicated spans for the scroll effect)
+      const seen = new Set();
+      grp.forEach(f => {
+        const key = f.getAttribute('data-field');
+        if (seen.has(key)) return; seen.add(key);
+        const wrap = document.createElement('div');
+        wrap.className = '__field';
+        const isLong = (f.textContent || '').length > 60;
+        const ctl = isLong ? 'textarea' : 'input';
+        wrap.innerHTML = `<label>${key}</label><${ctl} data-key="${key}">${isLong ? (f.textContent || '').trim() : ''}</${ctl}>`;
+        const ctrl = wrap.querySelector('[data-key]');
+        if (!isLong) ctrl.value = (f.textContent || '').trim();
+        ctrl.addEventListener('input', () => {
+          // Update every field node with this key (handles duplicates e.g. ticker)
+          $(`[data-field="${CSS.escape(key)}"]`).forEach(n => { n.textContent = ctrl.value; fitField(n); });
+          persist();
+        });
+        det.appendChild(wrap);
+      });
+      body.appendChild(det);
+    });
+  }
+
+  /* -------- persistence -------- */
+  function persist() {
+    const out = {};
+    // text content
+    const seen = new Set();
+    fields().forEach(f => {
+      const k = f.getAttribute('data-field');
+      if (seen.has(k)) return; seen.add(k);
+      out[k] = (f.textContent || '').trim();
+    });
+    // layout — only include widgets whose pos is set
+    const layoutOut = {};
+    widgets().forEach(w => {
+      const k = w.getAttribute('data-widget');
+      if (!w.style.left) return;
+      layoutOut[k] = {
+        x: parseFloat(w.style.left),
+        y: parseFloat(w.style.top),
+        w: parseFloat(w.style.width),
+        h: parseFloat(w.style.height)
+      };
+    });
+    out.__layout = layoutOut;
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: out }, '*');
+  }
+
+  function resetLayout() {
+    // clear inline positioning and re-snapshot
+    widgets().forEach(w => { w.style.cssText = savedStyles.get(w)?.cssText || ''; });
+    savedStyles.clear();
+    snapshotWidgets();
+    fitAll();
+    persist();
+  }
+
+  /* -------- activation -------- */
+  function activate() {
+    if (active) return; active = true;
+    document.body.classList.add('__ed_active_mode');
+    snapshotWidgets();
+    attachHandles();
+    if (!panel) buildPanel(); else panel.style.display = 'flex';
+    fitAll();
+  }
+  function deactivate() {
+    if (!active) return; active = false;
+    document.body.classList.remove('__ed_active_mode');
+    removeHandles();
+    restoreWidgets();
+    if (panel) panel.style.display = 'none';
+    fitAll();
+  }
+
+  /* -------- boot -------- */
+  function boot() {
+    // inject drag/handle styles
+    const st = document.createElement('style');
+    st.textContent = `
+      [data-widget] { box-sizing: border-box; }
+      .__ed_active_mode [data-widget] { outline: 1px dashed rgba(99,102,241,.35); outline-offset: -1px; }
+      .__ed_handles { position: absolute; inset: 0; pointer-events: none; z-index: 2147482000; }
+      .__ed_move {
+        position: absolute; top: 0; left: 0; right: 0; height: 36px; pointer-events: auto;
+        background: linear-gradient(180deg, rgba(99,102,241,.35), rgba(99,102,241,0));
+        cursor: move;
+      }
+      .__ed_resize {
+        position: absolute; bottom: 0; right: 0; width: 36px; height: 36px; pointer-events: auto;
+        background: linear-gradient(135deg, transparent 50%, rgba(99,102,241,.7) 50%);
+        cursor: se-resize;
+      }
+      .__ed_label {
+        position: absolute; top: 4px; left: 8px; font: 600 11px/1 -apple-system, Inter, sans-serif;
+        color: #fff; background: #6366f1; padding: 3px 8px; border-radius: 4px; pointer-events: none;
+        letter-spacing: .04em; text-transform: uppercase;
+      }
+      [data-widget].__ed_active { outline: 2px solid #6366f1 !important; outline-offset: -2px; }
+    `;
+    document.head.appendChild(st);
+
+    // Listener first
+    window.addEventListener('message', e => {
+      const d = e.data || {};
+      if (d.type === '__activate_edit_mode') activate();
+      else if (d.type === '__deactivate_edit_mode') deactivate();
+    });
+    // Autofit once on load (passive — no mutations), then observe.
+    const start = () => { fitAll(); observeAutofit(); };
+    if (document.readyState === 'complete') start(); else window.addEventListener('load', start);
+    // Announce availability AFTER listener is live
+    try { window.parent.postMessage({ type: '__edit_mode_available' }, '*'); } catch (e) {}
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+
+</script>
+
+<script>
+  // v1 addition: fit() helper matching the shipped HS + arcade
+  // templates. Reads the declared --stage-w/h from :root, divides
+  // by the current window size, and writes the smaller of the two
+  // ratios back onto --stage-scale. Runs on load + every resize,
+  // plus two short setTimeout fallbacks in case web fonts re-flow
+  // the layout after initial paint.
+  (function(){
+    function fit(){
+      var cs = getComputedStyle(document.documentElement);
+      var w = parseFloat(cs.getPropertyValue('--stage-w')) || 3840;
+      var h = parseFloat(cs.getPropertyValue('--stage-h')) || 2160;
+      var k = Math.min(window.innerWidth / w, window.innerHeight / h);
+      document.documentElement.style.setProperty('--stage-scale', k);
+    }
+    window.addEventListener('resize', fit);
+    window.addEventListener('load', fit);
+    setTimeout(fit, 10);
+    setTimeout(fit, 300);
+  })();
+</script>
+</body></html>

@@ -109,11 +109,17 @@
   .stat .v.xp { color: var(--yellow); }
 
   /* ─── Hero quest card ────────────────────────────────────── */
+  /* v2.5: with box-sizing:border-box applied above, the previous
+     `height: 820 + padding: 72` meant content area = 820-144-12 = 664.
+     Old content (~820px of it) overflowed. Geometry tightened:
+     height bumped 820 → 880, padding top/bottom trimmed 72 → 56 so
+     content area = 880-112-12 = 756. Below content-needed plus
+     ~20px bottom breathing so text never touches the border. */
   .quest {
-    position: absolute; top: 310px; left: 64px; width: 2400px; height: 820px;
+    position: absolute; top: 310px; left: 64px; width: 2400px; height: 880px;
     background: var(--panel); border: 6px solid var(--ink);
     box-shadow: 16px 16px 0 #000;
-    padding: 72px 80px; overflow: hidden;
+    padding: 56px 80px; overflow: hidden;
   }
   .quest::before {
     content:''; position:absolute; right:-140px; top:-140px; width: 620px; height: 620px;
