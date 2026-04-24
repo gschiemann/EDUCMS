@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>EDU CMS Pilot — Your First Demo</title>
+<style>
+  @page { margin: 20mm 18mm; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: 'Inter', -apple-system, Segoe UI, Helvetica, Arial, sans-serif;
+          max-width: 780px; margin: 30px auto 90px; padding: 0 24px;
+          color: #1e293b; line-height: 1.55; font-size: 15px; }
+  h1 { font-size: 34px; color: #312e81; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 22px; color: #4338ca; margin: 36px 0 10px; padding-bottom: 6px; border-bottom: 2px solid #e0e7ff; }
+  h3 { font-size: 17px; color: #1e40af; margin: 22px 0 6px; }
+  p { margin: 8px 0; }
+  a { color: #4338ca; text-decoration: none; border-bottom: 1px solid #c7d2fe; }
+  code { background: #f1f5f9; padding: 1px 6px; border-radius: 4px; font-size: 13px; font-family: 'JetBrains Mono', 'Consolas', monospace; color: #be123c; }
+  pre { background: #0f172a; color: #e2e8f0; padding: 14px 18px; border-radius: 10px; overflow: auto; font-size: 13px; line-height: 1.45; }
+  ul, ol { margin: 8px 0; padding-left: 24px; }
+  li { margin: 4px 0; }
+  li input[type=checkbox] { margin-right: 6px; transform: translateY(1px); }
+  hr { border: 0; border-top: 1px solid #e2e8f0; margin: 28px 0; }
+  blockquote { border-left: 4px solid #c7d2fe; padding: 8px 14px; margin: 12px 0; background: #eef2ff; color: #334155; border-radius: 0 8px 8px 0; font-size: 14px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+  th, td { border: 1px solid #e2e8f0; padding: 6px 10px; text-align: left; }
+  th { background: #f8fafc; color: #1e293b; }
+  .screenshot-slot { background: #fef3c7; border: 2px dashed #f59e0b; color: #78350f;
+                     padding: 10px 14px; border-radius: 8px; margin: 14px 0;
+                     font-size: 13px; }
+  .screenshot-slot strong { color: #92400e; display: inline-block; margin-right: 6px; }
+  .todo-slot { background: #fee2e2; color: #991b1b; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+  @media print { body { margin: 0; max-width: 100%; font-size: 12pt; } h2 { page-break-after: avoid; } }
+</style></head>
+<body>
+<h1>EDU CMS Pilot — Your First Demo</h1>
+<p>Welcome! This guide walks you through your first end-to-end demo of EDU CMS. No technical background needed — we explain every click. Take your time; each step is designed to give you a working feel for the product in about 20 minutes.</p>
+<hr/>
+<h2>Your Pilot Accounts</h2>
+<p>Two accounts are ready for you. Either works for everything in this guide — pick whichever you like.</p>
+<p>| Email | Password |</p>
+<p>|---|---|</p>
+<p>| <code>chuck@agceducation.com</code> | <code>12345678</code> |</p>
+<table><thead><tr><th>Email</th><th>Password</th></tr></thead><tbody><tr><td><code>chuck@agceducation.com</code></td><td><code>12345678</code></td></tr><tr><td><code>larry@agceducation.com</code></td><td><code>12345678</code></td></tr></tbody></table>
+<p>Both sign in at <strong>https://educms-five.vercel.app/login</strong>.</p>
+<blockquote>Keep this guide open on one side of your screen and the browser on the other. You'll be flipping between tabs, so a little screen real estate helps.</blockquote>
+<hr/>
+<h2>Before You Start</h2>
+<p>A 60-second checklist. Knock these out now and the rest of the demo is smooth:</p>
+<ul>
+<li><input type="checkbox" disabled/> <strong>Google Chrome is open</strong> on your computer (any modern browser works, but we test against Chrome).</li>
+<li><input type="checkbox" disabled/> <strong>Your phone is within reach</strong> with a web browser (Safari on iPhone or Chrome on Android — both fine).</li>
+<li><input type="checkbox" disabled/> <strong>2 or 3 sample images</strong> are saved to your desktop. A school logo, a flyer, an event photo — anything you'd show on a hallway TV. JPG or PNG, under 10 MB each.</li>
+<li><input type="checkbox" disabled/> <strong>You're on WiFi</strong> that's not blocking Vercel or Railway (most school guest networks are fine — if you're on a locked-down district network, try a hotspot).</li>
+</ul>
+<hr/>
+<h2>What You're Going to See</h2>
+<p>In about 20 minutes you'll sign in, turn a second browser tab into a pretend "hallway TV," upload some of your own content, build a custom school template, assemble it into a playlist, publish it to that pretend screen, then trigger a real emergency alert from your phone and watch the TV switch to lockdown mode in seconds. Finally you'll clear the alert from the dashboard and watch the screen return to normal. This is the exact same flow your staff will run the day this goes live in your building.</p>
+<hr/>
+<h2>Step 1 — Sign In</h2>
+<ol>
+<li>In Chrome, go to <strong>https://educms-five.vercel.app/login</strong>.</li>
+<li>In the <strong>Email</strong> field, type <code>chuck@agceducation.com</code> (or <code>larry@…</code>).</li>
+<li>In the <strong>Password</strong> field, type <code>12345678</code>.</li>
+<li><strong>Check the box labeled "Remember me"</strong> before clicking sign in. This keeps you logged in for the full demo so you don't have to retype the password on every tab.</li>
+<li>Click the <strong>Sign In</strong> button.</li>
+</ol>
+<p><div class="screenshot-slot"><strong>[SCREENSHOT NEEDED]</strong> Login page with email/password filled and "Remember me" checked</div></p>
+<p><strong>You should see:</strong> the main dashboard load with your school name in the top-left corner and a left-hand navigation menu (Screens, Playlists, Templates, Assets, etc.).</p>
+<blockquote><strong>About "Remember me":</strong> when checked, your session stays active across browser restarts for up to 8 hours of idle time, and rolls forward every time you use the app. You won't get surprise sign-outs mid-demo.</blockquote>
+<p><div class="screenshot-slot"><strong>[SCREENSHOT NEEDED]</strong> Dashboard home after login</div></p>
+<hr/>
+<h2>Step 2 — Add Your Browser as a Sample Screen</h2>
+<p>Every hallway TV, lobby monitor, or cafeteria board is called a <strong>Screen</strong> in this system. To show you how it feels without buying hardware, we're going to turn a second browser tab into a pretend screen.</p>
+<ol>
+<li>In the left nav, click <strong>Screens</strong>.</li>
+<li>Click the <strong>Add Screen</strong> button (top-right of the page).</li>
+<li>A dialog opens showing a <strong>6-character pairing code</strong> (example: <code>A7K-9QR</code>). Click the <strong>Copy</strong> icon next to it.</li>
+</ol>
+<p><div class="screenshot-slot"><strong>[SCREENSHOT NEEDED]</strong> Add Screen dialog with pairing code visible</div></p>
+<ol>
+<li>Open a <strong>new browser tab</strong> (Ctrl+T / Cmd+T) and go to <strong>https://educms-five.vercel.app/pair</strong>.</li>
+<li>Paste the pairing code into the box. Click <strong>Pair this Device</strong>.</li>
+<li>Flip back to your first tab (the dashboard). The Screens list now shows your new screen with a green <strong>ONLINE</strong> badge.</li>
+</ol>
+<p><div class="screenshot-slot"><strong>[SCREENSHOT NEEDED]</strong> Screens list with new ONLINE screen row</div></p>
+<p><strong>You should see:</strong> two tabs — one showing the dashboard with an ONLINE screen, the other showing a gray "waiting for content" message. That second tab IS what a lobby TV looks like the moment it's plugged in at your school. Same code, same behavior, just running in a browser tab so you can feel it before ordering hardware.</p>
+<hr/>
+<h2>Step 3 — Upload Your Content</h2>
+<p>Now let's give it something to display.</p>
+<ol>
+<li>Left nav → <strong>Assets</strong>.</li>
+<li>Click <strong>New Folder</strong>. Name it <code>Demo Content</code>. Click <strong>Create</strong>.</li>
+</ol>
+<p><div class="screenshot-slot"><strong>[SCREENSHOT NEEDED]</strong> Asset folder creation dialog</div></p>
+<ol>
+<li>Click the blue <strong>Upload to...</strong> button at the top-right.</li>
+<li>A folder picker opens with a search box at the top. Type <code>demo</code> — the <code>Demo Content</code> folder you just made filters to the top. Click it.</li>
+<li>Drag 2 or 3 images from your desktop into the drop zone (or click <strong>Browse</strong> to pick them).</li>
+<li>Wait about 5 seconds for each upload to finish. You'll see checkmarks next to each file name.</li>
+</ol>
+<p><div class="screenshot-slot"><strong>[SCREENSHOT NEEDED]</strong> Upload dialog with files uploaded to Demo Content folder</div></p>
+<p><strong>You should see:</strong> your images appear as thumbnails inside the <code>Demo Content</code> folder. The folder tree on the left shows the new folder nested correctly. The search box at the top of the Assets page filters folders by name — handy when you have dozens.</p>
+<hr/>
+<h2>Step 4 — Build a Custom Template</h2>
+<p>A <strong>Template</strong> is the visual layout — where the clock sits, where the school name goes, what the background looks like. We ship 17 pre-made templates; you're going to customize one and save it as yours.</p>
+<ol>
+<li>Left nav → <strong>Templates</strong>.</li>
+<li>Scroll to find a high-school themed template (look for <strong>Varsity</strong>, <strong>Broadcast</strong>, or <strong>Yearbook</strong>). Click its thumbnail.</li>
+<li>Click <strong>Use This Template</strong>. The template builder opens with your chosen layout on the canvas in the middle.</li>
+</ol>
+<p><div class="screenshot-slot"><strong>[SCREENSHOT NEEDED]</strong> Template builder opened on a Varsity template</div></p>
+<ol>
+<li>Click any widget on the canvas — the clock, the announcement box, the countdown. A <strong>blue highlight</strong> appears around it, and the <strong>left toolbar</strong> swaps to show that widget's editor.</li>
+<li>For each widget, configure it:</li>
+</ol>
+<p>    - <strong>School name / title widget</strong> → type your real school name.</p>
+<p>    - <strong>Announcement text</strong> → type a welcome message (e.g., "Welcome back, Eagles! Homecoming is Friday.").</p>
+<p>    - <strong>Teacher Spotlight</strong> → pick a teacher name, add a short bio line.</p>
+<p>    - <strong>Countdown</strong> → click the date picker, set it to your next game or event.</p>
+<p><div class="screenshot-slot"><strong>[SCREENSHOT NEEDED]</strong> Widget being edited with the left-toolbar editor open</div></p>
+<blockquote><strong>Important:</strong> every widget you can drop on the canvas can also be edited. Click the widget, the toolbar opens. There are no "locked" or orphan widgets — if it's on the screen, you can configure it.</blockquote>
+<ol>
+<li>When you're happy with it, click <strong>Save As Custom Template</strong> (top-right). Name it <code>My Demo Template</code>. Click <strong>Save</strong>.</li>
+</ol>
+<p><div class="screenshot-slot"><strong>[SCREENSHOT NEEDED]</strong> Save custom template dialog</div></p>
+<p><strong>You should see:</strong> a confirmation banner ("Template saved") and your new <code>My Demo Template</code> appearing in the <strong>Custom</strong> tab of the Templates page.</p>
+<hr/>
+<h2>Step 5 — Create a Playlist</h2>
+<p>A <strong>Playlist</strong> is the sequence of content that rotates on a screen. We'll mix your custom template with the images you uploaded.</p>
+<ol>
+<li>Left nav → <strong>Playlists</strong>.</li>
+<li>Click <strong>New Playlist</strong>. Name it <code>Demo Rotation</code>. Click <strong>Create</strong>.</li>
+<li>Click <strong>Add Item</strong> → <strong>Template</strong> → pick <code>My Demo Template</code>. Set <strong>Duration</strong> to <code>30</code> seconds. Click <strong>Add</strong>.</li>
+<li>Click <strong>Add Item</strong> → <strong>Asset</strong> → pick one of your uploaded images. Set <strong>Duration</strong> to <code>15</code> seconds. Click <strong>Add</strong>.</li>
+<li>Repeat step 4 for a second image (15 seconds).</li>
+<li>Your playlist now has 3 items. Click <strong>Save</strong>.</li>
+</ol>
+<p><div class="screenshot-slot"><strong>[SCREENSHOT NEEDED]</strong> Playlist editor showing 3 items in order</div></p>
+<p><strong>You should see:</strong> a clean playlist list with your 3 items in order, total run time around 60 seconds.</p>
+<hr/>
+<h2>Step 6 — Publish It to Your Sample Screen</h2>
+<ol>
+<li>Left nav → <strong>Screens</strong>.</li>
+<li>Click the row for your paired screen (the one with the ONLINE badge).</li>
+<li>On the screen detail page, find <strong>Assigned Playlist</strong>. Click the dropdown.</li>
+<li>Pick <code>Demo Rotation</code>. Click <strong>Save</strong>.</li>
+</ol>
+<p><div class="screenshot-slot"><strong>[SCREENSHOT NEEDED]</strong> Screen detail with playlist assignment dropdown open</div></p>
+<ol>
+<li><strong>Flip to your pretend-screen tab</strong> (the one still showing the gray "waiting" message).</li>
+</ol>
+<p><strong>You should see:</strong> within 2 to 5 seconds, your custom template appears on that tab, then rotates through your images and back to the template. It's live. This is exactly what a physical hallway TV would show.</p>
+<p><div class="screenshot-slot"><strong>[SCREENSHOT NEEDED]</strong> Pretend-screen tab rendering the custom template</div></p>
+<hr/>
+<h2>Step 7 — Trigger an Emergency from Your Phone</h2>
+<p>This is the heart of what makes EDU CMS different. If something happens at your school, any authorized staff member can lock down every screen in seconds from their phone.</p>
+<ol>
+<li>On your <strong>phone</strong>, open a browser and go to <strong>https://educms-five.vercel.app/panic</strong>.</li>
+<li>Sign in with the same account (<code>chuck@agceducation.com</code> / <code>12345678</code>).</li>
+<li><strong>Check the box labeled "Keep me logged in"</strong> before submitting.</li>
+</ol>
+<blockquote><strong>Why this box matters:</strong> in a real emergency — an active intruder, a severe weather warning — you do not want to be fumbling with passwords while running. This check keeps your phone pre-authenticated so the panic button is a single long-press away whenever you need it. Treat it the same way you'd treat a fire alarm pull — always ready.</blockquote>
+<p><div class="screenshot-slot"><strong>[SCREENSHOT NEEDED]</strong> Phone panic login screen with "Keep me logged in" checked</div></p>
+<ol>
+<li>After sign-in, you'll see a short list of emergency types: <strong>Lockdown</strong>, <strong>Shelter in Place</strong>, <strong>Evacuate</strong>, <strong>Severe Weather</strong>. Tap <strong>Lockdown</strong> (or whichever you want to demo).</li>
+<li>A large red button appears with the instruction <strong>Hold for 3 seconds</strong>. Press and hold it. A ring fills in around the button as you hold.</li>
+<li>When the ring completes, the button flashes confirming the alert was sent.</li>
+</ol>
+<p><div class="screenshot-slot"><strong>[SCREENSHOT NEEDED]</strong> Phone panic button mid-hold with progress ring</div></p>
+<p><strong>You should see:</strong> a confirmation message on your phone ("Emergency triggered — all screens updating") and a log entry with your name and a timestamp.</p>
+<blockquote>The 3-second hold is deliberate. It prevents a pocket tap from locking down your school.</blockquote>
+<hr/>
+<h2>Step 8 — Watch the Screen Switch</h2>
+<ol>
+<li>Flip back to your pretend-screen browser tab.</li>
+</ol>
+<p><strong>You should see:</strong> within 2 to 3 seconds, the playlist content is replaced by the emergency display — a red full-screen alert with the lockdown instructions. This is signed, verified, and delivered through the same pipeline that will protect your real buildings.</p>
+<p><div class="screenshot-slot"><strong>[SCREENSHOT NEEDED]</strong> Pretend-screen tab showing full-screen Lockdown emergency</div></p>
+<p>If the screen is slow to change, give it up to 10 seconds. Very slow networks fall back to HTTP polling, which is still safe but not as instant.</p>
+<hr/>
+<h2>Step 9 — Clear the Alert from the Dashboard</h2>
+<p>Clearing an emergency happens on the <strong>dashboard</strong>, not the phone. This is intentional: the person who clears the alert should be at a keyboard where they can see the full situation, not on a phone in the middle of it.</p>
+<ol>
+<li>Flip to your main dashboard tab (the one where you've been working). A <strong>red banner across the top</strong> says "EMERGENCY ACTIVE — Lockdown" with an <strong>All Clear</strong> button.</li>
+</ol>
+<p><div class="screenshot-slot"><strong>[SCREENSHOT NEEDED]</strong> Dashboard showing red active-emergency banner with All Clear button</div></p>
+<ol>
+<li>Click <strong>All Clear</strong>.</li>
+<li>A confirmation dialog appears asking you to type the word <code>CLEAR</code> (all caps) into a text box. This prevents an accidental clear. Type <code>CLEAR</code>.</li>
+<li>Click <strong>Confirm All Clear</strong>.</li>
+</ol>
+<p><div class="screenshot-slot"><strong>[SCREENSHOT NEEDED]</strong> All Clear confirmation dialog with CLEAR typed</div></p>
+<ol>
+<li>Flip back to your pretend-screen tab.</li>
+</ol>
+<p><strong>You should see:</strong> the red emergency screen disappears and your <code>Demo Rotation</code> playlist resumes exactly where it left off. An audit log entry is written so you have a record of who triggered and who cleared.</p>
+<hr/>
+<h2>You Did It</h2>
+<p>You just ran the full life cycle: sign-in, screen pairing, content upload, custom template, playlist, publish, mobile emergency trigger, and all-clear. That is the entire product in 20 minutes. In a real deployment, the only difference is that the screens are on walls instead of browser tabs, and the accounts are assigned to your real staff.</p>
+<hr/>
+<h2>Troubleshooting</h2>
+<p>A few things that occasionally trip people up.</p>
+<p><strong>Screen says "Waiting for pairing" and the dashboard never shows it as ONLINE.</strong></p>
+<p>Double-check the pairing code — the letter <code>O</code> and the number <code>0</code> look alike in some fonts. Click <strong>Cancel</strong> on the dashboard dialog, click <strong>Add Screen</strong> again for a fresh code, and retry. Pairing codes expire after 10 minutes.</p>
+<p><strong>Emergency alert fires on my phone but the screen doesn't change.</strong></p>
+<p>Give it 10 full seconds — slow WiFi falls back to a slower polling mode. If still nothing, refresh the pretend-screen tab. If you refresh and see "Not paired," the sample screen's session expired; redo Step 2 to repair.</p>
+<p><strong>I clicked All Clear on the phone instead of the dashboard.</strong></p>
+<p>The phone doesn't show an All Clear button — it's deliberately a trigger-only device. Clearing always happens from the dashboard. If you can't find the red banner, make sure you're signed in to the same account that triggered the alert, then refresh the dashboard page.</p>
+<p><strong>Uploaded images aren't showing in the playlist editor.</strong></p>
+<p>Refresh the Playlists page. New assets take a second to finish processing after upload. If they still don't appear, check the Assets page and confirm the files show a green "Ready" status — if they say "Processing," wait 10 seconds and try again.</p>
+<hr/>
+<h2>Need a Hand?</h2>
+<p>If anything in this guide doesn't behave as described, reach out — don't wrestle with it. We want the friction points in <em>your</em> hands so we can fix them before go-live.</p>
+<p><strong>Integration Lead — EDU CMS Pilot</strong></p>
+<ul>
+<li>Name: <span class="todo-slot">[TODO: contact info]</span></li>
+<li>Email: <span class="todo-slot">[TODO: contact info]</span></li>
+<li>Phone / SMS: <span class="todo-slot">[TODO: contact info]</span></li>
+<li>Best hours: <span class="todo-slot">[TODO: contact info]</span></li>
+</ul>
+<p>Welcome to the pilot. We're excited to have you.</p>
+<footer style="margin-top:60px;font-size:11px;color:#94a3b8;text-align:center;">
+  EDU CMS Pilot Guide — generated 2026-04-24
+</footer>
+</body></html>
