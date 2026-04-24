@@ -101,12 +101,13 @@ export default function AssetsPage() {
   const [folderMenuOpen, setFolderMenuOpen] = useState<string | null>(null);
   // Searchable folder picker state:
   //   - showFolderPicker: 'upload' | 'bulk-move' | null — which flow requested it
-  //   - uploadOverrideFolderRef: when the picker resolves, stashes the
-  //     chosen folderId (or null = root) so the follow-up file-chooser
-  //     change event knows where to deposit the files. `undefined` =
-  //     no override (plain "Upload here" click uses currentFolderId).
+  //   - pendingFiles: files dragged onto the drop zone that need a
+  //     destination. The picker opens, user chooses a folder, then we
+  //     upload these without ever asking for files again. Empty for
+  //     the plain "Upload" button flow (which falls through to the
+  //     native file chooser after the picker resolves).
   const [showFolderPicker, setShowFolderPicker] = useState<'upload' | 'bulk-move' | null>(null);
-  const uploadOverrideFolderRef = useRef<string | null | undefined>(undefined);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const { data: folders } = useAssetFolders();
   const createFolder = useCreateAssetFolder();
   const renameFolder = useRenameAssetFolder();
@@ -171,9 +172,35 @@ export default function AssetsPage() {
       confirmLabel: 'Delete',
     });
     if (ok) {
-      await Promise.all(selectedIds.map(id => deleteAsset.mutateAsync(id).catch(e => console.error(e))));
+      // Track which deletes fail so we can surface a user-visible error
+      // instead of just console.error (the old behavior swallowed every
+      // 409 silently and the operator thought the delete succeeded).
+      // Emergency content is already filtered out of this list server-
+      // side, but keep the failure-tracking path as defense-in-depth in
+      // case a stale cache somehow includes a protected asset.
+      const failures: Array<{ id: string; msg: string }> = [];
+      await Promise.all(
+        selectedIds.map((id) =>
+          deleteAsset.mutateAsync(id).catch((e: any) => {
+            const msg = e?.message || 'Unknown error';
+            failures.push({ id, msg });
+            clog.error('upload', 'Delete failed', { id, msg });
+          }),
+        ),
+      );
       setSelectedIds([]);
       queryClient.invalidateQueries({ queryKey: ['assets'] });
+      if (failures.length > 0) {
+        await appConfirm({
+          title: 'Some assets could not be deleted',
+          message:
+            `${failures.length} of ${selectedIds.length} delete${failures.length === 1 ? '' : 's'} failed. ` +
+            `First error: "${failures[0].msg}"`,
+          tone: 'danger',
+          confirmLabel: 'OK',
+          cancelLabel: '',
+        });
+      }
     }
   };
 
@@ -188,24 +215,46 @@ export default function AssetsPage() {
     queryClient.invalidateQueries({ queryKey: ['assets'] });
   };
 
-  // Called by FolderPicker on confirm. Routes the chosen destination
-  // into the right follow-up based on which flow triggered the picker.
+  // Called by FolderPicker on confirm. Two flows:
+  //   - 'upload' with pendingFiles: user dragged files, we retain
+  //     them across the picker so they don't have to select again.
+  //     Upload immediately to the chosen folder.
+  //   - 'upload' WITHOUT pendingFiles: user clicked the Upload
+  //     button. Open the native file chooser with the chosen folder
+  //     as the destination override.
+  //   - 'bulk-move': apply folder to selectedIds.
   const handleFolderPicked = (folderId: string | null) => {
     const mode = showFolderPicker;
     setShowFolderPicker(null);
     if (mode === 'upload') {
-      uploadOverrideFolderRef.current = folderId;
-      // Kick the hidden file input — onChange reads the override.
-      fileInputRef.current?.click();
+      if (pendingFiles.length > 0) {
+        // Drag-drop flow: we already have the files in memory — just
+        // fire them at the chosen destination. Retaining them across
+        // the picker is the whole point of this UX.
+        handleFiles(pendingFiles, folderId);
+        setPendingFiles([]);
+      } else {
+        // Button flow: no files yet. Stash the destination on the
+        // hidden input via a data attribute the onChange handler
+        // reads, then pop the file chooser.
+        const input = fileInputRef.current;
+        if (input) {
+          input.dataset.overrideFolderId =
+            folderId === null ? '__root__' : folderId;
+          input.click();
+        }
+      }
     } else if (mode === 'bulk-move') {
       void handleBulkMove(folderId);
     }
   };
 
-  const handleFiles = useCallback((files: FileList | null, targetFolderIdOverride?: string | null) => {
+  const handleFiles = useCallback((files: FileList | File[] | null, targetFolderIdOverride?: string | null) => {
     if (!files) return;
+    const list = Array.isArray(files) ? files : Array.from(files);
+    if (list.length === 0) return;
     const genId = () => { try { return crypto.randomUUID(); } catch { return Math.random().toString(36).substring(2, 10); } };
-    const items = Array.from(files).map((file) => {
+    const items = list.map((file) => {
       const item: UploadItem = { id: genId(), file, progress: 0, phase: 'idle' };
       if (file.size > MAX_FILE_SIZE) { item.phase = 'error'; item.error = `Too large (${fmtSize(file.size)})`; }
       else item.phase = 'uploading';
@@ -220,7 +269,7 @@ export default function AssetsPage() {
     const fd = new FormData();
     fd.append('file', item.file);
     // Destination precedence:
-    //   1. Explicit override from the FolderPicker ("upload to X")
+    //   1. Explicit override from the FolderPicker
     //   2. Current browsed folder (uploads into whatever is open)
     //   3. Root
     // `targetFolderIdOverride === undefined` means no override; use
@@ -264,7 +313,15 @@ export default function AssetsPage() {
     xhr.send(fd);
   };
 
-  const handleAddUrl = async () => { if (!webUrl.trim()) return; await addWebUrl.mutateAsync({ url: webUrl.trim() }); setWebUrl(''); setShowUrlForm(false); };
+  const handleAddUrl = async () => {
+    if (!webUrl.trim()) return;
+    // Route to the current folder so the newly-added URL appears
+    // where the operator is standing, not at root (the old behavior
+    // made the asset "vanish" for anyone inside a folder).
+    await addWebUrl.mutateAsync({ url: webUrl.trim(), folderId: currentFolderId });
+    setWebUrl('');
+    setShowUrlForm(false);
+  };
 
   const filtered = (assets || []).filter((a: any) => {
     // Folder filter — show only assets belonging to the current folder
@@ -332,26 +389,18 @@ export default function AssetsPage() {
           <button onClick={() => setShowUrlForm(!showUrlForm)} className="px-3 py-2 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-sm">
             <Link2 className="w-3.5 h-3.5 text-indigo-500" /> Add URL
           </button>
-          {/* Default Upload button uses the CURRENT folder as destination —
-              fast path when the operator has already navigated into a
-              folder. The secondary 'Upload to…' button opens the
-              searchable folder picker for ops with 100s of folders
-              who don't want to navigate first. */}
+          {/* Single Upload button — opens the searchable FolderPicker
+              first so the operator picks a destination (with root as
+              an option + inline folder creation), then the native
+              file chooser fires. Drag-and-drop also routes through
+              the picker but retains the dragged files. */}
           <button
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => { setPendingFiles([]); setShowFolderPicker('upload'); }}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5"
-            title={currentFolderId ? 'Upload into the folder you have open' : 'Upload to All Files (root)'}
+            title="Pick a destination folder (root is an option), then select files"
           >
             <UploadCloud className="w-4 h-4" />
-            Upload{currentFolderId ? ' here' : ''}
-          </button>
-          <button
-            onClick={() => setShowFolderPicker('upload')}
-            className="px-3 py-2 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-sm"
-            title="Pick a destination folder — searchable if you have hundreds"
-          >
-            <FolderInput className="w-3.5 h-3.5 text-indigo-500" />
-            Upload to…
+            Upload
           </button>
           <input
             type="file"
@@ -360,15 +409,21 @@ export default function AssetsPage() {
             ref={fileInputRef}
             accept={ACCEPT_STRING}
             onChange={e => {
-              // uploadOverrideFolderRef is set by the FolderPicker
-              // ('Upload to…' flow). undefined = no picker fired,
-              // use current folder. null = explicit root.
-              // <folderId> = specific folder selected.
-              const override = uploadOverrideFolderRef.current;
+              // The FolderPicker stashes the chosen destination on a
+              // data attribute before popping the file chooser:
+              //   - undefined = no picker fired, use currentFolderId
+              //   - '__root__' = explicit root
+              //   - <folderId> = specific folder
+              const raw = e.currentTarget.dataset.overrideFolderId;
+              e.currentTarget.dataset.overrideFolderId = '';
+              const override: string | null | undefined =
+                raw === undefined || raw === ''
+                  ? undefined
+                  : raw === '__root__'
+                  ? null
+                  : raw;
               handleFiles(e.target.files, override);
-              uploadOverrideFolderRef.current = undefined;
-              // Reset the input so re-selecting the same file fires
-              // onChange again.
+              // Reset so re-selecting the same file fires onChange.
               e.currentTarget.value = '';
             }}
           />
@@ -384,16 +439,27 @@ export default function AssetsPage() {
         </div>
       )}
 
-      {/* Drop zone */}
+      {/* Drop zone — both click AND drop route through the FolderPicker
+          so the operator always gets to choose root vs. a specific
+          folder (and create a new one inline). Dragged files are
+          retained across the picker so they don't have to be selected
+          twice. */}
       <div
         role="button"
         tabIndex={0}
         aria-label="Upload files — drag and drop or press Enter to browse"
         onDragOver={e => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
-        onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
-        onClick={() => fileInputRef.current?.click()}
-        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current?.click(); } }}
+        onDrop={e => {
+          e.preventDefault();
+          setDragOver(false);
+          const files = Array.from(e.dataTransfer.files || []);
+          if (files.length === 0) return;
+          setPendingFiles(files);
+          setShowFolderPicker('upload');
+        }}
+        onClick={() => { setPendingFiles([]); setShowFolderPicker('upload'); }}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPendingFiles([]); setShowFolderPicker('upload'); } }}
         className={`border-2 border-dashed rounded-3xl p-8 flex items-center justify-center cursor-pointer transition-all group ${dragOver ? 'border-indigo-400 bg-indigo-50/50 scale-[1.01]' : 'border-slate-200 hover:border-indigo-300 bg-slate-50/30'}`}
       >
         <div className="flex items-center gap-4">
@@ -401,8 +467,8 @@ export default function AssetsPage() {
             <UploadCloud className="w-5 h-5 text-indigo-500" />
           </div>
           <div className="text-left">
-            <p className="text-xs font-bold text-slate-700">{dragOver ? 'Drop files to upload' : 'Drag & drop files or click to browse'}</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">Images, video, audio, PDF — up to 200 MB each</p>
+            <p className="text-xs font-bold text-slate-700">{dragOver ? 'Drop files to pick a folder' : 'Drag & drop files or click to browse'}</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">Choose a folder (or root) next — images, video, audio, PDF, up to 200 MB</p>
           </div>
         </div>
       </div>
@@ -812,6 +878,7 @@ export default function AssetsPage() {
 
       {/* Searchable folder picker — one component, two flows:
           - 'upload'    : chose destination before opening file chooser
+                          (or before uploading retained pendingFiles)
           - 'bulk-move' : chose destination for selectedIds                     */}
       {showFolderPicker && (
         <FolderPicker
@@ -827,11 +894,32 @@ export default function AssetsPage() {
           disabledIds={showFolderPicker === 'bulk-move' ? [] : []}
           title={
             showFolderPicker === 'upload'
-              ? 'Upload files to which folder?'
+              ? (pendingFiles.length > 0
+                  ? `Upload ${pendingFiles.length} file${pendingFiles.length === 1 ? '' : 's'} to…`
+                  : 'Upload files to which folder?')
               : `Move ${selectedIds.length} item${selectedIds.length === 1 ? '' : 's'} to which folder?`
           }
+          subtitle={
+            showFolderPicker === 'upload' && pendingFiles.length > 0
+              ? pendingFiles.slice(0, 3).map(f => f.name).join(', ')
+                + (pendingFiles.length > 3 ? ` + ${pendingFiles.length - 3} more` : '')
+              : undefined
+          }
           onConfirm={handleFolderPicked}
-          onClose={() => setShowFolderPicker(null)}
+          onClose={() => { setShowFolderPicker(null); setPendingFiles([]); }}
+          onCreateFolder={async (name, parentId) => {
+            try {
+              const created = await createFolder.mutateAsync({ name, parentId: parentId || undefined });
+              // Force the asset-folders query to refresh so the tree
+              // shows the new node on the very next render of the
+              // picker's memoized structures.
+              await queryClient.invalidateQueries({ queryKey: ['asset-folders'] });
+              return { id: (created as any)?.id };
+            } catch (e: any) {
+              clog.error('upload', 'Inline folder create failed', { name, msg: e?.message });
+              return null;
+            }
+          }}
         />
       )}
     </div>

@@ -549,6 +549,80 @@ function PlayerPage() {
   const [phase, setPhase] = useState<Phase>('registering');
   const [storageInfo, setStorageInfo] = useState({ used: '1.2 GB', total: '32 GB', percent: 4 });
 
+  // One-shot admin-token handoff for preview mode. The dashboard appends
+  // `#t=<jwt>&o=<portrait|landscape>` when opening the Preview link.
+  // Fragments aren't sent to servers or included in referrer headers —
+  // safer than a query param. We capture the value on mount, immediately
+  // wipe the hash from the URL, and keep the token in a ref so it's
+  // available to fetchContent without being serializable state.
+  const previewHandoffTokenRef = useRef<string | null>(null);
+  const [previewOrientation, setPreviewOrientation] = useState<'portrait' | 'landscape'>('landscape');
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const hash = window.location.hash || '';
+    if (hash) {
+      try {
+        // Strip the leading '#', parse as a form-urlencoded pair list.
+        const params = new URLSearchParams(hash.slice(1));
+        const t = params.get('t');
+        if (t) previewHandoffTokenRef.current = t;
+      } catch { /* bad fragment — ignore */ }
+      // Clear the hash WITHOUT reloading the page so the token doesn't
+      // linger in the address bar, dev-tools, or browser history.
+      try {
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+      } catch { /* non-fatal */ }
+    }
+    // Preview orientation comes through the plain query string (not the
+    // fragment) — it isn't sensitive.
+    const q = qp('orientation');
+    if (q === 'portrait' || q === 'landscape') setPreviewOrientation(q);
+  }, []);
+
+  // Preview-only orientation simulator. In portrait preview, we rotate
+  // the <body> 90° and resize it to `100vh × 100vw` so content that
+  // uses `position: fixed; inset: 0` — which the player does
+  // extensively — fills the rotated frame instead of the literal
+  // landscape browser viewport. The `transform` on body is what
+  // establishes a new containing block for fixed descendants (per CSS
+  // spec) so no component code changes are needed. Only runs in
+  // preview mode; real kiosks rotate via Android's system orientation
+  // and never hit this path.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (!isPreviewMode()) return;
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtml = html.getAttribute('style');
+    const prevBody = body.getAttribute('style');
+    if (previewOrientation === 'portrait') {
+      html.style.cssText = 'height:100vh;overflow:hidden;background:#000;';
+      body.style.cssText = [
+        'position:fixed',
+        'top:50%',
+        'left:50%',
+        'width:100vh',
+        'height:100vw',
+        'transform:translate(-50%,-50%) rotate(90deg)',
+        'transform-origin:center center',
+        'background:#000',
+        'overflow:hidden',
+        'margin:0',
+      ].join(';') + ';';
+    } else {
+      // Explicit landscape: reset anything a portrait-preview before it
+      // might have left behind (same tab, navigated between previews).
+      html.style.cssText = '';
+      body.style.cssText = '';
+    }
+    return () => {
+      // Restore whatever was there before on unmount so hot-reloading the
+      // dev server doesn't persist weird body styles into the admin UI.
+      if (prevHtml == null) html.removeAttribute('style'); else html.setAttribute('style', prevHtml);
+      if (prevBody == null) body.removeAttribute('style'); else body.setAttribute('style', prevBody);
+    };
+  }, [previewOrientation]);
+
   // Read the tenant display name from the LS branding cache if this
   // machine has ever been used as an admin browser with that tenant.
   // Pre-pair the player has no tenant scope, so this is best-effort —
@@ -929,15 +1003,28 @@ function PlayerPage() {
   const fetchContent = useCallback(async () => {
     if (!screenId) return;
 
-    // Resolve auth token for this fetch. Device-pairing token only —
+    // Resolve auth token for this fetch. Device-pairing token first —
     // the old "admin fallback login" with hardcoded creds was baked
     // into the production Vercel bundle and was viewable via
     // view-source, which is exactly the kind of thing a pilot IT
     // team code-audits on day one. If no device token is available
-    // the player MUST fall through to the pairing screen.
+    // we allow TWO additional sources ONLY in preview mode:
+    //   1. A one-shot admin JWT handed off via the URL fragment by
+    //      the dashboard's "Open in Browser (Preview)" button
+    //      (wiped from the hash on mount — see previewHandoffTokenRef).
+    //   2. A previously-cached handoff token kept in memory across
+    //      polls in this same tab.
+    // Without this the preview tab had nothing to authenticate with
+    // and /manifest returned 401, throwing fetchContent into a loop
+    // that flipped the player between 'connecting' and 'playing'
+    // every retry cycle. Real paired players are unaffected.
     const resolveAuthToken = async (): Promise<string> => {
       const deviceTok = getDeviceToken();
       if (deviceTok) return deviceTok;
+      if (isPreviewMode() && previewHandoffTokenRef.current) {
+        cachedAuthTokenRef.current = previewHandoffTokenRef.current;
+        return previewHandoffTokenRef.current;
+      }
       if (cachedAuthTokenRef.current) return cachedAuthTokenRef.current;
       throw new Error('NO_DEVICE_TOKEN');
     };

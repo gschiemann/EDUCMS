@@ -98,11 +98,16 @@ export function Sidebar() {
     return () => window.removeEventListener('keydown', onKey);
   }, [mobileSidebarOpen, setMobileSidebarOpen]);
 
+  // Order: Dashboard → Screens → Assets → Templates → Playlists →
+  // Settings. Assets sits between Screens and Templates because the
+  // operator's day-to-day flow is "check my screens, upload content,
+  // then build/tweak templates" — not the reverse. (Integration Lead
+  // asked for the swap.)
   const navItems = [
     { name: 'Dashboard', href: `/${activeTenant}/dashboard`, icon: LayoutDashboard },
     { name: 'Screens', href: `/${activeTenant}/screens`, icon: MonitorPlay },
-    { name: 'Templates', href: `/${activeTenant}/templates`, icon: LayoutTemplate },
     { name: 'Assets', href: `/${activeTenant}/assets`, icon: Upload },
+    { name: 'Templates', href: `/${activeTenant}/templates`, icon: LayoutTemplate },
     { name: 'Playlists', href: `/${activeTenant}/playlists`, icon: Folders },
     { name: 'Settings', href: `/${activeTenant}/settings`, icon: Settings },
   ];

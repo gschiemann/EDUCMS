@@ -6,8 +6,55 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
 import { apiFetch } from '@/lib/api-client';
+import { useUIStore } from '@/store/ui-store';
 import QRCode from 'qrcode';
 import { appConfirm } from '@/components/ui/app-dialog';
+
+/**
+ * Derive "portrait" | "landscape" from a free-text resolution string
+ * like "1920x1080" or "1080x1920". Defaults to landscape when unknown
+ * so the preview still renders (just not in the right orientation).
+ */
+function orientationFromResolution(res?: string | null): 'portrait' | 'landscape' {
+  if (!res) return 'landscape';
+  const m = res.match(/(\d{2,5})\s*[x×]\s*(\d{2,5})/i);
+  if (!m) return 'landscape';
+  const w = parseInt(m[1], 10);
+  const h = parseInt(m[2], 10);
+  if (!w || !h) return 'landscape';
+  return h > w ? 'portrait' : 'landscape';
+}
+
+/**
+ * Compact "time ago" formatter, e.g. "12s", "5m", "3h", "2d". Used on the
+ * Screens list to replace the old "8:42:11 AM" (time-only, no date). The
+ * caller is expected to also set a full-datetime tooltip so nothing is
+ * lost — the chip is for at-a-glance, the tooltip is for forensics.
+ */
+function timeAgo(ts: string | number | Date): string {
+  const then = typeof ts === 'string' || typeof ts === 'number' ? new Date(ts) : ts;
+  const sec = Math.max(0, Math.floor((Date.now() - then.getTime()) / 1000));
+  if (sec < 45) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d ago`;
+  // Older than a week: show MMM dd.
+  return then.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+/**
+ * Full human datetime for the tooltip, e.g. "Apr 23, 2026 2:13:04 PM".
+ */
+function fullDateTime(ts: string | number | Date): string {
+  const then = typeof ts === 'string' || typeof ts === 'number' ? new Date(ts) : ts;
+  return then.toLocaleString(undefined, {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', second: '2-digit',
+  });
+}
 
 // OS-shape icon colored by CURRENT screen status (not OS type). Previously
 // we used emerald for Android, sky for Windows, amber for Linux — which
@@ -157,6 +204,31 @@ export default function ScreensPage() {
   };
 
   const playerUrl = typeof window !== 'undefined' ? `${window.location.origin}/player` : 'http://localhost:3000/player';
+
+  // Build the preview URL for a specific screen. We pass the admin's
+  // JWT via a URL **fragment** (`#t=...`) because fragments don't get
+  // logged by servers, sent in referrer headers, or captured in proxy
+  // access logs. The player reads + immediately wipes the hash so the
+  // token never sits in the browser's address bar beyond the first
+  // tick. Orientation is a normal query param (not sensitive) so the
+  // preview tab can letterbox to the real screen's aspect ratio the
+  // moment it opens — no flash of wrong-orientation content.
+  //
+  // Without this handoff the preview tab had no credentials (it opens
+  // in a fresh sessionStorage context) which meant the manifest fetch
+  // threw NO_DEVICE_TOKEN, which flipped phase back to 'connecting',
+  // which re-triggered the fetch, which looped forever. Reported by
+  // the Integration Lead as "keeps refreshing the page".
+  const authToken = useUIStore((s) => s.token);
+  const buildPreviewUrl = (screen: { deviceFingerprint: string; resolution?: string | null }) => {
+    const q = new URLSearchParams({
+      deviceId: screen.deviceFingerprint,
+      preview: '1',
+      orientation: orientationFromResolution(screen.resolution),
+    });
+    const hash = authToken ? `#t=${encodeURIComponent(authToken)}` : '';
+    return `${playerUrl}?${q.toString()}${hash}`;
+  };
 
   return (
     <div className="space-y-6">
@@ -385,9 +457,15 @@ export default function ScreensPage() {
                           return <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700" title="No emergency assets cached — would fetch from network during an alert">🛡️ none</span>;
                         })()}
                         {screen.lastPingAt && (
-                          <span className="text-[10px] font-medium text-slate-400 flex items-center gap-1 shrink-0 px-2">
+                          // Relative "Xm ago" at a glance, full datetime in the
+                          // tooltip. The old display was time-only — operators
+                          // could never tell if "8:42 AM" was today or last week.
+                          <span
+                            className="text-[10px] font-medium text-slate-400 flex items-center gap-1 shrink-0 px-2"
+                            title={`Last sync: ${fullDateTime(screen.lastPingAt)}`}
+                          >
                             <Clock className="w-3 h-3" />
-                            {new Date(screen.lastPingAt).toLocaleTimeString()}
+                            {timeAgo(screen.lastPingAt)}
                           </span>
                         )}
                         {/* Sprint 8 — set or update map location */}
@@ -415,7 +493,7 @@ export default function ScreensPage() {
                           <Trash2 className="w-4 h-4" />
                         </button>
                         <a
-                          href={`${playerUrl}?deviceId=${screen.deviceFingerprint}&preview=1`}
+                          href={buildPreviewUrl(screen)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="screens-ext-link p-2 bg-white border border-slate-100 rounded-lg text-slate-400 opacity-0 group-hover/item:opacity-100 transition-all shadow-sm"
@@ -536,9 +614,12 @@ export default function ScreensPage() {
                       {screen.status || 'OFFLINE'}
                     </span>
                     {screen.lastPingAt && (
-                      <span className="text-[10px] font-medium text-slate-400 flex items-center gap-1 shrink-0 px-2">
+                      <span
+                        className="text-[10px] font-medium text-slate-400 flex items-center gap-1 shrink-0 px-2"
+                        title={`Last sync: ${fullDateTime(screen.lastPingAt)}`}
+                      >
                         <Clock className="w-3 h-3" />
-                        {new Date(screen.lastPingAt).toLocaleTimeString()}
+                        {timeAgo(screen.lastPingAt)}
                       </span>
                     )}
                     <button onClick={() => deleteScreen.mutate(screen.id)}
@@ -546,7 +627,7 @@ export default function ScreensPage() {
                       <Trash2 className="w-4 h-4" />
                     </button>
                     <a
-                      href={`${playerUrl}?deviceId=${screen.deviceFingerprint}&preview=1`}
+                      href={buildPreviewUrl(screen)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="screens-ext-link p-2 bg-white border border-slate-100 rounded-lg text-slate-400 opacity-0 group-hover/item:opacity-100 transition-all shadow-sm"

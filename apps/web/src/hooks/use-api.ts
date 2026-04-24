@@ -319,7 +319,7 @@ export function usePendingAssets(enabled: boolean = true) {
 export function useAddWebUrl() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { url: string; name?: string }) =>
+    mutationFn: (data: { url: string; name?: string; folderId?: string | null }) =>
       apiFetch('/assets/url', { method: 'POST', body: JSON.stringify(data) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['assets'] }),
   });

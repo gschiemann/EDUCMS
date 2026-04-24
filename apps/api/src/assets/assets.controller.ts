@@ -170,8 +170,23 @@ export class AssetsController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   async list(@Request() req: any) {
     const tenantId = req.user.tenantId;
+    // Hide emergency content from the main asset library. Any asset
+    // that participates in a PROTECTED playlist (lockdown, evacuate,
+    // weather, all-clear) is filtered out here — teachers and
+    // contributors shouldn't see the alert imagery at all while they
+    // manage day-to-day content, and admins manage those assets from
+    // the dedicated Settings → Emergency Content surface. The server
+    // still enforces the DELETE guard below as defense-in-depth
+    // against stale caches.
     return this.prisma.client.asset.findMany({
-      where: { tenantId },
+      where: {
+        tenantId,
+        NOT: {
+          playlistItems: {
+            some: { playlist: { isProtected: true } },
+          },
+        },
+      },
       include: {
         uploadedBy: { select: { id: true, email: true } },
         folder: { select: { id: true, name: true } },
@@ -339,7 +354,10 @@ export class AssetsController {
    */
   @Post('url')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
-  async addUrl(@Request() req: any, @Body() body: { url: string; name?: string }) {
+  async addUrl(
+    @Request() req: any,
+    @Body() body: { url: string; name?: string; folderId?: string | null },
+  ) {
     if (!body.url?.trim()) {
       throw new HttpException('URL is required', HttpStatus.BAD_REQUEST);
     }
@@ -353,6 +371,21 @@ export class AssetsController {
     let hostname = url;
     try { hostname = new URL(url).hostname; } catch { /* use raw url as fallback name */ }
 
+    // Validate folderId if provided — same tenant-isolation check the
+    // upload endpoint runs. Without this the URL always landed at
+    // root, so an operator inside a folder would "add a URL" and the
+    // asset would vanish (it was at root, not where they were
+    // standing). Reported verbatim by the Integration Lead.
+    let folderId: string | null = null;
+    const bodyFolderId = (body.folderId || '').toString().trim();
+    if (bodyFolderId) {
+      const folder = await this.prisma.client.assetFolder.findFirst({
+        where: { id: bodyFolderId, tenantId: req.user.tenantId },
+      });
+      if (!folder) throw new HttpException('Folder not found', HttpStatus.NOT_FOUND);
+      folderId = folder.id;
+    }
+
     const asset = await this.prisma.client.asset.create({
       data: {
         tenantId: req.user.tenantId,
@@ -361,6 +394,7 @@ export class AssetsController {
         mimeType: 'text/html',
         originalName: body.name || hostname,
         status: this.initialAssetStatus(req.user.role),
+        folderId,
       },
     });
 
@@ -368,7 +402,7 @@ export class AssetsController {
       this.notifyAdminsOfPendingReview(req.user.tenantId, asset);
     }
 
-    return { id: asset.id, fileUrl: url };
+    return { id: asset.id, fileUrl: url, folderId: asset.folderId, status: asset.status };
   }
 
   // ─── Review queue listing ──────────────────────────────────────
