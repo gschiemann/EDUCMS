@@ -2,7 +2,7 @@
 /* eslint-disable jsx-a11y/no-autofocus */
 "use client";
 
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { MonitorPlay, Loader2, AlertCircle, KeyRound } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
@@ -29,6 +29,23 @@ function LoginContent() {
   const redirectTarget = searchParams.get('redirect');
   const authReason = searchParams.get('reason'); // 'session-expired' | 'explicit-logout'
   const [rememberMe, setRememberMe] = useState(false);
+  // EULA v1.0 acceptance. Persisted per-browser in localStorage so a
+  // returning user isn't asked again on every login; the version is
+  // part of the key so bumping the EULA forces re-acceptance.
+  const EULA_VERSION = '1.0';
+  const EULA_KEY = `edu_cms_eula_accepted_v${EULA_VERSION}`;
+  const [eulaAccepted, setEulaAccepted] = useState(false);
+  // Rehydrate on mount so users who've accepted previously don't see
+  // the checkbox block the button. We still SHOW the checkbox (pre-
+  // checked) so it's never silently auto-accepted on a shared device.
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage.getItem(EULA_KEY) === 'yes') {
+        setEulaAccepted(true);
+      }
+    } catch { /* localStorage unavailable */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [ssoOpen, setSsoOpen] = useState(false);
   const [ssoSlug, setSsoSlug] = useState('');
   const [ssoChecking, setSsoChecking] = useState(false);
@@ -61,6 +78,10 @@ function LoginContent() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!eulaAccepted) {
+      setError('You must accept the End User License Agreement to continue.');
+      return;
+    }
     setError('');
     setLoading(true);
     warnIfMisconfigured();
@@ -73,6 +94,17 @@ function LoginContent() {
       });
       const data = await res.json();
       if (res.ok && data.access_token) {
+        // Persist EULA acceptance AFTER a successful login so we know
+        // which user/account the acceptance is tied to. Logged to the
+        // client log so we have an audit crumb if counsel ever asks.
+        try {
+          if (typeof window !== 'undefined') {
+            window.localStorage.setItem(EULA_KEY, 'yes');
+            window.localStorage.setItem(`${EULA_KEY}_at`, new Date().toISOString());
+            window.localStorage.setItem(`${EULA_KEY}_by`, email);
+          }
+        } catch { /* best-effort */ }
+        clog.info('auth', 'EULA accepted', { version: EULA_VERSION, userId: data.user?.id });
         login(data.access_token, data.user);
         router.push(redirectTarget || `/${data.user.tenantSlug || data.user.tenantId}/dashboard`);
       } else {
@@ -163,6 +195,29 @@ function LoginContent() {
               </Link>
             </div>
 
+            {/* EULA acceptance — required. Gates the Sign-in button. */}
+            <label className="flex items-start gap-2 cursor-pointer group select-none">
+              <input
+                type="checkbox"
+                checked={eulaAccepted}
+                onChange={e => setEulaAccepted(e.target.checked)}
+                className="w-4 h-4 mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-400 cursor-pointer shrink-0"
+                required
+                aria-describedby="eula-text"
+              />
+              <span id="eula-text" className="text-[11px] leading-snug text-slate-600 group-hover:text-slate-800 transition-colors">
+                I have read and agree to the{' '}
+                <Link
+                  href="/terms/eula"
+                  target="_blank"
+                  className="text-indigo-600 hover:text-indigo-700 underline underline-offset-2 font-semibold"
+                >
+                  End User License Agreement
+                </Link>
+                , including the emergency-features disclaimer and limitation of liability.
+              </span>
+            </label>
+
             {!error && authReason === 'session-expired' && (
               <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
                 <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
@@ -181,8 +236,9 @@ function LoginContent() {
 
             <button
               type="submit"
-              disabled={loading}
-              className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 disabled:opacity-50 text-white font-bold py-2.5 px-4 rounded-xl transition-all shadow-md shadow-indigo-500/20 flex items-center justify-center gap-2 text-sm"
+              disabled={loading || !eulaAccepted}
+              className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-2.5 px-4 rounded-xl transition-all shadow-md shadow-indigo-500/20 flex items-center justify-center gap-2 text-sm"
+              title={!eulaAccepted ? 'You must accept the EULA to sign in' : undefined}
             >
               {loading ? (
                 <><Loader2 className="w-4 h-4 animate-spin" /> Signing in…</>

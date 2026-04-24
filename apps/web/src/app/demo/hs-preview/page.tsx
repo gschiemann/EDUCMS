@@ -107,6 +107,9 @@ export default function HsPreviewPage() {
           }}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Preview of ${zoom}`}
             style={{
               position: 'relative',
               width: 'min(90vw, 1600px)',
@@ -116,6 +119,7 @@ export default function HsPreviewPage() {
               overflow: 'hidden',
             }}
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => { if (e.key === 'Escape') setZoom(null); }}
           >
             <WidgetPreview widgetType={zoom} config={{}} width={100} height={100} live={true} />
           </div>
