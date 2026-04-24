@@ -513,6 +513,14 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     zones: [{ name: 'Scene', widgetType: 'HS_BLUEPRINT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
   {
+    id: 'preset-hs-zine',
+    name: '✂️ Zine — Cut & Paste Student Rag',
+    description: 'DIY student-zine lobby: rotated taped panels, photocopied paper texture, marker-style headlines with yellow highlight, polaroid events, ransom-letter announcement, xeroxwire ticker.',
+    category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#f2ecd9',
+    zones: [{ name: 'Scene', widgetType: 'HS_ZINE', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
     id: 'preset-cafeteria-chalkboard',
     name: '🌿 Animated Cafeteria · Chalkboard',
     description: 'Green-chalkboard menu board — chalk-textured text, erased highlights, wooden frame, weekly menu editor.',

@@ -66,6 +66,7 @@ import { HsTerminalWidget } from './hs/HsTerminalWidget';
 import { HsTransitWidget } from './hs/HsTransitWidget';
 import { HsGalleryWidget } from './hs/HsGalleryWidget';
 import { HsBlueprintWidget } from './hs/HsBlueprintWidget';
+import { HsZineWidget } from './hs/HsZineWidget';
 // 16 templates ported from scratch/design/*.html (4 parallel agents, 2026-04-20).
 // Each widget is a full-screen scene (transform:scale 1920×1080 pattern, live-
 // gated hotspots, ticker-speed helper). See CLAUDE.md "Template Design
@@ -188,6 +189,7 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'HS_TRANSIT':                    return <HsTransitWidget config={cfg} />;
     case 'HS_GALLERY':                    return <HsGalleryWidget config={cfg} />;
     case 'HS_BLUEPRINT':                  return <HsBlueprintWidget config={cfg} />;
+    case 'HS_ZINE':                       return <HsZineWidget config={cfg} />;
     case 'ANIMATED_CAFETERIA':            return <AnimatedCafeteriaElementaryWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA_MS':         return <AnimatedCafeteriaMiddleWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA_HS':         return <AnimatedCafeteriaHighWidget config={cfg} live={live} />;

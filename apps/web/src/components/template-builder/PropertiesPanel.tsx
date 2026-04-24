@@ -1237,6 +1237,60 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextAreaField key="tickerMessage" label="RFI log messages" value={cfg.tickerMessage || ''} rows={3} onChange={(v) => setField({ tickerMessage: v })} />);
       break;
     }
+    case 'HS_ZINE': {
+      const SH = (key: string, label: string) => (
+        <div key={`sh-${key}`} className="pt-3 pb-1 px-1 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200">{label}</div>
+      );
+      fields.push(SH('school', 'Masthead'));
+      fields.push(<TextField key="schoolName" label="Big title" value={cfg.schoolName || ''} placeholder="WESTRIDGE!" onChange={(v) => setField({ schoolName: v })} />);
+      fields.push(<TextField key="schoolSub" label="Sub line" value={cfg.schoolSub || ''} onChange={(v) => setField({ schoolSub: v })} />);
+      fields.push(<TextField key="brandStamp1" label="Stamp 1 (red)" value={cfg.brandStamp1 || ''} onChange={(v) => setField({ brandStamp1: v })} />);
+      fields.push(<TextField key="brandStamp2" label="Stamp 2 (ink)" value={cfg.brandStamp2 || ''} onChange={(v) => setField({ brandStamp2: v })} />);
+      fields.push(<TextField key="brandStamp3" label="Stamp 3 (cyan)" value={cfg.brandStamp3 || ''} onChange={(v) => setField({ brandStamp3: v })} />);
+
+      fields.push(SH('greeting', 'Hero sheet'));
+      fields.push(<TextField key="greetingEyebrow" label="Eyebrow" value={cfg.greetingEyebrow || ''} onChange={(v) => setField({ greetingEyebrow: v })} />);
+      fields.push(<TextField key="greetingHeadline1" label="Headline pt1" value={cfg.greetingHeadline1 || ''} placeholder="BE" onChange={(v) => setField({ greetingHeadline1: v })} />);
+      fields.push(<TextField key="greetingHeadline2" label="Headline pt2 (yellow highlight)" value={cfg.greetingHeadline2 || ''} placeholder="LOUD" onChange={(v) => setField({ greetingHeadline2: v })} />);
+      fields.push(<TextField key="greetingHeadline3" label="Headline pt3" value={cfg.greetingHeadline3 || ''} placeholder="TODAY." onChange={(v) => setField({ greetingHeadline3: v })} />);
+      fields.push(<TextAreaField key="greetingSubtitle" label="Subtitle" value={cfg.greetingSubtitle || ''} rows={3} onChange={(v) => setField({ greetingSubtitle: v })} />);
+
+      fields.push(SH('teacher', 'Teacher poster'));
+      fields.push(<TextField key="teacherCaption" label="Big name caption" value={cfg.teacherCaption || ''} onChange={(v) => setField({ teacherCaption: v })} />);
+      fields.push(<TextField key="teacherSub" label="Sub caption" value={cfg.teacherSub || ''} onChange={(v) => setField({ teacherSub: v })} />);
+
+      fields.push(SH('stats', 'Side stats'));
+      fields.push(<TextField key="attendanceValue" label="Attendance value" value={cfg.attendanceValue || ''} onChange={(v) => setField({ attendanceValue: v })} />);
+      fields.push(<TextField key="attendanceCap" label="Attendance caption" value={cfg.attendanceCap || ''} onChange={(v) => setField({ attendanceCap: v })} />);
+      fields.push(<TextField key="countdownLabel" label="Countdown label" value={cfg.countdownLabel || ''} onChange={(v) => setField({ countdownLabel: v })} />);
+      fields.push(<TextField key="countdownValue" label="Countdown value" value={String(cfg.countdownValue ?? '')} onChange={(v) => setField({ countdownValue: v })} />);
+      fields.push(<TextField key="countdownSub" label="Countdown sub" value={cfg.countdownSub || ''} onChange={(v) => setField({ countdownSub: v })} />);
+
+      fields.push(SH('events', 'Polaroid events (3)'));
+      for (const n of [0, 1, 2]) {
+        const k = `event${n}` as 'event0' | 'event1' | 'event2';
+        fields.push(<TextField key={`${k}When`} label={`#${n + 1} · When`} value={cfg[`${k}When`] || ''} onChange={(v) => setField({ [`${k}When`]: v })} />);
+        fields.push(<TextField key={`${k}Name`} label={`#${n + 1} · Title`} value={cfg[`${k}Name`] || ''} onChange={(v) => setField({ [`${k}Name`]: v })} />);
+      }
+      fields.push(<TextField key="countdownBigValue" label="Big red countdown value" value={String(cfg.countdownBigValue ?? '')} onChange={(v) => setField({ countdownBigValue: v })} />);
+      fields.push(<TextField key="countdownBigLabel" label="Big red countdown label" value={cfg.countdownBigLabel || ''} onChange={(v) => setField({ countdownBigLabel: v })} />);
+
+      fields.push(SH('announcement', 'Ransom-letter announcement'));
+      fields.push(<TextField key="announcementTag" label="Tag" value={cfg.announcementTag || ''} onChange={(v) => setField({ announcementTag: v })} />);
+      fields.push(<TextField key="announcementHeadline" label="Headline" value={cfg.announcementHeadline || ''} onChange={(v) => setField({ announcementHeadline: v })} />);
+      fields.push(<TextAreaField key="announcementBody" label="Body" value={cfg.announcementBody || ''} rows={3} onChange={(v) => setField({ announcementBody: v })} />);
+      fields.push(<TextField key="announcementDate" label="When" value={cfg.announcementDate || ''} onChange={(v) => setField({ announcementDate: v })} />);
+
+      fields.push(SH('clock', 'Floating clock'));
+      fields.push(<TextField key="clockLabel" label="Label" value={cfg.clockLabel || ''} onChange={(v) => setField({ clockLabel: v })} />);
+      fields.push(<TextField key="clockTime" label="Time" value={cfg.clockTime || ''} onChange={(v) => setField({ clockTime: v })} />);
+      fields.push(<TextField key="weatherCondition" label="Date/weather line" value={cfg.weatherCondition || ''} onChange={(v) => setField({ weatherCondition: v })} />);
+
+      fields.push(SH('ticker', 'xeroxwire ticker'));
+      fields.push(<TextField key="tickerTag" label="Tag" value={cfg.tickerTag || ''} placeholder="xeroxwire" onChange={(v) => setField({ tickerTag: v })} />);
+      fields.push(<TextAreaField key="tickerMessage" label="Typewriter crawl" value={cfg.tickerMessage || ''} rows={3} onChange={(v) => setField({ tickerMessage: v })} />);
+      break;
+    }
     default:
       // Unknown widget — fall through to JSON-only editing in Advanced
       return null;
