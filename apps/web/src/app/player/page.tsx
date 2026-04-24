@@ -660,6 +660,13 @@ function PlayerPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [showOverlay, setShowOverlay] = useState(false);
+  // "Stop" state — paints a black curtain over the playback so the
+  // operator can physically walk away and know the screen is frozen
+  // even when no native Exit bridge is available (Goodview's OEM
+  // launcher, for example, doesn't inject window.EduCmsNative, so
+  // the dedicated Exit button is hidden on that hardware). Tapping
+  // the screen again lifts the curtain and resumes playback.
+  const [playbackStopped, setPlaybackStopped] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   // Split refs: interval runs at steady cadence, timeout is the one-
   // shot backoff retry. Previously both shared `pollRef` which caused
@@ -711,6 +718,14 @@ function PlayerPage() {
   // HIGH-5: track the last set of playlist asset URLs we pushed to the SW.
   // Equal hash = no-op skip; saves a postMessage + SW work on every poll.
   const lastPlaylistSetHashRef = useRef<string>('');
+  // Signature of the current playlist items + template so applyManifest
+  // can short-circuit when the manifest poll returned the same content
+  // we're already rendering. Without this, setPlaylist(new obj) +
+  // setCurrentIndex(0) fire on every 5-10s poll and the slide cycle
+  // gets yanked back to 0 before it can advance past slide 2 — the
+  // "carousel only shows items 1 and 2" bug the Integration Lead
+  // reported on the Goodview device.
+  const currentPlaylistSigRef = useRef<string>('');
   // Hydrate any cached emergency on first render so a power-cycle mid-alert
   // still shows the alert until ALL_CLEAR or a fresh manifest arrives.
   useEffect(() => {
@@ -1077,22 +1092,44 @@ function PlayerPage() {
       if (manifest.playlists && manifest.playlists.length > 0) {
         const firstTemplate = manifest.playlists.find((pl: any) => pl.template);
         if (firstTemplate) {
-          setPlaylist({ name: firstTemplate.template.name || 'Template Content', template: firstTemplate.template, items: [] });
-          setCurrentIndex(0);
+          const tplSig = 'tpl:' + (firstTemplate.template?.id || firstTemplate.template?.name || '');
+          if (tplSig !== currentPlaylistSigRef.current) {
+            currentPlaylistSigRef.current = tplSig;
+            setPlaylist({ name: firstTemplate.template.name || 'Template Content', template: firstTemplate.template, items: [] });
+            setCurrentIndex(0);
+          }
           return true;
         }
         const combinedItems: any[] = [];
         manifest.playlists.forEach((mp: any) => {
-          mp.items.forEach((item: any) => {
+          mp.items.forEach((item: any, itemIndex: number) => {
             combinedItems.push({
-              id: item.url + Math.random().toString(),
+              // Stable deterministic id. Before: `item.url + Math.random()`
+              // minted a new id on every poll, which guaranteed React's
+              // key churn (remount on each update), and combined with
+              // setCurrentIndex(0) below re-triggered the slide-cycle
+              // effect on every 5-10s manifest poll. The carousel
+              // never got past slide 1 or 2 before being yanked back.
+              id: `${mp.id || mp.name || 'pl'}:${item.sequence ?? itemIndex}:${item.url}`,
               durationMs: item.duration_ms,
-              sequenceOrder: item.sequence,
+              sequenceOrder: item.sequence ?? itemIndex,
               asset: { fileUrl: item.url, mimeType: item.url.match(/\.(mp4|webm)$/i) ? 'video/mp4' : 'image/jpeg' },
             });
           });
         });
         if (combinedItems.length > 0) {
+          // Signature of just the bits that matter for "is this the same
+          // playlist?" — url + duration + ordering. If it matches what
+          // we're already rendering, DO NOTHING: don't re-seed playlist,
+          // don't reset currentIndex, don't fire the slide-cycle effect.
+          // That's what keeps the carousel advancing through items 3-7.
+          const newSig = combinedItems
+            .map((i: any) => `${i.sequenceOrder}|${i.durationMs}|${i.asset.fileUrl}`)
+            .join('||');
+          if (newSig === currentPlaylistSigRef.current) {
+            return true; // identical content — keep index + playlist as-is
+          }
+          currentPlaylistSigRef.current = newSig;
           setPlaylist({
             name: manifest.playlists.length > 1 ? 'Scheduled Content (Combined)' : manifest.playlists[0].name || 'Scheduled Content',
             items: combinedItems,
@@ -1101,8 +1138,14 @@ function PlayerPage() {
           return true;
         }
       }
-      setPlaylist(null);
-      setCurrentIndex(0);
+      // Empty manifest path — only bother resetting state if we weren't
+      // already in the empty state. Prevents the same-signature loop
+      // above from missing this case.
+      if (currentPlaylistSigRef.current !== '') {
+        currentPlaylistSigRef.current = '';
+        setPlaylist(null);
+        setCurrentIndex(0);
+      }
       return true;
     };
 
@@ -1705,6 +1748,40 @@ function PlayerPage() {
     );
   }
 
+  // Unified Stop handler. Priority:
+  //   1. Native exit bridge (Android APK) — actually closes the app
+  //      and drops back to the OEM launcher (Goodview / NovaStar /
+  //      TCL CMS). This is the only "real" exit.
+  //   2. window.close() — works if the player was opened as a
+  //      standalone web-app / TWA / PWA window. Ignored on most
+  //      OEM WebViews.
+  //   3. playbackStopped curtain — paints a black fullscreen with
+  //      a "Tap to resume" message. Not an exit, but at least stops
+  //      playback visibly so the operator can walk away, use the
+  //      device's physical Home button, etc. Previously hitting the
+  //      red Power button just sent the player back to the pairing
+  //      screen — the operator reported "it just goes back to the
+  //      content that playing" because Unpair wasn't really Stop.
+  const handleStopPlayback = () => {
+    setShowOverlay(false);
+    try {
+      const bridge = (window as any).EduCmsNative;
+      if (bridge && typeof bridge.exitToDeviceHome === 'function') {
+        bridge.exitToDeviceHome();
+        return;
+      }
+    } catch { /* fall through */ }
+    try {
+      // Only works in windows that script opened — harmless no-op
+      // otherwise. Don't guard with confirm; the user already
+      // confirmed by clicking Stop.
+      window.close();
+    } catch { /* ignore */ }
+    // Paint the stop curtain so the screen visibly freezes even if
+    // neither exit path succeeded. Tapping resumes.
+    setPlaybackStopped(true);
+  };
+
   // (sceneTick / idleResetTimerRef / sorted / isItemValid hooks were
   // moved above the early returns to satisfy the Rules of Hooks.)
   const currentItem = sorted.length && isItemValid(sorted[currentIndex % sorted.length]) ? sorted[currentIndex % sorted.length] : null;
@@ -1716,6 +1793,26 @@ function PlayerPage() {
   if (isTemplate) {
     const tpl = playlist.template;
     const zones = tpl.zones || [];
+
+    // Stop-curtain short-circuit before rendering template widgets
+    // so the whole widget tree tears down (stopping any animations,
+    // video loops, weather polls, etc.) during the stop.
+    if (playbackStopped) {
+      return (
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="Resume playback"
+          onClick={() => setPlaybackStopped(false)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPlaybackStopped(false); } }}
+          className="fixed inset-0 bg-black flex flex-col items-center justify-center text-white cursor-pointer select-none"
+        >
+          <MonitorPlay className="w-16 h-16 text-slate-600 mb-6" strokeWidth={1.5} />
+          <h2 className="text-3xl font-bold tracking-tight">Playback stopped</h2>
+          <p className="mt-3 text-base text-slate-400">Tap or press Enter to resume · Use the device&rsquo;s Home button to exit</p>
+        </div>
+      );
+    }
 
     return (
       <div
@@ -1807,6 +1904,20 @@ function PlayerPage() {
               </div>
               <div className="flex gap-2 pt-2">
                 <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm transition-colors">Sync Now</button>
+                {/* Stop button — ALWAYS shown, unlike the native-only
+                    Exit below. Tries the exit bridge first, then a
+                    best-effort window.close(), and finally falls back
+                    to a stop-curtain so the operator always gets a
+                    visible "playback is halted" state (critical on
+                    Goodview-style OEM WebViews that don't inject a
+                    native exit bridge). */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleStopPlayback(); }}
+                  title="Stop playback"
+                  className="py-2 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-bold transition-colors"
+                >
+                  Stop
+                </button>
                 {/* Exit to OEM launcher — only shown when the native
                     bridge is present (i.e. we're running inside the
                     Android kiosk APK). Lets operators on signage boxes
@@ -1841,6 +1952,30 @@ function PlayerPage() {
             </div>
           </div>
         )}
+      </div>
+    );
+  }
+
+  // Stop-curtain overlay: when playbackStopped is true and we have no
+  // native exit bridge, render a full-screen black panel with a
+  // "Tap to resume" prompt. This fulfills the "Stop" semantics on
+  // hardware (like Goodview) where the player can't actually exit
+  // itself — playback visibly halts, the operator knows they can
+  // walk away or hit the device Home button, and a tap restores
+  // playback without an unpair round-trip.
+  if (playbackStopped) {
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label="Resume playback"
+        onClick={() => setPlaybackStopped(false)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPlaybackStopped(false); } }}
+        className="fixed inset-0 bg-black flex flex-col items-center justify-center text-white cursor-pointer select-none"
+      >
+        <MonitorPlay className="w-16 h-16 text-slate-600 mb-6" strokeWidth={1.5} />
+        <h2 className="text-3xl font-bold tracking-tight">Playback stopped</h2>
+        <p className="mt-3 text-base text-slate-400">Tap or press Enter to resume · Use the device&rsquo;s Home button to exit</p>
       </div>
     );
   }
@@ -2012,6 +2147,14 @@ function PlayerPage() {
             </div>
             <div className="flex gap-2 pt-2">
               <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm transition-colors">Sync Now</button>
+              {/* Always-visible Stop — counterpart to the block above */}
+              <button
+                onClick={(e) => { e.stopPropagation(); handleStopPlayback(); }}
+                title="Stop playback"
+                className="py-2 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-bold transition-colors"
+              >
+                Stop
+              </button>
               {/* Exit to OEM launcher — bridge-gated; see the matching block
                   above in the template render path for the rationale
                   (Goodview / NovaStar / TCL CMSes). */}
