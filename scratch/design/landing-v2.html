@@ -170,16 +170,24 @@
     font-size: 11px; color: #64748b; margin-left: 12px;
     padding: 4px 10px; background: #fff; border-radius: 6px; border: 1px solid #e2e8f0;
   }
-  /* v2.1: aspect-ratio on <iframe> itself is browser-flaky
-     (iframe collapses to 0 height in Firefox + some Chromium
-     builds). Use a sized wrapper + position:absolute iframe. */
+  /* v2.2: the iframes were rendering as solid dark boxes because
+     the target templates (animated-rainbow, arcade, varsity) all
+     size their content against window.innerWidth/innerHeight — at
+     a small iframe size the scene either clips past the viewport
+     or scales into near-zero. Fix: render each iframe at its
+     NATURAL 1920×1080 and use CSS transform:scale to visually
+     shrink it to fit the container. A tiny JS helper at the
+     bottom of the file computes the right scale per-container on
+     load + resize. */
   .hero-frame .preview {
     position: relative; width: 100%; aspect-ratio: 16 / 9;
     background: #0f172a; overflow: hidden;
   }
-  .hero-frame .preview iframe {
-    position: absolute; inset: 0;
-    width: 100%; height: 100%; border: 0;
+  .hero-frame .preview iframe,
+  .tile-frame iframe {
+    position: absolute; top: 0; left: 0;
+    width: 1920px; height: 1080px; border: 0;
+    transform-origin: 0 0;
     background: #0f172a;
   }
 
@@ -206,15 +214,10 @@
   .tile-frame {
     aspect-ratio: 16 / 9; overflow: hidden; position: relative;
     background: #0f172a;
-  }
-  /* position:absolute fills the 16:9 parent without relying on
-     aspect-ratio propagating to the iframe itself. */
-  .tile-frame iframe {
-    position: absolute; inset: 0;
-    width: 100%; height: 100%; border: 0;
     pointer-events: none;
-    background: #0f172a;
   }
+  /* Iframe sizing rule for tiles is the combined rule above
+     (shared with .hero-frame .preview iframe). */
   .tile-meta { padding: 18px 20px; display: flex; justify-content: space-between; align-items: center; }
   .tile-meta h3 { margin: 0; font-family: 'Fredoka', sans-serif; font-weight: 600; font-size: 18px; }
   .tile-meta p { margin: 4px 0 0; font-size: 13px; color: #64748b; }
@@ -586,5 +589,37 @@
   </div>
 </footer>
 
+<script>
+  /*
+    Scale each embedded template iframe so its 1920×1080 natural
+    render fits the parent container. Matches the pattern the HS
+    templates use internally — rendering at a fixed large size and
+    shrinking via transform keeps font sizes / fixed-px layouts
+    looking exactly like the real template, just smaller.
+
+    Runs on load, every resize, and twice more via setTimeout to
+    cover the case where web fonts (Fredoka / Inter) re-flow the
+    layout after initial paint.
+  */
+  (function(){
+    function fitPreviews(){
+      const iframes = document.querySelectorAll('.hero-frame .preview iframe, .tile-frame iframe');
+      iframes.forEach(function(iframe){
+        const parent = iframe.parentElement;
+        if (!parent) return;
+        const rect = parent.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+        // Iframe natural size is 1920×1080 (see CSS). Scale to min
+        // of width/height ratios so nothing crops.
+        const k = Math.min(rect.width / 1920, rect.height / 1080);
+        iframe.style.transform = 'scale(' + k + ')';
+      });
+    }
+    window.addEventListener('load', fitPreviews);
+    window.addEventListener('resize', fitPreviews);
+    setTimeout(fitPreviews, 60);
+    setTimeout(fitPreviews, 400);
+  })();
+</script>
 </body>
 </html>
