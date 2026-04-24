@@ -473,6 +473,14 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     zones: [{ name: 'Scene', widgetType: 'HS_BROADCAST', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
   {
+    id: 'preset-hs-yearbook',
+    name: '📰 Yearbook — Editorial Magazine',
+    description: 'Magazine-spread lobby: serif masthead, drop-cap italic lede, photo feature with caption, featured portrait pull-quote, calendar folio footer, wire ticker.',
+    category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#f7f3ea',
+    zones: [{ name: 'Scene', widgetType: 'HS_YEARBOOK', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
     id: 'preset-cafeteria-chalkboard',
     name: '🌿 Animated Cafeteria · Chalkboard',
     description: 'Green-chalkboard menu board — chalk-textured text, erased highlights, wooden frame, weekly menu editor.',
