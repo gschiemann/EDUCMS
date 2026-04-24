@@ -149,9 +149,13 @@
     padding: 12px 28px; border: 3px solid var(--yellow); letter-spacing: .04em;
   }
 
-  /* ─── XP bar (field-day progress) — trimmed height, bigger type ── */
+  /* ─── XP bar (field-day progress) — trimmed height, bigger type ──
+     v2.6 geometry fix: quest (top:310, height:880) ends at y=1190,
+     so xpbar MUST start at ≥1210 — was 1150 which overlapped the
+     quest hero by 40px and showed as "text blocks spilling over
+     the box on the left side." Bumped to 1210 with a 20px gap. */
   .xpbar {
-    position: absolute; top: 1150px; left: 64px; width: 2400px; height: 150px;
+    position: absolute; top: 1210px; left: 64px; width: 2400px; height: 150px;
     background: var(--panel); border: 6px solid var(--ink); box-shadow: 10px 10px 0 #000;
     padding: 22px 44px; display: grid; grid-template-columns: auto 1fr auto; gap: 40px; align-items: center;
   }
@@ -186,7 +190,9 @@
      The global version of this fix broke the hero + xpbar by
      shrinking their content areas too; this scoped version
      leaves every other panel untouched. */
-  .side { position:absolute; top: 310px; right: 64px; width: 1280px; height: 990px;
+  /* v2.6: side bottom re-aligned with xpbar bottom (1360) after quest
+     pushed xpbar down. Height 990 → 1050. */
+  .side { position:absolute; top: 310px; right: 64px; width: 1280px; height: 1050px;
     background: var(--panel); border: 6px solid var(--ink); box-shadow: 16px 16px 0 #000;
     padding: 52px 52px; display: flex; flex-direction: column;
     box-sizing: border-box; }
@@ -219,7 +225,8 @@
   /* v2.2: shrank 640 → 600 so the last quest row ("LUNCH / chicken
      & rice / 7th grade") doesn't crowd the pink bar below. New
      bottom y = 1920, newsbar top = 1990, gap = 70px. */
-  .board { position:absolute; top: 1320px; left: 64px; width: 2400px; height: 600px;
+  /* v2.6: shifted to 1380 because xpbar now ends at 1360. */
+  .board { position:absolute; top: 1380px; left: 64px; width: 2400px; height: 590px;
     background: var(--panel); border: 6px solid var(--ink); box-shadow: 16px 16px 0 #000;
     padding: 36px 52px 28px; }
   .board .head { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom: 28px; padding-bottom: 22px; border-bottom: 5px solid var(--ink); }
@@ -256,7 +263,8 @@
   /* ─── Side quests (2 items — was 3) ──────────────────────── */
   /* v2.2: matched the board's new 600px height so both bottom
      edges sit on the same line (y=1920) above the newsbar. */
-  .events { position:absolute; top: 1320px; right: 64px; width: 1280px; height: 600px; }
+  /* v2.6: matched board top (1380) + height (590). */
+  .events { position:absolute; top: 1380px; right: 64px; width: 1280px; height: 590px; }
   .eventsbox { background: var(--panel); border: 6px solid var(--ink); box-shadow: 10px 10px 0 #000; padding: 38px 44px; height: 100%; display: flex; flex-direction: column; }
   /* v2: 40 → 56 */
   .eventsbox h2 { font-family:'Press Start 2P', monospace; font-size: 56px; color: var(--orange); margin: 0 0 26px; letter-spacing: .02em; line-height: 1.2; }
