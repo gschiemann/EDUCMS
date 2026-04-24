@@ -17,7 +17,7 @@ import {
   usePlaylists, useCreatePlaylist, useDeletePlaylist, useAssets,
   useReorderPlaylistItems, useScreenGroups, useCreateSchedule,
   useSchedules, useDeleteSchedule, useToggleSchedule, useUpdateSchedule, useScreens,
-  useTemplates, useAssetFolders
+  useTemplates, useAssetFolders, useSetPlaylistActive,
 } from '@/hooks/use-api';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
@@ -58,10 +58,14 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
 
   return (
     <div ref={setNodeRef} style={style} className={`bg-white rounded-2xl border ${isSelected ? 'border-indigo-400 ring-2 ring-indigo-100 shadow-[0_4px_20px_rgba(99,102,241,0.12)]' : 'border-slate-100 group hover:shadow-[0_4px_20px_rgba(0,0,0,0.04)]'} transition-all overflow-hidden flex flex-col`}>
-      <div className="playlist-item-card flex items-center gap-3 p-3.5">
-        <button {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 text-slate-300 hover:text-slate-500">
-          <GripVertical className="w-4 h-4" />
-        </button>
+      {/* Apply drag listeners to the WHOLE row so the operator can grab
+          anywhere — the tiny grip-icon handle was undiscoverable (user
+          reported "I can't drag the order"). The PointerSensor's
+          activationConstraint:{distance:8} keeps clicks on the duration
+          input, checkbox, and settings button working: they only
+          trigger a drag after the pointer has moved 8px. */}
+      <div {...attributes} {...listeners} className="playlist-item-card flex items-center gap-3 p-3.5 cursor-grab active:cursor-grabbing">
+        <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-indigo-400 shrink-0" aria-hidden="true" />
         <div className="flex items-center">
           <input type="checkbox" checked={isSelected} onChange={() => onToggle(item.id)} className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer" />
         </div>
@@ -169,17 +173,110 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
 }
 
 // --- Dashboard Playlist Card ---
-function PlaylistCard({ playlist, screenMap, onOpen, onDelete }: {
+// `layout` decides between the big card (grid view) and the compact row
+// (list view). Grid renders per-slide thumbnails under the header so the
+// operator can spot "which playlist is this again?" at a glance; list
+// mode hides the thumbs to fit more rows per screen — intentionally
+// matching the density of the Screens page list mode.
+//
+// The on/off toggle flips all the playlist's schedules at once via
+// PUT /playlists/:id/active. When a playlist has zero schedules we
+// deep-link into the editor (onOpen) instead — we can't guess a target
+// to schedule to.
+function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, togglePending, layout = 'grid' }: {
   playlist: any;
   screenMap: { screens: any[]; groups: any[]; scheduleCount: number; activeCount: number };
   onOpen: () => void;
   onDelete: () => void;
+  onToggleActive: (active: boolean) => void;
+  togglePending: boolean;
+  layout?: 'grid' | 'list';
 }) {
   const isTemplate = !!playlist.template;
   const slideCount = playlist.items?.length || 0;
   const hasScreens = screenMap.screens.length > 0 || screenMap.groups.length > 0;
   const onlineScreens = screenMap.screens.filter((s: any) => s.status === 'ONLINE');
+  const hasSchedules = screenMap.scheduleCount > 0;
+  // A playlist is "on" when at least one of its schedules is active.
+  const isLive = screenMap.activeCount > 0;
+  // First few asset thumbs for the grid-view preview strip.
+  const previewItems = (playlist.items || []).slice(0, 4);
 
+  // Click handler for the toggle button. If the playlist has no
+  // schedules yet, open the editor so the operator can set one up —
+  // we can't flip "active" on a playlist that has nothing to flip.
+  const handleToggleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!hasSchedules) { onOpen(); return; }
+    onToggleActive(!isLive);
+  };
+
+  if (layout === 'list') {
+    return (
+      <div className="group relative bg-white rounded-2xl border border-slate-100 hover:border-indigo-200 hover:shadow-[0_4px_20px_rgba(99,102,241,0.06)] transition-all overflow-hidden">
+        <button
+          onClick={onOpen}
+          aria-label={`Open playlist ${playlist.name}`}
+          className="absolute inset-0 w-full h-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 z-0"
+        />
+        <div className="relative z-10 flex items-center gap-4 px-4 py-3 pointer-events-none">
+          {/* Left accent + name */}
+          <div className={`w-1 h-9 rounded-full shrink-0 ${isTemplate ? 'bg-gradient-to-b from-violet-500 to-purple-500' : hasScreens ? 'bg-gradient-to-b from-emerald-400 to-teal-400' : 'bg-slate-200'}`} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-slate-800 truncate">{playlist.name}</h3>
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${isTemplate ? 'bg-violet-100 text-violet-600' : 'bg-indigo-100 text-indigo-600'}`}>
+                {isTemplate ? 'Layout' : 'Media'}
+              </span>
+            </div>
+            <div className="flex items-center gap-3 mt-0.5 text-[10px] text-slate-400">
+              <span>{isTemplate ? `${playlist.template.screenWidth}×${playlist.template.screenHeight}` : `${slideCount} slide${slideCount !== 1 ? 's' : ''}`}</span>
+              <span className="inline-flex items-center gap-1">
+                <CalendarDays className="w-3 h-3" />
+                {screenMap.activeCount}/{screenMap.scheduleCount || 0}
+              </span>
+              {hasScreens && (
+                <span className="inline-flex items-center gap-1">
+                  <Monitor className="w-3 h-3" />
+                  {onlineScreens.length}/{screenMap.screens.length} online
+                </span>
+              )}
+            </div>
+          </div>
+          {/* Live chip */}
+          <div className="shrink-0 pointer-events-auto">
+            {hasSchedules ? (
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${isLive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                {isLive ? '● Live' : '○ Off'}
+              </span>
+            ) : (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-amber-50 text-amber-600">Unscheduled</span>
+            )}
+          </div>
+          {/* On/off toggle */}
+          <button
+            onClick={handleToggleClick}
+            disabled={togglePending}
+            title={hasSchedules ? (isLive ? 'Turn playlist off — pauses all schedules' : 'Turn playlist on — activates all schedules') : 'Set a schedule first'}
+            aria-label={isLive ? 'Turn off' : 'Turn on'}
+            className={`relative z-10 shrink-0 inline-flex items-center h-6 w-11 rounded-full transition-colors pointer-events-auto ${isLive ? 'bg-emerald-500' : 'bg-slate-300'} ${togglePending ? 'opacity-50' : ''}`}
+          >
+            <span className={`inline-block w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform ${isLive ? 'translate-x-6' : 'translate-x-1'}`} />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            aria-label={`Delete playlist ${playlist.name}`}
+            className="relative z-10 shrink-0 p-1.5 rounded-lg text-slate-200 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all pointer-events-auto"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+          <ChevronRight className="shrink-0 w-4 h-4 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all" />
+        </div>
+      </div>
+    );
+  }
+
+  // Grid view (default)
   return (
     <div className="group relative bg-white rounded-2xl border border-slate-100 hover:border-indigo-200 hover:shadow-[0_8px_30px_rgba(99,102,241,0.08)] transition-all duration-300 overflow-hidden">
       <button
@@ -196,6 +293,11 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete }: {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <h3 className="text-sm font-bold text-slate-800 truncate">{playlist.name}</h3>
+              {hasSchedules && (
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${isLive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                  {isLive ? '● Live' : '○ Off'}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
@@ -213,14 +315,67 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete }: {
               </span>
             </div>
           </div>
-          <button
-            onClick={(e) => { e.stopPropagation(); onDelete(); }}
-            aria-label={`Delete playlist ${playlist.name}`}
-            className="relative z-10 p-1.5 rounded-lg text-slate-200 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            {/* On/off toggle — always visible on the card so the
+                operator doesn't have to drill in to flip state. */}
+            <button
+              onClick={handleToggleClick}
+              disabled={togglePending}
+              title={hasSchedules ? (isLive ? 'Turn playlist off — pauses all schedules' : 'Turn playlist on — activates all schedules') : 'Set a schedule first — opens editor'}
+              aria-label={isLive ? 'Turn off' : 'Turn on'}
+              className={`relative z-10 shrink-0 inline-flex items-center h-6 w-11 rounded-full transition-colors ${isLive ? 'bg-emerald-500' : hasSchedules ? 'bg-slate-300' : 'bg-amber-200'} ${togglePending ? 'opacity-50' : ''}`}
+            >
+              <span className={`inline-block w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform ${isLive ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              aria-label={`Delete playlist ${playlist.name}`}
+              className="relative z-10 p-1.5 rounded-lg text-slate-200 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
+
+        {/* Preview strip — shows the first 4 asset thumbs so the card
+            has a "what's in this playlist" cue at a glance. Hidden for
+            Layout (template) playlists since they render dynamic
+            widgets rather than discrete slides. */}
+        {!isTemplate && previewItems.length > 0 && (
+          <div className="mb-3 -mx-1">
+            <div className="flex gap-1 px-1">
+              {previewItems.map((pi: any, idx: number) => {
+                const asset = pi.asset || {};
+                const thumb = thumbUrl(asset);
+                const isVideo = asset.mimeType?.startsWith('video/');
+                return (
+                  <div
+                    key={pi.id || idx}
+                    className="relative flex-1 aspect-video rounded-md bg-slate-50 border border-slate-100 overflow-hidden"
+                    title={assetName(asset)}
+                  >
+                    {thumb ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={thumb} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        {mimeIcon(asset.mimeType, 'w-3.5 h-3.5')}
+                      </div>
+                    )}
+                    {isVideo && (
+                      <Play className="absolute inset-0 m-auto w-3 h-3 text-white drop-shadow" />
+                    )}
+                  </div>
+                );
+              })}
+              {slideCount > previewItems.length && (
+                <div className="flex-1 aspect-video rounded-md bg-slate-100 border border-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500">
+                  +{slideCount - previewItems.length}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Screen Assignments — the hero section */}
         <div className="mt-1">
@@ -294,6 +449,21 @@ export default function PlaylistsPage() {
   const deleteSchedule = useDeleteSchedule();
   const toggleSchedule = useToggleSchedule();
   const updateSchedule = useUpdateSchedule();
+  const setPlaylistActive = useSetPlaylistActive();
+
+  // Grid (tile) vs list (compact row) view — persisted per-tab in
+  // sessionStorage so a refresh doesn't reset the operator's choice.
+  // Matches the Screens page pattern.
+  const [playlistView, setPlaylistView] = useState<'grid' | 'list'>('grid');
+  useEffect(() => {
+    try {
+      const v = sessionStorage.getItem('edu_playlist_view');
+      if (v === 'grid' || v === 'list') setPlaylistView(v);
+    } catch { /* sessionStorage may be unavailable */ }
+  }, []);
+  useEffect(() => {
+    try { sessionStorage.setItem('edu_playlist_view', playlistView); } catch {}
+  }, [playlistView]);
 
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
   const [editSchedTarget, setEditSchedTarget] = useState('');
@@ -402,8 +572,13 @@ export default function PlaylistsPage() {
     return !m || m.scheduleCount === 0;
   }).length;
 
+  // Activation constraint so clicks on interactive children (duration
+  // input, settings button, checkbox) don't accidentally start a drag.
+  // With distance:8 the pointer must travel 8px before a drag kicks in —
+  // any click that stays put still behaves like a click. Without this
+  // the draggable-whole-row change below would hijack every input edit.
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
@@ -495,13 +670,18 @@ export default function PlaylistsPage() {
     setHasChanges(false);
   };
 
-  const handlePublish = async () => {
+  // Unified submit for the Publish/Save modal. `activate=false` = save
+  // as a draft (isActive: false server-side). The UI wires two buttons
+  // to this function — "Save" (activate=false) and "Publish"
+  // (activate=true) — so the operator can stage a schedule ahead of
+  // time and then flip it live from the playlist card's on/off toggle.
+  const submitSchedule = async (activate: boolean) => {
     if (schedTargets.length === 0) return;
 
     if (editingScheduleId) {
       // In edit mode we process the multiple targets by clearing the original and recreating them
       await deleteSchedule.mutateAsync(editingScheduleId);
-      
+
       for (const target of schedTargets) {
         const isGroup = target.startsWith('group-');
         const targetId = target.replace(/^(group-|screen-)/, '');
@@ -515,6 +695,7 @@ export default function PlaylistsPage() {
           timeEnd: schedMode === 'scheduled' ? schedTimeEnd : undefined,
           priority: 0,
           mode: publishMode,
+          isActive: activate,
         });
       }
       setEditingScheduleId(null);
@@ -533,6 +714,7 @@ export default function PlaylistsPage() {
           timeEnd: schedMode === 'scheduled' ? schedTimeEnd : undefined,
           priority: 0,
           mode: publishMode,
+          isActive: activate,
         });
       }
     }
@@ -540,6 +722,10 @@ export default function PlaylistsPage() {
     setSchedTargets([]);
     setTab('schedules');
   };
+
+  // Back-compat alias so older call-sites keep working while we migrate.
+  const handlePublish = () => submitSchedule(true);
+  const handleSaveDraft = () => submitSchedule(false);
 
   const totalMs = localItems.reduce((a: number, i: any) => a + (i.durationMs || 0), 0);
   const totalDur = `${Math.floor(totalMs / 60000)}m ${Math.round((totalMs % 60000) / 1000)}s`;
@@ -1284,12 +1470,28 @@ export default function PlaylistsPage() {
                 <button onClick={() => setShowPublishModal(false)} className="px-4 py-2.5 text-slate-500 hover:text-slate-800 text-sm font-semibold rounded-lg hover:bg-slate-50">
                   Cancel
                 </button>
+                {/* Save = persist schedule as DRAFT (isActive:false).
+                    Operator can stage a schedule ahead of time and flip
+                    it live later via the on/off toggle on the playlist
+                    card. Schedule doesn't displace the currently-
+                    running playlist on its target(s) until it's
+                    activated. */}
+                <button
+                  disabled={schedTargets.length === 0 || createSchedule.isPending}
+                  onClick={handleSaveDraft}
+                  className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50 text-slate-700 text-sm font-bold rounded-lg shadow-sm flex items-center gap-2"
+                  title="Save this schedule as a draft — won't go live until you turn the playlist on"
+                >
+                  {createSchedule.isPending ? 'Saving…' : (
+                    <><Save className="w-4 h-4" /> Save</>
+                  )}
+                </button>
                 <button
                   disabled={schedTargets.length === 0 || createSchedule.isPending}
                   onClick={handlePublish}
                   className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-sm font-bold rounded-lg shadow-sm flex items-center gap-2"
                 >
-                  {createSchedule.isPending ? 'Publishing...' : (
+                  {createSchedule.isPending ? 'Publishing…' : (
                     <><CalendarDays className="w-4 h-4" /> Publish</>
                   )}
                 </button>
@@ -1310,9 +1512,33 @@ export default function PlaylistsPage() {
           <h1 className="text-2xl font-bold tracking-tight text-slate-800">Playlists</h1>
           <p className="text-sm text-slate-500 mt-0.5">See what&apos;s playing on every screen at a glance.</p>
         </div>
-        <button onClick={() => { setShowCreate(true); setCreateMode('choose'); setNewName(''); setSelectedTemplateId(null); }} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-1.5">
-          <Plus className="w-4 h-4" /> New Playlist
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Tile / Line view toggle — tile shows per-playlist asset
+              thumbs, line mode hides them so more rows fit on screen. */}
+          <div className="flex border border-slate-200 rounded-lg overflow-hidden" role="group" aria-label="Playlist view mode">
+            <button
+              onClick={() => setPlaylistView('grid')}
+              aria-pressed={playlistView === 'grid'}
+              title="Tile view — shows asset thumbnails"
+              className={`px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${playlistView === 'grid' ? 'bg-slate-100 text-slate-800' : 'bg-white text-slate-400 hover:text-slate-600'}`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              Tile
+            </button>
+            <button
+              onClick={() => setPlaylistView('list')}
+              aria-pressed={playlistView === 'list'}
+              title="Line view — more playlists per window"
+              className={`px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors flex items-center gap-1.5 border-l border-slate-200 ${playlistView === 'list' ? 'bg-slate-100 text-slate-800' : 'bg-white text-slate-400 hover:text-slate-600'}`}
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" aria-hidden="true"><line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="2" y1="12" x2="14" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+              Line
+            </button>
+          </div>
+          <button onClick={() => { setShowCreate(true); setCreateMode('choose'); setNewName(''); setSelectedTemplateId(null); }} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-1.5">
+            <Plus className="w-4 h-4" /> New Playlist
+          </button>
+        </div>
       </div>
 
       {/* Quick Stats Bar */}
@@ -1460,9 +1686,12 @@ export default function PlaylistsPage() {
 
       {isLoading && <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>}
 
-      {/* ─── Playlist Dashboard Grid ─── */}
+      {/* ─── Playlist Dashboard — grid OR line layout ─── */}
       {playlists && playlists.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className={playlistView === 'grid'
+          ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4'
+          : 'space-y-2'
+        }>
           {playlists.map((pl: any) => (
             <PlaylistCard
               key={pl.id}
@@ -1470,6 +1699,9 @@ export default function PlaylistsPage() {
               screenMap={playlistScreenMap[pl.id] || { screens: [], groups: [], scheduleCount: 0, activeCount: 0 }}
               onOpen={() => handleSelect(pl)}
               onDelete={() => deletePlaylist.mutate(pl.id)}
+              onToggleActive={(active: boolean) => setPlaylistActive.mutate({ id: pl.id, active })}
+              togglePending={setPlaylistActive.isPending}
+              layout={playlistView}
             />
           ))}
         </div>

@@ -584,11 +584,19 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     screenWidth: 3840, screenHeight: 2160, bgColor: '#fef3c7',
     zones: [{ name: 'Scene', widgetType: 'ANIMATED_ACHIEVEMENT_SHOWCASE', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
+  // Scrapbook + Storybook retagged ELEMENTARY (was UNIVERSAL) —
+  // polaroid/washi-tape and illuminated-drop-cap aesthetics read as
+  // clearly elementary, and the user reported them showing up under
+  // the High School filter ("Story Time is elementary"). UNIVERSAL
+  // templates appear in every filter (filter allows UNIVERSAL + the
+  // selected level), so these were visible under MS and HS which is
+  // the wrong default. Operators who want to use them at HS can still
+  // pick them from the All-ages view.
   {
     id: 'preset-scrapbook-hallway',
     name: '📸 Scrapbook · Hallway',
     description: 'Scrapbook hallway board — polaroids, washi tape, handwritten fonts, attendance, announcements, ticker.',
-    category: 'HALLWAY', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    category: 'HALLWAY', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#fff7ed',
     zones: [{ name: 'Scene', widgetType: 'SCRAPBOOK_HALLWAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
@@ -596,7 +604,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     id: 'preset-scrapbook-cafeteria',
     name: '📸 Scrapbook · Cafeteria',
     description: 'Scrapbook cafeteria menu — polaroid plate, washi-tape menu cards, handwritten allergen notes.',
-    category: 'CAFETERIA', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    category: 'CAFETERIA', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#fff7ed',
     zones: [{ name: 'Scene', widgetType: 'SCRAPBOOK_CAFETERIA', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
@@ -604,7 +612,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     id: 'preset-storybook-hallway',
     name: '📖 Storybook · Hallway',
     description: 'Open-book hallway layout — center spine, illuminated drop cap, parchment pages, schedule + attendance, page numbers.',
-    category: 'HALLWAY', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    category: 'HALLWAY', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#f5f0dc',
     zones: [{ name: 'Scene', widgetType: 'STORYBOOK_HALLWAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
@@ -612,7 +620,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     id: 'preset-storybook-cafeteria',
     name: '📖 Storybook · Cafeteria',
     description: 'Open-book cafeteria menu — parchment pages, illuminated drop cap, chef’s note, multi-period countdown.',
-    category: 'CAFETERIA', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    category: 'CAFETERIA', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#f5f0dc',
     zones: [{ name: 'Scene', widgetType: 'STORYBOOK_CAFETERIA', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },

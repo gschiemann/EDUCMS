@@ -53,13 +53,25 @@ export class SchedulesController {
       timeEnd?: string;      // "15:00"
       priority?: number;
       mode?: 'append' | 'replace';
+      // Save as a DRAFT (isActive = false). Lets operators stage
+      // a schedule ahead of time — e.g. build a "Friday pep rally"
+      // rotation on Monday — and flip it live with the on/off
+      // toggle on the playlist card when the day comes. Defaults
+      // to `true` (publish immediately) to preserve the old
+      // behavior for any caller not passing this flag.
+      isActive?: boolean;
     },
   ) {
     if (!body.screenGroupId && !body.screenId) {
       throw new HttpException('Either screenGroupId or screenId must be specified', HttpStatus.BAD_REQUEST);
     }
 
-    if (body.mode !== 'append') {
+    const willBeActive = body.isActive !== false;
+
+    // Only displace other active schedules when THIS schedule is going
+    // live. A saved-draft schedule should not knock the currently-
+    // running one off the screen; it's a plan, not a go-live.
+    if (willBeActive && body.mode !== 'append') {
        // Replace mode: disable all existing active schedules for this target
        await this.prisma.client.schedule.updateMany({
          where: {
@@ -86,6 +98,7 @@ export class SchedulesController {
         timeStart: body.timeStart || null,
         timeEnd: body.timeEnd || null,
         priority: body.priority ?? 0,
+        isActive: willBeActive,
       },
       include: {
         playlist: { select: { id: true, name: true } },
@@ -93,7 +106,12 @@ export class SchedulesController {
         screen: { select: { id: true, name: true } },
       },
     });
-    this.notifySync(req.user.tenantId);
+    // Only nudge players when the new schedule is actually live.
+    // Drafts don't affect the running fleet so there's no reason to
+    // wake every player up to re-sync.
+    if (willBeActive) {
+      this.notifySync(req.user.tenantId);
+    }
     return res;
   }
 

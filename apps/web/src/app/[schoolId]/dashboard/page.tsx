@@ -178,16 +178,13 @@ export default function DashboardPage() {
   // `isEmpty` for "nothing to do here" empty states. Kept as an alias.
   const isEmpty = (assets?.length || 0) === 0 && fleet.total === 0;
 
-  // "Getting started" 3-step card visibility. Previously gated on
-  // isEmpty (no assets + no screens) which meant:
-  //   1) during the React Query fetch the card flashed true then
-  //      disappeared once real data arrived — jarring UX.
-  //   2) as soon as the user paired one screen, the whole guide
-  //      vanished even though they still hadn't uploaded content or
-  //      built a playlist. User asked to keep the card around.
-  // Now the card stays until explicitly dismissed (per-user LS flag).
-  // Auto-hides once the user has BOTH assets AND a paired screen +
-  // a schedule, since at that point the 3 steps are all done.
+  // "Getting started" 3-step card visibility. We used to auto-hide the
+  // card when {assets, screens, schedules} were all populated, but the
+  // React Query fetch timing made it flicker — it would flash in while
+  // data was loading and then vanish once the last query resolved. The
+  // Integration Lead asked for a steady, always-visible guide that only
+  // goes away when they explicitly close it. Now the only gate is the
+  // per-user "I dismissed this" flag in localStorage.
   const [hintDismissed, setHintDismissed] = useState(false);
   useEffect(() => {
     try { setHintDismissed(localStorage.getItem('edu_dashboard_hint_dismissed') === '1'); } catch {}
@@ -196,8 +193,7 @@ export default function DashboardPage() {
     setHintDismissed(true);
     try { localStorage.setItem('edu_dashboard_hint_dismissed', '1'); } catch {}
   };
-  const allStepsDone = (assets?.length || 0) > 0 && fleet.total > 0 && (schedules?.length || 0) > 0;
-  const showOnboarding = !hintDismissed && !allStepsDone;
+  const showOnboarding = !hintDismissed;
   const tenantName = (tenant as any)?.name || (user as any)?.tenantName || 'Your Organization';
   const firstName = (() => {
     const e = (user as any)?.email || '';
@@ -325,10 +321,14 @@ export default function DashboardPage() {
           </button>
           <h2 className="text-lg font-bold text-slate-800 mb-2">Getting started</h2>
           <p className="text-sm text-slate-600 mb-6">Three steps to get your displays running. Dismiss this when you&rsquo;re set up.</p>
+          {/* Step order reflects the real setup flow: you can't pick a
+              target for a playlist if no screens are paired yet, so
+              "Connect a Screen" is step 1. Assets comes next (what
+              will play), then Playlist (what to play + where). */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <OnboardStep href={`${tenantBase}/assets`} step={1} color="sky" Icon={Upload} title="Upload Content" desc="Add images, videos, PDFs, or web URLs to your media library." cta="Go to Assets" />
-            <OnboardStep href={`${tenantBase}/playlists`} step={2} color="violet" Icon={ListVideo} title="Build a Playlist" desc="Create a playlist and add your media with durations." cta="Go to Playlists" />
-            <OnboardStep href={`${tenantBase}/screens`} step={3} color="emerald" Icon={MonitorPlay} title="Connect a Screen" desc="Pair devices or open the web player anywhere." cta="Go to Screens" />
+            <OnboardStep href={`${tenantBase}/screens`} step={1} color="emerald" Icon={MonitorPlay} title="Connect a Screen" desc="Pair the devices that will display your content — or open the web player anywhere." cta="Go to Screens" />
+            <OnboardStep href={`${tenantBase}/assets`} step={2} color="sky" Icon={Upload} title="Upload Content" desc="Add images, videos, PDFs, or web URLs to your media library." cta="Go to Assets" />
+            <OnboardStep href={`${tenantBase}/playlists`} step={3} color="violet" Icon={ListVideo} title="Build a Playlist" desc="Assemble a playlist from your assets, then publish it to the screens you connected." cta="Go to Playlists" />
           </div>
         </div>
       )}

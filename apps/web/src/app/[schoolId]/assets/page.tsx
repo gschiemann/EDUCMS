@@ -336,10 +336,22 @@ export default function AssetsPage() {
   const counts = { all: folderAssets.length, images: folderAssets.filter((a:any)=>a.mimeType?.startsWith('image/')).length, videos: folderAssets.filter((a:any)=>a.mimeType?.startsWith('video/')).length, audio: folderAssets.filter((a:any)=>a.mimeType?.startsWith('audio/')).length, urls: folderAssets.filter((a:any)=>a.mimeType==='text/html').length, documents: folderAssets.filter((a:any)=>a.mimeType==='application/pdf').length };
 
   const thumbUrl = (a: any) => {
+    // URL assets: render a homepage screenshot so the library tile
+    // shows something meaningful instead of a generic globe icon.
+    // WordPress's free mshots service has been running since ~2010,
+    // requires no API key, is same-origin-safe, and serves through
+    // their CDN. First request against a new URL can return a
+    // placeholder while it warms — the second hit has the real
+    // screenshot. We don't cache it ourselves; the browser + CDN
+    // handle that for us.
+    if (a.mimeType === 'text/html' && a.fileUrl) {
+      return `https://s.wordpress.com/mshots/v1/${encodeURIComponent(a.fileUrl)}?w=640&h=360`;
+    }
     if (!a.mimeType?.startsWith('image/') && !a.mimeType?.startsWith('video/')) return null;
     return a.fileUrl?.startsWith('http') ? a.fileUrl : `${apiBase}${a.fileUrl}`;
   };
   const isVideo = (a: any) => a.mimeType?.startsWith('video/');
+  const isUrl = (a: any) => a.mimeType === 'text/html';
   const assetName = (a: any) => a.originalName || (a.mimeType === 'text/html' ? a.fileUrl : a.fileUrl?.split('/').pop()) || 'Untitled';
 
   const selectedThumb = selectedAsset ? thumbUrl(selectedAsset) : null;
@@ -660,8 +672,17 @@ export default function AssetsPage() {
                 </button>
 
                 <button
-                  onClick={() => setSelectedAsset(a)}
-                  aria-label={`View details for ${name}`}
+                  onClick={() => {
+                    // URL assets: click-through to the live page so the
+                    // operator can verify "yep, that's the one I added."
+                    // Other asset types keep opening the detail panel.
+                    if (isUrl(a)) {
+                      window.open(a.fileUrl, '_blank', 'noopener,noreferrer');
+                    } else {
+                      setSelectedAsset(a);
+                    }
+                  }}
+                  aria-label={isUrl(a) ? `Open ${name} in a new tab` : `View details for ${name}`}
                   className="w-full text-left cursor-pointer hover:-translate-y-0 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500"
                 >
                 <div className="aspect-video bg-slate-50 flex items-center justify-center relative overflow-hidden">
@@ -685,6 +706,13 @@ export default function AssetsPage() {
                         const badge = img.parentElement?.querySelector('[data-res]') as HTMLElement;
                         if (badge && img.naturalWidth) badge.textContent = `${img.naturalWidth}×${img.naturalHeight}`;
                       }}
+                      // mshots sometimes returns an image that fails to
+                      // decode on a brand-new URL (the service hasn't
+                      // generated the shot yet). Fall back to the globe
+                      // icon on error so the tile never renders broken.
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.display = 'none';
+                      }}
                     />
                   ) : (
                     typeIcon(a.mimeType, 'w-8 h-8')
@@ -695,7 +723,7 @@ export default function AssetsPage() {
                   )}
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
                     <div className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all scale-75 group-hover:scale-100 shadow-lg mt-4">
-                      <Eye className="w-4 h-4 text-slate-700" />
+                      {isUrl(a) ? <Globe className="w-4 h-4 text-emerald-600" /> : <Eye className="w-4 h-4 text-slate-700" />}
                     </div>
                   </div>
                 </div>
@@ -726,8 +754,14 @@ export default function AssetsPage() {
                   {isSelected && <Check className="w-3 h-3 text-white" />}
                 </button>
                 <button
-                  onClick={() => setSelectedAsset(a)}
-                  aria-label={`View details for ${name}`}
+                  onClick={() => {
+                    if (isUrl(a)) {
+                      window.open(a.fileUrl, '_blank', 'noopener,noreferrer');
+                    } else {
+                      setSelectedAsset(a);
+                    }
+                  }}
+                  aria-label={isUrl(a) ? `Open ${name} in a new tab` : `View details for ${name}`}
                   className="flex items-center gap-4 flex-1 min-w-0 text-left"
                 >
                   <div className="w-12 h-12 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
@@ -735,7 +769,12 @@ export default function AssetsPage() {
                       <video src={thumb} muted preload="metadata" className="w-full h-full object-cover" />
                     ) : thumb ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={thumb} alt="" className="w-full h-full object-cover" />
+                      <img
+                        src={thumb}
+                        alt=""
+                        className="w-full h-full object-cover"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                      />
                     ) : typeIcon(a.mimeType)}
                   </div>
                   <div className="flex-1 min-w-0">

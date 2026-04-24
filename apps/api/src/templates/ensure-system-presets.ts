@@ -129,6 +129,47 @@ export async function ensureSystemPresets(prisma: PrismaService) {
       logger.log(`System preset seed complete — ${created}/${missing.length} created.`);
     }
 
+    // ─── Metadata sync for existing presets ───
+    // The "creation only" contract above means a preset's schoolLevel
+    // / category / name tag can drift from source forever once a row
+    // exists. The Integration Lead reported Scrapbook + Storybook
+    // (elementary aesthetic) showing up under the High School filter
+    // because the DB rows are still tagged UNIVERSAL from an older
+    // source version. Metadata tags ARE safe to rewrite — they only
+    // affect which filter chip surfaces a preset, not what actually
+    // renders — so we reconcile them here. Zones / defaultConfig /
+    // screenWidth stay untouched; those are the "customer-visible
+    // shape" the creation-only rule was written for.
+    try {
+      const presentRows = await prisma.client.template.findMany({
+        where: {
+          isSystem: true,
+          id: { in: ALL_PRESETS.map((p) => p.id) },
+        },
+        select: { id: true, name: true, category: true, schoolLevel: true, description: true },
+      });
+      let syncCount = 0;
+      for (const row of presentRows) {
+        const src: any = ALL_PRESETS.find((p) => p.id === row.id);
+        if (!src) continue;
+        const patch: Record<string, any> = {};
+        if (src.name && src.name !== row.name) patch.name = src.name;
+        if (src.category && src.category !== row.category) patch.category = src.category;
+        if (src.description && src.description !== row.description) patch.description = src.description;
+        const srcLevel = ('schoolLevel' in src && src.schoolLevel) ? src.schoolLevel : undefined;
+        if (srcLevel && srcLevel !== row.schoolLevel) patch.schoolLevel = srcLevel;
+        if (Object.keys(patch).length > 0) {
+          await prisma.client.template.update({ where: { id: row.id }, data: patch });
+          syncCount += 1;
+        }
+      }
+      if (syncCount > 0) {
+        logger.log(`Synced metadata on ${syncCount} existing system preset(s).`);
+      }
+    } catch (e) {
+      logger.warn(`Metadata sync failed: ${(e as Error).message}`);
+    }
+
     // ─── Archive presets that were deleted from system-presets.ts or fitness-presets.ts ───
     // Source-of-truth is the ALL_PRESETS array. Any system
     // template row in the DB whose id no longer appears there gets

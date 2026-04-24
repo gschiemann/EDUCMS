@@ -144,6 +144,40 @@ export class PlaylistsController {
     return updated;
   }
 
+  /**
+   * Flip every schedule attached to this playlist on or off in one
+   * call. Powers the on/off toggle on the playlist card so an
+   * operator doesn't have to drill into the playlist, hit Schedule,
+   * then Publish just to turn content on or off for the day. Returns
+   * the updated count so the UI can surface "N schedules activated".
+   *
+   * `active: true` with zero existing schedules is a soft no-op — the
+   * frontend is expected to send the user through the publish flow in
+   * that case. We don't silently create a schedule here because we
+   * can't guess the correct screen target or time window.
+   */
+  @Put(':id/active')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async setActive(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { active: boolean },
+  ) {
+    const playlist = await this.prisma.client.playlist.findFirst({
+      where: { id, tenantId: req.user.tenantId },
+    });
+    if (!playlist) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    const result = await this.prisma.client.schedule.updateMany({
+      where: { playlistId: id, tenantId: req.user.tenantId },
+      data: { isActive: !!body.active },
+    });
+    // Nudge the players so they re-fetch the manifest immediately
+    // instead of waiting for the next 5-10s poll — same pattern as
+    // schedule create.
+    this.notifySync(req.user.tenantId);
+    return { count: result.count, active: !!body.active };
+  }
+
   @Delete(':id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async remove(@Request() req: any, @Param('id') id: string) {

@@ -192,6 +192,26 @@ export function useDeletePlaylist() {
   });
 }
 
+/**
+ * Flip every schedule attached to a playlist on or off. Powers the
+ * on/off toggle on the playlist card — one click = all the playlist's
+ * schedules switch at once. Server returns `{ count, active }`.
+ */
+export function useSetPlaylistActive() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, active }: { id: string; active: boolean }) =>
+      apiFetch(`/playlists/${id}/active`, {
+        method: 'PUT',
+        body: JSON.stringify({ active }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['playlists'] });
+      qc.invalidateQueries({ queryKey: ['schedules'] });
+    },
+  });
+}
+
 // ─── Schedules ──────────────────────────────────────────────────
 
 export function useSchedules() {
@@ -215,6 +235,10 @@ export function useCreateSchedule() {
       timeEnd?: string;
       priority?: number;
       mode?: 'append' | 'replace';
+      // Pass `false` to save as a draft (not live). Default is true.
+      // Used by the "Save" button in the Publish modal so operators can
+      // stage a schedule without flipping any screens.
+      isActive?: boolean;
     }) => apiFetch('/schedules', { method: 'POST', body: JSON.stringify(data) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['schedules'] });
