@@ -40,6 +40,16 @@
 <title>Arcade — MS Lobby 4K (v2)</title>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+  /* v2.4: box-sizing:border-box on EVERY explicit-width panel, not
+     just .side. Last pass I'd only scoped it to .side — but .quest,
+     .xpbar, and .board also declare `width: 2400 + padding + border`
+     which under default content-box renders ~2500px wide and bleeds
+     past their intended right edge (x=2464) into the .side column.
+     That's what was clipping "62%" on the xpbar and "queued" on
+     the board's header chip. Applied to all four panels so every
+     declared width + padding combo stays edge-to-edge. */
+  .quest, .xpbar, .side, .board { box-sizing: border-box; }
+
   /* 3-layer scale wrapper — same as shipped HS templates. */
   :root { --stage-w: 3840px; --stage-h: 2160px; --stage-scale: 1; }
   html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; background:#000; }
