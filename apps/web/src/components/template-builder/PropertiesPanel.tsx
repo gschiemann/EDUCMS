@@ -1112,6 +1112,69 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextAreaField key="tickerMessage" label="Scrolling message" value={cfg.tickerMessage || ''} rows={3} onChange={(v) => setField({ tickerMessage: v })} />);
       break;
     }
+    case 'HS_GALLERY': {
+      const SH = (key: string, label: string) => (
+        <div key={`sh-${key}`} className="pt-3 pb-1 px-1 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200">{label}</div>
+      );
+      fields.push(SH('school', 'Masthead'));
+      fields.push(<TextField key="schoolName" label="Publication name" value={cfg.schoolName || ''} onChange={(v) => setField({ schoolName: v })} />);
+      fields.push(<TextField key="clockDate" label="Date (nav)" value={cfg.clockDate || ''} onChange={(v) => setField({ clockDate: v })} />);
+      fields.push(<TextField key="clockTime" label="Time (nav)" value={cfg.clockTime || ''} onChange={(v) => setField({ clockTime: v })} />);
+      fields.push(<TextField key="weatherCondition" label="Weather (nav)" value={cfg.weatherCondition || ''} onChange={(v) => setField({ weatherCondition: v })} />);
+
+      fields.push(SH('greeting', 'Plaque (italic accent word)'));
+      fields.push(<TextField key="greetingEyebrow" label="Exhibition number" value={cfg.greetingEyebrow || ''} onChange={(v) => setField({ greetingEyebrow: v })} />);
+      fields.push(<TextField key="greetingHeadline1" label="Headline pt1" value={cfg.greetingHeadline1 || ''} placeholder="Today," onChange={(v) => setField({ greetingHeadline1: v })} />);
+      fields.push(<TextField key="greetingHeadline2" label="Headline pt2 (italic/accent)" value={cfg.greetingHeadline2 || ''} placeholder="as ever," onChange={(v) => setField({ greetingHeadline2: v })} />);
+      fields.push(<TextField key="greetingHeadline3" label="Headline pt3" value={cfg.greetingHeadline3 || ''} placeholder="begins here." onChange={(v) => setField({ greetingHeadline3: v })} />);
+      fields.push(<TextAreaField key="greetingSubtitle" label="Subtitle" value={cfg.greetingSubtitle || ''} rows={3} onChange={(v) => setField({ greetingSubtitle: v })} />);
+
+      fields.push(SH('events', 'Acquisitions (3 Roman-numeral cards)'));
+      for (const n of [0, 1, 2]) {
+        const k = `event${n}` as 'event0' | 'event1' | 'event2';
+        fields.push(<TextField key={`${k}Num`} label={`#${n + 1} · Roman numeral`} value={cfg[`${k}Num`] || ''} onChange={(v) => setField({ [`${k}Num`]: v })} />);
+        fields.push(<TextField key={`${k}Name`} label={`#${n + 1} · Title`} value={cfg[`${k}Name`] || ''} onChange={(v) => setField({ [`${k}Name`]: v })} />);
+        fields.push(<TextField key={`${k}Meta`} label={`#${n + 1} · Meta`} value={cfg[`${k}Meta`] || ''} onChange={(v) => setField({ [`${k}Meta`]: v })} />);
+        fields.push(<TextField key={`${k}Time`} label={`#${n + 1} · Time`} value={cfg[`${k}Time`] || ''} onChange={(v) => setField({ [`${k}Time`]: v })} />);
+        fields.push(<TextField key={`${k}Day`} label={`#${n + 1} · Day`} value={cfg[`${k}Day`] || ''} onChange={(v) => setField({ [`${k}Day`]: v })} />);
+      }
+
+      fields.push(SH('wall', 'Wall-label stat row'));
+      fields.push(<TextField key="clockbigVal" label="Clock value" value={cfg.clockbigVal || ''} onChange={(v) => setField({ clockbigVal: v })} />);
+      fields.push(<TextField key="clockbigCap" label="Clock caption" value={cfg.clockbigCap || ''} onChange={(v) => setField({ clockbigCap: v })} />);
+      fields.push(<TextField key="weatherbigVal" label="Weather value" value={cfg.weatherbigVal || ''} onChange={(v) => setField({ weatherbigVal: v })} />);
+      fields.push(<TextField key="weatherbigCap" label="Weather caption" value={cfg.weatherbigCap || ''} onChange={(v) => setField({ weatherbigCap: v })} />);
+      fields.push(<TextField key="attendanceVal" label="Attendance" value={cfg.attendanceVal || ''} onChange={(v) => setField({ attendanceVal: v })} />);
+      fields.push(<TextField key="attendanceCap" label="Attendance caption" value={cfg.attendanceCap || ''} onChange={(v) => setField({ attendanceCap: v })} />);
+      fields.push(<TextField key="countdownLabel" label="Countdown label" value={cfg.countdownLabel || ''} onChange={(v) => setField({ countdownLabel: v })} />);
+      fields.push(<TextField key="countdownValue" label="Countdown value" value={String(cfg.countdownValue ?? '')} onChange={(v) => setField({ countdownValue: v })} />);
+      fields.push(<TextField key="countdownSub" label="Countdown sub" value={cfg.countdownSub || ''} onChange={(v) => setField({ countdownSub: v })} />);
+
+      fields.push(SH('teacher', 'Artist statement / teacher feature'));
+      fields.push(<TextField key="teacherTag" label="Plate tag" value={cfg.teacherTag || ''} onChange={(v) => setField({ teacherTag: v })} />);
+      fields.push(<TextField key="teacherLabel" label="Label" value={cfg.teacherLabel || ''} onChange={(v) => setField({ teacherLabel: v })} />);
+      fields.push(<TextField key="teacherName" label="Name" value={cfg.teacherName || ''} onChange={(v) => setField({ teacherName: v })} />);
+      fields.push(<TextField key="teacherMeta" label="Meta" value={cfg.teacherMeta || ''} onChange={(v) => setField({ teacherMeta: v })} />);
+      fields.push(<TextAreaField key="teacherQuote" label="Statement" value={cfg.teacherQuote || ''} rows={3} onChange={(v) => setField({ teacherQuote: v })} />);
+      fields.push(<TextField key="teacherByline" label="Byline" value={cfg.teacherByline || ''} onChange={(v) => setField({ teacherByline: v })} />);
+
+      fields.push(SH('announcement', "Curator's Note advisory"));
+      fields.push(<TextField key="announcementTag" label="Tag" value={cfg.announcementTag || ''} onChange={(v) => setField({ announcementTag: v })} />);
+      fields.push(<TextField key="announcementHeadline" label="Headline" value={cfg.announcementHeadline || ''} onChange={(v) => setField({ announcementHeadline: v })} />);
+      fields.push(<TextAreaField key="announcementBody" label="Body" value={cfg.announcementBody || ''} rows={3} onChange={(v) => setField({ announcementBody: v })} />);
+      fields.push(<TextField key="announcementDate" label="When" value={cfg.announcementDate || ''} onChange={(v) => setField({ announcementDate: v })} />);
+
+      fields.push(SH('brand', 'Gallery hours footer'));
+      fields.push(<TextField key="brandHours" label="Hours title" value={cfg.brandHours || ''} placeholder="Galleries Open" onChange={(v) => setField({ brandHours: v })} />);
+      fields.push(<TextField key="brandSpan" label="Hours span" value={cfg.brandSpan || ''} onChange={(v) => setField({ brandSpan: v })} />);
+      fields.push(<TextField key="brandClosed" label="Closed line" value={cfg.brandClosed || ''} onChange={(v) => setField({ brandClosed: v })} />);
+      fields.push(<TextField key="brandCoda" label="Italic coda" value={cfg.brandCoda || ''} onChange={(v) => setField({ brandCoda: v })} />);
+
+      fields.push(SH('ticker', "Docent's Note ticker"));
+      fields.push(<TextField key="tickerTag" label="Tag" value={cfg.tickerTag || ''} placeholder="Docent's Note" onChange={(v) => setField({ tickerTag: v })} />);
+      fields.push(<TextAreaField key="tickerMessage" label="Italic crawl" value={cfg.tickerMessage || ''} rows={3} onChange={(v) => setField({ tickerMessage: v })} />);
+      break;
+    }
     default:
       // Unknown widget — fall through to JSON-only editing in Advanced
       return null;

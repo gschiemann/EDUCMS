@@ -497,6 +497,14 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     zones: [{ name: 'Scene', widgetType: 'HS_TRANSIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
   {
+    id: 'preset-hs-gallery',
+    name: '🏛️ Gallery — Museum Wall Labels',
+    description: 'Museum-catalog lobby: italic EB Garamond plaques, Roman-numeral acquisition list, artist-statement teacher quote, Curator\'s Note advisory, Docent ticker.',
+    category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#f5f1e8',
+    zones: [{ name: 'Scene', widgetType: 'HS_GALLERY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
     id: 'preset-cafeteria-chalkboard',
     name: '🌿 Animated Cafeteria · Chalkboard',
     description: 'Green-chalkboard menu board — chalk-textured text, erased highlights, wooden frame, weekly menu editor.',

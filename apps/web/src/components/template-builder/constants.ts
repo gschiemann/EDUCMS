@@ -73,6 +73,7 @@ export const WIDGET_GROUPS = [
       { type: 'HS_YEARBOOK',         label: 'HS · Yearbook (Editorial)',   desc: '4K magazine spread — serif masthead, drop-cap lede, photo feature, portrait quote, folio calendar, wire ticker', icon: Cake },
       { type: 'HS_TERMINAL',         label: 'HS · Terminal (CRT/Phosphor)',desc: '4K CRT lobby — phosphor green, scanlines, whoami teacher card, cron events, syslog ticker, blinking cursor', icon: Cake },
       { type: 'HS_TRANSIT',          label: 'HS · Transit (Departure Board)', desc: '4K airport board — amber split-flap rows, classes as departures, status chips, PA ticker', icon: Cake },
+      { type: 'HS_GALLERY',          label: 'HS · Gallery (Museum)',       desc: '4K museum lobby — generous whitespace, italic EB Garamond plaques, Roman-numeral acquisitions, artist-statement quote', icon: Cake },
       { type: 'ANIMATED_CAFETERIA',  label: 'Animated Cafeteria · Food Truck', desc: 'Food-truck menu board — weekly menu, swappable food emojis, lunch chef, allergen ticker', icon: UtensilsCrossed },
     ],
   },
