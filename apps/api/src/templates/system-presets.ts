@@ -465,6 +465,14 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     zones: [{ name: 'Scene', widgetType: 'HS_VARSITY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
   {
+    id: 'preset-hs-broadcast',
+    name: '📺 Broadcast — Campus News Desk',
+    description: 'Newsroom lower-thirds lobby: ON AIR indicator, lower-third headline, forecast panel, featured guest of the week, breaking-story card, bottom crawl ticker.',
+    category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0b1025',
+    zones: [{ name: 'Scene', widgetType: 'HS_BROADCAST', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
     id: 'preset-cafeteria-chalkboard',
     name: '🌿 Animated Cafeteria · Chalkboard',
     description: 'Green-chalkboard menu board — chalk-textured text, erased highlights, wooden frame, weekly menu editor.',

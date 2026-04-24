@@ -60,6 +60,7 @@ import { AnimatedBackgroundWidget } from './AnimatedBackgroundWidget';
 // transform:scale. Eight themes total; Varsity ships first as the
 // exemplar; the rest land in a follow-up commit.
 import { HsVarsityWidget } from './hs/HsVarsityWidget';
+import { HsBroadcastWidget } from './hs/HsBroadcastWidget';
 // 16 templates ported from scratch/design/*.html (4 parallel agents, 2026-04-20).
 // Each widget is a full-screen scene (transform:scale 1920×1080 pattern, live-
 // gated hotspots, ticker-speed helper). See CLAUDE.md "Template Design
@@ -176,6 +177,7 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'ANIMATED_WELCOME_HS':           return <AnimatedWelcomeHighWidget config={cfg} live={live} />;
     // Claude-designed HS pack:
     case 'HS_VARSITY':                    return <HsVarsityWidget config={cfg} />;
+    case 'HS_BROADCAST':                  return <HsBroadcastWidget config={cfg} />;
     case 'ANIMATED_CAFETERIA':            return <AnimatedCafeteriaElementaryWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA_MS':         return <AnimatedCafeteriaMiddleWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA_HS':         return <AnimatedCafeteriaHighWidget config={cfg} live={live} />;
