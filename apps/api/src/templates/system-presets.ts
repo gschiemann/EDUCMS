@@ -489,6 +489,14 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     zones: [{ name: 'Scene', widgetType: 'HS_TERMINAL', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
   {
+    id: 'preset-hs-transit',
+    name: '✈️ Transit — Airport Departure Board',
+    description: 'Departure-board lobby: amber split-flap rows, classes as "flights" with room-gate + teacher + colored status chips, advisory card, flight-crew teacher spotlight, PA ticker.',
+    category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0a0f1c',
+    zones: [{ name: 'Scene', widgetType: 'HS_TRANSIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
     id: 'preset-cafeteria-chalkboard',
     name: '🌿 Animated Cafeteria · Chalkboard',
     description: 'Green-chalkboard menu board — chalk-textured text, erased highlights, wooden frame, weekly menu editor.',
