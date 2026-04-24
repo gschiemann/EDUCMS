@@ -1,0 +1,447 @@
+<!--
+  MS TEMPLATE · ARCADE · v1 — TYPO PASS
+  =======================================
+  Base: /tmp/edu-cms-ms/ms/arcade.html (the downloaded MS pack).
+  User feedback: "text boxes are all tiny and not laid out correct".
+
+  Changes from the source:
+  - Every label under 22px bumped to 24–32px (previously 10–22).
+  - HUD +40px tall so the avatar + name pair has breathing room.
+  - Section header sizes (.side h2, .board .head h2, .eventsbox h2)
+    bumped so they read as headers, not captions.
+  - Reward chips (`.q .rw`) were 14px — unreadable at hallway distance.
+    Bumped to 24px plus the sublabel to 16px.
+  - Event-date chip's day-of-week label was 14px inside a colored
+    square — now 20px with a 48px day number, so it reads at a glance.
+  - Everything else retains the retro-HUD visual language (Press
+    Start 2P for headers, VT323 for readouts, chunky pixel borders).
+  - Data attributes (`data-widget`, `data-field`) untouched so the
+    editor's inline-edit handles still match when we port to React.
+
+  Rendering note: every size is in CSS PX at the 3840x2160 canvas.
+  The `.stage-outer` / `.stage` / transform:scale pattern fits the
+  canvas to whatever the preview window is without breaking the
+  8-foot-viewing-distance sizing assumptions.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Arcade — MS Lobby 4K (v1)</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --stage-w: 3840px; --stage-h: 2160px; --stage-scale: 1; }
+  html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; }
+  .viewport { position:fixed; inset:0; display:grid; place-items:center; overflow:hidden; }
+  .stage-outer { width:calc(var(--stage-w)*var(--stage-scale)); height:calc(var(--stage-h)*var(--stage-scale)); }
+  .stage { width:var(--stage-w); height:var(--stage-h); transform:scale(var(--stage-scale)); transform-origin:0 0; position:relative; box-shadow:0 80px 200px rgba(0,0,0,.7); overflow:hidden; }
+
+  :root {
+    --bg:#0d0d1a; --panel:#1a1a2e; --panel2:#252540;
+    --ink:#f1f1ff; --ink2:#a0a0c0; --muted:#6a6a88;
+    --yellow:#ffd84d; --green:#5ff28d; --cyan:#3de0e8; --pink:#ff5ca8; --purple:#a86bff; --orange:#ff8a3d;
+  }
+  html, body { background:#000; color:var(--ink); font-family:'Space Grotesk',system-ui,sans-serif; }
+  .stage { background: var(--bg);
+    background-image:
+      linear-gradient(rgba(255,255,255,.02) 2px, transparent 2px),
+      linear-gradient(90deg, rgba(255,255,255,.02) 2px, transparent 2px);
+    background-size: 40px 40px; }
+  .stage::before { content:''; position:absolute; inset:0;
+    background: radial-gradient(ellipse 1400px 800px at 50% 20%, rgba(93,242,141,.08), transparent 60%);
+    pointer-events:none; }
+
+  /* Top HUD */
+  /* v1: bumped height 140→180 so the 56px player name + 48px subline
+         + stat chips all breathe in a single row. */
+  .hud { position:absolute; top:48px; left:56px; right:56px; height:180px;
+    display:flex; justify-content:space-between; align-items:center; }
+  .player { display:flex; align-items:center; gap: 32px; }
+  .avatar {
+    /* v1: 120→160 so the 56px name alongside doesn't dwarf it */
+    width: 160px; height: 160px; background: var(--orange);
+    position: relative; image-rendering: pixelated;
+    box-shadow:
+      inset 0 -16px 0 rgba(0,0,0,.2),
+      inset 16px 0 0 rgba(0,0,0,.05);
+    border: 5px solid var(--ink);
+  }
+  .avatar::before {
+    content:''; position: absolute; top: 42px; left: 32px; width: 26px; height: 26px; background: var(--ink);
+    box-shadow: 70px 0 0 var(--ink);
+  }
+  .avatar::after {
+    content:''; position: absolute; bottom: 34px; left: 48px; width: 64px; height: 22px; background: var(--ink);
+  }
+  /* v1: 36→56 so the school name reads from the hallway, not just
+         from a desk 3ft away. */
+  .player .info .name { font-family:'Press Start 2P', monospace; font-size: 56px; color: var(--yellow); line-height: 1; letter-spacing: .02em; }
+  .player .info .sub { font-family:'VT323', monospace; font-size: 48px; color: var(--cyan); margin-top: 14px; letter-spacing: .06em; }
+  .player .info .sub b { color: var(--green); font-weight: normal; }
+
+  .hud-stats { display: flex; gap: 22px; }
+  .stat {
+    background: var(--panel); border: 5px solid var(--ink); padding: 18px 28px;
+    box-shadow: 8px 8px 0 #000; display:flex; align-items:center; gap: 20px;
+  }
+  /* v1: 14→24 for the label chips — they're the context for the
+         number beside them and were completely unreadable before. */
+  .stat .k { font-family:'Press Start 2P', monospace; font-size: 24px; color: var(--ink2); letter-spacing: .05em; }
+  .stat .v { font-family:'VT323', monospace; font-size: 72px; line-height: 1; color: var(--ink); letter-spacing: .04em; }
+  .stat .v.hp { color: var(--green); }
+  .stat .v.mp { color: var(--cyan); }
+  .stat .v.xp { color: var(--yellow); }
+
+  /* Main area — big "quest" card + sidebar */
+  .quest {
+    position: absolute; top: 260px; left: 56px; width: 2400px; height: 680px;
+    background: var(--panel); border: 5px solid var(--ink);
+    box-shadow: 14px 14px 0 #000;
+    padding: 56px 64px; overflow: hidden;
+  }
+  .quest::before {
+    content:''; position:absolute; right:-100px; top:-100px; width: 500px; height: 500px;
+    background: repeating-conic-gradient(from 0deg, rgba(93,242,141,.12) 0deg 15deg, transparent 15deg 30deg);
+    transform: rotate(12deg);
+  }
+  /* v1: 22→30 for the quest tag chip */
+  .quest .tag {
+    display: inline-block; background: var(--yellow); color: #000;
+    font-family:'Press Start 2P', monospace; font-size: 30px; padding: 14px 26px;
+    letter-spacing: .04em; margin-bottom: 24px; box-shadow: 4px 4px 0 #000;
+  }
+  .quest h1 {
+    font-family:'Press Start 2P', monospace; font-size: 120px; line-height: 1.05;
+    color: var(--ink); margin: 0; letter-spacing: -.01em;
+  }
+  .quest h1 .hl { color: var(--green); text-shadow: 4px 4px 0 #000; }
+  .quest .sub {
+    font-family:'VT323', monospace; font-size: 56px; line-height: 1.25;
+    color: var(--cyan); margin-top: 32px; max-width: 2000px; letter-spacing: .02em;
+  }
+  .quest .meta {
+    display: flex; gap: 20px; margin-top: 34px;
+  }
+  .quest .meta span {
+    font-family:'VT323', monospace; font-size: 38px; background: #000; color: var(--yellow);
+    padding: 8px 20px; border: 3px solid var(--yellow); letter-spacing: .04em;
+  }
+
+  /* XP bar — field-day countdown progress */
+  .xpbar {
+    position: absolute; top: 960px; left: 56px; width: 2400px; height: 190px;
+    background: var(--panel); border: 5px solid var(--ink); box-shadow: 10px 10px 0 #000;
+    padding: 28px 44px; display: grid; grid-template-columns: auto 1fr auto; gap: 36px; align-items: center;
+  }
+  /* v1: 22/40 → 30/46. The old label chip was unreadable next to
+         the giant 56px percentage. */
+  .xpbar .lbl { font-family:'Press Start 2P', monospace; font-size: 30px; color: var(--yellow); line-height: 1.6; letter-spacing: .04em; }
+  .xpbar .lbl span { display:block; font-family:'VT323', monospace; font-size: 46px; color: var(--ink2); margin-top: 10px; }
+  .xpbar .track {
+    height: 82px; background: #000; border: 5px solid var(--ink); position: relative; overflow: hidden;
+    image-rendering: pixelated;
+  }
+  .xpbar .fill {
+    position:absolute; top:0; left:0; bottom:0; width: 62%;
+    background: linear-gradient(90deg, var(--green) 0%, var(--green) 80%, var(--cyan) 100%);
+    box-shadow: inset 0 -14px 0 rgba(0,0,0,.25);
+  }
+  .xpbar .fill::after {
+    content:''; position:absolute; inset: 8px 6px;
+    background:
+      repeating-linear-gradient(90deg, transparent 0 20px, rgba(255,255,255,.15) 20px 24px);
+  }
+  .xpbar .pct { font-family:'Press Start 2P', monospace; font-size: 64px; color: var(--green); letter-spacing: .02em; text-shadow: 4px 4px 0 #000; }
+
+  /* Sidebar — leaderboard */
+  .side { position:absolute; top: 260px; right: 56px; width: 1280px; height: 890px;
+    background: var(--panel); border: 5px solid var(--ink); box-shadow: 14px 14px 0 #000;
+    padding: 36px 44px; }
+  /* v1: 30→44, 32→36 so the section header actually reads as a
+         header and the subtitle is proper metadata. */
+  .side h2 { font-family:'Press Start 2P', monospace; font-size: 44px; color: var(--yellow); margin: 0 0 12px; letter-spacing: .02em; }
+  .side .sub { font-family:'VT323', monospace; font-size: 36px; color: var(--ink2); letter-spacing: .04em; margin-bottom: 24px; }
+  .side .entry {
+    display: grid; grid-template-columns: 72px 88px 1fr auto; gap: 20px; align-items: center;
+    padding: 16px 0; border-bottom: 2px dashed #333355;
+  }
+  .side .entry:last-child { border-bottom: 0; }
+  /* v1: 28→38, av 18→24, name sub 20→24, pts 22→32, pts sub 14→18 */
+  .side .entry .rank { font-family:'Press Start 2P', monospace; font-size: 38px; color: var(--muted); }
+  .side .entry.g1 .rank { color: var(--yellow); }
+  .side .entry.g2 .rank { color: #c0c0c0; }
+  .side .entry.g3 .rank { color: var(--orange); }
+  .side .entry .av {
+    width: 72px; height: 72px; background: var(--cyan); border: 4px solid var(--ink);
+    display:grid; place-items:center; font-family:'Press Start 2P', monospace; font-size: 24px; color: #000;
+  }
+  .side .entry .name { font-family:'VT323', monospace; font-size: 46px; color: var(--ink); line-height: 1.1; letter-spacing: .04em; }
+  .side .entry .name span { display:block; font-family:'Space Grotesk'; font-weight: 500; font-size: 24px; color: var(--ink2); letter-spacing: 0; margin-top: -4px; }
+  .side .entry .pts { font-family:'Press Start 2P', monospace; font-size: 32px; color: var(--green); letter-spacing: .02em; white-space: nowrap; text-align: right; }
+  .side .entry .pts span { color: var(--ink2); font-size: 18px; display:block; margin-top: 6px; letter-spacing: .08em; }
+
+  /* Quest board — agenda as quests */
+  .board { position:absolute; top: 1190px; left: 56px; width: 2400px; height: 770px;
+    background: var(--panel); border: 5px solid var(--ink); box-shadow: 14px 14px 0 #000;
+    padding: 38px 44px; }
+  /* v1: 40→48, 34→36 */
+  .board .head { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom: 24px; padding-bottom: 18px; border-bottom: 5px solid var(--ink); }
+  .board .head h2 { font-family:'Press Start 2P', monospace; font-size: 48px; color: var(--pink); margin: 0; letter-spacing: .02em; }
+  .board .head .day { font-family:'VT323', monospace; font-size: 36px; color: var(--cyan); letter-spacing: .04em; }
+  .board .head .day b { color: var(--yellow); }
+  .board .list { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 32px; margin-top: 20px; }
+  .q {
+    display: grid; grid-template-columns: 84px 1fr auto; gap: 24px; align-items: center;
+    background: #0f0f20; border: 3px solid #333355; padding: 16px 24px; position: relative;
+  }
+  .q.active { border-color: var(--green); box-shadow: inset 0 0 0 2px rgba(93,242,141,.2); }
+  .q.done { opacity: .55; }
+  .q .icon {
+    width: 64px; height: 64px; background: var(--purple); display: grid; place-items: center;
+    font-family:'Press Start 2P'; font-size: 20px; color: #fff; border: 3px solid var(--ink);
+  }
+  /* v1: 34→38, 20→24 — the row content was already the cleanest
+         part but the room-number sub was too quiet */
+  .q .txt { font-family:'VT323', monospace; font-size: 38px; color: var(--ink); line-height: 1.2; letter-spacing: .02em; }
+  .q .txt b { font-weight: normal; color: var(--yellow); }
+  .q .txt span { display:block; font-family:'Space Grotesk'; font-weight: 500; font-size: 24px; color: var(--ink2); letter-spacing: 0; margin-top: 2px; }
+  /* v1: 14→24 — the reward was the single worst offender. "+50 XP"
+         at 14px was literally invisible from 6ft. */
+  .q .rw { font-family:'Press Start 2P', monospace; font-size: 24px; color: var(--green); letter-spacing: .04em; text-align: right; white-space: nowrap; }
+  .q .rw span { display:block; color: var(--ink2); font-size: 16px; margin-top: 6px; }
+  .q.done .rw { color: var(--muted); }
+  .q.active::before {
+    content: '▶'; position: absolute; left: -24px; top: 50%; transform: translateY(-50%);
+    font-family:'Press Start 2P'; font-size: 32px; color: var(--green);
+    animation: blink 1s steps(2) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* Event loot cards */
+  .events { position:absolute; top: 1190px; right: 56px; width: 1280px; height: 770px; display: grid; grid-template-rows: 1fr; gap: 18px; }
+  /* v1: 28→40 for the section header */
+  .eventsbox { background: var(--panel); border: 5px solid var(--ink); box-shadow: 10px 10px 0 #000; padding: 28px 34px; display: flex; flex-direction: column; }
+  .eventsbox h2 { font-family:'Press Start 2P', monospace; font-size: 40px; color: var(--orange); margin: 0 0 18px; letter-spacing: .02em; }
+  .eventsbox .list { display: grid; gap: 18px; flex: 1; }
+  .eventsbox .it { display: grid; grid-template-columns: 120px 1fr; gap: 22px; align-items:center; padding: 14px; background: #0f0f20; border: 3px solid #333355; }
+  /* v1: 14→20 (dow) / 36→48 (day). A 14px weekday in a yellow box
+         was the worst readability sin in the whole layout. */
+  .eventsbox .it .date { background: var(--yellow); color: #000; font-family:'Press Start 2P', monospace; font-size: 20px; padding: 14px 6px; text-align:center; line-height: 1.6; letter-spacing: .04em; border: 3px solid var(--ink); }
+  .eventsbox .it .date span { display:block; font-family:'VT323', monospace; font-size: 48px; line-height: 1; color: #000; margin-top: 4px; }
+  /* v1: 36→42, 18→24, 10→18 */
+  .eventsbox .it .info .t { font-family:'VT323', monospace; font-size: 42px; color: var(--ink); line-height: 1.1; letter-spacing: .02em; }
+  .eventsbox .it .info .s { font-family:'Space Grotesk'; font-weight: 500; font-size: 24px; color: var(--ink2); margin-top: 4px; }
+  .eventsbox .it .info .tag { font-family:'Press Start 2P'; font-size: 18px; color: var(--green); letter-spacing: .06em; margin-top: 10px; display:inline-block; }
+
+  /* Alert + ticker */
+  .alert {
+    position: absolute; bottom: 100px; left: 56px; right: 56px; height: 120px;
+    background: var(--pink); color: #000; padding: 20px 44px;
+    display:grid; grid-template-columns: auto 1fr auto; align-items:center; gap: 32px;
+    border: 5px solid var(--ink); box-shadow: 10px 10px 0 #000;
+  }
+  /* v1: 20→28, 42→48, 22→32 — the alert is a load-bearing safety
+         surface; it has to shout. */
+  .alert .tag { font-family:'Press Start 2P'; font-size: 28px; color: #fff; background: #000; padding: 14px 22px; letter-spacing: .04em; }
+  .alert .msg { font-family:'VT323', monospace; font-size: 48px; color: #000; line-height: 1.2; letter-spacing: .02em; }
+  .alert .when { font-family:'Press Start 2P'; font-size: 32px; color: #000; letter-spacing: .04em; white-space: nowrap; }
+
+  .ticker { position:absolute; bottom: 0; left: 0; right: 0; height: 60px;
+    background: #000; color: var(--green); display:flex; align-items:center; overflow:hidden; border-top: 5px solid var(--ink); }
+  /* v1: 14→22 tag, 30→36 msg */
+  .ticker .tag { background: var(--green); color: #000; height: 100%; display:flex; align-items:center;
+    padding: 0 26px; font-family:'Press Start 2P', monospace; font-size: 22px; letter-spacing: .06em; flex-shrink: 0; }
+  .ticker .msg { font-family:'VT323', monospace; font-size: 36px; padding-left: 32px; white-space: nowrap;
+    letter-spacing: .04em; animation: scroll 60s linear infinite; color: var(--green); }
+  @keyframes scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+  /* Preview-window scaling (so this file works at any zoom level —
+     we scale the 3840x2160 stage down to fit the browser). */
+  @media (max-width: 3839px) {
+    .stage { --stage-scale: calc(100vw / 3840); }
+    .stage-outer { width: 100vw; height: calc(100vw * 2160 / 3840); }
+    .viewport { place-items: start center; padding-top: 0; }
+  }
+</style>
+</head>
+<body>
+<script>
+  const __TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "schema": "edu-cms-ms-arcade-v1" }/*EDITMODE-END*/;
+</script>
+
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+  <div class="hud">
+    <div class="player" data-widget="school">
+      <div class="avatar" aria-hidden="true"></div>
+      <div class="info">
+        <div class="name" data-field="school.name">WESTRIDGE.MS</div>
+        <div class="sub"><span data-field="school.team">HOUSE: OTTERS</span> · LV.<b data-field="school.lv">7</b> · <span data-field="school.date">TUE APR 21</span></div>
+      </div>
+    </div>
+    <div class="hud-stats">
+      <div class="stat" data-widget="clock">
+        <span class="k" data-field="clock.label">TIME</span>
+        <span class="v" data-field="clock.time">07:53</span>
+      </div>
+      <div class="stat" data-widget="weather">
+        <span class="k" data-field="weather.label">CLIMATE</span>
+        <span class="v mp" data-field="weather.temp">46°</span>
+      </div>
+      <div class="stat" data-widget="countdown">
+        <span class="k" data-field="countdown.label">NEXT LV</span>
+        <span class="v xp" data-field="countdown.value">12d</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="quest" data-widget="greeting">
+    <div class="tag" data-field="greeting.tag">◆ MAIN QUEST · DAY B</div>
+    <h1 data-field="greeting.headline">GO <span class="hl">FORTH</span>, OTTERS.</h1>
+    <p class="sub" data-field="greeting.subtitle">Today's party assembles at 08:05. Bring: pencil (common), journal (uncommon), courage (rare). Mr. Nguyen awaits your arrival in room 108 for the poetry workshop. Good loot drops in science lab (P3).</p>
+    <div class="meta">
+      <span data-field="greeting.m0">+50 XP attendance</span>
+      <span data-field="greeting.m1">+25 XP participation</span>
+      <span data-field="greeting.m2">bonus: bring a friend</span>
+    </div>
+  </div>
+
+  <div class="xpbar" data-widget="xp">
+    <div class="lbl"><span data-field="xp.label">FIELD DAY PROGRESS</span><span data-field="xp.sub">284 / 460 otters signed up · sign-ups close Fri</span></div>
+    <div class="track"><div class="fill"></div></div>
+    <div class="pct" data-field="xp.pct">62%</div>
+  </div>
+
+  <div class="side" data-widget="leaderboard">
+    <h2 data-field="leaderboard.title">▲ TOP SCORES</h2>
+    <div class="sub" data-field="leaderboard.sub">weekly leaderboard · by homeroom</div>
+    <div class="entry g1" data-widget="leaderboard.0">
+      <span class="rank">1st</span>
+      <span class="av" data-field="leaderboard.0.av">7B</span>
+      <span class="name" data-field="leaderboard.0.name">MS. CHEN'S 7B<span data-field="leaderboard.0.sub">homework streak, attendance</span></span>
+      <span class="pts"><span data-field="leaderboard.0.pts">14,820</span><span>PTS</span></span>
+    </div>
+    <div class="entry g2" data-widget="leaderboard.1">
+      <span class="rank">2nd</span>
+      <span class="av" style="background: var(--yellow);" data-field="leaderboard.1.av">MR</span>
+      <span class="name" data-field="leaderboard.1.name">MAYA R.<span data-field="leaderboard.1.sub">7th grade · birthday today</span></span>
+      <span class="pts"><span data-field="leaderboard.1.pts">9,940</span><span>PTS</span></span>
+    </div>
+    <div class="entry g3" data-widget="leaderboard.2">
+      <span class="rank">3rd</span>
+      <span class="av" style="background: var(--pink);" data-field="leaderboard.2.av">DK</span>
+      <span class="name" data-field="leaderboard.2.name">DANIEL K.<span data-field="leaderboard.2.sub">math olympiad · 3rd place</span></span>
+      <span class="pts"><span data-field="leaderboard.2.pts">8,720</span><span>PTS</span></span>
+    </div>
+    <div class="entry" data-widget="leaderboard.3">
+      <span class="rank">4th</span>
+      <span class="av" style="background: var(--green);" data-field="leaderboard.3.av">LC</span>
+      <span class="name" data-field="leaderboard.3.name">LIBRARY CREW<span data-field="leaderboard.3.sub">100 books this term</span></span>
+      <span class="pts"><span data-field="leaderboard.3.pts">7,010</span><span>PTS</span></span>
+    </div>
+    <div class="entry" data-widget="leaderboard.4">
+      <span class="rank">5th</span>
+      <span class="av" style="background: var(--purple);" data-field="leaderboard.4.av">6A</span>
+      <span class="name" data-field="leaderboard.4.name">MR. LEE'S 6A<span data-field="leaderboard.4.sub">community service hrs</span></span>
+      <span class="pts"><span data-field="leaderboard.4.pts">6,540</span><span>PTS</span></span>
+    </div>
+  </div>
+
+  <div class="board" data-widget="agenda">
+    <div class="head">
+      <h2 data-field="agenda.title">◆ QUEST LOG — TODAY</h2>
+      <div class="day"><span data-field="agenda.day">DAY</span> <b data-field="agenda.letter">B</b> · <span data-field="agenda.date">7 quests queued</span></div>
+    </div>
+    <div class="list">
+      <div class="q done" data-widget="agenda.0">
+        <span class="icon" style="background: var(--green);" data-field="agenda.0.icon">✓</span>
+        <span class="txt"><b data-field="agenda.0.t">P1 · MATH 7</b><span data-field="agenda.0.r">rm 214 · ms. patel</span></span>
+        <span class="rw"><span data-field="agenda.0.xp">+50 XP</span>done</span>
+      </div>
+      <div class="q active" data-widget="agenda.1">
+        <span class="icon" style="background: var(--yellow); color: #000;" data-field="agenda.1.icon">P2</span>
+        <span class="txt"><b data-field="agenda.1.t">ENGLISH — POETRY</b><span data-field="agenda.1.r">rm 108 · mr. nguyen · bring journal</span></span>
+        <span class="rw"><span data-field="agenda.1.xp">+75 XP</span>live</span>
+      </div>
+      <div class="q" data-widget="agenda.2">
+        <span class="icon" style="background: var(--cyan); color: #000;" data-field="agenda.2.icon">P3</span>
+        <span class="txt"><b data-field="agenda.2.t">SCIENCE — LAB</b><span data-field="agenda.2.r">rm 207 · closed-toe shoes</span></span>
+        <span class="rw"><span data-field="agenda.2.xp">+100 XP</span>up next</span>
+      </div>
+      <div class="q" data-widget="agenda.3">
+        <span class="icon" style="background: var(--orange);" data-field="agenda.3.icon">P4</span>
+        <span class="txt"><b data-field="agenda.3.t">PE — MILE RUN</b><span data-field="agenda.3.r">gym a · coach reyes</span></span>
+        <span class="rw"><span data-field="agenda.3.xp">+80 XP</span>10:50</span>
+      </div>
+      <div class="q" data-widget="agenda.4">
+        <span class="icon" style="background: var(--pink);" data-field="agenda.4.icon">LU</span>
+        <span class="txt"><b data-field="agenda.4.t">LUNCH — A PERIOD</b><span data-field="agenda.4.r">chicken &amp; rice bowl · 7th grade</span></span>
+        <span class="rw"><span data-field="agenda.4.xp">+25 HP</span>11:45</span>
+      </div>
+      <div class="q" data-widget="agenda.5">
+        <span class="icon" style="background: var(--purple);" data-field="agenda.5.icon">P5</span>
+        <span class="txt"><b data-field="agenda.5.t">SOCIAL STUDIES — MAP QUIZ</b><span data-field="agenda.5.r">rm 115 · pencil required</span></span>
+        <span class="rw"><span data-field="agenda.5.xp">+90 XP</span>12:35</span>
+      </div>
+      <div class="q" data-widget="agenda.6">
+        <span class="icon" style="background: var(--green); color: #000;" data-field="agenda.6.icon">P6</span>
+        <span class="txt"><b data-field="agenda.6.t">ART — PRINTMAKING</b><span data-field="agenda.6.r">rm B-12 · smocks provided</span></span>
+        <span class="rw"><span data-field="agenda.6.xp">+60 XP</span>1:30</span>
+      </div>
+      <div class="q" data-widget="agenda.7">
+        <span class="icon" style="background: var(--muted);" data-field="agenda.7.icon">HR</span>
+        <span class="txt"><b data-field="agenda.7.t">ADVISORY / DISMISSAL</b><span data-field="agenda.7.r">homeroom · buses 2:45</span></span>
+        <span class="rw"><span data-field="agenda.7.xp">+20 XP</span>2:25</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="events">
+    <div class="eventsbox" data-widget="loot">
+      <h2 data-field="loot.title">✦ SIDE QUESTS · AFTER SCHOOL</h2>
+      <div class="list">
+        <div class="it" data-widget="loot.0">
+          <div class="date"><span data-field="loot.0.dow">TUE</span><span data-field="loot.0.d">3:00</span></div>
+          <div class="info">
+            <div class="t" data-field="loot.0.t">Robotics Club</div>
+            <div class="s" data-field="loot.0.s">rm 207 · build week</div>
+            <span class="tag" data-field="loot.0.tag">RARE LOOT</span>
+          </div>
+        </div>
+        <div class="it" data-widget="loot.1">
+          <div class="date"><span data-field="loot.1.dow">TUE</span><span data-field="loot.1.d">3:15</span></div>
+          <div class="info">
+            <div class="t" data-field="loot.1.t">Drama — auditions</div>
+            <div class="s" data-field="loot.1.s">auditorium · open casting</div>
+            <span class="tag" data-field="loot.1.tag">LEGENDARY</span>
+          </div>
+        </div>
+        <div class="it" data-widget="loot.2">
+          <div class="date"><span data-field="loot.2.dow">WED</span><span data-field="loot.2.d">7pm</span></div>
+          <div class="info">
+            <div class="t" data-field="loot.2.t">Spring Band Concert</div>
+            <div class="s" data-field="loot.2.s">auditorium · "echoes" set</div>
+            <span class="tag" data-field="loot.2.tag">EVENT</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="alert" data-widget="announcement">
+    <span class="tag" data-field="announcement.tag">!! BOSS BATTLE</span>
+    <span class="msg" data-field="announcement.message">PICTURE DAY → THU. FULL UNIFORM EQUIPPED. PERMISSION SLIPS TO FRONT OFFICE BY WED.</span>
+    <span class="when" data-field="announcement.when">T-48H</span>
+  </div>
+
+  <div class="ticker" data-widget="ticker">
+    <div class="tag" data-field="ticker.tag">◈ NEWS FEED</div>
+    <div class="msg">
+      <span data-field="ticker.message">BUS 14 +10 · SUB IN B-12 · SPELLING BEE SIGN-UPS END FRI · 8TH GRADE FIELD TRIP FORMS DUE TMRW · LOST BLUE WATER BOTTLE → FRONT OFFICE · LIBRARY RETURNS DUE THIS WEEK · </span>
+      <span data-field="ticker.message">BUS 14 +10 · SUB IN B-12 · SPELLING BEE SIGN-UPS END FRI · 8TH GRADE FIELD TRIP FORMS DUE TMRW · LOST BLUE WATER BOTTLE → FRONT OFFICE · LIBRARY RETURNS DUE THIS WEEK · </span>
+    </div>
+  </div>
+
+</div></div></div>
+</body>
+</html>
