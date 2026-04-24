@@ -237,26 +237,46 @@
   .eventsbox .it .info .s { font-family:'Space Grotesk'; font-weight: 500; font-size: 32px; color: var(--ink2); margin-top: 8px; }
   .eventsbox .it .info .tag { font-family:'Press Start 2P'; font-size: 28px; color: var(--green); letter-spacing: .06em; margin-top: 16px; display:inline-block; }
 
-  /* ─── Alert + ticker ─────────────────────────────────────── */
-  .alert {
-    position: absolute; bottom: 110px; left: 64px; right: 64px; height: 160px;
-    background: var(--pink); color: #000; padding: 28px 52px;
-    display:grid; grid-template-columns: auto 1fr auto; align-items:center; gap: 44px;
-    border: 6px solid var(--ink); box-shadow: 12px 12px 0 #000;
-  }
-  /* v2: 28 → 44 tag, 48 → 68 msg, 32 → 48 when — the alert is a
-         load-bearing safety chip so it shouts the loudest */
-  .alert .tag { font-family:'Press Start 2P'; font-size: 44px; color: #fff; background: #000; padding: 20px 30px; letter-spacing: .04em; }
-  .alert .msg { font-family:'VT323', monospace; font-size: 68px; color: #000; line-height: 1.15; letter-spacing: .02em; }
-  .alert .when { font-family:'Press Start 2P'; font-size: 48px; color: #000; letter-spacing: .04em; white-space: nowrap; }
+  /* ─── Unified bottom bar (BOSS BATTLE × news feed) ───────────
+     v2.1 review: the separate alert bar was positioned with
+     bottom:110 + height:160, which visually overlapped the tail
+     of the Quest Log + Side Quests panels above it ("we are
+     covering up text with the boss battle bar"). Fix: merge the
+     alert tag and the news ticker into ONE bar anchored to
+     bottom:0, and move it below everything else. The BOSS BATTLE
+     tag becomes the "channel" chip, the scrolling ticker picks up
+     the old alert copy (picture day) as its lead item + the
+     rolling daily news behind it. One loud pink bar, no overlap.
 
-  .ticker { position:absolute; bottom: 0; left: 0; right: 0; height: 84px;
-    background: #000; color: var(--green); display:flex; align-items:center; overflow:hidden; border-top: 6px solid var(--ink); }
-  /* v2: 22 → 36 tag, 36 → 56 msg */
-  .ticker .tag { background: var(--green); color: #000; height: 100%; display:flex; align-items:center;
-    padding: 0 40px; font-family:'Press Start 2P', monospace; font-size: 36px; letter-spacing: .06em; flex-shrink: 0; }
-  .ticker .msg { font-family:'VT323', monospace; font-size: 56px; padding-left: 48px; white-space: nowrap;
-    letter-spacing: .04em; animation: scroll 60s linear infinite; color: var(--green); }
+     Geometry: bar is 170px tall at bottom:0 → occupies y 1990–2160
+     on the 3840×2160 canvas. The board + side-quest panels above
+     end at y=1960, giving a 30px clearance gap. Nothing overlaps. */
+  .newsbar {
+    position:absolute; bottom:0; left:0; right:0; height: 170px;
+    background: var(--pink); color: #000;
+    display:flex; align-items:stretch;
+    border-top: 6px solid var(--ink);
+    overflow:hidden;
+  }
+  .newsbar .tag {
+    background: #000; color: #fff;
+    font-family:'Press Start 2P', monospace; font-size: 44px;
+    padding: 0 48px;
+    display:flex; align-items:center;
+    letter-spacing: .04em;
+    flex-shrink: 0;
+    border-right: 5px solid var(--ink);
+  }
+  .newsbar .msg-wrap {
+    flex: 1; overflow:hidden; display:flex; align-items:center;
+    padding-left: 40px;
+  }
+  .newsbar .msg {
+    font-family:'VT323', monospace; font-size: 68px; color: #000;
+    white-space: nowrap; letter-spacing: .02em;
+    animation: scroll 60s linear infinite;
+  }
+  .newsbar .msg span { display:inline-block; padding-right: 80px; }
   @keyframes scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 </style>
 </head>
@@ -394,17 +414,13 @@
     </div>
   </div>
 
-  <div class="alert" data-widget="announcement">
-    <span class="tag" data-field="announcement.tag">!! BOSS BATTLE</span>
-    <span class="msg" data-field="announcement.message">PICTURE DAY → THU. FULL UNIFORM. PERMISSION SLIPS BY WED.</span>
-    <span class="when" data-field="announcement.when">T-48H</span>
-  </div>
-
-  <div class="ticker" data-widget="ticker">
-    <div class="tag" data-field="ticker.tag">◈ NEWS FEED</div>
-    <div class="msg">
-      <span data-field="ticker.message">BUS 14 +10 · SUB IN B-12 · SPELLING BEE SIGN-UPS END FRI · 8TH GRADE FIELD TRIP FORMS DUE TMRW · LOST BLUE WATER BOTTLE → FRONT OFFICE · LIBRARY RETURNS DUE THIS WEEK · </span>
-      <span data-field="ticker.message">BUS 14 +10 · SUB IN B-12 · SPELLING BEE SIGN-UPS END FRI · 8TH GRADE FIELD TRIP FORMS DUE TMRW · LOST BLUE WATER BOTTLE → FRONT OFFICE · LIBRARY RETURNS DUE THIS WEEK · </span>
+  <div class="newsbar" data-widget="newsbar">
+    <span class="tag" data-field="newsbar.tag">!! BOSS BATTLE</span>
+    <div class="msg-wrap">
+      <div class="msg">
+        <span data-field="newsbar.message">PICTURE DAY → THU · FULL UNIFORM · PERMISSION SLIPS BY WED · BUS 14 +10 · SUB IN B-12 · SPELLING BEE SIGN-UPS END FRI · 8TH GRADE FIELD TRIP FORMS DUE TMRW · LOST BLUE WATER BOTTLE → FRONT OFFICE · LIBRARY RETURNS DUE THIS WEEK · </span>
+        <span aria-hidden="true">PICTURE DAY → THU · FULL UNIFORM · PERMISSION SLIPS BY WED · BUS 14 +10 · SUB IN B-12 · SPELLING BEE SIGN-UPS END FRI · 8TH GRADE FIELD TRIP FORMS DUE TMRW · LOST BLUE WATER BOTTLE → FRONT OFFICE · LIBRARY RETURNS DUE THIS WEEK · </span>
+      </div>
     </div>
   </div>
 
