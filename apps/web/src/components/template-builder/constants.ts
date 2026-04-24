@@ -3,9 +3,20 @@ import {
   Play, Image as ImageIcon, Globe, Type, Bell, Clock, Cloud, Timer,
   CalendarDays, Megaphone, UtensilsCrossed, Users, Rss, Share2, Shield,
   ArrowRight, Square, FileText, ListVideo,
-  MousePointerClick, Menu as MenuIcon, MapPin, Keyboard, Map, BarChart3,
-  Quote, Trophy, Cake, Award, Table2, UserCheck,
+  Cake,
 } from 'lucide-react';
+// The "School Life" (QUOTE / STATS / SCOREBOARD / MENU_ITEM /
+// SCHEDULE_GRID / ATTENDANCE / BIRTHDAYS / HONOR_ROLL) and
+// "Touch / Interactive" (TOUCH_BUTTON / TOUCH_MENU / ROOM_FINDER /
+// ON_SCREEN_KEYBOARD / WAYFINDING_MAP / QUICK_POLL) groups plus the
+// standalone ANIMATED_BACKGROUND widget have been temporarily hidden
+// from the Add-Widget picker (2026-04-23 customer-readiness audit).
+// Rationale: they had no corresponding editor in PropertiesPanel,
+// so picking one left the operator with no way to configure it —
+// violates the Integration Lead's "can't pick a widget you can't
+// edit" rule. No existing preset references any of them (verified
+// via grep), so hiding is a pure no-op for shipped content. Ship
+// them back one at a time as their editor ships.
 
 export const WIDGET_GROUPS = [
   {
@@ -48,23 +59,11 @@ export const WIDGET_GROUPS = [
       { type: 'EMPTY', label: 'Placeholder', desc: 'Reserve a zone for later', icon: Square },
     ],
   },
-  {
-    label: 'School Life',
-    types: [
-      { type: 'QUOTE',          label: 'Quote Card',       desc: 'Inspirational pull-quote + author',   icon: Quote },
-      { type: 'STATS',          label: 'Stats Row',        desc: '3-5 big-number stat cards',           icon: BarChart3 },
-      { type: 'SCOREBOARD',     label: 'Scoreboard',       desc: 'Home vs away game scorebug',          icon: Trophy },
-      { type: 'MENU_ITEM',      label: 'Menu Item',        desc: 'Cafeteria dish card with allergens',  icon: UtensilsCrossed },
-      { type: 'SCHEDULE_GRID',  label: 'Schedule Grid',    desc: 'Period-by-period daily schedule',     icon: Table2 },
-      { type: 'ATTENDANCE',     label: 'Attendance',       desc: 'Live daily attendance percentage',    icon: UserCheck },
-      { type: 'BIRTHDAYS',      label: 'Birthdays',        desc: "Today's birthday shout-outs",         icon: Cake },
-      { type: 'HONOR_ROLL',     label: 'Honor Roll',       desc: 'Recognized students + reason',        icon: Award },
-    ],
-  },
+  // "School Life" group hidden pending editor — see file header.
   {
     label: 'Animated Scenes',
     types: [
-      { type: 'ANIMATED_BACKGROUND', label: 'Animated Background', desc: 'Pure-decoration backdrop: rainbow ribbon, drifting clouds, confetti, balloons', icon: Cake },
+      // ANIMATED_BACKGROUND hidden pending editor — see file header.
       { type: 'ANIMATED_WELCOME', label: 'Animated Welcome · Elementary', desc: 'Full-screen rainbow-ribbon scene — shapes, confetti, live weather', icon: Cake },
       { type: 'ANIMATED_WELCOME_MS', label: 'Animated Welcome · Middle School', desc: 'Stadium / varsity scene — pennants, scoreboard, megaphone, varsity patch', icon: Cake },
       { type: 'ANIMATED_WELCOME_HS', label: 'Animated Welcome · High School', desc: 'Neon sunset scene — grad cap, trophy, yearbook, confetti burst', icon: Cake },
@@ -79,17 +78,7 @@ export const WIDGET_GROUPS = [
       { type: 'ANIMATED_CAFETERIA',  label: 'Animated Cafeteria · Food Truck', desc: 'Food-truck menu board — weekly menu, swappable food emojis, lunch chef, allergen ticker', icon: UtensilsCrossed },
     ],
   },
-  {
-    label: 'Touch / Interactive',
-    types: [
-      { type: 'TOUCH_BUTTON',    label: 'Touch Button',    desc: 'Large tappable button with action', icon: MousePointerClick },
-      { type: 'TOUCH_MENU',      label: 'Touch Menu',      desc: 'Row or column of touch buttons', icon: MenuIcon },
-      { type: 'ROOM_FINDER',     label: 'Room Finder',     desc: 'Searchable directory with keyboard', icon: MapPin },
-      { type: 'ON_SCREEN_KEYBOARD', label: 'On-Screen Keyboard', desc: 'Virtual QWERTY / numeric pad', icon: Keyboard },
-      { type: 'WAYFINDING_MAP',  label: 'Wayfinding Map',  desc: 'Pan/zoom map with hotspots', icon: Map },
-      { type: 'QUICK_POLL',      label: 'Quick Poll',      desc: 'Touch voting widget (local)', icon: BarChart3 },
-    ],
-  },
+  // "Touch / Interactive" group hidden pending editor — see file header.
 ] as const;
 
 export const WIDGET_META: Record<string, { label: string; icon: LucideIcon; desc: string }> = {};
