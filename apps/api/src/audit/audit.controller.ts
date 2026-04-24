@@ -37,8 +37,19 @@ export class AuditController {
   @RequireRoles(...ADMIN_ROLES)
   async getRecentActivity(@Request() req: any) {
     const tenantId = req.user.tenantId;
+    // Hide high-frequency device-polling actions from the dashboard's
+    // "Recent Activity" card — they were drowning the genuinely
+    // interesting events (admin logged in, playlist created, emergency
+    // triggered). Each paired screen re-fetches its emergency-asset
+    // manifest every ~5 minutes, so 50 screens generate 600
+    // 'DEVICE_FETCH_EMERGENCY_ASSETS' entries an hour; the operator
+    // cares about none of them in normal operation. The full record
+    // still lives in /audit (and /audit/export) for forensics.
+    const DEVICE_NOISE = [
+      'DEVICE_FETCH_EMERGENCY_ASSETS',
+    ];
     return this.prisma.client.auditLog.findMany({
-      where: { tenantId },
+      where: { tenantId, action: { notIn: DEVICE_NOISE } },
       take: 20,
       orderBy: { createdAt: 'desc' },
       include: { user: { select: { email: true, role: true } } },

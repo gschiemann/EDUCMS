@@ -92,3 +92,26 @@ export function markLastPingWritten(screenId: string): void {
         if (oldest) lastPingWrites.delete(oldest);
     }
 }
+
+// Same idea as lastPingWrites but for the emergency-asset audit log.
+// Player pre-caches emergency assets on its own 5-minute cadence; we
+// were writing a fresh AuditLog row on every fetch, which (at 50
+// screens) spams the Activity card with 600 identical entries an
+// hour. Key is `${screenId}:${setHash}` so a genuine content change
+// (different setHash) still produces a fresh audit entry.
+const EMERGENCY_AUDIT_DEBOUNCE_MS = 15 * 60_000; // 15 minutes
+const recentEmergencyAudit = new Map<string, number>();
+export function shouldSkipEmergencyAudit(screenId: string, setHash: string): boolean {
+    const key = `${screenId}:${setHash}`;
+    const last = recentEmergencyAudit.get(key);
+    if (!last) return false;
+    return Date.now() - last < EMERGENCY_AUDIT_DEBOUNCE_MS;
+}
+export function markEmergencyAuditWritten(screenId: string, setHash: string): void {
+    const key = `${screenId}:${setHash}`;
+    recentEmergencyAudit.set(key, Date.now());
+    if (recentEmergencyAudit.size > 50_000) {
+        const oldest = recentEmergencyAudit.keys().next().value;
+        if (oldest) recentEmergencyAudit.delete(oldest);
+    }
+}

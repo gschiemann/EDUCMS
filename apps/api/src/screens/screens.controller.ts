@@ -16,6 +16,8 @@ import {
   setTenantState,
   shouldSkipLastPingWrite,
   markLastPingWritten,
+  shouldSkipEmergencyAudit,
+  markEmergencyAuditWritten,
 } from './manifest-hot-cache';
 
 const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -959,16 +961,26 @@ export class ScreensController {
     // sec-fix(wave1) #4: audit every emergency-asset fetch. Forensically
     // crucial — if someone abuses a stolen device token to enumerate
     // lockdown media, we need the log trail.
+    //
+    // 2026-04-24: Debounce the write to at-most-once-per-(screen,setHash)
+    // per 15 minutes. A paired screen re-calls this every 5 minutes by
+    // design; without the debounce the audit table (and the dashboard's
+    // Recent Activity card) was filling with identical entries. A genuine
+    // content change produces a different setHash and therefore a fresh
+    // audit row, so we don't lose the forensic signal.
     try {
-      await this.prisma.client.auditLog.create({
-        data: {
-          action: 'DEVICE_FETCH_EMERGENCY_ASSETS',
-          targetType: 'screen',
-          targetId: id,
-          tenantId: tenant.id,
-          details: JSON.stringify({ assetCount: assets.length, setHash }),
-        },
-      });
+      if (!shouldSkipEmergencyAudit(id, setHash)) {
+        markEmergencyAuditWritten(id, setHash);
+        await this.prisma.client.auditLog.create({
+          data: {
+            action: 'DEVICE_FETCH_EMERGENCY_ASSETS',
+            targetType: 'screen',
+            targetId: id,
+            tenantId: tenant.id,
+            details: JSON.stringify({ assetCount: assets.length, setHash }),
+          },
+        });
+      }
     } catch (e) {
       // Non-fatal: we prefer to serve the player even if audit logging
       // is degraded.
