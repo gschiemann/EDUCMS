@@ -545,6 +545,100 @@ export default function PlayerPageWrapper() {
   return <PlayerErrorBoundary><PlayerPage /></PlayerErrorBoundary>;
 }
 
+/**
+ * Splash shown when the operator hits Stop on the overlay. Not a
+ * dismissable curtain — the buttons are explicit:
+ *   - Resume  → back to the playing render path
+ *   - Exit    → try native-bridge exit, then window.close(), then
+ *               surface an "exit unavailable" hint (caller toggles
+ *               `exitUnavailable` so we can swap the copy)
+ *   - Sync    → refresh manifest without leaving the splash
+ *   - Unpair  → destructive, wipes device fingerprint
+ *
+ * Kept visually consistent with KioskSplash (same dark gradient,
+ * branded wordmark, screen-name chip) so the operator doesn't feel
+ * dropped into a different app.
+ */
+function StoppedSplash({
+  brandName,
+  screenName,
+  lastSync,
+  exitUnavailable,
+  onResume,
+  onExit,
+  onUnpair,
+  onSync,
+}: {
+  brandName: string;
+  screenName: string;
+  lastSync: string | null;
+  exitUnavailable: boolean;
+  onResume: () => void;
+  onExit: () => void;
+  onUnpair: () => void;
+  onSync: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 flex items-center justify-center bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white select-none p-6">
+      <div className="absolute top-6 left-6 flex items-center gap-3 text-sm text-slate-300">
+        <MonitorPlay className="w-5 h-5 text-indigo-300" strokeWidth={1.75} />
+        <span className="font-semibold">{brandName}</span>
+      </div>
+      <div className="w-full max-w-xl text-center">
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/20 border border-amber-400/30 text-xs font-bold tracking-wide uppercase text-amber-300 mb-6">
+          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+          Playback paused
+        </div>
+        <h1 className="text-5xl font-bold tracking-tight leading-tight">
+          {screenName || 'Screen'}
+        </h1>
+        <p className="mt-4 text-base text-slate-300 max-w-md mx-auto">
+          {exitUnavailable
+            ? 'Auto-exit isn\u2019t available on this device. Use your remote\u2019s Home button to return to the launcher, then relaunch EduSignage when ready.'
+            : 'Content is held. Resume to go back to playback, or Exit to return to your device launcher.'}
+        </p>
+        {lastSync && (
+          <p className="mt-3 text-xs text-slate-400">Last sync: {lastSync}</p>
+        )}
+        <div className="mt-10 flex flex-wrap gap-3 justify-center">
+          <button
+            type="button"
+            onClick={onResume}
+            className="px-7 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-900 rounded-2xl text-sm font-bold shadow-lg shadow-emerald-500/30 transition-colors"
+          >
+            Resume
+          </button>
+          <button
+            type="button"
+            onClick={onSync}
+            className="px-5 py-3 bg-white/10 hover:bg-white/20 border border-white/20 rounded-2xl text-sm font-semibold transition-colors"
+          >
+            Sync now
+          </button>
+          <button
+            type="button"
+            onClick={onExit}
+            disabled={exitUnavailable}
+            className="px-5 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-2xl text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {exitUnavailable ? 'Exit unavailable' : 'Exit to launcher'}
+          </button>
+        </div>
+        <div className="mt-8 pt-6 border-t border-white/10">
+          <button
+            type="button"
+            onClick={onUnpair}
+            className="text-xs text-slate-400 hover:text-red-300 transition-colors"
+            title="Forget this device's pairing and return to the code screen"
+          >
+            Unpair device
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PlayerPage() {
   const [phase, setPhase] = useState<Phase>('registering');
   const [storageInfo, setStorageInfo] = useState({ used: '1.2 GB', total: '32 GB', percent: 4 });
@@ -660,13 +754,15 @@ function PlayerPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [showOverlay, setShowOverlay] = useState(false);
-  // "Stop" state — paints a black curtain over the playback so the
-  // operator can physically walk away and know the screen is frozen
-  // even when no native Exit bridge is available (Goodview's OEM
-  // launcher, for example, doesn't inject window.EduCmsNative, so
-  // the dedicated Exit button is hidden on that hardware). Tapping
-  // the screen again lifts the curtain and resumes playback.
+  // Stop splash state — shows a branded "playback paused" screen
+  // in place of the content. The operator sees player branding +
+  // Resume / Exit / Unpair buttons, NOT a dismissable black curtain.
+  // exitUnavailable becomes true after handleExitApp tried every
+  // known path (native bridge, window.close) and none took effect;
+  // the splash then switches to a "use your remote's HOME button"
+  // hint so the operator isn't left poking a broken Exit button.
   const [playbackStopped, setPlaybackStopped] = useState(false);
+  const [exitUnavailable, setExitUnavailable] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   // Split refs: interval runs at steady cadence, timeout is the one-
   // shot backoff retry. Previously both shared `pollRef` which caused
@@ -1748,22 +1844,29 @@ function PlayerPage() {
     );
   }
 
-  // Unified Stop handler. Priority:
-  //   1. Native exit bridge (Android APK) — actually closes the app
-  //      and drops back to the OEM launcher (Goodview / NovaStar /
-  //      TCL CMS). This is the only "real" exit.
-  //   2. window.close() — works if the player was opened as a
-  //      standalone web-app / TWA / PWA window. Ignored on most
-  //      OEM WebViews.
-  //   3. playbackStopped curtain — paints a black fullscreen with
-  //      a "Tap to resume" message. Not an exit, but at least stops
-  //      playback visibly so the operator can walk away, use the
-  //      device's physical Home button, etc. Previously hitting the
-  //      red Power button just sent the player back to the pairing
-  //      screen — the operator reported "it just goes back to the
-  //      content that playing" because Unpair wasn't really Stop.
+  // Stop = "go back to the player's main splash". Playback pauses
+  // but the EduCMS shell is still running, with a branded splash
+  // that lets the operator Resume, Exit to the device launcher, or
+  // Unpair entirely. User mental model was: Stop → splash → Exit
+  // → launcher. The old curtain short-circuited that to "Stop →
+  // black screen → tap = back to content," which is why hitting
+  // either button felt like a no-op.
   const handleStopPlayback = () => {
     setShowOverlay(false);
+    setPlaybackStopped(true);
+  };
+
+  // Exit = actually leave the EduCMS player, return control to the
+  // Android / OEM launcher (Goodview, NovaStar, TCL). Priority:
+  //   1. Native exit bridge (injected by our Android APK).
+  //   2. window.close() (works for PWA/TWA windows).
+  //   3. Fallback splash state — stay on the "Stopped" screen but
+  //      show an explicit "Use your remote's HOME button" hint.
+  // NO window.confirm() — many kiosk WebViews (including Goodview's
+  // default config) suppress modal dialogs, so the confirm returned
+  // undefined and the exit call never fired. Reported as "I hit
+  // Exit and nothing happened."
+  const handleExitApp = () => {
     try {
       const bridge = (window as any).EduCmsNative;
       if (bridge && typeof bridge.exitToDeviceHome === 'function') {
@@ -1772,14 +1875,12 @@ function PlayerPage() {
       }
     } catch { /* fall through */ }
     try {
-      // Only works in windows that script opened — harmless no-op
-      // otherwise. Don't guard with confirm; the user already
-      // confirmed by clicking Stop.
       window.close();
     } catch { /* ignore */ }
-    // Paint the stop curtain so the screen visibly freezes even if
-    // neither exit path succeeded. Tapping resumes.
+    // Neither worked → signal to the splash that in-app exit is
+    // impossible and the operator needs to use the device remote.
     setPlaybackStopped(true);
+    setExitUnavailable(true);
   };
 
   // (sceneTick / idleResetTimerRef / sorted / isItemValid hooks were
@@ -1794,23 +1895,26 @@ function PlayerPage() {
     const tpl = playlist.template;
     const zones = tpl.zones || [];
 
-    // Stop-curtain short-circuit before rendering template widgets
+    // Stop splash short-circuit before rendering template widgets
     // so the whole widget tree tears down (stopping any animations,
     // video loops, weather polls, etc.) during the stop.
     if (playbackStopped) {
       return (
-        <div
-          role="button"
-          tabIndex={0}
-          aria-label="Resume playback"
-          onClick={() => setPlaybackStopped(false)}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPlaybackStopped(false); } }}
-          className="fixed inset-0 bg-black flex flex-col items-center justify-center text-white cursor-pointer select-none"
-        >
-          <MonitorPlay className="w-16 h-16 text-slate-600 mb-6" strokeWidth={1.5} />
-          <h2 className="text-3xl font-bold tracking-tight">Playback stopped</h2>
-          <p className="mt-3 text-base text-slate-400">Tap or press Enter to resume · Use the device&rsquo;s Home button to exit</p>
-        </div>
+        <StoppedSplash
+          brandName={brandName}
+          screenName={screenName}
+          lastSync={lastSync}
+          exitUnavailable={exitUnavailable}
+          onResume={() => { setPlaybackStopped(false); setExitUnavailable(false); }}
+          onExit={handleExitApp}
+          onUnpair={() => {
+            try { localStorage.removeItem('edu_device_fp'); } catch {}
+            setPlaybackStopped(false);
+            setExitUnavailable(false);
+            setPhase('registering');
+          }}
+          onSync={() => fetchContent()}
+        />
       );
     }
 
@@ -1821,7 +1925,16 @@ function PlayerPage() {
         tabIndex={0}
         aria-label="Toggle screen info overlay"
         onClick={isTouchTemplate ? undefined : () => setShowOverlay(!showOverlay)}
-        onKeyDown={e => { if (!isTouchTemplate && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setShowOverlay(s => !s); } }}
+        onKeyDown={e => {
+          // Only toggle on direct-target keypresses. Without this
+          // guard, Enter on any BUTTON inside the overlay (Stop,
+          // Exit, Sync) bubbled here and the overlay toggled off
+          // right after the button handler ran — the operator
+          // reported "nothing happened" because the overlay
+          // disappeared before they could see the Stopped splash.
+          if (e.target !== e.currentTarget) return;
+          if (!isTouchTemplate && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setShowOverlay(s => !s); }
+        }}
         style={{
           backgroundColor: tpl.bgColor || '#000000',
           ...(tpl.bgGradient ? { background: tpl.bgGradient } : {}),
@@ -1918,26 +2031,25 @@ function PlayerPage() {
                 >
                   Stop
                 </button>
-                {/* Exit to OEM launcher — only shown when the native
-                    bridge is present (i.e. we're running inside the
-                    Android kiosk APK). Lets operators on signage boxes
-                    with a vendor CMS underneath (Goodview / NovaStar /
-                    TCL) get back to the vendor launcher to tweak
-                    network/device settings without reflashing. */}
-                {typeof window !== 'undefined' && (window as any).EduCmsNative?.exitToDeviceHome && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (window.confirm('Exit to device home screen? You can relaunch EduCMS from your OEM launcher (Goodview / NovaStar / TCL CMS) when ready.')) {
-                        try { (window as any).EduCmsNative.exitToDeviceHome(); } catch {}
-                      }
-                    }}
-                    title="Exit to OEM launcher"
-                    className="py-2 px-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white rounded-lg text-sm font-medium transition-colors"
-                  >
-                    Exit
-                  </button>
-                )}
+                {/* Exit to OEM launcher — ALWAYS visible now. v2
+                    had this gated on the native bridge being
+                    detected AND wrapped in a window.confirm(...),
+                    but the Goodview kiosk WebView both hides the
+                    EduCmsNative global AND suppresses confirm
+                    dialogs, so the button was either invisible OR
+                    did nothing when clicked ("I hit Exit and
+                    nothing happened"). handleExitApp handles the
+                    cascade (native → window.close → splash hint)
+                    and the Stopped splash surfaces the fallback
+                    copy when we truly can't exit. */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleExitApp(); }}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  title="Exit to device launcher"
+                  className="py-2 px-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  Exit
+                </button>
                 <button onClick={(e) => {
                   e.stopPropagation();
                   if(window.confirm('Are you sure you want to unpair this screen?')) {
@@ -1956,27 +2068,24 @@ function PlayerPage() {
     );
   }
 
-  // Stop-curtain overlay: when playbackStopped is true and we have no
-  // native exit bridge, render a full-screen black panel with a
-  // "Tap to resume" prompt. This fulfills the "Stop" semantics on
-  // hardware (like Goodview) where the player can't actually exit
-  // itself — playback visibly halts, the operator knows they can
-  // walk away or hit the device Home button, and a tap restores
-  // playback without an unpair round-trip.
+  // Stop splash — same component as the template render path.
   if (playbackStopped) {
     return (
-      <div
-        role="button"
-        tabIndex={0}
-        aria-label="Resume playback"
-        onClick={() => setPlaybackStopped(false)}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPlaybackStopped(false); } }}
-        className="fixed inset-0 bg-black flex flex-col items-center justify-center text-white cursor-pointer select-none"
-      >
-        <MonitorPlay className="w-16 h-16 text-slate-600 mb-6" strokeWidth={1.5} />
-        <h2 className="text-3xl font-bold tracking-tight">Playback stopped</h2>
-        <p className="mt-3 text-base text-slate-400">Tap or press Enter to resume · Use the device&rsquo;s Home button to exit</p>
-      </div>
+      <StoppedSplash
+        brandName={brandName}
+        screenName={screenName}
+        lastSync={lastSync}
+        exitUnavailable={exitUnavailable}
+        onResume={() => { setPlaybackStopped(false); setExitUnavailable(false); }}
+        onExit={handleExitApp}
+        onUnpair={() => {
+          try { localStorage.removeItem('edu_device_fp'); } catch {}
+          setPlaybackStopped(false);
+          setExitUnavailable(false);
+          setPhase('registering');
+        }}
+        onSync={() => fetchContent()}
+      />
     );
   }
 
@@ -1988,7 +2097,12 @@ function PlayerPage() {
       tabIndex={0}
       aria-label="Toggle screen info overlay"
       onClick={() => setShowOverlay(!showOverlay)}
-      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowOverlay(s => !s); } }}
+      onKeyDown={e => {
+        // Same target-check as the template path above — keeps
+        // button keypresses from bubbling into an overlay toggle.
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowOverlay(s => !s); }
+      }}
     >
       {currentItem ? (
         <div className="relative w-full h-full flex items-center justify-center pointer-events-none">
@@ -2150,7 +2264,8 @@ function PlayerPage() {
               {/* Always-visible Stop — counterpart to the block above */}
               <button
                 onClick={(e) => { e.stopPropagation(); handleStopPlayback(); }}
-                title="Stop playback"
+                onKeyDown={(e) => e.stopPropagation()}
+                title="Stop playback — go to player splash"
                 className="py-2 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-bold transition-colors"
               >
                 Stop
