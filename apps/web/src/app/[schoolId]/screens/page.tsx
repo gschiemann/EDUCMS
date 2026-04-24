@@ -1,6 +1,6 @@
 "use client";
 
-import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2 } from 'lucide-react';
+import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw } from 'lucide-react';
 import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
@@ -78,6 +78,162 @@ function OsIcon({ os, status }: { os?: string; status?: string }) {
   return <Monitor className={cls} />;
 }
 
+/**
+ * Per-screen settings popover — anchored off the gear button in each
+ * screen row. First occupant is "Push APK update" with real feedback
+ * about whether the push actually took effect; the component is
+ * structured so more settings (restart, orientation, brightness, cache
+ * clear, etc.) can slot in as menu items without reshuffling layout.
+ *
+ * Feedback logic:
+ *   - just clicked Push       → "Waiting for kiosk response…" (spinner)
+ *   - kiosk reported new ver  → "Updated to vN.M.P ✓" (emerald)
+ *   - >90s with no version    → "No response — check Install
+ *                                 permissions on the device"
+ *   - currently up to date    → quiet success chip
+ *
+ * Built as a portal-free popover so it stays anchored to the row even
+ * when the Screens list scrolls.
+ */
+function ScreenSettingsMenu({
+  screen,
+  pushState,
+  pending,
+  onPushApk,
+  onOpenPreview,
+  previewHref,
+}: {
+  screen: any;
+  pushState: { at: number; priorVersion: string | null } | undefined;
+  pending: boolean;
+  onPushApk: () => void;
+  onOpenPreview: () => void;
+  previewHref: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleDoc = (e: MouseEvent) => {
+      if (!rootRef.current) return;
+      if (!rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', handleDoc);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleDoc);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [open]);
+
+  // Derive the push-feedback line. Both null values are fine —
+  // rendered only when a push is still considered "in flight".
+  const currentVersion: string | null = (screen as any).playerVersion ?? null;
+  const pushed = !!pushState;
+  const pushedMsAgo = pushState ? Date.now() - pushState.at : 0;
+  const updatedSincePush = !!(pushState && currentVersion && currentVersion !== (pushState.priorVersion ?? null));
+  const stillWaiting = pushed && !updatedSincePush && pushedMsAgo < 90_000;
+  const timedOut = pushed && !updatedSincePush && pushedMsAgo >= 90_000;
+
+  return (
+    <div className="relative" ref={rootRef}>
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        title="Screen settings"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-slate-800 hover:border-slate-300 hover:bg-slate-50 transition-all shadow-sm"
+      >
+        <Settings className="w-4 h-4" />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full mt-2 z-50 w-72 rounded-xl bg-white border border-slate-200 shadow-[0_12px_32px_rgba(15,23,42,0.12)] overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="px-3.5 py-3 border-b border-slate-100 bg-slate-50/60">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Screen settings</div>
+            <div className="text-sm font-semibold text-slate-700 truncate mt-0.5">{screen.name}</div>
+            <div className="mt-1.5 text-[11px] text-slate-500 flex items-center gap-1.5">
+              <Download className="w-3 h-3" />
+              {currentVersion ? (
+                <span>APK <span className="font-semibold text-slate-700">v{currentVersion}</span></span>
+              ) : (
+                <span className="text-slate-400">APK version not reported yet</span>
+              )}
+            </div>
+          </div>
+
+          {/* APK update row */}
+          <div className="px-3.5 py-3 border-b border-slate-100">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-slate-700">Update APK</div>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  Push the latest release to this kiosk now instead of waiting for the 6-hour poll.
+                </div>
+              </div>
+              <button
+                onClick={onPushApk}
+                disabled={pending || stillWaiting}
+                className="shrink-0 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[11px] font-bold rounded-lg flex items-center gap-1.5 transition-colors"
+              >
+                {pending || stillWaiting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                {pending ? 'Sending…' : stillWaiting ? 'Pushing' : 'Push'}
+              </button>
+            </div>
+            {/* Feedback line — only renders once a push has been sent */}
+            {pushed && (
+              <div className="mt-2 text-[11px] leading-snug">
+                {updatedSincePush && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-semibold">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Kiosk installed v{currentVersion} ✓
+                  </span>
+                )}
+                {stillWaiting && !updatedSincePush && (
+                  <span className="text-slate-500">
+                    Waiting for kiosk check-in… Install can take up to a minute over Wi-Fi.
+                  </span>
+                )}
+                {timedOut && !updatedSincePush && (
+                  <span className="inline-flex items-center gap-1 text-amber-700">
+                    <WifiOff className="w-3.5 h-3.5" />
+                    No response after 90s. Check the kiosk&rsquo;s network + &ldquo;Install unknown apps&rdquo; permission.
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Preview */}
+          <a
+            href={previewHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => { setOpen(false); onOpenPreview(); }}
+            className="flex items-center gap-2 px-3.5 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+            Open preview in browser
+          </a>
+
+          {/* Footer — room for future settings rows (restart, cache,
+              orientation, brightness, unpair…). */}
+          <div className="px-3.5 py-2 bg-slate-50/80 border-t border-slate-100">
+            <div className="text-[10px] text-slate-400">
+              More settings coming soon: restart, orientation, cache clear.
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ScreensPage() {
   const { data: groups, isLoading, refetch } = useScreenGroups();
   const { data: allScreens, refetch: refetchScreens } = useScreens();
@@ -102,10 +258,23 @@ export default function ScreensPage() {
   const updateScreen = useUpdateScreen();
   const forceApkUpdate = useForceApkUpdate();
   const [apkUpdateToast, setApkUpdateToast] = useState<string | null>(null);
+  // When a push was sent per-screen, timestamp + last-known version at
+  // push-time. The ScreenSettingsMenu below uses these to give the
+  // operator confidence the update "took" — if playerVersion changes
+  // after pushedAt, we render a green "installed vX.Y.Z ✓" chip. If
+  // it doesn't change within ~2 min, we flip to a warning that the
+  // kiosk hasn't responded.
+  const [apkPushState, setApkPushState] = useState<Record<string, { at: number; priorVersion: string | null }>>({});
 
-  const handlePushApkUpdate = async (screenId?: string, screenName?: string) => {
+  const handlePushApkUpdate = async (screenId?: string, screenName?: string, priorVersion?: string | null) => {
     try {
       await forceApkUpdate.mutateAsync({ screenId });
+      if (screenId) {
+        setApkPushState((s) => ({
+          ...s,
+          [screenId]: { at: Date.now(), priorVersion: priorVersion ?? null },
+        }));
+      }
       setApkUpdateToast(
         screenId
           ? `Update request sent to "${screenName}". Kiosk will pull + install within ~1 min.`
@@ -493,14 +662,22 @@ export default function ScreensPage() {
                         >
                           <MapPin className="w-4 h-4" />
                         </button>
-                        <button
-                          onClick={() => handlePushApkUpdate(screen.id, screen.name)}
-                          disabled={forceApkUpdate.isPending}
-                          title="Push APK update to this screen only"
-                          className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-slate-800 hover:border-slate-300 hover:bg-slate-50 opacity-0 group-hover/item:opacity-100 transition-all shadow-sm disabled:opacity-40"
-                        >
-                          <Download className="w-4 h-4" />
-                        </button>
+                        {/* Per-screen settings popover (gear icon) —
+                            replaces the old lone Download button. First
+                            occupant is Push APK update with proper "did
+                            it land?" feedback; future settings (restart,
+                            cache clear, orientation) will slot in as
+                            additional menu rows inside the popover. */}
+                        <div className="opacity-0 group-hover/item:opacity-100 transition-all">
+                          <ScreenSettingsMenu
+                            screen={screen}
+                            pushState={apkPushState[screen.id]}
+                            pending={forceApkUpdate.isPending}
+                            onPushApk={() => handlePushApkUpdate(screen.id, screen.name, (screen as any).playerVersion ?? null)}
+                            onOpenPreview={() => { /* parent handles nav */ }}
+                            previewHref={buildPreviewUrl(screen)}
+                          />
+                        </div>
                         <button onClick={() => deleteScreen.mutate(screen.id)}
                           className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 opacity-0 group-hover/item:opacity-100 transition-all shadow-sm">
                           <Trash2 className="w-4 h-4" />
