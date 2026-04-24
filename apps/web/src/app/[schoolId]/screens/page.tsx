@@ -428,12 +428,25 @@ export default function ScreensPage() {
                               {screen.name}
                             </button>
                           )}
-                          <div className="flex gap-3 mt-1 text-[11px] font-medium text-slate-400">
+                          <div className="flex flex-wrap gap-3 mt-1 text-[11px] font-medium text-slate-400">
                             {screen.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {screen.location}</span>}
                             {screen.resolution && <span>📐 {screen.resolution}</span>}
                             {screen.osInfo && <span>💻 {screen.osInfo}</span>}
                             {screen.browserInfo && <span><Globe className="w-3 h-3 inline" /> {screen.browserInfo}</span>}
                             {screen.ipAddress && <span>🌐 {screen.ipAddress}</span>}
+                            {/* APK version chip. Self-reported by the player on
+                                every OTA check (/api/v1/player/update-check).
+                                Browser players don't set it, so the chip is
+                                hidden for them — nothing to surface. */}
+                            {(screen as any).playerVersion && (
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold"
+                                title={`APK v${(screen as any).playerVersion}${(screen as any).playerVersionAt ? ` · reported ${fullDateTime((screen as any).playerVersionAt)}` : ''}`}
+                              >
+                                <Download className="w-3 h-3" />
+                                v{(screen as any).playerVersion}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg ${
@@ -581,12 +594,21 @@ export default function ScreensPage() {
                           {screen.name}
                         </button>
                       )}
-                      <div className="flex gap-3 mt-1 text-[11px] font-medium text-slate-400">
+                      <div className="flex flex-wrap gap-3 mt-1 text-[11px] font-medium text-slate-400">
                         {screen.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {screen.location}</span>}
                         {screen.resolution && <span>📐 {screen.resolution}</span>}
                         {screen.osInfo && <span>💻 {screen.osInfo}</span>}
                         {screen.browserInfo && <span><Globe className="w-3 h-3 inline" /> {screen.browserInfo}</span>}
                         {screen.ipAddress && <span>🌐 {screen.ipAddress}</span>}
+                        {(screen as any).playerVersion && (
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold"
+                            title={`APK v${(screen as any).playerVersion}${(screen as any).playerVersionAt ? ` · reported ${fullDateTime((screen as any).playerVersionAt)}` : ''}`}
+                          >
+                            <Download className="w-3 h-3" />
+                            v{(screen as any).playerVersion}
+                          </span>
+                        )}
                       </div>
                     </div>
                     {/* Add to group dropdown */}

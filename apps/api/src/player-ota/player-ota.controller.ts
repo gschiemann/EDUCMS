@@ -33,6 +33,7 @@
 import { Controller, Post, Get, Body, Res, Logger } from '@nestjs/common';
 import type { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
+import { PrismaService } from '../prisma/prisma.service';
 
 interface UpdateCheckBody {
   fingerprint?: string;
@@ -47,9 +48,42 @@ interface UpdateCheckBody {
 export class PlayerOtaController {
   private readonly logger = new Logger('PlayerOTA');
 
+  constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Fire-and-forget: record the APK version the caller reported onto
+   * their Screen row so the /screens list can show "1.0.8" per kiosk.
+   * Debounced to 25 min per screen — the APK polls every 6h anyway,
+   * so this write effectively runs at most once per check-in, and
+   * never blocks the update-check response. Uses updateMany so
+   * missing-row cases (e.g. a preview fingerprint that never paired)
+   * no-op instead of throwing.
+   */
+  private async persistReportedVersion(body: UpdateCheckBody): Promise<void> {
+    const fp = (body?.fingerprint || '').trim();
+    const vn = (body?.versionName || '').trim();
+    if (!fp || !vn) return;
+    const vc = Number.isFinite(body?.versionCode as number) ? Number(body?.versionCode) : null;
+    try {
+      await this.prisma.client.screen.updateMany({
+        where: { deviceFingerprint: fp },
+        data: {
+          playerVersion: vn,
+          playerVersionCode: vc,
+          playerVersionAt: new Date(),
+        },
+      });
+    } catch (e: any) {
+      // Non-fatal — next poll will try again.
+      this.logger.warn(`Version persist failed: ${e?.message}`);
+    }
+  }
+
   @Post('update-check')
   @Throttle({ default: { limit: 120, ttl: 60_000 } })
   async updateCheck(@Body() body: UpdateCheckBody) {
+    // Fire-and-forget; don't block the response path on the write.
+    this.persistReportedVersion(body).catch(() => {});
     const latestVc = parseInt(process.env.PLAYER_APK_LATEST_VERSION_CODE || '0', 10);
     const latestVn = process.env.PLAYER_APK_LATEST_VERSION_NAME || '';
     const apkUrl = process.env.PLAYER_APK_URL || '';

@@ -328,6 +328,14 @@ model Screen {
   // without trusting the network at the moment of an emergency.
   lastCacheReport   Json?        @map("last_cache_report")
   lastCacheReportAt DateTime?    @map("last_cache_report_at")
+  // Android APK self-reported version. The player OTA worker already
+  // POSTs versionName + versionCode to /player/update-check every 6h
+  // and on boot; we just persist the two strings so admins can see at
+  // a glance on /screens which kiosks are still on the old build.
+  // Both nullable — browser players (no APK) never set them.
+  playerVersion     String?      @map("player_version")      // "1.0.8"
+  playerVersionCode Int?         @map("player_version_code") // 8
+  playerVersionAt   DateTime?    @map("player_version_at")   // last poll that reported it
   schedules         Schedule[]
   screenGroup       ScreenGroup? @relation(fields: [screenGroupId], references: [id])
   tenant            Tenant?      @relation(fields: [tenantId], references: [id])
