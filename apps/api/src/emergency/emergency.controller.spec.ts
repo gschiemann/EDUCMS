@@ -103,22 +103,32 @@ describe('EmergencyController', () => {
     );
   });
 
-  it('should publish ALL_CLEAR to redis', async () => {
+  it('should publish SIGNED ALL_CLEAR to redis (life-safety regression)', async () => {
+    // Regression: pre-fix the controller published unsigned plain JSON
+    // for ALL_CLEAR. The player drops every unsigned SENSITIVE event,
+    // so screens stayed stuck on lockdown until the 10s HTTP poll
+    // noticed the tenant emergencyStatus had flipped. This test
+    // asserts the message goes through WebsocketSignerService
+    // (signature + eventId + timestamp present) so the player accepts
+    // it on the WS path.
     const req = { user: { id: 'admin1' } };
     const payload = {
       scopeType: 'group' as const,
       scopeId: 'g1'
     };
-    
+
     const response = await controller.clearEmergency('o1', payload, req);
     expect(response.success).toBe(true);
 
     expect(redisService.publish).toHaveBeenCalledWith('group:g1', expect.objectContaining({
       type: 'ALL_CLEAR',
-      payload: {
+      payload: expect.objectContaining({
         overrideId: 'o1',
-        clearedBy: 'admin1'
-      }
+        clearedBy: 'admin1',
+      }),
+      signature: expect.any(String),
+      eventId: expect.any(String),
+      timestamp: expect.any(Number),
     }));
   });
 

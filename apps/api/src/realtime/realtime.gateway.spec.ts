@@ -57,7 +57,10 @@ describe('RealtimeGateway', () => {
   describe('handleHello', () => {
     it('should authenticate correctly with valid JWT', async () => {
       const mockWs = { send: jest.fn(), close: jest.fn(), on: jest.fn(), readyState: WebSocket.OPEN } as unknown as WebSocket;
-      const secret = 'dev_secret';
+      // requireSecret enforces a 16-char minimum (sec-fix wave1 #2);
+      // the old 'dev_secret' value silently fell through to the devFallback,
+      // making jwt.verify reject the test token. Use a real-shaped key.
+      const secret = 'test_device_jwt_secret_at_least_32_chars_long_xx';
       process.env.DEVICE_JWT_SECRET = secret;
 
       const token = jwt.sign(
@@ -82,6 +85,11 @@ describe('RealtimeGateway', () => {
 
       expect(sent.type).toBe('AUTH_OK');
       expect(sent.payload.deviceId).toBe('dev_123');
+      // serverTime ships so the player can compute a clock-skew offset —
+      // signage devices boot without NTP and would otherwise drop every
+      // SENSITIVE WS event past the 30s staleness gate.
+      expect(typeof sent.payload.serverTime).toBe('number');
+      expect(Math.abs(Date.now() - sent.payload.serverTime)).toBeLessThan(2_000);
 
       // Asserts redis operations
       expect(redisService.publisher!.sadd).toHaveBeenCalledWith('tenant:tenant_1:devices', 'dev_123');
