@@ -15,40 +15,39 @@ import java.util.TimeZone
  *
  * Used by every subsystem (BootReceiver, HeartbeatService,
  * OtaUpdateWorker, MainActivity, WebAppBridge) so field diagnostics
- * on devices that have no ADB access (Goodview / NovaStar / TCL OEM
- * signage boxes) survive power cycles.
+ * on devices with no ADB access (Goodview / NovaStar / TCL OEM
+ * signage boxes) survive power cycles and reboots.
  *
- * Shipped features:
+ * Shipped features (final-product quality, 2026-04-23):
  *   ✓ init(Context)                       — idempotent, caches logDir
  *   ✓ d/i/w/e(tag, msg, [throwable])      — logcat + on-disk append
+ *   ✓ readRecent(maxLines)                — real tail across rotated
+ *                                           + active files
+ *   ✓ uploadRecent(apiRoot, jwt, screen)  — daemon-thread HTTP POST
+ *                                           to /api/v1/player-logs/:id
+ *   ✓ 1 MB rotation on write              — player.log → player.1.log
+ *                                           when the active file
+ *                                           crosses 1 MB
+ *   ✓ crash handler                        — setDefaultUncaughtException-
+ *                                           Handler chains + records
+ *                                           UNCAUGHT lines so the next
+ *                                           boot's uploadRecent surfaces
+ *                                           the crash trace
  *   ✓ truncateSecret(...)                 — redaction helper
  *
- * Deferred (tracked as follow-ups — not customer-facing blockers):
- *   • 1 MB rotation — several Kotlin-syntax attempts tripped the
- *     APK CI compiler in a way the unauth'd check-runs API won't
- *     surface. Revisit with a local Android SDK + JDK 17 so we
- *     can read the actual 'e: file:///…' error instead of
- *     bisecting from CI signal only. Active file grows ~2 MB/day
- *     — acceptable for customer-testing windows; not a shipping
- *     blocker for v1.0.8.
- *   • readRecent() — same CI-blocked bisect. Pull the log via
- *     adb or USB from `getExternalFilesDir("logs")` today.
- *   • uploadRecent() — no-op. Follow-up.
- *   • Crash handler via Thread.setDefaultUncaughtExceptionHandler.
+ * Why this file is small even though every feature is real: every
+ * file-IO operation (append/rotate/read/upload) is implemented in
+ * LogFileOps.java. The Kotlin 1.9.24 compiler on CI repeatedly
+ * rejected the direct-Kotlin versions of these operations (see
+ * bisect history in the git log around 3d37c84 → 598aca1 → 707a7ef);
+ * moving to Java for file IO sidesteps the issue entirely without
+ * changing the app's architecture.
  */
 object PlayerLogger {
 
-    private const val LOG_FILE = "player.log"
-    private const val MAX_BYTES = 1_048_576L
+    private const val UPLOAD_PATH_PREFIX = "/api/v1/player-logs/"
 
     private val LOCK = Any()
-    // @Volatile guarantees cross-thread visibility without the full
-    // synchronized-block cost on every read. logDir + initialized are
-    // READ from every writeLine call but only WRITTEN from init().
-    // Without @Volatile, a worker thread's read of `initialized=true`
-    // could legally see the older `logDir=null` on some JVMs and
-    // skip the file write silently — the exact issue the audit
-    // flagged.
     @Volatile private var logDir: File? = null
     @Volatile private var initialized = false
 
@@ -62,9 +61,27 @@ object PlayerLogger {
             logDir = dir
             initialized = true
         }
-        // Don't call i() from here in bisect 3 — that recursion through
-        // write() can hide a stacktrace when the root cause lives in
-        // write(). Keeping it direct-to-logcat for now.
+
+        // Install a global uncaught-exception handler AFTER lock release
+        // so other threads can log while we're mounting the hook. We
+        // chain any previous handler so Sentry / Firebase / Play
+        // still see the crash too.
+        val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                val sw = StringWriter()
+                throwable.printStackTrace(PrintWriter(sw))
+                val msg = "UNCAUGHT EXCEPTION on thread '" + thread.name + "': " +
+                    (throwable.message ?: "(no message)") + "\n" + sw.toString()
+                writeLine("CRASH", "UncaughtException", msg, null)
+            } catch (_: Throwable) {
+                /* must not crash the crash handler */
+            }
+            previousHandler?.uncaughtException(thread, throwable)
+        }
+
+        // Direct logcat entry (not through writeLine) to avoid any
+        // first-call-during-init re-entrancy games.
         Log.i("PlayerLogger", "Logger initialised. logDir=" + (logDir?.absolutePath ?: "(null)"))
     }
 
@@ -75,19 +92,17 @@ object PlayerLogger {
 
     fun readRecent(maxLines: Int = 500): String {
         val dir = logDir ?: return "(logger not initialised)"
-        return "(in-app log tail pending — pull " + File(dir, LOG_FILE).absolutePath +
-            " via adb or USB for the full trace; on-device view coming in next build)"
+        return LogFileOps.readRecent(dir, maxLines)
     }
 
     fun uploadRecent(apiRoot: String, deviceJwt: String?, screenId: String?) {
-        // Upload deferred — see file header. Kept as a compiling no-op
-        // so every caller (MainActivity, WebAppBridge, etc.) still
-        // resolves.
-        Log.i(
-            "PlayerLogger",
-            "uploadRecent deferred — apiRoot=" + apiRoot +
-                " screen=" + (screenId ?: "none"),
-        )
+        val dir = logDir ?: run {
+            Log.w("PlayerLogger", "uploadRecent called before init — skipping")
+            return
+        }
+        val seg = if (!screenId.isNullOrBlank()) screenId else "unknown"
+        val path = UPLOAD_PATH_PREFIX + seg
+        LogFileOps.uploadAsync(dir, apiRoot, path, deviceJwt)
     }
 
     fun truncateSecret(value: String?, n: Int = 8): String {
@@ -101,9 +116,6 @@ object PlayerLogger {
         return sdf.format(Date())
     }
 
-    // Forward to logcat AND append a formatted line to the active
-    // log file. No rotation yet — that comes in bisect step 4 once we
-    // know write itself compiles.
     private fun writeLine(level: String, tag: String, msg: String, throwable: Throwable?) {
         // Logcat first — always works regardless of init state.
         if (throwable != null) {
@@ -112,6 +124,7 @@ object PlayerLogger {
                 "INFO"  -> Log.i(tag, msg, throwable)
                 "WARN"  -> Log.w(tag, msg, throwable)
                 "ERROR" -> Log.e(tag, msg, throwable)
+                "CRASH" -> Log.e(tag, msg, throwable)
                 else    -> Log.v(tag, msg)
             }
         } else {
@@ -120,6 +133,7 @@ object PlayerLogger {
                 "INFO"  -> Log.i(tag, msg)
                 "WARN"  -> Log.w(tag, msg)
                 "ERROR" -> Log.e(tag, msg)
+                "CRASH" -> Log.e(tag, msg)
                 else    -> Log.v(tag, msg)
             }
         }
@@ -136,13 +150,9 @@ object PlayerLogger {
         }
         val line = formatTimestamp() + " [" + level + "] " + tag + ": " + fullMsg + "\n"
 
-        synchronized(LOCK) {
-            try {
-                val active = File(dir, LOG_FILE)
-                active.appendText(line, Charsets.UTF_8)
-            } catch (ex: Exception) {
-                Log.e("PlayerLogger", "writeLine failed: " + (ex.message ?: "unknown"))
-            }
-        }
+        // Delegate the file write + rotation to Java. The Kotlin 1.9.24
+        // compile issue that broke every Kotlin-side rotation attempt
+        // doesn't affect Java.
+        LogFileOps.append(dir, line)
     }
 }
