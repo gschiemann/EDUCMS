@@ -545,186 +545,6 @@ export default function PlayerPageWrapper() {
   return <PlayerErrorBoundary><PlayerPage /></PlayerErrorBoundary>;
 }
 
-/**
- * Splash shown when the operator hits Stop on the overlay. Not a
- * dismissable curtain — the buttons are explicit:
- *   - Resume  → back to the playing render path
- *   - Exit    → try native-bridge exit, then window.close(), then
- *               surface an "exit unavailable" hint (caller toggles
- *               `exitUnavailable` so we can swap the copy)
- *   - Sync    → refresh manifest without leaving the splash
- *   - Unpair  → destructive, wipes device fingerprint
- *
- * Kept visually consistent with KioskSplash (same dark gradient,
- * branded wordmark, screen-name chip) so the operator doesn't feel
- * dropped into a different app.
- */
-function StoppedSplash({
-  brandName,
-  screenName,
-  lastSync,
-  exitUnavailable,
-  playlists,
-  cacheStatus,
-  onResume,
-  onExit,
-  onUnpair,
-  onSync,
-}: {
-  brandName: string;
-  screenName: string;
-  lastSync: string | null;
-  exitUnavailable: boolean;
-  playlists: Array<{
-    id: string;
-    name: string;
-    itemCount: number;
-    totalBytes: number;
-    daysOfWeek: string | null;
-    timeStart: string | null;
-    timeEnd: string | null;
-    isTemplate: boolean;
-  }>;
-  cacheStatus: CacheStatus | null;
-  onResume: () => void;
-  onExit: () => void;
-  onUnpair: () => void;
-  onSync: () => void;
-}) {
-  const totalAssets = playlists.reduce((sum, pl) => sum + pl.itemCount, 0);
-  const totalBytes = playlists.reduce((sum, pl) => sum + pl.totalBytes, 0);
-  // Build a compact schedule label like "Mon–Fri · 08:00–15:00" or
-  // "Every day · all day" when no time window is set. Input is the
-  // schedule object we surfaced on each playlist in the manifest.
-  const fmtSchedule = (pl: { daysOfWeek: string | null; timeStart: string | null; timeEnd: string | null }) => {
-    const daysBit = pl.daysOfWeek
-      ? pl.daysOfWeek.replace(/,/g, ' · ')
-      : 'Every day';
-    const timeBit = pl.timeStart && pl.timeEnd
-      ? `${pl.timeStart}–${pl.timeEnd}`
-      : 'all day';
-    return `${daysBit} · ${timeBit}`;
-  };
-
-  return (
-    <div className="fixed inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white select-none p-6 overflow-auto">
-      <div className="absolute top-6 left-6 flex items-center gap-3 text-sm text-slate-300">
-        <MonitorPlay className="w-5 h-5 text-indigo-300" strokeWidth={1.75} />
-        <span className="font-semibold">{brandName}</span>
-      </div>
-
-      <div className="w-full max-w-3xl text-center py-10">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/20 border border-amber-400/30 text-xs font-bold tracking-wide uppercase text-amber-300 mb-6">
-          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-          Playback paused
-        </div>
-        <h1 className="text-5xl font-bold tracking-tight leading-tight">
-          {screenName || 'Screen'}
-        </h1>
-        <p className="mt-4 text-base text-slate-300 max-w-md mx-auto">
-          {exitUnavailable
-            ? 'Auto-exit isn\u2019t available on this device. Use your remote\u2019s Home button to return to the launcher, then relaunch EduSignage when ready.'
-            : 'Content is held. Resume to go back to playback, or Exit to return to your device launcher.'}
-        </p>
-
-        {/* At-a-glance loadout — playlists + on-disk cache + last sync.
-            User ask: "from the main splash screen we should have what
-            playlists are loaded and how much space they are taking up
-            and maybe their schedule...make it useful." */}
-        <div className="mt-8 grid gap-3 text-left">
-          {/* Top row: two info chips */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
-              <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Playlists</div>
-              <div className="mt-1 text-xl font-bold text-white">{playlists.length}</div>
-              <div className="mt-0.5 text-xs text-slate-400">{totalAssets} assets · {formatBytes(totalBytes)}</div>
-            </div>
-            <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
-              <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Last sync</div>
-              <div className="mt-1 text-xl font-bold text-white">{lastSync || 'Never'}</div>
-              {cacheStatus && cacheStatus.supported && (
-                <div className="mt-0.5 text-xs text-slate-400">
-                  Cached: {cacheStatus.playlist.count} / {formatBytes(cacheStatus.playlist.bytes)}
-                  {cacheStatus.emergency.count > 0 && (
-                    <span className="text-emerald-300 ml-2">🛡️ {cacheStatus.emergency.count}</span>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Playlist table — names, size, schedule */}
-          {playlists.length > 0 ? (
-            <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-              <div className="px-4 py-2 border-b border-white/10 text-[10px] uppercase tracking-wider text-slate-400 font-bold bg-white/[0.03] grid grid-cols-[1fr_auto_auto] gap-4">
-                <span>Loaded playlist</span>
-                <span className="text-right">Size</span>
-                <span className="text-right">Schedule</span>
-              </div>
-              <ul className="divide-y divide-white/5">
-                {playlists.map((pl) => (
-                  <li key={pl.id} className="px-4 py-3 grid grid-cols-[1fr_auto_auto] gap-4 items-center text-sm">
-                    <div className="min-w-0">
-                      <div className="text-white font-semibold truncate">{pl.name}</div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">
-                        {pl.isTemplate ? 'Template' : `${pl.itemCount} slide${pl.itemCount === 1 ? '' : 's'}`}
-                      </div>
-                    </div>
-                    <div className="text-right text-slate-200 tabular-nums font-medium text-xs">
-                      {pl.totalBytes > 0 ? formatBytes(pl.totalBytes) : '—'}
-                    </div>
-                    <div className="text-right text-slate-300 text-[11px] whitespace-nowrap">
-                      {fmtSchedule(pl)}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-5 text-center text-slate-400 text-sm">
-              No playlists scheduled on this screen yet.
-            </div>
-          )}
-        </div>
-
-        <div className="mt-8 flex flex-wrap gap-3 justify-center">
-          <button
-            type="button"
-            onClick={onResume}
-            className="px-7 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-900 rounded-2xl text-sm font-bold shadow-lg shadow-emerald-500/30 transition-colors"
-          >
-            Resume
-          </button>
-          <button
-            type="button"
-            onClick={onSync}
-            className="px-5 py-3 bg-white/10 hover:bg-white/20 border border-white/20 rounded-2xl text-sm font-semibold transition-colors"
-          >
-            Sync now
-          </button>
-          <button
-            type="button"
-            onClick={onExit}
-            disabled={exitUnavailable}
-            className="px-5 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-2xl text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {exitUnavailable ? 'Exit unavailable' : 'Exit to launcher'}
-          </button>
-        </div>
-        <div className="mt-6 pt-4 border-t border-white/10">
-          <button
-            type="button"
-            onClick={onUnpair}
-            className="text-xs text-slate-400 hover:text-red-300 transition-colors"
-            title="Forget this device's pairing and return to the code screen"
-          >
-            Unpair device
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function PlayerPage() {
   const [phase, setPhase] = useState<Phase>('registering');
@@ -2027,13 +1847,21 @@ function PlayerPage() {
     // video loops, weather polls, etc.) during the stop.
     if (playbackStopped) {
       return (
-        <StoppedSplash
+        // Stop splash now reuses KioskSplash (same branded chrome
+        // as the connecting / pairing splashes) per Integration
+        // Lead's note "use the same nice UI we have that shows
+        // when a display is waiting for content." A 'stopped' mode
+        // was added to KioskSplash that renders Pause chip +
+        // playlist info card + Resume/Sync/Exit/Unpair buttons.
+        <KioskSplash
+          mode="stopped"
           brandName={brandName}
           screenName={screenName}
+          resolution={splashResolution}
           lastSync={lastSync}
-          exitUnavailable={exitUnavailable}
-          playlists={manifestPlaylists}
-          cacheStatus={cacheStatus}
+          stoppedPlaylists={manifestPlaylists}
+          stoppedCache={cacheStatus && cacheStatus.supported ? { playlist: cacheStatus.playlist, emergency: cacheStatus.emergency } : null}
+          stoppedExitUnavailable={exitUnavailable}
           onResume={() => { setPlaybackStopped(false); setExitUnavailable(false); }}
           onExit={handleExitApp}
           onUnpair={() => {
@@ -2153,41 +1981,20 @@ function PlayerPage() {
                     visible "playback is halted" state (critical on
                     Goodview-style OEM WebViews that don't inject a
                     native exit bridge). */}
+                {/* Overlay actions: Sync + Stop only. Exit and
+                    Unpair were redundant here — both belong on the
+                    Stopped splash where the operator has already
+                    paused playback and is making a deliberate
+                    decision. Three "leave the app" controls jammed
+                    into one tiny overlay was confusing per the
+                    Integration Lead's review. */}
                 <button
                   onClick={(e) => { e.stopPropagation(); handleStopPlayback(); }}
-                  title="Stop playback"
+                  onKeyDown={(e) => e.stopPropagation()}
+                  title="Stop playback — opens the player splash with Resume / Exit / Unpair"
                   className="py-2 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-bold transition-colors"
                 >
                   Stop
-                </button>
-                {/* Exit to OEM launcher — ALWAYS visible now. v2
-                    had this gated on the native bridge being
-                    detected AND wrapped in a window.confirm(...),
-                    but the Goodview kiosk WebView both hides the
-                    EduCmsNative global AND suppresses confirm
-                    dialogs, so the button was either invisible OR
-                    did nothing when clicked ("I hit Exit and
-                    nothing happened"). handleExitApp handles the
-                    cascade (native → window.close → splash hint)
-                    and the Stopped splash surfaces the fallback
-                    copy when we truly can't exit. */}
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleExitApp(); }}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  title="Exit to device launcher"
-                  className="py-2 px-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white rounded-lg text-sm font-medium transition-colors"
-                >
-                  Exit
-                </button>
-                <button onClick={(e) => {
-                  e.stopPropagation();
-                  if(window.confirm('Are you sure you want to unpair this screen?')) {
-                    localStorage.removeItem('edu_device_fp');
-                    setPhase('registering');
-                    setShowOverlay(false);
-                  }
-                }} title="Unpair Device" className="py-2 px-4 bg-red-950/40 hover:bg-red-900 border border-red-900/50 text-red-200 hover:text-white rounded-lg text-sm transition-colors">
-                  <Power className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -2197,16 +2004,20 @@ function PlayerPage() {
     );
   }
 
-  // Stop splash — same component as the template render path.
+  // Stop splash — KioskSplash mode='stopped' (matches the template
+  // render path above). Branded chrome reused from the connecting
+  // splash, with playlist-info card + actions added inside.
   if (playbackStopped) {
     return (
-      <StoppedSplash
+      <KioskSplash
+        mode="stopped"
         brandName={brandName}
         screenName={screenName}
+        resolution={splashResolution}
         lastSync={lastSync}
-        exitUnavailable={exitUnavailable}
-        playlists={manifestPlaylists}
-        cacheStatus={cacheStatus}
+        stoppedPlaylists={manifestPlaylists}
+        stoppedCache={cacheStatus && cacheStatus.supported ? { playlist: cacheStatus.playlist, emergency: cacheStatus.emergency } : null}
+        stoppedExitUnavailable={exitUnavailable}
         onResume={() => { setPlaybackStopped(false); setExitUnavailable(false); }}
         onExit={handleExitApp}
         onUnpair={() => {
@@ -2392,41 +2203,17 @@ function PlayerPage() {
             </div>
             <div className="flex gap-2 pt-2">
               <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm transition-colors">Sync Now</button>
-              {/* Always-visible Stop — counterpart to the block above */}
+              {/* Overlay actions trimmed to Sync + Stop. Exit +
+                  Unpair are now on the Stopped splash where they
+                  belong (the operator has already paused before
+                  making a destructive choice). */}
               <button
                 onClick={(e) => { e.stopPropagation(); handleStopPlayback(); }}
                 onKeyDown={(e) => e.stopPropagation()}
-                title="Stop playback — go to player splash"
+                title="Stop playback — opens the player splash with Resume / Exit / Unpair"
                 className="py-2 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-bold transition-colors"
               >
                 Stop
-              </button>
-              {/* Exit to OEM launcher — bridge-gated; see the matching block
-                  above in the template render path for the rationale
-                  (Goodview / NovaStar / TCL CMSes). */}
-              {typeof window !== 'undefined' && (window as any).EduCmsNative?.exitToDeviceHome && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (window.confirm('Exit to device home screen? You can relaunch EduCMS from your OEM launcher (Goodview / NovaStar / TCL CMS) when ready.')) {
-                      try { (window as any).EduCmsNative.exitToDeviceHome(); } catch {}
-                    }
-                  }}
-                  title="Exit to OEM launcher"
-                  className="py-2 px-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white rounded-lg text-sm font-medium transition-colors"
-                >
-                  Exit
-                </button>
-              )}
-              <button onClick={(e) => {
-                e.stopPropagation();
-                if(window.confirm('Are you sure you want to completely unpair this device from the CMS?')) {
-                  localStorage.removeItem('edu_device_fp');
-                  setPhase('registering');
-                  setShowOverlay(false);
-                }
-              }} title="Unpair Device" className="py-2 px-4 bg-red-950/40 hover:bg-red-900 border border-red-900/50 text-red-200 hover:text-white rounded-lg text-sm transition-colors group">
-                <Power className="w-4 h-4 group-hover:text-red-100" />
               </button>
             </div>
           </div>
