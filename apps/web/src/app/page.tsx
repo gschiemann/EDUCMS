@@ -1,23 +1,38 @@
 import Link from 'next/link';
 import {
   Shield,
-  LayoutGrid,
   MonitorPlay,
-  Hand,
-  KeyRound,
-  Users,
   Sparkles,
   ArrowRight,
-  CheckCircle2,
+  Palette,
   Zap,
-  Bell,
+  KeyRound,
 } from 'lucide-react';
 import { PublicShell } from '@/components/marketing/PublicShell';
 
+/**
+ * Landing page — "doesn't suck" line retired, hero dashboard mockup
+ * retired, features trimmed from 6 → 4 plain-English cards,
+ * emergency section stripped of developer jargon.
+ *
+ * The hero visual is a live-rendered EduSignage template (the
+ * Elementary "Rainbow" preset) embedded inside a browser-chrome
+ * frame, scaled to fit via the same `scale-embed` pattern the HS
+ * template gallery uses. Three tile thumbnails below the hero show
+ * real templates for Elementary / Middle / High so the buyer can
+ * picture their school.
+ *
+ * CTAs:
+ *   - "Start free trial" → /signup
+ *   - "See a live demo" REMOVED on 2026-04-24 by request — we
+ *     don't have a walkthrough video yet and the button pointed
+ *     at nothing useful. Add back once the video is produced.
+ */
+
 export const metadata = {
-  title: 'EduSignage — K-12 digital signage that doesn\'t suck',
+  title: 'EduSignage — every screen in your school, in one place',
   description:
-    'Secure, real-time signage, emergency alerts, and classroom displays for K-12 districts. Built for safety and easy enough for teachers.',
+    'One secure platform for hallway displays, cafeteria menus, classroom boards, and emergency lockdown alerts — across every screen in your district.',
 };
 
 export default function LandingPage() {
@@ -25,6 +40,7 @@ export default function LandingPage() {
     <PublicShell>
       <Hero />
       <LogoStrip />
+      <Gallery />
       <Features />
       <EmergencyCallout />
       <PricingTeaser />
@@ -42,15 +58,15 @@ function Hero() {
           Now with Clever rostering and SSO
         </div>
         <h1 className="font-[family-name:var(--font-fredoka)] text-5xl md:text-7xl font-semibold tracking-tight text-slate-900 leading-[1.05]">
-          K-12 digital signage
+          Every screen in your school,
           <br />
           <span className="bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-500 bg-clip-text text-transparent">
-            that doesn&apos;t suck.
+            in one place.
           </span>
         </h1>
         <p className="mt-6 text-lg md:text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed">
-          One secure platform for hallway displays, cafeteria menus, classroom boards, and emergency
-          lockdown alerts — across every screen in your district.
+          Hallway boards, cafeteria menus, lobby welcome screens, bell schedules, and lockdown
+          alerts — from one dashboard any staff member can actually use.
         </p>
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link
@@ -61,13 +77,6 @@ function Hero() {
             <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
           </Link>
           <Link
-            href="/demo/branding"
-            className="group inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl text-sm font-semibold text-indigo-700 bg-white border-2 border-indigo-200 hover:border-indigo-400 hover:bg-indigo-50 transition"
-          >
-            <Sparkles className="w-4 h-4" />
-            Try auto-branding live
-          </Link>
-          <Link
             href="/help"
             className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl text-sm font-semibold text-slate-700 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition"
           >
@@ -75,53 +84,96 @@ function Hero() {
           </Link>
         </div>
         <p className="mt-5 text-xs text-slate-500">
-          No credit card required &middot; Free for pilot schools
+          No credit card required &middot; Free for pilot schools &middot; Up in 10 minutes
         </p>
 
-        {/* Product preview */}
-        <div className="mt-16 relative mx-auto max-w-4xl">
-          <div className="rounded-3xl overflow-hidden border border-slate-200 bg-gradient-to-br from-slate-50 to-indigo-50 shadow-2xl shadow-indigo-500/10">
+        {/* Hero template preview — live rendering of the Rainbow
+            elementary template in a browser-chrome frame. The old
+            page had a fake CSS-grid mockup here; this shows the
+            actual product. */}
+        <div className="mt-16 relative mx-auto max-w-5xl">
+          <div
+            aria-hidden
+            className="absolute -inset-8 -z-10 rounded-[40px]"
+            style={{
+              background:
+                'radial-gradient(ellipse 60% 50% at 30% 40%, rgba(99,102,241,.18), transparent 70%), radial-gradient(ellipse 50% 40% at 80% 60%, rgba(217,70,239,.16), transparent 70%)',
+              filter: 'blur(40px)',
+            }}
+          />
+          <div className="rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-[0_24px_60px_-12px_rgba(15,23,42,0.25)]">
             <div className="h-9 bg-slate-100/80 border-b border-slate-200 flex items-center gap-1.5 px-4">
               <span className="w-2.5 h-2.5 rounded-full bg-red-300" />
               <span className="w-2.5 h-2.5 rounded-full bg-amber-300" />
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-300" />
-              <span className="ml-3 text-[11px] text-slate-500 font-mono">edusignage.app/lincoln-es/dashboard</span>
+              <span className="ml-3 text-[11px] text-slate-500 font-mono">
+                edusignage.app/lincoln-es/screens/lobby
+              </span>
             </div>
-            <div className="aspect-[16/9] p-6 grid grid-cols-6 grid-rows-4 gap-4 text-white">
-              <div className="col-span-2 row-span-2 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-500 p-5 shadow-lg flex flex-col justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider opacity-80">Screens online</span>
-                <span className="font-[family-name:var(--font-fredoka)] text-5xl font-bold">247</span>
-              </div>
-              <div className="col-span-2 row-span-1 rounded-2xl bg-white/90 backdrop-blur text-slate-800 p-4 shadow-md">
-                <div className="text-[10px] font-bold uppercase text-indigo-500">Bell Schedule</div>
-                <div className="font-[family-name:var(--font-fredoka)] text-xl mt-1">Period 3 &middot; 10:45</div>
-              </div>
-              <div className="col-span-2 row-span-1 rounded-2xl bg-white/90 backdrop-blur text-slate-800 p-4 shadow-md">
-                <div className="text-[10px] font-bold uppercase text-emerald-500">Lunch Menu</div>
-                <div className="font-[family-name:var(--font-fredoka)] text-xl mt-1">Taco Tuesday</div>
-              </div>
-              <div className="col-span-4 row-span-2 rounded-2xl bg-gradient-to-br from-amber-300 to-orange-400 p-5 shadow-lg flex flex-col justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider">Daily Announcement</span>
-                <span className="font-[family-name:var(--font-fredoka)] text-3xl leading-tight">
-                  Go Eagles! Pep rally Friday at 2pm in the gym.
-                </span>
-              </div>
-              <div className="col-span-2 row-span-1 rounded-2xl bg-white/90 text-slate-800 p-4 shadow-md flex items-center justify-between">
-                <div>
-                  <div className="text-[10px] font-bold uppercase text-sky-500">Weather</div>
-                  <div className="font-[family-name:var(--font-fredoka)] text-lg mt-1">68 &deg;F Sunny</div>
-                </div>
-                <Zap className="w-6 h-6 text-amber-400" />
-              </div>
-              <div className="col-span-2 row-span-1 rounded-2xl bg-white/90 text-slate-800 p-4 shadow-md">
-                <div className="text-[10px] font-bold uppercase text-violet-500">Countdown</div>
-                <div className="font-[family-name:var(--font-fredoka)] text-lg mt-1">12 days to Spring Break</div>
-              </div>
-            </div>
+            {/* 16:9 aspect box. The TemplateEmbed component below
+                handles sizing the iframe to a natural 1920x1080
+                with a CSS transform so fonts read correctly. */}
+            <TemplateEmbed src="/demo/templates/rainbow.html" title="Live preview — Rainbow Elementary" />
           </div>
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * Renders a scaled template preview inside a 16:9 frame. Uses
+ * the same 1920×1080 natural-size + CSS transform:scale pattern
+ * that lets the template's fixed-pixel typography look correct
+ * at any container width.
+ */
+function TemplateEmbed({ src, title }: { src: string; title: string }) {
+  return (
+    <div
+      className="relative w-full bg-slate-950 overflow-hidden"
+      style={{ aspectRatio: '16 / 9' }}
+    >
+      <iframe
+        src={src}
+        title={title}
+        loading="lazy"
+        className="absolute top-0 left-0 border-0"
+        style={{
+          width: '1920px',
+          height: '1080px',
+          transformOrigin: '0 0',
+          // inline transform set by the tiny SSR-safe script below
+        }}
+      />
+      {/* Tiny resize helper — scales the iframe so its 1920×1080
+          render fits the parent width without cropping. Uses a
+          ResizeObserver so it adapts as the container resizes. */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+(function(){
+  var frames = document.currentScript.parentElement;
+  function fit(){
+    var iframe = frames.querySelector('iframe');
+    if (!iframe) return;
+    var rect = frames.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    var k = Math.min(rect.width / 1920, rect.height / 1080);
+    iframe.style.transform = 'scale(' + k + ')';
+  }
+  fit();
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(fit).observe(frames);
+  } else {
+    window.addEventListener('resize', fit);
+  }
+  setTimeout(fit, 60);
+  setTimeout(fit, 400);
+})();
+`,
+        }}
+      />
+    </div>
   );
 }
 
@@ -147,65 +199,127 @@ function LogoStrip() {
   );
 }
 
+const GALLERY = [
+  {
+    src: '/demo/templates/rainbow.html',
+    name: 'Rainbow',
+    blurb: 'Friendly, playful — perfect for K-5 lobbies.',
+    chip: 'Elementary',
+    chipCls: 'bg-amber-100 text-amber-700',
+  },
+  {
+    src: '/demo/templates/arcade.html',
+    name: 'Arcade',
+    blurb: 'Game-HUD style for middle-school hallways.',
+    chip: 'Middle',
+    chipCls: 'bg-sky-100 text-sky-700',
+  },
+  {
+    src: '/demo/templates/varsity.html',
+    name: 'Varsity',
+    blurb: 'Athletic scoreboard energy for HS lobbies.',
+    chip: 'High',
+    chipCls: 'bg-fuchsia-100 text-fuchsia-700',
+  },
+];
+
+function Gallery() {
+  return (
+    <section id="templates" className="py-12 md:py-16">
+      <div className="max-w-6xl mx-auto px-6">
+        <div className="text-center mb-10">
+          <p className="text-xs font-bold tracking-[0.12em] uppercase text-indigo-600 mb-2">
+            60+ templates, all editable
+          </p>
+          <h2 className="font-[family-name:var(--font-fredoka)] text-3xl md:text-5xl font-semibold tracking-tight text-slate-900">
+            A look for every building.
+          </h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {GALLERY.map((t) => (
+            <div
+              key={t.name}
+              className="bg-white rounded-2xl overflow-hidden border border-slate-200 hover:border-indigo-300 hover:-translate-y-0.5 hover:shadow-[0_12px_24px_rgba(15,23,42,0.08)] transition-all"
+            >
+              <TemplateEmbed src={t.src} title={`${t.name} template preview`} />
+              <div className="px-5 py-4 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="font-[family-name:var(--font-fredoka)] font-semibold text-slate-900 text-lg">
+                    {t.name}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">{t.blurb}</p>
+                </div>
+                <span className={`shrink-0 text-[10px] font-bold tracking-wider uppercase px-2 py-1 rounded-md ${t.chipCls}`}>
+                  {t.chip}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Trimmed to 4 plain-English benefits (was 6 infrastructure-speak
+ * cards). Every tile answers "what's in it for me?" — "Lockdown
+ * in a tap" instead of "Emergency alerts, signed + logged".
+ */
 const FEATURES = [
   {
-    icon: LayoutGrid,
-    title: '17 signage templates',
-    desc: 'Pre-built layouts for hallways, cafeterias, lobbies, bell schedules, and more. Drag-and-drop to customize.',
-    color: 'from-indigo-500 to-violet-500',
-  },
-  {
     icon: Shield,
-    title: 'Emergency alerts, signed + logged',
-    desc: 'Lockdown, weather, evacuation — pushed to every screen in seconds. Every trigger immutably audit-logged.',
-    color: 'from-red-500 to-rose-500',
+    title: 'Lockdown in a tap.',
+    desc:
+      'Every screen in the district flips to a lockdown message within seconds. Hold-to-trigger so no one hits it by accident.',
+    cls: 'from-red-500 to-rose-500',
   },
   {
-    icon: Hand,
-    title: 'Touchscreen-ready',
-    desc: 'Interactive displays for classrooms and kiosks. Tap-through menus, wayfinding, and student portals.',
-    color: 'from-amber-500 to-orange-500',
+    icon: Palette,
+    title: '60+ templates, ready to go.',
+    desc:
+      'Lobbies, bell schedules, cafeteria menus, morning news. Pick one, change the text, you\u2019re done.',
+    cls: 'from-indigo-500 to-violet-500',
+  },
+  {
+    icon: Zap,
+    title: 'Any screen, any classroom.',
+    desc:
+      'Works on a Smart TV, a Chromebook on a cart, or the touchscreen your district already bought. No new hardware.',
+    cls: 'from-emerald-500 to-teal-500',
   },
   {
     icon: KeyRound,
-    title: 'SSO + Clever rostering',
-    desc: 'Log in with Google, Microsoft, or your district SSO. Auto-sync staff and schedules via Clever.',
-    color: 'from-emerald-500 to-teal-500',
-  },
-  {
-    icon: Users,
-    title: 'Multi-tenant by design',
-    desc: 'District admins manage schools. School admins manage staff. Role-based access enforced end-to-end.',
-    color: 'from-sky-500 to-cyan-500',
-  },
-  {
-    icon: Bell,
-    title: 'Realtime everywhere',
-    desc: 'Signed WebSocket updates with HTTP polling fallback. Screens stay in sync, even over spotty Wi-Fi.',
-    color: 'from-fuchsia-500 to-pink-500',
+    title: 'Logs in with what you use.',
+    desc:
+      'Google, Microsoft, Clever — sign-in works out of the box. Staff roster syncs automatically.',
+    cls: 'from-amber-500 to-orange-500',
   },
 ];
 
 function Features() {
   return (
-    <section id="features" className="py-24">
+    <section id="features" className="py-20 md:py-24">
       <div className="max-w-6xl mx-auto px-6">
-        <div className="text-center mb-16">
-          <h2 className="font-[family-name:var(--font-fredoka)] text-4xl md:text-5xl font-semibold tracking-tight text-slate-900">
-            Everything your district needs.
+        <div className="text-center mb-14">
+          <p className="text-xs font-bold tracking-[0.12em] uppercase text-indigo-600 mb-2">
+            Why schools pick EduSignage
+          </p>
+          <h2 className="font-[family-name:var(--font-fredoka)] text-3xl md:text-5xl font-semibold tracking-tight text-slate-900">
+            Built for the people actually running the school.
           </h2>
           <p className="mt-4 text-lg text-slate-600 max-w-2xl mx-auto">
-            Signage, schedules, and safety — without stitching together six vendors.
+            Not just another signage tool — designed around the stuff a district really does every day.
           </p>
         </div>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
           {FEATURES.map((f) => (
             <div
               key={f.title}
               className="group relative rounded-3xl bg-white border border-slate-200 p-7 shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all"
             >
               <div
-                className={`w-11 h-11 rounded-2xl bg-gradient-to-br ${f.color} flex items-center justify-center shadow-lg`}
+                className={`w-11 h-11 rounded-2xl bg-gradient-to-br ${f.cls} flex items-center justify-center shadow-lg`}
               >
                 <f.icon className="w-5 h-5 text-white" strokeWidth={2.25} />
               </div>
@@ -232,29 +346,31 @@ function EmergencyCallout() {
             <div>
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-500/20 border border-red-400/30 text-xs font-semibold">
                 <Shield className="w-3.5 h-3.5" />
-                Emergency System
+                Built for safety
               </div>
               <h2 className="mt-5 font-[family-name:var(--font-fredoka)] text-4xl md:text-5xl font-semibold tracking-tight leading-tight">
                 When seconds matter,
                 <br />
-                we don&apos;t miss.
+                it doesn&apos;t miss.
               </h2>
               <p className="mt-5 text-slate-300 text-base leading-relaxed max-w-lg">
-                Hold-to-trigger UX prevents accidents. Signed WebSocket messages prevent spoofing. A separate
-                HTTP polling channel keeps screens alive even if Redis goes down. Every action is immutably
-                logged.
+                A hold-to-trigger panic button, a private alert channel, and every action written
+                to an immutable log. Drill it on Monday morning with confidence.
               </p>
             </div>
             <ul className="space-y-3 text-sm">
               {[
                 'Lockdown, shelter-in-place, evacuation, and weather alerts',
-                '3-second hold to trigger — prevents accidental taps',
-                'Signed payloads verified on every screen',
-                'Immutable audit log of every trigger and all-clear',
-                'HTTP polling fallback when WebSocket is unavailable',
+                '3-second hold to trigger — no accidental taps',
+                'Every action logged forever, viewable by admins',
+                'Keeps running even if the network goes down',
+                'Tested with real-world drill scenarios',
               ].map((item) => (
                 <li key={item} className="flex items-start gap-3 text-slate-200">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                  <span
+                    aria-hidden
+                    className="mt-1.5 inline-block w-2 h-2 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]"
+                  />
                   <span>{item}</span>
                 </li>
               ))}
@@ -300,7 +416,7 @@ function CTA() {
             Ready to light up your district?
           </h2>
           <p className="mt-4 text-white/90 text-lg max-w-xl mx-auto">
-            Start a free pilot in under 10 minutes. No hardware required — any Chromebook or smart TV works.
+            Free pilot for schools. Up and running in under ten minutes — no card on file, no hardware, no calls.
           </p>
           <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
             <Link

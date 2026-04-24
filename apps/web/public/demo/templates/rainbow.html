@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Animated Rainbow · Welcome (DEMO v2)</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&family=Caveat:wght@700&family=Patrick+Hand&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0f172a; }
+
+  .stage {
+    width: 100vw; height: 100vh; position: relative; overflow: hidden;
+    font-family: 'Fredoka', sans-serif; color: #2d1b4d;
+    background:
+      radial-gradient(ellipse at 50% 110%, #fef3c7 0%, transparent 50%),
+      linear-gradient(180deg, #BFE8FF 0%, #FFE0EC 55%, #FFD8A8 100%);
+  }
+
+  /* drifting clouds */
+  .stage::before, .stage::after {
+    content: ''; position: absolute; pointer-events: none;
+    width: 200%; height: 100%;
+    background-image:
+      radial-gradient(ellipse 80px 30px at 10% 20%, rgba(255,255,255,.7), transparent 60%),
+      radial-gradient(ellipse 120px 40px at 30% 35%, rgba(255,255,255,.6), transparent 60%),
+      radial-gradient(ellipse 90px 32px at 55% 18%, rgba(255,255,255,.7), transparent 60%),
+      radial-gradient(ellipse 110px 38px at 78% 28%, rgba(255,255,255,.6), transparent 60%);
+    animation: cloudDrift 90s linear infinite;
+    top: 0; left: -100%;
+  }
+  .stage::after { animation-duration: 130s; animation-delay: -40s; opacity: .65; }
+  @keyframes cloudDrift { from { transform: translateX(0); } to { transform: translateX(50%); } }
+
+  /* Confetti */
+  .confettiLayer { position: absolute; inset: 0; pointer-events: none; z-index: 4; overflow: hidden; }
+  .confetti {
+    position: absolute; top: -20px; width: 12px; height: 18px; border-radius: 2px;
+    animation: confettiFall linear infinite; will-change: transform;
+  }
+  @keyframes confettiFall {
+    0% { transform: translateY(-30px) rotate(0deg); opacity: 0; }
+    8% { opacity: 1; }
+    100% { transform: translateY(110vh) rotate(720deg); opacity: .8; }
+  }
+
+  /* Animated rainbow ribbon */
+  .rainbow {
+    position: absolute; left: -10%; right: -10%; top: 18%; height: 90px; z-index: 1;
+    background: repeating-linear-gradient(135deg,
+      #ff5e7e 0 30px, #ffb950 30px 60px, #ffe66d 60px 90px,
+      #6cd97e 90px 120px, #5cc5ff 120px 150px, #b48cff 150px 180px);
+    background-size: 360px 100%; animation: rainbowSlide 8s linear infinite;
+    transform: rotate(-3deg); box-shadow: 0 6px 24px rgba(0,0,0,.18);
+  }
+  @keyframes rainbowSlide { from { background-position: 0 0; } to { background-position: 360px 0; } }
+
+  /* HEADER */
+  .header {
+    position: absolute; top: 28px; left: 0; right: 0;
+    display: grid; grid-template-columns: 160px 1fr 160px;
+    gap: 24px; padding: 0 36px; z-index: 5; align-items: center;
+  }
+  .logo {
+    width: 150px; height: 150px; background: #fff; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-size: 80px;
+    box-shadow: 0 6px 16px rgba(0,0,0,.18), inset 0 0 0 6px #fcd34d;
+    animation: bounceLogo 2.4s ease-in-out infinite;
+  }
+  @keyframes bounceLogo {
+    0%, 100% { transform: translateY(0) rotate(-4deg); }
+    50% { transform: translateY(-12px) rotate(4deg); }
+  }
+
+  .titleBox {
+    background: rgba(255,255,255,.85); backdrop-filter: blur(4px);
+    border-radius: 28px; padding: 22px 28px; text-align: center;
+    box-shadow: 0 8px 24px rgba(0,0,0,.12);
+    border: 4px dashed #ec4899;
+    animation: breathe 3.5s ease-in-out infinite;
+  }
+  @keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.025); } }
+  .titleBox h1 {
+    margin: 0; line-height: .95;
+    font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 88px;
+    background: linear-gradient(90deg, #ec4899 0%, #f59e0b 33%, #10b981 66%, #6366f1 100%);
+    background-size: 300% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: gradientShift 6s linear infinite;
+  }
+  @keyframes gradientShift { from { background-position: 0% 50%; } to { background-position: 300% 50%; } }
+  .titleBox .sub { font-family: 'Caveat', cursive; font-size: 36px; color: #92400e; margin-top: 4px; }
+
+  .clock {
+    width: 150px; height: 150px;
+    background: #fff; border-radius: 50%; border: 8px solid #fcd34d;
+    box-shadow: 0 6px 16px rgba(0,0,0,.2);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-family: 'Fredoka', sans-serif; font-weight: 700;
+    animation: wiggle 4s ease-in-out infinite;
+  }
+  @keyframes wiggle {
+    0%, 7%, 100% { transform: rotate(0deg); }
+    1%, 5% { transform: rotate(-12deg); }
+    3% { transform: rotate(12deg); }
+  }
+  .clock .t { font-size: 44px; color: #be185d; line-height: 1; }
+  .clock .ap { font-size: 22px; color: #92400e; }
+
+  /* === MAIN GRID — SHAPE-BASED WIDGETS, NO CARDS === */
+  .grid {
+    position: absolute; top: 250px; left: 36px; right: 36px; bottom: 130px;
+    display: grid;
+    grid-template-columns: 280px 1fr 280px;
+    grid-template-rows: 1fr 1fr;
+    gap: 24px;
+    z-index: 3;
+  }
+
+  /* WEATHER — giant SUN with rays radiating */
+  .weather {
+    grid-column: 1; grid-row: 1;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    position: relative; padding: 12px;
+  }
+  .weather .sunDisc {
+    position: relative; width: 200px; height: 200px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .weather .sunDisc::before {
+    /* Spinning rays — conic stripes */
+    content: ''; position: absolute; inset: -40px; border-radius: 50%;
+    background:
+      conic-gradient(from 0deg,
+        transparent 0 18deg, #fcd34d 18deg 24deg,
+        transparent 24deg 48deg, #fcd34d 48deg 54deg,
+        transparent 54deg 78deg, #fcd34d 78deg 84deg,
+        transparent 84deg 108deg, #fcd34d 108deg 114deg,
+        transparent 114deg 138deg, #fcd34d 138deg 144deg,
+        transparent 144deg 168deg, #fcd34d 168deg 174deg,
+        transparent 174deg 198deg, #fcd34d 198deg 204deg,
+        transparent 204deg 228deg, #fcd34d 228deg 234deg,
+        transparent 234deg 258deg, #fcd34d 258deg 264deg,
+        transparent 264deg 288deg, #fcd34d 288deg 294deg,
+        transparent 294deg 318deg, #fcd34d 318deg 324deg,
+        transparent 324deg 348deg, #fcd34d 348deg 354deg,
+        transparent 354deg 360deg);
+    -webkit-mask: radial-gradient(circle, transparent 100px, #000 100px 130px, transparent 130px);
+            mask: radial-gradient(circle, transparent 100px, #000 100px 130px, transparent 130px);
+    animation: spin 18s linear infinite; opacity: .85;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .weather .sunDisc .face {
+    width: 180px; height: 180px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #fef3c7, #fbbf24 70%, #d97706);
+    box-shadow: 0 0 60px rgba(251, 191, 36, .65), inset 0 -12px 20px rgba(180, 83, 9, .25);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 64px; color: #7c2d12;
+    text-shadow: 0 2px 0 rgba(255,255,255,.4);
+  }
+  .weather .desc {
+    font-family: 'Caveat', cursive; font-size: 32px; color: #78350f;
+    margin-top: 16px; text-align: center;
+    text-shadow: 0 2px 0 rgba(255,255,255,.7);
+  }
+
+  /* ANNOUNCEMENT — cloud-puff hero (no rectangle!) */
+  .announce {
+    grid-column: 2; grid-row: 1 / span 2;
+    display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;
+    position: relative;
+    animation: floatUp 4s ease-in-out infinite;
+    padding: 30px 60px;
+  }
+  @keyframes floatUp {
+    0%, 100% { transform: translateY(0) rotate(-1deg); }
+    50% { transform: translateY(-10px) rotate(1deg); }
+  }
+  /* The cloud is built from overlapping circles via box-shadow on a single ::before */
+  .announce::before {
+    content: ''; position: absolute; left: 50%; top: 50%;
+    width: 280px; height: 200px; transform: translate(-50%, -50%);
+    background: #fff; border-radius: 50%;
+    box-shadow:
+      -190px 30px 0 -10px #fff,    -130px -50px 0 -8px #fff,  -50px -90px 0 -2px #fff,
+      60px -90px 0 -4px #fff,       150px -50px 0 -8px #fff,  200px 30px 0 -10px #fff,
+      120px 70px 0 -6px #fff,       0 90px 0 -2px #fff,        -120px 70px 0 -6px #fff,
+      0 0 0 4px #fcd34d,
+      -190px 30px 0 -6px #fcd34d,   -130px -50px 0 -4px #fcd34d, -50px -90px 0 2px #fcd34d,
+      60px -90px 0 0 #fcd34d,        150px -50px 0 -4px #fcd34d, 200px 30px 0 -6px #fcd34d,
+      120px 70px 0 -2px #fcd34d,     0 90px 0 2px #fcd34d,        -120px 70px 0 -2px #fcd34d,
+      0 16px 32px rgba(0,0,0,.18);
+    z-index: -1;
+  }
+  .announce .stars { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+  .announce .stars span {
+    position: absolute; font-size: 36px; opacity: .9;
+    animation: twinkle 1.4s ease-in-out infinite;
+  }
+  .announce .stars span:nth-child(1) { top: 8%;  left: 12%;  animation-delay: 0s; }
+  .announce .stars span:nth-child(2) { top: 14%; right: 14%; animation-delay: .3s; }
+  .announce .stars span:nth-child(3) { bottom: 18%; left: 18%; animation-delay: .6s; }
+  .announce .stars span:nth-child(4) { bottom: 12%; right: 18%; animation-delay: .9s; }
+  @keyframes twinkle {
+    0%, 100% { opacity: .25; transform: scale(.8) rotate(0deg); }
+    50% { opacity: 1; transform: scale(1.2) rotate(20deg); }
+  }
+  .announce .megaphone {
+    font-size: 84px; line-height: 1;
+    animation: shake 1.6s ease-in-out infinite;
+    transform-origin: 80% 80%;
+  }
+  @keyframes shake {
+    0%, 100% { transform: rotate(-8deg); }
+    20%, 60% { transform: rotate(10deg); }
+    40%, 80% { transform: rotate(-10deg); }
+  }
+  .announce .lbl {
+    font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 22px;
+    letter-spacing: .25em; color: #b45309; text-transform: uppercase; margin-top: 6px;
+  }
+  .announce .msg {
+    font-family: 'Caveat', cursive; font-weight: 700; font-size: 78px; color: #be185d;
+    line-height: 1.05; margin-top: 12px;
+    text-shadow: 2px 2px 0 #fff;
+    max-width: 640px;
+  }
+
+  /* COUNTDOWN — STAR badge shape, no card */
+  .countdown {
+    grid-column: 3; grid-row: 1;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .countdown .badge {
+    width: 240px; height: 240px;
+    background: radial-gradient(circle at 35% 30%, #fef3c7, #fbbf24 75%, #d97706);
+    /* 12-point starburst via clip-path */
+    clip-path: polygon(
+      50% 0%, 60% 12%, 75% 8%, 73% 23%, 88% 25%, 80% 38%,
+      96% 45%, 84% 55%, 96% 65%, 80% 70%, 88% 82%, 73% 80%,
+      75% 96%, 60% 88%, 50% 100%, 40% 88%, 25% 96%, 27% 80%,
+      12% 82%, 20% 70%, 4% 65%, 16% 55%, 4% 45%, 20% 38%,
+      12% 25%, 27% 23%, 25% 8%, 40% 12%);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
+    box-shadow: 0 12px 28px rgba(0,0,0,.18);
+    animation: bounceNum 1.6s ease-in-out infinite;
+  }
+  @keyframes bounceNum {
+    0%, 100% { transform: scale(1) rotate(-3deg); }
+    50% { transform: scale(1.06) rotate(3deg); }
+  }
+  .countdown .lbl { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: .15em; color: #7c2d12; text-transform: uppercase; }
+  .countdown .num { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 90px; line-height: .9; color: #7c2d12; text-shadow: 0 3px 0 rgba(255,255,255,.5); }
+  .countdown .unit { font-family: 'Caveat', cursive; font-size: 26px; color: #7c2d12; }
+
+  /* TEACHER — polaroid shape (already organic, but now with washi tape) */
+  .teacher {
+    grid-column: 1; grid-row: 2;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .teacher .polaroid {
+    background: #fff; padding: 14px 14px 36px; width: 220px;
+    box-shadow: 0 12px 24px rgba(0,0,0,.22);
+    transform: rotate(-3deg);
+    position: relative;
+    animation: slideX 5s ease-in-out infinite;
+  }
+  @keyframes slideX {
+    0%, 100% { transform: rotate(-3deg) translateX(-4px); }
+    50% { transform: rotate(-3deg) translateX(4px); }
+  }
+  .teacher .polaroid::before {
+    /* washi tape across top */
+    content: ''; position: absolute; top: -16px; left: 30%;
+    width: 130px; height: 28px; transform: rotate(-3deg);
+    background: repeating-linear-gradient(135deg, rgba(255,255,255,.5) 0 6px, transparent 6px 12px), #f9a8d4;
+    box-shadow: 0 1px 4px rgba(0,0,0,.2);
+  }
+  .teacher .face {
+    width: 100%; aspect-ratio: 1;
+    background: linear-gradient(135deg, #fce7f3, #ddd6fe);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 100px;
+  }
+  .teacher .name {
+    position: absolute; left: 0; right: 0; bottom: 12px; text-align: center;
+    font-family: 'Caveat', cursive; font-weight: 700; font-size: 26px; color: #6d28d9;
+  }
+  .teacher .role {
+    position: absolute; left: 0; right: 0; bottom: -22px; text-align: center;
+    font-family: 'Caveat', cursive; font-size: 24px; color: #831843;
+    text-shadow: 0 2px 0 rgba(255,255,255,.7);
+  }
+
+  /* BIRTHDAYS — balloon cluster */
+  .birthdays {
+    grid-column: 3; grid-row: 2;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    position: relative; padding: 12px;
+  }
+  .birthdays .cluster {
+    position: relative; width: 200px; height: 180px;
+    animation: bob 1.4s ease-in-out infinite;
+  }
+  @keyframes bob {
+    0%, 100% { transform: translateY(0) rotate(-3deg); }
+    50% { transform: translateY(-10px) rotate(3deg); }
+  }
+  .birthdays .balloon {
+    position: absolute; width: 80px; height: 100px; border-radius: 50% 50% 48% 48%;
+    box-shadow: inset -8px -10px 12px rgba(0,0,0,.18), 0 4px 8px rgba(0,0,0,.18);
+  }
+  .birthdays .balloon::after {
+    content: ''; position: absolute; left: 50%; top: 100%;
+    width: 1px; height: 60px; background: rgba(0,0,0,.4); transform: translateX(-50%);
+  }
+  .birthdays .balloon.b1 { left: 10px;  top: 0;  background: #f87171; }
+  .birthdays .balloon.b2 { left: 60px;  top: 12px; background: #fbbf24; transform: rotate(-6deg); width: 70px; height: 90px; }
+  .birthdays .balloon.b3 { left: 110px; top: 0;  background: #ec4899; }
+  .birthdays .cake {
+    position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%);
+    font-size: 56px; line-height: 1;
+  }
+  .birthdays .lbl { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: .12em; color: #be185d; text-transform: uppercase; margin-top: 18px; text-shadow: 0 2px 0 rgba(255,255,255,.7); }
+  .birthdays .names { font-family: 'Caveat', cursive; font-size: 32px; color: #831843; line-height: 1.05; text-shadow: 0 2px 0 rgba(255,255,255,.7); }
+
+  /* TICKER — wavy ribbon */
+  .ticker {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 100px;
+    background: linear-gradient(90deg, #fcd34d, #fbbf24);
+    display: flex; align-items: center; overflow: hidden; z-index: 6;
+    border-top: 5px solid #ec4899;
+    box-shadow: 0 -4px 12px rgba(0,0,0,.12);
+    /* wavy top edge */
+    clip-path: polygon(
+      0% 16%, 5% 0%, 10% 16%, 15% 0%, 20% 16%, 25% 0%, 30% 16%, 35% 0%, 40% 16%,
+      45% 0%, 50% 16%, 55% 0%, 60% 16%, 65% 0%, 70% 16%, 75% 0%, 80% 16%, 85% 0%,
+      90% 16%, 95% 0%, 100% 16%, 100% 100%, 0% 100%);
+  }
+  .ticker .stamp {
+    flex: 0 0 auto; padding: 0 28px; height: 100%;
+    background: #ec4899; color: #fff; display: flex; align-items: center;
+    font-family: 'Fredoka', sans-serif; font-weight: 700; letter-spacing: .15em; font-size: 22px;
+    border-right: 3px dashed #fff;
+    margin-top: 16px;
+  }
+  .ticker .scroll {
+    flex: 1; font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 36px; color: #831843;
+    white-space: nowrap; padding-left: 100%; margin-top: 16px;
+    animation: scrollText 28s linear infinite;
+  }
+  @keyframes scrollText { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+
+  /* Floating balloons in background */
+  .bgBalloon {
+    position: absolute; bottom: -120px; width: 60px; height: 76px; border-radius: 50% 50% 48% 48%;
+    z-index: 2; animation: balloonRise linear infinite; will-change: transform;
+  }
+  .bgBalloon::after {
+    content: ''; position: absolute; left: 50%; top: 100%;
+    width: 1px; height: 220px; background: rgba(0,0,0,.3); transform: translateX(-50%);
+  }
+  @keyframes balloonRise {
+    0% { transform: translateY(0) translateX(0) rotate(0deg); opacity: 0; }
+    10% { opacity: 1; }
+    50% { transform: translateY(-50vh) translateX(20px) rotate(8deg); }
+    100% { transform: translateY(-120vh) translateX(-20px) rotate(-8deg); opacity: .9; }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="rainbow"></div>
+  <div class="confettiLayer" id="confetti"></div>
+
+  <div class="bgBalloon" style="left:8%;  background:#f87171; animation-duration:14s; animation-delay:0s;"></div>
+  <div class="bgBalloon" style="left:22%; background:#fbbf24; animation-duration:18s; animation-delay:-6s;"></div>
+  <div class="bgBalloon" style="left:78%; background:#60a5fa; animation-duration:16s; animation-delay:-3s;"></div>
+  <div class="bgBalloon" style="left:92%; background:#a78bfa; animation-duration:20s; animation-delay:-10s;"></div>
+
+  <div class="header">
+    <div class="logo">🍎</div>
+    <div class="titleBox">
+      <h1>Welcome, Friends!</h1>
+      <div class="sub">today is going to be amazing ✨</div>
+    </div>
+    <div class="clock">
+      <div class="t">12:34</div>
+      <div class="ap">PM</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- WEATHER — giant sun, no card -->
+    <div class="weather">
+      <div class="sunDisc">
+        <div class="face">68°</div>
+      </div>
+      <div class="desc">~ sunny + crisp ~</div>
+    </div>
+
+    <!-- ANNOUNCEMENT — cloud puff -->
+    <div class="announce">
+      <div class="stars"><span>⭐</span><span>✨</span><span>🌟</span><span>💫</span></div>
+      <div class="megaphone">📣</div>
+      <div class="lbl">Big News</div>
+      <div class="msg">Book Fair starts Monday! 📚<br/>Come find your new favorite story.</div>
+    </div>
+
+    <!-- COUNTDOWN — starburst badge -->
+    <div class="countdown">
+      <div class="badge">
+        <div class="lbl">Field Trip in</div>
+        <div class="num">3</div>
+        <div class="unit">days</div>
+      </div>
+    </div>
+
+    <!-- TEACHER — polaroid with washi tape -->
+    <div class="teacher">
+      <div class="polaroid">
+        <div class="face">👩‍🏫</div>
+        <div class="name">Mrs. Johnson</div>
+        <div class="role">~ Teacher of the Week ~</div>
+      </div>
+    </div>
+
+    <!-- BIRTHDAYS — balloon cluster -->
+    <div class="birthdays">
+      <div class="cluster">
+        <div class="balloon b1"></div>
+        <div class="balloon b2"></div>
+        <div class="balloon b3"></div>
+        <div class="cake">🎂</div>
+      </div>
+      <div class="lbl">Today's Birthdays</div>
+      <div class="names">Maya · Eli · Sofia</div>
+    </div>
+  </div>
+
+  <div class="ticker">
+    <div class="stamp">SCHOOL NEWS</div>
+    <div class="scroll">Welcome back, Stars! ⭐ &nbsp; · &nbsp; Picture day is Friday 📸 &nbsp; · &nbsp; Reading Challenge: 20 minutes a day 📖 &nbsp; · &nbsp; Parent-teacher conferences next Tuesday 👨‍👩‍👧</div>
+  </div>
+</div>
+
+<script>
+  const layer = document.getElementById('confetti');
+  const colors = ['#ec4899','#f59e0b','#10b981','#6366f1','#f43f5e','#06b6d4','#fbbf24','#a78bfa'];
+  for (let i = 0; i < 80; i++) {
+    const c = document.createElement('div');
+    c.className = 'confetti';
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    const size = 6 + Math.random() * 12;
+    const dur = 5 + Math.random() * 7;
+    const delay = -Math.random() * dur;
+    const left = Math.random() * 100;
+    const isCircle = Math.random() < 0.3;
+    c.style.left = left + '%';
+    c.style.width = size + 'px';
+    c.style.height = (size * (isCircle ? 1 : 1.6)) + 'px';
+    c.style.background = color;
+    c.style.borderRadius = isCircle ? '50%' : '2px';
+    c.style.animationDuration = dur + 's';
+    c.style.animationDelay = delay + 's';
+    c.style.transform = `rotate(${Math.random() * 360}deg)`;
+    layer.appendChild(c);
+  }
+</script>
+</body>
+</html>
