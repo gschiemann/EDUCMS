@@ -757,8 +757,26 @@ export class ScreensController {
       });
     }
 
+    // Sum item file sizes per playlist so the player can show operators
+    // how much disk a playlist uses from the Stopped splash. Items with
+    // no captured fileSize (e.g. URL-type assets, pre-hash uploads)
+    // simply contribute 0.
     const dynamicPlaylists = schedules.map(s => ({
       id: s.playlistId,
+      // Name + schedule metadata — lets the player surface "what's
+      // loaded and when it plays" without a separate API round-trip.
+      // Operator-facing fields, not load-bearing for playback, so
+      // omitting any of them is safe.
+      name: s.playlist.name,
+      schedule: {
+        daysOfWeek: s.daysOfWeek || null,  // "Mon,Tue,Wed,Thu,Fri" or null
+        timeStart: s.timeStart || null,    // "08:00" or null
+        timeEnd: s.timeEnd || null,        // "15:00" or null
+      },
+      totalBytes: s.playlist.items.reduce(
+        (sum, pi) => sum + (pi.asset.fileSize || 0),
+        0,
+      ),
       // Include template data when playlist is template-based
       ...(s.playlist.template ? {
         template: {

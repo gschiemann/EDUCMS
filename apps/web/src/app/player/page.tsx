@@ -564,6 +564,8 @@ function StoppedSplash({
   screenName,
   lastSync,
   exitUnavailable,
+  playlists,
+  cacheStatus,
   onResume,
   onExit,
   onUnpair,
@@ -573,18 +575,45 @@ function StoppedSplash({
   screenName: string;
   lastSync: string | null;
   exitUnavailable: boolean;
+  playlists: Array<{
+    id: string;
+    name: string;
+    itemCount: number;
+    totalBytes: number;
+    daysOfWeek: string | null;
+    timeStart: string | null;
+    timeEnd: string | null;
+    isTemplate: boolean;
+  }>;
+  cacheStatus: CacheStatus | null;
   onResume: () => void;
   onExit: () => void;
   onUnpair: () => void;
   onSync: () => void;
 }) {
+  const totalAssets = playlists.reduce((sum, pl) => sum + pl.itemCount, 0);
+  const totalBytes = playlists.reduce((sum, pl) => sum + pl.totalBytes, 0);
+  // Build a compact schedule label like "Mon–Fri · 08:00–15:00" or
+  // "Every day · all day" when no time window is set. Input is the
+  // schedule object we surfaced on each playlist in the manifest.
+  const fmtSchedule = (pl: { daysOfWeek: string | null; timeStart: string | null; timeEnd: string | null }) => {
+    const daysBit = pl.daysOfWeek
+      ? pl.daysOfWeek.replace(/,/g, ' · ')
+      : 'Every day';
+    const timeBit = pl.timeStart && pl.timeEnd
+      ? `${pl.timeStart}–${pl.timeEnd}`
+      : 'all day';
+    return `${daysBit} · ${timeBit}`;
+  };
+
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white select-none p-6">
+    <div className="fixed inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white select-none p-6 overflow-auto">
       <div className="absolute top-6 left-6 flex items-center gap-3 text-sm text-slate-300">
         <MonitorPlay className="w-5 h-5 text-indigo-300" strokeWidth={1.75} />
         <span className="font-semibold">{brandName}</span>
       </div>
-      <div className="w-full max-w-xl text-center">
+
+      <div className="w-full max-w-3xl text-center py-10">
         <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/20 border border-amber-400/30 text-xs font-bold tracking-wide uppercase text-amber-300 mb-6">
           <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
           Playback paused
@@ -597,10 +626,68 @@ function StoppedSplash({
             ? 'Auto-exit isn\u2019t available on this device. Use your remote\u2019s Home button to return to the launcher, then relaunch EduSignage when ready.'
             : 'Content is held. Resume to go back to playback, or Exit to return to your device launcher.'}
         </p>
-        {lastSync && (
-          <p className="mt-3 text-xs text-slate-400">Last sync: {lastSync}</p>
-        )}
-        <div className="mt-10 flex flex-wrap gap-3 justify-center">
+
+        {/* At-a-glance loadout — playlists + on-disk cache + last sync.
+            User ask: "from the main splash screen we should have what
+            playlists are loaded and how much space they are taking up
+            and maybe their schedule...make it useful." */}
+        <div className="mt-8 grid gap-3 text-left">
+          {/* Top row: two info chips */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+              <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Playlists</div>
+              <div className="mt-1 text-xl font-bold text-white">{playlists.length}</div>
+              <div className="mt-0.5 text-xs text-slate-400">{totalAssets} assets · {formatBytes(totalBytes)}</div>
+            </div>
+            <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+              <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Last sync</div>
+              <div className="mt-1 text-xl font-bold text-white">{lastSync || 'Never'}</div>
+              {cacheStatus && cacheStatus.supported && (
+                <div className="mt-0.5 text-xs text-slate-400">
+                  Cached: {cacheStatus.playlist.count} / {formatBytes(cacheStatus.playlist.bytes)}
+                  {cacheStatus.emergency.count > 0 && (
+                    <span className="text-emerald-300 ml-2">🛡️ {cacheStatus.emergency.count}</span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Playlist table — names, size, schedule */}
+          {playlists.length > 0 ? (
+            <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+              <div className="px-4 py-2 border-b border-white/10 text-[10px] uppercase tracking-wider text-slate-400 font-bold bg-white/[0.03] grid grid-cols-[1fr_auto_auto] gap-4">
+                <span>Loaded playlist</span>
+                <span className="text-right">Size</span>
+                <span className="text-right">Schedule</span>
+              </div>
+              <ul className="divide-y divide-white/5">
+                {playlists.map((pl) => (
+                  <li key={pl.id} className="px-4 py-3 grid grid-cols-[1fr_auto_auto] gap-4 items-center text-sm">
+                    <div className="min-w-0">
+                      <div className="text-white font-semibold truncate">{pl.name}</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        {pl.isTemplate ? 'Template' : `${pl.itemCount} slide${pl.itemCount === 1 ? '' : 's'}`}
+                      </div>
+                    </div>
+                    <div className="text-right text-slate-200 tabular-nums font-medium text-xs">
+                      {pl.totalBytes > 0 ? formatBytes(pl.totalBytes) : '—'}
+                    </div>
+                    <div className="text-right text-slate-300 text-[11px] whitespace-nowrap">
+                      {fmtSchedule(pl)}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-5 text-center text-slate-400 text-sm">
+              No playlists scheduled on this screen yet.
+            </div>
+          )}
+        </div>
+
+        <div className="mt-8 flex flex-wrap gap-3 justify-center">
           <button
             type="button"
             onClick={onResume}
@@ -624,7 +711,7 @@ function StoppedSplash({
             {exitUnavailable ? 'Exit unavailable' : 'Exit to launcher'}
           </button>
         </div>
-        <div className="mt-8 pt-6 border-t border-white/10">
+        <div className="mt-6 pt-4 border-t border-white/10">
           <button
             type="button"
             onClick={onUnpair}
@@ -822,6 +909,21 @@ function PlayerPage() {
   // "carousel only shows items 1 and 2" bug the Integration Lead
   // reported on the Goodview device.
   const currentPlaylistSigRef = useRef<string>('');
+  // Manifest-reported playlist summary for the Stopped splash. Holds
+  // the name, schedule window, item count, and approximate byte size
+  // for each scheduled playlist. Only used for the operator info
+  // panel — not touched by playback logic.
+  type ManifestPlaylistSummary = {
+    id: string;
+    name: string;
+    itemCount: number;
+    totalBytes: number;
+    daysOfWeek: string | null;
+    timeStart: string | null;
+    timeEnd: string | null;
+    isTemplate: boolean;
+  };
+  const [manifestPlaylists, setManifestPlaylists] = useState<ManifestPlaylistSummary[]>([]);
   // Hydrate any cached emergency on first render so a power-cycle mid-alert
   // still shows the alert until ALL_CLEAR or a fresh manifest arrives.
   useEffect(() => {
@@ -1186,6 +1288,23 @@ function PlayerPage() {
         cacheEmergency(null);
       }
       if (manifest.playlists && manifest.playlists.length > 0) {
+        // Capture the operator-facing playlist summary for the
+        // Stopped splash — name, schedule window, item count, disk
+        // footprint. Independent of the playback signature check
+        // below; even if content didn't change, we still update the
+        // summary cheaply (same objects coming in anyway).
+        setManifestPlaylists(
+          manifest.playlists.map((pl: any) => ({
+            id: pl.id,
+            name: pl.name || pl.template?.name || 'Unnamed playlist',
+            itemCount: pl.items?.length || 0,
+            totalBytes: typeof pl.totalBytes === 'number' ? pl.totalBytes : 0,
+            daysOfWeek: pl.schedule?.daysOfWeek ?? null,
+            timeStart: pl.schedule?.timeStart ?? null,
+            timeEnd: pl.schedule?.timeEnd ?? null,
+            isTemplate: !!pl.template,
+          }))
+        );
         const firstTemplate = manifest.playlists.find((pl: any) => pl.template);
         if (firstTemplate) {
           const tplSig = 'tpl:' + (firstTemplate.template?.id || firstTemplate.template?.name || '');
@@ -1242,6 +1361,9 @@ function PlayerPage() {
         setPlaylist(null);
         setCurrentIndex(0);
       }
+      // Clear the operator-facing summary too — "no playlist loaded"
+      // is what the Stopped splash should render.
+      setManifestPlaylists([]);
       return true;
     };
 
@@ -1905,6 +2027,8 @@ function PlayerPage() {
           screenName={screenName}
           lastSync={lastSync}
           exitUnavailable={exitUnavailable}
+          playlists={manifestPlaylists}
+          cacheStatus={cacheStatus}
           onResume={() => { setPlaybackStopped(false); setExitUnavailable(false); }}
           onExit={handleExitApp}
           onUnpair={() => {
@@ -2076,6 +2200,8 @@ function PlayerPage() {
         screenName={screenName}
         lastSync={lastSync}
         exitUnavailable={exitUnavailable}
+        playlists={manifestPlaylists}
+        cacheStatus={cacheStatus}
         onResume={() => { setPlaybackStopped(false); setExitUnavailable(false); }}
         onExit={handleExitApp}
         onUnpair={() => {
