@@ -7,17 +7,29 @@
  * Every HS template is authored at a fixed 3840×2160 canvas. This
  * wrapper measures the parent container and applies a CSS transform
  * scale so the stage fits whatever the screen actually is — 4K
- * lobby monitor, 1080p hallway TV, or a browser tab preview — with
- * no per-widget layout drift.
+ * lobby monitor, 1080p hallway TV, thumbnail in the gallery, or
+ * the template builder's editing canvas — with no per-widget
+ * layout drift.
  *
- * This is the same pattern ScaledTemplateThumbnail uses for gallery
- * thumbnails, extracted into a reusable component so every HS
- * theme (Varsity, Broadcast, Yearbook, Terminal, Transit, Gallery,
- * Blueprint, Zine) shares the exact same scaling math.
+ * IMPORTANT: the scaling pattern is three-layered, matching the
+ * HTML mockup in scratch/design/hs/*.html:
  *
- * DO NOT use vw/% for sizing inside {children}. Keep every pixel
- * size fixed (the same numbers used in the HTML mockup). The
- * transform:scale at the outer level handles all responsive work.
+ *   .viewport       → fills the parent (position:absolute, inset:0)
+ *   .stage-outer    → takes SCALED dimensions in layout so the
+ *                     centering grid places it correctly
+ *   .stage          → 3840×2160 unscaled, transform:scale(k)
+ *                     with transform-origin at 0 0
+ *
+ * A previous (broken) implementation used `place-items:center` on
+ * the viewport + `transform-origin:center center` on an otherwise-
+ * unscaled 3840×2160 stage. That made the stage's LAYOUT BOX stay
+ * 3840×2160 — the `place-items:center` positioned the unscaled box
+ * in the centre of the tiny parent, which (since the parent had
+ * `overflow:hidden`) cropped everything except a 3840×2160 centered
+ * slice. Symptom: the gallery thumbnail rendered as a tiny crop of
+ * the centre, and the builder's customize canvas showed only the
+ * top-left corner at 1:1. Do NOT regress to that. The .stage-outer
+ * layer is what makes the layout box shrink.
  */
 
 import { ReactNode, useEffect, useRef, useState } from 'react';
@@ -35,24 +47,28 @@ interface Props {
 
 export function HsStage({ children, stageStyle, stageClassName }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
+  const [scale, setScale] = useState(0);
 
   useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
     const fit = () => {
-      const el = viewportRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) return;
-      const k = Math.min(rect.width / STAGE_W, rect.height / STAGE_H);
-      setScale(k);
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (w <= 0 || h <= 0) return;
+      setScale(Math.min(w / STAGE_W, h / STAGE_H));
     };
     fit();
+    // Two animation frames — one to catch the initial layout pass,
+    // one to catch any font-load re-flow after fonts.ready.
+    const r1 = requestAnimationFrame(fit);
+    const r2 = requestAnimationFrame(() => requestAnimationFrame(fit));
     const ro = new ResizeObserver(fit);
-    if (viewportRef.current) ro.observe(viewportRef.current);
-    window.addEventListener('resize', fit);
+    ro.observe(el);
     return () => {
+      cancelAnimationFrame(r1);
+      cancelAnimationFrame(r2);
       ro.disconnect();
-      window.removeEventListener('resize', fit);
     };
   }, []);
 
@@ -67,20 +83,32 @@ export function HsStage({ children, stageStyle, stageClassName }: Props) {
         placeItems: 'center',
       }}
     >
+      {/* stage-outer holds the SCALED dimensions so the grid centers
+          the right size — without this, place-items:center centres a
+          3840×2160 box and the overflow:hidden crops to a middle slice. */}
       <div
-        className={stageClassName}
         style={{
-          width: STAGE_W,
-          height: STAGE_H,
-          transform: `scale(${scale})`,
-          transformOrigin: 'center center',
+          width: STAGE_W * scale,
+          height: STAGE_H * scale,
           position: 'relative',
-          overflow: 'hidden',
-          flexShrink: 0,
-          ...stageStyle,
         }}
       >
-        {children}
+        <div
+          className={stageClassName}
+          style={{
+            width: STAGE_W,
+            height: STAGE_H,
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            transform: `scale(${scale})`,
+            transformOrigin: '0 0',
+            overflow: 'hidden',
+            ...stageStyle,
+          }}
+        >
+          {children}
+        </div>
       </div>
     </div>
   );
