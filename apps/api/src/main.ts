@@ -158,6 +158,39 @@ async function bootstrap() {
     await prisma.client.$queryRaw`SELECT 1`;
     logger.log(`Prisma pool warm (${Date.now() - t0}ms)`);
 
+    // ─── Boot-time schema safety net ───────────────────────────
+    // Railway's start command (`node apps/api/dist/main.js`) doesn't
+    // run `prisma migrate deploy`, so new columns added to the
+    // schema + regenerated into the client arrive in prod WITHOUT
+    // a corresponding DB alter. First request to a table then hits
+    // "column does not exist" and bubbles up as HTTP 500. Reported
+    // by the Integration Lead right after the APK version-chip roll
+    // ("update pushed but I get http 500 and reconnect does
+    // nothing").
+    //
+    // We run idempotent ALTER TABLE IF NOT EXISTS for any columns
+    // that postdate the last full migration. Pure SQL, safe to run
+    // every boot. Keep this list short and retire entries once
+    // we've verified the matching migration has made it through
+    // every environment — this is a seatbelt, not a migration
+    // replacement.
+    try {
+      await prisma.client.$executeRawUnsafe(
+        // 2026-04-24 — APK version reporting. See migration
+        // 20260424_add_screen_player_version.
+        `ALTER TABLE "screens"
+          ADD COLUMN IF NOT EXISTS "player_version" TEXT,
+          ADD COLUMN IF NOT EXISTS "player_version_code" INTEGER,
+          ADD COLUMN IF NOT EXISTS "player_version_at" TIMESTAMP(3);`,
+      );
+      logger.log('Schema safety net: screens.player_version* ensured');
+    } catch (e) {
+      // Don't block boot — log and keep going. Worst case any
+      // endpoint that touches these columns 500s, which is the
+      // state we were already in.
+      logger.warn(`Schema safety net failed: ${(e as Error).message}`);
+    }
+
     // Reconcile system presets — creates any preset defined in code that
     // doesn't have a matching DB row yet. Non-blocking background work so
     // the container is ready-to-serve before the seed finishes.
