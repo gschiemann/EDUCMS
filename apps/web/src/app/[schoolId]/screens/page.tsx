@@ -1,6 +1,7 @@
 "use client";
 
 import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
@@ -110,19 +111,45 @@ function ScreenSettingsMenu({
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  // Viewport-anchored position for the portalled popover. Recomputed
+  // on open + scroll + resize so the menu stays glued to the gear even
+  // if the list scrolls behind it.
+  const [anchor, setAnchor] = useState<{ top: number; right: number } | null>(null);
+
+  const updateAnchor = () => {
+    const btn = buttonRef.current;
+    if (!btn) return;
+    const r = btn.getBoundingClientRect();
+    // Right-align the menu with the button's right edge, pinned 8px
+    // below it. `right` is measured from the viewport's right edge
+    // so CSS `right` px works cleanly.
+    setAnchor({ top: r.bottom + 8, right: window.innerWidth - r.right });
+  };
 
   useEffect(() => {
     if (!open) return;
+    updateAnchor();
     const handleDoc = (e: MouseEvent) => {
-      if (!rootRef.current) return;
-      if (!rootRef.current.contains(e.target as Node)) setOpen(false);
+      const btn = buttonRef.current;
+      const menu = menuRef.current;
+      if (!menu) return;
+      if (menu.contains(e.target as Node)) return;
+      if (btn && btn.contains(e.target as Node)) return;
+      setOpen(false);
     };
     const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    const handleReflow = () => updateAnchor();
     document.addEventListener('mousedown', handleDoc);
     document.addEventListener('keydown', handleKey);
+    window.addEventListener('scroll', handleReflow, true); // capture so we catch scroll inside ancestors
+    window.addEventListener('resize', handleReflow);
     return () => {
       document.removeEventListener('mousedown', handleDoc);
       document.removeEventListener('keydown', handleKey);
+      window.removeEventListener('scroll', handleReflow, true);
+      window.removeEventListener('resize', handleReflow);
     };
   }, [open]);
 
@@ -134,23 +161,14 @@ function ScreenSettingsMenu({
   const stillWaiting = pushed && !updatedSincePush && pushedMsAgo < 90_000;
   const timedOut = pushed && !updatedSincePush && pushedMsAgo >= 90_000;
 
-  return (
-    <div className="relative" ref={rootRef}>
-      <button
-        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
-        title="Screen settings"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-slate-800 hover:border-slate-300 hover:bg-slate-50 transition-all shadow-sm"
-      >
-        <Settings className="w-4 h-4" />
-      </button>
-      {open && (
-        <div
-          role="menu"
-          className="absolute right-0 top-full mt-2 z-50 w-64 rounded-xl bg-white border border-slate-200 shadow-[0_12px_32px_rgba(15,23,42,0.12)] overflow-hidden"
-          onClick={(e) => e.stopPropagation()}
-        >
+  const menu = (
+    <div
+      ref={menuRef}
+      role="menu"
+      className="fixed w-64 rounded-xl bg-white border border-slate-200 shadow-[0_12px_32px_rgba(15,23,42,0.18)] overflow-hidden z-[9999]"
+      style={anchor ? { top: anchor.top, right: anchor.right } : { top: -9999, right: 0 }}
+      onClick={(e) => e.stopPropagation()}
+    >
           {/* Menu — action rows only, no chunky header. The old
               header repeated the screen name + version that's
               already visible on the row; the Integration Lead
@@ -214,13 +232,32 @@ function ScreenSettingsMenu({
             Open preview in browser
           </a>
 
-          {/* Footer placeholder — leaves room for restart / cache /
-              orientation / brightness settings as we build them. */}
-          <div className="px-3.5 py-2 bg-slate-50/60 border-t border-slate-100 text-[10px] text-slate-400">
-            More coming soon — restart, orientation, cache clear.
-          </div>
-        </div>
-      )}
+      {/* Footer placeholder — leaves room for restart / cache /
+          orientation / brightness settings as we build them. */}
+      <div className="px-3.5 py-2 bg-slate-50/60 border-t border-slate-100 text-[10px] text-slate-400">
+        More coming soon — restart, orientation, cache clear.
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="relative" ref={rootRef}>
+      <button
+        ref={buttonRef}
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        title="Screen settings"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-slate-800 hover:border-slate-300 hover:bg-slate-50 transition-all shadow-sm"
+      >
+        <Settings className="w-4 h-4" />
+      </button>
+      {/* Render into document.body via portal so no ancestor's
+          overflow:hidden (the group card's rounded-corner clip, the
+          divide-y wrapper, etc.) can clip the menu. Previous version
+          used a normal absolute child — it was getting trimmed by the
+          group card's bottom edge on every row except the last. */}
+      {open && typeof document !== 'undefined' && createPortal(menu, document.body)}
     </div>
   );
 }
@@ -641,11 +678,13 @@ export default function ScreensPage() {
                             {timeAgo(screen.lastPingAt)}
                           </span>
                         )}
-                        {/* Sprint 8 — set or update map location. Kept
-                            visible-on-hover; not a primary action. */}
+                        {/* Sprint 8 — set or update map location. Always
+                            visible now (was opacity-0 group-hover which
+                            the operator reported as "weird — completely
+                            hidden"). */}
                         <button
                           onClick={() => handleSetLocation(screen.id, screen.name, (screen as any).address)}
-                          className={`p-2 bg-white border border-slate-100 rounded-lg transition-all shadow-sm opacity-0 group-hover/item:opacity-100 ${
+                          className={`p-2 bg-white border border-slate-100 rounded-lg transition-all shadow-sm ${
                             (screen as any).latitude != null
                               ? 'text-emerald-600 border-emerald-100 hover:bg-emerald-50'
                               : 'screens-ext-link text-slate-400'
@@ -654,10 +693,13 @@ export default function ScreensPage() {
                         >
                           <MapPin className="w-4 h-4" />
                         </button>
-                        {/* Destructive — hover-only so it's not a
-                            one-fat-thumb away from accidental delete. */}
+                        {/* Delete — also always visible. Still muted
+                            grey by default; only turns red on hover, so
+                            an accidental tap is one explicit step away
+                            from triggering the mutate. */}
                         <button onClick={() => deleteScreen.mutate(screen.id)}
-                          className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 opacity-0 group-hover/item:opacity-100 transition-all shadow-sm">
+                          className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 transition-all shadow-sm"
+                          title="Delete screen">
                           <Trash2 className="w-4 h-4" />
                         </button>
                         {/* Per-screen settings popover. ALWAYS visible
@@ -805,7 +847,8 @@ export default function ScreensPage() {
                       </span>
                     )}
                     <button onClick={() => deleteScreen.mutate(screen.id)}
-                      className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 opacity-0 group-hover/item:opacity-100 transition-all shadow-sm">
+                      className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 transition-all shadow-sm"
+                      title="Delete screen">
                       <Trash2 className="w-4 h-4" />
                     </button>
                     {/* Gear popover — always visible; preview lives
