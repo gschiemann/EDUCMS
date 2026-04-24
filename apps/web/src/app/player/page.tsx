@@ -1872,6 +1872,37 @@ function PlayerPage() {
       })()
     : null;
 
+  // ─── Exit / Stop handlers (hoisted above phase early-returns so the
+  //     offline "Reconnecting…" screen can reuse the same Exit logic
+  //     the Stopped splash uses — operator should be able to leave the
+  //     app from any error state, not just from mid-playback). ───
+  // Stop = "go back to the player's main splash". Playback pauses but
+  // the shell is still running, with a branded splash that lets the
+  // operator Resume, Exit, or Unpair.
+  const handleStopPlayback = () => {
+    setShowOverlay(false);
+    setPlaybackStopped(true);
+  };
+  // Exit = actually leave the EduCMS player, return control to the
+  // Android / OEM launcher. Priority cascade:
+  //   1. Native exit bridge (injected by our Android APK).
+  //   2. window.close() (works for PWA/TWA windows).
+  //   3. Fallback splash state — stays on the Stopped splash but
+  //      flips exitUnavailable=true so the copy asks the operator
+  //      to hit their remote's Home button.
+  const handleExitApp = () => {
+    try {
+      const bridge = (window as any).EduCmsNative;
+      if (bridge && typeof bridge.exitToDeviceHome === 'function') {
+        bridge.exitToDeviceHome();
+        return;
+      }
+    } catch { /* fall through */ }
+    try { window.close(); } catch { /* ignore */ }
+    setPlaybackStopped(true);
+    setExitUnavailable(true);
+  };
+
   // ─── Render: Registering ───
   if (phase === 'registering') {
     return (
@@ -1932,7 +1963,7 @@ function PlayerPage() {
             ? `Next attempt in ${nextIn}s — we'll keep trying.`
             : 'Retrying now…'}
         </p>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap justify-center">
           <button
             onClick={() => {
               // Smart retry — if we never got a screenId through
@@ -1955,6 +1986,19 @@ function PlayerPage() {
           >
             Retry now
           </button>
+          {/* Exit to device launcher — identical cascade to the one on
+              the Stopped splash (native bridge → window.close → splash
+              hint). Added here by request so the operator can always
+              leave the app, including from the persistent "Reconnecting…"
+              error state. Previously only Retry / Reset were exposed,
+              which left them stuck when the server was unreachable. */}
+          <button
+            onClick={handleExitApp}
+            className="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-medium"
+            title="Leave the player and return to the device launcher"
+          >
+            Exit to launcher
+          </button>
           <button
             onClick={() => { localStorage.removeItem('edu_device_fp'); setPhase('registering'); }}
             className="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-medium"
@@ -1965,45 +2009,6 @@ function PlayerPage() {
       </div>
     );
   }
-
-  // Stop = "go back to the player's main splash". Playback pauses
-  // but the EduCMS shell is still running, with a branded splash
-  // that lets the operator Resume, Exit to the device launcher, or
-  // Unpair entirely. User mental model was: Stop → splash → Exit
-  // → launcher. The old curtain short-circuited that to "Stop →
-  // black screen → tap = back to content," which is why hitting
-  // either button felt like a no-op.
-  const handleStopPlayback = () => {
-    setShowOverlay(false);
-    setPlaybackStopped(true);
-  };
-
-  // Exit = actually leave the EduCMS player, return control to the
-  // Android / OEM launcher (Goodview, NovaStar, TCL). Priority:
-  //   1. Native exit bridge (injected by our Android APK).
-  //   2. window.close() (works for PWA/TWA windows).
-  //   3. Fallback splash state — stay on the "Stopped" screen but
-  //      show an explicit "Use your remote's HOME button" hint.
-  // NO window.confirm() — many kiosk WebViews (including Goodview's
-  // default config) suppress modal dialogs, so the confirm returned
-  // undefined and the exit call never fired. Reported as "I hit
-  // Exit and nothing happened."
-  const handleExitApp = () => {
-    try {
-      const bridge = (window as any).EduCmsNative;
-      if (bridge && typeof bridge.exitToDeviceHome === 'function') {
-        bridge.exitToDeviceHome();
-        return;
-      }
-    } catch { /* fall through */ }
-    try {
-      window.close();
-    } catch { /* ignore */ }
-    // Neither worked → signal to the splash that in-app exit is
-    // impossible and the operator needs to use the device remote.
-    setPlaybackStopped(true);
-    setExitUnavailable(true);
-  };
 
   // (sceneTick / idleResetTimerRef / sorted / isItemValid hooks were
   // moved above the early returns to satisfy the Rules of Hooks.)
