@@ -158,9 +158,22 @@
   .xpbar .pct { font-family:'Press Start 2P', monospace; font-size: 76px; color: var(--green); letter-spacing: .02em; text-shadow: 5px 5px 0 #000; }
 
   /* ─── Leaderboard (TOP 3 only) ───────────────────────────── */
+  /* v2.3: box-sizing:border-box ONLY on .side. Root cause of the
+     "top scores not lined up with side quests / field day bar
+     clipped" bug: default content-box made this panel's declared
+     `width: 1280` mean "1280 of content, plus 104px padding, plus
+     12px border" — so .side rendered ~1396px total and its left
+     edge landed 116px further LEFT than .events (which has no
+     direct padding/border — those live on an inner .eventsbox).
+     Switching just this panel to border-box makes width:1280 mean
+     "1280 edge-to-edge" so left:2496 matches .events exactly.
+     The global version of this fix broke the hero + xpbar by
+     shrinking their content areas too; this scoped version
+     leaves every other panel untouched. */
   .side { position:absolute; top: 310px; right: 64px; width: 1280px; height: 990px;
     background: var(--panel); border: 6px solid var(--ink); box-shadow: 16px 16px 0 #000;
-    padding: 52px 52px; display: flex; flex-direction: column; }
+    padding: 52px 52px; display: flex; flex-direction: column;
+    box-sizing: border-box; }
   /* v2: 44 → 64 header, 36 → 44 subtitle */
   .side h2 { font-family:'Press Start 2P', monospace; font-size: 64px; color: var(--yellow); margin: 0 0 14px; letter-spacing: .02em; }
   .side .sub { font-family:'VT323', monospace; font-size: 44px; color: var(--ink2); letter-spacing: .04em; margin-bottom: 38px; }
