@@ -187,9 +187,12 @@
   .side .entry .pts span { color: var(--ink2); font-size: 28px; display:block; margin-top: 10px; letter-spacing: .1em; }
 
   /* ─── Quest log (6 items, 2×3) ───────────────────────────── */
-  .board { position:absolute; top: 1320px; left: 64px; width: 2400px; height: 640px;
+  /* v2.2: shrank 640 → 600 so the last quest row ("LUNCH / chicken
+     & rice / 7th grade") doesn't crowd the pink bar below. New
+     bottom y = 1920, newsbar top = 1990, gap = 70px. */
+  .board { position:absolute; top: 1320px; left: 64px; width: 2400px; height: 600px;
     background: var(--panel); border: 6px solid var(--ink); box-shadow: 16px 16px 0 #000;
-    padding: 42px 52px; }
+    padding: 36px 52px 28px; }
   .board .head { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom: 28px; padding-bottom: 22px; border-bottom: 5px solid var(--ink); }
   /* v2: 48 → 64 */
   .board .head h2 { font-family:'Press Start 2P', monospace; font-size: 64px; color: var(--pink); margin: 0; letter-spacing: .02em; }
@@ -222,7 +225,9 @@
   @keyframes blink { 50% { opacity: 0; } }
 
   /* ─── Side quests (2 items — was 3) ──────────────────────── */
-  .events { position:absolute; top: 1320px; right: 64px; width: 1280px; height: 640px; }
+  /* v2.2: matched the board's new 600px height so both bottom
+     edges sit on the same line (y=1920) above the newsbar. */
+  .events { position:absolute; top: 1320px; right: 64px; width: 1280px; height: 600px; }
   .eventsbox { background: var(--panel); border: 6px solid var(--ink); box-shadow: 10px 10px 0 #000; padding: 38px 44px; height: 100%; display: flex; flex-direction: column; }
   /* v2: 40 → 56 */
   .eventsbox h2 { font-family:'Press Start 2P', monospace; font-size: 56px; color: var(--orange); margin: 0 0 26px; letter-spacing: .02em; line-height: 1.2; }
@@ -238,24 +243,32 @@
   .eventsbox .it .info .tag { font-family:'Press Start 2P'; font-size: 28px; color: var(--green); letter-spacing: .06em; margin-top: 16px; display:inline-block; }
 
   /* ─── Unified bottom bar (BOSS BATTLE × news feed) ───────────
-     v2.1 review: the separate alert bar was positioned with
-     bottom:110 + height:160, which visually overlapped the tail
-     of the Quest Log + Side Quests panels above it ("we are
-     covering up text with the boss battle bar"). Fix: merge the
-     alert tag and the news ticker into ONE bar anchored to
-     bottom:0, and move it below everything else. The BOSS BATTLE
-     tag becomes the "channel" chip, the scrolling ticker picks up
-     the old alert copy (picture day) as its lead item + the
-     rolling daily news behind it. One loud pink bar, no overlap.
+     v2.2 review: the bar was full-bleed (left:0/right:0) while
+     every other panel on the stage is inset by 64px — "the pink
+     bar should line up with the vertical lines of the other text
+     boxes, we are bleeding over on the left and the right sides."
+     Also "almost clipping the bottom text from the periods
+     schedule" above it, so we needed a bit more gap.
 
-     Geometry: bar is 170px tall at bottom:0 → occupies y 1990–2160
-     on the 3840×2160 canvas. The board + side-quest panels above
-     end at y=1960, giving a 30px clearance gap. Nothing overlaps. */
+     Fix: inset the bar 64px on each side to match the hud / quest
+     / xpbar / side / board / events columns, and give it the same
+     full border + chunky black drop shadow those other panels
+     wear so it reads as a peer panel, not an edge stripe. Also
+     shrank the bar from 170 → 150 and moved it to bottom:20 so
+     the quest-log agenda above has a proper ~70px vertical gap
+     instead of 30px.
+
+     New geometry: bar occupies y 1990–2140, 64–3776 horizontal.
+     Board + side-quests above end at y=1920 (shrank from 1960 —
+     see .board/.events height change). Vertical gap = 70px.
+     Horizontal edges meet the quest/board panels square at the
+     64px column. */
   .newsbar {
-    position:absolute; bottom:0; left:0; right:0; height: 170px;
+    position:absolute; bottom:20px; left:64px; right:64px; height: 150px;
     background: var(--pink); color: #000;
     display:flex; align-items:stretch;
-    border-top: 6px solid var(--ink);
+    border: 6px solid var(--ink);
+    box-shadow: 12px 12px 0 #000;
     overflow:hidden;
   }
   .newsbar .tag {
