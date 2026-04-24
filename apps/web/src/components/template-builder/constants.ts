@@ -71,6 +71,7 @@ export const WIDGET_GROUPS = [
       { type: 'HS_VARSITY',          label: 'HS · Varsity (Athletic)',     desc: '4K scoreboard lobby — jersey chest, game-of-the-week, coach spotlight, pennants, PA ticker', icon: Cake },
       { type: 'HS_BROADCAST',        label: 'HS · Broadcast (News Desk)',  desc: '4K campus news network — ON AIR indicator, lower-thirds, forecast, featured guest, breaking story, crawl', icon: Cake },
       { type: 'HS_YEARBOOK',         label: 'HS · Yearbook (Editorial)',   desc: '4K magazine spread — serif masthead, drop-cap lede, photo feature, portrait quote, folio calendar, wire ticker', icon: Cake },
+      { type: 'HS_TERMINAL',         label: 'HS · Terminal (CRT/Phosphor)',desc: '4K CRT lobby — phosphor green, scanlines, whoami teacher card, cron events, syslog ticker, blinking cursor', icon: Cake },
       { type: 'ANIMATED_CAFETERIA',  label: 'Animated Cafeteria · Food Truck', desc: 'Food-truck menu board — weekly menu, swappable food emojis, lunch chef, allergen ticker', icon: UtensilsCrossed },
     ],
   },

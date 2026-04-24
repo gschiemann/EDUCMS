@@ -62,6 +62,7 @@ import { AnimatedBackgroundWidget } from './AnimatedBackgroundWidget';
 import { HsVarsityWidget } from './hs/HsVarsityWidget';
 import { HsBroadcastWidget } from './hs/HsBroadcastWidget';
 import { HsYearbookWidget } from './hs/HsYearbookWidget';
+import { HsTerminalWidget } from './hs/HsTerminalWidget';
 // 16 templates ported from scratch/design/*.html (4 parallel agents, 2026-04-20).
 // Each widget is a full-screen scene (transform:scale 1920×1080 pattern, live-
 // gated hotspots, ticker-speed helper). See CLAUDE.md "Template Design
@@ -180,6 +181,7 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'HS_VARSITY':                    return <HsVarsityWidget config={cfg} />;
     case 'HS_BROADCAST':                  return <HsBroadcastWidget config={cfg} />;
     case 'HS_YEARBOOK':                   return <HsYearbookWidget config={cfg} />;
+    case 'HS_TERMINAL':                   return <HsTerminalWidget config={cfg} />;
     case 'ANIMATED_CAFETERIA':            return <AnimatedCafeteriaElementaryWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA_MS':         return <AnimatedCafeteriaMiddleWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA_HS':         return <AnimatedCafeteriaHighWidget config={cfg} live={live} />;
