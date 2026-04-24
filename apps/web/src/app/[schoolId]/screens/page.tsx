@@ -100,14 +100,12 @@ function ScreenSettingsMenu({
   pushState,
   pending,
   onPushApk,
-  onOpenPreview,
   previewHref,
 }: {
   screen: any;
   pushState: { at: number; priorVersion: string | null } | undefined;
   pending: boolean;
   onPushApk: () => void;
-  onOpenPreview: () => void;
   previewHref: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -128,8 +126,7 @@ function ScreenSettingsMenu({
     };
   }, [open]);
 
-  // Derive the push-feedback line. Both null values are fine —
-  // rendered only when a push is still considered "in flight".
+  // Push-feedback derivation — only renders when a push was initiated.
   const currentVersion: string | null = (screen as any).playerVersion ?? null;
   const pushed = !!pushState;
   const pushedMsAgo = pushState ? Date.now() - pushState.at : 0;
@@ -151,82 +148,76 @@ function ScreenSettingsMenu({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full mt-2 z-50 w-72 rounded-xl bg-white border border-slate-200 shadow-[0_12px_32px_rgba(15,23,42,0.12)] overflow-hidden"
+          className="absolute right-0 top-full mt-2 z-50 w-64 rounded-xl bg-white border border-slate-200 shadow-[0_12px_32px_rgba(15,23,42,0.12)] overflow-hidden"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="px-3.5 py-3 border-b border-slate-100 bg-slate-50/60">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Screen settings</div>
-            <div className="text-sm font-semibold text-slate-700 truncate mt-0.5">{screen.name}</div>
-            <div className="mt-1.5 text-[11px] text-slate-500 flex items-center gap-1.5">
-              <Download className="w-3 h-3" />
-              {currentVersion ? (
-                <span>APK <span className="font-semibold text-slate-700">v{currentVersion}</span></span>
-              ) : (
-                <span className="text-slate-400">APK version not reported yet</span>
+          {/* Menu — action rows only, no chunky header. The old
+              header repeated the screen name + version that's
+              already visible on the row; the Integration Lead
+              called it redundant. Rows below are regular menuitem-
+              style clickable entries. */}
+
+          {/* Push APK update */}
+          <button
+            type="button"
+            onClick={onPushApk}
+            disabled={pending || stillWaiting}
+            className="w-full flex items-center gap-3 px-3.5 py-3 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed border-b border-slate-100"
+          >
+            {pending || stillWaiting ? (
+              <Loader2 className="w-4 h-4 text-indigo-500 shrink-0 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4 text-indigo-500 shrink-0" />
+            )}
+            <span className="flex-1 min-w-0">
+              <span className="block">
+                {pending ? 'Sending…' : stillWaiting ? 'Pushing update…' : 'Push update to this screen'}
+              </span>
+              {currentVersion && (
+                <span className="block text-[10px] font-normal text-slate-400 mt-0.5">
+                  Currently on v{currentVersion}
+                </span>
+              )}
+            </span>
+          </button>
+
+          {/* Push feedback strip — only when a push has been sent */}
+          {pushed && (updatedSincePush || stillWaiting || timedOut) && (
+            <div className="px-3.5 py-2 bg-slate-50 border-b border-slate-100 text-[11px] leading-snug">
+              {updatedSincePush && (
+                <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Kiosk installed v{currentVersion} ✓
+                </span>
+              )}
+              {stillWaiting && !updatedSincePush && (
+                <span className="text-slate-500">Waiting for kiosk check-in…</span>
+              )}
+              {timedOut && !updatedSincePush && (
+                <span className="inline-flex items-start gap-1 text-amber-700">
+                  <WifiOff className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <span>No response after 90s — check Wi-Fi + &ldquo;Install unknown apps&rdquo; permission.</span>
+                </span>
               )}
             </div>
-          </div>
+          )}
 
-          {/* APK update row */}
-          <div className="px-3.5 py-3 border-b border-slate-100">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-xs font-semibold text-slate-700">Update APK</div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  Push the latest release to this kiosk now instead of waiting for the 6-hour poll.
-                </div>
-              </div>
-              <button
-                onClick={onPushApk}
-                disabled={pending || stillWaiting}
-                className="shrink-0 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[11px] font-bold rounded-lg flex items-center gap-1.5 transition-colors"
-              >
-                {pending || stillWaiting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                {pending ? 'Sending…' : stillWaiting ? 'Pushing' : 'Push'}
-              </button>
-            </div>
-            {/* Feedback line — only renders once a push has been sent */}
-            {pushed && (
-              <div className="mt-2 text-[11px] leading-snug">
-                {updatedSincePush && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-semibold">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    Kiosk installed v{currentVersion} ✓
-                  </span>
-                )}
-                {stillWaiting && !updatedSincePush && (
-                  <span className="text-slate-500">
-                    Waiting for kiosk check-in… Install can take up to a minute over Wi-Fi.
-                  </span>
-                )}
-                {timedOut && !updatedSincePush && (
-                  <span className="inline-flex items-center gap-1 text-amber-700">
-                    <WifiOff className="w-3.5 h-3.5" />
-                    No response after 90s. Check the kiosk&rsquo;s network + &ldquo;Install unknown apps&rdquo; permission.
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Preview */}
+          {/* Preview in browser — moved out of the row, into the menu. */}
           <a
             href={previewHref}
             target="_blank"
             rel="noopener noreferrer"
-            onClick={() => { setOpen(false); onOpenPreview(); }}
-            className="flex items-center gap-2 px-3.5 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-3 px-3.5 py-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"
           >
-            <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+            <ExternalLink className="w-4 h-4 text-slate-400 shrink-0" />
             Open preview in browser
           </a>
 
-          {/* Footer — room for future settings rows (restart, cache,
-              orientation, brightness, unpair…). */}
-          <div className="px-3.5 py-2 bg-slate-50/80 border-t border-slate-100">
-            <div className="text-[10px] text-slate-400">
-              More settings coming soon: restart, orientation, cache clear.
-            </div>
+          {/* Footer placeholder — leaves room for restart / cache /
+              orientation / brightness settings as we build them. */}
+          <div className="px-3.5 py-2 bg-slate-50/60 border-t border-slate-100 text-[10px] text-slate-400">
+            More coming soon — restart, orientation, cache clear.
           </div>
         </div>
       )}
@@ -650,7 +641,8 @@ export default function ScreensPage() {
                             {timeAgo(screen.lastPingAt)}
                           </span>
                         )}
-                        {/* Sprint 8 — set or update map location */}
+                        {/* Sprint 8 — set or update map location. Kept
+                            visible-on-hover; not a primary action. */}
                         <button
                           onClick={() => handleSetLocation(screen.id, screen.name, (screen as any).address)}
                           className={`p-2 bg-white border border-slate-100 rounded-lg transition-all shadow-sm opacity-0 group-hover/item:opacity-100 ${
@@ -662,35 +654,26 @@ export default function ScreensPage() {
                         >
                           <MapPin className="w-4 h-4" />
                         </button>
-                        {/* Per-screen settings popover (gear icon) —
-                            replaces the old lone Download button. First
-                            occupant is Push APK update with proper "did
-                            it land?" feedback; future settings (restart,
-                            cache clear, orientation) will slot in as
-                            additional menu rows inside the popover. */}
-                        <div className="opacity-0 group-hover/item:opacity-100 transition-all">
-                          <ScreenSettingsMenu
-                            screen={screen}
-                            pushState={apkPushState[screen.id]}
-                            pending={forceApkUpdate.isPending}
-                            onPushApk={() => handlePushApkUpdate(screen.id, screen.name, (screen as any).playerVersion ?? null)}
-                            onOpenPreview={() => { /* parent handles nav */ }}
-                            previewHref={buildPreviewUrl(screen)}
-                          />
-                        </div>
+                        {/* Destructive — hover-only so it's not a
+                            one-fat-thumb away from accidental delete. */}
                         <button onClick={() => deleteScreen.mutate(screen.id)}
                           className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 opacity-0 group-hover/item:opacity-100 transition-all shadow-sm">
                           <Trash2 className="w-4 h-4" />
                         </button>
-                        <a
-                          href={buildPreviewUrl(screen)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="screens-ext-link p-2 bg-white border border-slate-100 rounded-lg text-slate-400 opacity-0 group-hover/item:opacity-100 transition-all shadow-sm"
-                          title="Open Screen in Browser (Preview — won't affect screen status)"
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                        </a>
+                        {/* Per-screen settings popover. ALWAYS visible
+                            (no opacity-0 wrapper — the previous version
+                            hid the gear until hover AND collapsed the
+                            open popover when the mouse left the row,
+                            which is why clicking just flashed the
+                            header). Preview-in-browser now lives INSIDE
+                            the menu instead of being its own icon. */}
+                        <ScreenSettingsMenu
+                          screen={screen}
+                          pushState={apkPushState[screen.id]}
+                          pending={forceApkUpdate.isPending}
+                          onPushApk={() => handlePushApkUpdate(screen.id, screen.name, (screen as any).playerVersion ?? null)}
+                          previewHref={buildPreviewUrl(screen)}
+                        />
                       </div>
                     ))}
                   </div>
@@ -825,15 +808,15 @@ export default function ScreensPage() {
                       className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 opacity-0 group-hover/item:opacity-100 transition-all shadow-sm">
                       <Trash2 className="w-4 h-4" />
                     </button>
-                    <a
-                      href={buildPreviewUrl(screen)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="screens-ext-link p-2 bg-white border border-slate-100 rounded-lg text-slate-400 opacity-0 group-hover/item:opacity-100 transition-all shadow-sm"
-                      title="Open Screen in Browser (Preview — won't affect screen status)"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
+                    {/* Gear popover — always visible; preview lives
+                        inside the menu now, not as a separate icon. */}
+                    <ScreenSettingsMenu
+                      screen={screen}
+                      pushState={apkPushState[screen.id]}
+                      pending={forceApkUpdate.isPending}
+                      onPushApk={() => handlePushApkUpdate(screen.id, screen.name, (screen as any).playerVersion ?? null)}
+                      previewHref={buildPreviewUrl(screen)}
+                    />
                   </div>
                 ))}
               </div>
