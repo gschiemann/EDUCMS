@@ -520,10 +520,10 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     screenWidth: 3840, screenHeight: 2160, bgColor: '#f2ecd9',
     zones: [{ name: 'Scene', widgetType: 'HS_ZINE', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
-  // ─── MS Pack — first port (Arcade) ──────────────────────────────
+  // ─── MS Pack — Arcade + Atlas (more in pipeline) ───────────────
   // Approved 2026-04-25 — matches scratch/design/arcade-ms-v2.html.
   // React widget at apps/web/src/components/widgets/ms/MsArcadeWidget.tsx.
-  // Six more (atlas, fieldnotes, greenhouse, homeroom, paper, playlist,
+  // Five more (fieldnotes, greenhouse, homeroom, paper, playlist,
   // studio) are still HTML mockups awaiting React port.
   {
     id: 'preset-ms-arcade',
@@ -532,6 +532,16 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#0d0d1a',
     zones: [{ name: 'Scene', widgetType: 'MS_ARCADE', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  // Approved 2026-04-25 — matches scratch/design/atlas-ms-v2.html.
+  // React widget at apps/web/src/components/widgets/ms/MsAtlasWidget.tsx.
+  {
+    id: 'preset-ms-atlas',
+    name: '🗺️ Atlas — Travel Poster & Subway Lines',
+    description: 'Premium travel-poster lobby — paper-and-ink cartography, compass rose, campus map with numbered pins, four transit-style route cards (Morning / Afternoon / Lunch / Clubs), destination spotlight, scrolling news ticker. Work Sans + Playfair Display + DM Mono.',
+    category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#f4ecd8',
+    zones: [{ name: 'Scene', widgetType: 'MS_ATLAS', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
   {
     id: 'preset-cafeteria-chalkboard',

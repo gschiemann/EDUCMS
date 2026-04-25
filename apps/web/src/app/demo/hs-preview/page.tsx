@@ -30,6 +30,7 @@ const HS_TEMPLATES: Array<{ type: string; label: string; bg: string }> = [
   { type: 'HS_BLUEPRINT', label: 'Blueprint (Technical)',  bg: '#0f3a7a' },
   { type: 'HS_ZINE',      label: 'Zine (Cut & Paste)',     bg: '#f2ecd9' },
   { type: 'MS_ARCADE',    label: 'Arcade (Quest Log) — MS', bg: '#0d0d1a' },
+  { type: 'MS_ATLAS',     label: 'Atlas (Subway Map) — MS', bg: '#f4ecd8' },
 ];
 
 export default function HsPreviewPage() {
