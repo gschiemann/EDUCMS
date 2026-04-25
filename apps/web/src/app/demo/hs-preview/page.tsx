@@ -20,7 +20,9 @@
 import { useState } from 'react';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 
-const HS_TEMPLATES: Array<{ type: string; label: string; bg: string }> = [
+type Tile = { type: string; label: string; bg: string };
+
+const HS_TEMPLATES: Tile[] = [
   { type: 'HS_VARSITY',   label: 'Varsity (Athletic)',     bg: '#0d1b3d' },
   { type: 'HS_BROADCAST', label: 'Broadcast (News Desk)',  bg: '#0b1025' },
   { type: 'HS_YEARBOOK',  label: 'Yearbook (Editorial)',   bg: '#f7f3ea' },
@@ -29,38 +31,36 @@ const HS_TEMPLATES: Array<{ type: string; label: string; bg: string }> = [
   { type: 'HS_GALLERY',   label: 'Gallery (Museum)',       bg: '#f5f1e8' },
   { type: 'HS_BLUEPRINT', label: 'Blueprint (Technical)',  bg: '#0f3a7a' },
   { type: 'HS_ZINE',      label: 'Zine (Cut & Paste)',     bg: '#f2ecd9' },
-  { type: 'MS_ARCADE',     label: 'Arcade (Quest Log) — MS',     bg: '#0d0d1a' },
-  { type: 'MS_ATLAS',      label: 'Atlas (Subway Map) — MS',     bg: '#f4ecd8' },
-  { type: 'MS_FIELDNOTES', label: 'Field Notes (Journal) — MS',  bg: '#efe6d2' },
-  { type: 'MS_GREENHOUSE', label: 'Greenhouse (Herbarium) — MS', bg: '#f3ead4' },
-  { type: 'MS_HOMEROOM',   label: 'Homeroom (Bulletin) — MS',    bg: '#f6f3ec' },
-  { type: 'MS_PAPER',      label: 'Paper (Broadsheet) — MS',     bg: '#f7f1e3' },
-  { type: 'MS_PLAYLIST',   label: 'Playlist (Now Playing) — MS', bg: '#0f0f12' },
-  { type: 'MS_STUDIO',     label: 'Studio (On Air) — MS',        bg: '#1b1410' },
 ];
 
-export default function HsPreviewPage() {
-  const [zoom, setZoom] = useState<string | null>(null);
+const MS_TEMPLATES: Tile[] = [
+  { type: 'MS_ARCADE',     label: 'Arcade (Quest Log)',     bg: '#0d0d1a' },
+  { type: 'MS_ATLAS',      label: 'Atlas (Subway Map)',     bg: '#f4ecd8' },
+  { type: 'MS_FIELDNOTES', label: 'Field Notes (Journal)',  bg: '#efe6d2' },
+  { type: 'MS_GREENHOUSE', label: 'Greenhouse (Herbarium)', bg: '#f3ead4' },
+  { type: 'MS_HOMEROOM',   label: 'Homeroom (Bulletin)',    bg: '#f6f3ec' },
+  { type: 'MS_PAPER',      label: 'Paper (Broadsheet)',     bg: '#f7f1e3' },
+  { type: 'MS_PLAYLIST',   label: 'Playlist (Now Playing)', bg: '#0f0f12' },
+  { type: 'MS_STUDIO',     label: 'Studio (On Air)',        bg: '#1b1410' },
+];
 
+const ALL_TEMPLATES: Tile[] = [...HS_TEMPLATES, ...MS_TEMPLATES];
+
+function PackSection({ title, sub, accent, tiles, onZoom }: { title: string; sub: string; accent: string; tiles: Tile[]; onZoom: (t: string) => void }) {
   return (
-    <div style={{ minHeight: '100vh', background: '#0f172a', color: '#fff', padding: 32, fontFamily: 'Inter, system-ui, sans-serif' }}>
-      <h1 style={{ fontSize: 28, fontWeight: 800, margin: '0 0 8px' }}>HS Template Preview</h1>
-      <p style={{ color: '#94a3b8', margin: '0 0 24px', fontSize: 14 }}>
-        Verifying the HsStage 3-layer scale pattern across all 8 high-school lobby templates.
-        Each tile renders the FULL 4K scene scaled to fit the box. Click a tile to view full-screen.
-      </p>
-
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
-          gap: 20,
-        }}
-      >
-        {HS_TEMPLATES.map((t) => (
+    <section style={{ marginBottom: 40 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: 14, paddingBottom: 10, borderBottom: `2px solid ${accent}` }}>
+        <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: '#fff', letterSpacing: '-.01em' }}>{title}</h2>
+        <span style={{ fontSize: 13, color: '#94a3b8' }}>{sub}</span>
+        <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 600, color: accent, padding: '4px 10px', borderRadius: 999, background: 'rgba(255,255,255,.06)' }}>
+          {tiles.length} templates
+        </span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: 20 }}>
+        {tiles.map((t) => (
           <button
             key={t.type}
-            onClick={() => setZoom(t.type)}
+            onClick={() => onZoom(t.type)}
             style={{
               background: t.bg,
               border: '1px solid rgba(255,255,255,.08)',
@@ -98,6 +98,35 @@ export default function HsPreviewPage() {
           </button>
         ))}
       </div>
+    </section>
+  );
+}
+
+export default function HsPreviewPage() {
+  const [zoom, setZoom] = useState<string | null>(null);
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#0f172a', color: '#fff', padding: 32, fontFamily: 'Inter, system-ui, sans-serif' }}>
+      <h1 style={{ fontSize: 28, fontWeight: 800, margin: '0 0 8px' }}>EDU CMS · Template Preview Gallery</h1>
+      <p style={{ color: '#94a3b8', margin: '0 0 28px', fontSize: 14 }}>
+        Every productized lobby template, rendered full-scene at 16:9. Click any tile for the full-screen preview. The MS pack and HS pack are listed in separate sections below — they are independent design systems.
+      </p>
+
+      <PackSection
+        title="🎓 High School Pack"
+        sub="Athletic / editorial / technical aesthetic — tagged HIGH on /templates"
+        accent="#60a5fa"
+        tiles={HS_TEMPLATES}
+        onZoom={setZoom}
+      />
+
+      <PackSection
+        title="📚 Middle School Pack"
+        sub="Game-HUD / cartographic / journal aesthetic — tagged MIDDLE on /templates"
+        accent="#fbbf24"
+        tiles={MS_TEMPLATES}
+        onZoom={setZoom}
+      />
 
       {zoom && (
         <div
@@ -122,7 +151,7 @@ export default function HsPreviewPage() {
               position: 'relative',
               width: 'min(90vw, 1600px)',
               aspectRatio: '16 / 9',
-              background: HS_TEMPLATES.find((t) => t.type === zoom)?.bg ?? '#000',
+              background: ALL_TEMPLATES.find((t) => t.type === zoom)?.bg ?? '#000',
               boxShadow: '0 20px 80px rgba(0,0,0,.8)',
               overflow: 'hidden',
             }}
