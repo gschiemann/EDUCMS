@@ -422,6 +422,106 @@ Zero-budget roadmap underway (6 sprints planned):
 - Emergency system expansion (SOS button, broadcastable text, media)
 - Polish (UX, performance, mobile)
 
+**Sprint 1.5 — Submit-for-review workflow (CONTRIBUTOR → ADMIN approval)**
+
+Partner asked (2026-04-25):
+> "they should be able to add assets, customize templates, then
+> create and schedule the playlist but when they do that they get
+> to pick one or multiple users that get notified its ready to go,
+> then the admin go to the reviewer tab, review everything, update
+> anything needed, and then approve it and it gets published"
+
+Today's state: `Asset.status` already has `PENDING_APPROVAL` →
+`APPROVED`. Playlists/Schedules have no equivalent. CONTRIBUTOR
+role exists. No notification system. No "Reviewer" UI tab.
+
+What v1 needs (this is a Sprint 1.5 build, NOT v2):
+
+- **`Submission` Prisma model** — bundles a draft set of changes for
+  one review:
+  ```
+  Submission {
+    id           String  @id @default(uuid())
+    tenantId     String
+    submittedById String  // user who submitted
+    notifyUserIds String[] // who to ping (admin user ids)
+    status       String  // PENDING | APPROVED | REJECTED
+    note         String? // submitter's "what is this for"
+    reviewerNote String? // admin feedback on reject/approve
+    assetIds     String[] // assets in this submission
+    playlistIds  String[]
+    scheduleIds  String[]
+    createdAt    DateTime
+    decidedAt    DateTime?
+    decidedById  String?
+  }
+  ```
+  Asset / Playlist / Schedule each grow an optional
+  `submissionId String?` reverse pointer for "what submission is
+  this part of."
+
+- **API endpoints** (all tenant-scoped, RBAC-checked):
+    - `POST /submissions` — CONTRIBUTOR role; creates a submission
+      bundling references to draft assets/playlists/schedules they
+      already created. Body includes `notifyUserIds` (must all be
+      DISTRICT_ADMIN or SCHOOL_ADMIN in the same tenant).
+    - `GET /submissions?status=PENDING` — DISTRICT_ADMIN /
+      SCHOOL_ADMIN; lists submissions targeting them.
+    - `GET /submissions/:id` — full payload with embedded
+      assets/playlists/schedules so the reviewer sees the full
+      context in one screen.
+    - `POST /submissions/:id/approve` — DISTRICT_ADMIN /
+      SCHOOL_ADMIN; flips Asset.status PENDING_APPROVAL→APPROVED,
+      Schedule.isActive false→true (if asked), playlist publish
+      flag if relevant. Writes immutable AuditLog entry.
+    - `POST /submissions/:id/reject` — same actors; writes
+      reviewerNote. CONTRIBUTOR sees the rejection on their
+      dashboard with the feedback inline.
+
+- **Notification delivery (Phase 2 of this sprint, ship-after-MVP):**
+    - In-app: Notification table + UnreadBadge on the toolbar bell
+      icon (already-modeled `Notification` row exists; just need to
+      wire the trigger).
+    - Email: a `pendingReviewSubmissions` daily-digest cron is
+      enough for v1. Real-time email is a Phase-3 polish.
+
+- **UI surface:**
+    - On Playlists page: a "Submit for review" button next to
+      Save. Opens a small modal: "Notify whom?" (multi-select of
+      admins in the tenant) + free-text note. Hits `POST /submissions`.
+    - New `/[schoolId]/reviews` page (tab in the dashboard nav for
+      DISTRICT_ADMIN / SCHOOL_ADMIN only): list of pending
+      submissions with submitter, date, # of items in the
+      submission. Click to drill in: full preview of each asset /
+      playlist with the existing in-product editors inline.
+      Approve / Reject buttons + a textarea for reviewerNote.
+    - On the CONTRIBUTOR dashboard: a "My submissions" widget
+      showing PENDING / REJECTED with admin feedback.
+
+- **RBAC:**
+    - CONTRIBUTOR can submit + view own submissions
+    - DISTRICT_ADMIN / SCHOOL_ADMIN can list, approve, reject
+    - SUPER_ADMIN can do everything across tenants
+
+- **Why Sprint 1.5 (between Sprint 1 and 2-6):** the partner's
+  pilot tenant has CONTRIBUTOR users who are already creating
+  content but cannot publish without admin approval. Today they're
+  emailing the admin asking "can you approve my asset?" — that's
+  brittle and doesn't scale. Sprint 1.5 closes that workflow gap.
+  Sized at ~1 week of focused work for the MVP (without
+  notifications); ~2 weeks with email + in-app delivery.
+
+- **Schema migration is purely additive** (new table + 3 nullable
+  columns on existing tables) so it's safe to ship to the live
+  pilot tenant without risk of data loss. Per memory:
+  "additive only" — and the new optional pointers don't change
+  existing query patterns.
+
+- **NOT in scope for Sprint 1.5:** version-control of in-flight
+  edits (the "submission" is a snapshot in time; mid-flight edits
+  to the same asset land directly in the live row). That's a
+  Sprint 9-ish polish.
+
 **Sprint 8 — Screen management at scale (map view + fleet ops)**
 
 Once a customer has 100+ screens across multiple buildings or
