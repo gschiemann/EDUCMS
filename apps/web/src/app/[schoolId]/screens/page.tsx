@@ -162,12 +162,20 @@ function ScreenSettingsMenu({
   const timedOut = pushed && !updatedSincePush && pushedMsAgo >= 90_000;
 
   const menu = (
+    // Plain positioned div, not role="menu". Using the WAI menu role
+    // requires roving tabindex + arrow-key navigation + proper
+    // menuitem children — this popover is just a set of buttons
+    // under a heading, not a full keyboard menu. Keeping it as a
+    // visual dropdown avoids hollow a11y affordances (and jsx-a11y's
+    // "menu role without focus/keyboard" error that baseline+13'd
+    // this file). No onClick here either; the outside-click listener
+    // in the useEffect above handles dismissal, and click events on
+    // the inner buttons don't need to stop bubbling through the
+    // portal boundary.
     <div
       ref={menuRef}
-      role="menu"
       className="fixed w-64 rounded-xl bg-white border border-slate-200 shadow-[0_12px_32px_rgba(15,23,42,0.18)] overflow-hidden z-[9999]"
       style={anchor ? { top: anchor.top, right: anchor.right } : { top: -9999, right: 0 }}
-      onClick={(e) => e.stopPropagation()}
     >
           {/* Menu — action rows only, no chunky header. The old
               header repeated the screen name + version that's
@@ -246,7 +254,7 @@ function ScreenSettingsMenu({
         ref={buttonRef}
         onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
         title="Screen settings"
-        aria-haspopup="menu"
+        aria-haspopup="true"
         aria-expanded={open}
         className="p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-slate-800 hover:border-slate-300 hover:bg-slate-50 transition-all shadow-sm"
       >
