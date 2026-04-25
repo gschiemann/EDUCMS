@@ -1387,36 +1387,39 @@ const CSS = `
    on top, scrolling ticker below). Cassettes (.ms-st-segments
    top:1260, height:550 → ends 1810) get a 50px clear gap above
    the footer instead of being crowded by two stacked bars. */
+/* The footer is ONE visual bar (single border + radius + shadow on
+   the outer container). The inner slate / VFD / ticker zones are
+   inline color blocks, not separate cards — they lost their own
+   borders / radii / shadows so the whole footer reads as a single
+   element instead of three stacked. Partner explicitly asked for
+   this twice. */
 .ms-st-footer {
-  /* Sits 20px below the lineup (lineup ends at 1980), 10px above the
-     stage bottom (2160). Total height 170. Compact two-row layout
-     so the cassette lineup above can render at full height. */
   position: absolute; top: 2000px; left: 64px; right: 64px; height: 150px;
-  display: flex; flex-direction: column; gap: 8px;
+  display: flex; flex-direction: column;
+  background: #14110e;
+  border: 4px solid #0a0608;
+  border-radius: 8px;
+  box-shadow: 0 12px 30px rgba(0,0,0,.6);
+  overflow: hidden;
   z-index: 3;
 }
 .ms-st-footer-top {
-  display: grid; grid-template-columns: 1.7fr 1fr; gap: 16px;
+  display: grid; grid-template-columns: 1.7fr 1fr;
   flex: 1 1 auto; min-height: 0;
+  border-bottom: 2px solid #0a0608;
 }
 
-/* Newscast slate (amber) — compressed for the new combined footer
-   bar. Sizes are about half what they were in the original
-   standalone bar; together with the cyan VFD they fit in a 75px
-   tall row above the ticker. */
+/* Newscast slate — inline amber zone inside the unified footer.
+   No separate border / radius / shadow — the outer .ms-st-footer
+   owns the chrome. Just an amber background block. */
 .ms-st-slate {
   position: relative;
   background: linear-gradient(180deg, #f4b942 0%, #c8901c 100%);
-  border: 4px solid #1a0e08;
-  border-radius: 6px;
-  box-shadow:
-    inset 0 4px 10px rgba(255,235,180,.4),
-    inset 0 -6px 12px rgba(0,0,0,.35),
-    0 8px 18px rgba(244,185,66,.32);
   padding: 12px 20px;
   display: grid; grid-template-columns: auto 1fr auto; gap: 22px; align-items: center;
   color: #1a0e08;
   overflow: hidden;
+  border-right: 2px solid #0a0608;
 }
 .ms-st-slate::before {
   /* yellow caution stripes */
@@ -1458,17 +1461,11 @@ const CSS = `
   margin-top: 3px;
 }
 
-/* Attendance / call-letters readout (cyan VFD) — also compressed
-   to ride alongside the slate inside the new 75px-tall row. */
+/* Attendance / call-letters readout — inline cyan zone inside the
+   unified footer. No separate border / radius / shadow. */
 .ms-st-vfd {
   position: relative;
   background: linear-gradient(180deg, #08161c 0%, #020a0e 100%);
-  border: 4px solid #0a3038;
-  border-radius: 6px;
-  box-shadow:
-    inset 0 4px 14px rgba(77,208,225,.10),
-    inset 0 -8px 20px rgba(0,0,0,.65),
-    0 8px 18px rgba(77,208,225,.18);
   padding: 10px 18px;
   display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center;
   overflow: hidden;
@@ -1498,19 +1495,13 @@ const CSS = `
     0 0 36px rgba(77,208,225,.45);
 }
 
-/* ─── TICKER — brushed-aluminum NOW PLAYING strip ──────────
-   Now lives inside .ms-st-footer as a flex child (no longer
-   absolute-positioned at the stage bottom). Height fixed; the
-   announcement+vfd row above grows to fill the rest. */
+/* Ticker — inline strip inside the unified footer. No own border,
+   radius, or outer shadow. The .ms-st-footer-top above has a
+   bottom-divider so the visual seam between the slate+VFD row and
+   the ticker is just one inner line, not a card-card gap. */
 .ms-st-ticker {
   position: relative; height: 56px;
   background: linear-gradient(180deg, #2a2520 0%, #14110e 100%);
-  border: 4px solid #0a0608;
-  border-radius: 6px;
-  box-shadow:
-    inset 0 6px 12px rgba(255,235,180,.10),
-    inset 0 -8px 18px rgba(0,0,0,.6),
-    0 8px 24px rgba(0,0,0,.55);
   display: grid; grid-template-columns: auto 1fr auto;
   overflow: hidden;
   flex: 0 0 auto;

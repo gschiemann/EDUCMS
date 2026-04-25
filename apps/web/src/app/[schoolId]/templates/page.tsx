@@ -697,7 +697,26 @@ function GalleryCard({ template, onUse, onUsePortrait, onEdit, onDuplicate, onDe
           tracks independently. CSS gradients are valid `background-image`
           values, so a `bgGradient` from the DB lives in the same slot
           as a `bgImage`. */}
-      <div className="relative bg-gradient-to-br from-slate-50 to-slate-100 p-4 flex items-center justify-center" style={{ height: 200 }}>
+      {/* Whole preview area is now a click target for the fullscreen
+          modal — partner asked to be able to click anywhere on the
+          thumbnail, not hunt for the small "Preview" chip. The chip
+          stays visible on hover as an affordance + keyboard target,
+          but the entire surface dispatches the same onPreview. */}
+      <div
+        className={`relative bg-gradient-to-br from-slate-50 to-slate-100 p-4 flex items-center justify-center ${onPreview ? 'cursor-pointer' : ''}`}
+        style={{ height: 200 }}
+        onClick={onPreview}
+        onKeyDown={(e) => {
+          if (!onPreview) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onPreview();
+          }
+        }}
+        role={onPreview ? 'button' : undefined}
+        tabIndex={onPreview ? 0 : undefined}
+        aria-label={onPreview ? `Preview ${template.name}` : undefined}
+      >
         {/*
           Proper thumbnail rendering: render the template at its NATURAL
           resolution (e.g. 1920×1080) into a scaled-down container. The
@@ -716,26 +735,26 @@ function GalleryCard({ template, onUse, onUsePortrait, onEdit, onDuplicate, onDe
         />
 
         {template.isSystem && (
-          <div className="absolute top-3 right-3 bg-gradient-to-r from-indigo-500 to-violet-500 text-white text-[9px] font-bold px-2.5 py-1 rounded-full shadow-sm">
+          <div className="absolute top-3 right-3 bg-gradient-to-r from-indigo-500 to-violet-500 text-white text-[9px] font-bold px-2.5 py-1 rounded-full shadow-sm pointer-events-none">
             PRESET
           </div>
         )}
 
         {/* Hover overlay */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors rounded-t-2xl pointer-events-none" />
-        {/* Fullscreen Preview — pops a modal that renders the template
-            at max viewport size with all widgets live (clock ticking,
-            real weather, etc.). Discoverable on hover; always-available
-            keyboard target for accessibility. */}
+
+        {/* Visible "Preview" affordance on hover. Doesn't actually need
+            to handle the click anymore — the whole tile does — but
+            the chip is what tells the operator the thumbnail is
+            interactive, and it acts as a keyboard-focus target on its
+            own (Enter on the parent also works via onKeyDown above). */}
         {onPreview && (
-          <button
-            type="button"
-            onClick={onPreview}
-            className="absolute bottom-3 left-3 px-2.5 py-1 bg-slate-900/80 hover:bg-slate-900 text-white text-[10px] font-bold rounded-full flex items-center gap-1 backdrop-blur-sm opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity shadow-lg"
-            title="Fullscreen preview"
+          <span
+            className="absolute bottom-3 left-3 px-2.5 py-1 bg-slate-900/80 text-white text-[10px] font-bold rounded-full flex items-center gap-1 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity shadow-lg pointer-events-none"
+            aria-hidden="true"
           >
             <Eye className="w-3 h-3" /> Preview
-          </button>
+          </span>
         )}
       </div>
 
