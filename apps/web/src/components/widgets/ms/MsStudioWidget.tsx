@@ -550,63 +550,67 @@ export function MsStudioWidget({ config }: { config?: MsStudioConfig }) {
         </div>
       </section>
 
-      {/* ─── LOWER — slate + frequency display ────────────── */}
-      <section className="ms-st-lower">
-        <div className="ms-st-slate" data-widget="announcement">
-          <span className="ms-st-slate-tag">
-            <span data-field="announcement.tag">{pick(cfg, 'announcement.tag')}</span>
-          </span>
-          <span className="ms-st-slate-msg" data-field="announcement.message">
-            {pick(cfg, 'announcement.message')}
-          </span>
-          <span className="ms-st-slate-when">
-            <span data-field="announcement.when_eye">{pick(cfg, 'announcement.when_eye')}</span>
-            <span data-field="announcement.when">{pick(cfg, 'announcement.when')}</span>
-          </span>
-        </div>
+      {/* ─── FOOTER — single combined bottom bar (announcement +
+            attendance + ticker). Replaces the old 2-bar stack
+            (.ms-st-lower + .ms-st-ticker) that was overlapping the
+            cassette reels. */}
+      <section className="ms-st-footer">
+        <div className="ms-st-footer-top">
+          <div className="ms-st-slate" data-widget="announcement">
+            <span className="ms-st-slate-tag">
+              <span data-field="announcement.tag">{pick(cfg, 'announcement.tag')}</span>
+            </span>
+            <span className="ms-st-slate-msg" data-field="announcement.message">
+              {pick(cfg, 'announcement.message')}
+            </span>
+            <span className="ms-st-slate-when">
+              <span data-field="announcement.when_eye">{pick(cfg, 'announcement.when_eye')}</span>
+              <span data-field="announcement.when">{pick(cfg, 'announcement.when')}</span>
+            </span>
+          </div>
 
-        <div className="ms-st-vfd" data-widget="big">
-          <div className="ms-st-vfd-info">
-            <div className="ms-st-vfd-k" data-field="big.label">
-              {pick(cfg, 'big.label')}
+          <div className="ms-st-vfd" data-widget="big">
+            <div className="ms-st-vfd-info">
+              <div className="ms-st-vfd-k" data-field="big.label">
+                {pick(cfg, 'big.label')}
+              </div>
+              <div className="ms-st-vfd-s" data-field="big.sub">
+                {pick(cfg, 'big.sub')}
+              </div>
             </div>
-            <div className="ms-st-vfd-s" data-field="big.sub">
-              {pick(cfg, 'big.sub')}
+            <div className="ms-st-vfd-v" data-field="big.value">
+              {pick(cfg, 'big.value')}
             </div>
           </div>
-          <div className="ms-st-vfd-v" data-field="big.value">
-            {pick(cfg, 'big.value')}
+        </div>
+
+        <div className="ms-st-ticker" data-widget="ticker">
+          <div className="ms-st-ticker-badge" data-field="ticker.tag">
+            {pick(cfg, 'ticker.tag')}
+          </div>
+          <div className="ms-st-ticker-feed">
+            <div className="ms-st-ticker-feed-inner">
+              <span data-field="ticker.m0">{pick(cfg, 'ticker.m0')}</span>
+              <span data-field="ticker.m1">{pick(cfg, 'ticker.m1')}</span>
+              <span data-field="ticker.m2">{pick(cfg, 'ticker.m2')}</span>
+              <span data-field="ticker.m3">{pick(cfg, 'ticker.m3')}</span>
+              <span data-field="ticker.m4">{pick(cfg, 'ticker.m4')}</span>
+              <span data-field="ticker.m5">{pick(cfg, 'ticker.m5')}</span>
+              <span data-field="ticker.m6">{pick(cfg, 'ticker.m6')}</span>
+              <span aria-hidden="true">{pick(cfg, 'ticker.m0')}</span>
+              <span aria-hidden="true">{pick(cfg, 'ticker.m1')}</span>
+              <span aria-hidden="true">{pick(cfg, 'ticker.m2')}</span>
+              <span aria-hidden="true">{pick(cfg, 'ticker.m3')}</span>
+              <span aria-hidden="true">{pick(cfg, 'ticker.m4')}</span>
+              <span aria-hidden="true">{pick(cfg, 'ticker.m5')}</span>
+              <span aria-hidden="true">{pick(cfg, 'ticker.m6')}</span>
+            </div>
+          </div>
+          <div className="ms-st-ticker-end" data-field="ticker.callsign">
+            {pick(cfg, 'ticker.callsign')}
           </div>
         </div>
       </section>
-
-      {/* ─── TICKER — brushed-aluminum NOW PLAYING ──────────── */}
-      <div className="ms-st-ticker" data-widget="ticker">
-        <div className="ms-st-ticker-badge" data-field="ticker.tag">
-          {pick(cfg, 'ticker.tag')}
-        </div>
-        <div className="ms-st-ticker-feed">
-          <div className="ms-st-ticker-feed-inner">
-            <span data-field="ticker.m0">{pick(cfg, 'ticker.m0')}</span>
-            <span data-field="ticker.m1">{pick(cfg, 'ticker.m1')}</span>
-            <span data-field="ticker.m2">{pick(cfg, 'ticker.m2')}</span>
-            <span data-field="ticker.m3">{pick(cfg, 'ticker.m3')}</span>
-            <span data-field="ticker.m4">{pick(cfg, 'ticker.m4')}</span>
-            <span data-field="ticker.m5">{pick(cfg, 'ticker.m5')}</span>
-            <span data-field="ticker.m6">{pick(cfg, 'ticker.m6')}</span>
-            <span aria-hidden="true">{pick(cfg, 'ticker.m0')}</span>
-            <span aria-hidden="true">{pick(cfg, 'ticker.m1')}</span>
-            <span aria-hidden="true">{pick(cfg, 'ticker.m2')}</span>
-            <span aria-hidden="true">{pick(cfg, 'ticker.m3')}</span>
-            <span aria-hidden="true">{pick(cfg, 'ticker.m4')}</span>
-            <span aria-hidden="true">{pick(cfg, 'ticker.m5')}</span>
-            <span aria-hidden="true">{pick(cfg, 'ticker.m6')}</span>
-          </div>
-        </div>
-        <div className="ms-st-ticker-end" data-field="ticker.callsign">
-          {pick(cfg, 'ticker.callsign')}
-        </div>
-      </div>
     </HsStage>
   );
 }
@@ -619,7 +623,7 @@ const CSS = `
 .ms-st-hero-row, .ms-st-poster, .ms-st-rack, .ms-st-turntable,
 .ms-st-control-row, .ms-st-vu, .ms-st-mixer, .ms-st-strip, .ms-st-fader,
 .ms-st-lineup, .ms-st-tapes, .ms-st-tape, .ms-st-tape-lbl, .ms-st-hubs,
-.ms-st-lower, .ms-st-slate, .ms-st-vfd, .ms-st-ticker, .ms-st-cues,
+.ms-st-footer, .ms-st-footer-top, .ms-st-slate, .ms-st-vfd, .ms-st-ticker, .ms-st-cues,
 .ms-st-cue, .ms-st-ribbon, .ms-st-platter-wrap, .ms-st-vu-face,
 .ms-st-strips {
   box-sizing: border-box;
@@ -1200,8 +1204,14 @@ const CSS = `
 }
 
 /* ─── LINEUP — 4 cassette tape cards ─────────────────────── */
+/* v2: grew height 550 → 720 because the .ms-st-tape aspect-ratio
+   (5/3.05) renders ~555px tall after the column width math, and
+   the old 550 container was clipping the tape reels at the bottom.
+   Combined with the footer shrink to 170px, total still fits in
+   the 2160 stage (1260 + 720 + 20 + 170 = 2170 minus the 10px
+   bottom gap = 2160). */
 .ms-st-lineup {
-  position: absolute; top: 1260px; left: 64px; right: 64px; height: 550px;
+  position: absolute; top: 1260px; left: 64px; right: 64px; height: 720px;
   background: linear-gradient(180deg, #1a1318 0%, #0d090d 100%);
   border: 5px solid #2a1f24;
   border-radius: 12px;
@@ -1369,80 +1379,98 @@ const CSS = `
 .ms-st-tape.ms-st-done .ms-st-stamp { background: #8d8a85; }
 .ms-st-tape.ms-st-done .ms-st-hub::before { animation: none; opacity: .35; }
 
-/* ─── LOWER ROW ──────────────────────────────────────────── */
-.ms-st-lower {
-  position: absolute; top: 1830px; left: 64px; right: 64px; height: 200px;
-  display: grid; grid-template-columns: 1.7fr 1fr; gap: 24px;
+/* ─── COMBINED FOOTER BAR ────────────────────────────────────
+   Replaces the v1 split (.ms-st-lower at 1830 + .ms-st-ticker
+   at bottom 10) which was perceived by the partner as two bars
+   overlapping the cassette reels. New layout: ONE container at
+   the bottom, two stacked rows inside (announcement + attendance
+   on top, scrolling ticker below). Cassettes (.ms-st-segments
+   top:1260, height:550 → ends 1810) get a 50px clear gap above
+   the footer instead of being crowded by two stacked bars. */
+.ms-st-footer {
+  /* Sits 20px below the lineup (lineup ends at 1980), 10px above the
+     stage bottom (2160). Total height 170. Compact two-row layout
+     so the cassette lineup above can render at full height. */
+  position: absolute; top: 2000px; left: 64px; right: 64px; height: 150px;
+  display: flex; flex-direction: column; gap: 8px;
   z-index: 3;
 }
+.ms-st-footer-top {
+  display: grid; grid-template-columns: 1.7fr 1fr; gap: 16px;
+  flex: 1 1 auto; min-height: 0;
+}
 
-/* Newscast slate (amber) */
+/* Newscast slate (amber) — compressed for the new combined footer
+   bar. Sizes are about half what they were in the original
+   standalone bar; together with the cyan VFD they fit in a 75px
+   tall row above the ticker. */
 .ms-st-slate {
   position: relative;
   background: linear-gradient(180deg, #f4b942 0%, #c8901c 100%);
-  border: 5px solid #1a0e08;
-  border-radius: 8px;
+  border: 4px solid #1a0e08;
+  border-radius: 6px;
   box-shadow:
-    inset 0 6px 14px rgba(255,235,180,.4),
-    inset 0 -8px 18px rgba(0,0,0,.35),
-    0 12px 30px rgba(244,185,66,.35);
-  padding: 22px 32px;
-  display: grid; grid-template-columns: auto 1fr auto; gap: 32px; align-items: center;
+    inset 0 4px 10px rgba(255,235,180,.4),
+    inset 0 -6px 12px rgba(0,0,0,.35),
+    0 8px 18px rgba(244,185,66,.32);
+  padding: 12px 20px;
+  display: grid; grid-template-columns: auto 1fr auto; gap: 22px; align-items: center;
   color: #1a0e08;
   overflow: hidden;
 }
 .ms-st-slate::before {
   /* yellow caution stripes */
   content: ''; position: absolute; inset: 0;
-  background: repeating-linear-gradient(135deg, transparent 0 56px, rgba(0,0,0,.08) 56px 64px);
+  background: repeating-linear-gradient(135deg, transparent 0 40px, rgba(0,0,0,.08) 40px 46px);
   pointer-events: none;
 }
 .ms-st-slate-tag {
   background: #1a0e08; color: #f4b942;
-  padding: 14px 22px;
-  font-family: 'Anton', sans-serif; font-size: 40px; letter-spacing: .14em;
+  padding: 8px 14px;
+  font-family: 'Anton', sans-serif; font-size: 24px; letter-spacing: .14em;
   text-transform: uppercase;
-  border: 3px solid #1a0e08;
-  box-shadow: 6px 6px 0 rgba(0,0,0,.4);
+  border: 2px solid #1a0e08;
+  box-shadow: 4px 4px 0 rgba(0,0,0,.4);
   position: relative; z-index: 1;
-  display: inline-flex; align-items: center; gap: 16px;
+  display: inline-flex; align-items: center; gap: 10px;
 }
 .ms-st-slate-tag::before {
-  content: ''; width: 16px; height: 16px; border-radius: 50%; background: #e63946;
-  box-shadow: 0 0 16px #e63946;
+  content: ''; width: 11px; height: 11px; border-radius: 50%; background: #e63946;
+  box-shadow: 0 0 12px #e63946;
   animation: msStPulse 1.4s ease-in-out infinite;
 }
 .ms-st-slate-msg {
   font-family: 'Archivo', sans-serif; font-weight: 800;
-  font-size: 42px; line-height: 1.1; letter-spacing: -.005em;
+  font-size: 26px; line-height: 1.15; letter-spacing: -.005em;
   position: relative; z-index: 1;
 }
 .ms-st-slate-when {
-  font-family: 'Anton', sans-serif; font-size: 56px; letter-spacing: .04em;
+  font-family: 'Anton', sans-serif; font-size: 32px; letter-spacing: .04em;
   text-transform: uppercase; line-height: 1;
   text-align: right; white-space: nowrap;
-  border-left: 4px solid #1a0e08; padding-left: 24px;
+  border-left: 3px solid #1a0e08; padding-left: 16px;
   position: relative; z-index: 1;
 }
 .ms-st-slate-when span {
   display: block;
-  font-family: 'DM Mono', monospace; font-size: 22px; font-weight: 700;
+  font-family: 'DM Mono', monospace; font-size: 14px; font-weight: 700;
   letter-spacing: .18em; text-transform: uppercase; opacity: .7;
-  margin-top: 4px;
+  margin-top: 3px;
 }
 
-/* Attendance / call-letters readout (cyan VFD) */
+/* Attendance / call-letters readout (cyan VFD) — also compressed
+   to ride alongside the slate inside the new 75px-tall row. */
 .ms-st-vfd {
   position: relative;
   background: linear-gradient(180deg, #08161c 0%, #020a0e 100%);
-  border: 5px solid #0a3038;
-  border-radius: 8px;
+  border: 4px solid #0a3038;
+  border-radius: 6px;
   box-shadow:
-    inset 0 6px 18px rgba(77,208,225,.10),
-    inset 0 -10px 26px rgba(0,0,0,.65),
-    0 12px 30px rgba(77,208,225,.20);
-  padding: 18px 28px;
-  display: grid; grid-template-columns: 1fr auto; gap: 22px; align-items: center;
+    inset 0 4px 14px rgba(77,208,225,.10),
+    inset 0 -8px 20px rgba(0,0,0,.65),
+    0 8px 18px rgba(77,208,225,.18);
+  padding: 10px 18px;
+  display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center;
   overflow: hidden;
 }
 .ms-st-vfd::before {
@@ -1451,28 +1479,31 @@ const CSS = `
   background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(77,208,225,.04) 3px 4px);
   pointer-events: none;
 }
-.ms-st-vfd-info { position: relative; z-index: 1; }
+.ms-st-vfd-info { position: relative; z-index: 1; min-width: 0; }
 .ms-st-vfd-k {
-  font-family: 'DM Mono', monospace; font-size: 22px; font-weight: 700;
+  font-family: 'DM Mono', monospace; font-size: 13px; font-weight: 700;
   letter-spacing: .26em; text-transform: uppercase; color: #4dd0e1;
-  text-shadow: 0 0 14px rgba(77,208,225,.6);
+  text-shadow: 0 0 10px rgba(77,208,225,.6);
 }
 .ms-st-vfd-s {
-  font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 28px;
-  color: rgba(77,208,225,.6); margin-top: 8px;
+  font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 14px;
+  color: rgba(77,208,225,.6); margin-top: 4px;
 }
 .ms-st-vfd-v {
   position: relative; z-index: 1;
-  font-family: 'Anton', sans-serif; font-size: 152px; line-height: .9;
+  font-family: 'Anton', sans-serif; font-size: 56px; line-height: .9;
   color: #4dd0e1; letter-spacing: -.005em;
   text-shadow:
-    0 0 20px rgba(77,208,225,.7),
-    0 0 60px rgba(77,208,225,.45);
+    0 0 14px rgba(77,208,225,.7),
+    0 0 36px rgba(77,208,225,.45);
 }
 
-/* ─── TICKER — brushed-aluminum NOW PLAYING bar ──────────── */
+/* ─── TICKER — brushed-aluminum NOW PLAYING strip ──────────
+   Now lives inside .ms-st-footer as a flex child (no longer
+   absolute-positioned at the stage bottom). Height fixed; the
+   announcement+vfd row above grows to fill the rest. */
 .ms-st-ticker {
-  position: absolute; bottom: 10px; left: 64px; right: 64px; height: 100px;
+  position: relative; height: 56px;
   background: linear-gradient(180deg, #2a2520 0%, #14110e 100%);
   border: 4px solid #0a0608;
   border-radius: 6px;
@@ -1482,7 +1513,7 @@ const CSS = `
     0 8px 24px rgba(0,0,0,.55);
   display: grid; grid-template-columns: auto 1fr auto;
   overflow: hidden;
-  z-index: 4;
+  flex: 0 0 auto;
 }
 .ms-st-ticker::before {
   /* brushed-aluminum streaks */
