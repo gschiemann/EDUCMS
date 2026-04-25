@@ -1,0 +1,1052 @@
+<!--
+  MS TEMPLATE · PAPER · v2 — FULL REDESIGN
+  =========================================
+  v1 review (carry-over from atlas): "text is tiny shit, dont fit
+  right anywhere, needs a full overhaul, make it look good, be
+  creative." Ditto for paper. The original was a magazine spread
+  with a 460px hero and a kind-of-cute mascot, but every supporting
+  piece (rotation strip, club cards, shoutouts) sat at 20–30px
+  body type and read as filler at hallway distance.
+
+  v2 commits hard to a single metaphor: a VINTAGE BROADSHEET
+  NEWSPAPER. Wall Street Journal / NYT typography rules:
+    • Didone serif masthead (Playfair Display, italic 900)
+    • Slab serif department rules (DM Serif Display)
+    • Body serif (Source Serif) with a 4-line drop cap
+    • Mono caption font (DM Mono) for bylines, vol/no, dateline
+    • TWO inks only: ink black (#0e0e10) on cream newsprint
+      (#f3ebd6), with a SINGLE editorial red (#c8201e) — the
+      classic broadsheet "front page red" accent.
+    • Multi-column body rules, ornamental Greek meander beneath
+      the masthead, double-rule between sections, real halftone
+      dot pattern for photos, "Vol. CXLII · No. 138" indicia.
+
+  Layout — 3840×2160, every gap 20px, inset 64px sides:
+    MASTHEAD            y  56–360    h 304   weather + nameplate + edition
+    INDICIA STRIP       y 380–420    h  40   vol/no · date · index
+    LEAD STORY +        y 440–1400   h 960   above-the-fold + sidebar TOC
+      INDEX SIDEBAR
+    DEPARTMENTS         y 1420–1980  h 560   dining · after 3 · seen today
+    BULLETIN TICKER     y 2000–2140  h 140   "stop press" scrolling
+
+  No panel overlaps. Every width box-sized so paddings stay inside.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Paper — MS Lobby 4K (v2)</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,900&family=DM+Serif+Display:ital@0;1&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400;1,8..60,500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* 3-layer scale wrapper — same pattern as arcade-ms-v2 / atlas-ms-v2 */
+  *, *::before, *::after { box-sizing: border-box; }
+  :root { --stage-w: 3840px; --stage-h: 2160px; --stage-scale: 1; }
+  html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; background:#000; }
+  .viewport { position:fixed; inset:0; display:grid; place-items:center; overflow:hidden; }
+  .stage-outer { width:calc(var(--stage-w)*var(--stage-scale)); height:calc(var(--stage-h)*var(--stage-scale)); }
+  .stage { width:var(--stage-w); height:var(--stage-h); transform:scale(var(--stage-scale)); transform-origin:0 0; position:relative; box-shadow:0 80px 200px rgba(0,0,0,.55); overflow:hidden; }
+
+  :root {
+    /* Newsprint palette — only THREE inks, like a real broadsheet. */
+    --paper:        #f3ebd6;    /* warm newsprint cream */
+    --paper-2:      #ebe1c4;    /* shaded fold */
+    --paper-3:      #e2d6b1;    /* deeper bin tone */
+    --ink:          #0e0e10;    /* primary ink, near black */
+    --ink-2:        #2a2a30;    /* light ink for secondary */
+    --ink-3:        #5a5a62;    /* faded ink for byline */
+    --rule:         #1a1a1c;    /* heavy rule */
+    --red:          #c8201e;    /* editorial red — front-page only */
+    --red-deep:     #8d1614;    /* aged red */
+  }
+  html, body { color: var(--ink); font-family:'Source Serif 4', Georgia, serif; }
+
+  /* Newsprint background with subtle paper grain + random fiber speckle */
+  .stage {
+    background: var(--paper);
+    background-image:
+      /* fine paper fibers */
+      radial-gradient(rgba(120, 90, 50, .07) 1px, transparent 1.5px),
+      radial-gradient(rgba(120, 90, 50, .04) 1px, transparent 1.5px),
+      /* warm ivory tint top-left + cool pulp shadow bottom-right */
+      radial-gradient(ellipse 1800px 1100px at 0% 0%, rgba(232, 196, 120, .18), transparent 70%),
+      radial-gradient(ellipse 1700px 1000px at 100% 100%, rgba(120, 90, 50, .12), transparent 70%);
+    background-size: 8px 8px, 17px 17px, auto, auto;
+    background-position: 0 0, 6px 4px, 0 0, 0 0;
+  }
+  /* Faint horizontal fold line + edge vignette for "real paper" */
+  .stage::before {
+    content:''; position:absolute; inset:0; pointer-events:none; z-index:0;
+    background:
+      linear-gradient(to bottom, transparent 50%, rgba(0,0,0,.05) 50%, rgba(0,0,0,.05) 50.1%, transparent 50.2%),
+      radial-gradient(ellipse at center, transparent 60%, rgba(60, 40, 20, .12) 100%);
+  }
+
+  /* ──────────────────────────────────────────────────────────────
+     MASTHEAD                          y 56–360,  inset 64
+     left: weather/temp indicia tile cluster (3 small tiles)
+     center: "The Otter Daily" — italic 900 Playfair
+     right: edition + live pulse
+     ────────────────────────────────────────────────────────────── */
+  .mast {
+    position:absolute; top: 56px; left: 64px; right: 64px; height: 304px;
+    display:grid; grid-template-columns: 660px 1fr 660px; column-gap: 40px;
+    align-items: center; z-index: 2;
+  }
+
+  /* LEFT — weather index column */
+  .mast .lefttiles {
+    display:grid; grid-template-columns: 1fr 1fr; gap: 16px;
+    align-self: stretch; padding: 18px 0;
+  }
+  .mast .lefttiles .tile {
+    background: var(--paper-2);
+    border: 4px solid var(--ink);
+    padding: 18px 22px;
+    display:flex; flex-direction: column; gap: 8px;
+    box-shadow: 5px 5px 0 var(--ink);
+    position: relative;
+  }
+  .mast .lefttiles .tile.full { grid-column: 1 / -1; }
+  .mast .lefttiles .tile .k {
+    font-family:'DM Mono'; font-weight: 500; font-size: 22px;
+    letter-spacing: .26em; text-transform: uppercase; color: var(--ink-3);
+  }
+  .mast .lefttiles .tile .v {
+    font-family:'Playfair Display', serif; font-weight: 900;
+    font-size: 76px; line-height: .9; color: var(--ink);
+    letter-spacing: -.02em;
+    display:flex; align-items: baseline; gap: 10px;
+  }
+  .mast .lefttiles .tile.warm .v { color: var(--red); }
+  .mast .lefttiles .tile .v small {
+    font-family:'DM Mono'; font-weight: 500; font-size: 22px;
+    color: var(--ink-2); letter-spacing: .04em;
+  }
+  .mast .lefttiles .tile.full .v {
+    font-size: 60px;
+  }
+  .mast .lefttiles .tile.full .v .arrow {
+    color: var(--red); font-family:'Playfair Display', serif;
+    font-style: italic; font-weight: 900;
+  }
+
+  /* CENTER — the masthead title */
+  .mast .nameplate {
+    text-align: center;
+    display:flex; flex-direction: column; align-items: center;
+    justify-content: center; height: 100%;
+    position: relative;
+  }
+  .mast .nameplate .ribbon {
+    font-family:'DM Mono'; font-weight: 500; font-size: 26px;
+    letter-spacing: .42em; text-transform: uppercase; color: var(--ink-2);
+    padding: 10px 22px;
+    border-top: 3px double var(--ink);
+    border-bottom: 3px double var(--ink);
+    margin-bottom: 16px;
+  }
+  .mast .nameplate .title {
+    font-family:'Playfair Display', serif; font-style: italic;
+    font-weight: 900; font-size: 200px; line-height: .85;
+    color: var(--ink); letter-spacing: -.035em;
+    text-shadow: 2px 2px 0 rgba(0,0,0,.06);
+    white-space: nowrap;
+  }
+  .mast .nameplate .title .the {
+    font-style: italic; font-weight: 400;
+    font-size: 76px; vertical-align: 30px; margin-right: 12px;
+    letter-spacing: 0;
+  }
+  .mast .nameplate .title .accent {
+    color: var(--red);
+    text-decoration: underline;
+    text-decoration-thickness: 6px;
+    text-underline-offset: 12px;
+    text-decoration-color: var(--red);
+  }
+  .mast .nameplate .tagline {
+    font-family:'DM Mono'; font-weight: 500; font-size: 24px;
+    letter-spacing: .34em; text-transform: uppercase; color: var(--ink-3);
+    margin-top: 18px;
+  }
+
+  /* RIGHT — edition / live pulse stack */
+  .mast .editrail {
+    display:flex; flex-direction: column; align-items: flex-end;
+    justify-content: center; gap: 14px; align-self: stretch; padding: 18px 0;
+  }
+  .mast .editrail .stamp {
+    display:inline-flex; align-items:center; gap: 16px;
+    padding: 16px 28px;
+    background: var(--ink); color: var(--paper);
+    font-family:'DM Mono'; font-weight: 700; font-size: 28px;
+    letter-spacing: .26em; text-transform: uppercase;
+    transform: rotate(-2deg);
+    box-shadow: 6px 6px 0 var(--red);
+  }
+  .mast .editrail .stamp .dot {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--red); animation: pulse 1.4s ease-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(200,32,30,.85); }
+    60%     { box-shadow: 0 0 0 18px rgba(200,32,30,0); }
+  }
+  .mast .editrail .price {
+    font-family:'Playfair Display', serif; font-style: italic;
+    font-weight: 900; font-size: 92px; color: var(--ink);
+    line-height: .9; letter-spacing: -.02em;
+    border-top: 3px solid var(--ink);
+    border-bottom: 3px solid var(--ink);
+    padding: 6px 18px 0;
+  }
+  .mast .editrail .price small {
+    font-family:'DM Mono'; font-weight: 500; font-size: 22px;
+    letter-spacing: .24em; text-transform: uppercase; color: var(--ink-2);
+    display: block; margin-top: 4px; padding-bottom: 4px;
+  }
+  .mast .editrail .clock {
+    font-family:'DM Mono'; font-weight: 500; font-size: 28px;
+    letter-spacing: .14em; color: var(--ink-2);
+  }
+  .mast .editrail .clock b { font-weight: 700; color: var(--ink); }
+
+  /* ──────────────────────────────────────────────────────────────
+     DATELINE RULE + INDICIA STRIP    y 360–420
+     thick-thin double rule, then a 40px row of mono indicia text
+     ────────────────────────────────────────────────────────────── */
+  .rule {
+    position:absolute; left: 64px; right: 64px; top: 360px; height: 18px; z-index:2;
+    border-top: 6px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+  }
+  .indicia {
+    position:absolute; top: 380px; left: 64px; right: 64px; height: 40px;
+    display:grid; grid-template-columns: auto 1fr auto auto auto;
+    gap: 36px; align-items: center; z-index:2;
+    font-family:'DM Mono'; font-weight: 500; font-size: 24px;
+    color: var(--ink-2); letter-spacing: .12em;
+  }
+  .indicia .vol { font-weight: 700; color: var(--ink); letter-spacing: .18em; }
+  .indicia .vol em { color: var(--red); font-style: normal; font-weight: 700; }
+  .indicia .pipe { color: var(--ink-3); }
+  .indicia .red { color: var(--red); font-weight: 700; }
+  .indicia .date { font-weight: 500; }
+
+  /* ──────────────────────────────────────────────────────────────
+     UPPER CONTENT BAND               y 440–1400
+     2-up grid: 2480px lead story + 1192px sidebar index
+     gap 32px between
+     ────────────────────────────────────────────────────────────── */
+  .upper {
+    position:absolute; top: 440px; left: 64px; right: 64px; height: 960px;
+    display:grid; grid-template-columns: 2480px 1fr; gap: 32px;
+    z-index:2;
+  }
+
+  /* ── LEAD STORY (above-the-fold) ─────────────────────────── */
+  .lead {
+    position: relative; padding: 0; height: 100%;
+    display:flex; flex-direction: column;
+  }
+
+  .lead .deptline {
+    display:flex; align-items:center; gap: 22px; margin-bottom: 14px;
+  }
+  .lead .deptline .swatch {
+    width: 36px; height: 36px; background: var(--red);
+  }
+  .lead .deptline .label {
+    font-family:'DM Mono'; font-weight: 700; font-size: 30px;
+    letter-spacing: .32em; text-transform: uppercase; color: var(--red);
+  }
+  .lead .deptline .pipe {
+    flex: 1; height: 4px; background: var(--ink);
+  }
+  .lead .deptline .edition {
+    font-family:'DM Mono'; font-weight: 500; font-size: 26px;
+    letter-spacing: .22em; text-transform: uppercase; color: var(--ink-2);
+  }
+
+  .lead h1 {
+    font-family:'Playfair Display', serif; font-weight: 900;
+    font-size: 248px; line-height: .86;
+    color: var(--ink); margin: 8px 0 18px;
+    letter-spacing: -.035em;
+  }
+  .lead h1 em {
+    font-family:'Playfair Display', serif; font-style: italic;
+    font-weight: 900; color: var(--red); letter-spacing: -.025em;
+  }
+  .lead h1 .small {
+    font-style: italic; font-weight: 400; font-size: 92px;
+    color: var(--ink-2); letter-spacing: -.01em; vertical-align: 30px;
+    margin-right: 18px;
+  }
+
+  .lead .deck {
+    font-family:'Playfair Display', serif; font-style: italic;
+    font-weight: 400; font-size: 50px; line-height: 1.15;
+    color: var(--ink-2); margin: 0 0 22px; max-width: 2380px;
+    letter-spacing: -.005em;
+  }
+
+  .lead .byline {
+    display:flex; align-items: center; gap: 24px;
+    padding: 14px 0;
+    border-top: 2px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+    margin-bottom: 24px;
+    font-family:'DM Mono'; font-weight: 500; font-size: 26px;
+    color: var(--ink-2); letter-spacing: .14em;
+  }
+  .lead .byline b { color: var(--ink); font-weight: 700; }
+  .lead .byline em { color: var(--red); font-style: normal; font-weight: 700; }
+  .lead .byline .pipe { color: var(--ink-3); }
+
+  /* Body: 3-column lede with drop-cap on column 1 */
+  .lead .body {
+    display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 36px;
+    flex: 1;
+    column-rule: 2px solid var(--ink-2);
+    position: relative;
+  }
+  .lead .body > .col {
+    font-family:'Source Serif 4', Georgia, serif;
+    font-weight: 400; font-size: 36px; line-height: 1.3;
+    color: var(--ink); letter-spacing: 0;
+    position: relative;
+    padding-right: 24px;
+    border-right: 2px solid var(--ink-3);
+  }
+  .lead .body > .col:last-child { border-right: 0; padding-right: 0; }
+  /* Drop cap on first column */
+  .lead .body > .col.first::first-letter {
+    font-family:'DM Serif Display', serif; font-weight: 400;
+    font-size: 240px; line-height: .82;
+    float: left;
+    margin: 12px 18px -10px 0;
+    color: var(--red);
+  }
+  .lead .body > .col.first p:first-of-type::first-line {
+    font-family:'Source Serif 4', serif; font-weight: 600;
+    letter-spacing: .04em; text-transform: uppercase;
+  }
+  .lead .body p { margin: 0 0 14px; }
+
+  /* Pull quote — overrides into column 2 */
+  .lead .pullquote {
+    grid-column: 2 / 3;
+    align-self: end; margin-top: 18px;
+    padding: 18px 0;
+    border-top: 4px solid var(--ink);
+    border-bottom: 4px solid var(--ink);
+    font-family:'Playfair Display', serif; font-style: italic;
+    font-weight: 900; font-size: 56px; line-height: 1.05;
+    color: var(--ink); letter-spacing: -.015em;
+  }
+  .lead .pullquote .who {
+    display:block;
+    font-family:'DM Mono'; font-style: normal; font-weight: 500;
+    font-size: 22px; letter-spacing: .26em; text-transform: uppercase;
+    color: var(--red); margin-top: 12px;
+  }
+
+  /* Halftone otter mascot photo card — placed in column 3 */
+  .lead .photo {
+    grid-column: 3 / 4;
+    align-self: end;
+    background: var(--paper-2);
+    border: 4px solid var(--ink);
+    padding: 18px 18px 14px;
+    box-shadow: 8px 8px 0 var(--ink);
+    margin-top: 18px;
+  }
+  .lead .photo .frame {
+    position: relative;
+    height: 320px;
+    background: var(--ink);
+    overflow: hidden;
+    /* Halftone dot pattern simulating a newspaper photo */
+    background-image:
+      radial-gradient(circle at 40% 35%, rgba(243,235,214,.78) 18%, transparent 19%),
+      radial-gradient(rgba(255,255,255,.9) 1.6px, transparent 1.8px),
+      radial-gradient(rgba(255,255,255,.6) 0.9px, transparent 1.1px);
+    background-size: auto, 11px 11px, 7px 7px;
+    background-position: 0 0, 0 0, 4px 3px;
+  }
+  /* Otter silhouette built in pure CSS — sits on top of the halftone */
+  .lead .photo .frame::before {
+    content:''; position: absolute; bottom: 14px; left: 50%;
+    width: 240px; height: 200px;
+    transform: translateX(-50%);
+    background:
+      /* head */
+      radial-gradient(ellipse 70px 80px at 50% 30%, rgba(40,30,20,.92) 70%, transparent 72%),
+      /* body */
+      radial-gradient(ellipse 110px 90px at 50% 80%, rgba(40,30,20,.92) 70%, transparent 72%);
+  }
+  .lead .photo .frame::after {
+    content:''; position:absolute; inset:0;
+    background: linear-gradient(135deg, rgba(255,255,255,.06), transparent 60%);
+  }
+  .lead .photo .caption {
+    font-family:'DM Mono'; font-weight: 500; font-size: 20px;
+    line-height: 1.35; color: var(--ink-2); letter-spacing: .02em;
+    margin-top: 12px; padding-top: 10px;
+    border-top: 1px solid var(--ink-3);
+  }
+  .lead .photo .caption b { color: var(--ink); font-weight: 700; }
+
+
+  /* ── INDEX SIDEBAR ───────────────────────────────────────── */
+  .sidebar {
+    background: var(--paper-2);
+    border: 4px solid var(--ink);
+    box-shadow: 10px 10px 0 var(--ink);
+    padding: 28px 32px 20px;
+    display:flex; flex-direction: column;
+    height: 100%;
+    position: relative;
+  }
+  /* "FOLD" of the paper — corner detail */
+  .sidebar::before {
+    content:''; position:absolute; top: 0; right: 0;
+    width: 60px; height: 60px;
+    background: linear-gradient(225deg, var(--paper-3) 50%, var(--ink) 50%);
+    box-shadow: -2px 2px 0 var(--ink);
+  }
+
+  .sidebar .tochead {
+    display:flex; align-items: baseline; justify-content: space-between;
+    padding-bottom: 16px;
+    border-bottom: 6px double var(--ink);
+    margin-bottom: 20px;
+  }
+  .sidebar .tochead .h {
+    font-family:'Playfair Display', serif; font-style: italic;
+    font-weight: 900; font-size: 84px; line-height: 1;
+    color: var(--ink); letter-spacing: -.025em;
+  }
+  .sidebar .tochead .h em { color: var(--red); font-style: italic; }
+  .sidebar .tochead .day {
+    font-family:'DM Mono'; font-weight: 700; font-size: 22px;
+    letter-spacing: .26em; text-transform: uppercase; color: var(--ink-2);
+    text-align: right;
+  }
+
+  /* TOC list — schedule items rendered as broadsheet index */
+  .sidebar .toc {
+    display:grid; gap: 0;
+    margin-bottom: 24px;
+  }
+  .sidebar .toc .row {
+    display:grid; grid-template-columns: 78px 1fr auto;
+    column-gap: 18px; align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px dashed var(--ink-3);
+    position: relative;
+  }
+  .sidebar .toc .row:last-child { border-bottom: 0; }
+  .sidebar .toc .row.now {
+    background: var(--ink); color: var(--paper);
+    margin: 6px -16px;
+    padding: 14px 16px;
+    border-bottom: 0;
+  }
+  .sidebar .toc .row.done { opacity: .55; }
+  .sidebar .toc .row .p {
+    font-family:'DM Mono'; font-weight: 700; font-size: 26px;
+    color: var(--red); letter-spacing: .08em; text-align: center;
+    border: 3px solid var(--red);
+    padding: 4px 0;
+    line-height: 1;
+  }
+  .sidebar .toc .row.now .p {
+    color: var(--paper); border-color: var(--paper);
+    background: var(--red); border-color: var(--red);
+  }
+  .sidebar .toc .row.done .p {
+    color: var(--ink-3); border-color: var(--ink-3);
+  }
+  .sidebar .toc .row .what {
+    font-family:'DM Serif Display', serif; font-weight: 400;
+    font-size: 36px; color: var(--ink); line-height: 1.05;
+    letter-spacing: -.01em;
+  }
+  .sidebar .toc .row.now .what { color: var(--paper); }
+  .sidebar .toc .row .what span {
+    display:block;
+    font-family:'DM Mono'; font-weight: 500; font-size: 19px;
+    color: var(--ink-3); letter-spacing: .14em; text-transform: uppercase;
+    margin-top: 3px;
+  }
+  .sidebar .toc .row.now .what span { color: rgba(243,235,214,.7); }
+  .sidebar .toc .row .pg {
+    font-family:'DM Mono'; font-weight: 500; font-size: 22px;
+    letter-spacing: .14em; color: var(--ink-2);
+    text-align: right;
+    white-space: nowrap;
+  }
+  .sidebar .toc .row.now .pg { color: var(--paper); }
+
+  /* Stats footer — countdown + attendance */
+  .sidebar .stats {
+    display:grid; grid-template-columns: 1fr 1fr; gap: 14px;
+    margin-top: auto;
+    padding-top: 16px;
+    border-top: 6px double var(--ink);
+  }
+  .sidebar .stats .s {
+    background: var(--paper);
+    border: 3px solid var(--ink);
+    padding: 14px 16px;
+    display:flex; flex-direction: column; gap: 4px;
+  }
+  .sidebar .stats .s.featured {
+    background: var(--red); color: var(--paper);
+    border-color: var(--ink);
+  }
+  .sidebar .stats .s .k {
+    font-family:'DM Mono'; font-weight: 500; font-size: 18px;
+    letter-spacing: .22em; text-transform: uppercase; color: var(--ink-2);
+  }
+  .sidebar .stats .s.featured .k { color: rgba(243,235,214,.85); }
+  .sidebar .stats .s .v {
+    font-family:'Playfair Display', serif; font-weight: 900;
+    font-size: 84px; line-height: 1;
+    color: var(--ink); letter-spacing: -.03em;
+  }
+  .sidebar .stats .s .v em {
+    font-family:'DM Mono'; font-weight: 500; font-size: 22px;
+    color: var(--ink-3); font-style: normal;
+    letter-spacing: .14em;
+  }
+  .sidebar .stats .s.featured .v { color: var(--paper); }
+  .sidebar .stats .s.featured .v em { color: rgba(243,235,214,.78); }
+  .sidebar .stats .s .sub {
+    font-family:'DM Mono'; font-weight: 500; font-size: 18px;
+    color: var(--ink-3); letter-spacing: .04em;
+  }
+  .sidebar .stats .s.featured .sub { color: rgba(243,235,214,.78); }
+
+
+  /* ──────────────────────────────────────────────────────────────
+     DEPARTMENTS BAND               y 1420–1980
+     3 columns: DINING, AFTER 3, SEEN TODAY
+     each is its own broadsheet "department" with rule + slug
+     ────────────────────────────────────────────────────────────── */
+  .depts {
+    position:absolute; top: 1420px; left: 64px; right: 64px; height: 560px;
+    display:grid; grid-template-columns: 1.25fr 1fr 1fr; gap: 32px;
+    z-index: 2;
+  }
+  .dept {
+    background: var(--paper-2);
+    border: 4px solid var(--ink);
+    box-shadow: 10px 10px 0 var(--ink);
+    padding: 24px 32px 22px;
+    display:flex; flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+  .dept::before {
+    content:''; position:absolute; left:0; right:0; bottom:0; height: 8px;
+    background: repeating-linear-gradient(45deg,
+      var(--ink) 0 8px, transparent 8px 16px);
+  }
+
+  /* Department slug — broadsheet section header */
+  .dept .slug {
+    display:grid; grid-template-columns: auto 1fr auto;
+    column-gap: 16px; align-items: center;
+    padding-bottom: 12px; border-bottom: 4px solid var(--ink);
+    margin-bottom: 18px;
+  }
+  .dept .slug .num {
+    font-family:'Playfair Display', serif; font-style: italic;
+    font-weight: 900; font-size: 64px; color: var(--red);
+    line-height: .9; letter-spacing: -.02em;
+  }
+  .dept .slug .name {
+    font-family:'DM Serif Display', serif; font-weight: 400;
+    font-size: 56px; line-height: .95; color: var(--ink);
+    letter-spacing: -.015em;
+  }
+  .dept .slug .name em {
+    font-family:'Playfair Display', serif; font-style: italic;
+    font-weight: 900; color: var(--red);
+  }
+  .dept .slug .meta {
+    font-family:'DM Mono'; font-weight: 500; font-size: 22px;
+    letter-spacing: .22em; text-transform: uppercase; color: var(--ink-2);
+    text-align: right;
+  }
+
+  /* DINING — menu */
+  .dept.dining .entree {
+    font-family:'Playfair Display', serif; font-weight: 900;
+    font-size: 88px; line-height: .92; color: var(--ink);
+    letter-spacing: -.03em;
+    margin-top: 4px;
+  }
+  .dept.dining .entree em {
+    font-family:'Playfair Display', serif; font-style: italic;
+    color: var(--red); font-weight: 900;
+  }
+  .dept.dining .sides {
+    font-family:'Source Serif 4', serif; font-weight: 400; font-style: italic;
+    font-size: 36px; line-height: 1.25; color: var(--ink-2);
+    margin: 16px 0 18px; letter-spacing: 0;
+  }
+  .dept.dining .tags {
+    display:flex; gap: 12px; flex-wrap: wrap;
+    margin-top: auto;
+    padding-top: 16px;
+    border-top: 1px solid var(--ink-3);
+  }
+  .dept.dining .tags b {
+    font-family:'DM Mono'; font-weight: 700; font-size: 24px;
+    background: var(--ink); color: var(--paper);
+    padding: 10px 18px; letter-spacing: .14em;
+  }
+  .dept.dining .tags b.red { background: var(--red); }
+
+  /* AFTER 3 / SEEN TODAY — list rows */
+  .dept .list { display:grid; gap: 14px; align-content: start; }
+  .dept .list .it {
+    display:grid; grid-template-columns: 92px 1fr auto;
+    column-gap: 22px; align-items: center;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--ink-3);
+  }
+  .dept .list .it:last-child { border-bottom: 0; }
+  .dept .list .it .ico {
+    width: 84px; height: 84px;
+    background: var(--paper);
+    border: 4px solid var(--ink);
+    display:grid; place-items: center;
+    font-family:'Playfair Display', serif; font-style: italic;
+    font-weight: 900; font-size: 44px;
+    color: var(--ink); line-height: 1;
+    box-shadow: 4px 4px 0 var(--ink);
+  }
+  .dept .list .it .ico.red { background: var(--red); color: var(--paper); }
+  .dept .list .it .ico.cream { background: var(--paper-3); }
+  .dept .list .it .info .t {
+    font-family:'DM Serif Display', serif; font-weight: 400;
+    font-size: 38px; line-height: 1.05; color: var(--ink);
+    letter-spacing: -.005em;
+  }
+  .dept .list .it .info .s {
+    font-family:'Source Serif 4', serif; font-weight: 400; font-style: italic;
+    font-size: 26px; color: var(--ink-2); margin-top: 4px;
+    letter-spacing: 0;
+  }
+  .dept .list .it .when {
+    font-family:'Playfair Display', serif; font-weight: 900;
+    font-size: 42px; color: var(--red); letter-spacing: -.01em;
+    line-height: 1; text-align: right;
+    white-space: nowrap;
+  }
+  .dept .list .it .when small {
+    display:block;
+    font-family:'DM Mono'; font-weight: 500; font-size: 18px;
+    letter-spacing: .14em; color: var(--ink-3);
+    margin-top: 6px;
+  }
+
+
+  /* ──────────────────────────────────────────────────────────────
+     STOP-PRESS BULLETIN TICKER     y 2000–2140
+     ────────────────────────────────────────────────────────────── */
+  .ticker {
+    position:absolute; left: 64px; right: 64px; bottom: 20px; height: 140px;
+    background: var(--ink); color: var(--paper);
+    border: 4px solid var(--ink);
+    box-shadow: 10px 10px 0 var(--red);
+    display:grid; grid-template-columns: auto 1fr auto;
+    align-items: stretch;
+    overflow: hidden;
+    z-index: 2;
+  }
+  .ticker .tag {
+    background: var(--red); color: var(--paper);
+    padding: 0 36px;
+    display:flex; align-items: center; gap: 18px;
+    font-family:'Playfair Display', serif; font-style: italic;
+    font-weight: 900; font-size: 56px; line-height: 1;
+    letter-spacing: -.015em;
+    border-right: 4px solid var(--ink);
+    flex-shrink: 0;
+  }
+  .ticker .tag::before {
+    content:'★'; font-family: 'Source Serif 4', serif; font-style: normal;
+    font-size: 48px; color: var(--paper);
+  }
+  .ticker .feed {
+    overflow: hidden; display:flex; align-items: center;
+    padding-left: 36px;
+  }
+  .ticker .feed-inner {
+    display:flex; gap: 64px;
+    font-family:'DM Serif Display', serif; font-weight: 400;
+    font-size: 56px; color: var(--paper); white-space: nowrap;
+    letter-spacing: -.005em;
+    animation: scroll 80s linear infinite;
+  }
+  .ticker .feed-inner span { display:inline-flex; align-items: center; gap: 28px; }
+  .ticker .feed-inner span::after {
+    content:'§'; color: var(--red); margin-left: 32px;
+    font-family:'Playfair Display', serif; font-style: italic;
+    font-weight: 900; font-size: 52px;
+  }
+  .ticker .vol-end {
+    background: var(--paper); color: var(--ink);
+    padding: 0 28px;
+    display:flex; align-items: center;
+    border-left: 4px solid var(--ink);
+    font-family:'DM Mono'; font-weight: 700; font-size: 26px;
+    letter-spacing: .22em; text-transform: uppercase;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  @keyframes scroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+</style>
+</head>
+<body>
+<script>
+  const __TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "schema": "edu-cms-ms-paper-v2" }/*EDITMODE-END*/;
+</script>
+
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+  <!-- ─── MASTHEAD ──────────────────────────────────────── -->
+  <header class="mast">
+    <!-- LEFT: weather + clock indicia -->
+    <div class="lefttiles" data-widget="weather-cluster">
+      <div class="tile warm" data-widget="weather">
+        <span class="k" data-field="weather.label">High</span>
+        <span class="v"><span data-field="weather.high">62</span><small>°F</small></span>
+      </div>
+      <div class="tile" data-widget="weather-low">
+        <span class="k" data-field="weather.low_label">Low</span>
+        <span class="v"><span data-field="weather.low">46</span><small>°F</small></span>
+      </div>
+      <div class="tile full" data-widget="weather-summary">
+        <span class="k" data-field="weather.sky_label">Today's Sky</span>
+        <span class="v">
+          <span data-field="weather.sky">Clear &amp; bright</span>
+          <span class="arrow">&mdash; light SW wind</span>
+        </span>
+      </div>
+    </div>
+
+    <!-- CENTER: nameplate -->
+    <div class="nameplate" data-widget="masthead">
+      <div class="ribbon" data-field="masthead.kicker">Westridge Middle &middot; Morning Edition</div>
+      <div class="title">
+        <span class="the" data-field="masthead.the">The</span><span data-field="masthead.mascot">Otter</span>&nbsp;<span class="accent" data-field="masthead.suffix">Daily</span>
+      </div>
+      <div class="tagline" data-field="masthead.tagline">All the news that fits the hallway &middot; Est. 1962</div>
+    </div>
+
+    <!-- RIGHT: edition stamp + time -->
+    <div class="editrail">
+      <div class="stamp" data-widget="edition">
+        <span class="dot" aria-hidden="true"></span>
+        <span data-field="edition.flag">LIVE &middot; 7:53 A.M.</span>
+      </div>
+      <div class="price" data-widget="price">
+        <span data-field="price.value">5¢</span>
+        <small data-field="price.note">Free for the otters</small>
+      </div>
+      <div class="clock" data-widget="clock">
+        <b data-field="clock.day">Tuesday</b>, <span data-field="clock.date">April 21</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ─── DATELINE RULE ─────────────────────────────────── -->
+  <div class="rule" aria-hidden="true"></div>
+
+  <!-- ─── INDICIA STRIP ─────────────────────────────────── -->
+  <div class="indicia" data-widget="indicia">
+    <span class="vol" data-field="indicia.vol">Vol. <em>CXLII</em> &middot; No. 138</span>
+    <span class="date" data-field="indicia.date">Tuesday, April 21, 2026 &middot; Day B &middot; Three sections, 22 pages</span>
+    <span class="pipe">|</span>
+    <span class="red" data-field="indicia.flag">FIELD DAY in 12 days</span>
+    <span class="pipe">|</span>
+    <span data-field="indicia.run">Print run: 1,217 otters</span>
+  </div>
+
+  <!-- ─── UPPER CONTENT BAND ─────────────────────────────── -->
+  <section class="upper">
+
+    <!-- ABOVE-THE-FOLD LEAD STORY -->
+    <article class="lead" data-widget="greeting">
+      <div class="deptline">
+        <span class="swatch" aria-hidden="true"></span>
+        <span class="label" data-field="greeting.dept">From the Office &middot; Period 2 Edition</span>
+        <span class="pipe" aria-hidden="true"></span>
+        <span class="edition" data-field="greeting.edition">Today's lead story</span>
+      </div>
+
+      <h1>
+        <span class="small" data-field="greeting.kicker">Big day,</span><span data-field="greeting.headline1">Otters</span> <em data-field="greeting.headline2">go forth.</em>
+      </h1>
+
+      <p class="deck" data-field="greeting.deck">First bell rings 8:05 sharp. Mr. Nguyen has the journals stacked and the poetry workshop on the chalkboard &mdash; courage encouraged, pencils required.</p>
+
+      <div class="byline">
+        <span data-field="greeting.byline">By <b>The Front Office</b></span>
+        <span class="pipe">|</span>
+        <span data-field="greeting.dateline">WESTRIDGE, MASS.</span>
+        <span class="pipe">|</span>
+        <em data-field="greeting.tag">Filed 7:48 A.M.</em>
+      </div>
+
+      <div class="body">
+        <div class="col first">
+          <p data-field="greeting.lede">Today's lead is poetry. Period 2, room 108, journals out. Mr. Nguyen has been talking about this workshop since the first thaw, and he says he's bringing the good chalk &mdash; the kind that doesn't squeak. Morning attendance is already running ninety-eight percent before the bell, a quiet little record on the second-to-last Tuesday in April.</p>
+          <p data-field="greeting.col1b">Down the hall, the cafeteria smells like garlic bread and possibility.</p>
+        </div>
+        <div class="col">
+          <p data-field="greeting.col2a">Period 3 lab rules apply &mdash; closed-toe shoes, hair tied back, goggles on the cart. Coach Reyes is calling the mile run for fourth period sharp at 10:50, weather says fifty-eight and climbing, and the field is dry for the first time this week.</p>
+
+          <div class="pullquote">
+            &ldquo;<span data-field="greeting.pq">Bring a pencil, a journal, and a quiet bit of courage.</span>&rdquo;
+            <span class="who" data-field="greeting.pq_who">&mdash; Mr. Nguyen, Eng. 7</span>
+          </div>
+        </div>
+        <div class="col">
+          <p data-field="greeting.col3a">Sign-ups for Field Day close this Friday at last bell. Two hundred and eighty-four otters are in. The remaining slots, the front office reports, will not last the week.</p>
+
+          <div class="photo" data-widget="photo">
+            <div class="frame" aria-hidden="true"></div>
+            <div class="caption" data-field="photo.caption"><b>OTIS THE OTTER</b>, mascot, surveys the courtyard before first bell. <em>&mdash; Photograph by Yearbook Club</em></div>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- INDEX SIDEBAR -->
+    <aside class="sidebar" data-widget="agenda">
+      <div class="tochead">
+        <div class="h"><span data-field="agenda.title">Today's </span><em data-field="agenda.title_em">Index.</em></div>
+        <div class="day"><span data-field="agenda.day">Day B</span><br><span data-field="agenda.run">7 sections</span></div>
+      </div>
+
+      <div class="toc">
+        <div class="row done" data-widget="agenda.0">
+          <span class="p" data-field="agenda.0.p">P1</span>
+          <span class="what">
+            <span data-field="agenda.0.t">Mathematics</span>
+            <span data-field="agenda.0.r">Rm 214 &middot; Ms. Patel</span>
+          </span>
+          <span class="pg" data-field="agenda.0.time">8:05</span>
+        </div>
+        <div class="row now" data-widget="agenda.1">
+          <span class="p" data-field="agenda.1.p">P2</span>
+          <span class="what">
+            <span data-field="agenda.1.t">English &mdash; Poetry</span>
+            <span data-field="agenda.1.r">Rm 108 &middot; Mr. Nguyen</span>
+          </span>
+          <span class="pg" data-field="agenda.1.time">9:00</span>
+        </div>
+        <div class="row" data-widget="agenda.2">
+          <span class="p" data-field="agenda.2.p">P3</span>
+          <span class="what">
+            <span data-field="agenda.2.t">Science &mdash; Lab</span>
+            <span data-field="agenda.2.r">Rm 207 &middot; closed-toe shoes</span>
+          </span>
+          <span class="pg" data-field="agenda.2.time">9:55</span>
+        </div>
+        <div class="row" data-widget="agenda.3">
+          <span class="p" data-field="agenda.3.p">P4</span>
+          <span class="what">
+            <span data-field="agenda.3.t">PE &mdash; Mile Run</span>
+            <span data-field="agenda.3.r">Gym A &middot; Coach Reyes</span>
+          </span>
+          <span class="pg" data-field="agenda.3.time">10:50</span>
+        </div>
+        <div class="row" data-widget="agenda.4">
+          <span class="p" data-field="agenda.4.p">A</span>
+          <span class="what">
+            <span data-field="agenda.4.t">Lunch</span>
+            <span data-field="agenda.4.r">Cafeteria &middot; 7th grade</span>
+          </span>
+          <span class="pg" data-field="agenda.4.time">11:45</span>
+        </div>
+        <div class="row" data-widget="agenda.5">
+          <span class="p" data-field="agenda.5.p">P5</span>
+          <span class="what">
+            <span data-field="agenda.5.t">Social Studies</span>
+            <span data-field="agenda.5.r">Rm 115 &middot; map quiz</span>
+          </span>
+          <span class="pg" data-field="agenda.5.time">12:35</span>
+        </div>
+        <div class="row" data-widget="agenda.6">
+          <span class="p" data-field="agenda.6.p">P6</span>
+          <span class="what">
+            <span data-field="agenda.6.t">Art &mdash; Prints</span>
+            <span data-field="agenda.6.r">Rm B-12 &middot; sub today</span>
+          </span>
+          <span class="pg" data-field="agenda.6.time">1:30</span>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="s featured" data-widget="countdown">
+          <span class="k" data-field="countdown.label">Days to Field Day</span>
+          <span class="v"><span data-field="countdown.value">12</span></span>
+          <span class="sub" data-field="countdown.sub">Sign-ups close Friday</span>
+        </div>
+        <div class="s" data-widget="attendance">
+          <span class="k" data-field="attendance.label">Otters Today</span>
+          <span class="v"><span data-field="attendance.value">1,217</span><em data-field="attendance.unit">/1,240</em></span>
+          <span class="sub" data-field="attendance.sub">98.2% &middot; weekly high</span>
+        </div>
+      </div>
+    </aside>
+
+  </section>
+
+  <!-- ─── DEPARTMENTS BAND ──────────────────────────────── -->
+  <section class="depts">
+
+    <!-- DINING -->
+    <div class="dept dining" data-widget="lunch">
+      <div class="slug">
+        <span class="num" data-field="lunch.num">§ 01</span>
+        <span class="name"><em data-field="lunch.dept_em">Dining</em><span data-field="lunch.dept">/ Today's menu</span></span>
+        <span class="meta" data-field="lunch.meta">Cafeteria &middot; 11:45 A.M.</span>
+      </div>
+      <div class="entree" data-field="lunch.entree">Chicken &amp; <em>rice</em> bowl.</div>
+      <div class="sides" data-field="lunch.sides">Roasted broccoli, garlic bread, fresh fruit, and the salad bar open all period long.</div>
+      <div class="tags">
+        <b data-field="lunch.tag1">VEG OPT</b>
+        <b data-field="lunch.tag2">GLUTEN-FREE</b>
+        <b class="red" data-field="lunch.tag3">DAIRY-FREE</b>
+      </div>
+    </div>
+
+    <!-- AFTER 3 -->
+    <div class="dept clubs" data-widget="clubs">
+      <div class="slug">
+        <span class="num" data-field="clubs.num">§ 02</span>
+        <span class="name"><em data-field="clubs.dept_em">After</em><span data-field="clubs.dept">/ Three o'clock.</span></span>
+        <span class="meta" data-field="clubs.meta">3:00 P.M. start</span>
+      </div>
+      <div class="list">
+        <div class="it" data-widget="clubs.0">
+          <div class="ico red" data-field="clubs.0.ic">R</div>
+          <div class="info">
+            <div class="t" data-field="clubs.0.t">Robotics Club</div>
+            <div class="s" data-field="clubs.0.r">Rm 207 &middot; Build week</div>
+          </div>
+          <div class="when" data-field="clubs.0.w">3:00<small data-field="clubs.0.note">starts</small></div>
+        </div>
+        <div class="it" data-widget="clubs.1">
+          <div class="ico" data-field="clubs.1.ic">D</div>
+          <div class="info">
+            <div class="t" data-field="clubs.1.t">Drama Auditions</div>
+            <div class="s" data-field="clubs.1.r">Auditorium &middot; spring play</div>
+          </div>
+          <div class="when" data-field="clubs.1.w">3:15<small data-field="clubs.1.note">arrive 5 early</small></div>
+        </div>
+        <div class="it" data-widget="clubs.2">
+          <div class="ico cream" data-field="clubs.2.ic">G</div>
+          <div class="info">
+            <div class="t" data-field="clubs.2.t">Garden Club</div>
+            <div class="s" data-field="clubs.2.r">Greenhouse &middot; plant the rows</div>
+          </div>
+          <div class="when" data-field="clubs.2.w">3:00<small data-field="clubs.2.note">wear boots</small></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SEEN TODAY -->
+    <div class="dept shoutouts" data-widget="shoutouts">
+      <div class="slug">
+        <span class="num" data-field="shoutouts.num">§ 03</span>
+        <span class="name"><em data-field="shoutouts.dept_em">Seen</em><span data-field="shoutouts.dept">/ Around campus.</span></span>
+        <span class="meta" data-field="shoutouts.meta">Filed by hall monitors</span>
+      </div>
+      <div class="list">
+        <div class="it" data-widget="shoutouts.0">
+          <div class="ico red" data-field="shoutouts.0.ic">★</div>
+          <div class="info">
+            <div class="t" data-field="shoutouts.0.t">Maya Rodriguez</div>
+            <div class="s" data-field="shoutouts.0.r">Turns 13 today &mdash; H.B.D.</div>
+          </div>
+          <div class="when" data-field="shoutouts.0.w">7B<small data-field="shoutouts.0.note">homeroom</small></div>
+        </div>
+        <div class="it" data-widget="shoutouts.1">
+          <div class="ico" data-field="shoutouts.1.ic">+1</div>
+          <div class="info">
+            <div class="t" data-field="shoutouts.1.t">Daniel K.</div>
+            <div class="s" data-field="shoutouts.1.r">Math olympiad &mdash; 3rd place</div>
+          </div>
+          <div class="when" data-field="shoutouts.1.w">7th<small data-field="shoutouts.1.note">bronze</small></div>
+        </div>
+        <div class="it" data-widget="shoutouts.2">
+          <div class="ico cream" data-field="shoutouts.2.ic">W</div>
+          <div class="info">
+            <div class="t" data-field="shoutouts.2.t">Ms. Chen's 7B</div>
+            <div class="s" data-field="shoutouts.2.r">Top homework streak this month</div>
+          </div>
+          <div class="when" data-field="shoutouts.2.w">31<small data-field="shoutouts.2.note">days</small></div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ─── BULLETIN TICKER ─────────────────────────────── -->
+  <div class="ticker" data-widget="ticker">
+    <div class="tag" data-field="ticker.tag">Stop the presses</div>
+    <div class="feed">
+      <div class="feed-inner">
+        <span data-field="ticker.0">Picture day Thursday &mdash; full uniform</span>
+        <span data-field="ticker.1">Bus 14 running ten minutes late</span>
+        <span data-field="ticker.2">Substitute covering Rm B-12</span>
+        <span data-field="ticker.3">Spelling bee sign-ups end Friday</span>
+        <span data-field="ticker.4">8th grade field-trip forms due tomorrow</span>
+        <span data-field="ticker.5">Lost: blue water bottle with otter sticker &mdash; front office</span>
+        <span data-field="ticker.6">Library returns due this week</span>
+        <span aria-hidden="true">Picture day Thursday &mdash; full uniform</span>
+        <span aria-hidden="true">Bus 14 running ten minutes late</span>
+        <span aria-hidden="true">Substitute covering Rm B-12</span>
+        <span aria-hidden="true">Spelling bee sign-ups end Friday</span>
+        <span aria-hidden="true">8th grade field-trip forms due tomorrow</span>
+        <span aria-hidden="true">Lost: blue water bottle with otter sticker &mdash; front office</span>
+        <span aria-hidden="true">Library returns due this week</span>
+      </div>
+    </div>
+    <div class="vol-end" data-field="ticker.endmark">— 30 —</div>
+  </div>
+
+</div></div></div>
+
+<script>
+  // fit() — same scale helper every shipped template uses.
+  (function(){
+    function fit(){
+      var cs = getComputedStyle(document.documentElement);
+      var w = parseFloat(cs.getPropertyValue('--stage-w')) || 3840;
+      var h = parseFloat(cs.getPropertyValue('--stage-h')) || 2160;
+      var k = Math.min(window.innerWidth / w, window.innerHeight / h);
+      document.documentElement.style.setProperty('--stage-scale', k);
+    }
+    window.addEventListener('resize', fit);
+    window.addEventListener('load', fit);
+    setTimeout(fit, 10);
+    setTimeout(fit, 300);
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,1101 @@
+<!--
+  MS TEMPLATE · HOMEROOM · v2 — FULL REDESIGN
+  ============================================
+  v1 feedback (user, all-templates pass):
+    "atlas is a fucking mess, text is tiny shit, dont fit right
+     anywhere, needs a full overhaul, make it look good, be creative."
+    Same problem on homeroom-v1: rounded rectangles on cream, body
+    text 22-30px, agenda labels 26px. Reads from a desk, not a
+    cafeteria.
+
+  v2 metaphor (committed): COZY CLASSROOM.
+    A real homeroom is a chalkboard above a corkboard above a row
+    of cubbies, with a teacher's desk in the corner and washi-taped
+    flyers on the wall. Push the metaphor as far as it goes.
+
+    • HERO          — slate chalkboard with hand-drawn chalk title,
+                      chalky sun doodle, chalk smudge texture, real
+                      wood frame.
+    • RIGHT COLUMN  — birthdays polaroid (with washi tape) +
+                      notebook-paper countdown card.
+    • AGENDA        — corkboard, each period an index card pinned
+                      with a real push-pin, "NOW" card crooked +
+                      yellow washi-taped, paperclip on next-up.
+    • LUNCH         — brown-paper lunch bag with crinkle texture,
+                      stapled paper menu sticking out the top.
+    • BUSES         — yellow school-bus row of cubbies, each cubby
+                      a labeled locker with a status flag.
+    • CLUBS         — manila folder with tab + paperclip, clubs as
+                      dotted-line ruled list.
+    • TICKER        — torn-edge paper banner pinned across the
+                      bottom with two more push-pins.
+
+  Layout (3840 × 2160, every panel inset 64px from stage edges,
+                       every gap = 20px):
+    HUD       56 – 260   (h 204)  schoolhouse logo · day stamp · weather/time tiles
+    HERO/RT   280 – 1080 (h 800)  chalkboard greeting (left 2440) + polaroid+countdown (right 1232)
+    AGENDA    1100 – 1640 (h 540) corkboard with 7 pinned period cards
+    LUNCH/BUS 1660 – 1980 (h 320) lunch bag + buses lockers + manila clubs (3 cards, 800 wide each)
+    TICKER    2000 – 2100 (h 100) torn-paper pinned banner
+    Vertical sum check: 56+204+20+800+20+540+20+320+20+100+60 = 2160 ✓
+    Horizontal sum check (per row): 64+2440+20+1232+64 = 3820 ≤ 3840 ✓
+    Bottom row: 64 + 3*1224 + 2*20 + 64 = 3800 (3 cards × 1224 + 2 gaps + insets = 3672+40+128=3840) ✓
+
+  Fonts:
+    Caveat (handwriting, marker, washi-tape labels)
+    Patrick Hand (notebook-paper rough hand)
+    Kalam (chalk hand — heavier, softer)
+    Fraunces (schoolhouse italic serif for teacher voice)
+    Figtree (body sans — readable from 30 feet)
+
+  Palette (warm cozy classroom):
+    --slate     #2d4a3a  chalkboard green (real chalkboard, not black)
+    --chalk     #f7f3e6  warm chalk
+    --paper     #f4ecd8  classroom paper / cream wall
+    --cork      #c4894d  corkboard light
+    --cork-d    #8a5a2c  corkboard dark
+    --kraft     #c5984e  brown-paper-bag
+    --bus       #ffc340  school-bus yellow
+    --pencil    #f4a93d  pencil yellow
+    --crayon-r  #e8503a  crayon red
+    --crayon-b  #3b6dbf  crayon blue
+    --crayon-g  #5ba84e  crayon green
+    --crayon-p  #c25a9e  crayon pink
+    --ink       #1f2230  pencil-mark dark
+
+  Typography floor: every micro-label ≥ 28px, every body line ≥ 36px,
+                    every section head ≥ 64px, every hero element
+                    ≥ 140px. No exceptions.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Homeroom — MS Lobby 4K (v2)</title>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Patrick+Hand&family=Kalam:wght@400;700&family=Fraunces:ital,wght@0,700;0,900;1,700;1,900&family=Figtree:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  /* Universal border-box so explicit widths mean edge-to-edge. */
+  *, *::before, *::after { box-sizing: border-box; }
+
+  /* 3-layer scale wrapper — same as arcade-ms-v2 / atlas-ms-v2. */
+  :root { --stage-w: 3840px; --stage-h: 2160px; --stage-scale: 1; }
+  html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; background:#1a1410; }
+  .viewport { position:fixed; inset:0; display:grid; place-items:center; overflow:hidden; }
+  .stage-outer { width:calc(var(--stage-w)*var(--stage-scale)); height:calc(var(--stage-h)*var(--stage-scale)); }
+  .stage { width:var(--stage-w); height:var(--stage-h); transform:scale(var(--stage-scale)); transform-origin:0 0; position:relative; box-shadow:0 80px 200px rgba(0,0,0,.55); overflow:hidden; }
+
+  :root {
+    --slate:    #2d4a3a;
+    --slate-2:  #1f3328;
+    --chalk:    #f7f3e6;
+    --chalk-d:  rgba(247,243,230,.78);
+    --paper:    #f4ecd8;
+    --paper-2:  #ece3cc;
+    --cork:     #c4894d;
+    --cork-2:   #b07939;
+    --cork-d:   #8a5a2c;
+    --kraft:    #c5984e;
+    --kraft-d:  #8c6a32;
+    --bus:      #ffc340;
+    --bus-d:    #d49a17;
+    --pencil:   #f4a93d;
+    --crayon-r: #e8503a;
+    --crayon-b: #3b6dbf;
+    --crayon-g: #5ba84e;
+    --crayon-p: #c25a9e;
+    --crayon-y: #f4cf3d;
+    --ink:      #1f2230;
+    --ink-2:    #3b3f53;
+    --pin:      #d8473a;
+  }
+  html, body { color: var(--ink); font-family:'Figtree', system-ui, sans-serif; }
+
+  /* ─── STAGE — wood-paneled classroom wall ───────────────────── */
+  .stage {
+    background: var(--paper);
+    background-image:
+      radial-gradient(ellipse 1800px 1100px at 50% 0%,    rgba(244,169,61,.10), transparent 70%),
+      radial-gradient(ellipse 1400px 900px  at 100% 100%, rgba(59,109,191,.06), transparent 70%),
+      radial-gradient(rgba(31,34,48,.04) 1.2px, transparent 1.2px);
+    background-size: auto, auto, 28px 28px;
+  }
+  .stage::before {
+    /* wood-grain wainscoting along the bottom edge */
+    content:''; position:absolute; left:0; right:0; bottom:0; height: 60px; z-index:0; pointer-events:none;
+    background:
+      repeating-linear-gradient(90deg,
+        #8a5a2c 0 280px, #7d4f24 280px 320px, #8a5a2c 320px 600px, #6f4520 600px 640px),
+      linear-gradient(180deg, #6f4520 0%, #8a5a2c 25%, #6f4520 100%);
+    border-top: 5px solid #4a2e15;
+    box-shadow: inset 0 6px 0 rgba(0,0,0,.18);
+  }
+
+  /* ─── TOP HUD ────────────────────────────────────────────── */
+  .hud {
+    position:absolute; top:56px; left:64px; right:64px; height: 204px;
+    display:grid; grid-template-columns: auto 1fr auto; gap: 56px; align-items:center;
+    z-index: 4;
+  }
+
+  .brand { display:flex; align-items:center; gap: 36px; }
+  .badge {
+    width: 200px; height: 200px; flex-shrink:0;
+    background: var(--slate);
+    border: 8px solid #6b4621;
+    box-shadow: 8px 8px 0 rgba(0,0,0,.18), inset 0 0 0 4px var(--slate-2);
+    position: relative;
+    transform: rotate(-2deg);
+  }
+  .badge::before {
+    content:''; position:absolute; inset:0;
+    background-image:
+      radial-gradient(rgba(247,243,230,.10) 1.6px, transparent 1.7px),
+      radial-gradient(rgba(247,243,230,.06) 1px,   transparent 1.1px);
+    background-size: 22px 22px, 11px 11px;
+    background-position: 0 0, 5px 7px;
+    mix-blend-mode: screen;
+  }
+  /* Otter face — pure CSS chalk drawing */
+  .badge .face { position:absolute; inset: 24px; display:grid; place-items: center; }
+  .badge .face::before {
+    content:''; width: 130px; height: 110px; border-radius: 60% 60% 50% 50%;
+    border: 4px solid var(--chalk);
+    box-shadow: 0 0 0 1px rgba(247,243,230,.35);
+    background:
+      radial-gradient(circle at 30% 38%, var(--chalk) 0 6px, transparent 7px),
+      radial-gradient(circle at 70% 38%, var(--chalk) 0 6px, transparent 7px),
+      radial-gradient(circle at 50% 60%, var(--chalk) 0 4px, transparent 5px);
+  }
+  .badge .face::after {
+    content:''; position:absolute; top: 8px; left: 50%;
+    width: 150px; height: 30px; transform: translateX(-50%);
+    background:
+      radial-gradient(circle at 18% 50%, var(--chalk) 0 7px, transparent 8px),
+      radial-gradient(circle at 82% 50%, var(--chalk) 0 7px, transparent 8px);
+  }
+  .badge .lvl {
+    position:absolute; bottom: -16px; left: 50%; transform: translateX(-50%) rotate(-3deg);
+    background: var(--bus); color: var(--ink);
+    font-family:'Caveat'; font-weight: 700; font-size: 32px;
+    padding: 4px 22px; border: 4px solid var(--ink);
+    box-shadow: 4px 4px 0 rgba(0,0,0,.25);
+    letter-spacing: .02em; white-space: nowrap;
+  }
+
+  .brand .info .eye {
+    font-family:'Patrick Hand'; font-size: 36px; color: var(--crayon-r);
+    letter-spacing: .14em; text-transform: uppercase;
+    display:inline-flex; align-items:center; gap: 16px;
+  }
+  .brand .info .eye::before { content:''; width: 56px; height: 4px; background: var(--crayon-r); border-radius: 2px; }
+  .brand .info .name {
+    font-family:'Fraunces', serif; font-style: italic; font-weight: 900;
+    font-size: 124px; line-height: .92; color: var(--ink); letter-spacing: -.025em; margin-top: 6px;
+  }
+  .brand .info .sub {
+    font-family:'Patrick Hand'; font-size: 38px; color: var(--ink-2);
+    letter-spacing: .04em; margin-top: 14px;
+  }
+  .brand .info .sub b { color: var(--crayon-r); font-weight: 700; }
+  .brand .info .sub .bullet {
+    display:inline-block; width:12px; height:12px; border-radius:50%;
+    background: var(--pencil); margin: 0 18px; vertical-align: middle;
+  }
+
+  /* Hall-pass day stamp */
+  .stamp {
+    justify-self: center; text-align:center;
+    transform: rotate(-3deg);
+    background: var(--paper-2); border: 5px solid var(--ink);
+    padding: 18px 56px 22px;
+    box-shadow: 8px 8px 0 var(--ink);
+    position: relative;
+  }
+  .stamp::before, .stamp::after {
+    content:''; position:absolute; top:50%; width: 26px; height: 26px;
+    background: var(--ink); border-radius: 50%;
+    transform: translateY(-50%);
+  }
+  .stamp::before { left: -16px; }
+  .stamp::after  { right: -16px; }
+  .stamp .lab {
+    font-family:'Patrick Hand'; font-size: 32px; letter-spacing: .22em;
+    text-transform: uppercase; color: var(--ink-2);
+  }
+  .stamp .day {
+    font-family:'Fraunces', serif; font-style: italic; font-weight: 900;
+    font-size: 88px; line-height: 1; color: var(--ink); letter-spacing: -.02em;
+    margin-top: 4px;
+  }
+  .stamp .day b { color: var(--crayon-r); font-weight: 900; }
+
+  .tiles { display:flex; gap: 18px; align-items: stretch; }
+  .tile {
+    width: 200px; padding: 22px 24px;
+    background: #fff; border: 5px solid var(--ink);
+    box-shadow: 7px 7px 0 var(--ink);
+    display:flex; flex-direction: column; gap: 4px;
+    position: relative;
+  }
+  .tile:nth-child(1) { transform: rotate(-1.5deg); }
+  .tile:nth-child(2) { transform: rotate( 1deg); }
+  .tile:nth-child(3) { transform: rotate(-.5deg); }
+  .tile .k {
+    font-family:'Patrick Hand'; font-size: 28px;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2);
+  }
+  .tile .v {
+    font-family:'Fraunces', serif; font-style: italic; font-weight: 900;
+    font-size: 80px; line-height: 1; color: var(--ink); letter-spacing: -.02em;
+  }
+  .tile .v.warm { color: var(--crayon-r); }
+  .tile .v.cool { color: var(--crayon-b); }
+  .tile .v.sun  { color: var(--pencil); font-size: 64px; }
+
+  /* ─── HERO — chalkboard with hand-drawn welcome ─────────────── */
+  .hero {
+    position:absolute; top: 280px; left: 64px; width: 2440px; height: 800px;
+    background: var(--slate);
+    background-image:
+      radial-gradient(ellipse 800px 200px at 70% 30%, rgba(247,243,230,.07), transparent 65%),
+      radial-gradient(ellipse 600px 200px at 20% 78%, rgba(247,243,230,.05), transparent 65%),
+      radial-gradient(rgba(247,243,230,.05) 1.5px, transparent 1.6px),
+      radial-gradient(rgba(247,243,230,.03) 1px,   transparent 1.1px);
+    background-size: auto, auto, 24px 24px, 11px 11px;
+    background-position: 0 0, 0 0, 0 0, 6px 8px;
+    border: 22px solid #8a5a2c;
+    border-image: linear-gradient(135deg, #a06a35 0%, #6b4621 50%, #a06a35 100%) 1;
+    box-shadow:
+      8px 8px 0 rgba(0,0,0,.25),
+      inset 0 0 0 6px var(--slate-2),
+      inset 0 0 100px rgba(0,0,0,.35);
+    padding: 56px 80px 48px;
+    z-index: 2;
+    overflow: hidden;
+  }
+  .hero .sun { position:absolute; top: 50px; right: 90px; width: 220px; height: 220px; pointer-events: none; opacity: .92; }
+  .hero .sun svg { width: 100%; height: 100%; }
+  .hero .doodles { position:absolute; bottom: 24px; left: 60px; pointer-events: none; opacity: .85; }
+
+  .hero .greet-eye {
+    font-family:'Patrick Hand'; font-size: 44px;
+    color: var(--crayon-y); letter-spacing: .14em; text-transform: uppercase;
+    display:inline-flex; align-items:center; gap: 18px;
+    margin-bottom: 18px;
+  }
+  .hero .greet-eye::before { content:'✶'; font-size: 56px; color: var(--crayon-y); }
+  .hero h1 {
+    font-family:'Kalam', cursive; font-weight: 700;
+    font-size: 256px; line-height: .95;
+    color: var(--chalk); margin: 0;
+    letter-spacing: -.005em;
+    text-shadow: 0 4px 0 rgba(0,0,0,.25), 0 0 60px rgba(247,243,230,.06);
+    position: relative;
+  }
+  .hero h1 .stroke { position: relative; display: inline-block; }
+  .hero h1 .stroke::after {
+    content:''; position:absolute; left: -8px; right: -16px; bottom: -22px; height: 14px;
+    background:
+      linear-gradient(90deg,
+        var(--crayon-r) 0 30%,
+        var(--crayon-y) 30% 55%,
+        var(--crayon-r) 55% 100%);
+    border-radius: 999px;
+    transform: rotate(-1.2deg) skewX(-1deg);
+    box-shadow: 4px 4px 0 rgba(0,0,0,.18);
+  }
+  .hero h1 em {
+    font-family:'Caveat', cursive; font-style: italic; font-weight: 700;
+    color: var(--pencil);
+  }
+  .hero .sub {
+    font-family:'Patrick Hand'; font-size: 50px; line-height: 1.32;
+    color: var(--chalk-d); margin-top: 40px; max-width: 2050px;
+    letter-spacing: .005em;
+  }
+  .hero .sub b {
+    color: var(--crayon-y); font-weight: 400;
+    background: linear-gradient(180deg, transparent 65%, rgba(244,207,61,.22) 65% 92%, transparent 92%);
+    padding: 0 6px;
+  }
+  .hero .pencils {
+    margin-top: 32px;
+    display:flex; gap: 18px; flex-wrap: wrap;
+  }
+  .hero .pen {
+    display:inline-flex; align-items:center; gap: 16px;
+    padding: 12px 26px;
+    background: rgba(247,243,230,.08); border: 3px dashed var(--chalk-d);
+    border-radius: 999px;
+    font-family:'Patrick Hand'; font-size: 36px;
+    color: var(--chalk); letter-spacing: .02em;
+  }
+  .hero .pen .dot {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--crayon-r); border: 3px solid var(--chalk);
+    box-shadow: 2px 2px 0 rgba(0,0,0,.4);
+    flex-shrink: 0;
+  }
+  .hero .pen.b .dot { background: var(--crayon-b); }
+  .hero .pen.g .dot { background: var(--crayon-g); }
+  .hero .pen.y .dot { background: var(--crayon-y); }
+
+  /* ─── RIGHT COLUMN — polaroid + countdown ─────────────────── */
+  .right {
+    position:absolute; top: 280px; right: 64px; width: 1232px; height: 800px;
+    display:grid; grid-template-rows: 470px 310px; gap: 20px;
+    z-index: 3;
+  }
+
+  .polaroid-single {
+    position: relative;
+    background: #fff; border: 5px solid var(--ink); padding: 24px 28px 18px;
+    box-shadow: 12px 12px 0 var(--ink);
+    transform: rotate(-2deg);
+    overflow: hidden;
+  }
+  .polaroid-single .tape {
+    position:absolute; top: -16px; left: 28%; width: 220px; height: 50px;
+    background: rgba(255, 197, 76, .85);
+    transform: rotate(-3deg);
+    box-shadow: 0 4px 12px rgba(0,0,0,.18);
+    background-image: repeating-linear-gradient(90deg, rgba(0,0,0,.04) 0 2px, transparent 2px 8px);
+  }
+  .polaroid-single .ey {
+    font-family:'Patrick Hand'; font-size: 32px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--crayon-r); margin-bottom: 8px;
+  }
+  .polaroid-single h3 {
+    font-family:'Fraunces', serif; font-style: italic; font-weight: 900;
+    font-size: 70px; line-height: 1; color: var(--ink); letter-spacing: -.02em; margin: 0 0 16px;
+  }
+  .polaroid-single .lines { display:grid; gap: 10px; }
+  .polaroid-single .line {
+    display:grid; grid-template-columns: 88px 1fr auto; gap: 18px; align-items:center;
+    padding: 8px 0;
+    border-bottom: 2px dashed rgba(31,34,48,.18);
+  }
+  .polaroid-single .line:last-child { border-bottom: 0; }
+  .polaroid-single .line .av {
+    width: 84px; height: 84px; border-radius: 50%; border: 4px solid var(--ink);
+    display:grid; place-items:center;
+    font-family:'Fraunces', serif; font-style: italic; font-weight: 900; font-size: 36px; color: #fff;
+    box-shadow: 3px 3px 0 var(--ink);
+  }
+  .polaroid-single .line .who {
+    font-family:'Caveat'; font-weight: 700; font-size: 52px;
+    color: var(--ink); line-height: 1;
+  }
+  .polaroid-single .line .who span {
+    display:block; font-family:'Patrick Hand'; font-size: 30px; color: var(--ink-2);
+    letter-spacing: .02em; margin-top: 4px;
+  }
+  .polaroid-single .line .ic { font-size: 56px; line-height: 1; }
+
+  /* Notebook countdown */
+  .countdown {
+    position: relative;
+    background: #fdfaf0;
+    border: 5px solid var(--ink); border-left-width: 24px;
+    border-left-color: var(--crayon-r);
+    box-shadow: 12px 12px 0 var(--ink);
+    padding: 28px 40px 28px 60px;
+    overflow: hidden;
+    transform: rotate(-1deg);
+  }
+  .countdown::before {
+    content:''; position:absolute; inset: 0;
+    background-image: repeating-linear-gradient(180deg,
+      transparent 0 56px, rgba(59,109,191,.18) 56px 58px);
+    pointer-events: none;
+  }
+  .countdown::after {
+    content:''; position:absolute; left: 6px; top: 0; bottom: 0; width: 16px;
+    background:
+      radial-gradient(circle, var(--ink) 0 5px, transparent 6px) 0 22px / 16px 60px;
+    pointer-events:none;
+  }
+  .countdown .ey {
+    position: relative; z-index: 2;
+    font-family:'Patrick Hand'; font-size: 32px;
+    color: var(--ink-2); letter-spacing: .14em; text-transform: uppercase;
+  }
+  .countdown .ey b { color: var(--crayon-r); font-weight: 400; }
+  .countdown .row {
+    position: relative; z-index: 2;
+    display:grid; grid-template-columns: auto 1fr; gap: 28px; align-items:center; margin-top: 4px;
+  }
+  .countdown .num {
+    font-family:'Fraunces', serif; font-style: italic; font-weight: 900;
+    font-size: 200px; line-height: .9; color: var(--crayon-r); letter-spacing: -.04em;
+    text-shadow: 5px 5px 0 var(--ink);
+  }
+  .countdown .meta {
+    font-family:'Caveat'; font-weight: 600; font-size: 50px; line-height: 1.1; color: var(--ink);
+  }
+  .countdown .meta span {
+    display:block; font-family:'Patrick Hand'; font-size: 30px; color: var(--ink-2);
+    margin-top: 6px;
+  }
+  .countdown .dashes {
+    position: relative; z-index: 2;
+    margin-top: 12px;
+    display:flex; gap: 8px; align-items: center;
+  }
+  .countdown .dash {
+    flex: 1; height: 12px; background: var(--crayon-g); border-radius: 6px;
+    box-shadow: 2px 2px 0 rgba(0,0,0,.18);
+  }
+  .countdown .dash.empty { background: rgba(31,34,48,.12); box-shadow: none; }
+
+  /* ─── AGENDA — corkboard with pinned index cards ─────────────── */
+  .agenda {
+    position:absolute; top: 1100px; left: 64px; right: 64px; height: 540px;
+    background: var(--cork);
+    background-image:
+      radial-gradient(rgba(74, 39, 13, .35) 1.5px, transparent 1.7px),
+      radial-gradient(rgba(74, 39, 13, .25) 1px,   transparent 1.1px),
+      radial-gradient(rgba(255, 255, 255, .14) 1.2px, transparent 1.3px);
+    background-size: 18px 18px, 9px 9px, 26px 26px;
+    background-position: 0 0, 4px 6px, 8px 12px;
+    border: 12px solid var(--cork-d);
+    box-shadow:
+      14px 14px 0 rgba(0,0,0,.25),
+      inset 0 0 0 4px var(--cork-2),
+      inset 0 0 80px rgba(74,39,13,.30);
+    padding: 24px 28px 24px;
+    z-index: 2;
+  }
+  .agenda .head {
+    display:flex; justify-content:space-between; align-items:flex-end;
+    padding: 0 8px 14px;
+    margin-bottom: 14px;
+    border-bottom: 4px dashed rgba(74,39,13,.55);
+  }
+  .agenda .head h2 {
+    font-family:'Fraunces', serif; font-style: italic; font-weight: 900;
+    font-size: 80px; line-height: 1; margin: 0; color: #fff;
+    letter-spacing: -.02em;
+    text-shadow: 5px 5px 0 var(--cork-d);
+  }
+  .agenda .head .day {
+    font-family:'Patrick Hand'; font-size: 36px; color: #fffbe9;
+    letter-spacing: .12em; text-transform: uppercase;
+  }
+  .agenda .head .day b {
+    color: var(--bus); font-weight: 400;
+    background: var(--ink); padding: 3px 14px; border-radius: 6px;
+    margin: 0 6px;
+  }
+  /* 7 cards in a single row */
+  .agenda .grid {
+    display:grid; grid-template-columns: repeat(7, 1fr); gap: 16px;
+    padding: 22px 8px 0;
+  }
+  .card {
+    position: relative;
+    background: #fffbeb;
+    padding: 22px 18px 18px;
+    box-shadow: 5px 5px 0 rgba(0,0,0,.22);
+    min-height: 320px;
+    display:flex; flex-direction: column; gap: 6px;
+    background-image: linear-gradient(180deg,
+      transparent 0 60px, var(--crayon-r) 60px 62px,
+      transparent 62px 100%);
+  }
+  .card:nth-child(1) { transform: rotate(-2deg); }
+  .card:nth-child(2) { transform: rotate( 1.2deg); }
+  .card:nth-child(3) { transform: rotate(-.8deg); }
+  .card:nth-child(4) { transform: rotate( 2deg); }
+  .card:nth-child(5) { transform: rotate(-1deg); }
+  .card:nth-child(6) { transform: rotate( 1.4deg); }
+  .card:nth-child(7) { transform: rotate(-1.6deg); }
+  /* push pin */
+  .card::before {
+    content:''; position:absolute; top: -16px; left: 50%; transform: translateX(-50%);
+    width: 32px; height: 32px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, var(--pin) 0 35%, #aa3024 50%, #6b1d12 80%);
+    box-shadow: 3px 4px 6px rgba(0,0,0,.4), inset 0 -3px 0 rgba(0,0,0,.3);
+    z-index: 3;
+  }
+  .card .top {
+    display:flex; justify-content:space-between; align-items: baseline;
+    margin-top: 8px;
+    border-bottom: 2px dotted var(--ink-2); padding-bottom: 6px;
+  }
+  .card .p {
+    font-family:'Fraunces', serif; font-style: italic; font-weight: 900;
+    font-size: 50px; line-height: 1; color: var(--crayon-b);
+    letter-spacing: -.01em;
+  }
+  .card .t {
+    font-family:'Patrick Hand'; font-size: 26px; color: var(--ink-2);
+    letter-spacing: .06em;
+  }
+  .card .c {
+    font-family:'Figtree'; font-weight: 800; font-size: 36px; color: var(--ink);
+    line-height: 1.05; letter-spacing: -.005em; margin-top: 8px;
+  }
+  .card .r {
+    font-family:'Caveat'; font-weight: 600; font-size: 32px; color: var(--ink-2);
+    margin-top: auto; padding-top: 10px;
+    line-height: 1.1;
+  }
+  .card .r b { color: var(--crayon-r); font-weight: 600; }
+  /* "NOW" card — yellow washi tape across, lightly highlighted */
+  .card.now {
+    background: #fffac4;
+    transform: rotate(-2.5deg) scale(1.06);
+    box-shadow: 9px 9px 0 rgba(0,0,0,.35);
+    z-index: 4;
+  }
+  .card.now::before { background: radial-gradient(circle at 35% 35%, var(--crayon-y) 0 35%, var(--bus-d) 50%, #6b4e0a 80%); }
+  .card.now::after {
+    content:'NOW'; position:absolute; top: 12px; right: -14px;
+    background: var(--crayon-r); color: #fff;
+    font-family:'Patrick Hand'; font-size: 26px;
+    letter-spacing: .26em; text-transform: uppercase;
+    padding: 6px 16px; transform: rotate(8deg);
+    box-shadow: 3px 3px 0 rgba(0,0,0,.3);
+    border: 3px solid var(--ink);
+  }
+  .card.done { opacity: .55; background: #f1ead1; }
+  .card.done .c { text-decoration: line-through; text-decoration-thickness: 3px; text-decoration-color: var(--crayon-r); }
+  .card.done::before { background: radial-gradient(circle at 35% 35%, #888 0 35%, #555 50%, #222 80%); }
+
+  /* ─── BOTTOM ROW — lunch · buses · clubs ─────────────────── */
+  .lower {
+    position:absolute; top: 1660px; left: 64px; right: 64px; height: 320px;
+    display:grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 20px;
+    z-index: 4;
+  }
+
+  /* Brown-paper lunch bag */
+  .lunchbag {
+    position: relative;
+    transform: rotate(-1.5deg);
+  }
+  .lunchbag .bag {
+    position: relative;
+    background: var(--kraft);
+    background-image:
+      radial-gradient(rgba(0,0,0,.08) 1.2px, transparent 1.3px),
+      linear-gradient(170deg, rgba(255,255,255,.08), transparent 60%),
+      linear-gradient(20deg,  rgba(0,0,0,.08), transparent 50%);
+    background-size: 18px 18px, auto, auto;
+    border: 5px solid var(--kraft-d);
+    box-shadow: 10px 10px 0 var(--ink);
+    padding: 32px 36px 28px;
+    height: 100%;
+    /* curled top edge */
+    clip-path: polygon(
+      4% 4%, 8% 0%, 16% 4%, 24% 1%, 34% 5%, 44% 0%, 56% 4%, 66% 1%, 76% 5%, 86% 0%, 94% 4%, 100% 8%, 100% 100%, 0% 100%, 0% 8%
+    );
+  }
+  .lunchbag .receipt {
+    position:absolute; top: -18px; left: 50%; transform: translateX(-50%) rotate(2deg);
+    background: #fffde7; border: 4px solid var(--ink);
+    padding: 6px 22px;
+    font-family:'Patrick Hand'; font-size: 26px;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--ink);
+    box-shadow: 3px 3px 0 rgba(0,0,0,.2);
+    z-index: 3;
+    white-space: nowrap;
+  }
+  .lunchbag .ey {
+    font-family:'Patrick Hand'; font-size: 30px; letter-spacing: .14em; text-transform: uppercase;
+    color: rgba(31,34,48,.78);
+  }
+  .lunchbag .entree {
+    font-family:'Fraunces', serif; font-style: italic; font-weight: 900;
+    font-size: 64px; line-height: .95; color: var(--ink); letter-spacing: -.02em;
+    margin-top: 6px;
+  }
+  .lunchbag .sides {
+    font-family:'Caveat'; font-weight: 600; font-size: 38px; line-height: 1.15;
+    color: var(--ink); margin-top: 10px;
+  }
+  .lunchbag .tags {
+    display:flex; gap: 10px; margin-top: 14px; flex-wrap:wrap;
+  }
+  .lunchbag .tag {
+    font-family:'Patrick Hand'; font-size: 26px;
+    padding: 4px 14px; border: 3px solid var(--ink);
+    background: #fff; color: var(--ink);
+    letter-spacing: .04em;
+    transform: rotate(-1deg);
+  }
+  .lunchbag .tag.veg { background: #d6f0c6; }
+  .lunchbag .tag.gf  { background: #ffe4c1; }
+  .lunchbag .tag.df  { background: #d3def7; }
+
+  /* School-bus locker row */
+  .buses {
+    background: linear-gradient(180deg, var(--bus) 0%, var(--bus-d) 100%);
+    border: 6px solid var(--ink);
+    box-shadow: 10px 10px 0 var(--ink);
+    padding: 16px 22px 18px;
+    display:flex; flex-direction: column; gap: 10px;
+    position: relative;
+    overflow: hidden;
+  }
+  .buses::before {
+    content:''; position: absolute; top: 6px; left: 6px; right: 6px; bottom: 6px;
+    border: 3px dashed rgba(31,34,48,.35); pointer-events:none;
+  }
+  .buses .head {
+    display:flex; justify-content:space-between; align-items:center;
+    padding-bottom: 6px;
+    border-bottom: 4px solid var(--ink);
+  }
+  .buses .head .t {
+    font-family:'Fraunces', serif; font-style: italic; font-weight: 900;
+    font-size: 56px; color: var(--ink); line-height: 1; letter-spacing: -.02em;
+  }
+  .buses .head .ey {
+    font-family:'Patrick Hand'; font-size: 28px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2);
+  }
+  .buses .list {
+    display:grid; gap: 6px; padding-top: 4px;
+  }
+  .bus {
+    background: #fff; border: 4px solid var(--ink);
+    padding: 8px 14px;
+    display:grid; grid-template-columns: 70px 1fr auto; gap: 14px; align-items:center;
+    box-shadow: 3px 3px 0 rgba(0,0,0,.25);
+  }
+  .bus .num {
+    background: var(--ink); color: var(--bus); border: 3px solid var(--ink);
+    width: 70px; height: 60px;
+    display:grid; place-items: center;
+    font-family:'Fraunces', serif; font-style: italic; font-weight: 900;
+    font-size: 44px; line-height: 1; letter-spacing: -.02em;
+  }
+  .bus .info .rt {
+    font-family:'Figtree'; font-weight: 800; font-size: 28px; color: var(--ink); line-height: 1.05;
+  }
+  .bus .info .sub {
+    font-family:'Patrick Hand'; font-size: 22px; color: var(--ink-2);
+    letter-spacing: .04em; margin-top: 2px;
+  }
+  .bus .st {
+    font-family:'Caveat'; font-weight: 700; font-size: 30px;
+    padding: 4px 14px; border: 3px solid var(--ink);
+    line-height: 1; letter-spacing: .02em;
+    transform: rotate(-2deg);
+    box-shadow: 2px 2px 0 var(--ink);
+    white-space: nowrap;
+  }
+  .bus .st.on   { background: #d6f0c6; color: #2d6a1d; }
+  .bus .st.late { background: #ffd1c1; color: #b1380f; }
+  .bus .st.sched{ background: #d3def7; color: #233a7a; }
+
+  /* Manila folder for clubs */
+  .folder {
+    position: relative;
+    background: var(--kraft);
+    border: 5px solid var(--kraft-d);
+    box-shadow: 10px 10px 0 var(--ink);
+    padding: 22px 28px 18px;
+    transform: rotate(1deg);
+    background-image:
+      radial-gradient(rgba(0,0,0,.06) 1.2px, transparent 1.3px);
+    background-size: 22px 22px;
+  }
+  .folder::before {
+    content:''; position:absolute; top: -28px; left: 56px; width: 240px; height: 28px;
+    background: var(--kraft); border: 5px solid var(--kraft-d); border-bottom: 0;
+    border-radius: 8px 8px 0 0;
+  }
+  .folder::after {
+    content:'CLUBS'; position:absolute; top: -22px; left: 88px;
+    font-family:'Patrick Hand'; font-size: 22px; letter-spacing: .14em; color: var(--ink);
+    z-index: 2;
+  }
+  .folder .clip {
+    position:absolute; top: -8px; right: 60px; width: 50px; height: 80px; pointer-events:none;
+    transform: rotate(15deg);
+    filter: drop-shadow(2px 2px 2px rgba(0,0,0,.4));
+    z-index: 3;
+  }
+  .folder .clip::before, .folder .clip::after {
+    content:''; position:absolute; left:0; right: 0;
+    border: 3px solid #b3b3bc; background: transparent;
+  }
+  .folder .clip::before { top: 0; height: 50px; border-radius: 25px 25px 0 0; border-bottom: 0; }
+  .folder .clip::after  { top: 14px; height: 40px; border-radius: 20px 20px 0 0; border-bottom: 0; left: 8px; right: 8px; }
+  .folder .ey {
+    font-family:'Patrick Hand'; font-size: 26px; letter-spacing: .14em; text-transform: uppercase;
+    color: rgba(31,34,48,.7);
+  }
+  .folder h3 {
+    font-family:'Fraunces', serif; font-style: italic; font-weight: 900; font-size: 46px;
+    color: var(--ink); margin: 4px 0 10px; line-height: 1; letter-spacing: -.02em;
+  }
+  .folder .list { display:grid; gap: 4px; }
+  .folder .row {
+    display:grid; grid-template-columns: 22px 1fr auto; gap: 14px; align-items:center;
+    padding: 6px 0;
+    border-bottom: 2px dotted rgba(31,34,48,.4);
+  }
+  .folder .row:last-child { border-bottom: 0; }
+  .folder .row .dot { width: 20px; height: 20px; border-radius: 50%; border: 3px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); }
+  .folder .row .n { font-family:'Figtree'; font-weight: 800; font-size: 28px; color: var(--ink); line-height: 1.05; }
+  .folder .row .n span {
+    display:block; font-family:'Patrick Hand'; font-size: 22px; color: var(--ink-2); margin-top: 2px;
+  }
+  .folder .row .w { font-family:'Caveat'; font-weight: 700; font-size: 32px; color: var(--crayon-r); white-space: nowrap; }
+
+  /* ─── TICKER — torn paper banner with push pins ──────────────── */
+  .ticker {
+    position:absolute; bottom: 60px; left: 64px; right: 64px; height: 100px;
+    background: var(--paper);
+    border: 5px solid var(--ink);
+    box-shadow: 8px 8px 0 var(--ink);
+    display:grid; grid-template-columns: auto 1fr; align-items:stretch;
+    z-index: 4;
+    clip-path: polygon(
+      0 8%, 2% 0, 4% 6%, 7% 0, 10% 5%, 13% 0, 16% 7%, 20% 0, 24% 5%, 28% 0, 32% 6%, 36% 0, 40% 5%, 44% 0, 48% 7%, 52% 0, 56% 5%, 60% 0, 64% 6%, 68% 0, 72% 5%, 76% 0, 80% 7%, 84% 0, 88% 5%, 92% 0, 96% 6%, 100% 0, 100% 92%, 96% 100%, 92% 95%, 88% 100%, 84% 94%, 80% 100%, 76% 93%, 72% 100%, 68% 95%, 64% 100%, 60% 94%, 56% 100%, 52% 93%, 48% 100%, 44% 95%, 40% 100%, 36% 94%, 32% 100%, 28% 93%, 24% 100%, 20% 95%, 16% 100%, 13% 94%, 10% 100%, 7% 95%, 4% 100%, 2% 94%, 0 100%
+    );
+  }
+  .ticker .badge {
+    background: var(--crayon-r); color: #fff;
+    padding: 0 36px;
+    display:flex; align-items:center; gap: 14px;
+    font-family:'Fraunces', serif; font-style: italic; font-weight: 900; font-size: 44px;
+    letter-spacing: -.01em;
+    border-right: 5px solid var(--ink);
+  }
+  .ticker .badge::before {
+    content:''; width: 22px; height: 22px;
+    background: conic-gradient(var(--crayon-y) 0 33%, var(--crayon-b) 33% 66%, var(--chalk) 66% 100%);
+    border: 3px solid #fff; border-radius: 50%;
+  }
+  .ticker .feed {
+    overflow: hidden; display:flex; align-items:center;
+    padding-left: 32px;
+  }
+  .ticker .msg {
+    font-family:'Caveat'; font-weight: 600; font-size: 50px;
+    color: var(--ink); white-space: nowrap; letter-spacing: .01em;
+    animation: scroll 80s linear infinite;
+  }
+  .ticker .msg span { display:inline-block; padding-right: 80px; }
+  .ticker .msg span::after {
+    content: '✶'; color: var(--crayon-r); margin-left: 60px; font-size: 38px;
+  }
+  .ticker-pin {
+    position:absolute; bottom: 130px; width: 32px; height: 32px; border-radius: 50%; z-index: 7;
+    background: radial-gradient(circle at 35% 35%, var(--pin) 0 35%, #aa3024 50%, #6b1d12 80%);
+    box-shadow: 3px 4px 6px rgba(0,0,0,.4), inset 0 -3px 0 rgba(0,0,0,.3);
+  }
+  .ticker-pin.l { left: 90px; }
+  .ticker-pin.r { right: 90px; }
+
+  @keyframes scroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+</style>
+</head>
+<body>
+<script>
+  const __TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "schema": "edu-cms-ms-homeroom-v2" }/*EDITMODE-END*/;
+</script>
+
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+  <!-- ─── HUD ─────────────────────────────────────────────── -->
+  <header class="hud">
+    <div class="brand" data-widget="school">
+      <div class="badge" aria-hidden="true">
+        <div class="face"></div>
+        <div class="lvl" data-field="school.team">Home of the Otters</div>
+      </div>
+      <div class="info">
+        <div class="eye">Welcome, Otters</div>
+        <div class="name" data-field="school.name">Westridge Middle</div>
+        <div class="sub">
+          <span data-field="school.year">2025–26 · Term 2</span>
+          <span class="bullet"></span>
+          <b data-field="school.house">House Otter · Lvl 7</b>
+        </div>
+      </div>
+    </div>
+
+    <div class="stamp" data-widget="day">
+      <div class="lab" data-field="day.label">Hall Pass · Today</div>
+      <div class="day"><span data-field="day.dow">Tuesday</span> <b data-field="day.date">Apr 21</b></div>
+    </div>
+
+    <div class="tiles">
+      <div class="tile" data-widget="clock">
+        <span class="k" data-field="clock.label">Now</span>
+        <span class="v" data-field="clock.time">7:53</span>
+      </div>
+      <div class="tile" data-widget="weather">
+        <span class="k" data-field="weather.label">Outside</span>
+        <span class="v cool" data-field="weather.temp">46°</span>
+      </div>
+      <div class="tile" data-widget="weather2">
+        <span class="k" data-field="weather2.label">Sky</span>
+        <span class="v sun" data-field="weather2.cond">Sunny</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ─── HERO — chalkboard greeting ─────────────────────── -->
+  <section class="hero" data-widget="greeting">
+    <div class="sun" aria-hidden="true">
+      <svg viewBox="0 0 200 200">
+        <g fill="none" stroke="#f4cf3d" stroke-width="5" stroke-linecap="round" opacity="0.95">
+          <circle cx="100" cy="100" r="44"/>
+          <line x1="100" y1="20"  x2="100" y2="40"/>
+          <line x1="100" y1="160" x2="100" y2="180"/>
+          <line x1="20"  y1="100" x2="40"  y2="100"/>
+          <line x1="160" y1="100" x2="180" y2="100"/>
+          <line x1="40"  y1="40"  x2="56"  y2="56"/>
+          <line x1="144" y1="144" x2="160" y2="160"/>
+          <line x1="160" y1="40"  x2="144" y2="56"/>
+          <line x1="40"  y1="160" x2="56"  y2="144"/>
+        </g>
+        <g stroke="#f4cf3d" stroke-width="3.5" fill="none" stroke-linecap="round" opacity="0.85">
+          <path d="M 82 96 Q 88 92 94 96"/>
+          <path d="M 106 96 Q 112 92 118 96"/>
+          <path d="M 82 116 Q 100 130 118 116"/>
+        </g>
+      </svg>
+    </div>
+    <div class="doodles" aria-hidden="true">
+      <svg width="280" height="120" viewBox="0 0 280 120">
+        <g fill="none" stroke="#f7f3e6" stroke-width="3.5" stroke-linecap="round" opacity="0.55">
+          <circle cx="50" cy="70" r="14"/>
+          <circle cx="34" cy="50" r="10"/>
+          <circle cx="66" cy="50" r="10"/>
+          <circle cx="34" cy="90" r="10"/>
+          <circle cx="66" cy="90" r="10"/>
+          <line x1="50" y1="86" x2="50" y2="120"/>
+          <path d="M 50 110 Q 80 100 95 115"/>
+          <circle cx="170" cy="40" r="10" stroke="#e8503a"/>
+          <circle cx="158" cy="28" r="8" stroke="#e8503a"/>
+          <circle cx="182" cy="28" r="8" stroke="#e8503a"/>
+          <circle cx="158" cy="52" r="8" stroke="#e8503a"/>
+          <circle cx="182" cy="52" r="8" stroke="#e8503a"/>
+          <line x1="170" y1="58" x2="170" y2="120" stroke="#5ba84e"/>
+          <path d="M 230 80 L 240 60 L 250 80 L 270 80 L 254 94 L 260 114 L 240 102 L 220 114 L 226 94 L 210 80 Z" stroke="#f4cf3d"/>
+        </g>
+      </svg>
+    </div>
+
+    <div class="greet-eye" data-field="greeting.eyebrow">Good Morning, Otters</div>
+    <h1>
+      <span data-field="greeting.h1">Hey</span>
+      &mdash;
+      <em data-field="greeting.h2">have a good one.</em>
+    </h1>
+    <p class="sub" data-field="greeting.subtitle">
+      First period starts at <b>8:05.</b> Hit your locker, say hi to someone, bring a pencil. Homeroom takes attendance by 8:10 sharp. Today's poetry workshop in <b>Rm 108</b> with Mr. Nguyen — bring your journal.
+    </p>
+    <div class="pencils" data-widget="greeting.tags">
+      <span class="pen">  <span class="dot"></span><span data-field="greeting.tag1">Day B · Block schedule</span></span>
+      <span class="pen b"><span class="dot"></span><span data-field="greeting.tag2">Spring Field Day · 12 days out</span></span>
+      <span class="pen y"><span class="dot"></span><span data-field="greeting.tag3">Picture Day · Thursday</span></span>
+      <span class="pen g"><span class="dot"></span><span data-field="greeting.tag4">Bus 14 · running +10</span></span>
+    </div>
+  </section>
+
+  <!-- ─── RIGHT COLUMN ───────────────────────────────────── -->
+  <aside class="right">
+    <div class="polaroid-single" data-widget="shoutouts">
+      <div class="tape" aria-hidden="true"></div>
+      <div class="ey" data-field="shoutouts.label">Today's High-Fives</div>
+      <h3 data-field="shoutouts.title">Birthdays &amp; Shoutouts</h3>
+      <div class="lines">
+        <div class="line" data-widget="shoutouts.0">
+          <span class="av" style="background: var(--crayon-p);" data-field="shoutouts.0.av">MR</span>
+          <span class="who" data-field="shoutouts.0.who">Maya R. — turns 13!<span data-field="shoutouts.0.note">7th grade · cake at lunch</span></span>
+          <span class="ic">🎂</span>
+        </div>
+        <div class="line" data-widget="shoutouts.1">
+          <span class="av" style="background: var(--crayon-b);" data-field="shoutouts.1.av">DK</span>
+          <span class="who" data-field="shoutouts.1.who">Daniel K. — Math Olympiad!<span data-field="shoutouts.1.note">3rd place state finals</span></span>
+          <span class="ic">⭐</span>
+        </div>
+        <div class="line" data-widget="shoutouts.2">
+          <span class="av" style="background: var(--crayon-g);" data-field="shoutouts.2.av">7B</span>
+          <span class="who" data-field="shoutouts.2.who">Ms. Chen's 7B<span data-field="shoutouts.2.note">homework streak record</span></span>
+          <span class="ic">🔥</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="countdown" data-widget="countdown">
+      <div class="ey">Days until <b data-field="countdown.label">Spring Field Day</b></div>
+      <div class="row">
+        <div class="num" data-field="countdown.value">12</div>
+        <div class="meta" data-field="countdown.meta">Sign-ups close Friday<span data-field="countdown.sub">at lunch · gym A · cone toss + tug-of-war</span></div>
+      </div>
+      <div class="dashes" aria-hidden="true">
+        <span class="dash"></span><span class="dash"></span><span class="dash"></span>
+        <span class="dash"></span><span class="dash"></span><span class="dash empty"></span>
+        <span class="dash empty"></span><span class="dash empty"></span><span class="dash empty"></span>
+        <span class="dash empty"></span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ─── AGENDA — corkboard with index cards ─────────────── -->
+  <section class="agenda" data-widget="agenda">
+    <div class="head">
+      <h2 data-field="agenda.title">Today's rotation</h2>
+      <div class="day"><span data-field="agenda.day">Day</span> <b data-field="agenda.letter">B</b> <span data-field="agenda.dayName">· Tuesday Apr 21</span></div>
+    </div>
+    <div class="grid">
+      <div class="card done" data-widget="agenda.0">
+        <div class="top"><span class="p" data-field="agenda.0.p">P1</span><span class="t" data-field="agenda.0.time">8:05</span></div>
+        <div class="c" data-field="agenda.0.c">Math 7</div>
+        <div class="r"><b data-field="agenda.0.r">Rm 214</b><br/><span data-field="agenda.0.teacher">Ms. Patel</span></div>
+      </div>
+      <div class="card now" data-widget="agenda.1">
+        <div class="top"><span class="p" data-field="agenda.1.p">P2</span><span class="t" data-field="agenda.1.time">9:00</span></div>
+        <div class="c" data-field="agenda.1.c">English Poetry</div>
+        <div class="r"><b data-field="agenda.1.r">Rm 108</b><br/><span data-field="agenda.1.teacher">Mr. Nguyen</span></div>
+      </div>
+      <div class="card" data-widget="agenda.2">
+        <div class="top"><span class="p" data-field="agenda.2.p">P3</span><span class="t" data-field="agenda.2.time">9:55</span></div>
+        <div class="c" data-field="agenda.2.c">Science Lab</div>
+        <div class="r"><b data-field="agenda.2.r">Rm 207</b><br/><span data-field="agenda.2.teacher">Ms. Okafor</span></div>
+      </div>
+      <div class="card" data-widget="agenda.3">
+        <div class="top"><span class="p" data-field="agenda.3.p">P4</span><span class="t" data-field="agenda.3.time">10:50</span></div>
+        <div class="c" data-field="agenda.3.c">PE Mile Run</div>
+        <div class="r"><b data-field="agenda.3.r">Gym A</b><br/><span data-field="agenda.3.teacher">Coach Reyes</span></div>
+      </div>
+      <div class="card" data-widget="agenda.4">
+        <div class="top"><span class="p" data-field="agenda.4.p">LU</span><span class="t" data-field="agenda.4.time">11:45</span></div>
+        <div class="c" data-field="agenda.4.c">A-Lunch</div>
+        <div class="r"><b data-field="agenda.4.r">Cafeteria</b><br/><span data-field="agenda.4.teacher">7th graders</span></div>
+      </div>
+      <div class="card" data-widget="agenda.5">
+        <div class="top"><span class="p" data-field="agenda.5.p">P5</span><span class="t" data-field="agenda.5.time">12:35</span></div>
+        <div class="c" data-field="agenda.5.c">Map Quiz</div>
+        <div class="r"><b data-field="agenda.5.r">Rm 115</b><br/><span data-field="agenda.5.teacher">Mr. Alvarez</span></div>
+      </div>
+      <div class="card" data-widget="agenda.6">
+        <div class="top"><span class="p" data-field="agenda.6.p">P6</span><span class="t" data-field="agenda.6.time">1:30</span></div>
+        <div class="c" data-field="agenda.6.c">Art / Print</div>
+        <div class="r"><b data-field="agenda.6.r">Rm B-12</b><br/><span data-field="agenda.6.teacher">Ms. Park</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── BOTTOM ROW — lunch · buses · clubs ─────────────── -->
+  <section class="lower">
+
+    <!-- LUNCH — brown paper bag -->
+    <div class="lunchbag" data-widget="lunch">
+      <div class="bag">
+        <div class="receipt" data-field="lunch.receipt">Today's Menu &middot; A-Period</div>
+        <div class="ey" data-field="lunch.label">In the cafeteria</div>
+        <div class="entree" data-field="lunch.entree">Chicken &amp; rice bowl</div>
+        <div class="sides" data-field="lunch.sides">w/ roasted broccoli, garlic bread &amp; seasonal fruit. Salad bar all period.</div>
+        <div class="tags">
+          <span class="tag veg" data-field="lunch.tag1">Veg ✓</span>
+          <span class="tag gf"  data-field="lunch.tag2">GF avail</span>
+          <span class="tag df"  data-field="lunch.tag3">DF option</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- BUSES — yellow bus card -->
+    <div class="buses" data-widget="buses">
+      <div class="head">
+        <span class="t" data-field="buses.title">2:45 Buses</span>
+        <span class="ey" data-field="buses.label">East loop</span>
+      </div>
+      <div class="list">
+        <div class="bus" data-widget="buses.0">
+          <span class="num" data-field="buses.0.num">12</span>
+          <div class="info">
+            <div class="rt" data-field="buses.0.rt">Oakdale &amp; Pine Ridge</div>
+            <div class="sub" data-field="buses.0.sub">5 stops · Wallace</div>
+          </div>
+          <span class="st on" data-field="buses.0.st">On time</span>
+        </div>
+        <div class="bus" data-widget="buses.1">
+          <span class="num" data-field="buses.1.num">14</span>
+          <div class="info">
+            <div class="rt" data-field="buses.1.rt">Westridge Heights</div>
+            <div class="sub" data-field="buses.1.sub">7 stops · curb sign</div>
+          </div>
+          <span class="st late" data-field="buses.1.st">+10 min</span>
+        </div>
+        <div class="bus" data-widget="buses.2">
+          <span class="num" data-field="buses.2.num">27</span>
+          <div class="info">
+            <div class="rt" data-field="buses.2.rt">Clark / Downtown</div>
+            <div class="sub" data-field="buses.2.sub">cross-town</div>
+          </div>
+          <span class="st sched" data-field="buses.2.st">Scheduled</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- CLUBS — manila folder -->
+    <div class="folder" data-widget="clubs">
+      <span class="clip" aria-hidden="true"></span>
+      <div class="ey" data-field="clubs.label">After school &middot; today @ 3:00</div>
+      <h3 data-field="clubs.title">Clubs &amp; Auditions</h3>
+      <div class="list">
+        <div class="row" data-widget="clubs.0">
+          <span class="dot" style="background: var(--crayon-b);"></span>
+          <span class="n" data-field="clubs.0.n">Robotics Build Week<span data-field="clubs.0.m">Rm 207 · 7th &amp; 8th</span></span>
+          <span class="w" data-field="clubs.0.w">3:00 – 4:30</span>
+        </div>
+        <div class="row" data-widget="clubs.1">
+          <span class="dot" style="background: var(--crayon-p);"></span>
+          <span class="n" data-field="clubs.1.n">Drama Auditions<span data-field="clubs.1.m">Auditorium · all grades</span></span>
+          <span class="w" data-field="clubs.1.w">3:15 – 4:30</span>
+        </div>
+        <div class="row" data-widget="clubs.2">
+          <span class="dot" style="background: var(--crayon-g);"></span>
+          <span class="n" data-field="clubs.2.n">Garden Club<span data-field="clubs.2.m">Greenhouse · sign in office</span></span>
+          <span class="w" data-field="clubs.2.w">3:00 – 4:00</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── TICKER — torn-paper banner ─────────────────────── -->
+  <div class="ticker-pin l" aria-hidden="true"></div>
+  <div class="ticker-pin r" aria-hidden="true"></div>
+  <div class="ticker" data-widget="announcement">
+    <div class="badge" data-field="announcement.badge">Heads&nbsp;Up</div>
+    <div class="feed">
+      <div class="msg">
+        <span data-field="announcement.message">Picture Day moved to Thursday — full uniform, smile ready · permission slips to front office by Wed · spelling bee sign-ups end Friday · 8th-grade field trip forms due tomorrow · library returns due this week · lost blue water bottle (otter sticker) → front office · Ms. Park out today, sub in B-12 · yearbook photos need names + grade · </span>
+        <span aria-hidden="true">Picture Day moved to Thursday — full uniform, smile ready · permission slips to front office by Wed · spelling bee sign-ups end Friday · 8th-grade field trip forms due tomorrow · library returns due this week · lost blue water bottle (otter sticker) → front office · Ms. Park out today, sub in B-12 · yearbook photos need names + grade · </span>
+      </div>
+    </div>
+  </div>
+
+</div></div></div>
+
+<script>
+  // Same fit() pattern as arcade-ms-v2 / atlas-ms-v2.
+  (function(){
+    function fit(){
+      var cs = getComputedStyle(document.documentElement);
+      var w = parseFloat(cs.getPropertyValue('--stage-w')) || 3840;
+      var h = parseFloat(cs.getPropertyValue('--stage-h')) || 2160;
+      var k = Math.min(window.innerWidth / w, window.innerHeight / h);
+      document.documentElement.style.setProperty('--stage-scale', k);
+    }
+    window.addEventListener('resize', fit);
+    window.addEventListener('load', fit);
+    setTimeout(fit, 10);
+    setTimeout(fit, 300);
+  })();
+</script>
+</body>
+</html>

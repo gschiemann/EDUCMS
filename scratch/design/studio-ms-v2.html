@@ -1,0 +1,1295 @@
+<!--
+  MS TEMPLATE · STUDIO · v2 — FULL REDESIGN
+  ==========================================
+  v1 review (carried over from atlas v1): "studio is the same kind of
+  underwhelming — text is small, panels are rectangles with shadows,
+  the metaphor is barely visible. Push the studio thing way harder."
+
+  New design direction: BROADCAST / RECORDING STUDIO done in the
+  most committed way possible. Not "radio with red accents" — a
+  full radio booth scene with:
+    • Warm tungsten + amber + VU-meter green + brushed-silver palette
+      on a near-black acoustic-foam wall
+    • Big "ON AIR" cabochon sign at the top — actual cabinet shape,
+      glow, screws in the corners
+    • Hero: giant supersized "GOOD MORNING" headline with broadcast
+      stripe + waveform underneath
+    • Featured event presented as a vinyl LP on a real turntable
+      (platter, slipmat, tonearm, counterweight)
+    • Schedule presented as four CASSETTE TAPES — real ribbon slots,
+      hub windows, side-A label, magnetic-tape texture
+    • Right rail: analog VU METER with bouncing needle (CSS animated)
+      + a 4-fader mixer strip with knobs and LED meters
+    • Big amber announcement strip = newscaster ribbon mic & "BREAKING"
+      slate; cyan attendance tile = call-letters/frequency display
+    • Bottom ticker = "NOW PLAYING" scroll on a brushed-aluminum bar
+      with rolling teleprompter strip
+
+  Every panel is a real broadcast object, not a div with a shadow.
+
+  Layout (3840x2160, all panels inset 64px, gaps 20px):
+    HUD            56–280   ON AIR sign + waveform stripe + school +
+                            time/weather/countdown
+    HERO ROW       300–1240 left: poster copy (h1 ≈ 360px) + dest tags
+                            right: turntable + VU meter + mixer strip
+    LINEUP         1260–1810 four cassette-tape schedule cards
+    LOWER          1830–2030 amber breaking-news + cyan ATTENDANCE freq
+    TICKER         2050–2150 brushed-aluminum NOW PLAYING scrolling bar
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Studio — MS Lobby 4K (v2)</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Archivo:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500;700&family=Anton&display=swap" rel="stylesheet">
+<style>
+  /* 3-layer scale wrapper, same pattern as arcade-ms-v2 / atlas-ms-v2. */
+  *, *::before, *::after { box-sizing: border-box; }
+  :root { --stage-w: 3840px; --stage-h: 2160px; --stage-scale: 1; }
+  html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; background:#000; }
+  .viewport { position:fixed; inset:0; display:grid; place-items:center; overflow:hidden; }
+  .stage-outer { width:calc(var(--stage-w)*var(--stage-scale)); height:calc(var(--stage-h)*var(--stage-scale)); }
+  .stage { width:var(--stage-w); height:var(--stage-h); transform:scale(var(--stage-scale)); transform-origin:0 0; position:relative; box-shadow:0 80px 200px rgba(0,0,0,.65); overflow:hidden; }
+
+  :root {
+    --wall:        #0c0a0d;     /* near-black acoustic foam */
+    --wall-2:      #1a1418;
+    --panel:       #161118;
+    --panel-2:     #221a22;
+    --ink:         #f6f1e8;     /* warm cream */
+    --ink-2:       #b9aca0;
+    --muted:       #6a5d54;
+    --red:         #e63946;     /* ON AIR red */
+    --red-glow:    #ff5566;
+    --amber:       #f4b942;     /* tungsten */
+    --amber-deep:  #c8901c;
+    --cyan:        #4dd0e1;     /* VU green-cyan */
+    --vu-green:    #66dd88;
+    --vu-yellow:   #ffd140;
+    --vu-red:      #ff4757;
+    --silver:      #c8c4bf;
+    --silver-2:    #8d8a85;
+    --tape:        #1c1a1e;
+    --label:       #e9d8a3;
+    --copper:      #c87f3a;
+  }
+  html, body { color: var(--ink); font-family:'Archivo', system-ui, sans-serif; }
+
+  /* ─── Acoustic foam wall ──────────────────────────────────── */
+  .stage {
+    background: var(--wall);
+    /* foam wedge texture: diamond pattern + warm vignette */
+    background-image:
+      radial-gradient(ellipse 1800px 1100px at 32% 30%, rgba(244,185,66,.08), transparent 65%),
+      radial-gradient(ellipse 1500px 900px at 80% 80%, rgba(230,57,70,.07), transparent 65%),
+      repeating-linear-gradient(45deg, rgba(255,255,255,.018) 0 80px, rgba(0,0,0,.08) 80px 90px),
+      repeating-linear-gradient(-45deg, rgba(255,255,255,.018) 0 80px, rgba(0,0,0,.08) 80px 90px);
+  }
+  .stage::before {
+    /* tape-recorder scanline overlay */
+    content:''; position:absolute; inset:0; pointer-events:none; z-index:1;
+    background: repeating-linear-gradient(0deg, transparent 0 4px, rgba(255,255,255,.012) 4px 5px);
+  }
+
+  /* ─── HUD: ON AIR sign + school lockup + meta tiles ───────── */
+  .hud {
+    position:absolute; top: 56px; left: 64px; right: 64px; height: 224px;
+    display:grid; grid-template-columns: auto 1fr auto; gap: 48px; align-items:center;
+    z-index: 4;
+  }
+
+  /* ON AIR cabochon — real cabinet with screws, glow ring, glass face */
+  .onair {
+    width: 520px; height: 200px; position: relative;
+    background: linear-gradient(180deg, #2a1418 0%, #160809 50%, #0d0306 100%);
+    border: 6px solid #2c1c1f;
+    border-radius: 16px;
+    box-shadow:
+      inset 0 6px 14px rgba(255,140,140,.12),
+      inset 0 -8px 18px rgba(0,0,0,.55),
+      0 18px 48px rgba(230,57,70,.45),
+      0 0 120px rgba(230,57,70,.28);
+  }
+  .onair::before {
+    /* glass face highlight */
+    content:''; position:absolute; inset: 14px;
+    border-radius: 8px;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.07), transparent 28%),
+      radial-gradient(ellipse 80% 60% at 50% 30%, rgba(230,57,70,.45), rgba(80,8,12,.85) 70%);
+    box-shadow: inset 0 0 80px rgba(255,90,100,.38);
+  }
+  .onair::after {
+    /* corner screws — four little aluminum dots */
+    content:''; position:absolute; inset: 0;
+    background:
+      radial-gradient(circle at 22px 22px, #b9b3aa 3px, #5a564f 4px, transparent 5px),
+      radial-gradient(circle at calc(100% - 22px) 22px, #b9b3aa 3px, #5a564f 4px, transparent 5px),
+      radial-gradient(circle at 22px calc(100% - 22px), #b9b3aa 3px, #5a564f 4px, transparent 5px),
+      radial-gradient(circle at calc(100% - 22px) calc(100% - 22px), #b9b3aa 3px, #5a564f 4px, transparent 5px);
+    pointer-events:none;
+  }
+  .onair .text {
+    position: absolute; inset: 0; display:flex; align-items:center; justify-content:center; gap: 24px;
+    z-index: 2;
+  }
+  .onair .dot {
+    width: 28px; height: 28px; border-radius: 50%; background: var(--red);
+    box-shadow:
+      0 0 24px var(--red-glow),
+      0 0 60px rgba(230,57,70,.7),
+      inset 0 -6px 8px rgba(0,0,0,.4);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50% { opacity: .55; transform: scale(.85); }
+  }
+  .onair .label {
+    font-family:'Anton', 'Archivo', sans-serif;
+    font-size: 132px; line-height: .95; letter-spacing: .04em;
+    color: #ffe2c0;
+    text-shadow:
+      0 0 24px rgba(255,180,140,.55),
+      0 0 60px rgba(230,57,70,.45),
+      0 4px 0 rgba(0,0,0,.6);
+  }
+
+  /* School lockup with frequency dial visual */
+  .lockup { display:flex; flex-direction: column; justify-content:center; gap: 6px; padding-left: 12px; }
+  .lockup .eye {
+    font-family:'DM Mono'; font-size: 28px; font-weight: 700;
+    letter-spacing: .28em; text-transform: uppercase; color: var(--amber);
+    display:inline-flex; align-items:center; gap: 16px;
+  }
+  .lockup .eye::before {
+    content:''; width: 56px; height: 4px; background: var(--amber);
+    box-shadow: 0 0 20px var(--amber);
+  }
+  .lockup .name {
+    font-family:'Anton', sans-serif; font-size: 132px; line-height: .9;
+    letter-spacing: .005em; color: var(--ink);
+    text-shadow: 0 4px 0 rgba(0,0,0,.55), 0 0 60px rgba(244,185,66,.18);
+  }
+  .lockup .name b { color: var(--amber); font-weight: inherit; }
+  .lockup .freq {
+    margin-top: 14px; display:flex; align-items:center; gap: 24px;
+    font-family:'DM Mono'; font-size: 30px; font-weight: 500;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2);
+  }
+  .lockup .freq b { color: var(--cyan); font-weight: 700; }
+  .lockup .freq .dial {
+    /* mini frequency-dial bar */
+    display:inline-flex; align-items:center; height: 30px; padding: 0 12px;
+    background: linear-gradient(180deg, #0a0608 0%, #1a1216 100%);
+    border: 2px solid #2a2024; border-radius: 4px;
+  }
+  .lockup .freq .dial i {
+    display:inline-block; width: 3px; height: 14px; margin-right: 4px; background: var(--silver-2);
+  }
+  .lockup .freq .dial i:nth-child(3),
+  .lockup .freq .dial i:nth-child(7) { background: var(--cyan); height: 22px; box-shadow: 0 0 8px var(--cyan); }
+
+  /* Meta tiles — 3 vintage analog readouts */
+  .meta { display:flex; gap: 18px; }
+  .mt {
+    width: 220px; height: 176px;
+    background:
+      linear-gradient(180deg, #1f1a1e 0%, #120c10 100%);
+    border: 4px solid #2e2429;
+    border-radius: 8px;
+    box-shadow: inset 0 4px 12px rgba(255,180,140,.06), inset 0 -8px 14px rgba(0,0,0,.5), 0 8px 24px rgba(0,0,0,.45);
+    padding: 18px 22px;
+    display:flex; flex-direction: column; justify-content: space-between;
+    position: relative; overflow: hidden;
+  }
+  .mt::before {
+    /* glow tint per tile */
+    content:''; position:absolute; inset: 6px; border-radius: 4px;
+    background: radial-gradient(ellipse 80% 60% at 50% 30%, rgba(244,185,66,.08), transparent 70%);
+    pointer-events:none;
+  }
+  .mt .k {
+    font-family:'DM Mono'; font-size: 22px; font-weight: 700;
+    letter-spacing: .22em; text-transform: uppercase; color: var(--ink-2);
+  }
+  .mt .v {
+    font-family:'Anton', sans-serif; font-size: 92px; line-height: 1;
+    letter-spacing: -.005em; color: var(--ink);
+    text-shadow: 0 0 24px rgba(244,185,66,.4);
+  }
+  .mt.warm .v { color: var(--amber); text-shadow: 0 0 28px rgba(244,185,66,.55); }
+  .mt.cool .v { color: var(--cyan); text-shadow: 0 0 28px rgba(77,208,225,.5); }
+
+  /* ─── HERO ROW ────────────────────────────────────────────── */
+  .hero-row {
+    position:absolute; top: 300px; left: 64px; right: 64px; height: 940px;
+    display:grid; grid-template-columns: 1fr 1300px; gap: 40px;
+    z-index: 3;
+  }
+
+  /* LEFT — broadcast poster */
+  .poster {
+    position: relative;
+    background:
+      linear-gradient(180deg, #1c1419 0%, #110a0e 100%);
+    border: 5px solid #2a1f25;
+    border-radius: 12px;
+    box-shadow:
+      inset 0 8px 20px rgba(244,185,66,.05),
+      inset 0 -10px 30px rgba(0,0,0,.6),
+      0 20px 60px rgba(0,0,0,.55);
+    padding: 56px 72px 64px;
+    display:flex; flex-direction: column; justify-content: space-between;
+    overflow: hidden;
+  }
+  .poster::before {
+    /* faint amber sweep */
+    content:''; position:absolute; inset: 0;
+    background: radial-gradient(ellipse 1200px 700px at 0% 0%, rgba(244,185,66,.10), transparent 60%);
+    pointer-events:none;
+  }
+  .poster .ribbon {
+    /* episode slate */
+    display:inline-flex; align-items:center; gap: 24px; flex-shrink: 0;
+    padding: 18px 32px;
+    background: var(--red);
+    color: #fff;
+    font-family:'DM Mono'; font-size: 32px; font-weight: 700;
+    letter-spacing: .26em; text-transform: uppercase;
+    align-self: flex-start;
+    box-shadow: 8px 8px 0 rgba(0,0,0,.6), 0 0 40px rgba(230,57,70,.4);
+    position: relative; z-index: 1;
+  }
+  .poster .ribbon::before {
+    content:''; width: 16px; height: 16px; border-radius: 50%; background: #fff;
+    box-shadow: 0 0 12px #fff;
+  }
+  .poster h1 {
+    font-family:'Anton', sans-serif;
+    font-size: 360px; line-height: .82; letter-spacing: .002em;
+    color: var(--ink); margin: 0;
+    text-transform: uppercase;
+    text-shadow: 0 6px 0 rgba(0,0,0,.55);
+    position: relative; z-index: 1;
+  }
+  .poster h1 em {
+    font-style: normal; color: var(--red);
+    display:block;
+    text-shadow:
+      14px 14px 0 rgba(230,57,70,.22),
+      0 4px 0 rgba(0,0,0,.55);
+  }
+
+  /* Waveform under headline — pure CSS bars that pulse */
+  .waveform {
+    margin-top: 24px;
+    display:flex; align-items: flex-end; gap: 10px;
+    height: 88px; position: relative; z-index: 1;
+  }
+  .waveform i {
+    display:block; width: 14px; background: linear-gradient(180deg, var(--amber) 0%, var(--red) 100%);
+    border-radius: 3px;
+    box-shadow: 0 0 10px rgba(244,185,66,.4);
+    animation: wave 1.6s ease-in-out infinite;
+  }
+  @keyframes wave {
+    0%,100% { height: 18%; }
+    50%     { height: 100%; }
+  }
+  .waveform i:nth-child(1)  { animation-delay: -.10s; }
+  .waveform i:nth-child(2)  { animation-delay: -.42s; }
+  .waveform i:nth-child(3)  { animation-delay: -.18s; }
+  .waveform i:nth-child(4)  { animation-delay: -.66s; }
+  .waveform i:nth-child(5)  { animation-delay: -.28s; }
+  .waveform i:nth-child(6)  { animation-delay: -.90s; }
+  .waveform i:nth-child(7)  { animation-delay: -.04s; }
+  .waveform i:nth-child(8)  { animation-delay: -.55s; }
+  .waveform i:nth-child(9)  { animation-delay: -.22s; }
+  .waveform i:nth-child(10) { animation-delay: -.78s; }
+  .waveform i:nth-child(11) { animation-delay: -.36s; }
+  .waveform i:nth-child(12) { animation-delay: -.50s; }
+  .waveform i:nth-child(13) { animation-delay: -.14s; }
+  .waveform i:nth-child(14) { animation-delay: -.84s; }
+  .waveform i:nth-child(15) { animation-delay: -.30s; }
+  .waveform i:nth-child(16) { animation-delay: -.62s; }
+  .waveform i:nth-child(17) { animation-delay: -.20s; }
+  .waveform i:nth-child(18) { animation-delay: -.94s; }
+  .waveform i:nth-child(19) { animation-delay: -.40s; }
+  .waveform i:nth-child(20) { animation-delay: -.16s; }
+  .waveform i:nth-child(21) { animation-delay: -.72s; }
+  .waveform i:nth-child(22) { animation-delay: -.32s; }
+  .waveform i:nth-child(23) { animation-delay: -.58s; }
+  .waveform i:nth-child(24) { animation-delay: -.06s; }
+
+  .poster .lede {
+    font-family:'Archivo', sans-serif; font-weight: 500;
+    font-size: 42px; line-height: 1.28;
+    color: var(--ink-2); margin: 32px 0 0; max-width: 1900px;
+    position: relative; z-index: 1;
+  }
+  .poster .lede b { color: var(--amber); font-weight: 700; }
+
+  /* Cue-card chips along the bottom of the poster — guest list */
+  .cues {
+    display:flex; gap: 18px; margin-top: 32px; flex-wrap: wrap;
+    position: relative; z-index: 1;
+  }
+  .cue {
+    display:inline-flex; align-items:center; gap: 14px;
+    padding: 14px 24px;
+    background: rgba(244,185,66,.10);
+    border: 3px solid var(--amber);
+    border-radius: 4px;
+    font-family:'DM Mono'; font-size: 26px; font-weight: 700;
+    letter-spacing: .12em; text-transform: uppercase; color: var(--ink);
+  }
+  .cue::before {
+    content:''; width: 14px; height: 14px; border-radius: 50%; background: var(--amber);
+    box-shadow: 0 0 10px var(--amber);
+  }
+  .cue.red { border-color: var(--red); background: rgba(230,57,70,.12); }
+  .cue.red::before { background: var(--red); box-shadow: 0 0 10px var(--red); }
+  .cue.cyan { border-color: var(--cyan); background: rgba(77,208,225,.10); }
+  .cue.cyan::before { background: var(--cyan); box-shadow: 0 0 10px var(--cyan); }
+
+  /* RIGHT — turntable + VU + mixer column */
+  .rack {
+    display:grid; grid-template-rows: 600px 1fr; gap: 24px;
+    position: relative;
+  }
+
+  /* Turntable: mahogany plinth + vinyl platter + tonearm + label */
+  .turntable {
+    position: relative;
+    background:
+      linear-gradient(180deg, #4d2818 0%, #2c150c 100%);
+    border: 5px solid #2a1209;
+    border-radius: 12px;
+    box-shadow:
+      inset 0 6px 18px rgba(255,180,140,.10),
+      inset 0 -10px 30px rgba(0,0,0,.65),
+      0 18px 50px rgba(0,0,0,.6);
+    padding: 26px 30px;
+    overflow: hidden;
+  }
+  .turntable::before {
+    /* wood grain */
+    content:''; position:absolute; inset:0;
+    background:
+      repeating-linear-gradient(98deg, transparent 0 4px, rgba(0,0,0,.10) 4px 6px),
+      repeating-linear-gradient(98deg, transparent 0 60px, rgba(255,180,140,.04) 60px 64px);
+    pointer-events:none;
+  }
+  .tt-head {
+    display:flex; justify-content:space-between; align-items:center;
+    padding-bottom: 14px; border-bottom: 2px solid rgba(244,185,66,.22);
+    position: relative; z-index: 2;
+  }
+  .tt-head .brand {
+    font-family:'Anton', sans-serif; font-size: 38px; letter-spacing: .12em;
+    color: var(--amber); text-transform: uppercase;
+  }
+  .tt-head .meta {
+    font-family:'DM Mono'; font-size: 22px; font-weight: 700;
+    letter-spacing: .18em; text-transform: uppercase; color: var(--ink-2);
+  }
+  .tt-head .meta b { color: var(--amber); }
+
+  /* Platter + vinyl */
+  .platter-wrap {
+    position: relative; height: 460px; display:grid; place-items:center;
+    margin-top: 12px;
+  }
+  .platter {
+    width: 460px; height: 460px; position: relative;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle, #1a1418 0 8%, #0a0608 8% 28%, #1a1418 28% 32%, #0a0608 32% 100%);
+    box-shadow:
+      0 0 0 6px #1a1014,
+      0 0 0 10px #2a1d22,
+      inset 0 0 80px rgba(0,0,0,.7),
+      0 30px 60px rgba(0,0,0,.6);
+    animation: spin 6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .platter::before {
+    /* concentric grooves */
+    content:''; position:absolute; inset: 0; border-radius: 50%;
+    background:
+      repeating-radial-gradient(circle at 50% 50%, transparent 0 4px, rgba(255,255,255,.04) 4px 5px);
+  }
+  .platter::after {
+    /* center label */
+    content:''; position:absolute; inset: 30%; border-radius: 50%;
+    background: radial-gradient(circle, var(--amber-deep) 0 60%, var(--amber) 60% 100%);
+    box-shadow: inset 0 0 14px rgba(0,0,0,.4);
+  }
+  .platter .pin {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 18px; height: 18px; border-radius: 50%; background: #b9b3aa;
+    box-shadow: 0 0 0 4px #2a1d22, inset 0 -3px 4px rgba(0,0,0,.4);
+    z-index: 4;
+  }
+  .platter .label-art {
+    position: absolute; inset: 30%; border-radius: 50%; z-index: 3;
+    display:grid; place-items:center; text-align: center;
+    color: #1a0e08;
+    padding: 12px;
+  }
+  .platter .label-art .t {
+    font-family:'DM Mono'; font-size: 18px; font-weight: 700;
+    letter-spacing: .22em; text-transform: uppercase; color: #2a160a;
+  }
+  .platter .label-art h3 {
+    font-family:'Anton', sans-serif; font-size: 36px; line-height: .95;
+    letter-spacing: .02em; color: #1a0e08; margin: 4px 0 6px;
+    text-transform: uppercase;
+    transform: scaleY(1.06);
+  }
+  .platter .label-art .s {
+    font-family:'Archivo'; font-weight: 600; font-size: 14px;
+    color: #4a2a14;
+  }
+
+  /* Tonearm */
+  .tonearm {
+    position: absolute; top: 6%; right: 4%; width: 56%; height: 90%;
+    transform-origin: 100% 14%; transform: rotate(-22deg);
+    z-index: 5; pointer-events:none;
+  }
+  .tonearm::before {
+    /* base disc */
+    content:''; position:absolute; top: -8px; right: -28px;
+    width: 84px; height: 84px; border-radius: 50%;
+    background: radial-gradient(circle, #d8d4cf 0 30%, #8d8a85 30% 80%, #4a4744 100%);
+    box-shadow: inset 0 -6px 8px rgba(0,0,0,.4), 0 4px 12px rgba(0,0,0,.5);
+  }
+  .tonearm .arm {
+    position: absolute; top: 18px; right: 22px;
+    width: 90%; height: 12px;
+    background: linear-gradient(180deg, #d6d2cc 0%, #8a8682 100%);
+    border-radius: 6px;
+    box-shadow: inset 0 -4px 6px rgba(0,0,0,.45), 0 4px 10px rgba(0,0,0,.5);
+    transform-origin: right;
+  }
+  .tonearm .head {
+    /* cartridge */
+    position: absolute; top: 8px; left: 0;
+    width: 36px; height: 32px;
+    background: linear-gradient(180deg, #2a1418 0%, #100608 100%);
+    border-radius: 4px;
+    box-shadow: 0 4px 8px rgba(0,0,0,.6);
+  }
+  .tonearm .weight {
+    /* counterweight */
+    position: absolute; right: -6px; top: 8px;
+    width: 64px; height: 32px; border-radius: 4px;
+    background: linear-gradient(180deg, #2a1d22 0%, #160c10 100%);
+    box-shadow: inset 0 -4px 6px rgba(0,0,0,.5);
+  }
+
+  /* Tonearm caption */
+  .now-spinning {
+    position: relative; z-index: 2; margin-top: 8px;
+    display:flex; justify-content: space-between; align-items: flex-end;
+    padding-top: 14px; border-top: 2px solid rgba(244,185,66,.22);
+  }
+  .now-spinning .nw {
+    font-family:'DM Mono'; font-size: 22px; font-weight: 700;
+    letter-spacing: .22em; text-transform: uppercase; color: var(--ink-2);
+  }
+  .now-spinning .tg {
+    font-family:'Anton', sans-serif; font-size: 36px; letter-spacing: .04em;
+    color: var(--ink); text-transform: uppercase;
+  }
+  .now-spinning .tg b { color: var(--amber); }
+
+  /* VU + Mixer (bottom-right) */
+  .control-row { display:grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+
+  .vu {
+    background: linear-gradient(180deg, #1c1419 0%, #0e0810 100%);
+    border: 4px solid #2a1f24;
+    border-radius: 10px;
+    box-shadow: inset 0 6px 14px rgba(255,180,140,.06), inset 0 -10px 24px rgba(0,0,0,.6), 0 8px 20px rgba(0,0,0,.55);
+    padding: 20px 22px 22px;
+    display: flex; flex-direction: column;
+    position: relative; overflow: hidden;
+  }
+  .vu .head {
+    display:flex; justify-content: space-between; align-items: baseline;
+    padding-bottom: 10px; border-bottom: 2px solid rgba(244,185,66,.22);
+  }
+  .vu .head .k { font-family:'DM Mono'; font-size: 18px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; color: var(--ink-2); }
+  .vu .head .v { font-family:'Anton', sans-serif; font-size: 26px; letter-spacing: .04em; color: var(--amber); text-transform: uppercase; }
+
+  .vu-face {
+    flex: 1; min-height: 180px;
+    margin-top: 14px;
+    background:
+      radial-gradient(ellipse 90% 100% at 50% 110%, rgba(244,185,66,.20), rgba(244,185,66,.05) 50%, transparent 70%),
+      linear-gradient(180deg, #f4d28a 0%, #e0a050 100%);
+    border: 3px solid #1a0e08;
+    border-radius: 8px 8px 100% 100% / 8px 8px 65% 65%;
+    position: relative; overflow: hidden;
+  }
+  .vu-face::before {
+    /* arc + scale */
+    content:''; position:absolute; inset: 14px 14px 8px;
+    border-radius: 8px 8px 100% 100% / 8px 8px 70% 70%;
+    background:
+      repeating-conic-gradient(from 180deg at 50% 100%,
+        transparent 0 5deg, rgba(0,0,0,.5) 5deg 5.4deg);
+    mask: radial-gradient(circle at 50% 100%, transparent 30%, #000 30.5%, #000 95%, transparent 95.5%);
+  }
+  .vu-face::after {
+    /* red overload zone */
+    content:''; position:absolute; inset: 14px 14px 8px;
+    border-radius: 8px 8px 100% 100% / 8px 8px 70% 70%;
+    background:
+      conic-gradient(from 200deg at 50% 100%,
+        transparent 0deg 60deg, rgba(230,57,70,.5) 60deg 90deg, transparent 90deg 360deg);
+    mask: radial-gradient(circle at 50% 100%, transparent 65%, #000 65.5%, #000 92%, transparent 92.5%);
+  }
+  .vu-face .needle {
+    position:absolute; bottom: 8px; left: 50%; transform-origin: 50% 100%;
+    width: 4px; height: 88%;
+    background: linear-gradient(180deg, #1a0e08 0%, #4a2810 100%);
+    border-radius: 2px;
+    box-shadow: 0 0 8px rgba(0,0,0,.4);
+    animation: needle 2.4s ease-in-out infinite;
+  }
+  @keyframes needle {
+    0%   { transform: translateX(-50%) rotate(-60deg); }
+    35%  { transform: translateX(-50%) rotate(-10deg); }
+    55%  { transform: translateX(-50%) rotate(28deg); }
+    75%  { transform: translateX(-50%) rotate(8deg); }
+    100% { transform: translateX(-50%) rotate(-58deg); }
+  }
+  .vu-face .pivot {
+    position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%);
+    width: 28px; height: 28px; border-radius: 50%;
+    background: radial-gradient(circle, #1a0e08 0 40%, #6a4818 40% 100%);
+    box-shadow: inset 0 -3px 4px rgba(0,0,0,.4);
+  }
+  .vu-face .scale {
+    position: absolute; top: 18px; left: 0; right: 0; text-align:center;
+    font-family:'DM Mono'; font-size: 18px; font-weight: 700; color: #1a0e08;
+    letter-spacing: .14em;
+  }
+  .vu-face .scale b { color: var(--vu-red); margin-left: 6px; }
+  .vu-feet {
+    margin-top: 12px; display:flex; justify-content:space-between;
+    font-family:'DM Mono'; font-size: 18px; font-weight: 700; color: var(--ink-2);
+    letter-spacing: .14em; text-transform: uppercase;
+  }
+  .vu-feet b { color: var(--vu-green); }
+
+  /* Mixer */
+  .mixer {
+    background: linear-gradient(180deg, #1c1419 0%, #0e0810 100%);
+    border: 4px solid #2a1f24;
+    border-radius: 10px;
+    box-shadow: inset 0 6px 14px rgba(255,180,140,.06), inset 0 -10px 24px rgba(0,0,0,.6), 0 8px 20px rgba(0,0,0,.55);
+    padding: 20px 22px;
+    display:flex; flex-direction: column;
+    position: relative; overflow: hidden;
+  }
+  .mixer .head {
+    display:flex; justify-content: space-between; align-items: baseline;
+    padding-bottom: 10px; border-bottom: 2px solid rgba(244,185,66,.22);
+  }
+  .mixer .head .k { font-family:'DM Mono'; font-size: 18px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; color: var(--ink-2); }
+  .mixer .head .v { font-family:'Anton', sans-serif; font-size: 26px; letter-spacing: .04em; color: var(--cyan); text-transform: uppercase; }
+
+  .strips {
+    display:grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 16px;
+    flex: 1; min-height: 0;
+  }
+  .strip {
+    display:flex; flex-direction: column; align-items: center; gap: 8px;
+    padding: 10px 6px;
+    background: rgba(0,0,0,.35);
+    border: 2px solid #2a1f24; border-radius: 6px;
+  }
+  .strip .knob {
+    width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
+    background: radial-gradient(circle at 35% 30%, #d6d2cc 0 22%, #6a6660 22% 60%, #2a2520 60% 100%);
+    box-shadow: 0 4px 8px rgba(0,0,0,.6), inset 0 -2px 4px rgba(0,0,0,.5);
+    position: relative;
+  }
+  .strip .knob::after {
+    content:''; position:absolute; top: 4px; left: 50%; width: 3px; height: 14px;
+    background: var(--amber); border-radius: 1px; transform: translateX(-50%);
+    box-shadow: 0 0 6px var(--amber);
+  }
+  .strip .led {
+    display:flex; flex-direction: column; gap: 2px; align-items:center;
+    padding: 4px 4px;
+  }
+  .strip .led i {
+    display:block; width: 18px; height: 4px;
+    background: rgba(255,255,255,.05); border-radius: 1px;
+  }
+  .strip .led i.on   { background: var(--vu-green); box-shadow: 0 0 4px var(--vu-green); }
+  .strip .led i.warn { background: var(--vu-yellow); box-shadow: 0 0 4px var(--vu-yellow); }
+  .strip .led i.peak { background: var(--vu-red); box-shadow: 0 0 4px var(--vu-red); }
+  .strip .fader {
+    width: 16px; flex: 1; min-height: 60px;
+    background: linear-gradient(180deg, #0a0608 0%, #1a1216 100%);
+    border: 2px solid #2a1f24; border-radius: 4px;
+    position: relative;
+  }
+  .strip .fader::before {
+    /* fader scale */
+    content:''; position:absolute; inset: 6px 0;
+    background: repeating-linear-gradient(0deg, transparent 0 8px, rgba(255,255,255,.08) 8px 9px);
+  }
+  .strip .fader .cap {
+    position:absolute; left: -10px; right: -10px;
+    height: 22px; background: linear-gradient(180deg, #d6d2cc 0%, #6a6660 100%);
+    border: 2px solid #1a1216; border-radius: 3px;
+    box-shadow: 0 2px 4px rgba(0,0,0,.6);
+  }
+  .strip .lbl {
+    font-family:'DM Mono'; font-size: 16px; font-weight: 700;
+    letter-spacing: .12em; text-transform: uppercase; color: var(--ink);
+  }
+  .strip .ch {
+    font-family:'DM Mono'; font-size: 13px; font-weight: 500;
+    letter-spacing: .2em; text-transform: uppercase; color: var(--ink-2);
+  }
+
+  /* ─── LINEUP — 4 cassette tape cards ─────────────────────── */
+  .lineup {
+    position: absolute; top: 1260px; left: 64px; right: 64px; height: 550px;
+    background:
+      linear-gradient(180deg, #1a1318 0%, #0d090d 100%);
+    border: 5px solid #2a1f24;
+    border-radius: 12px;
+    box-shadow:
+      inset 0 8px 20px rgba(244,185,66,.04),
+      inset 0 -10px 30px rgba(0,0,0,.6),
+      0 20px 60px rgba(0,0,0,.55);
+    padding: 30px 44px 36px;
+    z-index: 3;
+  }
+  .lineup .head {
+    display:flex; justify-content: space-between; align-items: flex-end;
+    padding-bottom: 16px; border-bottom: 3px solid rgba(244,185,66,.22);
+  }
+  .lineup .head h2 {
+    font-family:'Anton', sans-serif; font-size: 80px; line-height: 1;
+    letter-spacing: .02em; color: var(--ink); margin: 0; text-transform: uppercase;
+  }
+  .lineup .head h2 em {
+    font-style: normal; color: var(--amber);
+    text-shadow: 0 0 32px rgba(244,185,66,.45);
+  }
+  .lineup .head .meta {
+    display:flex; align-items: center; gap: 24px;
+    font-family:'DM Mono'; font-size: 26px; font-weight: 700;
+    letter-spacing: .22em; text-transform: uppercase; color: var(--ink-2);
+  }
+  .lineup .head .meta b { color: var(--cyan); }
+  .lineup .head .meta .recdot {
+    width: 16px; height: 16px; border-radius: 50%; background: var(--red);
+    box-shadow: 0 0 18px var(--red);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+
+  .tapes { display:grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-top: 20px; }
+
+  /* Cassette tape card */
+  .tape {
+    position: relative; aspect-ratio: 5 / 3.05;
+    background: linear-gradient(180deg, #2a2024 0%, #1a1318 100%);
+    border: 3px solid #0a0608; border-radius: 8px;
+    box-shadow:
+      inset 0 4px 8px rgba(255,255,255,.06),
+      inset 0 -6px 12px rgba(0,0,0,.7),
+      0 12px 24px rgba(0,0,0,.6);
+    overflow: hidden;
+  }
+  .tape::before {
+    /* shell screws */
+    content:''; position:absolute; inset: 0;
+    background:
+      radial-gradient(circle at 16px 16px,            #4a4744 2.5px, transparent 3.5px),
+      radial-gradient(circle at calc(100% - 16px) 16px, #4a4744 2.5px, transparent 3.5px),
+      radial-gradient(circle at 16px calc(100% - 16px), #4a4744 2.5px, transparent 3.5px),
+      radial-gradient(circle at calc(100% - 16px) calc(100% - 16px), #4a4744 2.5px, transparent 3.5px);
+    pointer-events: none;
+  }
+  /* Top label area */
+  .tape .lbl {
+    position: absolute; top: 10px; left: 38px; right: 38px; height: 47%;
+    background: linear-gradient(180deg, #f5e8b6 0%, #e8d188 100%);
+    border: 2px solid #2a1f10;
+    border-radius: 4px;
+    padding: 14px 18px;
+    display:flex; flex-direction: column; gap: 4px;
+    color: #1a0e08;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,.15);
+  }
+  .tape .lbl::before {
+    /* side-A stamp */
+    content:'A'; position:absolute; top: -10px; right: -10px;
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--red); color: #fff;
+    display:grid; place-items:center;
+    font-family:'Anton', sans-serif; font-size: 22px;
+    border: 3px solid #2a1f10;
+    box-shadow: 0 4px 8px rgba(0,0,0,.5);
+  }
+  .tape .lbl .n {
+    font-family:'DM Mono'; font-size: 17px; font-weight: 700;
+    letter-spacing: .18em; text-transform: uppercase; color: #6a3818;
+  }
+  .tape .lbl .t {
+    font-family:'Anton', sans-serif; font-size: 38px; line-height: .95;
+    letter-spacing: .02em; color: #1a0e08; text-transform: uppercase;
+    margin-top: 2px;
+  }
+  .tape .lbl .h {
+    font-family:'Archivo', sans-serif; font-weight: 600; font-size: 19px;
+    color: #4a2810; margin-top: auto; letter-spacing: .02em;
+  }
+  .tape .lbl .tm {
+    font-family:'DM Mono'; font-size: 18px; font-weight: 700;
+    color: #2a160a; letter-spacing: .12em;
+    border-top: 2px solid #c8a458; padding-top: 4px; margin-top: 4px;
+  }
+
+  /* Bottom hub area with reels + tape ribbon */
+  .tape .hubs {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 50%;
+    background:
+      linear-gradient(180deg, #1a1216 0%, #0a0608 100%);
+    display:grid; grid-template-columns: 1fr 1fr; place-items:center;
+    padding: 18px 38px;
+  }
+  .tape .hubs::before {
+    /* ribbon strip across the bottom */
+    content:''; position:absolute; bottom: 14px; left: 24px; right: 24px;
+    height: 14px; background: linear-gradient(180deg, #4a3220 0%, #2a1d10 100%);
+    border-top: 2px solid #6a4828; border-bottom: 2px solid #1a0e08;
+    box-shadow: inset 0 1px 0 rgba(255,200,120,.2);
+  }
+  .tape .hub {
+    width: 90px; height: 90px; border-radius: 50%;
+    background:
+      radial-gradient(circle, #2a2024 0 22%, #0a0608 22% 100%);
+    border: 3px solid #4a4744;
+    box-shadow: inset 0 0 14px rgba(0,0,0,.7);
+    position: relative; overflow: hidden;
+  }
+  .tape .hub::before {
+    /* spokes */
+    content:''; position: absolute; inset: 0;
+    background:
+      conic-gradient(from 0deg, transparent 0deg 35deg, rgba(244,185,66,.15) 35deg 60deg, transparent 60deg 100deg, rgba(244,185,66,.15) 100deg 125deg, transparent 125deg 165deg, rgba(244,185,66,.15) 165deg 190deg, transparent 190deg 230deg, rgba(244,185,66,.15) 230deg 255deg, transparent 255deg 295deg, rgba(244,185,66,.15) 295deg 320deg, transparent 320deg 360deg);
+    border-radius: 50%;
+    animation: spin 4s linear infinite;
+  }
+  .tape .hub::after {
+    /* spindle */
+    content:''; position:absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    width: 18px; height: 18px; border-radius: 50%;
+    background: radial-gradient(circle, #b9b3aa 0 40%, #4a4744 40% 100%);
+  }
+  .tape .hub.right::before { animation-direction: reverse; }
+
+  /* Active (now-recording) tape */
+  .tape.live {
+    border-color: var(--red);
+    box-shadow:
+      inset 0 4px 8px rgba(255,255,255,.06),
+      inset 0 -6px 12px rgba(0,0,0,.7),
+      0 0 0 4px rgba(230,57,70,.35),
+      0 12px 24px rgba(230,57,70,.4),
+      0 0 60px rgba(230,57,70,.3);
+  }
+  .tape.live .lbl {
+    background: linear-gradient(180deg, #ffe8a6 0%, #f4b942 100%);
+  }
+  .tape.live .lbl::before { background: var(--red); content: 'REC'; font-size: 14px; }
+  .tape.live::after {
+    /* live status pip */
+    content:'NOW PLAYING'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, 80px);
+    background: var(--red); color: #fff;
+    font-family:'DM Mono'; font-size: 14px; font-weight: 700; letter-spacing: .24em;
+    padding: 4px 14px; border-radius: 4px;
+    box-shadow: 0 0 16px rgba(230,57,70,.6);
+    z-index: 5;
+  }
+  .tape.done .lbl { background: linear-gradient(180deg, #bcb0a0 0%, #8a7e70 100%); opacity: .85; }
+  .tape.done .lbl::before { background: var(--silver-2); }
+  .tape.done .hub::before { animation: none; opacity: .35; }
+
+  /* ─── LOWER ROW ──────────────────────────────────────────── */
+  .lower {
+    position:absolute; top: 1830px; left: 64px; right: 64px; height: 200px;
+    display:grid; grid-template-columns: 1.7fr 1fr; gap: 24px;
+    z-index: 3;
+  }
+
+  /* Newscast slate (amber) */
+  .slate {
+    position: relative;
+    background:
+      linear-gradient(180deg, var(--amber) 0%, var(--amber-deep) 100%);
+    border: 5px solid #1a0e08;
+    border-radius: 8px;
+    box-shadow:
+      inset 0 6px 14px rgba(255,235,180,.4),
+      inset 0 -8px 18px rgba(0,0,0,.35),
+      0 12px 30px rgba(244,185,66,.35);
+    padding: 22px 32px;
+    display:grid; grid-template-columns: auto 1fr auto; gap: 32px; align-items:center;
+    color: #1a0e08;
+    overflow: hidden;
+  }
+  .slate::before {
+    /* yellow caution stripes */
+    content:''; position:absolute; inset:0;
+    background:
+      repeating-linear-gradient(135deg, transparent 0 56px, rgba(0,0,0,.08) 56px 64px);
+    pointer-events:none;
+  }
+  .slate .tag {
+    background: #1a0e08; color: var(--amber);
+    padding: 14px 22px;
+    font-family:'Anton', sans-serif; font-size: 40px; letter-spacing: .14em;
+    text-transform: uppercase;
+    border: 3px solid #1a0e08;
+    box-shadow: 6px 6px 0 rgba(0,0,0,.4);
+    position: relative; z-index: 1;
+    display:inline-flex; align-items:center; gap: 16px;
+  }
+  .slate .tag::before {
+    content:''; width: 16px; height: 16px; border-radius: 50%; background: var(--red);
+    box-shadow: 0 0 16px var(--red);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .slate .msg {
+    font-family:'Archivo', sans-serif; font-weight: 800;
+    font-size: 42px; line-height: 1.1; letter-spacing: -.005em;
+    position: relative; z-index: 1;
+  }
+  .slate .when {
+    font-family:'Anton', sans-serif; font-size: 56px; letter-spacing: .04em;
+    text-transform: uppercase; line-height: 1;
+    text-align: right; white-space: nowrap;
+    border-left: 4px solid #1a0e08; padding-left: 24px;
+    position: relative; z-index: 1;
+  }
+  .slate .when span {
+    display:block;
+    font-family:'DM Mono'; font-size: 22px; font-weight: 700;
+    letter-spacing: .18em; text-transform: uppercase; opacity: .7;
+    margin-top: 4px;
+  }
+
+  /* Attendance / call-letters readout (cyan VFD) */
+  .freq {
+    position: relative;
+    background:
+      linear-gradient(180deg, #08161c 0%, #020a0e 100%);
+    border: 5px solid #0a3038;
+    border-radius: 8px;
+    box-shadow:
+      inset 0 6px 18px rgba(77,208,225,.10),
+      inset 0 -10px 26px rgba(0,0,0,.65),
+      0 12px 30px rgba(77,208,225,.20);
+    padding: 18px 28px;
+    display:grid; grid-template-columns: 1fr auto; gap: 22px; align-items:center;
+    overflow: hidden;
+  }
+  .freq::before {
+    /* VFD scanlines */
+    content:''; position:absolute; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(77,208,225,.04) 3px 4px);
+    pointer-events:none;
+  }
+  .freq .info { position: relative; z-index: 1; }
+  .freq .info .k {
+    font-family:'DM Mono'; font-size: 22px; font-weight: 700;
+    letter-spacing: .26em; text-transform: uppercase; color: var(--cyan);
+    text-shadow: 0 0 14px rgba(77,208,225,.6);
+  }
+  .freq .info .s {
+    font-family:'Archivo'; font-weight: 600; font-size: 28px;
+    color: rgba(77,208,225,.6); margin-top: 8px;
+  }
+  .freq .v {
+    position: relative; z-index: 1;
+    font-family:'Anton', sans-serif; font-size: 152px; line-height: .9;
+    color: var(--cyan); letter-spacing: -.005em;
+    text-shadow:
+      0 0 20px rgba(77,208,225,.7),
+      0 0 60px rgba(77,208,225,.45);
+  }
+
+  /* ─── TICKER — brushed-aluminum NOW PLAYING bar ──────────── */
+  .ticker {
+    position: absolute; bottom: 10px; left: 64px; right: 64px; height: 100px;
+    background:
+      linear-gradient(180deg, #2a2520 0%, #14110e 100%);
+    border: 4px solid #0a0608;
+    border-radius: 6px;
+    box-shadow:
+      inset 0 6px 12px rgba(255,235,180,.10),
+      inset 0 -8px 18px rgba(0,0,0,.6),
+      0 8px 24px rgba(0,0,0,.55);
+    display:grid; grid-template-columns: auto 1fr auto;
+    overflow: hidden;
+    z-index: 4;
+  }
+  .ticker::before {
+    /* brushed-aluminum streaks */
+    content:''; position:absolute; inset: 4px;
+    background:
+      repeating-linear-gradient(90deg, transparent 0 2px, rgba(255,235,180,.04) 2px 3px),
+      linear-gradient(180deg, rgba(255,235,180,.04), transparent 50%);
+    pointer-events: none;
+    border-radius: 4px;
+  }
+  .ticker .badge {
+    background: var(--red);
+    color: #fff;
+    padding: 0 38px;
+    display:flex; align-items: center; gap: 18px;
+    font-family:'Anton', sans-serif; font-size: 48px; letter-spacing: .12em;
+    text-transform: uppercase;
+    border-right: 4px solid #0a0608;
+    flex-shrink: 0;
+    position: relative; z-index: 1;
+    box-shadow: inset 0 4px 8px rgba(255,255,255,.15), inset 0 -6px 12px rgba(0,0,0,.5);
+  }
+  .ticker .badge::before {
+    content:''; width: 18px; height: 18px; border-radius: 50%; background: #fff;
+    box-shadow: 0 0 14px #fff;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .ticker .feed {
+    overflow: hidden; display:flex; align-items:center;
+    padding-left: 36px;
+    position: relative; z-index: 1;
+  }
+  .ticker .feed-inner {
+    display:flex; gap: 72px;
+    font-family:'Archivo', sans-serif; font-weight: 700; font-size: 48px;
+    letter-spacing: .02em; color: var(--ink);
+    white-space: nowrap;
+    animation: scroll 60s linear infinite;
+  }
+  .ticker .feed-inner span { display:inline-flex; align-items:center; gap: 24px; }
+  .ticker .feed-inner span::after {
+    content:'◉'; color: var(--amber); margin-left: 36px;
+    text-shadow: 0 0 12px var(--amber);
+  }
+  @keyframes scroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+  .ticker .freq-end {
+    background: var(--cyan); color: #062a30;
+    padding: 0 32px;
+    display:flex; align-items:center; gap: 16px;
+    font-family:'Anton', sans-serif; font-size: 44px; letter-spacing: .12em;
+    text-transform: uppercase; border-left: 4px solid #0a0608;
+    flex-shrink: 0; position: relative; z-index: 1;
+    box-shadow: inset 0 4px 8px rgba(255,255,255,.15), inset 0 -6px 12px rgba(0,0,0,.25);
+  }
+</style>
+</head>
+<body>
+<script>const __TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "schema": "edu-cms-ms-studio-v2" }/*EDITMODE-END*/;</script>
+
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+  <!-- ─── HUD ─────────────────────────────────────────── -->
+  <header class="hud">
+    <div class="onair" data-widget="status" aria-label="On Air">
+      <div class="text">
+        <span class="dot"></span>
+        <span class="label" data-field="status.label">ON AIR</span>
+      </div>
+    </div>
+
+    <div class="lockup" data-widget="school">
+      <div class="eye"><span data-field="school.eye">Otter Radio · Ep. 142</span></div>
+      <div class="name"><span data-field="school.name">WESTRIDGE</span> <b data-field="school.callsign">.MS</b></div>
+      <div class="freq">
+        <span class="dial" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+        <span data-field="school.team">88.7 FM · House Otters</span>
+        ·
+        <b data-field="school.day">Day B</b>
+      </div>
+    </div>
+
+    <div class="meta">
+      <div class="mt warm" data-widget="clock">
+        <span class="k" data-field="clock.label">Studio Time</span>
+        <span class="v" data-field="clock.time">7:53</span>
+      </div>
+      <div class="mt cool" data-widget="weather">
+        <span class="k" data-field="weather.label">Outside</span>
+        <span class="v" data-field="weather.temp">46°</span>
+      </div>
+      <div class="mt" data-widget="countdown">
+        <span class="k" data-field="countdown.label">Field Day</span>
+        <span class="v" data-field="countdown.value">12d</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ─── HERO ROW ───────────────────────────────────── -->
+  <section class="hero-row">
+
+    <!-- LEFT: poster -->
+    <div class="poster" data-widget="greeting">
+      <div class="ribbon" data-field="greeting.episode">Morning Show · Episode 142</div>
+      <h1>
+        <span data-field="greeting.h1">GOOD</span>
+        <em data-field="greeting.h2">MORNING.</em>
+      </h1>
+      <div class="waveform" aria-hidden="true">
+        <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+      </div>
+      <p class="lede" data-field="greeting.subtitle">
+        Broadcasting live from the front office. First bell at <b>08:05</b>.
+        Mr. Nguyen wants journals out for poetry in P2 — you heard it here first.
+        Up next: science lab, mile run, and the greatest chicken &amp; rice the
+        cafeteria's ever cooked.
+      </p>
+      <div class="cues">
+        <span class="cue red"     data-field="greeting.c0">Rm 108 · Poetry</span>
+        <span class="cue"          data-field="greeting.c1">Gym A · Mile Run</span>
+        <span class="cue cyan"     data-field="greeting.c2">Lib · Sign-ups Fri</span>
+        <span class="cue"          data-field="greeting.c3">Aud · Drama Auditions</span>
+      </div>
+    </div>
+
+    <!-- RIGHT: rack column -->
+    <div class="rack">
+
+      <!-- TURNTABLE / now spinning -->
+      <div class="turntable" data-widget="feature">
+        <div class="tt-head">
+          <div class="brand">Studer · 33⅓</div>
+          <div class="meta"><b data-field="feature.eye">NOW SPINNING</b> · A-Side</div>
+        </div>
+        <div class="platter-wrap">
+          <div class="platter" aria-hidden="true">
+            <div class="label-art">
+              <div class="t" data-field="feature.label">Spotlight</div>
+              <h3 data-field="feature.title">Spring<br/>Band Concert</h3>
+              <div class="s" data-field="feature.sub">Wed · 7 PM</div>
+            </div>
+            <div class="pin"></div>
+          </div>
+          <div class="tonearm" aria-hidden="true">
+            <div class="arm">
+              <div class="head"></div>
+              <div class="weight"></div>
+            </div>
+          </div>
+        </div>
+        <div class="now-spinning">
+          <span class="nw" data-field="feature.nw">7th &amp; 8th Grade Band</span>
+          <span class="tg">Track <b data-field="feature.tag">04 · "Echoes"</b></span>
+        </div>
+      </div>
+
+      <!-- VU + Mixer -->
+      <div class="control-row">
+
+        <div class="vu" data-widget="vu">
+          <div class="head">
+            <span class="k" data-field="vu.k">Master Output</span>
+            <span class="v" data-field="vu.v">+3 dB</span>
+          </div>
+          <div class="vu-face" aria-hidden="true">
+            <div class="scale">−20 −10 −5 0 +1 +3<b>+6</b></div>
+            <div class="needle"></div>
+            <div class="pivot"></div>
+          </div>
+          <div class="vu-feet">
+            <span data-field="vu.feet0">Peak / RMS</span>
+            <span><b data-field="vu.feet1">88.7 FM</b> live</span>
+          </div>
+        </div>
+
+        <div class="mixer" data-widget="mixer">
+          <div class="head">
+            <span class="k" data-field="mixer.k">Channel Faders</span>
+            <span class="v" data-field="mixer.v">4 / 4 Hot</span>
+          </div>
+          <div class="strips">
+            <div class="strip">
+              <div class="knob"></div>
+              <div class="led"><i class="on"></i><i class="on"></i><i class="warn"></i><i></i></div>
+              <div class="fader"><div class="cap" style="bottom: 24%;"></div></div>
+              <div class="lbl" data-field="mixer.s0">MIC</div>
+              <div class="ch">CH 1</div>
+            </div>
+            <div class="strip">
+              <div class="knob" style="transform: rotate(60deg);"></div>
+              <div class="led"><i class="on"></i><i class="on"></i><i class="on"></i><i class="warn"></i></div>
+              <div class="fader"><div class="cap" style="bottom: 60%;"></div></div>
+              <div class="lbl" data-field="mixer.s1">DECK</div>
+              <div class="ch">CH 2</div>
+            </div>
+            <div class="strip">
+              <div class="knob" style="transform: rotate(-30deg);"></div>
+              <div class="led"><i class="on"></i><i class="warn"></i><i class="peak"></i><i></i></div>
+              <div class="fader"><div class="cap" style="bottom: 78%;"></div></div>
+              <div class="lbl" data-field="mixer.s2">BAND</div>
+              <div class="ch">CH 3</div>
+            </div>
+            <div class="strip">
+              <div class="knob" style="transform: rotate(20deg);"></div>
+              <div class="led"><i class="on"></i><i class="on"></i><i></i><i></i></div>
+              <div class="fader"><div class="cap" style="bottom: 42%;"></div></div>
+              <div class="lbl" data-field="mixer.s3">FX</div>
+              <div class="ch">CH 4</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── LINEUP — cassette tape schedule ────────────── -->
+  <section class="lineup" data-widget="segments">
+    <div class="head">
+      <h2><span data-field="segments.title">Today's</span> <em data-field="segments.subtitle">Lineup</em></h2>
+      <div class="meta">
+        <span class="recdot"></span>
+        <span data-field="segments.meta">Day B · 6 segments queued</span>
+        ·
+        <b data-field="segments.metar">on schedule</b>
+      </div>
+    </div>
+
+    <div class="tapes">
+      <!-- TAPE 1 — done -->
+      <div class="tape done" data-widget="segments.0">
+        <div class="lbl">
+          <div class="n" data-field="segments.0.n">Side A · Track 01 · P1</div>
+          <div class="t" data-field="segments.0.t">Math 7</div>
+          <div class="h" data-field="segments.0.host">Ms. Patel · Rm 214</div>
+          <div class="tm" data-field="segments.0.time">8:05 — 8:55 · DONE</div>
+        </div>
+        <div class="hubs"><div class="hub"></div><div class="hub right"></div></div>
+      </div>
+
+      <!-- TAPE 2 — live -->
+      <div class="tape live" data-widget="segments.1">
+        <div class="lbl">
+          <div class="n" data-field="segments.1.n">On Air · Track 02 · P2</div>
+          <div class="t" data-field="segments.1.t">English Poetry</div>
+          <div class="h" data-field="segments.1.host">Mr. Nguyen · Rm 108</div>
+          <div class="tm" data-field="segments.1.time">9:00 — 9:50 · LIVE</div>
+        </div>
+        <div class="hubs"><div class="hub"></div><div class="hub right"></div></div>
+      </div>
+
+      <!-- TAPE 3 — up next -->
+      <div class="tape" data-widget="segments.2">
+        <div class="lbl">
+          <div class="n" data-field="segments.2.n">Side A · Track 03 · P3</div>
+          <div class="t" data-field="segments.2.t">Science Lab</div>
+          <div class="h" data-field="segments.2.host">Ms. Okafor · Rm 207</div>
+          <div class="tm" data-field="segments.2.time">9:55 — 10:45 · UP NEXT</div>
+        </div>
+        <div class="hubs"><div class="hub"></div><div class="hub right"></div></div>
+      </div>
+
+      <!-- TAPE 4 — later -->
+      <div class="tape" data-widget="segments.3">
+        <div class="lbl">
+          <div class="n" data-field="segments.3.n">Side B · Track 04 · P4</div>
+          <div class="t" data-field="segments.3.t">PE Mile Run</div>
+          <div class="h" data-field="segments.3.host">Coach Reyes · Gym A</div>
+          <div class="tm" data-field="segments.3.time">10:50 — 11:40 · 10:50</div>
+        </div>
+        <div class="hubs"><div class="hub"></div><div class="hub right"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── LOWER — slate + frequency display ──────────── -->
+  <section class="lower">
+    <div class="slate" data-widget="announcement">
+      <span class="tag" data-field="announcement.tag">Breaking</span>
+      <span class="msg" data-field="announcement.message">
+        Picture day moved to Thursday — full uniform. Permission slips to
+        front office by Wednesday end of day.
+      </span>
+      <span class="when">
+        <span data-field="announcement.when_eye">Cue Sheet</span>
+        <span data-field="announcement.when">THU · ALL DAY</span>
+      </span>
+    </div>
+
+    <div class="freq" data-widget="big">
+      <div class="info">
+        <div class="k" data-field="big.label">Otters Here</div>
+        <div class="s" data-field="big.sub">98.2% attendance</div>
+      </div>
+      <div class="v" data-field="big.value">1,217</div>
+    </div>
+  </section>
+
+  <!-- ─── TICKER ─────────────────────────────────────── -->
+  <div class="ticker" data-widget="ticker">
+    <div class="badge" data-field="ticker.tag">Now Playing</div>
+    <div class="feed">
+      <div class="feed-inner">
+        <span data-field="ticker.m0">Bus 14 running +10 min</span>
+        <span data-field="ticker.m1">Substitute teacher in Rm B-12</span>
+        <span data-field="ticker.m2">Spelling bee sign-ups end Friday</span>
+        <span data-field="ticker.m3">8th grade field trip forms due tomorrow</span>
+        <span data-field="ticker.m4">Library returns due this week</span>
+        <span data-field="ticker.m5">Lost blue water bottle → front office</span>
+        <span data-field="ticker.m6">Robotics Club · 3 PM · Rm 207</span>
+        <span>Bus 14 running +10 min</span>
+        <span>Substitute teacher in Rm B-12</span>
+        <span>Spelling bee sign-ups end Friday</span>
+        <span>8th grade field trip forms due tomorrow</span>
+        <span>Library returns due this week</span>
+        <span>Lost blue water bottle → front office</span>
+        <span>Robotics Club · 3 PM · Rm 207</span>
+      </div>
+    </div>
+    <div class="freq-end" data-field="ticker.callsign">88.7 FM · WMS</div>
+  </div>
+
+</div></div></div>
+
+<script>
+  // fit() — same scale helper every shipped template uses.
+  (function(){
+    function fit(){
+      var cs = getComputedStyle(document.documentElement);
+      var w = parseFloat(cs.getPropertyValue('--stage-w')) || 3840;
+      var h = parseFloat(cs.getPropertyValue('--stage-h')) || 2160;
+      var k = Math.min(window.innerWidth / w, window.innerHeight / h);
+      document.documentElement.style.setProperty('--stage-scale', k);
+    }
+    window.addEventListener('resize', fit);
+    window.addEventListener('load', fit);
+    setTimeout(fit, 10);
+    setTimeout(fit, 300);
+  })();
+</script>
+</body>
+</html>
