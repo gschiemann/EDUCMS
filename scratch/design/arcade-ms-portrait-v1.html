@@ -1,0 +1,508 @@
+<!--
+  MS TEMPLATE · ARCADE · PORTRAIT v1
+  ===================================
+  Vertical 2160×3840 sibling to arcade-ms-v2.html. Same retro
+  game-HUD aesthetic (Press Start 2P + VT323 + Space Grotesk),
+  same content regions, redesigned for portrait reading rhythm.
+
+  This is NOT a squish of the landscape file. The landscape uses a
+  two-column right-rail (leaderboard / events) next to a left main
+  column (hero / xp / agenda). For portrait we collapse everything
+  into a single vertical column and re-rank by glance priority:
+    HUD  →  HERO  →  XP  →  AGENDA  →  LEADERBOARD  →  EVENTS  →  TICKER
+
+  Why this rank?
+    1. School identity at the very top (HUD) — same as landscape.
+    2. Hero quest is the single biggest card. Portrait gives us
+       ~2032px of width and we use most of it. Headline grows from
+       160 → 240px because line-length is shorter in portrait so the
+       headline can be massive without wrapping awkwardly.
+    3. XP bar (Field Day) is a thin strip — perfect break between
+       the showpiece hero and the dense agenda below.
+    4. Quest log dominates the middle of the screen as a SINGLE
+       vertical column of 6 period rows (in landscape it was 2×3).
+       Single-column reads naturally in portrait and lets each row
+       breathe at ~140px tall.
+    5. Leaderboard reads top-to-bottom (#1 → #3) which is exactly
+       what a tall column wants. We promote it above events because
+       a "top scores" stack is more glanceable from 8ft than a
+       date-ranged event list.
+    6. Side Quests (events) tucked just above the ticker — the
+       audience has already seen the headline news, this is the
+       "what's coming" footer panel.
+    7. Boss Battle ticker stays at the very bottom, full-bleed
+       between the same 64px edge insets used by every other panel.
+
+  Layout (2160×3840, edge inset 64px on all sides, 20px gaps):
+
+    PANEL          TOP    HEIGHT   ENDS-AT
+    ─────────────────────────────────────
+    HUD             56      360      416
+    HERO QUEST     436     1100     1536
+    XP BAR        1556      240     1796
+    QUEST LOG     1816      880     2696
+    LEADERBOARD   2716      540     3256
+    EVENTS        3276      324     3600
+    TICKER        3620      200     3820   (bottom:20px → top=3620)
+
+    Gaps (each 20px):
+      HUD  → HERO       (416 → 436)
+      HERO → XP         (1536 → 1556)
+      XP   → AGENDA     (1796 → 1816)
+      AGENDA → LB       (2696 → 2716)
+      LB   → EVENTS     (3256 → 3276)
+      EVENTS → TICKER   (3600 → 3620)
+
+    Content height = 360 + 1100 + 240 + 880 + 540 + 324 = 3444
+    Gaps (6 × 20px)                                    =  120
+    Top inset (56) + bottom inset (20) + ticker (200)  =  276
+    ─────────────────────────────────────────────────────────
+    Total                                              = 3840 ✓
+
+  Geometry rules (load-bearing — match landscape):
+    - box-sizing: border-box on every panel that sets explicit width
+    - overflow: hidden on every panel
+    - 64px edge inset (left/right), 20px gaps
+    - NO vw/vh/% sizing inside the scene
+    - 3-layer scale wrapper (.viewport > .stage-outer > .stage)
+
+  Font + palette + motifs match arcade-ms-v2.html verbatim.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Arcade — MS Lobby Portrait 4K (v1)</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* Box-sizing on every explicit-width panel — same rule as landscape v2. */
+  .hud, .quest, .xpbar, .board, .side, .events, .eventsbox, .newsbar { box-sizing: border-box; }
+
+  /* 3-layer scale wrapper — identical to landscape, just portrait dims. */
+  :root { --stage-w: 2160px; --stage-h: 3840px; --stage-scale: 1; }
+  html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; background:#000; }
+  .viewport { position:fixed; inset:0; display:grid; place-items:center; overflow:hidden; }
+  .stage-outer { width:calc(var(--stage-w)*var(--stage-scale)); height:calc(var(--stage-h)*var(--stage-scale)); }
+  .stage { width:var(--stage-w); height:var(--stage-h); transform:scale(var(--stage-scale)); transform-origin:0 0; position:relative; box-shadow:0 80px 200px rgba(0,0,0,.7); overflow:hidden; }
+
+  :root {
+    --bg:#0d0d1a; --panel:#1a1a2e; --panel2:#252540;
+    --ink:#f1f1ff; --ink2:#a0a0c0; --muted:#6a6a88;
+    --yellow:#ffd84d; --green:#5ff28d; --cyan:#3de0e8; --pink:#ff5ca8; --purple:#a86bff; --orange:#ff8a3d;
+  }
+  html, body { color:var(--ink); font-family:'Space Grotesk',system-ui,sans-serif; }
+  .stage { background: var(--bg);
+    background-image:
+      linear-gradient(rgba(255,255,255,.02) 2px, transparent 2px),
+      linear-gradient(90deg, rgba(255,255,255,.02) 2px, transparent 2px);
+    background-size: 60px 60px; }
+  .stage::before { content:''; position:absolute; inset:0;
+    background: radial-gradient(ellipse 1400px 1100px at 50% 14%, rgba(93,242,141,.12), transparent 60%);
+    pointer-events:none; }
+
+  /* ─── Top HUD ─────────────────────────────────────────────────
+     Portrait: school block on top row, three stat tiles on second
+     row. In landscape they sit side-by-side; here we stack so each
+     row gets its own width budget (2032px) and the stat tiles can
+     grow taller. */
+  .hud { position:absolute; top:56px; left:64px; right:64px; height:360px;
+    display:flex; flex-direction:column; gap:24px; overflow:hidden; }
+  .player { display:flex; align-items:center; gap: 44px; }
+  .avatar {
+    width: 200px; height: 200px; background: var(--orange);
+    position: relative; image-rendering: pixelated;
+    box-shadow:
+      inset 0 -20px 0 rgba(0,0,0,.2),
+      inset 20px 0 0 rgba(0,0,0,.05);
+    border: 6px solid var(--ink);
+    flex-shrink: 0;
+  }
+  .avatar::before {
+    content:''; position: absolute; top: 56px; left: 40px; width: 34px; height: 34px; background: var(--ink);
+    box-shadow: 86px 0 0 var(--ink);
+  }
+  .avatar::after {
+    content:''; position: absolute; bottom: 42px; left: 60px; width: 80px; height: 28px; background: var(--ink);
+  }
+  .player .info { min-width: 0; }
+  .player .info .name { font-family:'Press Start 2P', monospace; font-size: 92px; color: var(--yellow); line-height: 1; letter-spacing: .02em; }
+  .player .info .sub { font-family:'VT323', monospace; font-size: 64px; color: var(--cyan); margin-top: 22px; letter-spacing: .06em; }
+  .player .info .sub b { color: var(--green); font-weight: normal; }
+
+  /* Three equal stat tiles in row 2 — fill the full width minus gaps.
+     2032 (panel) - 2*28 (gaps) = 1976 / 3 = ~658px per tile. */
+  .hud-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 28px; flex:1; min-height: 0; }
+  .stat {
+    background: var(--panel); border: 6px solid var(--ink); padding: 24px 36px;
+    box-shadow: 10px 10px 0 #000;
+    display:flex; flex-direction:column; justify-content:center; gap: 12px;
+    overflow: hidden;
+  }
+  .stat .k { font-family:'Press Start 2P', monospace; font-size: 32px; color: var(--ink2); letter-spacing: .05em; line-height: 1; }
+  .stat .v { font-family:'VT323', monospace; font-size: 110px; line-height: 1; color: var(--ink); letter-spacing: .04em; }
+  .stat .v.hp { color: var(--green); }
+  .stat .v.mp { color: var(--cyan); }
+  .stat .v.xp { color: var(--yellow); }
+
+  /* ─── Hero quest card ─────────────────────────────────────────
+     Portrait gets the showpiece: 1100px tall, headline 240px.
+     Same content as landscape (tag → h1 → sub → meta chips) but
+     each element is bigger because the panel is wider relative to
+     itself. The pixel-confetti motif in the corner is repositioned
+     to top-right to balance the tag chip on the left. */
+  .quest {
+    position: absolute; top: 436px; left: 64px; right: 64px; height: 1100px;
+    background: var(--panel); border: 6px solid var(--ink);
+    box-shadow: 16px 16px 0 #000;
+    padding: 70px 88px; overflow: hidden;
+  }
+  .quest::before {
+    content:''; position:absolute; right:-180px; top:-180px; width: 720px; height: 720px;
+    background: repeating-conic-gradient(from 0deg, rgba(93,242,141,.14) 0deg 15deg, transparent 15deg 30deg);
+    transform: rotate(12deg);
+  }
+  .quest .tag {
+    display: inline-block; background: var(--yellow); color: #000;
+    font-family:'Press Start 2P', monospace; font-size: 48px; padding: 20px 36px;
+    letter-spacing: .04em; margin-bottom: 44px; box-shadow: 6px 6px 0 #000;
+    position: relative;
+  }
+  .quest h1 {
+    font-family:'Press Start 2P', monospace; font-size: 240px; line-height: 1.04;
+    color: var(--ink); margin: 0; letter-spacing: -.01em;
+    position: relative;
+  }
+  .quest h1 .hl { color: var(--green); text-shadow: 8px 8px 0 #000; }
+  .quest .sub {
+    font-family:'VT323', monospace; font-size: 80px; line-height: 1.22;
+    color: var(--cyan); margin-top: 56px; letter-spacing: .02em;
+    position: relative;
+  }
+  .quest .meta {
+    display: flex; gap: 26px; margin-top: 56px; flex-wrap: wrap;
+    position: relative;
+  }
+  .quest .meta span {
+    font-family:'VT323', monospace; font-size: 56px; background: #000; color: var(--yellow);
+    padding: 14px 32px; border: 3px solid var(--yellow); letter-spacing: .04em;
+  }
+
+  /* ─── XP bar (field-day progress) ────────────────────────────
+     Same 3-cell grid as landscape (label / track / pct). Track is
+     tall (110px) because portrait gives us breathing room and a
+     fat track is more glanceable from 8ft away. */
+  .xpbar {
+    position: absolute; top: 1556px; left: 64px; right: 64px; height: 240px;
+    background: var(--panel); border: 6px solid var(--ink); box-shadow: 10px 10px 0 #000;
+    padding: 32px 56px; display: grid; grid-template-columns: auto 1fr auto; gap: 56px; align-items: center;
+    overflow: hidden;
+  }
+  .xpbar .lbl { font-family:'Press Start 2P', monospace; font-size: 48px; color: var(--yellow); line-height: 1.2; letter-spacing: .04em; white-space: nowrap; }
+  .xpbar .lbl span { display:block; font-family:'VT323', monospace; font-size: 56px; color: var(--ink2); margin-top: 14px; letter-spacing: .02em; line-height: 1; }
+  .xpbar .track {
+    height: 110px; background: #000; border: 5px solid var(--ink); position: relative; overflow: hidden;
+    image-rendering: pixelated;
+  }
+  .xpbar .fill {
+    position:absolute; top:0; left:0; bottom:0; width: 62%;
+    background: linear-gradient(90deg, var(--green) 0%, var(--green) 80%, var(--cyan) 100%);
+    box-shadow: inset 0 -16px 0 rgba(0,0,0,.25);
+  }
+  .xpbar .fill::after {
+    content:''; position:absolute; inset: 12px 8px;
+    background:
+      repeating-linear-gradient(90deg, transparent 0 28px, rgba(255,255,255,.15) 28px 32px);
+  }
+  .xpbar .pct { font-family:'Press Start 2P', monospace; font-size: 88px; color: var(--green); letter-spacing: .02em; text-shadow: 5px 5px 0 #000; }
+
+  /* ─── Quest log (6 items, SINGLE vertical column) ─────────────
+     Landscape used a 2×3 grid because the panel was 2400×590 wide.
+     Portrait gives us 2032×880 → 6 rows in a single column reads
+     better and lets each row be ~120px tall with comfortable type.
+     Active row keeps the blinking ▶ pointer; done row keeps the
+     opacity dim. */
+  .board { position:absolute; top: 1816px; left: 64px; right: 64px; height: 880px;
+    background: var(--panel); border: 6px solid var(--ink); box-shadow: 16px 16px 0 #000;
+    padding: 32px 56px 28px; overflow: hidden; }
+  .board .head { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom: 22px; padding-bottom: 16px; border-bottom: 5px solid var(--ink); }
+  .board .head h2 { font-family:'Press Start 2P', monospace; font-size: 60px; color: var(--pink); margin: 0; letter-spacing: .02em; }
+  .board .head .day { font-family:'VT323', monospace; font-size: 48px; color: var(--cyan); letter-spacing: .04em; }
+  .board .head .day b { color: var(--yellow); }
+  .board .list { display: grid; grid-template-columns: 1fr; gap: 14px; margin-top: 14px; }
+  .q {
+    display: grid; grid-template-columns: 96px 1fr auto; gap: 32px; align-items: center;
+    background: #0f0f20; border: 3px solid #333355; padding: 18px 28px; position: relative;
+  }
+  .q.active { border-color: var(--green); box-shadow: inset 0 0 0 3px rgba(93,242,141,.2); }
+  .q.done { opacity: .55; }
+  .q .icon {
+    width: 80px; height: 80px; background: var(--purple); display: grid; place-items: center;
+    font-family:'Press Start 2P'; font-size: 28px; color: #fff; border: 4px solid var(--ink);
+  }
+  .q .txt { font-family:'VT323', monospace; font-size: 56px; color: var(--ink); line-height: 1.05; letter-spacing: .02em; }
+  .q .txt b { font-weight: normal; color: var(--yellow); }
+  .q .txt span { display:block; font-family:'Space Grotesk'; font-weight: 500; font-size: 32px; color: var(--ink2); letter-spacing: 0; margin-top: 6px; }
+  .q .rw { font-family:'Press Start 2P', monospace; font-size: 36px; color: var(--green); letter-spacing: .04em; text-align: right; white-space: nowrap; line-height: 1.1; }
+  .q .rw span { display:block; color: var(--ink2); font-size: 22px; margin-top: 8px; }
+  .q.done .rw { color: var(--muted); }
+  .q.active::before {
+    content: '▶'; position: absolute; left: -36px; top: 50%; transform: translateY(-50%);
+    font-family:'Press Start 2P'; font-size: 50px; color: var(--green);
+    animation: blink 1s steps(2) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ─── Leaderboard (TOP 3) ─────────────────────────────────────
+     Portrait reads top-down naturally. Same #1/#2/#3 ranking, same
+     rare/uncommon/common color treatment, but each entry breathes
+     in a tall column. Avatar bumped 108→128 because the wider panel
+     can support it. */
+  .side { position:absolute; top: 2716px; left: 64px; right: 64px; height: 540px;
+    background: var(--panel); border: 6px solid var(--ink); box-shadow: 16px 16px 0 #000;
+    padding: 36px 56px; display: flex; flex-direction: column; overflow: hidden; }
+  .side .header { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom: 18px; padding-bottom: 16px; border-bottom: 5px solid var(--ink); }
+  .side h2 { font-family:'Press Start 2P', monospace; font-size: 60px; color: var(--yellow); margin: 0; letter-spacing: .02em; }
+  .side .sub { font-family:'VT323', monospace; font-size: 44px; color: var(--ink2); letter-spacing: .04em; }
+  .side .entries { display: grid; grid-template-rows: 1fr 1fr 1fr; gap: 8px; flex: 1; min-height: 0; margin-top: 8px; }
+  .side .entry {
+    display: grid; grid-template-columns: 200px 128px 1fr auto; gap: 36px; align-items: center;
+    padding: 6px 0; border-bottom: 3px dashed #333355;
+  }
+  .side .entry:last-child { border-bottom: 0; }
+  .side .entry .rank { font-family:'Press Start 2P', monospace; font-size: 60px; color: var(--muted); letter-spacing: .02em; }
+  .side .entry.g1 .rank { color: var(--yellow); }
+  .side .entry.g2 .rank { color: #c0c0c0; }
+  .side .entry.g3 .rank { color: var(--orange); }
+  .side .entry .av {
+    width: 128px; height: 128px; background: var(--cyan); border: 5px solid var(--ink);
+    display:grid; place-items:center; font-family:'Press Start 2P', monospace; font-size: 40px; color: #000;
+  }
+  .side .entry .name { font-family:'VT323', monospace; font-size: 64px; color: var(--ink); line-height: 1.05; letter-spacing: .04em; }
+  .side .entry .name span { display:block; font-family:'Space Grotesk'; font-weight: 500; font-size: 34px; color: var(--ink2); letter-spacing: 0; margin-top: 4px; }
+  .side .entry .pts { font-family:'Press Start 2P', monospace; font-size: 54px; color: var(--green); letter-spacing: .02em; white-space: nowrap; text-align: right; line-height: 1.1; }
+  .side .entry .pts span { color: var(--ink2); font-size: 28px; display:block; margin-top: 10px; letter-spacing: .1em; }
+
+  /* ─── Side quests / events ────────────────────────────────────
+     324px high panel with 2 horizontal items side-by-side. The
+     date chip on the left, info on the right. */
+  .events { position:absolute; top: 3276px; left: 64px; right: 64px; height: 324px; overflow: hidden; }
+  .eventsbox { background: var(--panel); border: 6px solid var(--ink); box-shadow: 10px 10px 0 #000;
+    padding: 28px 36px; height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+  .eventsbox .head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom: 16px; }
+  .eventsbox h2 { font-family:'Press Start 2P', monospace; font-size: 48px; color: var(--orange); margin: 0; letter-spacing: .02em; line-height: 1.15; }
+  .eventsbox .sub { font-family:'VT323', monospace; font-size: 36px; color: var(--ink2); letter-spacing: .04em; }
+  .eventsbox .list { display: grid; gap: 18px; flex: 1; grid-template-columns: 1fr 1fr; min-height: 0; }
+  .eventsbox .it { display: grid; grid-template-columns: 150px 1fr; gap: 24px; align-items:center; padding: 14px 18px; background: #0f0f20; border: 3px solid #333355; min-width: 0; overflow: hidden; }
+  .eventsbox .it .date { background: var(--yellow); color: #000; font-family:'Press Start 2P', monospace; font-size: 26px; padding: 12px 6px; text-align:center; line-height: 1.3; letter-spacing: .04em; border: 3px solid var(--ink); }
+  .eventsbox .it .date span { display:block; font-family:'VT323', monospace; font-size: 56px; line-height: 1; color: #000; margin-top: 6px; }
+  .eventsbox .it .info { min-width: 0; overflow: hidden; }
+  .eventsbox .it .info .t { font-family:'VT323', monospace; font-size: 48px; color: var(--ink); line-height: 1.05; letter-spacing: .02em; }
+  .eventsbox .it .info .s { font-family:'Space Grotesk'; font-weight: 500; font-size: 28px; color: var(--ink2); margin-top: 6px; }
+  .eventsbox .it .info .tag { font-family:'Press Start 2P'; font-size: 22px; color: var(--green); letter-spacing: .06em; margin-top: 10px; display:inline-block; }
+
+  /* ─── Bottom news bar (BOSS BATTLE × scrolling feed) ──────────
+     Same construction as landscape but slightly taller (200 vs 150)
+     so the message font (76px) reads from the hallway. Inset 64px
+     left/right, bottom:20px — every panel uses the same column.    */
+  .newsbar {
+    position:absolute; bottom:20px; left:64px; right:64px; height: 200px;
+    background: var(--pink); color: #000;
+    display:flex; align-items:stretch;
+    border: 6px solid var(--ink);
+    box-shadow: 12px 12px 0 #000;
+    overflow:hidden;
+  }
+  .newsbar .tag {
+    background: #000; color: #fff;
+    font-family:'Press Start 2P', monospace; font-size: 48px;
+    padding: 0 56px;
+    display:flex; align-items:center;
+    letter-spacing: .04em;
+    flex-shrink: 0;
+    border-right: 5px solid var(--ink);
+  }
+  .newsbar .msg-wrap {
+    flex: 1; overflow:hidden; display:flex; align-items:center;
+    padding-left: 48px;
+  }
+  .newsbar .msg {
+    font-family:'VT323', monospace; font-size: 76px; color: #000;
+    white-space: nowrap; letter-spacing: .02em;
+    animation: scroll 60s linear infinite;
+  }
+  .newsbar .msg span { display:inline-block; padding-right: 96px; }
+  @keyframes scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+</style>
+</head>
+<body>
+<script>
+  const __TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "schema": "edu-cms-ms-arcade-portrait-v1" }/*EDITMODE-END*/;
+</script>
+
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+  <div class="hud">
+    <div class="player" data-widget="school">
+      <div class="avatar" aria-hidden="true"></div>
+      <div class="info">
+        <div class="name" data-field="school.name">WESTRIDGE.MS</div>
+        <div class="sub"><span data-field="school.team">HOUSE: OTTERS</span> · LV.<b data-field="school.lv">7</b> · <span data-field="school.date">TUE APR 21</span></div>
+      </div>
+    </div>
+    <div class="hud-stats">
+      <div class="stat" data-widget="clock">
+        <span class="k" data-field="clock.label">TIME</span>
+        <span class="v" data-field="clock.time">07:53</span>
+      </div>
+      <div class="stat" data-widget="weather">
+        <span class="k" data-field="weather.label">CLIMATE</span>
+        <span class="v mp" data-field="weather.temp">46°</span>
+      </div>
+      <div class="stat" data-widget="countdown">
+        <span class="k" data-field="countdown.label">NEXT LV</span>
+        <span class="v xp" data-field="countdown.value">12d</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="quest" data-widget="greeting">
+    <div class="tag" data-field="greeting.tag">◆ MAIN QUEST · DAY B</div>
+    <h1 data-field="greeting.headline">GO <span class="hl">FORTH</span>,<br/>OTTERS.</h1>
+    <p class="sub" data-field="greeting.subtitle">Today's party assembles at 08:05. Bring: pencil (common), journal (uncommon), courage (rare). Mr. Nguyen awaits in room 108 for the poetry workshop.</p>
+    <div class="meta">
+      <span data-field="greeting.m0">+50 XP attendance</span>
+      <span data-field="greeting.m1">+25 XP participation</span>
+      <span data-field="greeting.m2">bonus: bring a friend</span>
+    </div>
+  </div>
+
+  <div class="xpbar" data-widget="xp">
+    <div class="lbl"><span data-field="xp.label">FIELD DAY PROGRESS</span><span data-field="xp.sub">284 / 460 otters signed up · close Fri</span></div>
+    <div class="track"><div class="fill"></div></div>
+    <div class="pct" data-field="xp.pct">62%</div>
+  </div>
+
+  <div class="board" data-widget="agenda">
+    <div class="head">
+      <h2 data-field="agenda.title">◆ QUEST LOG — TODAY</h2>
+      <div class="day"><span data-field="agenda.day">DAY</span> <b data-field="agenda.letter">B</b> · <span data-field="agenda.date">6 quests queued</span></div>
+    </div>
+    <div class="list">
+      <div class="q done" data-widget="agenda.0">
+        <span class="icon" style="background: var(--green);" data-field="agenda.0.icon">✓</span>
+        <span class="txt"><b data-field="agenda.0.t">P1 · MATH 7</b><span data-field="agenda.0.r">rm 214 · ms. patel</span></span>
+        <span class="rw"><span data-field="agenda.0.xp">+50 XP</span>done</span>
+      </div>
+      <div class="q active" data-widget="agenda.1">
+        <span class="icon" style="background: var(--yellow); color: #000;" data-field="agenda.1.icon">P2</span>
+        <span class="txt"><b data-field="agenda.1.t">ENGLISH — POETRY</b><span data-field="agenda.1.r">rm 108 · mr. nguyen</span></span>
+        <span class="rw"><span data-field="agenda.1.xp">+75 XP</span>live</span>
+      </div>
+      <div class="q" data-widget="agenda.2">
+        <span class="icon" style="background: var(--cyan); color: #000;" data-field="agenda.2.icon">P3</span>
+        <span class="txt"><b data-field="agenda.2.t">SCIENCE — LAB</b><span data-field="agenda.2.r">rm 207 · closed-toe shoes</span></span>
+        <span class="rw"><span data-field="agenda.2.xp">+100 XP</span>up next</span>
+      </div>
+      <div class="q" data-widget="agenda.3">
+        <span class="icon" style="background: var(--orange);" data-field="agenda.3.icon">P4</span>
+        <span class="txt"><b data-field="agenda.3.t">PE — MILE RUN</b><span data-field="agenda.3.r">gym a · coach reyes</span></span>
+        <span class="rw"><span data-field="agenda.3.xp">+80 XP</span>10:50</span>
+      </div>
+      <div class="q" data-widget="agenda.4">
+        <span class="icon" style="background: var(--pink);" data-field="agenda.4.icon">LU</span>
+        <span class="txt"><b data-field="agenda.4.t">LUNCH — A PERIOD</b><span data-field="agenda.4.r">chicken &amp; rice · 7th grade</span></span>
+        <span class="rw"><span data-field="agenda.4.xp">+25 HP</span>11:45</span>
+      </div>
+      <div class="q" data-widget="agenda.5">
+        <span class="icon" style="background: var(--purple);" data-field="agenda.5.icon">P5</span>
+        <span class="txt"><b data-field="agenda.5.t">SOCIAL STUDIES</b><span data-field="agenda.5.r">rm 115 · map quiz</span></span>
+        <span class="rw"><span data-field="agenda.5.xp">+90 XP</span>12:35</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="side" data-widget="leaderboard">
+    <div class="header">
+      <h2 data-field="leaderboard.title">▲ TOP SCORES</h2>
+      <div class="sub" data-field="leaderboard.sub">weekly · by homeroom</div>
+    </div>
+    <div class="entries">
+      <div class="entry g1" data-widget="leaderboard.0">
+        <span class="rank">#1</span>
+        <span class="av" data-field="leaderboard.0.av">7B</span>
+        <span class="name" data-field="leaderboard.0.name">MS. CHEN'S 7B<span data-field="leaderboard.0.sub">homework streak · attendance</span></span>
+        <span class="pts"><span data-field="leaderboard.0.pts">14,820</span><span>PTS</span></span>
+      </div>
+      <div class="entry g2" data-widget="leaderboard.1">
+        <span class="rank">#2</span>
+        <span class="av" style="background: var(--yellow);" data-field="leaderboard.1.av">MR</span>
+        <span class="name" data-field="leaderboard.1.name">MAYA R.<span data-field="leaderboard.1.sub">7th grade · birthday today</span></span>
+        <span class="pts"><span data-field="leaderboard.1.pts">9,940</span><span>PTS</span></span>
+      </div>
+      <div class="entry g3" data-widget="leaderboard.2">
+        <span class="rank">#3</span>
+        <span class="av" style="background: var(--pink);" data-field="leaderboard.2.av">DK</span>
+        <span class="name" data-field="leaderboard.2.name">DANIEL K.<span data-field="leaderboard.2.sub">math olympiad · 3rd place</span></span>
+        <span class="pts"><span data-field="leaderboard.2.pts">8,720</span><span>PTS</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="events">
+    <div class="eventsbox" data-widget="loot">
+      <div class="head">
+        <h2 data-field="loot.title">✦ SIDE QUESTS</h2>
+        <div class="sub" data-field="loot.sub">this week · loot tier marked</div>
+      </div>
+      <div class="list">
+        <div class="it" data-widget="loot.0">
+          <div class="date"><span data-field="loot.0.dow">TUE</span><span data-field="loot.0.d">3:00</span></div>
+          <div class="info">
+            <div class="t" data-field="loot.0.t">Robotics Club</div>
+            <div class="s" data-field="loot.0.s">rm 207 · build week</div>
+            <span class="tag" data-field="loot.0.tag">RARE LOOT</span>
+          </div>
+        </div>
+        <div class="it" data-widget="loot.1">
+          <div class="date"><span data-field="loot.1.dow">WED</span><span data-field="loot.1.d">7pm</span></div>
+          <div class="info">
+            <div class="t" data-field="loot.1.t">Spring Band Concert</div>
+            <div class="s" data-field="loot.1.s">auditorium · "echoes"</div>
+            <span class="tag" data-field="loot.1.tag">LEGENDARY</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="newsbar" data-widget="newsbar">
+    <span class="tag" data-field="newsbar.tag">!! BOSS BATTLE</span>
+    <div class="msg-wrap">
+      <div class="msg">
+        <span data-field="newsbar.message">PICTURE DAY → THU · FULL UNIFORM · PERMISSION SLIPS BY WED · BUS 14 +10 · SUB IN B-12 · SPELLING BEE SIGN-UPS END FRI · 8TH GRADE FIELD TRIP FORMS DUE TMRW · LOST BLUE WATER BOTTLE → FRONT OFFICE · LIBRARY RETURNS DUE THIS WEEK · </span>
+        <span aria-hidden="true">PICTURE DAY → THU · FULL UNIFORM · PERMISSION SLIPS BY WED · BUS 14 +10 · SUB IN B-12 · SPELLING BEE SIGN-UPS END FRI · 8TH GRADE FIELD TRIP FORMS DUE TMRW · LOST BLUE WATER BOTTLE → FRONT OFFICE · LIBRARY RETURNS DUE THIS WEEK · </span>
+      </div>
+    </div>
+  </div>
+
+</div></div></div>
+
+<script>
+  // Same fit() pattern as the landscape file — reads --stage-w/--stage-h
+  // (here 2160×3840) and computes --stage-scale to fit the viewport.
+  (function(){
+    function fit(){
+      const cs = getComputedStyle(document.documentElement);
+      const w = parseFloat(cs.getPropertyValue('--stage-w')) || 2160;
+      const h = parseFloat(cs.getPropertyValue('--stage-h')) || 3840;
+      const k = Math.min(window.innerWidth / w, window.innerHeight / h);
+      document.documentElement.style.setProperty('--stage-scale', k);
+    }
+    window.addEventListener('resize', fit);
+    window.addEventListener('load', fit);
+    setTimeout(fit, 10);
+    setTimeout(fit, 300);
+  })();
+</script>
+</body>
+</html>

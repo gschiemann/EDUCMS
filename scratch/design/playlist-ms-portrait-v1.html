@@ -1,0 +1,1151 @@
+<!--
+  MS TEMPLATE · PLAYLIST · PORTRAIT v1
+  =====================================
+  Vertical 2160×3840 sibling to playlist-ms-v2.html. Spotify
+  now-playing aesthetic (dark + green accent + magenta feature),
+  same content, redesigned for portrait reading rhythm — like
+  the actual Spotify mobile app.
+
+  Layout (2160×3840):
+    APP-BAR        y=56    h=280   brand + device + meta tiles + avatar
+    HERO           y=356   h=1400  album cover + numeral + heart
+    NOW PLAYING    y=1776  h=580   title + artist + chips + equalizer
+    TRANSPORT      y=2376  h=200   progress track + knob + prev/play/next
+    QUEUE          y=2596  h=660   Up Next list (vertical)
+    FEATURED       y=3276  h=220   magenta spotlight card
+    CHARTS+STATS   y=3516  h=140   club charts + 3-cell stats
+    ALERT+TICKER   y=3676  h=144   gold pinned alert + scrolling ticker
+    (every gap = 20px, every panel inset = 64px)
+
+  Geometry math:
+    panels: 280+1400+580+200+660+220+140+144 = 3624
+    gaps:   7 × 20                            =  140
+    top inset: 56
+    bottom inset: 3840 - 3676 - 144           =   20
+    total: 3624 + 140 + 56 + 20               = 3840 ✓
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Playlist — MS Lobby PORTRAIT (v1)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Inter+Tight:wght@700;800;900&family=Outfit:wght@500;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+
+  /* 3-layer scale wrapper */
+  :root { --stage-w: 2160px; --stage-h: 3840px; --stage-scale: 1; }
+  html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; background:#000; }
+  .viewport { position:fixed; inset:0; display:grid; place-items:center; overflow:hidden; }
+  .stage-outer { width:calc(var(--stage-w)*var(--stage-scale)); height:calc(var(--stage-h)*var(--stage-scale)); }
+  .stage { width:var(--stage-w); height:var(--stage-h); transform:scale(var(--stage-scale)); transform-origin:0 0; position:relative; box-shadow:0 80px 200px rgba(0,0,0,.7); overflow:hidden; }
+
+  /* ─── Spotify-dark palette (same as landscape) ───────────── */
+  :root {
+    --bg:       #050507;
+    --bg-2:     #0c0c11;
+    --panel:    #181821;
+    --panel-2:  #232330;
+    --panel-3:  #2c2c3a;
+    --line:     #2a2a37;
+    --ink:      #f7f7fb;
+    --ink-2:    #b3b3c7;
+    --muted:    #6e6e85;
+    --green:    #1ed760;
+    --green-2:  #169c45;
+    --green-3:  #0e6e30;
+    --pink:     #f23985;
+    --gold:     #ffc94d;
+    --blue:     #6f8bff;
+    --orange:   #ff8a4a;
+  }
+
+  html, body { color: var(--ink); font-family:'Inter', system-ui, sans-serif; }
+  .stage {
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse 1600px 1400px at 14% 6%,  rgba(30,215,96,.20), transparent 65%),
+      radial-gradient(ellipse 1400px 1200px at 88% 96%, rgba(242,57,133,.12), transparent 70%),
+      radial-gradient(ellipse 1200px 1000px at 50% 50%, rgba(111,139,255,.05), transparent 70%);
+  }
+  .stage::before {
+    content:''; position:absolute; inset:0; pointer-events:none; z-index:0; opacity:.4;
+    background-image:
+      radial-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
+      radial-gradient(rgba(255,255,255,.012) 1px, transparent 1px);
+    background-size: 3px 3px, 7px 7px;
+    background-position: 0 0, 1px 2px;
+    mix-blend-mode: screen;
+  }
+
+  /* ─── APP-BAR ─────────────────────────────────────────────
+     y=56  h=280
+     two-row grid: top row brand + avatar, bottom row 3 meta tiles + device
+     Wider than landscape but shorter overall — portrait gets less vertical
+     space for chrome so we pack tight.
+  --------------------------------------------------------- */
+  .appbar {
+    position:absolute; top:56px; left:64px; right:64px; height: 280px;
+    background: linear-gradient(180deg, rgba(24,24,33,.85), rgba(24,24,33,.55));
+    border: 1px solid var(--line);
+    border-radius: 32px;
+    backdrop-filter: blur(20px);
+    padding: 24px 36px;
+    display: grid; grid-template-rows: auto 1fr; gap: 14px;
+    z-index: 2;
+    overflow: hidden;
+  }
+
+  .appbar .top {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 32px; align-items: center;
+  }
+
+  /* Brand lockup */
+  .brand { display: flex; align-items: center; gap: 26px; }
+  .brand .mark {
+    width: 124px; height: 124px; border-radius: 50%; flex-shrink: 0;
+    background:
+      radial-gradient(circle at 35% 30%, #2bf07a, var(--green) 55%, var(--green-3) 100%);
+    box-shadow:
+      0 0 0 4px rgba(30,215,96,.25),
+      0 18px 50px rgba(30,215,96,.35),
+      inset 0 -10px 20px rgba(0,0,0,.25);
+    position: relative;
+  }
+  .brand .mark::before {
+    content:''; position:absolute; inset: 24px;
+    background:
+      radial-gradient(circle at 40% 100%, transparent 30px, #000 30px, #000 35px, transparent 35px),
+      radial-gradient(circle at 40% 100%, transparent 48px, #000 48px, #000 53px, transparent 53px),
+      radial-gradient(circle at 40% 100%, transparent 66px, #000 66px, #000 71px, transparent 71px);
+  }
+  .brand .info .eye {
+    font-family:'JetBrains Mono', monospace; font-size: 22px; font-weight: 700;
+    letter-spacing: .26em; text-transform: uppercase; color: var(--green);
+    display: inline-flex; align-items: center; gap: 12px;
+  }
+  .brand .info .eye::before { content:''; width: 30px; height: 3px; background: var(--green); }
+  .brand .info .name {
+    font-family:'Inter Tight'; font-weight: 900; font-size: 76px;
+    color: var(--ink); line-height: 1; letter-spacing: -.03em;
+    margin-top: 4px;
+  }
+  .brand .info .name span { color: var(--green); }
+  .brand .info .sub {
+    font-family:'JetBrains Mono', monospace; font-size: 22px; font-weight: 500;
+    color: var(--ink-2); letter-spacing: .14em; text-transform: uppercase;
+    margin-top: 4px;
+  }
+  .brand .info .sub b { color: var(--gold); font-weight: 700; }
+
+  .avatar {
+    width: 96px; height: 96px; border-radius: 50%; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--orange), var(--pink) 55%, #6b1f3a);
+    display: grid; place-items: center;
+    font-family:'Inter Tight'; font-weight: 900; font-size: 38px; color: #fff;
+    border: 4px solid var(--ink);
+    box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  }
+
+  /* Bottom row of app-bar: device chip + 3 meta tiles */
+  .appbar .bot {
+    display: grid; grid-template-columns: 1fr auto auto auto; gap: 16px; align-items: stretch;
+  }
+
+  .device {
+    background: rgba(30,215,96,.10);
+    border: 2px solid var(--green);
+    border-radius: 999px;
+    padding: 12px 26px;
+    display: flex; align-items: center; gap: 18px;
+    box-shadow: 0 0 0 6px rgba(30,215,96,.06), inset 0 0 30px rgba(30,215,96,.08);
+    min-width: 0;
+    overflow: hidden;
+  }
+  .device .ico {
+    width: 56px; height: 56px; border-radius: 12px;
+    background: linear-gradient(135deg, var(--green), var(--green-2));
+    display: grid; place-items: center; position: relative; flex-shrink: 0;
+  }
+  .device .ico::before, .device .ico::after {
+    content:''; position: absolute; left: 12px; right: 12px; border-radius: 5px;
+    background: rgba(0,0,0,.55);
+  }
+  .device .ico::before { top: 10px; height: 14px; }
+  .device .ico::after  { top: 30px; height: 7px; right: 26px; }
+  .device .info { min-width: 0; }
+  .device .info .k {
+    font-family:'JetBrains Mono', monospace; font-size: 18px; font-weight: 700;
+    letter-spacing: .26em; text-transform: uppercase; color: var(--green);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .device .info .k::before {
+    content:''; width: 12px; height: 12px; border-radius: 50%; background: var(--green);
+    box-shadow: 0 0 0 3px rgba(30,215,96,.3);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 4px rgba(30,215,96,.3); }
+    50%      { box-shadow: 0 0 0 10px rgba(30,215,96,0); }
+  }
+  .device .info .v {
+    font-family:'Inter Tight'; font-weight: 900; font-size: 34px;
+    color: var(--ink); line-height: 1.05; letter-spacing: -.015em;
+    margin-top: 2px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  .mt {
+    background: rgba(35,35,48,.7);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 12px 22px;
+    min-width: 168px;
+    display: flex; flex-direction: column; gap: 2px;
+    justify-content: center;
+  }
+  .mt .k {
+    font-family:'JetBrains Mono', monospace; font-size: 16px; font-weight: 700;
+    letter-spacing: .18em; text-transform: uppercase; color: var(--muted);
+  }
+  .mt .v {
+    font-family:'Inter Tight'; font-weight: 900; font-size: 50px;
+    color: var(--ink); line-height: 1; letter-spacing: -.02em;
+  }
+  .mt .v.warm { color: var(--gold); }
+  .mt .v.cool { color: var(--blue); }
+  .mt .v.green { color: var(--green); }
+  .mt .v sup { font-size: 26px; vertical-align: super; }
+
+  /* ─── HERO · ALBUM COVER ──────────────────────────────────
+     y=356  h=1400
+     Cover dominates portrait visually — 1280×1280 centered with painted
+     gradient, tape stripe, big P2 numeral, eyebrow band, meta + heart.
+     Gives way to the now-playing block below.
+  --------------------------------------------------------- */
+  .hero {
+    position: absolute; top: 356px; left: 64px; right: 64px; height: 1400px;
+    background:
+      radial-gradient(ellipse 1600px 900px at 50% 0%, rgba(30,215,96,.25), transparent 70%),
+      linear-gradient(180deg, #0e2a1c 0%, #061812 50%, #02080a 100%);
+    border: 1px solid rgba(30,215,96,.22);
+    border-radius: 36px;
+    padding: 60px;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    gap: 0;
+    overflow: hidden;
+    z-index: 2;
+  }
+  .hero::before {
+    content:''; position:absolute; right: -200px; top: -200px;
+    width: 800px; height: 800px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(30,215,96,.4), transparent 60%);
+    pointer-events: none;
+  }
+  .hero::after {
+    content:''; position:absolute; left: -200px; bottom: -200px;
+    width: 700px; height: 700px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(242,57,133,.18), transparent 70%);
+    pointer-events: none;
+  }
+
+  /* Hero header band — eyebrow line above the cover */
+  .hero .hero-head {
+    position: relative; z-index: 1;
+    display: flex; justify-content: space-between; align-items: center;
+    padding-bottom: 28px;
+  }
+  .hero .hero-head .eye {
+    font-family:'JetBrains Mono', monospace; font-weight: 700; font-size: 30px;
+    letter-spacing: .26em; text-transform: uppercase; color: var(--green);
+    display: inline-flex; align-items: center; gap: 16px;
+  }
+  .hero .hero-head .eye::before {
+    content:''; width: 18px; height: 18px; border-radius: 50%; background: var(--green);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  .hero .hero-head .eye::after { content:''; width: 56px; height: 3px; background: var(--green); margin-left: 8px; }
+  .hero .hero-head .pid {
+    font-family:'JetBrains Mono', monospace; font-weight: 700; font-size: 24px;
+    letter-spacing: .22em; text-transform: uppercase; color: var(--ink-2);
+    background: rgba(255,255,255,.06);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 10px 22px;
+  }
+  .hero .hero-head .pid b { color: var(--gold); font-weight: 700; }
+
+  /* The album cover — square painted tile */
+  .cover-wrap {
+    position: relative; z-index: 1;
+    display: grid; place-items: center;
+    min-height: 0;
+  }
+  .cover {
+    width: 1280px; height: 1280px; border-radius: 36px;
+    position: relative; overflow: hidden;
+    background:
+      radial-gradient(circle at 30% 25%, #2bf07a 0%, var(--green) 35%, var(--green-3) 70%, #053c1a 100%);
+    box-shadow:
+      0 60px 140px rgba(0,0,0,.6),
+      0 24px 60px rgba(30,215,96,.35),
+      inset 0 0 0 1px rgba(255,255,255,.08);
+  }
+  .cover::before {
+    content:''; position: absolute; inset: 0;
+    background:
+      radial-gradient(circle at 22% 18%, rgba(255,255,255,.32), transparent 38%),
+      radial-gradient(circle at 80% 80%, rgba(0,0,0,.45), transparent 52%),
+      repeating-linear-gradient(45deg, rgba(255,255,255,.02) 0 2px, transparent 2px 5px);
+  }
+  .cover::after {
+    /* Tape stripe diagonal across upper-right */
+    content:''; position:absolute; right: -260px; top: 110px; width: 1100px; height: 110px;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,201,77,.95) 30%, rgba(255,201,77,.95) 70%, transparent 100%);
+    transform: rotate(28deg); transform-origin: 50% 50%;
+    box-shadow: 0 8px 30px rgba(0,0,0,.4);
+    opacity: .85;
+  }
+  .cover .albumtxt {
+    position: absolute; inset: 0; padding: 80px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    z-index: 1;
+  }
+  .cover .albumtxt .top-row {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 24px;
+  }
+  .cover .albumtxt .label {
+    font-family:'JetBrains Mono', monospace; font-weight: 700; font-size: 28px;
+    background: rgba(0,0,0,.55); color: #fff;
+    padding: 12px 26px; border-radius: 999px;
+    letter-spacing: .14em; text-transform: uppercase;
+    border: 1px solid rgba(255,255,255,.18);
+  }
+  .cover .albumtxt .heart {
+    width: 96px; height: 96px; border-radius: 50%;
+    background: rgba(0,0,0,.45); border: 3px solid #fff;
+    display: grid; place-items: center;
+    font-size: 50px; color: #fff;
+    backdrop-filter: blur(8px);
+    flex-shrink: 0;
+  }
+  .cover .albumtxt .big {
+    font-family:'Inter Tight'; font-weight: 900; font-size: 540px;
+    line-height: .82; color: #fff; letter-spacing: -.05em;
+    text-shadow: 0 10px 40px rgba(0,0,0,.45);
+    align-self: flex-start;
+  }
+  .cover .albumtxt .meta-row {
+    display: flex; justify-content: space-between; align-items: flex-end; gap: 24px;
+  }
+  .cover .albumtxt .meta {
+    font-family:'Inter'; font-weight: 600; font-size: 36px;
+    color: rgba(255,255,255,.92); letter-spacing: -.005em;
+  }
+  .cover .albumtxt .meta b {
+    display: block;
+    font-family:'Inter Tight'; font-weight: 900; font-size: 72px;
+    letter-spacing: -.02em; line-height: 1; margin-bottom: 10px;
+  }
+
+  /* ─── NOW PLAYING ─────────────────────────────────────────
+     y=1776  h=580
+     Eyebrow + 240px split title + artist line + 4 chips + 14-bar EQ
+  --------------------------------------------------------- */
+  .now {
+    position: absolute; top: 1776px; left: 64px; right: 64px; height: 580px;
+    background: linear-gradient(180deg, rgba(24,24,33,.65), rgba(12,12,17,.4));
+    border: 1px solid var(--line);
+    border-radius: 32px;
+    padding: 36px 48px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    z-index: 2;
+  }
+  .now .eyebrow {
+    font-family:'JetBrains Mono', monospace; font-weight: 700; font-size: 28px;
+    letter-spacing: .26em; text-transform: uppercase; color: var(--green);
+    display: inline-flex; align-items: center; gap: 16px;
+  }
+  .now .eyebrow::before {
+    content:''; width: 16px; height: 16px; border-radius: 50%; background: var(--green);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  .now h1 {
+    font-family:'Inter Tight'; font-weight: 900; font-size: 240px;
+    line-height: .86; color: var(--ink); margin: 16px 0 0;
+    letter-spacing: -.04em; text-wrap: balance;
+  }
+  .now h1 em { font-style: normal; color: var(--green); }
+  .now .artist {
+    font-family:'Inter'; font-weight: 600; font-size: 56px;
+    color: var(--ink-2); margin-top: 24px; line-height: 1.1;
+    letter-spacing: -.005em;
+  }
+  .now .artist b { color: var(--ink); font-weight: 700; }
+
+  /* Chip + EQ row */
+  .now .below {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 32px; margin-top: auto; padding-top: 20px;
+  }
+  .now .chips {
+    display: flex; gap: 14px; flex-wrap: wrap; align-items: center;
+  }
+  .now .chips .chip {
+    background: rgba(255,255,255,.08); color: var(--ink);
+    padding: 14px 28px; border-radius: 999px;
+    font-family:'Inter'; font-weight: 700; font-size: 28px;
+    letter-spacing: -.005em;
+    border: 1px solid rgba(255,255,255,.14);
+  }
+  .now .chips .chip.exp {
+    background: var(--ink); color: #000;
+    width: 60px; height: 60px; padding: 0;
+    display: grid; place-items: center;
+    font-family:'Inter Tight'; font-weight: 900; font-size: 30px;
+    border-radius: 12px; border: 0;
+  }
+  .now .chips .chip.green { background: rgba(30,215,96,.18); border-color: var(--green); color: var(--green); }
+  .now .chips .meta-text {
+    font-family:'JetBrains Mono', monospace; font-weight: 500; font-size: 24px;
+    color: var(--ink-2); letter-spacing: .12em; text-transform: uppercase;
+    margin-left: 8px;
+  }
+
+  .eq {
+    display: flex; align-items: flex-end; gap: 10px; height: 90px;
+    flex-shrink: 0;
+  }
+  .eq span {
+    width: 14px; background: var(--green); border-radius: 4px;
+    animation: dance 1.1s ease-in-out infinite alternate;
+    box-shadow: 0 0 16px rgba(30,215,96,.5);
+    transform-origin: bottom;
+  }
+  .eq span:nth-child(1)  { animation-delay: -0.05s; height: 60%; }
+  .eq span:nth-child(2)  { animation-delay: -0.20s; height: 80%; }
+  .eq span:nth-child(3)  { animation-delay: -0.35s; height: 45%; }
+  .eq span:nth-child(4)  { animation-delay: -0.10s; height: 90%; }
+  .eq span:nth-child(5)  { animation-delay: -0.40s; height: 70%; }
+  .eq span:nth-child(6)  { animation-delay: -0.25s; height: 55%; }
+  .eq span:nth-child(7)  { animation-delay: -0.15s; height: 85%; }
+  .eq span:nth-child(8)  { animation-delay: -0.30s; height: 40%; }
+  .eq span:nth-child(9)  { animation-delay: -0.05s; height: 75%; }
+  .eq span:nth-child(10) { animation-delay: -0.45s; height: 50%; }
+  .eq span:nth-child(11) { animation-delay: -0.18s; height: 90%; }
+  .eq span:nth-child(12) { animation-delay: -0.32s; height: 65%; }
+  .eq span:nth-child(13) { animation-delay: -0.08s; height: 80%; }
+  .eq span:nth-child(14) { animation-delay: -0.22s; height: 45%; }
+  @keyframes dance {
+    from { transform: scaleY(.35); opacity:.7; }
+    to   { transform: scaleY(1);   opacity: 1; }
+  }
+
+  /* ─── TRANSPORT ───────────────────────────────────────────
+     y=2376  h=200
+     Progress track + knob, times row, prev/play/next buttons inline.
+  --------------------------------------------------------- */
+  .transport {
+    position: absolute; top: 2376px; left: 64px; right: 64px; height: 200px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 32px;
+    padding: 24px 48px;
+    display: grid; grid-template-columns: 1fr auto; gap: 48px; align-items: center;
+    overflow: hidden;
+    z-index: 2;
+  }
+  .transport .progress { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .transport .progress .track {
+    height: 18px; background: rgba(255,255,255,.16); border-radius: 999px;
+    position: relative; overflow: visible;
+  }
+  .transport .progress .track .fill {
+    position: absolute; inset: 0; width: 62%;
+    background: linear-gradient(90deg, var(--green-2), var(--green) 80%, #4cffa1);
+    border-radius: 999px;
+    box-shadow: 0 0 24px rgba(30,215,96,.6);
+  }
+  .transport .progress .track .knob {
+    position: absolute; left: 62%; top: 50%;
+    width: 36px; height: 36px; border-radius: 50%; background: #fff;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 0 6px rgba(30,215,96,.32), 0 6px 18px rgba(0,0,0,.5);
+  }
+  .transport .progress .times {
+    display: flex; justify-content: space-between;
+    font-family:'JetBrains Mono', monospace; font-weight: 600; font-size: 30px;
+    color: var(--ink-2); letter-spacing: .04em;
+  }
+  .transport .progress .times .left { color: var(--ink); }
+
+  .transport .ctrls {
+    display: flex; align-items: center; gap: 20px;
+  }
+  .transport .ctrls .btn {
+    width: 84px; height: 84px; border-radius: 50%;
+    background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.14);
+    display: grid; place-items: center;
+    color: var(--ink); font-size: 38px; font-weight: 900;
+  }
+  .transport .ctrls .btn.play {
+    width: 124px; height: 124px;
+    background: var(--green); color: #000;
+    box-shadow: 0 0 0 8px rgba(30,215,96,.18), 0 18px 50px rgba(30,215,96,.45);
+    border: 0;
+    font-size: 52px;
+  }
+
+  /* ─── QUEUE · UP NEXT ─────────────────────────────────────
+     y=2596  h=660
+     Vertical 4-row list — each row has idx + art + title/artist + dur.
+     Album/where line tucks under the title since portrait is narrower.
+  --------------------------------------------------------- */
+  .queue {
+    position: absolute; top: 2596px; left: 64px; right: 64px; height: 660px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 32px;
+    padding: 24px 36px 18px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    z-index: 2;
+  }
+  .queue .head {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    padding-bottom: 12px; border-bottom: 2px solid var(--line);
+  }
+  .queue .head h2 {
+    font-family:'Inter Tight'; font-weight: 900; font-size: 64px;
+    color: var(--ink); margin: 0; line-height: 1; letter-spacing: -.025em;
+  }
+  .queue .head h2 em {
+    font-style: normal; color: var(--green);
+    font-family:'Inter Tight'; font-weight: 900;
+  }
+  .queue .head .meta { display: flex; align-items: center; gap: 18px; }
+  .queue .head .meta .day {
+    font-family:'JetBrains Mono', monospace; font-weight: 700; font-size: 22px;
+    letter-spacing: .2em; text-transform: uppercase; color: var(--ink-2);
+  }
+  .queue .head .meta .day b { color: var(--gold); }
+  .queue .head .meta .pill {
+    background: rgba(30,215,96,.16); border: 1px solid var(--green);
+    color: var(--green); padding: 8px 18px; border-radius: 999px;
+    font-family:'JetBrains Mono', monospace; font-weight: 700; font-size: 20px;
+    letter-spacing: .14em; text-transform: uppercase;
+  }
+
+  .queue .colhd {
+    display: grid;
+    grid-template-columns: 64px 1fr 1fr 160px;
+    gap: 24px; align-items: center;
+    padding: 12px 12px 8px;
+    border-bottom: 1px solid var(--line);
+    font-family:'JetBrains Mono', monospace; font-weight: 700; font-size: 18px;
+    color: var(--muted); letter-spacing: .2em; text-transform: uppercase;
+  }
+  .queue .colhd .r { text-align: right; }
+
+  .queue .list { flex: 1; display: flex; flex-direction: column; justify-content: space-between; min-height: 0; }
+  .queue .row {
+    display: grid;
+    grid-template-columns: 64px 1fr 1fr 160px;
+    gap: 24px; align-items: center;
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(42,42,55,.55);
+  }
+  .queue .row:last-child { border-bottom: 0; }
+  .queue .row .idx {
+    font-family:'JetBrains Mono', monospace; font-weight: 700; font-size: 32px;
+    color: var(--muted); text-align: center;
+  }
+  .queue .row .trk {
+    display: grid; grid-template-columns: 80px 1fr; gap: 18px; align-items: center;
+    min-width: 0;
+  }
+  .queue .row .trk .art {
+    width: 80px; height: 80px; border-radius: 12px;
+    display: grid; place-items: center;
+    font-family:'Inter Tight'; font-weight: 900; font-size: 36px; color: #fff;
+    letter-spacing: -.02em; box-shadow: 0 6px 18px rgba(0,0,0,.4);
+    position: relative; overflow: hidden;
+  }
+  .queue .row .trk .art::before {
+    content:''; position: absolute; inset: 0;
+    background:
+      radial-gradient(circle at 28% 22%, rgba(255,255,255,.25), transparent 50%),
+      radial-gradient(circle at 80% 85%, rgba(0,0,0,.32), transparent 55%);
+  }
+  .queue .row .trk .body { min-width: 0; }
+  .queue .row .trk .ti {
+    font-family:'Inter Tight'; font-weight: 900; font-size: 36px;
+    color: var(--ink); line-height: 1.05; letter-spacing: -.018em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .queue .row .trk .ti em {
+    display: inline-block; vertical-align: middle;
+    background: var(--ink); color: #000;
+    width: 28px; height: 28px; line-height: 28px; text-align: center;
+    border-radius: 6px; font-size: 18px; font-style: normal;
+    font-family:'Inter'; font-weight: 900;
+    margin-right: 12px; transform: translateY(-3px);
+  }
+  .queue .row .trk .ar {
+    font-family:'Inter'; font-weight: 500; font-size: 24px;
+    color: var(--ink-2); margin-top: 2px; letter-spacing: -.005em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .queue .row .alb {
+    font-family:'Inter'; font-weight: 600; font-size: 26px;
+    color: var(--ink-2); letter-spacing: -.005em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .queue .row .dur {
+    font-family:'JetBrains Mono', monospace; font-weight: 600; font-size: 30px;
+    color: var(--ink); text-align: right; letter-spacing: .04em;
+  }
+  .queue .row .dur span {
+    display: block;
+    font-family:'JetBrains Mono', monospace; font-size: 16px; font-weight: 500;
+    color: var(--muted); letter-spacing: .14em; text-transform: uppercase;
+    margin-top: 4px;
+  }
+  .queue .row.up {
+    background: linear-gradient(90deg, rgba(30,215,96,.14), transparent 60%);
+    position: relative;
+  }
+  .queue .row.up::before {
+    content:''; position: absolute; left: 0; top: 12px; bottom: 12px; width: 6px;
+    background: var(--green); border-radius: 0 4px 4px 0;
+  }
+  .queue .row.up .idx { color: var(--green); }
+
+  /* ─── FEATURED · MAGENTA SPOTLIGHT ────────────────────────
+     y=3276  h=220
+     Compact horizontal card — pic on left, info on right. Tag pill.
+  --------------------------------------------------------- */
+  .featured {
+    position: absolute; top: 3276px; left: 64px; right: 64px; height: 220px;
+    background:
+      radial-gradient(circle at 90% 0%, rgba(242,57,133,.55), transparent 60%),
+      linear-gradient(135deg, #2a0d22 0%, #14060f 100%);
+    border: 1px solid rgba(242,57,133,.4);
+    border-radius: 32px;
+    padding: 28px 36px;
+    display: grid; grid-template-columns: 164px 1fr auto; gap: 32px; align-items: center;
+    overflow: hidden;
+    z-index: 2;
+  }
+  .featured .pic {
+    width: 164px; height: 164px; border-radius: 20px;
+    background: linear-gradient(135deg, #ffb1cd, var(--pink) 50%, #6b1f3a);
+    display: grid; place-items: center;
+    font-size: 88px; line-height: 1;
+    box-shadow: 0 12px 30px rgba(0,0,0,.5);
+    position: relative; overflow: hidden;
+  }
+  .featured .pic::before {
+    content:''; position: absolute; inset: 0;
+    background:
+      radial-gradient(circle at 28% 22%, rgba(255,255,255,.28), transparent 55%),
+      radial-gradient(circle at 80% 80%, rgba(0,0,0,.35), transparent 55%);
+  }
+  .featured .info { min-width: 0; }
+  .featured .info .ey {
+    font-family:'JetBrains Mono', monospace; font-weight: 700; font-size: 22px;
+    color: var(--pink); letter-spacing: .22em; text-transform: uppercase;
+  }
+  .featured .info h3 {
+    font-family:'Inter Tight'; font-weight: 900; font-size: 56px;
+    color: var(--ink); margin: 4px 0 0; letter-spacing: -.025em; line-height: 1;
+  }
+  .featured .info .s {
+    font-family:'Inter'; font-weight: 500; font-size: 28px;
+    color: var(--ink-2); margin-top: 8px; line-height: 1.2;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .featured .tag {
+    background: var(--pink); color: #fff;
+    font-family:'JetBrains Mono', monospace; font-weight: 700; font-size: 28px;
+    padding: 16px 28px; border-radius: 999px;
+    letter-spacing: .18em; text-transform: uppercase;
+    flex-shrink: 0;
+    box-shadow: 0 12px 30px rgba(242,57,133,.4);
+  }
+
+  /* ─── CHARTS + STATS ROW ──────────────────────────────────
+     y=3516  h=140
+     Side-by-side: club charts (top 4 condensed) + 3-cell stats card.
+  --------------------------------------------------------- */
+  .row3 {
+    position: absolute; top: 3516px; left: 64px; right: 64px; height: 140px;
+    display: grid; grid-template-columns: 1fr 720px; gap: 20px;
+    z-index: 2;
+  }
+
+  .charts {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 28px;
+    padding: 14px 24px;
+    display: grid; grid-template-columns: auto 1fr 1fr 1fr 1fr; gap: 18px; align-items: center;
+    overflow: hidden;
+  }
+  .charts .lbl {
+    display: flex; flex-direction: column; gap: 2px; padding-right: 10px;
+    border-right: 1px solid var(--line);
+    height: 100%; justify-content: center;
+  }
+  .charts .lbl .ey {
+    font-family:'JetBrains Mono', monospace; font-weight: 700; font-size: 16px;
+    color: var(--green); letter-spacing: .22em; text-transform: uppercase;
+  }
+  .charts .lbl h3 {
+    font-family:'Inter Tight'; font-weight: 900; font-size: 32px;
+    color: var(--ink); margin: 0; letter-spacing: -.02em; line-height: 1;
+  }
+
+  .charts .it {
+    display: grid; grid-template-columns: 40px 1fr; gap: 10px; align-items: center;
+    min-width: 0;
+  }
+  .charts .it .n {
+    font-family:'Inter Tight'; font-weight: 900; font-size: 38px;
+    color: var(--muted); text-align: center; letter-spacing: -.02em;
+  }
+  .charts .it .n.hot { color: var(--gold); }
+  .charts .it .body { min-width: 0; }
+  .charts .it .t {
+    font-family:'Inter Tight'; font-weight: 800; font-size: 26px;
+    color: var(--ink); line-height: 1.05; letter-spacing: -.015em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .charts .it .when {
+    font-family:'JetBrains Mono', monospace; font-weight: 600; font-size: 16px;
+    color: var(--ink-2); letter-spacing: .04em; margin-top: 2px;
+  }
+
+  .stats {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 28px;
+    padding: 14px 24px;
+    display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; gap: 14px; align-items: center;
+    overflow: hidden;
+  }
+  .stats .cell { display: flex; flex-direction: column; gap: 4px; }
+  .stats .cell .k {
+    font-family:'JetBrains Mono', monospace; font-weight: 700; font-size: 18px;
+    letter-spacing: .2em; text-transform: uppercase; color: var(--muted);
+  }
+  .stats .cell .v {
+    font-family:'Inter Tight'; font-weight: 900; font-size: 56px;
+    color: var(--ink); line-height: 1; letter-spacing: -.02em;
+  }
+  .stats .cell .v.warm { color: var(--gold); }
+  .stats .cell .v.green { color: var(--green); }
+  .stats .dv { width: 1px; height: 80px; background: var(--line); }
+
+  /* ─── ALERT + TICKER (BOTTOM) ─────────────────────────────
+     y=3676  h=144
+     Same side-by-side as landscape: gold pinned alert + ticker feed.
+  --------------------------------------------------------- */
+  .bottom {
+    position: absolute; top: 3676px; left: 64px; right: 64px; height: 144px;
+    display: grid; grid-template-columns: 1fr 720px; gap: 20px;
+    z-index: 2;
+  }
+
+  .alert {
+    background: var(--gold); color: #181101;
+    border-radius: 28px;
+    padding: 0 32px;
+    display: grid; grid-template-columns: auto 1fr auto; gap: 20px; align-items: center;
+    box-shadow: 0 12px 40px rgba(255,201,77,.25);
+    overflow: hidden;
+  }
+  .alert .ico {
+    width: 80px; height: 80px; border-radius: 18px; flex-shrink: 0;
+    background: #181101; color: var(--gold);
+    display: grid; place-items: center;
+    font-family:'Inter Tight'; font-weight: 900; font-size: 48px;
+    box-shadow: inset 0 -4px 0 rgba(0,0,0,.3);
+  }
+  .alert .body { min-width: 0; }
+  .alert .body .ey {
+    font-family:'JetBrains Mono', monospace; font-weight: 700; font-size: 20px;
+    letter-spacing: .26em; text-transform: uppercase; color: rgba(24,17,1,.7);
+  }
+  .alert .body .msg {
+    font-family:'Inter Tight'; font-weight: 900; font-size: 34px;
+    color: #181101; line-height: 1.05; letter-spacing: -.018em; margin-top: 4px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .alert .when {
+    font-family:'JetBrains Mono', monospace; font-weight: 700; font-size: 22px;
+    background: #181101; color: var(--gold);
+    padding: 14px 20px; border-radius: 999px;
+    letter-spacing: .14em; text-transform: uppercase;
+    flex-shrink: 0;
+  }
+
+  .ticker {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 28px;
+    display: grid; grid-template-columns: auto 1fr; align-items: stretch;
+    overflow: hidden;
+  }
+  .ticker .badge {
+    background: var(--green); color: #000;
+    padding: 0 32px;
+    display: flex; align-items: center; gap: 16px;
+    font-family:'Inter Tight'; font-weight: 900; font-size: 34px;
+    letter-spacing: -.01em;
+    flex-shrink: 0;
+  }
+  .ticker .badge::before {
+    content:''; width: 16px; height: 16px; border-radius: 50%; background: #000;
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  .ticker .feed {
+    overflow: hidden; display: flex; align-items: center;
+    padding: 0 24px;
+  }
+  .ticker .feed-inner {
+    display: flex; gap: 56px;
+    font-family:'Inter'; font-weight: 600; font-size: 32px;
+    color: var(--ink); white-space: nowrap;
+    animation: scroll 60s linear infinite;
+    letter-spacing: -.005em;
+  }
+  .ticker .feed-inner span { display: inline-flex; align-items: center; }
+  .ticker .feed-inner span::after {
+    content:'•'; color: var(--green); margin-left: 56px; font-size: 32px;
+  }
+  @keyframes scroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+</style>
+</head>
+<body>
+<script>
+  const __TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "schema": "edu-cms-ms-playlist-portrait-v1" }/*EDITMODE-END*/;
+</script>
+
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+  <!-- ─── APP-BAR ───────────────────────────────────────── -->
+  <header class="appbar">
+
+    <div class="top">
+      <div class="brand" data-widget="brand">
+        <div class="mark" aria-hidden="true"></div>
+        <div class="info">
+          <div class="eye" data-field="brand.eyebrow">Westridge MS · Lobby Display</div>
+          <div class="name">Otter<span data-field="brand.suffix">FM</span></div>
+          <div class="sub"><span data-field="brand.day">DAY B</span> · <b data-field="brand.date">TUE APR 21</b> · <span data-field="brand.volume">VOL 147</span></div>
+        </div>
+      </div>
+
+      <div></div>
+
+      <div class="avatar" data-widget="profile" data-field="profile.initials">WM</div>
+    </div>
+
+    <div class="bot">
+      <div class="device" data-widget="device">
+        <div class="ico" aria-hidden="true"></div>
+        <div class="info">
+          <div class="k" data-field="device.label">Playing on</div>
+          <div class="v" data-field="device.name">Westridge MS · Main Lobby</div>
+        </div>
+      </div>
+
+      <div class="mt" data-widget="clock">
+        <span class="k" data-field="clock.label">Local time</span>
+        <span class="v" data-field="clock.time">7:53<sup>am</sup></span>
+      </div>
+      <div class="mt" data-widget="weather">
+        <span class="k" data-field="weather.label">Outside</span>
+        <span class="v cool" data-field="weather.temp">46°</span>
+      </div>
+      <div class="mt" data-widget="countdown">
+        <span class="k" data-field="countdown.label">Field Day</span>
+        <span class="v green" data-field="countdown.value">12d</span>
+      </div>
+    </div>
+
+  </header>
+
+  <!-- ─── HERO · ALBUM COVER ────────────────────────────── -->
+  <section class="hero">
+    <div class="hero-head">
+      <div class="eye" data-field="cover.top">Now Playing · Period 2 · 31:12 in</div>
+      <div class="pid"><span data-field="hero.pidLabel">Day</span> <b data-field="hero.pidLetter">B</b> · <span data-field="hero.pidDate">Tue Apr 21</span></div>
+    </div>
+
+    <div class="cover-wrap">
+      <div class="cover" data-widget="cover">
+        <div class="albumtxt">
+          <div class="top-row">
+            <div class="label" data-field="cover.label">Period 2 · Live now</div>
+            <div class="heart" aria-hidden="true">&#9829;</div>
+          </div>
+          <div class="big" data-field="cover.big">P2</div>
+          <div class="meta-row">
+            <div class="meta">
+              <b data-field="cover.album">Day B Rotation</b>
+              <span data-field="cover.tracklen">8 tracks · 4h 35m</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── NOW PLAYING ───────────────────────────────────── -->
+  <section class="now" data-widget="now">
+    <div class="eyebrow" data-field="now.eyebrow">Live now · Period 2 · 31:12 in</div>
+
+    <h1>
+      <span data-field="now.title-1">English</span> &mdash;
+      <em data-field="now.title-2">Poetry Unit</em>
+    </h1>
+
+    <div class="artist" data-widget="now.artist">
+      <b data-field="now.artist-name">Mr. Nguyen</b> &middot;
+      <span data-field="now.artist-room">Room 108</span> &middot;
+      <span data-field="now.artist-grade">7th grade</span>
+    </div>
+
+    <div class="below">
+      <div class="chips">
+        <span class="chip exp" data-field="now.chipE">E</span>
+        <span class="chip" data-field="now.chip1">Bring journal</span>
+        <span class="chip green" data-field="now.chip2">Workshop day</span>
+        <span class="meta-text" data-field="now.meta">50 min · repeats Thu</span>
+      </div>
+
+      <div class="eq" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── TRANSPORT ─────────────────────────────────────── -->
+  <section class="transport">
+    <div class="progress">
+      <div class="track">
+        <div class="fill"></div>
+        <div class="knob"></div>
+      </div>
+      <div class="times">
+        <span class="left" data-field="now.elapsed">31:12</span>
+        <span data-field="now.remaining">-18:48</span>
+      </div>
+    </div>
+    <div class="ctrls" aria-hidden="true">
+      <div class="btn">&#9198;</div>
+      <div class="btn play">&#9654;</div>
+      <div class="btn">&#9197;</div>
+    </div>
+  </section>
+
+  <!-- ─── QUEUE · UP NEXT ───────────────────────────────── -->
+  <section class="queue" data-widget="queue">
+    <div class="head">
+      <h2>Up Next <em>· Today's Rotation</em></h2>
+      <div class="meta">
+        <div class="day"><span data-field="queue.dayLabel">DAY</span> <b data-field="queue.dayLetter">B</b> · <span data-field="queue.date">TUE APR 21</span></div>
+        <div class="pill" data-field="queue.pill">6 in queue</div>
+      </div>
+    </div>
+
+    <div class="colhd">
+      <span>#</span><span>Track · Teacher</span><span>Album · Where</span><span class="r">Bell · Length</span>
+    </div>
+
+    <div class="list">
+      <div class="row up" data-widget="queue.0">
+        <span class="idx" data-field="queue.0.idx">3</span>
+        <div class="trk">
+          <div class="art" style="background: linear-gradient(135deg,#6f8bff,#2e3a8a);" data-field="queue.0.art">SL</div>
+          <div class="body">
+            <div class="ti"><em>E</em><span data-field="queue.0.title">Science &mdash; lab day</span></div>
+            <div class="ar" data-field="queue.0.artist">Ms. Okafor &middot; 7th grade</div>
+          </div>
+        </div>
+        <span class="alb" data-field="queue.0.album">Rm 207 · closed-toe shoes</span>
+        <span class="dur" data-field="queue.0.dur">9:55<span>50 min</span></span>
+      </div>
+
+      <div class="row" data-widget="queue.1">
+        <span class="idx" data-field="queue.1.idx">4</span>
+        <div class="trk">
+          <div class="art" style="background: linear-gradient(135deg,#ff8a4a,#a33418);" data-field="queue.1.art">PE</div>
+          <div class="body">
+            <div class="ti"><span data-field="queue.1.title">PE &mdash; mile run</span></div>
+            <div class="ar" data-field="queue.1.artist">Coach Reyes &middot; gymnasium A</div>
+          </div>
+        </div>
+        <span class="alb" data-field="queue.1.album">Lockers by 10:45 · sneakers</span>
+        <span class="dur" data-field="queue.1.dur">10:50<span>50 min</span></span>
+      </div>
+
+      <div class="row" data-widget="queue.2">
+        <span class="idx" data-field="queue.2.idx">5</span>
+        <div class="trk">
+          <div class="art" style="background: linear-gradient(135deg,#ffc94d,#a67a10);" data-field="queue.2.art">LU</div>
+          <div class="body">
+            <div class="ti"><span data-field="queue.2.title">Lunch &mdash; A period</span></div>
+            <div class="ar" data-field="queue.2.artist">Cafeteria &middot; 7th grade only</div>
+          </div>
+        </div>
+        <span class="alb" data-field="queue.2.album">Chicken &amp; rice bowl today</span>
+        <span class="dur" data-field="queue.2.dur">11:45<span>45 min</span></span>
+      </div>
+
+      <div class="row" data-widget="queue.3">
+        <span class="idx" data-field="queue.3.idx">6</span>
+        <div class="trk">
+          <div class="art" style="background: linear-gradient(135deg,#f23985,#6b1f3a);" data-field="queue.3.art">SS</div>
+          <div class="body">
+            <div class="ti"><em>E</em><span data-field="queue.3.title">Social Studies &mdash; map quiz</span></div>
+            <div class="ar" data-field="queue.3.artist">Mr. Alvarez &middot; Rm 115</div>
+          </div>
+        </div>
+        <span class="alb" data-field="queue.3.album">#2 pencil · closed book</span>
+        <span class="dur" data-field="queue.3.dur">12:35<span>50 min</span></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── FEATURED · MAGENTA SPOTLIGHT ──────────────────── -->
+  <section class="featured" data-widget="featured">
+    <div class="pic" data-field="featured.art">&#127930;</div>
+    <div class="info">
+      <div class="ey" data-field="featured.eyebrow">★ Spotlight of the Week · Spring Band Concert</div>
+      <h3 data-field="featured.name">"Echoes" — 7th & 8th band</h3>
+      <div class="s" data-field="featured.desc">Wed night · auditorium · doors open 6:30</div>
+    </div>
+    <div class="tag" data-field="featured.tag">WED · 7PM</div>
+  </section>
+
+  <!-- ─── CHARTS + STATS ────────────────────────────────── -->
+  <section class="row3">
+
+    <div class="charts" data-widget="charts">
+      <div class="lbl">
+        <div class="ey" data-field="charts.eyebrow">After School · Top 4</div>
+        <h3 data-field="charts.title">Club Charts</h3>
+      </div>
+      <div class="it" data-widget="charts.0">
+        <span class="n hot">1</span>
+        <div class="body">
+          <div class="t" data-field="charts.0.t">Robotics Club</div>
+          <div class="when" data-field="charts.0.w">Rm 207 · 3:00–4:30</div>
+        </div>
+      </div>
+      <div class="it" data-widget="charts.1">
+        <span class="n hot">2</span>
+        <div class="body">
+          <div class="t" data-field="charts.1.t">Drama Auditions</div>
+          <div class="when" data-field="charts.1.w">Aud · 3:15–4:30</div>
+        </div>
+      </div>
+      <div class="it" data-widget="charts.2">
+        <span class="n">3</span>
+        <div class="body">
+          <div class="t" data-field="charts.2.t">Garden Club</div>
+          <div class="when" data-field="charts.2.w">Greenhouse · 3:00–4:00</div>
+        </div>
+      </div>
+      <div class="it" data-widget="charts.3">
+        <span class="n">4</span>
+        <div class="body">
+          <div class="t" data-field="charts.3.t">Yearbook Staff</div>
+          <div class="when" data-field="charts.3.w">Comp B · 3:00–4:00</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats" data-widget="stats">
+      <div class="cell" data-widget="stats.attendance">
+        <span class="k" data-field="stats.attendance.k">Attendance</span>
+        <span class="v green" data-field="stats.attendance.v">96%</span>
+      </div>
+      <div class="dv"></div>
+      <div class="cell" data-widget="stats.lunch">
+        <span class="k" data-field="stats.lunch.k">Lunch</span>
+        <span class="v warm" data-field="stats.lunch.v">A</span>
+      </div>
+      <div class="dv"></div>
+      <div class="cell" data-widget="stats.bus">
+        <span class="k" data-field="stats.bus.k">Buses</span>
+        <span class="v" data-field="stats.bus.v">14↑10</span>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ─── ALERT + TICKER ────────────────────────────────── -->
+  <section class="bottom">
+
+    <div class="alert" data-widget="alert">
+      <div class="ico" data-field="alert.ico">!</div>
+      <div class="body">
+        <div class="ey" data-field="alert.eyebrow">Pinned · Schedule Change</div>
+        <div class="msg" data-field="alert.message">Picture day moved to Thursday — full uniform, slips to office by Wed.</div>
+      </div>
+      <div class="when" data-field="alert.when">THU · ALL DAY</div>
+    </div>
+
+    <div class="ticker" data-widget="ticker">
+      <div class="badge" data-field="ticker.tag">Otter Radio</div>
+      <div class="feed">
+        <div class="feed-inner">
+          <span data-field="ticker.0">Bus 14 running +10 minutes</span>
+          <span data-field="ticker.1">Ms. Park out today, sub in B-12</span>
+          <span data-field="ticker.2">Spelling bee sign-ups close Friday</span>
+          <span data-field="ticker.3">8th grade field trip forms due tomorrow</span>
+          <span data-field="ticker.4">Library returns due this week</span>
+          <span data-field="ticker.5">Lost blue water bottle → front office</span>
+          <span>Bus 14 running +10 minutes</span>
+          <span>Ms. Park out today, sub in B-12</span>
+          <span>Spelling bee sign-ups close Friday</span>
+          <span>8th grade field trip forms due tomorrow</span>
+          <span>Library returns due this week</span>
+          <span>Lost blue water bottle → front office</span>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+</div></div></div>
+
+<script>
+  // Same fit() pattern as arcade-ms-v2 / atlas-ms-v2 / playlist-ms-v2.
+  (function(){
+    function fit(){
+      var cs = getComputedStyle(document.documentElement);
+      var w = parseFloat(cs.getPropertyValue('--stage-w')) || 2160;
+      var h = parseFloat(cs.getPropertyValue('--stage-h')) || 3840;
+      var k = Math.min(window.innerWidth / w, window.innerHeight / h);
+      document.documentElement.style.setProperty('--stage-scale', k);
+    }
+    window.addEventListener('resize', fit);
+    window.addEventListener('load', fit);
+    setTimeout(fit, 10);
+    setTimeout(fit, 300);
+  })();
+</script>
+</body>
+</html>

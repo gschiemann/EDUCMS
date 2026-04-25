@@ -1,0 +1,1254 @@
+<!--
+  MS TEMPLATE · FIELDNOTES · PORTRAIT v1
+  =======================================
+  Vertical 2160×3840 sibling to fieldnotes-ms-v2.html.
+  Naturalist field-journal aesthetic (Caveat + IM Fell + Work
+  Sans, kraft paper + leather spine), same content, redesigned
+  for portrait reading rhythm.
+
+  Layout (2160×3840, 64px outer side inset, 20px gaps):
+    MASTHEAD     y=  40   h= 360   school + brass compass + wax seal
+    STAMPS       y= 420   h= 260   weather · clock · bell (3 rotated tiles)
+    HERO         y= 700   h= 680   chapter + 4-piece headline + lede + signature
+    DUO          y=1400   h= 600   specimen card  ·  polaroid spotlight
+    COUNTDOWN    y=2020   h= 240   perforated red field-day card (full width)
+    AGENDA       y=2280   h= 520   taped notebook — 7 periods, single column
+    LUNCH        y=2820   h= 240   kraft index card with paperclip
+    DUO2         y=3080   h= 300   clubs (left)  ·  buses (right)
+    SHOUTOUTS    y=3400   h= 220   circle-icon list
+    TICKER       y=3640   h= 160   dark P.S. ribbon ticker
+
+  Vertical sum:
+    40 + 360 + 20 + 260 + 20 + 680 + 20 + 600 + 20 + 240 + 20 +
+    520 + 20 + 240 + 20 + 300 + 20 + 220 + 20 + 160 + 40 = 3840 ✓
+
+  Decorative kraft-paper layers (foxing, leather spine fragment, ink
+  blot, coffee ring) preserved as absolute siblings on the stage.
+
+  Reading rhythm (top-to-bottom, MS lobby viewing distance ≥ 8ft):
+    1. Identify the school (masthead + volume seal)
+    2. Glance at conditions (weather/time/bell stamps)
+    3. Read the day's headline (giant hero)
+    4. Spot today's specimen + the staff polaroid
+    5. See the field-day countdown
+    6. Scan the rotation
+    7. Lunch · clubs · buses · shoutouts
+    8. Ticker P.S.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Fieldnotes — MS Lobby Portrait (v1)</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Caveat:wght@500;600;700&family=Work+Sans:wght@400;500;600;700;800;900&family=IM+Fell+English+SC&display=swap" rel="stylesheet">
+<style>
+  /* ─── 3-layer scale wrapper ─────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; }
+  :root { --stage-w: 2160px; --stage-h: 3840px; --stage-scale: 1; }
+  html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; background:#1c1611; }
+  .viewport { position:fixed; inset:0; display:grid; place-items:center; overflow:hidden; }
+  .stage-outer { width:calc(var(--stage-w)*var(--stage-scale)); height:calc(var(--stage-h)*var(--stage-scale)); }
+  .stage { width:var(--stage-w); height:var(--stage-h); transform:scale(var(--stage-scale)); transform-origin:0 0; position:relative; box-shadow:0 80px 200px rgba(0,0,0,.6); overflow:hidden; }
+
+  :root {
+    --kraft:        #d8c39c;
+    --kraft-deep:   #b89870;
+    --paper:        #f6ecd2;
+    --paper-edge:   #e6d6b3;
+    --paper-rule:   #b9a070;
+    --ink:          #1e1a14;
+    --ink-2:        #4a3f2f;
+    --ink-blue:     #2b3f6b;
+    --ink-blue-dk:  #1a2c52;
+    --stamp:        #b1432e;
+    --stamp-dk:     #8a311e;
+    --moss:         #5e6e34;
+    --gold:         #b58a2e;
+    --sepia:        rgba(70, 45, 18, .15);
+    --washi-blue:   #6b8fb5;
+    --washi-coral:  #cf8870;
+    --shadow:       rgba(40, 22, 8, .35);
+  }
+  html, body { color: var(--ink); font-family:'Work Sans', system-ui, sans-serif; }
+
+  /* ─── Stage = weathered leather/kraft desk surface ───────────── */
+  .stage {
+    background:
+      radial-gradient(ellipse 1500px 2000px at 50% 50%, rgba(255,236,196,.07), transparent 70%),
+      radial-gradient(ellipse 900px 1200px at 8% 96%, rgba(0,0,0,.20), transparent 70%),
+      radial-gradient(ellipse 800px 1100px at 92% 4%, rgba(0,0,0,.16), transparent 70%),
+      radial-gradient(ellipse 600px 800px at 88% 60%, rgba(120,70,30,.14), transparent 70%),
+      var(--kraft);
+    background-color: var(--kraft);
+  }
+  /* fine kraft-paper noise via radial dots */
+  .stage::before {
+    content:''; position:absolute; inset:0; pointer-events:none; z-index:0;
+    background-image:
+      radial-gradient(rgba(60,38,12,.16) 1px, transparent 1.5px),
+      radial-gradient(rgba(120,90,50,.10) 1px, transparent 2px);
+    background-size: 11px 11px, 23px 23px;
+    background-position: 0 0, 5px 7px;
+    mix-blend-mode: multiply;
+    opacity: .65;
+  }
+  /* Foxing stains (age spots) on the right edge */
+  .stage::after {
+    content:''; position:absolute; inset:0; pointer-events:none; z-index:0;
+    background-image:
+      radial-gradient(circle at 92% 18%, rgba(120,70,30,.18) 0 80px, transparent 120px),
+      radial-gradient(circle at 6% 42%, rgba(120,70,30,.14) 0 60px, transparent 110px),
+      radial-gradient(circle at 95% 78%, rgba(140,90,40,.12) 0 100px, transparent 160px),
+      radial-gradient(circle at 4% 88%, rgba(120,70,30,.16) 0 70px, transparent 130px);
+    mix-blend-mode: multiply;
+  }
+
+  /* Leather spine fragment running down the right edge of stage,
+     a vertical decorative element echoing the landscape spine */
+  .leather-spine {
+    position:absolute; top:0; bottom:0; right:0; width:30px;
+    z-index:1; pointer-events:none;
+    background:
+      linear-gradient(90deg,
+        rgba(0,0,0,.45) 0%,
+        rgba(0,0,0,.18) 30%,
+        rgba(0,0,0,.10) 50%,
+        rgba(0,0,0,.18) 70%,
+        rgba(0,0,0,.45) 100%),
+      linear-gradient(180deg, #6e4a14 0%, #3d2710 100%);
+    box-shadow: inset 0 0 18px rgba(0,0,0,.55);
+  }
+  .leather-spine::before {
+    content:''; position:absolute; left:50%; top:30px; bottom:30px; width:2px;
+    transform:translateX(-50%);
+    background: repeating-linear-gradient(180deg, #d8b370 0 14px, transparent 14px 26px);
+  }
+
+  /* Coffee ring smudge — top-left corner accent */
+  .coffee {
+    position:absolute; top:36px; left:80px; width:240px; height:240px;
+    border-radius:50%;
+    border: 14px solid rgba(112, 70, 30, .20);
+    pointer-events:none;
+    box-shadow: inset 0 -6px 0 rgba(112, 70, 30, .14);
+    transform: rotate(-12deg);
+    z-index:1;
+  }
+  .coffee::after {
+    content:''; position:absolute; left:-30px; top:90px; width:48px; height:14px;
+    border-radius:50%;
+    background: rgba(112, 70, 30, .18);
+    transform: rotate(-25deg);
+  }
+
+  /* Ink blot — between hero and duo row, mid-stage */
+  .blot {
+    position:absolute; top:1340px; right:120px; width:90px; height:90px;
+    background: var(--ink-blue-dk);
+    border-radius: 50% 60% 40% 50% / 60% 40% 60% 50%;
+    transform: rotate(18deg);
+    box-shadow: 24px 36px 0 rgba(26,44,82,.4);
+    z-index:5;
+    opacity:.85;
+    pointer-events:none;
+  }
+  .blot::after {
+    content:''; position:absolute; top:80px; left:-40px; width:30px; height:30px;
+    background: var(--ink-blue-dk); border-radius:50%; opacity:.7;
+  }
+
+  /* Hand-written marginal note next to hero */
+  .scribble-note {
+    position:absolute; top:1290px; left:120px;
+    font-family:'Caveat', cursive; font-weight:700; font-size:54px;
+    color: var(--ink-blue); transform: rotate(-3deg); line-height:1;
+    z-index:5; pointer-events:none;
+  }
+  .scribble-note::before {
+    content:'↳'; color: var(--stamp); font-size:60px; padding-right:14px;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     PANEL BASE
+     Every panel uses absolute positioning, edge inset 64px,
+     overflow hidden, box-sizing border-box.
+     ═══════════════════════════════════════════════════════════════ */
+  .panel {
+    position:absolute; left:64px; right:64px;
+    overflow:hidden;
+    z-index:3;
+  }
+
+  /* ─── 1. MASTHEAD (y=40, h=360) ───────────────────────────────
+     School lockup with brass compass + wax seal volume stamp
+     Layout: [ compass ] [ school name + tagline ] [ wax seal ]
+     ─────────────────────────────────────────────────────────── */
+  .mast {
+    top:40px; height:360px;
+    display:grid; grid-template-columns: 320px 1fr 340px; gap:48px; align-items:center;
+  }
+
+  .compass {
+    width:300px; height:300px; flex-shrink:0; position:relative;
+    border-radius:50%;
+    background:
+      radial-gradient(circle at 35% 30%, #f6deaa 0%, #d6a85c 35%, #9a6e22 70%, #5b3d10 100%);
+    box-shadow:
+      inset 0 0 0 8px #6e4a14,
+      inset 0 0 0 16px #c8923d,
+      inset 0 -22px 48px rgba(0,0,0,.45),
+      14px 16px 0 rgba(0,0,0,.18),
+      0 8px 32px rgba(0,0,0,.4);
+  }
+  .compass::before {
+    content:''; position:absolute; inset:46px;
+    border-radius:50%;
+    background:
+      repeating-conic-gradient(from -90deg, var(--ink) 0 1.5deg, transparent 1.5deg 30deg),
+      radial-gradient(circle, #f6ecd2 0%, #e3d2a8 75%, #c5a672 100%);
+    box-shadow: inset 0 0 0 4px var(--ink-2);
+  }
+  .compass::after {
+    content:''; position:absolute; top:50%; left:50%; width:18px; height:210px;
+    transform: translate(-50%,-50%) rotate(-22deg);
+    background:
+      linear-gradient(180deg, var(--stamp) 0 50%, var(--ink) 50% 100%);
+    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+    box-shadow: 0 0 14px rgba(0,0,0,.35);
+  }
+  .compass .pivot {
+    position:absolute; top:50%; left:50%; width:30px; height:30px;
+    transform: translate(-50%,-50%);
+    background: radial-gradient(circle at 35% 30%, #ffe9b6, #b58a2e 60%, #6b4a14);
+    border-radius:50%;
+    box-shadow: 0 3px 6px rgba(0,0,0,.5);
+  }
+  .compass .card {
+    position:absolute; font-family:'IM Fell English SC', serif; font-size:38px;
+    color: var(--ink); font-weight:400; letter-spacing:.06em;
+  }
+  .compass .n { top:60px; left:50%; transform:translateX(-50%); color: var(--stamp); font-weight:700; }
+  .compass .s { bottom:60px; left:50%; transform:translateX(-50%); }
+  .compass .e { right:60px; top:50%; transform:translateY(-50%); }
+  .compass .w { left:60px; top:50%; transform:translateY(-50%); }
+
+  .mast .info { padding:0 8px; }
+  .mast .info .ey {
+    font-family:'IM Fell English SC', serif; font-size:42px; color:var(--stamp);
+    letter-spacing:.18em; text-transform: uppercase;
+    display:inline-flex; align-items:center; gap:22px;
+  }
+  .mast .info .ey::before {
+    content:''; width:84px; height:5px; background: var(--stamp);
+  }
+  .mast .info .ttl {
+    font-family:'DM Serif Display', serif; font-weight:400;
+    font-size:148px; line-height:.92; color:var(--ink);
+    letter-spacing:-.015em; margin-top:8px;
+    text-shadow: 3px 3px 0 rgba(0,0,0,.06);
+  }
+  .mast .info .ttl em {
+    font-style: italic; color: var(--stamp);
+  }
+  .mast .info .sub {
+    font-family:'Caveat', cursive; font-weight:600; font-size:54px;
+    color: var(--ink-2); margin-top:10px; letter-spacing:.01em;
+  }
+
+  /* Wax seal — entry number stamp */
+  .seal {
+    justify-self:end; position:relative; width:340px; height:340px;
+    display:grid; place-items:center; text-align:center;
+  }
+  .seal::before {
+    content:''; position:absolute; left:50%; top:-8px; transform:translateX(-50%) rotate(-8deg);
+    width: 150px; height: 44px;
+    background: var(--stamp);
+    clip-path: polygon(15% 0, 85% 0, 100% 100%, 70% 60%, 50% 100%, 30% 60%, 0 100%);
+    filter: drop-shadow(0 4px 0 var(--stamp-dk));
+    z-index:1;
+  }
+  .seal .disc {
+    width:280px; height:280px; border-radius:50%;
+    background:
+      radial-gradient(circle at 38% 30%, rgba(255,255,255,.35), transparent 30%),
+      radial-gradient(circle, var(--stamp) 0 60%, var(--stamp-dk) 100%);
+    box-shadow:
+      inset 0 -14px 28px rgba(0,0,0,.35),
+      8px 10px 0 rgba(0,0,0,.18);
+    display:grid; place-items:center;
+    border: 5px solid var(--stamp-dk);
+    position:relative;
+  }
+  .seal .disc::before {
+    content:''; position:absolute; inset:22px; border-radius:50%;
+    border: 3px dashed rgba(255,236,196,.5);
+  }
+  .seal .disc .vol {
+    font-family:'IM Fell English SC', serif; color:#fff5d8; font-size:34px;
+    letter-spacing:.16em; line-height:1; padding-top:18px;
+  }
+  .seal .disc .num {
+    font-family:'DM Serif Display', serif; color:#fff5d8; font-size:120px;
+    line-height:1; letter-spacing:-.02em;
+  }
+  .seal .disc .day {
+    font-family:'Caveat', cursive; color:#fff5d8; font-size:40px;
+    line-height:1; padding-bottom:18px; opacity:.92;
+  }
+
+  /* ─── 2. STAMPS row (y=420, h=260) ────────────────────────────
+     3 rotated weather/clock/bell tiles spanning the full width.
+     Borrowed directly from landscape, scaled up for portrait viewing.
+     ─────────────────────────────────────────────────────────── */
+  .stamps {
+    top:420px; height:260px;
+    display:grid; grid-template-columns:1fr 1fr 1fr; gap:36px;
+  }
+  .tile {
+    padding:28px 32px; position:relative;
+    background:#fff7e0;
+    border: 5px solid var(--ink);
+    box-shadow: 10px 12px 0 var(--ink), 0 0 0 10px var(--paper) inset;
+    display:flex; flex-direction:column; justify-content:space-between;
+    transform: rotate(-1deg);
+  }
+  .tile:nth-child(2) { transform: rotate(.8deg); }
+  .tile:nth-child(3) { transform: rotate(-.4deg); }
+  .tile .k {
+    font-family:'IM Fell English SC', serif; font-size:34px; color: var(--ink-2);
+    letter-spacing:.18em; text-transform:uppercase; line-height:1;
+  }
+  .tile .v {
+    font-family:'DM Serif Display', serif; font-size:128px; color:var(--ink);
+    line-height:.9; letter-spacing:-.02em;
+  }
+  .tile .v.cool  { color: var(--ink-blue); }
+  .tile .v.warm  { color: var(--stamp); }
+  .tile .v.brass { color: var(--gold); }
+  .tile .cap {
+    font-family:'Caveat', cursive; font-size:36px; color: var(--ink-2); line-height:1;
+  }
+
+  /* ─── 3. HERO (y=700, h=680) ─────────────────────────────────
+     Big greeting card — chapter eyebrow + 4-piece headline + lede
+     + signature/approval. Sits on a "page" with red margin rule
+     and ruled lines, just like the landscape left page.
+     ─────────────────────────────────────────────────────────── */
+  .hero {
+    top:700px; height:680px;
+    background:
+      linear-gradient(180deg, var(--paper) 0%, var(--paper-edge) 100%);
+    border: 4px solid var(--ink);
+    box-shadow:
+      14px 18px 0 rgba(0,0,0,.22),
+      inset 0 0 80px rgba(160,120,60,.12);
+    padding: 56px 80px 48px 200px; /* clear of margin rule on left */
+  }
+  .hero::before {
+    /* horizontal ruled lines */
+    content:''; position:absolute; inset:0;
+    background-image:
+      repeating-linear-gradient(180deg, transparent 0 79px, rgba(110, 80, 40, .22) 79px 81px);
+    pointer-events:none;
+  }
+  .hero::after {
+    /* red margin rule */
+    content:''; position:absolute; top:0; bottom:0; left:140px; width:4px;
+    background: var(--stamp); opacity:.55;
+  }
+  .hero .pageno {
+    position:absolute; top:24px; right:36px;
+    font-family:'IM Fell English SC', serif; font-size:34px; color: var(--ink-2);
+    letter-spacing:.18em;
+    z-index:2;
+  }
+  .hero .chapter {
+    font-family:'IM Fell English SC', serif; font-size:38px; color: var(--stamp);
+    letter-spacing:.22em; text-transform:uppercase;
+    display:inline-flex; align-items:center; gap:22px;
+    position:relative; z-index:2;
+  }
+  .hero .chapter::before {
+    content:''; width:64px; height:5px; background: var(--stamp);
+  }
+  .hero h1 {
+    font-family:'DM Serif Display', serif; font-weight:400;
+    font-size:240px; line-height:.86; letter-spacing:-.025em;
+    color: var(--ink); margin: 18px 0 0; text-wrap:balance;
+    position:relative; z-index:2;
+  }
+  .hero h1 em {
+    font-style:italic; color: var(--stamp);
+  }
+  .hero h1 u {
+    text-decoration:none;
+    background: linear-gradient(transparent 70%, rgba(181,138,46,.55) 70% 92%, transparent 92%);
+    padding: 0 12px;
+  }
+  .hero .quillbar {
+    margin-top:26px; height: 30px; width: 60%;
+    background:
+      radial-gradient(ellipse 70% 100% at 0% 50%, var(--ink) 0 60%, transparent 70%),
+      radial-gradient(ellipse 60% 100% at 100% 50%, var(--ink) 0 50%, transparent 70%),
+      linear-gradient(90deg, var(--ink) 0%, var(--ink) 100%);
+    clip-path: polygon(0 60%, 4% 30%, 14% 50%, 40% 35%, 60% 55%, 80% 35%, 96% 60%, 100% 70%, 80% 90%, 50% 75%, 25% 85%, 8% 70%);
+    opacity: .9;
+    position:relative; z-index:2;
+  }
+  .hero .lede {
+    font-family:'Work Sans', sans-serif; font-weight:500;
+    font-size:54px; line-height:1.32; color: var(--ink-2);
+    margin-top:30px; max-width:1700px;
+    position:relative; z-index:2;
+  }
+  .hero .lede em {
+    font-style:normal; font-family:'Caveat', cursive; font-weight:700;
+    color: var(--stamp); font-size:62px; padding:0 6px;
+  }
+  .hero .signature {
+    margin-top:36px; display:flex; align-items:center; gap:36px;
+    position:relative; z-index:2;
+  }
+  .hero .signature .scribble {
+    font-family:'Caveat', cursive; font-weight:700; font-size:76px;
+    color: var(--ink-blue); line-height:1; transform: rotate(-3deg);
+  }
+  .hero .signature .stamp {
+    border: 5px solid var(--stamp); padding: 16px 28px; transform: rotate(-3deg);
+    font-family:'IM Fell English SC', serif; font-size:34px; color: var(--stamp);
+    letter-spacing:.16em; line-height:1;
+    box-shadow: inset 0 0 0 3px rgba(177,67,46,.22);
+  }
+  .hero .signature .stamp b {
+    display:block; font-family:'DM Serif Display', serif; font-style:italic;
+    font-size:42px; color: var(--stamp); letter-spacing:0; margin-top:6px;
+  }
+
+  /* ─── 4. DUO row (y=1400, h=600) ─────────────────────────────
+     Two side-by-side cards: botanical specimen | polaroid spotlight.
+     Both rotated for paper-on-desk feel.
+     ─────────────────────────────────────────────────────────── */
+  .duo {
+    top:1400px; height:600px;
+    display:grid; grid-template-columns: 1fr 1fr; gap:40px;
+    overflow:visible; /* allow rotation/clip art to escape */
+  }
+
+  /* Botanical specimen card */
+  .specimen {
+    position:relative;
+    background:
+      linear-gradient(180deg, #fbf3df 0%, #ead7ae 100%);
+    border: 4px solid var(--ink);
+    box-shadow: 8px 10px 0 rgba(0,0,0,.25);
+    transform: rotate(-2deg);
+    padding: 36px 32px 32px;
+    display:flex; flex-direction:column;
+    overflow:hidden;
+  }
+  .specimen::before, .specimen::after {
+    content:''; position:absolute;
+    width: 160px; height: 50px;
+    background:
+      repeating-linear-gradient(45deg,
+        var(--washi-blue) 0 10px,
+        rgba(255,255,255,.4) 10px 14px,
+        var(--washi-blue) 14px 26px);
+    box-shadow: 0 2px 0 rgba(0,0,0,.08);
+  }
+  .specimen::before { top:-24px; left:-30px; transform: rotate(-12deg); }
+  .specimen::after  { bottom:-18px; right:-26px; transform: rotate(8deg);
+    background:
+      repeating-linear-gradient(-45deg,
+        var(--washi-coral) 0 10px,
+        rgba(255,255,255,.4) 10px 14px,
+        var(--washi-coral) 14px 26px); }
+
+  .specimen .leaf {
+    width: 380px; height: 360px; margin: 8px auto 0; position:relative;
+  }
+  .specimen .leaf svg { width:100%; height:100%; display:block; }
+
+  .specimen .latin {
+    font-family:'DM Serif Display', serif; font-style:italic; font-size:48px;
+    color: var(--ink-2); text-align:center; line-height:1; margin-top:24px;
+  }
+  .specimen .common {
+    font-family:'Caveat', cursive; font-size:54px; color: var(--stamp);
+    text-align:center; line-height:1; margin-top:10px;
+  }
+  .specimen .meta {
+    font-family:'IM Fell English SC', serif; font-size:28px; color: var(--ink-2);
+    text-align:center; letter-spacing:.16em; margin-top:18px;
+    border-top: 2px dashed rgba(0,0,0,.25); padding-top:14px;
+  }
+
+  /* Polaroid */
+  .polaroid {
+    position:relative;
+    background: #fffcf1; padding: 28px 28px 22px;
+    border: 4px solid var(--ink);
+    box-shadow: 12px 14px 0 rgba(0,0,0,.22);
+    transform: rotate(2.4deg);
+    display:flex; flex-direction:column;
+  }
+  .polaroid::before {
+    content:''; position:absolute; top:-36px; left:50%; transform:translateX(-50%);
+    width:64px; height:96px;
+    background:
+      radial-gradient(ellipse at 30% 30%, #e8e8ee 0%, #b0b0bb 50%, #6a6a72 100%);
+    border-radius: 32px 32px 32px 32px / 42px 42px 42px 42px;
+    clip-path: polygon(20% 0, 80% 0, 80% 70%, 50% 100%, 50% 50%, 70% 50%, 70% 20%, 30% 20%, 30% 80%, 50% 80%, 50% 100%, 20% 70%);
+    box-shadow: 2px 4px 0 rgba(0,0,0,.25);
+    z-index:2;
+  }
+  .polaroid .photo {
+    height: 380px; position:relative;
+    background:
+      radial-gradient(ellipse 90% 70% at 50% 30%, #f2c69a 0%, #c98a52 60%, #6e4523 100%);
+    border: 4px solid var(--ink);
+    overflow:hidden;
+  }
+  .polaroid .photo svg { width:100%; height:100%; display:block; }
+  .polaroid .caption {
+    margin-top:18px; padding: 0 8px;
+    font-family:'Caveat', cursive; font-weight:700;
+    color: var(--ink); line-height:1.05; text-align:center;
+  }
+  .polaroid .cap-ey {
+    font-family:'DM Serif Display', serif; font-style: italic; font-size: 40px;
+    color: var(--stamp); display:block; line-height:1; margin-bottom:8px;
+  }
+  .polaroid .cap-name {
+    font-family:'Caveat', cursive; font-weight:700; font-size:62px;
+    color: var(--ink); line-height:1; display:block;
+  }
+  .polaroid .cap-note {
+    display:block; font-family:'Work Sans', sans-serif; font-weight:600; font-size:30px;
+    color: var(--ink-2); margin-top:8px; letter-spacing:.04em;
+  }
+
+  /* ─── 5. COUNTDOWN (y=2020, h=240) ────────────────────────────
+     Full-width perforated red field-day card.
+     Re-laid as a horizontal bar for portrait — eyebrow+number on
+     left, label+caption on right, starburst floating top-right.
+     ─────────────────────────────────────────────────────────── */
+  .countdown {
+    top:2020px; height:240px;
+    background: var(--stamp); color:#fbecc4;
+    border: 5px solid var(--ink);
+    box-shadow: 12px 14px 0 rgba(0,0,0,.25);
+    padding: 28px 56px 32px;
+    transform: rotate(.6deg);
+    display:grid; grid-template-columns: auto 1fr; gap:48px; align-items:center;
+    overflow:visible;
+  }
+  .countdown::before {
+    /* perforated tear edge top */
+    content:''; position:absolute; top:-3px; left:0; right:0; height:14px;
+    background:
+      radial-gradient(circle at 6px 0, transparent 6px, var(--stamp) 7px),
+      radial-gradient(circle at 6px 14px, transparent 6px, var(--ink) 7px);
+    background-size: 24px 14px;
+    background-repeat: repeat-x;
+  }
+  .countdown::after {
+    content:'★'; position:absolute; top:-46px; right:32px;
+    font-family:'DM Serif Display'; font-size:160px; color: var(--gold);
+    transform: rotate(15deg);
+    text-shadow: 5px 5px 0 var(--ink);
+    line-height:1;
+  }
+  .countdown .num-block {
+    display:flex; align-items:baseline; gap:14px;
+    font-family:'DM Serif Display', serif; line-height:.88;
+    color:#fff7d6; letter-spacing:-.04em;
+    text-shadow: 5px 5px 0 var(--ink);
+  }
+  .countdown .num {
+    font-size:200px;
+  }
+  .countdown .unit {
+    font-family:'Caveat', cursive; font-weight:700; font-size:72px;
+    color: var(--gold);
+    text-shadow: 3px 3px 0 var(--ink);
+  }
+  .countdown .text-block {
+    display:flex; flex-direction:column; gap:10px;
+  }
+  .countdown .ey {
+    font-family:'IM Fell English SC', serif; font-size:32px; color: #fde9b3;
+    letter-spacing:.16em; text-transform:uppercase; line-height:1;
+    border-bottom: 3px dashed rgba(253,233,179,.5); padding-bottom:10px;
+  }
+  .countdown .label {
+    font-family:'DM Serif Display', serif; font-style:italic;
+    font-size:54px; color:#fff7d6; line-height:1;
+  }
+  .countdown .cap {
+    font-family:'Caveat', cursive; font-weight:600; font-size:38px;
+    color: #fde9b3; line-height:1.1;
+  }
+
+  /* ─── 6. AGENDA (y=2280, h=520) ───────────────────────────────
+     Taped notebook. Single-column rotation list with 7 periods.
+     Dashed dividers, period 'now' state highlighted, periods
+     before 'now' marked done with strike-through.
+     ─────────────────────────────────────────────────────────── */
+  .agenda {
+    top:2280px; height:520px;
+    background: #fffcf1;
+    border: 4px solid var(--ink);
+    box-shadow: 12px 14px 0 rgba(0,0,0,.22);
+    padding: 30px 56px 36px;
+    transform: rotate(-.3deg);
+  }
+  .agenda::before {
+    /* big washi tape strip top center */
+    content:''; position:absolute; top:-22px; left:50%; transform:translateX(-50%) rotate(-2deg);
+    width: 280px; height: 52px;
+    background:
+      repeating-linear-gradient(45deg,
+        var(--gold) 0 12px,
+        rgba(255,255,255,.5) 12px 16px,
+        var(--gold) 16px 28px);
+    box-shadow: 0 3px 0 rgba(0,0,0,.1);
+    z-index:2;
+  }
+  .agenda::after {
+    /* corner fold */
+    content:''; position:absolute; bottom:0; right:0; width:64px; height:64px;
+    background:
+      linear-gradient(135deg, transparent 50%, var(--paper-edge) 50%);
+    border-left: 2px solid var(--ink-2);
+    border-top: 2px solid var(--ink-2);
+  }
+  .agenda .head {
+    display:flex; justify-content:space-between; align-items:flex-end;
+    border-bottom: 5px solid var(--ink); padding-bottom:14px; margin-bottom:14px;
+  }
+  .agenda .head h2 {
+    font-family:'DM Serif Display', serif; font-size:74px; color: var(--ink);
+    margin:0; line-height:1; letter-spacing:-.01em;
+  }
+  .agenda .head h2 em {
+    font-style:italic; color: var(--stamp);
+  }
+  .agenda .head .day {
+    font-family:'Caveat', cursive; font-weight:700; font-size:48px; color: var(--ink-blue);
+    line-height:1;
+  }
+  .agenda ul {
+    list-style:none; margin:0; padding:0;
+    display:grid; gap:8px;
+  }
+  .agenda li {
+    display:grid; grid-template-columns: 180px 1fr auto; gap:30px; align-items:baseline;
+    padding-bottom: 8px; border-bottom: 1px dashed var(--paper-rule);
+    line-height:1.05;
+  }
+  .agenda li:last-child { border-bottom:0; padding-bottom:0; }
+  .agenda li .t {
+    font-family:'DM Serif Display', serif; font-size:48px; color: var(--stamp);
+    letter-spacing:-.01em;
+  }
+  .agenda li .c {
+    font-family:'Work Sans', sans-serif; font-weight:700; font-size:42px;
+    color: var(--ink); letter-spacing:-.005em;
+    display:flex; align-items:baseline; gap:18px; flex-wrap:wrap;
+  }
+  .agenda li .c span.r {
+    font-family:'Caveat', cursive; font-weight:600; font-size:34px;
+    color: var(--ink-2);
+  }
+  .agenda li .x {
+    font-family:'IM Fell English SC', serif; font-size:28px; color: var(--moss);
+    letter-spacing:.14em; text-transform:uppercase;
+  }
+  .agenda li.now {
+    background: rgba(177,67,46,.08); padding: 6px 14px;
+    margin-left:-14px; margin-right:-14px;
+    border-left: 6px solid var(--stamp);
+    border-bottom: 1px dashed var(--paper-rule);
+  }
+  .agenda li.done { opacity: .55; }
+  .agenda li.done .c span:first-child { text-decoration: line-through; }
+
+  /* ─── 7. LUNCH (y=2820, h=240) ────────────────────────────────
+     Kraft index card with paperclip. Horizontal layout: title
+     block left, entree+sides middle, quote pinned right.
+     ─────────────────────────────────────────────────────────── */
+  .lunch {
+    top:2820px; height:240px;
+    background: #f0e0bd;
+    border: 4px solid var(--ink);
+    box-shadow: 10px 12px 0 var(--shadow);
+    padding: 28px 36px;
+    transform: rotate(-.8deg);
+    display:grid; grid-template-columns: 380px 1fr 460px; gap:40px; align-items:center;
+    overflow:visible;
+  }
+  .lunch::before {
+    content:''; position:absolute; top:-30px; left:60px;
+    width:46px; height:80px;
+    background: radial-gradient(ellipse at 30% 30%, #e8e8ee 0%, #999aaa 60%, #555562 100%);
+    clip-path: polygon(20% 0, 80% 0, 80% 75%, 50% 100%, 50% 55%, 70% 55%, 70% 22%, 30% 22%, 30% 78%, 50% 78%, 50% 100%, 20% 75%);
+    box-shadow: 2px 3px 0 rgba(0,0,0,.25);
+    z-index:2;
+  }
+  .lunch .title-block .ey {
+    font-family:'IM Fell English SC', serif; font-size:30px; letter-spacing:.18em;
+    color: var(--stamp); text-transform:uppercase; line-height:1;
+  }
+  .lunch .title-block h3 {
+    font-family:'DM Serif Display', serif; font-size:64px; color: var(--ink-blue);
+    line-height:1; letter-spacing:-.01em; margin: 8px 0 0;
+  }
+  .lunch .entree {
+    font-family:'DM Serif Display', serif; font-style:italic;
+    font-size:60px; color: var(--ink); line-height:1; letter-spacing:-.01em;
+  }
+  .lunch .sides {
+    font-family:'Work Sans'; font-weight:500; font-size:30px;
+    color: var(--ink-2); margin-top:14px; line-height:1.3;
+  }
+  .lunch .quote {
+    font-family:'Caveat', cursive; font-weight:700; font-size:42px;
+    color: var(--moss); line-height:1.1;
+    transform: rotate(-1.2deg); display:inline-block;
+    border-top: 2px dashed var(--paper-rule); padding-top:14px;
+    border-bottom: 2px dashed var(--paper-rule); padding-bottom:14px;
+    text-align:right;
+  }
+  .lunch .quote::before { content:'"'; color: var(--stamp); }
+  .lunch .quote::after  { content:'"'; color: var(--stamp); }
+
+  /* ─── 8. DUO2 — clubs + buses (y=3080, h=300) ─────────────────
+     Two side-by-side card-based panels, status pills inline.
+     ─────────────────────────────────────────────────────────── */
+  .duo2 {
+    top:3080px; height:300px;
+    display:grid; grid-template-columns:1fr 1fr; gap:36px;
+    overflow:visible;
+  }
+
+  .clubs, .buses {
+    background: #fffcf1; border: 4px solid var(--ink);
+    box-shadow: 8px 10px 0 var(--shadow);
+    padding: 22px 30px 24px; position:relative;
+    overflow:hidden;
+  }
+  .clubs { transform: rotate(.6deg); }
+  .buses { transform: rotate(-.6deg); }
+
+  .clubs .ey, .buses .ey {
+    font-family:'IM Fell English SC', serif; font-size:28px; letter-spacing:.18em;
+    color: var(--stamp); text-transform:uppercase; line-height:1;
+  }
+  .clubs h3, .buses h3 {
+    font-family:'DM Serif Display', serif; font-size:48px; color: var(--ink);
+    line-height:1; letter-spacing:-.01em; margin: 6px 0 12px;
+  }
+
+  .clubs ul { list-style:none; margin:0; padding:0; display:grid; gap:6px; }
+  .clubs li {
+    display:grid; grid-template-columns: 28px 1fr auto; gap:18px; align-items:baseline;
+    padding-bottom:6px; border-bottom:1px dashed var(--paper-rule);
+    font-family:'Work Sans'; font-weight:700; font-size:30px; color: var(--ink);
+    line-height:1.05;
+  }
+  .clubs li:last-child { border-bottom:0; }
+  .clubs li .dot {
+    width:22px; height:22px; border-radius:50%;
+    border:3px solid var(--ink); margin-top:8px;
+  }
+  .clubs li b { font-weight:800; }
+  .clubs li .where {
+    display:block; font-family:'Caveat', cursive; font-weight:600;
+    font-size:26px; color: var(--ink-2);
+  }
+  .clubs li .when {
+    font-family:'IM Fell English SC', serif; font-size:24px; color: var(--ink-blue);
+    letter-spacing:.1em;
+  }
+
+  .buses::after {
+    content:''; position:absolute; top:-18px; right:-14px;
+    width:140px; height:40px;
+    background:
+      repeating-linear-gradient(45deg,
+        var(--washi-blue) 0 10px,
+        rgba(255,255,255,.5) 10px 14px,
+        var(--washi-blue) 14px 26px);
+    transform: rotate(8deg);
+    box-shadow: 0 2px 0 rgba(0,0,0,.1);
+    z-index:2;
+  }
+  .buses ul { list-style:none; margin:0; padding:0; display:grid; gap:6px; }
+  .buses li {
+    display:grid; grid-template-columns: 96px 1fr auto; gap:18px; align-items:baseline;
+    padding: 5px 0;
+    border-bottom: 1px dashed var(--paper-rule);
+    font-family:'Work Sans'; font-weight:700; font-size:28px;
+  }
+  .buses li:last-child { border-bottom:0; }
+  .buses li .num {
+    font-family:'DM Serif Display', serif; font-size:42px; color: var(--ink-blue);
+    line-height:1; letter-spacing:-.01em;
+  }
+  .buses li .rt b { display:block; color: var(--ink); font-weight:700; line-height:1.05; }
+  .buses li .rt span {
+    font-family:'Caveat', cursive; font-weight:600; font-size:24px;
+    color: var(--ink-2);
+  }
+  .buses li .st {
+    font-family:'IM Fell English SC', serif; font-size:22px; letter-spacing:.1em;
+    padding: 3px 12px; border:2px solid var(--ink); white-space:nowrap;
+  }
+  .buses li .st.on   { color: var(--moss); border-color: var(--moss); background: rgba(94,110,52,.08); }
+  .buses li .st.late { color: var(--stamp); border-color: var(--stamp); background: rgba(177,67,46,.08); }
+  .buses li .st.sched{ color: var(--ink-blue); border-color: var(--ink-blue); background: rgba(43,63,107,.06); }
+
+  /* ─── 9. SHOUTOUTS (y=3400, h=220) ────────────────────────────
+     Circle-icon list of marginalia. Horizontal 2x2 grid for
+     portrait — fits 4 shoutouts in 220px height.
+     ─────────────────────────────────────────────────────────── */
+  .shouts {
+    top:3400px; height:220px;
+    background:#fef4d6; border: 4px solid var(--ink);
+    box-shadow: 8px 10px 0 var(--shadow);
+    padding: 22px 32px 24px;
+    transform: rotate(.3deg);
+    overflow:visible;
+  }
+  .shouts::before {
+    content:''; position:absolute; top:-44px; right:-22px;
+    width: 120px; height: 60px;
+    background:
+      linear-gradient(to right, transparent 0 60%, var(--ink) 60% 64%, transparent 64% 100%);
+    transform: rotate(-22deg);
+    z-index:2;
+  }
+  .shouts::after {
+    content:'✱'; position:absolute; top:-36px; right:-2px;
+    font-size:64px; color: var(--stamp); transform: rotate(15deg);
+    text-shadow: 2px 2px 0 var(--ink);
+    z-index:3;
+  }
+  .shouts .head {
+    display:flex; align-items:baseline; gap:24px; margin-bottom:10px;
+  }
+  .shouts .head .ey {
+    font-family:'IM Fell English SC', serif; font-size:26px; letter-spacing:.18em;
+    color: var(--stamp); text-transform:uppercase; line-height:1;
+  }
+  .shouts .head h3 {
+    font-family:'DM Serif Display', serif; font-size:44px; color: var(--ink);
+    line-height:1; letter-spacing:-.01em; margin: 0;
+  }
+  .shouts ul {
+    list-style:none; margin:0; padding:0;
+    display:grid; gap:6px 40px; grid-template-columns: 1fr 1fr;
+  }
+  .shouts li {
+    display:grid; grid-template-columns: 60px 1fr; gap:18px; align-items:center;
+    padding-bottom:4px; border-bottom: 1px dashed var(--paper-rule);
+  }
+  .shouts li:nth-last-child(-n+2) { border-bottom:0; }
+  .shouts li .ic {
+    width:54px; height:54px; border-radius:50%;
+    background: var(--gold); border: 3px solid var(--ink);
+    display:grid; place-items:center;
+    font-family:'DM Serif Display'; font-size:30px; color: var(--ink);
+  }
+  .shouts li .ic.s2 { background: var(--moss); color:#fff5d8; }
+  .shouts li .ic.s3 { background: var(--ink-blue); color:#fff5d8; }
+  .shouts li .ic.s4 { background: var(--stamp); color:#fff5d8; }
+  .shouts li .name {
+    font-family:'Work Sans'; font-weight:800; font-size:28px; color: var(--ink);
+    line-height:1.05;
+  }
+  .shouts li .name span {
+    display:block; font-family:'Caveat', cursive; font-weight:600;
+    font-size:26px; color: var(--ink-2); margin-top:2px;
+  }
+
+  /* ─── 10. TICKER (y=3640, h=160) ──────────────────────────────
+     Bottom P.S. ribbon ticker.
+     ─────────────────────────────────────────────────────────── */
+  .ticker {
+    top:3640px; height:160px;
+    background: var(--ink);
+    color: #f6ecd2;
+    border: 5px solid var(--ink);
+    box-shadow: 10px 12px 0 var(--stamp);
+    display:grid; grid-template-columns: auto 1fr; align-items:stretch;
+    overflow:hidden;
+  }
+  .ticker .tag {
+    background: var(--stamp); color:#fff5d8;
+    padding: 0 56px;
+    display:flex; align-items:center; gap:22px;
+    font-family:'DM Serif Display', serif; font-style:italic; font-size:74px;
+    letter-spacing:0;
+    border-right: 5px solid var(--ink);
+    box-shadow: inset 0 -10px 0 rgba(0,0,0,.18);
+  }
+  .ticker .tag::before {
+    content:'✎'; font-style:normal; font-size:64px; color: var(--gold);
+  }
+  .ticker .feed {
+    overflow:hidden; display:flex; align-items:center; padding-left: 48px;
+  }
+  .ticker .feed-inner {
+    display:flex; gap: 80px; white-space:nowrap;
+    font-family:'Work Sans'; font-weight:600; font-size:60px; color:#f6ecd2;
+    letter-spacing:.02em;
+    animation: scroll 70s linear infinite;
+  }
+  .ticker .feed-inner span { display:inline-flex; align-items:center; }
+  .ticker .feed-inner span::after {
+    content:'✦'; color: var(--gold); margin-left: 36px; font-size:50px;
+  }
+  @keyframes scroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+</style>
+</head>
+<body>
+<script>
+  const __TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "schema": "edu-cms-ms-fieldnotes-portrait-v1" }/*EDITMODE-END*/;
+</script>
+
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+  <!-- decorative kraft-paper layers -->
+  <div class="leather-spine" aria-hidden="true"></div>
+  <div class="coffee" aria-hidden="true"></div>
+  <div class="blot" aria-hidden="true"></div>
+  <div class="scribble-note" aria-hidden="true">try the cinnamon roll</div>
+
+  <!-- ─── 1. MASTHEAD ──────────────────────────────────────── -->
+  <header class="panel mast">
+    <div class="compass" aria-hidden="true">
+      <span class="card n">N</span>
+      <span class="card s">S</span>
+      <span class="card e">E</span>
+      <span class="card w">W</span>
+      <span class="pivot"></span>
+    </div>
+    <div class="info" data-widget="school">
+      <div class="ey"><span data-field="school.ey">Field Notebook · Volume 142</span></div>
+      <div class="ttl"><span data-field="school.name">Westridge</span> <em data-field="school.amp">&amp;</em> <span data-field="school.mascot">Otters</span></div>
+      <div class="sub" data-field="school.sub">a daily naturalist's log — kept by the front office</div>
+    </div>
+    <div class="seal" data-widget="brand">
+      <div class="disc">
+        <div class="vol" data-field="brand.vol">ENTRY №</div>
+        <div class="num" data-field="brand.num">147</div>
+        <div class="day" data-field="brand.day">Tue · Apr 21</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ─── 2. STAMPS ───────────────────────────────────────── -->
+  <section class="panel stamps">
+    <div class="tile" data-widget="weather">
+      <span class="k" data-field="weather.k">Outside</span>
+      <span class="v cool" data-field="weather.v">46°</span>
+      <span class="cap" data-field="weather.cap">clear · light SW wind</span>
+    </div>
+    <div class="tile" data-widget="clock">
+      <span class="k" data-field="clock.k">Right Now</span>
+      <span class="v" data-field="clock.v">7:53</span>
+      <span class="cap" data-field="clock.cap">first bell at 8:05</span>
+    </div>
+    <div class="tile" data-widget="bell">
+      <span class="k" data-field="bell.k">Day</span>
+      <span class="v warm" data-field="bell.v">B</span>
+      <span class="cap" data-field="bell.cap">rotation — 7 periods</span>
+    </div>
+  </section>
+
+  <!-- ─── 3. HERO ─────────────────────────────────────────── -->
+  <section class="panel hero" data-widget="greeting">
+    <span class="pageno"><span data-field="pageno.l">— pg. 284 —</span></span>
+    <div class="chapter" data-field="greeting.chapter">Chapter 147 · morning observations</div>
+    <h1>
+      <span data-field="greeting.h1a">Today,</span>
+      <em data-field="greeting.h1b">try</em><br/>
+      <u data-field="greeting.h1c">something</u>
+      <span data-field="greeting.h1d">new.</span>
+    </h1>
+    <div class="quillbar" aria-hidden="true"></div>
+    <p class="lede" data-field="greeting.lede">
+      Observations from the front office: the cafeteria smells of cinnamon, the hallways are already loud, and first period begins at <em>8:05 sharp</em>. Pack a pencil, a journal, and a small bit of courage.
+    </p>
+    <div class="signature">
+      <span class="scribble" data-field="greeting.scribble">— Mrs. Calloway</span>
+      <span class="stamp">Approved by<br/><b data-field="greeting.stampname">The Otter Council</b></span>
+    </div>
+  </section>
+
+  <!-- ─── 4. DUO — specimen + polaroid ────────────────────── -->
+  <section class="panel duo">
+
+    <div class="specimen" data-widget="specimen">
+      <div class="leaf" aria-hidden="true">
+        <svg viewBox="0 0 260 320" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="leafg" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#7d8a3a"/>
+              <stop offset="100%" stop-color="#4a5520"/>
+            </linearGradient>
+          </defs>
+          <path d="M130 305 C 132 240, 132 170, 130 100"
+                stroke="#3b2a14" stroke-width="4" fill="none" stroke-linecap="round"/>
+          <path d="M130 100
+                   C 60 90, 25 130, 35 175
+                   C 42 220, 95 250, 130 245
+                   C 165 250, 218 220, 225 175
+                   C 235 130, 200 90, 130 100 Z"
+                fill="url(#leafg)" stroke="#1e1a14" stroke-width="3.5"/>
+          <path d="M130 100 L 130 245
+                   M130 130 L 75 160 M130 150 L 60 180 M130 170 L 65 200 M130 190 L 80 220 M130 210 L 100 235
+                   M130 130 L 185 160 M130 150 L 200 180 M130 170 L 195 200 M130 190 L 180 220 M130 210 L 160 235"
+                stroke="#1e1a14" stroke-width="1.5" fill="none" opacity=".55"/>
+          <ellipse cx="80" cy="60" rx="22" ry="28" fill="#a36a28" stroke="#1e1a14" stroke-width="3"/>
+          <path d="M58 50 Q 80 34 102 50 L 102 64 Q 80 56 58 64 Z" fill="#5b3d10" stroke="#1e1a14" stroke-width="2.5"/>
+          <line x1="80" y1="34" x2="80" y2="20" stroke="#1e1a14" stroke-width="3"/>
+          <ellipse cx="170" cy="48" rx="18" ry="24" fill="#b87a35" stroke="#1e1a14" stroke-width="3"/>
+          <path d="M152 40 Q 170 28 188 40 L 188 52 Q 170 44 152 52 Z" fill="#5b3d10" stroke="#1e1a14" stroke-width="2.5"/>
+          <path d="M210 215 C 235 210, 245 230, 235 250 C 220 260, 200 245, 205 225 Z"
+                fill="#6e7a36" stroke="#1e1a14" stroke-width="2.5"/>
+        </svg>
+      </div>
+      <div class="latin" data-field="specimen.latin">Lutra schoolus</div>
+      <div class="common" data-field="specimen.common">"the everyday otter"</div>
+      <div class="meta" data-field="specimen.meta">Pressed · 21 Apr · pg. 284</div>
+    </div>
+
+    <div class="polaroid" data-widget="spotlight">
+      <div class="photo" aria-hidden="true">
+        <svg viewBox="0 0 260 380" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
+          <rect width="260" height="380" fill="#dba66f"/>
+          <circle cx="130" cy="200" r="150" fill="#e8c79a" opacity=".6"/>
+          <ellipse cx="130" cy="160" rx="68" ry="78" fill="#5b3d20"/>
+          <path d="M40 380 C 40 280, 90 240, 130 240 C 170 240, 220 280, 220 380 Z" fill="#2b3f6b"/>
+          <path d="M100 280 L 130 320 L 160 280 L 160 380 L 100 380 Z" fill="#f6ecd2"/>
+          <ellipse cx="105" cy="150" rx="20" ry="10" fill="#7a5530" opacity=".8"/>
+          <ellipse cx="155" cy="150" rx="20" ry="10" fill="#7a5530" opacity=".8"/>
+          <circle cx="108" cy="172" r="14" fill="none" stroke="#1e1a14" stroke-width="3"/>
+          <circle cx="152" cy="172" r="14" fill="none" stroke="#1e1a14" stroke-width="3"/>
+          <line x1="122" y1="172" x2="138" y2="172" stroke="#1e1a14" stroke-width="3"/>
+          <path d="M112 200 Q 130 215 148 200" stroke="#3a2410" stroke-width="3" fill="none" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="caption">
+        <span class="cap-ey" data-field="spotlight.ey">Specimen of the Day</span>
+        <span class="cap-name" data-field="spotlight.name">Mr. Nguyen, P2 English</span>
+        <span class="cap-note" data-field="spotlight.note">Room 108 · poetry workshop · birthdays today: 2</span>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ─── 5. COUNTDOWN ────────────────────────────────────── -->
+  <section class="panel countdown" data-widget="countdown">
+    <div class="num-block">
+      <span class="num" data-field="countdown.num">12</span>
+      <span class="unit" data-field="countdown.unit">days</span>
+    </div>
+    <div class="text-block">
+      <div class="ey" data-field="countdown.ey">FIELD DAY · sign-ups close</div>
+      <div class="label" data-field="countdown.label">until the meadow opens</div>
+      <div class="cap" data-field="countdown.cap">284 of 460 otters signed up — paper slips at the front office</div>
+    </div>
+  </section>
+
+  <!-- ─── 6. AGENDA ───────────────────────────────────────── -->
+  <section class="panel agenda" data-widget="agenda">
+    <div class="head">
+      <h2><span data-field="agenda.h">Today's</span> <em data-field="agenda.h2">rotation</em></h2>
+      <div class="day" data-field="agenda.day">Tuesday · Day B · seven entries</div>
+    </div>
+    <ul>
+      <li class="done" data-widget="agenda.0">
+        <span class="t" data-field="agenda.0.t">8:05</span>
+        <span class="c"><span data-field="agenda.0.c">Math 7</span> <span class="r" data-field="agenda.0.r">rm 214 · Ms. Patel</span></span>
+        <span class="x" data-field="agenda.0.x">done</span>
+      </li>
+      <li class="now" data-widget="agenda.1">
+        <span class="t" data-field="agenda.1.t">9:00</span>
+        <span class="c"><span data-field="agenda.1.c">English — Poetry</span> <span class="r" data-field="agenda.1.r">rm 108 · bring journal</span></span>
+        <span class="x" style="color: var(--stamp);" data-field="agenda.1.x">now</span>
+      </li>
+      <li data-widget="agenda.2">
+        <span class="t" data-field="agenda.2.t">9:55</span>
+        <span class="c"><span data-field="agenda.2.c">Science — lab</span> <span class="r" data-field="agenda.2.r">rm 207 · closed-toe shoes</span></span>
+        <span class="x" data-field="agenda.2.x">up next</span>
+      </li>
+      <li data-widget="agenda.3">
+        <span class="t" data-field="agenda.3.t">10:50</span>
+        <span class="c"><span data-field="agenda.3.c">PE — mile run</span> <span class="r" data-field="agenda.3.r">gym A · Coach Reyes</span></span>
+        <span class="x" data-field="agenda.3.x">10:50</span>
+      </li>
+      <li data-widget="agenda.4">
+        <span class="t" data-field="agenda.4.t">11:45</span>
+        <span class="c"><span data-field="agenda.4.c">Lunch — A</span> <span class="r" data-field="agenda.4.r">7th grade · cafeteria</span></span>
+        <span class="x" data-field="agenda.4.x">A-period</span>
+      </li>
+      <li data-widget="agenda.5">
+        <span class="t" data-field="agenda.5.t">12:35</span>
+        <span class="c"><span data-field="agenda.5.c">Social Studies</span> <span class="r" data-field="agenda.5.r">rm 115 · map quiz</span></span>
+        <span class="x" data-field="agenda.5.x">12:35</span>
+      </li>
+      <li data-widget="agenda.6">
+        <span class="t" data-field="agenda.6.t">1:30</span>
+        <span class="c"><span data-field="agenda.6.c">Art — printmaking</span> <span class="r" data-field="agenda.6.r">rm B-12 · sub today</span></span>
+        <span class="x" data-field="agenda.6.x">1:30</span>
+      </li>
+    </ul>
+  </section>
+
+  <!-- ─── 7. LUNCH ────────────────────────────────────────── -->
+  <section class="panel lunch" data-widget="lunch">
+    <div class="title-block">
+      <div class="ey" data-field="lunch.ey">— lunch log —</div>
+      <h3 data-field="lunch.h">On the menu</h3>
+    </div>
+    <div class="menu-block">
+      <div class="entree" data-field="lunch.entree">Chicken &amp; rice bowl</div>
+      <div class="sides" data-field="lunch.sides">Roasted broccoli · garlic bread · seasonal fruit. Salad bar all period. Veg + GF on request.</div>
+    </div>
+    <div class="quote" data-field="lunch.quote">surprisingly good — 7th grader, anonymous</div>
+  </section>
+
+  <!-- ─── 8. DUO2 — clubs + buses ─────────────────────────── -->
+  <section class="panel duo2">
+
+    <div class="clubs" data-widget="clubs">
+      <div class="ey" data-field="clubs.ey">— after school —</div>
+      <h3 data-field="clubs.h">Clubs &amp; auditions</h3>
+      <ul>
+        <li data-widget="clubs.0">
+          <span class="dot" style="background: var(--ink-blue);"></span>
+          <span><b data-field="clubs.0.n">Robotics — build week</b><span class="where" data-field="clubs.0.r">rm 207</span></span>
+          <span class="when" data-field="clubs.0.w">3:00–4:30</span>
+        </li>
+        <li data-widget="clubs.1">
+          <span class="dot" style="background: var(--stamp);"></span>
+          <span><b data-field="clubs.1.n">Drama auditions</b><span class="where" data-field="clubs.1.r">auditorium</span></span>
+          <span class="when" data-field="clubs.1.w">3:15–4:30</span>
+        </li>
+        <li data-widget="clubs.2">
+          <span class="dot" style="background: var(--moss);"></span>
+          <span><b data-field="clubs.2.n">Garden Club</b><span class="where" data-field="clubs.2.r">greenhouse</span></span>
+          <span class="when" data-field="clubs.2.w">3:00–4:00</span>
+        </li>
+        <li data-widget="clubs.3">
+          <span class="dot" style="background: var(--gold);"></span>
+          <span><b data-field="clubs.3.n">Yearbook</b><span class="where" data-field="clubs.3.r">computer lab B</span></span>
+          <span class="when" data-field="clubs.3.w">3:00–4:00</span>
+        </li>
+      </ul>
+    </div>
+
+    <div class="buses" data-widget="buses">
+      <div class="ey" data-field="buses.ey">— bus watch · 2:45 dismissal —</div>
+      <h3 data-field="buses.h">Routes today</h3>
+      <ul>
+        <li data-widget="buses.0">
+          <span class="num" data-field="buses.0.num">№12</span>
+          <span class="rt"><b data-field="buses.0.rt">Oakdale · Pine Ridge</b><span data-field="buses.0.note">Driver: Ms. Park</span></span>
+          <span class="st on" data-field="buses.0.st">on time</span>
+        </li>
+        <li data-widget="buses.1">
+          <span class="num" data-field="buses.1.num">№14</span>
+          <span class="rt"><b data-field="buses.1.rt">Westridge Heights</b><span data-field="buses.1.note">Driver: Mr. Hall</span></span>
+          <span class="st late" data-field="buses.1.st">+10 min</span>
+        </li>
+        <li data-widget="buses.2">
+          <span class="num" data-field="buses.2.num">№27</span>
+          <span class="rt"><b data-field="buses.2.rt">Clark · Downtown</b><span data-field="buses.2.note">Driver: Ms. Aoki</span></span>
+          <span class="st sched" data-field="buses.2.st">scheduled</span>
+        </li>
+        <li data-widget="buses.3">
+          <span class="num" data-field="buses.3.num">№31</span>
+          <span class="rt"><b data-field="buses.3.rt">Maple Ave loop</b><span data-field="buses.3.note">Driver: Mr. Diaz</span></span>
+          <span class="st on" data-field="buses.3.st">on time</span>
+        </li>
+      </ul>
+    </div>
+
+  </section>
+
+  <!-- ─── 9. SHOUTOUTS ────────────────────────────────────── -->
+  <section class="panel shouts" data-widget="shouts">
+    <div class="head">
+      <span class="ey" data-field="shouts.ey">— marginalia —</span>
+      <h3 data-field="shouts.h">Seen today</h3>
+    </div>
+    <ul>
+      <li data-widget="shouts.0">
+        <span class="ic" data-field="shouts.0.ic">★</span>
+        <span class="name" data-field="shouts.0.name">Maya R.<span data-field="shouts.0.note">turns 13 today — cake at lunch</span></span>
+      </li>
+      <li data-widget="shouts.1">
+        <span class="ic s2" data-field="shouts.1.ic">π</span>
+        <span class="name" data-field="shouts.1.name">Daniel K.<span data-field="shouts.1.note">3rd · regional math olympiad</span></span>
+      </li>
+      <li data-widget="shouts.2">
+        <span class="ic s3" data-field="shouts.2.ic">7B</span>
+        <span class="name" data-field="shouts.2.name">Ms. Chen's class<span data-field="shouts.2.note">14-day homework streak</span></span>
+      </li>
+      <li data-widget="shouts.3">
+        <span class="ic s4" data-field="shouts.3.ic">📚</span>
+        <span class="name" data-field="shouts.3.name">Library crew<span data-field="shouts.3.note">100 books read · this quarter</span></span>
+      </li>
+    </ul>
+  </section>
+
+  <!-- ─── 10. TICKER ──────────────────────────────────────── -->
+  <footer class="panel ticker" data-widget="ticker">
+    <div class="tag"><span data-field="ticker.tag">P.S.</span></div>
+    <div class="feed">
+      <div class="feed-inner">
+        <span data-field="ticker.0">Picture day moved to Thursday — full uniform — slips due Wed</span>
+        <span data-field="ticker.1">Sub in rm B-12 today — Mr. Diaz</span>
+        <span data-field="ticker.2">Spelling bee sign-ups end Friday</span>
+        <span data-field="ticker.3">Yearbook photos need names + grade</span>
+        <span data-field="ticker.4">8th graders — field trip forms due tomorrow</span>
+        <span data-field="ticker.5">Lost blue water bottle &rarr; front office</span>
+        <span aria-hidden="true">Picture day moved to Thursday — full uniform — slips due Wed</span>
+        <span aria-hidden="true">Sub in rm B-12 today — Mr. Diaz</span>
+        <span aria-hidden="true">Spelling bee sign-ups end Friday</span>
+        <span aria-hidden="true">Yearbook photos need names + grade</span>
+        <span aria-hidden="true">8th graders — field trip forms due tomorrow</span>
+        <span aria-hidden="true">Lost blue water bottle &rarr; front office</span>
+      </div>
+    </div>
+  </footer>
+
+</div></div></div>
+
+<script>
+  // Same fit() pattern as the shipped HS templates.
+  (function(){
+    function fit(){
+      var cs = getComputedStyle(document.documentElement);
+      var w = parseFloat(cs.getPropertyValue('--stage-w')) || 2160;
+      var h = parseFloat(cs.getPropertyValue('--stage-h')) || 3840;
+      var k = Math.min(window.innerWidth / w, window.innerHeight / h);
+      document.documentElement.style.setProperty('--stage-scale', k);
+    }
+    window.addEventListener('resize', fit);
+    window.addEventListener('load', fit);
+    setTimeout(fit, 10);
+    setTimeout(fit, 300);
+  })();
+</script>
+</body>
+</html>

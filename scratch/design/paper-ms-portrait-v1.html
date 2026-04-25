@@ -1,0 +1,1051 @@
+<!--
+  MS TEMPLATE · PAPER · PORTRAIT v1
+  ==================================
+  Vertical 2160×3840 sibling to paper-ms-v2.html. Vintage
+  broadsheet aesthetic (Playfair + Old Standard + Work Sans,
+  newsprint cream paper). Real broadsheets ARE portrait —
+  this should feel like a front page.
+
+  Layout (2160×3840):
+    WEATHER+TIME   y=  56 →  416   (h= 360)  weather tiles + clock + price
+    MASTHEAD       y= 436 →  836   (h= 400)  "The Otter Daily" nameplate
+    DATELINE RULE  y= 856 →  874   (h=  18)  thick-thin double rule
+    INDICIA        y= 894 →  954   (h=  60)  vol/no · date · flag
+    LEAD STORY     y= 974 → 2354   (h=1380)  deptline + h1 + deck + body + halftone photo
+    INDEX          y=2374 → 3024   (h= 650)  TOC + 7 agenda rows + stats footer
+    DEPARTMENTS    y=3044 → 3604   (h= 560)  Dining + Clubs + Shoutouts (3 banded sections)
+    TICKER         y=3624 → 3764   (h= 140)  stop-press bulletin
+    (top inset 56, bottom inset 76, every gap = 20px, every panel inset = 64px)
+
+    Math check:
+      56 + 360 + 20 + 400 + 20 + 18 + 20 + 60 + 20 + 1380 + 20 + 650 + 20 + 560 + 20 + 140 + 76
+      = 3840 ✓
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Paper — MS Lobby Portrait (v1)</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,900&family=DM+Serif+Display:ital@0;1&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400;1,8..60,500&family=DM+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  /* 3-layer scale wrapper — same pattern as the landscape sibling. */
+  *, *::before, *::after { box-sizing: border-box; }
+  :root { --stage-w: 2160px; --stage-h: 3840px; --stage-scale: 1; }
+  html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; background:#000; }
+  .viewport { position:fixed; inset:0; display:grid; place-items:center; overflow:hidden; }
+  .stage-outer { width:calc(var(--stage-w)*var(--stage-scale)); height:calc(var(--stage-h)*var(--stage-scale)); }
+  .stage { width:var(--stage-w); height:var(--stage-h); transform:scale(var(--stage-scale)); transform-origin:0 0; position:relative; box-shadow:0 80px 200px rgba(0,0,0,.55); overflow:hidden; }
+
+  :root {
+    /* Newsprint palette — only THREE inks, like a real broadsheet. */
+    --paper:        #f3ebd6;    /* warm newsprint cream */
+    --paper-2:      #ebe1c4;    /* shaded fold */
+    --paper-3:      #e2d6b1;    /* deeper bin tone */
+    --ink:          #0e0e10;    /* primary ink, near black */
+    --ink-2:        #2a2a30;    /* light ink for secondary */
+    --ink-3:        #5a5a62;    /* faded ink for byline */
+    --rule:         #1a1a1c;    /* heavy rule */
+    --red:          #c8201e;    /* editorial red — front-page only */
+    --red-deep:     #8d1614;    /* aged red */
+  }
+  html, body { color: var(--ink); font-family:'Source Serif 4', Georgia, serif; }
+
+  /* Newsprint background with subtle paper grain + warm/cool corner washes. */
+  .stage {
+    background: var(--paper);
+    background-image:
+      radial-gradient(rgba(120, 90, 50, .07) 1px, transparent 1.5px),
+      radial-gradient(rgba(120, 90, 50, .04) 1px, transparent 1.5px),
+      radial-gradient(ellipse 1500px 1700px at 0% 0%, rgba(232, 196, 120, .18), transparent 70%),
+      radial-gradient(ellipse 1500px 1700px at 100% 100%, rgba(120, 90, 50, .12), transparent 70%);
+    background-size: 8px 8px, 17px 17px, auto, auto;
+    background-position: 0 0, 6px 4px, 0 0, 0 0;
+  }
+  /* Paper FX overlay — vertical fold (portrait broadsheets fold once horizontally) + edge vignette. */
+  .ms-pp-paperfx {
+    content:''; position:absolute; inset:0; pointer-events:none; z-index:1;
+    background:
+      /* horizontal fold across the middle of the page */
+      linear-gradient(to bottom,
+        transparent 49.85%,
+        rgba(0,0,0,.06) 49.95%,
+        rgba(0,0,0,.06) 50.05%,
+        transparent 50.15%),
+      /* edge vignette */
+      radial-gradient(ellipse 1900px 3300px at 50% 50%, transparent 60%, rgba(60, 40, 20, .14) 100%);
+  }
+
+  /* ──────────────────────────────────────────────────────────────
+     WEATHER + TIME ROW                  y  56–416, h 360, inset 64
+     2-col grid: 3 weather tiles | edition stamp + price + clock
+     ────────────────────────────────────────────────────────────── */
+  .wxrow {
+    position:absolute; top: 56px; left: 64px; right: 64px; height: 360px;
+    display:grid; grid-template-columns: 1.05fr 1fr; column-gap: 32px;
+    z-index: 2; overflow: hidden;
+  }
+
+  /* LEFT — weather tiles, 2 small + 1 wide */
+  .wxrow .lefttiles {
+    display:grid; grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 18px;
+    overflow: hidden;
+  }
+  .wxrow .lefttiles .tile {
+    background: var(--paper-2);
+    border: 4px solid var(--ink);
+    padding: 22px 26px;
+    display:flex; flex-direction: column; gap: 8px;
+    box-shadow: 6px 6px 0 var(--ink);
+    position: relative; overflow: hidden;
+  }
+  .wxrow .lefttiles .tile.full { grid-column: 1 / -1; }
+  .wxrow .lefttiles .tile .k {
+    font-family:'DM Mono'; font-weight: 500; font-size: 26px;
+    letter-spacing: .26em; text-transform: uppercase; color: var(--ink-3);
+  }
+  .wxrow .lefttiles .tile .v {
+    font-family:'Playfair Display', serif; font-weight: 900;
+    font-size: 110px; line-height: .9; color: var(--ink);
+    letter-spacing: -.02em;
+    display:flex; align-items: baseline; gap: 12px;
+  }
+  .wxrow .lefttiles .tile.warm .v { color: var(--red); }
+  .wxrow .lefttiles .tile .v small {
+    font-family:'DM Mono'; font-weight: 500; font-size: 28px;
+    color: var(--ink-2); letter-spacing: .04em;
+  }
+  .wxrow .lefttiles .tile.full .v {
+    font-size: 64px;
+  }
+  .wxrow .lefttiles .tile.full .v .arrow {
+    color: var(--red); font-family:'Playfair Display', serif;
+    font-style: italic; font-weight: 900;
+  }
+
+  /* RIGHT — edition stamp / price / clock (vertical stack) */
+  .wxrow .editrail {
+    display:flex; flex-direction: column; align-items: stretch;
+    justify-content: space-between; gap: 18px;
+    padding: 6px 0; overflow: hidden;
+  }
+  .wxrow .editrail .stamp {
+    align-self: flex-end;
+    display:inline-flex; align-items:center; gap: 18px;
+    padding: 18px 32px;
+    background: var(--ink); color: var(--paper);
+    font-family:'DM Mono'; font-weight: 700; font-size: 34px;
+    letter-spacing: .26em; text-transform: uppercase;
+    transform: rotate(-2deg);
+    box-shadow: 8px 8px 0 var(--red);
+  }
+  .wxrow .editrail .stamp .dot {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--red); animation: pulse 1.4s ease-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(200,32,30,.85); }
+    60%     { box-shadow: 0 0 0 22px rgba(200,32,30,0); }
+  }
+  .wxrow .editrail .price {
+    align-self: flex-end;
+    font-family:'Playfair Display', serif; font-style: italic;
+    font-weight: 900; font-size: 124px; color: var(--ink);
+    line-height: .9; letter-spacing: -.02em;
+    border-top: 4px solid var(--ink);
+    border-bottom: 4px solid var(--ink);
+    padding: 8px 24px 0;
+    text-align: right;
+  }
+  .wxrow .editrail .price small {
+    font-family:'DM Mono'; font-weight: 500; font-size: 24px;
+    letter-spacing: .24em; text-transform: uppercase; color: var(--ink-2);
+    display: block; margin-top: 4px; padding-bottom: 6px;
+  }
+  .wxrow .editrail .clock {
+    align-self: flex-end;
+    font-family:'DM Mono'; font-weight: 500; font-size: 32px;
+    letter-spacing: .14em; color: var(--ink-2);
+  }
+  .wxrow .editrail .clock b { font-weight: 700; color: var(--ink); }
+
+  /* ──────────────────────────────────────────────────────────────
+     MASTHEAD                            y 436–836, h 400, inset 64
+     Centered "The Otter Daily" nameplate, ribbon above + tagline below
+     ────────────────────────────────────────────────────────────── */
+  .mast {
+    position:absolute; top: 436px; left: 64px; right: 64px; height: 400px;
+    display:flex; flex-direction: column; align-items: center;
+    justify-content: center;
+    z-index: 2; overflow: hidden;
+  }
+  .mast .ribbon {
+    font-family:'DM Mono'; font-weight: 500; font-size: 32px;
+    letter-spacing: .42em; text-transform: uppercase; color: var(--ink-2);
+    padding: 12px 28px;
+    border-top: 4px double var(--ink);
+    border-bottom: 4px double var(--ink);
+    margin-bottom: 22px;
+  }
+  .mast .title {
+    font-family:'Playfair Display', serif; font-style: italic;
+    font-weight: 900; font-size: 280px; line-height: .85;
+    color: var(--ink); letter-spacing: -.035em;
+    text-shadow: 3px 3px 0 rgba(0,0,0,.06);
+    white-space: nowrap;
+  }
+  .mast .title .the {
+    font-style: italic; font-weight: 400;
+    font-size: 100px; vertical-align: 60px; margin-right: 18px;
+    letter-spacing: 0;
+  }
+  .mast .title .accent {
+    color: var(--red);
+    text-decoration: underline;
+    text-decoration-thickness: 8px;
+    text-underline-offset: 18px;
+    text-decoration-color: var(--red);
+  }
+  .mast .tagline {
+    font-family:'DM Mono'; font-weight: 500; font-size: 30px;
+    letter-spacing: .34em; text-transform: uppercase; color: var(--ink-3);
+    margin-top: 24px;
+  }
+
+  /* ──────────────────────────────────────────────────────────────
+     DATELINE RULE                       y 856–874, h 18
+     ────────────────────────────────────────────────────────────── */
+  .rule {
+    position:absolute; left: 64px; right: 64px; top: 856px; height: 18px;
+    z-index:2;
+    border-top: 8px solid var(--ink);
+    border-bottom: 2px solid var(--ink);
+  }
+
+  /* ──────────────────────────────────────────────────────────────
+     INDICIA STRIP                       y 894–954, h 60, inset 64
+     ────────────────────────────────────────────────────────────── */
+  .indicia {
+    position:absolute; top: 894px; left: 64px; right: 64px; height: 60px;
+    display:grid; grid-template-columns: auto 1fr auto auto auto;
+    gap: 36px; align-items: center; z-index:2; overflow: hidden;
+    font-family:'DM Mono'; font-weight: 500; font-size: 28px;
+    color: var(--ink-2); letter-spacing: .12em;
+  }
+  .indicia .vol { font-weight: 700; color: var(--ink); letter-spacing: .18em; }
+  .indicia .vol em { color: var(--red); font-style: normal; font-weight: 700; }
+  .indicia .pipe { color: var(--ink-3); }
+  .indicia .red { color: var(--red); font-weight: 700; }
+  .indicia .date { font-weight: 500; }
+
+  /* ──────────────────────────────────────────────────────────────
+     LEAD STORY                          y 974–2354, h 1380, inset 64
+     deptline → headline → deck → byline → 2-col body w/ drop-cap
+     halftone photo card sits inside the body as a floated image module
+     ────────────────────────────────────────────────────────────── */
+  .lead {
+    position:absolute; top: 974px; left: 64px; right: 64px; height: 1380px;
+    display:flex; flex-direction: column; z-index:2; overflow: hidden;
+    padding: 0;
+  }
+
+  .lead .deptline {
+    display:flex; align-items:center; gap: 24px; margin-bottom: 16px;
+  }
+  .lead .deptline .swatch {
+    width: 44px; height: 44px; background: var(--red); flex-shrink: 0;
+  }
+  .lead .deptline .label {
+    font-family:'DM Mono'; font-weight: 700; font-size: 32px;
+    letter-spacing: .32em; text-transform: uppercase; color: var(--red);
+  }
+  .lead .deptline .pipe {
+    flex: 1; height: 4px; background: var(--ink);
+  }
+  .lead .deptline .edition {
+    font-family:'DM Mono'; font-weight: 500; font-size: 28px;
+    letter-spacing: .22em; text-transform: uppercase; color: var(--ink-2);
+  }
+
+  .lead h1 {
+    font-family:'Playfair Display', serif; font-weight: 900;
+    font-size: 296px; line-height: .86;
+    color: var(--ink); margin: 12px 0 22px;
+    letter-spacing: -.035em;
+  }
+  .lead h1 em {
+    font-family:'Playfair Display', serif; font-style: italic;
+    font-weight: 900; color: var(--red); letter-spacing: -.025em;
+  }
+  .lead h1 .small {
+    font-style: italic; font-weight: 400; font-size: 120px;
+    color: var(--ink-2); letter-spacing: -.01em; vertical-align: 50px;
+    margin-right: 22px;
+  }
+
+  .lead .deck {
+    font-family:'Playfair Display', serif; font-style: italic;
+    font-weight: 400; font-size: 64px; line-height: 1.18;
+    color: var(--ink-2); margin: 0 0 24px;
+    letter-spacing: -.005em;
+  }
+
+  .lead .byline {
+    display:flex; align-items: center; gap: 28px;
+    padding: 16px 0;
+    border-top: 3px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+    margin-bottom: 28px;
+    font-family:'DM Mono'; font-weight: 500; font-size: 30px;
+    color: var(--ink-2); letter-spacing: .14em;
+  }
+  .lead .byline b { color: var(--ink); font-weight: 700; }
+  .lead .byline em { color: var(--red); font-style: normal; font-weight: 700; }
+  .lead .byline .pipe { color: var(--ink-3); }
+
+  /* Body: 2-col with the photo card floated to the right of column 2
+     (portrait reads top-to-bottom, so 2 columns is the readable count). */
+  .lead .body {
+    display:grid; grid-template-columns: 1fr 1fr; gap: 44px;
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+  .lead .body > .col {
+    font-family:'Source Serif 4', Georgia, serif;
+    font-weight: 400; font-size: 42px; line-height: 1.32;
+    color: var(--ink); letter-spacing: 0;
+    position: relative;
+    padding-right: 32px;
+    border-right: 2px solid var(--ink-3);
+    overflow: hidden;
+  }
+  .lead .body > .col:last-child { border-right: 0; padding-right: 0; }
+  /* Drop cap on first column */
+  .lead .body > .col.first::first-letter {
+    font-family:'DM Serif Display', serif; font-weight: 400;
+    font-size: 280px; line-height: .82;
+    float: left;
+    margin: 14px 22px -10px 0;
+    color: var(--red);
+  }
+  .lead .body > .col.first p:first-of-type::first-line {
+    font-family:'Source Serif 4', serif; font-weight: 600;
+    letter-spacing: .04em; text-transform: uppercase;
+  }
+  .lead .body p { margin: 0 0 18px; }
+
+  /* Pull-quote — sits inside column 1 below the lede paragraphs */
+  .lead .pullquote {
+    margin-top: 22px;
+    padding: 22px 0;
+    border-top: 5px solid var(--ink);
+    border-bottom: 5px solid var(--ink);
+    font-family:'Playfair Display', serif; font-style: italic;
+    font-weight: 900; font-size: 64px; line-height: 1.05;
+    color: var(--ink); letter-spacing: -.015em;
+  }
+  .lead .pullquote .who {
+    display:block;
+    font-family:'DM Mono'; font-style: normal; font-weight: 500;
+    font-size: 24px; letter-spacing: .26em; text-transform: uppercase;
+    color: var(--red); margin-top: 14px;
+  }
+
+  /* Halftone otter mascot photo card — placed inside column 2 */
+  .lead .photo {
+    background: var(--paper-2);
+    border: 4px solid var(--ink);
+    padding: 22px 22px 16px;
+    box-shadow: 10px 10px 0 var(--ink);
+    margin-top: 22px;
+  }
+  .lead .photo .frame {
+    position: relative;
+    height: 380px;
+    background: var(--ink);
+    overflow: hidden;
+    /* Halftone dot pattern simulating a newspaper photo */
+    background-image:
+      radial-gradient(circle at 40% 35%, rgba(243,235,214,.78) 18%, transparent 19%),
+      radial-gradient(rgba(255,255,255,.9) 1.6px, transparent 1.8px),
+      radial-gradient(rgba(255,255,255,.6) 0.9px, transparent 1.1px);
+    background-size: auto, 13px 13px, 8px 8px;
+    background-position: 0 0, 0 0, 4px 3px;
+  }
+  /* Otter silhouette in pure CSS — sits on top of the halftone */
+  .lead .photo .frame::before {
+    content:''; position: absolute; bottom: 18px; left: 50%;
+    width: 320px; height: 260px;
+    transform: translateX(-50%);
+    background:
+      radial-gradient(ellipse 90px 100px at 50% 30%, rgba(40,30,20,.92) 70%, transparent 72%),
+      radial-gradient(ellipse 140px 110px at 50% 80%, rgba(40,30,20,.92) 70%, transparent 72%);
+  }
+  .lead .photo .frame::after {
+    content:''; position:absolute; inset:0;
+    background: linear-gradient(135deg, rgba(255,255,255,.06), transparent 60%);
+  }
+  .lead .photo .caption {
+    font-family:'DM Mono'; font-weight: 500; font-size: 24px;
+    line-height: 1.35; color: var(--ink-2); letter-spacing: .02em;
+    margin-top: 14px; padding-top: 12px;
+    border-top: 1px solid var(--ink-3);
+  }
+  .lead .photo .caption b { color: var(--ink); font-weight: 700; }
+
+  /* ──────────────────────────────────────────────────────────────
+     INDEX SIDEBAR (banded section)      y 2374–3024, h 650, inset 64
+     Header (TOC + day) on the LEFT, 7 agenda rows in 2 columns,
+     stats footer (countdown + attendance) at the bottom.
+     ────────────────────────────────────────────────────────────── */
+  .sidebar {
+    position:absolute; top: 2374px; left: 64px; right: 64px; height: 650px;
+    background: var(--paper-2);
+    border: 4px solid var(--ink);
+    box-shadow: 12px 12px 0 var(--ink);
+    padding: 28px 36px 24px;
+    display:flex; flex-direction: column;
+    z-index:2; overflow: hidden;
+  }
+  .sidebar::before {
+    content:''; position:absolute; top: 0; right: 0;
+    width: 70px; height: 70px;
+    background: linear-gradient(225deg, var(--paper-3) 50%, var(--ink) 50%);
+    box-shadow: -2px 2px 0 var(--ink);
+  }
+
+  .sidebar .tochead {
+    display:flex; align-items: baseline; justify-content: space-between;
+    padding-bottom: 14px;
+    border-bottom: 8px double var(--ink);
+    margin-bottom: 18px;
+  }
+  .sidebar .tochead .h {
+    font-family:'Playfair Display', serif; font-style: italic;
+    font-weight: 900; font-size: 96px; line-height: 1;
+    color: var(--ink); letter-spacing: -.025em;
+  }
+  .sidebar .tochead .h em { color: var(--red); font-style: italic; }
+  .sidebar .tochead .day {
+    font-family:'DM Mono'; font-weight: 700; font-size: 26px;
+    letter-spacing: .26em; text-transform: uppercase; color: var(--ink-2);
+    text-align: right;
+  }
+
+  /* TOC list — 2-col grid for 7 schedule items (4 left, 3 right). */
+  .sidebar .toc {
+    display:grid; grid-template-columns: 1fr 1fr; column-gap: 36px; row-gap: 0;
+    margin-bottom: 16px; flex: 1;
+  }
+  .sidebar .toc .row {
+    display:grid; grid-template-columns: 78px 1fr auto;
+    column-gap: 18px; align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px dashed var(--ink-3);
+    position: relative;
+    overflow: hidden;
+  }
+  .sidebar .toc .row.now {
+    background: var(--ink); color: var(--paper);
+    margin: 4px -10px;
+    padding: 10px 12px;
+    border-bottom: 0;
+  }
+  .sidebar .toc .row.done { opacity: .55; }
+  .sidebar .toc .row .p {
+    font-family:'DM Mono'; font-weight: 700; font-size: 26px;
+    color: var(--red); letter-spacing: .08em; text-align: center;
+    border: 3px solid var(--red);
+    padding: 4px 0;
+    line-height: 1;
+  }
+  .sidebar .toc .row.now .p {
+    color: var(--paper);
+    background: var(--red); border-color: var(--red);
+  }
+  .sidebar .toc .row.done .p {
+    color: var(--ink-3); border-color: var(--ink-3);
+  }
+  .sidebar .toc .row .what {
+    font-family:'DM Serif Display', serif; font-weight: 400;
+    font-size: 32px; color: var(--ink); line-height: 1.05;
+    letter-spacing: -.01em;
+    overflow: hidden;
+  }
+  .sidebar .toc .row.now .what { color: var(--paper); }
+  .sidebar .toc .row .what span {
+    display:block;
+    font-family:'DM Mono'; font-weight: 500; font-size: 18px;
+    color: var(--ink-3); letter-spacing: .14em; text-transform: uppercase;
+    margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .sidebar .toc .row.now .what span { color: rgba(243,235,214,.7); }
+  .sidebar .toc .row .pg {
+    font-family:'DM Mono'; font-weight: 500; font-size: 22px;
+    letter-spacing: .14em; color: var(--ink-2);
+    text-align: right;
+    white-space: nowrap;
+  }
+  .sidebar .toc .row.now .pg { color: var(--paper); }
+
+  /* Stats footer — countdown + attendance */
+  .sidebar .stats {
+    display:grid; grid-template-columns: 1fr 1fr; gap: 16px;
+    margin-top: 12px;
+    padding-top: 16px;
+    border-top: 8px double var(--ink);
+  }
+  .sidebar .stats .s {
+    background: var(--paper);
+    border: 3px solid var(--ink);
+    padding: 14px 20px;
+    display:flex; flex-direction: column; gap: 4px;
+    overflow: hidden;
+  }
+  .sidebar .stats .s.featured {
+    background: var(--red); color: var(--paper);
+    border-color: var(--ink);
+  }
+  .sidebar .stats .s .k {
+    font-family:'DM Mono'; font-weight: 500; font-size: 20px;
+    letter-spacing: .22em; text-transform: uppercase; color: var(--ink-2);
+  }
+  .sidebar .stats .s.featured .k { color: rgba(243,235,214,.85); }
+  .sidebar .stats .s .v {
+    font-family:'Playfair Display', serif; font-weight: 900;
+    font-size: 80px; line-height: 1;
+    color: var(--ink); letter-spacing: -.03em;
+  }
+  .sidebar .stats .s .v em {
+    font-family:'DM Mono'; font-weight: 500; font-size: 22px;
+    color: var(--ink-3); font-style: normal;
+    letter-spacing: .14em;
+  }
+  .sidebar .stats .s.featured .v { color: var(--paper); }
+  .sidebar .stats .s.featured .v em { color: rgba(243,235,214,.78); }
+  .sidebar .stats .s .sub {
+    font-family:'DM Mono'; font-weight: 500; font-size: 20px;
+    color: var(--ink-3); letter-spacing: .04em;
+  }
+  .sidebar .stats .s.featured .sub { color: rgba(243,235,214,.78); }
+
+  /* ──────────────────────────────────────────────────────────────
+     DEPARTMENTS BAND                    y 3044–3604, h 560, inset 64
+     3 columns: DINING, AFTER 3, SEEN TODAY
+     ────────────────────────────────────────────────────────────── */
+  .depts {
+    position:absolute; top: 3044px; left: 64px; right: 64px; height: 560px;
+    display:grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 28px;
+    z-index: 2; overflow: hidden;
+  }
+  .dept {
+    background: var(--paper-2);
+    border: 4px solid var(--ink);
+    box-shadow: 10px 10px 0 var(--ink);
+    padding: 22px 28px 20px;
+    display:flex; flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+  .dept::before {
+    content:''; position:absolute; left:0; right:0; bottom:0; height: 8px;
+    background: repeating-linear-gradient(45deg,
+      var(--ink) 0 8px, transparent 8px 16px);
+  }
+
+  /* Department slug — broadsheet section header */
+  .dept .slug {
+    display:grid; grid-template-columns: auto 1fr auto;
+    column-gap: 16px; align-items: center;
+    padding-bottom: 10px; border-bottom: 4px solid var(--ink);
+    margin-bottom: 14px;
+  }
+  .dept .slug .num {
+    font-family:'Playfair Display', serif; font-style: italic;
+    font-weight: 900; font-size: 56px; color: var(--red);
+    line-height: .9; letter-spacing: -.02em;
+  }
+  .dept .slug .name {
+    font-family:'DM Serif Display', serif; font-weight: 400;
+    font-size: 44px; line-height: .95; color: var(--ink);
+    letter-spacing: -.015em;
+    overflow: hidden;
+  }
+  .dept .slug .name em {
+    font-family:'Playfair Display', serif; font-style: italic;
+    font-weight: 900; color: var(--red);
+  }
+  .dept .slug .meta {
+    font-family:'DM Mono'; font-weight: 500; font-size: 20px;
+    letter-spacing: .2em; text-transform: uppercase; color: var(--ink-2);
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  /* DINING — menu */
+  .dept.dining .entree {
+    font-family:'Playfair Display', serif; font-weight: 900;
+    font-size: 84px; line-height: .92; color: var(--ink);
+    letter-spacing: -.03em;
+    margin-top: 8px;
+  }
+  .dept.dining .entree em {
+    font-family:'Playfair Display', serif; font-style: italic;
+    color: var(--red); font-weight: 900;
+  }
+  .dept.dining .sides {
+    font-family:'Source Serif 4', serif; font-weight: 400; font-style: italic;
+    font-size: 32px; line-height: 1.25; color: var(--ink-2);
+    margin: 14px 0 16px; letter-spacing: 0;
+  }
+  .dept.dining .tags {
+    display:flex; gap: 10px; flex-wrap: wrap;
+    margin-top: auto;
+    padding-top: 14px;
+    border-top: 1px solid var(--ink-3);
+  }
+  .dept.dining .tags b {
+    font-family:'DM Mono'; font-weight: 700; font-size: 22px;
+    background: var(--ink); color: var(--paper);
+    padding: 9px 16px; letter-spacing: .14em;
+  }
+  .dept.dining .tags b.red { background: var(--red); }
+
+  /* AFTER 3 / SEEN TODAY — list rows */
+  .dept .list { display:grid; gap: 10px; align-content: start; }
+  .dept .list .it {
+    display:grid; grid-template-columns: 80px 1fr auto;
+    column-gap: 18px; align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--ink-3);
+    overflow: hidden;
+  }
+  .dept .list .it:last-child { border-bottom: 0; }
+  .dept .list .it .ico {
+    width: 72px; height: 72px;
+    background: var(--paper);
+    border: 4px solid var(--ink);
+    display:grid; place-items: center;
+    font-family:'Playfair Display', serif; font-style: italic;
+    font-weight: 900; font-size: 38px;
+    color: var(--ink); line-height: 1;
+    box-shadow: 4px 4px 0 var(--ink);
+  }
+  .dept .list .it .ico.red { background: var(--red); color: var(--paper); }
+  .dept .list .it .ico.cream { background: var(--paper-3); }
+  .dept .list .it .info { overflow: hidden; }
+  .dept .list .it .info .t {
+    font-family:'DM Serif Display', serif; font-weight: 400;
+    font-size: 32px; line-height: 1.05; color: var(--ink);
+    letter-spacing: -.005em;
+    overflow: hidden;
+  }
+  .dept .list .it .info .s {
+    font-family:'Source Serif 4', serif; font-weight: 400; font-style: italic;
+    font-size: 22px; color: var(--ink-2); margin-top: 3px;
+    letter-spacing: 0;
+    overflow: hidden;
+  }
+  .dept .list .it .when {
+    font-family:'Playfair Display', serif; font-weight: 900;
+    font-size: 36px; color: var(--red); letter-spacing: -.01em;
+    line-height: 1; text-align: right;
+    white-space: nowrap;
+  }
+  .dept .list .it .when small {
+    display:block;
+    font-family:'DM Mono'; font-weight: 500; font-size: 16px;
+    letter-spacing: .14em; color: var(--ink-3);
+    margin-top: 5px;
+  }
+
+  /* ──────────────────────────────────────────────────────────────
+     STOP-PRESS BULLETIN TICKER          y 3624–3764, h 140, inset 64
+     ────────────────────────────────────────────────────────────── */
+  .ticker {
+    position:absolute; left: 64px; right: 64px; top: 3624px; height: 140px;
+    background: var(--ink); color: var(--paper);
+    border: 4px solid var(--ink);
+    box-shadow: 10px 10px 0 var(--red);
+    display:grid; grid-template-columns: auto 1fr auto;
+    align-items: stretch;
+    overflow: hidden;
+    z-index: 2;
+  }
+  .ticker .tag {
+    background: var(--red); color: var(--paper);
+    padding: 0 36px;
+    display:flex; align-items: center; gap: 18px;
+    font-family:'Playfair Display', serif; font-style: italic;
+    font-weight: 900; font-size: 56px; line-height: 1;
+    letter-spacing: -.015em;
+    border-right: 4px solid var(--ink);
+    flex-shrink: 0;
+  }
+  .ticker .tag::before {
+    content:'★'; font-family: 'Source Serif 4', serif; font-style: normal;
+    font-size: 48px; color: var(--paper);
+  }
+  .ticker .feed {
+    overflow: hidden; display:flex; align-items: center;
+    padding-left: 36px;
+  }
+  .ticker .feed-inner {
+    display:flex; gap: 64px;
+    font-family:'DM Serif Display', serif; font-weight: 400;
+    font-size: 52px; color: var(--paper); white-space: nowrap;
+    letter-spacing: -.005em;
+    animation: scroll 80s linear infinite;
+  }
+  .ticker .feed-inner span { display:inline-flex; align-items: center; gap: 28px; }
+  .ticker .feed-inner span::after {
+    content:'§'; color: var(--red); margin-left: 32px;
+    font-family:'Playfair Display', serif; font-style: italic;
+    font-weight: 900; font-size: 48px;
+  }
+  .ticker .vol-end {
+    background: var(--paper); color: var(--ink);
+    padding: 0 28px;
+    display:flex; align-items: center;
+    border-left: 4px solid var(--ink);
+    font-family:'DM Mono'; font-weight: 700; font-size: 26px;
+    letter-spacing: .22em; text-transform: uppercase;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  @keyframes scroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+</style>
+</head>
+<body>
+<script>
+  const __TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "schema": "edu-cms-ms-paper-portrait-v1" }/*EDITMODE-END*/;
+</script>
+
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+  <!-- ─── PAPER FX OVERLAY ───────────────────────────────── -->
+  <div class="ms-pp-paperfx" aria-hidden="true"></div>
+
+  <!-- ─── WEATHER + TIME ROW ─────────────────────────────── -->
+  <header class="wxrow">
+    <!-- LEFT: weather tile cluster -->
+    <div class="lefttiles" data-widget="weather-cluster">
+      <div class="tile warm" data-widget="weather">
+        <span class="k" data-field="weather.label">High</span>
+        <span class="v"><span data-field="weather.high">62</span><small>°F</small></span>
+      </div>
+      <div class="tile" data-widget="weather-low">
+        <span class="k" data-field="weather.low_label">Low</span>
+        <span class="v"><span data-field="weather.low">46</span><small>°F</small></span>
+      </div>
+      <div class="tile full" data-widget="weather-summary">
+        <span class="k" data-field="weather.sky_label">Today's Sky</span>
+        <span class="v">
+          <span data-field="weather.sky">Clear &amp; bright</span>
+          <span class="arrow">&mdash; light SW wind</span>
+        </span>
+      </div>
+    </div>
+
+    <!-- RIGHT: edition stamp + price + clock -->
+    <div class="editrail">
+      <div class="stamp" data-widget="edition">
+        <span class="dot" aria-hidden="true"></span>
+        <span data-field="edition.flag">LIVE &middot; 7:53 A.M.</span>
+      </div>
+      <div class="price" data-widget="price">
+        <span data-field="price.value">5¢</span>
+        <small data-field="price.note">Free for the otters</small>
+      </div>
+      <div class="clock" data-widget="clock">
+        <b data-field="clock.day">Tuesday</b>, <span data-field="clock.date">April 21</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ─── MASTHEAD ──────────────────────────────────────── -->
+  <header class="mast" data-widget="masthead">
+    <div class="ribbon" data-field="masthead.kicker">Westridge Middle &middot; Morning Edition</div>
+    <div class="title">
+      <span class="the" data-field="masthead.the">The</span><span data-field="masthead.mascot">Otter</span>&nbsp;<span class="accent" data-field="masthead.suffix">Daily</span>
+    </div>
+    <div class="tagline" data-field="masthead.tagline">All the news that fits the hallway &middot; Est. 1962</div>
+  </header>
+
+  <!-- ─── DATELINE RULE ─────────────────────────────────── -->
+  <div class="rule" aria-hidden="true"></div>
+
+  <!-- ─── INDICIA STRIP ─────────────────────────────────── -->
+  <div class="indicia" data-widget="indicia">
+    <span class="vol" data-field="indicia.vol">Vol. <em>CXLII</em> &middot; No. 138</span>
+    <span class="date" data-field="indicia.date">Tuesday, April 21, 2026 &middot; Day B &middot; Three sections, 22 pages</span>
+    <span class="pipe">|</span>
+    <span class="red" data-field="indicia.flag">FIELD DAY in 12 days</span>
+    <span class="pipe">|</span>
+    <span data-field="indicia.run">Print run: 1,217 otters</span>
+  </div>
+
+  <!-- ─── LEAD STORY ────────────────────────────────────── -->
+  <article class="lead" data-widget="greeting">
+    <div class="deptline">
+      <span class="swatch" aria-hidden="true"></span>
+      <span class="label" data-field="greeting.dept">From the Office &middot; Period 2 Edition</span>
+      <span class="pipe" aria-hidden="true"></span>
+      <span class="edition" data-field="greeting.edition">Today's lead story</span>
+    </div>
+
+    <h1>
+      <span class="small" data-field="greeting.kicker">Big day,</span><span data-field="greeting.headline1">Otters</span> <em data-field="greeting.headline2">go forth.</em>
+    </h1>
+
+    <p class="deck" data-field="greeting.deck">First bell rings 8:05 sharp. Mr. Nguyen has the journals stacked and the poetry workshop on the chalkboard &mdash; courage encouraged, pencils required.</p>
+
+    <div class="byline">
+      <span data-field="greeting.byline">By <b>The Front Office</b></span>
+      <span class="pipe">|</span>
+      <span data-field="greeting.dateline">WESTRIDGE, MASS.</span>
+      <span class="pipe">|</span>
+      <em data-field="greeting.tag">Filed 7:48 A.M.</em>
+    </div>
+
+    <div class="body">
+      <div class="col first">
+        <p data-field="greeting.lede">Today's lead is poetry. Period 2, room 108, journals out. Mr. Nguyen has been talking about this workshop since the first thaw, and he says he's bringing the good chalk &mdash; the kind that doesn't squeak. Morning attendance is already running ninety-eight percent before the bell, a quiet little record on the second-to-last Tuesday in April.</p>
+        <p data-field="greeting.col1b">Down the hall, the cafeteria smells like garlic bread and possibility.</p>
+
+        <div class="pullquote">
+          &ldquo;<span data-field="greeting.pq">Bring a pencil, a journal, and a quiet bit of courage.</span>&rdquo;
+          <span class="who" data-field="greeting.pq_who">&mdash; Mr. Nguyen, Eng. 7</span>
+        </div>
+      </div>
+      <div class="col">
+        <p data-field="greeting.col2a">Period 3 lab rules apply &mdash; closed-toe shoes, hair tied back, goggles on the cart. Coach Reyes is calling the mile run for fourth period sharp at 10:50, weather says fifty-eight and climbing, and the field is dry for the first time this week.</p>
+        <p data-field="greeting.col3a">Sign-ups for Field Day close this Friday at last bell. Two hundred and eighty-four otters are in. The remaining slots, the front office reports, will not last the week.</p>
+
+        <div class="photo" data-widget="photo">
+          <div class="frame" aria-hidden="true"></div>
+          <div class="caption" data-field="photo.caption"><b>OTIS THE OTTER</b>, mascot, surveys the courtyard before first bell. <em>&mdash; Photograph by Yearbook Club</em></div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- ─── INDEX SIDEBAR ─────────────────────────────────── -->
+  <aside class="sidebar" data-widget="agenda">
+    <div class="tochead">
+      <div class="h"><span data-field="agenda.title">Today's </span><em data-field="agenda.title_em">Index.</em></div>
+      <div class="day"><span data-field="agenda.day">Day B</span><br><span data-field="agenda.run">7 sections</span></div>
+    </div>
+
+    <div class="toc">
+      <div class="row done" data-widget="agenda.0">
+        <span class="p" data-field="agenda.0.p">P1</span>
+        <span class="what">
+          <span data-field="agenda.0.t">Mathematics</span>
+          <span data-field="agenda.0.r">Rm 214 &middot; Ms. Patel</span>
+        </span>
+        <span class="pg" data-field="agenda.0.time">8:05</span>
+      </div>
+      <div class="row now" data-widget="agenda.1">
+        <span class="p" data-field="agenda.1.p">P2</span>
+        <span class="what">
+          <span data-field="agenda.1.t">English &mdash; Poetry</span>
+          <span data-field="agenda.1.r">Rm 108 &middot; Mr. Nguyen</span>
+        </span>
+        <span class="pg" data-field="agenda.1.time">9:00</span>
+      </div>
+      <div class="row" data-widget="agenda.2">
+        <span class="p" data-field="agenda.2.p">P3</span>
+        <span class="what">
+          <span data-field="agenda.2.t">Science &mdash; Lab</span>
+          <span data-field="agenda.2.r">Rm 207 &middot; closed-toe shoes</span>
+        </span>
+        <span class="pg" data-field="agenda.2.time">9:55</span>
+      </div>
+      <div class="row" data-widget="agenda.3">
+        <span class="p" data-field="agenda.3.p">P4</span>
+        <span class="what">
+          <span data-field="agenda.3.t">PE &mdash; Mile Run</span>
+          <span data-field="agenda.3.r">Gym A &middot; Coach Reyes</span>
+        </span>
+        <span class="pg" data-field="agenda.3.time">10:50</span>
+      </div>
+      <div class="row" data-widget="agenda.4">
+        <span class="p" data-field="agenda.4.p">A</span>
+        <span class="what">
+          <span data-field="agenda.4.t">Lunch</span>
+          <span data-field="agenda.4.r">Cafeteria &middot; 7th grade</span>
+        </span>
+        <span class="pg" data-field="agenda.4.time">11:45</span>
+      </div>
+      <div class="row" data-widget="agenda.5">
+        <span class="p" data-field="agenda.5.p">P5</span>
+        <span class="what">
+          <span data-field="agenda.5.t">Social Studies</span>
+          <span data-field="agenda.5.r">Rm 115 &middot; map quiz</span>
+        </span>
+        <span class="pg" data-field="agenda.5.time">12:35</span>
+      </div>
+      <div class="row" data-widget="agenda.6">
+        <span class="p" data-field="agenda.6.p">P6</span>
+        <span class="what">
+          <span data-field="agenda.6.t">Art &mdash; Prints</span>
+          <span data-field="agenda.6.r">Rm B-12 &middot; sub today</span>
+        </span>
+        <span class="pg" data-field="agenda.6.time">1:30</span>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="s featured" data-widget="countdown">
+        <span class="k" data-field="countdown.label">Days to Field Day</span>
+        <span class="v"><span data-field="countdown.value">12</span></span>
+        <span class="sub" data-field="countdown.sub">Sign-ups close Friday</span>
+      </div>
+      <div class="s" data-widget="attendance">
+        <span class="k" data-field="attendance.label">Otters Today</span>
+        <span class="v"><span data-field="attendance.value">1,217</span><em data-field="attendance.unit">/1,240</em></span>
+        <span class="sub" data-field="attendance.sub">98.2% &middot; weekly high</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ─── DEPARTMENTS BAND ──────────────────────────────── -->
+  <section class="depts">
+    <!-- DINING -->
+    <div class="dept dining" data-widget="lunch">
+      <div class="slug">
+        <span class="num" data-field="lunch.num">§ 01</span>
+        <span class="name"><em data-field="lunch.dept_em">Dining</em><span data-field="lunch.dept">/ Today's menu</span></span>
+        <span class="meta" data-field="lunch.meta">11:45 A.M.</span>
+      </div>
+      <div class="entree" data-field="lunch.entree">Chicken &amp; <em>rice</em> bowl.</div>
+      <div class="sides" data-field="lunch.sides">Roasted broccoli, garlic bread, fresh fruit, and the salad bar open all period long.</div>
+      <div class="tags">
+        <b data-field="lunch.tag1">VEG OPT</b>
+        <b data-field="lunch.tag2">GLUTEN-FREE</b>
+        <b class="red" data-field="lunch.tag3">DAIRY-FREE</b>
+      </div>
+    </div>
+
+    <!-- AFTER 3 -->
+    <div class="dept clubs" data-widget="clubs">
+      <div class="slug">
+        <span class="num" data-field="clubs.num">§ 02</span>
+        <span class="name"><em data-field="clubs.dept_em">After</em><span data-field="clubs.dept">/ Three.</span></span>
+        <span class="meta" data-field="clubs.meta">3:00 P.M.</span>
+      </div>
+      <div class="list">
+        <div class="it" data-widget="clubs.0">
+          <div class="ico red" data-field="clubs.0.ic">R</div>
+          <div class="info">
+            <div class="t" data-field="clubs.0.t">Robotics Club</div>
+            <div class="s" data-field="clubs.0.r">Rm 207 &middot; Build week</div>
+          </div>
+          <div class="when" data-field="clubs.0.w">3:00<small data-field="clubs.0.note">starts</small></div>
+        </div>
+        <div class="it" data-widget="clubs.1">
+          <div class="ico" data-field="clubs.1.ic">D</div>
+          <div class="info">
+            <div class="t" data-field="clubs.1.t">Drama Auditions</div>
+            <div class="s" data-field="clubs.1.r">Auditorium &middot; spring play</div>
+          </div>
+          <div class="when" data-field="clubs.1.w">3:15<small data-field="clubs.1.note">arrive 5 early</small></div>
+        </div>
+        <div class="it" data-widget="clubs.2">
+          <div class="ico cream" data-field="clubs.2.ic">G</div>
+          <div class="info">
+            <div class="t" data-field="clubs.2.t">Garden Club</div>
+            <div class="s" data-field="clubs.2.r">Greenhouse &middot; plant rows</div>
+          </div>
+          <div class="when" data-field="clubs.2.w">3:00<small data-field="clubs.2.note">wear boots</small></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SEEN TODAY -->
+    <div class="dept shoutouts" data-widget="shoutouts">
+      <div class="slug">
+        <span class="num" data-field="shoutouts.num">§ 03</span>
+        <span class="name"><em data-field="shoutouts.dept_em">Seen</em><span data-field="shoutouts.dept">/ Around.</span></span>
+        <span class="meta" data-field="shoutouts.meta">Hall monitors</span>
+      </div>
+      <div class="list">
+        <div class="it" data-widget="shoutouts.0">
+          <div class="ico red" data-field="shoutouts.0.ic">★</div>
+          <div class="info">
+            <div class="t" data-field="shoutouts.0.t">Maya Rodriguez</div>
+            <div class="s" data-field="shoutouts.0.r">Turns 13 today &mdash; H.B.D.</div>
+          </div>
+          <div class="when" data-field="shoutouts.0.w">7B<small data-field="shoutouts.0.note">homeroom</small></div>
+        </div>
+        <div class="it" data-widget="shoutouts.1">
+          <div class="ico" data-field="shoutouts.1.ic">+1</div>
+          <div class="info">
+            <div class="t" data-field="shoutouts.1.t">Daniel K.</div>
+            <div class="s" data-field="shoutouts.1.r">Math olympiad &mdash; 3rd</div>
+          </div>
+          <div class="when" data-field="shoutouts.1.w">7th<small data-field="shoutouts.1.note">bronze</small></div>
+        </div>
+        <div class="it" data-widget="shoutouts.2">
+          <div class="ico cream" data-field="shoutouts.2.ic">W</div>
+          <div class="info">
+            <div class="t" data-field="shoutouts.2.t">Ms. Chen's 7B</div>
+            <div class="s" data-field="shoutouts.2.r">Top homework streak this month</div>
+          </div>
+          <div class="when" data-field="shoutouts.2.w">31<small data-field="shoutouts.2.note">days</small></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── BULLETIN TICKER ─────────────────────────────── -->
+  <div class="ticker" data-widget="ticker">
+    <div class="tag" data-field="ticker.tag">Stop the presses</div>
+    <div class="feed">
+      <div class="feed-inner">
+        <span data-field="ticker.0">Picture day Thursday &mdash; full uniform</span>
+        <span data-field="ticker.1">Bus 14 running ten minutes late</span>
+        <span data-field="ticker.2">Substitute covering Rm B-12</span>
+        <span data-field="ticker.3">Spelling bee sign-ups end Friday</span>
+        <span data-field="ticker.4">8th grade field-trip forms due tomorrow</span>
+        <span data-field="ticker.5">Lost: blue water bottle with otter sticker &mdash; front office</span>
+        <span data-field="ticker.6">Library returns due this week</span>
+        <span aria-hidden="true">Picture day Thursday &mdash; full uniform</span>
+        <span aria-hidden="true">Bus 14 running ten minutes late</span>
+        <span aria-hidden="true">Substitute covering Rm B-12</span>
+        <span aria-hidden="true">Spelling bee sign-ups end Friday</span>
+        <span aria-hidden="true">8th grade field-trip forms due tomorrow</span>
+        <span aria-hidden="true">Lost: blue water bottle with otter sticker &mdash; front office</span>
+        <span aria-hidden="true">Library returns due this week</span>
+      </div>
+    </div>
+    <div class="vol-end" data-field="ticker.endmark">— 30 —</div>
+  </div>
+
+</div></div></div>
+
+<script>
+  // fit() — same scale helper every shipped template uses.
+  (function(){
+    function fit(){
+      var cs = getComputedStyle(document.documentElement);
+      var w = parseFloat(cs.getPropertyValue('--stage-w')) || 2160;
+      var h = parseFloat(cs.getPropertyValue('--stage-h')) || 3840;
+      var k = Math.min(window.innerWidth / w, window.innerHeight / h);
+      document.documentElement.style.setProperty('--stage-scale', k);
+    }
+    window.addEventListener('resize', fit);
+    window.addEventListener('load', fit);
+    setTimeout(fit, 10);
+    setTimeout(fit, 300);
+  })();
+</script>
+</body>
+</html>

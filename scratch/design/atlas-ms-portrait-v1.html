@@ -1,0 +1,844 @@
+<!--
+  MS TEMPLATE · ATLAS · PORTRAIT v1
+  ==================================
+  Vertical 2160×3840 sibling to atlas-ms-v2.html. Travel-poster
+  cartography aesthetic (Work Sans + Playfair italic + DM Mono),
+  same content, redesigned for portrait reading rhythm.
+
+  Layout (2160×3840, edge inset = 64px, every gap = 20px):
+    TOP BAND      y=  80 →  540  (h= 460)  compass + school lockup horizontal
+    DATE STRIP    y= 560 →  800  (h= 240)  center date banner + 3 meta tiles
+    HERO POSTER   y= 820 → 1660  (h= 840)  Go forth, Otters. + lede + dest pills
+    ALMANAC       y=1680 → 2380  (h= 700)  sun + sunrise/sunset/high/low + quote
+    ROUTES        y=2400 → 3340  (h= 940)  4 transit cards stacked vertically
+    SPOTLIGHT     y=3360 → 3580  (h= 220)  Today's destination feature
+    TICKER        y=3600 → 3740  (h= 140)  bottom news bar
+    bottom inset  y=3740 → 3840  (    100)
+
+    Math check:
+      80 + 460 + 20 + 240 + 20 + 840 + 20 + 700 + 20 + 940 + 20 + 220 + 20 + 140 + 100
+      = 80 + 3660 + 100 = 3840 ✓
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Atlas — MS Lobby Portrait (v1)</title>
+<link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500;700&family=Playfair+Display:ital,wght@1,900&display=swap" rel="stylesheet">
+<style>
+  /* 3-layer scale wrapper, same pattern as the landscape sibling. */
+  *, *::before, *::after { box-sizing: border-box; }
+  :root { --stage-w: 2160px; --stage-h: 3840px; --stage-scale: 1; }
+  html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; background:#0a0f14; }
+  .viewport { position:fixed; inset:0; display:grid; place-items:center; overflow:hidden; }
+  .stage-outer { width:calc(var(--stage-w)*var(--stage-scale)); height:calc(var(--stage-h)*var(--stage-scale)); }
+  .stage { width:var(--stage-w); height:var(--stage-h); transform:scale(var(--stage-scale)); transform-origin:0 0; position:relative; box-shadow:0 80px 200px rgba(0,0,0,.55); overflow:hidden; }
+
+  :root {
+    /* Paper-and-ink cartographic palette, identical to v2 landscape. */
+    --paper:        #f4ecd8;
+    --paper-tint:   #ece3cc;
+    --ink:          #0b1220;
+    --ink-2:        #2f3e52;
+    --muted:        #74829a;
+    --gold:         #e0a726;
+    --red:          #d64c34;
+    --blue:         #2e6ed0;
+    --green:        #3a8d5d;
+    --purple:       #7d4fa8;
+    --water:        #b9d8dc;
+  }
+  html, body { color: var(--ink); font-family:'Work Sans', system-ui, sans-serif; }
+
+  /* Paper backdrop with topographic dot grid + warm corner glows.
+     Glow positions tweaked for portrait — top-left + bottom-right
+     diagonal balances the longer canvas. */
+  .stage {
+    background: var(--paper);
+    background-image:
+      radial-gradient(rgba(11,18,32,.055) 1.4px, transparent 1.4px),
+      radial-gradient(ellipse 1400px 1200px at 0% 0%, rgba(224,167,38,.12), transparent 70%),
+      radial-gradient(ellipse 1400px 1200px at 100% 100%, rgba(46,110,208,.08), transparent 70%);
+    background-size: 32px 32px, auto, auto;
+  }
+  /* Faint contour-line decoration — two centers, one upper-right and
+     one lower-left, sized for portrait. */
+  .stage::before {
+    content:''; position:absolute; inset:0; pointer-events:none; opacity:.16; z-index:0;
+    background-image:
+      radial-gradient(circle at 82% 22%, transparent 320px, rgba(11,18,32,.30) 322px, transparent 328px),
+      radial-gradient(circle at 82% 22%, transparent 400px, rgba(11,18,32,.30) 402px, transparent 408px),
+      radial-gradient(circle at 82% 22%, transparent 480px, rgba(11,18,32,.30) 482px, transparent 488px),
+      radial-gradient(circle at 82% 22%, transparent 560px, rgba(11,18,32,.30) 562px, transparent 568px),
+      radial-gradient(circle at 18% 78%, transparent 280px, rgba(11,18,32,.25) 282px, transparent 288px),
+      radial-gradient(circle at 18% 78%, transparent 360px, rgba(11,18,32,.25) 362px, transparent 368px),
+      radial-gradient(circle at 18% 78%, transparent 440px, rgba(11,18,32,.25) 442px, transparent 448px);
+  }
+
+  /* ─── PANEL DEFAULTS ───────────────────────────────────── */
+  /* Every panel inherits inset 64px left/right, overflow hidden, and
+     position absolute. Heights and tops are explicit per panel. */
+  .panel { position:absolute; left:64px; right:64px; overflow:hidden; z-index:2; }
+
+  /* ─── TOP BAND (y=80, h=460) ───────────────────────────── */
+  /* Horizontal lockup: compass on the left, school-name + eyebrow + sub
+     filling the rest. No background — sits directly on paper. */
+  .top {
+    top:80px; height:460px;
+    display:grid; grid-template-columns: 360px 1fr; gap: 56px; align-items: center;
+  }
+
+  .compass-wrap { display:flex; align-items:center; justify-content:center; height:100%; }
+  .compass {
+    width: 360px; height: 360px; position: relative; flex-shrink: 0;
+    background: #fff;
+    border: 8px solid var(--ink);
+    border-radius: 50%;
+    box-shadow: 14px 14px 0 var(--ink);
+  }
+  .compass::before {                    /* dashed inner ring */
+    content:''; position:absolute; inset:32px; border-radius:50%;
+    border: 3px dashed rgba(11,18,32,.45);
+  }
+  .compass::after {                     /* north needle */
+    content:''; position:absolute; top: 28px; left: 50%;
+    width: 0; height: 0; transform: translateX(-50%);
+    border: 44px solid transparent; border-bottom-color: var(--red); border-top: 0;
+  }
+  .compass .s-needle {                  /* south needle */
+    position:absolute; bottom: 28px; left: 50%;
+    width: 0; height: 0; transform: translateX(-50%);
+    border: 44px solid transparent; border-top-color: var(--ink); border-bottom: 0;
+  }
+  .compass .cardinal {
+    position:absolute; font-family:'Work Sans'; font-weight: 900; font-size: 52px; color: var(--ink);
+    letter-spacing: .04em;
+  }
+  .compass .n { top: -76px; left: 50%; transform: translateX(-50%); }
+  .compass .s { bottom: -76px; left: 50%; transform: translateX(-50%); color: var(--ink-2); }
+  .compass .e { right: -68px; top: 50%; transform: translateY(-50%); color: var(--ink-2); }
+  .compass .w { left: -68px; top: 50%; transform: translateY(-50%); color: var(--ink-2); }
+
+  .top .info {
+    display:flex; flex-direction: column; justify-content: center; gap: 0;
+  }
+  .top .info .eye {
+    font-family:'DM Mono'; font-size: 42px; font-weight: 700;
+    letter-spacing: .24em; text-transform: uppercase; color: var(--red);
+    display: inline-flex; align-items: center; gap: 22px;
+  }
+  .top .info .eye::before {
+    content:''; width: 80px; height: 5px; background: var(--red);
+  }
+  .top .info .name {
+    font-family:'Work Sans'; font-weight: 900; font-size: 220px;
+    color: var(--ink); line-height: .9; letter-spacing: -.035em;
+    margin-top: 16px;
+  }
+  .top .info .sub {
+    font-family:'DM Mono'; font-size: 44px; font-weight: 500;
+    color: var(--ink-2); letter-spacing: .16em; text-transform: uppercase;
+    margin-top: 24px;
+  }
+  .top .info .sub b { color: var(--red); font-weight: 700; }
+
+  /* ─── DATE STRIP (y=560, h=240) ────────────────────────── */
+  /* Center date banner on the left, three meta tiles on the right.
+     This is the "Tuesday, Apr 21" block + Temp/Sky/Time. */
+  .date-strip {
+    top:560px; height:240px;
+    display:grid; grid-template-columns: 1fr auto; gap: 40px; align-items: center;
+  }
+  .center-banner {
+    display:flex; flex-direction: column; justify-content: center;
+    padding: 0 8px;
+  }
+  .center-banner .label {
+    font-family:'DM Mono'; font-size: 36px; font-weight: 700;
+    letter-spacing: .26em; text-transform: uppercase; color: var(--ink-2);
+  }
+  .center-banner .date {
+    font-family:'Playfair Display', serif; font-style: italic; font-weight: 900;
+    font-size: 156px; color: var(--ink); line-height: 1; letter-spacing: -.02em;
+    margin-top: 6px;
+  }
+  .center-banner .stamp {
+    align-self: flex-start;
+    margin-top: 16px;
+    font-family:'Work Sans'; font-weight: 800; font-size: 32px;
+    letter-spacing: .18em; text-transform: uppercase; color: var(--red);
+    padding: 10px 28px; border: 4px solid var(--red); border-radius: 999px;
+    transform: rotate(-2deg);
+  }
+
+  .meta-tiles { display:flex; gap: 24px; align-items: center; }
+  .mt {
+    width: 200px; height: 200px;
+    padding: 24px 26px;
+    background: #fff; border: 5px solid var(--ink);
+    box-shadow: 8px 8px 0 var(--ink);
+    display:flex; flex-direction: column; justify-content: space-between;
+  }
+  .mt .k {
+    font-family:'DM Mono'; font-size: 24px; font-weight: 700;
+    letter-spacing: .18em; text-transform: uppercase; color: var(--ink-2);
+  }
+  .mt .v {
+    font-family:'Work Sans'; font-weight: 900; font-size: 96px;
+    color: var(--ink); line-height: 1; letter-spacing: -.02em;
+  }
+  .mt .v.warm { color: var(--red); }
+  .mt .v.cool { color: var(--blue); }
+  .mt .v.sun  { color: var(--gold); }
+
+  /* ─── HERO POSTER (y=820, h=840) ───────────────────────── */
+  /* Full-width travel poster — headline gets the full canvas in
+     portrait. */
+  .poster {
+    top:820px; height:840px;
+    background: #fff; border: 6px solid var(--ink);
+    box-shadow: 16px 16px 0 var(--ink);
+    padding: 80px 96px;
+    display:flex; flex-direction: column; justify-content: center;
+  }
+  .poster::before {
+    content:''; position:absolute; inset:24px;
+    border: 3px solid var(--ink); pointer-events:none;
+  }
+  .poster::after {
+    content:''; position:absolute; right:-160px; bottom:-160px;
+    width: 700px; height: 700px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(224,167,38,.24), transparent 70%);
+    pointer-events:none;
+  }
+  .poster .chapter {
+    font-family:'DM Mono'; font-size: 44px; font-weight: 700;
+    letter-spacing: .26em; text-transform: uppercase; color: var(--red);
+    margin-bottom: 24px;
+    display:inline-flex; align-items:center; gap: 28px;
+  }
+  .poster .chapter::before {
+    content:''; width: 80px; height: 6px; background: var(--red);
+  }
+  .poster h1 {
+    font-family:'Work Sans'; font-weight: 900;
+    font-size: 280px; line-height: .88; letter-spacing: -.035em;
+    color: var(--ink); margin: 0;
+    text-wrap: balance;
+  }
+  .poster h1 em {
+    font-style: italic; color: var(--red);
+    font-family:'Playfair Display', serif; font-weight: 900;
+  }
+  .poster h1 .mark { color: var(--blue); }
+  .poster .lede {
+    font-family:'Work Sans'; font-weight: 500;
+    font-size: 60px; line-height: 1.28;
+    color: var(--ink-2); margin-top: 40px; max-width: 1700px;
+  }
+  .poster .dests {
+    margin-top: 40px; display:flex; gap: 22px; flex-wrap: wrap;
+  }
+  .poster .dest {
+    display:inline-flex; align-items: center; gap: 18px;
+    padding: 18px 32px;
+    background: var(--paper-tint); border: 4px solid var(--ink);
+    border-radius: 999px;
+    font-family:'Work Sans'; font-weight: 800; font-size: 40px;
+    color: var(--ink); letter-spacing: -.005em;
+  }
+  .poster .dest .pin {
+    width: 38px; height: 48px;
+    background: var(--red);
+    clip-path: polygon(50% 100%, 0 40%, 0 20%, 50% 0, 100% 20%, 100% 40%);
+  }
+  .poster .dest .pin.gold  { background: var(--gold); }
+  .poster .dest .pin.blue  { background: var(--blue); }
+  .poster .dest .pin.green { background: var(--green); }
+
+  /* ─── ALMANAC (y=1680, h=700) ──────────────────────────── */
+  /* School-agnostic block: sun + 6 weather cells + quote.
+     Reorganized for portrait — sun on the left, big sky headline,
+     6 cells in a 3×2 grid, quote ribbon at the bottom. */
+  .almanac {
+    top:1680px; height:700px;
+    background: #fff; border: 6px solid var(--ink);
+    box-shadow: 16px 16px 0 var(--ink);
+    padding: 36px 50px 36px;
+    display: flex; flex-direction: column;
+  }
+  .almanac::before {
+    /* Faint compass-rose watermark */
+    content: ''; position: absolute; right: -160px; top: -160px;
+    width: 600px; height: 600px; border-radius: 50%;
+    background:
+      conic-gradient(from 0deg, transparent 0 80deg, rgba(11,18,32,.04) 80deg 100deg, transparent 100deg 170deg, rgba(11,18,32,.04) 170deg 190deg, transparent 190deg 260deg, rgba(11,18,32,.04) 260deg 280deg, transparent 280deg 350deg, rgba(11,18,32,.04) 350deg 360deg);
+    pointer-events: none;
+  }
+  .almanac .alm-head {
+    display:flex; justify-content:space-between; align-items:baseline;
+    padding-bottom: 22px; border-bottom: 4px solid var(--ink);
+  }
+  .almanac .alm-head h3 {
+    font-family:'Work Sans'; font-weight: 900; font-size: 84px;
+    color: var(--ink); margin: 0; letter-spacing: -.02em; line-height: 1;
+  }
+  .almanac .alm-head h3 em {
+    font-family:'Playfair Display', serif; font-style: italic;
+    color: var(--blue); font-weight: 900;
+  }
+  .almanac .alm-head .vol {
+    font-family:'DM Mono'; font-size: 28px; font-weight: 500;
+    letter-spacing: .18em; text-transform: uppercase; color: var(--ink-2);
+  }
+
+  /* Sun + sky condition headline */
+  .almanac .alm-hero {
+    margin-top: 24px;
+    padding: 22px 28px;
+    background: linear-gradient(180deg, #fff8e0 0%, #fff 70%);
+    border: 4px solid var(--ink);
+    display: grid; grid-template-columns: 240px 1fr; gap: 36px; align-items: center;
+    flex-shrink: 0;
+  }
+  .almanac .alm-sun {
+    width: 240px; height: 240px; position: relative;
+    display: grid; place-items: center;
+  }
+  .almanac .alm-sun .core {
+    width: 150px; height: 150px; border-radius: 50%;
+    background: radial-gradient(circle at 38% 38%, #ffe089 0%, #f5b54b 60%, #d99129 100%);
+    border: 5px solid var(--ink);
+    box-shadow: 5px 5px 0 var(--ink);
+    z-index: 2;
+  }
+  .almanac .alm-sun::before {
+    content: ''; position: absolute; inset: 0;
+    background: conic-gradient(from 0deg,
+      var(--ink) 0deg 4deg, transparent 4deg 30deg,
+      var(--ink) 30deg 34deg, transparent 34deg 60deg,
+      var(--ink) 60deg 64deg, transparent 64deg 90deg,
+      var(--ink) 90deg 94deg, transparent 94deg 120deg,
+      var(--ink) 120deg 124deg, transparent 124deg 150deg,
+      var(--ink) 150deg 154deg, transparent 154deg 180deg,
+      var(--ink) 180deg 184deg, transparent 184deg 210deg,
+      var(--ink) 210deg 214deg, transparent 214deg 240deg,
+      var(--ink) 240deg 244deg, transparent 244deg 270deg,
+      var(--ink) 270deg 274deg, transparent 274deg 300deg,
+      var(--ink) 300deg 304deg, transparent 304deg 330deg,
+      var(--ink) 330deg 334deg, transparent 334deg 360deg);
+    -webkit-mask: radial-gradient(circle, transparent 90px, #000 91px);
+            mask: radial-gradient(circle, transparent 90px, #000 91px);
+  }
+  .almanac .alm-sky-label {
+    font-family:'DM Mono'; font-size: 26px; font-weight: 500;
+    letter-spacing: .2em; text-transform: uppercase; color: var(--red);
+  }
+  .almanac .alm-sky-headline {
+    font-family:'Work Sans'; font-weight: 900; font-size: 110px;
+    color: var(--ink); margin: 6px 0 4px; letter-spacing: -.02em; line-height: .95;
+  }
+  .almanac .alm-sky-sub {
+    font-family:'Playfair Display', serif; font-style: italic; font-weight: 900;
+    font-size: 44px; color: var(--ink-2);
+  }
+
+  /* Almanac data grid — 6 cells in 3 columns × 2 rows */
+  .almanac .alm-grid {
+    margin-top: 20px;
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    border: 4px solid var(--ink); background: var(--paper-tint);
+    flex-shrink: 0;
+  }
+  .almanac .alm-cell {
+    padding: 18px 22px; border-right: 3px solid var(--ink); border-bottom: 3px solid var(--ink);
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .almanac .alm-cell:nth-child(3n) { border-right: 0; }
+  .almanac .alm-cell:nth-last-child(-n+3) { border-bottom: 0; }
+  .almanac .alm-cell .k {
+    font-family:'DM Mono'; font-size: 24px; font-weight: 500;
+    letter-spacing: .18em; text-transform: uppercase; color: var(--ink-2);
+  }
+  .almanac .alm-cell .v {
+    font-family:'Work Sans'; font-weight: 900; font-size: 64px;
+    color: var(--ink); letter-spacing: -.01em; line-height: 1;
+  }
+
+  /* Quote ribbon at the bottom */
+  .almanac .alm-quote {
+    margin-top: auto; padding-top: 18px; border-top: 4px dashed var(--ink);
+    display: grid; grid-template-columns: auto 1fr auto; gap: 26px; align-items: center;
+  }
+  .almanac .alm-quote .marks {
+    font-family:'Playfair Display', serif; font-style: italic; font-weight: 900;
+    font-size: 120px; color: var(--gold); line-height: .65;
+  }
+  .almanac .alm-quote .body {
+    font-family:'Playfair Display', serif; font-style: italic; font-weight: 900;
+    font-size: 38px; line-height: 1.22; color: var(--ink);
+  }
+  .almanac .alm-quote .body cite {
+    display: block; margin-top: 6px;
+    font-family:'DM Mono'; font-style: normal; font-weight: 500;
+    font-size: 22px; letter-spacing: .15em; text-transform: uppercase; color: var(--ink-2);
+  }
+  .almanac .alm-quote .stamp {
+    border: 4px solid var(--red); color: var(--red);
+    padding: 10px 18px; transform: rotate(4deg);
+    font-family:'DM Mono'; font-size: 22px; font-weight: 700;
+    letter-spacing: .14em; text-transform: uppercase;
+  }
+
+  /* ─── ROUTES (y=2400, h=940) ───────────────────────────── */
+  /* 4 transit cards stacked vertically. Each card is now horizontal —
+     badge + name on the left, stops in the middle, status on the right.
+     Massively more readable than the squished 4-across grid. */
+  .routes {
+    top:2400px; height:940px;
+    background: #fff; border: 6px solid var(--ink);
+    box-shadow: 16px 16px 0 var(--ink);
+    padding: 32px 50px;
+    display: flex; flex-direction: column;
+  }
+  .routes .head {
+    display:flex; justify-content:space-between; align-items:flex-end;
+    padding-bottom: 18px; border-bottom: 4px solid var(--ink);
+    margin-bottom: 18px; flex-shrink: 0;
+  }
+  .routes .head h2 {
+    font-family:'Work Sans'; font-weight: 900; font-size: 88px;
+    color: var(--ink); margin: 0; letter-spacing: -.02em; line-height: 1;
+  }
+  .routes .head h2 em {
+    font-family:'Playfair Display', serif; font-style: italic;
+    color: var(--red); font-weight: 900;
+  }
+  .routes .head .meta {
+    font-family:'DM Mono'; font-size: 28px; font-weight: 500;
+    letter-spacing: .18em; text-transform: uppercase; color: var(--ink-2);
+  }
+  .routes .stack {
+    display: flex; flex-direction: column; gap: 14px;
+    flex: 1; min-height: 0;
+  }
+  .route {
+    flex: 1;
+    padding: 14px 20px;
+    background: var(--paper);
+    border: 4px solid var(--ink);
+    box-shadow: 5px 5px 0 rgba(11,18,32,.25);
+    display: grid;
+    grid-template-columns: 460px 1fr 240px;
+    gap: 24px; align-items: center;
+  }
+
+  /* Left: badge + line name + period sub */
+  .route .label {
+    display:flex; align-items:center; gap: 22px; min-width: 0;
+  }
+  .route .badge {
+    width: 110px; height: 110px; border-radius: 50%;
+    display:grid; place-items:center;
+    font-family:'Work Sans'; font-weight: 900; font-size: 48px;
+    color: #fff; border: 5px solid var(--ink);
+    letter-spacing: .02em;
+    flex-shrink: 0;
+    box-shadow: 4px 4px 0 var(--ink);
+  }
+  .route .badge.gold  { background: var(--gold); color: var(--ink); }
+  .route .badge.red   { background: var(--red); }
+  .route .badge.blue  { background: var(--blue); }
+  .route .badge.green { background: var(--green); }
+  .route .label .name {
+    font-family:'Work Sans'; font-weight: 900; font-size: 56px;
+    color: var(--ink); line-height: 1; letter-spacing: -.01em;
+    min-width: 0; overflow: hidden;
+  }
+  .route .label .name span {
+    display:block;
+    font-family:'DM Mono'; font-weight: 500; font-size: 22px;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2);
+    margin-top: 8px;
+  }
+
+  /* Middle: stops with rail + next-up ride detail */
+  .route .center {
+    display: flex; flex-direction: column; gap: 8px;
+    min-width: 0;
+  }
+  .route .stops {
+    display:flex; justify-content: space-between; align-items:center;
+    padding: 8px 14px;
+    border-top: 3px solid var(--ink); border-bottom: 3px solid var(--ink);
+    position: relative;
+  }
+  .route .stops::before {
+    content:''; position:absolute; left: 32px; right: 32px; top: 50%;
+    height: 6px; background: var(--ink); transform: translateY(-50%);
+  }
+  .route .stops .st {
+    display:flex; flex-direction: row; align-items:center; gap: 12px;
+    position: relative; z-index: 1;
+    background: var(--paper); padding: 4px 8px;
+  }
+  .route .stops .st .dot {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: #fff; border: 5px solid var(--ink);
+    flex-shrink: 0;
+  }
+  .route .stops .st.now .dot {
+    background: var(--ink); box-shadow: 0 0 0 4px var(--paper), 0 0 0 8px var(--ink);
+  }
+  .route .stops .st .lb {
+    font-family:'Work Sans'; font-weight: 900; font-size: 36px;
+    letter-spacing: .04em; color: var(--ink-2);
+  }
+  .route .stops .st.now .lb { color: var(--red); }
+  .route .next {
+    display: flex; align-items: baseline; gap: 16px;
+    font-family:'Work Sans'; font-weight: 700; font-size: 30px;
+    color: var(--ink); line-height: 1.2;
+    padding: 0 4px;
+  }
+  .route .next .next-title {
+    font-weight: 800; color: var(--ink);
+  }
+  .route .next .next-sub {
+    font-family:'DM Mono'; font-weight: 500; font-size: 22px;
+    letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2);
+  }
+
+  /* Right: status pill, vertically centered */
+  .route .status {
+    justify-self: end;
+    font-family:'Work Sans'; font-weight: 800; font-size: 34px;
+    padding: 14px 24px; border: 4px solid var(--ink);
+    letter-spacing: .06em; text-transform: uppercase;
+    text-align: center;
+    min-width: 220px;
+  }
+  .route .status.on   { background:#d7eadb; color:#1f6a3f; }
+  .route .status.late { background:#fadcd4; color:#9b2f18; }
+  .route .status.soon { background:#dfe9f9; color:#264f99; }
+
+  /* ─── SPOTLIGHT (y=3360, h=220) ────────────────────────── */
+  .spotlight {
+    top: 3360px; height: 220px;
+    background: var(--ink); color: var(--paper);
+    border: 6px solid var(--ink);
+    box-shadow: 12px 12px 0 var(--gold);
+    padding: 28px 40px;
+    display:grid; grid-template-columns: auto 1fr; gap: 40px; align-items: center;
+  }
+  .spotlight .pin {
+    width: 130px; height: 168px;
+    background: var(--red);
+    clip-path: polygon(50% 100%, 0 40%, 0 20%, 50% 0, 100% 20%, 100% 40%);
+    display:grid; place-items: center;
+    position: relative;
+    flex-shrink: 0;
+  }
+  .spotlight .pin::after {
+    content:''; width: 46px; height: 46px; border-radius: 50%;
+    background: var(--paper); position: absolute; top: 32px;
+  }
+  .spotlight .info .ey {
+    font-family:'DM Mono'; font-size: 28px; font-weight: 700;
+    letter-spacing: .24em; text-transform: uppercase; color: var(--gold);
+  }
+  .spotlight .info .t {
+    font-family:'Work Sans'; font-weight: 900; font-size: 76px;
+    color: var(--paper); margin-top: 6px; line-height: 1; letter-spacing: -.015em;
+  }
+  .spotlight .info .s {
+    font-family:'Work Sans'; font-weight: 500; font-size: 36px;
+    color: rgba(244,236,216,.82); margin-top: 10px;
+  }
+
+  /* ─── TICKER (y=3600, h=140) ───────────────────────────── */
+  .ticker-row {
+    top: 3600px; height: 140px;
+    background: var(--paper); border: 6px solid var(--ink);
+    box-shadow: 12px 12px 0 var(--ink);
+    display:grid; grid-template-columns: auto 1fr; align-items: stretch;
+  }
+  .ticker-row .badge {
+    background: var(--gold); color: var(--ink);
+    padding: 0 48px;
+    display:flex; align-items: center; gap: 22px;
+    font-family:'Work Sans'; font-weight: 900; font-size: 48px;
+    letter-spacing: .02em;
+    border-right: 6px solid var(--ink);
+  }
+  .ticker-row .badge::before {
+    content:'★'; color: var(--ink); font-size: 44px;
+  }
+  .ticker-row .feed {
+    overflow: hidden; display:flex; align-items:center;
+    padding-left: 40px;
+  }
+  .ticker-row .feed-inner {
+    display:flex; gap: 72px;
+    font-family:'Work Sans'; font-weight: 600; font-size: 48px;
+    color: var(--ink); white-space: nowrap;
+    animation: scroll 60s linear infinite;
+  }
+  .ticker-row .feed-inner span { display:inline-flex; align-items:center; gap: 24px; }
+  .ticker-row .feed-inner span::after {
+    content:'•'; color: var(--red); margin-left: 36px;
+  }
+  @keyframes scroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+</style>
+</head>
+<body>
+
+<div class="viewport"><div class="stage-outer"><div class="stage">
+
+  <!-- ─── TOP BAND — compass + school lockup ─────────────── -->
+  <header class="panel top">
+    <div class="compass-wrap">
+      <div class="compass" aria-hidden="true">
+        <div class="s-needle"></div>
+        <span class="cardinal n">N</span>
+        <span class="cardinal s">S</span>
+        <span class="cardinal e">E</span>
+        <span class="cardinal w">W</span>
+      </div>
+    </div>
+    <div class="info">
+      <div class="eye">Middle School Atlas</div>
+      <div class="name">WESTRIDGE.MS</div>
+      <div class="sub">42.3601° N &middot; 71.0589° W &middot; <b>DAY&nbsp;B</b></div>
+    </div>
+  </header>
+
+  <!-- ─── DATE STRIP — center date banner + weather/time tiles ─── -->
+  <section class="panel date-strip">
+    <div class="center-banner">
+      <div class="label">Entry · Volume 07</div>
+      <div class="date">Tuesday, Apr 21</div>
+      <span class="stamp">Field Day &middot; 12 days out</span>
+    </div>
+    <div class="meta-tiles">
+      <div class="mt">
+        <span class="k">Temp</span>
+        <span class="v cool">46°</span>
+      </div>
+      <div class="mt">
+        <span class="k">Sky</span>
+        <span class="v sun">☀</span>
+      </div>
+      <div class="mt">
+        <span class="k">Time</span>
+        <span class="v">07:53</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── HERO POSTER — full-width travel poster ─────────── -->
+  <section class="panel poster">
+    <div class="chapter">Chapter 147 · Morning Edition</div>
+    <h1>
+      Go <em>forth,</em><br />
+      <span class="mark">Otters.</span>
+    </h1>
+    <p class="lede">
+      Today&rsquo;s journey assembles at 08:05. Pack pencil, journal, and a
+      quiet bit of courage. Mr.&nbsp;Nguyen awaits in Room&nbsp;108 &mdash;
+      the poetry workshop has a new chapter for you.
+    </p>
+    <div class="dests">
+      <span class="dest"><span class="pin"></span>Rm 108 · Poetry</span>
+      <span class="dest"><span class="pin gold"></span>Gym A · Mile Run</span>
+      <span class="dest"><span class="pin blue"></span>Lib · Sign-ups Close Fri</span>
+      <span class="dest"><span class="pin green"></span>Aud · Drama Auditions</span>
+    </div>
+  </section>
+
+  <!-- ─── ALMANAC — sun + 6 weather cells + quote ────────── -->
+  <section class="panel almanac">
+    <div class="alm-head">
+      <h3>Today&rsquo;s <em>Almanac</em></h3>
+      <div class="vol">School-Agnostic · No Setup Required</div>
+    </div>
+    <div class="alm-hero">
+      <div class="alm-sun" aria-hidden="true"><div class="core"></div></div>
+      <div>
+        <div class="alm-sky-label">Sky · Tuesday</div>
+        <div class="alm-sky-headline">Crisp &amp; Clear</div>
+        <div class="alm-sky-sub">Light easterly breeze · light jacket weather</div>
+      </div>
+    </div>
+    <div class="alm-grid">
+      <div class="alm-cell"><span class="k">Sunrise</span><span class="v">6:14a</span></div>
+      <div class="alm-cell"><span class="k">Sunset</span><span class="v">7:32p</span></div>
+      <div class="alm-cell"><span class="k">High</span><span class="v">62°</span></div>
+      <div class="alm-cell"><span class="k">Low</span><span class="v">41°</span></div>
+      <div class="alm-cell"><span class="k">Sky</span><span class="v">Clear</span></div>
+      <div class="alm-cell"><span class="k">Moon</span><span class="v">Waxing</span></div>
+    </div>
+    <div class="alm-quote">
+      <span class="marks">&ldquo;</span>
+      <span class="body">
+        Not all who wander are lost &mdash; some are simply
+        looking for Room 108.
+        <cite>— Today&rsquo;s field note</cite>
+      </span>
+      <span class="stamp">Vol&nbsp;07</span>
+    </div>
+  </section>
+
+  <!-- ─── ROUTES — 4 transit cards stacked vertically ────── -->
+  <section class="panel routes">
+    <div class="head">
+      <h2>Today&rsquo;s <em>Routes</em></h2>
+      <div class="meta">4 lines · 22 stops · on schedule</div>
+    </div>
+    <div class="stack">
+
+      <!-- GOLD — Morning -->
+      <div class="route">
+        <div class="label">
+          <div class="badge gold">AM</div>
+          <div class="name">Morning Line
+            <span>P1 · P2 · P3</span>
+          </div>
+        </div>
+        <div class="center">
+          <div class="stops">
+            <div class="st"><div class="dot"></div><div class="lb">MATH</div></div>
+            <div class="st now"><div class="dot"></div><div class="lb">ENG</div></div>
+            <div class="st"><div class="dot"></div><div class="lb">SCI</div></div>
+          </div>
+          <div class="next">
+            <span class="next-title">Now arriving</span>
+            <span class="next-sub">Rm 108 · Mr. Nguyen</span>
+          </div>
+        </div>
+        <div class="status on">On time</div>
+      </div>
+
+      <!-- RED — Afternoon -->
+      <div class="route">
+        <div class="label">
+          <div class="badge red">PM</div>
+          <div class="name">Afternoon Line
+            <span>P4 · P5 · P6</span>
+          </div>
+        </div>
+        <div class="center">
+          <div class="stops">
+            <div class="st"><div class="dot"></div><div class="lb">PE</div></div>
+            <div class="st"><div class="dot"></div><div class="lb">SS</div></div>
+            <div class="st"><div class="dot"></div><div class="lb">ART</div></div>
+          </div>
+          <div class="next">
+            <span class="next-title">Next departure</span>
+            <span class="next-sub">Gym A · Mile run · 10:50</span>
+          </div>
+        </div>
+        <div class="status soon">10:50</div>
+      </div>
+
+      <!-- BLUE — Lunch -->
+      <div class="route">
+        <div class="label">
+          <div class="badge blue">LN</div>
+          <div class="name">Lunch Line
+            <span>A · B · C Period</span>
+          </div>
+        </div>
+        <div class="center">
+          <div class="stops">
+            <div class="st"><div class="dot"></div><div class="lb">7TH</div></div>
+            <div class="st"><div class="dot"></div><div class="lb">8TH</div></div>
+            <div class="st"><div class="dot"></div><div class="lb">6TH</div></div>
+          </div>
+          <div class="next">
+            <span class="next-title">Chicken &amp; rice</span>
+            <span class="next-sub">A-period · 7th grade · 11:45</span>
+          </div>
+        </div>
+        <div class="status soon">11:45</div>
+      </div>
+
+      <!-- GREEN — Clubs -->
+      <div class="route">
+        <div class="label">
+          <div class="badge green">CL</div>
+          <div class="name">Clubs Line
+            <span>After School</span>
+          </div>
+        </div>
+        <div class="center">
+          <div class="stops">
+            <div class="st"><div class="dot"></div><div class="lb">ROB</div></div>
+            <div class="st"><div class="dot"></div><div class="lb">DRM</div></div>
+            <div class="st"><div class="dot"></div><div class="lb">BND</div></div>
+          </div>
+          <div class="next">
+            <span class="next-title">Robotics build week</span>
+            <span class="next-sub">Rm 207 · 3:00 · rare loot</span>
+          </div>
+        </div>
+        <div class="status on">On time</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ─── SPOTLIGHT — destination today ──────────────────── -->
+  <section class="panel spotlight">
+    <div class="pin" aria-hidden="true"></div>
+    <div class="info">
+      <div class="ey">Destination Today</div>
+      <div class="t">Picture Day &mdash; Thu</div>
+      <div class="s">Full uniform · permission slips to front office by Wed</div>
+    </div>
+  </section>
+
+  <!-- ─── TICKER — bottom news bar ───────────────────────── -->
+  <section class="panel ticker-row">
+    <div class="badge">NEWS</div>
+    <div class="feed">
+      <div class="feed-inner">
+        <span>Bus 14 running +10</span>
+        <span>Sub covering Rm B-12</span>
+        <span>Spelling bee sign-ups end Friday</span>
+        <span>8th grade field trip forms due tomorrow</span>
+        <span>Library returns due this week</span>
+        <span>Lost blue water bottle → front office</span>
+        <span>Bus 14 running +10</span>
+        <span>Sub covering Rm B-12</span>
+        <span>Spelling bee sign-ups end Friday</span>
+        <span>8th grade field trip forms due tomorrow</span>
+        <span>Library returns due this week</span>
+        <span>Lost blue water bottle → front office</span>
+      </div>
+    </div>
+  </section>
+
+</div></div></div>
+
+<script>
+  // fit() — same scale helper every shipped template uses.
+  (function(){
+    function fit(){
+      var cs = getComputedStyle(document.documentElement);
+      var w = parseFloat(cs.getPropertyValue('--stage-w')) || 2160;
+      var h = parseFloat(cs.getPropertyValue('--stage-h')) || 3840;
+      var k = Math.min(window.innerWidth / w, window.innerHeight / h);
+      document.documentElement.style.setProperty('--stage-scale', k);
+    }
+    window.addEventListener('resize', fit);
+    window.addEventListener('load', fit);
+    setTimeout(fit, 10);
+    setTimeout(fit, 300);
+  })();
+</script>
+</body>
+</html>

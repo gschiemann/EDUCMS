@@ -1,0 +1,1224 @@
+<!--
+  MS TEMPLATE · GREENHOUSE · PORTRAIT v1
+  =======================================
+  Vertical 2160×3840 sibling to greenhouse-ms-v2.html.
+  Botanical herbarium aesthetic (Cormorant + IM Fell + Caveat,
+  antique cream + ferns + mullion grid), same content,
+  redesigned for portrait reading rhythm.
+
+  Layout (2160×3840):
+    TOP INSET       y=0      h=64     (margin)
+    SEAL+ID         y=64     h=360    school seal + name + Latin
+    GAUGES          y=444    h=280    3 brass instruments (weather/clock/bloom)
+    HERBARIUM HERO  y=744    h=1480   accession + chapter + h1 + lede + 4 SVG specimens
+    INDEX           y=2244   h=720    specimens list (vertical column, 6 rows)
+    CLUB PACKETS    y=2984   h=320    3 seed-packet cards
+    ANNOUNCEMENT    y=3324   h=180    pinned terracotta notice
+    COUNTDOWN+SIGN  y=3524   h=152    almanac countdown + cafeteria signpost
+    TICKER          y=3696   h=80     brass plate ticker
+    BOTTOM INSET    y=3776   h=64     (margin)
+
+    Math: 64 + 360 + 20 + 280 + 20 + 1480 + 20 + 720 + 20
+        + 320 + 20 + 180 + 20 + 152 + 20 + 80 + 64 = 3840 ✓
+    Every gap = 20px, every panel inset = 64px.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Greenhouse — MS Lobby Portrait 4K (v1)</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&family=IM+Fell+English:ital,wght@0,400;1,400&family=Work+Sans:wght@400;500;600;700;800;900&family=Caveat:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  /* 3-layer scale wrapper, identical pattern to landscape sibling */
+  *, *::before, *::after { box-sizing: border-box; }
+  :root { --stage-w: 2160px; --stage-h: 3840px; --stage-scale: 1; }
+  html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; background:#1a1610; }
+  .viewport { position:fixed; inset:0; display:grid; place-items:center; overflow:hidden; }
+  .stage-outer { width:calc(var(--stage-w)*var(--stage-scale)); height:calc(var(--stage-h)*var(--stage-scale)); }
+  .stage { width:var(--stage-w); height:var(--stage-h); transform:scale(var(--stage-scale)); transform-origin:0 0; position:relative; box-shadow:0 80px 200px rgba(0,0,0,.55); overflow:hidden; }
+
+  :root {
+    /* Botanical conservatory palette — match landscape exactly */
+    --paper:        #f0e7d2;
+    --paper-2:      #e7dcc1;
+    --paper-warm:   #f6eed9;
+    --ink:          #1f2a1c;
+    --ink-2:        #3a4a36;
+    --muted:        #6b7a64;
+    --moss:         #345e3a;
+    --fern:         #4f8b48;
+    --sage:         #93b07c;
+    --eucalyptus:   #6f9b78;
+    --terracotta:   #b85a3a;
+    --terracotta-d: #8c3f29;
+    --brass:        #b8893c;
+    --brass-d:      #8a6122;
+    --gold:         #d6a93f;
+    --bloom:        #e8a55c;
+    --berry:        #a23046;
+    --sky:          #7fa8b8;
+  }
+  html, body { color: var(--ink); font-family:'Cormorant Garamond', 'IM Fell English', serif; }
+
+  /* Parchment texture: warm gradient, foxing spots, fine grain dots */
+  .stage {
+    background: var(--paper);
+    background-image:
+      radial-gradient(ellipse 1700px 1300px at 18% 6%,  rgba(214,169,63,.18), transparent 70%),
+      radial-gradient(ellipse 1500px 1400px at 90% 95%, rgba(52,94,58,.20), transparent 70%),
+      radial-gradient(ellipse 900px 700px   at 8% 78%,  rgba(184,90,58,.10), transparent 70%),
+      radial-gradient(ellipse 700px 600px   at 92% 38%, rgba(184,90,58,.08), transparent 70%),
+      radial-gradient(rgba(31,42,28,.045) 1px, transparent 1.4px);
+    background-size: auto, auto, auto, auto, 22px 22px;
+  }
+  /* Foxing spots — randomly scattered tiny rust marks across the taller canvas */
+  .stage::before {
+    content:''; position:absolute; inset:0; pointer-events:none; opacity:.55; z-index:0;
+    background-image:
+      radial-gradient(circle at 12% 8%,  rgba(140,63,41,.18) 0 4px, transparent 5px),
+      radial-gradient(circle at 23% 38%, rgba(140,63,41,.15) 0 5px, transparent 6px),
+      radial-gradient(circle at 67% 6%,  rgba(140,63,41,.12) 0 3px, transparent 4px),
+      radial-gradient(circle at 84% 30%, rgba(140,63,41,.18) 0 6px, transparent 7px),
+      radial-gradient(circle at 41% 22%, rgba(140,63,41,.10) 0 4px, transparent 5px),
+      radial-gradient(circle at 92% 14%, rgba(140,63,41,.14) 0 4px, transparent 5px),
+      radial-gradient(circle at 5% 25%,  rgba(140,63,41,.14) 0 3px, transparent 4px),
+      radial-gradient(circle at 56% 45%, rgba(140,63,41,.12) 0 5px, transparent 6px),
+      radial-gradient(circle at 18% 64%, rgba(140,63,41,.16) 0 5px, transparent 6px),
+      radial-gradient(circle at 78% 58%, rgba(140,63,41,.14) 0 4px, transparent 5px),
+      radial-gradient(circle at 9% 88%,  rgba(140,63,41,.14) 0 4px, transparent 5px),
+      radial-gradient(circle at 88% 78%, rgba(140,63,41,.18) 0 5px, transparent 6px),
+      radial-gradient(circle at 38% 92%, rgba(140,63,41,.10) 0 4px, transparent 5px),
+      radial-gradient(circle at 60% 72%, rgba(140,63,41,.12) 0 3px, transparent 4px);
+  }
+  /* Conservatory glasshouse mullion arches at the top — matches landscape pattern */
+  .stage::after {
+    content:''; position:absolute; inset:0; pointer-events:none; z-index:0; opacity:.10;
+    background-image:
+      linear-gradient(180deg, rgba(31,42,28,.4) 0 2px, transparent 2px 100%),
+      repeating-linear-gradient(90deg, rgba(31,42,28,.2) 0 2px, transparent 2px 240px),
+      repeating-linear-gradient(0deg,  rgba(31,42,28,.2) 0 2px, transparent 2px 300px);
+    background-size: 100% 80px, 100% 100%, 100% 100%;
+    mask: linear-gradient(180deg, #000 0%, transparent 14%);
+    -webkit-mask: linear-gradient(180deg, #000 0%, transparent 14%);
+  }
+
+  /* Botanical SVG decorations growing from corners */
+  .corner-fern { position:absolute; pointer-events:none; z-index:0; }
+  .corner-fern.tl { top:-40px; left:-40px; width:620px; height:620px; transform: rotate(-8deg); opacity:.85; }
+  .corner-fern.br { bottom:-50px; right:-50px; width:680px; height:680px; transform: rotate(170deg); opacity:.78; }
+  .corner-fern svg { width:100%; height:100%; }
+
+  /* ─── SEAL+ID BAND ──────────────────────────────────────── */
+  /* y=64, h=360 — full-width centered school identity */
+  .top {
+    position:absolute; top:64px; left:64px; right:64px; height:360px;
+    display:grid; grid-template-columns: 320px 1fr; gap: 56px; align-items: center;
+    padding: 16px 32px;
+    overflow: hidden;
+    z-index:2;
+  }
+
+  /* Hand-drawn monogram seal: brass ring + sprout silhouette */
+  .seal {
+    width: 320px; height: 320px; position:relative; flex-shrink: 0;
+    background: var(--paper-warm);
+    border-radius: 50%;
+    border: 7px solid var(--moss);
+    box-shadow:
+      inset 0 0 0 20px var(--paper-warm),
+      inset 0 0 0 23px var(--brass),
+      8px 10px 0 var(--moss);
+  }
+  .seal::before {
+    content:''; position:absolute; inset:34px; border-radius:50%;
+    border: 2px dashed rgba(31,42,28,.5);
+  }
+  .seal svg { position:absolute; inset:46px; width:calc(100% - 92px); height:calc(100% - 92px); }
+  .seal .est {
+    position:absolute; top:-20px; left:50%; transform: translateX(-50%);
+    background: var(--moss); color: var(--paper-warm);
+    font-family:'Work Sans', sans-serif; font-weight: 800; font-size: 22px;
+    letter-spacing: .26em; padding: 8px 18px; border-radius: 4px;
+    text-transform: uppercase;
+  }
+
+  .top .ident { overflow: hidden; }
+  .top .ident .eyebrow {
+    font-family:'Work Sans', sans-serif; font-weight: 700; font-size: 38px;
+    letter-spacing: .32em; text-transform: uppercase; color: var(--terracotta);
+    display:flex; align-items:center; gap: 22px;
+  }
+  .top .ident .eyebrow::before {
+    content:''; width: 80px; height: 4px; background: var(--terracotta); flex-shrink:0;
+  }
+  .top .ident .name {
+    font-family:'Cormorant Garamond', serif; font-style: italic; font-weight: 700;
+    font-size: 200px; line-height: .92; letter-spacing: -.02em;
+    color: var(--ink); margin-top: 8px;
+  }
+  .top .ident .name em {
+    font-style: italic; color: var(--moss);
+  }
+  .top .ident .latin {
+    font-family:'IM Fell English', serif; font-style: italic; font-weight: 400;
+    font-size: 44px; color: var(--ink-2); letter-spacing: .03em;
+    margin-top: 14px;
+  }
+  .top .ident .latin b { color: var(--berry); font-style: normal; font-weight: 700; }
+
+  /* ─── GAUGES BAND ───────────────────────────────────────── */
+  /* y=444, h=280 — three brass instruments side by side */
+  .instruments {
+    position:absolute; top:444px; left:64px; right:64px; height:280px;
+    display:grid; grid-template-columns: repeat(3, 1fr); gap: 28px;
+    overflow: hidden;
+    z-index:2;
+  }
+  .gauge {
+    background:
+      radial-gradient(circle at 30% 28%, var(--paper-warm), var(--paper-2));
+    border: 7px solid var(--brass);
+    border-radius: 22px;
+    box-shadow:
+      inset 0 0 0 4px var(--paper-warm),
+      inset 0 0 36px rgba(138,97,34,.18),
+      8px 8px 0 var(--moss);
+    padding: 30px 32px 24px;
+    display:flex; flex-direction: column; justify-content: space-between;
+    position: relative;
+    overflow: hidden;
+  }
+  .gauge::before {
+    content:''; position:absolute; top:12px; left:50%; transform: translateX(-50%);
+    width: 130px; height: 8px; background: var(--brass-d); border-radius: 4px;
+    box-shadow: 0 2px 0 rgba(0,0,0,.15);
+  }
+  .gauge .lbl {
+    font-family:'Work Sans', sans-serif; font-weight: 700; font-size: 32px;
+    letter-spacing: .22em; text-transform: uppercase; color: var(--ink-2);
+    text-align: center; margin-top: 18px;
+  }
+  .gauge .val {
+    font-family:'Cormorant Garamond', serif; font-weight: 700; font-style: italic;
+    font-size: 130px; line-height: .9; color: var(--ink); text-align: center;
+    letter-spacing: -.01em;
+  }
+  .gauge .val.warm { color: var(--terracotta); }
+  .gauge .val.cool { color: var(--sky); }
+  .gauge .sub {
+    font-family:'IM Fell English', serif; font-style: italic;
+    font-size: 30px; color: var(--moss); text-align: center;
+  }
+  .gauge .ticks {
+    position:absolute; left:18px; right:18px; bottom: 110px; height: 8px;
+    background:
+      repeating-linear-gradient(90deg, var(--brass-d) 0 3px, transparent 3px 22px);
+    opacity:.55;
+  }
+
+  /* ─── HERBARIUM HERO ───────────────────────────────────── */
+  /* y=744, h=1480 — main herbarium plate with 4 specimens at bottom */
+  .plate {
+    position:absolute; top:744px; left:64px; right:64px; height:1480px;
+    background: var(--paper-warm);
+    border: 5px solid var(--ink);
+    box-shadow:
+      inset 0 0 0 22px var(--paper-warm),
+      inset 0 0 0 25px var(--moss),
+      16px 16px 0 var(--moss);
+    padding: 76px 84px 56px;
+    overflow: hidden;
+    display:flex; flex-direction: column;
+    z-index:2;
+  }
+  /* Inner double-rule frame typical of herbarium sheets */
+  .plate::before {
+    content:''; position:absolute; inset:42px;
+    border: 2px solid var(--ink);
+    pointer-events:none;
+  }
+  .plate::after {
+    content:''; position:absolute; inset:54px;
+    border: 0.5px solid var(--brass-d);
+    pointer-events:none;
+  }
+  .plate .accession {
+    position:absolute; top:80px; right:96px;
+    font-family:'IM Fell English', serif; font-style: italic;
+    font-size: 32px; color: var(--ink-2);
+    transform: rotate(2deg);
+    text-align: right; line-height: 1.3;
+    z-index: 3;
+  }
+  .plate .accession b {
+    display:block; font-family:'Work Sans', sans-serif; font-style: normal;
+    font-weight: 800; font-size: 28px; letter-spacing: .18em;
+    color: var(--terracotta); text-transform: uppercase;
+  }
+  .plate .chapter {
+    font-family:'Work Sans', sans-serif; font-weight: 700; font-size: 36px;
+    letter-spacing: .3em; text-transform: uppercase; color: var(--moss);
+    display:inline-flex; align-items:center; gap: 26px;
+    margin-bottom: 34px; position: relative; z-index: 2;
+  }
+  .plate .chapter::before {
+    content:''; width: 110px; height: 4px; background: var(--moss);
+  }
+  .plate .chapter .ornament { color: var(--berry); font-size: 44px; line-height: 1; }
+  .plate h1 {
+    font-family:'Cormorant Garamond', serif; font-weight: 700;
+    font-size: 280px; line-height: .85; letter-spacing: -.025em;
+    color: var(--ink); margin: 0; position: relative; z-index: 2;
+    text-wrap: balance;
+  }
+  .plate h1 em {
+    font-style: italic; color: var(--moss);
+    background: linear-gradient(180deg, transparent 75%, rgba(232,165,92,.45) 75% 92%, transparent 92%);
+    padding: 0 10px; border-radius: 4px;
+  }
+  .plate h1 .accent {
+    color: var(--terracotta); font-style: italic;
+  }
+  .plate .lede {
+    font-family:'Cormorant Garamond', serif; font-weight: 500;
+    font-size: 64px; line-height: 1.32; color: var(--ink-2);
+    margin-top: 50px; max-width: 1700px; position: relative; z-index: 2;
+  }
+  .plate .lede em { color: var(--moss); font-weight: 600; font-style: italic; }
+
+  /* Bottom strip: hand-tinted botanical illustration row — 4 specimens */
+  .plate .illos {
+    position:absolute; left: 84px; right: 84px; bottom: 76px;
+    display:flex; align-items: flex-end; justify-content: space-between;
+    gap: 32px; z-index: 1;
+  }
+  .plate .illos .specimen {
+    display:flex; flex-direction: column; align-items: center; gap: 14px;
+    flex: 1;
+  }
+  .plate .illos svg { display:block; }
+  .plate .illos .latin {
+    font-family:'IM Fell English', serif; font-style: italic;
+    font-size: 34px; color: var(--ink-2); letter-spacing: .04em;
+    text-align: center; line-height: 1.2; max-width: 380px;
+  }
+  .plate .illos .latin b {
+    display:block; font-family:'Work Sans', sans-serif; font-style: normal;
+    font-weight: 800; font-size: 24px; letter-spacing: .22em;
+    color: var(--terracotta); text-transform: uppercase; margin-top: 6px;
+  }
+
+  /* Handwritten cataloger note in bottom-right */
+  .plate .signoff {
+    position:absolute; bottom: 484px; right: 110px;
+    font-family:'Caveat', cursive; font-weight: 700;
+    font-size: 50px; color: var(--ink-2);
+    transform: rotate(-3deg);
+    line-height: 1.1;
+    z-index: 2;
+    text-align: right;
+  }
+  .plate .signoff b {
+    display:block; font-family:'Caveat', cursive; font-weight: 700;
+    font-size: 44px; color: var(--berry);
+    margin-top: 4px;
+  }
+
+  /* ─── SPECIMENS INDEX ──────────────────────────────────── */
+  /* y=2244, h=720 — vertical column of today's periods */
+  .index {
+    position:absolute; top:2244px; left:64px; right:64px; height:720px;
+    background:
+      linear-gradient(180deg, var(--moss) 0%, #2a4a2e 100%);
+    color: var(--paper-warm);
+    border: 5px solid var(--ink);
+    box-shadow:
+      inset 0 0 0 16px var(--moss),
+      inset 0 0 0 19px var(--gold),
+      14px 14px 0 var(--ink);
+    padding: 44px 56px 40px;
+    overflow: hidden;
+    display:grid;
+    grid-template-rows: auto 1fr;
+    gap: 22px;
+    z-index:2;
+  }
+  .index::before {
+    content:''; position:absolute; right:-100px; top:-100px;
+    width: 420px; height: 420px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(214,169,63,.30), transparent 70%);
+    pointer-events:none;
+  }
+  .index::after {
+    content:''; position:absolute; left:-90px; bottom:-90px;
+    width: 320px; height: 320px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(232,165,92,.20), transparent 70%);
+    pointer-events:none;
+  }
+  .index .head {
+    padding-bottom: 22px; border-bottom: 3px solid var(--gold);
+    display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 30px;
+    position: relative; z-index: 1;
+  }
+  .index .head .left .eye {
+    font-family:'Work Sans', sans-serif; font-weight: 700; font-size: 30px;
+    letter-spacing: .26em; text-transform: uppercase; color: var(--gold);
+  }
+  .index .head .left h2 {
+    font-family:'Cormorant Garamond', serif; font-weight: 700;
+    font-style: italic; font-size: 110px; line-height: .9;
+    color: var(--paper-warm); margin: 8px 0 0; letter-spacing: -.015em;
+  }
+  .index .head .right {
+    text-align: right;
+    font-family:'IM Fell English', serif; font-style: italic;
+    font-size: 34px; color: var(--sage); line-height: 1.2;
+  }
+  .index .head .right b { color: var(--bloom); font-weight: 700; font-style: normal;
+    display:block; font-family:'Work Sans', sans-serif;
+    font-size: 28px; letter-spacing: .18em; text-transform: uppercase; }
+
+  /* Specimen list — six taxonomic cards in a tight column */
+  .specimens {
+    display:grid; grid-template-rows: repeat(6, 1fr); gap: 8px;
+    overflow: hidden;
+    position: relative; z-index: 1;
+    min-height: 0;
+  }
+  .sp {
+    display:grid; grid-template-columns: 90px 1fr auto; gap: 26px; align-items: center;
+    padding: 12px 24px;
+    background: rgba(240,231,210,.06);
+    border: 1.5px solid rgba(214,169,63,.45);
+    border-left: 7px solid var(--sage);
+    position: relative;
+    overflow: hidden;
+  }
+  .sp.now {
+    background: linear-gradient(90deg, rgba(232,165,92,.22), rgba(214,169,63,.12));
+    border-color: var(--bloom);
+    border-left: 7px solid var(--terracotta);
+    box-shadow: 0 0 0 2px rgba(232,165,92,.3);
+  }
+  .sp.done { opacity: .55; }
+  .sp.done::after {
+    content:''; position:absolute; left: 12px; right: 12px; top: 50%;
+    height: 2px; background: var(--sage); transform: translateY(-50%);
+    pointer-events:none; opacity:.5;
+  }
+  .sp .num {
+    font-family:'Cormorant Garamond', serif; font-style: italic;
+    font-weight: 700; font-size: 72px; color: var(--gold);
+    line-height: 1; text-align: center;
+  }
+  .sp.now .num { color: var(--bloom); }
+  .sp .body { line-height: 1.05; min-width: 0; }
+  .sp .common {
+    font-family:'Cormorant Garamond', serif; font-weight: 700;
+    font-size: 52px; color: var(--paper-warm); letter-spacing: -.005em;
+    line-height: 1.05;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .sp .latin {
+    font-family:'IM Fell English', serif; font-style: italic;
+    font-size: 30px; color: var(--sage); margin-top: 4px; letter-spacing: .03em;
+    line-height: 1.1;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .sp .latin b { font-style: normal; color: var(--bloom); font-weight: 700; }
+  .sp .when {
+    text-align: right; line-height: 1.05; flex-shrink: 0;
+  }
+  .sp .when .t {
+    font-family:'Work Sans', sans-serif; font-weight: 800; font-size: 38px;
+    color: var(--paper-warm); letter-spacing: .04em;
+  }
+  .sp .when .ph {
+    font-family:'Work Sans', sans-serif; font-weight: 700; font-size: 20px;
+    letter-spacing: .2em; text-transform: uppercase;
+    color: var(--sage); margin-top: 4px;
+  }
+  .sp.now .when .ph { color: var(--bloom); }
+  .sp.now .when .t { color: var(--bloom); }
+  .sp.done .when .t { text-decoration: line-through; color: var(--sage); }
+
+  /* ─── CLUB PACKETS ─────────────────────────────────────── */
+  /* y=2984, h=320 — three seed-packet cards across */
+  .clubs {
+    position:absolute; top:2984px; left:64px; right:64px; height:320px;
+    display:grid; grid-template-columns: repeat(3, 1fr); gap: 28px;
+    overflow: hidden;
+    z-index:2;
+  }
+  .packet {
+    background: var(--paper-warm);
+    border: 5px solid var(--ink);
+    box-shadow: 10px 12px 0 var(--ink);
+    padding: 0;
+    display:grid; grid-template-rows: 86px 1fr auto;
+    overflow: hidden;
+    position: relative;
+  }
+  .packet .band {
+    background: var(--moss); color: var(--paper-warm);
+    padding: 14px 26px;
+    display:flex; justify-content: space-between; align-items: center;
+    border-bottom: 5px solid var(--ink);
+    position: relative;
+    overflow: hidden;
+  }
+  .packet.terra .band { background: var(--terracotta); }
+  .packet.brass .band { background: var(--brass); color: var(--ink); }
+  .packet .band .dept {
+    font-family:'Work Sans', sans-serif; font-weight: 800; font-size: 22px;
+    letter-spacing: .26em; text-transform: uppercase;
+  }
+  .packet .band .lot {
+    font-family:'IM Fell English', serif; font-style: italic;
+    font-size: 28px;
+  }
+  .packet .body {
+    padding: 22px 30px 16px;
+    display:flex; flex-direction: column; justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .packet .body .common {
+    font-family:'Cormorant Garamond', serif; font-weight: 700;
+    font-style: italic; font-size: 64px; line-height: .95;
+    color: var(--ink); letter-spacing: -.015em;
+  }
+  .packet .body .latin {
+    font-family:'IM Fell English', serif; font-style: italic;
+    font-size: 28px; color: var(--moss); margin-top: 8px;
+    line-height: 1.15;
+  }
+  .packet .body .where {
+    font-family:'Work Sans', sans-serif; font-weight: 600; font-size: 24px;
+    color: var(--ink-2); letter-spacing: .06em; margin-top: 10px;
+  }
+  .packet .foot {
+    background: var(--paper-2); padding: 12px 28px;
+    border-top: 2px dashed var(--ink);
+    display:flex; justify-content: space-between; align-items: center;
+  }
+  .packet .foot .when {
+    font-family:'Cormorant Garamond', serif; font-weight: 700;
+    font-style: italic; font-size: 36px; color: var(--terracotta);
+  }
+  .packet .foot .tag {
+    font-family:'Work Sans', sans-serif; font-weight: 800; font-size: 18px;
+    letter-spacing: .22em; text-transform: uppercase; color: var(--moss);
+    background: var(--paper-warm); padding: 6px 13px;
+    border: 2.5px solid var(--moss);
+  }
+
+  /* ─── ANNOUNCEMENT ─────────────────────────────────────── */
+  /* y=3324, h=180 — pinned terracotta notice */
+  .notice {
+    position:absolute; top:3324px; left:64px; right:64px; height:180px;
+    background: var(--terracotta); color: var(--paper-warm);
+    border: 5px solid var(--ink);
+    box-shadow: 12px 12px 0 var(--ink);
+    padding: 22px 36px;
+    overflow: hidden;
+    display:grid; grid-template-columns: auto 1fr auto; gap: 36px; align-items: center;
+    z-index:2;
+  }
+  .notice::before {
+    /* twine pin at the top center */
+    content:''; position:absolute; top:-16px; left:50%; transform: translateX(-50%);
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--brass);
+    box-shadow:
+      0 0 0 4px var(--ink),
+      0 5px 0 var(--ink);
+  }
+  .notice::after {
+    content:''; position:absolute; right:-80px; bottom:-80px;
+    width: 320px; height: 320px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(232,165,92,.45), transparent 70%);
+    pointer-events:none;
+  }
+  .notice .stamp {
+    display:inline-block;
+    font-family:'Work Sans', sans-serif; font-weight: 800; font-size: 24px;
+    letter-spacing: .26em; text-transform: uppercase; color: var(--paper-warm);
+    padding: 8px 20px; border: 3px solid var(--paper-warm);
+    transform: rotate(-2deg);
+    flex-shrink: 0;
+    position: relative; z-index: 2;
+  }
+  .notice .body {
+    position: relative; z-index: 2;
+    overflow: hidden;
+  }
+  .notice .body h3 {
+    font-family:'Cormorant Garamond', serif; font-weight: 700;
+    font-style: italic; font-size: 64px; line-height: .95;
+    color: var(--paper-warm); margin: 0 0 6px;
+    letter-spacing: -.015em;
+  }
+  .notice .body .msg {
+    font-family:'Cormorant Garamond', serif; font-weight: 500;
+    font-size: 32px; line-height: 1.25; color: rgba(240,231,210,.92);
+  }
+  .notice .body .msg b { color: var(--paper-warm); font-weight: 700; }
+
+  /* ─── COUNTDOWN + SIGNPOST ROW ─────────────────────────── */
+  /* y=3524, h=152 — almanac countdown + cafeteria signpost */
+  .bottom {
+    position:absolute; top:3524px; left:64px; right:64px; height:152px;
+    display:grid; grid-template-columns: 1fr 1.4fr; gap: 24px;
+    overflow: hidden;
+    z-index:2;
+  }
+
+  /* Countdown — almanac plaque with big numeral */
+  .almanac {
+    background: var(--paper-warm);
+    border: 5px solid var(--ink);
+    box-shadow: 10px 10px 0 var(--moss);
+    padding: 16px 28px;
+    display:grid; grid-template-columns: 110px 1fr; gap: 24px; align-items: center;
+    position: relative; overflow: hidden;
+  }
+  .almanac::before {
+    content:''; position:absolute; left: 10px; top: 10px; right: 10px; bottom: 10px;
+    border: 2px solid var(--moss); pointer-events:none;
+  }
+  .almanac .day {
+    text-align: center;
+    background:
+      radial-gradient(circle at 40% 30%, var(--paper-warm), var(--paper-2));
+    border: 4px solid var(--moss);
+    border-radius: 50%;
+    width: 110px; height: 110px;
+    display:grid; place-items: center;
+    box-shadow:
+      inset 0 0 0 3px var(--paper-warm),
+      inset 0 0 0 5px var(--gold);
+    position: relative;
+  }
+  .almanac .day::before {
+    content:''; position:absolute; inset:9px; border-radius:50%;
+    border: 1px dashed rgba(31,42,28,.35);
+  }
+  .almanac .day .n {
+    font-family:'Cormorant Garamond', serif; font-weight: 700;
+    font-style: italic; font-size: 64px; line-height: .85;
+    color: var(--terracotta); letter-spacing: -.04em;
+  }
+  .almanac .day .u {
+    font-family:'Work Sans', sans-serif; font-weight: 800; font-size: 11px;
+    letter-spacing: .3em; text-transform: uppercase; color: var(--ink-2);
+    margin-top: 1px;
+  }
+  .almanac .info { overflow: hidden; }
+  .almanac .info .eye {
+    font-family:'Work Sans', sans-serif; font-weight: 700; font-size: 18px;
+    letter-spacing: .28em; text-transform: uppercase; color: var(--moss);
+  }
+  .almanac .info .t {
+    font-family:'Cormorant Garamond', serif; font-weight: 700;
+    font-style: italic; font-size: 38px; line-height: .96;
+    color: var(--ink); margin-top: 2px; letter-spacing: -.018em;
+  }
+  .almanac .info .t em { color: var(--terracotta); font-style: italic; }
+  .almanac .info .s {
+    font-family:'Cormorant Garamond', serif; font-weight: 500;
+    font-size: 20px; color: var(--ink-2); margin-top: 4px; line-height: 1.2;
+    overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+
+  /* Cafeteria signpost — plant ID stake */
+  .signpost {
+    background: var(--paper-warm);
+    border: 5px solid var(--ink);
+    box-shadow: 10px 10px 0 var(--ink);
+    padding: 16px 28px;
+    display:grid; grid-template-columns: 96px 1fr auto; gap: 22px; align-items: center;
+    position: relative; overflow: hidden;
+  }
+  .signpost .stake {
+    height: 110px; position: relative;
+    display:flex; flex-direction: column; align-items: center;
+  }
+  .signpost .stake .label {
+    background: var(--paper-warm);
+    border: 3px solid var(--moss);
+    border-radius: 12px 12px 4px 4px;
+    padding: 6px 10px;
+    text-align: center;
+    box-shadow: 3px 3px 0 var(--moss);
+  }
+  .signpost .stake .label .lbl {
+    font-family:'Work Sans', sans-serif; font-weight: 800; font-size: 11px;
+    letter-spacing: .26em; text-transform: uppercase; color: var(--moss);
+  }
+  .signpost .stake .label .ico {
+    font-family:'Cormorant Garamond', serif; font-style: italic;
+    font-weight: 700; font-size: 36px; line-height: .9; color: var(--terracotta); margin-top: 2px;
+  }
+  .signpost .stake .pole {
+    width: 12px; flex: 1;
+    background: linear-gradient(180deg, var(--brass) 0%, var(--brass-d) 100%);
+    margin-top: -2px;
+    box-shadow: inset -3px 0 0 rgba(0,0,0,.2);
+  }
+  .signpost .info { overflow: hidden; }
+  .signpost .info .eye {
+    font-family:'Work Sans', sans-serif; font-weight: 700; font-size: 18px;
+    letter-spacing: .26em; text-transform: uppercase; color: var(--terracotta);
+  }
+  .signpost .info .t {
+    font-family:'Cormorant Garamond', serif; font-weight: 700;
+    font-style: italic; font-size: 40px; line-height: .96; color: var(--ink);
+    margin-top: 2px; letter-spacing: -.018em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .signpost .info .s {
+    font-family:'Cormorant Garamond', serif; font-weight: 500;
+    font-size: 20px; color: var(--ink-2); margin-top: 4px; line-height: 1.2;
+    overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .signpost .info .s b { color: var(--moss); font-weight: 700; }
+  .signpost .badges {
+    display:flex; flex-direction: column; gap: 6px;
+    flex-shrink: 0;
+  }
+  .signpost .badges span {
+    font-family:'Work Sans', sans-serif; font-weight: 800; font-size: 14px;
+    letter-spacing: .2em; text-transform: uppercase;
+    padding: 6px 11px; border: 2.5px solid var(--ink);
+    background: var(--sage); color: var(--ink);
+    text-align: center;
+  }
+  .signpost .badges span.gf { background: var(--gold); }
+  .signpost .badges span.veg { background: var(--fern); color: var(--paper-warm); }
+
+  /* ─── TICKER ─── engraved brass plate ─── */
+  /* y=3696, h=80 */
+  .ticker {
+    position:absolute; top:3696px; left:64px; right:64px; height:80px;
+    background:
+      linear-gradient(180deg, var(--brass) 0%, var(--brass-d) 100%);
+    border: 4px solid var(--ink);
+    box-shadow: 8px 8px 0 var(--moss);
+    display:flex; align-items:stretch;
+    overflow: hidden; z-index:2;
+  }
+  .ticker::before {
+    /* engraved double rule */
+    content:''; position:absolute; top:6px; bottom:6px; left:6px; right:6px;
+    border: 1.5px solid rgba(31,42,28,.55); pointer-events:none;
+  }
+  .ticker .tag {
+    background: var(--moss); color: var(--paper-warm);
+    padding: 0 32px;
+    display:flex; align-items:center; gap: 14px;
+    font-family:'Cormorant Garamond', serif; font-weight: 700; font-style: italic;
+    font-size: 40px; letter-spacing: -.005em;
+    border-right: 4px solid var(--ink);
+    flex-shrink: 0;
+    z-index: 1; position: relative;
+  }
+  .ticker .tag::before {
+    content:'❦'; color: var(--gold); font-size: 32px;
+  }
+  .ticker .feed {
+    flex: 1; overflow:hidden; display:flex; align-items:center;
+    padding-left: 28px; position: relative; z-index: 1;
+  }
+  .ticker .feed-inner {
+    display:flex; gap: 56px;
+    font-family:'Cormorant Garamond', serif; font-weight: 600;
+    font-size: 36px; color: var(--ink);
+    white-space: nowrap; letter-spacing: .005em;
+    animation: scroll 60s linear infinite;
+  }
+  .ticker .feed-inner span { display:inline-flex; align-items:center; gap: 22px; }
+  .ticker .feed-inner span::after {
+    content:'❧'; color: var(--terracotta-d); font-size: 28px;
+    margin-left: 14px;
+  }
+  @keyframes scroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+</style>
+</head>
+<body>
+<script>
+  const __TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "schema": "edu-cms-ms-greenhouse-portrait-v1" }/*EDITMODE-END*/;
+</script>
+
+<div class="viewport"><div class="stage-outer"><div class="stage">
+
+  <!-- ─── Botanical corner decorations (hand-drawn ferns) ─── -->
+  <div class="corner-fern tl" aria-hidden="true">
+    <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+      <g fill="none" stroke="#345e3a" stroke-width="2.4" stroke-linecap="round">
+        <path d="M30 180 Q60 140 90 110 Q120 80 150 50" />
+        <path d="M55 152 Q40 138 32 122" />
+        <path d="M70 134 Q55 120 47 104" />
+        <path d="M85 116 Q70 102 62 86" />
+        <path d="M100 98 Q85 84 77 68" />
+        <path d="M115 80 Q100 66 92 50" />
+        <path d="M130 62 Q115 48 107 32" />
+        <path d="M62 162 Q78 154 90 144" />
+        <path d="M77 144 Q93 136 105 126" />
+        <path d="M92 126 Q108 118 120 108" />
+        <path d="M107 108 Q123 100 135 90" />
+        <path d="M122 90 Q138 82 150 72" />
+      </g>
+      <g fill="#4f8b48" opacity=".9">
+        <ellipse cx="38" cy="128" rx="14" ry="6" transform="rotate(-50 38 128)"/>
+        <ellipse cx="53" cy="110" rx="14" ry="6" transform="rotate(-50 53 110)"/>
+        <ellipse cx="68" cy="92"  rx="14" ry="6" transform="rotate(-50 68 92)"/>
+        <ellipse cx="83" cy="74"  rx="14" ry="6" transform="rotate(-50 83 74)"/>
+        <ellipse cx="98" cy="56"  rx="13" ry="5.5" transform="rotate(-50 98 56)"/>
+        <ellipse cx="113" cy="38" rx="12" ry="5"   transform="rotate(-50 113 38)"/>
+        <ellipse cx="68" cy="156" rx="14" ry="6"   transform="rotate(40 68 156)"/>
+        <ellipse cx="83" cy="138" rx="14" ry="6"   transform="rotate(40 83 138)"/>
+        <ellipse cx="98" cy="120" rx="14" ry="6"   transform="rotate(40 98 120)"/>
+        <ellipse cx="113" cy="102" rx="13" ry="5.5" transform="rotate(40 113 102)"/>
+        <ellipse cx="128" cy="84"  rx="12" ry="5"   transform="rotate(40 128 84)"/>
+      </g>
+    </svg>
+  </div>
+
+  <div class="corner-fern br" aria-hidden="true">
+    <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+      <g fill="none" stroke="#345e3a" stroke-width="2.4" stroke-linecap="round">
+        <path d="M30 180 Q60 140 90 110 Q120 80 150 50" />
+        <path d="M55 152 Q40 138 32 122" />
+        <path d="M70 134 Q55 120 47 104" />
+        <path d="M85 116 Q70 102 62 86" />
+        <path d="M100 98 Q85 84 77 68" />
+        <path d="M115 80 Q100 66 92 50" />
+        <path d="M62 162 Q78 154 90 144" />
+        <path d="M77 144 Q93 136 105 126" />
+        <path d="M92 126 Q108 118 120 108" />
+        <path d="M107 108 Q123 100 135 90" />
+      </g>
+      <g fill="#6f9b78" opacity=".85">
+        <ellipse cx="38" cy="128" rx="14" ry="6" transform="rotate(-50 38 128)"/>
+        <ellipse cx="53" cy="110" rx="14" ry="6" transform="rotate(-50 53 110)"/>
+        <ellipse cx="68" cy="92"  rx="14" ry="6" transform="rotate(-50 68 92)"/>
+        <ellipse cx="83" cy="74"  rx="14" ry="6" transform="rotate(-50 83 74)"/>
+        <ellipse cx="98" cy="56"  rx="13" ry="5.5" transform="rotate(-50 98 56)"/>
+        <ellipse cx="68" cy="156" rx="14" ry="6"  transform="rotate(40 68 156)"/>
+        <ellipse cx="83" cy="138" rx="14" ry="6"  transform="rotate(40 83 138)"/>
+        <ellipse cx="98" cy="120" rx="14" ry="6"  transform="rotate(40 98 120)"/>
+        <ellipse cx="113" cy="102" rx="13" ry="5.5" transform="rotate(40 113 102)"/>
+      </g>
+    </svg>
+  </div>
+
+  <!-- ─── SEAL+ID BAND ────────────────────────────────────── -->
+  <header class="top">
+    <div class="seal" aria-hidden="true">
+      <span class="est">EST · 1924</span>
+      <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <!-- Sprout monogram -->
+        <path d="M50 88 L50 50" stroke="#345e3a" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+        <path d="M50 50 Q35 42 30 28 Q42 30 50 44" fill="#4f8b48"/>
+        <path d="M50 50 Q65 42 70 28 Q58 30 50 44" fill="#4f8b48"/>
+        <path d="M50 60 Q40 56 34 48 Q44 52 50 58" fill="#6f9b78"/>
+        <path d="M50 60 Q60 56 66 48 Q56 52 50 58" fill="#6f9b78"/>
+        <circle cx="50" cy="34" r="6" fill="#e8a55c"/>
+        <path d="M22 86 Q50 80 78 86 L78 92 Q50 95 22 92 Z" fill="#8c3f29"/>
+      </svg>
+    </div>
+    <div class="ident" data-widget="school">
+      <div class="eyebrow"><span data-field="school.eye">The Lobby Conservatory</span></div>
+      <div class="name"><span data-field="school.name">Westridge </span><em data-field="school.name2">Middle</em></div>
+      <div class="latin"><span data-field="school.latin">Domus lutrae · </span><b data-field="school.day">Day B</b><span data-field="school.tag"> · Volume 142, Tuesday Edition</span></div>
+    </div>
+  </header>
+
+  <!-- ─── GAUGES BAND ──────────────────────────────────────── -->
+  <section class="instruments">
+    <div class="gauge" data-widget="weather">
+      <div class="lbl" data-field="weather.label">Outdoor</div>
+      <div class="val cool" data-field="weather.temp">46°</div>
+      <div class="ticks" aria-hidden="true"></div>
+      <div class="sub" data-field="weather.cond">overcast · light wind</div>
+    </div>
+    <div class="gauge" data-widget="clock">
+      <div class="lbl" data-field="clock.label">Hour</div>
+      <div class="val" data-field="clock.time">7:53</div>
+      <div class="ticks" aria-hidden="true"></div>
+      <div class="sub" data-field="clock.sub">Tue · Apr 21</div>
+    </div>
+    <div class="gauge" data-widget="bloom">
+      <div class="lbl" data-field="bloom.label">Sun-up</div>
+      <div class="val warm" data-field="bloom.value">6:21</div>
+      <div class="ticks" aria-hidden="true"></div>
+      <div class="sub" data-field="bloom.sub">12h 47m of light</div>
+    </div>
+  </section>
+
+  <!-- ─── HERBARIUM HERO PLATE ────────────────────────────── -->
+  <section class="plate" data-widget="greeting">
+    <div class="accession">
+      <b data-field="greeting.acc">Plate XLII</b>
+      <span data-field="greeting.acc2">Accession Nº 1924-14<br/>Cataloged: Mr. Nguyen, Curator</span>
+    </div>
+    <div class="chapter">
+      <span class="ornament">❦</span>
+      <span data-field="greeting.kicker">From the Curator's Desk · Morning Brief</span>
+    </div>
+    <h1>
+      <span data-field="greeting.h1">Grow </span><em data-field="greeting.h2">something</em><span data-field="greeting.h3"> </span><span class="accent" data-field="greeting.h4">today.</span>
+    </h1>
+    <p class="lede" data-field="greeting.lede">
+      Something small. Say hello at your locker. Ask about the poetry prompt. Finish the math packet you've been putting off. <em>Small things root first.</em> That's how big things bloom.
+    </p>
+
+    <div class="signoff">
+      — with care,<br/>
+      <b data-field="greeting.sign">the Westridge gardeners</b>
+    </div>
+
+    <div class="illos" aria-hidden="true">
+      <!-- Specimen 1: Monstera leaf -->
+      <div class="specimen">
+        <svg width="260" height="320" viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg">
+          <g>
+            <path d="M50 110 L50 60" stroke="#345e3a" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+            <path d="M50 60 C 28 56, 18 38, 22 18 C 36 22, 48 30, 56 44 C 60 32, 68 22, 80 16 C 84 30, 78 50, 60 60 Z"
+                  fill="#4f8b48" stroke="#1f2a1c" stroke-width="1.5"/>
+            <ellipse cx="34" cy="32" rx="3.5" ry="6" fill="#f6eed9"/>
+            <ellipse cx="46" cy="44" rx="3" ry="5" fill="#f6eed9"/>
+            <ellipse cx="68" cy="34" rx="3.5" ry="5" fill="#f6eed9"/>
+            <path d="M50 60 L36 28 M50 60 L48 22 M50 60 L66 28" stroke="#1f2a1c" stroke-width="1" fill="none"/>
+          </g>
+        </svg>
+        <div class="latin">
+          Monstera deliciosa
+          <b>Patience</b>
+        </div>
+      </div>
+
+      <!-- Specimen 2: Fern -->
+      <div class="specimen">
+        <svg width="260" height="320" viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg">
+          <g>
+            <path d="M50 112 L50 56" stroke="#345e3a" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+            <g fill="none" stroke="#345e3a" stroke-width="1.6">
+              <path d="M50 56 Q30 48 22 30"/>
+              <path d="M50 56 Q70 48 78 30"/>
+              <path d="M50 70 Q34 64 26 50"/>
+              <path d="M50 70 Q66 64 74 50"/>
+              <path d="M50 84 Q38 80 32 70"/>
+              <path d="M50 84 Q62 80 68 70"/>
+            </g>
+            <g fill="#6f9b78" stroke="#1f2a1c" stroke-width=".7">
+              <ellipse cx="32" cy="36" rx="6" ry="2.5" transform="rotate(-30 32 36)"/>
+              <ellipse cx="36" cy="50" rx="6" ry="2.5" transform="rotate(-25 36 50)"/>
+              <ellipse cx="40" cy="62" rx="5" ry="2.4" transform="rotate(-20 40 62)"/>
+              <ellipse cx="44" cy="74" rx="5" ry="2.2" transform="rotate(-15 44 74)"/>
+              <ellipse cx="68" cy="36" rx="6" ry="2.5" transform="rotate(30 68 36)"/>
+              <ellipse cx="64" cy="50" rx="6" ry="2.5" transform="rotate(25 64 50)"/>
+              <ellipse cx="60" cy="62" rx="5" ry="2.4" transform="rotate(20 60 62)"/>
+              <ellipse cx="56" cy="74" rx="5" ry="2.2" transform="rotate(15 56 74)"/>
+            </g>
+          </g>
+        </svg>
+        <div class="latin">
+          Nephrolepis exaltata
+          <b>Persistence</b>
+        </div>
+      </div>
+
+      <!-- Specimen 3: Sunflower in clay pot -->
+      <div class="specimen">
+        <svg width="280" height="320" viewBox="0 0 110 120" xmlns="http://www.w3.org/2000/svg">
+          <g>
+            <path d="M38 100 L72 100 L66 116 L44 116 Z" fill="#b85a3a" stroke="#1f2a1c" stroke-width="1.5"/>
+            <rect x="36" y="96" width="38" height="6" fill="#8c3f29" stroke="#1f2a1c" stroke-width="1.2"/>
+            <path d="M55 96 C 54 80, 56 60, 55 40" stroke="#345e3a" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+            <path d="M55 78 Q35 72 28 56 Q42 64 55 70" fill="#4f8b48" stroke="#1f2a1c" stroke-width="1"/>
+            <path d="M55 72 Q75 66 82 50 Q68 58 55 64" fill="#4f8b48" stroke="#1f2a1c" stroke-width="1"/>
+            <g transform="translate(55 32)">
+              <g fill="#e8a55c" stroke="#1f2a1c" stroke-width=".8">
+                <ellipse cx="0" cy="-14" rx="5" ry="11"/>
+                <ellipse cx="14" cy="0" rx="11" ry="5"/>
+                <ellipse cx="0" cy="14" rx="5" ry="11"/>
+                <ellipse cx="-14" cy="0" rx="11" ry="5"/>
+                <ellipse cx="10" cy="-10" rx="9" ry="5" transform="rotate(-45 10 -10)"/>
+                <ellipse cx="10" cy="10"  rx="9" ry="5" transform="rotate(45 10 10)"/>
+                <ellipse cx="-10" cy="-10" rx="9" ry="5" transform="rotate(45 -10 -10)"/>
+                <ellipse cx="-10" cy="10"  rx="9" ry="5" transform="rotate(-45 -10 10)"/>
+              </g>
+              <circle r="6.5" fill="#8c3f29" stroke="#1f2a1c" stroke-width="1"/>
+              <g fill="#1f2a1c"><circle cx="-2" cy="-2" r=".9"/><circle cx="2" cy="-1" r=".9"/><circle cx="-1" cy="2" r=".9"/><circle cx="2" cy="3" r=".9"/></g>
+            </g>
+          </g>
+        </svg>
+        <div class="latin">
+          Helianthus annuus
+          <b>Courage</b>
+        </div>
+      </div>
+
+      <!-- Specimen 4: Lavender -->
+      <div class="specimen">
+        <svg width="260" height="320" viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg">
+          <g>
+            <g stroke="#345e3a" stroke-width="2" fill="none" stroke-linecap="round">
+              <path d="M30 116 C 32 90, 28 60, 36 30"/>
+              <path d="M50 116 C 52 90, 48 60, 50 24"/>
+              <path d="M70 116 C 68 90, 72 60, 64 30"/>
+            </g>
+            <g fill="#7d4fa8" stroke="#1f2a1c" stroke-width=".6">
+              <ellipse cx="36" cy="32" rx="4" ry="6"/>
+              <ellipse cx="34" cy="44" rx="3.6" ry="5"/>
+              <ellipse cx="50" cy="26" rx="4" ry="6"/>
+              <ellipse cx="50" cy="40" rx="3.6" ry="5"/>
+              <ellipse cx="64" cy="32" rx="4" ry="6"/>
+              <ellipse cx="66" cy="44" rx="3.6" ry="5"/>
+              <ellipse cx="40" cy="56" rx="3" ry="4"/>
+              <ellipse cx="50" cy="54" rx="3" ry="4"/>
+              <ellipse cx="60" cy="56" rx="3" ry="4"/>
+            </g>
+          </g>
+        </svg>
+        <div class="latin">
+          Lavandula officinalis
+          <b>Calm</b>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── SPECIMENS INDEX (today's periods) ────────────────── -->
+  <section class="index" data-widget="agenda">
+    <div class="head">
+      <div class="left">
+        <div class="eye">Hortus Botanicus · Index</div>
+        <h2 data-field="agenda.title">Today's Specimens</h2>
+      </div>
+      <div class="right">
+        <span data-field="agenda.date">Tue · Apr 21</span>
+        <b data-field="agenda.label">Day B · 6 entries</b>
+      </div>
+    </div>
+    <div class="specimens">
+      <div class="sp done" data-widget="agenda.0">
+        <div class="num">i</div>
+        <div class="body">
+          <div class="common" data-field="agenda.0.t">Math 7</div>
+          <div class="latin"><span data-field="agenda.0.l">Algebra patelii · </span><b data-field="agenda.0.r">Rm 214</b></div>
+        </div>
+        <div class="when">
+          <div class="t" data-field="agenda.0.h">8:05</div>
+          <div class="ph" data-field="agenda.0.s">harvested</div>
+        </div>
+      </div>
+      <div class="sp now" data-widget="agenda.1">
+        <div class="num">ii</div>
+        <div class="body">
+          <div class="common" data-field="agenda.1.t">English · Poetry</div>
+          <div class="latin"><span data-field="agenda.1.l">Verba nguyenii · </span><b data-field="agenda.1.r">Rm 108</b></div>
+        </div>
+        <div class="when">
+          <div class="t" data-field="agenda.1.h">9:00</div>
+          <div class="ph" data-field="agenda.1.s">in bloom</div>
+        </div>
+      </div>
+      <div class="sp" data-widget="agenda.2">
+        <div class="num">iii</div>
+        <div class="body">
+          <div class="common" data-field="agenda.2.t">Science · Lab</div>
+          <div class="latin"><span data-field="agenda.2.l">Methodus okaforii · </span><b data-field="agenda.2.r">Rm 207</b></div>
+        </div>
+        <div class="when">
+          <div class="t" data-field="agenda.2.h">9:55</div>
+          <div class="ph" data-field="agenda.2.s">budding</div>
+        </div>
+      </div>
+      <div class="sp" data-widget="agenda.3">
+        <div class="num">iv</div>
+        <div class="body">
+          <div class="common" data-field="agenda.3.t">PE · Mile Run</div>
+          <div class="latin"><span data-field="agenda.3.l">Cursus reyesii · </span><b data-field="agenda.3.r">Gym A</b></div>
+        </div>
+        <div class="when">
+          <div class="t" data-field="agenda.3.h">10:50</div>
+          <div class="ph" data-field="agenda.3.s">germinating</div>
+        </div>
+      </div>
+      <div class="sp" data-widget="agenda.4">
+        <div class="num">v</div>
+        <div class="body">
+          <div class="common" data-field="agenda.4.t">Lunch · A-Period</div>
+          <div class="latin"><span data-field="agenda.4.l">Refectorium · </span><b data-field="agenda.4.r">7th grade</b></div>
+        </div>
+        <div class="when">
+          <div class="t" data-field="agenda.4.h">11:45</div>
+          <div class="ph" data-field="agenda.4.s">seeded</div>
+        </div>
+      </div>
+      <div class="sp" data-widget="agenda.5">
+        <div class="num">vi</div>
+        <div class="body">
+          <div class="common" data-field="agenda.5.t">Social Studies</div>
+          <div class="latin"><span data-field="agenda.5.l">Atlas mundi · </span><b data-field="agenda.5.r">Rm 115</b></div>
+        </div>
+        <div class="when">
+          <div class="t" data-field="agenda.5.h">12:35</div>
+          <div class="ph" data-field="agenda.5.s">dormant</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── CLUB PACKETS ────────────────────────────────────── -->
+  <section class="clubs">
+    <div class="packet" data-widget="club.0">
+      <div class="band">
+        <span class="dept" data-field="club.0.dept">After-School · Bed 1</span>
+        <span class="lot" data-field="club.0.lot">№ 014</span>
+      </div>
+      <div class="body">
+        <div class="common" data-field="club.0.t">Robotics</div>
+        <div class="latin" data-field="club.0.l">Mechanus juvenilis · build week</div>
+        <div class="where" data-field="club.0.r">Rm 207 · Mr. Becker</div>
+      </div>
+      <div class="foot">
+        <div class="when" data-field="club.0.h">Today · 3:00</div>
+        <div class="tag" data-field="club.0.tag">rare cultivar</div>
+      </div>
+    </div>
+
+    <div class="packet terra" data-widget="club.1">
+      <div class="band">
+        <span class="dept" data-field="club.1.dept">After-School · Bed 2</span>
+        <span class="lot" data-field="club.1.lot">№ 022</span>
+      </div>
+      <div class="body">
+        <div class="common" data-field="club.1.t">Drama Auditions</div>
+        <div class="latin" data-field="club.1.l">Theatrum vernale · "Echoes"</div>
+        <div class="where" data-field="club.1.r">Auditorium · Ms. Rivera</div>
+      </div>
+      <div class="foot">
+        <div class="when" data-field="club.1.h">Today · 3:15</div>
+        <div class="tag" data-field="club.1.tag">heirloom</div>
+      </div>
+    </div>
+
+    <div class="packet brass" data-widget="club.2">
+      <div class="band">
+        <span class="dept" data-field="club.2.dept">After-School · Bed 3</span>
+        <span class="lot" data-field="club.2.lot">№ 031</span>
+      </div>
+      <div class="body">
+        <div class="common" data-field="club.2.t">Garden Club</div>
+        <div class="latin" data-field="club.2.l">Hortus societas · seedling day</div>
+        <div class="where" data-field="club.2.r">Greenhouse · Ms. Park</div>
+      </div>
+      <div class="foot">
+        <div class="when" data-field="club.2.h">Today · 3:00</div>
+        <div class="tag" data-field="club.2.tag">in season</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── ANNOUNCEMENT (pinned terracotta) ─────────────────── -->
+  <section class="notice" data-widget="announcement">
+    <span class="stamp" data-field="announcement.stamp">Heads-up · Curator's Notice</span>
+    <div class="body">
+      <h3 data-field="announcement.headline">Picture day &mdash; Thursday</h3>
+      <div class="msg" data-field="announcement.message">
+        Full uniform. <b>Permission slips to the front office by Wed EOD.</b>
+        6th grade goes first by homeroom. Bring your sunny face.
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── COUNTDOWN + SIGNPOST ROW ────────────────────────── -->
+  <section class="bottom">
+    <div class="almanac" data-widget="countdown">
+      <div class="day">
+        <div>
+          <div class="n" data-field="countdown.value">12</div>
+          <div class="u" data-field="countdown.unit">days</div>
+        </div>
+      </div>
+      <div class="info">
+        <div class="eye" data-field="countdown.kicker">Field Day · Almanac</div>
+        <div class="t"><span data-field="countdown.title">Sign-ups </span><em data-field="countdown.title2">bloom</em><span data-field="countdown.title3"> Friday.</span></div>
+        <div class="s" data-field="countdown.sub">284 otters already in. Pass the word at lunch tables.</div>
+      </div>
+    </div>
+
+    <div class="signpost" data-widget="lunch">
+      <div class="stake" aria-hidden="true">
+        <div class="label">
+          <div class="lbl">Today's Plate</div>
+          <div class="ico">N° 4</div>
+        </div>
+        <div class="pole"></div>
+      </div>
+      <div class="info">
+        <div class="eye" data-field="lunch.eye">From the Cafeteria · Bed N° 4</div>
+        <div class="t" data-field="lunch.title">Chicken &amp; Rice Bowl</div>
+        <div class="s">
+          <span data-field="lunch.sides">broccoli · garlic bread · seasonal fruit · </span><b data-field="lunch.sides2">salad bar open</b>
+        </div>
+      </div>
+      <div class="badges">
+        <span class="veg" data-field="lunch.b1">veg ok</span>
+        <span class="gf" data-field="lunch.b2">gf swap</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── TICKER (engraved brass plate) ────────────────────── -->
+  <div class="ticker" data-widget="ticker">
+    <div class="tag" data-field="ticker.tag">Postscript &mdash;</div>
+    <div class="feed">
+      <div class="feed-inner">
+        <span data-field="ticker.0">Bus 14 running +10 today</span>
+        <span data-field="ticker.1">Sub covering Rm B-12</span>
+        <span data-field="ticker.2">Spelling bee sign-ups end Friday</span>
+        <span data-field="ticker.3">8th grade field-trip forms due tomorrow</span>
+        <span data-field="ticker.4">Library returns due this week</span>
+        <span data-field="ticker.5">Lost blue water bottle &rarr; front office</span>
+        <span data-field="ticker.6">Garden Club planting seedlings today</span>
+        <span aria-hidden="true">Bus 14 running +10 today</span>
+        <span aria-hidden="true">Sub covering Rm B-12</span>
+        <span aria-hidden="true">Spelling bee sign-ups end Friday</span>
+        <span aria-hidden="true">8th grade field-trip forms due tomorrow</span>
+        <span aria-hidden="true">Library returns due this week</span>
+        <span aria-hidden="true">Lost blue water bottle &rarr; front office</span>
+        <span aria-hidden="true">Garden Club planting seedlings today</span>
+      </div>
+    </div>
+  </div>
+
+</div></div></div>
+
+<script>
+  // fit() — same scale helper every shipped template uses.
+  (function(){
+    function fit(){
+      var cs = getComputedStyle(document.documentElement);
+      var w = parseFloat(cs.getPropertyValue('--stage-w')) || 2160;
+      var h = parseFloat(cs.getPropertyValue('--stage-h')) || 3840;
+      var k = Math.min(window.innerWidth / w, window.innerHeight / h);
+      document.documentElement.style.setProperty('--stage-scale', k);
+    }
+    window.addEventListener('resize', fit);
+    window.addEventListener('load', fit);
+    setTimeout(fit, 10);
+    setTimeout(fit, 300);
+  })();
+</script>
+</body>
+</html>
