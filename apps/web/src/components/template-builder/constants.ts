@@ -31,7 +31,7 @@ export const WIDGET_GROUPS = [
   {
     label: 'Web & Text',
     types: [
-      { type: 'WEBPAGE', label: 'Website', desc: 'Embed any website or web app', icon: Globe },
+      { type: 'WEBPAGE', label: 'URL / Website', desc: 'Drop a webpage anywhere on the canvas — size it however you want', icon: Globe },
       { type: 'TEXT', label: 'Text Block', desc: 'Simple text with custom styling', icon: Type },
       { type: 'RICH_TEXT', label: 'Rich Text', desc: 'Formatted text with headings & links', icon: FileText },
       { type: 'RSS_FEED', label: 'News Feed', desc: 'Headlines from any RSS source', icon: Rss },

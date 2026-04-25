@@ -375,7 +375,24 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
     if (over && over.id === 'builder-canvas') {
       const type = active.data.current?.widgetType;
       if (!type) return;
-      const id = addZone(type);
+      // Resolve the drop point to template-percentage space (0-100)
+      // so the new zone CENTERS on the cursor instead of stacking at
+      // the default 10,10. dnd-kit gives us the active rect (where
+      // the dragged ghost ended) + the over rect (the canvas's
+      // bounding box). Center of the active rect, expressed as a
+      // percentage of the canvas, is the drop coordinate.
+      let dropAt: { x: number; y: number } | undefined;
+      const rect: any = (event as any).active?.rect?.current?.translated || (event as any).active?.rect?.current?.initial;
+      const overRect: any = (event as any).over?.rect;
+      if (rect && overRect && overRect.width > 0 && overRect.height > 0) {
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        dropAt = {
+          x: ((cx - overRect.left) / overRect.width) * 100,
+          y: ((cy - overRect.top) / overRect.height) * 100,
+        };
+      }
+      const id = addZone(type, dropAt);
       // If dragged from the variant picker, also seed the variant + its defaultConfig
       if (active.data.current?.type === 'variant-tile') {
         const variantId = active.data.current.variantId as string | undefined;

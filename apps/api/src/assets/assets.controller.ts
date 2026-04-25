@@ -203,7 +203,15 @@ export class AssetsController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   @UseInterceptors(FileInterceptor('file', {
     storage: memoryStorage(),
-    limits: { fileSize: 50 * 1024 * 1024 }, // 50MB (Matches Supabase free-tier limits)
+    // 500MB. Bumped from 50MB after partner reported "tried to upload
+    // an 86mb video and it said file too large." Multer reads the
+    // file into memory (we use memoryStorage), so very large videos
+    // can pressure the Railway pod's RAM during simultaneous uploads
+    // — but a 500MB cap is still safe for 1-2 concurrent uploads on
+    // a typical Railway-Standard plan, and most signage video clips
+    // are under 200MB. For the 1GB+ video case we'll move to direct
+    // browser→Supabase presigned uploads in a follow-up.
+    limits: { fileSize: 500 * 1024 * 1024 }, // 500MB
     fileFilter: (_req, file, cb) => {
       if (ALLOWED_TYPES.includes(file.mimetype)) {
         cb(null, true);

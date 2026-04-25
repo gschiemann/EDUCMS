@@ -125,12 +125,74 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       }}
       onPointerDown={(e) => {
         if (previewMode || zone.locked) return;
+        // If the user pointer-downed on a data-field text node we
+        // want to edit, do NOT start the move-drag — the dblclick
+        // that follows will turn that node into an editable field.
+        // Without this guard, the pointerdown captured the pointer
+        // and the dblclick never fired (move-drag took priority).
+        const target = e.target as HTMLElement | null;
+        if (target?.closest?.('[data-field]')) return;
         onPointerDown(e, zone.id, 'move');
       }}
       onClick={(e) => {
         if (previewMode) return;
         e.stopPropagation();
         onSelect(e, zone.id);
+      }}
+      onDoubleClick={(e) => {
+        // Inline-edit on canvas. Partner asked: "i should be able to
+        // update text right in the canvas and not just in the left
+        // tool bar." Every MS / HS pack widget tags editable text
+        // nodes with `data-field="key"`; when the user double-clicks
+        // such a node, we make it contentEditable, focus it, select
+        // all, and on blur (or Enter) commit the new value via
+        // onConfigChange so it persists into the zone's defaultConfig.
+        if (previewMode || zone.locked || !onConfigChange) return;
+        const target = (e.target as HTMLElement | null)?.closest?.('[data-field]') as HTMLElement | null;
+        if (!target) return;
+        const fieldKey = target.getAttribute('data-field');
+        if (!fieldKey) return;
+        e.stopPropagation();
+        e.preventDefault();
+        target.setAttribute('contenteditable', 'true');
+        target.style.outline = '2px solid #6366f1';
+        target.style.outlineOffset = '2px';
+        target.style.cursor = 'text';
+        target.focus();
+        // Select all the existing text so the operator can just type
+        // over it.
+        try {
+          const range = document.createRange();
+          range.selectNodeContents(target);
+          const sel = window.getSelection();
+          if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+        } catch {}
+        const commit = () => {
+          target.removeEventListener('blur', commit);
+          target.removeEventListener('keydown', onKey);
+          const newValue = target.innerText.trim();
+          target.removeAttribute('contenteditable');
+          target.style.outline = '';
+          target.style.outlineOffset = '';
+          target.style.cursor = '';
+          onConfigChange(zone.id, { [fieldKey]: newValue });
+        };
+        const cancel = () => {
+          target.removeEventListener('blur', commit);
+          target.removeEventListener('keydown', onKey);
+          target.removeAttribute('contenteditable');
+          target.style.outline = '';
+          target.style.outlineOffset = '';
+          target.style.cursor = '';
+          // Force re-render to restore the previous value
+          target.innerText = (zone.defaultConfig as any)?.[fieldKey] ?? target.innerText;
+        };
+        const onKey = (ev: KeyboardEvent) => {
+          if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); commit(); }
+          else if (ev.key === 'Escape') { ev.preventDefault(); cancel(); }
+        };
+        target.addEventListener('blur', commit);
+        target.addEventListener('keydown', onKey);
       }}
       onKeyDown={handleKeyDown}
       onDragOver={handleDragOver}

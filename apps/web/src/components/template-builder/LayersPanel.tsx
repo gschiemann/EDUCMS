@@ -18,8 +18,17 @@ export function LayersPanel() {
 
   if (zones.length === 0) {
     return (
-      <div className="p-6 text-center text-xs text-slate-400">
-        No zones yet. Use the <strong>Widgets</strong> tab to add one.
+      <div className="p-6 text-center space-y-3">
+        <p className="text-xs text-slate-500 leading-relaxed">
+          The <strong>Layers</strong> panel manages stacking order
+          and visibility for zones already on the canvas — z-order,
+          lock/unlock, duplicate, delete.
+        </p>
+        <p className="text-xs text-slate-400 leading-relaxed">
+          To <strong>add a new zone</strong>, switch to the
+          <strong className="mx-1">Widgets</strong>tab and drag a
+          widget tile onto the canvas.
+        </p>
       </div>
     );
   }

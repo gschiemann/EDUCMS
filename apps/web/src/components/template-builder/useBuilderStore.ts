@@ -36,7 +36,7 @@ interface BuilderState {
   setTouchEnabled(v: boolean): void;
   setIdleResetMs(n: number): void;
   markClean(): void;
-  addZone(widgetType: string): string;
+  addZone(widgetType: string, dropAt?: { x: number; y: number }): string;
   duplicateZone(id: string): string | null;
   removeSelected(): void;
   updateZone(id: string, patch: Partial<Zone>, commit?: boolean): void;
@@ -117,20 +117,56 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
 
   markClean: () => set({ isDirty: false }),
 
-  addZone: (widgetType) => {
+  addZone: (widgetType, dropAt) => {
     const id = crypto.randomUUID();
     const zones = get().zones;
     const past = [...get().past, snapshot(get())].slice(-HISTORY_LIMIT);
+    const w = 40;
+    const h = 30;
+    // Center the new zone on the drop point if one was provided
+    // (caller resolves the drop x/y in template-percentage space).
+    // Without this, every drop landed at the fixed default 10,10 so
+    // every new zone stacked on top of the previous one — partner
+    // reported it ditto: "i drag and drop to certain places on the
+    // canvas but it drops it right on top of the other one."
+    const x = dropAt ? Math.max(0, Math.min(100 - w, dropAt.x - w / 2)) : 10;
+    const y = dropAt ? Math.max(0, Math.min(100 - h, dropAt.y - h / 2)) : 10;
+    // Seed a sensible defaultConfig per widget type so freshly
+    // dropped zones render visibly instead of as a transparent box
+    // — partner reported "when i drag and drop it doesnt keep any
+    // of the UI, its just a transparent box." Most widget renderers
+    // gracefully fall back when their config is empty (e.g. CLOCK
+    // shows the live time), but TEXT/RICH_TEXT/WEBPAGE/etc. need a
+    // placeholder string so the operator sees SOMETHING and knows
+    // where to click to edit.
+    const seedDefault = (type: string): Record<string, any> => {
+      switch (type) {
+        case 'TEXT':
+        case 'RICH_TEXT':         return { text: 'Click to edit text' };
+        case 'ANNOUNCEMENT':      return { headline: 'New Announcement', body: 'Click to edit body' };
+        case 'WEBPAGE':           return { url: 'https://example.com' };
+        case 'TICKER':            return { tickerMessages: ['Click to edit ticker messages'] };
+        case 'COUNTDOWN':         return { title: 'Countdown', target: '' };
+        case 'IMAGE':             return { src: '', placeholder: 'Click to add image' };
+        case 'IMAGE_CAROUSEL':    return { items: [] };
+        case 'VIDEO':             return { src: '' };
+        case 'LOGO':              return { src: '' };
+        case 'STAFF_SPOTLIGHT':   return { name: 'Staff Name', role: 'Role' };
+        case 'QUOTE':             return { text: 'A quote', author: 'Author' };
+        default:                  return {};
+      }
+    };
     const next: Zone = clampZone({
       id,
       name: `${widgetLabel(widgetType)} ${zones.length + 1}`,
       widgetType,
-      x: 10,
-      y: 10,
-      width: 40,
-      height: 30,
+      x,
+      y,
+      width: w,
+      height: h,
       zIndex: zones.reduce((m, z) => Math.max(m, z.zIndex), 0) + 1,
       sortOrder: zones.length,
+      defaultConfig: seedDefault(widgetType),
     });
     set({ zones: [...zones, next], past, future: [], selectedIds: [id], isDirty: true });
     return id;
