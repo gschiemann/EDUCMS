@@ -1,0 +1,849 @@
+<!--
+  MS TEMPLATE · STUDIO · PORTRAIT v1
+  ===================================
+  Vertical 2160×3840 sibling to studio-ms-v2.html. Same on-air
+  radio-booth aesthetic (Anton + Archivo + DM Mono + Bebas Neue,
+  dark warm-brown booth + ON AIR red + amber slate + cyan VFD),
+  same content regions, redesigned for portrait reading rhythm.
+  Single combined footer at the bottom — partner explicitly asked
+  for one merged bar, not three stacked.
+
+  Re-rank for portrait single-column:
+    HUD → HERO → TURNTABLE+VU (side-by-side) → MIXER → LINEUP
+    (4 cassettes stacked vertically) → FOOTER (slate + VFD + ticker
+    in one outer chrome with internal dividers)
+
+  Why this rank?
+    1. ON AIR cabochon + school identity at the top — same as landscape.
+    2. Hero "GOOD MORNING" headline gets prominence (240px, full-width,
+       waveform + lede + cue-card chips below).
+    3. Turntable + VU meter share row 3 because they're both circular
+       instruments — pair visually well side-by-side, save vertical room.
+    4. Mixer (4-strip) is a horizontal control surface — makes sense
+       below the instruments as a console band.
+    5. Cassette LINEUP becomes a tall vertical column of 4 tapes
+       (in landscape it was 4-across). Each tape has more room for
+       its label + reels at portrait widths.
+    6. FOOTER is ONE bar with three internal zones (BREAKING amber +
+       cyan attendance + brushed-aluminum ticker), single outer
+       border + radius + shadow, internal dividers between zones.
+
+  Layout (2160×3840, edge inset 64px on all sides, 20px gaps):
+
+    PANEL          TOP    HEIGHT   ENDS-AT
+    ─────────────────────────────────────
+    HUD             56      360      416
+    HERO           436     1100     1536
+    TURN+VU       1556      700     2256
+    MIXER         2276      280     2556
+    LINEUP        2576      940     3516
+    FOOTER        3536      280     3816   (bottom inset 24)
+
+    Gaps (each 20px):
+      HUD → HERO         (416 → 436)
+      HERO → TURN+VU     (1536 → 1556)
+      TURN+VU → MIXER    (2256 → 2276)
+      MIXER → LINEUP     (2556 → 2576)
+      LINEUP → FOOTER    (3516 → 3536)
+
+    Top inset 56 + (360+20+1100+20+700+20+280+20+940+20+280)
+      = 56 + 3760 = 3816, + bottom inset 24 = 3840 ✓
+
+  Geometry rules (load-bearing — match landscape v2):
+    - box-sizing: border-box on every panel that sets explicit width
+    - overflow: hidden on every panel
+    - 64px edge inset (left/right), 20px gaps
+    - NO vw/vh/% sizing inside the scene
+    - 3-layer scale wrapper (.viewport > .stage-outer > .stage)
+
+  Font + palette + motifs match studio-ms-v2.html verbatim.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Studio — MS Lobby Portrait 4K (v1)</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;500;600;700;800&family=Bebas+Neue&family=DM+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  /* Box-sizing on every explicit-width panel. */
+  .hud, .hero, .turnvu, .turntable, .vumeter, .mixer, .lineup, .tape,
+  .footer, .slate, .vfd, .ticker { box-sizing: border-box; }
+
+  /* 3-layer scale wrapper — identical to landscape, just portrait dims. */
+  :root { --stage-w: 2160px; --stage-h: 3840px; --stage-scale: 1; }
+  html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; background:#000; }
+  .viewport { position:fixed; inset:0; display:grid; place-items:center; overflow:hidden; }
+  .stage-outer { width:calc(var(--stage-w)*var(--stage-scale)); height:calc(var(--stage-h)*var(--stage-scale)); }
+  .stage { width:var(--stage-w); height:var(--stage-h); transform:scale(var(--stage-scale)); transform-origin:0 0; position:relative; box-shadow:0 80px 200px rgba(0,0,0,.7); overflow:hidden;
+    background: #1b1410;
+    background-image:
+      radial-gradient(circle at 50% 0%, rgba(244,185,66,.06), transparent 60%),
+      repeating-linear-gradient(45deg, rgba(255,255,255,.012) 0 18px, transparent 18px 36px),
+      repeating-linear-gradient(-45deg, rgba(0,0,0,.18) 0 18px, transparent 18px 36px);
+    color: #f6f1e8; font-family: 'Archivo', system-ui, sans-serif;
+  }
+  /* faint scanline overlay */
+  .scanlines { position:absolute; inset:0; pointer-events:none;
+    background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(0,0,0,.12) 3px 4px); }
+
+  /* ─── HUD — top: ON AIR cabochon + school + 3 meta tiles ─── */
+  .hud { position:absolute; top:56px; left:64px; right:64px; height:360px;
+    display:flex; flex-direction:column; gap:24px; overflow:hidden; }
+  .hud-top { display:grid; grid-template-columns: auto 1fr; gap: 36px; align-items:center; }
+  .onair {
+    width: 220px; height: 200px; background: linear-gradient(180deg, #e63946 0%, #c2293a 100%);
+    border: 5px solid #1a0608; border-radius: 12px;
+    box-shadow:
+      inset 0 6px 14px rgba(255,180,180,.4),
+      inset 0 -8px 18px rgba(0,0,0,.55),
+      0 8px 22px rgba(230,57,70,.4);
+    display:grid; place-items:center; position:relative;
+  }
+  .onair::before {
+    content:''; width: 16px; height: 16px; border-radius: 50%; background: #fff;
+    position: absolute; top: 14px; left: 14px;
+    box-shadow: 0 0 12px #fff;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .55; transform: scale(.86); } }
+  .onair .text { font-family:'Anton',sans-serif; font-size: 86px; line-height:.85; color: #fff; letter-spacing: .04em; text-align:center; text-shadow: 0 2px 0 #1a0608; }
+  .lockup { min-width: 0; }
+  .lockup .eye {
+    font-family:'DM Mono', monospace; font-size: 30px; font-weight: 700;
+    letter-spacing: .26em; text-transform: uppercase; color: #f4b942;
+  }
+  .lockup .name {
+    font-family:'Anton', sans-serif; font-size: 144px; line-height: .9;
+    color: #f6f1e8; letter-spacing: .01em; margin-top: 14px;
+  }
+  .lockup .name b { color: #e63946; font-weight: normal; }
+  .lockup .freq {
+    font-family:'DM Mono', monospace; font-size: 32px; font-weight: 700;
+    color: #4dd0e1; margin-top: 14px; letter-spacing: .2em;
+    display: inline-flex; align-items: center; gap: 14px;
+  }
+  .lockup .freq::before {
+    content:''; width: 28px; height: 14px;
+    background: repeating-linear-gradient(90deg, #4dd0e1 0 4px, transparent 4px 8px);
+  }
+
+  /* Three meta tiles row */
+  .hud-meta { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; flex:1; min-height: 0; }
+  .mt {
+    background: linear-gradient(180deg, #2a2520 0%, #14110e 100%);
+    border: 4px solid #4a3a30; border-radius: 8px;
+    padding: 20px 28px;
+    display: flex; flex-direction: column; justify-content: center; gap: 8px;
+    box-shadow: inset 0 4px 10px rgba(255,235,180,.06), inset 0 -6px 14px rgba(0,0,0,.5);
+    overflow: hidden;
+  }
+  .mt .k {
+    font-family:'DM Mono', monospace; font-size: 22px; font-weight: 700;
+    letter-spacing: .26em; text-transform: uppercase; color: #c0a060;
+  }
+  .mt .v {
+    font-family:'Anton', sans-serif; font-size: 110px; line-height: 1;
+    color: #f6f1e8; letter-spacing: -.005em;
+  }
+  .mt.warm .v { color: #f4b942; text-shadow: 0 0 16px rgba(244,185,66,.4); }
+  .mt.cool .v { color: #4dd0e1; text-shadow: 0 0 14px rgba(77,208,225,.5); }
+
+  /* ─── HERO — GOOD MORNING + waveform + lede + chips ─── */
+  .hero {
+    position: absolute; top: 436px; left: 64px; right: 64px; height: 1100px;
+    background: linear-gradient(180deg, #2a2024 0%, #1a1318 100%);
+    border: 5px solid #1a0608; border-radius: 12px;
+    box-shadow: 0 16px 40px rgba(0,0,0,.55);
+    padding: 60px 80px; overflow: hidden; position: absolute;
+  }
+  .hero::before {
+    /* glowing red ribbon top-left */
+    content:''; position:absolute; left:-40px; top:60px;
+    background: linear-gradient(90deg, #e63946 0%, #c2293a 100%);
+    color: #fff; padding: 18px 60px;
+    transform: rotate(-3deg);
+    box-shadow: 6px 8px 0 rgba(0,0,0,.4);
+  }
+  .hero .ribbon {
+    display: inline-block; background: linear-gradient(90deg, #e63946 0%, #c2293a 100%); color: #fff;
+    font-family:'DM Mono', monospace; font-size: 30px; font-weight: 700;
+    padding: 14px 28px; letter-spacing: .2em; text-transform: uppercase;
+    border: 3px solid #1a0608; box-shadow: 6px 6px 0 #1a0608;
+    margin-bottom: 36px;
+  }
+  .hero h1 {
+    font-family:'Anton', sans-serif; font-size: 320px; line-height: .9;
+    color: #f6f1e8; margin: 0; letter-spacing: -.01em; text-transform: uppercase;
+  }
+  .hero h1 em { font-style: normal; color: #e63946; text-shadow: 0 0 36px rgba(230,57,70,.45); }
+
+  /* Animated waveform — 24 vertical bars */
+  .waveform { display: flex; align-items: flex-end; gap: 10px; margin-top: 44px; height: 110px; }
+  .waveform b {
+    flex: 1; background: linear-gradient(180deg, #4dd0e1 0%, #2880a0 100%);
+    border-radius: 4px; box-shadow: 0 0 12px rgba(77,208,225,.5);
+    animation: wave 1.6s ease-in-out infinite;
+  }
+  @keyframes wave {
+    0%,100% { height: 30%; opacity: .65; }
+    50%     { height: 100%; opacity: 1; }
+  }
+  .waveform b:nth-child(1)  { animation-delay: .00s; }
+  .waveform b:nth-child(2)  { animation-delay: .07s; }
+  .waveform b:nth-child(3)  { animation-delay: .14s; }
+  .waveform b:nth-child(4)  { animation-delay: .21s; }
+  .waveform b:nth-child(5)  { animation-delay: .28s; }
+  .waveform b:nth-child(6)  { animation-delay: .35s; }
+  .waveform b:nth-child(7)  { animation-delay: .42s; }
+  .waveform b:nth-child(8)  { animation-delay: .49s; }
+  .waveform b:nth-child(9)  { animation-delay: .56s; }
+  .waveform b:nth-child(10) { animation-delay: .63s; }
+  .waveform b:nth-child(11) { animation-delay: .70s; }
+  .waveform b:nth-child(12) { animation-delay: .77s; }
+  .waveform b:nth-child(13) { animation-delay: .84s; }
+  .waveform b:nth-child(14) { animation-delay: .91s; }
+  .waveform b:nth-child(15) { animation-delay: .98s; }
+  .waveform b:nth-child(16) { animation-delay: 1.05s; }
+  .waveform b:nth-child(17) { animation-delay: 1.12s; }
+  .waveform b:nth-child(18) { animation-delay: 1.19s; }
+  .waveform b:nth-child(19) { animation-delay: 1.26s; }
+  .waveform b:nth-child(20) { animation-delay: 1.33s; }
+  .waveform b:nth-child(21) { animation-delay: 1.40s; }
+  .waveform b:nth-child(22) { animation-delay: 1.47s; }
+  .waveform b:nth-child(23) { animation-delay: 1.54s; }
+  .waveform b:nth-child(24) { animation-delay: 1.61s; }
+
+  .hero .lede {
+    font-family:'Archivo', sans-serif; font-weight: 600; font-size: 60px; line-height: 1.25;
+    color: #d8d2c4; margin-top: 36px; max-width: 1820px;
+  }
+  .hero .lede b { color: #f4b942; font-weight: 800; }
+  .hero .lede em { color: #4dd0e1; font-style: normal; font-weight: 800; }
+
+  .hero-chips { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 36px; }
+  .hero-chips span {
+    font-family:'DM Mono', monospace; font-size: 28px; font-weight: 700;
+    background: rgba(0,0,0,.5); color: #f4b942; border: 2px solid #4a3a30;
+    padding: 14px 24px; letter-spacing: .14em; text-transform: uppercase;
+  }
+
+  /* ─── TURNTABLE + VU METER row (side-by-side) ─── */
+  .turnvu {
+    position: absolute; top: 1556px; left: 64px; right: 64px; height: 700px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+  }
+  .turntable {
+    position: relative; background: linear-gradient(180deg, #4a2818 0%, #1f1108 100%);
+    border: 5px solid #1a0608; border-radius: 12px;
+    box-shadow: inset 0 8px 24px rgba(255,180,120,.08), inset 0 -10px 30px rgba(0,0,0,.6),
+      0 16px 40px rgba(0,0,0,.55);
+    padding: 32px; overflow: hidden;
+  }
+  .turntable .eye {
+    position: absolute; top: 32px; left: 32px;
+    font-family:'DM Mono', monospace; font-size: 24px; font-weight: 700;
+    letter-spacing: .24em; text-transform: uppercase; color: #c0a060;
+    z-index: 2;
+  }
+  .turntable .stamp {
+    position: absolute; top: 32px; right: 32px;
+    font-family:'DM Mono', monospace; font-size: 22px; font-weight: 700;
+    letter-spacing: .22em; text-transform: uppercase; color: #c0a060;
+    z-index: 2;
+  }
+  .platter {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 460px; height: 460px; border-radius: 50%;
+    background:
+      radial-gradient(circle at 50% 50%, #1a1010 0%, #0a0606 60%, #050202 100%),
+      repeating-conic-gradient(from 0deg, rgba(255,255,255,.02) 0deg 1deg, transparent 1deg 4deg);
+    border: 6px solid #2a1408;
+    box-shadow: inset 0 0 60px rgba(0,0,0,.8), 0 14px 40px rgba(0,0,0,.55);
+    animation: spin 4s linear infinite;
+  }
+  @keyframes spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+  .platter::before {
+    content:''; position:absolute; top:50%; left:50%; transform: translate(-50%, -50%);
+    width: 180px; height: 180px; border-radius: 50%;
+    background: radial-gradient(circle at 38% 38%, #f4b942 0%, #c8901c 70%, #6a4810 100%);
+    border: 3px solid #1a0608;
+    box-shadow: inset 0 -8px 14px rgba(0,0,0,.4);
+  }
+  .platter::after {
+    content:''; position:absolute; top:50%; left:50%; transform: translate(-50%, -50%);
+    width: 12px; height: 12px; border-radius: 50%; background: #1a0608;
+  }
+  /* Tonearm — fixed angled stick from upper-right toward platter center */
+  .tonearm {
+    position: absolute; top: 64px; right: 56px;
+    width: 360px; height: 16px;
+    background: linear-gradient(180deg, #d0c8b0 0%, #806a48 100%);
+    border-radius: 8px; transform-origin: 100% 50%;
+    transform: rotate(-32deg);
+    box-shadow: 0 4px 10px rgba(0,0,0,.6);
+    z-index: 3;
+  }
+  .tonearm::before {
+    /* counterweight at the right end */
+    content:''; position: absolute; right: -28px; top: -16px;
+    width: 56px; height: 48px; background: #2a2520;
+    border: 3px solid #1a0608; border-radius: 6px;
+  }
+  .tonearm::after {
+    /* needle at the left end */
+    content:''; position: absolute; left: 0; top: -8px;
+    width: 24px; height: 32px; background: #1a0608;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+  }
+  .now-spinning {
+    position: absolute; bottom: 32px; left: 32px;
+    font-family:'Bebas Neue', sans-serif; font-size: 36px;
+    color: #4dd0e1; letter-spacing: .14em; text-transform: uppercase;
+    text-shadow: 0 0 14px rgba(77,208,225,.5); z-index: 2;
+  }
+
+  .vumeter {
+    position: relative; background: linear-gradient(180deg, #2a2520 0%, #14110e 100%);
+    border: 5px solid #1a0608; border-radius: 12px;
+    box-shadow: inset 0 6px 18px rgba(255,235,180,.05), inset 0 -10px 24px rgba(0,0,0,.7),
+      0 16px 40px rgba(0,0,0,.55);
+    padding: 32px; overflow: hidden;
+  }
+  .vumeter .eye {
+    font-family:'DM Mono', monospace; font-size: 24px; font-weight: 700;
+    letter-spacing: .24em; text-transform: uppercase; color: #c0a060;
+  }
+  .vumeter .stamp {
+    position: absolute; top: 32px; right: 32px;
+    font-family:'DM Mono', monospace; font-size: 26px; font-weight: 700;
+    color: #4dd0e1; letter-spacing: .18em;
+  }
+  /* VU arc — half-circle */
+  .vu-face {
+    position: absolute; bottom: 32px; left: 50%; transform: translateX(-50%);
+    width: 580px; height: 290px;
+    background: radial-gradient(circle at 50% 100%, #f4b942 0%, #c8901c 70%, #5a3a08 100%);
+    border-top-left-radius: 290px; border-top-right-radius: 290px;
+    border: 4px solid #1a0608;
+    overflow: hidden;
+    box-shadow: inset 0 -20px 40px rgba(0,0,0,.5);
+  }
+  .vu-face::before {
+    /* peak red zone */
+    content:''; position: absolute; top: 0; right: 0;
+    width: 40%; height: 100%;
+    background: linear-gradient(135deg, transparent 0%, rgba(230,57,70,.5) 100%);
+    border-top-right-radius: 290px;
+  }
+  /* tick marks */
+  .vu-face .ticks {
+    position: absolute; inset: 14px;
+    background:
+      conic-gradient(from 270deg at 50% 100%,
+        transparent 0deg, transparent 8deg,
+        #1a0608 8deg, #1a0608 9.4deg,
+        transparent 9.4deg, transparent 26.6deg,
+        #1a0608 26.6deg, #1a0608 28deg,
+        transparent 28deg, transparent 45deg,
+        #1a0608 45deg, #1a0608 46.4deg,
+        transparent 46.4deg, transparent 63.4deg,
+        #1a0608 63.4deg, #1a0608 64.8deg,
+        transparent 64.8deg, transparent 81.8deg,
+        #1a0608 81.8deg, #1a0608 83.2deg,
+        transparent 83.2deg);
+  }
+  /* needle — points up-right, at +3dB */
+  .vu-needle {
+    position: absolute; bottom: 0; left: 50%;
+    width: 4px; height: 240px; background: #1a0608;
+    transform-origin: 50% 100%; transform: translateX(-50%) rotate(28deg);
+    box-shadow: 0 0 8px rgba(0,0,0,.5);
+    animation: needle 2.4s ease-in-out infinite;
+  }
+  @keyframes needle {
+    0%,100% { transform: translateX(-50%) rotate(18deg); }
+    50%     { transform: translateX(-50%) rotate(40deg); }
+  }
+  .vu-readout {
+    position: absolute; bottom: 16px; left: 0; right: 0; text-align: center;
+    font-family:'DM Mono', monospace; font-size: 24px; font-weight: 700;
+    color: #1a0608; letter-spacing: .18em;
+  }
+
+  /* ─── MIXER — 4-strip horizontal console ─── */
+  .mixer {
+    position: absolute; top: 2276px; left: 64px; right: 64px; height: 280px;
+    background: linear-gradient(180deg, #2a2520 0%, #14110e 100%);
+    border: 5px solid #1a0608; border-radius: 12px;
+    box-shadow: inset 0 6px 14px rgba(255,235,180,.05), inset 0 -8px 20px rgba(0,0,0,.6),
+      0 14px 36px rgba(0,0,0,.5);
+    padding: 28px 36px; overflow: hidden;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px;
+  }
+  .strip { position: relative; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .strip .knob {
+    width: 60px; height: 60px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #c0a060 0%, #6a4810 70%, #2a1808 100%);
+    border: 3px solid #1a0608; box-shadow: 0 4px 8px rgba(0,0,0,.5);
+    position: relative;
+  }
+  .strip .knob::before {
+    content:''; position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
+    width: 4px; height: 16px; background: #1a0608; border-radius: 2px;
+  }
+  .strip .leds { display: flex; gap: 6px; align-items: center; }
+  .strip .leds b {
+    width: 12px; height: 12px; border-radius: 50%; background: #2a2520;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,.5);
+  }
+  .strip .leds b.on { background: #5ff28d; box-shadow: 0 0 10px #5ff28d; }
+  .strip .leds b.hot { background: #f4b942; box-shadow: 0 0 10px #f4b942; }
+  .strip .leds b.peak { background: #e63946; box-shadow: 0 0 10px #e63946; }
+  .strip .fader {
+    width: 8px; height: 56px; background: #14110e;
+    border: 2px solid #1a0608; border-radius: 4px;
+    position: relative; margin-top: 6px;
+  }
+  .strip .fader::before {
+    content:''; position: absolute; left: -16px; right: -16px; top: 16px; height: 12px;
+    background: linear-gradient(180deg, #c0a060 0%, #6a4810 100%);
+    border: 2px solid #1a0608; border-radius: 3px;
+  }
+  .strip .label {
+    font-family:'DM Mono', monospace; font-size: 22px; font-weight: 700;
+    color: #c0a060; letter-spacing: .2em; text-transform: uppercase;
+  }
+
+  /* ─── LINEUP — 4 cassettes stacked vertically ─── */
+  .lineup {
+    position: absolute; top: 2576px; left: 64px; right: 64px; height: 940px;
+    background: linear-gradient(180deg, #1a1318 0%, #0d090d 100%);
+    border: 5px solid #2a1f24; border-radius: 12px;
+    box-shadow: inset 0 8px 20px rgba(244,185,66,.04), inset 0 -10px 30px rgba(0,0,0,.6),
+      0 18px 50px rgba(0,0,0,.55);
+    padding: 24px 36px;
+  }
+  .lineup-head {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    padding-bottom: 14px; border-bottom: 3px solid rgba(244,185,66,.22); margin-bottom: 18px;
+  }
+  .lineup-head h2 {
+    font-family:'Anton', sans-serif; font-size: 80px; line-height: 1;
+    color: #f6f1e8; margin: 0; letter-spacing: .02em; text-transform: uppercase;
+  }
+  .lineup-head h2 em { font-style: normal; color: #f4b942; text-shadow: 0 0 24px rgba(244,185,66,.4); }
+  .lineup-head .meta {
+    font-family:'DM Mono', monospace; font-size: 22px; font-weight: 700;
+    color: #b9aca0; letter-spacing: .2em; text-transform: uppercase;
+  }
+
+  .tapes { display: flex; flex-direction: column; gap: 14px; }
+  .tape {
+    position: relative; height: 152px;
+    background: linear-gradient(180deg, #2a2024 0%, #1a1318 100%);
+    border: 3px solid #0a0608; border-radius: 8px;
+    box-shadow: inset 0 4px 8px rgba(255,255,255,.06), inset 0 -6px 12px rgba(0,0,0,.7),
+      0 8px 16px rgba(0,0,0,.55);
+    overflow: hidden;
+    display: grid; grid-template-columns: auto 1fr auto auto; gap: 32px;
+    align-items: center; padding: 16px 28px;
+  }
+  /* shell screws */
+  .tape::before {
+    content:''; position:absolute; inset:0;
+    background:
+      radial-gradient(circle at 14px 14px, #4a4744 2.5px, transparent 3.5px),
+      radial-gradient(circle at calc(100% - 14px) 14px, #4a4744 2.5px, transparent 3.5px),
+      radial-gradient(circle at 14px calc(100% - 14px), #4a4744 2.5px, transparent 3.5px),
+      radial-gradient(circle at calc(100% - 14px) calc(100% - 14px), #4a4744 2.5px, transparent 3.5px);
+    pointer-events:none;
+  }
+  .tape .label-block {
+    background: linear-gradient(180deg, #f5e8b6 0%, #e8d188 100%);
+    border: 2px solid #2a1f10; border-radius: 4px;
+    padding: 10px 16px; min-width: 540px;
+    color: #1a0e08;
+  }
+  .tape .label-block .top {
+    font-family:'DM Mono', monospace; font-size: 18px; font-weight: 700;
+    letter-spacing: .18em; text-transform: uppercase; color: #6a4810;
+  }
+  .tape .label-block .name {
+    font-family:'Anton', sans-serif; font-size: 44px; line-height: 1;
+    color: #1a0608; letter-spacing: -.005em; margin-top: 4px;
+  }
+  .tape .reels {
+    display: flex; gap: 24px;
+  }
+  .tape .reel {
+    width: 72px; height: 72px; border-radius: 50%;
+    background: radial-gradient(circle at 50% 50%, #2a2024 0%, #14110e 70%);
+    border: 3px solid #0a0608;
+    position: relative;
+    animation: spin-r 2.4s linear infinite;
+  }
+  @keyframes spin-r { to { transform: rotate(360deg); } }
+  .tape .reel::before {
+    content:''; position: absolute; inset: 16px; border-radius: 50%;
+    background:
+      conic-gradient(#4a4744 0deg 12deg, transparent 12deg 60deg,
+                     #4a4744 60deg 72deg, transparent 72deg 120deg,
+                     #4a4744 120deg 132deg, transparent 132deg 180deg,
+                     #4a4744 180deg 192deg, transparent 192deg 240deg,
+                     #4a4744 240deg 252deg, transparent 252deg 300deg,
+                     #4a4744 300deg 312deg, transparent 312deg 360deg);
+  }
+  .tape .meta {
+    font-family:'DM Mono', monospace; font-size: 24px; font-weight: 700;
+    letter-spacing: .14em; color: #b9aca0;
+    text-align: right;
+  }
+  .tape .meta b { display: block; color: #f4b942; font-weight: 700; font-size: 28px; margin-bottom: 4px; }
+
+  .tape.done { opacity: .55; }
+  .tape.done .reel { animation: none; opacity: .35; }
+  .tape.live {
+    border-color: #e63946;
+    box-shadow:
+      inset 0 4px 12px rgba(255,180,180,.12),
+      inset 0 -6px 14px rgba(0,0,0,.7),
+      0 8px 20px rgba(230,57,70,.35);
+    position: relative;
+  }
+  .tape.live .now-pip {
+    position: absolute; top: 50%; right: 32px; transform: translateY(-50%) translateX(0);
+    background: #e63946; color: #fff;
+    font-family:'DM Mono', monospace; font-size: 14px; font-weight: 700; letter-spacing: .24em;
+    padding: 4px 12px; border-radius: 4px;
+    box-shadow: 0 0 14px rgba(230,57,70,.6);
+  }
+
+  /* ─── FOOTER — single combined bar ─── */
+  /* Outer chrome only. Inner zones have NO own border / radius / shadow,
+     just background colors separated by 2px inner dividers. */
+  .footer {
+    position: absolute; top: 3536px; left: 64px; right: 64px; height: 280px;
+    background: #14110e;
+    border: 4px solid #0a0608; border-radius: 8px;
+    box-shadow: 0 14px 36px rgba(0,0,0,.6);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .footer-top {
+    display: grid; grid-template-columns: 1.7fr 1fr;
+    flex: 1 1 auto; min-height: 0;
+    border-bottom: 2px solid #0a0608;
+  }
+  .slate {
+    position: relative; background: linear-gradient(180deg, #f4b942 0%, #c8901c 100%);
+    color: #1a0e08; padding: 22px 28px;
+    display: grid; grid-template-columns: auto 1fr auto; gap: 24px; align-items: center;
+    overflow: hidden;
+    border-right: 2px solid #0a0608;
+  }
+  .slate::before {
+    content:''; position: absolute; inset: 0;
+    background: repeating-linear-gradient(135deg, transparent 0 56px, rgba(0,0,0,.08) 56px 64px);
+    pointer-events: none;
+  }
+  .slate-tag {
+    background: #1a0e08; color: #f4b942;
+    padding: 12px 20px;
+    font-family:'Anton', sans-serif; font-size: 36px; letter-spacing: .14em; text-transform: uppercase;
+    border: 3px solid #1a0e08; box-shadow: 6px 6px 0 rgba(0,0,0,.4);
+    display: inline-flex; align-items: center; gap: 14px;
+    position: relative; z-index: 1;
+  }
+  .slate-tag::before {
+    content:''; width: 14px; height: 14px; border-radius: 50%; background: #e63946;
+    box-shadow: 0 0 14px #e63946;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .slate-msg {
+    font-family:'Archivo', sans-serif; font-weight: 800;
+    font-size: 36px; line-height: 1.15; letter-spacing: -.005em;
+    position: relative; z-index: 1;
+  }
+  .slate-when {
+    font-family:'Anton', sans-serif; font-size: 48px; letter-spacing: .04em;
+    text-transform: uppercase; line-height: 1; text-align: right;
+    border-left: 3px solid #1a0e08; padding-left: 22px;
+    position: relative; z-index: 1; white-space: nowrap;
+  }
+  .slate-when span {
+    display: block;
+    font-family:'DM Mono', monospace; font-size: 18px; font-weight: 700;
+    letter-spacing: .18em; text-transform: uppercase; opacity: .7; margin-top: 6px;
+  }
+
+  .vfd {
+    position: relative;
+    background: linear-gradient(180deg, #08161c 0%, #020a0e 100%);
+    padding: 22px 32px;
+    display: grid; grid-template-columns: 1fr auto; gap: 28px; align-items: center;
+    overflow: hidden;
+  }
+  .vfd::before {
+    content:''; position: absolute; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(77,208,225,.04) 3px 4px);
+    pointer-events: none;
+  }
+  .vfd .info { position: relative; z-index: 1; min-width: 0; }
+  .vfd .k {
+    font-family:'DM Mono', monospace; font-size: 18px; font-weight: 700;
+    letter-spacing: .26em; text-transform: uppercase; color: #4dd0e1;
+    text-shadow: 0 0 12px rgba(77,208,225,.5);
+  }
+  .vfd .s {
+    font-family:'Archivo', sans-serif; font-weight: 600; font-size: 22px;
+    color: rgba(77,208,225,.6); margin-top: 6px;
+  }
+  .vfd .v {
+    position: relative; z-index: 1;
+    font-family:'Anton', sans-serif; font-size: 96px; line-height: .9;
+    color: #4dd0e1; letter-spacing: -.005em;
+    text-shadow: 0 0 18px rgba(77,208,225,.7), 0 0 48px rgba(77,208,225,.4);
+  }
+
+  .ticker {
+    position: relative; height: 88px; flex: 0 0 auto;
+    background: linear-gradient(180deg, #2a2520 0%, #14110e 100%);
+    display: grid; grid-template-columns: auto 1fr auto;
+    overflow: hidden;
+  }
+  .ticker::before {
+    content:''; position: absolute; inset: 4px;
+    background:
+      repeating-linear-gradient(90deg, transparent 0 2px, rgba(255,235,180,.04) 2px 3px),
+      linear-gradient(180deg, rgba(255,235,180,.04), transparent 50%);
+    pointer-events: none;
+  }
+  .ticker .badge {
+    background: #e63946; color: #fff;
+    font-family:'Anton', sans-serif; font-size: 38px; letter-spacing: .14em; text-transform: uppercase;
+    padding: 0 26px; display: flex; align-items: center; gap: 14px;
+    border-right: 2px solid #0a0608;
+    position: relative; z-index: 1;
+  }
+  .ticker .badge::before {
+    content:''; width: 12px; height: 12px; border-radius: 50%; background: #fff;
+    box-shadow: 0 0 12px #fff; animation: pulse 1.4s ease-in-out infinite;
+  }
+  .ticker .feed { overflow: hidden; position: relative; z-index: 1; }
+  .ticker .feed-inner {
+    display: inline-flex; align-items: center; gap: 50px; height: 100%; padding: 0 32px;
+    white-space: nowrap;
+    animation: scroll 36s linear infinite;
+    font-family:'Archivo', sans-serif; font-weight: 700; font-size: 28px;
+    color: #f6f1e8;
+  }
+  @keyframes scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  .ticker .feed-inner span { display: inline-flex; align-items: center; gap: 14px; }
+  .ticker .feed-inner span::after {
+    content:'●'; color: #f4b942; margin-left: 50px;
+  }
+  .ticker .end {
+    font-family:'Anton', sans-serif; font-size: 32px; letter-spacing: .14em;
+    color: #4dd0e1; padding: 0 26px; display: flex; align-items: center;
+    border-left: 2px solid #0a0608;
+    text-shadow: 0 0 12px rgba(77,208,225,.5);
+    position: relative; z-index: 1;
+  }
+</style>
+</head>
+<body>
+<div class="viewport">
+  <div class="stage-outer">
+    <div class="stage">
+      <div class="scanlines"></div>
+
+      <!-- HUD -->
+      <section class="hud">
+        <div class="hud-top">
+          <div class="onair"><div class="text">ON<br/>AIR</div></div>
+          <div class="lockup">
+            <div class="eye">★ Otter Radio · Ep. 142</div>
+            <div class="name">WESTRIDGE<b>.MS</b></div>
+            <div class="freq">88.7 FM · House Otters · Day B</div>
+          </div>
+        </div>
+        <div class="hud-meta">
+          <div class="mt"><span class="k">Studio Time</span><span class="v">7:53</span></div>
+          <div class="mt warm"><span class="k">Outside</span><span class="v">46°</span></div>
+          <div class="mt cool"><span class="k">Field Day</span><span class="v">12d</span></div>
+        </div>
+      </section>
+
+      <!-- HERO -->
+      <section class="hero">
+        <span class="ribbon">● Morning Show · Episode 142</span>
+        <h1>GOOD <em>MORNING.</em></h1>
+        <div class="waveform">
+          <b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b>
+          <b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b>
+        </div>
+        <p class="lede">
+          Broadcasting live from the front office. First bell at <b>08:05</b>.
+          Mr. Nguyen wants journals out for poetry in <em>P2</em> — you heard
+          it here first. Up next: science lab, mile run, and the greatest
+          chicken &amp; rice the cafeteria's ever cooked.
+        </p>
+        <div class="hero-chips">
+          <span>● Live mic on</span>
+          <span>● Cue sheet</span>
+          <span>● Phone lines</span>
+          <span>● Standby</span>
+        </div>
+      </section>
+
+      <!-- TURNTABLE + VU side-by-side -->
+      <section class="turnvu">
+        <div class="turntable">
+          <div class="eye">▼ Studer · 33⅓</div>
+          <div class="stamp">Now Spinning · A-Side</div>
+          <div class="platter"></div>
+          <div class="tonearm"></div>
+          <div class="now-spinning">▶ Spotlight · Spring Band Concert</div>
+        </div>
+        <div class="vumeter">
+          <div class="eye">▼ Master Output</div>
+          <div class="stamp">+3 dB</div>
+          <div class="vu-face">
+            <div class="ticks"></div>
+            <div class="vu-needle"></div>
+          </div>
+          <div class="vu-readout">−20 −10 −5 0 +1 +3 +5 ▲</div>
+        </div>
+      </section>
+
+      <!-- MIXER -->
+      <section class="mixer">
+        <div class="strip">
+          <div class="knob"></div>
+          <div class="leds"><b class="on"></b><b class="on"></b><b class="hot"></b><b></b><b></b></div>
+          <div class="fader"></div>
+          <div class="label">Mic · Ch 1</div>
+        </div>
+        <div class="strip">
+          <div class="knob"></div>
+          <div class="leds"><b class="on"></b><b class="on"></b><b class="on"></b><b class="hot"></b><b></b></div>
+          <div class="fader"></div>
+          <div class="label">Deck · Ch 2</div>
+        </div>
+        <div class="strip">
+          <div class="knob"></div>
+          <div class="leds"><b class="on"></b><b class="on"></b><b class="on"></b><b class="on"></b><b class="peak"></b></div>
+          <div class="fader"></div>
+          <div class="label">Band · Ch 3</div>
+        </div>
+        <div class="strip">
+          <div class="knob"></div>
+          <div class="leds"><b class="on"></b><b class="on"></b><b></b><b></b><b></b></div>
+          <div class="fader"></div>
+          <div class="label">FX · Ch 4</div>
+        </div>
+      </section>
+
+      <!-- LINEUP — 4 cassettes stacked vertically -->
+      <section class="lineup">
+        <div class="lineup-head">
+          <h2>Today's <em>Lineup</em></h2>
+          <span class="meta">Day B · 6 segments queued · On schedule</span>
+        </div>
+        <div class="tapes">
+          <div class="tape done">
+            <div class="label-block">
+              <div class="top">Side A · Track 01 · P1</div>
+              <div class="name">MATH 7 · MS. PATEL</div>
+            </div>
+            <div class="reels"><div class="reel"></div><div class="reel"></div></div>
+            <div class="meta"><b>8:05 — 8:55</b>DONE · 50 MIN</div>
+            <div></div>
+          </div>
+          <div class="tape live">
+            <div class="label-block">
+              <div class="top">★ ON AIR · Track 02 · P2</div>
+              <div class="name">ENGLISH POETRY · MR. NGUYEN</div>
+            </div>
+            <div class="reels"><div class="reel"></div><div class="reel"></div></div>
+            <div class="meta"><b>9:00 — 9:50</b>LIVE · RM 108</div>
+            <div class="now-pip">NOW PLAYING</div>
+          </div>
+          <div class="tape">
+            <div class="label-block">
+              <div class="top">Side A · Track 03 · P3</div>
+              <div class="name">SCIENCE LAB · MS. OKAFOR</div>
+            </div>
+            <div class="reels"><div class="reel"></div><div class="reel"></div></div>
+            <div class="meta"><b>9:55 — 10:45</b>UP NEXT · RM 207</div>
+            <div></div>
+          </div>
+          <div class="tape">
+            <div class="label-block">
+              <div class="top">Side B · Track 04 · P4</div>
+              <div class="name">PE — MILE RUN · COACH REYES</div>
+            </div>
+            <div class="reels"><div class="reel"></div><div class="reel"></div></div>
+            <div class="meta"><b>10:50 — 11:40</b>LATER · GYM A</div>
+            <div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- FOOTER — single combined bar (slate + VFD + ticker) -->
+      <section class="footer">
+        <div class="footer-top">
+          <div class="slate">
+            <span class="slate-tag">Breaking</span>
+            <span class="slate-msg">Picture day moved to Thursday — full uniform. Permission slips to front office by Wednesday.</span>
+            <span class="slate-when">Thu<span>All Day</span></span>
+          </div>
+          <div class="vfd">
+            <div class="info">
+              <div class="k">Otters Here</div>
+              <div class="s">98.2% attendance</div>
+            </div>
+            <div class="v">1,217</div>
+          </div>
+        </div>
+        <div class="ticker">
+          <div class="badge">▶ Now Playing</div>
+          <div class="feed">
+            <div class="feed-inner">
+              <span>Substitute teacher in Rm B-12</span>
+              <span>Spelling bee sign-ups end Friday</span>
+              <span>8th grade field trip forms due tomorrow</span>
+              <span>Library returns due this week</span>
+              <span>Lost blue water bottle → front office</span>
+              <span>Robotics Club · 3 PM · Rm 207</span>
+              <span>Substitute teacher in Rm B-12</span>
+              <span>Spelling bee sign-ups end Friday</span>
+              <span>8th grade field trip forms due tomorrow</span>
+              <span>Library returns due this week</span>
+              <span>Lost blue water bottle → front office</span>
+              <span>Robotics Club · 3 PM · Rm 207</span>
+            </div>
+          </div>
+          <div class="end">88.7 FM · WMS</div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+<script>
+  // fit() — reads window.innerWidth/innerHeight, sets --stage-scale so
+  // the stage fits in the viewport. Same shape as every other portrait
+  // mockup; only the dimensions differ.
+  (function fit() {
+    function set() {
+      var w = window.innerWidth, h = window.innerHeight;
+      var scale = Math.min(w / 2160, h / 3840);
+      document.documentElement.style.setProperty('--stage-scale', scale);
+    }
+    set();
+    window.addEventListener('resize', set);
+  })();
+</script>
+</body>
+</html>
