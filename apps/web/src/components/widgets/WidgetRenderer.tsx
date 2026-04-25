@@ -76,6 +76,14 @@ import { MsHomeroomWidget } from './ms/MsHomeroomWidget';
 import { MsPaperWidget } from './ms/MsPaperWidget';
 import { MsPlaylistWidget } from './ms/MsPlaylistWidget';
 import { MsStudioWidget } from './ms/MsStudioWidget';
+import { MsArcadePortraitWidget } from './ms/MsArcadePortraitWidget';
+import { MsAtlasPortraitWidget } from './ms/MsAtlasPortraitWidget';
+import { MsFieldnotesPortraitWidget } from './ms/MsFieldnotesPortraitWidget';
+import { MsGreenhousePortraitWidget } from './ms/MsGreenhousePortraitWidget';
+import { MsHomeroomPortraitWidget } from './ms/MsHomeroomPortraitWidget';
+import { MsPaperPortraitWidget } from './ms/MsPaperPortraitWidget';
+import { MsPlaylistPortraitWidget } from './ms/MsPlaylistPortraitWidget';
+import { MsStudioPortraitWidget } from './ms/MsStudioPortraitWidget';
 // 16 templates ported from scratch/design/*.html (4 parallel agents, 2026-04-20).
 // Each widget is a full-screen scene (transform:scale 1920×1080 pattern, live-
 // gated hotspots, ticker-speed helper). See CLAUDE.md "Template Design
@@ -208,6 +216,15 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'MS_PAPER':                      return <MsPaperWidget config={cfg} />;
     case 'MS_PLAYLIST':                   return <MsPlaylistWidget config={cfg} />;
     case 'MS_STUDIO':                     return <MsStudioWidget config={cfg} />;
+    // ── MS pack — portrait variants (2160×3840) ──
+    case 'MS_ARCADE_PORTRAIT':            return <MsArcadePortraitWidget config={cfg} />;
+    case 'MS_ATLAS_PORTRAIT':             return <MsAtlasPortraitWidget config={cfg} />;
+    case 'MS_FIELDNOTES_PORTRAIT':        return <MsFieldnotesPortraitWidget config={cfg} />;
+    case 'MS_GREENHOUSE_PORTRAIT':        return <MsGreenhousePortraitWidget config={cfg} />;
+    case 'MS_HOMEROOM_PORTRAIT':          return <MsHomeroomPortraitWidget config={cfg} />;
+    case 'MS_PAPER_PORTRAIT':             return <MsPaperPortraitWidget config={cfg} />;
+    case 'MS_PLAYLIST_PORTRAIT':          return <MsPlaylistPortraitWidget config={cfg} />;
+    case 'MS_STUDIO_PORTRAIT':            return <MsStudioPortraitWidget config={cfg} />;
     case 'ANIMATED_CAFETERIA':            return <AnimatedCafeteriaElementaryWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA_MS':         return <AnimatedCafeteriaMiddleWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA_HS':         return <AnimatedCafeteriaHighWidget config={cfg} live={live} />;

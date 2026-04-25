@@ -39,13 +39,30 @@ const STAGE_H = 2160;
 
 interface Props {
   children: ReactNode;
-  /** Optional inline style applied to the 3840×2160 stage div. */
+  /** Optional inline style applied to the stage div. */
   stageStyle?: React.CSSProperties;
-  /** Optional className applied to the 3840×2160 stage div. */
+  /** Optional className applied to the stage div. */
   stageClassName?: string;
+  /**
+   * Optional override for the stage width in CSS pixels. Defaults to 3840
+   * (landscape). Portrait MS templates pass 2160 here so the scale fit
+   * math respects the portrait aspect ratio instead of cropping.
+   */
+  width?: number;
+  /**
+   * Optional override for the stage height in CSS pixels. Defaults to 2160
+   * (landscape). Portrait MS templates pass 3840 here.
+   */
+  height?: number;
 }
 
-export function HsStage({ children, stageStyle, stageClassName }: Props) {
+export function HsStage({
+  children,
+  stageStyle,
+  stageClassName,
+  width = STAGE_W,
+  height = STAGE_H,
+}: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0);
 
@@ -56,7 +73,7 @@ export function HsStage({ children, stageStyle, stageClassName }: Props) {
       const w = el.clientWidth;
       const h = el.clientHeight;
       if (w <= 0 || h <= 0) return;
-      setScale(Math.min(w / STAGE_W, h / STAGE_H));
+      setScale(Math.min(w / width, h / height));
     };
     fit();
     // Two animation frames — one to catch the initial layout pass,
@@ -70,7 +87,7 @@ export function HsStage({ children, stageStyle, stageClassName }: Props) {
       cancelAnimationFrame(r2);
       ro.disconnect();
     };
-  }, []);
+  }, [width, height]);
 
   return (
     <div
@@ -84,20 +101,20 @@ export function HsStage({ children, stageStyle, stageClassName }: Props) {
       }}
     >
       {/* stage-outer holds the SCALED dimensions so the grid centers
-          the right size — without this, place-items:center centres a
-          3840×2160 box and the overflow:hidden crops to a middle slice. */}
+          the right size — without this, place-items:center centres an
+          unscaled stage box and the overflow:hidden crops to a middle slice. */}
       <div
         style={{
-          width: STAGE_W * scale,
-          height: STAGE_H * scale,
+          width: width * scale,
+          height: height * scale,
           position: 'relative',
         }}
       >
         <div
           className={stageClassName}
           style={{
-            width: STAGE_W,
-            height: STAGE_H,
+            width,
+            height,
             position: 'absolute',
             top: 0,
             left: 0,

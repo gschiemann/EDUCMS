@@ -597,6 +597,77 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     screenWidth: 3840, screenHeight: 2160, bgColor: '#1b1410',
     zones: [{ name: 'Scene', widgetType: 'MS_STUDIO', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
+
+  // ─── MS pack — portrait variants (2160×3840) ───────────────────
+  // Each landscape preset has a portrait sibling with id pattern
+  // `<landscape-id>-portrait`. The /templates gallery filters out
+  // -portrait suffixes from the main grid and surfaces them only via
+  // the landscape card's orientation toggle.
+  {
+    id: 'preset-ms-arcade-portrait',
+    name: '🕹️ Arcade — Portrait',
+    description: 'Vertical 4K portrait of the Arcade lobby. Same retro game-HUD aesthetic, redesigned for portrait reading — single-column quest log, vertical leaderboard, BOSS BATTLE × news ticker bottom bar.',
+    category: 'LOBBY_WELCOME', orientation: 'PORTRAIT', schoolLevel: 'MIDDLE',
+    screenWidth: 2160, screenHeight: 3840, bgColor: '#0d0d1a',
+    zones: [{ name: 'Scene', widgetType: 'MS_ARCADE_PORTRAIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-ms-atlas-portrait',
+    name: '🗺️ Atlas — Portrait',
+    description: 'Vertical 4K portrait of the Atlas lobby. Travel-poster cartography redesigned for portrait — full-width hero poster, almanac, four transit cards stacked vertically.',
+    category: 'LOBBY_WELCOME', orientation: 'PORTRAIT', schoolLevel: 'MIDDLE',
+    screenWidth: 2160, screenHeight: 3840, bgColor: '#f4ecd8',
+    zones: [{ name: 'Scene', widgetType: 'MS_ATLAS_PORTRAIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-ms-fieldnotes-portrait',
+    name: '🪶 Field Notes — Portrait',
+    description: 'Vertical 4K portrait of the Field Notes lobby. Naturalist field-journal aesthetic redesigned for portrait — full-width specimen card, agenda as tall column, P.S. ribbon ticker.',
+    category: 'LOBBY_WELCOME', orientation: 'PORTRAIT', schoolLevel: 'MIDDLE',
+    screenWidth: 2160, screenHeight: 3840, bgColor: '#efe6d2',
+    zones: [{ name: 'Scene', widgetType: 'MS_FIELDNOTES_PORTRAIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-ms-greenhouse-portrait',
+    name: '🌿 Greenhouse — Portrait',
+    description: 'Vertical 4K portrait of the Greenhouse lobby. Botanical herbarium aesthetic redesigned for portrait — large herbarium plate hero, vertical specimen index, three seed-packet club cards.',
+    category: 'LOBBY_WELCOME', orientation: 'PORTRAIT', schoolLevel: 'MIDDLE',
+    screenWidth: 2160, screenHeight: 3840, bgColor: '#f3ead4',
+    zones: [{ name: 'Scene', widgetType: 'MS_GREENHOUSE_PORTRAIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-ms-homeroom-portrait',
+    name: '🏫 Homeroom — Portrait',
+    description: 'Vertical 4K portrait of the Homeroom lobby. Classroom-bulletin aesthetic redesigned for portrait — chalkboard hero, tall corkboard agenda with 7 pinned index cards, manila folder clubs.',
+    category: 'LOBBY_WELCOME', orientation: 'PORTRAIT', schoolLevel: 'MIDDLE',
+    screenWidth: 2160, screenHeight: 3840, bgColor: '#f6f3ec',
+    zones: [{ name: 'Scene', widgetType: 'MS_HOMEROOM_PORTRAIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-ms-paper-portrait',
+    name: '📰 Paper — Portrait',
+    description: 'Vertical 4K portrait of the Paper lobby. Vintage broadsheet (real broadsheets ARE portrait) — full masthead, lead story column with drop-cap, halftone photo card, departments band, stop-press ticker.',
+    category: 'LOBBY_WELCOME', orientation: 'PORTRAIT', schoolLevel: 'MIDDLE',
+    screenWidth: 2160, screenHeight: 3840, bgColor: '#f7f1e3',
+    zones: [{ name: 'Scene', widgetType: 'MS_PAPER_PORTRAIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-ms-playlist-portrait',
+    name: '🎧 Playlist — Portrait',
+    description: 'Vertical 4K portrait of the Playlist lobby. Spotify mobile-app aesthetic — large square album cover, transport controls, vertical Up Next queue, alert + ticker bottom.',
+    category: 'LOBBY_WELCOME', orientation: 'PORTRAIT', schoolLevel: 'MIDDLE',
+    screenWidth: 2160, screenHeight: 3840, bgColor: '#0f0f12',
+    zones: [{ name: 'Scene', widgetType: 'MS_PLAYLIST_PORTRAIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-ms-studio-portrait',
+    name: '🎙️ Studio — Portrait',
+    description: 'Vertical 4K portrait of the Studio lobby. Radio-booth aesthetic — turntable + VU meter side-by-side, mixer console, 4 cassettes stacked vertically, single combined footer bar.',
+    category: 'LOBBY_WELCOME', orientation: 'PORTRAIT', schoolLevel: 'MIDDLE',
+    screenWidth: 2160, screenHeight: 3840, bgColor: '#1b1410',
+    zones: [{ name: 'Scene', widgetType: 'MS_STUDIO_PORTRAIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+
   {
     id: 'preset-cafeteria-chalkboard',
     name: '🌿 Animated Cafeteria · Chalkboard',

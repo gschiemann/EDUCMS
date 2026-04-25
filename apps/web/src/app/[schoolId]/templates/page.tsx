@@ -296,8 +296,27 @@ export default function TemplatesPage() {
       (t.category || '').toLowerCase().includes(q)
     );
   });
-  const systemTemplates = filtered.filter((t: Template) => t.isSystem);
-  const customTemplates = filtered.filter((t: Template) => !t.isSystem);
+
+  // Pair landscape presets with their portrait siblings by id convention:
+  //   preset-X (landscape)  ←→  preset-X-portrait (portrait)
+  // Portrait variants are HIDDEN from the gallery list; they surface
+  // only via the orientation toggle on their landscape sibling card.
+  // This keeps the gallery uncluttered (one card per template, not
+  // one per orientation) while letting operators preview either
+  // orientation right from the same tile.
+  const allById = new Map<string, Template>();
+  for (const t of (templates || [])) allById.set(t.id, t);
+  const portraitSiblingFor = (t: Template): Template | undefined => {
+    if (t.id.endsWith('-portrait')) return undefined;
+    return allById.get(`${t.id}-portrait`);
+  };
+
+  const systemTemplates = filtered
+    .filter((t: Template) => t.isSystem)
+    .filter((t: Template) => !t.id.endsWith('-portrait'));
+  const customTemplates = filtered
+    .filter((t: Template) => !t.isSystem)
+    .filter((t: Template) => !t.id.endsWith('-portrait'));
 
   async function handleCreate() {
     if (!newName.trim()) return;
@@ -493,7 +512,12 @@ export default function TemplatesPage() {
                   // explicit "Use this template" click inside the preview
                   // creates a custom DB row — browsing doesn't pollute
                   // the tenant's template list.
-                  <GalleryCard key={t.id} template={t} onPreview={() => setPreviewTemplate(t)} />
+                  <GalleryCard
+                    key={t.id}
+                    template={t}
+                    portraitSibling={portraitSiblingFor(t)}
+                    onPreview={(active) => setPreviewTemplate(active)}
+                  />
                 ))}
               </div>
             </section>
@@ -515,7 +539,15 @@ export default function TemplatesPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {customTemplates.map((t: Template) => (
-                  <GalleryCard key={t.id} template={t} onEdit={() => openInBuilder(t)} onDuplicate={() => handleDuplicate(t)} onDelete={() => { if (confirm('Delete this template?')) deleteTemplate.mutateAsync(t.id); }} onPreview={() => setPreviewTemplate(t)} />
+                  <GalleryCard
+                    key={t.id}
+                    template={t}
+                    portraitSibling={portraitSiblingFor(t)}
+                    onEdit={() => openInBuilder(t)}
+                    onDuplicate={() => handleDuplicate(t)}
+                    onDelete={() => { if (confirm('Delete this template?')) deleteTemplate.mutateAsync(t.id); }}
+                    onPreview={(active) => setPreviewTemplate(active)}
+                  />
                 ))}
               </div>
             )}
@@ -673,19 +705,32 @@ function TemplatePreviewModal({
 // GALLERY CARD — premium hover preview
 // ═════════════════════════════════════════════════════
 
-function GalleryCard({ template, onUse, onUsePortrait, onEdit, onDuplicate, onDelete, onPreview }: {
+function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, onDuplicate, onDelete, onPreview }: {
   template: Template;
+  /** If this template has a portrait sibling preset, pass it here; the
+   *  card shows a Landscape | Portrait toggle and renders the active
+   *  variant in both the thumbnail and the preview modal. */
+  portraitSibling?: Template;
   onUse?: () => void;
   onUsePortrait?: () => void;
   onEdit?: () => void;
   onDuplicate?: () => void;
   onDelete?: () => void;
-  onPreview?: () => void;
+  /** Called with the currently-active orientation's template (landscape
+   *  by default, portrait sibling when toggled). */
+  onPreview?: (which: Template) => void;
 }) {
-  const zones = template.zones || [];
-  const sw = template.screenWidth || 3840;
-  const sh = template.screenHeight || 2160;
+  // Local toggle — persists for the lifetime of the gallery render.
+  // Defaults to landscape (the natural orientation of the preset row).
+  const [showPortrait, setShowPortrait] = useState(false);
+  const active = showPortrait && portraitSibling ? portraitSibling : template;
+
+  const zones = active.zones || [];
+  const sw = active.screenWidth || 3840;
+  const sh = active.screenHeight || 2160;
   const isLandscape = sw >= sh;
+
+  const fire = onPreview ? () => onPreview(active) : undefined;
 
   return (
     <div className="group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-200 transition-all duration-300 overflow-hidden">
@@ -703,19 +748,19 @@ function GalleryCard({ template, onUse, onUsePortrait, onEdit, onDuplicate, onDe
           stays visible on hover as an affordance + keyboard target,
           but the entire surface dispatches the same onPreview. */}
       <div
-        className={`relative bg-gradient-to-br from-slate-50 to-slate-100 p-4 flex items-center justify-center ${onPreview ? 'cursor-pointer' : ''}`}
+        className={`relative bg-gradient-to-br from-slate-50 to-slate-100 p-4 flex items-center justify-center ${fire ? 'cursor-pointer' : ''}`}
         style={{ height: 200 }}
-        onClick={onPreview}
+        onClick={fire}
         onKeyDown={(e) => {
-          if (!onPreview) return;
+          if (!fire) return;
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
-            onPreview();
+            fire();
           }
         }}
-        role={onPreview ? 'button' : undefined}
-        tabIndex={onPreview ? 0 : undefined}
-        aria-label={onPreview ? `Preview ${template.name}` : undefined}
+        role={fire ? 'button' : undefined}
+        tabIndex={fire ? 0 : undefined}
+        aria-label={fire ? `Preview ${active.name}` : undefined}
       >
         {/*
           Proper thumbnail rendering: render the template at its NATURAL
@@ -737,6 +782,46 @@ function GalleryCard({ template, onUse, onUsePortrait, onEdit, onDuplicate, onDe
         {template.isSystem && (
           <div className="absolute top-3 right-3 bg-gradient-to-r from-indigo-500 to-violet-500 text-white text-[9px] font-bold px-2.5 py-1 rounded-full shadow-sm pointer-events-none">
             PRESET
+          </div>
+        )}
+
+        {/* Orientation toggle — only renders when a portrait sibling
+            exists for this preset. Lets the operator preview either
+            orientation right from the gallery tile without leaving
+            the page. Click stops propagation so it doesn't fire the
+            outer onPreview. */}
+        {portraitSibling && (
+          <div
+            className="absolute top-3 left-3 inline-flex items-center bg-white/95 border border-slate-200 rounded-full overflow-hidden shadow-sm"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            role="group"
+            aria-label="Orientation"
+          >
+            <button
+              type="button"
+              onClick={() => setShowPortrait(false)}
+              className={`flex items-center gap-1 px-2 py-1 text-[10px] font-semibold transition ${
+                !showPortrait ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'
+              }`}
+              aria-pressed={!showPortrait}
+              title="Landscape"
+            >
+              <Monitor className="w-3 h-3" />
+              Landscape
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPortrait(true)}
+              className={`flex items-center gap-1 px-2 py-1 text-[10px] font-semibold transition ${
+                showPortrait ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'
+              }`}
+              aria-pressed={showPortrait}
+              title="Portrait"
+            >
+              <Smartphone className="w-3 h-3" />
+              Portrait
+            </button>
           </div>
         )}
 

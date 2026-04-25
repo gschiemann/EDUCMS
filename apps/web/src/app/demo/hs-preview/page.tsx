@@ -44,9 +44,20 @@ const MS_TEMPLATES: Tile[] = [
   { type: 'MS_STUDIO',     label: 'Studio (On Air)',        bg: '#1b1410' },
 ];
 
-const ALL_TEMPLATES: Tile[] = [...HS_TEMPLATES, ...MS_TEMPLATES];
+const MS_PORTRAITS: Tile[] = [
+  { type: 'MS_ARCADE_PORTRAIT',     label: 'Arcade — Portrait',     bg: '#0d0d1a' },
+  { type: 'MS_ATLAS_PORTRAIT',      label: 'Atlas — Portrait',      bg: '#f4ecd8' },
+  { type: 'MS_FIELDNOTES_PORTRAIT', label: 'Field Notes — Portrait', bg: '#efe6d2' },
+  { type: 'MS_GREENHOUSE_PORTRAIT', label: 'Greenhouse — Portrait', bg: '#f3ead4' },
+  { type: 'MS_HOMEROOM_PORTRAIT',   label: 'Homeroom — Portrait',   bg: '#f6f3ec' },
+  { type: 'MS_PAPER_PORTRAIT',      label: 'Paper — Portrait',      bg: '#f7f1e3' },
+  { type: 'MS_PLAYLIST_PORTRAIT',   label: 'Playlist — Portrait',   bg: '#0f0f12' },
+  { type: 'MS_STUDIO_PORTRAIT',     label: 'Studio — Portrait',     bg: '#1b1410' },
+];
 
-function PackSection({ title, sub, accent, tiles, onZoom }: { title: string; sub: string; accent: string; tiles: Tile[]; onZoom: (t: string) => void }) {
+const ALL_TEMPLATES: Tile[] = [...HS_TEMPLATES, ...MS_TEMPLATES, ...MS_PORTRAITS];
+
+function PackSection({ title, sub, accent, tiles, onZoom, aspectRatio = '16 / 9', columnsMin = 380 }: { title: string; sub: string; accent: string; tiles: Tile[]; onZoom: (t: string) => void; aspectRatio?: string; columnsMin?: number }) {
   return (
     <section style={{ marginBottom: 40 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: 14, paddingBottom: 10, borderBottom: `2px solid ${accent}` }}>
@@ -56,7 +67,7 @@ function PackSection({ title, sub, accent, tiles, onZoom }: { title: string; sub
           {tiles.length} templates
         </span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${columnsMin}px, 1fr))`, gap: 20 }}>
         {tiles.map((t) => (
           <button
             key={t.type}
@@ -76,7 +87,7 @@ function PackSection({ title, sub, accent, tiles, onZoom }: { title: string; sub
               style={{
                 position: 'relative',
                 width: '100%',
-                aspectRatio: '16 / 9',
+                aspectRatio,
                 overflow: 'hidden',
                 background: t.bg,
               }}
@@ -121,11 +132,21 @@ export default function HsPreviewPage() {
       />
 
       <PackSection
-        title="📚 Middle School Pack"
+        title="📚 Middle School Pack — Landscape (3840×2160)"
         sub="Game-HUD / cartographic / journal aesthetic — tagged MIDDLE on /templates"
         accent="#fbbf24"
         tiles={MS_TEMPLATES}
         onZoom={setZoom}
+      />
+
+      <PackSection
+        title="📱 Middle School Pack — Portrait (2160×3840)"
+        sub="Same templates, redesigned for vertical 4K hallway displays"
+        accent="#a78bfa"
+        tiles={MS_PORTRAITS}
+        onZoom={setZoom}
+        aspectRatio="9 / 16"
+        columnsMin={220}
       />
 
       {zoom && (
@@ -143,14 +164,17 @@ export default function HsPreviewPage() {
             cursor: 'zoom-out',
           }}
         >
+          {(() => {
+            const isPortrait = zoom?.endsWith('_PORTRAIT') ?? false;
+            return (
           <div
             role="dialog"
             aria-modal="true"
             aria-label={`Preview of ${zoom}`}
             style={{
               position: 'relative',
-              width: 'min(90vw, 1600px)',
-              aspectRatio: '16 / 9',
+              width: isPortrait ? 'min(50vw, 800px)' : 'min(90vw, 1600px)',
+              aspectRatio: isPortrait ? '9 / 16' : '16 / 9',
               background: ALL_TEMPLATES.find((t) => t.type === zoom)?.bg ?? '#000',
               boxShadow: '0 20px 80px rgba(0,0,0,.8)',
               overflow: 'hidden',
@@ -160,6 +184,8 @@ export default function HsPreviewPage() {
           >
             <WidgetPreview widgetType={zoom} config={{}} width={100} height={100} live={true} />
           </div>
+            );
+          })()}
           <button
             onClick={() => setZoom(null)}
             style={{
