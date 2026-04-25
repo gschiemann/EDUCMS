@@ -48,7 +48,13 @@
      That's what was clipping "62%" on the xpbar and "queued" on
      the board's header chip. Applied to all four panels so every
      declared width + padding combo stays edge-to-edge. */
-  .quest, .xpbar, .side, .board { box-sizing: border-box; }
+  /* v2.7: added .eventsbox to the border-box list — without it, the
+     inner Side Quests panel (height:100% of its 590px wrapper, plus
+     padding 38+38 + border 6+6) rendered ~88px taller than .board on
+     the left, so the bottom edges didn't line up. The user reported
+     this as "you fixed the left side boxes but not the right side
+     box, make them even together." */
+  .quest, .xpbar, .side, .board, .eventsbox { box-sizing: border-box; }
 
   /* 3-layer scale wrapper — same as shipped HS templates. */
   :root { --stage-w: 3840px; --stage-h: 2160px; --stage-scale: 1; }

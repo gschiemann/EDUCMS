@@ -63,6 +63,29 @@ export default function GettingStartedGuide() {
    on the saved PDF.
    ────────────────────────────────────────────────────────────────── */
 function PrintControls() {
+  const handlePrint = () => {
+    if (typeof window === 'undefined') return;
+    // Chrome's "Save as PDF" defaults its filename to document.title.
+    // Stamp a dated, unique filename before opening the print dialog
+    // so each save creates a fresh file — sidesteps the Windows
+    // "file is in use" error that hits when the user tries to
+    // overwrite a PDF that's still open in a viewer (Edge, Acrobat,
+    // OneDrive sync, etc. hold file handles for surprisingly long).
+    // Restore the original title once the dialog closes.
+    const originalTitle = document.title;
+    const stamp = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const hhmm = new Date().toTimeString().slice(0, 5).replace(':', '');
+    document.title = `EduSignage — Quick-Start Guide — ${stamp} ${hhmm}`;
+    // Restore on next tick so the print dialog has captured the title.
+    // afterprint handles the modern path; setTimeout is the fallback.
+    const restore = () => {
+      document.title = originalTitle;
+      window.removeEventListener('afterprint', restore);
+    };
+    window.addEventListener('afterprint', restore);
+    setTimeout(restore, 60_000); // safety net if afterprint never fires
+    window.print();
+  };
   return (
     <div className="guide-controls">
       <div className="guide-controls-inner">
@@ -70,14 +93,20 @@ function PrintControls() {
           <span className="guide-controls-eyebrow">EduSignage</span>
           <span className="guide-controls-title">Getting Started Guide</span>
         </div>
-        <button
-          type="button"
-          onClick={() => typeof window !== 'undefined' && window.print()}
-          className="guide-controls-print"
-        >
-          <Printer className="w-4 h-4" />
-          Print PDF
-        </button>
+        <div className="guide-controls-actions">
+          <button
+            type="button"
+            onClick={handlePrint}
+            className="guide-controls-print"
+          >
+            <Printer className="w-4 h-4" />
+            Print PDF
+          </button>
+          <span className="guide-controls-hint">
+            If your save dialog says &ldquo;file in use,&rdquo; close any open
+            PDF viewers and try again — or save to a non-OneDrive folder.
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -100,7 +129,7 @@ function CoverPage() {
         <h1 className="guide-cover-title">
           Light up your screens
           <br />
-          <span className="guide-cover-grad">in 30 minutes.</span>
+          <span className="guide-cover-grad">in one sitting.</span>
         </h1>
         <p className="guide-cover-lead">
           A printable walkthrough for new K-12 districts. Everything you need
@@ -208,7 +237,9 @@ function Chapter1Pair() {
       <p className="guide-lede">
         Any web browser becomes an EduSignage display. You don&rsquo;t need
         special hardware — Smart TVs, Chromebooks on a wheeled cart, and
-        existing wall-mounted kiosks all work the same way.
+        existing wall-mounted kiosks all work the same way. <strong>Don&rsquo;t
+        have a screen handy?</strong> Pair a browser tab as your first display
+        — see the test-it-from-your-laptop tip below the steps.
       </p>
 
       <div className="guide-steps">
@@ -233,6 +264,17 @@ function Chapter1Pair() {
           ONLINE chip.
         </Step>
       </div>
+
+      <Tip>
+        <strong>Test it from your laptop browser — no hardware needed.</strong>
+        On a second tab (or a second window), open
+        <code> edusignage.app/player</code> exactly like you would on a TV.
+        Pair it from the dashboard the same way. That browser tab now
+        behaves as a real screen — anything you publish from the dashboard
+        plays in it within a few seconds. It&rsquo;s the fastest way to
+        rehearse the upload → playlist → publish flow before any
+        actual hardware lands at the school.
+      </Tip>
 
       <Tip>
         <strong>Want to use the Android player APK instead?</strong> Sideload
@@ -656,6 +698,13 @@ function GuideStyles() {
       .guide-controls-print:hover {
         transform: translateY(-1px);
         box-shadow: 0 6px 20px rgba(99,102,241,0.42);
+      }
+      .guide-controls-actions {
+        display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+      }
+      .guide-controls-hint {
+        font-size: 10.5px; color: #94a3b8; max-width: 340px; text-align: right;
+        line-height: 1.4;
       }
 
       /* ─── Cover page ─── */
