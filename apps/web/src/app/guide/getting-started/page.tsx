@@ -38,10 +38,39 @@ import {
   Tv,
   Sparkles,
 } from 'lucide-react';
+import { Fredoka, Inter, JetBrains_Mono } from 'next/font/google';
+
+// Load fonts via next/font (self-hosted .woff2 baked into the build)
+// instead of an `@import url(fonts.googleapis.com)` inside the inline
+// <style> tag. Chrome's print-to-PDF pipeline doesn't reliably block
+// on @import font fetches before paint, so customers were getting
+// "Cannot extract embedded font 'T3Font_42'" errors in Acrobat — that's
+// the symptom of Chrome falling back to a Type 3 raster-glyph font
+// because the real font binary wasn't ready when the print renderer
+// captured the page. Self-hosted fonts via next/font are baked into
+// the bundle and embed cleanly as Type 1/2 fonts in the PDF.
+const fontFredoka = Fredoka({
+  subsets: ['latin'],
+  weight: ['500', '600', '700'],
+  variable: '--guide-font-fredoka',
+  display: 'swap',
+});
+const fontInter = Inter({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--guide-font-inter',
+  display: 'swap',
+});
+const fontMono = JetBrains_Mono({
+  subsets: ['latin'],
+  weight: ['500', '600'],
+  variable: '--guide-font-mono',
+  display: 'swap',
+});
 
 export default function GettingStartedGuide() {
   return (
-    <div className="guide-root">
+    <div className={`guide-root ${fontInter.variable} ${fontFredoka.variable} ${fontMono.variable}`}>
       <PrintControls />
       <CoverPage />
       <Welcome />
@@ -643,8 +672,12 @@ function TemplateTile({ src, name, tag, tagCls, desc }: { src: string; name: str
 function GuideStyles() {
   return (
     <style jsx global>{`
-      @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap');
-
+      /* Fonts now loaded via next/font (self-hosted .woff2 baked into the
+         build). The previous @import url(fonts.googleapis.com) caused
+         Acrobat to error with "Cannot extract embedded font 'T3Font_42'"
+         when customers saved the page as PDF, because Chrome's print
+         pipeline didn't always block on the @import network fetch and
+         fell back to a Type 3 raster-glyph embedded font. */
       :root {
         --guide-ink: #0f172a;
         --guide-ink-soft: #475569;
@@ -660,7 +693,7 @@ function GuideStyles() {
       .guide-root {
         background: var(--guide-page-bg);
         color: var(--guide-ink);
-        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        font-family: var(--guide-font-inter), system-ui, -apple-system, sans-serif;
         font-size: 14px;
         line-height: 1.6;
         -webkit-font-smoothing: antialiased;
@@ -684,7 +717,7 @@ function GuideStyles() {
         text-transform: uppercase; color: var(--guide-accent);
       }
       .guide-controls-title {
-        font-family: 'Fredoka', sans-serif; font-weight: 600;
+        font-family: var(--guide-font-fredoka), sans-serif; font-weight: 600;
         font-size: 16px; color: var(--guide-ink);
       }
       .guide-controls-print {
@@ -741,7 +774,7 @@ function GuideStyles() {
         margin: 0 0 16px;
       }
       .guide-cover-title {
-        font-family: 'Fredoka', sans-serif; font-weight: 600;
+        font-family: var(--guide-font-fredoka), sans-serif; font-weight: 600;
         font-size: clamp(40px, 6vw, 64px); line-height: 1.05;
         margin: 0 0 24px; color: var(--guide-ink);
         letter-spacing: -0.02em;
@@ -781,7 +814,7 @@ function GuideStyles() {
         color: #fff;
       }
       .guide-page-title {
-        font-family: 'Fredoka', sans-serif; font-weight: 600;
+        font-family: var(--guide-font-fredoka), sans-serif; font-weight: 600;
         font-size: 36px; line-height: 1.1; letter-spacing: -0.018em;
         margin: 0 0 12px; color: var(--guide-ink);
       }
@@ -811,19 +844,19 @@ function GuideStyles() {
         width: 36px; height: 36px; border-radius: 10px;
         background: linear-gradient(135deg, var(--guide-accent), var(--guide-accent-2));
         color: #fff;
-        font-family: 'JetBrains Mono', monospace;
+        font-family: var(--guide-font-mono), monospace;
         font-weight: 600; font-size: 14px;
         display: grid; place-items: center;
         flex-shrink: 0;
       }
       .guide-step-title {
         margin: 4px 0 4px; font-size: 16px; font-weight: 600;
-        font-family: 'Fredoka', sans-serif;
+        font-family: var(--guide-font-fredoka), sans-serif;
         color: var(--guide-ink);
       }
       .guide-step-copy { margin: 0; color: var(--guide-ink-soft); font-size: 14px; }
       .guide-step-copy code {
-        font-family: 'JetBrains Mono', monospace;
+        font-family: var(--guide-font-mono), monospace;
         font-size: 12.5px;
         background: #f1f5f9;
         padding: 1px 6px; border-radius: 4px;
@@ -853,7 +886,7 @@ function GuideStyles() {
         border-radius: 14px; padding: 20px;
       }
       .guide-callout h3 {
-        font-family: 'Fredoka', sans-serif; font-weight: 600;
+        font-family: var(--guide-font-fredoka), sans-serif; font-weight: 600;
         font-size: 14px; margin: 0 0 12px; color: var(--guide-ink);
       }
       .guide-callout ul {
@@ -893,7 +926,7 @@ function GuideStyles() {
         border: 1px solid var(--guide-rule); border-radius: 14px;
       }
       .guide-toc-num {
-        font-family: 'JetBrains Mono', monospace; font-weight: 600;
+        font-family: var(--guide-font-mono), monospace; font-weight: 600;
         font-size: 14px; color: var(--guide-ink-faint);
         width: 28px;
       }
@@ -905,14 +938,14 @@ function GuideStyles() {
       }
       .guide-toc-body { display: flex; flex-direction: column; gap: 2px; }
       .guide-toc-title {
-        font-family: 'Fredoka', sans-serif; font-weight: 600;
+        font-family: var(--guide-font-fredoka), sans-serif; font-weight: 600;
         font-size: 15px; color: var(--guide-ink);
       }
       .guide-toc-blurb {
         font-size: 12.5px; color: var(--guide-ink-soft);
       }
       .guide-toc-page {
-        font-family: 'JetBrains Mono', monospace; font-weight: 500;
+        font-family: var(--guide-font-mono), monospace; font-weight: 500;
         font-size: 12px; color: var(--guide-ink-faint);
       }
 
@@ -944,7 +977,7 @@ function GuideStyles() {
         display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
       }
       .guide-template-meta h4 {
-        margin: 0 0 2px; font-family: 'Fredoka', sans-serif; font-weight: 600;
+        margin: 0 0 2px; font-family: var(--guide-font-fredoka), sans-serif; font-weight: 600;
         font-size: 14px; color: var(--guide-ink);
       }
       .guide-template-meta p {
@@ -980,14 +1013,14 @@ function GuideStyles() {
       }
       .guide-support-card h3 {
         margin: 0 0 6px;
-        font-family: 'Fredoka', sans-serif; font-weight: 600;
+        font-family: var(--guide-font-fredoka), sans-serif; font-weight: 600;
         font-size: 15px; color: var(--guide-ink);
       }
       .guide-support-card p {
         margin: 0 0 8px; font-size: 13px; color: var(--guide-ink-soft); line-height: 1.55;
       }
       .guide-support-link {
-        font-family: 'JetBrains Mono', monospace; font-weight: 500;
+        font-family: var(--guide-font-mono), monospace; font-weight: 500;
         font-size: 12px; color: var(--guide-accent);
         margin: 0;
       }
