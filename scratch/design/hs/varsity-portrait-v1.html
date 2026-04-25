@@ -1,0 +1,619 @@
+<!--
+  HS TEMPLATE · VARSITY · PORTRAIT v1
+  ====================================
+  Vertical 2160×3840 sibling to scratch/design/hs/varsity.html.
+  Same athletic department aesthetic, same content, redesigned for
+  portrait reading rhythm.
+
+  This is NOT a squish of the landscape file. The landscape uses a
+  two-column layout (jersey-chest greeting | scoreboard) and a wide
+  coach-of-the-week strip. Portrait collapses everything into a
+  single vertical column and re-ranks by glance priority:
+
+    HEADER (seal + lockup + pennants)
+      → JERSEY / GAME DAY greeting (hero — full width)
+      → SCOREBOARD (game of the week, tall card)
+      → STATS (clock / weather / record / attendance — 2×2)
+      → COACH OF THE WEEK
+      → ANNOUNCEMENT (heads up · pep rally)
+      → COUNTDOWN (days to homecoming — full bleed strip)
+      → SCHEDULE (3 upcoming events)
+      → TICKER (PA system, full bleed bottom)
+
+  Why this rank?
+    1. School identity at the top — same as landscape but the seal
+       and lockup get a tall row to themselves (272px) instead of
+       sharing space with the pennants strip.
+    2. Jersey-chest GREETING is the hero. In landscape it shared a
+       row with the scoreboard; here it gets the full 2032px width
+       and the headline grows to 320px because there's no neighbor
+       constraining it. This is the chest of the jersey — biggest
+       type on the screen, by design.
+    3. SCOREBOARD becomes a tall card directly under the greeting.
+       Home / VS / Away reads top-to-bottom (rather than home-VS-away
+       horizontally) so each crest+name gets full width — crests
+       grow 130→200px, team names 82→160px.
+    4. STATS go from a single horizontal strip (4 stats) to a 2×2
+       grid. Each tile gets ~990×220 — values can swell to 160px.
+    5. COACH card becomes vertical: portrait left at 480×580,
+       text right. Quote breathes at 60px in ~1400px width.
+    6. ANNOUNCEMENT and COUNTDOWN stack as two single-purpose strips
+       beneath the coach. Countdown becomes a full-width red bar with
+       the giant '03' jersey number on the left and label right.
+    7. SCHEDULE is a 3-up event strip (same as landscape but on its
+       own row, taller).
+    8. TICKER stays at the very bottom, full-bleed, a hair taller
+       (120 vs 60) so the message reads from across the lobby.
+
+  Layout (2160×3840, edge inset 64px on left/right, top inset 64,
+  bottom inset 64, 20px gaps between panels):
+
+    PANEL          TOP    HEIGHT   ENDS-AT
+    ─────────────────────────────────────
+    HEADER          64      272      336
+    JERSEY         356      600      956
+    SCOREBOARD     976      720     1696
+    STATS         1716      480     2196
+    COACH         2216      660     2876
+    ANNOUNCEMENT  2896      280     3176
+    COUNTDOWN     3196      200     3396
+    SCHEDULE      3416      220     3636
+    TICKER        3656      120     3776   (bottom inset 64)
+
+    Gaps (each 20px, 8 total = 160px):
+      HEADER     → JERSEY        (336  → 356)
+      JERSEY     → SCOREBOARD    (956  → 976)
+      SCOREBOARD → STATS         (1696 → 1716)
+      STATS      → COACH         (2196 → 2216)
+      COACH      → ANNOUNCEMENT  (2876 → 2896)
+      ANNOUNCE   → COUNTDOWN     (3176 → 3196)
+      COUNTDOWN  → SCHEDULE      (3396 → 3416)
+      SCHEDULE   → TICKER        (3636 → 3656)
+
+    Content height = 272+600+720+480+660+280+200+220+120 = 3552
+    Gaps (8 × 20px)                                      =  160
+    Top inset (64) + bottom inset (64)                   =  128
+    ──────────────────────────────────────────────────────────
+    Total                                                = 3840 ✓
+
+  Geometry rules (load-bearing — match landscape):
+    - box-sizing: border-box on every panel that sets explicit width
+    - overflow: hidden on every panel
+    - 64px edge inset (left/right), 20px gaps
+    - NO vw/vh/% sizing inside the scene
+    - 3-layer scale wrapper (.viewport > .stage-outer > .stage)
+
+  Font + palette + motifs match varsity.html verbatim (Bungee + Oswald
+  + Inter; navy/gold/red/cream; diagonal pitch stripes; jersey-chest
+  cream rectangle with gold top stripe; scoreboard with shield crests).
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Varsity — Lobby 4K Portrait (v1)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Bungee&family=Inter:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  /* Box-sizing on every explicit-width panel. */
+  .header, .seal, .deptbar, .jersey, .score, .stats, .stat,
+  .coach, .anno, .countdown, .sched, .sch, .ticker { box-sizing: border-box; }
+
+  /* 3-layer scale wrapper — identical to landscape, just portrait dims. */
+  :root { --stage-w: 2160px; --stage-h: 3840px; --stage-scale: 1; }
+  html, body { margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; }
+  .viewport { position: fixed; inset: 0; display: grid; place-items: center; overflow: hidden; }
+  .stage-outer { width: calc(var(--stage-w) * var(--stage-scale)); height: calc(var(--stage-h) * var(--stage-scale)); }
+  .stage { width: var(--stage-w); height: var(--stage-h); transform: scale(var(--stage-scale)); transform-origin: 0 0; position: relative; box-shadow: 0 80px 200px rgba(0,0,0,.65); overflow: hidden; }
+
+  html, body { background: #0a0e1c; font-family: 'Inter', sans-serif; color: #fff; }
+  :root {
+    --navy:  #0d1b3d;
+    --gold:  #ffc42b;
+    --red:   #e03b1c;
+    --cream: #f4efe2;
+  }
+  .stage {
+    background: linear-gradient(180deg, var(--navy) 0%, #18306b 60%, #0a1432 100%);
+  }
+  /* Diagonal pitch stripe — same -12deg / 240px rhythm as landscape. */
+  .stage::before {
+    content: ''; position: absolute; inset: 0;
+    background: repeating-linear-gradient(-12deg,
+      transparent 0 240px, rgba(255,196,43,.06) 240px 480px);
+    pointer-events: none;
+  }
+
+  /* ─── HEADER (seal + lockup + pennants strip) ─────────────────
+     Top row: hexagonal seal on the left (260×260), department + name
+     stack on the right. The pennants strip rides along the very top
+     above everything as a sub-row. */
+  .header {
+    position: absolute; top: 64px; left: 64px; right: 64px; height: 272px;
+    overflow: hidden;
+  }
+  .seal {
+    position: absolute; top: 16px; left: 0; width: 240px; height: 240px;
+    font-family: 'Bungee', sans-serif; font-size: 48px;
+    display: grid; place-items: center; text-align: center; line-height: 1;
+    color: var(--navy); background: var(--gold);
+    clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+    box-shadow: 0 20px 40px rgba(0,0,0,.4);
+  }
+  .seal .est {
+    font-size: 22px; letter-spacing: .2em; margin-top: 12px; color: #6b5110;
+    font-family: 'Bungee', sans-serif;
+  }
+  .deptbar {
+    position: absolute; top: 0; left: 280px; right: 0; height: 272px;
+    display: flex; flex-direction: column; justify-content: center; gap: 14px;
+  }
+  .deptbar .dept {
+    font-family: 'Oswald', sans-serif; font-weight: 700;
+    font-size: 60px; letter-spacing: .22em; color: var(--gold);
+    text-transform: uppercase; line-height: 1;
+  }
+  .deptbar .name {
+    font-family: 'Bungee', sans-serif; font-size: 168px; line-height: .9;
+    letter-spacing: -.01em; color: #fff;
+    text-shadow: 8px 8px 0 var(--red), 14px 14px 0 rgba(0,0,0,.4);
+  }
+  .pennants {
+    position: absolute; top: -48px; left: 0; right: 0; height: 80px;
+    z-index: 4; pointer-events: none; text-align: center;
+  }
+  .pennants .p {
+    display: inline-block; width: 56px; height: 70px; margin: 0 8px;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+    transform-origin: top center;
+    animation: sway 3s ease-in-out infinite;
+  }
+  .pennants .p:nth-child(2n) { animation-delay: -.5s; animation-duration: 2.6s; }
+  .pennants .p:nth-child(3n) { animation-delay: -1.2s; animation-duration: 3.4s; }
+  @keyframes sway { 0%,100%{ transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
+
+  /* ─── JERSEY / GREETING (hero) ────────────────────────────────
+     Cream rectangle with the gold top stripe — same construction as
+     landscape, but full-width and the headline grows to 320px because
+     it's no longer sharing a row with the scoreboard. */
+  .jersey {
+    position: absolute; top: 356px; left: 64px; right: 64px; height: 600px;
+    background: linear-gradient(180deg, var(--cream), #e8e0c8);
+    color: var(--navy);
+    padding: 56px 80px 56px 80px;
+    border: 8px solid var(--navy);
+    overflow: hidden;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .jersey::after {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 32px;
+    background: var(--gold);
+  }
+  .jersey .eyebrow {
+    font-family: 'Oswald', sans-serif; font-weight: 700;
+    font-size: 60px; letter-spacing: .2em; text-transform: uppercase; color: var(--red);
+    margin-top: 24px;
+  }
+  .jersey h1 {
+    font-family: 'Bungee', sans-serif; font-size: 320px; line-height: .9;
+    margin: 16px 0 12px; color: var(--navy); letter-spacing: -.02em;
+    text-transform: uppercase;
+  }
+  .jersey .sub {
+    font-family: 'Oswald', sans-serif; font-weight: 500;
+    font-size: 64px; color: #334155; margin: 0; line-height: 1.18;
+  }
+
+  /* ─── SCOREBOARD (game of the week, tall card) ────────────────
+     Portrait stacks the matchup vertically: HOME row on top,
+     VS divider, AWAY row on bottom. Each row is shield + team name
+     side by side. Crests grow to 200px and team names to 160px. */
+  .score {
+    position: absolute; top: 976px; left: 64px; right: 64px; height: 720px;
+    background: #0a0e1c; border: 8px solid var(--gold);
+    padding: 32px 56px;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .score .hdr {
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: 'Oswald', sans-serif; font-weight: 700;
+    font-size: 44px; letter-spacing: .22em; text-transform: uppercase; color: var(--gold);
+    border-bottom: 4px dashed rgba(255,196,43,.3);
+    padding-bottom: 20px;
+  }
+  .score .dot {
+    width: 24px; height: 24px; border-radius: 50%; background: var(--red);
+    display: inline-block; margin-right: 14px; vertical-align: middle;
+    animation: blink 1.4s steps(2) infinite;
+  }
+  @keyframes blink { 0%,49%{ opacity: 1; } 50%,100%{ opacity: .2; } }
+  .score .matchup {
+    flex: 1; display: grid; grid-template-rows: 1fr auto 1fr;
+    align-items: center; padding: 12px 0;
+  }
+  .score .team {
+    display: flex; align-items: center; gap: 36px;
+  }
+  .score .team.home { justify-content: flex-start; }
+  .score .team.away { justify-content: flex-end; }
+  .score .crest {
+    width: 200px; height: 200px; background: var(--gold);
+    display: grid; place-items: center;
+    font-family: 'Bungee', sans-serif; font-size: 72px; color: var(--navy);
+    clip-path: polygon(50% 0, 100% 30%, 100% 100%, 0 100%, 0 30%);
+    flex-shrink: 0;
+  }
+  .score .crest.away { background: var(--red); color: #fff; }
+  .score .tname {
+    font-family: 'Bungee', sans-serif; font-size: 160px; line-height: .88; color: #fff;
+    letter-spacing: -.01em;
+  }
+  .score .vs {
+    font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 96px;
+    color: var(--gold); text-align: center;
+    padding: 12px 0; letter-spacing: .08em;
+  }
+  .score .time {
+    font-family: 'Oswald', sans-serif; font-weight: 700;
+    font-size: 56px; text-align: center; color: #fff;
+    border-top: 4px dashed rgba(255,196,43,.3);
+    padding-top: 20px;
+    letter-spacing: .08em; text-transform: uppercase;
+  }
+  .score .time .where { color: var(--gold); }
+
+  /* ─── STATS (2×2 grid of stat tiles) ──────────────────────────
+     Landscape was 4 in a row; portrait stacks 2×2. Each tile is
+     ~990 × 220, with bigger numerals (160px) since the cell is
+     wider than the landscape strip. */
+  .stats {
+    position: absolute; top: 1716px; left: 64px; right: 64px; height: 480px;
+    display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+    gap: 28px; overflow: hidden;
+  }
+  .stat {
+    background: #0a0e1c; border: 6px solid rgba(255,196,43,.35);
+    padding: 24px 36px; overflow: hidden;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .stat .lbl {
+    font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 36px;
+    letter-spacing: .22em; color: var(--gold); text-transform: uppercase;
+    line-height: 1;
+  }
+  .stat .val {
+    font-family: 'Bungee', sans-serif; font-size: 160px; line-height: .9; color: #fff;
+    margin-top: 10px; letter-spacing: -.01em;
+  }
+  .stat .cap {
+    font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 32px;
+    color: #cbd5e1; margin-top: 6px;
+  }
+
+  /* ─── COACH OF THE WEEK ───────────────────────────────────────
+     Vertical: portrait card on the left (480×548), text on the right.
+     Same cream/navy palette + red top stripe as landscape, just
+     reproportioned for the taller panel. */
+  .coach {
+    position: absolute; top: 2216px; left: 64px; right: 64px; height: 660px;
+    background: var(--cream); color: var(--navy);
+    padding: 44px 56px; overflow: hidden;
+    border: 8px solid var(--navy);
+    display: grid; grid-template-columns: 480px 1fr; gap: 56px; align-items: center;
+  }
+  .coach::before {
+    content: ''; position: absolute; top: -8px; left: -8px; right: -8px; height: 32px;
+    background: var(--red);
+  }
+  .coach .portrait {
+    width: 480px; height: 548px; background: #cbd5e1;
+    display: grid; place-items: center; overflow: hidden; position: relative;
+    border: 4px solid var(--navy);
+  }
+  .coach .portrait::after {
+    content: ''; position: absolute; inset: 0;
+    background: repeating-linear-gradient(45deg, rgba(13,27,61,.08) 0 8px, transparent 8px 16px);
+  }
+  .coach .jersey-num {
+    font-family: 'Bungee', sans-serif; font-size: 380px; color: var(--navy); line-height: .85;
+    opacity: .25;
+  }
+  .coach .body { min-width: 0; overflow: hidden; }
+  .coach .eyebrow {
+    font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 40px;
+    letter-spacing: .2em; color: var(--red); text-transform: uppercase;
+  }
+  .coach h2 {
+    font-family: 'Bungee', sans-serif; font-size: 144px; line-height: .9;
+    margin: 14px 0 10px; color: var(--navy); text-transform: uppercase;
+    letter-spacing: -.01em;
+  }
+  .coach .meta {
+    font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 38px;
+    color: #475569; letter-spacing: .1em; text-transform: uppercase;
+    line-height: 1.2;
+  }
+  .coach .quote {
+    font-family: 'Inter', sans-serif; font-weight: 500; font-size: 40px;
+    color: #334155; margin-top: 24px; font-style: italic; line-height: 1.3;
+  }
+
+  /* ─── ANNOUNCEMENT (heads-up bar) ─────────────────────────────
+     Single horizontal strip — gold left rule, navy fill. Same
+     anatomy as landscape, just stretched to full panel width. */
+  .anno {
+    position: absolute; top: 2896px; left: 64px; right: 64px; height: 280px;
+    background: #0a0e1c; border-left: 16px solid var(--gold);
+    padding: 32px 48px; overflow: hidden;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .anno .tag {
+    font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 36px;
+    letter-spacing: .22em; color: var(--gold); text-transform: uppercase;
+    line-height: 1;
+  }
+  .anno h3 {
+    font-family: 'Bungee', sans-serif; font-size: 88px; line-height: .95;
+    margin: 12px 0 0; color: #fff; text-transform: uppercase;
+    letter-spacing: -.01em;
+  }
+  .anno p {
+    font-family: 'Inter', sans-serif; font-weight: 500; font-size: 36px;
+    color: #cbd5e1; margin: 12px 0 0;
+  }
+  .anno .when {
+    font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 32px;
+    color: var(--gold); letter-spacing: .14em; text-transform: uppercase;
+    margin-top: 12px;
+  }
+
+  /* ─── COUNTDOWN (red full-width bar) ──────────────────────────
+     Landscape stacked countdown to the right of an announcement;
+     portrait gives it its own row so the giant '03' jersey number
+     can swell to 200px without feeling cramped. */
+  .countdown {
+    position: absolute; top: 3196px; left: 64px; right: 64px; height: 200px;
+    background: var(--red); border-left: 16px solid var(--gold);
+    padding: 16px 48px; overflow: hidden;
+    display: flex; align-items: center; gap: 56px;
+  }
+  .countdown .num {
+    font-family: 'Bungee', sans-serif; font-size: 200px; line-height: .8; color: #fff;
+    text-shadow: 8px 8px 0 var(--navy);
+    flex-shrink: 0;
+  }
+  .countdown .lbl {
+    font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 56px; color: #fff;
+    letter-spacing: .14em; text-transform: uppercase; line-height: 1.05;
+  }
+  .countdown .lbl .small {
+    display: block; font-size: 32px; opacity: .85; margin-top: 8px;
+    letter-spacing: .12em;
+  }
+
+  /* ─── SCHEDULE (3 events, full-width row) ─────────────────────
+     Same 3-up grid as landscape; tiles are taller now (220 vs 160). */
+  .sched {
+    position: absolute; top: 3416px; left: 64px; right: 64px; height: 220px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
+    overflow: hidden;
+  }
+  .sch {
+    background: #0a0e1c; border: 4px solid var(--gold);
+    padding: 20px 32px; overflow: hidden;
+    display: flex; align-items: center; gap: 28px;
+  }
+  .sch .mark {
+    font-family: 'Bungee', sans-serif; font-size: 96px; line-height: .85; color: var(--gold);
+    padding-right: 24px; border-right: 3px dashed rgba(255,255,255,.2);
+    flex-shrink: 0;
+  }
+  .sch .info { min-width: 0; overflow: hidden; }
+  .sch .info .d {
+    font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 30px;
+    color: var(--gold); letter-spacing: .16em; text-transform: uppercase;
+  }
+  .sch .info .n {
+    font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 46px;
+    color: #fff; text-transform: uppercase; line-height: 1.05; margin-top: 6px;
+  }
+
+  /* ─── TICKER (PA system, bottom full-bleed) ───────────────────
+     Same construction as landscape. A bit taller (120 vs 60) so the
+     76px message reads from across the lobby. */
+  .ticker {
+    position: absolute; top: 3656px; left: 64px; right: 64px; height: 120px;
+    background: var(--gold); color: var(--navy);
+    overflow: hidden;
+    display: flex; align-items: stretch;
+    border: 6px solid var(--navy);
+  }
+  .ticker .tag {
+    background: var(--navy); color: var(--gold);
+    font-family: 'Bungee', sans-serif; font-size: 48px;
+    padding: 0 56px;
+    display: flex; align-items: center; flex-shrink: 0;
+    letter-spacing: .18em;
+  }
+  .ticker .msg-wrap {
+    flex: 1; overflow: hidden; display: flex; align-items: center;
+    padding-left: 48px;
+  }
+  .ticker .msg {
+    font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 56px;
+    color: var(--navy); white-space: nowrap;
+    letter-spacing: .12em; text-transform: uppercase;
+    animation: scroll 60s linear infinite;
+  }
+  .ticker .msg span { display: inline-block; padding-right: 96px; }
+  @keyframes scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+</style>
+</head>
+<body>
+<script>
+  const __TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "schema": "edu-cms-hs-varsity-portrait-v1" }/*EDITMODE-END*/;
+</script>
+
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+  <div class="header">
+    <div class="pennants" aria-hidden="true">
+      <span class="p" style="background: var(--gold);"></span>
+      <span class="p" style="background: var(--red);"></span>
+      <span class="p" style="background: var(--gold);"></span>
+      <span class="p" style="background: var(--red);"></span>
+      <span class="p" style="background: var(--gold);"></span>
+      <span class="p" style="background: var(--red);"></span>
+      <span class="p" style="background: var(--gold);"></span>
+      <span class="p" style="background: var(--red);"></span>
+      <span class="p" style="background: var(--gold);"></span>
+      <span class="p" style="background: var(--red);"></span>
+      <span class="p" style="background: var(--gold);"></span>
+      <span class="p" style="background: var(--red);"></span>
+    </div>
+    <div class="seal" data-widget="school">
+      <div>
+        <span data-field="school.initials">WHS</span><br/>
+        <span class="est" data-field="school.est">EST. 1956</span>
+      </div>
+    </div>
+    <div class="deptbar" data-widget="brand">
+      <div class="dept" data-field="brand.dept">ATHLETIC DEPARTMENT</div>
+      <div class="name" data-field="school.name">WESTRIDGE WILDCATS</div>
+    </div>
+  </div>
+
+  <div class="jersey" data-widget="greeting">
+    <div class="eyebrow" data-field="greeting.eyebrow">GOOD MORNING, WILDCATS</div>
+    <h1 data-field="greeting.headline">GAME DAY.</h1>
+    <div class="sub" data-field="greeting.subtitle">Pack the gym tonight. Wear red. Be loud.</div>
+  </div>
+
+  <div class="score" data-widget="scoreboard">
+    <div class="hdr">
+      <div><span class="dot"></span><span data-field="scoreboard.tag">GAME OF THE WEEK</span></div>
+      <div data-field="scoreboard.sport">BASKETBALL · VARSITY</div>
+    </div>
+    <div class="matchup">
+      <div class="team home">
+        <div class="crest"><span data-field="scoreboard.homeAbbr">WHS</span></div>
+        <div class="tname" data-field="scoreboard.home">WILDCATS</div>
+      </div>
+      <div class="vs">VS</div>
+      <div class="team away">
+        <div class="tname" data-field="scoreboard.away">TIGERS</div>
+        <div class="crest away"><span data-field="scoreboard.awayAbbr">CEN</span></div>
+      </div>
+    </div>
+    <div class="time">
+      <span data-field="scoreboard.time">TONIGHT · 7:00 PM</span> · <span class="where" data-field="scoreboard.where">HOME · GYM A</span>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat" data-widget="clock">
+      <div class="lbl">LOCAL TIME</div>
+      <div class="val" data-field="clock.time">7:53</div>
+      <div class="cap" data-field="clock.caption">Tuesday · 1st period @ 8:05</div>
+    </div>
+    <div class="stat" data-widget="weather">
+      <div class="lbl">GAMETIME FORECAST</div>
+      <div class="val" data-field="weather.temp">46°</div>
+      <div class="cap" data-field="weather.condition">Clear skies · hi 62°</div>
+    </div>
+    <div class="stat" data-widget="record">
+      <div class="lbl">SEASON RECORD</div>
+      <div class="val" data-field="record.value">14–2</div>
+      <div class="cap" data-field="record.cap">League leaders · 8-game streak</div>
+    </div>
+    <div class="stat" data-widget="attendance">
+      <div class="lbl">TODAY'S ATTENDANCE</div>
+      <div class="val" data-field="attendance.value">1,217</div>
+      <div class="cap" data-field="attendance.cap">Enrolled · 98.2% present</div>
+    </div>
+  </div>
+
+  <div class="coach" data-widget="teacher">
+    <div class="portrait">
+      <div class="jersey-num" data-field="teacher.number">14</div>
+    </div>
+    <div class="body">
+      <div class="eyebrow" data-field="teacher.label">COACH / TEACHER OF THE WEEK</div>
+      <h2 data-field="teacher.name">COACH RIVERA</h2>
+      <div class="meta" data-field="teacher.grade">HEAD COACH · VARSITY BB · AP U.S. HISTORY</div>
+      <div class="quote" data-field="teacher.quote">"We don't chase perfect. We chase ready. Be ready today."</div>
+    </div>
+  </div>
+
+  <div class="anno" data-widget="announcement">
+    <div class="tag" data-field="announcement.tag">★ HEADS UP</div>
+    <h3 data-field="announcement.headline">PEP RALLY — 7TH PERIOD · GYM A</h3>
+    <p data-field="announcement.body">Seniors front row. Marching band enters from the south doors. Return to 8th period when the bell rings.</p>
+    <div class="when" data-field="announcement.date">TODAY · 2:15 PM — 3:00 PM</div>
+  </div>
+
+  <div class="countdown" data-widget="countdown">
+    <div class="num" data-field="countdown.value">03</div>
+    <div class="lbl">
+      <span data-field="countdown.label">DAYS TO HOMECOMING</span>
+      <span class="small" data-field="countdown.sub">TICKETS AT THE STUDENT STORE</span>
+    </div>
+  </div>
+
+  <div class="sched">
+    <div class="sch" data-widget="events.0">
+      <div class="mark" data-field="events.0.mark">MON</div>
+      <div class="info">
+        <div class="d" data-field="events.0.when">7:00 PM · FIELD</div>
+        <div class="n" data-field="events.0.name">Boys Soccer vs. Central</div>
+      </div>
+    </div>
+    <div class="sch" data-widget="events.1">
+      <div class="mark" data-field="events.1.mark">WED</div>
+      <div class="info">
+        <div class="d" data-field="events.1.when">3:30 PM · TRACK</div>
+        <div class="n" data-field="events.1.name">Meet — 4 Schools Invite</div>
+      </div>
+    </div>
+    <div class="sch" data-widget="events.2">
+      <div class="mark" data-field="events.2.mark">FRI</div>
+      <div class="info">
+        <div class="d" data-field="events.2.when">6:00 PM · GYM A</div>
+        <div class="n" data-field="events.2.name">Senior Night — Volleyball</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ticker" data-widget="ticker">
+    <div class="tag" data-field="ticker.tag">PA SYSTEM</div>
+    <div class="msg-wrap">
+      <div class="msg">
+        <span data-field="ticker.message">SENIORS — CAP &amp; GOWN PICKUP THIS WEEK IN THE COUNSELING OFFICE  ●  BUS 14 RUNNING 10 MIN LATE  ●  MATHLETES PRACTICE MOVED TO ROOM 102  ●  SPRING SPORTS PHOTOS TOMORROW — WEAR YOUR JERSEY  ●  </span>
+        <span aria-hidden="true">SENIORS — CAP &amp; GOWN PICKUP THIS WEEK IN THE COUNSELING OFFICE  ●  BUS 14 RUNNING 10 MIN LATE  ●  MATHLETES PRACTICE MOVED TO ROOM 102  ●  SPRING SPORTS PHOTOS TOMORROW — WEAR YOUR JERSEY  ●  </span>
+      </div>
+    </div>
+  </div>
+
+</div></div></div>
+
+<script>
+  // Same fit() pattern as the landscape file — reads --stage-w/--stage-h
+  // (here 2160×3840) and computes --stage-scale to fit the viewport.
+  (function(){
+    function fit(){
+      const cs = getComputedStyle(document.documentElement);
+      const w = parseFloat(cs.getPropertyValue('--stage-w')) || 2160;
+      const h = parseFloat(cs.getPropertyValue('--stage-h')) || 3840;
+      const k = Math.min(window.innerWidth / w, window.innerHeight / h);
+      document.documentElement.style.setProperty('--stage-scale', k);
+    }
+    window.addEventListener('resize', fit);
+    window.addEventListener('load', fit);
+    setTimeout(fit, 10);
+    setTimeout(fit, 300);
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,464 @@
+<!--
+  HS TEMPLATE 04 — TERMINAL · PORTRAIT v1
+  ========================================
+  Vertical 2160×3840 sibling to terminal.html (3840×2160 landscape).
+  Same CRT phosphor aesthetic — green-on-black, scanlines, JetBrains
+  Mono + VT323, ASCII boxes, blinking block cursor, syslog ticker.
+
+  This is NOT a squish of the landscape file. The landscape used a
+  side-by-side split below the prompt: whoami (1700px wide) on the
+  left and announcement+countdown (2020px wide) on the right. For
+  portrait we collapse to a single vertical column and re-rank by
+  glance priority for someone walking past the screen:
+
+    TOPBAR  →  PROMPT  →  STATS  →  WHOAMI  →  ALERT  →  COUNTDOWN
+            →  EVENTS LOG  →  SYSLOG TICKER
+
+  Why this rank?
+    1. Topbar identity stays at the very top — "host:path$" prompt
+       is the same affordance as a real terminal's header.
+    2. Hero greeting (./say-morning ...) with the giant VT323 banner
+       gets the largest single panel: 1100px tall, headline 360px.
+       Portrait gives us a much shorter line-length so the banner
+       grows from 260px (landscape) to 360px without wrapping.
+    3. Stats become a 2×2 grid (was 1×4 in landscape) — clock /
+       weather / attendance / lunch. Each tile gets 1004×320px and
+       the VT323 readout grows to 200px. Lunch stays as wrapped text
+       so a long entrée name doesn't blow the layout.
+    4. Whoami "session" sits next: still a single-column dl, but the
+       teacher name banner can grow from 140 → 220px because the
+       wider portrait width.
+    5. Alert (/!\ priority) → standalone full-width panel. Red
+       border + amber headline reads from across the lobby. In the
+       landscape this was tucked next to the countdown; here the
+       alert gets full width, which is the right priority.
+    6. Countdown drops below the alert as a thin reading-strip
+       — the value (260px VT323) anchors the left, label on the
+       right. Same construction as landscape, just full-bleed.
+    7. Events log (cron -l) → the 4-column ASCII table. We trim
+       width allocations (when/where/what/who) for the narrower
+       2032px content column.
+    8. Syslog ticker pinned to bottom — same inverted-color block
+       (phosphor on dark) as landscape; height 120px so the 32px
+       msg font reads from 8ft.
+
+  Layout (2160×3840, edge inset 64px on all sides, 20px gaps):
+
+    PANEL          TOP    HEIGHT   ENDS-AT
+    ─────────────────────────────────────────
+    TOPBAR           64     110      174
+    PROMPT          194    1100     1294
+    STATS          1314     660     1974
+    WHOAMI         1994     700     2694
+    ALERT          2714     340     3054
+    COUNTDOWN      3074     240     3314
+    EVENTS LOG     3334     326     3660
+    TICKER         3680     120     3800
+
+    Gaps (each 20px):
+      TOPBAR  → PROMPT       (174  → 194)
+      PROMPT  → STATS        (1294 → 1314)
+      STATS   → WHOAMI       (1974 → 1994)
+      WHOAMI  → ALERT        (2694 → 2714)
+      ALERT   → COUNTDOWN    (3054 → 3074)
+      COUNTDOWN → EVENTS     (3314 → 3334)
+      EVENTS  → TICKER       (3660 → 3680)
+
+    Math sum to 3840:
+      Top inset                               =   64
+      Topbar  (110) + gap (20)                =  130
+      Prompt  (1100) + gap (20)               = 1120
+      Stats   (660)  + gap (20)               =  680
+      Whoami  (700)  + gap (20)               =  720
+      Alert   (340)  + gap (20)               =  360
+      Countd. (240)  + gap (20)               =  260
+      Events  (326)  + gap (20)               =  346
+      Ticker  (120)                           =  120
+      Bottom inset                            =   40
+      ─────────────────────────────────────────────
+      Total                                   = 3840 ✓
+
+  Geometry rules (load-bearing — match landscape conventions):
+    - box-sizing: border-box on every panel that sets explicit width
+    - overflow: hidden on every panel
+    - 64px edge inset (left/right), 20px gaps
+    - NO vw/vh/% sizing inside the scene — every value is fixed px
+    - 3-layer scale wrapper (.viewport > .stage-outer > .stage)
+    - position: absolute on every panel
+
+  Font + palette + motifs match terminal.html verbatim.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Terminal — HS Lobby Portrait 4K (v1)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=VT323&display=swap" rel="stylesheet">
+<style>
+  /* Box-sizing on every explicit-width panel — same rule as landscape. */
+  .topbar, .prompt, .stats, .stat, .whoami, .box, .alert, .events, .ticker { box-sizing: border-box; }
+
+  /* 3-layer scale wrapper — identical to landscape, just portrait dims. */
+  :root { --stage-w: 2160px; --stage-h: 3840px; --stage-scale: 1; }
+  html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; }
+  .viewport { position:fixed; inset:0; display:grid; place-items:center; overflow:hidden; }
+  .stage-outer { width:calc(var(--stage-w)*var(--stage-scale)); height:calc(var(--stage-h)*var(--stage-scale)); }
+  .stage { width:var(--stage-w); height:var(--stage-h); transform:scale(var(--stage-scale)); transform-origin:0 0; position:relative; box-shadow:0 80px 200px rgba(0,0,0,.65); overflow:hidden; }
+
+  /* CRT palette — pulled verbatim from terminal.html */
+  :root {
+    --phos: #9bff9b;    /* primary phosphor */
+    --dim:  #4a7a4a;    /* dimmed text */
+    --hot:  #ffe37a;    /* amber highlight */
+    --red:  #ff7a7a;    /* alert */
+    --cyan: #7adfff;    /* link/link-visited feel */
+    --bg:   #0a1a0a;    /* CRT black-green */
+  }
+  html, body { background:#000; color:var(--phos); font-family:'JetBrains Mono', monospace; }
+  .stage { background: radial-gradient(ellipse at center, #0e2410 0%, #060f06 80%, #000 100%); }
+
+  /* Scanlines + vignette — same as landscape, sized for the taller stage. */
+  .stage::before {
+    content:''; position:absolute; inset:0;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0 2px, transparent 2px 4px);
+    pointer-events:none; z-index:3;
+  }
+  .stage::after {
+    content:''; position:absolute; inset:0;
+    box-shadow: inset 0 0 600px rgba(0,0,0,.7);
+    pointer-events:none; z-index:2;
+  }
+  /* CRT flicker */
+  @keyframes flicker { 0%,96%,100% { opacity:1; } 97% { opacity:.85; } 98% { opacity:1; } 99% { opacity:.92; } }
+  .stage > * { animation: flicker 6s infinite; }
+
+  /* ─── Top bar — host:path$ shell prompt ───────────────────────
+     110px tall. Single line: dot + host + path on the left,
+     clock + weather + uptime on the right. Larger type than
+     landscape (44px vs 38px) because the panel is 2032px wide
+     and we have room to breathe. */
+  .topbar {
+    position:absolute; top:64px; left:64px; right:64px; height:110px;
+    border: 4px solid var(--phos);
+    padding: 0 36px;
+    display:flex; align-items:center; justify-content:space-between;
+    font-size: 44px; letter-spacing: .08em;
+    background: rgba(0,20,0,.4);
+    overflow: hidden;
+  }
+  .topbar .left { display:flex; gap:44px; align-items:center; }
+  .topbar .left .host { color:var(--hot); font-weight:700; }
+  .topbar .left .sep { color:var(--dim); }
+  .topbar .right { display:flex; gap:36px; color:var(--dim); font-weight:500; }
+  .topbar .right .on { color:var(--phos); }
+  .topbar .dot { width:20px; height:20px; background:var(--phos); border-radius:50%; display:inline-block;
+    box-shadow:0 0 28px var(--phos); animation: pulse 1.8s infinite; margin-right:16px; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.35;} }
+
+  /* ─── Hero prompt — ./say-morning, banner, sub ────────────────
+     1100px tall. The VT323 banner grows to 360px (was 260 in
+     landscape) because portrait line-length is shorter so the
+     glyphs can be huge without wrapping awkwardly. The blinking
+     cursor block matches at 80px wide × 300px tall. */
+  .prompt {
+    position:absolute; top:194px; left:64px; right:64px; height: 1100px;
+    border: 4px solid var(--phos);
+    padding: 56px 64px;
+    background: rgba(0,20,0,.35);
+    overflow: hidden;
+  }
+  .prompt .line1 { font-size:48px; color:var(--dim); letter-spacing:.06em; }
+  .prompt .line1 .p { color:var(--phos); }
+  .prompt .line1 .arg { color:var(--hot); }
+  .prompt .banner {
+    font-family:'VT323', monospace;
+    font-size: 360px; line-height:.88; color:var(--phos);
+    text-shadow: 0 0 60px rgba(155,255,155,.55), 0 0 120px rgba(155,255,155,.25);
+    margin: 28px 0 16px; letter-spacing:-.01em; text-wrap: balance;
+  }
+  .prompt .cursor {
+    display:inline-block; width:80px; height:300px; background:var(--phos);
+    vertical-align:middle; margin-left:24px;
+    animation: blink 1s steps(2) infinite;
+    box-shadow:0 0 60px rgba(155,255,155,.7);
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  .prompt .sub {
+    font-size:60px; color:var(--phos); opacity:.88; margin-top: 36px; letter-spacing:.03em;
+    line-height: 1.18;
+  }
+  .prompt .sub::before { content:'// '; color:var(--dim); }
+
+  /* ─── Stats — 2×2 grid (clock / weather / attendance / lunch) ──
+     660px tall. 2 rows × 2 cols = 4 ASCII boxes. Each tile is
+     ~1006×320 with the VT323 value at 200px. Lunch stays at 110
+     so longer entrée names fit. */
+  .stats {
+    position:absolute; top: 1314px; left: 64px; right: 64px; height: 660px;
+    display:grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+    gap: 28px;
+  }
+  .stat {
+    border: 4px solid var(--phos); padding: 36px 44px; background: rgba(0,20,0,.35);
+    position:relative;
+    display: flex; flex-direction: column; justify-content: center; gap: 14px;
+    overflow: hidden;
+  }
+  .stat::before {
+    content: attr(data-box);
+    position:absolute; top:-24px; left:38px; background:#081a08; padding:0 18px;
+    font-size:30px; color:var(--hot); letter-spacing:.2em; text-transform:uppercase;
+  }
+  .stat .big {
+    font-family:'VT323',monospace; font-size: 200px; line-height:.9; color:var(--phos);
+    text-shadow: 0 0 36px rgba(155,255,155,.5); margin: 2px 0;
+  }
+  .stat.lunch .big { font-size: 110px; line-height: 1; }
+  .stat .cap { font-size: 36px; color: var(--dim); line-height:1.3; }
+
+  /* ─── Whoami — featured teacher session ──────────────────────
+     700px tall, full width. Layout: cmd line at top, big amber
+     name banner (220px VT323), kv list, italic quote with amber
+     left rail. Same shape as landscape but bigger. */
+  .whoami {
+    position:absolute; top: 1994px; left: 64px; right: 64px; height: 700px;
+    border: 4px solid var(--phos); background: rgba(0,20,0,.35);
+    padding: 36px 48px;
+    overflow: hidden;
+  }
+  .whoami .cmd { font-size: 42px; color: var(--dim); letter-spacing: .04em; }
+  .whoami .cmd .p { color: var(--phos); }
+  .whoami .cmd .a { color: var(--hot); }
+  .whoami .name {
+    font-family:'VT323', monospace; font-size: 220px; line-height:.9; color: var(--hot);
+    text-shadow: 0 0 40px rgba(255,227,122,.5); margin: 22px 0 14px;
+  }
+  .whoami .kv {
+    display:grid; grid-template-columns: 280px 1fr; gap: 4px 32px;
+    margin: 0 0 18px; font-size: 42px;
+  }
+  .whoami .kv dt { color: var(--dim); }
+  .whoami .kv dd { margin: 0; color: var(--phos); }
+  .whoami .quote {
+    border-left: 6px solid var(--hot); padding-left: 28px; margin-top: 22px;
+    font-size: 44px; color:#cfe9cf; font-style: italic; line-height: 1.32;
+  }
+
+  /* ─── Alert — full-width WARN box ────────────────────────────
+     340px tall, red border + amber headline, ASCII tag floating
+     at top-left. Same priority feel as landscape but full-bleed. */
+  .box { border: 4px solid var(--phos); background: rgba(0,20,0,.35); padding: 36px 48px; position:absolute; overflow: hidden; }
+  .box::before {
+    content: attr(data-box); position:absolute; top:-24px; left:38px; background:#081a08;
+    padding:0 18px; font-size:30px; color:var(--hot); letter-spacing:.2em; text-transform:uppercase;
+  }
+  .alert { top: 2714px; left: 64px; right: 64px; height: 340px; border-color: var(--red); }
+  .alert::before { color: var(--red); }
+  .alert .hd { font-size: 38px; color: var(--red); letter-spacing: .14em; }
+  .alert h3 {
+    font-family:'VT323', monospace; font-size: 130px; line-height:.95; margin: 14px 0 0;
+    color: var(--hot); text-shadow:0 0 36px rgba(255,227,122,.45);
+  }
+  .alert p { font-size: 36px; color:#cfe9cf; margin: 14px 0 0; line-height: 1.3; }
+  .alert .when { font-size: 32px; color: var(--red); margin-top: 14px; letter-spacing: .12em; }
+
+  /* ─── Countdown — value + label horizontal ────────────────────
+     240px tall, single horizontal strip. Massive amber value on
+     the left, label stack on the right. */
+  .countdown { top: 3074px; left: 64px; right: 64px; height: 240px;
+    display: grid; grid-template-columns: auto 1fr; gap: 56px; align-items: center;
+    padding: 0 56px;
+  }
+  .countdown .val {
+    font-family:'VT323', monospace; font-size: 280px; line-height: .82; color: var(--hot);
+    text-shadow: 0 0 50px rgba(255,227,122,.6);
+  }
+  .countdown .lbl { font-size: 52px; color: var(--phos); line-height: 1.2; }
+  .countdown .lbl .dim { color: var(--dim); display:block; font-size: 36px; margin-top: 14px; }
+
+  /* ─── Events log — cron table with 4 columns ──────────────────
+     326px tall. Header row + 3 data rows. Columns sized for 2032
+     content width: when (240) / where (300) / what (1fr) / who (320). */
+  .events {
+    position:absolute; top: 3334px; left: 64px; right: 64px; height: 326px;
+    border: 4px solid var(--phos); background: rgba(0,20,0,.35);
+    padding: 28px 40px;
+    overflow: hidden;
+  }
+  .events::before {
+    content: '[ cron -l /var/school/events ]'; position:absolute; top:-24px; left:38px; background:#081a08;
+    padding:0 18px; font-size:30px; color:var(--hot); letter-spacing:.14em;
+  }
+  .events .head {
+    font-size: 30px; color: var(--dim); letter-spacing: .14em;
+    display: grid; grid-template-columns: 240px 300px 1fr 320px;
+    padding-bottom: 12px; border-bottom: 2px solid rgba(155,255,155,.35);
+  }
+  .events .row {
+    display: grid; grid-template-columns: 240px 300px 1fr 320px;
+    font-size: 38px; color: var(--phos); padding: 14px 0;
+    border-bottom: 1px dashed rgba(155,255,155,.22);
+    align-items: center;
+  }
+  .events .row:last-child { border-bottom: 0; }
+  .events .row .t { color: var(--dim); }
+  .events .row .d { color: var(--hot); letter-spacing: .1em; }
+  .events .row .n { color: var(--phos); }
+  .events .row .l { color: var(--cyan); text-align: right; }
+
+  /* ─── Syslog ticker — pinned to bottom ────────────────────────
+     120px tall, full-bleed (left:0/right:0) so it spans corner-
+     to-corner like a real terminal status bar. Inverted: phosphor
+     background, dark-green text. */
+  .ticker {
+    position:absolute; top: 3680px; left: 0; right: 0; height: 120px;
+    background: var(--phos); color:#061506;
+    display:flex; align-items:center; overflow:hidden;
+    border-top: 4px solid #000;
+  }
+  .ticker .tag {
+    background:#061506; color: var(--phos); height:100%;
+    display:flex; align-items:center;
+    padding: 0 48px; font-weight:700; font-size:36px; letter-spacing:.16em;
+    flex-shrink:0;
+  }
+  .ticker .msg-wrap { flex: 1; overflow: hidden; display: flex; align-items: center; padding-left: 48px; }
+  .ticker .msg {
+    font-weight:700; font-size:36px; white-space:nowrap;
+    letter-spacing:.08em; animation: scroll 60s linear infinite;
+    text-transform:uppercase;
+  }
+  .ticker .msg span { display:inline-block; padding-right: 96px; }
+  @keyframes scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+</style>
+</head>
+<body>
+<script>
+  const __TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "schema": "edu-cms-hs-terminal-portrait-v1" }/*EDITMODE-END*/;
+</script>
+
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+  <div class="topbar" data-widget="school">
+    <div class="left">
+      <span><span class="dot"></span><span class="host" data-field="school.host">westridge-hs</span><span class="sep">:</span><span data-field="school.path">~/lobby/morning</span><span class="sep">$</span></span>
+      <span style="color:var(--cyan);" data-field="school.session">session #2 · spring-26</span>
+    </div>
+    <div class="right">
+      <span data-widget="clock"><span data-field="clock.time">07:53:21</span></span>
+      <span data-widget="weather"><span class="on" data-field="weather.temp">46°F</span> <span data-field="weather.condition">clear</span></span>
+      <span class="on">UP 184d</span>
+    </div>
+  </div>
+
+  <div class="prompt" data-widget="greeting">
+    <div class="line1">
+      <span class="p">&gt; </span><span data-field="greeting.cmd">./say-morning</span> <span class="arg" data-field="greeting.arg">--to=everyone --loud</span>
+    </div>
+    <div class="banner"><span data-field="greeting.headline">HELLO,<br/>WESTRIDGE.</span><span class="cursor"></span></div>
+    <div class="sub" data-field="greeting.subtitle">okay — late passes reset, printers are up, the soda machine isn't. have a good one.</div>
+  </div>
+
+  <div class="stats">
+    <div class="stat" data-box="[ clock ]" data-widget="clockbig">
+      <div class="big" data-field="clockbig.val">07:53</div>
+      <div class="cap" data-field="clockbig.cap">tue · apr 21 · period 1 @ 08:05</div>
+    </div>
+    <div class="stat" data-box="[ weatherd ]" data-widget="weatherd">
+      <div class="big" data-field="weatherd.val">46°F</div>
+      <div class="cap" data-field="weatherd.cap">clear · hi 62 · lo 38 · wind 6mph</div>
+    </div>
+    <div class="stat" data-box="[ attendance ]" data-widget="attendance">
+      <div class="big" data-field="attendance.val">1217</div>
+      <div class="cap" data-field="attendance.cap">students checked in · 98.2%</div>
+    </div>
+    <div class="stat lunch" data-box="[ lunch ]" data-widget="lunch">
+      <div class="big" data-field="lunch.val">chicken bowl</div>
+      <div class="cap" data-field="lunch.cap">+ salad bar · vegan option · $3.75</div>
+    </div>
+  </div>
+
+  <div class="whoami" data-widget="teacher">
+    <div class="cmd"><span class="p">&gt; </span><span data-field="teacher.cmd">whoami --featured</span></div>
+    <div class="name" data-field="teacher.name">ms.kowalski</div>
+    <dl class="kv">
+      <dt>role</dt><dd data-field="teacher.role">teacher_of_week · ap physics</dd>
+      <dt>room</dt><dd data-field="teacher.room">214 / science wing</dd>
+      <dt>years</dt><dd data-field="teacher.years">14 at WHS · alumna '02</dd>
+      <dt>groups</dt><dd data-field="teacher.groups">faculty, physics, science-olympiad-coach</dd>
+    </dl>
+    <div class="quote" data-field="teacher.quote">"the answer is in the free-body diagram. draw the picture — every time. the math always follows."</div>
+  </div>
+
+  <div class="box alert" data-box="[ ! priority ]" data-widget="announcement">
+    <div class="hd">&gt; WARN · <span data-field="announcement.tag">pep rally scheduled</span></div>
+    <h3 data-field="announcement.headline">PEP RALLY — 7TH PERIOD, GYM A</h3>
+    <p data-field="announcement.body">seniors front row. marching band enters from the south doors. return to 8th period when the bell rings. no backpacks in the gym.</p>
+    <div class="when" data-field="announcement.date">today · 14:15 — 15:00 · gym-a</div>
+  </div>
+
+  <div class="box countdown" data-box="[ countdown ]" data-widget="countdown">
+    <div class="val" data-field="countdown.value">41</div>
+    <div class="lbl">
+      <span data-field="countdown.label">days until graduation</span>
+      <span class="dim" data-field="countdown.sub">seniors — order caps by fri · 17:00</span>
+    </div>
+  </div>
+
+  <div class="events">
+    <div class="head">
+      <span>when</span><span>where</span><span>what</span><span>who</span>
+    </div>
+    <div class="row" data-widget="events.0">
+      <span class="t" data-field="events.0.when">tue 15:30</span>
+      <span class="d" data-field="events.0.where">rm 102</span>
+      <span class="n" data-field="events.0.name">mathletes — regionals prep</span>
+      <span class="l" data-field="events.0.who">@ms.devereaux</span>
+    </div>
+    <div class="row" data-widget="events.1">
+      <span class="t" data-field="events.1.when">wed 19:00</span>
+      <span class="d" data-field="events.1.where">auditorium</span>
+      <span class="n" data-field="events.1.name">spring band concert — all grades</span>
+      <span class="l" data-field="events.1.who">@mr.thornton</span>
+    </div>
+    <div class="row" data-widget="events.2">
+      <span class="t" data-field="events.2.when">fri 19:00</span>
+      <span class="d" data-field="events.2.where">theater</span>
+      <span class="n" data-field="events.2.name">"into the woods" — opening night</span>
+      <span class="l" data-field="events.2.who">@ms.park</span>
+    </div>
+  </div>
+
+  <div class="ticker" data-widget="ticker">
+    <div class="tag" data-field="ticker.tag">/var/log/syslog</div>
+    <div class="msg-wrap">
+      <div class="msg">
+        <span data-field="ticker.message">[info] bus-14 delayed 10m · [warn] printer rm-210 out of toner · [info] lost-and-found: silver earbuds · [info] ap psych study hall moved to library · [info] sports photos tomorrow — bring jerseys · </span>
+        <span aria-hidden="true">[info] bus-14 delayed 10m · [warn] printer rm-210 out of toner · [info] lost-and-found: silver earbuds · [info] ap psych study hall moved to library · [info] sports photos tomorrow — bring jerseys · </span>
+      </div>
+    </div>
+  </div>
+
+</div></div></div>
+
+<script>
+  // Same fit() pattern as the landscape file — reads --stage-w/--stage-h
+  // (here 2160×3840) and computes --stage-scale to fit the viewport.
+  (function(){
+    function fit(){
+      const cs = getComputedStyle(document.documentElement);
+      const w = parseFloat(cs.getPropertyValue('--stage-w')) || 2160;
+      const h = parseFloat(cs.getPropertyValue('--stage-h')) || 3840;
+      const k = Math.min(window.innerWidth / w, window.innerHeight / h);
+      document.documentElement.style.setProperty('--stage-scale', k);
+    }
+    window.addEventListener('resize', fit);
+    window.addEventListener('load', fit);
+    setTimeout(fit, 10);
+    setTimeout(fit, 300);
+  })();
+</script>
+</body>
+</html>

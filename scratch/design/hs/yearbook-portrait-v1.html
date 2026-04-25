@@ -1,0 +1,583 @@
+<!--
+  HS TEMPLATE · YEARBOOK · PORTRAIT v1
+  =====================================
+  Vertical 2160×3840 sibling to yearbook.html (the landscape editorial
+  magazine spread). Same Playfair / Inter / JetBrains Mono triad,
+  same cream/ink/red palette, same masthead-to-folio reading rhythm,
+  redesigned for portrait reading rather than squished from landscape.
+
+  The landscape was a TWO-PAGE SPREAD with a center column rule:
+    LEFT page  : masthead L · hero headline L · feature photo + caption L
+    RIGHT page : clock R · right-rail cards R · teacher portrait R
+    SHARED     : footstrip + ticker across both pages
+
+  Portrait is a SINGLE long page laid out top-to-bottom in editorial
+  reading order. We keep the magazine identity intact (rule lines,
+  drop caps, italic Playfair display, JetBrains Mono kickers) but
+  re-rank by glance priority for a tall viewing surface:
+
+    MASTHEAD         (school identity + issue + clock)
+    HERO             (eyebrow + giant Playfair headline + italic lede)
+    FEATURE PHOTO    (full-bleed photo + numbered caption)
+    CARD ROW         (announcement | weather | countdown — 3 cards)
+    TEACHER FEATURE  (portrait + pull-quote + byline)
+    FOOTSTRIP        (3 upcoming events + days-to-grad count)
+    TICKER           (newswire scroll, bottom edge)
+
+  Why this rank?
+    1. The masthead is the magazine's name plate — must be top.
+    2. Hero is the showpiece. Portrait gives us 2032px of width but
+       only ~1100px of vertical for the hero — so we pump the
+       headline to 240px and let it span 2 lines, with a 200px
+       drop cap on the lede paragraph for editorial flair.
+    3. The big photo runs full bleed (2032 wide × ~620 tall) — a
+       portrait page can host one hero photo at scale that landscape
+       had to crop into a 1780×500 strip.
+    4. The card row stacks announcement + 2 stats horizontally
+       inside a single 460px tall band — same content as the
+       landscape right-rail but read left-to-right.
+    5. Teacher takes a 540px band: portrait on the left, name +
+       pull-quote + byline on the right — same composition as
+       landscape but resized for the wider portrait band.
+    6. Footstrip + ticker pinned at the bottom — same as landscape.
+
+  Layout (2160×3840, edge inset 64px, 20px gaps):
+
+    PANEL          TOP    HEIGHT   ENDS-AT
+    ─────────────────────────────────────
+    MASTHEAD         64      280      344
+    HERO            364     1100     1464
+    FEATURE        1484      980     2464
+    CARDS          2484      460     2944
+    TEACHER        2964      540     3504
+    FOOTSTRIP      3524      240     3764
+    TICKER         3764       56     3820   (butts directly under footstrip)
+
+    Top inset (64) + bottom inset (20)              =   84
+    Panel heights: 280+1100+980+460+540+240+56      = 3656
+    Gaps (6 × 20px between panels above the ticker) =  120
+    No gap between footstrip and ticker (footer)    =    0
+    ─────────────────────────────────────────────────────
+    Total                                           = 3840 ✓
+
+  Geometry rules (load-bearing — match landscape):
+    - box-sizing: border-box on every panel
+    - overflow: hidden on every panel
+    - 64px edge inset (left/right), 20px gaps
+    - NO vw/vh/% sizing inside the scene
+    - 3-layer scale wrapper (.viewport > .stage-outer > .stage)
+
+  Typography is intentionally bumped vs landscape:
+    - Masthead title : 100 → 168px  (portrait can host a giant nameplate)
+    - Hero headline  : 290 → 240px  (still huge but now wraps 2 lines)
+    - Lede           :  62 →  72px  (denser text rewards the larger size)
+    - Drop cap       : 220 →  240px (3 lines tall on the lede)
+    - Card numbers   : 180 →  200px (we have more vertical room)
+    - Teacher name   : 160 →  180px (pulled into a single line)
+    - Caption title  :  52 →  64px
+    - Body copy      :  30 →  60px (60px floor on every body element)
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Yearbook — HS Lobby Portrait 4K (v1)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* Box-sizing on every explicit-width panel */
+  .masthead, .hero, .feature, .cards, .card, .teacher, .footstrip, .ticker { box-sizing: border-box; }
+
+  /* 3-layer scale wrapper — portrait dimensions */
+  :root { --stage-w: 2160px; --stage-h: 3840px; --stage-scale: 1; }
+  html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; background:#20201c; }
+  .viewport { position:fixed; inset:0; display:grid; place-items:center; overflow:hidden; }
+  .stage-outer { width:calc(var(--stage-w)*var(--stage-scale)); height:calc(var(--stage-h)*var(--stage-scale)); }
+  .stage { width:var(--stage-w); height:var(--stage-h); transform:scale(var(--stage-scale)); transform-origin:0 0; position:relative; box-shadow:0 80px 200px rgba(0,0,0,.65); overflow:hidden; }
+
+  html, body { font-family:'Inter',sans-serif; color:#1a1a17; }
+  .stage { background:#f7f3ea; }
+
+  /* Paper grain — same as landscape */
+  .stage::before { content:''; position:absolute; inset:0;
+    background:
+      radial-gradient(circle at 30% 18%, rgba(0,0,0,.025), transparent 42%),
+      radial-gradient(circle at 80% 72%, rgba(0,0,0,.03), transparent 50%),
+      repeating-linear-gradient(0deg, rgba(0,0,0,.005) 0 2px, transparent 2px 4px);
+    pointer-events:none; z-index: 1; }
+
+  /* ─── Masthead ────────────────────────────────────────────────
+     280px tall band at the top. Title spans full width with a
+     thick 4px ink rule beneath; clock + issue meta sit on a
+     second row reading L→R: issue meta · clock time · clock cap. */
+  .masthead {
+    position: absolute; top: 64px; left: 64px; right: 64px; height: 280px;
+    border-bottom: 4px solid #1a1a17;
+    padding-bottom: 20px;
+    overflow: hidden;
+    z-index: 2;
+  }
+  .masthead .title {
+    font-family: 'Playfair Display', serif; font-weight: 900; font-style: italic;
+    font-size: 168px; line-height: .92;
+    letter-spacing: -.015em; color: #1a1a17;
+    margin: 0;
+  }
+  .masthead .row {
+    position: absolute; left: 0; right: 0; bottom: 22px;
+    display: flex; justify-content: space-between; align-items: baseline;
+  }
+  .masthead .issue {
+    font-family: 'JetBrains Mono', monospace; font-size: 36px; color: #666;
+    letter-spacing: .22em; text-transform: uppercase;
+  }
+  .masthead .clock-time {
+    font-family: 'Playfair Display', serif; font-weight: 900; font-style: italic;
+    font-size: 84px; color: #b23b20; line-height: .9;
+    position: absolute; right: 0; bottom: 60px;
+  }
+  .masthead .clock-cap {
+    font-family: 'JetBrains Mono', monospace; font-size: 28px; color: #666;
+    letter-spacing: .18em; text-transform: uppercase;
+  }
+
+  /* ─── Hero ────────────────────────────────────────────────────
+     1100px tall block. Eyebrow → enormous Playfair headline (240px,
+     wraps 2 lines comfortably) → italic lede with a 240px Playfair
+     drop cap on the first letter. Bottom rule echoes the masthead. */
+  .hero {
+    position: absolute; top: 364px; left: 64px; right: 64px; height: 1100px;
+    overflow: hidden;
+    padding-top: 30px;
+    z-index: 2;
+  }
+  .hero .eyebrow {
+    font-family: 'JetBrains Mono', monospace; font-size: 38px;
+    color: #b23b20; letter-spacing: .26em; text-transform: uppercase;
+    margin-bottom: 28px;
+  }
+  .hero h1 {
+    font-family: 'Playfair Display', serif; font-weight: 900;
+    font-size: 240px; line-height: .94;
+    margin: 0; letter-spacing: -.025em; color: #1a1a17;
+    text-wrap: balance;
+  }
+  .hero .lede {
+    font-family: 'Playfair Display', serif; font-weight: 700; font-style: italic;
+    font-size: 72px; line-height: 1.18; color: #2a2a25;
+    margin-top: 56px;
+  }
+  .hero .lede .drop {
+    float: left;
+    font-family: 'Playfair Display', serif; font-weight: 900; font-style: italic;
+    font-size: 240px; line-height: .82;
+    color: #b23b20;
+    padding: 14px 28px 0 0;
+  }
+  .hero .lede::after { content: ''; display: block; clear: both; }
+  .hero .rule {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    border-top: 2px solid #1a1a17;
+  }
+  .hero .folio {
+    position: absolute; right: 0; bottom: 18px;
+    font-family: 'JetBrains Mono', monospace; font-size: 28px;
+    color: #999; letter-spacing: .2em; text-transform: uppercase;
+  }
+
+  /* ─── Feature photo ───────────────────────────────────────────
+     980px band. Full-width photo (2032 × ~700) with a [tag] chip
+     in the bottom-left corner, rule, then numbered caption beneath
+     the photo. Caption uses a giant Playfair italic numeral on the
+     left (01) and a 2-line title + body block on the right. */
+  .feature {
+    position: absolute; top: 1484px; left: 64px; right: 64px; height: 980px;
+    overflow: hidden;
+    z-index: 2;
+  }
+  .feature .photo {
+    width: 100%; height: 700px;
+    background:
+      linear-gradient(135deg, #d6cfbe 0%, #b0a897 60%, #978d7a 100%);
+    position: relative;
+    border: 3px solid #1a1a17;
+    overflow: hidden;
+  }
+  .feature .photo::after {
+    content: ''; position: absolute; inset: 0;
+    background:
+      radial-gradient(circle at 25% 30%, rgba(255,250,240,.18), transparent 40%),
+      repeating-linear-gradient(45deg, rgba(0,0,0,.06) 0 12px, transparent 12px 24px);
+  }
+  .feature .photo .tag {
+    position: absolute; bottom: 24px; left: 24px;
+    background: #fff; border: 3px solid #1a1a17;
+    padding: 14px 24px;
+    font-family: 'JetBrains Mono', monospace; font-size: 30px;
+    letter-spacing: .14em; text-transform: uppercase;
+    z-index: 2;
+  }
+  .feature .photo .corner {
+    position: absolute; top: 24px; right: 24px;
+    font-family: 'Playfair Display', serif; font-style: italic; font-weight: 700;
+    font-size: 56px; color: #fff;
+    text-shadow: 0 2px 8px rgba(0,0,0,.4);
+    letter-spacing: -.01em;
+    z-index: 2;
+  }
+  .feature .caption {
+    margin-top: 30px;
+    padding-top: 24px;
+    border-top: 3px solid #1a1a17;
+    display: grid; grid-template-columns: 200px 1fr;
+    gap: 36px; align-items: start;
+  }
+  .feature .num {
+    font-family: 'Playfair Display', serif; font-style: italic; font-weight: 900;
+    font-size: 160px; line-height: .82; color: #b23b20;
+    letter-spacing: -.02em;
+  }
+  .feature .ctitle {
+    font-family: 'Playfair Display', serif; font-weight: 900;
+    font-size: 64px; line-height: 1.02; color: #1a1a17;
+    letter-spacing: -.01em;
+  }
+  .feature .cbody {
+    font-family: 'Inter', sans-serif; font-weight: 400;
+    font-size: 30px; line-height: 1.4; color: #444;
+    margin-top: 14px;
+  }
+
+  /* ─── Card row ────────────────────────────────────────────────
+     460px tall. 3 cards side-by-side: announcement (wider, 2fr) +
+     weather (1fr) + countdown (1fr). Each card is paper-on-paper
+     with a 2px ink border, kicker → numeral → caption. */
+  .cards {
+    position: absolute; top: 2484px; left: 64px; right: 64px; height: 460px;
+    display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 24px;
+    overflow: hidden;
+    z-index: 2;
+  }
+  .card {
+    background: #fff; border: 3px solid #1a1a17;
+    padding: 32px 36px;
+    overflow: hidden;
+    position: relative;
+    display: flex; flex-direction: column;
+  }
+  .card .kicker {
+    font-family: 'JetBrains Mono', monospace; font-size: 28px;
+    color: #666; letter-spacing: .22em; text-transform: uppercase;
+    line-height: 1;
+  }
+  .card .deadline {
+    font-family: 'JetBrains Mono', monospace; font-size: 26px;
+    color: #b23b20; letter-spacing: .22em; text-transform: uppercase;
+    margin-top: auto;
+  }
+  .card h3 {
+    font-family: 'Playfair Display', serif; font-weight: 900;
+    font-size: 64px; line-height: 1.02; color: #1a1a17;
+    letter-spacing: -.01em;
+    margin: 14px 0 16px;
+  }
+  .card .body {
+    font-family: 'Inter', sans-serif; font-weight: 400;
+    font-size: 28px; line-height: 1.42; color: #444;
+  }
+  .card .big {
+    font-family: 'Playfair Display', serif; font-weight: 900;
+    font-size: 200px; line-height: .88; color: #1a1a17;
+    margin: 16px 0 12px;
+    letter-spacing: -.02em;
+  }
+  .card .cap {
+    font-family: 'Inter', sans-serif; font-weight: 500;
+    font-size: 28px; color: #555; line-height: 1.32;
+  }
+
+  /* ─── Teacher feature ────────────────────────────────────────
+     540px tall. Portrait on left (420×476 with paper frame),
+     pull-quote spread on the right with kicker → name (italic
+     Playfair) → meta · quote · byline. Same anatomy as landscape
+     but with one more line of headroom for the quote. */
+  .teacher {
+    position: absolute; top: 2964px; left: 64px; right: 64px; height: 540px;
+    background: #fff; border: 3px solid #1a1a17;
+    padding: 32px;
+    display: grid; grid-template-columns: 420px 1fr;
+    gap: 36px;
+    overflow: hidden;
+    z-index: 2;
+  }
+  .teacher .portrait {
+    width: 420px; height: 476px;
+    background: linear-gradient(160deg, #d6cfbe 0%, #b0a489 50%, #8e8470 100%);
+    border: 3px solid #1a1a17;
+    position: relative;
+    overflow: hidden;
+  }
+  .teacher .portrait::after {
+    content: ''; position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse at 35% 30%, rgba(255,248,235,.22), transparent 50%),
+      repeating-linear-gradient(-45deg, rgba(0,0,0,.05) 0 9px, transparent 9px 18px);
+  }
+  .teacher .portrait .frame {
+    position: absolute; bottom: 18px; left: 18px;
+    background: #fff; border: 3px solid #1a1a17;
+    padding: 8px 16px;
+    font-family: 'JetBrains Mono', monospace; font-size: 24px;
+    letter-spacing: .12em; text-transform: uppercase;
+    z-index: 2;
+  }
+  .teacher .body { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+  .teacher .kicker {
+    font-family: 'JetBrains Mono', monospace; font-size: 30px;
+    color: #b23b20; letter-spacing: .24em; text-transform: uppercase;
+  }
+  .teacher h2 {
+    font-family: 'Playfair Display', serif; font-weight: 900; font-style: italic;
+    font-size: 180px; line-height: .9;
+    margin: 14px 0 0;
+    color: #1a1a17;
+    letter-spacing: -.015em;
+  }
+  .teacher .meta {
+    font-family: 'JetBrains Mono', monospace; font-size: 28px;
+    color: #666; letter-spacing: .12em; text-transform: uppercase;
+    margin-top: 14px;
+  }
+  .teacher blockquote {
+    margin: 22px 0 0;
+    font-family: 'Playfair Display', serif; font-weight: 700; font-style: italic;
+    font-size: 50px; line-height: 1.22; color: #2a2a25;
+    border-left: 5px solid #b23b20;
+    padding-left: 28px;
+  }
+  .teacher .byline {
+    font-family: 'JetBrains Mono', monospace; font-size: 24px;
+    color: #999; letter-spacing: .14em; text-transform: uppercase;
+    margin-top: auto;
+  }
+
+  /* ─── Footstrip ───────────────────────────────────────────────
+     240px tall ink-on-cream-inverted band: dark background, cream
+     type. Header row: title left, section meta right. Body grid:
+     3 events (each event = day chip + name) + days-to-grad numeral
+     stacked vertically against the events row. */
+  .footstrip {
+    position: absolute; top: 3524px; left: 64px; right: 64px; height: 240px;
+    background: #1a1a17; color: #f7f3ea;
+    padding: 22px 36px;
+    overflow: hidden;
+    z-index: 2;
+  }
+  .footstrip .head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    border-bottom: 2px solid #f7f3ea;
+    padding-bottom: 12px;
+    margin-bottom: 16px;
+  }
+  .footstrip .head .h {
+    font-family: 'Playfair Display', serif; font-weight: 900; font-style: italic;
+    font-size: 48px; line-height: 1; color: #f7f3ea;
+  }
+  .footstrip .head .sect {
+    font-family: 'JetBrains Mono', monospace; font-size: 24px;
+    letter-spacing: .2em; color: #ccc; text-transform: uppercase;
+  }
+  .footstrip .cols {
+    display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 28px;
+  }
+  .footstrip .col {
+    border-left: 2px solid #f7f3ea;
+    padding-left: 20px;
+    overflow: hidden;
+  }
+  .footstrip .col:first-child { border-left: 0; padding-left: 0; }
+  .footstrip .col .d {
+    font-family: 'JetBrains Mono', monospace; font-size: 22px;
+    color: #b23b20; letter-spacing: .2em; text-transform: uppercase;
+  }
+  .footstrip .col .n {
+    font-family: 'Playfair Display', serif; font-weight: 900;
+    font-size: 38px; line-height: 1.06; margin-top: 8px;
+    color: #f7f3ea; letter-spacing: -.005em;
+  }
+  .footstrip .count { text-align: right; }
+  .footstrip .count .val {
+    font-family: 'Playfair Display', serif; font-weight: 900; font-style: italic;
+    font-size: 130px; line-height: .9;
+    color: #b23b20;
+    letter-spacing: -.02em;
+  }
+  .footstrip .count .lbl {
+    font-family: 'JetBrains Mono', monospace; font-size: 20px;
+    letter-spacing: .2em; color: #ccc; text-transform: uppercase;
+    margin-top: 6px;
+  }
+
+  /* ─── Ticker ──────────────────────────────────────────────────
+     56px high cinnabar bar pinned to the bottom (right beneath
+     the footstrip — same insets as everything else). */
+  .ticker {
+    position: absolute; bottom: 20px; left: 64px; right: 64px; height: 56px;
+    background: #b23b20; color: #fff;
+    border: 3px solid #1a1a17;
+    border-top: 0;
+    display: flex; align-items: stretch;
+    overflow: hidden;
+    z-index: 2;
+  }
+  .ticker .tag {
+    background: #1a1a17; color: #f7f3ea;
+    padding: 0 28px;
+    display: flex; align-items: center;
+    font-family: 'JetBrains Mono', monospace; font-size: 24px;
+    letter-spacing: .2em;
+    flex-shrink: 0;
+  }
+  .ticker .msg-wrap {
+    flex: 1; display: flex; align-items: center;
+    overflow: hidden;
+    padding-left: 28px;
+  }
+  .ticker .msg {
+    font-family: 'JetBrains Mono', monospace; font-size: 26px;
+    color: #fff;
+    white-space: nowrap; letter-spacing: .16em;
+    text-transform: uppercase;
+    animation: scroll 60s linear infinite;
+  }
+  .ticker .msg span { display: inline-block; padding-right: 96px; }
+  @keyframes scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+</style>
+</head>
+<body>
+<script>
+  const __TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "schema": "edu-cms-hs-yearbook-portrait-v1" }/*EDITMODE-END*/;
+</script>
+
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+  <div class="masthead" data-widget="school">
+    <div class="title" data-field="school.name">The Westridge Review</div>
+    <div class="row">
+      <div class="issue" data-field="school.issue">VOL. LXIX · NO. 142 · APRIL 2026</div>
+    </div>
+    <div class="clock-time" data-field="clock.time">7:53 a.m.</div>
+    <div class="clock-cap" style="position:absolute; right:0; bottom:22px;" data-field="clock.caption">TUE · APR 21 · 46° CLEAR</div>
+  </div>
+
+  <div class="hero" data-widget="greeting">
+    <div class="eyebrow" data-field="greeting.eyebrow">MORNING EDITION · FEATURE</div>
+    <h1 data-field="greeting.headline">Today, we begin again.</h1>
+    <p class="lede" data-field="greeting.subtitle"><span class="drop">A</span> quiet hallway, a fresh notebook, a first-period bell you've heard a thousand times. The best mornings — the ones worth remembering — are the ones that feel exactly like this one.</p>
+    <div class="rule"></div>
+    <div class="folio" data-field="folio.page">— P. 01 —</div>
+  </div>
+
+  <div class="feature" data-widget="feature">
+    <div class="photo">
+      <div class="corner">a play in three acts.</div>
+      <div class="tag" data-field="feature.photoTag">[ photo · auditorium · april 18 ]</div>
+    </div>
+    <div class="caption">
+      <div class="num" data-field="feature.num">01</div>
+      <div class="txt">
+        <div class="ctitle" data-field="feature.title">Spring musical opens Friday — "Into the Woods."</div>
+        <div class="cbody" data-field="feature.body">Directed by Ms. Park and the theater tech crew. Three nights: Friday 7pm, Saturday 2pm and 7pm. Tickets $8 students, $12 general. Sensory-friendly matinee Saturday afternoon — house opens at 1:30.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cards">
+    <div class="card" data-widget="announcement">
+      <div class="kicker" data-field="announcement.tag">EDITOR'S NOTE</div>
+      <h3 data-field="announcement.headline">The yearbook deadline just moved up.</h3>
+      <p class="body" data-field="announcement.body">Senior portraits, club pages, and candid submissions due Friday, April 28 at 3:30 PM. Drop off in Room 217 or upload through the staff portal.</p>
+      <div class="deadline" data-field="announcement.date">DEADLINE · FRI APR 28 · 3:30 PM</div>
+    </div>
+    <div class="card" data-widget="weather">
+      <div class="kicker">TODAY</div>
+      <div class="big" data-field="weather.temp">46°</div>
+      <div class="cap" data-field="weather.condition">Clear skies · HI 62° · LO 38°</div>
+    </div>
+    <div class="card" data-widget="countdown">
+      <div class="kicker" data-field="countdown.label">DAYS TO GRAD.</div>
+      <div class="big" data-field="countdown.value">41</div>
+      <div class="cap" data-field="countdown.unit">Seniors — caps ordered by Friday</div>
+    </div>
+  </div>
+
+  <div class="teacher" data-widget="teacher">
+    <div class="portrait">
+      <div class="frame" data-field="teacher.photoTag">[ portrait · J. Kowalski ]</div>
+    </div>
+    <div class="body">
+      <div class="kicker" data-field="teacher.label">FEATURED · TEACHER OF THE WEEK</div>
+      <h2 data-field="teacher.name">Ms. Kowalski</h2>
+      <div class="meta" data-field="teacher.grade">AP PHYSICS · ROOM 214 · 14 YRS AT WHS</div>
+      <blockquote data-field="teacher.quote">"The answer is in the free-body diagram. Draw the picture — every time. The math always follows."</blockquote>
+      <div class="byline" data-field="teacher.byline">PROFILE BY THE EDITORIAL STAFF · P. 12</div>
+    </div>
+  </div>
+
+  <div class="footstrip">
+    <div class="head">
+      <div class="h">Upcoming, this week and next.</div>
+      <div class="sect" data-field="school.section">CALENDAR · SECTION B</div>
+    </div>
+    <div class="cols">
+      <div class="col" data-widget="events.0">
+        <div class="d" data-field="events.0.when">MON · 3:30 PM</div>
+        <div class="n" data-field="events.0.name">Student government — open meeting, lib.</div>
+      </div>
+      <div class="col" data-widget="events.1">
+        <div class="d" data-field="events.1.when">WED · 7:00 PM</div>
+        <div class="n" data-field="events.1.name">Spring band concert, auditorium.</div>
+      </div>
+      <div class="col" data-widget="events.2">
+        <div class="d" data-field="events.2.when">FRI · 7:00 PM</div>
+        <div class="n" data-field="events.2.name">"Into the Woods" opening night.</div>
+      </div>
+      <div class="col count" data-widget="countdown-mirror">
+        <div class="val" data-field="countdown.mirror">41</div>
+        <div class="lbl" data-field="countdown.labelEcho">DAYS TO COMMENCEMENT</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ticker" data-widget="ticker">
+    <div class="tag" data-field="ticker.tag">WIRE · LATE</div>
+    <div class="msg-wrap">
+      <div class="msg">
+        <span data-field="ticker.message">NEWS DESK ANNOUNCEMENT — BUS 14 RUNNING LATE, NEW DEPARTURE 7:58 AM · LUNCH TODAY: CHICKEN BOWL, SALAD BAR, VEGAN OPT · AP PSYCH STUDY HALL MOVED TO LIBRARY · LOST: SILVER EARBUDS — FRONT OFFICE · </span>
+        <span aria-hidden="true">NEWS DESK ANNOUNCEMENT — BUS 14 RUNNING LATE, NEW DEPARTURE 7:58 AM · LUNCH TODAY: CHICKEN BOWL, SALAD BAR, VEGAN OPT · AP PSYCH STUDY HALL MOVED TO LIBRARY · LOST: SILVER EARBUDS — FRONT OFFICE · </span>
+      </div>
+    </div>
+  </div>
+
+</div></div></div>
+
+<script>
+  // Same fit() pattern as the landscape file — reads --stage-w/--stage-h
+  // (here 2160×3840) and computes --stage-scale to fit the viewport.
+  (function(){
+    function fit(){
+      const cs = getComputedStyle(document.documentElement);
+      const w = parseFloat(cs.getPropertyValue('--stage-w')) || 2160;
+      const h = parseFloat(cs.getPropertyValue('--stage-h')) || 3840;
+      const k = Math.min(window.innerWidth / w, window.innerHeight / h);
+      document.documentElement.style.setProperty('--stage-scale', k);
+    }
+    window.addEventListener('resize', fit);
+    window.addEventListener('load', fit);
+    setTimeout(fit, 10);
+    setTimeout(fit, 300);
+  })();
+</script>
+</body>
+</html>

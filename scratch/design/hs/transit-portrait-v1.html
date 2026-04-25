@@ -1,0 +1,545 @@
+<!--
+  HS TEMPLATE · TRANSIT · PORTRAIT v1
+  ====================================
+  Vertical 2160×3840 sibling to transit.html (landscape 3840×2160).
+  Same airport-departure-board aesthetic (Oswald + JetBrains Mono +
+  Inter; black/amber/green/red/blue; flip-board cells with hard
+  amber borders), same content regions, redesigned for portrait
+  reading rhythm.
+
+  This is NOT a squish of the landscape file. The landscape splits
+  the screen horizontally — mast / hero-now-boarding / 6-column
+  departures table / 3-column lower zone. For portrait we keep the
+  airport-board metaphor intact but re-rank by glance priority and
+  rebuild the departures table as a tall vertical list:
+
+      MAST  →  NOW BOARDING  →  DEPARTURES  →  LOWER (3 panels)  →  TICKER
+
+  Why this rank?
+    1. Mast (school code as airport code + station name + clock) sits
+       at the top exactly like the landscape — this is the identity
+       row, what travellers/students glance at first.
+    2. NOW BOARDING hero is the "current period" gate card. In
+       landscape it ran a 3-column band (room / headline / weather);
+       in portrait we stack:
+         row 1 — ROOM tile (left, amber) + WEATHER tile (right)
+         row 2 — eyebrow + huge headline + subtitle
+       Headline grows from 200 → 240px because line-length is shorter
+       in portrait.
+    3. Departures board collapses from a 6-column wide table to a
+       4-column vertical card list. The original 6 columns
+       (TIME / COURSE / DEST / ROOM / TEACHER / STATUS) compress to
+       5 fields per row arranged as a 2-line card:
+         line 1: TIME · CODE · STATUS-chip
+         line 2: DESTINATION (full width) + ROOM tile right
+         line 3: meta sub + teacher
+       Each row is ~370px tall × 5 rows + 90px header = 1940px.
+    4. Lower zone keeps the 3-card metaphor (TEACHER / ADVISORY /
+       COUNTDOWN) but as a single horizontal row at 536px tall, with
+       teacher widened (gets the fattest column because the photo
+       tile is the visual anchor) and countdown narrowed.
+    5. PA ticker stays at the absolute bottom, full-bleed amber bar
+       with hard 4px black top border — same as landscape. Scroll
+       speed unchanged.
+
+  Layout (2160×3840, edge inset 64px L/R, top inset 64px, 20px gaps):
+
+    PANEL              TOP    HEIGHT   ENDS-AT
+    ────────────────────────────────────────────
+    MAST                64       280       344
+    NOW BOARDING       364       740      1104
+    DEPARTURES        1124      2040      3164
+    LOWER             3184       536      3720
+    TICKER            3740       100      3840
+
+    Gaps (each 20px):
+      MAST     → BOARDING   (344  → 364)
+      BOARDING → DEPARTURES (1104 → 1124)
+      DEPART   → LOWER      (3164 → 3184)
+      LOWER    → TICKER     (3720 → 3740)
+
+    Math check (top inset + panels + 4 gaps + ticker):
+      64 (top inset)
+    + 280 (MAST)
+    +  20 (gap)
+    + 740 (BOARDING)
+    +  20 (gap)
+    +2040 (DEPARTURES)
+    +  20 (gap)
+    + 536 (LOWER)
+    +  20 (gap)
+    + 100 (TICKER)
+    ───────
+     3840 ✓
+
+  Geometry rules (load-bearing — match landscape transit.html):
+    - box-sizing: border-box on every panel that sets explicit width
+    - overflow: hidden on every panel
+    - 64px edge inset (left/right), 20px gaps
+    - position: absolute panels — NO flow layout at the panel level
+    - NO vw/vh/% sizing inside the scene (% is fine for inline grid
+      track ratios since they resolve against the panel's px width)
+    - 3-layer scale wrapper (.viewport > .stage-outer > .stage)
+    - fit() script at bottom adjusts --stage-scale for any viewport
+
+  Hero typography sized for 65"+ portrait viewing (8ft+):
+    - Hero headline: 240px (was 200 landscape)
+    - Departure dest: 88px (was 60)
+    - Departure time: 96px (was 70)
+    - Body min: 60px
+
+  Font + palette match transit.html verbatim.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Transit — HS Lobby Portrait 4K (v1)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=JetBrains+Mono:wght@500;700&family=Inter:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  /* Box-sizing on every explicit-width panel — same rule as landscape. */
+  .mast, .boarding, .board, .lower, .panel, .ticker { box-sizing: border-box; }
+
+  /* 3-layer scale wrapper — identical to landscape, just portrait dims. */
+  :root { --stage-w: 2160px; --stage-h: 3840px; --stage-scale: 1; }
+  html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; }
+  .viewport { position:fixed; inset:0; display:grid; place-items:center; overflow:hidden; }
+  .stage-outer { width:calc(var(--stage-w)*var(--stage-scale)); height:calc(var(--stage-h)*var(--stage-scale)); }
+  .stage { width:var(--stage-w); height:var(--stage-h); transform:scale(var(--stage-scale)); transform-origin:0 0; position:relative; box-shadow:0 80px 200px rgba(0,0,0,.65); overflow:hidden; }
+
+  :root {
+    --bg: #0a0f1c;
+    --panel: #0e1529;
+    --amber: #ffb020;
+    --amberd: #4a3210;
+    --green: #58e07a;
+    --red:   #ff5b5b;
+    --blue:  #5ea8ff;
+    --dim:   #6b7a93;
+  }
+  html, body { background:#000; color:#fff; font-family:'Inter',sans-serif; }
+  .stage { background: radial-gradient(ellipse at 50% 14%, #1c2744 0%, #0a0f1c 70%); }
+
+  /* ─── MAST (top 280px) ────────────────────────────────────────
+     Portrait: airport-code tile on left at full panel height, name
+     block centre, clock on right. Three-cell grid like landscape
+     but proportions tuned so the code tile reads as the dominant
+     identity element when seen from across a lobby. */
+  .mast {
+    position:absolute; top: 64px; left: 64px; right: 64px; height: 280px;
+    background: #000; border: 6px solid var(--amber);
+    display:grid; grid-template-columns: 280px 1fr 540px;
+    align-items: center; overflow: hidden;
+  }
+  .mast .code {
+    background: var(--amber); color:#000; height:100%;
+    display:grid; place-items:center; font-family:'Oswald',sans-serif; font-weight:700;
+    font-size:180px; letter-spacing:.02em; line-height: 1;
+  }
+  .mast .name {
+    padding: 0 56px;
+    display:flex; flex-direction:column; gap:14px; min-width: 0;
+  }
+  .mast .name .line1 {
+    font-family:'Oswald',sans-serif; font-weight:700; font-size:88px; letter-spacing:.04em;
+    color:#fff; line-height:1;
+  }
+  .mast .name .line2 {
+    font-family:'JetBrains Mono',monospace; font-size:34px; letter-spacing:.18em;
+    color: var(--dim); text-transform:uppercase; line-height: 1.2;
+  }
+  .mast .clock {
+    padding: 0 48px; display:flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 12px;
+    border-left: 4px solid var(--amber); height: 100%;
+  }
+  .mast .clock .t {
+    font-family:'JetBrains Mono',monospace; font-weight:700; font-size:140px; line-height:1;
+    color: var(--amber); letter-spacing:.02em;
+    text-shadow: 0 0 24px rgba(255,176,32,.4);
+  }
+  .mast .clock .meta {
+    font-family:'JetBrains Mono',monospace; font-size: 30px; color: var(--dim);
+    letter-spacing:.16em; line-height:1.3; text-transform:uppercase; text-align: right;
+  }
+
+  /* ─── NOW BOARDING hero (h=740) ───────────────────────────────
+     Portrait stacks the band into TWO rows so the hero can have
+     room to breathe. Top row = ROOM gate tile (260) + WEATHER strip
+     filling the rest. Bottom row = headline copy.
+       row 1: 280px (gate + weather)
+       row 2: 460px (eyebrow + h1 + sub) */
+  .boarding {
+    position:absolute; top: 364px; left: 64px; right: 64px; height: 740px;
+    background: linear-gradient(180deg, #141d36, #0b1223);
+    border: 6px solid var(--amber);
+    display: grid; grid-template-rows: 280px 1fr;
+    overflow: hidden;
+  }
+  .boarding .top-row {
+    display:grid; grid-template-columns: 360px 1fr; height: 280px;
+    border-bottom: 4px solid var(--amber);
+  }
+  .boarding .side {
+    background: var(--amber); color:#000;
+    display:flex; flex-direction:column; justify-content:center; align-items:center;
+    font-family:'Oswald',sans-serif; font-weight:700;
+    text-align:center; gap: 4px;
+  }
+  .boarding .side .tag { font-size: 42px; letter-spacing:.25em; text-transform:uppercase; line-height: 1; }
+  .boarding .side .gate {
+    font-family:'JetBrains Mono',monospace; font-weight:700; font-size: 200px; line-height:.9;
+    letter-spacing:.02em;
+  }
+  .boarding .right {
+    display:grid; grid-template-columns: 1fr 1fr auto; align-items:center; gap: 32px;
+    padding: 0 56px;
+  }
+  .boarding .right .cell { display: flex; flex-direction: column; gap: 8px; }
+  .boarding .right .k { font-family:'JetBrains Mono',monospace; font-size: 28px;
+    letter-spacing:.2em; color: var(--dim); text-transform:uppercase; }
+  .boarding .right .v { font-family:'Oswald',sans-serif; font-weight:700; font-size: 92px; color:#fff; line-height:1; }
+  .boarding .right .v.cond { font-size: 52px; }
+  .boarding .right .status {
+    padding: 18px 32px; background: var(--green); color:#000;
+    font-family:'Oswald',sans-serif; font-weight:700; font-size: 44px; letter-spacing:.18em; text-transform:uppercase;
+    align-self: center;
+  }
+  .boarding .copy {
+    padding: 60px 80px; display: flex; flex-direction: column; justify-content: center; gap: 18px;
+    overflow: hidden;
+  }
+  .boarding .copy .eyebrow {
+    font-family:'JetBrains Mono',monospace; font-size: 40px; letter-spacing:.2em;
+    color: var(--amber); text-transform:uppercase; line-height: 1;
+  }
+  .boarding .copy h1 {
+    font-family:'Oswald',sans-serif; font-weight:700; font-size: 240px; line-height:.92;
+    letter-spacing:.01em; color:#fff; margin: 0; text-transform:uppercase; text-wrap:balance;
+  }
+  .boarding .copy .sub {
+    font-family:'Inter',sans-serif; font-weight:500; font-size: 44px; color:#c7d2e4;
+    line-height:1.25;
+  }
+
+  /* ─── DEPARTURES board (h=2040) ──────────────────────────────
+     Header bar (90px) + 5 rows × 390px each = 90 + 1950 = 2040.
+     Each row is a 2-line card:
+       header column line: TIME (left) · CODE (mid) · STATUS chip
+       big line: DESTINATION (left, hero) + ROOM tile (right)
+       small line: note + teacher (one row, mono)
+     Drops the cramped 6-narrow-column landscape layout in favour
+     of two readable lines stacked, more like a real flip-board
+     gate posting. */
+  .board {
+    position:absolute; top: 1124px; left: 64px; right: 64px; height: 2040px;
+    background:#000; border: 6px solid var(--amber);
+    overflow: hidden;
+  }
+  .board .head {
+    display:grid; grid-template-columns: 240px 360px 1fr 240px; height: 90px;
+    background: var(--amber); color:#000;
+    padding: 0 40px; align-items: center;
+    font-family:'Oswald',sans-serif; font-weight:700; font-size: 38px; letter-spacing:.2em; text-transform:uppercase;
+  }
+  .board .head span:last-child { text-align: right; }
+  .row {
+    display: grid; grid-template-rows: auto 1fr auto;
+    padding: 28px 40px;
+    border-bottom: 3px solid #141d36;
+    height: 390px;
+    align-content: space-between;
+    overflow: hidden;
+  }
+  .row:nth-child(odd) { background:#080e1c; }
+  .row:last-child { border-bottom: 0; }
+
+  .row .top-line {
+    display: grid; grid-template-columns: auto auto 1fr; gap: 40px; align-items: center;
+  }
+  .row .t { font-family:'JetBrains Mono',monospace; font-weight:700; font-size: 96px; color:#fff; letter-spacing:.02em; line-height: 1; }
+  .row .code { font-family:'JetBrains Mono',monospace; font-weight:700; font-size: 56px; color: var(--amber); letter-spacing:.08em; line-height: 1; }
+  .row .st {
+    justify-self: end;
+    padding: 14px 28px;
+    font-family:'Oswald',sans-serif; font-weight:700; font-size: 38px; letter-spacing:.16em; text-transform:uppercase;
+    line-height: 1;
+  }
+  .st.now { background: var(--green); color:#000; }
+  .st.soon { background: var(--amber); color:#000; }
+  .st.delay { background: var(--red); color:#000; animation: pulse 1.6s infinite; }
+  .st.open { background: var(--blue); color:#000; }
+  .st.sched { background: #1e2a48; color: #9cb3d8; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.5;} }
+
+  .row .mid-line {
+    display: grid; grid-template-columns: 1fr 240px; gap: 32px; align-items: center;
+  }
+  .row .dest { font-family:'Oswald',sans-serif; font-weight:700; font-size: 88px; color:#fff; letter-spacing:.02em; text-transform:uppercase; line-height:1; }
+  .row .gate {
+    font-family:'Oswald',sans-serif; font-weight:700; font-size:96px; color: var(--amber); letter-spacing:.04em;
+    text-align: right; line-height: 1;
+  }
+
+  .row .bot-line {
+    display: grid; grid-template-columns: 1fr auto; gap: 32px; align-items: center;
+  }
+  .row .note { font-family:'Inter',sans-serif; font-weight:500; font-size: 34px; color: var(--dim); letter-spacing:.04em; line-height: 1.2; }
+  .row .teacher { font-family:'JetBrains Mono',monospace; font-weight:500; font-size: 36px; color:#c7d2e4; letter-spacing:.06em; text-transform:uppercase; line-height: 1; }
+
+  /* ─── LOWER (h=536) — three side-by-side panels ─────────────
+     Same metaphor as landscape lower row but tuned for portrait:
+     teacher 1.4fr (anchors with photo tile), advisory 1fr,
+     countdown 1fr. Heights match exactly. */
+  .lower {
+    position:absolute; top: 3184px; left: 64px; right: 64px; height: 536px;
+    display:grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 24px;
+    overflow: hidden;
+  }
+  .panel {
+    background: #0b1223; border: 6px solid var(--amber);
+    padding: 36px 44px; position:relative;
+    display:flex; flex-direction:column; gap: 14px;
+    overflow: hidden;
+  }
+  .panel::before {
+    content: attr(data-label); position:absolute; top:-22px; left:24px;
+    background: var(--amber); color:#000; padding: 6px 22px;
+    font-family:'Oswald',sans-serif; font-weight:700; font-size: 30px; letter-spacing:.22em; text-transform:uppercase;
+  }
+
+  /* Teacher: 280px photo tile left, info right */
+  .teacher { display:grid; grid-template-columns: 280px 1fr; gap: 36px; }
+  .teacher .photo {
+    width: 280px; height: 100%; min-height: 360px;
+    background: linear-gradient(135deg,#1e2a48, #0b1223);
+    border: 4px solid var(--amber); position:relative; overflow:hidden;
+    display:grid; place-items:center;
+  }
+  .teacher .photo .num {
+    font-family:'Oswald',sans-serif; font-weight:700; font-size: 240px; color: var(--amber); opacity:.35;
+    line-height:.8;
+  }
+  .teacher .info { display: flex; flex-direction: column; gap: 6px; min-width: 0; overflow: hidden; }
+  .teacher .info .eyebrow {
+    font-family:'JetBrains Mono',monospace; font-size: 26px; color: var(--amber);
+    letter-spacing:.2em; text-transform:uppercase;
+  }
+  .teacher .info h2 {
+    font-family:'Oswald',sans-serif; font-weight:700; font-size: 88px; color:#fff;
+    letter-spacing:.02em; line-height:.95; margin: 4px 0 0; text-transform:uppercase;
+  }
+  .teacher .info .meta {
+    font-family:'JetBrains Mono',monospace; font-size: 24px; color: var(--dim);
+    letter-spacing:.12em; margin-top: 8px; text-transform:uppercase;
+  }
+  .teacher .info .quote {
+    font-family:'Inter',sans-serif; font-weight:500; font-size: 28px;
+    color:#c7d2e4; font-style: italic; line-height:1.32; margin-top: 12px;
+  }
+
+  /* Advisory */
+  .alert .tag { font-family:'JetBrains Mono',monospace; font-size: 26px; letter-spacing:.2em; color: var(--red); text-transform:uppercase; }
+  .alert h3 {
+    font-family:'Oswald',sans-serif; font-weight:700; font-size: 76px; color:#fff; line-height:.95; margin: 8px 0 0;
+    text-transform:uppercase;
+  }
+  .alert p { font-family:'Inter',sans-serif; font-weight:500; font-size: 30px; color:#c7d2e4; margin: 12px 0 0; line-height:1.3; }
+  .alert .when { font-family:'JetBrains Mono',monospace; font-size:26px; color: var(--amber); letter-spacing:.14em; margin-top: 14px; text-transform:uppercase; }
+
+  /* Countdown */
+  .count { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; }
+  .count .label { font-family:'JetBrains Mono',monospace; font-size: 28px; color: var(--amber); letter-spacing:.2em; text-transform:uppercase; }
+  .count .v {
+    font-family:'Oswald',sans-serif; font-weight:700; font-size: 320px; line-height:.85; color:#fff; letter-spacing:-.01em;
+    text-shadow: 0 0 40px rgba(255,176,32,.25); margin-top: 4px;
+  }
+  .count .until { font-family:'Inter',sans-serif; font-weight:500; font-size: 30px; color: var(--dim); letter-spacing:.06em; margin-top: 8px; line-height: 1.2; }
+
+  /* ─── PA TICKER (h=100) ──────────────────────────────────────
+     Same scroll behaviour and styling as landscape, just full
+     portrait-width and a touch taller (100 vs 80) for visibility
+     from a long lobby. */
+  .ticker {
+    position:absolute; bottom:0; left:0; right:0; height: 100px;
+    background: var(--amber); color:#000;
+    display:flex; align-items:center; overflow:hidden; border-top: 6px solid #000;
+  }
+  .ticker .tag {
+    background:#000; color: var(--amber); height:100%; display:flex; align-items:center; padding: 0 44px;
+    font-family:'Oswald',sans-serif; font-weight:700; font-size:38px; letter-spacing:.2em; flex-shrink:0;
+  }
+  .ticker .msg {
+    font-family:'Oswald',sans-serif; font-weight:700; font-size: 44px;
+    padding-left: 56px; white-space: nowrap; letter-spacing:.14em;
+    text-transform:uppercase; animation: scroll 55s linear infinite;
+  }
+  @keyframes scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+</style>
+</head>
+<body>
+<script>
+  const __TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "schema": "edu-cms-transit-portrait-v1" }/*EDITMODE-END*/;
+</script>
+
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+  <!-- MAST -->
+  <div class="mast">
+    <div class="code" data-widget="school"><span data-field="school.code">WHS</span></div>
+    <div class="name" data-widget="brand">
+      <div class="line1" data-field="brand.station">WESTRIDGE HIGH</div>
+      <div class="line2" data-field="brand.meta">MAIN TERMINAL · GRADES 9–12 · SPRING 2026 · ON TIME 94%</div>
+    </div>
+    <div class="clock" data-widget="clock">
+      <div class="t" data-field="clock.time">07:53</div>
+      <div class="meta"><span data-field="clock.date">TUE · APR 21</span><br/><span data-field="clock.tz">LOCAL · UTC-05:00</span></div>
+    </div>
+  </div>
+
+  <!-- NOW BOARDING -->
+  <div class="boarding" data-widget="greeting">
+    <div class="top-row">
+      <div class="side">
+        <div class="tag">ROOM</div>
+        <div class="gate" data-field="greeting.gate">1A</div>
+      </div>
+      <div class="right" data-widget="weather">
+        <div class="cell"><span class="k">OUTSIDE</span><span class="v" data-field="weather.temp">46°F</span></div>
+        <div class="cell"><span class="k">CONDITIONS</span><span class="v cond" data-field="weather.condition">CLEAR · HI 62°</span></div>
+        <div class="status" data-field="weather.status">ON TIME</div>
+      </div>
+    </div>
+    <div class="copy">
+      <div class="eyebrow" data-field="greeting.eyebrow">NOW BOARDING · PERIOD 1</div>
+      <h1 data-field="greeting.headline">HAVE A GREAT DAY, WILDCATS.</h1>
+      <div class="sub" data-field="greeting.subtitle">Doors open at 7:55 · late bell at 8:05 · report to first period before the second bell.</div>
+    </div>
+  </div>
+
+  <!-- DEPARTURES -->
+  <div class="board">
+    <div class="head">
+      <span>TIME / COURSE</span><span>DESTINATION</span><span>STATUS</span><span>ROOM</span>
+    </div>
+
+    <div class="row" data-widget="dep.0">
+      <div class="top-line">
+        <span class="t" data-field="dep.0.time">08:05</span>
+        <span class="code" data-field="dep.0.code">APE-301</span>
+        <span class="st now" data-field="dep.0.status">BOARDING</span>
+      </div>
+      <div class="mid-line">
+        <span class="dest" data-field="dep.0.dest">AP ENGLISH LIT</span>
+        <span class="gate" data-field="dep.0.room">214</span>
+      </div>
+      <div class="bot-line">
+        <span class="note" data-field="dep.0.note">Essay drafts due — bring laptop</span>
+        <span class="teacher" data-field="dep.0.teacher">MS. PARK</span>
+      </div>
+    </div>
+
+    <div class="row" data-widget="dep.1">
+      <div class="top-line">
+        <span class="t" data-field="dep.1.time">09:00</span>
+        <span class="code" data-field="dep.1.code">PHY-242</span>
+        <span class="st soon" data-field="dep.1.status">ON TIME</span>
+      </div>
+      <div class="mid-line">
+        <span class="dest" data-field="dep.1.dest">AP PHYSICS C</span>
+        <span class="gate" data-field="dep.1.room">107</span>
+      </div>
+      <div class="bot-line">
+        <span class="note" data-field="dep.1.note">Lab 3 — frictionless carts</span>
+        <span class="teacher" data-field="dep.1.teacher">MS. KOWALSKI</span>
+      </div>
+    </div>
+
+    <div class="row" data-widget="dep.2">
+      <div class="top-line">
+        <span class="t" data-field="dep.2.time">10:15</span>
+        <span class="code" data-field="dep.2.code">HIST-210</span>
+        <span class="st delay" data-field="dep.2.status">RM CHANGE</span>
+      </div>
+      <div class="mid-line">
+        <span class="dest" data-field="dep.2.dest">U.S. HISTORY</span>
+        <span class="gate" data-field="dep.2.room">CAFÉ</span>
+      </div>
+      <div class="bot-line">
+        <span class="note" data-field="dep.2.note">Chapter 12 quiz · 25 min</span>
+        <span class="teacher" data-field="dep.2.teacher">MR. RIVERA</span>
+      </div>
+    </div>
+
+    <div class="row" data-widget="dep.3">
+      <div class="top-line">
+        <span class="t" data-field="dep.3.time">11:30</span>
+        <span class="code" data-field="dep.3.code">ART-150</span>
+        <span class="st sched" data-field="dep.3.status">SCHEDULED</span>
+      </div>
+      <div class="mid-line">
+        <span class="dest" data-field="dep.3.dest">CERAMICS II</span>
+        <span class="gate" data-field="dep.3.room">B-12</span>
+      </div>
+      <div class="bot-line">
+        <span class="note" data-field="dep.3.note">Kiln open — wear apron</span>
+        <span class="teacher" data-field="dep.3.teacher">MS. OKAFOR</span>
+      </div>
+    </div>
+
+    <div class="row" data-widget="dep.4">
+      <div class="top-line">
+        <span class="t" data-field="dep.4.time">13:45</span>
+        <span class="code" data-field="dep.4.code">MUSIC-220</span>
+        <span class="st open" data-field="dep.4.status">OPEN SEATS</span>
+      </div>
+      <div class="mid-line">
+        <span class="dest" data-field="dep.4.dest">CONCERT BAND</span>
+        <span class="gate" data-field="dep.4.room">AUD</span>
+      </div>
+      <div class="bot-line">
+        <span class="note" data-field="dep.4.note">Rehearsal for spring concert</span>
+        <span class="teacher" data-field="dep.4.teacher">MR. THORNTON</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOWER -->
+  <div class="lower">
+    <div class="panel teacher" data-label="TEACHER OF THE WEEK" data-widget="teacher">
+      <div class="photo">
+        <div class="num" data-field="teacher.num">14</div>
+      </div>
+      <div class="info">
+        <div class="eyebrow" data-field="teacher.label">FLIGHT CREW · SPOTLIGHT</div>
+        <h2 data-field="teacher.name">MS. KOWALSKI</h2>
+        <div class="meta" data-field="teacher.meta">AP PHYSICS · RM 214 · 14 YRS AT WHS</div>
+        <div class="quote" data-field="teacher.quote">"The answer is in the free-body diagram. Draw the picture — every time. The math always follows."</div>
+      </div>
+    </div>
+    <div class="panel alert" data-label="ADVISORY" data-widget="announcement">
+      <div class="tag" data-field="announcement.tag">ATTENTION PASSENGERS</div>
+      <h3 data-field="announcement.headline">PEP RALLY — 7TH PERIOD · GYM A</h3>
+      <p data-field="announcement.body">Seniors board first · marching band enters from south doors · no backpacks in gym · return to 8th period when the final bell sounds.</p>
+      <div class="when" data-field="announcement.date">DEPART 14:15 · ARRIVE 15:00</div>
+    </div>
+    <div class="panel count" data-label="NEXT LEG" data-widget="countdown">
+      <div class="label" data-field="countdown.label">DAYS TO GRADUATION</div>
+      <div class="v" data-field="countdown.value">41</div>
+      <div class="until" data-field="countdown.sub">Seniors — cap &amp; gown pickup by Fri 17:00</div>
+    </div>
+  </div>
+
+  <!-- TICKER -->
+  <div class="ticker" data-widget="ticker">
+    <div class="tag" data-field="ticker.tag">PA · ALL TERMINALS</div>
+    <div class="msg"><span data-field="ticker.message">BUS 14 DELAYED 10 MIN — NEW ARRIVAL 07:58  ●  LUNCH TODAY: CHICKEN BOWL, SALAD BAR, VEGAN OPT  ●  AP PSYCH STUDY HALL MOVED TO LIBRARY  ●  LOST: SILVER EARBUDS — FRONT OFFICE  ●  </span><span data-field="ticker.message">BUS 14 DELAYED 10 MIN — NEW ARRIVAL 07:58  ●  LUNCH TODAY: CHICKEN BOWL, SALAD BAR, VEGAN OPT  ●  AP PSYCH STUDY HALL MOVED TO LIBRARY  ●  LOST: SILVER EARBUDS — FRONT OFFICE  ●  </span></div>
+  </div>
+
+</div></div></div>
+
+<script>
+(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const cs=getComputedStyle(document.documentElement);const w=parseFloat(cs.getPropertyValue('--stage-w'))||2160;const h=parseFloat(cs.getPropertyValue('--stage-h'))||3840;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();
+</script>
+</body></html>

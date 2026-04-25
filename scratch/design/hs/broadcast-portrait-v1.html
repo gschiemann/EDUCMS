@@ -1,0 +1,561 @@
+<!--
+  HS TEMPLATE · BROADCAST · PORTRAIT v1
+  ======================================
+  Vertical 2160×3840 sibling to scratch/design/hs/broadcast.html.
+  Same news-desk aesthetic, redesigned for portrait reading.
+
+  This is NOT a squish of the landscape. The landscape uses a 3fr/2fr
+  headline-vs-stats split on row 1, then a 1820/1780 guest|breaking
+  split on row 2, then a 4-col schedule + countdown row, then ticker.
+  Portrait collapses everything into a single vertical column and
+  re-ranks for top-to-bottom glance:
+    NETBAR → HEADLINE → STATS (clock+weather) → GUEST → BREAKING
+    → SCHEDULE → COUNTDOWN → TICKER
+
+  Why this rank?
+    1. NETBAR carries school identity + LIVE indicator — must be first.
+    2. HEADLINE owns the upper third. Portrait shortens line-length so
+       the headline can grow from 260→320px without wrapping awkwardly,
+       and the subtitle gets more vertical space (no right column
+       fighting for it).
+    3. STATS (clock + weather) split into two side-by-side panels
+       directly under the headline — a "lower-third" strip so the time
+       reads from across the lobby without scanning down past four
+       cards.
+    4. GUEST card promoted above breaking news because the editorial
+       tone of the landscape "Featured Guest" works better as a
+       portrait-mode hero (image + name + quote stacked vertically,
+       red accent stripe on the left preserved).
+    5. BREAKING card on dark, yellow tag — same role as landscape but
+       full-width.
+    6. SCHEDULE stacks three events vertically (was a 3-col strip in
+       landscape). Single-column events read top-to-bottom in portrait,
+       and each row breathes at ~160px tall.
+    7. COUNTDOWN as a full-width red strip with the giant numeral on
+       the left and label on the right — the "save the date" closer.
+    8. TICKER stays at the very bottom, full-bleed, between the same
+       0/0 left/right edges as the landscape.
+
+  Layout (2160×3840):
+
+    PANEL          TOP    HEIGHT   ENDS-AT
+    ─────────────────────────────────────
+    NETBAR           60      120     180
+    HEADLINE        200      920    1120
+    STATS          1140      380    1520
+    GUEST          1540      720    2260
+    BREAKING       2280      540    2820
+    SCHEDULE       2840      540    3380
+    COUNTDOWN      3400      280    3680
+    TICKER         3700      140    3840   (bottom:0 → top=3700)
+
+    Gaps (each 20px):
+      NETBAR    → HEADLINE    (180  → 200)
+      HEADLINE  → STATS       (1120 → 1140)
+      STATS     → GUEST       (1520 → 1540)
+      GUEST     → BREAKING    (2260 → 2280)
+      BREAKING  → SCHEDULE    (2820 → 2840)
+      SCHEDULE  → COUNTDOWN   (3380 → 3400)
+      COUNTDOWN → TICKER      (3680 → 3700)
+
+    Top inset (60) + content (3640) + 7 gaps (140) + ticker (140)
+    Math: 60 + 120 + 20 + 920 + 20 + 380 + 20 + 720 + 20 + 540 + 20
+        + 540 + 20 + 280 + 20 + 140 = 3840 ✓
+
+  Geometry rules (load-bearing — match landscape):
+    - box-sizing: border-box on every panel that sets explicit width
+    - overflow: hidden on every panel
+    - 64px edge inset (left/right)
+    - NO vw/vh/% sizing inside the scene
+    - 3-layer scale wrapper (.viewport > .stage-outer > .stage)
+
+  Fonts + palette + motifs match broadcast.html verbatim:
+    Barlow Condensed (display), Inter (body), JetBrains Mono (chrome)
+    Brand red #ef2b2b · ink #0a0f1a · paper #f3f5f9 · accent #ffd83d
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Broadcast — Lobby Portrait 4K (v1)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700;900&family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  /* Box-sizing on every explicit-width panel — same rule as landscape. */
+  .netbar, .headline, .stats, .panel, .guest, .breaking, .schedule, .ev, .countdown, .ticker { box-sizing: border-box; }
+
+  /* 3-layer scale wrapper — identical pattern to landscape, portrait dims. */
+  :root { --stage-w: 2160px; --stage-h: 3840px; --stage-scale: 1; }
+  html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; background:#06080f; }
+  .viewport { position:fixed; inset:0; display:grid; place-items:center; overflow:hidden; }
+  .stage-outer { width:calc(var(--stage-w)*var(--stage-scale)); height:calc(var(--stage-h)*var(--stage-scale)); }
+  .stage {
+    width:var(--stage-w); height:var(--stage-h);
+    transform:scale(var(--stage-scale)); transform-origin:0 0;
+    position:relative; box-shadow:0 80px 200px rgba(0,0,0,.65); overflow:hidden;
+  }
+
+  :root {
+    --brand: #ef2b2b;
+    --ink: #0a0f1a;
+    --paper: #f3f5f9;
+    --accent: #ffd83d;
+    --muted: #8a93a6;
+  }
+  html, body { font-family: 'Inter', system-ui, sans-serif; color: var(--paper); }
+  .stage {
+    background: radial-gradient(ellipse at 50% -10%, #1a2545 0%, #0b1025 55%, #05070f 100%);
+  }
+  /* Scan / light leak — same as landscape */
+  .stage::before {
+    content:''; position:absolute; inset:0; pointer-events:none;
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,.015) 0 2px, transparent 2px 5px),
+      radial-gradient(ellipse at 70% 90%, rgba(239,43,43,.12), transparent 60%);
+  }
+
+  /* ─── NETBAR ───────────────────────────────────────────────────
+     Brand chip + school name on the left, LIVE indicator on the
+     right. Same composition as landscape but compressed height
+     (120px) because the headline below it owns the visual weight. */
+  .netbar {
+    position:absolute; top:60px; left:64px; right:64px; height:120px;
+    background: linear-gradient(180deg, #0a0f1a, #0a0f1a 70%, rgba(10,15,26,.6));
+    border-bottom: 4px solid var(--brand);
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 0 48px; overflow:hidden; z-index: 5;
+  }
+  .netbar .brandmark {
+    display:flex; align-items:center; gap:24px;
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    font-size:64px; letter-spacing:.04em; color:#fff; line-height: 1;
+  }
+  .netbar .brandmark .chip {
+    background: var(--brand); color:#fff; padding: 8px 20px 10px;
+    font-size:48px; letter-spacing:.12em; line-height: 1;
+  }
+  .netbar .brandmark .sub {
+    font-family:'JetBrains Mono', monospace; font-weight:500;
+    font-size:24px; letter-spacing:.24em; color: var(--muted);
+    text-transform:uppercase;
+  }
+  .netbar .live {
+    display:flex; align-items:center; gap:18px;
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    font-size:44px; letter-spacing:.12em; color:#fff;
+  }
+  .netbar .live .dot {
+    width:24px; height:24px; border-radius:50%; background: var(--brand);
+    box-shadow: 0 0 0 6px rgba(239,43,43,.25);
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(239,43,43,.6); }
+    50%      { box-shadow: 0 0 0 18px rgba(239,43,43,0); }
+  }
+
+  /* Sat uplink ornament — repositioned for portrait, top-right corner */
+  .sat { position:absolute; right:84px; top: 24px; width: 96px; height: 64px; opacity:.7; z-index: 6; }
+  .sat .arc { fill:none; stroke:#ffd83d; stroke-width:3; animation: arc 2.2s ease-in-out infinite; opacity:.7; }
+  .sat .arc.a2 { animation-delay:.4s; }
+  .sat .arc.a3 { animation-delay:.8s; }
+  @keyframes arc { 0%,100% { opacity:.15; } 50% { opacity:.85; } }
+
+  /* ─── HEADLINE (top story) ─────────────────────────────────────
+     Owns the upper third. Eyebrow chip → 320px headline → subtitle.
+     Portrait gets a bigger headline than landscape (260→320) because
+     line-length is shorter so the title can sprawl without wrapping
+     into ugly orphans. */
+  .headline {
+    position:absolute; top:200px; left:64px; right:64px; height:920px;
+    padding: 32px 32px 0; overflow:hidden;
+  }
+  .headline .eyebrow {
+    display:inline-block;
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    background: var(--brand); color:#fff; padding: 14px 28px 16px;
+    font-size: 52px; letter-spacing: .14em; text-transform:uppercase;
+    line-height: 1;
+  }
+  .headline h1 {
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    font-size: 320px; line-height:.86; margin: 36px 0 0;
+    letter-spacing:-.01em; color:#fff; text-transform:uppercase;
+    text-wrap: balance;
+  }
+  .headline .subtitle {
+    font-family:'Inter', sans-serif; font-weight:600;
+    font-size: 60px; color:#cbd5e1; margin-top: 56px;
+    line-height:1.2;
+    border-left: 8px solid var(--brand);
+    padding-left: 32px;
+  }
+
+  /* ─── STATS (clock + weather) ──────────────────────────────────
+     Two equal cards, side-by-side, full-width minus gap. Portrait
+     gives us 2032px panel width → (2032 - 28 gap) / 2 = 1002px each.
+     Bigger numerals than landscape — clock 220px, weather 240px. */
+  .stats {
+    position:absolute; top:1140px; left:64px; right:64px; height:380px;
+    display:grid; grid-template-columns: 1fr 1fr; gap: 28px;
+    overflow:hidden;
+  }
+  .panel {
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.08);
+    backdrop-filter: blur(8px);
+    padding: 32px 44px; position:relative; overflow:hidden;
+    display:flex; flex-direction:column; justify-content:center;
+  }
+  .panel h3 {
+    font-family:'JetBrains Mono', monospace; font-weight:700;
+    font-size: 28px; letter-spacing:.2em; text-transform:uppercase;
+    color: var(--muted); margin: 0 0 14px;
+  }
+  .panel .big {
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    font-size: 220px; line-height:.9; color:#fff; letter-spacing:-.01em;
+  }
+  .panel .cap {
+    font-family:'Inter', sans-serif; font-weight:600;
+    font-size: 32px; color:#cbd5e1; margin-top: 14px;
+  }
+  .panel.clock .big::after {
+    content:''; display:inline-block; width:18px; height:18px; background: var(--brand);
+    border-radius:50%; margin-left:18px; vertical-align: middle;
+    animation: blink 1s steps(2) infinite;
+  }
+  @keyframes blink { 0%,49% { opacity:1; } 50%,100% { opacity:0; } }
+
+  .panel.weather .row { display:flex; align-items:flex-end; gap:24px; }
+  .panel.weather .big { font-size: 240px; }
+  .panel.weather .ico {
+    font-family:'Barlow Condensed'; font-weight:900;
+    font-size:60px; color: var(--accent);
+    line-height: 1; padding-bottom: 28px; letter-spacing: .04em;
+  }
+
+  /* ─── GUEST (Featured Teacher) ─────────────────────────────────
+     Portrait reorganization: red stripe on left preserved, but the
+     360-square portrait now sits ABOVE the text instead of beside
+     it (vertical reading rhythm). Eyebrow → name → meta → quote.
+     Total panel 720px tall: 320 portrait + 400 text. */
+  .guest {
+    position:absolute; top:1540px; left:64px; right:64px; height:720px;
+    background: var(--paper); color: var(--ink);
+    padding: 40px 56px 40px 72px;
+    display:grid; grid-template-columns: 320px 1fr; gap: 56px;
+    align-items:center; overflow:hidden;
+  }
+  .guest::before {
+    content:''; position:absolute; left:0; top:0; bottom:0; width:20px;
+    background: var(--brand);
+  }
+  .guest .portrait {
+    width:320px; height:320px;
+    background: linear-gradient(135deg, #cbd5e1 0%, #94a3b8 100%);
+    position:relative; overflow:hidden;
+    display:grid; place-items:center;
+    flex-shrink: 0;
+  }
+  .guest .portrait::after {
+    content:''; position:absolute; inset:0;
+    background: repeating-linear-gradient(45deg, rgba(0,0,0,.04) 0 6px, transparent 6px 12px);
+  }
+  .guest .portrait .mono {
+    font-family:'JetBrains Mono', monospace; font-weight:700;
+    font-size: 28px; color: var(--ink); background:#fff; padding:8px 16px;
+    z-index:1; position:relative;
+  }
+  .guest .body { min-width: 0; overflow: hidden; }
+  .guest .eyebrow {
+    display:inline-block;
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    background: var(--ink); color:#fff; padding: 10px 22px 12px;
+    font-size: 36px; letter-spacing:.18em; text-transform:uppercase;
+    line-height: 1;
+  }
+  .guest h2 {
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    font-size: 168px; line-height:.9; margin: 18px 0 12px;
+    color: var(--ink); text-transform:uppercase;
+    letter-spacing: -.005em;
+  }
+  .guest .meta {
+    font-family:'JetBrains Mono', monospace; font-weight:500;
+    font-size: 30px; color: #475569; letter-spacing:.1em; text-transform:uppercase;
+  }
+  .guest .quote {
+    font-family:'Inter', sans-serif; font-weight:500;
+    font-size: 40px; color:#334155; margin-top: 22px; line-height:1.25;
+    font-style: italic;
+  }
+
+  /* ─── BREAKING (announcement card) ─────────────────────────────
+     Dark surface, yellow tag, red border-top accent. 540px tall.
+     Headline drops a hair (110→128) so it doesn't crowd the title. */
+  .breaking {
+    position:absolute; top:2280px; left:64px; right:64px; height:540px;
+    background: #0a0f1a;
+    border: 1px solid rgba(255,255,255,.08);
+    border-top: 6px solid var(--brand);
+    padding: 40px 56px; overflow:hidden;
+    display:flex; flex-direction:column; justify-content:center;
+  }
+  .breaking .tag {
+    display:inline-block; align-self: flex-start;
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    background: var(--accent); color: var(--ink); padding: 12px 28px 14px;
+    font-size: 44px; letter-spacing:.14em; text-transform:uppercase;
+    line-height: 1;
+  }
+  .breaking h2 {
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    font-size: 128px; line-height:.95; margin: 22px 0 16px;
+    color:#fff; text-transform:uppercase;
+  }
+  .breaking p {
+    font-family:'Inter', sans-serif; font-weight:500;
+    font-size: 38px; color:#cbd5e1; margin: 0; line-height:1.3;
+  }
+  .breaking .date {
+    font-family:'JetBrains Mono', monospace; font-weight:700;
+    font-size: 30px; color: var(--accent); letter-spacing:.16em;
+    margin-top: 24px; text-transform:uppercase;
+  }
+
+  /* ─── SCHEDULE (3 events stacked) ─────────────────────────────
+     Landscape was a 3-col strip + countdown. Portrait stacks the 3
+     events vertically (single column) and pulls the countdown out
+     into its own full-width strip below. Each event row 160px tall,
+     with 30px gaps → 160+30+160+30+160 = 540. */
+  .schedule {
+    position:absolute; top:2840px; left:64px; right:64px; height:540px;
+    display:flex; flex-direction:column; gap: 30px; overflow:hidden;
+  }
+  .ev {
+    flex: 1; min-height: 0;
+    background: rgba(255,255,255,.03);
+    border-left: 10px solid var(--brand);
+    padding: 28px 40px;
+    display:flex; flex-direction:column; justify-content:center;
+    overflow:hidden;
+  }
+  .ev:nth-child(2) { border-color: var(--accent); }
+  .ev:nth-child(3) { border-color: #4ade80; }
+  .ev .when {
+    font-family:'JetBrains Mono', monospace; font-weight:700;
+    font-size: 36px; color:#94a3b8; letter-spacing:.14em; text-transform:uppercase;
+    line-height: 1;
+  }
+  .ev .what {
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    font-size: 88px; line-height:.95; color:#fff; margin-top: 14px;
+    text-transform: uppercase;
+  }
+
+  /* ─── COUNTDOWN (full-width red strip) ─────────────────────────
+     Landscape buried this in the schedule grid as a fourth column.
+     Portrait promotes it into a "save the date" footer panel above
+     the ticker. Big numeral on the LEFT, label/unit on the RIGHT.
+     280px tall, full-width. */
+  .countdown {
+    position:absolute; top:3400px; left:64px; right:64px; height:280px;
+    background: var(--brand); color:#fff;
+    padding: 28px 56px;
+    display:grid; grid-template-columns: auto 1fr; gap: 56px;
+    align-items:center; overflow:hidden;
+  }
+  .countdown::before {
+    content:''; position:absolute; left:0; right:0; top:0; height:6px;
+    background: repeating-linear-gradient(90deg, #fff 0 32px, transparent 32px 56px);
+    opacity: .3;
+  }
+  .countdown .val {
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    font-size: 280px; line-height:.85; letter-spacing:-.03em;
+  }
+  .countdown .right { display:flex; flex-direction:column; justify-content:center; gap: 12px; }
+  .countdown .lbl {
+    font-family:'JetBrains Mono', monospace; font-weight:700;
+    font-size: 32px; letter-spacing:.2em; text-transform:uppercase; opacity:.92;
+    line-height: 1;
+  }
+  .countdown .unit {
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    font-size: 110px; letter-spacing:.04em; text-transform:uppercase;
+    line-height: .95;
+  }
+  .countdown .sub {
+    font-family:'Inter', sans-serif; font-weight:600;
+    font-size: 30px; letter-spacing: .1em; text-transform: uppercase;
+    margin-top: 8px; opacity: .9;
+  }
+
+  /* ─── TICKER (bottom crawl) ────────────────────────────────────
+     Same construction as landscape: red tag chip + scrolling text.
+     140px tall, 60px tag font, 60px message font (sized up from
+     landscape because it's portrait so the visual is taller). */
+  .ticker {
+    position:absolute; left:0; right:0; bottom:0; height:140px;
+    background: var(--ink);
+    display:flex; align-items:center;
+    border-top: 4px solid var(--brand);
+    overflow:hidden;
+  }
+  .ticker .tag {
+    background: var(--brand); color:#fff;
+    font-family:'Barlow Condensed', sans-serif; font-weight:900;
+    font-size: 60px; letter-spacing:.14em; text-transform:uppercase;
+    padding: 0 44px; height:100%; display:flex; align-items:center;
+    flex-shrink:0;
+  }
+  .ticker .track {
+    flex:1; overflow:hidden; position:relative; height:100%;
+    display:flex; align-items:center;
+  }
+  .ticker .msg {
+    font-family:'Barlow Condensed', sans-serif; font-weight:700;
+    font-size: 60px; color:#fff; letter-spacing:.04em; text-transform:uppercase;
+    padding-left: 44px; white-space: nowrap;
+    animation: scroll 50s linear infinite;
+  }
+  @keyframes scroll {
+    0%   { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+</style>
+</head>
+<body>
+<script>
+  const __TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "schema": "edu-cms-hs-broadcast-portrait-v1" }/*EDITMODE-END*/;
+</script>
+
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+  <!-- NETBAR -->
+  <div class="netbar" data-widget="school">
+    <div class="brandmark">
+      <span class="chip" data-field="school.chip">WHS</span>
+      <span data-field="school.name">WESTRIDGE HIGH</span>
+      <span class="sub" data-field="school.sub">CAMPUS NEWS NETWORK</span>
+    </div>
+    <div class="live" data-widget="status">
+      <span class="dot"></span>
+      <span data-field="status.label">ON AIR · MORNING</span>
+    </div>
+  </div>
+
+  <!-- Sat uplink ornament -->
+  <svg class="sat" viewBox="0 0 120 80">
+    <circle cx="60" cy="60" r="6" fill="#ffd83d"/>
+    <path class="arc"    d="M60 60 Q30 30 10 50"/>
+    <path class="arc a2" d="M60 60 Q30 15 10 40"/>
+    <path class="arc a3" d="M60 60 Q30  0 10 30"/>
+    <path class="arc"    d="M60 60 Q90 30 110 50"/>
+  </svg>
+
+  <!-- HEADLINE (top story) -->
+  <div class="headline" data-widget="greeting">
+    <span class="eyebrow" data-field="greeting.eyebrow">TOP STORY · TUESDAY</span>
+    <h1 data-field="greeting.headline">GOOD MORNING, WESTRIDGE.</h1>
+    <div class="subtitle" data-field="greeting.subtitle">Doors open at 7:45. First bell rings at 8:05. Let's make it a great one.</div>
+  </div>
+
+  <!-- STATS (clock + weather) -->
+  <div class="stats">
+    <div class="panel clock" data-widget="clock">
+      <h3>LOCAL TIME</h3>
+      <div class="big" data-field="clock.time">7:53</div>
+      <div class="cap" data-field="clock.caption">Tuesday, April 21 · AM Broadcast</div>
+    </div>
+    <div class="panel weather" data-widget="weather">
+      <h3>FORECAST</h3>
+      <div class="row">
+        <div class="big" data-field="weather.temp">46°</div>
+        <div class="ico" data-field="weather.condition">☀ CLEAR<br>HI 62°</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GUEST (Featured Teacher) -->
+  <div class="guest" data-widget="teacher">
+    <div class="portrait">
+      <div class="mono" data-field="teacher.portraitTag">[ portrait ]</div>
+    </div>
+    <div class="body">
+      <span class="eyebrow" data-field="teacher.label">FEATURED GUEST · TEACHER OF THE WEEK</span>
+      <h2 data-field="teacher.name">MS. KOWALSKI</h2>
+      <div class="meta" data-field="teacher.grade">AP PHYSICS · ROOM 214 · 14 YEARS AT WHS</div>
+      <div class="quote" data-field="teacher.quote">"The answer is in the free-body diagram. If you can draw it, you can solve it."</div>
+    </div>
+  </div>
+
+  <!-- BREAKING -->
+  <div class="breaking" data-widget="announcement">
+    <span class="tag" data-field="announcement.title">★ BREAKING · TODAY</span>
+    <h2 data-field="announcement.headline">COLLEGE FAIR IN THE GYM, 3rd PERIOD.</h2>
+    <p data-field="announcement.body">48 schools, 60 programs, 3 food trucks. Pre-registered seniors go first — bring your pass.</p>
+    <div class="date" data-field="announcement.date">04.21 · 10:15 AM – 1:00 PM · MAIN GYM</div>
+  </div>
+
+  <!-- SCHEDULE (3 events stacked) -->
+  <div class="schedule">
+    <div class="ev" data-widget="events.0">
+      <div class="when" data-field="events.0.when">MON · 3:30 PM</div>
+      <div class="what" data-field="events.0.name">Varsity Soccer vs. Central</div>
+    </div>
+    <div class="ev" data-widget="events.1">
+      <div class="when" data-field="events.1.when">WED · 7:00 PM</div>
+      <div class="what" data-field="events.1.name">Spring Band Concert</div>
+    </div>
+    <div class="ev" data-widget="events.2">
+      <div class="when" data-field="events.2.when">FRI · ALL DAY</div>
+      <div class="what" data-field="events.2.name">Prom Ticket Sales — Cafe</div>
+    </div>
+  </div>
+
+  <!-- COUNTDOWN -->
+  <div class="countdown" data-widget="countdown">
+    <div class="val" data-field="countdown.value">24</div>
+    <div class="right">
+      <div class="lbl" data-field="countdown.label">DAYS TO PROM</div>
+      <div class="unit" data-field="countdown.unit">SAVE THE DATE</div>
+      <div class="sub" data-field="countdown.sub">Tickets on sale Friday in the cafe</div>
+    </div>
+  </div>
+
+  <!-- TICKER -->
+  <div class="ticker" data-widget="ticker">
+    <div class="tag" data-field="ticker.tag">LATEST</div>
+    <div class="track">
+      <div class="msg">
+        <span data-field="ticker.message">LUNCH TODAY · CHICKEN BOWL · SALAD BAR · VEGAN OPTION AVAILABLE  ●  SAT PRACTICE SIGN-UPS CLOSE FRIDAY  ●  LOST: SILVER EARBUDS IN LIBRARY — SEE FRONT OFFICE  ●  DRAMA CLUB AUDITIONS MONDAY 3:30 IN THE AUDITORIUM  ●  </span>
+        <span aria-hidden="true">LUNCH TODAY · CHICKEN BOWL · SALAD BAR · VEGAN OPTION AVAILABLE  ●  SAT PRACTICE SIGN-UPS CLOSE FRIDAY  ●  LOST: SILVER EARBUDS IN LIBRARY — SEE FRONT OFFICE  ●  DRAMA CLUB AUDITIONS MONDAY 3:30 IN THE AUDITORIUM  ●  </span>
+      </div>
+    </div>
+  </div>
+
+</div></div></div>
+
+<script>
+  // Same fit() pattern as landscape file — reads --stage-w/--stage-h
+  // (here 2160×3840) and computes --stage-scale to fit the viewport.
+  (function(){
+    function fit(){
+      const cs = getComputedStyle(document.documentElement);
+      const w = parseFloat(cs.getPropertyValue('--stage-w')) || 2160;
+      const h = parseFloat(cs.getPropertyValue('--stage-h')) || 3840;
+      const k = Math.min(window.innerWidth / w, window.innerHeight / h);
+      document.documentElement.style.setProperty('--stage-scale', k);
+    }
+    window.addEventListener('resize', fit);
+    window.addEventListener('load', fit);
+    setTimeout(fit, 10);
+    setTimeout(fit, 300);
+  })();
+</script>
+</body>
+</html>

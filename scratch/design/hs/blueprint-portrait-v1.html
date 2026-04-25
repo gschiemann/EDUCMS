@@ -1,0 +1,454 @@
+<!--
+  HS TEMPLATE · BLUEPRINT · PORTRAIT v1
+  ======================================
+  Vertical 2160×3840 sibling to blueprint.html. Same architect /
+  technical-drawing aesthetic (Archivo + JetBrains Mono, cyan
+  drafting grid, dimension lines, sheet callouts, yellow REV chip
+  in title block, dashed dimension callouts on the hero).
+
+  This is NOT a squish of the landscape file. The landscape uses a
+  3-row layout: title block (top), then a hero left + 2x2 data grid
+  right, then a schedule strip, then specs (teacher + announcement)
+  side-by-side, with a 60px ticker at the bottom. For portrait we
+  re-rank by glance priority and stack vertically:
+
+    TITLEBLOCK  →  HERO (DETAIL 01)  →  DATA (2x2)  →  SCHEDULE
+                →  SPECS (TEACHER + ALERT)  →  TICKER
+
+  Why this rank?
+    1. Title block at the very top — same as landscape. Architect
+       drawings always sheet-stamp at the top. We split it into 2
+       rows of 2 cells each so the school logo + sheet/rev chip get
+       full width and read like a real drawing border.
+    2. Hero "SHEET A-01" stays the showpiece. Portrait gives us
+       more vertical room so the headline grows from 280 → 380px,
+       wrapping naturally on shorter line-lengths. The dim-top and
+       dim-left dashed callouts get re-pegged to the new geometry
+       (W 2032 PX, H 1180 PX).
+    3. Data panels (clock / weather / attendance / countdown) drop
+       below the hero in a full-width 2×2. In landscape they sat to
+       the right of the hero; here they get the full 2032px row
+       and the .big numerals grow accordingly.
+    4. Schedule (SHEET A-02) keeps its dimensioned table format
+       with 5 columns (TIME / COURSE / SECTION / ROOM / INSTR).
+       We give it more vertical room so each row can breathe.
+    5. Specs (teacher A-03 + alert A-04) stay side-by-side because
+       they're complementary cards. The portrait card on the left
+       and the alert on the right read like a real spec sheet — we
+       just trim the portrait box height to fit the row.
+    6. Ticker (REVISION LOG) full-bleed at the bottom — same yellow
+       background, same animated marquee, just the bar is a touch
+       taller (80px vs 60px) so the 28px text reads from 8ft.
+
+  Layout (2160×3840, edge inset 64px on all sides, 24px gaps):
+
+    PANEL          TOP    HEIGHT   ENDS-AT
+    ─────────────────────────────────────
+    TITLEBLOCK      56      440      496
+    HERO           520     1180     1700
+    DATA          1724      720     2444
+    SCHEDULE      2468      560     3028
+    SPECS         3052      680     3732
+    TICKER        3760       80     3840   (bottom:0)
+
+    Gaps (each 24px):
+      TITLEBLOCK → HERO     (496  → 520)
+      HERO       → DATA     (1700 → 1724)
+      DATA       → SCHEDULE (2444 → 2468)
+      SCHEDULE   → SPECS    (3028 → 3052)
+      SPECS      → TICKER   (3732 → 3760)   28px (rounding)
+
+    Content height = 440 + 1180 + 720 + 560 + 680 + 80   = 3660
+    Gaps (4 × 24px + 1 × 28px)                           =  124
+    Top inset                                            =   56
+    ────────────────────────────────────────────────────────────
+    Total                                                = 3840 ✓
+
+  Geometry rules (load-bearing — match landscape):
+    - box-sizing: border-box on every panel that sets explicit width
+    - overflow: hidden on every panel
+    - 64px edge inset (left/right), 24px gaps
+    - NO vw/vh/% sizing inside the scene
+    - 3-layer scale wrapper (.viewport > .stage-outer > .stage)
+    - position:absolute panels (no flow layout drift)
+
+  Font + palette + motifs match blueprint.html verbatim. Cyan grid,
+  yellow accents, JetBrains Mono for technical readouts, Archivo
+  for headlines.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Blueprint — HS Lobby Portrait 4K (v1)</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  /* Box-sizing on every explicit-width panel — same rule as landscape. */
+  .titleblock, .hero, .data, .panel, .sched, .specs, .specs .card, .ticker { box-sizing: border-box; }
+
+  /* 3-layer scale wrapper — identical to landscape, just portrait dims. */
+  :root { --stage-w: 2160px; --stage-h: 3840px; --stage-scale: 1; }
+  html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; }
+  .viewport { position:fixed; inset:0; display:grid; place-items:center; overflow:hidden; }
+  .stage-outer { width:calc(var(--stage-w)*var(--stage-scale)); height:calc(var(--stage-h)*var(--stage-scale)); }
+  .stage { width:var(--stage-w); height:var(--stage-h); transform:scale(var(--stage-scale)); transform-origin:0 0; position:relative; box-shadow:0 80px 200px rgba(0,0,0,.7); overflow:hidden; }
+
+  :root { --bp:#0f3a7a; --bpd:#0a2852; --line:#6ab6ff; --cyan:#6ab6ff; --white:#eaf3ff; --yellow:#ffd84d; --red:#ff6a5e; }
+  html, body { background:#000; color:var(--white); font-family:'Archivo',sans-serif; }
+  .stage {
+    background: var(--bp);
+    background-image:
+      linear-gradient(rgba(106,182,255,.18) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(106,182,255,.18) 1px, transparent 1px),
+      linear-gradient(rgba(106,182,255,.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(106,182,255,.08) 1px, transparent 1px);
+    background-size: 200px 200px, 200px 200px, 40px 40px, 40px 40px;
+  }
+  .stage::before { content:''; position:absolute; inset:0;
+    box-shadow: inset 0 0 300px rgba(0,0,0,.4); pointer-events:none; }
+
+  /* ─── Title block — architect-style border ────────────────────
+     Portrait rearranges the 4 cells of the landscape title block
+     into a 2x2 grid: school logo top-left (full bleed yellow type),
+     project info top-right; date/time bottom-left, REV bottom-right
+     (yellow chip). Same border treatment, same fonts, just stacked. */
+  .titleblock {
+    position:absolute; top: 56px; left: 64px; right: 64px; height: 440px;
+    border: 4px solid var(--line);
+    display:grid;
+    grid-template-columns: 1.1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    background: rgba(10,40,82,.6);
+    overflow: hidden;
+  }
+  .titleblock .cell {
+    border-right: 3px solid var(--line);
+    border-bottom: 3px solid var(--line);
+    padding: 28px 40px;
+    display:flex; flex-direction:column; justify-content:center;
+    overflow: hidden;
+  }
+  .titleblock .cell:nth-child(2) { border-right: 0; }
+  .titleblock .cell:nth-child(3), .titleblock .cell:nth-child(4) { border-bottom: 0; }
+  .titleblock .cell:nth-child(4) { border-right: 0; }
+  .titleblock .lbl {
+    font-family:'JetBrains Mono',monospace; font-weight:700; font-size: 30px; letter-spacing:.22em;
+    color: var(--cyan); text-transform:uppercase; opacity:.85;
+  }
+  .titleblock .val {
+    font-family:'Archivo'; font-weight:900; font-size: 80px; color: var(--white);
+    letter-spacing:.02em; line-height:1.02; margin-top:14px;
+  }
+  .titleblock .logo {
+    font-family:'Archivo'; font-weight:900; font-size: 160px;
+    color: var(--yellow); line-height: .9; letter-spacing:.02em;
+  }
+  .titleblock .logo .sub {
+    display:block; font-family:'JetBrains Mono'; font-weight:700; font-size:28px; letter-spacing:.28em;
+    color: var(--white); margin-top:18px; opacity:.85;
+  }
+  .titleblock .rev { background: var(--yellow); color: var(--bpd); }
+  .titleblock .rev .lbl { color: var(--bpd); opacity:1; }
+  .titleblock .rev .val { color: var(--bpd); font-size: 64px; font-family:'JetBrains Mono'; font-weight:700; letter-spacing:.06em; }
+
+  /* ─── Hero drawing — dimensioned callout ─────────────────────
+     Portrait gets the showpiece: 2032×1180. Headline grows to 380px
+     because line-length is shorter and we have head-room. Dimension
+     lines (top dashed + left vertical dashed) updated to match the
+     new W=2032px, H=1180px geometry. Sheet stamp "SHEET A-01" stays
+     in the top-left of the border like architect drawings do.        */
+  .hero {
+    position:absolute; top: 520px; left: 64px; right: 64px; height: 1180px;
+    border: 4px solid var(--line);
+    background: rgba(10,40,82,.3);
+    padding: 100px 120px 80px;
+    overflow: hidden;
+  }
+  .hero::before {
+    content:'SHEET A-01'; position:absolute; top: -20px; left: 56px;
+    background: var(--bp); padding: 0 22px;
+    font-family:'JetBrains Mono'; font-weight:700; font-size: 30px; letter-spacing:.28em;
+    color: var(--yellow); text-transform:uppercase;
+  }
+  .hero .eyebrow {
+    font-family:'JetBrains Mono'; font-weight:700; font-size: 36px; letter-spacing:.26em;
+    color: var(--yellow); text-transform: uppercase; margin-bottom: 22px;
+  }
+  .hero h1 {
+    font-family:'Archivo'; font-weight:900; font-size: 380px; line-height:.88;
+    letter-spacing: -.02em; margin: 0; color: var(--white); text-wrap:balance;
+  }
+  .hero .sub {
+    font-family:'Archivo'; font-weight:500; font-size: 56px; color: var(--cyan);
+    line-height: 1.28; margin-top: 40px; max-width: 1700px;
+  }
+  /* Dimension lines decorating the hero */
+  .dim { position:absolute; font-family:'JetBrains Mono'; font-weight:700; font-size: 30px; color: var(--yellow);
+    letter-spacing:.18em; text-transform:uppercase; pointer-events:none; }
+  .dim.top { top: 32px; left: 120px; right: 120px; text-align:center;
+    border-top: 1px dashed var(--yellow); padding-top: 16px; }
+  .dim.top::before, .dim.top::after { content:''; position:absolute; top:-10px; width:2px; height:20px; background: var(--yellow); }
+  .dim.top::before { left:0; } .dim.top::after { right:0; }
+  .dim.left { top: 120px; bottom: 120px; left: 28px; writing-mode: vertical-rl; text-align: center;
+    border-left: 1px dashed var(--yellow); padding-left: 18px;
+    display:flex; align-items:center; justify-content:center; }
+
+  /* ─── Data panels — 2×2 full-width grid ─────────────────────
+     Landscape sat these to the right of the hero in a 2×2 of small
+     panels. Portrait gives them the full 2032px row, so each panel
+     is ~990×346 and the .big numerals can grow to 220px. Sheet
+     stamps (A-01.1 etc.) sit in the top-left of each panel border,
+     same as landscape.                                                */
+  .data {
+    position:absolute; top: 1724px; left: 64px; right: 64px; height: 720px;
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 32px;
+    overflow: hidden;
+  }
+  .panel {
+    border: 4px solid var(--line); background: rgba(10,40,82,.45);
+    padding: 38px 48px; position: relative;
+    overflow: hidden;
+  }
+  .panel::before {
+    content: attr(data-sheet); position:absolute; top: -20px; left: 36px; background: var(--bp);
+    padding: 0 18px; font-family:'JetBrains Mono'; font-weight:700; font-size: 26px;
+    color: var(--yellow); letter-spacing:.26em; text-transform:uppercase;
+  }
+  .panel .kicker {
+    font-family:'JetBrains Mono'; font-weight:700; font-size: 32px; color: var(--cyan);
+    letter-spacing: .22em; text-transform: uppercase;
+  }
+  .panel .big {
+    font-family:'Archivo'; font-weight:900; font-size: 220px; line-height:.9;
+    color: var(--white); letter-spacing:-.02em; margin-top: 12px;
+  }
+  .panel .cap {
+    font-family:'Archivo'; font-weight:500; font-size: 32px; color: var(--cyan); margin-top: 14px; line-height:1.25;
+  }
+
+  /* ─── Schedule — dimensioned table ───────────────────────────
+     Same 5-column grid as landscape (TIME / COURSE / SECTION /
+     ROOM / INSTRUCTOR). Portrait widens the SECTION column because
+     course names are the longest field. Row type bumps up so the
+     table reads as a proper drafting schedule sheet.                  */
+  .sched {
+    position: absolute; top: 2468px; left: 64px; right: 64px; height: 560px;
+    border: 4px solid var(--line); background: rgba(10,40,82,.3);
+    padding: 56px 72px 40px;
+    overflow: hidden;
+  }
+  .sched::before {
+    content:'SHEET A-02 · SCHEDULE'; position:absolute; top:-20px; left: 56px; background:var(--bp);
+    padding: 0 22px; font-family:'JetBrains Mono'; font-weight:700; font-size:30px;
+    color: var(--yellow); letter-spacing:.28em;
+  }
+  .sched .head {
+    display:grid; grid-template-columns: 220px 240px 1fr 220px 280px;
+    font-family:'JetBrains Mono'; font-weight:700; font-size: 28px; color: var(--yellow);
+    letter-spacing:.22em; text-transform:uppercase;
+    border-bottom: 3px solid var(--line); padding-bottom: 18px; margin-bottom: 12px;
+  }
+  .sched .row {
+    display:grid; grid-template-columns: 220px 240px 1fr 220px 280px;
+    padding: 22px 0; border-bottom: 1px dashed rgba(106,182,255,.3); align-items: center;
+  }
+  .sched .row:last-child { border-bottom: 0; }
+  .sched .row .t { font-family:'JetBrains Mono'; font-weight:700; font-size: 52px; color: var(--yellow); }
+  .sched .row .c { font-family:'JetBrains Mono'; font-weight:500; font-size: 38px; color: var(--cyan); letter-spacing:.06em; }
+  .sched .row .n { font-family:'Archivo'; font-weight:700; font-size: 50px; color: var(--white); letter-spacing:.02em; }
+  .sched .row .r { font-family:'JetBrains Mono'; font-weight:700; font-size: 42px; color: var(--yellow); }
+  .sched .row .w { font-family:'Archivo'; font-weight:500; font-size: 36px; color: var(--cyan); }
+
+  /* ─── Specs — teacher profile + advisory alert (side-by-side) ─
+     Same construction as landscape: portrait card on the left with
+     a "FACULTY PROFILE" sheet stamp, alert card on the right with
+     an "ADVISORY" sheet stamp. The portrait box gets a bigger numeral
+     because the panel is taller in portrait.                          */
+  .specs {
+    position:absolute; top: 3052px; left: 64px; right: 64px; height: 680px;
+    display:grid; grid-template-columns: 1.15fr 1fr; gap: 32px;
+    overflow: hidden;
+  }
+  .specs .card { border: 4px solid var(--line); background: rgba(10,40,82,.45); padding: 44px 56px; position: relative; overflow: hidden; }
+  .specs .card::before {
+    content: attr(data-sheet); position:absolute; top: -20px; left: 44px; background: var(--bp);
+    padding: 0 18px; font-family:'JetBrains Mono'; font-weight:700; font-size: 30px;
+    color: var(--yellow); letter-spacing:.28em;
+  }
+  .specs .spec { display:grid; grid-template-columns: 380px 1fr; gap: 44px; align-items:start; height: 100%; }
+  .specs .spec .portrait {
+    width: 380px; height: 500px; background: rgba(106,182,255,.12);
+    border: 3px dashed var(--cyan); position: relative;
+    display:grid; place-items:center;
+  }
+  .specs .spec .portrait .num {
+    font-family:'Archivo'; font-weight:900; font-size: 320px; color: var(--yellow); opacity:.4; line-height:.8;
+  }
+  .specs .spec .kicker { font-family:'JetBrains Mono'; font-weight:700; font-size: 30px; color: var(--cyan); letter-spacing: .22em; text-transform: uppercase; }
+  .specs .spec h2 {
+    font-family:'Archivo'; font-weight:900; font-size: 110px; line-height: .92; color: var(--white);
+    margin: 8px 0 8px; letter-spacing: -.01em;
+  }
+  .specs .spec .meta { font-family:'JetBrains Mono'; font-weight:500; font-size: 26px; color: var(--cyan); letter-spacing:.16em; text-transform:uppercase; margin-bottom: 22px; }
+  .specs .spec .quote { font-family:'Archivo'; font-style: italic; font-weight: 500; font-size: 40px; color: var(--white); line-height: 1.3; border-left: 4px solid var(--yellow); padding-left: 28px; }
+
+  .specs .alert .kicker { color: var(--red); font-family:'JetBrains Mono'; font-weight:700; font-size: 30px; letter-spacing:.22em; text-transform: uppercase; }
+  .specs .alert h3 { font-family:'Archivo'; font-weight:900; font-size: 100px; line-height: .94; color: var(--yellow); margin: 16px 0 0; letter-spacing:-.01em; }
+  .specs .alert p { font-family:'Archivo'; font-weight: 500; font-size: 36px; color: var(--cyan); line-height: 1.32; margin: 22px 0 0; }
+  .specs .alert .when { font-family:'JetBrains Mono'; font-weight: 700; font-size: 28px; color: var(--red); margin-top: 24px; letter-spacing: .18em; text-transform: uppercase; }
+
+  /* ─── Ticker (REVISION LOG) ──────────────────────────────────
+     Full-bleed at the bottom — same yellow background as landscape,
+     same animated marquee, just a touch taller (80 vs 60) so the
+     monospace text reads from across the lobby.                       */
+  .ticker {
+    position:absolute; bottom: 0; left: 0; right: 0; height: 80px;
+    background: var(--yellow); color: var(--bpd);
+    display: flex; align-items: center; overflow: hidden;
+    border-top: 4px solid var(--bpd);
+  }
+  .ticker .tag {
+    background: var(--bpd); color: var(--yellow); height:100%;
+    display:flex; align-items:center;
+    padding: 0 44px;
+    font-family:'JetBrains Mono'; font-weight: 700; font-size: 28px; letter-spacing:.28em;
+    flex-shrink: 0;
+  }
+  .ticker .msg {
+    font-family:'JetBrains Mono'; font-weight:700; font-size: 30px; white-space: nowrap;
+    padding-left: 40px; letter-spacing:.16em; text-transform: uppercase;
+    animation: scroll 55s linear infinite;
+  }
+  @keyframes scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+</style>
+</head>
+<body>
+<script>
+  const __TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "schema": "edu-cms-blueprint-portrait-v1" }/*EDITMODE-END*/;
+</script>
+
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+  <div class="titleblock">
+    <div class="cell" data-widget="school">
+      <div class="logo"><span data-field="school.code">WHS</span><span class="sub" data-field="school.name">WESTRIDGE HIGH · EST 1956</span></div>
+    </div>
+    <div class="cell" data-widget="brand">
+      <div class="lbl" data-field="brand.label1">PROJECT · TITLE</div>
+      <div class="val" data-field="brand.project">MORNING ASSEMBLY · DAILY BRIEF</div>
+    </div>
+    <div class="cell" data-widget="clock">
+      <div class="lbl" data-field="clock.label">DATE · TIME · STAMP</div>
+      <div class="val" style="font-family:'JetBrains Mono';"><span data-field="clock.date">2026-04-21</span> · <span data-field="clock.time">07:53</span></div>
+    </div>
+    <div class="cell rev">
+      <div class="lbl">SHEET · REV</div>
+      <div class="val"><span data-field="brand.sheet">A-01</span> · REV <span data-field="brand.rev">142</span></div>
+    </div>
+  </div>
+
+  <div class="hero" data-widget="greeting">
+    <div class="dim top"><span data-field="greeting.dimTop">W 2032 PX — FULL BLEED HEADLINE ELEVATION</span></div>
+    <div class="dim left"><span data-field="greeting.dimLeft">H 1180 PX — CL DATUM</span></div>
+    <div class="eyebrow" data-field="greeting.eyebrow">DETAIL 01 · HELLO, WILDCATS</div>
+    <h1 data-field="greeting.headline">LET'S BUILD<br/>A GOOD DAY.</h1>
+    <div class="sub" data-field="greeting.subtitle">Doors open 7:55 · first period 8:05 · plans are fine but showing up on time is the actual load-bearing wall.</div>
+  </div>
+
+  <div class="data">
+    <div class="panel" data-sheet="A-01.1" data-widget="clockbig">
+      <div class="kicker" data-field="clockbig.label">LOCAL TIME</div>
+      <div class="big" data-field="clockbig.val">7:53</div>
+      <div class="cap" data-field="clockbig.cap">TUE · APR 21 · PERIOD 1 START T-12M</div>
+    </div>
+    <div class="panel" data-sheet="A-01.2" data-widget="weather">
+      <div class="kicker">EXT. CONDITIONS</div>
+      <div class="big" data-field="weather.temp">46°</div>
+      <div class="cap" data-field="weather.condition">CLEAR · HI 62 · LO 38 · WIND 6MPH SW</div>
+    </div>
+    <div class="panel" data-sheet="A-01.3" data-widget="attendance">
+      <div class="kicker">PRESENT</div>
+      <div class="big" data-field="attendance.value">1,217</div>
+      <div class="cap" data-field="attendance.cap">98.2% · CAPACITY 1,240</div>
+    </div>
+    <div class="panel" data-sheet="A-01.4" data-widget="countdown">
+      <div class="kicker" data-field="countdown.label">DAYS TO COMMENCEMENT</div>
+      <div class="big" data-field="countdown.value">41</div>
+      <div class="cap" data-field="countdown.sub">SENIORS · CAP ORDER DEADLINE FRI 17:00</div>
+    </div>
+  </div>
+
+  <div class="sched">
+    <div class="head">
+      <span>TIME</span><span>COURSE</span><span>SECTION</span><span>ROOM</span><span>INSTRUCTOR</span>
+    </div>
+    <div class="row" data-widget="events.0">
+      <span class="t" data-field="events.0.time">08:05</span>
+      <span class="c" data-field="events.0.code">APE-301</span>
+      <span class="n" data-field="events.0.name">AP ENGLISH LITERATURE</span>
+      <span class="r" data-field="events.0.room">RM 214</span>
+      <span class="w" data-field="events.0.who">Ms. Park</span>
+    </div>
+    <div class="row" data-widget="events.1">
+      <span class="t" data-field="events.1.time">09:00</span>
+      <span class="c" data-field="events.1.code">PHY-242</span>
+      <span class="n" data-field="events.1.name">AP PHYSICS C · LAB 3</span>
+      <span class="r" data-field="events.1.room">RM 107</span>
+      <span class="w" data-field="events.1.who">Ms. Kowalski</span>
+    </div>
+    <div class="row" data-widget="events.2">
+      <span class="t" data-field="events.2.time">10:15</span>
+      <span class="c" data-field="events.2.code">HIST-210</span>
+      <span class="n" data-field="events.2.name">U.S. HISTORY · CH.12 QUIZ</span>
+      <span class="r" data-field="events.2.room">CAFÉ *</span>
+      <span class="w" data-field="events.2.who">Mr. Rivera</span>
+    </div>
+  </div>
+
+  <div class="specs">
+    <div class="card spec" data-sheet="A-03 · FACULTY PROFILE" data-widget="teacher">
+      <div class="portrait"><div class="num" data-field="teacher.num">14</div></div>
+      <div>
+        <div class="kicker" data-field="teacher.label">TEACHER OF THE WEEK</div>
+        <h2 data-field="teacher.name">MS. KOWALSKI</h2>
+        <div class="meta" data-field="teacher.meta">AP PHYSICS · RM 214 · EST. 2012 · ALUMNA '02</div>
+        <div class="quote" data-field="teacher.quote">"The answer is in the free-body diagram. Draw the picture — every time. The math always follows."</div>
+      </div>
+    </div>
+    <div class="card alert" data-sheet="A-04 · ADVISORY" data-widget="announcement">
+      <div class="kicker" data-field="announcement.tag">! NOTICE · BELL-SCHEDULE DEVIATION</div>
+      <h3 data-field="announcement.headline">PEP RALLY — 7TH PERIOD, GYM A</h3>
+      <p data-field="announcement.body">Seniors front row · marching band enters from south doors · no backpacks in gym · return to 8th period at final bell.</p>
+      <div class="when" data-field="announcement.date">SCHED · 14:15 — 15:00 · TODAY</div>
+    </div>
+  </div>
+
+  <div class="ticker" data-widget="ticker">
+    <div class="tag" data-field="ticker.tag">REVISION LOG</div>
+    <div class="msg"><span data-field="ticker.message">RFI-2261 · BUS 14 DELAY 10M · RFI-2262 · RM-210 TONER · RFI-2263 · AP PSYCH STUDY HALL → LIBRARY · RFI-2264 · LOST PROPERTY — SILVER EARBUDS · RFI-2265 · SPRING SPORTS PHOTOS TOMORROW · </span><span data-field="ticker.message">RFI-2261 · BUS 14 DELAY 10M · RFI-2262 · RM-210 TONER · RFI-2263 · AP PSYCH STUDY HALL → LIBRARY · RFI-2264 · LOST PROPERTY — SILVER EARBUDS · RFI-2265 · SPRING SPORTS PHOTOS TOMORROW · </span></div>
+  </div>
+
+</div></div></div>
+
+<script>
+  // Same fit() pattern as the landscape file — reads --stage-w/--stage-h
+  // (here 2160×3840) and computes --stage-scale to fit the viewport.
+  (function(){
+    function fit(){
+      const cs = getComputedStyle(document.documentElement);
+      const w = parseFloat(cs.getPropertyValue('--stage-w')) || 2160;
+      const h = parseFloat(cs.getPropertyValue('--stage-h')) || 3840;
+      const k = Math.min(window.innerWidth / w, window.innerHeight / h);
+      document.documentElement.style.setProperty('--stage-scale', k);
+    }
+    window.addEventListener('resize', fit);
+    window.addEventListener('load', fit);
+    setTimeout(fit, 10);
+    setTimeout(fit, 300);
+  })();
+</script>
+</body>
+</html>

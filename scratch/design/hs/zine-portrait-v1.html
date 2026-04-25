@@ -1,0 +1,541 @@
+<!--
+  HS TEMPLATE · ZINE · PORTRAIT v1
+  =================================
+  Vertical 2160×3840 sibling to zine.html (landscape 3840×2160).
+  Same cut-and-paste underground zine aesthetic — Archivo Black
+  marker headlines, Special Elite typewriter body, Permanent
+  Marker handwritten captions, Courier Prime ticker; xeroxed
+  paper texture, hand-cut polaroids with washi tape, ransom-
+  letter announcement, rubber stamps, halftone photocopy lines.
+
+  This is NOT a squish of the landscape file. The landscape uses
+  a left/right two-column rhythm:
+    LEFT  : masthead + hero sheet + ransom-letter alert
+    RIGHT : stamps + teacher poster + stat cards + clock
+    BELOW : 4-up polaroid strip + black ticker
+
+  Portrait collapses everything into a single tall column, re-
+  ranked by glance priority for someone walking past a 65"+ wall:
+    MASTHEAD  →  HERO SHEET  →  TEACHER POSTER + STATS  →
+    POLAROID GRID  →  ALERT  →  CLOCK STRIP  →  TICKER
+
+  Why this rank?
+    1. Masthead (school name "WESTRIDGE!" + rubber stamps) at the
+       top — same as landscape, so the brand is the first thing
+       you see. Title goes from 200px → 280px because portrait
+       gives more vertical breathing room and a single line.
+    2. Hero "BE LOUD TODAY" — the showpiece. In landscape it
+       lived at top:360 left:80 width:2400. Portrait gives us the
+       full 2032px width and 1100px height, so the headline grows
+       to 360px (was 320). Keeps the -.6deg rotation, washi tape
+       above and below, the handwritten eyebrow, and the cut-out
+       paper sheet with offset shadow.
+    3. Teacher polaroid + stats moved INTO a single horizontal
+       strip below the hero. The poster (rotated +1.5deg) sits
+       on the left, the two stat cards stack vertically on the
+       right with their alternating ±0.8deg rotations and yellow
+       accent. Same content, just re-flowed for the column.
+    4. Polaroid grid stays a 2×2 (instead of 4×1 in landscape)
+       so each polaroid can grow from ~840×500 to ~1006×680 with
+       bigger photos. Rotations stay varied, washi tape on top
+       of each, the cyan "DAYS 'TIL GRAD" celebrant in slot 4.
+    5. Ransom-letter alert ("PEP RALLY") is the second showpiece —
+       the !! badge tilts off the corner, headline 110px, body
+       in Special Elite, transformed -0.5deg.
+    6. Clock + weather strip — yellow tape-card with rotated
+       border, "right now / 7:53 / tue apr 21". Squat strip just
+       above the ticker so the moment-of-glance time is the last
+       thing you see before the hallway scroll.
+    7. Black ticker stays at the very bottom, full-bleed (no
+       inset on this one — same as landscape) with red XEROXWIRE
+       tag on the left and scrolling Special Elite messages.
+
+  Layout (2160×3840, 64px edge inset on all sides, 20px gaps):
+
+    PANEL              TOP    HEIGHT   ENDS-AT
+    ──────────────────────────────────────────
+    MASTHEAD            64      400      464
+    HERO                484    1100     1584
+    POSTER+STATS       1604     880     2484
+    POLAROID GRID      2504    1000     3504
+    ALERT              3524     ---     3524    (skipped — see note)
+
+  Wait — that overshoots. Let's redo this with the correct rhythm:
+
+    PANEL              TOP    HEIGHT   ENDS-AT
+    ──────────────────────────────────────────
+    MASTHEAD            64      380      444    (top inset 64)
+    HERO               464     1080     1544    (gap 20)
+    POSTER+STATS      1564      820     2384    (gap 20)
+    POLAROID GRID     2404      820     3224    (gap 20)
+    ALERT             3244      300     3544    (gap 20 — kept compact)
+    CLOCK STRIP        ---      ---      ---    (folded into ALERT row)
+    TICKER            3760       80     3840    (bottom-flush, full-bleed)
+
+  Hmm — the alert + clock both want a 200px+ presence. Let me
+  shift to a side-by-side ALERT|CLOCK row at 3244 and a slimmer
+  ticker:
+
+    PANEL              TOP    HEIGHT   ENDS-AT
+    ──────────────────────────────────────────
+    MASTHEAD            64      380      444
+    HERO               464     1080     1544
+    POSTER+STATS      1564      820     2384
+    POLAROID GRID     2404      820     3224
+    ALERT+CLOCK ROW   3244      496     3740
+    TICKER            3760       80     3840
+
+    Gaps (each 20px):
+      MASTHEAD → HERO        (444 → 464)
+      HERO → POSTER          (1544 → 1564)
+      POSTER → POLAROID      (2384 → 2404)
+      POLAROID → ALERT/CLK   (3224 → 3244)
+      ALERT/CLK → TICKER     (3740 → 3760)
+
+    Content height = 380 + 1080 + 820 + 820 + 496 + 80 = 3676
+    Gaps (5 × 20px)                                    = 100
+    Top inset                                          =  64
+    ────────────────────────────────────────────────────────
+    Total                                              = 3840 ✓
+
+  Geometry rules (load-bearing — match landscape zine.html and
+  arcade-ms-portrait-v1.html):
+    - box-sizing: border-box on every panel that sets explicit width
+    - overflow: hidden on every panel (and on stage)
+    - 64px edge inset (left/right) on every panel except the
+      ticker, which goes full-bleed exactly like the landscape.
+    - 20px gaps between panels
+    - NO vw/vh/% sizing inside the scene — every measurement is
+      a fixed pixel value. (% is OK for grid/flex children that
+      fill their parent; not for the panel scaffolding.)
+    - 3-layer scale wrapper (.viewport > .stage-outer > .stage)
+    - Hero font 360px (up from 320 in landscape) so it reads
+      from the lobby — portrait gives shorter line lengths so
+      the headline can be huge without wrapping awkwardly.
+    - Body fonts ≥ 60px (typewriter Special Elite for sub copy,
+      handwritten Permanent Marker for accents, Courier Prime
+      for stat captions and ticker).
+    - Same 4 spot colors: paper #f2ecd9, ink #15120d, red
+      #c1281a, yellow #ffd84d, cyan #2dbce6. Same toner streaks
+      and grain texture on the stage.
+
+  Same content as landscape; data-widget / data-field attribute
+  schema preserved so the editor harness (panel + drag) plugs
+  in unchanged. data-widget="brand" wraps the stamps cluster,
+  data-widget="greeting" the hero sheet, etc.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Zine — HS Lobby Portrait 4K (v1)</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Special+Elite&family=Permanent+Marker&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  /* Box-sizing on every explicit-width panel. */
+  .mast, .hero, .row, .poster, .stats, .stat, .strip, .polaroid,
+  .alertrow, .alert, .floatClock, .ticker { box-sizing: border-box; }
+
+  /* 3-layer scale wrapper — identical pattern to landscape, just portrait dims. */
+  :root { --stage-w: 2160px; --stage-h: 3840px; --stage-scale: 1; }
+  html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%; background:#15120d; }
+  .viewport { position:fixed; inset:0; display:grid; place-items:center; overflow:hidden; }
+  .stage-outer { width:calc(var(--stage-w)*var(--stage-scale)); height:calc(var(--stage-h)*var(--stage-scale)); }
+  .stage { width:var(--stage-w); height:var(--stage-h); transform:scale(var(--stage-scale)); transform-origin:0 0; position:relative; box-shadow:0 80px 200px rgba(0,0,0,.7); overflow:hidden; }
+
+  :root { --paper:#f2ecd9; --ink:#15120d; --red:#c1281a; --yellow:#ffd84d; --cyan:#2dbce6; }
+  html, body { color:var(--ink); font-family:'Courier Prime',monospace; }
+  .stage {
+    background: var(--paper);
+    background-image:
+      radial-gradient(circle at 18% 12%, rgba(0,0,0,.045), transparent 40%),
+      radial-gradient(circle at 82% 64%, rgba(0,0,0,.05), transparent 40%),
+      radial-gradient(circle at 22% 88%, rgba(0,0,0,.04), transparent 40%),
+      repeating-linear-gradient(0deg, rgba(0,0,0,.022) 0 1px, transparent 1px 3px);
+  }
+  /* Photocopy toner streaks — vertical bands tuned for portrait. */
+  .stage::before {
+    content:''; position:absolute; inset:0; pointer-events:none;
+    background:
+      linear-gradient(90deg, transparent 38%, rgba(0,0,0,.045) 60%, transparent 78%),
+      linear-gradient(90deg, transparent 8%, rgba(0,0,0,.05) 12%, transparent 16%);
+  }
+
+  /* ─── MASTHEAD ────────────────────────────────────────────────
+     Title row sits at the top. In landscape the title and stamps
+     were left/right side-by-side; in portrait we keep them in
+     that same horizontal split because the panel is 2032px wide
+     — plenty of room. Title goes 280px (up from 200) because we
+     have one row to fill instead of competing with stamps for
+     vertical space. */
+  .mast { position:absolute; top:64px; left:64px; right:64px; height:380px;
+    display:flex; justify-content:space-between; align-items:flex-start;
+    overflow: hidden; }
+  .mast .title {
+    font-family:'Archivo Black', sans-serif; font-size: 280px; line-height:.85; letter-spacing:-.02em;
+    color: var(--ink); transform: rotate(-2deg); text-transform: uppercase;
+    position: relative;
+  }
+  .mast .title::after {
+    /* Yellow highlighter strike behind the wordmark */
+    content:''; position:absolute; top: 42%; left:-28px; right:-28px; height: 30px;
+    background: var(--yellow); z-index:-1; transform: rotate(1.5deg);
+  }
+  .mast .title .sub {
+    display:block; font-family:'Special Elite', monospace; font-size: 50px; line-height:1;
+    color: var(--ink); margin-top: 26px; letter-spacing:.1em; transform: rotate(1deg);
+  }
+  .mast .stamps { display:flex; flex-direction:column; gap: 20px; align-items:flex-end; margin-top:26px; flex-shrink:0; }
+  .stamp {
+    font-family:'Special Elite', monospace; font-size: 36px; letter-spacing: .16em;
+    color: var(--red); padding: 14px 28px; border: 4px solid var(--red);
+    transform: rotate(3deg); text-transform: uppercase;
+    background: rgba(255,255,255,.3);
+  }
+  .stamp.ink2 { color: var(--ink); border-color: var(--ink); transform: rotate(-2deg); }
+  .stamp.cyan { color: var(--cyan); border-color: var(--cyan); transform: rotate(1deg); }
+
+  /* ─── HERO SHEET ─────────────────────────────────────────────
+     Cut paper sheet on the photocopied page. Yellow + cyan washi
+     tape strips cross the corners. Headline 360px (up from 320
+     in landscape) because the column is wider relative to itself
+     and we want the wordmark to dominate. */
+  .hero {
+    position:absolute; top: 464px; left: 64px; right: 64px; height: 1080px;
+    overflow: hidden;
+  }
+  .hero .sheet {
+    background: #fff; padding: 80px 88px 100px; position: relative;
+    box-shadow: 10px 10px 0 rgba(0,0,0,.14);
+    transform: rotate(-.6deg);
+    height: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
+  }
+  .hero .sheet::before {
+    /* yellow washi tape — top */
+    content:''; position:absolute; top: -32px; left: 240px; width: 280px; height: 78px;
+    background: rgba(255,216,77,.85); transform: rotate(-6deg);
+    box-shadow: 0 4px 6px rgba(0,0,0,.18);
+  }
+  .hero .sheet::after {
+    /* cyan washi tape — bottom-right */
+    content:''; position:absolute; bottom: -28px; right: 260px; width: 220px; height: 64px;
+    background: rgba(45,188,230,.75); transform: rotate(3deg);
+    box-shadow: 0 4px 6px rgba(0,0,0,.15);
+  }
+  .hero .eyebrow {
+    font-family:'Permanent Marker', sans-serif; font-size: 72px; color: var(--red);
+    transform: rotate(-1deg); display: inline-block; margin-bottom: 32px;
+  }
+  .hero h1 {
+    font-family:'Archivo Black', sans-serif; font-size: 360px; line-height: .88;
+    letter-spacing: -.02em; color: var(--ink); margin: 0; text-transform: uppercase; text-wrap: balance;
+  }
+  .hero h1 em { color: var(--red); font-style: normal; background: var(--yellow); padding: 0 22px; }
+  .hero .sub {
+    font-family:'Special Elite', monospace; font-size: 60px; line-height: 1.3; color: var(--ink);
+    margin-top: 56px; max-width: 1820px;
+  }
+
+  /* ─── POSTER + STATS ROW ─────────────────────────────────────
+     Horizontal row: teacher poster on the left, two stat cards
+     stacked on the right. In landscape these were stacked in the
+     right rail. We flip the relationship: poster left, stats
+     right, both 820px tall.
+
+     Width budget: 2032px - 32px gap = 2000px → poster 1180,
+     stats column 820. That keeps the photocopied portrait big
+     enough to read from 8ft. */
+  .row {
+    position:absolute; top: 1564px; left: 64px; right: 64px; height: 820px;
+    display: grid; grid-template-columns: 1180px 1fr; gap: 32px;
+    overflow: hidden;
+  }
+  .poster {
+    background: #e8e2d0; padding: 36px; position: relative; transform: rotate(1.5deg);
+    box-shadow: 8px 8px 0 rgba(0,0,0,.14);
+    height: 100%;
+    overflow: hidden;
+  }
+  .poster::before {
+    /* red rubber stamp / sticker badge */
+    content:''; position:absolute; top:-22px; left: 100px; width: 200px; height: 56px;
+    background: rgba(193,40,26,.78); transform: rotate(-4deg);
+  }
+  .poster .img {
+    width: 100%; height: 580px; background: #444;
+    background-image:
+      radial-gradient(circle at 38% 38%, #888 0 78px, transparent 78px),
+      radial-gradient(circle at 38% 38%, transparent 0 70px, #222 70px 180px, transparent 180px),
+      linear-gradient(180deg, #666 0%, #333 100%);
+    filter: contrast(1.6) grayscale(1);
+    position: relative; overflow:hidden;
+  }
+  .poster .img::after {
+    /* CRT-scanline / halftone ribs */
+    content:''; position:absolute; inset:0;
+    background: repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 3px, rgba(0,0,0,.18) 3px 5px);
+    mix-blend-mode: multiply;
+  }
+  .poster .caption {
+    font-family:'Permanent Marker', sans-serif; font-size: 76px; color: var(--ink);
+    transform: rotate(-1deg); margin-top: 26px; line-height: 1;
+  }
+  .poster .caption .sub {
+    display: block; font-family:'Special Elite', monospace; font-size: 32px; color: var(--red);
+    margin-top: 14px; letter-spacing: .12em;
+  }
+
+  /* Two stacked stat cards. Same white-vs-yellow alternation as
+     landscape; rotations flipped so the column reads ±. */
+  .stats { display: grid; grid-template-rows: 1fr 1fr; gap: 28px; height: 100%; min-height: 0; }
+  .stat {
+    background: #fff; padding: 36px 44px; position: relative;
+    border: 5px solid var(--ink); transform: rotate(-.8deg);
+    box-shadow: 6px 6px 0 rgba(0,0,0,.14);
+    display: flex; flex-direction: column; justify-content: center;
+    overflow: hidden;
+  }
+  .stat:nth-child(2) { transform: rotate(.8deg); background: var(--yellow); }
+  .stat .lbl {
+    font-family:'Special Elite', monospace; font-size: 32px; letter-spacing: .18em;
+    color: var(--red); text-transform: uppercase;
+  }
+  .stat .val {
+    font-family:'Archivo Black', sans-serif; font-size: 200px; line-height: .9;
+    color: var(--ink); margin-top: 10px;
+  }
+  .stat .cap {
+    font-family:'Courier Prime', monospace; font-weight:700; font-size: 32px; color: var(--ink); margin-top: 10px;
+  }
+
+  /* ─── POLAROID GRID (2×2) ────────────────────────────────────
+     Landscape used 4×1 (single row, 4 polaroids). Portrait turns
+     it into 2×2 so each polaroid grows from ~840×500 → ~990×400
+     with a much bigger photo (380px tall vs 280px). Rotations
+     keep their alternating tilt so the grid doesn't look gridded —
+     they look TAPED ON. */
+  .strip {
+    position: absolute; top: 2404px; left: 64px; right: 64px; height: 820px;
+    display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 40px;
+    overflow: hidden;
+  }
+  .polaroid {
+    background: #fff; padding: 24px 24px 56px; position: relative;
+    box-shadow: 8px 8px 0 rgba(0,0,0,.16);
+    overflow: hidden;
+  }
+  .polaroid:nth-child(1) { transform: rotate(-2deg); }
+  .polaroid:nth-child(2) { transform: rotate(1.5deg); }
+  .polaroid:nth-child(3) { transform: rotate(-1deg); }
+  .polaroid:nth-child(4) { transform: rotate(2.5deg); background: var(--cyan); }
+  .polaroid::before {
+    /* yellow washi tape strip across the top of every polaroid */
+    content:''; position:absolute; top: -22px; left: 38%; width: 240px; height: 60px;
+    background: rgba(255,216,77,.72); transform: rotate(-4deg);
+  }
+  .polaroid .pic {
+    width: 100%; height: 380px; background: linear-gradient(135deg, #999, #333);
+    filter: contrast(1.5) grayscale(1); position: relative; overflow: hidden;
+  }
+  .polaroid .pic::after {
+    /* halftone */
+    content:''; position:absolute; inset:0;
+    background: repeating-linear-gradient(0deg, rgba(255,255,255,.06) 0 2px, rgba(0,0,0,.12) 2px 4px);
+    mix-blend-mode: multiply;
+  }
+  .polaroid .when {
+    font-family:'Permanent Marker', sans-serif; font-size: 60px; color: var(--red);
+    margin-top: 22px; line-height: 1;
+  }
+  .polaroid .name {
+    font-family:'Special Elite', monospace; font-size: 38px; color: var(--ink);
+    margin-top: 12px; line-height: 1.2;
+  }
+  /* Slot 4: countdown celebrant — red panel, big wordmark */
+  .polaroid.count { padding: 36px; background: var(--red); color: #fff; text-align: center;
+    display: flex; flex-direction: column; justify-content: center; align-items: center; }
+  .polaroid.count::before { background: rgba(255,216,77,.85); }
+  .polaroid.count .num {
+    font-family:'Archivo Black', sans-serif; font-size: 360px; line-height: .85; color: #fff;
+    text-shadow: 6px 6px 0 rgba(0,0,0,.32);
+  }
+  .polaroid.count .lb {
+    font-family:'Permanent Marker', sans-serif; font-size: 56px; color: #fff; line-height: 1.1; margin-top: 16px;
+  }
+
+  /* ─── ALERT + CLOCK ROW ─────────────────────────────────────
+     Side-by-side: ransom-letter alert on the left, taped yellow
+     clock card on the right. Both 496px tall. Width split:
+     1280 alert + 720 clock - 32 gap = 2032 - 32 = 2000. */
+  .alertrow {
+    position: absolute; top: 3244px; left: 64px; right: 64px; height: 496px;
+    display: grid; grid-template-columns: 1280px 1fr; gap: 32px;
+    overflow: hidden;
+  }
+  .alert {
+    position: relative; padding: 44px 60px;
+    background: #fff; transform: rotate(-.5deg);
+    box-shadow: 8px 8px 0 rgba(0,0,0,.16); border: 6px solid var(--ink);
+    overflow: hidden;
+  }
+  .alert::before {
+    /* !! badge in the top-left corner */
+    content:'!!'; position: absolute; top: -36px; left: -36px;
+    font-family:'Archivo Black', sans-serif; font-size: 110px; color: var(--red);
+    background: var(--yellow); width: 132px; height: 132px;
+    display: grid; place-items: center; border: 6px solid var(--ink); transform: rotate(-10deg);
+    line-height: 1;
+  }
+  .alert .tag {
+    font-family:'Permanent Marker', sans-serif; font-size: 50px; color: var(--red); transform: rotate(-1deg);
+    display: inline-block; margin-bottom: 12px; margin-left: 110px;
+  }
+  .alert h3 {
+    font-family:'Archivo Black', sans-serif; font-size: 110px; line-height: .95; letter-spacing: -.01em;
+    color: var(--ink); margin: 0; text-transform: uppercase;
+  }
+  .alert p { font-family:'Special Elite', monospace; font-size: 38px; line-height: 1.3; color: var(--ink); margin: 18px 0 0; }
+  .alert .when { font-family:'Permanent Marker', sans-serif; font-size: 44px; color: var(--red); margin-top: 14px; }
+
+  /* Yellow taped clock card on the right of the alert row. */
+  .floatClock {
+    background: var(--yellow); padding: 40px 48px; border: 6px solid var(--ink);
+    transform: rotate(2deg); box-shadow: 8px 8px 0 rgba(0,0,0,.16);
+    overflow: hidden;
+    display: flex; flex-direction: column; justify-content: center; gap: 12px;
+  }
+  .floatClock .lbl { font-family:'Special Elite',monospace; font-size: 32px; letter-spacing: .18em; color: var(--red); text-transform:uppercase; }
+  .floatClock .v { font-family:'Archivo Black'; font-size: 240px; line-height: .9; color: var(--ink); }
+  .floatClock .c { font-family:'Courier Prime', monospace; font-weight:700; font-size: 36px; color: var(--ink); margin-top: 6px; }
+
+  /* ─── TICKER ─────────────────────────────────────────────────
+     Full-bleed black ticker across the bottom — exactly like
+     landscape. No edge inset. 80px tall. */
+  .ticker {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 80px;
+    background: var(--ink); color: var(--paper);
+    display: flex; align-items: center; overflow: hidden;
+  }
+  .ticker .tag {
+    background: var(--red); color: #fff; height: 100%; display: flex; align-items: center;
+    padding: 0 36px; font-family:'Permanent Marker'; font-size: 36px; letter-spacing: .14em; flex-shrink: 0;
+  }
+  .ticker .msg {
+    font-family:'Special Elite', monospace; font-size: 36px; padding-left: 44px; white-space: nowrap;
+    letter-spacing: .08em; animation: scroll 60s linear infinite;
+  }
+  @keyframes scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+</style>
+</head>
+<body>
+<script>
+  const __TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "schema": "edu-cms-zine-portrait-v1" }/*EDITMODE-END*/;
+</script>
+
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+  <div class="mast">
+    <div class="title" data-widget="school">
+      <span data-field="school.name">WESTRIDGE!</span>
+      <span class="sub" data-field="school.sub">vol. 142 · morning edition · photocopied by hand · free</span>
+    </div>
+    <div class="stamps" data-widget="brand">
+      <span class="stamp" data-field="brand.stamp1">★ WILDCATS FOREVER</span>
+      <span class="stamp ink2" data-field="brand.stamp2">// issue 142</span>
+      <span class="stamp cyan" data-field="brand.stamp3">4/21 · tue · 7:53am</span>
+    </div>
+  </div>
+
+  <div class="hero">
+    <div class="sheet" data-widget="greeting">
+      <div class="eyebrow" data-field="greeting.eyebrow">// hi everybody,</div>
+      <h1><span data-field="greeting.headline1">BE</span> <em data-field="greeting.headline2">LOUD</em> <span data-field="greeting.headline3">TODAY.</span></h1>
+      <p class="sub" data-field="greeting.subtitle">the bell rings at 8:05. bring a pen. eat something. tell somebody good morning. you've got this — we all do. xo — the zine kids.</p>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="poster" data-widget="teacher">
+      <div class="img"></div>
+      <div class="caption">
+        <span data-field="teacher.caption">MS. KOWALSKI!!</span>
+        <span class="sub" data-field="teacher.sub">>> teacher of the week · ap physics · rm 214 <<</span>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat" data-widget="attendance">
+        <div class="lbl">// here today</div>
+        <div class="val" data-field="attendance.value">1,217</div>
+        <div class="cap" data-field="attendance.cap">98.2% · nice work</div>
+      </div>
+      <div class="stat" data-widget="countdown">
+        <div class="lbl" data-field="countdown.label">// grad in</div>
+        <div class="val" data-field="countdown.value">41</div>
+        <div class="cap" data-field="countdown.sub">days &amp; counting!!</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="strip">
+    <div class="polaroid" data-widget="events.0">
+      <div class="pic"></div>
+      <div class="when" data-field="events.0.when">MON 3:30</div>
+      <div class="name" data-field="events.0.name">stu. gov. open mtg · library</div>
+    </div>
+    <div class="polaroid" data-widget="events.1">
+      <div class="pic"></div>
+      <div class="when" data-field="events.1.when">WED 7pm</div>
+      <div class="name" data-field="events.1.name">spring band concert · aud.</div>
+    </div>
+    <div class="polaroid" data-widget="events.2">
+      <div class="pic"></div>
+      <div class="when" data-field="events.2.when">FRI 7pm</div>
+      <div class="name" data-field="events.2.name">"into the woods" — opening!</div>
+    </div>
+    <div class="polaroid count" data-widget="countdownBig">
+      <div class="num" data-field="countdownBig.value">41</div>
+      <div class="lb" data-field="countdownBig.label">DAYS 'TIL GRAD!!</div>
+    </div>
+  </div>
+
+  <div class="alertrow">
+    <div class="alert" data-widget="announcement">
+      <div class="tag" data-field="announcement.tag">URGENT &amp; COOL</div>
+      <h3 data-field="announcement.headline">PEP RALLY — 7TH PERIOD · GYM A</h3>
+      <p data-field="announcement.body">seniors front row! marching band enters south doors. no backpacks in gym. go back to 8th when the bell rings. be loud!</p>
+      <div class="when" data-field="announcement.date">→ today · 2:15 to 3:00 ←</div>
+    </div>
+    <div class="floatClock" data-widget="clock">
+      <div class="lbl" data-field="clock.label">// right now</div>
+      <div class="v" data-field="clock.time">7:53</div>
+      <div class="c" data-widget="weather"><span data-field="weather.condition">tue · apr 21 · 46° · clear · high 62°</span></div>
+    </div>
+  </div>
+
+  <div class="ticker" data-widget="ticker">
+    <div class="tag" data-field="ticker.tag">xeroxwire</div>
+    <div class="msg"><span data-field="ticker.message">bus 14 running late !! · lunch: chicken bowl, salad bar, vegan opt · ap psych → library · LOST: silver earbuds — front desk · sports photos tmrw bring your jersey · submit to the zine rm 217 · </span><span data-field="ticker.message">bus 14 running late !! · lunch: chicken bowl, salad bar, vegan opt · ap psych → library · LOST: silver earbuds — front desk · sports photos tmrw bring your jersey · submit to the zine rm 217 · </span></div>
+  </div>
+
+</div></div></div>
+
+<script>
+  // Same fit() pattern as landscape — reads --stage-w/--stage-h
+  // (here 2160×3840) and computes --stage-scale to fit the viewport.
+  (function(){
+    function fit(){
+      const s=document.getElementById('stage');if(!s)return;
+      const cs=getComputedStyle(document.documentElement);
+      const w=parseFloat(cs.getPropertyValue('--stage-w'))||2160;
+      const h=parseFloat(cs.getPropertyValue('--stage-h'))||3840;
+      const k=Math.min(window.innerWidth/w,window.innerHeight/h);
+      document.documentElement.style.setProperty('--stage-scale',k);
+    }
+    window.addEventListener('resize',fit);
+    window.addEventListener('load',fit);
+    setTimeout(fit,10);
+    setTimeout(fit,300);
+  })();
+</script>
+</body></html>
