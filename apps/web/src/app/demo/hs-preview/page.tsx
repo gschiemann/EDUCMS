@@ -29,6 +29,7 @@ const HS_TEMPLATES: Array<{ type: string; label: string; bg: string }> = [
   { type: 'HS_GALLERY',   label: 'Gallery (Museum)',       bg: '#f5f1e8' },
   { type: 'HS_BLUEPRINT', label: 'Blueprint (Technical)',  bg: '#0f3a7a' },
   { type: 'HS_ZINE',      label: 'Zine (Cut & Paste)',     bg: '#f2ecd9' },
+  { type: 'MS_ARCADE',    label: 'Arcade (Quest Log) — MS', bg: '#0d0d1a' },
 ];
 
 export default function HsPreviewPage() {

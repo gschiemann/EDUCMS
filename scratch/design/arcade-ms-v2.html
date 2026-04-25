@@ -122,7 +122,7 @@
      content area = 880-112-12 = 756. Below content-needed plus
      ~20px bottom breathing so text never touches the border. */
   .quest {
-    position: absolute; top: 310px; left: 64px; width: 2400px; height: 880px;
+    position: absolute; top: 310px; left: 64px; width: 2400px; height: 800px;
     background: var(--panel); border: 6px solid var(--ink);
     box-shadow: 16px 16px 0 #000;
     padding: 56px 80px; overflow: hidden;
@@ -155,28 +155,28 @@
     padding: 12px 28px; border: 3px solid var(--yellow); letter-spacing: .04em;
   }
 
-  /* ─── XP bar (field-day progress) — trimmed height, bigger type ──
-     v2.6 geometry fix: quest (top:310, height:880) ends at y=1190,
-     so xpbar MUST start at ≥1210 — was 1150 which overlapped the
-     quest hero by 40px and showed as "text blocks spilling over
-     the box on the left side." Bumped to 1210 with a 20px gap. */
-  /* v2.8: xpbar content was overflowing below the panel border —
-     .lbl (font 40 × line-height 1.5 = 60) + margin 8 + sub (44) =
-     112px, but the border-box content area is only 150 − 44 − 12 =
-     94px. Tightened lbl: 40→32 with line-height 1.5→1.2 = 38, sub
-     44→34 with margin 8→4. Track shrunk from 80 to 60. Total tallest
-     row content now 76, fits in 94 with 18px breathing. Also added
-     overflow:hidden as the same safety net used on .board / .eventsbox. */
+  /* ─── XP bar (field-day progress) — taller box, bigger type ──
+     v2.9: the v2.8 shrink (lbl 32 / sub 34 / track 60) made the
+     subtitle unreadable on a 65" TV. Reverting to readable type
+     and growing the BOX instead. New dimensions:
+       - quest height 880 → 800 (frees 80px above)
+       - xpbar top 1210 → 1130, height 150 → 230 (bottom unchanged)
+       - lbl 32 → 48, sub 34 → 56 (line-height 1 to bound),
+         margin-top 4 → 12, padding 22/44 → 32/48
+       - track 60 → 90
+     Math: inner = 230 − 64 = 166. Stack = 48*1.2 + 12 + 56 = 126.
+     Track = 90. Tallest cell = 126 (col 1), fits in 166 with
+     40px breathing. Bottom still aligns with .side at y=1360. */
   .xpbar {
-    position: absolute; top: 1210px; left: 64px; width: 2400px; height: 150px;
+    position: absolute; top: 1130px; left: 64px; width: 2400px; height: 230px;
     background: var(--panel); border: 6px solid var(--ink); box-shadow: 10px 10px 0 #000;
-    padding: 22px 44px; display: grid; grid-template-columns: auto 1fr auto; gap: 40px; align-items: center;
+    padding: 32px 48px; display: grid; grid-template-columns: auto 1fr auto; gap: 48px; align-items: center;
     overflow: hidden;
   }
-  .xpbar .lbl { font-family:'Press Start 2P', monospace; font-size: 32px; color: var(--yellow); line-height: 1.2; letter-spacing: .04em; white-space: nowrap; }
-  .xpbar .lbl span { display:block; font-family:'VT323', monospace; font-size: 34px; color: var(--ink2); margin-top: 4px; letter-spacing: .02em; }
+  .xpbar .lbl { font-family:'Press Start 2P', monospace; font-size: 48px; color: var(--yellow); line-height: 1.2; letter-spacing: .04em; white-space: nowrap; }
+  .xpbar .lbl span { display:block; font-family:'VT323', monospace; font-size: 56px; color: var(--ink2); margin-top: 12px; letter-spacing: .02em; line-height: 1; }
   .xpbar .track {
-    height: 60px; background: #000; border: 5px solid var(--ink); position: relative; overflow: hidden;
+    height: 90px; background: #000; border: 5px solid var(--ink); position: relative; overflow: hidden;
     image-rendering: pixelated;
   }
   .xpbar .fill {

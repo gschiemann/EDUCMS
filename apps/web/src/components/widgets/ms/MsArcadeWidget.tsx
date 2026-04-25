@@ -496,7 +496,7 @@ const CSS = `
 
 /* ─── Hero quest card ────────────────────────────────────── */
 .ms-arc-quest {
-  position: absolute; top: 310px; left: 64px; width: 2400px; height: 880px;
+  position: absolute; top: 310px; left: 64px; width: 2400px; height: 800px;
   background: #1a1a2e; border: 6px solid #f1f1ff;
   box-shadow: 16px 16px 0 #000;
   padding: 56px 80px; overflow: hidden;
@@ -531,21 +531,22 @@ const CSS = `
 
 /* ─── XP bar ─────────────────────────────────────────────── */
 .ms-arc-xpbar {
-  position: absolute; top: 1210px; left: 64px; width: 2400px; height: 150px;
+  position: absolute; top: 1130px; left: 64px; width: 2400px; height: 230px;
   background: #1a1a2e; border: 6px solid #f1f1ff; box-shadow: 10px 10px 0 #000;
-  padding: 22px 44px;
-  display: grid; grid-template-columns: auto 1fr auto; gap: 40px; align-items: center;
+  padding: 32px 48px;
+  display: grid; grid-template-columns: auto 1fr auto; gap: 48px; align-items: center;
+  overflow: hidden;
 }
 .ms-arc-xp-lbl {
-  font-family: 'Press Start 2P', monospace; font-size: 40px;
-  color: #ffd84d; line-height: 1.5; letter-spacing: .04em; white-space: nowrap;
+  font-family: 'Press Start 2P', monospace; font-size: 48px;
+  color: #ffd84d; line-height: 1.2; letter-spacing: .04em; white-space: nowrap;
 }
 .ms-arc-xp-lbl span {
-  display: block; font-family: 'VT323', monospace; font-size: 44px;
-  color: #a0a0c0; margin-top: 8px; letter-spacing: .02em;
+  display: block; font-family: 'VT323', monospace; font-size: 56px;
+  color: #a0a0c0; margin-top: 12px; letter-spacing: .02em; line-height: 1;
 }
 .ms-arc-xp-track {
-  height: 80px; background: #000; border: 5px solid #f1f1ff;
+  height: 90px; background: #000; border: 5px solid #f1f1ff;
   position: relative; overflow: hidden; image-rendering: pixelated;
 }
 .ms-arc-xp-fill {
