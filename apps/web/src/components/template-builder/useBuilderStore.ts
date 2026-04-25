@@ -139,20 +139,26 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     // shows the live time), but TEXT/RICH_TEXT/WEBPAGE/etc. need a
     // placeholder string so the operator sees SOMETHING and knows
     // where to click to edit.
+    // Seeds use the SAME config keys the widgets actually read from
+    // WidgetRenderer.tsx. Earlier version seeded e.g. `text` for TEXT
+    // but TextWidget reads `config.content`, so the seed had no
+    // effect and the widget rendered the bare "Your text here"
+    // fallback (or nothing for image/video/logo widgets which have
+    // no fallback at all). Audited every key against WidgetRenderer.
     const seedDefault = (type: string): Record<string, any> => {
       switch (type) {
         case 'TEXT':
-        case 'RICH_TEXT':         return { text: 'Click to edit text' };
-        case 'ANNOUNCEMENT':      return { headline: 'New Announcement', body: 'Click to edit body' };
+        case 'RICH_TEXT':         return { content: 'Click to edit text' };
+        case 'ANNOUNCEMENT':      return { message: 'Click to edit announcement' };
         case 'WEBPAGE':           return { url: 'https://example.com' };
-        case 'TICKER':            return { tickerMessages: ['Click to edit ticker messages'] };
-        case 'COUNTDOWN':         return { title: 'Countdown', target: '' };
-        case 'IMAGE':             return { src: '', placeholder: 'Click to add image' };
-        case 'IMAGE_CAROUSEL':    return { items: [] };
-        case 'VIDEO':             return { src: '' };
-        case 'LOGO':              return { src: '' };
+        case 'TICKER':            return { messages: ['Click to edit ticker messages'] };
+        case 'COUNTDOWN':         return { title: 'Countdown', targetDate: '' };
         case 'STAFF_SPOTLIGHT':   return { name: 'Staff Name', role: 'Role' };
         case 'QUOTE':             return { text: 'A quote', author: 'Author' };
+        // Image/video/logo intentionally have NO config seeded — the
+        // BuilderZone now renders an "Empty" placeholder badge over
+        // every zone whose widget produces no visible output, so the
+        // operator can SEE where they dropped it and click through.
         default:                  return {};
       }
     };

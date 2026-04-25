@@ -115,8 +115,16 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         width: `${zone.width}%`,
         height: `${zone.height}%`,
         zIndex: zone.zIndex,
-        background: 'transparent',
-        border: previewMode ? 'none' : (selected ? `1px dashed ${color.accent}` : '1px solid transparent'),
+        // Faint zone-color tint + always-visible 1px border in edit
+        // mode so freshly-dropped zones with empty widgets (IMAGE,
+        // VIDEO, LOGO without a src) don't read as "transparent
+        // boxes" — the operator can SEE every zone they've placed
+        // and click into it. Selected zones get a dashed accent
+        // border on top.
+        background: previewMode ? 'transparent' : `${color.bg}80`,
+        border: previewMode
+          ? 'none'
+          : (selected ? `2px dashed ${color.accent}` : `1px solid ${color.border}`),
         boxShadow: undefined,
         outline: 'none',
         cursor: zone.locked || previewMode ? 'default' : 'move',
@@ -208,6 +216,22 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         live={false}
         onConfigChange={!previewMode && onConfigChange ? (patch) => onConfigChange(zone.id, patch) : undefined}
       />
+
+      {/* Always-visible widget-type label badge in edit mode. Lives
+          in the top-left corner so freshly-dropped zones with empty
+          inner widgets (image/video/logo without an asset) still
+          show WHAT they are + WHERE they are. Hidden in preview
+          mode + when the zone is being interacted with (so it
+          doesn't obscure the actual content). */}
+      {!previewMode && (
+        <div
+          className="absolute top-1 left-1 z-30 pointer-events-none flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider opacity-70 group-hover:opacity-100 transition-opacity"
+          style={{ background: color.bg, color: color.text, border: `1px solid ${color.border}` }}
+        >
+          {createElement(icon, { className: 'w-2.5 h-2.5' })}
+          {label}
+        </div>
+      )}
 
       {isDragOver && !previewMode && supportsUpload && (
         <div className="absolute inset-0 z-50 bg-indigo-500/20 backdrop-blur-[2px] flex items-center justify-center rounded-lg border-2 border-indigo-500 border-dashed transition-all">
