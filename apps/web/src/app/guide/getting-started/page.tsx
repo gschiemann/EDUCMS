@@ -132,8 +132,10 @@ function PrintControls() {
             Print PDF
           </button>
           <span className="guide-controls-hint">
-            If your save dialog says &ldquo;file in use,&rdquo; close any open
-            PDF viewers and try again — or save to a non-OneDrive folder.
+            In the print dialog, choose &ldquo;Save as PDF&rdquo; and uncheck
+            &ldquo;Headers and footers&rdquo; under More settings for the
+            cleanest output. If saving fails with &ldquo;file in use,&rdquo;
+            close any open PDF viewer or save to a non-OneDrive folder.
           </span>
         </div>
       </div>
@@ -1034,25 +1036,62 @@ function GuideStyles() {
       /* ─── Print rules ─────────────────────────────────────────
          Browser Print to PDF flips on these. Hides the controls,
          normalizes margins, fits each chapter to its own sheet,
-         and keeps the iframes from page-breaking down their middle. */
+         and keeps the iframes from page-breaking down their middle.
+
+         v2 print pass (partner feedback):
+           - Killed the at-page bottom/top margins. Chrome adds the
+             URL footer / page number into the at-page margin region;
+             with zero margin Chrome has no room to draw them and
+             defaults to "Headers and footers OFF" in the print
+             dialog. (Customer can still toggle it back on, but the
+             default output is now clean.) The page padding is moved
+             inside .guide-page so layout still has breathing room.
+           - Tightened the .guide-tip callout for print so a small
+             tip cannot widow itself onto its own page after a
+             chapter it belongs to.
+           - Added break-before:avoid on .guide-tip so it stays
+             with the preceding paragraph / steps. Combined with
+             break-inside:avoid it gets glued to its parent. */
       @page {
         size: letter;
-        margin: 0.6in;
+        margin: 0;
       }
       @media print {
         body { background: #fff !important; }
         .guide-controls { display: none !important; }
+
+        /* Per-page padding lives inside .guide-page now (not @page),
+           so Chrome can't draw the URL footer into the bottom margin. */
         .guide-cover, .guide-page {
-          padding: 24px 0 !important;
+          padding: 0.55in 0.6in !important;
           page-break-after: always;
         }
         .guide-cover { min-height: auto; }
+
         .guide-step, .guide-callout, .guide-toc-list li,
-        .guide-template-tile, .guide-support-card, .guide-tip, .guide-disclaimer {
+        .guide-template-tile, .guide-support-card, .guide-disclaimer {
           break-inside: avoid;
         }
         .guide-template-row {
           page-break-inside: avoid;
+        }
+
+        /* Tips: tighten, force them onto the same page as the
+           paragraph / step list above. */
+        .guide-tip {
+          padding: 10px 14px !important;
+          font-size: 12px !important;
+          line-height: 1.45 !important;
+          margin-top: 10px !important;
+          gap: 8px !important;
+          border-radius: 8px !important;
+          break-inside: avoid !important;
+          break-before: avoid !important;   /* glue to preceding block */
+          page-break-before: avoid !important;
+        }
+        .guide-tip-icon {
+          width: 12px !important; height: 12px !important;
+          margin-top: 2px !important;
         }
       }
     `}</style>

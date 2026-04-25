@@ -156,7 +156,13 @@ export function Markdown({ source }: { source: string }) {
         switch (tok.kind) {
           case 'h': {
             const text = renderInline(tok.text, `h-${idx}`);
-            const common = 'font-[family-name:var(--font-fredoka)] font-semibold text-slate-900 tracking-tight';
+            // Plain font-semibold instead of font-[family-name:var(--font-fredoka)].
+            // Fredoka is only loaded inside the printable guide route via
+            // next/font; outside that route the var resolves to nothing and
+            // headings rendered with no font-family at all (the symptom
+            // Integration Lead saw as "half the text is transparent" inside
+            // the in-app help drawer).
+            const common = 'font-semibold text-slate-900 tracking-tight';
             if (tok.level === 1) return <h1 key={idx} className={`${common} text-3xl md:text-4xl mt-2`}>{text}</h1>;
             if (tok.level === 2) return <h2 key={idx} className={`${common} text-2xl md:text-3xl mt-10`}>{text}</h2>;
             if (tok.level === 3) return <h3 key={idx} className={`${common} text-xl md:text-2xl mt-8`}>{text}</h3>;
