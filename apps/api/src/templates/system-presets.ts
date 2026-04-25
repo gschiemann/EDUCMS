@@ -543,6 +543,60 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     screenWidth: 3840, screenHeight: 2160, bgColor: '#f4ecd8',
     zones: [{ name: 'Scene', widgetType: 'MS_ATLAS', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
+  // Approved 2026-04-25 — matches scratch/design/fieldnotes-ms-v2.html.
+  {
+    id: 'preset-ms-fieldnotes',
+    name: '🪶 Field Notes — Naturalist Journal',
+    description: 'Field-journal lobby — kraft-paper sketchbook with hand-drawn observations, watercolor specimen swatches, naturalist diagrams, log entries with compass bearings, daily species spotlight. Caveat + IM Fell + Work Sans.',
+    category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#efe6d2',
+    zones: [{ name: 'Scene', widgetType: 'MS_FIELDNOTES', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  // Approved 2026-04-25 — matches scratch/design/greenhouse-ms-v2.html.
+  {
+    id: 'preset-ms-greenhouse',
+    name: '🌿 Greenhouse — Herbarium Specimen Plate',
+    description: 'Botanical herbarium lobby — pressed-specimen plate with seed-packet club cards, brass instrument gauges, terracotta announcement notice, almanac countdown, signposts. Cormorant Garamond + IM Fell English + Caveat.',
+    category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#f3ead4',
+    zones: [{ name: 'Scene', widgetType: 'MS_GREENHOUSE', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  // Approved 2026-04-25 — matches scratch/design/homeroom-ms-v2.html.
+  {
+    id: 'preset-ms-homeroom',
+    name: '🏫 Homeroom — Classroom Bulletin',
+    description: 'Classroom-bulletin lobby — slate chalkboard, sticky notes pinned to corkboard, student-of-the-week polaroid, tabbed binder agenda, rubber-band tape lab schedule, school-spirit pennant. Work Sans + Caveat + Source Code Pro.',
+    category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#f6f3ec',
+    zones: [{ name: 'Scene', widgetType: 'MS_HOMEROOM', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  // Approved 2026-04-25 — matches scratch/design/paper-ms-v2.html.
+  {
+    id: 'preset-ms-paper',
+    name: '📰 Paper — Daily Broadsheet',
+    description: 'Vintage broadsheet lobby — newspaper masthead, three-column lead story with drop cap and pullquote, halftone photo card, agenda index sidebar, departments band (Dining / After 3 / Seen Today), stop-press bulletin ticker. Playfair Display + Old Standard + Work Sans.',
+    category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#f7f1e3',
+    zones: [{ name: 'Scene', widgetType: 'MS_PAPER', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  // Approved 2026-04-25 — matches scratch/design/playlist-ms-v2.html.
+  {
+    id: 'preset-ms-playlist',
+    name: '🎧 Playlist — Spotify-Style Now Playing',
+    description: 'Music-app lobby — dark Spotify aesthetic with album-cover queue, "now playing" hero card, today\'s rotation as a track list, equalizer bars, social proof "listening now," genre chips. Inter + Outfit + JetBrains Mono.',
+    category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0f0f12',
+    zones: [{ name: 'Scene', widgetType: 'MS_PLAYLIST', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  // Approved 2026-04-25 — matches scratch/design/studio-ms-v2.html.
+  {
+    id: 'preset-ms-studio',
+    name: '🎙️ Studio — On-Air Radio Booth',
+    description: 'Radio-station lobby — ON AIR sign, cassette spool cassette art, vintage VU meters, console fader strip, today\'s playlist queue, caller queue, weather + clock tiles. Space Grotesk + JetBrains Mono + Bricolage Grotesque.',
+    category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#1b1410',
+    zones: [{ name: 'Scene', widgetType: 'MS_STUDIO', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
   {
     id: 'preset-cafeteria-chalkboard',
     name: '🌿 Animated Cafeteria · Chalkboard',

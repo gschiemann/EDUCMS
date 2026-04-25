@@ -29,8 +29,14 @@ const HS_TEMPLATES: Array<{ type: string; label: string; bg: string }> = [
   { type: 'HS_GALLERY',   label: 'Gallery (Museum)',       bg: '#f5f1e8' },
   { type: 'HS_BLUEPRINT', label: 'Blueprint (Technical)',  bg: '#0f3a7a' },
   { type: 'HS_ZINE',      label: 'Zine (Cut & Paste)',     bg: '#f2ecd9' },
-  { type: 'MS_ARCADE',    label: 'Arcade (Quest Log) — MS', bg: '#0d0d1a' },
-  { type: 'MS_ATLAS',     label: 'Atlas (Subway Map) — MS', bg: '#f4ecd8' },
+  { type: 'MS_ARCADE',     label: 'Arcade (Quest Log) — MS',     bg: '#0d0d1a' },
+  { type: 'MS_ATLAS',      label: 'Atlas (Subway Map) — MS',     bg: '#f4ecd8' },
+  { type: 'MS_FIELDNOTES', label: 'Field Notes (Journal) — MS',  bg: '#efe6d2' },
+  { type: 'MS_GREENHOUSE', label: 'Greenhouse (Herbarium) — MS', bg: '#f3ead4' },
+  { type: 'MS_HOMEROOM',   label: 'Homeroom (Bulletin) — MS',    bg: '#f6f3ec' },
+  { type: 'MS_PAPER',      label: 'Paper (Broadsheet) — MS',     bg: '#f7f1e3' },
+  { type: 'MS_PLAYLIST',   label: 'Playlist (Now Playing) — MS', bg: '#0f0f12' },
+  { type: 'MS_STUDIO',     label: 'Studio (On Air) — MS',        bg: '#1b1410' },
 ];
 
 export default function HsPreviewPage() {

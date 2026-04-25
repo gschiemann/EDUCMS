@@ -70,6 +70,12 @@ import { HsZineWidget } from './hs/HsZineWidget';
 // MS Pack — first port (Arcade), pattern matches HS templates.
 import { MsArcadeWidget } from './ms/MsArcadeWidget';
 import { MsAtlasWidget } from './ms/MsAtlasWidget';
+import { MsFieldnotesWidget } from './ms/MsFieldnotesWidget';
+import { MsGreenhouseWidget } from './ms/MsGreenhouseWidget';
+import { MsHomeroomWidget } from './ms/MsHomeroomWidget';
+import { MsPaperWidget } from './ms/MsPaperWidget';
+import { MsPlaylistWidget } from './ms/MsPlaylistWidget';
+import { MsStudioWidget } from './ms/MsStudioWidget';
 // 16 templates ported from scratch/design/*.html (4 parallel agents, 2026-04-20).
 // Each widget is a full-screen scene (transform:scale 1920×1080 pattern, live-
 // gated hotspots, ticker-speed helper). See CLAUDE.md "Template Design
@@ -196,6 +202,12 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     // MS pack:
     case 'MS_ARCADE':                     return <MsArcadeWidget config={cfg} />;
     case 'MS_ATLAS':                      return <MsAtlasWidget config={cfg} />;
+    case 'MS_FIELDNOTES':                 return <MsFieldnotesWidget config={cfg} />;
+    case 'MS_GREENHOUSE':                 return <MsGreenhouseWidget config={cfg} />;
+    case 'MS_HOMEROOM':                   return <MsHomeroomWidget config={cfg} />;
+    case 'MS_PAPER':                      return <MsPaperWidget config={cfg} />;
+    case 'MS_PLAYLIST':                   return <MsPlaylistWidget config={cfg} />;
+    case 'MS_STUDIO':                     return <MsStudioWidget config={cfg} />;
     case 'ANIMATED_CAFETERIA':            return <AnimatedCafeteriaElementaryWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA_MS':         return <AnimatedCafeteriaMiddleWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA_HS':         return <AnimatedCafeteriaHighWidget config={cfg} live={live} />;
