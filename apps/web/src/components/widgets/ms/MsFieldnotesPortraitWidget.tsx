@@ -153,7 +153,7 @@ export interface MsFieldnotesPortraitConfig {
   'ticker.5'?: string;
 }
 
-const DEFAULTS: Required<MsFieldnotesPortraitConfig> = {
+export const DEFAULTS: Required<MsFieldnotesPortraitConfig> = {
   // Top masthead — school lockup
   'school.ey': 'Field Notebook · Volume 142',
   'school.name': 'Westridge',

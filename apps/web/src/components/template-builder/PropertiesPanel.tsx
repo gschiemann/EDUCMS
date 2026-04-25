@@ -6,6 +6,72 @@ import { useBuilderStore } from './useBuilderStore';
 import { widgetLabel } from './constants';
 import { useAssets, usePlaylists } from '@/hooks/use-api';
 
+// MS pack DEFAULTS registry. Every MS widget exports its `DEFAULTS`
+// keyed by dot-notation field paths (e.g. `school.eye`, `agenda.0.t`).
+// The generic MS_* case in the switch below auto-generates one
+// editable form field per key, so all 16 MS templates (8 landscape +
+// 8 portrait) have a working editor without a 16-case-deep wall of
+// hand-written switch boilerplate.
+import { DEFAULTS as MS_ARCADE_DEFAULTS } from '@/components/widgets/ms/MsArcadeWidget';
+import { DEFAULTS as MS_ATLAS_DEFAULTS } from '@/components/widgets/ms/MsAtlasWidget';
+import { DEFAULTS as MS_FIELDNOTES_DEFAULTS } from '@/components/widgets/ms/MsFieldnotesWidget';
+import { DEFAULTS as MS_GREENHOUSE_DEFAULTS } from '@/components/widgets/ms/MsGreenhouseWidget';
+import { DEFAULTS as MS_HOMEROOM_DEFAULTS } from '@/components/widgets/ms/MsHomeroomWidget';
+import { DEFAULTS as MS_PAPER_DEFAULTS } from '@/components/widgets/ms/MsPaperWidget';
+import { DEFAULTS as MS_PLAYLIST_DEFAULTS } from '@/components/widgets/ms/MsPlaylistWidget';
+import { DEFAULTS as MS_STUDIO_DEFAULTS } from '@/components/widgets/ms/MsStudioWidget';
+import { DEFAULTS as MS_ARCADE_PORTRAIT_DEFAULTS } from '@/components/widgets/ms/MsArcadePortraitWidget';
+import { DEFAULTS as MS_ATLAS_PORTRAIT_DEFAULTS } from '@/components/widgets/ms/MsAtlasPortraitWidget';
+import { DEFAULTS as MS_FIELDNOTES_PORTRAIT_DEFAULTS } from '@/components/widgets/ms/MsFieldnotesPortraitWidget';
+import { DEFAULTS as MS_GREENHOUSE_PORTRAIT_DEFAULTS } from '@/components/widgets/ms/MsGreenhousePortraitWidget';
+import { DEFAULTS as MS_HOMEROOM_PORTRAIT_DEFAULTS } from '@/components/widgets/ms/MsHomeroomPortraitWidget';
+import { DEFAULTS as MS_PAPER_PORTRAIT_DEFAULTS } from '@/components/widgets/ms/MsPaperPortraitWidget';
+import { DEFAULTS as MS_PLAYLIST_PORTRAIT_DEFAULTS } from '@/components/widgets/ms/MsPlaylistPortraitWidget';
+import { DEFAULTS as MS_STUDIO_PORTRAIT_DEFAULTS } from '@/components/widgets/ms/MsStudioPortraitWidget';
+
+const MS_DEFAULTS_BY_TYPE: Record<string, Record<string, string>> = {
+  MS_ARCADE: MS_ARCADE_DEFAULTS as any,
+  MS_ATLAS: MS_ATLAS_DEFAULTS as any,
+  MS_FIELDNOTES: MS_FIELDNOTES_DEFAULTS as any,
+  MS_GREENHOUSE: MS_GREENHOUSE_DEFAULTS as any,
+  MS_HOMEROOM: MS_HOMEROOM_DEFAULTS as any,
+  MS_PAPER: MS_PAPER_DEFAULTS as any,
+  MS_PLAYLIST: MS_PLAYLIST_DEFAULTS as any,
+  MS_STUDIO: MS_STUDIO_DEFAULTS as any,
+  MS_ARCADE_PORTRAIT: MS_ARCADE_PORTRAIT_DEFAULTS as any,
+  MS_ATLAS_PORTRAIT: MS_ATLAS_PORTRAIT_DEFAULTS as any,
+  MS_FIELDNOTES_PORTRAIT: MS_FIELDNOTES_PORTRAIT_DEFAULTS as any,
+  MS_GREENHOUSE_PORTRAIT: MS_GREENHOUSE_PORTRAIT_DEFAULTS as any,
+  MS_HOMEROOM_PORTRAIT: MS_HOMEROOM_PORTRAIT_DEFAULTS as any,
+  MS_PAPER_PORTRAIT: MS_PAPER_PORTRAIT_DEFAULTS as any,
+  MS_PLAYLIST_PORTRAIT: MS_PLAYLIST_PORTRAIT_DEFAULTS as any,
+  MS_STUDIO_PORTRAIT: MS_STUDIO_PORTRAIT_DEFAULTS as any,
+};
+
+// Title-case a field-key segment for the form label. `school.eye` →
+// "School / Eye", `agenda.0.t` → "Agenda 0 · T". Quick-and-dirty so
+// the operator gets *something* readable; per-template overrides
+// can come later for prettier labels.
+function prettyFieldLabel(key: string): string {
+  return key
+    .split('.')
+    .map((seg) => {
+      // Numeric segments stay as-is so "agenda.0.t" reads "Agenda 0 T"
+      if (/^\d+$/.test(seg)) return seg;
+      // Tiny tokens get fully uppercased ("t" → "T", "h1" → "H1")
+      if (seg.length <= 2) return seg.toUpperCase();
+      return seg.charAt(0).toUpperCase() + seg.slice(1);
+    })
+    .join(' · ');
+}
+
+// Title-case a section name (the top-level dot-prefix). `school` →
+// "School identity", `agenda` → "Agenda".
+function prettySectionLabel(prefix: string): string {
+  if (!prefix) return 'Other';
+  return prefix.charAt(0).toUpperCase() + prefix.slice(1);
+}
+
 export function PropertiesPanel() {
   // Atomic selectors — the old `const { zones, selectedIds, updateZone,
   // meta } = useBuilderStore()` subscribed this component (1000+ lines,
@@ -1291,9 +1357,71 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextAreaField key="tickerMessage" label="Typewriter crawl" value={cfg.tickerMessage || ''} rows={3} onChange={(v) => setField({ tickerMessage: v })} />);
       break;
     }
-    default:
+    default: {
+      // Generic MS pack handler — all 16 MS widget types (8 landscape +
+      // 8 portrait) share this same auto-form generator. Each widget
+      // exports its DEFAULTS object keyed by dot-notation field paths.
+      // We render one editable field per key, grouped into sections by
+      // the dot-prefix. Saves writing 16 hand-built switch cases (each
+      // 80-100 fields long — over 1000 lines of boilerplate).
+      const msDefaults = MS_DEFAULTS_BY_TYPE[zone.widgetType];
+      if (msDefaults) {
+        const SH = (key: string, label: string) => (
+          <div
+            key={`sh-${key}`}
+            className="pt-3 pb-1 px-1 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200"
+          >
+            {label}
+          </div>
+        );
+        // Group keys by their top-level dot-prefix so the form has
+        // logical sections matching the widget's regions (school /
+        // agenda / clubs / ticker / etc.).
+        const groups = new Map<string, string[]>();
+        for (const k of Object.keys(msDefaults)) {
+          const prefix = k.includes('.') ? k.split('.')[0] : '_root';
+          const list = groups.get(prefix) ?? [];
+          list.push(k);
+          groups.set(prefix, list);
+        }
+        for (const [prefix, keys] of groups) {
+          fields.push(SH(prefix, prettySectionLabel(prefix === '_root' ? 'general' : prefix)));
+          for (const key of keys) {
+            const defaultValue = msDefaults[key] || '';
+            const currentValue = (cfg[key] ?? '') as string;
+            // Multi-line if the default has a newline OR is long. Most
+            // ticker / lede fields trip this, which is what we want —
+            // they need the bigger box for editing.
+            const looksLong = defaultValue.length > 80 || /\n/.test(defaultValue);
+            if (looksLong) {
+              fields.push(
+                <TextAreaField
+                  key={key}
+                  label={prettyFieldLabel(key)}
+                  value={currentValue}
+                  placeholder={defaultValue}
+                  rows={3}
+                  onChange={(v) => setField({ [key]: v })}
+                />,
+              );
+            } else {
+              fields.push(
+                <TextField
+                  key={key}
+                  label={prettyFieldLabel(key)}
+                  value={currentValue}
+                  placeholder={defaultValue}
+                  onChange={(v) => setField({ [key]: v })}
+                />,
+              );
+            }
+          }
+        }
+        break;
+      }
       // Unknown widget — fall through to JSON-only editing in Advanced
       return null;
+    }
   }
 
   return (

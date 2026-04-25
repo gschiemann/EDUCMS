@@ -112,7 +112,7 @@ export interface MsArcadePortraitConfig {
   'newsbar.message'?: string;
 }
 
-const DEFAULTS: Required<MsArcadePortraitConfig> = {
+export const DEFAULTS: Required<MsArcadePortraitConfig> = {
   'school.name': 'WESTRIDGE.MS',
   'school.team': 'HOUSE: OTTERS',
   'school.lv': '7',

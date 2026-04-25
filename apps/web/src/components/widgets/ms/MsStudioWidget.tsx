@@ -116,7 +116,7 @@ export interface MsStudioConfig {
   'ticker.callsign'?: string;
 }
 
-const DEFAULTS: Required<MsStudioConfig> = {
+export const DEFAULTS: Required<MsStudioConfig> = {
   // HUD — ON AIR cabochon
   'status.label': 'ON AIR',
   // HUD — school lockup

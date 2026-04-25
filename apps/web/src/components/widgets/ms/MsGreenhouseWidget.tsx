@@ -142,7 +142,7 @@ export interface MsGreenhouseConfig {
   'ticker.6'?: string;
 }
 
-const DEFAULTS: Required<MsGreenhouseConfig> = {
+export const DEFAULTS: Required<MsGreenhouseConfig> = {
   'school.eye': 'The Lobby Conservatory',
   'school.name': 'Westridge ',
   'school.name2': 'Middle',

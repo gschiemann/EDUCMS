@@ -151,7 +151,7 @@ export interface MsHomeroomConfig {
   'announcement.message'?: string;
 }
 
-const DEFAULTS: Required<MsHomeroomConfig> = {
+export const DEFAULTS: Required<MsHomeroomConfig> = {
   // School / brand
   'school.team': 'Home of the Otters',
   'school.name': 'Westridge Middle',

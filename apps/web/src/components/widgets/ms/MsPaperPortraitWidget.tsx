@@ -172,7 +172,7 @@ export interface MsPaperPortraitConfig {
   'ticker.endmark'?: string;
 }
 
-const DEFAULTS: Required<MsPaperPortraitConfig> = {
+export const DEFAULTS: Required<MsPaperPortraitConfig> = {
   'weather.label': 'High',
   'weather.high': '62',
   'weather.low_label': 'Low',

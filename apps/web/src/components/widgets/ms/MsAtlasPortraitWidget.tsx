@@ -132,7 +132,7 @@ export interface MsAtlasPortraitConfig {
   'ticker.5'?: string;
 }
 
-const DEFAULTS: Required<MsAtlasPortraitConfig> = {
+export const DEFAULTS: Required<MsAtlasPortraitConfig> = {
   // Top band — brand
   'brand.eye': 'Middle School Atlas',
   'brand.name': 'WESTRIDGE.MS',

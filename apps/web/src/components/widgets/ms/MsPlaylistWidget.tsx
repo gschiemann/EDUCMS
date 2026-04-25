@@ -134,7 +134,7 @@ export interface MsPlaylistConfig {
   'ticker.5'?: string;
 }
 
-const DEFAULTS: Required<MsPlaylistConfig> = {
+export const DEFAULTS: Required<MsPlaylistConfig> = {
   // Brand
   'brand.eyebrow': 'Westridge MS · Lobby Display',
   'brand.suffix': 'FM',
