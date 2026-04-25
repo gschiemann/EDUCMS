@@ -147,13 +147,31 @@ export function HelpDrawer() {
       </button>
 
       {open && (
+        // Inline-style everything load-bearing: position, size, layout,
+        // background, z-index. Tailwind's `bg-white` was being silently
+        // overridden in the partner's session — body rendered as
+        // transparent and the templates-page hero gradient bled through.
+        // Inline `style` wins at specificity 1000, so this can't be
+        // clobbered by a stray `bg-transparent` Tailwind class loaded
+        // later in the CSS layer order.
         <aside
           ref={panelRef}
           role="dialog"
           aria-modal="false"
           aria-label="Help Center"
-          className="fixed top-3 right-3 bottom-3 z-[60] w-[min(420px,calc(100vw-1.5rem))] flex flex-col rounded-2xl border border-slate-200 shadow-[0_24px_60px_rgba(15,23,42,0.18)] overflow-hidden"
-          style={{ background: '#ffffff' }}
+          className="rounded-2xl border border-slate-200 shadow-[0_24px_60px_rgba(15,23,42,0.18)]"
+          style={{
+            position: 'fixed',
+            top: '12px',
+            right: '12px',
+            height: 'calc(100vh - 24px)',
+            width: 'min(420px, calc(100vw - 24px))',
+            display: 'flex',
+            flexDirection: 'column',
+            background: '#ffffff',
+            zIndex: 60,
+            overflow: 'hidden',
+          }}
         >
           {/* Header — explicit white background. */}
           <header
