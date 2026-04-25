@@ -1,12 +1,21 @@
 "use client";
 
 import { useRef, useEffect, useState, useCallback } from 'react';
+import { useDroppable } from '@dnd-kit/core';
 import { useBuilderStore } from './useBuilderStore';
 import { BuilderZone } from './BuilderZone';
 import { snapMove, snapResize } from './snap-engine';
 import type { ResizeHandle, SnapLine, Zone } from './types';
 
 export function BuilderCanvas() {
+  // dnd-kit drop target. BuilderShell.handleDragEnd checks
+  // `over.id === 'builder-canvas'` to know whether to add a zone, but
+  // before this fix the canvas wasn't registered as a droppable at all
+  // — so palette / variant drags resolved to `over === null` and the
+  // dropped widget never landed on the canvas. Operator could drag a
+  // widget tile across the canvas surface and nothing would place.
+  // Critical bug for the headline template-builder feature.
+  const { setNodeRef: setDroppableRef } = useDroppable({ id: 'builder-canvas' });
   // Atomic selectors — BuilderCanvas paints every frame of every drag,
   // so subscribing to the whole store was forcing re-renders on every
   // unrelated state tick (e.g. isDirty flag flipping). Per-key lets
@@ -206,7 +215,13 @@ export function BuilderCanvas() {
         }}
       >
         <div
-          ref={canvasRef}
+          // Compose refs: BuilderCanvas needs the DOM node for its own
+          // pointer-drag math (canvasRef), and dnd-kit needs it as the
+          // drop-target node (setDroppableRef). Both run on every drop.
+          ref={(node) => {
+            canvasRef.current = node;
+            setDroppableRef(node);
+          }}
           className="absolute inset-0 rounded-lg overflow-hidden"
           style={{ ...background }}
           onPointerDown={onCanvasPointerDown}

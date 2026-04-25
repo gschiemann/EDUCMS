@@ -1699,7 +1699,57 @@ export default function PlaylistsPage() {
               screenMap={playlistScreenMap[pl.id] || { screens: [], groups: [], scheduleCount: 0, activeCount: 0 }}
               onOpen={() => handleSelect(pl)}
               onDelete={() => deletePlaylist.mutate(pl.id)}
-              onToggleActive={(active: boolean) => setPlaylistActive.mutate({ id: pl.id, active })}
+              onToggleActive={async (active: boolean) => {
+                // Going INACTIVE — no conflict possible, just flip.
+                if (!active) {
+                  setPlaylistActive.mutate({ id: pl.id, active: false });
+                  return;
+                }
+                // Going ACTIVE — find any OTHER playlist currently
+                // live on a screen this playlist also targets, so we
+                // can prompt the operator to replace it. Without this
+                // both switches stayed green simultaneously and the
+                // partner had to chase down the old toggle to flip it
+                // off by hand. Reported verbatim:
+                //   "i hit the one switch and if existing content is
+                //   playing a get a quick warning that asks do you
+                //   want to replace the existing playlist and i hit
+                //   yes and my switch goes to green on the new one
+                //   and off on the old one"
+                const myMap = playlistScreenMap[pl.id];
+                const myScreenIds = new Set<string>(
+                  (myMap?.screens || []).map((s: any) => s.id),
+                );
+                const myGroupIds = new Set<string>(
+                  (myMap?.groups || []).map((g: any) => g.id),
+                );
+                const conflicts: any[] = [];
+                for (const other of playlists || []) {
+                  if (other.id === pl.id) continue;
+                  const om = playlistScreenMap[other.id];
+                  if (!om || om.activeCount === 0) continue;
+                  const overlap =
+                    (om.screens || []).some((s: any) => myScreenIds.has(s.id)) ||
+                    (om.groups || []).some((g: any) => myGroupIds.has(g.id));
+                  if (overlap) conflicts.push(other);
+                }
+                if (conflicts.length > 0) {
+                  const names = conflicts.map((c) => c.name).join(', ');
+                  const ok = window.confirm(
+                    `"${names}" ${conflicts.length === 1 ? 'is' : 'are'} currently playing on the same target. Replace ${conflicts.length === 1 ? 'it' : 'them'} with "${pl.name}"?`,
+                  );
+                  if (!ok) return;
+                  // Deactivate every conflict in parallel, then turn
+                  // this one on. We don't await individual results —
+                  // setPlaylistActive's optimistic update flips the
+                  // UI immediately, and the server-side cascade is
+                  // tolerant of out-of-order requests.
+                  for (const c of conflicts) {
+                    setPlaylistActive.mutate({ id: c.id, active: false });
+                  }
+                }
+                setPlaylistActive.mutate({ id: pl.id, active: true });
+              }}
               togglePending={setPlaylistActive.isPending}
               layout={playlistView}
             />

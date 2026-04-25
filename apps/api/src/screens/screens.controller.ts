@@ -660,7 +660,8 @@ export class ScreensController {
               items: emergencyPlaylist.items.map(item => ({
                 url: item.asset.fileUrl,
                 duration_ms: item.durationMs,
-                sequence: item.sequenceOrder
+                sequence: item.sequenceOrder,
+                mime_type: item.asset.mimeType ?? null,
               }))
             }];
           }
@@ -804,7 +805,16 @@ export class ScreensController {
       items: s.playlist.items.map(pi => ({
         url: pi.asset.fileUrl,
         duration_ms: pi.durationMs,
-        sequence: pi.sequenceOrder
+        sequence: pi.sequenceOrder,
+        // Surface mimeType so the player knows whether to render the
+        // item as <video>, <img>, or <iframe>. Without this the player
+        // had to guess from the URL extension (`/\.(mp4|webm)$/i`),
+        // which breaks for URL assets (text/html — no extension match
+        // → silently rendered as a broken <img>) and PDF assets.
+        // The Asset row always has a real mimeType set: 'text/html'
+        // for URL assets via /assets/url, 'application/pdf' for PDFs,
+        // 'video/*' or 'image/*' for uploads.
+        mime_type: pi.asset.mimeType ?? null,
       }))
     }));
 

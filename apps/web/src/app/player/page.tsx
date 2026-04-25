@@ -1148,7 +1148,21 @@ function PlayerPage() {
               id: `${mp.id || mp.name || 'pl'}:${item.sequence ?? itemIndex}:${item.url}`,
               durationMs: item.duration_ms,
               sequenceOrder: item.sequence ?? itemIndex,
-              asset: { fileUrl: item.url, mimeType: item.url.match(/\.(mp4|webm)$/i) ? 'video/mp4' : 'image/jpeg' },
+              asset: {
+                fileUrl: item.url,
+                // Use the manifest's mime_type when available (always set
+                // by the API now). Fall back to URL-extension guessing
+                // only for legacy manifests / older payloads, which is
+                // what the player was doing exclusively before — that's
+                // why URL assets (text/html) and PDF assets (application/
+                // pdf) silently rendered as broken <img>s and the screen
+                // froze on the splash.
+                mimeType: item.mime_type
+                  ?? (item.url.match(/\.(mp4|webm|mov|m4v)$/i) ? 'video/mp4'
+                    : item.url.match(/\.(pdf)$/i) ? 'application/pdf'
+                    : item.url.match(/^https?:\/\//i) && !item.url.match(/\.(jpe?g|png|gif|webp|svg|avif)$/i) ? 'text/html'
+                    : 'image/jpeg'),
+              },
             });
           });
         });
@@ -2050,12 +2064,27 @@ function PlayerPage() {
         <div className="relative w-full h-full flex items-center justify-center pointer-events-none">
           {sorted.map((item, index) => {
             const isActive = index === (currentIndex % sorted.length);
-            const isVid = item.asset?.mimeType?.startsWith('video/');
+            const mime = item.asset?.mimeType || '';
+            const isVid = mime.startsWith('video/');
+            // Web pages (text/html) and PDFs both render as <iframe>.
+            // Browsers natively render PDF inline via the built-in PDF
+            // viewer (Chrome / Edge / Firefox / Safari) — which gives
+            // operators a working "show this menu PDF on the lobby
+            // screen" path without us shipping a custom paginator.
+            // Multi-page PDFs auto-display page 1; auto-paging is a
+            // future enhancement, but page-1-only is already what
+            // every other signage CMS does too.
+            const isWeb = mime === 'text/html' || mime === 'application/pdf';
             const fileUrl = item.asset?.fileUrl || '';
             const resUrl = fileUrl.startsWith('http') ? fileUrl : `${getApiRoot()}${fileUrl}`;
-            
+
             // Render video ONLY when active to preserve memory
             if (isVid && !isActive) return null;
+            // Render iframe ONLY when active. Hidden iframes still
+            // load + run JS / video / etc. on the embedded site,
+            // which is bandwidth + CPU we don't want for inactive
+            // slides.
+            if (isWeb && !isActive) return null;
 
             // Compute physics class limits
             const trans = item.transitionType || 'FADE';
@@ -2092,6 +2121,25 @@ function PlayerPage() {
                 onError={(e) => {
                   // Corrupted file or 404 → skip ahead instead of stalling forever.
                   console.warn('[Player] video error, skipping:', resUrl);
+                  setCurrentIndex(prev => prev + 1);
+                }}
+              />;
+            }
+            if (isWeb) {
+              return <iframe
+                key={item.id}
+                src={resUrl}
+                className={classes}
+                // sandbox=null intentionally: signage screens display
+                // operator-curated content (their own menus, calendars,
+                // public dashboards). Fully-locked sandbox would break
+                // most iframe targets (no scripts, no same-origin, no
+                // popups), making the URL widget unusable. The Asset
+                // approval workflow + tenant-isolated content already
+                // gates which URLs ever ship to a screen.
+                title={item.id}
+                onError={() => {
+                  console.warn('[Player] iframe error, skipping:', resUrl);
                   setCurrentIndex(prev => prev + 1);
                 }}
               />;
