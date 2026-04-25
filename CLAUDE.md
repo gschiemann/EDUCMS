@@ -487,6 +487,128 @@ var if a customer demands it.
 
 ---
 
+**Sprint 8b — Indoor floor plans + per-screen emergency targeting**
+
+Sprint 8 covers the *outdoor* "where in the city" map view. Sprint 8b
+covers the *indoor* "where in the building" view AND the matching
+emergency model — instead of one tenant-wide alert, you trigger
+**different content on different screens at the same time** based on
+where the threat is and where each screen physically lives.
+
+This is the single biggest emergency-product differentiator from
+Yodeck / Rise Vision / OptiSigns, none of whom do per-screen scoped
+emergencies. Real customer scenarios:
+
+  - Active shooter localized to the gym → gym + adjacent hallway
+    screens show "lockdown immediately, do NOT move." Wing-A
+    classrooms show "lockdown, secure room." Cafeteria shows
+    "evacuate via north exit, NOT central corridor."
+  - Cafeteria flood → only cafeteria screens show the wet-floor
+    alert. Everything else stays on the regular schedule.
+  - Fire in the chemistry lab → lab + adjacent hall show evacuate;
+    everyone else gets "use east stairwell only."
+
+The existing per-tenant `emergencyStatus` model ships ONE alert to
+every screen. That's wrong for situations where the right action
+depends on where you physically are.
+
+- **Floor plan model.** New `FloorPlan` row:
+  `{ id, tenantId, name, buildingLabel, floorLabel, imageUrl,
+     widthPx, heightPx, defaultZoneIds, createdAt }`. The image is a
+  PNG/PDF the operator uploads (their architectural floor plan or a
+  hand-drawn sketch — both are fine). We store dimensions so the
+  drag-drop coordinates stay consistent.
+- **Screen positioning.** Add `Screen.floorPlanId`, `Screen.floorX`,
+  `Screen.floorY` (px coords on the floor plan image). Optional —
+  if a screen isn't placed yet it just doesn't render on the floor
+  plan view. Multi-floor schools get one FloorPlan per floor.
+- **Zones.** New `FloorZone` row: `{ id, floorPlanId, name, color,
+   shape (polygon JSON: array of {x,y} px coords) }`. Operator draws
+  named zones on the floor plan ("Wing A", "Cafeteria", "Gym").
+  Screens inside a zone polygon are auto-grouped for triggers.
+- **Per-screen emergency override.** New `ScreenEmergencyOverride`:
+  `{ id, screenId, type (LOCKDOWN/EVACUATE/WEATHER/ALL_CLEAR),
+    severity, mediaUrl, textBlob, expiresAt, triggeredByUserId,
+    triggeredAt, scopeNote }`. The player checks this BEFORE
+  falling back to the tenant-wide override. Per-screen wins.
+- **Pre-cached scoped emergency assets.** The Sprint 7 emergency
+  cache tier already pre-fetches all 4 panic-type playlists for the
+  tenant. Extend it: also pre-fetch the per-zone scoped variants
+  (e.g. "lockdown - hold position" vs "lockdown - evacuate now")
+  if any are configured. Disk impact is small — emergency content
+  is text + a few images, not video. Cache tier still capped at
+  the 1GB hard floor.
+- **Trigger UX — three modes the operator picks before sending:**
+    1. **Whole tenant** — same as today, identical content everywhere.
+    2. **Pick zones** — click 1+ zones on the floor plan, pick a
+       different override per zone (or one for all selected). The
+       remaining screens default to the global override or stay on
+       schedule based on operator choice.
+    3. **Pick individual screens** — multi-select via checkbox or
+       lasso on the floor plan. Per-screen overrides.
+  Below the picker: per-scope content selector ("This zone shows:
+  [Lockdown - hold]" vs "[Lockdown - evacuate]"). Hold-to-trigger
+  3-second confirm still applies — UX safeguard is unchanged.
+- **Pre-saved scenarios.** "Active shooter — gym" can be a saved
+  template that pre-selects the gym zone with "lockdown - evacuate"
+  and pre-selects all other zones with "lockdown - hold position."
+  Operator picks the scenario, hits trigger, all the per-zone
+  routing happens in one signed pub/sub burst. Critical for the
+  drill scenario where seconds matter.
+- **Pub/sub scoping** — the existing signed Redis channels are
+  already per-scope (`tenant:X` / `group:X` / `device:X`). We just
+  start broadcasting on `device:<screenId>` channels for per-screen
+  overrides. Player already subscribes to its own device channel.
+  Zero protocol change.
+- **Audit log entry.** Includes the floor plan id + the zone /
+  screen list + the scenario id used. Forensics: "at 9:42:03 on
+  2026-04-19, Operator X triggered lockdown on screens
+  [list of 14 screen ids in zones [Gym, Hall-2A, Hall-2B] using
+  scenario 'Active shooter - gym wing'." Every detail captured
+  immutably for incident review.
+- **Drill mode.** Same UX, but writes a separate `DrillRun` row +
+  audits as a drill, doesn't actually flip emergencyStatus on the
+  player. Lets safety officers practice the routing without taking
+  down screens. Required for SROs / state safety audits.
+- **Upload pipeline.** Floor plans are uploaded just like assets
+  (Supabase storage). PDF inputs auto-convert to PNG via the same
+  Sprint 10 pipeline (libreoffice or pdf-lib). Multiple-page PDFs
+  produce one FloorPlan per page, named "Building - Floor 1",
+  "Building - Floor 2", etc.
+- **Mobile triggering.** The mobile panic page (already shipped) gets
+  a "scope" picker — default "whole tenant" but operator can
+  pick a saved scenario from the dropdown. Zone/screen picking on a
+  small touchscreen is hard, so phone defaults to scenario-based
+  triggering; floor-plan-driven triggering stays on the desktop
+  console where the precision actually exists.
+- **Privacy / FERPA.** Floor plans are sensitive (operational
+  security). They're tenant-scoped and only DISTRICT/SCHOOL_ADMIN
+  can view + edit. Image storage URLs are signed and short-TTL
+  (Sprint 7 pattern). Never indexed, never shared cross-tenant.
+- **Why this is a moat.** Per-screen scoped emergency content is
+  what enterprise / multi-building schools want and no signage
+  product offers it. Combined with our existing signed pub/sub +
+  immutable audit log + emergency-cache tier (offline-first),
+  Sprint 8b makes EduCMS the only K-12 signage product that can
+  credibly claim "we route the right alert to the right room
+  in 200ms even if WiFi is partially down."
+
+Implementation order:
+  1. FloorPlan model + upload UI + image hosting (cheapest piece).
+  2. Drag-drop screen positioning on the floor plan view.
+  3. Zone drawing tool (polygon editor).
+  4. Per-screen emergency override schema + player rendering
+     priority (per-screen > per-tenant).
+  5. Trigger UX with zone / screen / scenario picker.
+  6. Pre-saved scenarios + drill mode.
+  7. Mobile panic page scenario picker.
+
+Builds on Sprint 7 (offline cache for per-zone variants) and shares
+the geographic map view with Sprint 8 (toggle: outdoor map ↔ indoor
+floor plan).
+
+---
+
 **Sprint 9 — Auto-branding (paste your school's URL, we match it)**
 
 Every district wants the CMS to "look like our school." Instead of
@@ -804,6 +926,203 @@ message that flips a switch, not a content download.
   - **Bonus:** same export bundle format works for "preload" during
     initial APK provisioning — sysadmins can ship a USB with a
     pre-paired template before any WiFi is configured.
+
+---
+
+**Version 2 — Safety-Centric Platform Pivot (Sprint 12+)**
+
+Strategic frame: stop selling "another digital signage CMS with
+alerts" — become a **school-and-district incident coordination
+platform that happens to own the screens natively**. The signage
+fleet becomes one endpoint of an orchestration layer that also
+handles incident workflow, accountability, responder context, and
+multi-modal delivery. Pricing shifts from $/screen to $/school +
+Command tier + Responder Bridge enterprise tier — collapses the
+"signage + separate safety tool" buying motion into one product
+that still comes in below the stitched-together alternative.
+
+**Core architectural correction (the load-bearing change):** keep
+the existing cloud stack as **system-of-record** (admin UX,
+tenancy, storage, reporting). Add a **campus-local edge service**
+as the **system-of-action** during outages or urgent triggers. WAN
+down does not mean alerts stop. This single change is what shifts
+us from "good signage app" toward "credible safety platform."
+
+### 7 core workstreams
+
+**WS-1 · Edge alert fabric.** Campus-local alert broker (simplest
+form: Android player APK becomes dual-role — one player on each
+LAN is "leader" via leader-elect, brokers alerts when WAN is
+down). Signed alert envelopes, player heartbeat service, local
+cache of takeover layouts, LAN trigger path, cloud-to-edge sync,
+dry-contact + webhook adapter for fire/access/door systems.
+**Acceptance:** A campus can trigger and display an alert with WAN
+down; online players return proof-of-display; normal content
+resumes correctly after all-clear.
+
+**WS-2 · Incident command engine.** Replaces the current single
+`Tenant.emergencyStatus` flag with a proper FSM:
+`OPEN → ACK → ACTIVE → RECOVERY → CLEARED`. Per-incident-type
+playbooks (lockdown / shelter / evacuate / medical / facilities /
+district advisory), severity levels, zone routing, role-based
+tasks, escalation paths, structured all-clear and recovery stages.
+Every transition immutably AuditLog'd.
+**Acceptance:** Admins can define response playbooks per incident
+type; an incident has a state, an owner, and required next steps.
+
+**WS-3 · Multi-modal endpoint layer.** Screen takeover ✓ already.
+Add: desktop takeover (Windows/Mac agent or browser tab claim),
+mobile push (APNs/FCM), email (Sendgrid), SMS + voice (Twilio),
+PA / IP-speaker hooks (Valcom / Atlas / SingleWire InformaCast
+Fusion — partner-gated, deferred), TTS, multilingual templates,
+public-view vs staff-view rendering split.
+**Acceptance:** One incident sends differentiated outputs to
+students, staff, admins, and responders from a single trigger.
+
+**WS-4 · Responder bridge — Raptor / RapidSOS connector.** We do
+NOT build 911 origination ourselves (liability + ECC alignment
+burden). Partner with **Raptor** (preferred — already covers PA /
+door-lock / drill management) and / or **RapidSOS** (open
+integration program) as the 911/ECC bridge. We build the facility
+profile (floor plans → covered by Sprint 8b!), aerial map, entry
+instructions, camera RTSP/HLS share-links, door/lock state, site
+contacts, event timeline, secure one-time responder link. Then a
+thin connector exports our incident packet into Raptor/RapidSOS
+format.
+**Acceptance:** First responders open one URL and see site
+context, incident type, location, live updates. **Commercial
+dependency: needs partnership pitch BEFORE the integration code.**
+
+**WS-5 · Accountability + reunification.** Teacher / staff roll
+call (mobile flow: "mark room safe / help / missing"), room
+rosters (fed by Clever SIS — Sprint 2), guardian verification +
+digital signatures, dismissal/release chain, after-action exports.
+Highest single net-new build but highest competitive moat — no
+signage product offers this and the safety-only products (Raptor,
+CrisisGo, Singlewire) all charge separately for it.
+**Acceptance:** Incident commander sees who is accounted for,
+which rooms still need response, and who has been released to
+whom — with auditable timestamps + signatures.
+
+**WS-6 · District command center.** Cross-school dashboard,
+inherited policies (district publishes playbook → schools inherit
+or override), school-level overrides, geofenced district alerts,
+mutual-aid views, district notices, policy versioning. Builds on
+the existing tenant hierarchy.
+**Acceptance:** District admin publishes once and enforces or
+customizes across every school without duplicating content / rules.
+
+**WS-7 · Open integration platform.** Inbound CAP (OASIS standard
+for all-hazard alerts) and IPAWS consumption (FEMA national
+alerting), RSS/Atom feeds, REST + webhook SDK, provider adapter
+framework, test simulator, sandbox tenant, schema docs, policy
+APIs. **Note:** outbound public IPAWS origination is OUT of scope
+unless we deliberately become a FEMA-authorized origination
+software provider — separate authorization model entirely.
+**Acceptance:** A new partner integrates without touching core
+orchestration code; customers can simulate incidents end-to-end
+before go-live.
+
+### 3 above-and-beyond bets (parity → leadership)
+
+**B-1 · Dynamic route intelligence.** Per-screen context-aware
+emergency rendering. Instead of one generic "lockdown" card on
+every display: hallway north of the incident shows "AVOID NORTH
+STAIRWELL," adjacent wings show "SHELTER IN CURRENT ROOM,"
+lobbies show "DO NOT ENTER," reunification screens pivot to
+parent instructions after all-clear. Sprint 8b indoor floor
+plans + per-screen overrides lays the data foundation; this is
+the routing logic on top. **Crown jewel — nobody else does this.**
+
+**B-2 · Proof + replay.** Capture which screens were online,
+what each rendered, when each acknowledgment arrived, what
+playbook step was completed, what responder packet was opened.
+Auto-generate incident replay + after-action PDF. AuditLog
+already captures most of this — just needs the UI + export.
+Cheap for us, expensive for competitors to retrofit.
+
+**B-3 · Controlled AI assistance.** Template-fill only. Summarize
+incoming context. Draft staff + parent follow-ups from verified
+fields. Generate after-action reports from logged data.
+**Never** let an LLM invent evacuation language, responder
+actions, or legal/medical instructions in real time. Scope
+narrowly; feature-flagged.
+
+### Pricing tiers (collapses 2-3 vendor purchases into one)
+
+| Tier | Posture | Includes | Why |
+|---|---|---|---|
+| **CMS Core** | $5–7/screen/mo, self-serve | Content, playlists, templates, orientation, health, standard takeover alerts | Undercuts ScreenCloud/Carousel materially |
+| **School Unlimited** | $1,499–1,999/school/yr | Unlimited displays, district/school tenancy, alert authoring, CAP/custom provider ingest, all-clear handling, district policies | Sits near Rise Enterprise but adds native safety value |
+| **Command** | +$1,000–2,000/school/yr | Incident workflows, accountability, drill reporting, reunification-lite, responder packet, staff views | Undercuts the "signage + separate safety tool" combo |
+| **District Ops** | Quote / annual contract | Cross-school command center, mutual-aid mesh, SSO, audit exports, premium support, policy governance | Districts buy predictability + governance |
+| **Responder Bridge** | Assisted sale only | 911/ECC integrations, structured responder data, testing support, partner onboarding | Real support burden = real margin |
+
+**Bonus tier — Free Pilot.** 1 school / ≤5 screens / 90 days /
+full Command features. Superintendents won't write a PO for
+software they haven't seen run in their hallways. Free pilot →
+Command upgrade is the funnel.
+
+### What we deliberately do NOT build (liability + market structure)
+
+- **Direct 911 call origination.** Raptor/RapidSOS handle this.
+  Building it ourselves means owning ECC alignment, configuration
+  testing, and policy workflow with every PSAP — see RapidSOS's
+  own docs warning that silent alarms only work when school + ECC
+  pre-align on testing/config/workflow.
+- **Outbound public IPAWS origination.** Requires FEMA
+  authorization as an alert-origination software provider.
+  Inbound IPAWS consumption is fine; origination is a different
+  authorization tier we'd take on deliberately or not at all.
+- **PA / IP-speaker proprietary protocols** (Valcom, Atlas,
+  SingleWire InformaCast Fusion). Defer; let Raptor cover.
+- **Weapon / anomaly detection** (gunshot detection, AI camera
+  scanning). Vendor-partner if customers ask.
+- **Anonymous tipline.** CrisisGo's territory; later adjacency.
+
+### Phase plan (no shortcuts — Phase 1 must precede everything)
+
+**Phase 1 — Foundation (must precede everything; freeze schemas
+before code).** Event-schema freeze (CAP v1.2-compatible from day
+one so CAP inbound is free later — incident type, severity,
+zones, signed envelope, proof-of-display ACK shape). Campus edge
+broker (extend offline-first work; player APK becomes dual-role
+leader-elect — no new hardware). Incident state machine
+(`Tenant.emergencyStatus` → proper FSM). Proof-of-display (extend
+existing heartbeat to include `lastRenderedIncidentId` +
+timestamp; we get incident replay data for free).
+**After Phase 1, we ship as a "credible edge-first emergency
+platform" — already above all cloud-only signage CMS competitors.**
+
+**Phase 2 — Differentiation (responder + accountability).**
+Facility profile (floor plans, contacts, cameras — overlaps
+Sprint 8b). Raptor SOS integration (commercial pitch first, then
+adapter code). Accountability — roll call (largest single UI
+build, highest customer value). Reunification-lite (guardian
+verification + release-chain audit; pairs with Clever SIS).
+
+**Phase 3 — District + openness.** District command center
+(formalize policy inheritance on existing tenant hierarchy).
+CAP/IPAWS inbound. Webhook + provider SDK.
+
+**Phase 4 — Leadership.** Dynamic route intelligence (B-1).
+Proof + replay (B-2). Controlled AI assistance (B-3).
+
+### Open questions that gate Phase 2
+
+1. **Green-light on pitching Raptor.** Need to draft partnership
+   email + one-pager spec before code. RapidSOS as fallback if
+   Raptor declines (more open integration program; same adapter
+   shape on our side).
+2. **Phase 1 ordering confirmation.** Schema freeze before
+   anything else is non-negotiable — parallelizing too early
+   without frozen event/policy schemas produces a lot of
+   convincing code that doesn't converge.
+3. **Accountability scope.** Full SIS-driven reunification ≈ 2-3
+   months. Roll-call only first ≈ 3 weeks. Lite-then-layer or
+   hold until full?
+4. **Free pilot policy.** 1 school / ≤5 screens / 90 days
+   confirmed?
 
 ---
 
