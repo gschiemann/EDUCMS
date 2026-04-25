@@ -520,6 +520,19 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     screenWidth: 3840, screenHeight: 2160, bgColor: '#f2ecd9',
     zones: [{ name: 'Scene', widgetType: 'HS_ZINE', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
+  // ─── MS Pack — first port (Arcade) ──────────────────────────────
+  // Approved 2026-04-25 — matches scratch/design/arcade-ms-v2.html.
+  // React widget at apps/web/src/components/widgets/ms/MsArcadeWidget.tsx.
+  // Six more (atlas, fieldnotes, greenhouse, homeroom, paper, playlist,
+  // studio) are still HTML mockups awaiting React port.
+  {
+    id: 'preset-ms-arcade',
+    name: '🕹️ Arcade — Quest Log & Leaderboard',
+    description: 'Retro game-HUD lobby — pixel borders, chunky 8-bit type, quest-log agenda, XP bar countdown, top-scores leaderboard, BOSS BATTLE × news ticker bottom bar. Press Start 2P + VT323 + Space Grotesk.',
+    category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0d0d1a',
+    zones: [{ name: 'Scene', widgetType: 'MS_ARCADE', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
   {
     id: 'preset-cafeteria-chalkboard',
     name: '🌿 Animated Cafeteria · Chalkboard',
@@ -532,7 +545,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     id: 'preset-cafeteria-foodtruck',
     name: '🚚 Animated Cafeteria · Food Truck (Classic)',
     description: 'Food-truck service window — striped awning, order-window frame, chalkboard menu, weekly menu editor.',
-    category: 'CAFETERIA', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    category: 'CAFETERIA', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#fef3c7',
     zones: [{ name: 'Scene', widgetType: 'ANIMATED_CAFETERIA_FOODTRUCK', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
@@ -556,7 +569,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     id: 'preset-hallway-schedule',
     name: '📘 Animated Hallway Schedule',
     description: 'Notebook-paper hallway schedule — class periods list, current-period auto-highlight, weather + announcement cards, ticker.',
-    category: 'HALLWAY', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    category: 'HALLWAY', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#fef3c7',
     zones: [{ name: 'Scene', widgetType: 'ANIMATED_HALLWAY_SCHEDULE', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
@@ -628,7 +641,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     id: 'preset-bulletin-hallway',
     name: '📌 Bulletin Board · Hallway',
     description: 'Cork-board hallway layout — pinned index cards, washi tape corners, schedule rows, attendance pin.',
-    category: 'HALLWAY', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    category: 'HALLWAY', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#c08457',
     zones: [{ name: 'Scene', widgetType: 'BULLETIN_HALLWAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
@@ -636,7 +649,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     id: 'preset-bulletin-cafeteria',
     name: '📌 Bulletin Board · Cafeteria',
     description: 'Cork-board cafeteria menu — pinned plate polaroid, index-card menu items, chef’s memo card.',
-    category: 'CAFETERIA', orientation: 'LANDSCAPE', schoolLevel: 'UNIVERSAL',
+    category: 'CAFETERIA', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#c08457',
     zones: [{ name: 'Scene', widgetType: 'BULLETIN_CAFETERIA', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
