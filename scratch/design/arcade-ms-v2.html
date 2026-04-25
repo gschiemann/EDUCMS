@@ -225,33 +225,38 @@
   /* v2.2: shrank 640 → 600 so the last quest row ("LUNCH / chicken
      & rice / 7th grade") doesn't crowd the pink bar below. New
      bottom y = 1920, newsbar top = 1990, gap = 70px. */
-  /* v2.6: shifted to 1380 because xpbar now ends at 1360. */
+  /* v2.6: shifted to 1380 because xpbar now ends at 1360.
+     v2.7: row content was overflowing the 590px panel by ~130px
+     (the LUNCH row was bleeding into the pink boss-battle bar
+     below). Two-part fix: (1) tighter row content [smaller fonts,
+     less padding, no min-height], so 6 rows in 3-row × 2-col grid
+     fit inside the panel; (2) overflow:hidden as a safety net so
+     any future content that does spill clips at the panel border
+     instead of crashing into the newsbar. */
   .board { position:absolute; top: 1380px; left: 64px; width: 2400px; height: 590px;
     background: var(--panel); border: 6px solid var(--ink); box-shadow: 16px 16px 0 #000;
-    padding: 36px 52px 28px; }
-  .board .head { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom: 28px; padding-bottom: 22px; border-bottom: 5px solid var(--ink); }
-  /* v2: 48 → 64 */
-  .board .head h2 { font-family:'Press Start 2P', monospace; font-size: 64px; color: var(--pink); margin: 0; letter-spacing: .02em; }
-  .board .head .day { font-family:'VT323', monospace; font-size: 48px; color: var(--cyan); letter-spacing: .04em; }
+    padding: 32px 52px 28px; overflow: hidden; }
+  .board .head { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 5px solid var(--ink); }
+  .board .head h2 { font-family:'Press Start 2P', monospace; font-size: 56px; color: var(--pink); margin: 0; letter-spacing: .02em; }
+  .board .head .day { font-family:'VT323', monospace; font-size: 40px; color: var(--cyan); letter-spacing: .04em; }
   .board .head .day b { color: var(--yellow); }
-  .board .list { display: grid; grid-template-columns: 1fr 1fr; gap: 26px 36px; margin-top: 22px; }
+  .board .list { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 28px; margin-top: 14px; }
   .q {
-    display: grid; grid-template-columns: 92px 1fr auto; gap: 28px; align-items: center;
-    background: #0f0f20; border: 3px solid #333355; padding: 22px 28px; position: relative; min-height: 96px;
+    display: grid; grid-template-columns: 76px 1fr auto; gap: 22px; align-items: center;
+    background: #0f0f20; border: 3px solid #333355; padding: 14px 22px; position: relative;
   }
   .q.active { border-color: var(--green); box-shadow: inset 0 0 0 3px rgba(93,242,141,.2); }
   .q.done { opacity: .55; }
   .q .icon {
-    width: 72px; height: 72px; background: var(--purple); display: grid; place-items: center;
-    font-family:'Press Start 2P'; font-size: 28px; color: #fff; border: 4px solid var(--ink);
+    width: 60px; height: 60px; background: var(--purple); display: grid; place-items: center;
+    font-family:'Press Start 2P'; font-size: 22px; color: #fff; border: 3px solid var(--ink);
   }
-  /* v2: 38 → 52 quest title, 24 → 32 room number */
-  .q .txt { font-family:'VT323', monospace; font-size: 52px; color: var(--ink); line-height: 1.15; letter-spacing: .02em; }
+  /* v2.7: shrunk to fit. txt 52→40, span 32→24, reward 36→28. */
+  .q .txt { font-family:'VT323', monospace; font-size: 40px; color: var(--ink); line-height: 1.1; letter-spacing: .02em; }
   .q .txt b { font-weight: normal; color: var(--yellow); }
-  .q .txt span { display:block; font-family:'Space Grotesk'; font-weight: 500; font-size: 32px; color: var(--ink2); letter-spacing: 0; margin-top: 4px; }
-  /* v2: 24 → 36 reward, 16 → 24 status */
-  .q .rw { font-family:'Press Start 2P', monospace; font-size: 36px; color: var(--green); letter-spacing: .04em; text-align: right; white-space: nowrap; }
-  .q .rw span { display:block; color: var(--ink2); font-size: 24px; margin-top: 8px; }
+  .q .txt span { display:block; font-family:'Space Grotesk'; font-weight: 500; font-size: 24px; color: var(--ink2); letter-spacing: 0; margin-top: 2px; }
+  .q .rw { font-family:'Press Start 2P', monospace; font-size: 28px; color: var(--green); letter-spacing: .04em; text-align: right; white-space: nowrap; }
+  .q .rw span { display:block; color: var(--ink2); font-size: 18px; margin-top: 6px; }
   .q.done .rw { color: var(--muted); }
   .q.active::before {
     content: '▶'; position: absolute; left: -32px; top: 50%; transform: translateY(-50%);

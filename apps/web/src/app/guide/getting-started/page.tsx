@@ -372,11 +372,11 @@ function Chapter4Templates() {
           desc="Friendly, playful — perfect for K-5 lobbies."
         />
         <TemplateTile
-          src="/demo/templates/arcade.html"
-          name="Arcade"
+          src="/demo/templates/middle-school.html"
+          name="Pep Rally"
           tag="Middle"
           tagCls="ms"
-          desc="Game-HUD style for middle-school hallways."
+          desc="Stadium spotlights + scoreboard clock for middle-school lobbies."
         />
         <TemplateTile
           src="/demo/templates/varsity.html"

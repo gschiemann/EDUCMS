@@ -208,9 +208,14 @@ const GALLERY = [
     chipCls: 'bg-amber-100 text-amber-700',
   },
   {
-    src: '/demo/templates/arcade.html',
-    name: 'Arcade',
-    blurb: 'Game-HUD style for middle-school hallways.',
+    // v2.1 fix: was '/demo/templates/arcade.html' — but that was a
+    // design mockup, not a productized React template. Swapped to
+    // the actual Pep Rally MS scene (ANIMATED_WELCOME_MS), which
+    // every tenant can already pick from /templates today. Honest
+    // marketing — only show templates the buyer can actually use.
+    src: '/demo/templates/middle-school.html',
+    name: 'Pep Rally',
+    blurb: 'Stadium spotlights + scoreboard clock for middle-school lobbies.',
     chip: 'Middle',
     chipCls: 'bg-sky-100 text-sky-700',
   },
