@@ -115,17 +115,19 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         width: `${zone.width}%`,
         height: `${zone.height}%`,
         zIndex: zone.zIndex,
-        // Faint zone-color tint + always-visible 1px border in edit
-        // mode so freshly-dropped zones with empty widgets (IMAGE,
-        // VIDEO, LOGO without a src) don't read as "transparent
-        // boxes" — the operator can SEE every zone they've placed
-        // and click into it. Selected zones get a dashed accent
-        // border on top.
-        background: previewMode ? 'transparent' : `${color.bg}80`,
+        // High-contrast white-on-canvas zone that's UNMISTAKABLE in
+        // edit mode. Earlier attempt used `${color.bg}80` (the pale
+        // pastel zone color at 50% opacity) but those pastels are
+        // already #f8/#f0/#fef9 etc., so a half-opacity tint over a
+        // similar-pale canvas was effectively invisible — partner
+        // saw "transparent box". Now: solid white interior + 3px
+        // colored border + colored corner ribbon + label badge.
+        // No way for an empty zone to read as nothing.
+        background: previewMode ? 'transparent' : '#ffffff',
         border: previewMode
           ? 'none'
-          : (selected ? `2px dashed ${color.accent}` : `1px solid ${color.border}`),
-        boxShadow: undefined,
+          : (selected ? `3px dashed ${color.accent}` : `3px solid ${color.accent}`),
+        boxShadow: previewMode ? undefined : `0 4px 12px ${color.accent}33`,
         outline: 'none',
         cursor: zone.locked || previewMode ? 'default' : 'move',
         userSelect: 'none',
