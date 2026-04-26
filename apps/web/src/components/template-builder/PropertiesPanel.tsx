@@ -700,7 +700,15 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       }
       if (!isShapeTheme) {
         fields.push(<SelectField key="alignment" label="Alignment" value={cfg.alignment || 'center'} options={[['left','Left'],['center','Center'],['right','Right']]} onChange={(v) => setField({ alignment: v })} />);
-        fields.push(<TextField key="fontSize" label="Font size (px, optional)" value={String(cfg.fontSize ?? '')} placeholder="48" onChange={(v) => setField({ fontSize: v ? parseInt(v) : undefined })} />);
+        // Font family picker — Google Fonts catalog (curated to the
+        // top design-tool fonts so the dropdown isn't 1000 entries).
+        // Inherits from the template theme by default; override sets
+        // a one-off CSS font-family on this zone.
+        fields.push(<FontFamilyField key="fontFamily" label="Font" value={cfg.fontFamily || ''} onChange={(v) => setField({ fontFamily: v })} />);
+        // Font size — Canva-style hybrid: −/+ stepper buttons for
+        // common bumps, numeric input for precision, dropdown for
+        // common preset sizes. Px units across the board.
+        fields.push(<FontSizeField key="fontSize" label="Font size" value={cfg.fontSize ?? null} onChange={(v) => setField({ fontSize: v })} />);
         fields.push(<ColorField key="color" label="Text color" value={cfg.color || '#1e293b'} onChange={(v) => setField({ color: v })} />);
         fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || 'transparent'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
       }
@@ -1677,6 +1685,117 @@ function SelectField({ label, value, options, onChange }: { label: string; value
         className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm cursor-pointer">
         {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
       </select>
+    </div>
+  );
+}
+
+// Curated font catalog — Google Fonts that look good on signage
+// (display weights, real character set). Showing 1000 fonts is hostile
+// to teachers; this is the same shortlist Canva uses for its starter
+// kit plus a few classroom-friendly faces. The browser handles the
+// font-load via Google Fonts CDN — no per-font import needed because
+// every page already imports the full Google Fonts CSS.
+const FONT_OPTIONS: { family: string; sample: string }[] = [
+  { family: '',                         sample: 'Theme default' },
+  { family: 'Inter, sans-serif',        sample: 'Inter — Modern' },
+  { family: 'Fredoka, sans-serif',      sample: 'Fredoka — Friendly' },
+  { family: 'Poppins, sans-serif',      sample: 'Poppins — Clean' },
+  { family: 'Montserrat, sans-serif',   sample: 'Montserrat — Bold' },
+  { family: 'Bebas Neue, sans-serif',   sample: 'Bebas Neue — Display' },
+  { family: 'Anton, sans-serif',        sample: 'Anton — Headline' },
+  { family: 'Oswald, sans-serif',       sample: 'Oswald — Athletic' },
+  { family: 'Caveat, cursive',          sample: 'Caveat — Handwritten' },
+  { family: 'Permanent Marker, cursive',sample: 'Marker — Casual' },
+  { family: 'Indie Flower, cursive',    sample: 'Indie — Doodle' },
+  { family: 'Pacifico, cursive',        sample: 'Pacifico — Script' },
+  { family: 'Fraunces, serif',          sample: 'Fraunces — Editorial' },
+  { family: 'EB Garamond, serif',       sample: 'EB Garamond — Classic' },
+  { family: 'Playfair Display, serif',  sample: 'Playfair — Elegant' },
+  { family: 'VT323, monospace',         sample: 'VT323 — Retro Terminal' },
+  { family: 'Press Start 2P, monospace',sample: 'Press Start 2P — Pixel' },
+];
+
+function FontFamilyField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div>
+      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ fontFamily: value || 'inherit' }}
+        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm cursor-pointer"
+      >
+        {FONT_OPTIONS.map((f) => (
+          <option key={f.family || 'theme'} value={f.family} style={{ fontFamily: f.family || 'inherit' }}>
+            {f.sample}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+// Common signage sizes. Includes the small print teachers occasionally
+// want as well as the chunky display sizes that look right on a 4K wall
+// screen viewed from across a hallway.
+const FONT_SIZE_PRESETS = [12, 14, 16, 18, 20, 24, 32, 40, 48, 56, 64, 72, 96, 128, 160, 200];
+
+function FontSizeField({ label, value, onChange }: { label: string; value: number | null; onChange: (v: number | undefined) => void }) {
+  const current = typeof value === 'number' && Number.isFinite(value) ? value : null;
+  const display = current ?? '';
+  const bump = (delta: number) => {
+    const base = current ?? 48;
+    onChange(Math.max(8, Math.min(400, base + delta)));
+  };
+  return (
+    <div>
+      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
+      <div className="flex items-stretch gap-1">
+        <button
+          type="button"
+          onClick={() => bump(-2)}
+          aria-label="Decrease font size"
+          className="px-3 rounded-lg bg-white border border-slate-200/60 text-xs font-bold text-slate-600 hover:bg-slate-50 active:bg-slate-100 transition-colors shadow-sm"
+        >
+          −
+        </button>
+        <input
+          type="number"
+          inputMode="numeric"
+          min={8}
+          max={400}
+          value={display}
+          placeholder="auto"
+          onChange={(e) => {
+            const n = parseInt(e.target.value, 10);
+            onChange(Number.isFinite(n) ? n : undefined);
+          }}
+          aria-label={label}
+          className="w-16 px-2 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-semibold text-center focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm"
+        />
+        <button
+          type="button"
+          onClick={() => bump(2)}
+          aria-label="Increase font size"
+          className="px-3 rounded-lg bg-white border border-slate-200/60 text-xs font-bold text-slate-600 hover:bg-slate-50 active:bg-slate-100 transition-colors shadow-sm"
+        >
+          +
+        </button>
+        <select
+          value={current ?? ''}
+          onChange={(e) => {
+            const n = parseInt(e.target.value, 10);
+            onChange(Number.isFinite(n) ? n : undefined);
+          }}
+          className="flex-1 px-2 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm cursor-pointer"
+          aria-label={`${label} preset`}
+        >
+          <option value="">Preset…</option>
+          {FONT_SIZE_PRESETS.map((s) => (
+            <option key={s} value={s}>{s}px</option>
+          ))}
+        </select>
+      </div>
     </div>
   );
 }

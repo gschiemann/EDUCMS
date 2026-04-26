@@ -2151,13 +2151,21 @@ function PlayerPage() {
                 key={item.id}
                 src={iframeSrc}
                 className={classes}
-                // sandbox=null intentionally: signage screens display
-                // operator-curated content (their own menus, calendars,
-                // public dashboards). Fully-locked sandbox would break
-                // most iframe targets (no scripts, no same-origin, no
-                // popups), making the URL widget unusable. The Asset
-                // approval workflow + tenant-isolated content already
-                // gates which URLs ever ship to a screen.
+                // Sandbox kept narrow. The proxy was previously stripping
+                // ALL <script> tags as a frame-busting defense, but that
+                // also broke banner rotators, image sliders, and lazy-
+                // loaded content (partner reported e-arc.com banners
+                // rendering blank). Now scripts run, and we rely on the
+                // sandbox attribute instead:
+                //   - allow-scripts: lets the page's JS run (sliders,
+                //     etc.)
+                //   - allow-same-origin: lets the iframe read its own
+                //     resources (cookies, XHR back to its own origin)
+                //   - NOT allow-top-navigation: BLOCKS the classic
+                //     frame-busting attack at the browser level
+                //   - NOT allow-popups, allow-forms, allow-modals — keep
+                //     the iframe contained
+                sandbox="allow-scripts allow-same-origin"
                 title={item.id}
                 onError={() => {
                   console.warn('[Player] iframe error, skipping:', iframeSrc);

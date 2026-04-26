@@ -62,7 +62,21 @@ export class ProxyController {
 
       const baseUrl = upstream.finalUrl || url;
 
-      html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+      // KEEP <script> tags. Earlier we stripped them all to prevent
+      // frame-busting (sites running `top.location = self.location` to
+      // escape the iframe), but stripping ALL JS broke every site that
+      // depends on it for content — banner rotators (e-arc.com), image
+      // sliders, lazy-loaded content, etc. The iframe in the player +
+      // WebpageWidget now uses `sandbox="allow-scripts allow-same-origin"`
+      // which keeps scripts running but BLOCKS top-frame navigation at
+      // the browser level — the previous concern is moot.
+      //
+      // Still strip:
+      //   - <meta http-equiv="refresh"> — would auto-refresh the iframe
+      //     out of our app
+      //   - inline `on*=` event handlers — XSS-flavored, not strictly
+      //     needed for any modern slider library
+      //   - <noscript> — operator wants the script-rendered version
       html = html.replace(/<meta[^>]*http-equiv\s*=\s*["']?refresh["']?[^>]*>/gi, '');
       html = html.replace(/\s(on\w+)\s*=\s*["'][^"']*["']/gi, '');
       html = html.replace(/<\/?noscript[^>]*>/gi, '');

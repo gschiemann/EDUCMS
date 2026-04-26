@@ -716,6 +716,7 @@ function TextWidget({ config, onConfigChange }: { config: any; onConfigChange?: 
   if (config.theme === 'stem-science') return config.html ? <StemScienceRichText config={config} /> : <StemScienceText config={config} onConfigChange={onConfigChange} />;
   const content = config.content || 'Your text here';
   const fontSize = config.fontSize || 24;
+  const fontFamily = config.fontFamily;
   const alignment = config.alignment || 'center';
   const color = config.color || '#1e293b';
   const bgColor = config.bgColor || 'transparent';
@@ -726,6 +727,7 @@ function TextWidget({ config, onConfigChange }: { config: any; onConfigChange?: 
         data-field="content"
         style={{
           fontSize: `${Math.min(fontSize / 16, 3)}em`,
+          fontFamily: fontFamily || undefined,
           fontWeight: 600,
           color,
           textAlign: alignment as any,
@@ -1368,9 +1370,14 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
     return () => clearInterval(t);
   }, [live, proxyUrl, refreshInterval]);
 
-  // Live mode — render an actual iframe routed through proxy
-  // No sandbox attribute — the proxy already strips X-Frame-Options and injects
-  // anti-frame-busting code. Sandbox would break many sites' internal scripts.
+  // Live mode — render an actual iframe routed through proxy.
+  //
+  // Narrow sandbox: scripts run (so banner rotators, image sliders,
+  // and dynamic content work — e-arc.com case) but top-navigation
+  // is blocked at the browser level so frame-busting JS can't escape.
+  // The proxy used to strip ALL <script> tags as a frame-busting
+  // defense; that also nuked everything visual on JS-driven sites.
+  // Browser-level sandbox replaces that strip and is robust.
   if (live && proxyUrl) {
     return (
       <div className="absolute inset-0 overflow-hidden">
@@ -1380,6 +1387,7 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
           className="w-full h-full border-0"
           style={{ overflow: config.scrollEnabled ? 'auto' : 'hidden' }}
           allow="autoplay; encrypted-media"
+          sandbox="allow-scripts allow-same-origin"
           loading="eager"
           title="Web content"
         />
