@@ -584,9 +584,9 @@ function WeatherWidget({ config, compact }: { config: any; compact: boolean }) {
 // ═══════════════════════════════════════════════════════
 
 function CountdownWidget({ config, compact, onConfigChange }: { config: any; compact: boolean; onConfigChange?: (patch: Record<string, any>) => void }) {
-  if (config.theme === 'back-to-school') return <BackToSchoolCountdown config={config} />;
-  if (config.theme === 'diner-chalkboard') return <DinerChalkboardCountdown config={config} />;
-  if (config.theme === 'rainbow-animated') return <RainbowAnimatedCountdown config={config} />;
+  if (config.theme === 'back-to-school') return <BackToSchoolCountdown config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'diner-chalkboard') return <DinerChalkboardCountdown config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'rainbow-animated') return <RainbowAnimatedCountdown config={config} onConfigChange={onConfigChange} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
   if (config.theme === 'field-day') return <FieldDayCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
   if (config.theme === 'bulletin-board') return <BulletinBoardCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
@@ -605,12 +605,12 @@ function CountdownWidget({ config, compact, onConfigChange }: { config: any; com
   if (config.theme === 'news-studio-pro') return <NewsStudioProCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
   if (config.theme === 'campus-quad') return <CampusQuadCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
   if (config.theme === 'achievement-hall') return <AchievementHallCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
-  if (config.theme === 'final-chance') return <FinalChanceCountdown config={config} />;
-  if (config.theme === 'high-school-athletics') return <AthleticsCountdown config={config} compact={compact} />;
-  if (config.theme === 'middle-school-hall') return <MSHallCountdown config={config} />;
-  if (config.theme === 'music-arts') return <MusicArtsCountdown config={config} />;
-  if (config.theme === 'stem-science') return <StemScienceCountdown config={config} />;
-  if (config.theme === 'sunshine-academy') return <SunshineAcademyCountdown config={config} compact={compact} />;
+  if (config.theme === 'final-chance') return <FinalChanceCountdown config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'high-school-athletics') return <AthleticsCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'middle-school-hall') return <MSHallCountdown config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'music-arts') return <MusicArtsCountdown config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'stem-science') return <StemScienceCountdown config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'sunshine-academy') return <SunshineAcademyCountdown config={config} compact={compact} onConfigChange={onConfigChange} />;
   const [now, setNow] = useState(new Date());
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -676,13 +676,19 @@ function CountdownWidget({ config, compact, onConfigChange }: { config: any; com
 // ═══════════════════════════════════════════════════════
 
 function TextWidget({ config, onConfigChange }: { config: any; onConfigChange?: (patch: Record<string, any>) => void }) {
-  if (config.theme === 'gym-pe') return <GymPEText config={config} />;
-  if (config.theme === 'principals-office') return <PrincipalsOfficeText config={config} />;
-  if (config.theme === 'office-dashboard') return <OfficeDashboardText config={config} />;
-  if (config.theme === 'back-to-school') return <BackToSchoolText config={config} />;
-  if (config.theme === 'bus-loop') return <BusLoopText config={config} />;
-  if (config.theme === 'diner-chalkboard') return <DinerChalkboardText config={config} />;
-  if (config.theme === 'rainbow-animated') return <RainbowAnimatedTitle config={config} />;
+  // NOTE: every themed renderer must receive onConfigChange so its
+  // EditableText (or data-field) inline-edit hook can write back to
+  // config. Earlier this prop was dropped for ~7 themes — partner saw
+  // "inline editing doesnt work at all" on chalkboard text. The
+  // EditableText `canEdit` gate is `!!configKey && !!onConfigChange`
+  // so without it the click handler silently no-op'd.
+  if (config.theme === 'gym-pe') return <GymPEText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'principals-office') return <PrincipalsOfficeText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'office-dashboard') return <OfficeDashboardText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'back-to-school') return <BackToSchoolText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'bus-loop') return <BusLoopText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'diner-chalkboard') return <DinerChalkboardText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'rainbow-animated') return <RainbowAnimatedTitle config={config} onConfigChange={onConfigChange} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonText config={config} onConfigChange={onConfigChange} />;
   if (config.theme === 'field-day') return <FieldDayText config={config} onConfigChange={onConfigChange} />;
   if (config.theme === 'bulletin-board') return <BulletinBoardText config={config} onConfigChange={onConfigChange} />;
@@ -701,13 +707,13 @@ function TextWidget({ config, onConfigChange }: { config: any; onConfigChange?: 
   if (config.theme === 'news-studio-pro') return <NewsStudioProText config={config} onConfigChange={onConfigChange} />;
   if (config.theme === 'campus-quad') return <CampusQuadText config={config} onConfigChange={onConfigChange} />;
   if (config.theme === 'achievement-hall') return <AchievementHallText config={config} onConfigChange={onConfigChange} />;
-  if (config.theme === 'final-chance') return <FinalChanceText config={config} />;
-  if (config.theme === 'high-school-athletics') return <AthleticsText config={config} />;
-  if (config.theme === 'middle-school-hall') return <MSHallText config={config} />;
-  if (config.theme === 'sunshine-academy') return <SunshineAcademyText config={config} />;
-  if (config.theme === 'library-quiet') return config.html ? <LibraryQuietRichText config={config} /> : <LibraryQuietText config={config} />;
-  if (config.theme === 'music-arts') return config.html ? <MusicArtsRichText config={config} /> : <MusicArtsText config={config} />;
-  if (config.theme === 'stem-science') return config.html ? <StemScienceRichText config={config} /> : <StemScienceText config={config} />;
+  if (config.theme === 'final-chance') return <FinalChanceText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'high-school-athletics') return <AthleticsText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'middle-school-hall') return <MSHallText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'sunshine-academy') return <SunshineAcademyText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'library-quiet') return config.html ? <LibraryQuietRichText config={config} /> : <LibraryQuietText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'music-arts') return config.html ? <MusicArtsRichText config={config} /> : <MusicArtsText config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'stem-science') return config.html ? <StemScienceRichText config={config} /> : <StemScienceText config={config} onConfigChange={onConfigChange} />;
   const content = config.content || 'Your text here';
   const fontSize = config.fontSize || 24;
   const alignment = config.alignment || 'center';
@@ -745,13 +751,13 @@ function TextWidget({ config, onConfigChange }: { config: any; onConfigChange?: 
 // ═══════════════════════════════════════════════════════
 
 function AnnouncementWidget({ config, compact, onConfigChange }: { config: any; compact: boolean; onConfigChange?: (patch: Record<string, any>) => void }) {
-  if (config.theme === 'gym-pe') return <GymPEAnnouncement config={config} compact={compact} />;
-  if (config.theme === 'principals-office') return <PrincipalsOfficeAnnouncement config={config} compact={compact} />;
-  if (config.theme === 'office-dashboard') return <OfficeDashboardAnnouncement config={config} compact={compact} />;
-  if (config.theme === 'back-to-school') return <BackToSchoolAnnouncement config={config} />;
-  if (config.theme === 'bus-loop') return <BusLoopAnnouncement config={config} />;
-  if (config.theme === 'diner-chalkboard') return <DinerChalkboardAnnouncement config={config} />;
-  if (config.theme === 'rainbow-animated') return <RainbowAnimatedAnnouncement config={config} />;
+  if (config.theme === 'gym-pe') return <GymPEAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'principals-office') return <PrincipalsOfficeAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'office-dashboard') return <OfficeDashboardAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'back-to-school') return <BackToSchoolAnnouncement config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'bus-loop') return <BusLoopAnnouncement config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'diner-chalkboard') return <DinerChalkboardAnnouncement config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'rainbow-animated') return <RainbowAnimatedAnnouncement config={config} onConfigChange={onConfigChange} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
   if (config.theme === 'field-day') return <FieldDayAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
   if (config.theme === 'bulletin-board') return <BulletinBoardAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
@@ -770,10 +776,10 @@ function AnnouncementWidget({ config, compact, onConfigChange }: { config: any; 
   if (config.theme === 'news-studio-pro') return <NewsStudioProAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
   if (config.theme === 'campus-quad') return <CampusQuadAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
   if (config.theme === 'achievement-hall') return <AchievementHallAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
-  if (config.theme === 'final-chance') return <FinalChanceAnnouncement config={config} />;
-  if (config.theme === 'high-school-athletics') return <AthleticsAnnouncement config={config} />;
-  if (config.theme === 'middle-school-hall') return <MSHallAnnouncement config={config} />;
-  if (config.theme === 'sunshine-academy') return <SunshineAcademyAnnouncement config={config} compact={compact} />;
+  if (config.theme === 'final-chance') return <FinalChanceAnnouncement config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'high-school-athletics') return <AthleticsAnnouncement config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'middle-school-hall') return <MSHallAnnouncement config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'sunshine-academy') return <SunshineAcademyAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
   const message = config.message || 'Important announcement will appear here';
   const priority = config.priority || 'normal';
 
@@ -1035,10 +1041,10 @@ function CalendarWidget({ config, compact }: { config: any; compact: boolean }) 
 // ═══════════════════════════════════════════════════════
 
 function StaffSpotlightWidget({ config, compact, onConfigChange }: { config: any; compact: boolean; onConfigChange?: (patch: Record<string, any>) => void }) {
-  if (config.theme === 'office-dashboard') return <OfficeDashboardStaff config={config} compact={compact} />;
-  if (config.theme === 'back-to-school') return <BackToSchoolStaff config={config} />;
-  if (config.theme === 'diner-chalkboard') return <DinerChalkboardStaff config={config} />;
-  if (config.theme === 'rainbow-animated') return <RainbowAnimatedStaff config={config} />;
+  if (config.theme === 'office-dashboard') return <OfficeDashboardStaff config={config} compact={compact} onConfigChange={onConfigChange} />;
+  if (config.theme === 'back-to-school') return <BackToSchoolStaff config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'diner-chalkboard') return <DinerChalkboardStaff config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'rainbow-animated') return <RainbowAnimatedStaff config={config} onConfigChange={onConfigChange} />;
   if (config.theme === 'rainbow-ribbon') return <RainbowRibbonStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
   if (config.theme === 'field-day') return <FieldDayStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
   if (config.theme === 'bulletin-board') return <BulletinBoardStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
@@ -1057,8 +1063,8 @@ function StaffSpotlightWidget({ config, compact, onConfigChange }: { config: any
   if (config.theme === 'news-studio-pro') return <NewsStudioProStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
   if (config.theme === 'campus-quad') return <CampusQuadStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
   if (config.theme === 'achievement-hall') return <AchievementHallStaffSpotlight config={config} compact={compact} onConfigChange={onConfigChange} />;
-  if (config.theme === 'final-chance') return <FinalChanceStaff config={config} />;
-  if (config.theme === 'middle-school-hall') return <MSHallStaff config={config} />;
+  if (config.theme === 'final-chance') return <FinalChanceStaff config={config} onConfigChange={onConfigChange} />;
+  if (config.theme === 'middle-school-hall') return <MSHallStaff config={config} onConfigChange={onConfigChange} />;
   if (config.theme === 'music-arts') return <MusicArtsSpotlight config={config} />;
   if (config.theme === 'sunshine-academy') return <SunshineAcademyStaffSpotlight config={config} compact={compact} />;
   // Theme router — render a themed variant if requested
