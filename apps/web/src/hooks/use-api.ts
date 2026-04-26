@@ -146,7 +146,6 @@ export function usePlaylists() {
   return useQuery({
     queryKey: ['playlists'],
     queryFn: () => apiFetch('/playlists'),
-    refetchOnMountOrArgChange: 'stale',
   });
 }
 
