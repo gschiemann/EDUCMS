@@ -103,23 +103,23 @@ export function HsZineWidget({ config }: { config?: HsZineConfig }) {
 
       <div className="hs-zn-mast">
         <div className="hs-zn-title">
-          <span>{c.schoolName}</span>
-          <span className="hs-zn-title-sub">{c.schoolSub}</span>
+          <span data-field="schoolName" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolName}</span>
+          <span className="hs-zn-title-sub" data-field="schoolSub" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolSub}</span>
         </div>
         <div className="hs-zn-stamps">
-          <span className="hs-zn-stamp">{c.brandStamp1}</span>
-          <span className="hs-zn-stamp hs-zn-stamp-ink2">{c.brandStamp2}</span>
-          <span className="hs-zn-stamp hs-zn-stamp-cyan">{c.brandStamp3}</span>
+          <span className="hs-zn-stamp" data-field="brandStamp1" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandStamp1}</span>
+          <span className="hs-zn-stamp hs-zn-stamp-ink2" data-field="brandStamp2" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandStamp2}</span>
+          <span className="hs-zn-stamp hs-zn-stamp-cyan" data-field="brandStamp3" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandStamp3}</span>
         </div>
       </div>
 
       <div className="hs-zn-hero">
         <div className="hs-zn-sheet">
-          <div className="hs-zn-eyebrow">{c.greetingEyebrow}</div>
+          <div className="hs-zn-eyebrow" data-field="greetingEyebrow" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingEyebrow}</div>
           <h1 className="hs-zn-h1">
-            <span>{c.greetingHeadline1}</span> <em>{c.greetingHeadline2}</em> <span>{c.greetingHeadline3}</span>
+            <span data-field="greetingHeadline1" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingHeadline1}</span> <em data-field="greetingHeadline2" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingHeadline2}</em> <span data-field="greetingHeadline3" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingHeadline3}</span>
           </h1>
-          <p className="hs-zn-sub">{c.greetingSubtitle}</p>
+          <p className="hs-zn-sub" data-field="greetingSubtitle" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingSubtitle}</p>
         </div>
       </div>
 
@@ -127,20 +127,20 @@ export function HsZineWidget({ config }: { config?: HsZineConfig }) {
         <div className="hs-zn-poster">
           <div className="hs-zn-img" />
           <div className="hs-zn-caption">
-            <span>{c.teacherCaption}</span>
-            <span className="hs-zn-caption-sub">{c.teacherSub}</span>
+            <span data-field="teacherCaption" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherCaption}</span>
+            <span className="hs-zn-caption-sub" data-field="teacherSub" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherSub}</span>
           </div>
         </div>
         <div className="hs-zn-stats">
           <div className="hs-zn-stat">
             <div className="hs-zn-lbl">// here today</div>
-            <div className="hs-zn-val">{c.attendanceValue}</div>
-            <div className="hs-zn-cap">{c.attendanceCap}</div>
+            <div className="hs-zn-val" data-field="attendanceValue" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceValue}</div>
+            <div className="hs-zn-cap" data-field="attendanceCap" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceCap}</div>
           </div>
           <div className="hs-zn-stat">
-            <div className="hs-zn-lbl">{c.countdownLabel}</div>
-            <div className="hs-zn-val">{c.countdownValue}</div>
-            <div className="hs-zn-cap">{c.countdownSub}</div>
+            <div className="hs-zn-lbl" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownLabel}</div>
+            <div className="hs-zn-val" data-field="countdownValue" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownValue}</div>
+            <div className="hs-zn-cap" data-field="countdownSub" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownSub}</div>
           </div>
         </div>
       </div>
@@ -148,43 +148,43 @@ export function HsZineWidget({ config }: { config?: HsZineConfig }) {
       <div className="hs-zn-strip">
         <div className="hs-zn-polaroid hs-zn-p1">
           <div className="hs-zn-pic" />
-          <div className="hs-zn-when">{c.event0When}</div>
-          <div className="hs-zn-name">{c.event0Name}</div>
+          <div className="hs-zn-when" data-field="event0When" style={{ whiteSpace: 'pre-wrap' as const }}>{c.event0When}</div>
+          <div className="hs-zn-name" data-field="event0Name" style={{ whiteSpace: 'pre-wrap' as const }}>{c.event0Name}</div>
         </div>
         <div className="hs-zn-polaroid hs-zn-p2">
           <div className="hs-zn-pic" />
-          <div className="hs-zn-when">{c.event1When}</div>
-          <div className="hs-zn-name">{c.event1Name}</div>
+          <div className="hs-zn-when" data-field="event1When" style={{ whiteSpace: 'pre-wrap' as const }}>{c.event1When}</div>
+          <div className="hs-zn-name" data-field="event1Name" style={{ whiteSpace: 'pre-wrap' as const }}>{c.event1Name}</div>
         </div>
         <div className="hs-zn-polaroid hs-zn-p3">
           <div className="hs-zn-pic" />
-          <div className="hs-zn-when">{c.event2When}</div>
-          <div className="hs-zn-name">{c.event2Name}</div>
+          <div className="hs-zn-when" data-field="event2When" style={{ whiteSpace: 'pre-wrap' as const }}>{c.event2When}</div>
+          <div className="hs-zn-name" data-field="event2Name" style={{ whiteSpace: 'pre-wrap' as const }}>{c.event2Name}</div>
         </div>
         <div className="hs-zn-polaroid hs-zn-count">
-          <div className="hs-zn-num">{c.countdownBigValue}</div>
-          <div className="hs-zn-lb">{c.countdownBigLabel}</div>
+          <div className="hs-zn-num" data-field="countdownBigValue" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownBigValue}</div>
+          <div className="hs-zn-lb" data-field="countdownBigLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownBigLabel}</div>
         </div>
       </div>
 
       <div className="hs-zn-alert">
-        <div className="hs-zn-alert-tag">{c.announcementTag}</div>
-        <h3 className="hs-zn-alert-h3">{c.announcementHeadline}</h3>
-        <p className="hs-zn-alert-p">{c.announcementBody}</p>
-        <div className="hs-zn-alert-when">{c.announcementDate}</div>
+        <div className="hs-zn-alert-tag" data-field="announcementTag" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementTag}</div>
+        <h3 className="hs-zn-alert-h3" data-field="announcementHeadline" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementHeadline}</h3>
+        <p className="hs-zn-alert-p" data-field="announcementBody" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementBody}</p>
+        <div className="hs-zn-alert-when" data-field="announcementDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementDate}</div>
       </div>
 
       <div className="hs-zn-fc">
-        <div className="hs-zn-fc-lbl">{c.clockLabel}</div>
-        <div className="hs-zn-fc-v">{c.clockTime}</div>
-        <div className="hs-zn-fc-c">{c.weatherCondition}</div>
+        <div className="hs-zn-fc-lbl" data-field="clockLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockLabel}</div>
+        <div className="hs-zn-fc-v" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockTime}</div>
+        <div className="hs-zn-fc-c" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherCondition}</div>
       </div>
 
       <div className="hs-zn-ticker">
-        <div className="hs-zn-tk-tag">{c.tickerTag}</div>
+        <div className="hs-zn-tk-tag" data-field="tickerTag" style={{ whiteSpace: 'pre-wrap' as const }}>{c.tickerTag}</div>
         <div className="hs-zn-tk-msg">
-          <span>{c.tickerMessage}</span>
-          <span>{c.tickerMessage}</span>
+          <span data-field="tickerMessage" style={{ whiteSpace: 'pre-wrap' as const }}>{c.tickerMessage}</span>
+          <span data-field="tickerMessage" style={{ whiteSpace: 'pre-wrap' as const }}>{c.tickerMessage}</span>
         </div>
       </div>
     </HsStage>

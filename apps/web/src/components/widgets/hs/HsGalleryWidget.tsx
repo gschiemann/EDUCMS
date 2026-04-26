@@ -114,20 +114,20 @@ export function HsGalleryWidget({ config }: { config?: HsGalleryConfig }) {
       <style>{CSS}</style>
 
       <div className="hs-gl-mast">
-        <div className="hs-gl-logo">{c.schoolName}</div>
+        <div className="hs-gl-logo" data-field="schoolName" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolName}</div>
         <div className="hs-gl-nav">
-          <span>{c.clockDate}</span>
-          <span className="hs-gl-nav-on">{c.clockTime}</span>
-          <span>{c.weatherCondition}</span>
+          <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockDate}</span>
+          <span className="hs-gl-nav-on" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockTime}</span>
+          <span data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherCondition}</span>
         </div>
       </div>
 
       <div className="hs-gl-plaque">
-        <div className="hs-gl-num">{c.greetingEyebrow}</div>
+        <div className="hs-gl-num" data-field="greetingEyebrow" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingEyebrow}</div>
         <h1 className="hs-gl-h1">
-          <span>{c.greetingHeadline1}</span> <em>{c.greetingHeadline2}</em> <span>{c.greetingHeadline3}</span>
+          <span data-field="greetingHeadline1" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingHeadline1}</span> <em data-field="greetingHeadline2" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingHeadline2}</em> <span data-field="greetingHeadline3" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingHeadline3}</span>
         </h1>
-        <p className="hs-gl-sub">{c.greetingSubtitle}</p>
+        <p className="hs-gl-sub" data-field="greetingSubtitle" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingSubtitle}</p>
       </div>
 
       <div className="hs-gl-acq">
@@ -150,58 +150,58 @@ export function HsGalleryWidget({ config }: { config?: HsGalleryConfig }) {
       <div className="hs-gl-wall">
         <div>
           <div className="hs-gl-label">Local Time</div>
-          <div className="hs-gl-val">{c.clockbigVal}</div>
-          <div className="hs-gl-cap">{c.clockbigCap}</div>
+          <div className="hs-gl-val" data-field="clockbigVal" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockbigVal}</div>
+          <div className="hs-gl-cap" data-field="clockbigCap" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockbigCap}</div>
         </div>
         <div>
           <div className="hs-gl-label">Today&apos;s Weather</div>
-          <div className="hs-gl-val">{c.weatherbigVal}</div>
-          <div className="hs-gl-cap">{c.weatherbigCap}</div>
+          <div className="hs-gl-val" data-field="weatherbigVal" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherbigVal}</div>
+          <div className="hs-gl-cap" data-field="weatherbigCap" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherbigCap}</div>
         </div>
         <div>
           <div className="hs-gl-label">Present &amp; Accounted For</div>
-          <div className="hs-gl-val">{c.attendanceVal}</div>
-          <div className="hs-gl-cap">{c.attendanceCap}</div>
+          <div className="hs-gl-val" data-field="attendanceVal" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceVal}</div>
+          <div className="hs-gl-cap" data-field="attendanceCap" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceCap}</div>
         </div>
         <div>
-          <div className="hs-gl-label">{c.countdownLabel}</div>
-          <div className="hs-gl-val">{c.countdownValue}</div>
-          <div className="hs-gl-cap">{c.countdownSub}</div>
+          <div className="hs-gl-label" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownLabel}</div>
+          <div className="hs-gl-val" data-field="countdownValue" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownValue}</div>
+          <div className="hs-gl-cap" data-field="countdownSub" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownSub}</div>
         </div>
       </div>
 
       <div className="hs-gl-feature">
         <div className="hs-gl-portrait">
-          <div className="hs-gl-tag">{c.teacherTag}</div>
+          <div className="hs-gl-tag" data-field="teacherTag" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherTag}</div>
         </div>
         <div className="hs-gl-text">
-          <div className="hs-gl-label">{c.teacherLabel}</div>
-          <h2 className="hs-gl-h2">{c.teacherName}</h2>
-          <div className="hs-gl-teacher-meta">{c.teacherMeta}</div>
-          <div className="hs-gl-statement">{c.teacherQuote}</div>
-          <div className="hs-gl-byline">{c.teacherByline}</div>
+          <div className="hs-gl-label" data-field="teacherLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherLabel}</div>
+          <h2 className="hs-gl-h2" data-field="teacherName" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherName}</h2>
+          <div className="hs-gl-teacher-meta" data-field="teacherMeta" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherMeta}</div>
+          <div className="hs-gl-statement" data-field="teacherQuote" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherQuote}</div>
+          <div className="hs-gl-byline" data-field="teacherByline" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherByline}</div>
         </div>
       </div>
 
       <div className="hs-gl-advisory">
-        <div className="hs-gl-advisory-label">{c.announcementTag}</div>
-        <h3 className="hs-gl-adv-h3">{c.announcementHeadline}</h3>
-        <p className="hs-gl-adv-p">{c.announcementBody}</p>
-        <div className="hs-gl-adv-when">{c.announcementDate}</div>
+        <div className="hs-gl-advisory-label" data-field="announcementTag" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementTag}</div>
+        <h3 className="hs-gl-adv-h3" data-field="announcementHeadline" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementHeadline}</h3>
+        <p className="hs-gl-adv-p" data-field="announcementBody" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementBody}</p>
+        <div className="hs-gl-adv-when" data-field="announcementDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementDate}</div>
       </div>
 
       <div className="hs-gl-hours">
         <div className="hs-gl-h">
-          <strong>{c.brandHours}</strong> <span className="hs-gl-sep">·</span> <span>{c.brandSpan}</span> <span className="hs-gl-sep">·</span> <span>{c.brandClosed}</span>
+          <strong data-field="brandHours" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandHours}</strong> <span className="hs-gl-sep">·</span> <span data-field="brandSpan" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandSpan}</span> <span className="hs-gl-sep">·</span> <span data-field="brandClosed" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandClosed}</span>
         </div>
-        <div className="hs-gl-coda">{c.brandCoda}</div>
+        <div className="hs-gl-coda" data-field="brandCoda" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandCoda}</div>
       </div>
 
       <div className="hs-gl-ticker">
-        <div className="hs-gl-tk-tag">{c.tickerTag}</div>
+        <div className="hs-gl-tk-tag" data-field="tickerTag" style={{ whiteSpace: 'pre-wrap' as const }}>{c.tickerTag}</div>
         <div className="hs-gl-tk-msg">
-          <span>{c.tickerMessage}</span>
-          <span>{c.tickerMessage}</span>
+          <span data-field="tickerMessage" style={{ whiteSpace: 'pre-wrap' as const }}>{c.tickerMessage}</span>
+          <span data-field="tickerMessage" style={{ whiteSpace: 'pre-wrap' as const }}>{c.tickerMessage}</span>
         </div>
       </div>
     </HsStage>

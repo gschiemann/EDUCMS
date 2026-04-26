@@ -118,55 +118,55 @@ export function HsBlueprintWidget({ config }: { config?: HsBlueprintConfig }) {
         <div className="hs-bp-cell">
           <div className="hs-bp-logo">
             {c.schoolCode}
-            <span className="hs-bp-logo-sub">{c.schoolName}</span>
+            <span className="hs-bp-logo-sub" data-field="schoolName" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolName}</span>
           </div>
         </div>
         <div className="hs-bp-cell">
-          <div className="hs-bp-lbl">{c.brandLabel1}</div>
-          <div className="hs-bp-val">{c.brandProject}</div>
+          <div className="hs-bp-lbl" data-field="brandLabel1" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandLabel1}</div>
+          <div className="hs-bp-val" data-field="brandProject" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandProject}</div>
         </div>
         <div className="hs-bp-cell">
-          <div className="hs-bp-lbl">{c.clockLabel}</div>
+          <div className="hs-bp-lbl" data-field="clockLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockLabel}</div>
           <div className="hs-bp-val" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-            <span>{c.clockDate}</span> · <span>{c.clockTime}</span>
+            <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockDate}</span> · <span data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockTime}</span>
           </div>
         </div>
         <div className="hs-bp-cell hs-bp-rev">
           <div className="hs-bp-lbl">SHEET · REV</div>
           <div className="hs-bp-val" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-            <span>{c.brandSheet}</span> · REV <span>{c.brandRev}</span>
+            <span data-field="brandSheet" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandSheet}</span> · REV <span data-field="brandRev" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandRev}</span>
           </div>
         </div>
       </div>
 
       <div className="hs-bp-hero">
-        <div className="hs-bp-dim hs-bp-dim-top"><span>{c.greetingDimTop}</span></div>
-        <div className="hs-bp-dim hs-bp-dim-left"><span>{c.greetingDimLeft}</span></div>
-        <div className="hs-bp-eyebrow">{c.greetingEyebrow}</div>
-        <h1 className="hs-bp-h1">{c.greetingHeadline}</h1>
-        <div className="hs-bp-sub">{c.greetingSubtitle}</div>
+        <div className="hs-bp-dim hs-bp-dim-top"><span data-field="greetingDimTop" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingDimTop}</span></div>
+        <div className="hs-bp-dim hs-bp-dim-left"><span data-field="greetingDimLeft" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingDimLeft}</span></div>
+        <div className="hs-bp-eyebrow" data-field="greetingEyebrow" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingEyebrow}</div>
+        <h1 className="hs-bp-h1" data-field="greetingHeadline" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingHeadline}</h1>
+        <div className="hs-bp-sub" data-field="greetingSubtitle" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingSubtitle}</div>
       </div>
 
       <div className="hs-bp-data">
         <div className="hs-bp-panel" data-sheet="A-01.1">
-          <div className="hs-bp-kicker">{c.clockbigLabel}</div>
-          <div className="hs-bp-big">{c.clockbigVal}</div>
-          <div className="hs-bp-cap">{c.clockbigCap}</div>
+          <div className="hs-bp-kicker" data-field="clockbigLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockbigLabel}</div>
+          <div className="hs-bp-big" data-field="clockbigVal" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockbigVal}</div>
+          <div className="hs-bp-cap" data-field="clockbigCap" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockbigCap}</div>
         </div>
         <div className="hs-bp-panel" data-sheet="A-01.2">
           <div className="hs-bp-kicker">EXT. CONDITIONS</div>
-          <div className="hs-bp-big">{c.weatherTemp}</div>
-          <div className="hs-bp-cap">{c.weatherCondition}</div>
+          <div className="hs-bp-big" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherTemp}</div>
+          <div className="hs-bp-cap" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherCondition}</div>
         </div>
         <div className="hs-bp-panel" data-sheet="A-01.3">
           <div className="hs-bp-kicker">PRESENT</div>
-          <div className="hs-bp-big">{c.attendanceValue}</div>
-          <div className="hs-bp-cap">{c.attendanceCap}</div>
+          <div className="hs-bp-big" data-field="attendanceValue" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceValue}</div>
+          <div className="hs-bp-cap" data-field="attendanceCap" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceCap}</div>
         </div>
         <div className="hs-bp-panel" data-sheet="A-01.4">
-          <div className="hs-bp-kicker">{c.countdownLabel}</div>
-          <div className="hs-bp-big">{c.countdownValue}</div>
-          <div className="hs-bp-cap">{c.countdownSub}</div>
+          <div className="hs-bp-kicker" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownLabel}</div>
+          <div className="hs-bp-big" data-field="countdownValue" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownValue}</div>
+          <div className="hs-bp-cap" data-field="countdownSub" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownSub}</div>
         </div>
       </div>
 
@@ -187,27 +187,27 @@ export function HsBlueprintWidget({ config }: { config?: HsBlueprintConfig }) {
 
       <div className="hs-bp-specs">
         <div className="hs-bp-card hs-bp-spec" data-sheet="A-03 · FACULTY PROFILE">
-          <div className="hs-bp-portrait"><div className="hs-bp-num">{c.teacherNum}</div></div>
+          <div className="hs-bp-portrait"><div className="hs-bp-num" data-field="teacherNum" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherNum}</div></div>
           <div>
-            <div className="hs-bp-kicker">{c.teacherLabel}</div>
-            <h2 className="hs-bp-h2">{c.teacherName}</h2>
-            <div className="hs-bp-meta">{c.teacherMeta}</div>
-            <div className="hs-bp-quote">{c.teacherQuote}</div>
+            <div className="hs-bp-kicker" data-field="teacherLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherLabel}</div>
+            <h2 className="hs-bp-h2" data-field="teacherName" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherName}</h2>
+            <div className="hs-bp-meta" data-field="teacherMeta" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherMeta}</div>
+            <div className="hs-bp-quote" data-field="teacherQuote" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherQuote}</div>
           </div>
         </div>
         <div className="hs-bp-card hs-bp-alert" data-sheet="A-04 · ADVISORY">
-          <div className="hs-bp-kicker hs-bp-alert-kicker">{c.announcementTag}</div>
-          <h3 className="hs-bp-alert-h3">{c.announcementHeadline}</h3>
-          <p className="hs-bp-alert-p">{c.announcementBody}</p>
-          <div className="hs-bp-when">{c.announcementDate}</div>
+          <div className="hs-bp-kicker hs-bp-alert-kicker" data-field="announcementTag" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementTag}</div>
+          <h3 className="hs-bp-alert-h3" data-field="announcementHeadline" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementHeadline}</h3>
+          <p className="hs-bp-alert-p" data-field="announcementBody" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementBody}</p>
+          <div className="hs-bp-when" data-field="announcementDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementDate}</div>
         </div>
       </div>
 
       <div className="hs-bp-ticker">
-        <div className="hs-bp-tk-tag">{c.tickerTag}</div>
+        <div className="hs-bp-tk-tag" data-field="tickerTag" style={{ whiteSpace: 'pre-wrap' as const }}>{c.tickerTag}</div>
         <div className="hs-bp-tk-msg">
-          <span>{c.tickerMessage}</span>
-          <span>{c.tickerMessage}</span>
+          <span data-field="tickerMessage" style={{ whiteSpace: 'pre-wrap' as const }}>{c.tickerMessage}</span>
+          <span data-field="tickerMessage" style={{ whiteSpace: 'pre-wrap' as const }}>{c.tickerMessage}</span>
         </div>
       </div>
     </HsStage>

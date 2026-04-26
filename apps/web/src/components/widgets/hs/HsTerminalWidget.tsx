@@ -144,17 +144,17 @@ export function HsTerminalWidget({ config }: { config?: HsTerminalConfig }) {
         <div className="hs-tm-left">
           <span>
             <span className="hs-tm-dot" />
-            <span className="hs-tm-host">{c.schoolHost}</span>
+            <span className="hs-tm-host" data-field="schoolHost" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolHost}</span>
             <span className="hs-tm-sep">:</span>
-            <span>{c.schoolPath}</span>
+            <span data-field="schoolPath" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolPath}</span>
             <span className="hs-tm-sep">$</span>
           </span>
           <span style={{ color: '#7adfff' }}>{c.schoolSession}</span>
         </div>
         <div className="hs-tm-right">
-          <span>{c.clockTime}</span>
+          <span data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockTime}</span>
           <span>
-            <span className="hs-tm-on">{c.weatherTemp}</span> {c.weatherCondition}
+            <span className="hs-tm-on" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherTemp}</span> {c.weatherCondition}
           </span>
           <span className="hs-tm-on">UP 184d</span>
         </div>
@@ -163,63 +163,63 @@ export function HsTerminalWidget({ config }: { config?: HsTerminalConfig }) {
       <div className="hs-tm-prompt">
         <div className="hs-tm-line1">
           <span className="hs-tm-p">&gt; </span>
-          <span>{c.greetingCmd}</span>{' '}
-          <span className="hs-tm-arg">{c.greetingArg}</span>
+          <span data-field="greetingCmd" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingCmd}</span>{' '}
+          <span className="hs-tm-arg" data-field="greetingArg" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingArg}</span>
         </div>
         <div className="hs-tm-banner">
-          <span>{c.greetingHeadline}</span>
+          <span data-field="greetingHeadline" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingHeadline}</span>
           <span className="hs-tm-cursor" />
         </div>
-        <div className="hs-tm-sub">{c.greetingSubtitle}</div>
+        <div className="hs-tm-sub" data-field="greetingSubtitle" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingSubtitle}</div>
       </div>
 
       <div className="hs-tm-stats">
         <div className="hs-tm-stat" data-box="[ clock ]">
-          <div className="hs-tm-big">{c.clockbigVal}</div>
-          <div className="hs-tm-cap">{c.clockbigCap}</div>
+          <div className="hs-tm-big" data-field="clockbigVal" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockbigVal}</div>
+          <div className="hs-tm-cap" data-field="clockbigCap" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockbigCap}</div>
         </div>
         <div className="hs-tm-stat" data-box="[ weatherd ]">
-          <div className="hs-tm-big">{c.weatherdVal}</div>
-          <div className="hs-tm-cap">{c.weatherdCap}</div>
+          <div className="hs-tm-big" data-field="weatherdVal" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherdVal}</div>
+          <div className="hs-tm-cap" data-field="weatherdCap" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherdCap}</div>
         </div>
         <div className="hs-tm-stat" data-box="[ attendance ]">
-          <div className="hs-tm-big">{c.attendanceVal}</div>
-          <div className="hs-tm-cap">{c.attendanceCap}</div>
+          <div className="hs-tm-big" data-field="attendanceVal" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceVal}</div>
+          <div className="hs-tm-cap" data-field="attendanceCap" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceCap}</div>
         </div>
         <div className="hs-tm-stat" data-box="[ lunch ]">
           <div className="hs-tm-big" style={{ fontSize: 80, paddingTop: 24 }}>{c.lunchVal}</div>
-          <div className="hs-tm-cap">{c.lunchCap}</div>
+          <div className="hs-tm-cap" data-field="lunchCap" style={{ whiteSpace: 'pre-wrap' as const }}>{c.lunchCap}</div>
         </div>
       </div>
 
       <div className="hs-tm-whoami">
         <div className="hs-tm-cmd">
           <span className="hs-tm-p">&gt; </span>
-          <span>{c.teacherCmd}</span>
+          <span data-field="teacherCmd" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherCmd}</span>
         </div>
-        <div className="hs-tm-name">{c.teacherName}</div>
+        <div className="hs-tm-name" data-field="teacherName" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherName}</div>
         <dl className="hs-tm-kv">
-          <dt>role</dt><dd>{c.teacherRole}</dd>
-          <dt>room</dt><dd>{c.teacherRoom}</dd>
-          <dt>years</dt><dd>{c.teacherYears}</dd>
-          <dt>groups</dt><dd>{c.teacherGroups}</dd>
+          <dt>role</dt><dd data-field="teacherRole" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherRole}</dd>
+          <dt>room</dt><dd data-field="teacherRoom" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherRoom}</dd>
+          <dt>years</dt><dd data-field="teacherYears" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherYears}</dd>
+          <dt>groups</dt><dd data-field="teacherGroups" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherGroups}</dd>
         </dl>
-        <div className="hs-tm-quote">{c.teacherQuote}</div>
+        <div className="hs-tm-quote" data-field="teacherQuote" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherQuote}</div>
       </div>
 
       <div className="hs-tm-rightcol">
         <div className="hs-tm-box hs-tm-alert" data-box="[ ! priority ]">
           <div className="hs-tm-hd">&gt; WARN · {c.announcementTag}</div>
-          <h3 className="hs-tm-alert-h3">{c.announcementHeadline}</h3>
-          <p className="hs-tm-alert-p">{c.announcementBody}</p>
-          <div className="hs-tm-when">{c.announcementDate}</div>
+          <h3 className="hs-tm-alert-h3" data-field="announcementHeadline" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementHeadline}</h3>
+          <p className="hs-tm-alert-p" data-field="announcementBody" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementBody}</p>
+          <div className="hs-tm-when" data-field="announcementDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementDate}</div>
         </div>
         <div className="hs-tm-box" data-box="[ countdown ]">
           <div className="hs-tm-countdown">
-            <div className="hs-tm-cd-val">{c.countdownValue}</div>
+            <div className="hs-tm-cd-val" data-field="countdownValue" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownValue}</div>
             <div className="hs-tm-cd-lbl">
-              <span>{c.countdownLabel}</span>
-              <span className="hs-tm-dim">{c.countdownSub}</span>
+              <span data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownLabel}</span>
+              <span className="hs-tm-dim" data-field="countdownSub" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownSub}</span>
             </div>
           </div>
         </div>
@@ -244,10 +244,10 @@ export function HsTerminalWidget({ config }: { config?: HsTerminalConfig }) {
       </div>
 
       <div className="hs-tm-ticker">
-        <div className="hs-tm-tk-tag">{c.tickerTag}</div>
+        <div className="hs-tm-tk-tag" data-field="tickerTag" style={{ whiteSpace: 'pre-wrap' as const }}>{c.tickerTag}</div>
         <div className="hs-tm-tk-msg">
-          <span>{c.tickerMessage}</span>
-          <span>{c.tickerMessage}</span>
+          <span data-field="tickerMessage" style={{ whiteSpace: 'pre-wrap' as const }}>{c.tickerMessage}</span>
+          <span data-field="tickerMessage" style={{ whiteSpace: 'pre-wrap' as const }}>{c.tickerMessage}</span>
         </div>
       </div>
     </HsStage>

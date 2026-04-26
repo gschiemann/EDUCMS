@@ -124,17 +124,17 @@ export function HsTransitWidget({ config }: { config?: HsTransitConfig }) {
       <style>{CSS}</style>
 
       <div className="hs-tr-mast">
-        <div className="hs-tr-code">{c.schoolCode}</div>
+        <div className="hs-tr-code" data-field="schoolCode" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolCode}</div>
         <div className="hs-tr-name">
-          <div className="hs-tr-line1">{c.brandStation}</div>
-          <div className="hs-tr-line2">{c.brandMeta}</div>
+          <div className="hs-tr-line1" data-field="brandStation" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandStation}</div>
+          <div className="hs-tr-line2" data-field="brandMeta" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandMeta}</div>
         </div>
         <div className="hs-tr-clock">
-          <div className="hs-tr-clock-t">{c.clockTime}</div>
+          <div className="hs-tr-clock-t" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockTime}</div>
           <div className="hs-tr-clock-meta">
-            <span>{c.clockDate}</span>
+            <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockDate}</span>
             <br />
-            <span>{c.clockTz}</span>
+            <span data-field="clockTz" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockTz}</span>
           </div>
         </div>
       </div>
@@ -142,17 +142,17 @@ export function HsTransitWidget({ config }: { config?: HsTransitConfig }) {
       <div className="hs-tr-boarding">
         <div className="hs-tr-side">
           <div className="hs-tr-side-tag">ROOM</div>
-          <div className="hs-tr-side-gate">{c.greetingGate}</div>
+          <div className="hs-tr-side-gate" data-field="greetingGate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingGate}</div>
         </div>
         <div className="hs-tr-mid">
-          <div className="hs-tr-eyebrow">{c.greetingEyebrow}</div>
-          <h1 className="hs-tr-h1">{c.greetingHeadline}</h1>
-          <div className="hs-tr-sub">{c.greetingSubtitle}</div>
+          <div className="hs-tr-eyebrow" data-field="greetingEyebrow" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingEyebrow}</div>
+          <h1 className="hs-tr-h1" data-field="greetingHeadline" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingHeadline}</h1>
+          <div className="hs-tr-sub" data-field="greetingSubtitle" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingSubtitle}</div>
         </div>
         <div className="hs-tr-rightp">
-          <div><span className="hs-tr-k">OUTSIDE</span><br /><span className="hs-tr-v">{c.weatherTemp}</span></div>
+          <div><span className="hs-tr-k">OUTSIDE</span><br /><span className="hs-tr-v" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherTemp}</span></div>
           <div><span className="hs-tr-k">CONDITIONS</span><br /><span className="hs-tr-v" style={{ fontSize: 36 }}>{c.weatherCondition}</span></div>
-          <div className="hs-tr-status">{c.weatherStatus}</div>
+          <div className="hs-tr-status" data-field="weatherStatus" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherStatus}</div>
         </div>
       </div>
 
@@ -178,33 +178,33 @@ export function HsTransitWidget({ config }: { config?: HsTransitConfig }) {
       <div className="hs-tr-lower">
         <div className="hs-tr-panel" data-label="TEACHER OF THE WEEK">
           <div className="hs-tr-teacher">
-            <div className="hs-tr-photo"><div className="hs-tr-num">{c.teacherNum}</div></div>
+            <div className="hs-tr-photo"><div className="hs-tr-num" data-field="teacherNum" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherNum}</div></div>
             <div>
-              <div className="hs-tr-teacher-eb">{c.teacherLabel}</div>
-              <h2 className="hs-tr-h2">{c.teacherName}</h2>
-              <div className="hs-tr-teacher-meta">{c.teacherMeta}</div>
-              <div className="hs-tr-quote">{c.teacherQuote}</div>
+              <div className="hs-tr-teacher-eb" data-field="teacherLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherLabel}</div>
+              <h2 className="hs-tr-h2" data-field="teacherName" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherName}</h2>
+              <div className="hs-tr-teacher-meta" data-field="teacherMeta" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherMeta}</div>
+              <div className="hs-tr-quote" data-field="teacherQuote" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherQuote}</div>
             </div>
           </div>
         </div>
         <div className="hs-tr-panel hs-tr-alert" data-label="ADVISORY">
-          <div className="hs-tr-alert-tag">{c.announcementTag}</div>
-          <h3 className="hs-tr-alert-h3">{c.announcementHeadline}</h3>
-          <p className="hs-tr-alert-p">{c.announcementBody}</p>
-          <div className="hs-tr-alert-when">{c.announcementDate}</div>
+          <div className="hs-tr-alert-tag" data-field="announcementTag" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementTag}</div>
+          <h3 className="hs-tr-alert-h3" data-field="announcementHeadline" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementHeadline}</h3>
+          <p className="hs-tr-alert-p" data-field="announcementBody" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementBody}</p>
+          <div className="hs-tr-alert-when" data-field="announcementDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementDate}</div>
         </div>
         <div className="hs-tr-panel hs-tr-count" data-label="NEXT LEG">
-          <div className="hs-tr-cd-lbl">{c.countdownLabel}</div>
-          <div className="hs-tr-cd-v">{c.countdownValue}</div>
-          <div className="hs-tr-cd-until">{c.countdownSub}</div>
+          <div className="hs-tr-cd-lbl" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownLabel}</div>
+          <div className="hs-tr-cd-v" data-field="countdownValue" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownValue}</div>
+          <div className="hs-tr-cd-until" data-field="countdownSub" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownSub}</div>
         </div>
       </div>
 
       <div className="hs-tr-ticker">
-        <div className="hs-tr-tk-tag">{c.tickerTag}</div>
+        <div className="hs-tr-tk-tag" data-field="tickerTag" style={{ whiteSpace: 'pre-wrap' as const }}>{c.tickerTag}</div>
         <div className="hs-tr-tk-msg">
-          <span>{c.tickerMessage}</span>
-          <span>{c.tickerMessage}</span>
+          <span data-field="tickerMessage" style={{ whiteSpace: 'pre-wrap' as const }}>{c.tickerMessage}</span>
+          <span data-field="tickerMessage" style={{ whiteSpace: 'pre-wrap' as const }}>{c.tickerMessage}</span>
         </div>
       </div>
     </HsStage>

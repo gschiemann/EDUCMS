@@ -143,9 +143,9 @@ export function HsVarsityWidget({ config }: { config?: HsVarsityConfig }) {
       {/* Seal (school initials + est year) */}
       <div className="hs-varsity-seal">
         <div>
-          <span>{c.schoolInitials}</span>
+          <span data-field="schoolInitials" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolInitials}</span>
           <br />
-          <span className="hs-varsity-seal-est">{c.schoolEst}</span>
+          <span className="hs-varsity-seal-est" data-field="schoolEst" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolEst}</span>
         </div>
       </div>
 
@@ -162,40 +162,40 @@ export function HsVarsityWidget({ config }: { config?: HsVarsityConfig }) {
 
       {/* Department bar */}
       <div className="hs-varsity-deptbar">
-        <div className="hs-varsity-dept">{c.department}</div>
-        <div className="hs-varsity-name">{c.schoolName}</div>
+        <div className="hs-varsity-dept" data-field="department" style={{ whiteSpace: 'pre-wrap' as const }}>{c.department}</div>
+        <div className="hs-varsity-name" data-field="schoolName" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolName}</div>
       </div>
 
       {/* Jersey row: greeting + scoreboard */}
       <div className="hs-varsity-jersey">
         <div className="hs-varsity-chest">
           <div>
-            <div className="hs-varsity-eyebrow">{c.greetingEyebrow}</div>
-            <h1 className="hs-varsity-h1">{c.greetingHeadline}</h1>
-            <div className="hs-varsity-sub">{c.greetingSubtitle}</div>
+            <div className="hs-varsity-eyebrow" data-field="greetingEyebrow" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingEyebrow}</div>
+            <h1 className="hs-varsity-h1" data-field="greetingHeadline" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingHeadline}</h1>
+            <div className="hs-varsity-sub" data-field="greetingSubtitle" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingSubtitle}</div>
           </div>
         </div>
         <div className="hs-varsity-score">
           <div className="hs-varsity-score-hdr">
             <div>
               <span className="hs-varsity-score-dot" />
-              <span>{c.scoreboardTag}</span>
+              <span data-field="scoreboardTag" style={{ whiteSpace: 'pre-wrap' as const }}>{c.scoreboardTag}</span>
             </div>
-            <div>{c.scoreboardSport}</div>
+            <div data-field="scoreboardSport" style={{ whiteSpace: 'pre-wrap' as const }}>{c.scoreboardSport}</div>
           </div>
           <div className="hs-varsity-matchup">
             <div className="hs-varsity-team hs-varsity-team-home">
-              <div className="hs-varsity-crest">{c.homeAbbr}</div>
-              <div className="hs-varsity-tname">{c.homeTeam}</div>
+              <div className="hs-varsity-crest" data-field="homeAbbr" style={{ whiteSpace: 'pre-wrap' as const }}>{c.homeAbbr}</div>
+              <div className="hs-varsity-tname" data-field="homeTeam" style={{ whiteSpace: 'pre-wrap' as const }}>{c.homeTeam}</div>
             </div>
             <div className="hs-varsity-vs">VS</div>
             <div className="hs-varsity-team hs-varsity-team-away">
-              <div className="hs-varsity-tname">{c.awayTeam}</div>
-              <div className="hs-varsity-crest hs-varsity-crest-away">{c.awayAbbr}</div>
+              <div className="hs-varsity-tname" data-field="awayTeam" style={{ whiteSpace: 'pre-wrap' as const }}>{c.awayTeam}</div>
+              <div className="hs-varsity-crest hs-varsity-crest-away" data-field="awayAbbr" style={{ whiteSpace: 'pre-wrap' as const }}>{c.awayAbbr}</div>
             </div>
           </div>
           <div className="hs-varsity-time">
-            <span>{c.scoreboardTime}</span> · <span className="hs-varsity-where">{c.scoreboardWhere}</span>
+            <span data-field="scoreboardTime" style={{ whiteSpace: 'pre-wrap' as const }}>{c.scoreboardTime}</span> · <span className="hs-varsity-where" data-field="scoreboardWhere" style={{ whiteSpace: 'pre-wrap' as const }}>{c.scoreboardWhere}</span>
           </div>
         </div>
       </div>
@@ -204,53 +204,53 @@ export function HsVarsityWidget({ config }: { config?: HsVarsityConfig }) {
       <div className="hs-varsity-stats">
         <div className="hs-varsity-stat">
           <div className="hs-varsity-stat-lbl">LOCAL TIME</div>
-          <div className="hs-varsity-stat-val">{c.clockTime}</div>
-          <div className="hs-varsity-stat-cap">{c.clockCaption}</div>
+          <div className="hs-varsity-stat-val" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockTime}</div>
+          <div className="hs-varsity-stat-cap" data-field="clockCaption" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockCaption}</div>
         </div>
         <div className="hs-varsity-stat">
           <div className="hs-varsity-stat-lbl">GAMETIME FORECAST</div>
-          <div className="hs-varsity-stat-val">{c.weatherTemp}</div>
-          <div className="hs-varsity-stat-cap">{c.weatherCondition}</div>
+          <div className="hs-varsity-stat-val" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherTemp}</div>
+          <div className="hs-varsity-stat-cap" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherCondition}</div>
         </div>
         <div className="hs-varsity-stat">
           <div className="hs-varsity-stat-lbl">SEASON RECORD</div>
-          <div className="hs-varsity-stat-val">{c.recordValue}</div>
-          <div className="hs-varsity-stat-cap">{c.recordCaption}</div>
+          <div className="hs-varsity-stat-val" data-field="recordValue" style={{ whiteSpace: 'pre-wrap' as const }}>{c.recordValue}</div>
+          <div className="hs-varsity-stat-cap" data-field="recordCaption" style={{ whiteSpace: 'pre-wrap' as const }}>{c.recordCaption}</div>
         </div>
         <div className="hs-varsity-stat">
           <div className="hs-varsity-stat-lbl">TODAY&apos;S ATTENDANCE</div>
-          <div className="hs-varsity-stat-val">{c.attendanceValue}</div>
-          <div className="hs-varsity-stat-cap">{c.attendanceCaption}</div>
+          <div className="hs-varsity-stat-val" data-field="attendanceValue" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceValue}</div>
+          <div className="hs-varsity-stat-cap" data-field="attendanceCaption" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceCaption}</div>
         </div>
       </div>
 
       {/* Coach / teacher of the week */}
       <div className="hs-varsity-coach">
         <div className="hs-varsity-portrait">
-          <div className="hs-varsity-jersey-num">{c.teacherNumber}</div>
+          <div className="hs-varsity-jersey-num" data-field="teacherNumber" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherNumber}</div>
         </div>
         <div>
-          <div className="hs-varsity-eyebrow hs-varsity-coach-eyebrow">{c.teacherLabel}</div>
-          <h2 className="hs-varsity-h2">{c.teacherName}</h2>
-          <div className="hs-varsity-meta">{c.teacherGrade}</div>
-          <div className="hs-varsity-quote">{c.teacherQuote}</div>
+          <div className="hs-varsity-eyebrow hs-varsity-coach-eyebrow" data-field="teacherLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherLabel}</div>
+          <h2 className="hs-varsity-h2" data-field="teacherName" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherName}</h2>
+          <div className="hs-varsity-meta" data-field="teacherGrade" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherGrade}</div>
+          <div className="hs-varsity-quote" data-field="teacherQuote" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherQuote}</div>
         </div>
       </div>
 
       {/* Announcement + countdown column */}
       <div className="hs-varsity-colright">
         <div className="hs-varsity-anno">
-          <div className="hs-varsity-anno-tag">{c.announcementTag}</div>
-          <h3 className="hs-varsity-anno-h3">{c.announcementHeadline}</h3>
-          <p className="hs-varsity-anno-p">{c.announcementBody}</p>
-          <div className="hs-varsity-anno-when">{c.announcementDate}</div>
+          <div className="hs-varsity-anno-tag" data-field="announcementTag" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementTag}</div>
+          <h3 className="hs-varsity-anno-h3" data-field="announcementHeadline" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementHeadline}</h3>
+          <p className="hs-varsity-anno-p" data-field="announcementBody" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementBody}</p>
+          <div className="hs-varsity-anno-when" data-field="announcementDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementDate}</div>
         </div>
         <div className="hs-varsity-countdown">
-          <div className="hs-varsity-cd-num">{c.countdownValue}</div>
+          <div className="hs-varsity-cd-num" data-field="countdownValue" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownValue}</div>
           <div className="hs-varsity-cd-lbl">
-            <span>{c.countdownLabel}</span>
+            <span data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownLabel}</span>
             <br />
-            <span className="hs-varsity-cd-sub">{c.countdownSub}</span>
+            <span className="hs-varsity-cd-sub" data-field="countdownSub" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownSub}</span>
           </div>
         </div>
       </div>
@@ -274,10 +274,10 @@ export function HsVarsityWidget({ config }: { config?: HsVarsityConfig }) {
 
       {/* Ticker */}
       <div className="hs-varsity-ticker">
-        <div className="hs-varsity-ticker-tag">{c.tickerTag}</div>
+        <div className="hs-varsity-ticker-tag" data-field="tickerTag" style={{ whiteSpace: 'pre-wrap' as const }}>{c.tickerTag}</div>
         <div className="hs-varsity-ticker-msg">
-          <span>{c.tickerMessage}</span>
-          <span>{c.tickerMessage}</span>
+          <span data-field="tickerMessage" style={{ whiteSpace: 'pre-wrap' as const }}>{c.tickerMessage}</span>
+          <span data-field="tickerMessage" style={{ whiteSpace: 'pre-wrap' as const }}>{c.tickerMessage}</span>
         </div>
       </div>
     </HsStage>
