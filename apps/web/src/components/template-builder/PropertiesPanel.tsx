@@ -4,7 +4,7 @@ import { useId, useState, useEffect, useRef } from 'react';
 import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon } from 'lucide-react';
 import { useBuilderStore } from './useBuilderStore';
 import { widgetLabel } from './constants';
-import { useAssets, usePlaylists } from '@/hooks/use-api';
+import { useAssets, usePlaylists, useTemplates } from '@/hooks/use-api';
 
 // MS pack DEFAULTS registry. Every MS widget exports its `DEFAULTS`
 // keyed by dot-notation field paths (e.g. `school.eye`, `agenda.0.t`).
@@ -589,6 +589,14 @@ function TemplateProperties() {
               className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all shadow-sm inset-shadow-sm"
             />
           </div>
+          <TemplateBackdropPicker
+            current={{ bgColor: meta.bgColor, bgGradient: meta.bgGradient, bgImage: meta.bgImage }}
+            onPick={(bg) => setMeta({
+              bgColor: bg.bgColor || '',
+              bgGradient: bg.bgGradient || '',
+              bgImage: bg.bgImage || '',
+            })}
+          />
         </div>
       </section>
     </div>
@@ -1714,6 +1722,70 @@ const FONT_OPTIONS: { family: string; sample: string }[] = [
   { family: 'VT323, monospace',         sample: 'VT323 — Retro Terminal' },
   { family: 'Press Start 2P, monospace',sample: 'Press Start 2P — Pixel' },
 ];
+
+/**
+ * TemplateBackdropPicker — renders a swatch grid where every entry is
+ * the bgColor/bgGradient/bgImage of an existing system preset. One
+ * click adopts that backdrop on the current custom template. Saves the
+ * operator from typing "linear-gradient(180deg,#fce7f3 0%,#ffe4e6 …)"
+ * by hand or hunting through 60+ templates for the gradient they
+ * remember liking.
+ *
+ * Deduplicated by bg signature so a portrait + landscape pair don't
+ * show as two separate swatches.
+ */
+function TemplateBackdropPicker({
+  current,
+  onPick,
+}: {
+  current: { bgColor?: string; bgGradient?: string; bgImage?: string };
+  onPick: (bg: { bgColor?: string; bgGradient?: string; bgImage?: string }) => void;
+}) {
+  const { data: templates } = useTemplates();
+  const swatches = (() => {
+    const seen = new Set<string>();
+    const out: { name: string; bgColor?: string; bgGradient?: string; bgImage?: string }[] = [];
+    for (const t of (templates as any[] | undefined) || []) {
+      const sig = `${t.bgColor || ''}|${t.bgGradient || ''}|${t.bgImage || ''}`;
+      if (seen.has(sig) || sig === '||') continue;
+      seen.add(sig);
+      out.push({ name: t.name || '(untitled)', bgColor: t.bgColor, bgGradient: t.bgGradient, bgImage: t.bgImage });
+      if (out.length >= 60) break;
+    }
+    return out;
+  })();
+  const isCurrent = (s: typeof swatches[number]) =>
+    (s.bgColor || '') === (current.bgColor || '') &&
+    (s.bgGradient || '') === (current.bgGradient || '') &&
+    (s.bgImage || '') === (current.bgImage || '');
+
+  if (swatches.length === 0) return null;
+
+  return (
+    <div>
+      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Browse template backgrounds</label>
+      <div className="grid grid-cols-6 gap-1.5 max-h-48 overflow-y-auto p-1 rounded-lg bg-white border border-slate-200/60">
+        {swatches.map((s, i) => {
+          const bg = s.bgImage
+            ? `url(${s.bgImage.startsWith('url(') ? s.bgImage.slice(4, -1) : s.bgImage}) center/cover`
+            : s.bgGradient || s.bgColor || '#ffffff';
+          return (
+            <button
+              key={i}
+              type="button"
+              onClick={() => onPick(s)}
+              title={s.name}
+              aria-label={`Use backdrop from ${s.name}`}
+              className={`aspect-square rounded transition-all hover:scale-105 ${isCurrent(s) ? 'ring-2 ring-indigo-500 ring-offset-1' : 'border border-slate-200/60'}`}
+              style={{ background: bg }}
+            />
+          );
+        })}
+      </div>
+      <p className="mt-1 text-[10px] text-slate-400">Click any swatch to adopt that template's background. Operator-typed values above stay as overrides.</p>
+    </div>
+  );
+}
 
 function FontFamilyField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
