@@ -16,8 +16,8 @@ export function StemScienceText({ config, compact }: { config: any; compact?: bo
       boxShadow: '0 10px 30px rgba(0,0,0,0.8), inset 0 0 20px rgba(6,182,212,0.1)',
       containerType: 'size'
     }}>
-      <h1 style={{ 
-        fontSize: 'clamp(2rem, 15cqi, 8rem)', 
+      <h1 data-field="content" style={{
+        fontSize: 'clamp(2rem, 15cqi, 8rem)',
         color: 'transparent',
         background: 'linear-gradient(90deg, #67e8f9 0%, #3b82f6 100%)',
         WebkitBackgroundClip: 'text',
@@ -27,7 +27,8 @@ export function StemScienceText({ config, compact }: { config: any; compact?: bo
         textTransform: 'uppercase',
         textAlign: 'center',
         margin: 0,
-        textShadow: '0 0 20px rgba(6,182,212,0.4)'
+        textShadow: '0 0 20px rgba(6,182,212,0.4)',
+        whiteSpace: 'pre-wrap' as const
       }}>
         <span style={{ color: '#06b6d4', marginRight: '4cqi', opacity: 0.7 }}>{"//"}</span>
         {content}
@@ -74,7 +75,7 @@ export function StemScienceCountdown({ config, compact }: { config: any; compact
       <div style={{ position: 'absolute', top: 0, left: 0, width: '20px', height: '20px', borderTop: '2px solid #22d3ee', borderLeft: '2px solid #22d3ee', opacity: 0.8 }} />
       <div style={{ position: 'absolute', bottom: 0, right: 0, width: '20px', height: '20px', borderBottom: '2px solid #22d3ee', borderRight: '2px solid #22d3ee', opacity: 0.8 }} />
       
-      <div style={{
+      <div data-field="label" style={{
         color: '#22d3ee',
         fontFamily: '"Share Tech Mono", monospace',
         textTransform: 'uppercase',
@@ -83,7 +84,8 @@ export function StemScienceCountdown({ config, compact }: { config: any; compact
         marginBottom: '6cqh',
         display: 'flex',
         alignItems: 'center',
-        gap: '2cqi'
+        gap: '2cqi',
+        whiteSpace: 'pre-wrap' as const
       }}>
         <div style={{ width: '2cqi', height: '2cqi', background: '#06b6d4', animation: 'pulse 2s infinite' }} />
         {label}

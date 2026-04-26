@@ -184,9 +184,9 @@ export function StorybookCafeteriaWidget({ config, live }: { config: Cfg; live?:
 
         <div className="book-pages">
           <div className="book-header">
-            <div className="book-chapter">{c.chapter || 'Chapter Twelve'}</div>
-            <h1>{c.title || "Today's Menu"}</h1>
-            <div className="book-sub">{c.subtitle || 'in which the kitchen serves a feast'}</div>
+            <div className="book-chapter"><span data-field="chapter" style={{ whiteSpace: 'pre-wrap' }}>{c.chapter || 'Chapter Twelve'}</span></div>
+            <h1><span data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{c.title || "Today's Menu"}</span></h1>
+            <div className="book-sub"><span data-field="subtitle" style={{ whiteSpace: 'pre-wrap' }}>{c.subtitle || 'in which the kitchen serves a feast'}</span></div>
           </div>
 
           <div className="book-vignette">
@@ -195,7 +195,7 @@ export function StorybookCafeteriaWidget({ config, live }: { config: Cfg; live?:
                 {isHeroUrl ? <img src={heroEmoji} alt="" className="book-heroImg" /> : heroEmoji}
               </div>
             </div>
-            <div className="book-caption">— {c.heroCaption || 'from the kitchen'} —</div>
+            <div className="book-caption">— <span data-field="heroCaption" style={{ whiteSpace: 'pre-wrap' }}>{c.heroCaption || 'from the kitchen'}</span> —</div>
           </div>
 
           <div className="book-spine" />
@@ -223,11 +223,11 @@ export function StorybookCafeteriaWidget({ config, live }: { config: Cfg; live?:
 
           <div className="book-footer">
             <div className="book-special">
-              <div className="book-specialLbl">{c.noteLabel || 'A note from the cook —'}</div>
-              <div className="book-specialMsg">{c.noteMessage || 'Pizza Friday returns at last! Cheese & pepperoni in line two.'}</div>
+              <div className="book-specialLbl"><span data-field="noteLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.noteLabel || 'A note from the cook —'}</span></div>
+              <div className="book-specialMsg"><span data-field="noteMessage" style={{ whiteSpace: 'pre-wrap' }}>{c.noteMessage || 'Pizza Friday returns at last! Cheese & pepperoni in line two.'}</span></div>
             </div>
             <div className="book-ctd">
-              <div className="book-ctdLbl">{c.countdownLabel || 'until next meal'}</div>
+              <div className="book-ctdLbl"><span data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.countdownLabel || 'until next meal'}</span></div>
               <div className="book-ctdNum">{days}</div>
               <div className="book-ctdUnit">{unit}</div>
             </div>
@@ -238,7 +238,7 @@ export function StorybookCafeteriaWidget({ config, live }: { config: Cfg; live?:
         <div className="book-pgnum r">— {c.pageRight || 'xiii'} —</div>
 
         <div className="book-ticker">
-          <div className="book-tickerStamp">{(c.tickerStamp || 'FROM THE KITCHEN').toUpperCase()}</div>
+          <div className="book-tickerStamp"><span data-field="tickerStamp" style={{ whiteSpace: 'pre-wrap' }}>{(c.tickerStamp || 'FROM THE KITCHEN').toUpperCase()}</span></div>
           <div className="book-tickerScroll">
             <span
               className="book-tickerText"

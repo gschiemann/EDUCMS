@@ -256,62 +256,62 @@ export function MsArcadeWidget({
         <div className="ms-arc-player" data-widget="school">
           <div className="ms-arc-avatar" aria-hidden="true" />
           <div className="ms-arc-info">
-            <div className="ms-arc-name" data-field="school.name">{pick(cfg, 'school.name')}</div>
+            <div className="ms-arc-name" data-field="school.name" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.name')}</div>
             <div className="ms-arc-sub">
-              <span data-field="school.team">{pick(cfg, 'school.team')}</span>
+              <span data-field="school.team" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.team')}</span>
               {' · LV.'}
-              <b data-field="school.lv">{pick(cfg, 'school.lv')}</b>
+              <b data-field="school.lv" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.lv')}</b>
               {' · '}
-              <span data-field="school.date">{pick(cfg, 'school.date')}</span>
+              <span data-field="school.date" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.date')}</span>
             </div>
           </div>
         </div>
         <div className="ms-arc-hud-stats">
           <div className="ms-arc-stat" data-widget="clock">
-            <span className="ms-arc-k" data-field="clock.label">{pick(cfg, 'clock.label')}</span>
-            <span className="ms-arc-v" data-field="clock.time">{pick(cfg, 'clock.time')}</span>
+            <span className="ms-arc-k" data-field="clock.label" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'clock.label')}</span>
+            <span className="ms-arc-v" data-field="clock.time" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'clock.time')}</span>
           </div>
           <div className="ms-arc-stat" data-widget="weather">
-            <span className="ms-arc-k" data-field="weather.label">{pick(cfg, 'weather.label')}</span>
-            <span className="ms-arc-v ms-arc-mp" data-field="weather.temp">{pick(cfg, 'weather.temp')}</span>
+            <span className="ms-arc-k" data-field="weather.label" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'weather.label')}</span>
+            <span className="ms-arc-v ms-arc-mp" data-field="weather.temp" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'weather.temp')}</span>
           </div>
           <div className="ms-arc-stat" data-widget="countdown">
-            <span className="ms-arc-k" data-field="countdown.label">{pick(cfg, 'countdown.label')}</span>
-            <span className="ms-arc-v ms-arc-xp" data-field="countdown.value">{pick(cfg, 'countdown.value')}</span>
+            <span className="ms-arc-k" data-field="countdown.label" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'countdown.label')}</span>
+            <span className="ms-arc-v ms-arc-xp" data-field="countdown.value" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'countdown.value')}</span>
           </div>
         </div>
       </div>
 
       {/* Hero quest card */}
       <div className="ms-arc-quest" data-widget="greeting">
-        <div className="ms-arc-quest-tag" data-field="greeting.tag">{pick(cfg, 'greeting.tag')}</div>
-        <h1 className="ms-arc-quest-h1" data-field="greeting.headline">
+        <div className="ms-arc-quest-tag" data-field="greeting.tag" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.tag')}</div>
+        <h1 className="ms-arc-quest-h1" data-field="greeting.headline" style={{ whiteSpace: 'pre-wrap' }}>
           {pick(cfg, 'greeting.headline')}
         </h1>
-        <p className="ms-arc-quest-sub" data-field="greeting.subtitle">{pick(cfg, 'greeting.subtitle')}</p>
+        <p className="ms-arc-quest-sub" data-field="greeting.subtitle" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.subtitle')}</p>
         <div className="ms-arc-quest-meta">
-          <span data-field="greeting.m0">{pick(cfg, 'greeting.m0')}</span>
-          <span data-field="greeting.m1">{pick(cfg, 'greeting.m1')}</span>
-          <span data-field="greeting.m2">{pick(cfg, 'greeting.m2')}</span>
+          <span data-field="greeting.m0" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.m0')}</span>
+          <span data-field="greeting.m1" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.m1')}</span>
+          <span data-field="greeting.m2" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.m2')}</span>
         </div>
       </div>
 
       {/* XP bar */}
       <div className="ms-arc-xpbar" data-widget="xp">
         <div className="ms-arc-xp-lbl">
-          <span data-field="xp.label">{pick(cfg, 'xp.label')}</span>
-          <span data-field="xp.sub">{pick(cfg, 'xp.sub')}</span>
+          <span data-field="xp.label" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'xp.label')}</span>
+          <span data-field="xp.sub" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'xp.sub')}</span>
         </div>
         <div className="ms-arc-xp-track">
           <div className="ms-arc-xp-fill" style={{ width: `${fillPct}%` }} />
         </div>
-        <div className="ms-arc-xp-pct" data-field="xp.pct">{pick(cfg, 'xp.pct')}</div>
+        <div className="ms-arc-xp-pct" data-field="xp.pct" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'xp.pct')}</div>
       </div>
 
       {/* Leaderboard (top 3) */}
       <div className="ms-arc-side" data-widget="leaderboard">
-        <h2 className="ms-arc-side-h2" data-field="leaderboard.title">{pick(cfg, 'leaderboard.title')}</h2>
-        <div className="ms-arc-side-sub" data-field="leaderboard.sub">{pick(cfg, 'leaderboard.sub')}</div>
+        <h2 className="ms-arc-side-h2" data-field="leaderboard.title" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'leaderboard.title')}</h2>
+        <div className="ms-arc-side-sub" data-field="leaderboard.sub" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'leaderboard.sub')}</div>
 
         {([0, 1, 2] as const).map((i) => {
           const klass = i === 0 ? 'g1' : i === 1 ? 'g2' : 'g3';
@@ -320,17 +320,17 @@ export function MsArcadeWidget({
           return (
             <div key={i} className={`ms-arc-entry ms-arc-${klass}`} data-widget={`leaderboard.${i}`}>
               <span className="ms-arc-rank">{rank}</span>
-              <span className="ms-arc-av" style={avStyle} data-field={`leaderboard.${i}.av`}>
+              <span className="ms-arc-av" style={{ ...avStyle, whiteSpace: 'pre-wrap' }} data-field={`leaderboard.${i}.av`}>
                 {pick(cfg, `leaderboard.${i}.av` as keyof Required<MsArcadeConfig>)}
               </span>
-              <span className="ms-arc-entry-name" data-field={`leaderboard.${i}.name`}>
+              <span className="ms-arc-entry-name" data-field={`leaderboard.${i}.name`} style={{ whiteSpace: 'pre-wrap' }}>
                 {pick(cfg, `leaderboard.${i}.name` as keyof Required<MsArcadeConfig>)}
-                <span data-field={`leaderboard.${i}.sub`}>
+                <span data-field={`leaderboard.${i}.sub`} style={{ whiteSpace: 'pre-wrap' }}>
                   {pick(cfg, `leaderboard.${i}.sub` as keyof Required<MsArcadeConfig>)}
                 </span>
               </span>
               <span className="ms-arc-pts">
-                <span data-field={`leaderboard.${i}.pts`}>
+                <span data-field={`leaderboard.${i}.pts`} style={{ whiteSpace: 'pre-wrap' }}>
                   {pick(cfg, `leaderboard.${i}.pts` as keyof Required<MsArcadeConfig>)}
                 </span>
                 <span>PTS</span>
@@ -343,11 +343,11 @@ export function MsArcadeWidget({
       {/* Quest log (agenda) */}
       <div className="ms-arc-board" data-widget="agenda">
         <div className="ms-arc-board-head">
-          <h2 className="ms-arc-board-h2" data-field="agenda.title">{pick(cfg, 'agenda.title')}</h2>
+          <h2 className="ms-arc-board-h2" data-field="agenda.title" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'agenda.title')}</h2>
           <div className="ms-arc-board-day">
-            <span data-field="agenda.day">{pick(cfg, 'agenda.day')}</span>{' '}
-            <b data-field="agenda.letter">{pick(cfg, 'agenda.letter')}</b>{' · '}
-            <span data-field="agenda.date">{pick(cfg, 'agenda.date')}</span>
+            <span data-field="agenda.day" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'agenda.day')}</span>{' '}
+            <b data-field="agenda.letter" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'agenda.letter')}</b>{' · '}
+            <span data-field="agenda.date" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'agenda.date')}</span>
           </div>
         </div>
         <div className="ms-arc-board-list">
@@ -364,19 +364,19 @@ export function MsArcadeWidget({
             const m = meta[i];
             return (
               <div key={i} className={`ms-arc-q ${m.className}`.trim()} data-widget={`agenda.${i}`}>
-                <span className="ms-arc-q-icon" style={m.iconStyle} data-field={`agenda.${i}.icon`}>
+                <span className="ms-arc-q-icon" style={{ ...m.iconStyle, whiteSpace: 'pre-wrap' }} data-field={`agenda.${i}.icon`}>
                   {pick(cfg, `agenda.${i}.icon` as keyof Required<MsArcadeConfig>)}
                 </span>
                 <span className="ms-arc-q-txt">
-                  <b data-field={`agenda.${i}.t`}>
+                  <b data-field={`agenda.${i}.t`} style={{ whiteSpace: 'pre-wrap' }}>
                     {pick(cfg, `agenda.${i}.t` as keyof Required<MsArcadeConfig>)}
                   </b>
-                  <span data-field={`agenda.${i}.r`}>
+                  <span data-field={`agenda.${i}.r`} style={{ whiteSpace: 'pre-wrap' }}>
                     {pick(cfg, `agenda.${i}.r` as keyof Required<MsArcadeConfig>)}
                   </span>
                 </span>
                 <span className="ms-arc-q-rw">
-                  <span data-field={`agenda.${i}.xp`}>
+                  <span data-field={`agenda.${i}.xp`} style={{ whiteSpace: 'pre-wrap' }}>
                     {pick(cfg, `agenda.${i}.xp` as keyof Required<MsArcadeConfig>)}
                   </span>
                   {m.status}
@@ -390,26 +390,26 @@ export function MsArcadeWidget({
       {/* Side quests (loot) */}
       <div className="ms-arc-events">
         <div className="ms-arc-eventsbox" data-widget="loot">
-          <h2 className="ms-arc-events-h2" data-field="loot.title">{pick(cfg, 'loot.title')}</h2>
+          <h2 className="ms-arc-events-h2" data-field="loot.title" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'loot.title')}</h2>
           <div className="ms-arc-events-list">
             {([0, 1] as const).map((i) => (
               <div key={i} className="ms-arc-it" data-widget={`loot.${i}`}>
                 <div className="ms-arc-it-date">
-                  <span data-field={`loot.${i}.dow`}>
+                  <span data-field={`loot.${i}.dow`} style={{ whiteSpace: 'pre-wrap' }}>
                     {pick(cfg, `loot.${i}.dow` as keyof Required<MsArcadeConfig>)}
                   </span>
-                  <span data-field={`loot.${i}.d`}>
+                  <span data-field={`loot.${i}.d`} style={{ whiteSpace: 'pre-wrap' }}>
                     {pick(cfg, `loot.${i}.d` as keyof Required<MsArcadeConfig>)}
                   </span>
                 </div>
                 <div className="ms-arc-it-info">
-                  <div className="ms-arc-it-t" data-field={`loot.${i}.t`}>
+                  <div className="ms-arc-it-t" data-field={`loot.${i}.t`} style={{ whiteSpace: 'pre-wrap' }}>
                     {pick(cfg, `loot.${i}.t` as keyof Required<MsArcadeConfig>)}
                   </div>
-                  <div className="ms-arc-it-s" data-field={`loot.${i}.s`}>
+                  <div className="ms-arc-it-s" data-field={`loot.${i}.s`} style={{ whiteSpace: 'pre-wrap' }}>
                     {pick(cfg, `loot.${i}.s` as keyof Required<MsArcadeConfig>)}
                   </div>
-                  <span className="ms-arc-it-tag" data-field={`loot.${i}.tag`}>
+                  <span className="ms-arc-it-tag" data-field={`loot.${i}.tag`} style={{ whiteSpace: 'pre-wrap' }}>
                     {pick(cfg, `loot.${i}.tag` as keyof Required<MsArcadeConfig>)}
                   </span>
                 </div>
@@ -421,10 +421,10 @@ export function MsArcadeWidget({
 
       {/* Unified bottom bar (BOSS BATTLE × news feed) */}
       <div className="ms-arc-newsbar" data-widget="newsbar">
-        <span className="ms-arc-newsbar-tag" data-field="newsbar.tag">{pick(cfg, 'newsbar.tag')}</span>
+        <span className="ms-arc-newsbar-tag" data-field="newsbar.tag" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'newsbar.tag')}</span>
         <div className="ms-arc-msg-wrap">
           <div className="ms-arc-msg">
-            <span data-field="newsbar.message">{pick(cfg, 'newsbar.message')}</span>
+            <span data-field="newsbar.message" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'newsbar.message')}</span>
             <span aria-hidden="true">{pick(cfg, 'newsbar.message')}</span>
           </div>
         </div>

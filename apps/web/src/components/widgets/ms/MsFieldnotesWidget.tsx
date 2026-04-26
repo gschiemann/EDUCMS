@@ -364,14 +364,14 @@ export function MsFieldnotesWidget({ config }: { config?: MsFieldnotesConfig }) 
           </div>
           <div className="ms-fn-info">
             <div className="ms-fn-ey">
-              <span data-field="school.ey">{pick(cfg, 'school.ey')}</span>
+              <span data-field="school.ey" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.ey')}</span>
             </div>
             <div className="ms-fn-ttl">
-              <span data-field="school.name">{pick(cfg, 'school.name')}</span>{' '}
-              <em data-field="school.amp">{pick(cfg, 'school.amp')}</em>{' '}
-              <span data-field="school.mascot">{pick(cfg, 'school.mascot')}</span>
+              <span data-field="school.name" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.name')}</span>{' '}
+              <em data-field="school.amp" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.amp')}</em>{' '}
+              <span data-field="school.mascot" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.mascot')}</span>
             </div>
-            <div className="ms-fn-sub" data-field="school.sub">
+            <div className="ms-fn-sub" data-field="school.sub" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'school.sub')}
             </div>
           </div>
@@ -379,13 +379,13 @@ export function MsFieldnotesWidget({ config }: { config?: MsFieldnotesConfig }) 
 
         <div className="ms-fn-seal" data-widget="brand">
           <div className="ms-fn-disc">
-            <div className="ms-fn-vol" data-field="brand.vol">
+            <div className="ms-fn-vol" data-field="brand.vol" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'brand.vol')}
             </div>
-            <div className="ms-fn-num" data-field="brand.num">
+            <div className="ms-fn-num" data-field="brand.num" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'brand.num')}
             </div>
-            <div className="ms-fn-day" data-field="brand.day">
+            <div className="ms-fn-day" data-field="brand.day" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'brand.day')}
             </div>
           </div>
@@ -393,19 +393,19 @@ export function MsFieldnotesWidget({ config }: { config?: MsFieldnotesConfig }) 
 
         <div className="ms-fn-tiles">
           <div className="ms-fn-tile" data-widget="weather">
-            <span className="ms-fn-k" data-field="weather.k">{pick(cfg, 'weather.k')}</span>
-            <span className="ms-fn-v ms-fn-cool" data-field="weather.v">{pick(cfg, 'weather.v')}</span>
-            <span className="ms-fn-cap" data-field="weather.cap">{pick(cfg, 'weather.cap')}</span>
+            <span className="ms-fn-k" data-field="weather.k" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'weather.k')}</span>
+            <span className="ms-fn-v ms-fn-cool" data-field="weather.v" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'weather.v')}</span>
+            <span className="ms-fn-cap" data-field="weather.cap" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'weather.cap')}</span>
           </div>
           <div className="ms-fn-tile" data-widget="clock">
-            <span className="ms-fn-k" data-field="clock.k">{pick(cfg, 'clock.k')}</span>
-            <span className="ms-fn-v" data-field="clock.v">{pick(cfg, 'clock.v')}</span>
-            <span className="ms-fn-cap" data-field="clock.cap">{pick(cfg, 'clock.cap')}</span>
+            <span className="ms-fn-k" data-field="clock.k" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'clock.k')}</span>
+            <span className="ms-fn-v" data-field="clock.v" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'clock.v')}</span>
+            <span className="ms-fn-cap" data-field="clock.cap" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'clock.cap')}</span>
           </div>
           <div className="ms-fn-tile" data-widget="bell">
-            <span className="ms-fn-k" data-field="bell.k">{pick(cfg, 'bell.k')}</span>
-            <span className="ms-fn-v ms-fn-warm" data-field="bell.v">{pick(cfg, 'bell.v')}</span>
-            <span className="ms-fn-cap" data-field="bell.cap">{pick(cfg, 'bell.cap')}</span>
+            <span className="ms-fn-k" data-field="bell.k" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'bell.k')}</span>
+            <span className="ms-fn-v ms-fn-warm" data-field="bell.v" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'bell.v')}</span>
+            <span className="ms-fn-cap" data-field="bell.cap" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'bell.cap')}</span>
           </div>
         </div>
       </header>
@@ -415,7 +415,7 @@ export function MsFieldnotesWidget({ config }: { config?: MsFieldnotesConfig }) 
         {/* LEFT PAGE — botanical specimen + hero copy */}
         <div className="ms-fn-page ms-fn-left">
           <span className="ms-fn-pageno" data-widget="pageno-l">
-            <span data-field="pageno.l">{pick(cfg, 'pageno.l')}</span>
+            <span data-field="pageno.l" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'pageno.l')}</span>
           </span>
           <div className="ms-fn-coffee" aria-hidden="true" />
           <div className="ms-fn-inner">
@@ -456,33 +456,33 @@ export function MsFieldnotesWidget({ config }: { config?: MsFieldnotesConfig }) 
                           fill="#6e7a36" stroke="#1e1a14" strokeWidth="2.5" />
                   </svg>
                 </div>
-                <div className="ms-fn-latin" data-field="specimen.latin">{pick(cfg, 'specimen.latin')}</div>
-                <div className="ms-fn-common" data-field="specimen.common">{pick(cfg, 'specimen.common')}</div>
-                <div className="ms-fn-meta" data-field="specimen.meta">{pick(cfg, 'specimen.meta')}</div>
+                <div className="ms-fn-latin" data-field="specimen.latin" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'specimen.latin')}</div>
+                <div className="ms-fn-common" data-field="specimen.common" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'specimen.common')}</div>
+                <div className="ms-fn-meta" data-field="specimen.meta" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'specimen.meta')}</div>
               </div>
 
               {/* Hero copy */}
               <div className="ms-fn-hero-copy" data-widget="greeting">
-                <div className="ms-fn-chapter" data-field="greeting.chapter">{pick(cfg, 'greeting.chapter')}</div>
+                <div className="ms-fn-chapter" data-field="greeting.chapter" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.chapter')}</div>
                 <h1 className="ms-fn-h1">
-                  <span data-field="greeting.h1a">{pick(cfg, 'greeting.h1a')}</span>{' '}
-                  <em data-field="greeting.h1b">{pick(cfg, 'greeting.h1b')}</em>
+                  <span data-field="greeting.h1a" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.h1a')}</span>{' '}
+                  <em data-field="greeting.h1b" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.h1b')}</em>
                   <br />
-                  <u data-field="greeting.h1c">{pick(cfg, 'greeting.h1c')}</u>{' '}
-                  <span data-field="greeting.h1d">{pick(cfg, 'greeting.h1d')}</span>
+                  <u data-field="greeting.h1c" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.h1c')}</u>{' '}
+                  <span data-field="greeting.h1d" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.h1d')}</span>
                 </h1>
                 <div className="ms-fn-quillbar" aria-hidden="true" />
-                <p className="ms-fn-lede" data-field="greeting.lede">
+                <p className="ms-fn-lede" data-field="greeting.lede" style={{ whiteSpace: 'pre-wrap' }}>
                   {pick(cfg, 'greeting.lede')}
                 </p>
                 <div className="ms-fn-signature">
-                  <span className="ms-fn-scribble" data-field="greeting.scribble">
+                  <span className="ms-fn-scribble" data-field="greeting.scribble" style={{ whiteSpace: 'pre-wrap' }}>
                     {pick(cfg, 'greeting.scribble')}
                   </span>
                   <span className="ms-fn-stamp">
                     Approved by
                     <br />
-                    <b data-field="greeting.stampname">{pick(cfg, 'greeting.stampname')}</b>
+                    <b data-field="greeting.stampname" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.stampname')}</b>
                   </span>
                 </div>
               </div>
@@ -496,7 +496,7 @@ export function MsFieldnotesWidget({ config }: { config?: MsFieldnotesConfig }) 
         {/* RIGHT PAGE — polaroid + countdown + agenda */}
         <div className="ms-fn-page ms-fn-right">
           <span className="ms-fn-pageno" data-widget="pageno-r">
-            <span data-field="pageno.r">{pick(cfg, 'pageno.r')}</span>
+            <span data-field="pageno.r" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'pageno.r')}</span>
           </span>
           <div className="ms-fn-inner-right">
             {/* Polaroid */}
@@ -517,33 +517,33 @@ export function MsFieldnotesWidget({ config }: { config?: MsFieldnotesConfig }) 
                 </svg>
               </div>
               <div className="ms-fn-caption">
-                <span className="ms-fn-cap-ey" data-field="spotlight.ey">{pick(cfg, 'spotlight.ey')}</span>
-                <span className="ms-fn-cap-name" data-field="spotlight.name">{pick(cfg, 'spotlight.name')}</span>
-                <span data-field="spotlight.note">{pick(cfg, 'spotlight.note')}</span>
+                <span className="ms-fn-cap-ey" data-field="spotlight.ey" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'spotlight.ey')}</span>
+                <span className="ms-fn-cap-name" data-field="spotlight.name" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'spotlight.name')}</span>
+                <span data-field="spotlight.note" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'spotlight.note')}</span>
               </div>
             </div>
 
             {/* Countdown */}
             <div className="ms-fn-countdown" data-widget="countdown">
-              <div className="ms-fn-cd-ey" data-field="countdown.ey">{pick(cfg, 'countdown.ey')}</div>
+              <div className="ms-fn-cd-ey" data-field="countdown.ey" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'countdown.ey')}</div>
               <div>
                 <div className="ms-fn-cd-num">
-                  <span data-field="countdown.num">{pick(cfg, 'countdown.num')}</span>
-                  <span data-field="countdown.unit">{pick(cfg, 'countdown.unit')}</span>
+                  <span data-field="countdown.num" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'countdown.num')}</span>
+                  <span data-field="countdown.unit" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'countdown.unit')}</span>
                 </div>
-                <div className="ms-fn-cd-label" data-field="countdown.label">{pick(cfg, 'countdown.label')}</div>
+                <div className="ms-fn-cd-label" data-field="countdown.label" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'countdown.label')}</div>
               </div>
-              <div className="ms-fn-cd-cap" data-field="countdown.cap">{pick(cfg, 'countdown.cap')}</div>
+              <div className="ms-fn-cd-cap" data-field="countdown.cap" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'countdown.cap')}</div>
             </div>
 
             {/* Agenda — taped notebook page across the bottom */}
             <div className="ms-fn-agenda" data-widget="agenda">
               <div className="ms-fn-agenda-head">
                 <h2 className="ms-fn-agenda-h2">
-                  <span data-field="agenda.h">{pick(cfg, 'agenda.h')}</span>{' '}
-                  <em data-field="agenda.h2">{pick(cfg, 'agenda.h2')}</em>
+                  <span data-field="agenda.h" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'agenda.h')}</span>{' '}
+                  <em data-field="agenda.h2" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'agenda.h2')}</em>
                 </h2>
-                <div className="ms-fn-agenda-day" data-field="agenda.day">
+                <div className="ms-fn-agenda-day" data-field="agenda.day" style={{ whiteSpace: 'pre-wrap' }}>
                   {pick(cfg, 'agenda.day')}
                 </div>
               </div>
@@ -557,18 +557,18 @@ export function MsFieldnotesWidget({ config }: { config?: MsFieldnotesConfig }) 
                       className={`ms-fn-agenda-li ${liClass}`.trim()}
                       data-widget={`agenda.${i}`}
                     >
-                      <span className="ms-fn-t" data-field={`agenda.${i}.t`}>
+                      <span className="ms-fn-t" data-field={`agenda.${i}.t`} style={{ whiteSpace: 'pre-wrap' }}>
                         {pick(cfg, `agenda.${i}.t` as keyof Required<MsFieldnotesConfig>)}
                       </span>
                       <span className="ms-fn-c">
-                        <span data-field={`agenda.${i}.c`}>
+                        <span data-field={`agenda.${i}.c`} style={{ whiteSpace: 'pre-wrap' }}>
                           {pick(cfg, `agenda.${i}.c` as keyof Required<MsFieldnotesConfig>)}
                         </span>
-                        <span data-field={`agenda.${i}.r`}>
+                        <span data-field={`agenda.${i}.r`} style={{ whiteSpace: 'pre-wrap' }}>
                           {pick(cfg, `agenda.${i}.r` as keyof Required<MsFieldnotesConfig>)}
                         </span>
                       </span>
-                      <span className="ms-fn-x" style={xStyle} data-field={`agenda.${i}.x`}>
+                      <span className="ms-fn-x" style={xStyle} data-field={`agenda.${i}.x`} style={{ whiteSpace: 'pre-wrap' }}>
                         {pick(cfg, `agenda.${i}.x` as keyof Required<MsFieldnotesConfig>)}
                       </span>
                     </li>
@@ -587,30 +587,30 @@ export function MsFieldnotesWidget({ config }: { config?: MsFieldnotesConfig }) 
       <section className="ms-fn-margin">
         {/* Lunch */}
         <div className="ms-fn-lunch ms-fn-card-base" data-widget="lunch">
-          <div className="ms-fn-card-ey" data-field="lunch.ey">{pick(cfg, 'lunch.ey')}</div>
-          <h3 className="ms-fn-card-h3" data-field="lunch.h">{pick(cfg, 'lunch.h')}</h3>
-          <div className="ms-fn-entree" data-field="lunch.entree">{pick(cfg, 'lunch.entree')}</div>
-          <div className="ms-fn-sides" data-field="lunch.sides">{pick(cfg, 'lunch.sides')}</div>
-          <div className="ms-fn-quote" data-field="lunch.quote">{pick(cfg, 'lunch.quote')}</div>
+          <div className="ms-fn-card-ey" data-field="lunch.ey" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'lunch.ey')}</div>
+          <h3 className="ms-fn-card-h3" data-field="lunch.h" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'lunch.h')}</h3>
+          <div className="ms-fn-entree" data-field="lunch.entree" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'lunch.entree')}</div>
+          <div className="ms-fn-sides" data-field="lunch.sides" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'lunch.sides')}</div>
+          <div className="ms-fn-quote" data-field="lunch.quote" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'lunch.quote')}</div>
         </div>
 
         {/* Clubs */}
         <div className="ms-fn-clubs ms-fn-card-base" data-widget="clubs">
-          <div className="ms-fn-card-ey" data-field="clubs.ey">{pick(cfg, 'clubs.ey')}</div>
-          <h3 className="ms-fn-card-h3" data-field="clubs.h">{pick(cfg, 'clubs.h')}</h3>
+          <div className="ms-fn-card-ey" data-field="clubs.ey" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'clubs.ey')}</div>
+          <h3 className="ms-fn-card-h3" data-field="clubs.h" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'clubs.h')}</h3>
           <ul className="ms-fn-clubs-ul">
             {([0, 1, 2, 3] as const).map((i) => (
               <li key={i} className="ms-fn-clubs-li" data-widget={`clubs.${i}`}>
                 <span className="ms-fn-dot" style={{ background: clubDotColor[i] }} />
                 <span>
-                  <b data-field={`clubs.${i}.n`}>
+                  <b data-field={`clubs.${i}.n`} style={{ whiteSpace: 'pre-wrap' }}>
                     {pick(cfg, `clubs.${i}.n` as keyof Required<MsFieldnotesConfig>)}
                   </b>
-                  <span className="ms-fn-where" data-field={`clubs.${i}.r`}>
+                  <span className="ms-fn-where" data-field={`clubs.${i}.r`} style={{ whiteSpace: 'pre-wrap' }}>
                     {pick(cfg, `clubs.${i}.r` as keyof Required<MsFieldnotesConfig>)}
                   </span>
                 </span>
-                <span className="ms-fn-when" data-field={`clubs.${i}.w`}>
+                <span className="ms-fn-when" data-field={`clubs.${i}.w`} style={{ whiteSpace: 'pre-wrap' }}>
                   {pick(cfg, `clubs.${i}.w` as keyof Required<MsFieldnotesConfig>)}
                 </span>
               </li>
@@ -620,26 +620,26 @@ export function MsFieldnotesWidget({ config }: { config?: MsFieldnotesConfig }) 
 
         {/* Buses */}
         <div className="ms-fn-buses ms-fn-card-base" data-widget="buses">
-          <div className="ms-fn-card-ey" data-field="buses.ey">{pick(cfg, 'buses.ey')}</div>
-          <h3 className="ms-fn-card-h3" data-field="buses.h">{pick(cfg, 'buses.h')}</h3>
+          <div className="ms-fn-card-ey" data-field="buses.ey" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'buses.ey')}</div>
+          <h3 className="ms-fn-card-h3" data-field="buses.h" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'buses.h')}</h3>
           <ul className="ms-fn-buses-ul">
             {([0, 1, 2, 3] as const).map((i) => (
               <li key={i} className="ms-fn-buses-li" data-widget={`buses.${i}`}>
-                <span className="ms-fn-bus-num" data-field={`buses.${i}.num`}>
+                <span className="ms-fn-bus-num" data-field={`buses.${i}.num`} style={{ whiteSpace: 'pre-wrap' }}>
                   {pick(cfg, `buses.${i}.num` as keyof Required<MsFieldnotesConfig>)}
                 </span>
                 <span className="ms-fn-bus-rt">
-                  <b data-field={`buses.${i}.rt`}>
+                  <b data-field={`buses.${i}.rt`} style={{ whiteSpace: 'pre-wrap' }}>
                     {pick(cfg, `buses.${i}.rt` as keyof Required<MsFieldnotesConfig>)}
                   </b>
-                  <span data-field={`buses.${i}.note`}>
+                  <span data-field={`buses.${i}.note`} style={{ whiteSpace: 'pre-wrap' }}>
                     {pick(cfg, `buses.${i}.note` as keyof Required<MsFieldnotesConfig>)}
                   </span>
                 </span>
                 <span
                   className={`ms-fn-bus-st ms-fn-${busStClass[i]}`}
                   data-field={`buses.${i}.st`}
-                >
+                 style={{ whiteSpace: 'pre-wrap' }}>
                   {pick(cfg, `buses.${i}.st` as keyof Required<MsFieldnotesConfig>)}
                 </span>
               </li>
@@ -649,21 +649,21 @@ export function MsFieldnotesWidget({ config }: { config?: MsFieldnotesConfig }) 
 
         {/* Shoutouts */}
         <div className="ms-fn-shouts ms-fn-card-base" data-widget="shouts">
-          <div className="ms-fn-card-ey" data-field="shouts.ey">{pick(cfg, 'shouts.ey')}</div>
-          <h3 className="ms-fn-card-h3" data-field="shouts.h">{pick(cfg, 'shouts.h')}</h3>
+          <div className="ms-fn-card-ey" data-field="shouts.ey" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'shouts.ey')}</div>
+          <h3 className="ms-fn-card-h3" data-field="shouts.h" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'shouts.h')}</h3>
           <ul className="ms-fn-shouts-ul">
             {([0, 1, 2, 3] as const).map((i) => {
               const klass = shoutClass[i] ? `ms-fn-${shoutClass[i]}` : '';
               return (
                 <li key={i} className="ms-fn-shouts-li" data-widget={`shouts.${i}`}>
-                  <span className={`ms-fn-ic ${klass}`.trim()} data-field={`shouts.${i}.ic`}>
+                  <span className={`ms-fn-ic ${klass}`.trim()} data-field={`shouts.${i}.ic`} style={{ whiteSpace: 'pre-wrap' }}>
                     {pick(cfg, `shouts.${i}.ic` as keyof Required<MsFieldnotesConfig>)}
                   </span>
                   <span className="ms-fn-name">
-                    <span data-field={`shouts.${i}.name`}>
+                    <span data-field={`shouts.${i}.name`} style={{ whiteSpace: 'pre-wrap' }}>
                       {pick(cfg, `shouts.${i}.name` as keyof Required<MsFieldnotesConfig>)}
                     </span>
-                    <span data-field={`shouts.${i}.note`}>
+                    <span data-field={`shouts.${i}.note`} style={{ whiteSpace: 'pre-wrap' }}>
                       {pick(cfg, `shouts.${i}.note` as keyof Required<MsFieldnotesConfig>)}
                     </span>
                   </span>
@@ -677,16 +677,16 @@ export function MsFieldnotesWidget({ config }: { config?: MsFieldnotesConfig }) 
       {/* ─── TICKER ─────────────────────────────────────────────── */}
       <footer className="ms-fn-ticker" data-widget="ticker">
         <div className="ms-fn-ticker-tag">
-          <span data-field="ticker.tag">{pick(cfg, 'ticker.tag')}</span>
+          <span data-field="ticker.tag" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.tag')}</span>
         </div>
         <div className="ms-fn-feed">
           <div className="ms-fn-feed-inner">
-            <span data-field="ticker.0">{pick(cfg, 'ticker.0')}</span>
-            <span data-field="ticker.1">{pick(cfg, 'ticker.1')}</span>
-            <span data-field="ticker.2">{pick(cfg, 'ticker.2')}</span>
-            <span data-field="ticker.3">{pick(cfg, 'ticker.3')}</span>
-            <span data-field="ticker.4">{pick(cfg, 'ticker.4')}</span>
-            <span data-field="ticker.5">{pick(cfg, 'ticker.5')}</span>
+            <span data-field="ticker.0" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.0')}</span>
+            <span data-field="ticker.1" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.1')}</span>
+            <span data-field="ticker.2" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.2')}</span>
+            <span data-field="ticker.3" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.3')}</span>
+            <span data-field="ticker.4" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.4')}</span>
+            <span data-field="ticker.5" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.5')}</span>
             {/* duplicate set so the -50% scroll loop is seamless */}
             <span aria-hidden="true">{pick(cfg, 'ticker.0')}</span>
             <span aria-hidden="true">{pick(cfg, 'ticker.1')}</span>

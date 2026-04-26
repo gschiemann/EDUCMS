@@ -23,6 +23,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { EditableText } from './EditableText';
 
 // ─── Palette pulled from the scene illustration ─────────────────────────
 export const BTS = {
@@ -52,7 +53,6 @@ export const BTS_FONT_DISPLAY = "var(--font-fredoka), ui-rounded, system-ui, san
 export function BackToSchoolText({ config, onConfigChange }: { config: any; onConfigChange?: (patch: Record<string, any>) => void }) {
   const content = config.content || 'Back to School';
   const align = (config.alignment || 'center') as 'left' | 'center' | 'right';
-  const editable = !!onConfigChange;
   return (
     <div className="absolute inset-0 overflow-hidden" style={{
       // Paint the actual chalkboard surface here so the widget reads as a real chalkboard
@@ -72,38 +72,26 @@ export function BackToSchoolText({ config, onConfigChange }: { config: any; onCo
         background: 'linear-gradient(180deg, transparent 0%, rgba(248,246,238,0.10) 100%)',
         pointerEvents: 'none',
       }} />
-      <div
-        contentEditable={editable}
-        suppressContentEditableWarning
-        spellCheck={false}
-        onPointerDown={editable ? (e) => e.stopPropagation() : undefined}
-        onBlur={editable ? (e) => {
-          const next = e.currentTarget.innerText.trim();
-          if (next !== content) onConfigChange?.({ content: next });
-        } : undefined}
-        style={{
-          position: 'relative',
-          fontFamily: BTS_FONT_HAND,
-          fontSize: '4.2em',
-          fontWeight: 700,
-          color: BTS.chalk,
-          textAlign: align,
-          lineHeight: 1.0,
-          width: '100%',
-          textShadow: `
-            0 0 2px rgba(248,246,238,0.55),
-            0 0 12px rgba(248,246,238,0.18),
-            1px 1px 0 rgba(0,0,0,0.18),
-            0 -1px 0 rgba(248,246,238,0.10)`,
-          letterSpacing: '0.015em',
-          transform: 'rotate(-1.5deg)',
-          animation: 'bts-chalkin 0.9s ease-out',
-          filter: 'drop-shadow(0 0 0.5px rgba(248,246,238,0.6))',
-          outline: editable ? '0 solid transparent' : 'none',
-          cursor: editable ? 'text' : 'default',
-        }}
-      >
-        {content}
+      <div style={{ position: 'relative', width: '100%' }}>
+        <EditableText
+          configKey="content" onConfigChange={onConfigChange}
+          max={240} min={16} wrap={true}
+          style={{
+            fontFamily: BTS_FONT_HAND,
+            fontSize: '4.2em',
+            fontWeight: 700,
+            color: BTS.chalk,
+            textShadow: `
+              0 0 2px rgba(248,246,238,0.55),
+              0 0 12px rgba(248,246,238,0.18),
+              1px 1px 0 rgba(0,0,0,0.18),
+              0 -1px 0 rgba(248,246,238,0.10)`,
+            letterSpacing: '0.015em',
+            filter: 'drop-shadow(0 0 0.5px rgba(248,246,238,0.6))',
+          }}
+        >
+          {content}
+        </EditableText>
       </div>
       <style>{`@keyframes bts-chalkin { 0%{opacity:0;filter:blur(4px)} 100%{opacity:1;filter:blur(0)} }`}</style>
     </div>
@@ -163,7 +151,7 @@ export function BackToSchoolClock({ config }: { config: any }) {
 // ═══════════════════════════════════════════════════════════════════════
 // STICKY NOTE — for ANNOUNCEMENT. Rotated paper square pinned with tape.
 // ═══════════════════════════════════════════════════════════════════════
-export function BackToSchoolAnnouncement({ config }: { config: any }) {
+export function BackToSchoolAnnouncement({ config, onConfigChange }: { config: any; onConfigChange?: (patch: Record<string, any>) => void }) {
   const title = config.title || 'Big news today!';
   const body  = config.message || config.body || 'Tap to edit. Write your announcement here.';
   return (
@@ -185,14 +173,38 @@ export function BackToSchoolAnnouncement({ config }: { config: any }) {
           background: BTS.tape,
           boxShadow: '0 2px 4px rgba(0,0,0,0.12)',
         }} />
-        <div style={{
-          fontSize: '2.4em', fontWeight: 700, color: BTS.inkDark,
-          lineHeight: 1.1, marginBottom: '0.3em', letterSpacing: '0.01em',
-        }}>{title}</div>
-        <div style={{
-          fontSize: '1.4em', fontWeight: 600, color: BTS.inkDark, opacity: 0.85,
-          lineHeight: 1.35,
-        }}>{body}</div>
+        <div style={{ flex: '0 0 auto', marginBottom: '0.3em' }}>
+          <EditableText
+            configKey="title" onConfigChange={onConfigChange}
+            max={120} min={12} wrap={false}
+            style={{
+              fontFamily: BTS_FONT_HAND,
+              fontSize: '2.4em',
+              fontWeight: 700,
+              color: BTS.inkDark,
+              lineHeight: 1.1,
+              letterSpacing: '0.01em',
+            }}
+          >
+            {title}
+          </EditableText>
+        </div>
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <EditableText
+            configKey="message" onConfigChange={onConfigChange}
+            max={180} min={10} wrap={true}
+            style={{
+              fontFamily: BTS_FONT_HAND,
+              fontSize: '1.4em',
+              fontWeight: 600,
+              color: BTS.inkDark,
+              opacity: 0.85,
+              lineHeight: 1.35,
+            }}
+          >
+            {body}
+          </EditableText>
+        </div>
       </div>
     </div>
   );
@@ -289,7 +301,7 @@ function TeacherCartoon({ accent = BTS.red }: { accent?: string }) {
   );
 }
 
-export function BackToSchoolStaff({ config }: { config: any }) {
+export function BackToSchoolStaff({ config, onConfigChange }: { config: any; onConfigChange?: (patch: Record<string, any>) => void }) {
   const name = config.staffName || 'Mrs. Johnson';
   const role = config.role || 'Teacher of the Week';
   const bio  = config.bio || 'Inspires kids every day with kindness and a big smile!';
@@ -324,9 +336,36 @@ export function BackToSchoolStaff({ config }: { config: any }) {
           )}
         </div>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '0.95em', fontWeight: 700, color: BTS.red, letterSpacing: '0.05em', textTransform: 'uppercase', fontFamily: BTS_FONT_DISPLAY }}>★ {role}</div>
-          <div style={{ fontSize: '1.7em', fontWeight: 700, color: BTS.inkDark, lineHeight: 1.0, marginTop: '0.1em' }}>{name}</div>
-          <div style={{ fontSize: '1.1em', fontWeight: 600, color: BTS.inkDark, opacity: 0.75, marginTop: '0.2em', lineHeight: 1.25, fontStyle: 'italic' }}>"{bio}"</div>
+          <div style={{ fontSize: '0.95em', fontWeight: 700, color: BTS.red, letterSpacing: '0.05em', textTransform: 'uppercase', fontFamily: BTS_FONT_DISPLAY, marginBottom: '0.2em' }}>★<span style={{ marginLeft: '0.3em' }}>
+            <EditableText
+              configKey="role" onConfigChange={onConfigChange}
+              max={90} min={8} wrap={false}
+              clickToEdit={!!onConfigChange}
+              style={{ fontFamily: BTS_FONT_DISPLAY, color: BTS.red, letterSpacing: '0.05em', textTransform: 'uppercase', fontWeight: 700 }}
+            >
+              {role}
+            </EditableText>
+          </span></div>
+          <div style={{ fontSize: '1.7em', fontWeight: 700, color: BTS.inkDark, lineHeight: 1.0, marginTop: '0.1em' }}>
+            <EditableText
+              configKey="staffName" onConfigChange={onConfigChange}
+              max={120} min={8} wrap={false}
+              style={{ fontFamily: BTS_FONT_HAND, fontWeight: 700, color: BTS.inkDark }}
+            >
+              {name}
+            </EditableText>
+          </div>
+          <div style={{ fontSize: '1.1em', fontWeight: 600, color: BTS.inkDark, opacity: 0.75, marginTop: '0.2em', lineHeight: 1.25, fontStyle: 'italic' }}>
+            "
+            <EditableText
+              configKey="bio" onConfigChange={onConfigChange}
+              max={140} min={10} wrap={true}
+              style={{ fontFamily: BTS_FONT_HAND, fontWeight: 600, color: BTS.inkDark, opacity: 0.75, fontStyle: 'italic' }}
+            >
+              {bio}
+            </EditableText>
+            "
+          </div>
         </div>
       </div>
     </div>

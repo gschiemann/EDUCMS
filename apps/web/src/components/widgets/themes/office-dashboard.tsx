@@ -15,17 +15,17 @@ export function OfficeDashboardLogo({ config, compact }: { config: any; compact?
       border: '1px solid rgba(255, 255, 255, 0.8)',
       containerType: 'size'
     }}>
-      <div style={{ 
-        background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', 
-        padding: '2cqh', 
-        borderRadius: '12px', 
-        marginRight: '3cqi', 
-        boxShadow: '0 10px 20px rgba(59,130,246,0.3)' 
+      <div style={{
+        background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+        padding: '2cqh',
+        borderRadius: '12px',
+        marginRight: '3cqi',
+        boxShadow: '0 10px 20px rgba(59,130,246,0.3)'
       }}>
         <Building color="white" style={{ width: '12cqh', height: '12cqh' }} />
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-        <div style={{ fontSize: 'clamp(1rem, 5cqh, 3rem)', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+        <div data-field="schoolName" style={{ fontSize: 'clamp(1rem, 5cqh, 3rem)', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em', lineHeight: 1.1, whiteSpace: 'pre-wrap' as const }}>
           {config.schoolName || 'CENTRAL ADMINISTRATION'}
         </div>
         <div style={{ fontSize: 'clamp(0.8rem, 3cqh, 1.5rem)', fontWeight: 500, color: '#64748b', marginTop: '1cqh' }}>
@@ -51,14 +51,15 @@ export function OfficeDashboardText({ config, compact }: { config: any; compact?
         background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.05))',
         pointerEvents: 'none'
       }} />
-      <div style={{
+      <div data-field="content" style={{
         fontSize: 'clamp(2rem, 12cqi, 6rem)',
         fontWeight: 700,
         lineHeight: 1.1,
         letterSpacing: '-0.02em',
         textShadow: '0 4px 20px rgba(0,0,0,0.3)',
         position: 'relative',
-        zIndex: 10
+        zIndex: 10,
+        whiteSpace: 'pre-wrap' as const
       }}>
         {content}
       </div>

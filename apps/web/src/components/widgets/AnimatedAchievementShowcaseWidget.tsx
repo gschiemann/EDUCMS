@@ -118,9 +118,9 @@ export function AnimatedAchievementShowcaseWidget({ config, live }: { config?: C
         }}
       >
         <div className="as-header">
-          <div className="as-eyebrow">{c.eyebrow || '★ Wall of Fame ★'}</div>
-          <div className="as-h1">{c.title || 'Student of the Week'}</div>
-          <div className="as-dateBar">{c.dateBar || 'monday · april 19 · 2026'}</div>
+          <div className="as-eyebrow" data-field="eyebrow" style={{ whiteSpace: 'pre-wrap' }}>{c.eyebrow || '★ Wall of Fame ★'}</div>
+          <div className="as-h1" data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{c.title || 'Student of the Week'}</div>
+          <div className="as-dateBar" data-field="dateBar" style={{ whiteSpace: 'pre-wrap' }}>{c.dateBar || 'monday · april 19 · 2026'}</div>
         </div>
 
         <div className="as-hero">
@@ -129,9 +129,9 @@ export function AnimatedAchievementShowcaseWidget({ config, live }: { config?: C
             <span className="as-icon">{c.heroIcon || '🏆'}</span>
           </div>
           <div className="as-citation">
-            <div className="as-award">{c.awardLabel || 'Academic Excellence'}</div>
-            <div className="as-name">{c.heroName || 'MAYA CHEN'}</div>
-            <div className="as-reason">
+            <div className="as-award" data-field="awardLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.awardLabel || 'Academic Excellence'}</div>
+            <div className="as-name" data-field="heroName" style={{ whiteSpace: 'pre-wrap' }}>{c.heroName || 'MAYA CHEN'}</div>
+            <div className="as-reason" data-field="heroReason" style={{ whiteSpace: 'pre-wrap' }}>
               {reasonLines.map((line, i) => (
                 <span key={i}>{line}{i < reasonLines.length - 1 ? <br /> : null}</span>
               ))}
@@ -140,7 +140,7 @@ export function AnimatedAchievementShowcaseWidget({ config, live }: { config?: C
         </div>
 
         <div className="as-honorRoll as-left">
-          <div className="as-honorHeader">{c.leftHeader || '★ HONOR ROLL ★'}</div>
+          <div className="as-honorHeader" data-field="leftHeader" style={{ whiteSpace: 'pre-wrap' }}>{c.leftHeader || '★ HONOR ROLL ★'}</div>
           {leftHonors.map((h, i) => (
             <div key={i} className="as-honor">
               <span className="as-rank">{h.rank ?? i + 1}</span>
@@ -151,7 +151,7 @@ export function AnimatedAchievementShowcaseWidget({ config, live }: { config?: C
         </div>
 
         <div className="as-honorRoll as-right">
-          <div className="as-honorHeader">{c.rightHeader || '★ KINDNESS STARS ★'}</div>
+          <div className="as-honorHeader" data-field="rightHeader" style={{ whiteSpace: 'pre-wrap' }}>{c.rightHeader || '★ KINDNESS STARS ★'}</div>
           {rightHonors.map((h, i) => (
             <div key={i} className="as-honor">
               <span className="as-rank">{h.rank ?? '★'}</span>
@@ -174,7 +174,7 @@ export function AnimatedAchievementShowcaseWidget({ config, live }: { config?: C
         </div>
 
         <div className="as-ticker">
-          <div className="as-tickerStamp">{c.tickerStamp || 'WALL OF FAME'}</div>
+          <div className="as-tickerStamp" data-field="tickerStamp" style={{ whiteSpace: 'pre-wrap' }}>{c.tickerStamp || 'WALL OF FAME'}</div>
           <div className="as-tickerScroll">
             <span
               className="as-tickerText"

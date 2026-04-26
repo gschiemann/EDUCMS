@@ -74,7 +74,7 @@ export function DinerChalkboardText({ config }: { config: any }) {
         background: 'linear-gradient(180deg, transparent 0%, rgba(240,237,229,0.08) 100%)',
         pointerEvents: 'none',
       }} />
-      <div style={{
+      <div data-field="content" style={{
         position: 'relative',
         fontFamily: DC_FONT_CHALK,
         fontSize: '4em',
@@ -87,6 +87,7 @@ export function DinerChalkboardText({ config }: { config: any }) {
         letterSpacing: '0.02em',
         transform: 'rotate(-0.8deg)',
         animation: 'dc-chalkin 0.8s ease-out',
+        whiteSpace: 'pre-wrap' as const
       }}>
         {content}
       </div>
@@ -229,12 +230,12 @@ export function DinerChalkboardAnnouncement({ config }: { config: any }) {
           background: DC.red, display: 'flex', alignItems: 'center', justifyContent: 'center',
           borderRadius: '2px 2px 0 0',
         }}>
-          <span style={{ fontSize: '1.1em', fontWeight: 800, color: 'white', letterSpacing: '0.15em', textTransform: 'uppercase' }}>
+          <span data-field="title" style={{ fontSize: '1.1em', fontWeight: 800, color: 'white', letterSpacing: '0.15em', textTransform: 'uppercase', whiteSpace: 'pre-wrap' as const }}>
             ⭐ {title}
           </span>
         </div>
         <div style={{ marginTop: '20%' }}>
-          <div style={{ fontSize: '1.4em', fontWeight: 600, color: DC.inkDark, lineHeight: 1.35 }}>
+          <div data-field="message" style={{ fontSize: '1.4em', fontWeight: 600, color: DC.inkDark, lineHeight: 1.35, whiteSpace: 'pre-wrap' as const }}>
             {body}
           </div>
         </div>
@@ -260,7 +261,7 @@ export function DinerChalkboardCountdown({ config }: { config: any }) {
     <div className="absolute inset-0 flex flex-col items-center justify-center" style={{
       fontFamily: DC_FONT_CHALK, color: DC.chalk, textAlign: 'center', padding: '6%',
     }}>
-      <div style={{ fontSize: '1.3em', fontWeight: 600, opacity: 0.85, textShadow: `1px 1px 0 rgba(0,0,0,0.12)` }}>{label}</div>
+      <div data-field="label" style={{ fontSize: '1.3em', fontWeight: 600, opacity: 0.85, textShadow: `1px 1px 0 rgba(0,0,0,0.12)`, whiteSpace: 'pre-wrap' as const }}>{label}</div>
       <div style={{ fontSize: '4em', fontWeight: 700, lineHeight: 0.95, textShadow: `0 0 1px ${DC.chalkSoft}, 1px 1px 0 rgba(0,0,0,0.15)` }}>
         {hours}:{mins.toString().padStart(2, '0')}
       </div>
@@ -325,8 +326,8 @@ export function DinerChalkboardCalendar({ config }: { config: any }) {
       borderRadius: 8, boxShadow: 'inset 0 0 30px rgba(0,0,0,0.2)',
       padding: '5% 6%', fontFamily: DC_FONT_CHALK,
     }}>
-      <div style={{ fontSize: '1.3em', fontWeight: 700, color: DC.neonTeal, fontFamily: DC_FONT_DISPLAY, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.4em',
-        textShadow: `0 0 6px rgba(0,206,201,0.3)` }}>
+      <div data-field="title" style={{ fontSize: '1.3em', fontWeight: 700, color: DC.neonTeal, fontFamily: DC_FONT_DISPLAY, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.4em',
+        textShadow: `0 0 6px rgba(0,206,201,0.3)`, whiteSpace: 'pre-wrap' as const }}>
         📅 This Week
       </div>
       <div style={{ width: '60%', height: '2px', background: DC.chalkFaint, marginBottom: '0.5em' }} />
@@ -376,9 +377,9 @@ export function DinerChalkboardStaff({ config }: { config: any }) {
           )}
         </div>
         <div style={{ flex: 1, textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: 0 }}>
-          <div style={{ fontSize: 'clamp(10px, 4cqh, 24px)', fontWeight: 800, color: DC.red, letterSpacing: '0.05em', textTransform: 'uppercase' }}>⭐ {role}</div>
-          <div style={{ fontSize: 'clamp(16px, 8cqh, 48px)', fontWeight: 800, color: DC.inkDark, lineHeight: 1.1, marginTop: '1cqh' }}>{name}</div>
-          <div style={{ fontSize: 'clamp(12px, 4.5cqh, 28px)', fontWeight: 600, color: DC.inkDark, opacity: 0.75, marginTop: '2cqh', fontStyle: 'italic', fontFamily: DC_FONT_CHALK, lineHeight: 1.2 }}>"{bio}"</div>
+          <div data-field="role" style={{ fontSize: 'clamp(10px, 4cqh, 24px)', fontWeight: 800, color: DC.red, letterSpacing: '0.05em', textTransform: 'uppercase', whiteSpace: 'pre-wrap' as const }}>⭐ {role}</div>
+          <div data-field="staffName" style={{ fontSize: 'clamp(16px, 8cqh, 48px)', fontWeight: 800, color: DC.inkDark, lineHeight: 1.1, marginTop: '1cqh', whiteSpace: 'pre-wrap' as const }}>{name}</div>
+          <div data-field="bio" style={{ fontSize: 'clamp(12px, 4.5cqh, 28px)', fontWeight: 600, color: DC.inkDark, opacity: 0.75, marginTop: '2cqh', fontStyle: 'italic', fontFamily: DC_FONT_CHALK, lineHeight: 1.2, whiteSpace: 'pre-wrap' as const }}>"{bio}"</div>
         </div>
       </div>
     </div>
@@ -474,7 +475,7 @@ export function DinerChalkboardImageCarousel({ config }: { config: any }) {
             <div style={{ fontSize: 'clamp(40px, 30cqh, 150px)' }}>📸</div>
           )}
         </div>
-        <div style={{ fontSize: 'clamp(14px, 10cqh, 48px)', fontWeight: 700, color: DC.inkDark, lineHeight: 1 }}>{config.title || 'Food Gallery'}</div>
+        <div data-field="title" style={{ fontSize: 'clamp(14px, 10cqh, 48px)', fontWeight: 700, color: DC.inkDark, lineHeight: 1, whiteSpace: 'pre-wrap' as const }}>{config.title || 'Food Gallery'}</div>
       </div>
     </div>
   );

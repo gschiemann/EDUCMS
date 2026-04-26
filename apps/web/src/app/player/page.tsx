@@ -2126,9 +2126,30 @@ function PlayerPage() {
               />;
             }
             if (isWeb) {
+              // Web pages: route through the API proxy so we can strip
+              // X-Frame-Options / CSP frame-ancestors. Without this,
+              // any URL pointing at a real-world site (Google, school
+              // websites, Hacker News, news outlets) renders as a
+              // BLANK iframe because the browser refuses to frame
+              // origins that send `X-Frame-Options: DENY` or
+              // `SAMEORIGIN`. The proxy fetches the upstream HTML
+              // server-side, strips those headers, and serves the
+              // body back from our origin so the iframe is allowed
+              // to render. Partner reported "i tried to push a URL
+              // and still failed" — confirmed the player iframe was
+              // bypassing the proxy entirely.
+              //
+              // PDFs (`application/pdf`) skip the proxy — proxying
+              // would corrupt the binary stream. Browsers render PDFs
+              // inline natively; X-Frame-Options doesn't apply to
+              // file/PDF responses the same way.
+              const isPdf = mime === 'application/pdf';
+              const iframeSrc = isPdf
+                ? resUrl
+                : `${getApiRoot()}/api/v1/proxy/web?url=${encodeURIComponent(resUrl)}&v=2`;
               return <iframe
                 key={item.id}
-                src={resUrl}
+                src={iframeSrc}
                 className={classes}
                 // sandbox=null intentionally: signage screens display
                 // operator-curated content (their own menus, calendars,
@@ -2139,7 +2160,7 @@ function PlayerPage() {
                 // gates which URLs ever ship to a screen.
                 title={item.id}
                 onError={() => {
-                  console.warn('[Player] iframe error, skipping:', resUrl);
+                  console.warn('[Player] iframe error, skipping:', iframeSrc);
                   setCurrentIndex(prev => prev + 1);
                 }}
               />;

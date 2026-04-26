@@ -49,6 +49,7 @@ function useScaleToFit(naturalW: number, naturalH: number) {
 }
 
 // Wraps a fixed-size inner canvas in a centered measuring container
+// Note: All text nodes within this theme use whiteSpace: 'pre-wrap' to preserve newlines
 function ScaleWrap({ naturalW, naturalH, children, bg }: {
   naturalW: number; naturalH: number; children: React.ReactNode; bg?: string;
 }) {

@@ -160,14 +160,14 @@ export function StorybookHallwayWidget({ config, live }: { config: Cfg; live?: b
 
         <div className="sh-pages">
           <div className="sh-header">
-            <div className="sh-chapter">{c.chapter || 'In which we begin our day'}</div>
-            <h1>{c.title || 'LEARN · GROW · SHINE'}</h1>
-            <div className="sh-sub">{c.subtitle || 'every day, a new adventure'}</div>
+            <div className="sh-chapter"><span data-field="chapter" style={{ whiteSpace: 'pre-wrap' }}>{c.chapter || 'In which we begin our day'}</span></div>
+            <h1><span data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{c.title || 'LEARN · GROW · SHINE'}</span></h1>
+            <div className="sh-sub"><span data-field="subtitle" style={{ whiteSpace: 'pre-wrap' }}>{c.subtitle || 'every day, a new adventure'}</span></div>
           </div>
 
           <div className="sh-schedule">
-            <h2>{c.scheduleTitle || "Today's Schedule"}</h2>
-            <div className="sh-schSub">{c.scheduleSub || 'period by period, hour by hour'}</div>
+            <h2><span data-field="scheduleTitle" style={{ whiteSpace: 'pre-wrap' }}>{c.scheduleTitle || "Today's Schedule"}</span></h2>
+            <div className="sh-schSub"><span data-field="scheduleSub" style={{ whiteSpace: 'pre-wrap' }}>{c.scheduleSub || 'period by period, hour by hour'}</span></div>
             <div className="sh-rows">
               {rows.slice(0, 8).map((r, i) => (
                 <div key={i} className={`sh-row${r.highlight ? ' sh-hl' : ''}`}>
@@ -184,40 +184,40 @@ export function StorybookHallwayWidget({ config, live }: { config: Cfg; live?: b
 
           <div className="sh-right-col">
             <div className="sh-attendance">
-              <div className="sh-lblTop">{c.attendanceTopLabel || 'Attendance today'}</div>
-              <div className="sh-pct"><b>{c.attendancePct ?? 97}</b><sup>%</sup></div>
-              <div className="sh-lblBot">{c.attendanceBotLabel || '— a fine showing —'}</div>
+              <div className="sh-lblTop"><span data-field="attendanceTopLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.attendanceTopLabel || 'Attendance today'}</span></div>
+              <div className="sh-pct"><b data-field="attendancePct" style={{ whiteSpace: 'pre-wrap' }}>{c.attendancePct ?? 97}</b><sup>%</sup></div>
+              <div className="sh-lblBot"><span data-field="attendanceBotLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.attendanceBotLabel || '— a fine showing —'}</span></div>
             </div>
             <div className="sh-miniRow">
               <div className="sh-clockBig">
                 <div className="sh-t">{hh}:{mm} {ampm}</div>
-                <div className="sh-lbl">{c.clockLabel || '~ noon hour ~'}</div>
+                <div className="sh-lbl"><span data-field="clockLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.clockLabel || '~ noon hour ~'}</span></div>
               </div>
               <div className="sh-weather">
-                <div className="sh-t">{c.weatherTemp || '42°'}</div>
-                <div className="sh-desc">{c.weatherDesc || '~ clear skies ~'}</div>
+                <div className="sh-t"><span data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' }}>{c.weatherTemp || '42°'}</span></div>
+                <div className="sh-desc"><span data-field="weatherDesc" style={{ whiteSpace: 'pre-wrap' }}>{c.weatherDesc || '~ clear skies ~'}</span></div>
               </div>
             </div>
           </div>
 
           <div className="sh-footer">
             <div className="sh-ann">
-              <div className="sh-annLbl">{c.annLabel || 'An announcement —'}</div>
-              <div className="sh-annMsg">{c.annMsg || "Assembly in the gymnasium, Friday at two o'clock — all classes welcome!"}</div>
+              <div className="sh-annLbl"><span data-field="annLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.annLabel || 'An announcement —'}</span></div>
+              <div className="sh-annMsg"><span data-field="annMsg" style={{ whiteSpace: 'pre-wrap' }}>{c.annMsg || "Assembly in the gymnasium, Friday at two o'clock — all classes welcome!"}</span></div>
             </div>
             <div className="sh-ctd">
-              <div className="sh-ctdLbl">{c.countdownLabel || 'until field day'}</div>
+              <div className="sh-ctdLbl"><span data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.countdownLabel || 'until field day'}</span></div>
               <div className="sh-ctdNum">{days}</div>
-              <div className="sh-ctdUnit">{unit}</div>
+              <div className="sh-ctdUnit"><span data-field="countdownUnit" style={{ whiteSpace: 'pre-wrap' }}>{unit}</span></div>
             </div>
           </div>
         </div>
 
-        <div className="sh-pgnum sh-pgL">{c.pageNumLeft || '— xiv —'}</div>
-        <div className="sh-pgnum sh-pgR">{c.pageNumRight || '— xv —'}</div>
+        <div className="sh-pgnum sh-pgL"><span data-field="pageNumLeft" style={{ whiteSpace: 'pre-wrap' }}>{c.pageNumLeft || '— xiv —'}</span></div>
+        <div className="sh-pgnum sh-pgR"><span data-field="pageNumRight" style={{ whiteSpace: 'pre-wrap' }}>{c.pageNumRight || '— xv —'}</span></div>
 
         <div className="sh-ticker">
-          <div className="sh-stamp">{(c.tickerStamp || 'A WORD FROM THE HALLS').toUpperCase()}</div>
+          <div className="sh-stamp"><span data-field="tickerStamp" style={{ whiteSpace: 'pre-wrap' }}>{(c.tickerStamp || 'A WORD FROM THE HALLS').toUpperCase()}</span></div>
           <div className="sh-scroll">
             <span
               className="sh-scrollText"

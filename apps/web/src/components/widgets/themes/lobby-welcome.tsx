@@ -47,13 +47,14 @@ export function LobbyWelcomeText({ config }: { config: any }) {
       border: '1px solid rgba(255, 255, 255, 0.5)',
       containerType: 'size'
     }}>
-      <div style={{
+      <div data-field="content" style={{
         fontSize: 'clamp(2rem, 12cqh, 6rem)',
         fontWeight: 300,
         color: '#1e293b',
         fontFamily: '"Inter", sans-serif',
         lineHeight: 1.2,
-        letterSpacing: '-0.02em'
+        letterSpacing: '-0.02em',
+        whiteSpace: 'pre-wrap' as const
       }}>
         {content}
       </div>
@@ -141,11 +142,11 @@ export function LobbyWelcomeAnnouncement({ config, compact }: { config: any; com
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '3cqi', marginBottom: '4cqh' }}>
         <Info color="#3b82f6" size="8cqh" />
-        <div style={{ fontSize: 'clamp(1.2rem, 6cqh, 2.5rem)', fontWeight: 600, color: '#1e293b', letterSpacing: '0.05em' }}>
+        <div data-field="title" style={{ fontSize: 'clamp(1.2rem, 6cqh, 2.5rem)', fontWeight: 600, color: '#1e293b', letterSpacing: '0.05em', whiteSpace: 'pre-wrap' as const }}>
           {config.title || 'CAMPUS ANNOUNCEMENT'}
         </div>
       </div>
-      <div style={{ fontSize: 'clamp(1.5rem, 8cqh, 3.5rem)', fontWeight: 300, color: '#334155', lineHeight: 1.5 }}>
+      <div data-field="message" style={{ fontSize: 'clamp(1.5rem, 8cqh, 3.5rem)', fontWeight: 300, color: '#334155', lineHeight: 1.5, whiteSpace: 'pre-wrap' as const }}>
         {config.message || 'Please ensure you have your visitor badge visible at all times while on campus grounds.'}
       </div>
     </div>

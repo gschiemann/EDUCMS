@@ -133,7 +133,7 @@ export function AnimatedMorningNewsWidget({ config, live }: { config?: Cfg; live
       >
         <div className="mn-recDot">
           <span className="mn-dot" />
-          <span className="mn-recLabel">{c.recLabel || '● LIVE · ON AIR'}</span>
+          <span className="mn-recLabel" data-field="recLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.recLabel || '● LIVE · ON AIR'}</span>
         </div>
 
         {/* Time chip at top-right — absolute positioning so it never competes with the title */}
@@ -143,19 +143,19 @@ export function AnimatedMorningNewsWidget({ config, live }: { config?: Cfg; live
         </div>
 
         <div className="mn-showHeader">
-          <h1>{c.showTitle || 'THE DAILY DIGEST'}</h1>
-          <div className="mn-tagline">{c.showTagline || 'Your 5-minute school news'}</div>
+          <h1 data-field="showTitle" style={{ whiteSpace: 'pre-wrap' }}>{c.showTitle || 'THE DAILY DIGEST'}</h1>
+          <div className="mn-tagline" data-field="showTagline" style={{ whiteSpace: 'pre-wrap' }}>{c.showTagline || 'Your 5-minute school news'}</div>
         </div>
 
         <div className="mn-grid">
           <div className="mn-lead">
             <div className="mn-screen">
               <div className="mn-liveTag">{c.leadLiveTag || 'LIVE'}</div>
-              <div className="mn-iconic">{c.leadEmoji || '🏆'}</div>
+              <div className="mn-iconic" data-field="leadEmoji" style={{ whiteSpace: 'pre-wrap' }}>{c.leadEmoji || '🏆'}</div>
               <div className="mn-lowerThird">
-                <div className="mn-category">{c.leadCategory || 'Top Story · Sports'}</div>
-                <div className="mn-headline">{c.leadHeadline || 'Varsity Football Clinches District Title'}</div>
-                <div className="mn-byline">{c.leadByline || 'Reported by the 5th-grade newsroom · Coverage at 2:30'}</div>
+                <div className="mn-category" data-field="leadCategory" style={{ whiteSpace: 'pre-wrap' }}>{c.leadCategory || 'Top Story · Sports'}</div>
+                <div className="mn-headline" data-field="leadHeadline" style={{ whiteSpace: 'pre-wrap' }}>{c.leadHeadline || 'Varsity Football Clinches District Title'}</div>
+                <div className="mn-byline" data-field="leadByline" style={{ whiteSpace: 'pre-wrap' }}>{c.leadByline || 'Reported by the 5th-grade newsroom · Coverage at 2:30'}</div>
               </div>
             </div>
           </div>
@@ -175,11 +175,11 @@ export function AnimatedMorningNewsWidget({ config, live }: { config?: Cfg; live
               ))}
             </div>
             <div className="mn-wxCard">
-              <span className="mn-wxEmoji">{c.weatherEmoji || '☀️'}</span>
+              <span className="mn-wxEmoji" data-field="weatherEmoji" style={{ whiteSpace: 'pre-wrap' }}>{c.weatherEmoji || '☀️'}</span>
               <div className="mn-wxInfo">
-                <div className="mn-wxTemp">{c.weatherTemp || '68°'}</div>
-                <div className="mn-wxDesc">{c.weatherDesc || 'SUNNY · LIGHT WIND'}</div>
-                <div className="mn-wxHilo">{c.weatherHiLo || 'H 72° · L 51°'}</div>
+                <div className="mn-wxTemp" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' }}>{c.weatherTemp || '68°'}</div>
+                <div className="mn-wxDesc" data-field="weatherDesc" style={{ whiteSpace: 'pre-wrap' }}>{c.weatherDesc || 'SUNNY · LIGHT WIND'}</div>
+                <div className="mn-wxHilo" data-field="weatherHiLo" style={{ whiteSpace: 'pre-wrap' }}>{c.weatherHiLo || 'H 72° · L 51°'}</div>
               </div>
             </div>
           </div>
@@ -196,7 +196,7 @@ export function AnimatedMorningNewsWidget({ config, live }: { config?: Cfg; live
             </div>
           </div>
           <div className="mn-mainTicker">
-            <div className="mn-mStamp">{c.tickerStamp || 'DAILY DIGEST'}</div>
+            <div className="mn-mStamp" data-field="tickerStamp" style={{ whiteSpace: 'pre-wrap' }}>{c.tickerStamp || 'DAILY DIGEST'}</div>
             <div className="mn-mScroll">
               <span
                 className="mn-mText"

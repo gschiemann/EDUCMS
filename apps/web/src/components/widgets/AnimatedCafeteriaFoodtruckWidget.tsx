@@ -200,8 +200,8 @@ export function AnimatedCafeteriaFoodtruckWidget({ config, live }: { config: Cfg
               <span className="ft-star s2">⭐</span>
               <span className="ft-star s3">🌟</span>
               <span className="ft-star s4">💫</span>
-              <h1>{(c.title || 'LUNCH IS ON').toUpperCase()}</h1>
-              <div className="ft-sub">{c.subtitle || '~ freshly rolled every day ~'}</div>
+              <h1 data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{(c.title || 'LUNCH IS ON').toUpperCase()}</h1>
+              <div className="ft-sub" data-field="subtitle" style={{ whiteSpace: 'pre-wrap' }}>{c.subtitle || '~ freshly rolled every day ~'}</div>
             </div>
           </div>
           <div className="ft-clock">
@@ -214,11 +214,11 @@ export function AnimatedCafeteriaFoodtruckWidget({ config, live }: { config: Cfg
           <div className="ft-special">
             <div className="ft-string" />
             <div className="ft-tag">
-              <span className="ft-tagEmoji">
+              <span className="ft-tagEmoji" data-field="specialEmoji" style={{ whiteSpace: 'pre-wrap' }}>
                 {isSpecialUrl ? <img src={specialEmoji} alt="" className="ft-tagImg" /> : specialEmoji}
               </span>
-              <div className="ft-tagLbl">★ {(c.specialLabel || 'Pickup Special').toUpperCase()} ★</div>
-              <div className="ft-tagName">{c.specialName || 'Street Taco Bowl'}</div>
+              <div className="ft-tagLbl" data-field="specialLabel" style={{ whiteSpace: 'pre-wrap' }}>★ {(c.specialLabel || 'Pickup Special').toUpperCase()} ★</div>
+              <div className="ft-tagName" data-field="specialName" style={{ whiteSpace: 'pre-wrap' }}>{c.specialName || 'Street Taco Bowl'}</div>
             </div>
           </div>
 
@@ -252,9 +252,9 @@ export function AnimatedCafeteriaFoodtruckWidget({ config, live }: { config: Cfg
             <div className="ft-burst">
               <div className="ft-rays" />
               <div className="ft-center">
-                <div className="ft-cdLbl">{c.countdownLabel || 'Taco Tuesday in'}</div>
-                <div className="ft-cdNum">{days}</div>
-                <div className="ft-cdUnit">{unit}</div>
+                <div className="ft-cdLbl" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.countdownLabel || 'Taco Tuesday in'}</div>
+                <div className="ft-cdNum" data-field="countdownNumber" style={{ whiteSpace: 'pre-wrap' }}>{days}</div>
+                <div className="ft-cdUnit" data-field="countdownUnit" style={{ whiteSpace: 'pre-wrap' }}>{unit}</div>
               </div>
             </div>
           </div>
@@ -266,8 +266,8 @@ export function AnimatedCafeteriaFoodtruckWidget({ config, live }: { config: Cfg
                   ? <img src={c.chefPhotoUrl} alt="" className="ft-chefPhoto" />
                   : <span>{chefFace}</span>}
               </div>
-              <div className="ft-chefName">{(c.chefName || 'Ms. Rodriguez').toUpperCase()}</div>
-              <div className="ft-chefRole">~ {c.chefRole || 'lunch hero of the week'} ~</div>
+              <div className="ft-chefName" data-field="chefName" style={{ whiteSpace: 'pre-wrap' }}>{(c.chefName || 'Ms. Rodriguez').toUpperCase()}</div>
+              <div className="ft-chefRole" data-field="chefRole" style={{ whiteSpace: 'pre-wrap' }}>~ {c.chefRole || 'lunch hero of the week'} ~</div>
             </div>
           </div>
 
@@ -276,13 +276,13 @@ export function AnimatedCafeteriaFoodtruckWidget({ config, live }: { config: Cfg
               <div className="ft-cake">🎂</div>
             </div>
             <div className="ft-bdLbl">★ Birthdays Today ★</div>
-            <div className="ft-bdNames">{bdInline}</div>
+            <div className="ft-bdNames" data-field="birthdayNames" style={{ whiteSpace: 'pre-wrap' }}>{bdInline}</div>
           </div>
         </div>
 
         <div className="ft-ticker">
           <div className="ft-tickerBar">
-            <div className="ft-tickerStamp">{(c.tickerStamp || 'CAFÉ NEWS').toUpperCase()}</div>
+            <div className="ft-tickerStamp" data-field="tickerStamp" style={{ whiteSpace: 'pre-wrap' }}>{(c.tickerStamp || 'CAFÉ NEWS').toUpperCase()}</div>
             <div className="ft-tickerScroll">
               <span
                 className="ft-tickerText"

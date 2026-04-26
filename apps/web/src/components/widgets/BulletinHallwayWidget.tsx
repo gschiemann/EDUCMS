@@ -140,15 +140,15 @@ export function BulletinHallwayWidget({ config, live }: { config: Cfg; live?: bo
         <div className="bh-frame" />
 
         <div className="bh-banner">
-          <h1>{c.title || 'LEARN · GROW · SHINE'}</h1>
-          <div className="bh-sub">{c.subtitle || '~ every day a new adventure ~'}</div>
+          <h1 data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{c.title || 'LEARN · GROW · SHINE'}</h1>
+          <div className="bh-sub" data-field="subtitle" style={{ whiteSpace: 'pre-wrap' }}>{c.subtitle || '~ every day a new adventure ~'}</div>
           <div className="bh-pin" style={{ top: -13, left: -13 }} />
           <div className="bh-pin bh-pin-blue" style={{ top: -13, right: -13 }} />
         </div>
 
         <div className="bh-schedule">
-          <div className="bh-stamp">{c.scheduleStamp || '~ TODAY ~'}</div>
-          <h2>{c.scheduleTitle || "Today's Schedule"}</h2>
+          <div className="bh-stamp" data-field="scheduleStamp" style={{ whiteSpace: 'pre-wrap' }}>{c.scheduleStamp || '~ TODAY ~'}</div>
+          <h2 data-field="scheduleTitle" style={{ whiteSpace: 'pre-wrap' }}>{c.scheduleTitle || "Today's Schedule"}</h2>
           <div className="bh-rows">
             {rows.slice(0, 8).map((r, i) => (
               <div key={i} className={`bh-row${r.highlight ? ' bh-hl' : ''}`}>
@@ -164,7 +164,7 @@ export function BulletinHallwayWidget({ config, live }: { config: Cfg; live?: bo
 
         <div className="bh-right">
           <div className="bh-attendance">
-            <div className="bh-attLbl">{c.attendanceLabel || 'ATTENDANCE TODAY'}</div>
+            <div className="bh-attLbl" data-field="attendanceLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.attendanceLabel || 'ATTENDANCE TODAY'}</div>
             <div className="bh-pct"><b>{c.attendancePct ?? 97}</b><sup>%</sup></div>
             <div className="bh-day">{c.attendanceDay || 'Mon · April 19'}</div>
             <div className="bh-pin bh-pin-green" style={{ top: -13, right: 18 }} />
@@ -172,32 +172,32 @@ export function BulletinHallwayWidget({ config, live }: { config: Cfg; live?: bo
           <div className="bh-miniRow">
             <div className="bh-clock">
               <div className="bh-t">{hh}:{mm} {ampm}</div>
-              <div className="bh-lbl">{c.clockLabel || '~ time check ~'}</div>
+              <div className="bh-lbl" data-field="clockLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.clockLabel || '~ time check ~'}</div>
               <div className="bh-pin bh-pin-blue" style={{ top: -13, left: '50%', transform: 'translateX(-50%)' }} />
             </div>
             <div className="bh-weather">
               <div className="bh-t">{c.weatherTemp || '42°'}</div>
-              <div className="bh-lbl">{c.weatherLabel || '~ sunny + crisp ~'}</div>
+              <div className="bh-lbl" data-field="weatherLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.weatherLabel || '~ sunny + crisp ~'}</div>
               <div className="bh-pin bh-pin-yellow" style={{ top: -13, left: '50%', transform: 'translateX(-50%)' }} />
             </div>
           </div>
         </div>
 
         <div className="bh-memo">
-          <div className="bh-memoMsg">{c.annMsg || 'Assembly in the gym Friday at 2 PM — all classes welcome!'}</div>
+          <div className="bh-memoMsg" data-field="annMsg" style={{ whiteSpace: 'pre-wrap' }}>{c.annMsg || 'Assembly in the gym Friday at 2 PM — all classes welcome!'}</div>
           <div className="bh-pin" style={{ top: -13, left: 18 }} />
           <div className="bh-pin bh-pin-yellow" style={{ top: -13, right: 18 }} />
         </div>
 
         <div className="bh-ticket">
-          <div className="bh-ticketLbl">{(c.countdownLabel || 'FIELD DAY IN').toUpperCase()}</div>
+          <div className="bh-ticketLbl" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' }}>{(c.countdownLabel || 'FIELD DAY IN').toUpperCase()}</div>
           <div className="bh-ticketNum">{days}</div>
           <div className="bh-ticketUnit">{unit}</div>
           <div className="bh-pin bh-pin-blue" style={{ top: -13, left: '50%', transform: 'translateX(-50%)' }} />
         </div>
 
         <div className="bh-ticker">
-          <div className="bh-tickerStamp">{(c.tickerStamp || 'HALLWAY NEWS').toUpperCase()}</div>
+          <div className="bh-tickerStamp" data-field="tickerStamp" style={{ whiteSpace: 'pre-wrap' }}>{(c.tickerStamp || 'HALLWAY NEWS').toUpperCase()}</div>
           <div className="bh-tickerScroll">
             <span
               className="bh-scrollText"

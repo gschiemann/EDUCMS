@@ -135,7 +135,7 @@ export function MSHallBellSchedule({ config }: { config: any }) {
           zIndex: 10,
         }} />
         
-        <div style={{ fontSize: '9cqw', fontWeight: 800, textAlign: 'center', marginBottom: '6%', marginTop: '6%', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: `2px solid ${MSH.inkDark}`, paddingBottom: '3%', lineHeight: 1.1 }}>
+        <div data-field="title" style={{ fontSize: '9cqw', fontWeight: 800, textAlign: 'center', marginBottom: '6%', marginTop: '6%', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: `2px solid ${MSH.inkDark}`, paddingBottom: '3%', lineHeight: 1.1, whiteSpace: 'pre-wrap' as const }}>
           Bell Schedule
         </div>
         

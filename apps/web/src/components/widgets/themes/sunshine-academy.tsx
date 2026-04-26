@@ -64,7 +64,7 @@ export function SunshineAcademyCountdown({ config, compact }: { config: any; com
       borderRadius: compact ? '12px' : '24px', padding: compact ? '10%' : '15%',
       boxShadow: '0 6px 24px rgba(90,70,50,0.12)', border: '2px solid rgba(255,220,180,0.5)', textAlign: 'center'
     }}>
-      <div style={{ fontSize: compact ? '0.8em' : '1.2em', fontWeight: 800, color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</div>
+      <div data-field="label" style={{ fontSize: compact ? '0.8em' : '1.2em', fontWeight: 800, color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'pre-wrap' as const }}>{label}</div>
       <div style={{ fontSize: compact ? '3.5em' : '6em', fontWeight: 900, color: '#3A2E2A', lineHeight: 1, margin: '0.1em 0' }}>{days}</div>
       <div style={{ fontSize: compact ? '1em' : '1.4em', fontWeight: 700, color: '#7A6B63' }}>{days === 1 ? 'Day' : 'Days'}</div>
     </div>
@@ -77,7 +77,9 @@ export function SunshineAcademyText({ config }: { config: any }) {
     <div className="absolute inset-0 flex items-center justify-center text-center p-4" style={{
       color: '#3A2E2A', fontSize: '3em', fontWeight: 900, textShadow: '0 4px 12px rgba(255,255,255,0.8)'
     }}>
-      {content}
+      <div data-field="content" style={{ whiteSpace: 'pre-wrap' as const }}>
+        {content}
+      </div>
     </div>
   );
 }
@@ -96,8 +98,8 @@ export function SunshineAcademyAnnouncement({ config, compact }: { config: any; 
         display: 'flex', flexDirection: 'column', transform: 'rotate(-0.5deg)', position: 'relative'
       }}>
         <div style={{ position: 'absolute', top: '-8px', left: '50%', marginLeft: '-8px', width: '16px', height: '16px', borderRadius: '50%', background: 'linear-gradient(135deg, #FF6B6B, #EE5A5A)', boxShadow: '0 2px 6px rgba(0,0,0,0.2)' }} />
-        <div style={{ fontSize: compact ? '1em' : '1.5em', fontWeight: 800, color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.5em' }}>{title}</div>
-        <div style={{ fontSize: compact ? '1.5em' : '2.8em', fontWeight: 800, color: '#3A2E2A', lineHeight: 1.2, flex: 1, display: 'flex', alignItems: 'center' }}>{content}</div>
+        <div data-field="title" style={{ fontSize: compact ? '1em' : '1.5em', fontWeight: 800, color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.5em', whiteSpace: 'pre-wrap' as const }}>{title}</div>
+        <div data-field="message" style={{ fontSize: compact ? '1.5em' : '2.8em', fontWeight: 800, color: '#3A2E2A', lineHeight: 1.2, flex: 1, display: 'flex', alignItems: 'center', whiteSpace: 'pre-wrap' as const }}>{content}</div>
       </div>
     </div>
   );

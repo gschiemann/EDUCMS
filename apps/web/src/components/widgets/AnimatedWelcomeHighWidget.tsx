@@ -289,8 +289,8 @@ export function AnimatedWelcomeHighWidget({ config, live }: { config: Cfg; live?
           <div className="hs-titleBanner">
             <div className="hs-chainsTop" />
             <div className="hs-neonSign">
-              <h1>{c.title || 'Class of 2026'}</h1>
-              <div className="hs-sub">{c.subtitle || 'make it count'}</div>
+              <h1 data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{c.title || 'Class of 2026'}</h1>
+              <div className="hs-sub" data-field="subtitle" style={{ whiteSpace: 'pre-wrap' }}>{c.subtitle || 'make it count'}</div>
             </div>
           </div>
 
@@ -311,7 +311,7 @@ export function AnimatedWelcomeHighWidget({ config, live }: { config: Cfg; live?
             <div className="hs-sunDisc">
               <div className="hs-sunFace">{weatherTemp}</div>
             </div>
-            <div className="hs-weatherDesc">{weatherDesc}</div>
+            <div className="hs-weatherDesc" data-field="weatherDesc" style={{ whiteSpace: 'pre-wrap' }}>{weatherDesc}</div>
           </div>
 
           {/* Announcement — speech bubble with tail */}
@@ -320,8 +320,8 @@ export function AnimatedWelcomeHighWidget({ config, live }: { config: Cfg; live?
               <div className="hs-stars">
                 <span>⭐</span><span>✨</span><span>🌟</span><span>💫</span>
               </div>
-              <div className="hs-annLbl">★ {(c.announcementLabel || 'Announcement').toUpperCase()} ★</div>
-              <div className="hs-annMsg">{c.announcementMessage || 'Senior portraits next week — sign up in the office.'}</div>
+              <div className="hs-annLbl" data-field="announcementLabel" style={{ whiteSpace: 'pre-wrap' }}>★ {(c.announcementLabel || 'Announcement').toUpperCase()} ★</div>
+              <div className="hs-annMsg" data-field="announcementMessage" style={{ whiteSpace: 'pre-wrap' }}>{c.announcementMessage || 'Senior portraits next week — sign up in the office.'}</div>
             </div>
           </div>
 
@@ -331,7 +331,7 @@ export function AnimatedWelcomeHighWidget({ config, live }: { config: Cfg; live?
               <div className="hs-handleL" />
               <div className="hs-handleR" />
               <div className="hs-cup">
-                <div className="hs-cdLbl">{c.countdownLabel || 'Graduation in'}</div>
+                <div className="hs-cdLbl" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.countdownLabel || 'Graduation in'}</div>
                 <div className="hs-cdNum">{days}</div>
                 <div className="hs-cdUnit">{unit}</div>
               </div>
@@ -349,8 +349,8 @@ export function AnimatedWelcomeHighWidget({ config, live }: { config: Cfg; live?
                   : <span>{teacherFace}</span>}
               </div>
               <div className="hs-pageInfo">
-                <div className="hs-name">{(c.teacherName || 'MR. PATEL').toUpperCase()}</div>
-                <div className="hs-role">~ {c.teacherRole || 'Teacher of the Week'} ~</div>
+                <div className="hs-name" data-field="teacherName" style={{ whiteSpace: 'pre-wrap' }}>{(c.teacherName || 'MR. PATEL').toUpperCase()}</div>
+                <div className="hs-role" data-field="teacherRole" style={{ whiteSpace: 'pre-wrap' }}>~ {c.teacherRole || 'Teacher of the Week'} ~</div>
               </div>
             </div>
           </div>
@@ -367,7 +367,7 @@ export function AnimatedWelcomeHighWidget({ config, live }: { config: Cfg; live?
 
         {/* Ticker */}
         <div className="hs-ticker">
-          <div className="hs-tickerStamp">{(c.tickerStamp || 'CAMPUS NEWS').toUpperCase()}</div>
+          <div className="hs-tickerStamp" data-field="tickerStamp" style={{ whiteSpace: 'pre-wrap' }}>{(c.tickerStamp || 'CAMPUS NEWS').toUpperCase()}</div>
           <div className="hs-tickerScrollWrap">
             <span
               className="hs-tickerScrollText"

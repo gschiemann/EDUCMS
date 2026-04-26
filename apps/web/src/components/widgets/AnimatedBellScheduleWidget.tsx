@@ -219,9 +219,9 @@ export function AnimatedBellScheduleWidget({ config, live }: { config?: Cfg; liv
       >
         <div className="bs-header">
           <div className="bs-title">
-            <div className="bs-eyebrow">{c.eyebrow || "★ Today's Bell Schedule ★"}</div>
-            <h1>{headerTitle}</h1>
-            <div className="bs-sub">{c.subtitle || 'Monday · April 19 · 2026 · REGULAR BELL'}</div>
+            <div className="bs-eyebrow" data-field="eyebrow" style={{ whiteSpace: 'pre-wrap' }}>{c.eyebrow || "★ Today's Bell Schedule ★"}</div>
+            <h1 data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{headerTitle}</h1>
+            <div className="bs-sub" data-field="subtitle" style={{ whiteSpace: 'pre-wrap' }}>{c.subtitle || 'Monday · April 19 · 2026 · REGULAR BELL'}</div>
           </div>
           <div className="bs-nowClock">
             <div className="bs-nowLbl">Now</div>
@@ -232,9 +232,9 @@ export function AnimatedBellScheduleWidget({ config, live }: { config?: Cfg; liv
 
         <div className="bs-currentCard">
           <div className="bs-info">
-            <div className="bs-badge">{c.currentBadge || 'LIVE · IN SESSION'}</div>
-            <div className="bs-period">{currentLabel}</div>
-            <div className="bs-when">{currentRange}{currentRoom ? ` · ${currentRoom}` : ''}</div>
+            <div className="bs-badge" data-field="currentBadge" style={{ whiteSpace: 'pre-wrap' }}>{c.currentBadge || 'LIVE · IN SESSION'}</div>
+            <div className="bs-period" style={{ whiteSpace: 'pre-wrap' }}>{currentLabel}</div>
+            <div className="bs-when" style={{ whiteSpace: 'pre-wrap' }}>{currentRange}{currentRoom ? ` · ${currentRoom}` : ''}</div>
           </div>
           <div className="bs-timer">
             <div className="bs-until">Bell in</div>
@@ -265,7 +265,7 @@ export function AnimatedBellScheduleWidget({ config, live }: { config?: Cfg; liv
         </div>
 
         <div className="bs-ticker">
-          <div className="bs-tickerStamp">{c.tickerStamp || 'BELL SCHEDULE'}</div>
+          <div className="bs-tickerStamp" data-field="tickerStamp" style={{ whiteSpace: 'pre-wrap' }}>{c.tickerStamp || 'BELL SCHEDULE'}</div>
           <div className="bs-tickerScroll">
             <span
               className="bs-tickerText"

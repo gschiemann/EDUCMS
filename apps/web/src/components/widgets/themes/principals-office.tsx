@@ -26,25 +26,27 @@ export function PrincipalsOfficeLogo({ config }: { config: any }) {
       }}>
         <Shield color="#1a0f0a" size="20cqh" strokeWidth={1.5} />
       </div>
-      <div style={{ 
-        fontSize: '12cqh', 
-        fontWeight: 700, 
-        color: '#FDE08B', 
-        letterSpacing: '0.15em', 
+      <div data-field="schoolName" style={{
+        fontSize: '12cqh',
+        fontWeight: 700,
+        color: '#FDE08B',
+        letterSpacing: '0.15em',
         textAlign: 'center',
         fontFamily: 'Georgia, serif',
-        textShadow: '0 2px 4px rgba(0,0,0,0.8)'
+        textShadow: '0 2px 4px rgba(0,0,0,0.8)',
+        whiteSpace: 'pre-wrap' as const
       }}>
         WASHINGTON
       </div>
-      <div style={{ 
-        fontSize: '5cqh', 
-        fontWeight: 400, 
-        color: '#D4AF37', 
-        letterSpacing: '0.3em', 
-        textTransform: 'uppercase', 
+      <div data-field="subtitle" style={{
+        fontSize: '5cqh',
+        fontWeight: 400,
+        color: '#D4AF37',
+        letterSpacing: '0.3em',
+        textTransform: 'uppercase',
         marginTop: '2cqh',
-        fontFamily: 'Arial, sans-serif'
+        fontFamily: 'Arial, sans-serif',
+        whiteSpace: 'pre-wrap' as const
       }}>
         HIGH SCHOOL
       </div>
@@ -65,14 +67,15 @@ export function PrincipalsOfficeText({ config }: { config: any }) {
       {/* Inner engrave styling */}
       <div className="absolute inset-2 border-2 border-dashed border-[#8a631c] opacity-40 rounded-sm pointer-events-none" />
       
-      <div style={{
+      <div data-field="content" style={{
         fontSize: 'clamp(2rem, 15cqi, 6rem)',
         fontWeight: 400,
         color: '#2b180d',
         fontFamily: 'Georgia, serif',
         lineHeight: 1.3,
         textShadow: '0 1px 1px rgba(255,255,255,0.3)',
-        padding: '0 5cqi'
+        padding: '0 5cqi',
+        whiteSpace: 'pre-wrap' as const
       }}>
         {content}
       </div>

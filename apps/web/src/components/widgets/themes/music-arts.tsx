@@ -14,8 +14,8 @@ export function MusicArtsText({ config, compact }: { config: any; compact?: bool
       boxShadow: 'inset 0 -20px 40px rgba(168, 85, 247, 0.1)',
       containerType: 'size'
     }}>
-      <h1 style={{ 
-        fontSize: 'clamp(2rem, 15cqi, 8rem)', 
+      <h1 data-field="content" style={{
+        fontSize: 'clamp(2rem, 15cqi, 8rem)',
         color: 'transparent',
         background: 'linear-gradient(90deg, #f0abfc 0%, #a855f7 100%)',
         WebkitBackgroundClip: 'text',
@@ -25,7 +25,8 @@ export function MusicArtsText({ config, compact }: { config: any; compact?: bool
         textTransform: 'uppercase',
         textAlign: 'center',
         margin: 0,
-        textShadow: '0 0 30px rgba(217, 70, 239, 0.5)'
+        textShadow: '0 0 30px rgba(217, 70, 239, 0.5)',
+        whiteSpace: 'pre-wrap' as const
       }}>
         {content}
       </h1>
@@ -66,7 +67,7 @@ export function MusicArtsCountdown({ config, compact }: { config: any; compact?:
       borderBottom: '2px solid rgba(168, 85, 247, 0.3)',
       containerType: 'size'
     }}>
-      <div style={{
+      <div data-field="label" style={{
         color: '#f0abfc',
         fontFamily: 'Georgia, serif',
         textTransform: 'uppercase',
@@ -74,7 +75,8 @@ export function MusicArtsCountdown({ config, compact }: { config: any; compact?:
         fontSize: 'clamp(1rem, 4cqi, 2rem)',
         marginBottom: '4cqh',
         opacity: 0.8,
-        fontWeight: 'bold'
+        fontWeight: 'bold',
+        whiteSpace: 'pre-wrap' as const
       }}>
         {label}
       </div>

@@ -132,13 +132,13 @@ export function ScrapbookHallwayWidget({ config, live }: { config: Cfg; live?: b
         }}
       >
         <div className="sbh-banner">
-          <h1>{c.title || 'LEARN · GROW · SHINE'}</h1>
-          <div className="sbh-sub">{c.subtitle || 'every day a new adventure'}</div>
+          <h1 data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{c.title || 'LEARN · GROW · SHINE'}</h1>
+          <div className="sbh-sub" data-field="subtitle" style={{ whiteSpace: 'pre-wrap' }}>{c.subtitle || 'every day a new adventure'}</div>
         </div>
 
         <div className="sbh-schedule">
-          <div className="sbh-pageLbl">{c.schedulePageLabel || "~ Today's Schedule ~"}</div>
-          <h2>{c.scheduleTitle || 'Period by Period'}</h2>
+          <div className="sbh-pageLbl" data-field="schedulePageLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.schedulePageLabel || "~ Today's Schedule ~"}</div>
+          <h2 data-field="scheduleTitle" style={{ whiteSpace: 'pre-wrap' }}>{c.scheduleTitle || 'Period by Period'}</h2>
           <div className="sbh-rows">
             {rows.slice(0, 8).map((r, i) => (
               <div key={i} className={`sbh-row${r.highlight ? ' sbh-hl' : ''}`}>
@@ -155,26 +155,26 @@ export function ScrapbookHallwayWidget({ config, live }: { config: Cfg; live?: b
           <div className="sbh-attendance">
             <div className="sbh-day">{c.attendanceDay || 'Mon · 4/19'}</div>
             <div className="sbh-pct"><b>{c.attendancePct ?? 97}</b><sup>%</sup></div>
-            <div className="sbh-attLbl">{c.attendanceLabel || '~ here today ~'}</div>
+            <div className="sbh-attLbl" data-field="attendanceLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.attendanceLabel || '~ here today ~'}</div>
           </div>
           <div className="sbh-miniRow">
             <div className="sbh-clock"><div className="sbh-t">{hh}:{mm}</div><div className="sbh-ap">{ampm}</div></div>
-            <div className="sbh-weather"><div className="sbh-t">{c.weatherTemp || '42°'}</div><div className="sbh-desc">{c.weatherDesc || 'sunny + crisp'}</div></div>
+            <div className="sbh-weather"><div className="sbh-t" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' }}>{c.weatherTemp || '42°'}</div><div className="sbh-desc" data-field="weatherDesc" style={{ whiteSpace: 'pre-wrap' }}>{c.weatherDesc || 'sunny + crisp'}</div></div>
           </div>
         </div>
 
         <div className="sbh-ann">
-          <div className="sbh-annLbl">{c.annLabel || 'Announcement'}</div>
-          <div className="sbh-annMsg">{c.annMsg || 'Assembly in the gym Friday at 2 PM — all classes welcome!'}</div>
+          <div className="sbh-annLbl" data-field="annLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.annLabel || 'Announcement'}</div>
+          <div className="sbh-annMsg" data-field="annMsg" style={{ whiteSpace: 'pre-wrap' }}>{c.annMsg || 'Assembly in the gym Friday at 2 PM — all classes welcome!'}</div>
         </div>
         <div className="sbh-ctd">
-          <div className="sbh-ctdLbl">{c.countdownLabel || 'Field Day in'}</div>
+          <div className="sbh-ctdLbl" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.countdownLabel || 'Field Day in'}</div>
           <div className="sbh-ctdNum">{days}</div>
           <div className="sbh-ctdUnit">{unit}</div>
         </div>
 
         <div className="sbh-ticker">
-          <div className="sbh-stamp">{(c.tickerStamp || 'HALLWAY NEWS').toUpperCase()}</div>
+          <div className="sbh-stamp" data-field="tickerStamp" style={{ whiteSpace: 'pre-wrap' }}>{(c.tickerStamp || 'HALLWAY NEWS').toUpperCase()}</div>
           <div className="sbh-scroll">
             <span
               className="sbh-scrollText"

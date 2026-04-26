@@ -198,8 +198,8 @@ export function AnimatedCafeteriaChalkboardWidget({ config, live }: { config: Cf
               <span className="ch-utensil fork">🍴</span>
             </div>
             <div className="ch-title">
-              <h1>{c.title || "Today's Menu"}</h1>
-              <div className="ch-sub">{c.subtitle || '~ hot + fresh + ready at 11:30 ~'}</div>
+              <h1 data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{c.title || "Today's Menu"}</h1>
+              <div className="ch-sub" data-field="subtitle" style={{ whiteSpace: 'pre-wrap' }}>{c.subtitle || '~ hot + fresh + ready at 11:30 ~'}</div>
             </div>
             <div className="ch-clock">
               <div className="ch-clockT">{hh}:{mm}</div>
@@ -209,11 +209,11 @@ export function AnimatedCafeteriaChalkboardWidget({ config, live }: { config: Cf
 
           <div className="ch-grid">
             <div className="ch-special">
-              <div className="ch-plate">
+              <div className="ch-plate" style={{ whiteSpace: 'pre-wrap' }}>
                 {isSpecialUrl ? <img src={specialEmoji} alt="" className="ch-plateImg" /> : specialEmoji}
               </div>
-              <div className="ch-specialLbl">★ {(c.specialLabel || "Today's Special").toUpperCase()} ★</div>
-              <div className="ch-specialName">{c.specialName || 'Stuffed Crust Pepperoni'}</div>
+              <div className="ch-specialLbl" data-field="specialLabel" style={{ whiteSpace: 'pre-wrap' }}>★ {(c.specialLabel || "Today's Special").toUpperCase()} ★</div>
+              <div className="ch-specialName" data-field="specialName" style={{ whiteSpace: 'pre-wrap' }}>{c.specialName || 'Stuffed Crust Pepperoni'}</div>
             </div>
 
             <div className="ch-menu">
@@ -249,9 +249,9 @@ export function AnimatedCafeteriaChalkboardWidget({ config, live }: { config: Cf
                 <div className="ch-pep p3" />
                 <div className="ch-pep p4" />
                 <div className="ch-sliceTxt">
-                  <div className="ch-cdLbl">{c.countdownLabel || 'Pizza Day in'}</div>
-                  <div className="ch-cdNum">{days}</div>
-                  <div className="ch-cdUnit">{unit}</div>
+                  <div className="ch-cdLbl" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.countdownLabel || 'Pizza Day in'}</div>
+                  <div className="ch-cdNum" style={{ whiteSpace: 'pre-wrap' }}>{days}</div>
+                  <div className="ch-cdUnit" data-field="countdownUnit" style={{ whiteSpace: 'pre-wrap' }}>{unit}</div>
                 </div>
               </div>
             </div>
@@ -264,8 +264,8 @@ export function AnimatedCafeteriaChalkboardWidget({ config, live }: { config: Cf
                     : <span>{chefFace}</span>}
                 </div>
                 <div className="ch-caption">
-                  {c.chefName || 'Ms. Rodriguez'}
-                  <small>~ {c.chefRole || 'lunch hero of the week'} ~</small>
+                  <div data-field="chefName" style={{ whiteSpace: 'pre-wrap' }}>{c.chefName || 'Ms. Rodriguez'}</div>
+                  <small data-field="chefRole" style={{ whiteSpace: 'pre-wrap' }}>~ {c.chefRole || 'lunch hero of the week'} ~</small>
                 </div>
               </div>
             </div>

@@ -379,8 +379,8 @@ export function AnimatedWelcomeWidget({ config, live }: { config: Cfg; live?: bo
               : <span>{c.logoEmoji || '🍎'}</span>}
           </div>
           <div className="aw-titleBox">
-            <h1>{c.title || 'Welcome, Friends!'}</h1>
-            <div className="aw-sub">{c.subtitle || 'today is going to be amazing ✨'}</div>
+            <h1 data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{c.title || 'Welcome, Friends!'}</h1>
+            <div className="aw-sub" data-field="subtitle" style={{ whiteSpace: 'pre-wrap' }}>{c.subtitle || 'today is going to be amazing ✨'}</div>
           </div>
           <div className="aw-clock">
             <div className="aw-clockT">{hh}:{mm}</div>
@@ -398,7 +398,7 @@ export function AnimatedWelcomeWidget({ config, live }: { config: Cfg; live?: bo
                 {c.weatherTemp || (weather ? `${weather.tempF}°` : '68°')}
               </div>
             </div>
-            <div className="aw-weatherDesc">
+            <div className="aw-weatherDesc" data-field="weatherDesc" style={{ whiteSpace: 'pre-wrap' }}>
               {c.weatherDesc || (weather ? cuteWeatherPhrase(weather.wmoCode, weather.tempF) : '~ sunny + crisp ~')}
             </div>
           </div>
@@ -408,13 +408,13 @@ export function AnimatedWelcomeWidget({ config, live }: { config: Cfg; live?: bo
               <span>⭐</span><span>✨</span><span>🌟</span><span>💫</span>
             </div>
             <div className="aw-megaphone">📣</div>
-            <div className="aw-annLbl">{c.announcementLabel || 'Big News'}</div>
-            <div className="aw-annMsg">{c.announcementMessage || 'Book Fair starts Monday! 📚 Come find your new favorite story.'}</div>
+            <div className="aw-annLbl" data-field="announcementLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.announcementLabel || 'Big News'}</div>
+            <div className="aw-annMsg" data-field="announcementMessage" style={{ whiteSpace: 'pre-wrap' }}>{c.announcementMessage || 'Book Fair starts Monday! 📚 Come find your new favorite story.'}</div>
           </div>
 
           <div className="aw-countdown">
             <div className="aw-badge">
-              <div className="aw-cdLbl">{c.countdownLabel || 'Field Trip in'}</div>
+              <div className="aw-cdLbl" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.countdownLabel || 'Field Trip in'}</div>
               {(() => {
                 // Date-driven preferred. Compute whole days from
                 // today (00:00 local) until the target date (00:00 local).
@@ -445,8 +445,8 @@ export function AnimatedWelcomeWidget({ config, live }: { config: Cfg; live?: bo
             <div className="aw-polaroid">
               {/* Washi-tape banner with caption, then name, then photo —
                   caption + name read first, photo anchors the bottom. */}
-              <div className="aw-tWashi">{c.teacherRole || 'Teacher of the Week'}</div>
-              <div className="aw-tName">{c.teacherName || 'Mrs. Johnson'}</div>
+              <div className="aw-tWashi" data-field="teacherRole" style={{ whiteSpace: 'pre-wrap' }}>{c.teacherRole || 'Teacher of the Week'}</div>
+              <div className="aw-tName" data-field="teacherName" style={{ whiteSpace: 'pre-wrap' }}>{c.teacherName || 'Mrs. Johnson'}</div>
               <div className="aw-tFace">
                 {c.teacherPhotoUrl
                   ? <img src={c.teacherPhotoUrl} alt="" className="aw-tPhoto" />
@@ -495,7 +495,7 @@ export function AnimatedWelcomeWidget({ config, live }: { config: Cfg; live?: bo
         </div>
 
         <div className="aw-ticker">
-          <div className="aw-tickerStamp">{c.tickerStamp || 'SCHOOL NEWS'}</div>
+          <div className="aw-tickerStamp" data-field="tickerStamp" style={{ whiteSpace: 'pre-wrap' }}>{c.tickerStamp || 'SCHOOL NEWS'}</div>
           <div className="aw-tickerScrollWrap">
             <span
               className="aw-tickerScrollText"

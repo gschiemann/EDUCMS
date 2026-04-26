@@ -110,45 +110,45 @@ export function AnimatedMainEntranceWidget({ config, live }: { config?: Cfg; liv
         <div className="me-signWrap">
           <div className="me-signChains" />
           <div className="me-sign">
-            <div className="me-eyebrow">★ {c.eyebrow || 'welcome to'} ★</div>
-            <h1>{(c.title || 'LINCOLN ELEMENTARY').toUpperCase()}</h1>
-            <div className="me-signSub">{c.subtitle || 'where curious minds begin · since 1962'}</div>
+            <div className="me-eyebrow" data-field="eyebrow" style={{ whiteSpace: 'pre-wrap' }}>★ {c.eyebrow || 'welcome to'} ★</div>
+            <h1 data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{(c.title || 'LINCOLN ELEMENTARY').toUpperCase()}</h1>
+            <div className="me-signSub" data-field="subtitle" style={{ whiteSpace: 'pre-wrap' }}>{c.subtitle || 'where curious minds begin · since 1962'}</div>
           </div>
         </div>
 
         <div className="me-crestWrap me-left">
-          <div className="me-crest"><div className="me-crestIcon">{c.leftCrestEmoji || '🦅'}</div></div>
-          <div className="me-crestLbl">{(c.leftCrestLabel || 'GO EAGLES').toUpperCase()}</div>
+          <div className="me-crest"><div className="me-crestIcon" data-field="leftCrestEmoji" style={{ whiteSpace: 'pre-wrap' }}>{c.leftCrestEmoji || '🦅'}</div></div>
+          <div className="me-crestLbl" data-field="leftCrestLabel" style={{ whiteSpace: 'pre-wrap' }}>{(c.leftCrestLabel || 'GO EAGLES').toUpperCase()}</div>
         </div>
 
         <div className="me-crestWrap me-right">
-          <div className="me-crest"><div className="me-crestIcon">{c.rightCrestEmoji || '📚'}</div></div>
-          <div className="me-crestLbl">{(c.rightCrestLabel || 'LEARN DAILY').toUpperCase()}</div>
+          <div className="me-crest"><div className="me-crestIcon" data-field="rightCrestEmoji" style={{ whiteSpace: 'pre-wrap' }}>{c.rightCrestEmoji || '📚'}</div></div>
+          <div className="me-crestLbl" data-field="rightCrestLabel" style={{ whiteSpace: 'pre-wrap' }}>{(c.rightCrestLabel || 'LEARN DAILY').toUpperCase()}</div>
         </div>
 
         <div className="me-info">
           <div className="me-tile">
-            <div className="me-tileIcon">{c.tile1Emoji || '🔔'}</div>
-            <div className="me-tileLbl">{(c.tile1Label || 'SCHOOL BELL').toUpperCase()}</div>
-            <div className="me-tileBig">{c.tile1Big || '8:15 AM'}</div>
-            <div className="me-tileSub">{c.tile1Sub || 'first bell · see you in class'}</div>
+            <div className="me-tileIcon" data-field="tile1Emoji" style={{ whiteSpace: 'pre-wrap' }}>{c.tile1Emoji || '🔔'}</div>
+            <div className="me-tileLbl" data-field="tile1Label" style={{ whiteSpace: 'pre-wrap' }}>{(c.tile1Label || 'SCHOOL BELL').toUpperCase()}</div>
+            <div className="me-tileBig" data-field="tile1Big" style={{ whiteSpace: 'pre-wrap' }}>{c.tile1Big || '8:15 AM'}</div>
+            <div className="me-tileSub" data-field="tile1Sub" style={{ whiteSpace: 'pre-wrap' }}>{c.tile1Sub || 'first bell · see you in class'}</div>
           </div>
           <div className="me-tile">
-            <div className="me-tileIcon">{c.tile2Emoji || '☀️'}</div>
-            <div className="me-tileLbl">{(c.tile2Label || "TODAY'S FORECAST").toUpperCase()}</div>
-            <div className="me-tileBig">{c.tile2Big || '68°'}</div>
-            <div className="me-tileSub">{c.tile2Sub || 'sunny + crisp, recess outside!'}</div>
+            <div className="me-tileIcon" data-field="tile2Emoji" style={{ whiteSpace: 'pre-wrap' }}>{c.tile2Emoji || '☀️'}</div>
+            <div className="me-tileLbl" data-field="tile2Label" style={{ whiteSpace: 'pre-wrap' }}>{(c.tile2Label || "TODAY'S FORECAST").toUpperCase()}</div>
+            <div className="me-tileBig" data-field="tile2Big" style={{ whiteSpace: 'pre-wrap' }}>{c.tile2Big || '68°'}</div>
+            <div className="me-tileSub" data-field="tile2Sub" style={{ whiteSpace: 'pre-wrap' }}>{c.tile2Sub || 'sunny + crisp, recess outside!'}</div>
           </div>
           <div className="me-tile">
-            <div className="me-tileIcon">{c.tile3Emoji || '🎉'}</div>
-            <div className="me-tileLbl">{(c.tile3Label || 'COMING UP').toUpperCase()}</div>
-            <div className="me-tileBig">{c.tile3Big || 'Spring Musical'}</div>
-            <div className="me-tileSub">{c.tile3Sub || 'Thursday April 28 · 7pm'}</div>
+            <div className="me-tileIcon" data-field="tile3Emoji" style={{ whiteSpace: 'pre-wrap' }}>{c.tile3Emoji || '🎉'}</div>
+            <div className="me-tileLbl" data-field="tile3Label" style={{ whiteSpace: 'pre-wrap' }}>{(c.tile3Label || 'COMING UP').toUpperCase()}</div>
+            <div className="me-tileBig" data-field="tile3Big" style={{ whiteSpace: 'pre-wrap' }}>{c.tile3Big || 'Spring Musical'}</div>
+            <div className="me-tileSub" data-field="tile3Sub" style={{ whiteSpace: 'pre-wrap' }}>{c.tile3Sub || 'Thursday April 28 · 7pm'}</div>
           </div>
         </div>
 
         <div className="me-ticker">
-          <div className="me-tickerStamp">{(c.tickerStamp || 'Welcome').toUpperCase()}</div>
+          <div className="me-tickerStamp" data-field="tickerStamp" style={{ whiteSpace: 'pre-wrap' }}>{(c.tickerStamp || 'Welcome').toUpperCase()}</div>
           <div className="me-tickerScroll">
             <span
               className="me-tickerText"

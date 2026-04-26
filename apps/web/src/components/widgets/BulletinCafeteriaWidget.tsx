@@ -174,8 +174,8 @@ export function BulletinCafeteriaWidget({ config, live }: { config: Cfg; live?: 
         <div className="bc-header">
           <div className="bc-logoCircle">{logo}</div>
           <div className="bc-titleBlock">
-            <h1>{(c.title || "TODAY'S MENU").toUpperCase()}</h1>
-            <div className="bc-sub">{c.subtitle || "~ what's cooking in the kitchen ~"}</div>
+            <h1 data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{(c.title || "TODAY'S MENU").toUpperCase()}</h1>
+            <div className="bc-sub" data-field="subtitle" style={{ whiteSpace: 'pre-wrap' }}>{c.subtitle || "~ what's cooking in the kitchen ~"}</div>
           </div>
           <div className="bc-clockBlock">
             <div className="bc-clockT">{hh}:{mm}</div>
@@ -186,11 +186,11 @@ export function BulletinCafeteriaWidget({ config, live }: { config: Cfg; live?: 
         </div>
 
         <div className="bc-photo">
-          <div className="bc-photoStamp">{(c.photoStamp || '~ TODAY IN THE KITCHEN ~').toUpperCase()}</div>
+          <div className="bc-photoStamp" data-field="photoStamp" style={{ whiteSpace: 'pre-wrap' }}>{(c.photoStamp || '~ TODAY IN THE KITCHEN ~').toUpperCase()}</div>
           <div className="bc-img">
             {isPhotoUrl ? <img src={photo} alt="" className="bc-imgImg" /> : <span className="bc-imgEmoji">{photo}</span>}
           </div>
-          <div className="bc-photoCaption">— {c.photoCaption || 'served fresh today'} —</div>
+          <div className="bc-photoCaption" data-field="photoCaption" style={{ whiteSpace: 'pre-wrap' }}>— {c.photoCaption || 'served fresh today'} —</div>
           <div className="bc-pin yellow" style={{ top: -13, left: '50%', transform: 'translateX(-50%)' }} />
         </div>
 
@@ -219,20 +219,20 @@ export function BulletinCafeteriaWidget({ config, live }: { config: Cfg; live?: 
         </div>
 
         <div className="bc-memo">
-          <div className="bc-memoMsg">{c.memoMessage || 'Pizza Friday is BACK! Cheese + pepperoni in line 2.'}</div>
+          <div className="bc-memoMsg" data-field="memoMessage" style={{ whiteSpace: 'pre-wrap' }}>{c.memoMessage || 'Pizza Friday is BACK! Cheese + pepperoni in line 2.'}</div>
           <div className="bc-pin" style={{ top: -13, left: 18 }} />
           <div className="bc-pin yellow" style={{ top: -13, right: 18 }} />
         </div>
 
         <div className="bc-ticket">
-          <div className="bc-ticketLbl">{(c.countdownLabel || 'NEXT MEAL IN').toUpperCase()}</div>
+          <div className="bc-ticketLbl" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' }}>{(c.countdownLabel || 'NEXT MEAL IN').toUpperCase()}</div>
           <div className="bc-ticketNum">{days}</div>
           <div className="bc-ticketUnit">{unit}</div>
           <div className="bc-pin blue" style={{ top: -13, left: '50%', transform: 'translateX(-50%)' }} />
         </div>
 
         <div className="bc-ticker">
-          <div className="bc-tickerStamp">{(c.tickerStamp || 'FROM THE KITCHEN').toUpperCase()}</div>
+          <div className="bc-tickerStamp" data-field="tickerStamp" style={{ whiteSpace: 'pre-wrap' }}>{(c.tickerStamp || 'FROM THE KITCHEN').toUpperCase()}</div>
           <div className="bc-tickerScroll">
             <span
               className="bc-tickerText"

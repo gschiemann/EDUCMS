@@ -126,8 +126,8 @@ export function ScrapbookCafeteriaWidget({ config, live }: { config: Cfg; live?:
         <div className="sbc-header">
           <div className="sbc-logo">{c.logoEmoji || '🍎'}</div>
           <div className="sbc-titleWrap">
-            <h1>{c.title || "Today's Menu"}</h1>
-            <div className="sbc-sub">{c.subtitle || "what's cooking in the kitchen"}</div>
+            <h1 data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{c.title || "Today's Menu"}</h1>
+            <div className="sbc-sub" data-field="subtitle" style={{ whiteSpace: 'pre-wrap' }}>{c.subtitle || "what's cooking in the kitchen"}</div>
           </div>
           <div className="sbc-clock"><div className="sbc-t">{hh}:{mm}</div><div className="sbc-ap">{ampm}</div></div>
         </div>
@@ -136,7 +136,7 @@ export function ScrapbookCafeteriaWidget({ config, live }: { config: Cfg; live?:
           <div className="sbc-photo" data-emoji={c.polaroidEmoji || '🍝'}>
             <span className="sbc-photoEmoji">{c.polaroidEmoji || '🍝'}</span>
           </div>
-          <div className="sbc-caption">{c.polaroidCaption || '~ snapped this morning ~'}</div>
+          <div className="sbc-caption" data-field="polaroidCaption" style={{ whiteSpace: 'pre-wrap' }}>{c.polaroidCaption || '~ snapped this morning ~'}</div>
         </div>
 
         <div className="sbc-menuStack">
@@ -165,18 +165,18 @@ export function ScrapbookCafeteriaWidget({ config, live }: { config: Cfg; live?:
         </div>
 
         <div className="sbc-special">
-          <div className="sbc-specialLbl">{c.specialLabel || "Today's Special"}</div>
-          <div className="sbc-specialMsg">{c.specialMsg || 'Pizza Friday is BACK! 🍕 Cheese + pepperoni in line 2.'}</div>
+          <div className="sbc-specialLbl" data-field="specialLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.specialLabel || "Today's Special"}</div>
+          <div className="sbc-specialMsg" data-field="specialMsg" style={{ whiteSpace: 'pre-wrap' }}>{c.specialMsg || 'Pizza Friday is BACK! 🍕 Cheese + pepperoni in line 2.'}</div>
         </div>
 
         <div className="sbc-countdown">
-          <div className="sbc-ctdLbl">{c.countdownLabel || 'Next meal in'}</div>
+          <div className="sbc-ctdLbl" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.countdownLabel || 'Next meal in'}</div>
           <div className="sbc-ctdNum">{days}</div>
           <div className="sbc-ctdUnit">{unit}</div>
         </div>
 
         <div className="sbc-ticker">
-          <div className="sbc-stamp">{(c.tickerStamp || 'FROM THE KITCHEN').toUpperCase()}</div>
+          <div className="sbc-stamp" data-field="tickerStamp" style={{ whiteSpace: 'pre-wrap' }}>{(c.tickerStamp || 'FROM THE KITCHEN').toUpperCase()}</div>
           <div className="sbc-scroll">
             <span
               className="sbc-scrollText"

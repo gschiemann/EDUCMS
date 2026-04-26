@@ -227,8 +227,8 @@ export function AnimatedCafeteriaHighWidget({ config, live }: { config?: Cfg; li
           </div>
           <div className="hs-title">
             <div className="hs-neon">
-              <h1>{(c.title || 'CAMPUS CAFÉ').toUpperCase()}</h1>
-              <div className="hs-neonSub">{c.subtitle || 'open 7am · closes at the bell'}</div>
+              <h1 data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{(c.title || 'CAMPUS CAFÉ').toUpperCase()}</h1>
+              <div className="hs-neonSub" data-field="subtitle" style={{ whiteSpace: 'pre-wrap' }}>{c.subtitle || 'open 7am · closes at the bell'}</div>
             </div>
           </div>
           <div className="hs-clock">
@@ -243,10 +243,10 @@ export function AnimatedCafeteriaHighWidget({ config, live }: { config?: Cfg; li
         <div className="hs-grid">
           <div className="hs-special">
             <div className="hs-sunDisc">
-              <div className="hs-sunFace">{c.specialEmoji || '🥪'}</div>
+              <div className="hs-sunFace" data-field="specialEmoji" style={{ whiteSpace: 'pre-wrap' }}>{c.specialEmoji || '🥪'}</div>
             </div>
-            <div className="hs-specialLbl">★ {c.specialLabel || "Today's Pick"} ★</div>
-            <div className="hs-specialName">{c.specialName || 'Turkey Club Wrap'}</div>
+            <div className="hs-specialLbl" data-field="specialLabel" style={{ whiteSpace: 'pre-wrap' }}>★ {c.specialLabel || "Today's Pick"} ★</div>
+            <div className="hs-specialName" data-field="specialName" style={{ whiteSpace: 'pre-wrap' }}>{c.specialName || 'Turkey Club Wrap'}</div>
           </div>
 
           <div className="hs-menu">
@@ -288,10 +288,10 @@ export function AnimatedCafeteriaHighWidget({ config, live }: { config?: Cfg; li
               <div className="hs-handleL" />
               <div className="hs-handleR" />
               <div className="hs-cupBody">
-                <div className="hs-cdIcon">{c.countdownEmoji || '🎓'}</div>
-                <div className="hs-cdLbl">{c.countdownLabel || 'Graduation in'}</div>
-                <div className="hs-cdNum">{days}</div>
-                <div className="hs-cdUnit">{unit}</div>
+                <div className="hs-cdIcon" data-field="countdownEmoji" style={{ whiteSpace: 'pre-wrap' }}>{c.countdownEmoji || '🎓'}</div>
+                <div className="hs-cdLbl" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.countdownLabel || 'Graduation in'}</div>
+                <div className="hs-cdNum" data-field="countdownNumber" style={{ whiteSpace: 'pre-wrap' }}>{days}</div>
+                <div className="hs-cdUnit" data-field="countdownUnit" style={{ whiteSpace: 'pre-wrap' }}>{unit}</div>
               </div>
               <div className="hs-stem" />
               <div className="hs-base" />
@@ -306,8 +306,8 @@ export function AnimatedCafeteriaHighWidget({ config, live }: { config?: Cfg; li
                   : <span>{c.chefEmoji || '👨‍🍳'}</span>}
               </div>
               <div className="hs-pageInfo">
-                <div className="hs-chefName">{(c.chefName || 'MR. PATEL').toUpperCase()}</div>
-                <div className="hs-chefRole">~ {c.chefRole || 'café chef'} ~</div>
+                <div className="hs-chefName" data-field="chefName" style={{ whiteSpace: 'pre-wrap' }}>{(c.chefName || 'MR. PATEL').toUpperCase()}</div>
+                <div className="hs-chefRole" data-field="chefRole" style={{ whiteSpace: 'pre-wrap' }}>~ {c.chefRole || 'café chef'} ~</div>
               </div>
             </div>
           </div>
@@ -317,12 +317,12 @@ export function AnimatedCafeteriaHighWidget({ config, live }: { config?: Cfg; li
               <div className="hs-cake">🎂</div>
             </div>
             <div className="hs-bdLbl">★ Birthdays Today ★</div>
-            <div className="hs-bdNames">{bdInline}</div>
+            <div className="hs-bdNames" data-field="birthdayNames" style={{ whiteSpace: 'pre-wrap' }}>{bdInline}</div>
           </div>
         </div>
 
         <div className="hs-ticker">
-          <div className="hs-tickerStamp">{(c.tickerStamp || 'Campus News').toUpperCase()}</div>
+          <div className="hs-tickerStamp" data-field="tickerStamp" style={{ whiteSpace: 'pre-wrap' }}>{(c.tickerStamp || 'Campus News').toUpperCase()}</div>
           <div className="hs-tickerScroll">
             <span
               className="hs-tickerText"

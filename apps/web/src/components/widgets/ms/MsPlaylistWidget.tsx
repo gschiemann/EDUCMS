@@ -292,17 +292,17 @@ export function MsPlaylistWidget({ config }: { config?: MsPlaylistConfig }) {
         <div className="ms-pl-brand" data-widget="brand">
           <div className="ms-pl-mark" aria-hidden="true" />
           <div className="ms-pl-brand-info">
-            <div className="ms-pl-eye" data-field="brand.eyebrow">{pick(cfg, 'brand.eyebrow')}</div>
+            <div className="ms-pl-eye" data-field="brand.eyebrow" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'brand.eyebrow')}</div>
             <div className="ms-pl-name">
               {'Otter'}
-              <span data-field="brand.suffix">{pick(cfg, 'brand.suffix')}</span>
+              <span data-field="brand.suffix" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'brand.suffix')}</span>
             </div>
             <div className="ms-pl-sub">
-              <span data-field="brand.day">{pick(cfg, 'brand.day')}</span>
+              <span data-field="brand.day" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'brand.day')}</span>
               {' · '}
-              <b data-field="brand.date">{pick(cfg, 'brand.date')}</b>
+              <b data-field="brand.date" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'brand.date')}</b>
               {' · '}
-              <span data-field="brand.volume">{pick(cfg, 'brand.volume')}</span>
+              <span data-field="brand.volume" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'brand.volume')}</span>
             </div>
           </div>
         </div>
@@ -310,28 +310,28 @@ export function MsPlaylistWidget({ config }: { config?: MsPlaylistConfig }) {
         <div className="ms-pl-device" data-widget="device">
           <div className="ms-pl-device-ico" aria-hidden="true" />
           <div className="ms-pl-device-info">
-            <div className="ms-pl-device-k" data-field="device.label">{pick(cfg, 'device.label')}</div>
-            <div className="ms-pl-device-v" data-field="device.name">{pick(cfg, 'device.name')}</div>
+            <div className="ms-pl-device-k" data-field="device.label" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'device.label')}</div>
+            <div className="ms-pl-device-v" data-field="device.name" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'device.name')}</div>
           </div>
         </div>
 
         <div className="ms-pl-meta-tiles">
           <div className="ms-pl-mt" data-widget="clock">
-            <span className="ms-pl-mt-k" data-field="clock.label">{pick(cfg, 'clock.label')}</span>
-            <span className="ms-pl-mt-v" data-field="clock.time">
+            <span className="ms-pl-mt-k" data-field="clock.label" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'clock.label')}</span>
+            <span className="ms-pl-mt-v" data-field="clock.time" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'clock.time')}
               <sup>am</sup>
             </span>
           </div>
           <div className="ms-pl-mt" data-widget="weather">
-            <span className="ms-pl-mt-k" data-field="weather.label">{pick(cfg, 'weather.label')}</span>
-            <span className="ms-pl-mt-v ms-pl-cool" data-field="weather.temp">{pick(cfg, 'weather.temp')}</span>
+            <span className="ms-pl-mt-k" data-field="weather.label" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'weather.label')}</span>
+            <span className="ms-pl-mt-v ms-pl-cool" data-field="weather.temp" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'weather.temp')}</span>
           </div>
           <div className="ms-pl-mt" data-widget="countdown">
-            <span className="ms-pl-mt-k" data-field="countdown.label">{pick(cfg, 'countdown.label')}</span>
-            <span className="ms-pl-mt-v ms-pl-green" data-field="countdown.value">{pick(cfg, 'countdown.value')}</span>
+            <span className="ms-pl-mt-k" data-field="countdown.label" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'countdown.label')}</span>
+            <span className="ms-pl-mt-v ms-pl-green" data-field="countdown.value" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'countdown.value')}</span>
           </div>
-          <div className="ms-pl-avatar" data-widget="profile" data-field="profile.initials">
+          <div className="ms-pl-avatar" data-widget="profile" data-field="profile.initials" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'profile.initials')}
           </div>
         </div>
@@ -343,13 +343,13 @@ export function MsPlaylistWidget({ config }: { config?: MsPlaylistConfig }) {
         <div className="ms-pl-cover" data-widget="cover">
           <div className="ms-pl-albumtxt">
             <div>
-              <div className="ms-pl-cover-top" data-field="cover.top">{pick(cfg, 'cover.top')}</div>
+              <div className="ms-pl-cover-top" data-field="cover.top" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'cover.top')}</div>
             </div>
-            <div className="ms-pl-cover-big" data-field="cover.big">{pick(cfg, 'cover.big')}</div>
+            <div className="ms-pl-cover-big" data-field="cover.big" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'cover.big')}</div>
             <div className="ms-pl-cover-row">
               <div className="ms-pl-cover-meta">
-                <b data-field="cover.album">{pick(cfg, 'cover.album')}</b>
-                <span data-field="cover.tracklen">{pick(cfg, 'cover.tracklen')}</span>
+                <b data-field="cover.album" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'cover.album')}</b>
+                <span data-field="cover.tracklen" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'cover.tracklen')}</span>
               </div>
               <div className="ms-pl-cover-heart" aria-hidden="true">♥</div>
             </div>
@@ -358,27 +358,27 @@ export function MsPlaylistWidget({ config }: { config?: MsPlaylistConfig }) {
 
         {/* Now-playing detail column */}
         <div className="ms-pl-now" data-widget="now">
-          <div className="ms-pl-now-eyebrow" data-field="now.eyebrow">{pick(cfg, 'now.eyebrow')}</div>
+          <div className="ms-pl-now-eyebrow" data-field="now.eyebrow" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'now.eyebrow')}</div>
 
           <h1 className="ms-pl-now-h1">
-            <span data-field="now.title-1">{pick(cfg, 'now.title-1')}</span>
+            <span data-field="now.title-1" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'now.title-1')}</span>
             {' — '}
-            <em data-field="now.title-2">{pick(cfg, 'now.title-2')}</em>
+            <em data-field="now.title-2" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'now.title-2')}</em>
           </h1>
 
           <div className="ms-pl-now-artist" data-widget="now.artist">
-            <b data-field="now.artist-name">{pick(cfg, 'now.artist-name')}</b>
+            <b data-field="now.artist-name" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'now.artist-name')}</b>
             {' · '}
-            <span data-field="now.artist-room">{pick(cfg, 'now.artist-room')}</span>
+            <span data-field="now.artist-room" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'now.artist-room')}</span>
             {' · '}
-            <span data-field="now.artist-grade">{pick(cfg, 'now.artist-grade')}</span>
+            <span data-field="now.artist-grade" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'now.artist-grade')}</span>
           </div>
 
           <div className="ms-pl-chips">
-            <span className="ms-pl-chip ms-pl-chip-exp" data-field="now.chipE">{pick(cfg, 'now.chipE')}</span>
-            <span className="ms-pl-chip" data-field="now.chip1">{pick(cfg, 'now.chip1')}</span>
-            <span className="ms-pl-chip ms-pl-chip-green" data-field="now.chip2">{pick(cfg, 'now.chip2')}</span>
-            <span className="ms-pl-chip-meta" data-field="now.meta">{pick(cfg, 'now.meta')}</span>
+            <span className="ms-pl-chip ms-pl-chip-exp" data-field="now.chipE" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'now.chipE')}</span>
+            <span className="ms-pl-chip" data-field="now.chip1" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'now.chip1')}</span>
+            <span className="ms-pl-chip ms-pl-chip-green" data-field="now.chip2" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'now.chip2')}</span>
+            <span className="ms-pl-chip-meta" data-field="now.meta" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'now.meta')}</span>
           </div>
 
           <div className="ms-pl-eq" aria-hidden="true">
@@ -392,8 +392,8 @@ export function MsPlaylistWidget({ config }: { config?: MsPlaylistConfig }) {
               <div className="ms-pl-knob" />
             </div>
             <div className="ms-pl-times">
-              <span className="ms-pl-time-left" data-field="now.elapsed">{pick(cfg, 'now.elapsed')}</span>
-              <span data-field="now.remaining">{pick(cfg, 'now.remaining')}</span>
+              <span className="ms-pl-time-left" data-field="now.elapsed" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'now.elapsed')}</span>
+              <span data-field="now.remaining" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'now.remaining')}</span>
             </div>
           </div>
 
@@ -416,12 +416,12 @@ export function MsPlaylistWidget({ config }: { config?: MsPlaylistConfig }) {
             </h2>
             <div className="ms-pl-queue-meta">
               <div className="ms-pl-queue-day">
-                <span data-field="queue.dayLabel">{pick(cfg, 'queue.dayLabel')}</span>{' '}
-                <b data-field="queue.dayLetter">{pick(cfg, 'queue.dayLetter')}</b>
+                <span data-field="queue.dayLabel" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'queue.dayLabel')}</span>{' '}
+                <b data-field="queue.dayLetter" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'queue.dayLetter')}</b>
                 {' · '}
-                <span data-field="queue.date">{pick(cfg, 'queue.date')}</span>
+                <span data-field="queue.date" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'queue.date')}</span>
               </div>
-              <div className="ms-pl-queue-pill" data-field="queue.pill">{pick(cfg, 'queue.pill')}</div>
+              <div className="ms-pl-queue-pill" data-field="queue.pill" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'queue.pill')}</div>
             </div>
           </div>
 
@@ -441,29 +441,29 @@ export function MsPlaylistWidget({ config }: { config?: MsPlaylistConfig }) {
                   className={`ms-pl-row${isUp ? ' ms-pl-row-up' : ''}`}
                   data-widget={`queue.${i}`}
                 >
-                  <span className="ms-pl-idx" data-field={`queue.${i}.idx`}>
+                  <span className="ms-pl-idx" data-field={`queue.${i}.idx`} style={{ whiteSpace: 'pre-wrap' }}>
                     {pick(cfg, `queue.${i}.idx` as keyof Required<MsPlaylistConfig>)}
                   </span>
                   <div className="ms-pl-trk">
-                    <div className="ms-pl-art" style={queueArtStyles[i]} data-field={`queue.${i}.art`}>
+                    <div className="ms-pl-art" style={queueArtStyles[i]} data-field={`queue.${i}.art`} style={{ whiteSpace: 'pre-wrap' }}>
                       {pick(cfg, `queue.${i}.art` as keyof Required<MsPlaylistConfig>)}
                     </div>
                     <div>
                       <div className="ms-pl-ti">
                         {queueExplicit[i] && <em>E</em>}
-                        <span data-field={`queue.${i}.title`}>
+                        <span data-field={`queue.${i}.title`} style={{ whiteSpace: 'pre-wrap' }}>
                           {pick(cfg, `queue.${i}.title` as keyof Required<MsPlaylistConfig>)}
                         </span>
                       </div>
-                      <div className="ms-pl-ar" data-field={`queue.${i}.artist`}>
+                      <div className="ms-pl-ar" data-field={`queue.${i}.artist`} style={{ whiteSpace: 'pre-wrap' }}>
                         {pick(cfg, `queue.${i}.artist` as keyof Required<MsPlaylistConfig>)}
                       </div>
                     </div>
                   </div>
-                  <span className="ms-pl-alb" data-field={`queue.${i}.album`}>
+                  <span className="ms-pl-alb" data-field={`queue.${i}.album`} style={{ whiteSpace: 'pre-wrap' }}>
                     {pick(cfg, `queue.${i}.album` as keyof Required<MsPlaylistConfig>)}
                   </span>
-                  <span className="ms-pl-dur" data-field={`queue.${i}.dur`}>
+                  <span className="ms-pl-dur" data-field={`queue.${i}.dur`} style={{ whiteSpace: 'pre-wrap' }}>
                     {pick(cfg, `queue.${i}.dur` as keyof Required<MsPlaylistConfig>)}
                     <span>{queueDurSubs[i]}</span>
                   </span>
@@ -477,14 +477,14 @@ export function MsPlaylistWidget({ config }: { config?: MsPlaylistConfig }) {
         <aside className="ms-pl-side">
           {/* Featured / spotlight */}
           <div className="ms-pl-card ms-pl-featured" data-widget="featured">
-            <div className="ms-pl-card-ey" data-field="featured.eyebrow">{pick(cfg, 'featured.eyebrow')}</div>
-            <h3 className="ms-pl-card-h3" data-field="featured.title">{pick(cfg, 'featured.title')}</h3>
+            <div className="ms-pl-card-ey" data-field="featured.eyebrow" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'featured.eyebrow')}</div>
+            <h3 className="ms-pl-card-h3" data-field="featured.title" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'featured.title')}</h3>
             <div className="ms-pl-featured-row">
-              <div className="ms-pl-featured-pic" data-field="featured.art">{pick(cfg, 'featured.art')}</div>
+              <div className="ms-pl-featured-pic" data-field="featured.art" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'featured.art')}</div>
               <div className="ms-pl-featured-info">
-                <div className="ms-pl-featured-t" data-field="featured.name">{pick(cfg, 'featured.name')}</div>
-                <div className="ms-pl-featured-s" data-field="featured.desc">{pick(cfg, 'featured.desc')}</div>
-                <span className="ms-pl-featured-tag" data-field="featured.tag">{pick(cfg, 'featured.tag')}</span>
+                <div className="ms-pl-featured-t" data-field="featured.name" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'featured.name')}</div>
+                <div className="ms-pl-featured-s" data-field="featured.desc" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'featured.desc')}</div>
+                <span className="ms-pl-featured-tag" data-field="featured.tag" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'featured.tag')}</span>
               </div>
             </div>
           </div>
@@ -493,8 +493,8 @@ export function MsPlaylistWidget({ config }: { config?: MsPlaylistConfig }) {
           <div className="ms-pl-card ms-pl-recent" data-widget="recent">
             <div className="ms-pl-recent-head">
               <div>
-                <div className="ms-pl-card-ey" data-field="recent.eyebrow">{pick(cfg, 'recent.eyebrow')}</div>
-                <h3 className="ms-pl-card-h3" data-field="recent.title">{pick(cfg, 'recent.title')}</h3>
+                <div className="ms-pl-card-ey" data-field="recent.eyebrow" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'recent.eyebrow')}</div>
+                <h3 className="ms-pl-card-h3" data-field="recent.title" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'recent.title')}</h3>
               </div>
               <span className="ms-pl-recent-more">SEE ALL</span>
             </div>
@@ -506,14 +506,14 @@ export function MsPlaylistWidget({ config }: { config?: MsPlaylistConfig }) {
                   <div key={i} className="ms-pl-it" data-widget={`recent.${i}`}>
                     <span className={`ms-pl-it-n${hot ? ' ms-pl-it-n-hot' : ''}`}>{num}</span>
                     <div className="ms-pl-it-body">
-                      <div className="ms-pl-it-t" data-field={`recent.${i}.t`}>
+                      <div className="ms-pl-it-t" data-field={`recent.${i}.t`} style={{ whiteSpace: 'pre-wrap' }}>
                         {pick(cfg, `recent.${i}.t` as keyof Required<MsPlaylistConfig>)}
                       </div>
-                      <div className="ms-pl-it-s" data-field={`recent.${i}.s`}>
+                      <div className="ms-pl-it-s" data-field={`recent.${i}.s`} style={{ whiteSpace: 'pre-wrap' }}>
                         {pick(cfg, `recent.${i}.s` as keyof Required<MsPlaylistConfig>)}
                       </div>
                     </div>
-                    <span className="ms-pl-it-when" data-field={`recent.${i}.w`}>
+                    <span className="ms-pl-it-when" data-field={`recent.${i}.w`} style={{ whiteSpace: 'pre-wrap' }}>
                       {pick(cfg, `recent.${i}.w` as keyof Required<MsPlaylistConfig>)}
                     </span>
                   </div>
@@ -525,18 +525,18 @@ export function MsPlaylistWidget({ config }: { config?: MsPlaylistConfig }) {
           {/* Mini stats card */}
           <div className="ms-pl-stats" data-widget="stats">
             <div className="ms-pl-cell" data-widget="stats.attendance">
-              <span className="ms-pl-cell-k" data-field="stats.attendance.k">{pick(cfg, 'stats.attendance.k')}</span>
-              <span className="ms-pl-cell-v ms-pl-green" data-field="stats.attendance.v">{pick(cfg, 'stats.attendance.v')}</span>
+              <span className="ms-pl-cell-k" data-field="stats.attendance.k" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'stats.attendance.k')}</span>
+              <span className="ms-pl-cell-v ms-pl-green" data-field="stats.attendance.v" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'stats.attendance.v')}</span>
             </div>
             <div className="ms-pl-dv" />
             <div className="ms-pl-cell" data-widget="stats.lunch">
-              <span className="ms-pl-cell-k" data-field="stats.lunch.k">{pick(cfg, 'stats.lunch.k')}</span>
-              <span className="ms-pl-cell-v ms-pl-warm" data-field="stats.lunch.v">{pick(cfg, 'stats.lunch.v')}</span>
+              <span className="ms-pl-cell-k" data-field="stats.lunch.k" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'stats.lunch.k')}</span>
+              <span className="ms-pl-cell-v ms-pl-warm" data-field="stats.lunch.v" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'stats.lunch.v')}</span>
             </div>
             <div className="ms-pl-dv" />
             <div className="ms-pl-cell" data-widget="stats.bus">
-              <span className="ms-pl-cell-k" data-field="stats.bus.k">{pick(cfg, 'stats.bus.k')}</span>
-              <span className="ms-pl-cell-v" data-field="stats.bus.v">{pick(cfg, 'stats.bus.v')}</span>
+              <span className="ms-pl-cell-k" data-field="stats.bus.k" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'stats.bus.k')}</span>
+              <span className="ms-pl-cell-v" data-field="stats.bus.v" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'stats.bus.v')}</span>
             </div>
           </div>
         </aside>
@@ -545,24 +545,24 @@ export function MsPlaylistWidget({ config }: { config?: MsPlaylistConfig }) {
       {/* ─── BOTTOM · ALERT + TICKER ─────────────────────── */}
       <section className="ms-pl-bottom">
         <div className="ms-pl-alert" data-widget="alert">
-          <div className="ms-pl-alert-ico" data-field="alert.ico">{pick(cfg, 'alert.ico')}</div>
+          <div className="ms-pl-alert-ico" data-field="alert.ico" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'alert.ico')}</div>
           <div className="ms-pl-alert-body">
-            <div className="ms-pl-alert-ey" data-field="alert.eyebrow">{pick(cfg, 'alert.eyebrow')}</div>
-            <div className="ms-pl-alert-msg" data-field="alert.message">{pick(cfg, 'alert.message')}</div>
+            <div className="ms-pl-alert-ey" data-field="alert.eyebrow" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'alert.eyebrow')}</div>
+            <div className="ms-pl-alert-msg" data-field="alert.message" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'alert.message')}</div>
           </div>
-          <div className="ms-pl-alert-when" data-field="alert.when">{pick(cfg, 'alert.when')}</div>
+          <div className="ms-pl-alert-when" data-field="alert.when" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'alert.when')}</div>
         </div>
 
         <div className="ms-pl-ticker" data-widget="ticker">
-          <div className="ms-pl-ticker-badge" data-field="ticker.tag">{pick(cfg, 'ticker.tag')}</div>
+          <div className="ms-pl-ticker-badge" data-field="ticker.tag" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.tag')}</div>
           <div className="ms-pl-ticker-feed">
             <div className="ms-pl-ticker-inner">
-              <span data-field="ticker.0">{pick(cfg, 'ticker.0')}</span>
-              <span data-field="ticker.1">{pick(cfg, 'ticker.1')}</span>
-              <span data-field="ticker.2">{pick(cfg, 'ticker.2')}</span>
-              <span data-field="ticker.3">{pick(cfg, 'ticker.3')}</span>
-              <span data-field="ticker.4">{pick(cfg, 'ticker.4')}</span>
-              <span data-field="ticker.5">{pick(cfg, 'ticker.5')}</span>
+              <span data-field="ticker.0" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.0')}</span>
+              <span data-field="ticker.1" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.1')}</span>
+              <span data-field="ticker.2" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.2')}</span>
+              <span data-field="ticker.3" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.3')}</span>
+              <span data-field="ticker.4" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.4')}</span>
+              <span data-field="ticker.5" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.5')}</span>
               <span aria-hidden="true">{pick(cfg, 'ticker.0')}</span>
               <span aria-hidden="true">{pick(cfg, 'ticker.1')}</span>
               <span aria-hidden="true">{pick(cfg, 'ticker.2')}</span>

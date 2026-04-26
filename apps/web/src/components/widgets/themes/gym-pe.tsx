@@ -17,7 +17,7 @@ export function GymPEText({ config }: { config: any }) {
       overflow: 'hidden'
     }}>
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '6px', background: '#60a5fa', boxShadow: '0 0 20px #60a5fa' }} />
-      <div style={{
+      <div data-field="content" style={{
         color: '#f8fafc',
         fontSize: '4.5cqi', // Use container query inline size for perfectly responsive text
         fontWeight: 900,
@@ -27,7 +27,8 @@ export function GymPEText({ config }: { config: any }) {
         textShadow: '4px 4px 0 #1d4ed8, -1px -1px 0 #60a5fa, 0 0 30px rgba(59,130,246,0.8)',
         width: '100%',
         padding: '0 20px',
-        wordWrap: 'break-word'
+        wordWrap: 'break-word',
+        whiteSpace: 'pre-wrap' as const
       }}>
         {content}
       </div>
@@ -145,7 +146,7 @@ export function GymPEAnnouncement({ config, compact }: { config: any; compact?: 
       }}>
         {title}
       </div>
-      <div style={{
+      <div data-field="message" style={{
         flex: 1,
         display: 'flex',
         alignItems: 'center',
@@ -153,7 +154,8 @@ export function GymPEAnnouncement({ config, compact }: { config: any; compact?: 
         fontWeight: 800,
         color: '#f8fafc',
         lineHeight: 1.4,
-        textShadow: '0 4px 10px rgba(0,0,0,0.8)'
+        textShadow: '0 4px 10px rgba(0,0,0,0.8)',
+        whiteSpace: 'pre-wrap' as const
       }}>
         {content}
       </div>
@@ -171,7 +173,7 @@ export function GymPETicker({ config }: { config: any }) {
       borderBottom: '6px solid #14532d',
       boxShadow: '0 0 30px rgba(34, 197, 94, 0.4)'
     }}>
-      <div style={{ whiteSpace: 'nowrap', animation: 'gymTicker 20s linear infinite', fontSize: '5cqi', fontWeight: 900, fontStyle: 'italic', color: '#022c22', textTransform: 'uppercase', paddingLeft: '100%', textShadow: '2px 2px 0 rgba(255,255,255,0.3)' }}>
+      <div data-field="messages" style={{ whiteSpace: 'nowrap', animation: 'gymTicker 20s linear infinite', fontSize: '5cqi', fontWeight: 900, fontStyle: 'italic', color: '#022c22', textTransform: 'uppercase', paddingLeft: '100%', textShadow: '2px 2px 0 rgba(255,255,255,0.3)' }}>
         {text}   ///   {text}
       </div>
       <style>{`@keyframes gymTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`}</style>

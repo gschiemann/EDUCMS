@@ -41,10 +41,11 @@ export function AthleticsLogo({ config }: { config: any }) {
           {hasImage ? (
              <img src={config.assetUrl} alt="Logo" className="w-full h-full object-contain" />
           ) : (
-            <span className="relative text-white font-black italic tracking-tighter leading-none" style={{
+            <span data-field="initials" className="relative text-white font-black italic tracking-tighter leading-none" style={{
               fontSize: '40cqh',
               fontFamily: ATHLETICS.fontDisplay,
               textShadow: `0 0 20px ${ATHLETICS.neonBlue}, 3px 3px 0 #000`,
+              whiteSpace: 'pre-wrap' as const
             }}>
               {config.initials || 'HS'}
             </span>
@@ -90,7 +91,7 @@ export function AthleticsCountdown({ config, compact }: { config: any; compact?:
     <div className="absolute inset-0 flex flex-col justify-between" style={{ padding: '2cqw', containerType: 'size' }}>
       <div className="w-full flex justify-center mb-1">
         <div className="bg-red-600/20 px-6 py-1 rounded-sm border border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.3)] flex items-center justify-center">
-          <span className="text-red-500 font-bold tracking-widest uppercase italic leading-none" style={{ fontSize: '15cqh', fontFamily: ATHLETICS.fontDisplay }}>
+          <span data-field="label" className="text-red-500 font-bold tracking-widest uppercase italic leading-none" style={{ fontSize: '15cqh', fontFamily: ATHLETICS.fontDisplay, whiteSpace: 'pre-wrap' as const }}>
             {label}
           </span>
         </div>

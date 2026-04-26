@@ -318,8 +318,8 @@ export function AnimatedWelcomePortraitWidget({
               : <span>{c.logoEmoji || '🍎'}</span>}
           </div>
           <div className="awp-titleBox">
-            <h1>{c.title || 'Welcome, Friends!'}</h1>
-            <div className="awp-sub">{c.subtitle || 'today is going to be amazing ✨'}</div>
+            <h1 data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{c.title || 'Welcome, Friends!'}</h1>
+            <div className="awp-sub" data-field="subtitle" style={{ whiteSpace: 'pre-wrap' }}>{c.subtitle || 'today is going to be amazing ✨'}</div>
           </div>
           <div className="awp-clock">
             <div className="awp-clockT">{hh}:{mm}</div>
@@ -334,14 +334,14 @@ export function AnimatedWelcomePortraitWidget({
               {c.weatherTemp || (weather ? `${weather.tempF}°` : '68°')}
             </div>
           </div>
-          <div className="awp-weatherDesc">
+          <div className="awp-weatherDesc" data-field="weatherDesc" style={{ whiteSpace: 'pre-wrap' }}>
             {c.weatherDesc || (weather ? cuteWeatherPhrase(weather.wmoCode, weather.tempF) : '~ sunny + crisp ~')}
           </div>
         </div>
 
         <div className="awp-countdown">
           <div className="awp-badge">
-            <div className="awp-cdLbl">{c.countdownLabel || 'Field Trip in'}</div>
+            <div className="awp-cdLbl" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.countdownLabel || 'Field Trip in'}</div>
             {(() => {
               if (c.countdownDate) {
                 const target = new Date(c.countdownDate + 'T00:00:00');
@@ -371,15 +371,15 @@ export function AnimatedWelcomePortraitWidget({
             <span>⭐</span><span>✨</span><span>🌟</span><span>💫</span>
           </div>
           <div className="awp-megaphone">📣</div>
-          <div className="awp-annLbl">{c.announcementLabel || 'Big News'}</div>
-          <div className="awp-annMsg">{c.announcementMessage || 'Book Fair starts Monday! 📚 Come find your new favorite story.'}</div>
+          <div className="awp-annLbl" data-field="announcementLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.announcementLabel || 'Big News'}</div>
+          <div className="awp-annMsg" data-field="announcementMessage" style={{ whiteSpace: 'pre-wrap' }}>{c.announcementMessage || 'Book Fair starts Monday! 📚 Come find your new favorite story.'}</div>
         </div>
 
         {/* Row 4: Teacher (polaroid) + Birthdays (balloon cluster) */}
         <div className="awp-teacher">
           <div className="awp-polaroid">
-            <div className="awp-tWashi">{c.teacherRole || 'Teacher of the Week'}</div>
-            <div className="awp-tName">{c.teacherName || 'Mrs. Johnson'}</div>
+            <div className="awp-tWashi" data-field="teacherRole" style={{ whiteSpace: 'pre-wrap' }}>{c.teacherRole || 'Teacher of the Week'}</div>
+            <div className="awp-tName" data-field="teacherName" style={{ whiteSpace: 'pre-wrap' }}>{c.teacherName || 'Mrs. Johnson'}</div>
             <div className="awp-tFace">
               {c.teacherPhotoUrl
                 ? <img src={c.teacherPhotoUrl} alt="" className="awp-tPhoto" />
@@ -420,7 +420,7 @@ export function AnimatedWelcomePortraitWidget({
 
         {/* Ticker — wavy ribbon at bottom */}
         <div className="awp-ticker">
-          <div className="awp-tickerStamp">{c.tickerStamp || 'SCHOOL NEWS'}</div>
+          <div className="awp-tickerStamp" data-field="tickerStamp" style={{ whiteSpace: 'pre-wrap' }}>{c.tickerStamp || 'SCHOOL NEWS'}</div>
           <div className="awp-tickerScrollWrap">
             <span
               className="awp-tickerScrollText"

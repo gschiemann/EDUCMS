@@ -213,8 +213,8 @@ export function AnimatedCafeteriaMiddleWidget({ config, live }: { config?: Cfg; 
           </div>
           <div className="ms-title">
             <div className="ms-ribbon">
-              <h1>{(c.title || 'EAGLE EATS').toUpperCase()}</h1>
-              <div className="ms-sub">{c.subtitle || '~ fuel up, Eagles ~'}</div>
+              <h1 data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{(c.title || 'EAGLE EATS').toUpperCase()}</h1>
+              <div className="ms-sub" data-field="subtitle" style={{ whiteSpace: 'pre-wrap' }}>{c.subtitle || '~ fuel up, Eagles ~'}</div>
             </div>
           </div>
           <div className="ms-scoreboard">
@@ -230,9 +230,9 @@ export function AnimatedCafeteriaMiddleWidget({ config, live }: { config?: Cfg; 
           <div className="ms-special">
             <div className="ms-pole" />
             <div className="ms-flag">
-              <div className="ms-flagEmoji">{c.specialEmoji || '🍕'}</div>
-              <div className="ms-flagLbl">{(c.specialLabel || 'PICKUP SPECIAL').toUpperCase()}</div>
-              <div className="ms-flagName">{c.specialName || 'Stuffed Crust'}</div>
+              <div className="ms-flagEmoji" data-field="specialEmoji" style={{ whiteSpace: 'pre-wrap' }}>{c.specialEmoji || '🍕'}</div>
+              <div className="ms-flagLbl" data-field="specialLabel" style={{ whiteSpace: 'pre-wrap' }}>{(c.specialLabel || 'PICKUP SPECIAL').toUpperCase()}</div>
+              <div className="ms-flagName" data-field="specialName" style={{ whiteSpace: 'pre-wrap' }}>{c.specialName || 'Stuffed Crust'}</div>
             </div>
           </div>
 
@@ -272,23 +272,23 @@ export function AnimatedCafeteriaMiddleWidget({ config, live }: { config?: Cfg; 
             <div className="ms-stopwatch">
               <div className="ms-crown" />
               <div className="ms-ring">
-                <div className="ms-cdIcon">{c.countdownEmoji || '🏈'}</div>
-                <div className="ms-cdLbl">{c.countdownLabel || 'Game Day in'}</div>
-                <div className="ms-cdNum">{days}</div>
-                <div className="ms-cdUnit">{unit}</div>
+                <div className="ms-cdIcon" data-field="countdownEmoji" style={{ whiteSpace: 'pre-wrap' }}>{c.countdownEmoji || '🏈'}</div>
+                <div className="ms-cdLbl" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.countdownLabel || 'Game Day in'}</div>
+                <div className="ms-cdNum" data-field="countdownNumber" style={{ whiteSpace: 'pre-wrap' }}>{days}</div>
+                <div className="ms-cdUnit" data-field="countdownUnit" style={{ whiteSpace: 'pre-wrap' }}>{unit}</div>
               </div>
             </div>
           </div>
 
           <div className="ms-chef">
             <div className="ms-patch">
-              <div className="ms-patchRole">★ {(c.chefRole || 'LUNCH CHEF').toUpperCase()} ★</div>
-              <div className="ms-patchFace">
+              <div className="ms-patchRole" data-field="chefRole" style={{ whiteSpace: 'pre-wrap' }}>★ {(c.chefRole || 'LUNCH CHEF').toUpperCase()} ★</div>
+              <div className="ms-patchFace" data-field="chefEmoji" style={{ whiteSpace: 'pre-wrap' }}>
                 {c.chefPhotoUrl
                   ? <img src={c.chefPhotoUrl} alt="" className="ms-patchPhoto" />
                   : <span>{c.chefEmoji || '👨‍🍳'}</span>}
               </div>
-              <div className="ms-patchName">{(c.chefName || 'CHEF RIVERA').toUpperCase()}</div>
+              <div className="ms-patchName" data-field="chefName" style={{ whiteSpace: 'pre-wrap' }}>{(c.chefName || 'CHEF RIVERA').toUpperCase()}</div>
             </div>
           </div>
 
@@ -300,12 +300,12 @@ export function AnimatedCafeteriaMiddleWidget({ config, live }: { config?: Cfg; 
               <div className="ms-tier2" />
             </div>
             <div className="ms-bdLbl">★ BIRTHDAYS TODAY ★</div>
-            <div className="ms-bdNames">{bdInline}</div>
+            <div className="ms-bdNames" data-field="birthdayNames" style={{ whiteSpace: 'pre-wrap' }}>{bdInline}</div>
           </div>
         </div>
 
         <div className="ms-ticker">
-          <div className="ms-tickerStamp">{(c.tickerStamp || 'Eagle Eats').toUpperCase()}</div>
+          <div className="ms-tickerStamp" data-field="tickerStamp" style={{ whiteSpace: 'pre-wrap' }}>{(c.tickerStamp || 'Eagle Eats').toUpperCase()}</div>
           <div className="ms-tickerScroll">
             <span
               className="ms-tickerText"

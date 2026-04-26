@@ -27,7 +27,7 @@ export function BusLoopText({ config, compact }: { config: any; compact?: boolea
       boxShadow: 'inset 0 0 40px rgba(0,0,0,0.8), 0 10px 30px rgba(0,0,0,0.9)',
       containerType: 'size'
     }}>
-      <h1 style={{
+      <h1 data-field="content" style={{
         fontFamily: BL_DISPLAY,
         fontSize: 'clamp(2rem, 15cqi, 8rem)',
         color: BL.yellow,
@@ -35,7 +35,8 @@ export function BusLoopText({ config, compact }: { config: any; compact?: boolea
         textAlign: 'center',
         margin: 0,
         textShadow: '0 4px 20px rgba(255,204,0,0.4), 2px 2px 0 #000',
-        letterSpacing: '0.05em'
+        letterSpacing: '0.05em',
+        whiteSpace: 'pre-wrap' as const
       }}>
         {content}
       </h1>
@@ -130,7 +131,7 @@ export function BusLoopWeather({ config, compact }: { config: any; compact?: boo
           {t}°
         </span>
       </div>
-      <span style={{ fontFamily: BL_FONT, fontSize: 'clamp(0.8rem, 6cqh, 2rem)', color: BL.textMuted, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '2cqh' }}>
+      <span data-field="location" style={{ fontFamily: BL_FONT, fontSize: 'clamp(0.8rem, 6cqh, 2rem)', color: BL.textMuted, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '2cqh', whiteSpace: 'pre-wrap' as const }}>
         {config.location || 'Springfield'}
       </span>
     </div>
@@ -161,10 +162,10 @@ export function BusLoopAnnouncement({ config, compact }: { config: any; compact?
         {config.badgeLabel || 'ALERT'}
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '6cqi', textAlign: 'center' }}>
-        <h2 style={{ fontFamily: BL_DISPLAY, fontSize: 'clamp(1.5rem, 8cqh, 3.5rem)', color: BL.red, textTransform: 'uppercase', fontWeight: 900, marginBottom: '2cqh', textShadow: '0 2px 10px rgba(255,59,48,0.4)' }}>
+        <h2 data-field="title" style={{ fontFamily: BL_DISPLAY, fontSize: 'clamp(1.5rem, 8cqh, 3.5rem)', color: BL.red, textTransform: 'uppercase', fontWeight: 900, marginBottom: '2cqh', textShadow: '0 2px 10px rgba(255,59,48,0.4)', whiteSpace: 'pre-wrap' as const }}>
           {config.title || 'Attention'}
         </h2>
-        <p style={{ fontFamily: BL_FONT, fontSize: 'clamp(1rem, 5cqh, 2rem)', color: '#fff', fontWeight: 'bold' }}>
+        <p data-field="message" style={{ fontFamily: BL_FONT, fontSize: 'clamp(1rem, 5cqh, 2rem)', color: '#fff', fontWeight: 'bold', whiteSpace: 'pre-wrap' as const }}>
           {config.message || 'Please remain seated until your bus is called.'}
         </p>
       </div>
@@ -182,10 +183,11 @@ export function BusLoopCalendar({ config, compact }: { config: any; compact?: bo
       boxShadow: '0 10px 30px rgba(0,0,0,0.8)',
       containerType: 'size'
     }}>
-      <h2 style={{
+      <h2 data-field="title" style={{
         fontFamily: BL_DISPLAY, fontSize: 'clamp(1.2rem, 8cqh, 3rem)',
         color: BL.yellow, textTransform: 'uppercase', letterSpacing: '0.1em',
-        borderBottom: '2px solid #333', paddingBottom: '2cqh', marginBottom: '3cqh'
+        borderBottom: '2px solid #333', paddingBottom: '2cqh', marginBottom: '3cqh',
+        whiteSpace: 'pre-wrap' as const
       }}>
         AFTER-SCHOOL ACTIVITIES
       </h2>

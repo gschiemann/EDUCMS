@@ -645,7 +645,7 @@ function CountdownWidget({ config, compact, onConfigChange }: { config: any; com
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden" style={{ background: 'linear-gradient(135deg, #f8fafc, #e2e8f0)' }}>
       {!compact && (
-        <div style={{ fontSize: '0.6em', fontWeight: 700, color: '#475569', marginBottom: '0.6em', textTransform: 'uppercase' as const, letterSpacing: '0.1em' }}>
+        <div data-field="label" style={{ fontSize: '0.6em', fontWeight: 700, color: '#475569', marginBottom: '0.6em', textTransform: 'uppercase' as const, letterSpacing: '0.1em', whiteSpace: 'pre-wrap' as const }}>
           {label}
         </div>
       )}
@@ -1078,10 +1078,10 @@ function StaffSpotlightWidget({ config, compact, onConfigChange }: { config: any
           <Users style={{ width: '50%', height: '50%', color: 'white' }} />
         )}
       </div>
-      <div style={{ fontSize: compact ? '0.6em' : '0.9em', fontWeight: 800, color: '#581c87', textAlign: 'center' as const }}>{name}</div>
-      <div style={{ fontSize: compact ? '0.35em' : '0.5em', fontWeight: 600, color: '#a855f7', marginTop: '0.1em', textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>{role}</div>
+      <div data-field="staffName" style={{ fontSize: compact ? '0.6em' : '0.9em', fontWeight: 800, color: '#581c87', textAlign: 'center' as const, whiteSpace: 'pre-wrap' as const }}>{name}</div>
+      <div data-field="role" style={{ fontSize: compact ? '0.35em' : '0.5em', fontWeight: 600, color: '#a855f7', marginTop: '0.1em', textTransform: 'uppercase' as const, letterSpacing: '0.08em', whiteSpace: 'pre-wrap' as const }}>{role}</div>
       {!compact && (
-        <p style={{ fontSize: '0.5em', color: '#6b7280', textAlign: 'center' as const, maxWidth: '80%', marginTop: '0.4em', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>
+        <p data-field="bio" style={{ fontSize: '0.5em', color: '#6b7280', textAlign: 'center' as const, maxWidth: '80%', marginTop: '0.4em', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden', whiteSpace: 'pre-wrap' as const }}>
           {bio}
         </p>
       )}
@@ -2183,7 +2183,7 @@ function TouchButtonWidget({ config }: { config: any }) {
         }}
       >
         {icon}
-        <span className="truncate">{label}</span>
+        <span data-field="label" className="truncate" style={{ whiteSpace: 'pre-wrap' as const }}>{label}</span>
       </TouchPressable>
     </div>
   );
@@ -2326,7 +2326,7 @@ function RoomFinderWidget({ config }: { config: any }) {
     <div className="absolute inset-0 flex flex-col bg-white p-4 gap-3" data-testid="room-finder">
       <div className="flex items-center gap-2">
         <MapPin className="w-5 h-5 text-indigo-600" aria-hidden />
-        <h3 className="text-lg font-bold text-slate-800">{config.title ?? 'Find a room'}</h3>
+        <h3 data-field="title" className="text-lg font-bold text-slate-800" style={{ whiteSpace: 'pre-wrap' as const }}>{config.title ?? 'Find a room'}</h3>
       </div>
       <div
         className="w-full rounded-lg bg-slate-50 border-2 border-slate-200 px-4 py-3 text-base font-mono min-h-[44px]"
@@ -2486,7 +2486,7 @@ function QuickPollWidget({ config }: { config: any }) {
 
   return (
     <div className="absolute inset-0 flex flex-col bg-white p-5 gap-4" data-testid="quick-poll">
-      <h3 className="text-xl font-bold text-slate-800">{question}</h3>
+      <h3 data-field="question" className="text-xl font-bold text-slate-800" style={{ whiteSpace: 'pre-wrap' as const }}>{question}</h3>
       <div className="flex-1 flex flex-col gap-3 overflow-auto">
         {options.length === 0 && (
           <p className="text-sm text-slate-400">No options configured.</p>

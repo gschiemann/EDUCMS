@@ -263,8 +263,8 @@ export function AnimatedWelcomeMiddleWidget({ config, live }: { config: Cfg; liv
             <div className="ms-pin ms-pin1" />
             <div className="ms-pin ms-pin2" />
             <div className="ms-ribbon">
-              <h1>{(c.title || 'GO EAGLES').toUpperCase()}</h1>
-              <div className="ms-sub">{c.subtitle || '~ welcome back, Eagles ~'}</div>
+              <h1 data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{(c.title || 'GO EAGLES').toUpperCase()}</h1>
+              <div className="ms-sub" data-field="subtitle" style={{ whiteSpace: 'pre-wrap' }}>{c.subtitle || '~ welcome back, Eagles ~'}</div>
             </div>
           </div>
 
@@ -287,8 +287,8 @@ export function AnimatedWelcomeMiddleWidget({ config, live }: { config: Cfg; liv
             <div className="ms-pole" />
             <div className="ms-flag">
               <div className="ms-flagIcon">{weatherIcon(weather?.wmoCode)}</div>
-              <div className="ms-flagTemp">{weatherTemp}</div>
-              <div className="ms-flagDesc">{weatherDesc}</div>
+              <div className="ms-flagTemp" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' }}>{weatherTemp}</div>
+              <div className="ms-flagDesc" data-field="weatherDesc" style={{ whiteSpace: 'pre-wrap' }}>{weatherDesc}</div>
             </div>
           </div>
 
@@ -299,8 +299,8 @@ export function AnimatedWelcomeMiddleWidget({ config, live }: { config: Cfg; liv
             <div className="ms-wave ms-wave2" />
             <div className="ms-wave ms-wave3" />
             <div className="ms-bubble">
-              <div className="ms-annLbl">★ {(c.announcementLabel || 'BIG NEWS').toUpperCase()} ★</div>
-              <div className="ms-annMsg">{c.announcementMessage || 'Pep Rally Friday at 2:30 — be in the gym, bring your loudest!'}</div>
+              <div className="ms-annLbl" data-field="announcementLabel" style={{ whiteSpace: 'pre-wrap' }}>★ {(c.announcementLabel || 'BIG NEWS').toUpperCase()} ★</div>
+              <div className="ms-annMsg" data-field="announcementMessage" style={{ whiteSpace: 'pre-wrap' }}>{c.announcementMessage || 'Pep Rally Friday at 2:30 — be in the gym, bring your loudest!'}</div>
             </div>
           </div>
 
@@ -309,7 +309,7 @@ export function AnimatedWelcomeMiddleWidget({ config, live }: { config: Cfg; liv
             <div className="ms-stopwatch">
               <div className="ms-crown" />
               <div className="ms-ring">
-                <div className="ms-cdLbl">{(c.countdownLabel || 'HOMECOMING IN').toUpperCase()}</div>
+                <div className="ms-cdLbl" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' }}>{(c.countdownLabel || 'HOMECOMING IN').toUpperCase()}</div>
                 <div className="ms-cdNum">{days}</div>
                 <div className="ms-cdUnit">{unit}</div>
               </div>
@@ -319,13 +319,13 @@ export function AnimatedWelcomeMiddleWidget({ config, live }: { config: Cfg; liv
           {/* Teacher — varsity letter patch */}
           <div className="ms-teacher">
             <div className="ms-patch">
-              <div className="ms-patchRole">★ {(c.teacherRole || 'TEACHER OF THE WEEK').toUpperCase()} ★</div>
+              <div className="ms-patchRole" data-field="teacherRole" style={{ whiteSpace: 'pre-wrap' }}>★ {(c.teacherRole || 'TEACHER OF THE WEEK').toUpperCase()} ★</div>
               <div className="ms-patchFace">
                 {c.teacherPhotoUrl
                   ? <img src={c.teacherPhotoUrl} alt="" className="ms-patchPhoto" />
                   : <span>{teacherFace}</span>}
               </div>
-              <div className="ms-patchName">{(c.teacherName || 'MR. RIVERA').toUpperCase()}</div>
+              <div className="ms-patchName" data-field="teacherName" style={{ whiteSpace: 'pre-wrap' }}>{(c.teacherName || 'MR. RIVERA').toUpperCase()}</div>
             </div>
           </div>
 
@@ -348,7 +348,7 @@ export function AnimatedWelcomeMiddleWidget({ config, live }: { config: Cfg; liv
 
         {/* Ticker — LED scoreboard scroll */}
         <div className="ms-ticker">
-          <div className="ms-tickerStamp">{(c.tickerStamp || 'EAGLE NEWS').toUpperCase()}</div>
+          <div className="ms-tickerStamp" data-field="tickerStamp" style={{ whiteSpace: 'pre-wrap' }}>{(c.tickerStamp || 'EAGLE NEWS').toUpperCase()}</div>
           <div className="ms-tickerScrollWrap">
             <span
               className="ms-tickerScrollText"

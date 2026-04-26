@@ -284,14 +284,14 @@ export function MsAtlasPortraitWidget({ config }: { config?: MsAtlasPortraitConf
           <div
             className={`ms-atl-p-badge ms-atl-p-${badgeColor}`}
             data-field={`routes.${key}.badge`}
-          >
+           style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, `routes.${key}.badge` as keyof Required<MsAtlasPortraitConfig>)}
           </div>
           <div className="ms-atl-p-name">
-            <span data-field={`routes.${key}.name`}>
+            <span data-field={`routes.${key}.name`} style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, `routes.${key}.name` as keyof Required<MsAtlasPortraitConfig>)}
             </span>
-            <span data-field={`routes.${key}.periods`}>
+            <span data-field={`routes.${key}.periods`} style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, `routes.${key}.periods` as keyof Required<MsAtlasPortraitConfig>)}
             </span>
           </div>
@@ -306,7 +306,7 @@ export function MsAtlasPortraitWidget({ config }: { config?: MsAtlasPortraitConf
                   <div
                     className="ms-atl-p-lb"
                     data-field={`routes.${key}.stop.${i}`}
-                  >
+                   style={{ whiteSpace: 'pre-wrap' }}>
                     {pick(
                       cfg,
                       `routes.${key}.stop.${i}` as keyof Required<MsAtlasPortraitConfig>,
@@ -320,7 +320,7 @@ export function MsAtlasPortraitWidget({ config }: { config?: MsAtlasPortraitConf
             <span
               className="ms-atl-p-next-title"
               data-field={`routes.${key}.next.title`}
-            >
+             style={{ whiteSpace: 'pre-wrap' }}>
               {pick(
                 cfg,
                 `routes.${key}.next.title` as keyof Required<MsAtlasPortraitConfig>,
@@ -329,7 +329,7 @@ export function MsAtlasPortraitWidget({ config }: { config?: MsAtlasPortraitConf
             <span
               className="ms-atl-p-next-sub"
               data-field={`routes.${key}.next.sub`}
-            >
+             style={{ whiteSpace: 'pre-wrap' }}>
               {pick(
                 cfg,
                 `routes.${key}.next.sub` as keyof Required<MsAtlasPortraitConfig>,
@@ -340,7 +340,7 @@ export function MsAtlasPortraitWidget({ config }: { config?: MsAtlasPortraitConf
         <div
           className={`ms-atl-p-status ms-atl-p-${lineStatusClass[key]}`}
           data-field={`routes.${key}.status`}
-        >
+         style={{ whiteSpace: 'pre-wrap' }}>
           {pick(cfg, `routes.${key}.status` as keyof Required<MsAtlasPortraitConfig>)}
         </div>
       </div>
@@ -379,15 +379,15 @@ export function MsAtlasPortraitWidget({ config }: { config?: MsAtlasPortraitConf
           </div>
         </div>
         <div className="ms-atl-p-info">
-          <div className="ms-atl-p-eye" data-field="brand.eye">
+          <div className="ms-atl-p-eye" data-field="brand.eye" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'brand.eye')}
           </div>
-          <div className="ms-atl-p-bname" data-field="brand.name">
+          <div className="ms-atl-p-bname" data-field="brand.name" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'brand.name')}
           </div>
           <div className="ms-atl-p-bsub">
-            <span data-field="brand.sub">{pick(cfg, 'brand.sub')}</span>
-            <b data-field="brand.subDay">{pick(cfg, 'brand.subDay')}</b>
+            <span data-field="brand.sub" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'brand.sub')}</span>
+            <b data-field="brand.subDay" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'brand.subDay')}</b>
           </div>
         </div>
       </header>
@@ -395,44 +395,44 @@ export function MsAtlasPortraitWidget({ config }: { config?: MsAtlasPortraitConf
       {/* ─── DATE STRIP — center date banner + meta tiles ───── */}
       <section className="ms-atl-p-panel ms-atl-p-date-strip" data-widget="banner">
         <div className="ms-atl-p-center-banner">
-          <div className="ms-atl-p-cb-label" data-field="banner.label">
+          <div className="ms-atl-p-cb-label" data-field="banner.label" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'banner.label')}
           </div>
-          <div className="ms-atl-p-cb-date" data-field="banner.date">
+          <div className="ms-atl-p-cb-date" data-field="banner.date" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'banner.date')}
           </div>
-          <span className="ms-atl-p-cb-stamp" data-field="banner.stamp">
+          <span className="ms-atl-p-cb-stamp" data-field="banner.stamp" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'banner.stamp')}
           </span>
         </div>
         <div className="ms-atl-p-meta-tiles">
           <div className="ms-atl-p-mt" data-widget="meta.temp">
-            <span className="ms-atl-p-mt-k" data-field="meta.temp.label">
+            <span className="ms-atl-p-mt-k" data-field="meta.temp.label" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'meta.temp.label')}
             </span>
             <span
               className="ms-atl-p-mt-v ms-atl-p-cool"
               data-field="meta.temp.value"
-            >
+             style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'meta.temp.value')}
             </span>
           </div>
           <div className="ms-atl-p-mt" data-widget="meta.sky">
-            <span className="ms-atl-p-mt-k" data-field="meta.sky.label">
+            <span className="ms-atl-p-mt-k" data-field="meta.sky.label" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'meta.sky.label')}
             </span>
             <span
               className="ms-atl-p-mt-v ms-atl-p-sun"
               data-field="meta.sky.value"
-            >
+             style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'meta.sky.value')}
             </span>
           </div>
           <div className="ms-atl-p-mt" data-widget="meta.time">
-            <span className="ms-atl-p-mt-k" data-field="meta.time.label">
+            <span className="ms-atl-p-mt-k" data-field="meta.time.label" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'meta.time.label')}
             </span>
-            <span className="ms-atl-p-mt-v" data-field="meta.time.value">
+            <span className="ms-atl-p-mt-v" data-field="meta.time.value" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'meta.time.value')}
             </span>
           </div>
@@ -441,36 +441,36 @@ export function MsAtlasPortraitWidget({ config }: { config?: MsAtlasPortraitConf
 
       {/* ─── HERO POSTER ─────────────────────────────────────── */}
       <section className="ms-atl-p-panel ms-atl-p-poster" data-widget="poster">
-        <div className="ms-atl-p-chapter" data-field="poster.chapter">
+        <div className="ms-atl-p-chapter" data-field="poster.chapter" style={{ whiteSpace: 'pre-wrap' }}>
           {pick(cfg, 'poster.chapter')}
         </div>
         <h1 className="ms-atl-p-poster-h1">
-          <span data-field="poster.h1.go">{pick(cfg, 'poster.h1.go')}</span>
-          <em data-field="poster.h1.em">{pick(cfg, 'poster.h1.em')}</em>
+          <span data-field="poster.h1.go" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'poster.h1.go')}</span>
+          <em data-field="poster.h1.em" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'poster.h1.em')}</em>
           <br />
-          <span className="ms-atl-p-mark" data-field="poster.h1.mark">
+          <span className="ms-atl-p-mark" data-field="poster.h1.mark" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'poster.h1.mark')}
           </span>
         </h1>
-        <p className="ms-atl-p-lede" data-field="poster.lede">
+        <p className="ms-atl-p-lede" data-field="poster.lede" style={{ whiteSpace: 'pre-wrap' }}>
           {pick(cfg, 'poster.lede')}
         </p>
         <div className="ms-atl-p-dests">
           <span className="ms-atl-p-dest">
             <span className="ms-atl-p-pin" />
-            <span data-field="poster.dest.0">{pick(cfg, 'poster.dest.0')}</span>
+            <span data-field="poster.dest.0" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'poster.dest.0')}</span>
           </span>
           <span className="ms-atl-p-dest">
             <span className="ms-atl-p-pin ms-atl-p-gold" />
-            <span data-field="poster.dest.1">{pick(cfg, 'poster.dest.1')}</span>
+            <span data-field="poster.dest.1" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'poster.dest.1')}</span>
           </span>
           <span className="ms-atl-p-dest">
             <span className="ms-atl-p-pin ms-atl-p-blue" />
-            <span data-field="poster.dest.2">{pick(cfg, 'poster.dest.2')}</span>
+            <span data-field="poster.dest.2" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'poster.dest.2')}</span>
           </span>
           <span className="ms-atl-p-dest">
             <span className="ms-atl-p-pin ms-atl-p-green" />
-            <span data-field="poster.dest.3">{pick(cfg, 'poster.dest.3')}</span>
+            <span data-field="poster.dest.3" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'poster.dest.3')}</span>
           </span>
         </div>
       </section>
@@ -479,10 +479,10 @@ export function MsAtlasPortraitWidget({ config }: { config?: MsAtlasPortraitConf
       <section className="ms-atl-p-panel ms-atl-p-almanac" data-widget="almanac">
         <div className="ms-atl-p-alm-head">
           <h3 className="ms-atl-p-alm-h3">
-            <span data-field="almanac.title.go">{pick(cfg, 'almanac.title.go')}</span>
-            <em data-field="almanac.title.em">{pick(cfg, 'almanac.title.em')}</em>
+            <span data-field="almanac.title.go" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'almanac.title.go')}</span>
+            <em data-field="almanac.title.em" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'almanac.title.em')}</em>
           </h3>
-          <div className="ms-atl-p-vol" data-field="almanac.vol">
+          <div className="ms-atl-p-vol" data-field="almanac.vol" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'almanac.vol')}
           </div>
         </div>
@@ -491,16 +491,16 @@ export function MsAtlasPortraitWidget({ config }: { config?: MsAtlasPortraitConf
             <div className="ms-atl-p-core" />
           </div>
           <div>
-            <div className="ms-atl-p-alm-sky-label" data-field="almanac.sky.label">
+            <div className="ms-atl-p-alm-sky-label" data-field="almanac.sky.label" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'almanac.sky.label')}
             </div>
             <div
               className="ms-atl-p-alm-sky-headline"
               data-field="almanac.sky.headline"
-            >
+             style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'almanac.sky.headline')}
             </div>
-            <div className="ms-atl-p-alm-sky-sub" data-field="almanac.sky.sub">
+            <div className="ms-atl-p-alm-sky-sub" data-field="almanac.sky.sub" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'almanac.sky.sub')}
             </div>
           </div>
@@ -511,7 +511,7 @@ export function MsAtlasPortraitWidget({ config }: { config?: MsAtlasPortraitConf
               <span
                 className="ms-atl-p-alm-k"
                 data-field={`almanac.cell.${i}.k`}
-              >
+               style={{ whiteSpace: 'pre-wrap' }}>
                 {pick(
                   cfg,
                   `almanac.cell.${i}.k` as keyof Required<MsAtlasPortraitConfig>,
@@ -520,7 +520,7 @@ export function MsAtlasPortraitWidget({ config }: { config?: MsAtlasPortraitConf
               <span
                 className="ms-atl-p-alm-v"
                 data-field={`almanac.cell.${i}.v`}
-              >
+               style={{ whiteSpace: 'pre-wrap' }}>
                 {pick(
                   cfg,
                   `almanac.cell.${i}.v` as keyof Required<MsAtlasPortraitConfig>,
@@ -534,14 +534,14 @@ export function MsAtlasPortraitWidget({ config }: { config?: MsAtlasPortraitConf
             “
           </span>
           <span className="ms-atl-p-quote-body">
-            <span data-field="almanac.quote.body">
+            <span data-field="almanac.quote.body" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'almanac.quote.body')}
             </span>
-            <cite data-field="almanac.quote.cite">
+            <cite data-field="almanac.quote.cite" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'almanac.quote.cite')}
             </cite>
           </span>
-          <span className="ms-atl-p-quote-stamp" data-field="almanac.quote.stamp">
+          <span className="ms-atl-p-quote-stamp" data-field="almanac.quote.stamp" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'almanac.quote.stamp')}
           </span>
         </div>
@@ -551,10 +551,10 @@ export function MsAtlasPortraitWidget({ config }: { config?: MsAtlasPortraitConf
       <section className="ms-atl-p-panel ms-atl-p-routes" data-widget="routes">
         <div className="ms-atl-p-routes-head">
           <h2 className="ms-atl-p-routes-h2">
-            <span data-field="routes.title.go">{pick(cfg, 'routes.title.go')}</span>
-            <em data-field="routes.title.em">{pick(cfg, 'routes.title.em')}</em>
+            <span data-field="routes.title.go" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'routes.title.go')}</span>
+            <em data-field="routes.title.em" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'routes.title.em')}</em>
           </h2>
-          <div className="ms-atl-p-routes-meta" data-field="routes.meta">
+          <div className="ms-atl-p-routes-meta" data-field="routes.meta" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'routes.meta')}
           </div>
         </div>
@@ -570,13 +570,13 @@ export function MsAtlasPortraitWidget({ config }: { config?: MsAtlasPortraitConf
       <section className="ms-atl-p-panel ms-atl-p-spotlight" data-widget="spot">
         <div className="ms-atl-p-spot-pin" aria-hidden="true" />
         <div className="ms-atl-p-spot-info">
-          <div className="ms-atl-p-spot-ey" data-field="spot.eyebrow">
+          <div className="ms-atl-p-spot-ey" data-field="spot.eyebrow" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'spot.eyebrow')}
           </div>
-          <div className="ms-atl-p-spot-t" data-field="spot.title">
+          <div className="ms-atl-p-spot-t" data-field="spot.title" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'spot.title')}
           </div>
-          <div className="ms-atl-p-spot-s" data-field="spot.sub">
+          <div className="ms-atl-p-spot-s" data-field="spot.sub" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'spot.sub')}
           </div>
         </div>
@@ -584,17 +584,17 @@ export function MsAtlasPortraitWidget({ config }: { config?: MsAtlasPortraitConf
 
       {/* ─── TICKER — bottom news bar ───────────────────────── */}
       <section className="ms-atl-p-panel ms-atl-p-ticker-row" data-widget="ticker">
-        <div className="ms-atl-p-ticker-badge" data-field="ticker.tag">
+        <div className="ms-atl-p-ticker-badge" data-field="ticker.tag" style={{ whiteSpace: 'pre-wrap' }}>
           {pick(cfg, 'ticker.tag')}
         </div>
         <div className="ms-atl-p-feed">
           <div className="ms-atl-p-feed-inner">
-            <span data-field="ticker.0">{pick(cfg, 'ticker.0')}</span>
-            <span data-field="ticker.1">{pick(cfg, 'ticker.1')}</span>
-            <span data-field="ticker.2">{pick(cfg, 'ticker.2')}</span>
-            <span data-field="ticker.3">{pick(cfg, 'ticker.3')}</span>
-            <span data-field="ticker.4">{pick(cfg, 'ticker.4')}</span>
-            <span data-field="ticker.5">{pick(cfg, 'ticker.5')}</span>
+            <span data-field="ticker.0" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.0')}</span>
+            <span data-field="ticker.1" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.1')}</span>
+            <span data-field="ticker.2" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.2')}</span>
+            <span data-field="ticker.3" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.3')}</span>
+            <span data-field="ticker.4" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.4')}</span>
+            <span data-field="ticker.5" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.5')}</span>
             {/* duplicate set so the -50% scroll loop is seamless */}
             <span aria-hidden="true">{pick(cfg, 'ticker.0')}</span>
             <span aria-hidden="true">{pick(cfg, 'ticker.1')}</span>

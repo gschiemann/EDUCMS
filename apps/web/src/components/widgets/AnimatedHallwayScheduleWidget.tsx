@@ -179,12 +179,12 @@ export function AnimatedHallwayScheduleWidget({ config, live }: { config?: Cfg; 
         <div className="hs-tape hs-t5" />
 
         <div className="hs-topBand">
-          <h1>{(c.title || 'LEARN · GROW · SHINE')}</h1>
-          <div className="hs-tagline">{c.tagline || 'every day a new adventure'}</div>
+          <h1 data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{(c.title || 'LEARN · GROW · SHINE')}</h1>
+          <div className="hs-tagline" data-field="tagline" style={{ whiteSpace: 'pre-wrap' }}>{c.tagline || 'every day a new adventure'}</div>
         </div>
 
         <div className="hs-tornEdge" />
-        <div className="hs-dateTag">{c.dateTag || 'Mon · 4/19'}</div>
+        <div className="hs-dateTag" data-field="dateTag" style={{ whiteSpace: 'pre-wrap' }}>{c.dateTag || 'Mon · 4/19'}</div>
 
         <div className="hs-body">
           <div className="hs-leftCol">
@@ -193,8 +193,8 @@ export function AnimatedHallwayScheduleWidget({ config, live }: { config?: Cfg; 
                 {Array.from({ length: 7 }).map((_, i) => <span key={i} />)}
               </div>
               <div className="hs-notebookHeader">
-                <h2>{c.notebookTitle || 'Period by Period'}</h2>
-                <div className="hs-sub">{c.notebookSub || "~ today's schedule ~"}</div>
+                <h2 data-field="notebookTitle" style={{ whiteSpace: 'pre-wrap' }}>{c.notebookTitle || 'Period by Period'}</h2>
+                <div className="hs-sub" data-field="notebookSub" style={{ whiteSpace: 'pre-wrap' }}>{c.notebookSub || "~ today's schedule ~"}</div>
               </div>
               <div className="hs-rows">
                 {periods.map((p, i) => (
@@ -226,21 +226,21 @@ export function AnimatedHallwayScheduleWidget({ config, live }: { config?: Cfg; 
                 <div className="hs-ap">{ampm}</div>
               </div>
               <div className="hs-card hs-weather" data-emoji={c.weatherEmoji || '☀️'}>
-                <div className="hs-temp">{c.weatherTemp || '42°'}</div>
-                <div className="hs-desc">{c.weatherDesc || 'sunny + crisp'}</div>
+                <div className="hs-temp" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' }}>{c.weatherTemp || '42°'}</div>
+                <div className="hs-desc" data-field="weatherDesc" style={{ whiteSpace: 'pre-wrap' }}>{c.weatherDesc || 'sunny + crisp'}</div>
               </div>
             </div>
 
             <div className="hs-card hs-countdown">
-              <div className="hs-lbl">{c.countdownLabel || 'Field Day in'}</div>
-              <div className="hs-cdNum">{days}</div>
-              <div className="hs-unit">{(c.countdownUnit || 'days')}</div>
+              <div className="hs-lbl" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.countdownLabel || 'Field Day in'}</div>
+              <div className="hs-cdNum" data-field="countdownNumber" style={{ whiteSpace: 'pre-wrap' }}>{days}</div>
+              <div className="hs-unit" data-field="countdownUnit" style={{ whiteSpace: 'pre-wrap' }}>{(c.countdownUnit || 'days')}</div>
             </div>
           </div>
         </div>
 
         <div className="hs-ticker">
-          <div className="hs-tickerStamp">{c.tickerStamp || 'Hallway News'}</div>
+          <div className="hs-tickerStamp" data-field="tickerStamp" style={{ whiteSpace: 'pre-wrap' }}>{c.tickerStamp || 'Hallway News'}</div>
           <div className="hs-tickerScroll">
             <span
               className="hs-tickerText"

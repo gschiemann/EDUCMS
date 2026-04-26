@@ -262,7 +262,7 @@ export function MsStudioPortraitWidget({
         <div className="ms-st-p-hud-top">
           <div className="ms-st-p-onair" data-widget="status" aria-label="On Air">
             <span className="ms-st-p-onair-dot" aria-hidden="true" />
-            <span className="ms-st-p-onair-text" data-field="status.label">
+            <span className="ms-st-p-onair-text" data-field="status.label" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'status.label')
                 .split(/\s+/)
                 .map((w, i, arr) => (
@@ -275,43 +275,43 @@ export function MsStudioPortraitWidget({
           </div>
 
           <div className="ms-st-p-lockup" data-widget="school">
-            <div className="ms-st-p-eye" data-field="school.eye">
+            <div className="ms-st-p-eye" data-field="school.eye" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'school.eye')}
             </div>
             <div className="ms-st-p-name">
-              <span data-field="school.name">{pick(cfg, 'school.name')}</span>
-              <b data-field="school.callsign">{pick(cfg, 'school.callsign')}</b>
+              <span data-field="school.name" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.name')}</span>
+              <b data-field="school.callsign" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.callsign')}</b>
             </div>
             <div className="ms-st-p-freq">
-              <span data-field="school.team">{pick(cfg, 'school.team')}</span>
+              <span data-field="school.team" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.team')}</span>
               {' · '}
-              <b data-field="school.day">{pick(cfg, 'school.day')}</b>
+              <b data-field="school.day" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.day')}</b>
             </div>
           </div>
         </div>
 
         <div className="ms-st-p-hud-meta">
           <div className="ms-st-p-mt" data-widget="clock">
-            <span className="ms-st-p-mt-k" data-field="clock.label">
+            <span className="ms-st-p-mt-k" data-field="clock.label" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'clock.label')}
             </span>
-            <span className="ms-st-p-mt-v" data-field="clock.time">
+            <span className="ms-st-p-mt-v" data-field="clock.time" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'clock.time')}
             </span>
           </div>
           <div className="ms-st-p-mt ms-st-p-warm" data-widget="weather">
-            <span className="ms-st-p-mt-k" data-field="weather.label">
+            <span className="ms-st-p-mt-k" data-field="weather.label" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'weather.label')}
             </span>
-            <span className="ms-st-p-mt-v" data-field="weather.temp">
+            <span className="ms-st-p-mt-v" data-field="weather.temp" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'weather.temp')}
             </span>
           </div>
           <div className="ms-st-p-mt ms-st-p-cool" data-widget="countdown">
-            <span className="ms-st-p-mt-k" data-field="countdown.label">
+            <span className="ms-st-p-mt-k" data-field="countdown.label" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'countdown.label')}
             </span>
-            <span className="ms-st-p-mt-v" data-field="countdown.value">
+            <span className="ms-st-p-mt-v" data-field="countdown.value" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'countdown.value')}
             </span>
           </div>
@@ -320,49 +320,49 @@ export function MsStudioPortraitWidget({
 
       {/* ─── HERO — episode ribbon + headline + waveform + lede + chips ── */}
       <section className="ms-st-p-hero" data-widget="greeting">
-        <span className="ms-st-p-ribbon" data-field="greeting.episode">
+        <span className="ms-st-p-ribbon" data-field="greeting.episode" style={{ whiteSpace: 'pre-wrap' }}>
           {pick(cfg, 'greeting.episode')}
         </span>
         <h1 className="ms-st-p-h1">
-          <span data-field="greeting.h1">{pick(cfg, 'greeting.h1')}</span>{' '}
-          <em data-field="greeting.h2">{pick(cfg, 'greeting.h2')}</em>
+          <span data-field="greeting.h1" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.h1')}</span>{' '}
+          <em data-field="greeting.h2" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.h2')}</em>
         </h1>
         <div className="ms-st-p-waveform" aria-hidden="true">
           <i /><i /><i /><i /><i /><i /><i /><i />
           <i /><i /><i /><i /><i /><i /><i /><i />
           <i /><i /><i /><i /><i /><i /><i /><i />
         </div>
-        <p className="ms-st-p-lede" data-field="greeting.subtitle">
+        <p className="ms-st-p-lede" data-field="greeting.subtitle" style={{ whiteSpace: 'pre-wrap' }}>
           {pick(cfg, 'greeting.subtitle')}
         </p>
         <div className="ms-st-p-chips">
-          <span data-field="greeting.c0">{pick(cfg, 'greeting.c0')}</span>
-          <span data-field="greeting.c1">{pick(cfg, 'greeting.c1')}</span>
-          <span data-field="greeting.c2">{pick(cfg, 'greeting.c2')}</span>
-          <span data-field="greeting.c3">{pick(cfg, 'greeting.c3')}</span>
+          <span data-field="greeting.c0" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.c0')}</span>
+          <span data-field="greeting.c1" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.c1')}</span>
+          <span data-field="greeting.c2" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.c2')}</span>
+          <span data-field="greeting.c3" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.c3')}</span>
         </div>
       </section>
 
       {/* ─── TURN+VU — side-by-side instruments row ─────────────── */}
       <section className="ms-st-p-turnvu">
         <div className="ms-st-p-turntable" data-widget="feature">
-          <div className="ms-st-p-tt-eye" data-field="feature.eye">
+          <div className="ms-st-p-tt-eye" data-field="feature.eye" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'feature.eye')}
           </div>
-          <div className="ms-st-p-tt-stamp" data-field="feature.label">
+          <div className="ms-st-p-tt-stamp" data-field="feature.label" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'feature.label')}
           </div>
           <div className="ms-st-p-platter" aria-hidden="true" />
           <div className="ms-st-p-tonearm" aria-hidden="true" />
-          <div className="ms-st-p-now-spinning" data-field="feature.nw">
+          <div className="ms-st-p-now-spinning" data-field="feature.nw" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'feature.nw')}
           </div>
         </div>
         <div className="ms-st-p-vumeter" data-widget="vu">
-          <div className="ms-st-p-vu-eye" data-field="vu.k">
+          <div className="ms-st-p-vu-eye" data-field="vu.k" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'vu.k')}
           </div>
-          <div className="ms-st-p-vu-stamp" data-field="vu.v">
+          <div className="ms-st-p-vu-stamp" data-field="vu.v" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'vu.v')}
           </div>
           <div className="ms-st-p-vu-face" aria-hidden="true">
@@ -385,7 +385,7 @@ export function MsStudioPortraitWidget({
             <b />
           </div>
           <div className="ms-st-p-fader" />
-          <div className="ms-st-p-label" data-field="mixer.s0">
+          <div className="ms-st-p-label" data-field="mixer.s0" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'mixer.s0')}
           </div>
         </div>
@@ -399,7 +399,7 @@ export function MsStudioPortraitWidget({
             <b />
           </div>
           <div className="ms-st-p-fader" />
-          <div className="ms-st-p-label" data-field="mixer.s1">
+          <div className="ms-st-p-label" data-field="mixer.s1" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'mixer.s1')}
           </div>
         </div>
@@ -413,7 +413,7 @@ export function MsStudioPortraitWidget({
             <b className="ms-st-p-peak" />
           </div>
           <div className="ms-st-p-fader" />
-          <div className="ms-st-p-label" data-field="mixer.s2">
+          <div className="ms-st-p-label" data-field="mixer.s2" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'mixer.s2')}
           </div>
         </div>
@@ -427,7 +427,7 @@ export function MsStudioPortraitWidget({
             <b />
           </div>
           <div className="ms-st-p-fader" />
-          <div className="ms-st-p-label" data-field="mixer.s3">
+          <div className="ms-st-p-label" data-field="mixer.s3" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'mixer.s3')}
           </div>
         </div>
@@ -437,13 +437,13 @@ export function MsStudioPortraitWidget({
       <section className="ms-st-p-lineup" data-widget="segments">
         <div className="ms-st-p-lineup-head">
           <h2 className="ms-st-p-lineup-h2">
-            <span data-field="segments.title">{pick(cfg, 'segments.title')}</span>{' '}
-            <em data-field="segments.subtitle">{pick(cfg, 'segments.subtitle')}</em>
+            <span data-field="segments.title" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'segments.title')}</span>{' '}
+            <em data-field="segments.subtitle" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'segments.subtitle')}</em>
           </h2>
           <span className="ms-st-p-lineup-meta">
-            <span data-field="segments.meta">{pick(cfg, 'segments.meta')}</span>
+            <span data-field="segments.meta" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'segments.meta')}</span>
             {' · '}
-            <b data-field="segments.metar">{pick(cfg, 'segments.metar')}</b>
+            <b data-field="segments.metar" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'segments.metar')}</b>
           </span>
         </div>
 
@@ -456,7 +456,7 @@ export function MsStudioPortraitWidget({
                   <div
                     className="ms-st-p-label-top"
                     data-field={`segments.${i}.n`}
-                  >
+                   style={{ whiteSpace: 'pre-wrap' }}>
                     {pick(
                       cfg,
                       `segments.${i}.n` as keyof Required<MsStudioPortraitConfig>,
@@ -465,7 +465,7 @@ export function MsStudioPortraitWidget({
                   <div
                     className="ms-st-p-label-name"
                     data-field={`segments.${i}.t`}
-                  >
+                   style={{ whiteSpace: 'pre-wrap' }}>
                     {pick(
                       cfg,
                       `segments.${i}.t` as keyof Required<MsStudioPortraitConfig>,
@@ -477,13 +477,13 @@ export function MsStudioPortraitWidget({
                   <div className="ms-st-p-reel" />
                 </div>
                 <div className="ms-st-p-tape-meta">
-                  <b data-field={`segments.${i}.time`}>
+                  <b data-field={`segments.${i}.time`} style={{ whiteSpace: 'pre-wrap' }}>
                     {pick(
                       cfg,
                       `segments.${i}.time` as keyof Required<MsStudioPortraitConfig>,
                     )}
                   </b>
-                  <span data-field={`segments.${i}.host`}>
+                  <span data-field={`segments.${i}.host`} style={{ whiteSpace: 'pre-wrap' }}>
                     {pick(
                       cfg,
                       `segments.${i}.host` as keyof Required<MsStudioPortraitConfig>,
@@ -502,45 +502,45 @@ export function MsStudioPortraitWidget({
         <div className="ms-st-p-footer-top">
           <div className="ms-st-p-slate" data-widget="announcement">
             <span className="ms-st-p-slate-tag">
-              <span data-field="announcement.tag">{pick(cfg, 'announcement.tag')}</span>
+              <span data-field="announcement.tag" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'announcement.tag')}</span>
             </span>
-            <span className="ms-st-p-slate-msg" data-field="announcement.message">
+            <span className="ms-st-p-slate-msg" data-field="announcement.message" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'announcement.message')}
             </span>
             <span className="ms-st-p-slate-when">
-              <span data-field="announcement.when">{pick(cfg, 'announcement.when')}</span>
-              <span data-field="announcement.when_eye">{pick(cfg, 'announcement.when_eye')}</span>
+              <span data-field="announcement.when" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'announcement.when')}</span>
+              <span data-field="announcement.when_eye" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'announcement.when_eye')}</span>
             </span>
           </div>
 
           <div className="ms-st-p-vfd" data-widget="big">
             <div className="ms-st-p-vfd-info">
-              <div className="ms-st-p-vfd-k" data-field="big.label">
+              <div className="ms-st-p-vfd-k" data-field="big.label" style={{ whiteSpace: 'pre-wrap' }}>
                 {pick(cfg, 'big.label')}
               </div>
-              <div className="ms-st-p-vfd-s" data-field="big.sub">
+              <div className="ms-st-p-vfd-s" data-field="big.sub" style={{ whiteSpace: 'pre-wrap' }}>
                 {pick(cfg, 'big.sub')}
               </div>
             </div>
-            <div className="ms-st-p-vfd-v" data-field="big.value">
+            <div className="ms-st-p-vfd-v" data-field="big.value" style={{ whiteSpace: 'pre-wrap' }}>
               {pick(cfg, 'big.value')}
             </div>
           </div>
         </div>
 
         <div className="ms-st-p-ticker" data-widget="ticker">
-          <div className="ms-st-p-ticker-badge" data-field="ticker.tag">
+          <div className="ms-st-p-ticker-badge" data-field="ticker.tag" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'ticker.tag')}
           </div>
           <div className="ms-st-p-ticker-feed">
             <div className="ms-st-p-ticker-feed-inner">
-              <span data-field="ticker.m0">{pick(cfg, 'ticker.m0')}</span>
-              <span data-field="ticker.m1">{pick(cfg, 'ticker.m1')}</span>
-              <span data-field="ticker.m2">{pick(cfg, 'ticker.m2')}</span>
-              <span data-field="ticker.m3">{pick(cfg, 'ticker.m3')}</span>
-              <span data-field="ticker.m4">{pick(cfg, 'ticker.m4')}</span>
-              <span data-field="ticker.m5">{pick(cfg, 'ticker.m5')}</span>
-              <span data-field="ticker.m6">{pick(cfg, 'ticker.m6')}</span>
+              <span data-field="ticker.m0" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.m0')}</span>
+              <span data-field="ticker.m1" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.m1')}</span>
+              <span data-field="ticker.m2" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.m2')}</span>
+              <span data-field="ticker.m3" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.m3')}</span>
+              <span data-field="ticker.m4" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.m4')}</span>
+              <span data-field="ticker.m5" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.m5')}</span>
+              <span data-field="ticker.m6" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.m6')}</span>
               <span aria-hidden="true">{pick(cfg, 'ticker.m0')}</span>
               <span aria-hidden="true">{pick(cfg, 'ticker.m1')}</span>
               <span aria-hidden="true">{pick(cfg, 'ticker.m2')}</span>
@@ -550,7 +550,7 @@ export function MsStudioPortraitWidget({
               <span aria-hidden="true">{pick(cfg, 'ticker.m6')}</span>
             </div>
           </div>
-          <div className="ms-st-p-ticker-end" data-field="ticker.callsign">
+          <div className="ms-st-p-ticker-end" data-field="ticker.callsign" style={{ whiteSpace: 'pre-wrap' }}>
             {pick(cfg, 'ticker.callsign')}
           </div>
         </div>

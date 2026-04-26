@@ -248,8 +248,8 @@ export function AnimatedCafeteriaElementaryWidget({ config, live }: { config: Cf
             <span className="cafe-star s2">⭐</span>
             <span className="cafe-star s3">🌟</span>
             <span className="cafe-star s4">💫</span>
-            <h1>{(c.title || 'LUNCH IS ON').toUpperCase()}</h1>
-            <div className="cafe-sub">{c.subtitle || '~ freshly rolled every day ~'}</div>
+            <h1 data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{(c.title || 'LUNCH IS ON').toUpperCase()}</h1>
+            <div className="cafe-sub" data-field="subtitle" style={{ whiteSpace: 'pre-wrap' }}>{c.subtitle || '~ freshly rolled every day ~'}</div>
           </div>
 
           {/* Clock */}
@@ -264,9 +264,9 @@ export function AnimatedCafeteriaElementaryWidget({ config, live }: { config: Cf
           <div className="cafe-special">
             <div className="cafe-string" />
             <div className="cafe-tag">
-              <span className="cafe-tagEmoji">{c.specialEmoji || '🍕'}</span>
-              <div className="cafe-tagLbl">★ {(c.specialLabel || 'Pickup Special').toUpperCase()} ★</div>
-              <div className="cafe-tagName">{c.specialName || 'Cheesy Pepperoni'}</div>
+              <span className="cafe-tagEmoji" data-field="specialEmoji" style={{ whiteSpace: 'pre-wrap' }}>{c.specialEmoji || '🍕'}</span>
+              <div className="cafe-tagLbl" data-field="specialLabel" style={{ whiteSpace: 'pre-wrap' }}>★ {(c.specialLabel || 'Pickup Special').toUpperCase()} ★</div>
+              <div className="cafe-tagName" data-field="specialName" style={{ whiteSpace: 'pre-wrap' }}>{c.specialName || 'Cheesy Pepperoni'}</div>
             </div>
           </div>
 
@@ -316,9 +316,9 @@ export function AnimatedCafeteriaElementaryWidget({ config, live }: { config: Cf
               <div className="cafe-rays" />
               <div className="cafe-burstCenter">
                 <div className="cafe-cdIcon">{c.countdownEmoji || '🌮'}</div>
-                <div className="cafe-cdLbl">{c.countdownLabel || 'Taco Tuesday in'}</div>
-                <div className="cafe-cdNum">{days}</div>
-                <div className="cafe-cdUnit">{unit}</div>
+                <div className="cafe-cdLbl" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' }}>{c.countdownLabel || 'Taco Tuesday in'}</div>
+                <div className="cafe-cdNum" data-field="countdownNumber" style={{ whiteSpace: 'pre-wrap' }}>{days}</div>
+                <div className="cafe-cdUnit" data-field="countdownUnit" style={{ whiteSpace: 'pre-wrap' }}>{unit}</div>
               </div>
             </div>
           </div>
@@ -331,8 +331,8 @@ export function AnimatedCafeteriaElementaryWidget({ config, live }: { config: Cf
                   ? <img src={c.chefPhotoUrl} alt="" className="cafe-chefPhoto" />
                   : <span>{chefFace}</span>}
               </div>
-              <div className="cafe-chefName">{(c.chefName || 'Ms. Rodriguez').toUpperCase()}</div>
-              <div className="cafe-chefRole">~ {c.chefRole || 'lunch hero of the week'} ~</div>
+              <div className="cafe-chefName" data-field="chefName" style={{ whiteSpace: 'pre-wrap' }}>{(c.chefName || 'Ms. Rodriguez').toUpperCase()}</div>
+              <div className="cafe-chefRole" data-field="chefRole" style={{ whiteSpace: 'pre-wrap' }}>~ {c.chefRole || 'lunch hero of the week'} ~</div>
             </div>
           </div>
 
@@ -342,14 +342,14 @@ export function AnimatedCafeteriaElementaryWidget({ config, live }: { config: Cf
               <div className="cafe-cake">🎂</div>
             </div>
             <div className="cafe-bdLbl">★ Birthdays Today ★</div>
-            <div className="cafe-bdNames">{bdInline}</div>
+            <div className="cafe-bdNames" data-field="birthdayNames" style={{ whiteSpace: 'pre-wrap' }}>{bdInline}</div>
           </div>
         </div>
 
         {/* Ticker */}
         <div className="cafe-ticker">
           <div className="cafe-tickerBar">
-            <div className="cafe-tickerStamp">{(c.tickerStamp || 'Café News').toUpperCase()}</div>
+            <div className="cafe-tickerStamp" data-field="tickerStamp" style={{ whiteSpace: 'pre-wrap' }}>{(c.tickerStamp || 'Café News').toUpperCase()}</div>
             <div className="cafe-tickerScroll">
               <span
                 className="cafe-tickerText"

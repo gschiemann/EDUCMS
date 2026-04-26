@@ -14,13 +14,14 @@ export function LibraryQuietText({ config, compact }: { config: any; compact?: b
       boxShadow: 'inset 0 0 20px rgba(0,0,0,0.1), 0 10px 30px rgba(0,0,0,0.5)',
       containerType: 'size'
     }}>
-      <h1 style={{ 
-        fontSize: 'clamp(2rem, 15cqi, 8rem)', 
-        color: '#2a1610', 
+      <h1 data-field="content" style={{
+        fontSize: 'clamp(2rem, 15cqi, 8rem)',
+        color: '#2a1610',
         fontFamily: '"Playfair Display", Georgia, serif',
         textShadow: '1px 2px 0px rgba(255,255,255,0.8)',
         textAlign: 'center',
-        margin: 0
+        margin: 0,
+        whiteSpace: 'pre-wrap' as const
       }}>
         {content}
       </h1>
@@ -45,11 +46,12 @@ export function LibraryQuietClock({ config, compact }: { config: any; compact?: 
       boxShadow: '0 10px 25px rgba(0,0,0,0.6)',
       containerType: 'size'
     }}>
-      <div style={{ 
-        fontSize: 'clamp(2rem, 25cqi, 10rem)', 
-        color: '#f8f4eb', 
-        fontFamily: 'Georgia, serif', 
-        letterSpacing: '0.05em' 
+      <div data-field="time" style={{
+        fontSize: 'clamp(2rem, 25cqi, 10rem)',
+        color: '#f8f4eb',
+        fontFamily: 'Georgia, serif',
+        letterSpacing: '0.05em',
+        whiteSpace: 'pre-wrap' as const
       }}>
         {time}
       </div>

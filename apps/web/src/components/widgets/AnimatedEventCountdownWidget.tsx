@@ -179,9 +179,9 @@ export function AnimatedEventCountdownWidget({ config, live }: { config: Cfg; li
         <div className="ec-confettiLayer" ref={confettiRef} />
 
         <div className="ec-header">
-          {c.eyebrow && <div className="ec-eyebrow">{c.eyebrow}</div>}
-          <div className="ec-title">{c.title || 'Spring Musical'}</div>
-          {c.subtitle && <div className="ec-subtitle">{c.subtitle}</div>}
+          {c.eyebrow && <div className="ec-eyebrow" data-field="eyebrow" style={{ whiteSpace: 'pre-wrap' }}>{c.eyebrow}</div>}
+          <div className="ec-title" data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{c.title || 'Spring Musical'}</div>
+          {c.subtitle && <div className="ec-subtitle" data-field="subtitle" style={{ whiteSpace: 'pre-wrap' }}>{c.subtitle}</div>}
         </div>
 
         <div className="ec-countdown">
@@ -207,7 +207,7 @@ export function AnimatedEventCountdownWidget({ config, live }: { config: Cfg; li
         </div>
 
         <div className="ec-ticker">
-          <div className="ec-stamp">{(c.tickerStamp || 'Save the Date').toUpperCase()}</div>
+          <div className="ec-stamp" data-field="tickerStamp" style={{ whiteSpace: 'pre-wrap' }}>{(c.tickerStamp || 'Save the Date').toUpperCase()}</div>
           <div className="ec-tickerScroll">
             <span
               className="ec-tickerText"

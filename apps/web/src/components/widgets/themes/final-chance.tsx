@@ -247,7 +247,7 @@ export function FinalChanceText({ config }: { config: any }) {
       { e: '🎈', top: '76%', left: '8%',  size: '1.5em', anim: 'fc-float' },
       { e: '✨', top: '12%', left: '90%', size: '1.4em', anim: 'fc-pulse-glow' },
     ]}>
-      <p style={{
+      <p data-field="content" style={{
         fontSize: sizeMap[size] || sizeMap.xl,
         fontWeight: 700,
         color: FC.ink,
@@ -257,6 +257,7 @@ export function FinalChanceText({ config }: { config: any }) {
         margin: 0,
         textShadow: '0 4px 18px rgba(0,0,0,0.35)',
         animation: 'fc-pop 0.8s ease-out',
+        whiteSpace: 'pre-wrap' as const
       }}>{content}</p>
     </GlassCard>
   );
@@ -299,7 +300,7 @@ export function FinalChanceAnnouncement({ config }: { config: any }) {
       { e: '📢', top: '10%', left: '88%', size: '1.6em', anim: 'fc-wiggle' },
       { e: '🎊', top: '72%', left: '90%', size: '1.5em', anim: 'fc-bounce' },
     ]}>
-      <div style={{
+      <div data-field="badgeLabel" style={{
         display: 'inline-flex', alignItems: 'center', gap: 8,
         background: `linear-gradient(135deg, ${FC.pink}, ${FC.coral})`,
         color: 'white', fontWeight: 700,
@@ -307,13 +308,15 @@ export function FinalChanceAnnouncement({ config }: { config: any }) {
         padding: '0.45em 1em', borderRadius: 999, width: 'fit-content', marginBottom: '0.7em',
         boxShadow: `0 8px 20px ${FC.pink}55`,
         animation: 'fc-pop 0.6s ease-out',
+        whiteSpace: 'pre-wrap' as const
       }}>{badge}</div>
-      <div style={{
+      <div data-field="title" style={{
         fontSize: '2.2em', fontWeight: 700, color: FC.ink, lineHeight: 1.1,
         letterSpacing: '-0.02em', marginBottom: '0.4em',
         textShadow: '0 3px 14px rgba(0,0,0,0.35)',
+        whiteSpace: 'pre-wrap' as const
       }}>{title}</div>
-      <div style={{ fontSize: '1.25em', fontWeight: 500, color: FC.inkSoft, lineHeight: 1.45 }}>{body}</div>
+      <div data-field="message" style={{ fontSize: '1.25em', fontWeight: 500, color: FC.inkSoft, lineHeight: 1.45, whiteSpace: 'pre-wrap' as const }}>{body}</div>
     </GlassCard>
   );
 }
@@ -372,7 +375,7 @@ export function FinalChanceCountdown({ config }: { config: any }) {
       { e: '⏳', top: '78%', left: '88%', size: '1.3em', anim: 'fc-wiggle' },
     ]}>
       <div style={{ textAlign: 'center' }}>
-        <div style={{ fontFamily: FC_FONT_HAND, fontSize: '1.6em', color: FC.gold, lineHeight: 1, marginBottom: '0.1em' }}>{label}</div>
+        <div data-field="label" style={{ fontFamily: FC_FONT_HAND, fontSize: '1.6em', color: FC.gold, lineHeight: 1, marginBottom: '0.1em', whiteSpace: 'pre-wrap' as const }}>{label}</div>
         <div style={{ fontSize: '5em', fontWeight: 800, lineHeight: 0.95,
           background: `linear-gradient(135deg, ${FC.gold}, ${FC.coral})`,
           WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', color: 'transparent',
@@ -400,9 +403,10 @@ export function FinalChanceStaff({ config }: { config: any }) {
       { e: '💖', top: '78%', left: '85%', size: '1.4em', anim: 'fc-bounce' },
     ]}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.6em', textAlign: 'center' }}>
-        <div style={{
+        <div data-field="role" style={{
           fontSize: '0.95em', fontWeight: 700, color: FC.coral, letterSpacing: '0.15em', textTransform: 'uppercase',
           animation: 'fc-rainbow 6s linear infinite',
+          whiteSpace: 'pre-wrap' as const
         }}>★ {role} ★</div>
         <div style={{
           width: '5.2em', height: '5.2em', borderRadius: '50%',
@@ -411,8 +415,8 @@ export function FinalChanceStaff({ config }: { config: any }) {
           color: 'white', fontWeight: 800, fontSize: '2em',
           boxShadow: `0 12px 26px ${FC.coral}55`,
         }}>{initials}</div>
-        <div style={{ fontSize: '2em', fontWeight: 700, color: FC.ink, lineHeight: 1.05, letterSpacing: '-0.02em' }}>{name}</div>
-        <div style={{ fontSize: '1.05em', fontWeight: 500, color: FC.inkSoft, lineHeight: 1.4, fontStyle: 'italic' }}>"{bio}"</div>
+        <div data-field="staffName" style={{ fontSize: '2em', fontWeight: 700, color: FC.ink, lineHeight: 1.05, letterSpacing: '-0.02em', whiteSpace: 'pre-wrap' as const }}>{name}</div>
+        <div data-field="bio" style={{ fontSize: '1.05em', fontWeight: 500, color: FC.inkSoft, lineHeight: 1.4, fontStyle: 'italic', whiteSpace: 'pre-wrap' as const }}>"{bio}"</div>
       </div>
     </GlassCard>
   );
@@ -429,7 +433,7 @@ export function FinalChanceImageCarousel({ config }: { config: any }) {
     ]}>
       <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '0.6em', alignItems: 'center' }}>
         <div style={{ fontSize: '3em', animation: 'fc-bounce-big 3s ease-in-out infinite' }}>🖼️</div>
-        <div style={{ fontSize: '1.6em', fontWeight: 700, color: FC.ink, letterSpacing: '-0.01em' }}>{config.title || 'Photo Gallery'}</div>
+        <div data-field="title" style={{ fontSize: '1.6em', fontWeight: 700, color: FC.ink, letterSpacing: '-0.01em', whiteSpace: 'pre-wrap' as const }}>{config.title || 'Photo Gallery'}</div>
         <div style={{ fontSize: '1.1em', fontWeight: 500, color: FC.inkMute }}>Drop in photos — they'll rotate every {Math.round((config.intervalMs || 5000) / 1000)}s</div>
       </div>
     </GlassCard>
@@ -453,7 +457,7 @@ export function FinalChanceTicker({ config }: { config: any }) {
       boxShadow: `0 10px 30px ${FC.pink}55`,
       fontFamily: FC_FONT_DISPLAY,
     }}>
-      <div style={{
+      <div data-field="messages" style={{
         whiteSpace: 'nowrap',
         animation: 'fc-ticker 28s linear infinite',
         fontSize: '1.6em',

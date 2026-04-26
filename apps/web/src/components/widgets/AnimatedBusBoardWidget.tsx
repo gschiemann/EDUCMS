@@ -130,11 +130,11 @@ export function AnimatedBusBoardWidget({ config, live }: { config?: Cfg; live?: 
 
         <div className="bb-header">
           <div className="bb-crest">
-            <div className="bb-shield">{c.logoEmoji || '🚌'}</div>
+            <div className="bb-shield" style={{ whiteSpace: 'pre-wrap' }}>{c.logoEmoji || '🚌'}</div>
           </div>
           <div className="bb-titleBlock">
-            <h1>{c.title || 'Bus Board'}</h1>
-            <div className="bb-titleSub">{c.subtitle || 'Eagle Elementary · after-school routes'}</div>
+            <h1 data-field="title" style={{ whiteSpace: 'pre-wrap' }}>{c.title || 'Bus Board'}</h1>
+            <div className="bb-titleSub" data-field="subtitle" style={{ whiteSpace: 'pre-wrap' }}>{c.subtitle || 'Eagle Elementary · after-school routes'}</div>
           </div>
         </div>
 
@@ -182,23 +182,23 @@ export function AnimatedBusBoardWidget({ config, live }: { config?: Cfg; live?: 
 
           <div className="bb-rightCol">
             <div className="bb-nextBus">
-              <div className="bb-nextBusLbl">{(c.nextBusLabel || 'NEXT BUS').toUpperCase()}</div>
-              <div className="bb-nextBusRt">{c.nextBusRoute || 'Route 1 · Maplewood'}</div>
-              <div className="bb-nextBusEta">{c.nextBusEta ?? 20}</div>
-              <div className="bb-nextBusEtaUnit">{(c.nextBusEtaUnit || 'MINUTES').toUpperCase()}</div>
+              <div className="bb-nextBusLbl" data-field="nextBusLabel" style={{ whiteSpace: 'pre-wrap' }}>{(c.nextBusLabel || 'NEXT BUS').toUpperCase()}</div>
+              <div className="bb-nextBusRt" data-field="nextBusRoute" style={{ whiteSpace: 'pre-wrap' }}>{c.nextBusRoute || 'Route 1 · Maplewood'}</div>
+              <div className="bb-nextBusEta" style={{ whiteSpace: 'pre-wrap' }}>{c.nextBusEta ?? 20}</div>
+              <div className="bb-nextBusEtaUnit" data-field="nextBusEtaUnit" style={{ whiteSpace: 'pre-wrap' }}>{(c.nextBusEtaUnit || 'MINUTES').toUpperCase()}</div>
             </div>
             <div className="bb-weather">
-              <span className="bb-weatherEmoji">{c.weatherEmoji || '☀️'}</span>
+              <span className="bb-weatherEmoji" style={{ whiteSpace: 'pre-wrap' }}>{c.weatherEmoji || '☀️'}</span>
               <div className="bb-weatherInfo">
-                <div className="bb-weatherTemp">{c.weatherTemp || '68°'}</div>
-                <div className="bb-weatherDesc">{(c.weatherDesc || 'SUNNY · NO DELAYS').toUpperCase()}</div>
+                <div className="bb-weatherTemp" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' }}>{c.weatherTemp || '68°'}</div>
+                <div className="bb-weatherDesc" data-field="weatherDesc" style={{ whiteSpace: 'pre-wrap' }}>{(c.weatherDesc || 'SUNNY · NO DELAYS').toUpperCase()}</div>
               </div>
             </div>
           </div>
         </div>
 
         <div className="bb-ticker">
-          <div className="bb-tickerStamp">{(c.tickerStamp || 'Bus News').toUpperCase()}</div>
+          <div className="bb-tickerStamp" data-field="tickerStamp" style={{ whiteSpace: 'pre-wrap' }}>{(c.tickerStamp || 'Bus News').toUpperCase()}</div>
           <div className="bb-tickerScroll">
             <span
               className="bb-tickerText"
