@@ -159,7 +159,11 @@ export function FitText({
         ref={innerRef}
         style={{
           display: 'inline-block',
-          whiteSpace: wrap ? 'normal' : 'nowrap',
+          // pre-wrap preserves user-entered \n line breaks while still
+          // allowing soft-wrap on long lines. `normal` collapsed all
+          // whitespace including newlines, so multiline text rendered
+          // as one long line.
+          whiteSpace: wrap ? 'pre-wrap' : 'nowrap',
           lineHeight,
           fontSize: size,
           maxWidth: '100%',

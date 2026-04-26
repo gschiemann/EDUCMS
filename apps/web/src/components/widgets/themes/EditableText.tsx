@@ -197,7 +197,14 @@ export function EditableText({
           fontWeight: (style && (style as any).fontWeight) || 'inherit',
           color: (style && (style as any).color) || 'inherit',
           letterSpacing: (style && (style as any).letterSpacing) || 'normal',
-          whiteSpace: wrap ? 'normal' : 'nowrap',
+          // pre-wrap preserves the \n that the textarea commits when
+          // the user presses Shift+Enter (multi-line entries). The
+          // prior `normal` collapsed all whitespace including newlines
+          // so multi-line content rendered as one long line on the
+          // canvas. Partner reported "i put text below and it kept it
+          // on the same line" — this fixes it for every themed widget
+          // that uses EditableText (20 themes).
+          whiteSpace: wrap ? 'pre-wrap' : 'nowrap',
           overflow: 'hidden',
           caretColor: '#6366f1',
           cursor: 'text',

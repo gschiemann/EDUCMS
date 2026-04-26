@@ -795,11 +795,15 @@ function AnnouncementWidget({ config, compact, onConfigChange }: { config: any; 
             {priority}
           </span>
         </div>
-        <p style={{
-          fontSize: compact ? '0.65em' : '1em',
-          fontWeight: 600, color: t.text, lineHeight: 1.5,
-          display: '-webkit-box', WebkitLineClamp: compact ? 2 : 4, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden',
-        }}>
+        <p
+          data-field="message"
+          style={{
+            fontSize: compact ? '0.65em' : '1em',
+            fontWeight: 600, color: t.text, lineHeight: 1.5,
+            display: '-webkit-box', WebkitLineClamp: compact ? 2 : 4, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden',
+            whiteSpace: 'pre-wrap' as const,
+          }}
+        >
           {message}
         </p>
       </div>
