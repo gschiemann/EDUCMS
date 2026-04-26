@@ -27,6 +27,7 @@ import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
 import { useParams, useRouter } from 'next/navigation';
 import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
+import { useUIStore } from '@/store/ui-store';
 
 // ─────────────────────────────────────────────────────
 // Constants & Helpers
@@ -240,6 +241,8 @@ export default function TemplatesPage() {
   const router = useRouter();
   const params = useParams<{ schoolId: string }>();
   const useV2Builder = isFeatureEnabled(FLAGS.TEMPLATE_BUILDER_V2);
+  const userRole = useUIStore((s) => s.user?.role);
+  const isViewer = userRole === 'RESTRICTED_VIEWER';
 
   const openInBuilder = useCallback((t: Template) => {
     if (useV2Builder && !t.isSystem) {
@@ -377,7 +380,9 @@ export default function TemplatesPage() {
           </div>
           <button
             onClick={() => setShowCreate(true)}
-            className="px-5 py-3 bg-white text-indigo-700 font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center gap-2"
+            disabled={isViewer}
+            title={isViewer ? 'Read-only — viewer role' : undefined}
+            className="px-5 py-3 bg-white text-indigo-700 font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus className="w-5 h-5" /> New Template
           </button>
@@ -547,6 +552,7 @@ export default function TemplatesPage() {
                     onDuplicate={() => handleDuplicate(t)}
                     onDelete={() => { if (confirm('Delete this template?')) deleteTemplate.mutateAsync(t.id); }}
                     onPreview={(active) => setPreviewTemplate(active)}
+                    isViewerDisabled={isViewer}
                   />
                 ))}
               </div>
@@ -705,7 +711,7 @@ function TemplatePreviewModal({
 // GALLERY CARD — premium hover preview
 // ═════════════════════════════════════════════════════
 
-function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, onDuplicate, onDelete, onPreview }: {
+function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, onDuplicate, onDelete, onPreview, isViewerDisabled = false }: {
   template: Template;
   /** If this template has a portrait sibling preset, pass it here; the
    *  card shows a Landscape | Portrait toggle and renders the active
@@ -719,6 +725,7 @@ function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, 
   /** Called with the currently-active orientation's template (landscape
    *  by default, portrait sibling when toggled). */
   onPreview?: (which: Template) => void;
+  isViewerDisabled?: boolean;
 }) {
   // Local toggle — persists for the lifetime of the gallery render.
   // Defaults to landscape (the natural orientation of the preset row).
@@ -869,17 +876,17 @@ function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, 
             </div>
           )}
           {onEdit && (
-            <button onClick={onEdit} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-sm">
+            <button onClick={onEdit} disabled={isViewerDisabled} title={isViewerDisabled ? 'Read-only — viewer role' : undefined} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
               <Pencil className="w-3.5 h-3.5" /> Edit
             </button>
           )}
           {onDuplicate && (
-            <button onClick={onDuplicate} className="py-2 px-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Duplicate">
+            <button onClick={onDuplicate} disabled={isViewerDisabled} title={isViewerDisabled ? 'Read-only — viewer role' : 'Duplicate'} className="py-2 px-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               <Copy className="w-3.5 h-3.5" />
             </button>
           )}
           {onDelete && (
-            <button onClick={onDelete} className="py-2 px-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="Delete">
+            <button onClick={onDelete} disabled={isViewerDisabled} title={isViewerDisabled ? 'Read-only — viewer role' : 'Delete'} className="py-2 px-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               <Trash2 className="w-3.5 h-3.5" />
             </button>
           )}

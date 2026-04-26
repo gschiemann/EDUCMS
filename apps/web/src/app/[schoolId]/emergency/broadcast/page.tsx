@@ -11,6 +11,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { useAppStore } from '@/lib/store';
+import { useUIStore } from '@/store/ui-store';
 import { API_URL } from '@/lib/api-url';
 import { AlertTriangle, Megaphone, ShieldAlert, Send, Loader2, X, Image as ImageIcon, Volume2 } from 'lucide-react';
 
@@ -34,6 +35,8 @@ export default function BroadcastPage() {
   const params = useParams<{ schoolId: string }>();
   const schoolId = params.schoolId;
   const { user, token } = useAppStore();
+  const userRole = useUIStore((s) => s.user?.role);
+  const isViewer = userRole === 'RESTRICTED_VIEWER';
 
   const [text, setText] = useState('');
   const [severity, setSeverity] = useState<Severity>('WARN');
@@ -181,7 +184,7 @@ export default function BroadcastPage() {
 
         <div className="grid md:grid-cols-5 gap-8">
           {/* Composer */}
-          <section className="md:col-span-3 space-y-5 bg-slate-900 border border-slate-800 rounded-xl p-6">
+          {!isViewer && (<section className="md:col-span-3 space-y-5 bg-slate-900 border border-slate-800 rounded-xl p-6">
             <div>
               <label className="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Severity</label>
               <div className="flex gap-2">
@@ -300,10 +303,8 @@ export default function BroadcastPage() {
                 {phase === 'holding' ? `Hold to send… ${Math.floor(progress)}%` : 'Hold 3s to Broadcast'}
               </span>
             </button>
-          </section>
-
-          {/* Active list */}
-          <section className="md:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-6">
+          </section>)}
+          <section className={`${isViewer ? 'md:col-span-5' : 'md:col-span-2'} bg-slate-900 border border-slate-800 rounded-xl p-6`}>
             <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-4">Active broadcasts</h2>
             {active.length === 0 ? (
               <p className="text-sm text-slate-500 italic">No active emergency messages.</p>

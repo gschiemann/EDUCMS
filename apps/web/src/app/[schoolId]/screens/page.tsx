@@ -273,6 +273,8 @@ function ScreenSettingsMenu({
 export default function ScreensPage() {
   const { data: groups, isLoading, refetch } = useScreenGroups();
   const { data: allScreens, refetch: refetchScreens } = useScreens();
+  const userRole = useUIStore((s) => s.user?.role);
+  const isViewer = userRole === 'RESTRICTED_VIEWER';
   // Sprint 8 — fleet map view. Toggle persists in URL via search param so a
   // bookmarked map link still opens the map.
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
@@ -474,12 +476,16 @@ export default function ScreensPage() {
               elsewhere (one force-update log per device, not a vague
               "sent to everyone"). */}
           <button onClick={() => { setShowPairModal(true); setPairGroupId(''); setPairCode(''); setPairName(''); setPairError(''); }}
-            className="px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2"
+            disabled={isViewer}
+            title={isViewer ? 'Read-only — viewer role' : undefined}
+            className="px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ background: 'var(--brand-accent, var(--brand-primary, #059669))' }}>
             <Wifi className="w-4 h-4" /> Pair Screen
           </button>
           <button onClick={() => setShowCreateGroup(true)}
-            className="px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2"
+            disabled={isViewer}
+            title={isViewer ? 'Read-only — viewer role' : undefined}
+            className="px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ background: 'var(--brand-primary, #4f46e5)' }}>
             <Plus className="w-4 h-4" /> New Group
           </button>
