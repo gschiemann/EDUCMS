@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { Plus, Layers, Settings2, Keyboard } from 'lucide-react';
+import { Plus, Layers, Settings2, Keyboard, Undo2, Redo2, ZoomIn, ZoomOut, Grid3x3, Magnet, Ruler } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { DndContext, DragOverlay, DragEndEvent, pointerWithin } from '@dnd-kit/core';
 import { getZoneColor } from './constants';
@@ -505,6 +505,12 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         ) : null}
       </DragOverlay>
 
+      {/* Bottom bar — unified zoom + undo + view toggles. Canva-style
+          spatial memory ("those buttons live down there"). Replaces
+          the keyboard-only access to history + grid + snap state.
+          Hidden in previewMode so demo screenshots are clean. */}
+      {!previewMode && <BuilderBottomBar />}
+
       {/* Discoverable "?" floating button in bottom-right of viewport.
           Without this the only way to find the shortcut sheet was to
           guess `?` or Cmd+/ — Canva surfaces a similar pill in the
@@ -524,6 +530,76 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
     </div>
     </DndContext>
+  );
+}
+
+/** Unified bottom bar — zoom, undo/redo, view toggles. Sits fixed
+ *  at the bottom of the viewport so operators always know where to
+ *  find these controls (spatial memory match with Canva / Figma). */
+function BuilderBottomBar() {
+  const zoom         = useBuilderStore((s) => s.zoom);
+  const setZoom      = useBuilderStore((s) => s.setZoom);
+  const past         = useBuilderStore((s) => s.past);
+  const future       = useBuilderStore((s) => s.future);
+  const undo         = useBuilderStore((s) => s.undo);
+  const redo         = useBuilderStore((s) => s.redo);
+  const showGrid     = useBuilderStore((s) => s.showGrid);
+  const setShowGrid  = useBuilderStore((s) => s.setShowGrid);
+  const snapEnabled  = useBuilderStore((s) => s.snapEnabled);
+  const setSnap      = useBuilderStore((s) => s.setSnapEnabled);
+  const showGuides   = useBuilderStore((s) => s.showGuides);
+  const setGuides    = useBuilderStore((s) => s.setShowGuides);
+
+  const canUndo = past.length > 0;
+  const canRedo = future.length > 0;
+  const zoomPct = Math.round(zoom * 100);
+
+  const groupBtn = (on: boolean, label: string, onClick: () => void, icon: React.ReactNode, disabled = false) => (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={on || undefined}
+      title={label}
+      onClick={onClick}
+      disabled={disabled}
+      className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
+        disabled
+          ? 'text-slate-300 cursor-not-allowed'
+          : on
+            ? 'bg-indigo-600 text-white shadow-sm'
+            : 'text-slate-600 hover:bg-slate-100'
+      }`}
+    >
+      {icon}
+    </button>
+  );
+
+  return (
+    <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-30 bg-white border border-slate-200 rounded-2xl shadow-lg flex items-center gap-1 px-2 py-1.5">
+      {/* Undo / Redo */}
+      {groupBtn(false, 'Undo (Ctrl/⌘+Z)',       undo, <Undo2 className="w-4 h-4" />, !canUndo)}
+      {groupBtn(false, 'Redo (Ctrl/⌘+Y)',       redo, <Redo2 className="w-4 h-4" />, !canRedo)}
+      <div className="w-px h-5 bg-slate-200 mx-1" />
+
+      {/* Zoom out / level / zoom in / reset */}
+      {groupBtn(false, 'Zoom out',              () => setZoom(zoom - 0.1), <ZoomOut className="w-4 h-4" />)}
+      <button
+        type="button"
+        aria-label="Reset zoom to 100%"
+        title="Reset zoom (click)"
+        onClick={() => setZoom(1)}
+        className="px-2 h-9 rounded-lg text-xs font-mono font-semibold text-slate-700 hover:bg-slate-100 min-w-[52px]"
+      >
+        {zoomPct}%
+      </button>
+      {groupBtn(false, 'Zoom in',               () => setZoom(zoom + 0.1), <ZoomIn className="w-4 h-4" />)}
+      <div className="w-px h-5 bg-slate-200 mx-1" />
+
+      {/* View toggles */}
+      {groupBtn(showGrid,    'Show grid',         () => setShowGrid(!showGrid),     <Grid3x3 className="w-4 h-4" />)}
+      {groupBtn(snapEnabled, 'Snap to elements',  () => setSnap(!snapEnabled),      <Magnet className="w-4 h-4" />)}
+      {groupBtn(showGuides,  'Show alignment guides', () => setGuides(!showGuides), <Ruler className="w-4 h-4" />)}
+    </div>
   );
 }
 
