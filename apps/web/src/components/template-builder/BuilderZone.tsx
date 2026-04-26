@@ -102,6 +102,84 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
     }
   };
 
+  /**
+   * Canva-style inline text edit. Click any [data-field] on a selected
+   * zone (or double-click on any zone) and the node becomes
+   * contentEditable: focused, all-text-selected, persistent indigo
+   * outline. Blur or Enter commits via onConfigChange; Escape reverts.
+   *
+   * Also fires a `template-edit-field` CustomEvent so the
+   * PropertiesPanel can scroll its matching section into view AND flash
+   * it — same UX every modern design tool gives ("the toolbar follows
+   * what I selected on the canvas"). Sections opt in by adding
+   * `data-field-section="<key>"` to their wrapper.
+   */
+  const enterFieldEdit = (target: HTMLElement) => {
+    if (previewMode || zone.locked || !onConfigChange) return;
+    const fieldKey = target.getAttribute('data-field');
+    if (!fieldKey) return;
+
+    // Tell the PropertiesPanel to scroll + flash the matching section.
+    // Both the field key as-is AND its dot-prefix (e.g. 'brand.date'
+    // also flashes a section keyed on 'brand') so coarse-grained panels
+    // can group multiple fields under one section.
+    const dotIdx = fieldKey.indexOf('.');
+    const sectionKey = dotIdx > 0 ? fieldKey.slice(0, dotIdx) : fieldKey;
+    try {
+      window.dispatchEvent(new CustomEvent('template-edit-field', {
+        detail: { zoneId: zone.id, fieldKey, sectionKey },
+      }));
+    } catch { /* CustomEvent unsupported in older runtimes */ }
+
+    target.setAttribute('contenteditable', 'true');
+    // Persistent outline + glow so the operator sees what they're
+    // editing, NOT just a thin caret. Higher specificity than the
+    // hover style added to BuilderZone, so once edit starts, hover
+    // styles don't fight the active state.
+    target.style.outline = '2px solid #6366f1';
+    target.style.outlineOffset = '2px';
+    target.style.background = 'rgba(99,102,241,0.08)';
+    target.style.borderRadius = '3px';
+    target.style.cursor = 'text';
+    target.focus();
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(target);
+      const sel = window.getSelection();
+      if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+    } catch {}
+
+    const commit = () => {
+      target.removeEventListener('blur', commit);
+      target.removeEventListener('keydown', onKey);
+      const newValue = target.innerText.trim();
+      target.removeAttribute('contenteditable');
+      target.style.outline = '';
+      target.style.outlineOffset = '';
+      target.style.background = '';
+      target.style.borderRadius = '';
+      target.style.cursor = '';
+      onConfigChange(zone.id, { [fieldKey]: newValue });
+    };
+    const cancel = () => {
+      target.removeEventListener('blur', commit);
+      target.removeEventListener('keydown', onKey);
+      target.removeAttribute('contenteditable');
+      target.style.outline = '';
+      target.style.outlineOffset = '';
+      target.style.background = '';
+      target.style.borderRadius = '';
+      target.style.cursor = '';
+      target.innerText = (zone.defaultConfig as any)?.[fieldKey] ?? target.innerText;
+    };
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); commit(); }
+      else if (ev.key === 'Escape') { ev.preventDefault(); cancel(); }
+    };
+    target.addEventListener('blur', commit);
+    target.addEventListener('keydown', onKey);
+  };
+
   return (
     <div
       role="button"
@@ -147,62 +225,31 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       onClick={(e) => {
         if (previewMode) return;
         e.stopPropagation();
+        // If this click landed on an editable text node AND the zone
+        // is already selected, jump straight into edit mode (Canva-
+        // style single-click-to-edit). First click on an unselected
+        // zone just selects it; the next click on a hotspot edits.
+        // Without this gate, clicking on the canvas to select a zone
+        // would also enter edit mode by accident.
+        const fieldEl = (e.target as HTMLElement | null)?.closest?.('[data-field]') as HTMLElement | null;
+        if (fieldEl && selected && onConfigChange && !zone.locked) {
+          enterFieldEdit(fieldEl);
+          return;
+        }
         onSelect(e, zone.id);
       }}
       onDoubleClick={(e) => {
-        // Inline-edit on canvas. Partner asked: "i should be able to
-        // update text right in the canvas and not just in the left
-        // tool bar." Every MS / HS pack widget tags editable text
-        // nodes with `data-field="key"`; when the user double-clicks
-        // such a node, we make it contentEditable, focus it, select
-        // all, and on blur (or Enter) commit the new value via
-        // onConfigChange so it persists into the zone's defaultConfig.
+        // Double-click ALWAYS enters edit mode immediately, even on a
+        // not-yet-selected zone (matches Canva/Figma where dbl-click
+        // is the explicit "edit text" gesture). Falls back to the
+        // single-click path's `enterFieldEdit` so visual + commit
+        // behavior is identical.
         if (previewMode || zone.locked || !onConfigChange) return;
         const target = (e.target as HTMLElement | null)?.closest?.('[data-field]') as HTMLElement | null;
         if (!target) return;
-        const fieldKey = target.getAttribute('data-field');
-        if (!fieldKey) return;
         e.stopPropagation();
         e.preventDefault();
-        target.setAttribute('contenteditable', 'true');
-        target.style.outline = '2px solid #6366f1';
-        target.style.outlineOffset = '2px';
-        target.style.cursor = 'text';
-        target.focus();
-        // Select all the existing text so the operator can just type
-        // over it.
-        try {
-          const range = document.createRange();
-          range.selectNodeContents(target);
-          const sel = window.getSelection();
-          if (sel) { sel.removeAllRanges(); sel.addRange(range); }
-        } catch {}
-        const commit = () => {
-          target.removeEventListener('blur', commit);
-          target.removeEventListener('keydown', onKey);
-          const newValue = target.innerText.trim();
-          target.removeAttribute('contenteditable');
-          target.style.outline = '';
-          target.style.outlineOffset = '';
-          target.style.cursor = '';
-          onConfigChange(zone.id, { [fieldKey]: newValue });
-        };
-        const cancel = () => {
-          target.removeEventListener('blur', commit);
-          target.removeEventListener('keydown', onKey);
-          target.removeAttribute('contenteditable');
-          target.style.outline = '';
-          target.style.outlineOffset = '';
-          target.style.cursor = '';
-          // Force re-render to restore the previous value
-          target.innerText = (zone.defaultConfig as any)?.[fieldKey] ?? target.innerText;
-        };
-        const onKey = (ev: KeyboardEvent) => {
-          if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); commit(); }
-          else if (ev.key === 'Escape') { ev.preventDefault(); cancel(); }
-        };
-        target.addEventListener('blur', commit);
-        target.addEventListener('keydown', onKey);
+        enterFieldEdit(target);
       }}
       onKeyDown={handleKeyDown}
       onDragOver={handleDragOver}
@@ -277,22 +324,33 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         />
       ))}
       {!previewMode && !zone.locked && (
-        // Hover indicator for inline-editable text. Without this the
-        // operator can't tell which text is editable — partner reported
-        // "first template i chose called playlist has no hotspots and
-        // nothing is editable" even though every text node carries a
-        // data-field attribute. Now: hovering any data-field node shows
-        // a text cursor + dashed indigo outline + hint chip on the first
-        // one, so editability is unmistakable.
+        // Inline-editable hotspot affordances. SELECTED zones get a
+        // permanent dotted indigo outline on every [data-field] so the
+        // operator sees "everything I can edit" at a glance — same UX
+        // Canva and Figma show. Hovering bumps the outline to dashed +
+        // light tint to confirm the click target. Once a node enters
+        // edit mode (contentEditable=true), the inline style set by
+        // enterFieldEdit takes over with a solid outline + stronger
+        // tint so it's clearly the active one.
+        //
+        // Unselected zones DON'T show hotspots — they'd visually compete
+        // with the zone's own border and overwhelm the canvas.
         <style>{`
           [data-zone-id="${zone.id}"] [data-field] {
             cursor: text;
             transition: outline 0.12s, background 0.12s;
           }
-          [data-zone-id="${zone.id}"] [data-field]:hover {
+          ${selected ? `
+          [data-zone-id="${zone.id}"] [data-field]:not([contenteditable="true"]) {
+            outline: 1px dotted rgba(99, 102, 241, 0.55);
+            outline-offset: 2px;
+            border-radius: 3px;
+          }
+          ` : ''}
+          [data-zone-id="${zone.id}"] [data-field]:not([contenteditable="true"]):hover {
             outline: 2px dashed #6366f1;
             outline-offset: 2px;
-            background: rgba(99, 102, 241, 0.06);
+            background: rgba(99, 102, 241, 0.08);
             border-radius: 3px;
           }
         `}</style>

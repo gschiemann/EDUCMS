@@ -137,7 +137,53 @@ export function PropertiesPanel() {
       tryScroll();
     };
     window.addEventListener('aw-edit-section', handler);
-    return () => window.removeEventListener('aw-edit-section', handler);
+
+    // GENERIC handler for every widget — when BuilderZone fires
+    // 'template-edit-field' (operator clicked any [data-field] hotspot
+    // on the canvas), find the matching section in this panel and
+    // scroll to it. Sections opt in by carrying
+    // `data-field-section="<key>"` on a wrapper div.
+    //
+    // Falls back gracefully: if no section matches the field, no scroll
+    // happens — the inline edit on the canvas still works. This means
+    // adding new widgets doesn't require panel refactoring up-front.
+    const fieldHandler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { fieldKey?: string; sectionKey?: string } | undefined;
+      const candidates = [detail?.fieldKey, detail?.sectionKey].filter(Boolean) as string[];
+      if (candidates.length === 0) return;
+      let attempts = 0;
+      const tryScroll = () => {
+        let el: HTMLElement | null = null;
+        for (const key of candidates) {
+          el = document.querySelector(`[data-field-section="${CSS.escape(key)}"]`) as HTMLElement | null;
+          if (el) break;
+        }
+        if (el) {
+          const scroller = findScrollParent(el);
+          if (scroller) {
+            const elRect = el.getBoundingClientRect();
+            const scRect = scroller.getBoundingClientRect();
+            scroller.scrollTo({
+              top: scroller.scrollTop + (elRect.top - scRect.top) - 16,
+              behavior: 'smooth',
+            });
+          } else {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+          el.classList.add('aw-section-flash');
+          setTimeout(() => el.classList.remove('aw-section-flash'), 1400);
+          return;
+        }
+        if (++attempts < 30) setTimeout(tryScroll, 50);
+      };
+      tryScroll();
+    };
+    window.addEventListener('template-edit-field', fieldHandler);
+
+    return () => {
+      window.removeEventListener('aw-edit-section', handler);
+      window.removeEventListener('template-edit-field', fieldHandler);
+    };
   }, []);
 
   const xId = useId();
@@ -1428,7 +1474,24 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
     <section className="space-y-3">
       <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Content</h3>
       <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-100 shadow-sm space-y-3">
-        {fields}
+        {fields.map((field, i) => {
+          // Wrap each field with `data-field-section` so the canvas
+          // hotspot click handler in BuilderZone can scroll the right
+          // section into view + flash it. The React element's `key`
+          // matches the widget's `data-field` attribute (we use the
+          // same naming convention everywhere — content / message /
+          // staffName / brand.date / etc).
+          const sectionKey = (field as any)?.key;
+          return (
+            <div
+              key={sectionKey ?? i}
+              data-field-section={sectionKey ?? undefined}
+              style={{ scrollMarginTop: 16 }}
+            >
+              {field}
+            </div>
+          );
+        })}
       </div>
     </section>
   );
