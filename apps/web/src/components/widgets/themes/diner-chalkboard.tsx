@@ -55,7 +55,7 @@ export const DC_FONT_DISPLAY = "var(--font-fredoka), ui-rounded, system-ui, sans
 // ═══════════════════════════════════════════════════════════
 // CHALK TEXT — header lettering on the chalkboard
 // ═══════════════════════════════════════════════════════════
-export function DinerChalkboardText({ config }: { config: any }) {
+export function DinerChalkboardText({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || "Today's Menu";
   const align = (config.alignment || 'center') as 'left' | 'center' | 'right';
   return (
@@ -208,7 +208,7 @@ export function DinerChalkboardLunchMenu({ config }: { config: any }) {
 // ═══════════════════════════════════════════════════════════
 // DAILY SPECIAL — tent card announcement
 // ═══════════════════════════════════════════════════════════
-export function DinerChalkboardAnnouncement({ config }: { config: any }) {
+export function DinerChalkboardAnnouncement({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const title = config.title || 'Daily Special!';
   const body = config.message || config.body || 'Ask about our featured dish today.';
   return (
@@ -247,7 +247,7 @@ export function DinerChalkboardAnnouncement({ config }: { config: any }) {
 // ═══════════════════════════════════════════════════════════
 // COUNTDOWN — chalk countdown on slate
 // ═══════════════════════════════════════════════════════════
-export function DinerChalkboardCountdown({ config }: { config: any }) {
+export function DinerChalkboardCountdown({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const [now, setNow] = useState(new Date());
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
   const resolved = resolveCountdownTarget(config, now);
@@ -345,7 +345,7 @@ export function DinerChalkboardCalendar({ config }: { config: any }) {
 // ═══════════════════════════════════════════════════════════
 // STAFF — "Employee of the Month" framed
 // ═══════════════════════════════════════════════════════════
-export function DinerChalkboardStaff({ config }: { config: any }) {
+export function DinerChalkboardStaff({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const name = config.staffName || 'Chef Rodriguez';
   const role = config.role || 'Cafeteria Star';
   const bio = config.bio || 'Making lunches everyone loves!';

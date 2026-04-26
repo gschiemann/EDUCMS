@@ -6,7 +6,7 @@ import { fetchWeather, getWMO } from '../WidgetRenderer';
 // GYM & PE THEME - High energy, neon greens, dark background, sports fonts
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function GymPEText({ config }: { config: any }) {
+export function GymPEText({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || 'PUSH YOUR LIMITS';
   return (
     <div className="absolute inset-0 flex items-center justify-center text-center p-4" style={{
@@ -115,7 +115,7 @@ export function GymPEBellSchedule({ config, compact }: { config: any; compact?: 
   );
 }
 
-export function GymPEAnnouncement({ config, compact }: { config: any; compact?: boolean }) {
+export function GymPEAnnouncement({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const title = config.title || 'LOCKER ROOM ALERT';
   const content = config.message || config.content || 'Please ensure all locks are secured before leaving for the weekend.';
   

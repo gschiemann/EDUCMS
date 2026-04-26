@@ -54,7 +54,7 @@ export function PrincipalsOfficeLogo({ config }: { config: any }) {
   );
 }
 
-export function PrincipalsOfficeText({ config }: { config: any }) {
+export function PrincipalsOfficeText({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || 'Welcome to the Main Office';
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center" style={{
@@ -123,7 +123,7 @@ export function PrincipalsOfficeClock({ config, compact }: { config: any; compac
   );
 }
 
-export function PrincipalsOfficeAnnouncement({ config, compact }: { config: any; compact?: boolean }) {
+export function PrincipalsOfficeAnnouncement({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const title = config.title || 'NOTICE';
   const content = config.message || config.content || 'Please sign in at the front desk upon arrival.';
   

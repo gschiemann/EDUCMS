@@ -568,7 +568,7 @@ export function MsFieldnotesWidget({ config }: { config?: MsFieldnotesConfig }) 
                           {pick(cfg, `agenda.${i}.r` as keyof Required<MsFieldnotesConfig>)}
                         </span>
                       </span>
-                      <span className="ms-fn-x" style={xStyle} data-field={`agenda.${i}.x`} style={{ whiteSpace: 'pre-wrap' }}>
+                      <span className="ms-fn-x" style={{ ...xStyle, whiteSpace: 'pre-wrap' as const }} data-field={`agenda.${i}.x`}>
                         {pick(cfg, `agenda.${i}.x` as keyof Required<MsFieldnotesConfig>)}
                       </span>
                     </li>

@@ -154,7 +154,7 @@ export function RainbowAnimatedLogo({ config }: { config: any }) {
 // TITLE BANNER — white card with pink dashed border, breathing scale,
 // gradient-shifting headline
 // ─────────────────────────────────────────────────────────────────
-export function RainbowAnimatedTitle({ config }: { config: any }) {
+export function RainbowAnimatedTitle({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const title = config.content || config.title || 'Welcome, Friends!';
   const subtitle = config.subtitle || 'today is going to be amazing ✨';
   return (
@@ -247,7 +247,7 @@ export function RainbowAnimatedWeather({ config }: { config: any }) {
 // ─────────────────────────────────────────────────────────────────
 // ANNOUNCEMENT — cloud puff (no card!) + shaking megaphone + twinkling stars
 // ─────────────────────────────────────────────────────────────────
-export function RainbowAnimatedAnnouncement({ config }: { config: any }) {
+export function RainbowAnimatedAnnouncement({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const label = config.announcementLabel || config.label || 'Big News';
   const message = config.message || config.announcementMessage || 'Book Fair starts Monday! 📚';
   return (
@@ -286,7 +286,7 @@ export function RainbowAnimatedAnnouncement({ config }: { config: any }) {
 // ─────────────────────────────────────────────────────────────────
 // COUNTDOWN — 12-point starburst with bouncing number
 // ─────────────────────────────────────────────────────────────────
-export function RainbowAnimatedCountdown({ config }: { config: any }) {
+export function RainbowAnimatedCountdown({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const label = config.label || config.countdownLabel || 'Field Trip in';
   const num = config.countdownNumber ?? config.daysLeft ?? 3;
   const unit = config.countdownUnit || config.unit || 'days';
@@ -314,7 +314,7 @@ export function RainbowAnimatedCountdown({ config }: { config: any }) {
 // ─────────────────────────────────────────────────────────────────
 // STAFF SPOTLIGHT — polaroid with washi-tape caption above
 // ─────────────────────────────────────────────────────────────────
-export function RainbowAnimatedStaff({ config }: { config: any }) {
+export function RainbowAnimatedStaff({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const photoUrl = config.assetUrl || config.photoUrl || config.teacherPhotoUrl;
   const emoji = config.teacherEmoji || config.emoji || '👩‍🏫';
   const name = config.staffName || config.teacherName || config.name || 'Mrs. Johnson';

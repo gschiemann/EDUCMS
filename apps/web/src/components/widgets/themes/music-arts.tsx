@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 // MUSIC & ARTS THEME - Velvet Curtain, Spotlight, Elegant Neons
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function MusicArtsText({ config, compact }: { config: any; compact?: boolean }) {
+export function MusicArtsText({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || 'Music & Arts';
   return (
     <div className="absolute inset-0 flex items-center justify-center p-8" style={{
@@ -34,7 +34,7 @@ export function MusicArtsText({ config, compact }: { config: any; compact?: bool
   );
 }
 
-export function MusicArtsCountdown({ config, compact }: { config: any; compact?: boolean }) {
+export function MusicArtsCountdown({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const [timeLeft, setTimeLeft] = useState({ d: 0, h: 0, m: 0, s: 0 });
   const label = config.label || 'Next Event';
 
@@ -107,7 +107,7 @@ export function MusicArtsCountdown({ config, compact }: { config: any; compact?:
   );
 }
 
-export function MusicArtsRichText({ config, compact }: { config: any; compact?: boolean }) {
+export function MusicArtsRichText({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   return (
     <div className="absolute inset-0 p-8 flex flex-col items-center justify-center" style={{ containerType: 'size' }}>
       <div style={{

@@ -470,7 +470,7 @@ export function MsPlaylistPortraitWidget({ config }: { config?: MsPlaylistPortra
                   {pick(cfg, `queue.${i}.idx` as keyof Required<MsPlaylistPortraitConfig>)}
                 </span>
                 <div className="ms-pl-p-trk">
-                  <div className="ms-pl-p-art" style={queueArtStyles[i]} data-field={`queue.${i}.art`} style={{ whiteSpace: 'pre-wrap' }}>
+                  <div className="ms-pl-p-art" style={{ ...queueArtStyles[i], whiteSpace: 'pre-wrap' as const }} data-field={`queue.${i}.art`}>
                     {pick(cfg, `queue.${i}.art` as keyof Required<MsPlaylistPortraitConfig>)}
                   </div>
                   <div className="ms-pl-p-trk-body">

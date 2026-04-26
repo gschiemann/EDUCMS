@@ -49,7 +49,7 @@ export function SunshineAcademyWeather({ config, compact }: { config: any; compa
   );
 }
 
-export function SunshineAcademyCountdown({ config, compact }: { config: any; compact?: boolean }) {
+export function SunshineAcademyCountdown({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const label = config.label || 'Event starts in';
   const [now, setNow] = useState(new Date());
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(t); }, []);
@@ -71,7 +71,7 @@ export function SunshineAcademyCountdown({ config, compact }: { config: any; com
   );
 }
 
-export function SunshineAcademyText({ config }: { config: any }) {
+export function SunshineAcademyText({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || 'Your text here';
   return (
     <div className="absolute inset-0 flex items-center justify-center text-center p-4" style={{
@@ -84,7 +84,7 @@ export function SunshineAcademyText({ config }: { config: any }) {
   );
 }
 
-export function SunshineAcademyAnnouncement({ config, compact }: { config: any; compact?: boolean }) {
+export function SunshineAcademyAnnouncement({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const title = config.title || 'Important Update';
   const content = config.message || config.content || 'Content goes here...';
   

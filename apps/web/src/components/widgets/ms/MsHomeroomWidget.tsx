@@ -498,9 +498,8 @@ export function MsHomeroomWidget({ config }: { config?: MsHomeroomConfig }) {
                 >
                   <span
                     className="ms-hr-av"
-                    style={{ background: shoutoutAv[i] }}
-                    data-field={`shoutouts.${i}.av`}
-                   style={{ whiteSpace: 'pre-wrap' }}>
+                    style={{ background: shoutoutAv[i], whiteSpace: 'pre-wrap' as const }}
+                    data-field={`shoutouts.${i}.av`}>
                     {pick(cfg, `shoutouts.${i}.av` as keyof Required<MsHomeroomConfig>)}
                   </span>
                   <span className="ms-hr-who" data-field={`shoutouts.${i}.who`} style={{ whiteSpace: 'pre-wrap' }}>

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 // STEM SCIENCE THEME - Cyberpunk / Futuristic Lab
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function StemScienceText({ config, compact }: { config: any; compact?: boolean }) {
+export function StemScienceText({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || 'STEM Lab';
   return (
     <div className="absolute inset-0 flex items-center justify-center p-8" style={{
@@ -37,7 +37,7 @@ export function StemScienceText({ config, compact }: { config: any; compact?: bo
   );
 }
 
-export function StemScienceCountdown({ config, compact }: { config: any; compact?: boolean }) {
+export function StemScienceCountdown({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const [timeLeft, setTimeLeft] = useState({ d: 0, h: 0, m: 0, s: 0 });
   const label = config.label || 'Project Deadline';
 
@@ -121,7 +121,7 @@ export function StemScienceCountdown({ config, compact }: { config: any; compact
   );
 }
 
-export function StemScienceRichText({ config, compact }: { config: any; compact?: boolean }) {
+export function StemScienceRichText({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   return (
     <div className="absolute inset-0 p-8 flex flex-col" style={{ containerType: 'size' }}>
       <div style={{

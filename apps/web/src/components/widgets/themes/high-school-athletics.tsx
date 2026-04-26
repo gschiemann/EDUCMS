@@ -59,7 +59,7 @@ export function AthleticsLogo({ config }: { config: any }) {
 // ═══════════════════════════════════════════════════════════
 // COUNTDOWN — Huge LED Segmented Display
 // ═══════════════════════════════════════════════════════════
-export function AthleticsCountdown({ config, compact }: { config: any; compact?: boolean }) {
+export function AthleticsCountdown({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const [timeLeft, setTimeLeft] = useState({ d: 0, h: 0, m: 0, s: 0 });
 
   useEffect(() => {
@@ -137,7 +137,7 @@ function TimeBox({ value, label }: { value: number; label: string }) {
 // ═══════════════════════════════════════════════════════════
 // SCORE CARD / RECAP — Sleek dark glassmorphic matchup card
 // ═══════════════════════════════════════════════════════════
-export function AthleticsAnnouncement({ config }: { config: any }) {
+export function AthleticsAnnouncement({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const title = config.title || 'FINAL SCORE';
   // Parse message like "EAGLES: 42\nRIVALS: 28"
   const msg = config.message || 'TEAM A: 0\nTEAM B: 0';
@@ -190,7 +190,7 @@ function ScoreRow({ text, isHome }: { text: string; isHome: boolean }) {
 // ═══════════════════════════════════════════════════════════
 // TEXT — Metallic Hype
 // ═══════════════════════════════════════════════════════════
-export function AthleticsText({ config }: { config: any }) {
+export function AthleticsText({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || 'MAKE SOME NOISE!';
   return (
     <div className="absolute inset-0 flex items-center justify-center p-2 text-center overflow-hidden" style={{ containerType: 'size' }}>

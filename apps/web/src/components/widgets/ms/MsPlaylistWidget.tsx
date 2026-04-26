@@ -445,7 +445,7 @@ export function MsPlaylistWidget({ config }: { config?: MsPlaylistConfig }) {
                     {pick(cfg, `queue.${i}.idx` as keyof Required<MsPlaylistConfig>)}
                   </span>
                   <div className="ms-pl-trk">
-                    <div className="ms-pl-art" style={queueArtStyles[i]} data-field={`queue.${i}.art`} style={{ whiteSpace: 'pre-wrap' }}>
+                    <div className="ms-pl-art" style={{ ...queueArtStyles[i], whiteSpace: 'pre-wrap' as const }} data-field={`queue.${i}.art`}>
                       {pick(cfg, `queue.${i}.art` as keyof Required<MsPlaylistConfig>)}
                     </div>
                     <div>

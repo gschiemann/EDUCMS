@@ -375,7 +375,7 @@ export function BackToSchoolStaff({ config, onConfigChange }: { config: any; onC
 // ═══════════════════════════════════════════════════════════════════════
 // CHALK COUNTDOWN — chalk numerals on the small chalkboard area
 // ═══════════════════════════════════════════════════════════════════════
-export function BackToSchoolCountdown({ config }: { config: any }) {
+export function BackToSchoolCountdown({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const label = config.label || 'Field Trip in';
   const target = config.targetDate ? new Date(config.targetDate) : new Date(Date.now() + 12 * 24 * 60 * 60 * 1000);
   const [now, setNow] = useState(new Date());

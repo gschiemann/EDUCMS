@@ -202,7 +202,7 @@ export function MSHallTicker({ config }: { config: any }) {
 // ═══════════════════════════════════════════════════════════
 // ANNOUNCEMENT — Flyer taped to locker
 // ═══════════════════════════════════════════════════════════
-export function MSHallAnnouncement({ config }: { config: any }) {
+export function MSHallAnnouncement({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const title = config.title || 'Attention Students!';
   const message = config.message || config.body || 'Important information posted here.';
   
@@ -344,7 +344,7 @@ export function MSHallWeather({ config }: { config: any }) {
 // ═══════════════════════════════════════════════════════════
 // TEXT — Printed banner
 // ═══════════════════════════════════════════════════════════
-export function MSHallText({ config }: { config: any }) {
+export function MSHallText({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || 'School Spirit!';
   return (
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
@@ -374,7 +374,7 @@ export function MSHallText({ config }: { config: any }) {
 // ═══════════════════════════════════════════════════════════
 // COUNTDOWN — LED countdown module
 // ═══════════════════════════════════════════════════════════
-export function MSHallCountdown({ config }: { config: any }) {
+export function MSHallCountdown({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const label = config.label || 'Weekend starts in:';
   const target = config.targetDate ? new Date(config.targetDate) : new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
   const [now, setNow] = useState(new Date());
@@ -405,7 +405,7 @@ export function MSHallCountdown({ config }: { config: any }) {
 // ═══════════════════════════════════════════════════════════
 // STAFF_SPOTLIGHT — Framed photo on corkboard
 // ═══════════════════════════════════════════════════════════
-export function MSHallStaff({ config }: { config: any }) {
+export function MSHallStaff({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const name = config.staffName || 'Mr. Davis';
   const role = config.role || 'Teacher of the Month';
   const photoUrl = config.photoUrl || config.assetUrl;

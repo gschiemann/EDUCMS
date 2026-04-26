@@ -235,7 +235,7 @@ export function FinalChanceWeather({ config }: { config: any }) {
 // ═══════════════════════════════════════════════════════════════════════
 // TEXT — big bold welcome / headline
 // ═══════════════════════════════════════════════════════════════════════
-export function FinalChanceText({ config }: { config: any }) {
+export function FinalChanceText({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || 'Welcome!';
   const align = (config.alignment || 'center') as 'left' | 'center' | 'right';
   const size = config.size || 'xl'; // sm | md | lg | xl | 2xl
@@ -291,7 +291,7 @@ export function FinalChanceLogo({ config }: { config: any }) {
 // ═══════════════════════════════════════════════════════════════════════
 // ANNOUNCEMENT
 // ═══════════════════════════════════════════════════════════════════════
-export function FinalChanceAnnouncement({ config }: { config: any }) {
+export function FinalChanceAnnouncement({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const title = config.title || 'Big news today!';
   const body  = config.message || config.body || 'Tap a zone to edit. Everything is already styled — just write what you want to say.';
   const badge = config.badgeLabel || '📣 Announcement';
@@ -361,7 +361,7 @@ export function FinalChanceCalendar({ config }: { config: any }) {
 // ═══════════════════════════════════════════════════════════════════════
 // COUNTDOWN
 // ═══════════════════════════════════════════════════════════════════════
-export function FinalChanceCountdown({ config }: { config: any }) {
+export function FinalChanceCountdown({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const label = config.label || 'Countdown';
   const target = config.targetDate ? new Date(config.targetDate) : new Date(Date.now() + 12 * 24 * 60 * 60 * 1000);
   const [now, setNow] = useState(new Date());
@@ -391,7 +391,7 @@ export function FinalChanceCountdown({ config }: { config: any }) {
 // ═══════════════════════════════════════════════════════════════════════
 // STAFF SPOTLIGHT
 // ═══════════════════════════════════════════════════════════════════════
-export function FinalChanceStaff({ config }: { config: any }) {
+export function FinalChanceStaff({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const name = config.staffName || 'Mrs. Johnson';
   const role = config.role || 'Teacher of the Week';
   const bio  = config.bio || 'Inspiring students every day with creativity, kindness, and a big smile!';

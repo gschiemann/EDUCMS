@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 // LIBRARY QUIET THEME - Elegant Wood, Brass & Leather
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function LibraryQuietText({ config, compact }: { config: any; compact?: boolean }) {
+export function LibraryQuietText({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || 'Media Center';
   return (
     <div className="absolute inset-0 flex items-center justify-center p-8" style={{
@@ -108,7 +108,7 @@ export function LibraryQuietImage({ config, compact }: { config: any; compact?: 
   );
 }
 
-export function LibraryQuietRichText({ config, compact }: { config: any; compact?: boolean }) {
+export function LibraryQuietRichText({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   return (
     <div className="absolute inset-0 p-8 flex flex-col" style={{
       background: 'rgba(248, 244, 235, 0.9)',

@@ -16,7 +16,7 @@ const BL = {
 const BL_FONT = '"Share Tech Mono", "Courier New", Courier, monospace';
 const BL_DISPLAY = '"Arial Black", Impact, system-ui, sans-serif';
 
-export function BusLoopText({ config, compact }: { config: any; compact?: boolean }) {
+export function BusLoopText({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || 'BUS LOOP INFORMATION';
   return (
     <div className="absolute inset-0 flex items-center justify-center p-4" style={{
@@ -138,7 +138,7 @@ export function BusLoopWeather({ config, compact }: { config: any; compact?: boo
   );
 }
 
-export function BusLoopAnnouncement({ config, compact }: { config: any; compact?: boolean }) {
+export function BusLoopAnnouncement({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden" style={{
       background: '#1a0505',

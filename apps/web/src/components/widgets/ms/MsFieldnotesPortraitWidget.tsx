@@ -621,7 +621,7 @@ export function MsFieldnotesPortraitWidget({
                     {pick(cfg, `agenda.${i}.r` as keyof Required<MsFieldnotesPortraitConfig>)}
                   </span>
                 </span>
-                <span className="ms-fn-p-x" style={xStyle} data-field={`agenda.${i}.x`} style={{ whiteSpace: 'pre-wrap' }}>
+                <span className="ms-fn-p-x" style={{ ...xStyle, whiteSpace: 'pre-wrap' as const }} data-field={`agenda.${i}.x`}>
                   {pick(cfg, `agenda.${i}.x` as keyof Required<MsFieldnotesPortraitConfig>)}
                 </span>
               </li>

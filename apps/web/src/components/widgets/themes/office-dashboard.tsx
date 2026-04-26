@@ -36,7 +36,7 @@ export function OfficeDashboardLogo({ config, compact }: { config: any; compact?
   );
 }
 
-export function OfficeDashboardText({ config, compact }: { config: any; compact?: boolean }) {
+export function OfficeDashboardText({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const content = config.content || 'Welcome to the Central Office';
   return (
     <div className="absolute inset-0 flex items-center p-8 overflow-hidden" style={{
@@ -92,7 +92,7 @@ export function OfficeDashboardClock({ config, compact }: { config: any; compact
   );
 }
 
-export function OfficeDashboardAnnouncement({ config, compact }: { config: any; compact?: boolean }) {
+export function OfficeDashboardAnnouncement({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const title = config.title || 'SYSTEM STATUS';
   const content = config.message || config.content || 'All network systems operating normally.';
   const priority = config.priority || 'normal';
@@ -127,7 +127,7 @@ export function OfficeDashboardAnnouncement({ config, compact }: { config: any; 
   );
 }
 
-export function OfficeDashboardStaff({ config, compact }: { config: any; compact?: boolean }) {
+export function OfficeDashboardStaff({ config, compact }: { config: any; compact?: boolean } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const name = config.staffName || 'Dr. Emily Chen';
   const role = config.role || 'Superintendent';
   
