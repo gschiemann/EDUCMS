@@ -375,12 +375,37 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
     if (over && over.id === 'builder-canvas') {
       const type = active.data.current?.widgetType;
       if (!type) return;
-      // Resolve the drop point to template-percentage space (0-100)
-      // so the new zone CENTERS on the cursor instead of stacking at
-      // the default 10,10. dnd-kit gives us the active rect (where
-      // the dragged ghost ended) + the over rect (the canvas's
-      // bounding box). Center of the active rect, expressed as a
-      // percentage of the canvas, is the drop coordinate.
+
+      const isVariantTile = active.data.current?.type === 'variant-tile';
+      const variantId = active.data.current?.variantId as string | undefined;
+      const variantConfig = (active.data.current?.defaultConfig || {}) as Record<string, any>;
+
+      // SWAP path — partner reported: drag a Wood Wall Clock variant
+      // while their existing Clock 2 zone is selected, expected the
+      // Clock 2 zone to take the new variant's styling. Old behavior
+      // ALWAYS added a new zone. Now: if the user is dragging a
+      // variant-tile AND has a single selected zone of the matching
+      // widget type, treat the drop as a SWAP (mirrors the click-to-
+      // swap behavior in VariantPicker.handlePick).
+      const store = useBuilderStore.getState();
+      const sel = store.selectedIds;
+      if (isVariantTile && variantId && sel.length === 1) {
+        const target = store.zones.find((z) => z.id === sel[0]);
+        if (target && target.widgetType === type) {
+          store.updateZone(target.id, {
+            defaultConfig: { ...(target.defaultConfig || {}), ...variantConfig, variant: variantId },
+            widgetType: type,
+          });
+          return;
+        }
+      }
+
+      // ADD path — resolve the drop point to template-percentage space
+      // (0-100) so the new zone CENTERS on the cursor instead of
+      // stacking at the default 10,10. dnd-kit gives us the active
+      // rect (where the dragged ghost ended) + the over rect (the
+      // canvas's bounding box). Center of the active rect, expressed
+      // as a percentage of the canvas, is the drop coordinate.
       let dropAt: { x: number; y: number } | undefined;
       const rect: any = (event as any).active?.rect?.current?.translated || (event as any).active?.rect?.current?.initial;
       const overRect: any = (event as any).over?.rect;
@@ -393,15 +418,12 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         };
       }
       const id = addZone(type, dropAt);
-      // If dragged from the variant picker, also seed the variant + its defaultConfig
-      if (active.data.current?.type === 'variant-tile') {
-        const variantId = active.data.current.variantId as string | undefined;
-        const variantConfig = (active.data.current.defaultConfig || {}) as Record<string, any>;
-        if (variantId) {
-          useBuilderStore.getState().updateZone(id, {
-            defaultConfig: { ...variantConfig, variant: variantId },
-          });
-        }
+      // If dragged from the variant picker (no swap target), also seed
+      // the variant + its defaultConfig on the new zone.
+      if (isVariantTile && variantId) {
+        useBuilderStore.getState().updateZone(id, {
+          defaultConfig: { ...variantConfig, variant: variantId },
+        });
       }
     }
   };
