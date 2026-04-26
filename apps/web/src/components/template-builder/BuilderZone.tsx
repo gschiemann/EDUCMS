@@ -218,8 +218,23 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         // that follows will turn that node into an editable field.
         // Without this guard, the pointerdown captured the pointer
         // and the dblclick never fired (move-drag took priority).
+        //
+        // CRITICAL: stopPropagation regardless of which branch fires.
+        // BuilderCanvas's onCanvasPointerDown starts a marquee-select
+        // rectangle on every pointerdown that bubbles up to the canvas.
+        // Without stopping the event here, clicking text on a zone:
+        //   1. zone pointerdown returns early (no zone-drag) ✓
+        //   2. event bubbles to canvas → marquee drag starts
+        //   3. mouse moves → invisible marquee rectangle follows cursor
+        //   4. user sees their click "stick to the mouse"
+        // Partner reported "click to edit text → widget stuck to mouse,
+        // no way to let go" — that's the marquee, not the widget.
         const target = e.target as HTMLElement | null;
-        if (target?.closest?.('[data-field]')) return;
+        if (target?.closest?.('[data-field]')) {
+          e.stopPropagation();
+          return;
+        }
+        e.stopPropagation();
         onPointerDown(e, zone.id, 'move');
       }}
       onClick={(e) => {
