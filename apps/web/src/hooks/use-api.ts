@@ -146,6 +146,7 @@ export function usePlaylists() {
   return useQuery({
     queryKey: ['playlists'],
     queryFn: () => apiFetch('/playlists'),
+    refetchOnMountOrArgChange: 'stale',
   });
 }
 
@@ -179,7 +180,10 @@ export function useReorderPlaylistItems() {
       }),
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ['playlists', vars.playlistId] });
-      qc.invalidateQueries({ queryKey: ['playlists'] });
+      // Immediately refetch the playlists list after save to ensure reopened
+      // playlist shows saved items. invalidateQueries alone doesn't guarantee
+      // a refetch if the query is not actively subscribed.
+      qc.refetchQueries({ queryKey: ['playlists'] });
     },
   });
 }
