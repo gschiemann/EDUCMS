@@ -92,9 +92,26 @@ export function TopContextToolbar() {
   /**
    * Write a property, respecting the active scope.
    * - field: updates cfg._styles[activeFieldKey] (CSS rule scoped to one data-field)
-   * - zone:  updates top-level cfg.prop (CSS rule scoped to the whole zone)
-   * - template: writes cfg.prop on EVERY zone in the template
+   * - zone:  updates top-level cfg.prop. ALSO clears any per-field
+   *   overrides of the same prop so the zone-wide value actually
+   *   takes effect everywhere (per-field rules win specificity, so
+   *   leaving them in place would silently mask the zone change —
+   *   the original "selected text didn't change" bug).
+   * - template: same as zone, repeated on every zone in the template.
    */
+  const stripPerFieldKeys = (styles: any, keys: string[]): any => {
+    if (!styles || typeof styles !== 'object') return styles;
+    const next: any = {};
+    for (const [k, v] of Object.entries(styles)) {
+      if (!v || typeof v !== 'object') continue;
+      const cleaned = { ...(v as any) };
+      for (const key of keys) delete cleaned[key];
+      // Drop empty {} entries entirely
+      if (Object.keys(cleaned).length > 0) next[k] = cleaned;
+    }
+    return next;
+  };
+
   const setField = (patch: Record<string, any>) => {
     if (!zone) return;
     if (effectiveScope === 'field' && activeFieldKey) {
@@ -103,16 +120,19 @@ export function TopContextToolbar() {
       updateZone(zone.id, { defaultConfig: { ...cfg, _styles: styles } }, true);
       return;
     }
+    const propKeys = Object.keys(patch);
     if (effectiveScope === 'template') {
-      // Iterate every zone, write the patch to each.
       for (const z of zones) {
         const c = (z.defaultConfig || {}) as any;
-        updateZone(z.id, { defaultConfig: { ...c, ...patch } }, true);
+        const cleanedStyles = stripPerFieldKeys(c._styles, propKeys);
+        updateZone(z.id, { defaultConfig: { ...c, ...patch, _styles: cleanedStyles } }, true);
       }
       return;
     }
-    // Default: zone-wide (top-level cfg keys)
-    updateZone(zone.id, { defaultConfig: { ...cfg, ...patch } }, true);
+    // Default: zone-wide. Clear matching per-field overrides on this
+    // zone so the new value is actually visible.
+    const cleanedStyles = stripPerFieldKeys(cfg._styles, propKeys);
+    updateZone(zone.id, { defaultConfig: { ...cfg, ...patch, _styles: cleanedStyles } }, true);
   };
 
   // Cmd+B / Cmd+I / Cmd+U / Cmd+Shift+X — text format keyboard
@@ -172,7 +192,18 @@ export function TopContextToolbar() {
             effectiveScope={effectiveScope}
             activeFieldKey={activeFieldKey}
             zoneName={zone.name}
+            zoneCount={zones.length}
             onChange={setScope}
+          />
+          {/* Visible scope indicator — shows EXACTLY what the next
+              edit will affect. Operators reported losing track of
+              which scope was active when the controls were doing
+              different things at different times. */}
+          <ScopeBadge
+            effectiveScope={effectiveScope}
+            activeFieldKey={activeFieldKey}
+            zoneName={zone.name}
+            zoneCount={zones.length}
           />
           <div className="min-w-[180px]">
             <FontFamilyField
@@ -429,12 +460,13 @@ export function TopContextToolbar() {
  *  been clicked yet (falls back visually to a hint that operator should
  *  click a hotspot to scope changes more tightly). */
 function ScopeSelector({
-  scope, effectiveScope, activeFieldKey, zoneName, onChange,
+  scope, effectiveScope, activeFieldKey, zoneName, zoneCount, onChange,
 }: {
   scope: Scope;
   effectiveScope: 'field' | 'zone' | 'template';
   activeFieldKey: string | null;
   zoneName: string;
+  zoneCount: number;
   onChange: (s: Scope) => void;
 }) {
   const opts: Array<{ key: Scope; label: string; hint: string; enabled: boolean }> = [
@@ -453,7 +485,7 @@ function ScopeSelector({
     {
       key: 'template',
       label: 'Whole template',
-      hint: 'Every zone in the template',
+      hint: `Every text in all ${zoneCount} zones of the template`,
       enabled: true,
     },
   ];
@@ -484,6 +516,39 @@ function ScopeSelector({
             </button>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/** Inline indicator showing the operator EXACTLY what the next edit
+ *  will affect. Operator reported losing track of which scope was
+ *  active when controls were doing different things at different times.
+ *  Now there's an unmissable chip next to the scope selector. */
+function ScopeBadge({
+  effectiveScope, activeFieldKey, zoneName, zoneCount,
+}: {
+  effectiveScope: 'field' | 'zone' | 'template';
+  activeFieldKey: string | null;
+  zoneName: string;
+  zoneCount: number;
+}) {
+  const colorMap = {
+    field: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    zone: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    template: 'bg-violet-50 text-violet-700 border-violet-200',
+  };
+  const label =
+    effectiveScope === 'field' && activeFieldKey
+      ? `Editing: ${activeFieldKey}`
+      : effectiveScope === 'zone'
+        ? `Editing: every text in ${zoneName}`
+        : `Editing: every zone (${zoneCount}) in the template`;
+  return (
+    <div className="self-end pb-2">
+      <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[11px] font-bold ${colorMap[effectiveScope]}`}>
+        <span className="w-1.5 h-1.5 rounded-full bg-current" />
+        {label}
       </div>
     </div>
   );
