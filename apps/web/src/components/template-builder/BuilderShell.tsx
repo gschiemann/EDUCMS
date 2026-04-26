@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { Plus, Layers, Settings2, Keyboard, Undo2, Redo2, ZoomIn, ZoomOut, Grid3x3, Magnet, Ruler } from 'lucide-react';
+import { Plus, Layers, Settings2, Keyboard, Undo2, Redo2, ZoomIn, ZoomOut, Grid3x3, Magnet, Ruler, Palette } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { DndContext, DragOverlay, DragEndEvent, pointerWithin } from '@dnd-kit/core';
 import { getZoneColor } from './constants';
@@ -13,6 +13,7 @@ import { WidgetPalette } from './WidgetPalette';
 import { VariantPicker } from './VariantPicker';
 import { LayersPanel } from './LayersPanel';
 import { PropertiesPanel } from './PropertiesPanel';
+import { BrandKitPanel } from './BrandKitPanel';
 import { TopContextToolbar } from './TopContextToolbar';
 import { useUpdateTemplate, useUpdateTemplateZones, useCreateTemplate, useDeleteTemplate } from '@/hooks/use-api';
 import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
@@ -24,7 +25,7 @@ interface Props {
   onSaved: (t: Template) => void;
 }
 
-type PanelKey = 'widgets' | 'layers' | 'properties';
+type PanelKey = 'widgets' | 'layers' | 'properties' | 'brand';
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 const AUTO_SAVE_IDLE_MS = 15_000;
@@ -364,6 +365,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
     { key: 'widgets', label: 'Widgets', icon: Plus },
     { key: 'layers', label: 'Layers', icon: Layers },
     { key: 'properties', label: 'Properties', icon: Settings2 },
+    { key: 'brand', label: 'Brand', icon: Palette },
   ];
 
   const handleDragStart = (event: any) => {
@@ -479,6 +481,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
               {panel === 'widgets' && <VariantPicker />}
               {panel === 'layers' && <LayersPanel />}
               {panel === 'properties' && <PropertiesPanel />}
+              {panel === 'brand' && <BrandKitPanel />}
             </div>
             <div className="border-t border-slate-100 p-2">
               <button

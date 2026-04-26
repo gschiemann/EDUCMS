@@ -828,6 +828,15 @@ export function useUsbIngestEvents() {
   });
 }
 
+// ─── Brand Kit ──────────────────────────────────────────────────
+export function useTenantBranding() {
+  return useQuery<any>({
+    queryKey: ['tenant-branding'],
+    queryFn: () => apiFetch('/tenants/me/branding'),
+    retry: false,
+  });
+}
+
 // ─── Submissions (Sprint 1.5 — submit-for-review workflow) ───
 export interface SubmissionRow {
   id: string;
