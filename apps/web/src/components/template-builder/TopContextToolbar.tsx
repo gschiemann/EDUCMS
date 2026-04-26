@@ -58,8 +58,6 @@ export function TopContextToolbar() {
       if (!(e.metaKey || e.ctrlKey)) return;
       const t = e.target as HTMLElement;
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(t?.tagName) || t?.isContentEditable) return;
-      // Narrow scope: only intercept Cmd+B/I/U when the user is actively
-      // in the canvas editing zone, not anywhere else in the browser window.
       if (!document.activeElement?.closest?.('[data-zone-id]') && document.activeElement !== document.body) return;
       const k = e.key.toLowerCase();
       if (k === 'b') { e.preventDefault(); setField({ bold: cfg.bold !== true }); }

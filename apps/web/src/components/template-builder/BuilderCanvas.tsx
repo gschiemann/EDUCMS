@@ -44,6 +44,7 @@ export function BuilderCanvas() {
   >(null);
   const [marqueeState, setMarqueeState] = useState<{ startX: number; startY: number; currX: number; currY: number } | null>(null);
   const [activeSnapLines, setActiveSnapLines] = useState<SnapLine[]>([]);
+  const [hoverFromDrag, setHoverFromDrag] = useState(false);
 
   const aspectRatio = meta.screenWidth / meta.screenHeight;
 
@@ -226,6 +227,9 @@ export function BuilderCanvas() {
           className="absolute inset-0 rounded-lg overflow-hidden"
           style={{ ...background }}
           onPointerDown={onCanvasPointerDown}
+          onDragEnter={() => setHoverFromDrag(true)}
+          onDragLeave={() => setHoverFromDrag(false)}
+          onDrop={() => setHoverFromDrag(false)}
           role="application"
           aria-label="Template canvas"
         >
@@ -237,8 +241,9 @@ export function BuilderCanvas() {
               the operator opens a fresh custom template, an arrow points
               left at the Widgets tab + a copy line nudges them to drag.
               Auto-hides as soon as the first zone lands. Hidden in
-              previewMode so demo screenshots stay clean. */}
-          {zones.length === 0 && !previewMode && (
+              previewMode so demo screenshots stay clean. Also hidden
+              during drag-over to unblock drop target. */}
+          {zones.length === 0 && !previewMode && !hoverFromDrag && (
             <div
               aria-hidden
               className="absolute inset-0 pointer-events-none flex items-center justify-center"
@@ -365,6 +370,10 @@ export function BuilderCanvas() {
  *  there's no room) the selected zone. Mirrors Canva's "this is
  *  selected, here are the most-common things you'd do next" UX. */
 function FloatingZoneActions({ zone }: { zone: Zone }) {
+  // Hide floating bar for tiny zones — buttons would overwhelm the
+  // widget and the bar positioning math breaks below 8% width or 5% height.
+  if (zone.width < 8 || zone.height < 5) return null;
+
   const duplicateZone   = useBuilderStore((s) => s.duplicateZone);
   const removeSelected  = useBuilderStore((s) => s.removeSelected);
   const toggleLock      = useBuilderStore((s) => s.toggleLock);
