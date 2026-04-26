@@ -1,0 +1,60 @@
+{
+  "_comment": "Project-level MCP server config. Each entry adds a tool surface I can call directly. Most need an env var with a token (set in .env or in your shell). The 'enabled' field is read by Claude Code; flip to false to disable temporarily without deleting the entry.",
+
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+      },
+      "_setup": "1) Generate a fine-scoped GitHub PAT at https://github.com/settings/tokens (scopes: repo, read:org, workflow). 2) Add to your shell: export GITHUB_TOKEN=ghp_… or save to .env. 3) Restart Claude Code. I'll then be able to read issues, PR comments, action runs, and dispatch workflows."
+    },
+
+    "supabase": {
+      "command": "npx",
+      "args": ["-y", "@supabase/mcp-server-supabase"],
+      "env": {
+        "SUPABASE_URL": "${SUPABASE_URL}",
+        "SUPABASE_SERVICE_ROLE_KEY": "${SUPABASE_SERVICE_ROLE_KEY}"
+      },
+      "_setup": "Already in your .env — reads SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY directly. After enabling I can run direct SQL against the production DB (read-only by default if you scope the key). Highest-leverage MCP for debugging customer issues."
+    },
+
+    "postgres": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "${DATABASE_URL}"],
+      "_setup": "Alternative to Supabase MCP if you want raw Postgres access (e.g. to a Railway-hosted db). Pulls DATABASE_URL from .env. Use the pooled connection (the one with pgbouncer=true) so you don't exhaust direct connections."
+    },
+
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "C:\\Users\\gschi\\OneDrive\\Desktop\\EDU CMS"
+      ],
+      "_setup": "Built-in already — Claude Code's Read/Edit/Write tools cover this. Listed for reference; can be removed if you prefer not to expose the second mount."
+    },
+
+    "sentry": {
+      "command": "npx",
+      "args": ["-y", "@sentry/mcp-server"],
+      "env": {
+        "SENTRY_AUTH_TOKEN": "${SENTRY_AUTH_TOKEN}",
+        "SENTRY_ORG": "${SENTRY_ORG}",
+        "SENTRY_PROJECTS": "edu-cms-api,edu-cms-web"
+      },
+      "_setup": "1) https://sentry.io/settings/account/api/auth-tokens/ — create a token with project:read, event:read scopes. 2) Set SENTRY_AUTH_TOKEN + SENTRY_ORG (your Sentry org slug) in .env. 3) After enabling I can pull recent error events, group them, and proactively fix what's noisy. Sentry SDK is already wired in apps/api/src/sentry.ts."
+    },
+
+    "railway": {
+      "command": "npx",
+      "args": ["-y", "@railway/mcp-server"],
+      "env": {
+        "RAILWAY_API_TOKEN": "${RAILWAY_API_TOKEN}"
+      },
+      "_setup": "1) Generate at https://railway.app/account/tokens — 'Personal' scope is fine. 2) Add RAILWAY_API_TOKEN to .env. 3) After enabling I can list deployments, restart services, tail logs without you copy-pasting from the dashboard."
+    }
+  }
+}
