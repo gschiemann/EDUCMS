@@ -845,6 +845,30 @@ export function useTenantBranding() {
   });
 }
 
+/**
+ * One-click "apply our brand to every template I own." Invalidates
+ * templates + backdrops caches so the gallery reflects the re-skin
+ * the moment the mutation lands.
+ */
+export function useApplyBrandToTemplates() {
+  const qc = useQueryClient();
+  return useMutation<
+    { count: number; zonesPatched: number; mode: string; message: string },
+    Error,
+    { mode?: 'fill-blanks' | 'override' } | void
+  >({
+    mutationFn: (body) =>
+      apiFetch('/branding/apply-to-templates', {
+        method: 'POST',
+        body: JSON.stringify(body || { mode: 'fill-blanks' }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['templates'] });
+      qc.invalidateQueries({ queryKey: ['template-backdrops'] });
+    },
+  });
+}
+
 // ─── Submissions (Sprint 1.5 — submit-for-review workflow) ───
 export interface SubmissionRow {
   id: string;

@@ -22,6 +22,7 @@ import {
   useTemplates, useCreateTemplate, useDeleteTemplate, useCreateFromPreset,
   useDuplicateTemplate, useUpdateTemplate, useUpdateTemplateZones,
   useAssets, usePlaylists, useAssetFolders,
+  useTenantBranding, useApplyBrandToTemplates,
 } from '@/hooks/use-api';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
@@ -378,14 +379,17 @@ export default function TemplatesPage() {
               Design beautiful screen layouts for every space in your school. Pick a ready-made template or build your own from scratch.
             </p>
           </div>
-          <button
-            onClick={() => setShowCreate(true)}
-            disabled={isViewer}
-            title={isViewer ? 'Read-only — viewer role' : undefined}
-            className="px-5 py-3 bg-white text-indigo-700 font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Plus className="w-5 h-5" /> New Template
-          </button>
+          <div className="flex items-center gap-2">
+            <ApplyBrandButton disabled={isViewer} />
+            <button
+              onClick={() => setShowCreate(true)}
+              disabled={isViewer}
+              title={isViewer ? 'Read-only — viewer role' : undefined}
+              className="px-5 py-3 bg-white text-indigo-700 font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Plus className="w-5 h-5" /> New Template
+            </button>
+          </div>
         </div>
       </div>
 
@@ -2140,5 +2144,114 @@ function PlaylistPicker({ config, setConfig, inputClass }: { config: any; setCon
         <p className="text-[10px] text-slate-400 italic">No playlists created yet. Create one from the Playlists page.</p>
       )}
     </div>
+  );
+}
+
+/**
+ * "Apply our brand to every template" — the K-12 differentiator that
+ * Canva can't ship because Canva designs are siloed. We re-skin every
+ * template the operator owns in one transaction. Two modes: fill-blanks
+ * (safe, only sets unset keys) and override (bold, replaces existing
+ * brand colors/fonts). Demo punchline: "60 templates rebranded in 30
+ * seconds."
+ */
+function ApplyBrandButton({ disabled }: { disabled: boolean }) {
+  const branding = useTenantBranding();
+  const apply = useApplyBrandToTemplates();
+  const [open, setOpen] = useState(false);
+  const [override, setOverride] = useState(false);
+
+  const hasBrand = !!branding.data && (branding.data.palette || branding.data.fontHeading || branding.data.fontBody);
+
+  const onApply = async () => {
+    try {
+      const result = await apply.mutateAsync({ mode: override ? 'override' : 'fill-blanks' });
+      setOpen(false);
+      // Quick toast — could swap to a real toast lib but alert is fine
+      // for the moment. Tells the operator exactly how many templates
+      // were touched and how many zones inside them.
+      alert(`✓ ${result.message}`);
+    } catch (err: any) {
+      alert(`Failed: ${err.message || 'unknown error'}`);
+    }
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        disabled={disabled || !hasBrand}
+        title={!hasBrand ? 'Configure your brand kit first (Brand tab in any template builder)' : disabled ? 'Read-only — viewer role' : 'Re-skin every template with your school brand'}
+        className="px-4 py-3 bg-gradient-to-r from-pink-500 to-violet-500 text-white font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <Sparkles className="w-5 h-5" /> Brand all templates
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-violet-500" />
+                Apply your brand
+              </h2>
+              <button onClick={() => setOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+            </div>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Re-skins every <strong>custom</strong> template you own with your school&apos;s brand colors, fonts, and ink color. System presets are left alone.
+            </p>
+
+            {/* Brand palette preview */}
+            {branding.data?.palette && (
+              <div className="flex items-center gap-1.5">
+                {(['primary', 'primaryHover', 'accent', 'ink', 'surface', 'surfaceAlt'] as const).map((k) => {
+                  const v = branding.data.palette[k];
+                  if (!v) return null;
+                  return (
+                    <div key={k} className="w-7 h-7 rounded shadow-sm border border-slate-200" style={{ background: v }} title={`${k}: ${v}`} />
+                  );
+                })}
+                {branding.data.fontHeading && (
+                  <span className="ml-2 text-xs text-slate-700 font-bold" style={{ fontFamily: branding.data.fontHeading }}>
+                    {branding.data.fontHeading.split(',')[0].replace(/['"]/g, '')}
+                  </span>
+                )}
+              </div>
+            )}
+
+            <label className="flex items-start gap-2 p-3 bg-slate-50 rounded-lg cursor-pointer">
+              <input
+                type="checkbox"
+                checked={override}
+                onChange={(e) => setOverride(e.target.checked)}
+                className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-400"
+              />
+              <span className="text-xs text-slate-700">
+                <strong>Replace existing brand colors and fonts.</strong>
+                <span className="block text-slate-500 mt-0.5">
+                  Off (default): only fills in templates that don&apos;t have a color/font set. On: forces the brand on every template, overwriting prior choices.
+                </span>
+              </span>
+            </label>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                onClick={() => setOpen(false)}
+                className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={onApply}
+                disabled={apply.isPending}
+                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-pink-500 to-violet-500 hover:from-pink-600 hover:to-violet-600 disabled:opacity-50 text-white text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-1.5"
+              >
+                {apply.isPending ? 'Applying…' : <>Apply now <Sparkles className="w-4 h-4" /></>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

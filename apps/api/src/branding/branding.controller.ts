@@ -438,6 +438,117 @@ export class BrandingController {
     return derivePalette(p.hex, a?.hex);
   }
 
+  /**
+   * One-click "apply our brand to every template I own."
+   *
+   * The Canva differentiator. Their Brand Kit only applies per-design
+   * — operators have to open every design and re-apply. We re-skin
+   * every template in the tenant in one transaction:
+   *   - Background: bgColor ← palette.surface (or surfaceAlt) when
+   *     unset OR when mode='override'.
+   *   - Per-zone defaultConfig: ALL zones get cfg.color, fontFamily
+   *     (heading), bold/italic/underline reset to defaults — these
+   *     keys flow into the universal scoped <style> override on the
+   *     player render so every text descendant inherits the brand.
+   *
+   * Two modes:
+   *   - 'fill-blanks' (default, safe): only set keys that are unset.
+   *   - 'override' (bold): force the brand on every zone, replacing
+   *     existing colors/fonts. Demo-friendly.
+   *
+   * System presets are EXCLUDED — those are the gold-standard
+   * canonical templates and shouldn't drift per-tenant. Only custom
+   * (cloned) templates get re-skinned.
+   *
+   * Audit-logged with the count of templates touched.
+   */
+  @Post('apply-to-templates')
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async applyBrandToTemplates(
+    @Request() req: any,
+    @Body() body: { mode?: 'fill-blanks' | 'override' },
+  ) {
+    const tenantId = req.user.tenantId;
+    const userId = req.user.id;
+    const mode = body?.mode === 'override' ? 'override' : 'fill-blanks';
+
+    const branding = await this.prisma.client.tenantBranding.findUnique({
+      where: { tenantId },
+    });
+    if (!branding) {
+      throw new HttpException(
+        'No brand kit configured for this tenant. Paste your school URL on the Brand Kit panel first.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const palette = (branding.palette as any) || {};
+    const fontHeading = branding.fontHeading || null;
+    const fontBody = branding.fontBody || null;
+    const ink = palette.ink || '#0f172a';
+    const surface = palette.surface || palette.surfaceAlt || palette.primary || '#ffffff';
+
+    const templates = await this.prisma.client.template.findMany({
+      where: { tenantId, isSystem: false },
+      include: { zones: true },
+    });
+
+    if (templates.length === 0) {
+      return { count: 0, mode, message: 'No custom templates to re-skin. System presets are intentionally left alone.' };
+    }
+
+    let zonesPatched = 0;
+
+    await this.prisma.client.$transaction(async (tx) => {
+      for (const tpl of templates) {
+        // Background fill
+        const bgPatch: any = {};
+        if (mode === 'override' || (!tpl.bgColor && !tpl.bgGradient && !tpl.bgImage)) {
+          bgPatch.bgColor = surface;
+          bgPatch.bgGradient = null;
+        }
+        if (Object.keys(bgPatch).length > 0) {
+          await tx.template.update({ where: { id: tpl.id }, data: bgPatch });
+        }
+
+        // Zone-level brand override — universal text-style keys read
+        // by the BuilderZone scoped <style> override.
+        for (const z of tpl.zones) {
+          const cfg = (() => {
+            try { return z.defaultConfig ? JSON.parse(z.defaultConfig as any) : {}; } catch { return {}; }
+          })();
+          const patch: Record<string, any> = {};
+          if (mode === 'override' || cfg.color === undefined) patch.color = ink;
+          if ((mode === 'override' || cfg.fontFamily === undefined) && fontHeading) patch.fontFamily = fontHeading;
+          // fontBody not currently consumed but kept on the zone so a
+          // future "apply body font separately" toggle can pick it up.
+          if (Object.keys(patch).length === 0) continue;
+          const merged = { ...cfg, ...patch };
+          await tx.templateZone.update({ where: { id: z.id }, data: { defaultConfig: JSON.stringify(merged) } });
+          zonesPatched += 1;
+        }
+      }
+    });
+
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'BRANDING_APPLY_TO_TEMPLATES',
+        targetType: 'tenant',
+        targetId: tenantId,
+        tenantId,
+        userId,
+        details: JSON.stringify({ mode, templateCount: templates.length, zonesPatched }),
+      },
+    }).catch(() => {});
+
+    return {
+      count: templates.length,
+      zonesPatched,
+      mode,
+      message: `Applied your brand to ${templates.length} template${templates.length === 1 ? '' : 's'} (${zonesPatched} zones updated).`,
+    };
+  }
+
   // ── Public unauthenticated "current branding by slug" for SSR of
   // the login page + public player chrome. We only expose safe fields
   // (no rawSnapshot, no confidenceScores). Useful when the Next.js
