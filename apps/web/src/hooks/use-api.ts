@@ -424,6 +424,14 @@ export function useTemplate(id: string) {
   });
 }
 
+export function useTemplateBackdrops() {
+  return useQuery<Array<{ id: string; name: string; bgColor: string | null; bgGradient: string | null; bgImage: string | null }>>({
+    queryKey: ['template-backdrops'],
+    queryFn: () => apiFetch('/templates/backdrops'),
+    staleTime: 5 * 60 * 1000, // 5 min — backdrops rarely change
+  });
+}
+
 export function useSystemPresets() {
   return useQuery({
     queryKey: ['templates', 'system-presets'],
@@ -905,5 +913,17 @@ export function useDecideSubmission() {
       qc.invalidateQueries({ queryKey: ['assets'] });
       qc.invalidateQueries({ queryKey: ['playlists'] });
     },
+  });
+}
+
+export function usePendingSubmissionsCount(enabled: boolean = true) {
+  return useQuery<{ count: number }>({
+    queryKey: ['submissions-pending-count'],
+    queryFn: async () => {
+      const items = await apiFetch<SubmissionRow[]>('/submissions?status=PENDING');
+      return { count: Array.isArray(items) ? items.length : 0 };
+    },
+    enabled,
+    refetchInterval: 30_000,
   });
 }

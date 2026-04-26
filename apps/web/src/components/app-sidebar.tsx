@@ -5,6 +5,7 @@ import { LayoutDashboard, MonitorPlay, ListVideo, Settings2, LogOut, Upload } fr
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useUIStore } from "@/store/ui-store"
+import { usePendingSubmissionsCount } from "@/hooks/use-api"
 
 import {
   Sidebar,
@@ -28,11 +29,16 @@ export function AppSidebar() {
   const tenantId = user?.tenantId || pathname.split('/')[1] || ''
   const base = `/${tenantId}`
 
+  const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'DISTRICT_ADMIN' || user?.role === 'SCHOOL_ADMIN'
+  const { data: pendingSubmissionsCountData } = usePendingSubmissionsCount(isAdmin)
+  const pendingSubmissionsCount = pendingSubmissionsCountData?.count || 0
+
   const menuItems = [
     { title: "Dashboard", url: `${base}/dashboard`, icon: LayoutDashboard },
     { title: "Screens", url: `${base}/screens`, icon: MonitorPlay },
     { title: "Assets", url: `${base}/assets`, icon: Upload },
     { title: "Playlists", url: `${base}/playlists`, icon: ListVideo },
+    { title: "Reviews", url: `${base}/reviews`, icon: ListVideo, badge: isAdmin ? (pendingSubmissionsCount || null) : null },
     { title: "Settings", url: `${base}/settings`, icon: Settings2 },
   ]
 
@@ -55,7 +61,7 @@ export function AppSidebar() {
           <SidebarGroupLabel className="text-neutral-400">Main Menu</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {menuItems.map((item) => {
+              {menuItems.map((item: any) => {
                 const isActive = pathname === item.url || pathname.endsWith(item.url.split('/').pop() || '')
                 return (
                   <SidebarMenuItem key={item.title}>
@@ -70,6 +76,11 @@ export function AppSidebar() {
                     >
                       <item.icon />
                       <span>{item.title}</span>
+                      {item.badge ? (
+                        <span className="ml-auto bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                          {item.badge}
+                        </span>
+                      ) : null}
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 )

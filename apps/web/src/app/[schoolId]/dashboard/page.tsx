@@ -29,9 +29,10 @@ import {
 import { useRecentActivity } from '@/hooks/use-dashboard-data';
 import {
   useScreens, useScreenGroups, usePlaylists, useAssets, useSchedules,
-  useTenantStatus, useApproveAsset,
+  useTenantStatus, useApproveAsset, useSubmissions, type SubmissionRow,
 } from '@/hooks/use-api';
 import { useAppStore } from '@/lib/store';
+import { useUIStore } from '@/store/ui-store';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
@@ -45,8 +46,12 @@ export default function DashboardPage() {
   const { data: schedules } = useSchedules();
   const { data: tenant } = useTenantStatus();
   const user = useAppStore((s) => s.user);
+  const userRole = useUIStore((s) => s.user?.role);
+  const isViewer = userRole === 'RESTRICTED_VIEWER';
+  const isContributor = userRole === 'CONTRIBUTOR';
   const pathname = usePathname();
   const tenantBase = pathname?.split('/').slice(0, 2).join('/') || '';
+  const { data: mySubmissions } = useSubmissions({ mine: true });
 
   // Minute-clock for the header greeting + "live" scheduling match.
   const [now, setNow] = useState<Date>(() => new Date());
@@ -592,7 +597,8 @@ export default function DashboardPage() {
                     </div>
                     <button
                       onClick={() => approveAsset.mutate(a.id)}
-                      disabled={approveAsset.isPending}
+                      disabled={approveAsset.isPending || isViewer}
+                      title={isViewer ? 'Read-only — viewer role' : undefined}
                       className="shrink-0 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold disabled:opacity-50"
                     >
                       Approve
@@ -634,7 +640,49 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {pendingAssets.length === 0 && downScreens.length === 0 && !isEmpty && (
+          {isContributor && (mySubmissions || []).length > 0 && (
+            <div className="bg-white rounded-2xl border border-indigo-200 overflow-hidden">
+              <div className="px-5 py-4 border-b border-indigo-100 flex items-center justify-between bg-indigo-50/50">
+                <div className="flex items-center gap-2">
+                  <ListVideo className="w-4 h-4 text-indigo-600" />
+                  <h2 className="text-sm font-bold text-slate-800">My Submissions</h2>
+                </div>
+                <Link href={`${tenantBase}/reviews`} className="text-[11px] font-semibold text-indigo-700 hover:text-indigo-800">
+                  View all →
+                </Link>
+              </div>
+              <div className="divide-y divide-slate-50">
+                {(mySubmissions || []).slice(0, 5).map((sub: SubmissionRow) => (
+                  <div key={sub.id} className="px-5 py-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-slate-800">
+                          {sub.assetIds.length + sub.playlistIds.length + sub.scheduleIds.length} item{sub.assetIds.length + sub.playlistIds.length + sub.scheduleIds.length === 1 ? '' : 's'}
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          {new Date(sub.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </div>
+                        {sub.reviewerNote && sub.status === 'REJECTED' && (
+                          <div className="text-[10px] text-rose-600 italic mt-1">{sub.reviewerNote}</div>
+                        )}
+                      </div>
+                      <SubmissionStatusPill status={sub.status} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {isContributor && (mySubmissions || []).length === 0 && (
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center">
+              <ListVideo className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+              <p className="text-sm font-semibold text-slate-700">No submissions yet.</p>
+              <p className="text-xs text-slate-500 mt-1">Build a playlist and click Submit for Review to send it to an admin.</p>
+            </div>
+          )}
+
+          {pendingAssets.length === 0 && downScreens.length === 0 && !isContributor && !isEmpty && (
             <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
               <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
               <p className="text-sm font-semibold text-slate-700">Nothing needs attention.</p>
@@ -759,4 +807,13 @@ function OnboardStep({
       </span>
     </Link>
   );
+}
+
+function SubmissionStatusPill({ status }: { status: SubmissionRow['status'] }) {
+  const cls = status === 'PENDING'
+    ? 'bg-amber-100 text-amber-700'
+    : status === 'APPROVED'
+      ? 'bg-emerald-100 text-emerald-700'
+      : 'bg-rose-100 text-rose-700';
+  return <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded ${cls}`}>{status}</span>;
 }
