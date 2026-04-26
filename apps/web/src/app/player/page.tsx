@@ -14,6 +14,7 @@ import {
   isSwSupported,
   type CacheStatus,
 } from './offline-cache';
+import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Bullet-proof helpers (Phase 1 hardening)
@@ -2258,11 +2259,17 @@ function PlayerPage() {
             </div>
 
             <div className="flex flex-wrap items-center justify-center gap-4">
-              <button onClick={(e) => { 
-                e.stopPropagation(); 
-                if(window.confirm('Are you absolutely certain you want to tear down the connection? This will wipe the pairing from this device.')) {
-                  localStorage.removeItem('edu_device_fp'); 
-                  setPhase('registering'); 
+              <button onClick={async (e) => {
+                e.stopPropagation();
+                const ok = await appConfirm({
+                  title: 'Unpair this screen?',
+                  message: 'Tearing down the connection wipes the pairing from this device. The next session will require a new pairing code from the dashboard.',
+                  tone: 'danger',
+                  confirmLabel: 'Unpair device',
+                });
+                if (ok) {
+                  localStorage.removeItem('edu_device_fp');
+                  setPhase('registering');
                   setShowOverlay(false);
                 }
               }} className="px-6 py-3 bg-white border border-slate-200 hover:border-red-100 hover:bg-red-50 text-slate-700 hover:text-red-600 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative group">
@@ -2271,7 +2278,14 @@ function PlayerPage() {
               <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="px-6 py-3 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative">
                 <Network className="w-5 h-5 text-slate-400" /> Ping Server
               </button>
-              <button onClick={(e) => { e.stopPropagation(); alert('No assigned content currently queued.'); }} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-2xl transition-all shadow-[0_8px_20px_rgb(99,102,241,0.3)] hover:shadow-[0_8px_25px_rgb(99,102,241,0.4)] hover:-translate-y-0.5 flex items-center gap-2 focus:scale-95 z-20 relative">
+              <button onClick={async (e) => {
+                e.stopPropagation();
+                await appAlert({
+                  title: 'Nothing to play yet',
+                  message: 'No assigned content is currently queued for this screen. Schedule a playlist from the dashboard, then tap Ping Server to refresh.',
+                  tone: 'info',
+                });
+              }} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-2xl transition-all shadow-[0_8px_20px_rgb(99,102,241,0.3)] hover:shadow-[0_8px_25px_rgb(99,102,241,0.4)] hover:-translate-y-0.5 flex items-center gap-2 focus:scale-95 z-20 relative">
                 <Play className="w-5 h-5 fill-current" /> Auto-Play
               </button>
             </div>

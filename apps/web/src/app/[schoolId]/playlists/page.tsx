@@ -20,6 +20,7 @@ import {
   useTemplates, useAssetFolders, useSetPlaylistActive,
   useUsers, useCreateSubmission,
 } from '@/hooks/use-api';
+import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
@@ -520,9 +521,18 @@ export default function PlaylistsPage() {
       setShowSubmitModal(false);
       setSubmitNote('');
       setSubmitReviewerIds([]);
-      alert('Submitted for review. The reviewer(s) you picked will see it on their Reviews page.');
+      await appAlert({
+        title: 'Submitted for review',
+        message: 'The reviewer(s) you picked will see it on their Reviews page. You’ll be notified once they approve or send it back.',
+        tone: 'info',
+        confirmLabel: 'Got it',
+      });
     } catch (err: any) {
-      alert(`Could not submit: ${err.message || 'unknown error'}`);
+      await appAlert({
+        title: "Couldn't submit for review",
+        message: err.message || 'Something went wrong while creating the submission. Please try again.',
+        tone: 'danger',
+      });
     }
   };
   const [newName, setNewName] = useState('');
@@ -750,7 +760,12 @@ export default function PlaylistsPage() {
         // operator on the editor with their changes intact than
         // schedule an empty playlist that drops the screen to splash.
         console.error('[playlists] save-before-publish failed:', err);
-        alert('Could not save your playlist before publishing. Please try Save first, then Publish.');
+        await appAlert({
+          title: "Couldn't save before publishing",
+          message: 'Your playlist edits failed to save, so we stopped before publishing. Click Save and try Publish again.',
+          tone: 'danger',
+          confirmLabel: 'Got it',
+        });
         return;
       }
     }
@@ -1881,9 +1896,12 @@ export default function PlaylistsPage() {
                 }
                 if (conflicts.length > 0) {
                   const names = conflicts.map((c) => c.name).join(', ');
-                  const ok = window.confirm(
-                    `"${names}" ${conflicts.length === 1 ? 'is' : 'are'} currently playing on the same target. Replace ${conflicts.length === 1 ? 'it' : 'them'} with "${pl.name}"?`,
-                  );
+                  const ok = await appConfirm({
+                    title: `Replace ${conflicts.length === 1 ? 'the active playlist' : 'active playlists'}?`,
+                    message: `"${names}" ${conflicts.length === 1 ? 'is' : 'are'} currently playing on the same target. Switching "${pl.name}" on will turn ${conflicts.length === 1 ? 'it' : 'them'} off.`,
+                    tone: 'warn',
+                    confirmLabel: 'Replace',
+                  });
                   if (!ok) return;
                   // Deactivate every conflict in parallel, then turn
                   // this one on. We don't await individual results —

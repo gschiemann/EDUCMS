@@ -7,6 +7,7 @@ import { API_URL } from '@/lib/api-url';
 import type { Zone, ResizeHandle } from './types';
 import { getZoneColor, widgetIcon, widgetLabel } from './constants';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
+import { appAlert } from '@/components/ui/app-dialog';
 
 interface Props {
   zone: Zone;
@@ -89,7 +90,11 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       }
     } catch (err) {
       console.error('Upload failed:', err);
-      alert('Failed to upload image. Please try again.');
+      await appAlert({
+        title: "Couldn't upload that image",
+        message: 'The upload failed. Check your connection or try a smaller file (under 50 MB) and try again.',
+        tone: 'danger',
+      });
     } finally {
       setIsUploading(false);
     }

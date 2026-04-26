@@ -18,6 +18,7 @@ import Link from 'next/link';
 import { use } from 'react';
 import { Check, X, Inbox, ArrowLeft, Loader2 } from 'lucide-react';
 import { useSubmissions, useSubmission, useDecideSubmission, type SubmissionRow } from '@/hooks/use-api';
+import { appAlert } from '@/components/ui/app-dialog';
 import { useUIStore } from '@/store/ui-store';
 
 export default function ReviewsPage({ params }: { params: Promise<{ schoolId: string }> }) {
@@ -149,7 +150,11 @@ function ReviewDetail({ id, onBack, statusFilter }: { id: string; onBack: () => 
       await decide.mutateAsync({ id, decision, reviewerNote: note.trim() || undefined });
       onBack();
     } catch (err: any) {
-      alert(`Could not ${decision}: ${err.message || 'unknown error'}`);
+      await appAlert({
+        title: `Couldn't ${decision} this submission`,
+        message: err.message || 'Something went wrong while saving the decision. Please try again.',
+        tone: 'danger',
+      });
     }
   };
 

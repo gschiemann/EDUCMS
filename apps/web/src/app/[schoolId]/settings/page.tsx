@@ -10,6 +10,7 @@ import { LicenseCard } from '@/components/settings/LicenseCard';
 import { PanicContentEditor } from '@/components/settings/PanicContentEditor';
 import { BrandingSettingsCard } from '@/components/settings/BrandingSettingsCard';
 import { DistrictSchoolsCard } from '@/components/settings/DistrictSchoolsCard';
+import { appConfirm } from '@/components/ui/app-dialog';
 
 const ROLES = ['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN', 'CONTRIBUTOR', 'RESTRICTED_VIEWER'] as const;
 
@@ -368,7 +369,15 @@ export default function SettingsPage() {
                       {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                     </select>
                     <button
-                      onClick={() => { if (confirm(`Remove ${user.email}?`)) deleteUser.mutate(user.id); }}
+                      onClick={async () => {
+                        const ok = await appConfirm({
+                          title: `Remove ${user.email}?`,
+                          message: 'They will lose access immediately. Their audit log entries stay intact for compliance.',
+                          tone: 'danger',
+                          confirmLabel: 'Remove user',
+                        });
+                        if (ok) deleteUser.mutate(user.id);
+                      }}
                       className="text-slate-300 hover:text-red-500 transition-colors p-1"
                     >
                       <Trash2 className="w-3.5 h-3.5" />

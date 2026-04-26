@@ -6,6 +6,7 @@ import { RoleGate } from '@/components/RoleGate';
 import { useAuditLog, useUsers } from '@/hooks/use-api';
 import { API_URL } from '@/lib/api-url';
 import { useUIStore } from '@/store/ui-store';
+import { appAlert } from '@/components/ui/app-dialog';
 
 const PAGE_SIZE = 50;
 
@@ -74,7 +75,11 @@ function AuditViewer() {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
     if (!res.ok) {
-      alert('Export failed: ' + res.status);
+      await appAlert({
+        title: "Couldn't export the audit log",
+        message: `The server responded with status ${res.status}. Try again in a moment, or narrow the date range if the export was very large.`,
+        tone: 'danger',
+      });
       return;
     }
     const blob = await res.blob();

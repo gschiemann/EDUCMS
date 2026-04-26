@@ -29,6 +29,7 @@ import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateTh
 import { useParams, useRouter } from 'next/navigation';
 import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 import { useUIStore } from '@/store/ui-store';
+import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 
 // ─────────────────────────────────────────────────────
 // Constants & Helpers
@@ -554,7 +555,15 @@ export default function TemplatesPage() {
                     portraitSibling={portraitSiblingFor(t)}
                     onEdit={() => openInBuilder(t)}
                     onDuplicate={() => handleDuplicate(t)}
-                    onDelete={() => { if (confirm('Delete this template?')) deleteTemplate.mutateAsync(t.id); }}
+                    onDelete={async () => {
+                      const ok = await appConfirm({
+                        title: 'Delete this template?',
+                        message: `This permanently removes "${t.name}". Any screens scheduled with this layout fall back to the next playlist.`,
+                        tone: 'danger',
+                        confirmLabel: 'Delete template',
+                      });
+                      if (ok) deleteTemplate.mutateAsync(t.id);
+                    }}
                     onPreview={(active) => setPreviewTemplate(active)}
                     isViewerDisabled={isViewer}
                   />
@@ -2167,12 +2176,20 @@ function ApplyBrandButton({ disabled }: { disabled: boolean }) {
     try {
       const result = await apply.mutateAsync({ mode: override ? 'override' : 'fill-blanks' });
       setOpen(false);
-      // Quick toast — could swap to a real toast lib but alert is fine
-      // for the moment. Tells the operator exactly how many templates
-      // were touched and how many zones inside them.
-      alert(`✓ ${result.message}`);
+      // Confirmation dialog matching the rest of the app — tells the
+      // operator exactly how many templates were touched and how many
+      // zones inside them.
+      await appAlert({
+        title: 'Brand applied',
+        message: result.message,
+        tone: 'info',
+      });
     } catch (err: any) {
-      alert(`Failed: ${err.message || 'unknown error'}`);
+      await appAlert({
+        title: "Couldn't apply brand",
+        message: err.message || 'Something went wrong while re-skinning templates. Please try again.',
+        tone: 'danger',
+      });
     }
   };
 

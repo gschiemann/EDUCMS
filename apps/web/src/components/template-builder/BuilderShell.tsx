@@ -351,6 +351,19 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
   }, [selectedIds, clipboard, undo, redo, select, removeSelected, duplicateZone, updateZones, handleSave, handleSaveAs, showShortcuts]);
 
   useEffect(() => {
+    // beforeunload is the LAST line of defence against losing unsaved
+    // edits when the operator hits ⌘R / F5 / closes the tab. Browsers
+    // intentionally hardcode the dialog message ("Leave site? Changes
+    // you made may not be saved") for security — we cannot replace it
+    // with our themed AppDialog. Every OTHER confirm/alert in the app
+    // uses appConfirm/appAlert; this one's the documented exception.
+    //
+    // Auto-save runs every 15s of idle time, so this only fires if the
+    // operator made a change and refreshed within 15s. To keep the
+    // surface area tight we ALSO skip when previewMode is on (no edits
+    // are happening) and when isSystem (system presets aren't editable
+    // — anything they typed is in a draft copy that opens elsewhere).
+    if (template.isSystem || previewMode) return;
     const warn = (e: BeforeUnloadEvent) => {
       if (isDirty) {
         e.preventDefault();
@@ -359,7 +372,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
     };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [isDirty]);
+  }, [isDirty, template.isSystem, previewMode]);
 
   const panels: Array<{ key: PanelKey; label: string; icon: LucideIcon }> = [
     { key: 'widgets', label: 'Widgets', icon: Plus },

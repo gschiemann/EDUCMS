@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { AppDialogHost } from '@/components/ui/app-dialog';
 
 export const metadata: Metadata = {
   title: 'EDU CMS Player',
@@ -22,6 +23,11 @@ export default function PlayerLayout({
   return (
     <div className="fixed inset-0 bg-black overflow-hidden">
       {children}
+      {/* Themed confirm/alert dialogs — replaces native window.confirm
+          / alert so the player's settings overlay (Unpair Device, etc)
+          stays inside the EduCMS visual language even on a kiosk where
+          the OS chrome is hidden. */}
+      <AppDialogHost />
     </div>
   );
 }
