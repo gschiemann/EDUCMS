@@ -2085,10 +2085,10 @@ export function FormatToggles({
     <div>
       <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Format</label>
       <div className="flex gap-1">
-        {btn(bold,          'Bold',          'B', { fontWeight: 800 },                                                     () => onChange({ bold: !bold }))}
-        {btn(italic,        'Italic',        'I', { fontStyle: 'italic', fontWeight: 600 },                                () => onChange({ italic: !italic }))}
-        {btn(underline,     'Underline',     'U', { textDecoration: 'underline', fontWeight: 600 },                        () => onChange({ underline: !underline }))}
-        {btn(strikethrough, 'Strikethrough', 'S', { textDecoration: 'line-through', fontWeight: 600 },                     () => onChange({ strikethrough: !strikethrough }))}
+        {btn(bold,          'Bold (Ctrl/⌘ + B)',                'B', { fontWeight: 800 },                              () => onChange({ bold: !bold }))}
+        {btn(italic,        'Italic (Ctrl/⌘ + I)',              'I', { fontStyle: 'italic', fontWeight: 600 },         () => onChange({ italic: !italic }))}
+        {btn(underline,     'Underline (Ctrl/⌘ + U)',           'U', { textDecoration: 'underline', fontWeight: 600 }, () => onChange({ underline: !underline }))}
+        {btn(strikethrough, 'Strikethrough (Ctrl/⌘ + Shift + X)','S', { textDecoration: 'line-through', fontWeight: 600 }, () => onChange({ strikethrough: !strikethrough }))}
       </div>
     </div>
   );

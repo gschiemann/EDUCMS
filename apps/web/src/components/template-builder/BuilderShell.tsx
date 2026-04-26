@@ -641,6 +641,8 @@ function ShortcutsModal({ onClose }: { onClose: () => void }) {
     ['Ctrl / \u2318 + Y  (or Shift+Z)', 'Redo'],
     ['Ctrl / \u2318 + D', 'Duplicate selected'],
     ['Ctrl / \u2318 + C / V', 'Copy / paste zones'],
+    ['Ctrl / \u2318 + B / I / U', 'Bold / italic / underline (text widget)'],
+    ['Ctrl / \u2318 + Shift + X', 'Strikethrough (text widget)'],
     ['Delete / Backspace', 'Remove selected'],
     ['Arrow keys', 'Nudge 1% (Shift = 10%, Alt = 0.1%)'],
     ['Shift-click / Ctrl-click zone', 'Multi-select'],
