@@ -157,6 +157,29 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
   const cfg = config || {};
   const compact = height < 20 || width < 25;
 
+  // Variant-registry dispatch — partner reported: drag the Dark Pill
+  // clock variant onto the canvas, get the default ClockWidget
+  // rendering instead. Root cause: variant tiles set
+  // `cfg.variant = 'clock-dark-pill'` on the zone, but the per-widget
+  // dispatch below only checks `config.theme` not `config.variant`.
+  // The variant's `render` component (e.g. ClockDarkPill) is what
+  // the picker thumbnail uses; render it here too if a variant is
+  // selected so the canvas matches the thumbnail exactly.
+  if (cfg.variant) {
+    // Dynamically import to avoid eager-loading the variants registry
+    // on every render. Synchronous lookup against an in-memory map.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getVariant } = require('./variants') as typeof import('./variants');
+    const v = getVariant(cfg.variant);
+    if (v && v.render) {
+      const Render = v.render;
+      // Pass the merged config so the variant renderer sees both the
+      // operator's edits AND its own default config (height/width too
+      // for layout-aware variants).
+      return <Render config={cfg} compact={compact} />;
+    }
+  }
+
   switch (widgetType) {
     case 'CLOCK':        return <ClockWidget config={cfg} compact={compact} />;
     case 'WEATHER':      return <WeatherWidget config={cfg} compact={compact} />;

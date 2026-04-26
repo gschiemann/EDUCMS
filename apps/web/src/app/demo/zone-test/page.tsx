@@ -11,16 +11,19 @@
 
 import { Type, Image as ImageIcon, Globe, Megaphone, Clock } from 'lucide-react';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
+// Force the variants registry to register at module-load time so
+// `getVariant('clock-dark-pill')` resolves below.
+import '@/components/widgets/variants-register';
 
 const ZONES: Array<{ type: string; label: string; accent: string; config: any }> = [
-  { type: 'CLOCK',        label: 'CLOCK',         accent: '#6b7280', config: {} },
+  { type: 'CLOCK',        label: 'CLOCK · DEFAULT',          accent: '#6b7280', config: {} },
+  { type: 'CLOCK',        label: 'CLOCK · DARK PILL VARIANT', accent: '#6b7280', config: { variant: 'clock-dark-pill' } },
+  { type: 'CLOCK',        label: 'CLOCK · GRADIENT VARIANT',  accent: '#6b7280', config: { variant: 'clock-gradient-digital' } },
+  { type: 'CLOCK',        label: 'CLOCK · WALL VARIANT',      accent: '#6b7280', config: { variant: 'clock-minimal-analog' } },
   { type: 'TEXT',         label: 'TEXT',          accent: '#64748b', config: { content: 'Click to edit text' } },
   { type: 'WEATHER',      label: 'WEATHER',       accent: '#06b6d4', config: {} },
   { type: 'ANNOUNCEMENT', label: 'ANNOUNCEMENT',  accent: '#f59e0b', config: { message: 'Click to edit announcement' } },
   { type: 'TICKER',       label: 'TICKER',        accent: '#f59e0b', config: { messages: ['Click to edit ticker'] } },
-  { type: 'WEBPAGE',      label: 'URL / WEBSITE', accent: '#10b981', config: { url: 'https://example.com' } },
-  { type: 'IMAGE',        label: 'IMAGE (empty)', accent: '#3b82f6', config: {} },
-  { type: 'COUNTDOWN',    label: 'COUNTDOWN',     accent: '#f43f5e', config: { title: 'Countdown' } },
 ];
 
 const ICONS: Record<string, any> = {
