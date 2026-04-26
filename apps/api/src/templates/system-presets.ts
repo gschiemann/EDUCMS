@@ -887,7 +887,7 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
 {
     id: 'preset-hs-gallery-portrait',
     name: '🏛️ Gallery — Portrait',
-    description: 'Museum-catalog lobby: italic EB Garamond plaques, Roman-numeral acquisition list, artist-statement teacher quote, Curator\ · Vertical 4K layout's Note advisory, Docent ticker.',
+    description: 'Museum-catalog lobby: italic EB Garamond plaques, Roman-numeral acquisition list, artist-statement teacher quote, Curator\'s Note advisory, Docent ticker. · Vertical 4K layout',
     category: 'LOBBY_WELCOME', orientation: 'PORTRAIT', schoolLevel: 'HIGH',
     screenWidth: 2160, screenHeight: 3840, bgColor: '#f5f1e8',
     zones: [{ name: 'Scene', widgetType: 'HS_GALLERY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
