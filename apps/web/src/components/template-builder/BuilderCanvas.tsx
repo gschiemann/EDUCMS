@@ -232,6 +232,29 @@ export function BuilderCanvas() {
             <div className="absolute inset-0 pointer-events-none" style={gridBg} aria-hidden />
           )}
 
+          {/* Empty-canvas onboarding (C7 from Canva parity sweep). When
+              the operator opens a fresh custom template, an arrow points
+              left at the Widgets tab + a copy line nudges them to drag.
+              Auto-hides as soon as the first zone lands. Hidden in
+              previewMode so demo screenshots stay clean. */}
+          {zones.length === 0 && !previewMode && (
+            <div
+              aria-hidden
+              className="absolute inset-0 pointer-events-none flex items-center justify-center"
+            >
+              <div className="flex items-center gap-4 px-8 py-6 rounded-2xl bg-white/85 backdrop-blur-sm shadow-lg border border-indigo-200/60 max-w-md">
+                <svg viewBox="0 0 64 64" className="w-12 h-12 shrink-0 text-indigo-500" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M48 32 H10" />
+                  <path d="M22 18 L8 32 L22 46" />
+                </svg>
+                <div>
+                  <p className="text-sm font-bold text-slate-800">Drag a widget onto the canvas to start</p>
+                  <p className="text-xs text-slate-500 mt-1">Pick from the <strong className="text-indigo-600">Widgets</strong> tab on the left — Clock, Weather, Text, Image, Web page, and more.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {zones.map(zone => (
             <BuilderZone
               key={zone.id}
