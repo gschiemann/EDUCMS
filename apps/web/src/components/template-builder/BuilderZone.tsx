@@ -272,6 +272,42 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       onDrop={handleDrop}
       data-zone-id={zone.id}
     >
+      {/* Universal text-style override. When the operator sets fontFamily /
+          fontSize / color / bold / italic / underline / strikethrough on
+          a non-TEXT widget via the top contextual toolbar, those values
+          land on the zone's defaultConfig. This scoped <style> block
+          inherits them into every text descendant of the widget render —
+          so MS pack widgets, theme widgets, anything with internal
+          typography respects the override. Specificity is `!important`
+          because each widget has its own CSS classes that would otherwise
+          win. TEXT widget renders directly from these keys (no override
+          needed) so the block is a no-op in that case. */}
+      {(() => {
+        const cfg = (zone.defaultConfig || {}) as any;
+        const fam = typeof cfg.fontFamily === 'string' && cfg.fontFamily.trim();
+        const sz = typeof cfg.fontSize === 'number' && Number.isFinite(cfg.fontSize) ? cfg.fontSize : null;
+        const col = typeof cfg.color === 'string' && cfg.color.trim();
+        const bold = cfg.bold === true;
+        const italic = cfg.italic === true;
+        const underline = cfg.underline === true;
+        const strike = cfg.strikethrough === true;
+        const decorations: string[] = [];
+        if (underline) decorations.push('underline');
+        if (strike) decorations.push('line-through');
+        if (zone.widgetType === 'TEXT' || zone.widgetType === 'RICH_TEXT') return null;
+        if (!fam && !sz && !col && !bold && !italic && !underline && !strike) return null;
+        const rules: string[] = [];
+        if (fam)             rules.push(`font-family: ${fam} !important`);
+        if (sz)              rules.push(`font-size: ${sz}px !important`);
+        if (col)             rules.push(`color: ${col} !important`);
+        if (bold)            rules.push(`font-weight: 800 !important`);
+        if (italic)          rules.push(`font-style: italic !important`);
+        if (decorations.length) rules.push(`text-decoration: ${decorations.join(' ')} !important`);
+        return (
+          <style>{`[data-zone-id="${zone.id}"] *:not(svg):not(svg *) { ${rules.join('; ')} }`}</style>
+        );
+      })()}
+
       <WidgetPreview
         widgetType={zone.widgetType}
         config={zone.defaultConfig || {}}

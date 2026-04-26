@@ -1932,10 +1932,37 @@ function PlayerPage() {
                 }
               }
             : undefined;
+          // Universal text-style override — same scoped <style> trick
+          // BuilderZone uses, mirrored on the player so the operator's
+          // font/size/color/bold/italic/underline overrides actually
+          // ship to screens. Cheap inline math — emit only when at
+          // least one override is set + the widget is non-TEXT (TEXT
+          // reads the keys directly).
+          const fam = typeof cfg.fontFamily === 'string' && cfg.fontFamily.trim();
+          const sz = typeof cfg.fontSize === 'number' && Number.isFinite(cfg.fontSize) ? cfg.fontSize : null;
+          const col = typeof cfg.color === 'string' && cfg.color.trim();
+          const _bold = cfg.bold === true;
+          const _italic = cfg.italic === true;
+          const _underline = cfg.underline === true;
+          const _strike = cfg.strikethrough === true;
+          const _decorations: string[] = [];
+          if (_underline) _decorations.push('underline');
+          if (_strike) _decorations.push('line-through');
+          const isTextZone = zone.widgetType === 'TEXT' || zone.widgetType === 'RICH_TEXT';
+          const overrideRules: string[] = [];
+          if (!isTextZone) {
+            if (fam) overrideRules.push(`font-family: ${fam} !important`);
+            if (sz) overrideRules.push(`font-size: ${sz}px !important`);
+            if (col) overrideRules.push(`color: ${col} !important`);
+            if (_bold) overrideRules.push(`font-weight: 800 !important`);
+            if (_italic) overrideRules.push(`font-style: italic !important`);
+            if (_decorations.length) overrideRules.push(`text-decoration: ${_decorations.join(' ')} !important`);
+          }
           return (
           <div
             key={`${zone.id}-${isTouchTemplate ? sceneTick : 0}`}
             className="absolute overflow-hidden"
+            data-zone-id={zone.id}
             onClick={onZoneClick}
             style={{
               left: `${zone.x}%`,
@@ -1945,6 +1972,9 @@ function PlayerPage() {
               zIndex: zone.zIndex || 0,
               cursor: zoneTouchAction ? 'pointer' : undefined,
             }}>
+            {overrideRules.length > 0 && (
+              <style>{`[data-zone-id="${zone.id}"] *:not(svg):not(svg *) { ${overrideRules.join('; ')} }`}</style>
+            )}
             <WidgetPreview
               widgetType={zone.widgetType}
               config={cfg}

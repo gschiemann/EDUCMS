@@ -1,8 +1,8 @@
 "use client";
 
 import {
-  ArrowLeft, Save, Copy, Undo2, Redo2, Eye, EyeOff, Grid3X3, Magnet,
-  ZoomIn, ZoomOut, RotateCw, Loader2, CheckCircle2, AlertCircle, Hand, Trash2, X,
+  ArrowLeft, Save, Copy, Eye, EyeOff,
+  RotateCw, Loader2, CheckCircle2, AlertCircle, Hand, Trash2, X,
 } from 'lucide-react';
 import { useMemo } from 'react';
 import { useBuilderStore } from './useBuilderStore';
@@ -29,20 +29,10 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, onDiscard, saveStatus
   const zones = useBuilderStore((s) => s.zones);
   const isDirty = useBuilderStore((s) => s.isDirty);
   const isSystem = useBuilderStore((s) => s.isSystem);
-  const past = useBuilderStore((s) => s.past);
-  const future = useBuilderStore((s) => s.future);
-  const zoom = useBuilderStore((s) => s.zoom);
-  const showGrid = useBuilderStore((s) => s.showGrid);
-  const snapEnabled = useBuilderStore((s) => s.snapEnabled);
   const previewMode = useBuilderStore((s) => s.previewMode);
   const isTouchEnabled = useBuilderStore((s) => s.isTouchEnabled);
   const setTouchEnabled = useBuilderStore((s) => s.setTouchEnabled);
-  const undo = useBuilderStore((s) => s.undo);
-  const redo = useBuilderStore((s) => s.redo);
   const flipCanvas = useBuilderStore((s) => s.flipCanvas);
-  const setZoom = useBuilderStore((s) => s.setZoom);
-  const setShowGrid = useBuilderStore((s) => s.setShowGrid);
-  const setSnapEnabled = useBuilderStore((s) => s.setSnapEnabled);
   const setPreviewMode = useBuilderStore((s) => s.setPreviewMode);
 
   const touchWarnings = useMemo(
@@ -50,8 +40,6 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, onDiscard, saveStatus
     [isTouchEnabled, zones, meta.screenWidth, meta.screenHeight],
   );
 
-  const canUndo = past.length > 0;
-  const canRedo = future.length > 0;
   const isPortrait = meta.screenHeight > meta.screenWidth;
 
   return (
@@ -73,41 +61,10 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, onDiscard, saveStatus
       </div>
 
       <div className="flex items-center gap-1">
-        <ToolbarBtn label="Undo (Ctrl+Z)" onClick={undo} disabled={!canUndo}>
-          <Undo2 className="w-3.5 h-3.5" aria-hidden />
-        </ToolbarBtn>
-        <ToolbarBtn label="Redo (Ctrl+Y)" onClick={redo} disabled={!canRedo}>
-          <Redo2 className="w-3.5 h-3.5" aria-hidden />
-        </ToolbarBtn>
-        <div className="h-4 w-px bg-slate-200 mx-1" aria-hidden />
-        <ToolbarBtn
-          label={showGrid ? 'Hide grid' : 'Show grid'}
-          onClick={() => setShowGrid(!showGrid)}
-          pressed={showGrid}
-        >
-          <Grid3X3 className="w-3.5 h-3.5" aria-hidden />
-        </ToolbarBtn>
-        <ToolbarBtn
-          label={snapEnabled ? 'Disable snapping' : 'Enable snapping'}
-          onClick={() => setSnapEnabled(!snapEnabled)}
-          pressed={snapEnabled}
-        >
-          <Magnet className="w-3.5 h-3.5" aria-hidden />
-        </ToolbarBtn>
-        <div className="h-4 w-px bg-slate-200 mx-1" aria-hidden />
-        <ToolbarBtn label="Zoom out" onClick={() => setZoom(zoom - 0.1)}>
-          <ZoomOut className="w-3.5 h-3.5" aria-hidden />
-        </ToolbarBtn>
-        <span className="text-[10px] font-mono text-slate-500 w-10 text-center" aria-live="polite">
-          {Math.round(zoom * 100)}%
-        </span>
-        <ToolbarBtn label="Zoom in" onClick={() => setZoom(zoom + 0.1)}>
-          <ZoomIn className="w-3.5 h-3.5" aria-hidden />
-        </ToolbarBtn>
-        <ToolbarBtn label="Reset zoom" onClick={() => setZoom(1)}>
-          <span className="text-[10px] font-bold">1:1</span>
-        </ToolbarBtn>
-        <div className="h-4 w-px bg-slate-200 mx-1" aria-hidden />
+        {/* Undo/Redo + Grid/Snap + Zoom moved to the floating bottom bar
+            (BuilderBottomBar in BuilderShell.tsx) — single source of truth
+            for canvas-state controls. Top toolbar keeps only the things
+            unique to it: preview/touch toggles + save/discard cluster. */}
         <ToolbarBtn
           label={previewMode ? 'Exit preview' : 'Live preview'}
           onClick={() => setPreviewMode(!previewMode)}

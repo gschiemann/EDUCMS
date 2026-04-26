@@ -48,12 +48,12 @@ export function TopContextToolbar() {
   };
 
   // Cmd+B / Cmd+I / Cmd+U / Cmd+Shift+X — text format keyboard
-  // shortcuts. Canva-standard. Active only when a text widget is
-  // selected so they don't fight other Cmd+B handlers (browser back
-  // would also be on Cmd+B in some shells; we e.preventDefault so
-  // the browser default doesn't fire).
+  // shortcuts. Canva-standard. Active for ANY zone with text content
+  // (not just TEXT widget) — for non-text widgets the toggles affect
+  // the universal-style override that propagates to all text
+  // descendants of the zone.
   useEffect(() => {
-    if (!isText || !zone) return;
+    if (!zone || isImage) return;
     const handler = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       const t = e.target as HTMLElement;
@@ -67,14 +67,22 @@ export function TopContextToolbar() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [isText, zone?.id, cfg.bold, cfg.italic, cfg.underline, cfg.strikethrough]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isImage, zone?.id, cfg.bold, cfg.italic, cfg.underline, cfg.strikethrough]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Hide entirely in previewMode, on no selection, multi-select, or
-  // a widget type with no contextual controls. No empty-chrome strip
-  // — fewer pixels of noise > "always-visible" consistency.
+  // Hide only in previewMode or with no selection. EVERY widget
+  // type with a single zone selected gets a universal text-styling
+  // row at minimum (font / size / format / color) — the controls
+  // operate on `cfg.fontFamily`, `cfg.fontSize`, `cfg.color`,
+  // `cfg.bold`, `cfg.italic`, `cfg.underline`. For TEXT widgets
+  // these flow directly into the renderer; for every other widget
+  // type BuilderZone wraps the rendered output with a scoped <style>
+  // override that inherits these into all text descendants.
   if (previewMode) return null;
   if (!zone) return null;
-  if (!isText && !isImage && !isClock && !isWeather && !isAnnouncement && !isCalendar && !isCountdown) return null;
+  // Image-family widgets get their own row (Fit / Opacity / Radius)
+  // INSTEAD of the universal styling row — text styling on images
+  // makes no sense.
+  const showUniversalText = !isImage;
 
   return (
     <div
@@ -82,7 +90,7 @@ export function TopContextToolbar() {
       role="toolbar"
       aria-label="Selection-context toolbar"
     >
-      {isText && (
+      {showUniversalText && (
         <div className="flex items-end gap-3 flex-wrap">
           <div className="min-w-[180px]">
             <FontFamilyField
@@ -114,6 +122,11 @@ export function TopContextToolbar() {
               onChange={(v) => setField({ color: v })}
             />
           </div>
+          {!isText && (
+            <div className="ml-auto self-center text-[10px] text-slate-400 font-medium pb-1">
+              Override applies to all text in <span className="text-slate-700 font-bold">{zone.name}</span>
+            </div>
+          )}
         </div>
       )}
       {isImage && (
