@@ -2234,6 +2234,15 @@ function ApplyBrandButton({ disabled }: { disabled: boolean }) {
               </span>
             </label>
 
+            {override && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900">
+                <strong>⚠️ Theme-specific fonts will be replaced.</strong>
+                <span className="block text-amber-800 mt-0.5">
+                  Templates like <strong>HS Terminal</strong> (VT323 CRT) and <strong>MS Arcade</strong> (Press Start 2P pixel) use thematic fonts as part of their design. Override mode will swap them for your brand font. To preserve a theme&apos;s look, leave the font field empty in your Brand Kit.
+                </span>
+              </div>
+            )}
+
             <div className="flex items-center gap-2 pt-2">
               <button
                 onClick={() => setOpen(false)}
