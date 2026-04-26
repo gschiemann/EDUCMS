@@ -35,3 +35,6 @@ _tmp_*
 # Playwright
 test-results/
 playwright-report/
+
+.vercel
+.mcp.json
