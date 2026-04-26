@@ -273,7 +273,10 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
 
       if (inInput) return;
 
-      if (e.key === '?' && !mod) {
+      // `?` (existing) AND Cmd/Ctrl+/ (Canva-standard) both toggle
+      // the shortcuts modal. Cmd+/ is the discoverable form because
+      // operators expect it from every modern design tool.
+      if ((e.key === '?' && !mod) || (mod && e.key === '/')) {
         e.preventDefault();
         setShowShortcuts((v) => !v);
         return;
@@ -502,6 +505,22 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         ) : null}
       </DragOverlay>
 
+      {/* Discoverable "?" floating button in bottom-right of viewport.
+          Without this the only way to find the shortcut sheet was to
+          guess `?` or Cmd+/ — Canva surfaces a similar pill in the
+          same corner. Hidden in previewMode so demo screenshots stay
+          clean. */}
+      {!previewMode && (
+        <button
+          type="button"
+          onClick={() => setShowShortcuts(true)}
+          aria-label="Keyboard shortcuts"
+          title="Keyboard shortcuts (?  or  Ctrl/⌘ + /)"
+          className="fixed bottom-4 right-4 z-40 w-10 h-10 rounded-full bg-white text-slate-600 hover:text-indigo-600 shadow-lg border border-slate-200 hover:border-indigo-300 transition-colors flex items-center justify-center font-bold text-sm"
+        >
+          ?
+        </button>
+      )}
       {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
     </div>
     </DndContext>
@@ -521,7 +540,7 @@ function ShortcutsModal({ onClose }: { onClose: () => void }) {
     ['Shift-click / Ctrl-click zone', 'Multi-select'],
     ['Drag empty canvas', 'Marquee select'],
     ['Escape', 'Deselect'],
-    ['?', 'Toggle this dialog'],
+    ['?  or  Ctrl / ⌘ + /', 'Toggle this dialog'],
   ];
 
   return (
