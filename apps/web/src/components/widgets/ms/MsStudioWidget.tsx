@@ -28,6 +28,7 @@
 
 import * as React from 'react';
 import { HsStage } from '../hs/HsStage';
+import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
 
 export interface MsStudioConfig {
   // HUD — ON AIR cabochon
@@ -211,7 +212,7 @@ export const DEFAULTS: Required<MsStudioConfig> = {
  * "empty string → use default" — empty strings in the editor mean
  * "blank" but in the demo we want the demo copy.
  */
-const pick = <K extends keyof Required<MsStudioConfig>>(
+const pickStatic = <K extends keyof Required<MsStudioConfig>>(
   cfg: MsStudioConfig,
   key: K,
 ): string => {
@@ -219,8 +220,27 @@ const pick = <K extends keyof Required<MsStudioConfig>>(
   return (v === undefined || v === '' ? DEFAULTS[key] : v) as string;
 };
 
-export function MsStudioWidget({ config }: { config?: MsStudioConfig }) {
+export function MsStudioWidget({ config, live }: { config?: MsStudioConfig; live?: boolean }) {
   const cfg = config || {};
+
+  // Live clock + weather. Operator-typed values still WIN — the hook
+  // is the FALLBACK for fields the teacher hasn't customized.
+  const { now, weather } = useLiveTemplateData({
+    live,
+    weatherLocation: (cfg as any).weatherLocation,
+    weatherUnits: (cfg as any).weatherUnits,
+    weatherOverride: cfg['weather.temp'],
+  });
+
+  const pick = <K extends keyof Required<MsStudioConfig>>(key: K): string => {
+    const v = cfg[key];
+    if (v !== undefined && v !== '') return v as string;
+    if (live) {
+      if (key === 'clock.time') return fmt.time12NoSuffix(now);
+      if (key === 'weather.temp' && weather) return `${weather.tempF}°`;
+    }
+    return DEFAULTS[key] as string;
+  };
 
   // Per-tape metadata (which lbl colour, what the side stamp says, etc.)
   type TapeKey = 0 | 1 | 2 | 3;
@@ -262,52 +282,52 @@ export function MsStudioWidget({ config }: { config?: MsStudioConfig }) {
           <div className="ms-st-onair-text">
             <span className="ms-st-onair-dot" />
             <span className="ms-st-onair-label" data-field="status.label" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'status.label')}
+              {pick('status.label')}
             </span>
           </div>
         </div>
 
         <div className="ms-st-lockup" data-widget="school">
           <div className="ms-st-eye">
-            <span data-field="school.eye" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.eye')}</span>
+            <span data-field="school.eye" style={{ whiteSpace: 'pre-wrap' }}>{pick('school.eye')}</span>
           </div>
           <div className="ms-st-name">
-            <span data-field="school.name" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.name')}</span>{' '}
-            <b data-field="school.callsign" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.callsign')}</b>
+            <span data-field="school.name" style={{ whiteSpace: 'pre-wrap' }}>{pick('school.name')}</span>{' '}
+            <b data-field="school.callsign" style={{ whiteSpace: 'pre-wrap' }}>{pick('school.callsign')}</b>
           </div>
           <div className="ms-st-freq">
             <span className="ms-st-dial" aria-hidden="true">
               <i /><i /><i /><i /><i /><i /><i /><i /><i /><i />
             </span>
-            <span data-field="school.team" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.team')}</span>
+            <span data-field="school.team" style={{ whiteSpace: 'pre-wrap' }}>{pick('school.team')}</span>
             {' · '}
-            <b data-field="school.day" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.day')}</b>
+            <b data-field="school.day" style={{ whiteSpace: 'pre-wrap' }}>{pick('school.day')}</b>
           </div>
         </div>
 
         <div className="ms-st-meta">
           <div className="ms-st-mt ms-st-warm" data-widget="clock">
             <span className="ms-st-mt-k" data-field="clock.label" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'clock.label')}
+              {pick('clock.label')}
             </span>
             <span className="ms-st-mt-v" data-field="clock.time" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'clock.time')}
+              {pick('clock.time')}
             </span>
           </div>
           <div className="ms-st-mt ms-st-cool" data-widget="weather">
             <span className="ms-st-mt-k" data-field="weather.label" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'weather.label')}
+              {pick('weather.label')}
             </span>
             <span className="ms-st-mt-v" data-field="weather.temp" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'weather.temp')}
+              {pick('weather.temp')}
             </span>
           </div>
           <div className="ms-st-mt" data-widget="countdown">
             <span className="ms-st-mt-k" data-field="countdown.label" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'countdown.label')}
+              {pick('countdown.label')}
             </span>
             <span className="ms-st-mt-v" data-field="countdown.value" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'countdown.value')}
+              {pick('countdown.value')}
             </span>
           </div>
         </div>
@@ -318,11 +338,11 @@ export function MsStudioWidget({ config }: { config?: MsStudioConfig }) {
         {/* LEFT: broadcast poster */}
         <div className="ms-st-poster" data-widget="greeting">
           <div className="ms-st-ribbon" data-field="greeting.episode" style={{ whiteSpace: 'pre-wrap' }}>
-            {pick(cfg, 'greeting.episode')}
+            {pick('greeting.episode')}
           </div>
           <h1 className="ms-st-poster-h1">
-            <span data-field="greeting.h1" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.h1')}</span>
-            <em data-field="greeting.h2" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.h2')}</em>
+            <span data-field="greeting.h1" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.h1')}</span>
+            <em data-field="greeting.h2" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.h2')}</em>
           </h1>
           <div className="ms-st-waveform" aria-hidden="true">
             <i /><i /><i /><i /><i /><i /><i /><i />
@@ -330,20 +350,20 @@ export function MsStudioWidget({ config }: { config?: MsStudioConfig }) {
             <i /><i /><i /><i /><i /><i /><i /><i />
           </div>
           <p className="ms-st-lede" data-field="greeting.subtitle" style={{ whiteSpace: 'pre-wrap' }}>
-            {pick(cfg, 'greeting.subtitle')}
+            {pick('greeting.subtitle')}
           </p>
           <div className="ms-st-cues">
             <span className="ms-st-cue ms-st-red" data-field="greeting.c0" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'greeting.c0')}
+              {pick('greeting.c0')}
             </span>
             <span className="ms-st-cue" data-field="greeting.c1" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'greeting.c1')}
+              {pick('greeting.c1')}
             </span>
             <span className="ms-st-cue ms-st-cyan" data-field="greeting.c2" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'greeting.c2')}
+              {pick('greeting.c2')}
             </span>
             <span className="ms-st-cue" data-field="greeting.c3" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'greeting.c3')}
+              {pick('greeting.c3')}
             </span>
           </div>
         </div>
@@ -355,20 +375,20 @@ export function MsStudioWidget({ config }: { config?: MsStudioConfig }) {
             <div className="ms-st-tt-head">
               <div className="ms-st-tt-brand">Studer · 33⅓</div>
               <div className="ms-st-tt-meta">
-                <b data-field="feature.eye" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'feature.eye')}</b> · A-Side
+                <b data-field="feature.eye" style={{ whiteSpace: 'pre-wrap' }}>{pick('feature.eye')}</b> · A-Side
               </div>
             </div>
             <div className="ms-st-platter-wrap">
               <div className="ms-st-platter" aria-hidden="true">
                 <div className="ms-st-label-art">
                   <div className="ms-st-la-t" data-field="feature.label" style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, 'feature.label')}
+                    {pick('feature.label')}
                   </div>
                   <h3 className="ms-st-la-h3" data-field="feature.title" style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, 'feature.title')}
+                    {pick('feature.title')}
                   </h3>
                   <div className="ms-st-la-s" data-field="feature.sub" style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, 'feature.sub')}
+                    {pick('feature.sub')}
                   </div>
                 </div>
                 <div className="ms-st-pin" />
@@ -382,10 +402,10 @@ export function MsStudioWidget({ config }: { config?: MsStudioConfig }) {
             </div>
             <div className="ms-st-now-spinning">
               <span className="ms-st-nw" data-field="feature.nw" style={{ whiteSpace: 'pre-wrap' }}>
-                {pick(cfg, 'feature.nw')}
+                {pick('feature.nw')}
               </span>
               <span className="ms-st-tg">
-                Track <b data-field="feature.tag" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'feature.tag')}</b>
+                Track <b data-field="feature.tag" style={{ whiteSpace: 'pre-wrap' }}>{pick('feature.tag')}</b>
               </span>
             </div>
           </div>
@@ -395,10 +415,10 @@ export function MsStudioWidget({ config }: { config?: MsStudioConfig }) {
             <div className="ms-st-vu" data-widget="vu">
               <div className="ms-st-vu-head">
                 <span className="ms-st-vu-k" data-field="vu.k" style={{ whiteSpace: 'pre-wrap' }}>
-                  {pick(cfg, 'vu.k')}
+                  {pick('vu.k')}
                 </span>
                 <span className="ms-st-vu-v" data-field="vu.v" style={{ whiteSpace: 'pre-wrap' }}>
-                  {pick(cfg, 'vu.v')}
+                  {pick('vu.v')}
                 </span>
               </div>
               <div className="ms-st-vu-face" aria-hidden="true">
@@ -409,9 +429,9 @@ export function MsStudioWidget({ config }: { config?: MsStudioConfig }) {
                 <div className="ms-st-vu-pivot" />
               </div>
               <div className="ms-st-vu-feet">
-                <span data-field="vu.feet0" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'vu.feet0')}</span>
+                <span data-field="vu.feet0" style={{ whiteSpace: 'pre-wrap' }}>{pick('vu.feet0')}</span>
                 <span>
-                  <b data-field="vu.feet1" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'vu.feet1')}</b> live
+                  <b data-field="vu.feet1" style={{ whiteSpace: 'pre-wrap' }}>{pick('vu.feet1')}</b> live
                 </span>
               </div>
             </div>
@@ -419,10 +439,10 @@ export function MsStudioWidget({ config }: { config?: MsStudioConfig }) {
             <div className="ms-st-mixer" data-widget="mixer">
               <div className="ms-st-mixer-head">
                 <span className="ms-st-mixer-k" data-field="mixer.k" style={{ whiteSpace: 'pre-wrap' }}>
-                  {pick(cfg, 'mixer.k')}
+                  {pick('mixer.k')}
                 </span>
                 <span className="ms-st-mixer-v" data-field="mixer.v" style={{ whiteSpace: 'pre-wrap' }}>
-                  {pick(cfg, 'mixer.v')}
+                  {pick('mixer.v')}
                 </span>
               </div>
               <div className="ms-st-strips">
@@ -439,7 +459,7 @@ export function MsStudioWidget({ config }: { config?: MsStudioConfig }) {
                     <div className="ms-st-cap" style={{ bottom: '24%' }} />
                   </div>
                   <div className="ms-st-lbl" data-field="mixer.s0" style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, 'mixer.s0')}
+                    {pick('mixer.s0')}
                   </div>
                   <div className="ms-st-ch">CH 1</div>
                 </div>
@@ -456,7 +476,7 @@ export function MsStudioWidget({ config }: { config?: MsStudioConfig }) {
                     <div className="ms-st-cap" style={{ bottom: '60%' }} />
                   </div>
                   <div className="ms-st-lbl" data-field="mixer.s1" style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, 'mixer.s1')}
+                    {pick('mixer.s1')}
                   </div>
                   <div className="ms-st-ch">CH 2</div>
                 </div>
@@ -473,7 +493,7 @@ export function MsStudioWidget({ config }: { config?: MsStudioConfig }) {
                     <div className="ms-st-cap" style={{ bottom: '78%' }} />
                   </div>
                   <div className="ms-st-lbl" data-field="mixer.s2" style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, 'mixer.s2')}
+                    {pick('mixer.s2')}
                   </div>
                   <div className="ms-st-ch">CH 3</div>
                 </div>
@@ -490,7 +510,7 @@ export function MsStudioWidget({ config }: { config?: MsStudioConfig }) {
                     <div className="ms-st-cap" style={{ bottom: '42%' }} />
                   </div>
                   <div className="ms-st-lbl" data-field="mixer.s3" style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, 'mixer.s3')}
+                    {pick('mixer.s3')}
                   </div>
                   <div className="ms-st-ch">CH 4</div>
                 </div>
@@ -504,14 +524,14 @@ export function MsStudioWidget({ config }: { config?: MsStudioConfig }) {
       <section className="ms-st-lineup" data-widget="segments">
         <div className="ms-st-lineup-head">
           <h2 className="ms-st-lineup-h2">
-            <span data-field="segments.title" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'segments.title')}</span>{' '}
-            <em data-field="segments.subtitle" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'segments.subtitle')}</em>
+            <span data-field="segments.title" style={{ whiteSpace: 'pre-wrap' }}>{pick('segments.title')}</span>{' '}
+            <em data-field="segments.subtitle" style={{ whiteSpace: 'pre-wrap' }}>{pick('segments.subtitle')}</em>
           </h2>
           <div className="ms-st-lineup-meta">
             <span className="ms-st-recdot" />
-            <span data-field="segments.meta" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'segments.meta')}</span>
+            <span data-field="segments.meta" style={{ whiteSpace: 'pre-wrap' }}>{pick('segments.meta')}</span>
             {' · '}
-            <b data-field="segments.metar" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'segments.metar')}</b>
+            <b data-field="segments.metar" style={{ whiteSpace: 'pre-wrap' }}>{pick('segments.metar')}</b>
           </div>
         </div>
 
@@ -527,16 +547,16 @@ export function MsStudioWidget({ config }: { config?: MsStudioConfig }) {
                     {tapeStampLabel[i]}
                   </div>
                   <div className="ms-st-tape-n" data-field={`segments.${i}.n`} style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, `segments.${i}.n` as keyof Required<MsStudioConfig>)}
+                    {pick(`segments.${i}.n` as keyof Required<MsStudioConfig>)}
                   </div>
                   <div className="ms-st-tape-t" data-field={`segments.${i}.t`} style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, `segments.${i}.t` as keyof Required<MsStudioConfig>)}
+                    {pick(`segments.${i}.t` as keyof Required<MsStudioConfig>)}
                   </div>
                   <div className="ms-st-tape-h" data-field={`segments.${i}.host`} style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, `segments.${i}.host` as keyof Required<MsStudioConfig>)}
+                    {pick(`segments.${i}.host` as keyof Required<MsStudioConfig>)}
                   </div>
                   <div className="ms-st-tape-tm" data-field={`segments.${i}.time`} style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, `segments.${i}.time` as keyof Required<MsStudioConfig>)}
+                    {pick(`segments.${i}.time` as keyof Required<MsStudioConfig>)}
                   </div>
                 </div>
                 <div className="ms-st-hubs">
@@ -558,56 +578,56 @@ export function MsStudioWidget({ config }: { config?: MsStudioConfig }) {
         <div className="ms-st-footer-top">
           <div className="ms-st-slate" data-widget="announcement">
             <span className="ms-st-slate-tag">
-              <span data-field="announcement.tag" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'announcement.tag')}</span>
+              <span data-field="announcement.tag" style={{ whiteSpace: 'pre-wrap' }}>{pick('announcement.tag')}</span>
             </span>
             <span className="ms-st-slate-msg" data-field="announcement.message" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'announcement.message')}
+              {pick('announcement.message')}
             </span>
             <span className="ms-st-slate-when">
-              <span data-field="announcement.when_eye" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'announcement.when_eye')}</span>
-              <span data-field="announcement.when" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'announcement.when')}</span>
+              <span data-field="announcement.when_eye" style={{ whiteSpace: 'pre-wrap' }}>{pick('announcement.when_eye')}</span>
+              <span data-field="announcement.when" style={{ whiteSpace: 'pre-wrap' }}>{pick('announcement.when')}</span>
             </span>
           </div>
 
           <div className="ms-st-vfd" data-widget="big">
             <div className="ms-st-vfd-info">
               <div className="ms-st-vfd-k" data-field="big.label" style={{ whiteSpace: 'pre-wrap' }}>
-                {pick(cfg, 'big.label')}
+                {pick('big.label')}
               </div>
               <div className="ms-st-vfd-s" data-field="big.sub" style={{ whiteSpace: 'pre-wrap' }}>
-                {pick(cfg, 'big.sub')}
+                {pick('big.sub')}
               </div>
             </div>
             <div className="ms-st-vfd-v" data-field="big.value" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'big.value')}
+              {pick('big.value')}
             </div>
           </div>
         </div>
 
         <div className="ms-st-ticker" data-widget="ticker">
           <div className="ms-st-ticker-badge" data-field="ticker.tag" style={{ whiteSpace: 'pre-wrap' }}>
-            {pick(cfg, 'ticker.tag')}
+            {pick('ticker.tag')}
           </div>
           <div className="ms-st-ticker-feed">
             <div className="ms-st-ticker-feed-inner">
-              <span data-field="ticker.m0" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.m0')}</span>
-              <span data-field="ticker.m1" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.m1')}</span>
-              <span data-field="ticker.m2" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.m2')}</span>
-              <span data-field="ticker.m3" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.m3')}</span>
-              <span data-field="ticker.m4" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.m4')}</span>
-              <span data-field="ticker.m5" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.m5')}</span>
-              <span data-field="ticker.m6" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.m6')}</span>
-              <span aria-hidden="true">{pick(cfg, 'ticker.m0')}</span>
-              <span aria-hidden="true">{pick(cfg, 'ticker.m1')}</span>
-              <span aria-hidden="true">{pick(cfg, 'ticker.m2')}</span>
-              <span aria-hidden="true">{pick(cfg, 'ticker.m3')}</span>
-              <span aria-hidden="true">{pick(cfg, 'ticker.m4')}</span>
-              <span aria-hidden="true">{pick(cfg, 'ticker.m5')}</span>
-              <span aria-hidden="true">{pick(cfg, 'ticker.m6')}</span>
+              <span data-field="ticker.m0" style={{ whiteSpace: 'pre-wrap' }}>{pick('ticker.m0')}</span>
+              <span data-field="ticker.m1" style={{ whiteSpace: 'pre-wrap' }}>{pick('ticker.m1')}</span>
+              <span data-field="ticker.m2" style={{ whiteSpace: 'pre-wrap' }}>{pick('ticker.m2')}</span>
+              <span data-field="ticker.m3" style={{ whiteSpace: 'pre-wrap' }}>{pick('ticker.m3')}</span>
+              <span data-field="ticker.m4" style={{ whiteSpace: 'pre-wrap' }}>{pick('ticker.m4')}</span>
+              <span data-field="ticker.m5" style={{ whiteSpace: 'pre-wrap' }}>{pick('ticker.m5')}</span>
+              <span data-field="ticker.m6" style={{ whiteSpace: 'pre-wrap' }}>{pick('ticker.m6')}</span>
+              <span aria-hidden="true">{pick('ticker.m0')}</span>
+              <span aria-hidden="true">{pick('ticker.m1')}</span>
+              <span aria-hidden="true">{pick('ticker.m2')}</span>
+              <span aria-hidden="true">{pick('ticker.m3')}</span>
+              <span aria-hidden="true">{pick('ticker.m4')}</span>
+              <span aria-hidden="true">{pick('ticker.m5')}</span>
+              <span aria-hidden="true">{pick('ticker.m6')}</span>
             </div>
           </div>
           <div className="ms-st-ticker-end" data-field="ticker.callsign" style={{ whiteSpace: 'pre-wrap' }}>
-            {pick(cfg, 'ticker.callsign')}
+            {pick('ticker.callsign')}
           </div>
         </div>
       </section>

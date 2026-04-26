@@ -26,6 +26,7 @@
 
 import * as React from 'react';
 import { HsStage } from '../hs/HsStage';
+import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
 
 export interface MsGreenhouseConfig {
   // Top band — conservatory lockup
@@ -265,8 +266,27 @@ function pick<K extends keyof Required<MsGreenhouseConfig>>(
   return (v === undefined || v === '' ? DEFAULTS[key] : v) as string;
 }
 
-export function MsGreenhouseWidget({ config }: { config?: MsGreenhouseConfig }) {
+export function MsGreenhouseWidget({ config, live }: { config?: MsGreenhouseConfig; live?: boolean }) {
   const cfg = config || {};
+
+  // Live clock + weather. Operator-typed values still WIN — the hook
+  // is the FALLBACK for fields the teacher hasn't customized.
+  const { now, weather } = useLiveTemplateData({
+    live,
+    weatherLocation: (cfg as any).weatherLocation,
+    weatherUnits: (cfg as any).weatherUnits,
+    weatherOverride: cfg['weather.temp'],
+  });
+
+  const pick = <K extends keyof Required<MsGreenhouseConfig>>(key: K): string => {
+    const v = cfg[key];
+    if (v !== undefined && v !== '') return v as string;
+    if (live) {
+      if (key === 'clock.time') return fmt.time12NoSuffix(now);
+      if (key === 'weather.temp' && weather) return `${weather.tempF}°`;
+    }
+    return DEFAULTS[key] as string;
+  };
 
   return (
     <HsStage
@@ -390,16 +410,16 @@ export function MsGreenhouseWidget({ config }: { config?: MsGreenhouseConfig }) 
           </div>
           <div className="ms-gh-ident">
             <div className="ms-gh-eyebrow">
-              <span data-field="school.eye" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.eye')}</span>
+              <span data-field="school.eye" style={{ whiteSpace: 'pre-wrap' }}>{pick('school.eye')}</span>
             </div>
             <div className="ms-gh-name">
-              <span data-field="school.name" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.name')}</span>
-              <em data-field="school.name2" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.name2')}</em>
+              <span data-field="school.name" style={{ whiteSpace: 'pre-wrap' }}>{pick('school.name')}</span>
+              <em data-field="school.name2" style={{ whiteSpace: 'pre-wrap' }}>{pick('school.name2')}</em>
             </div>
             <div className="ms-gh-latin">
-              <span data-field="school.latin" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.latin')}</span>
-              <b data-field="school.day" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.day')}</b>
-              <span data-field="school.tag" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.tag')}</span>
+              <span data-field="school.latin" style={{ whiteSpace: 'pre-wrap' }}>{pick('school.latin')}</span>
+              <b data-field="school.day" style={{ whiteSpace: 'pre-wrap' }}>{pick('school.day')}</b>
+              <span data-field="school.tag" style={{ whiteSpace: 'pre-wrap' }}>{pick('school.tag')}</span>
             </div>
           </div>
         </div>
@@ -407,44 +427,44 @@ export function MsGreenhouseWidget({ config }: { config?: MsGreenhouseConfig }) 
         <div className="ms-gh-instruments">
           <div className="ms-gh-gauge" data-widget="weather">
             <div className="ms-gh-lbl" data-field="weather.label" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'weather.label')}
+              {pick('weather.label')}
             </div>
             <div
               className="ms-gh-val ms-gh-cool"
               data-field="weather.temp"
              style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'weather.temp')}
+              {pick('weather.temp')}
             </div>
             <div className="ms-gh-ticks" aria-hidden="true" />
             <div className="ms-gh-sub" data-field="weather.cond" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'weather.cond')}
+              {pick('weather.cond')}
             </div>
           </div>
           <div className="ms-gh-gauge" data-widget="clock">
             <div className="ms-gh-lbl" data-field="clock.label" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'clock.label')}
+              {pick('clock.label')}
             </div>
             <div className="ms-gh-val" data-field="clock.time" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'clock.time')}
+              {pick('clock.time')}
             </div>
             <div className="ms-gh-ticks" aria-hidden="true" />
             <div className="ms-gh-sub" data-field="clock.sub" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'clock.sub')}
+              {pick('clock.sub')}
             </div>
           </div>
           <div className="ms-gh-gauge" data-widget="bloom">
             <div className="ms-gh-lbl" data-field="bloom.label" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'bloom.label')}
+              {pick('bloom.label')}
             </div>
             <div
               className="ms-gh-val ms-gh-warm"
               data-field="bloom.value"
              style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'bloom.value')}
+              {pick('bloom.value')}
             </div>
             <div className="ms-gh-ticks" aria-hidden="true" />
             <div className="ms-gh-sub" data-field="bloom.sub" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'bloom.sub')}
+              {pick('bloom.sub')}
             </div>
           </div>
         </div>
@@ -455,9 +475,9 @@ export function MsGreenhouseWidget({ config }: { config?: MsGreenhouseConfig }) 
         {/* LEFT: Herbarium specimen plate */}
         <div className="ms-gh-plate" data-widget="greeting">
           <div className="ms-gh-accession">
-            <b data-field="greeting.acc" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.acc')}</b>
+            <b data-field="greeting.acc" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.acc')}</b>
             <span data-field="greeting.acc2" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'greeting.acc2')
+              {pick('greeting.acc2')
                 .split('\n')
                 .map((line, i, arr) => (
                   <React.Fragment key={i}>
@@ -470,25 +490,25 @@ export function MsGreenhouseWidget({ config }: { config?: MsGreenhouseConfig }) 
           <div className="ms-gh-chapter">
             <span className="ms-gh-ornament">❦</span>
             <span data-field="greeting.kicker" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'greeting.kicker')}
+              {pick('greeting.kicker')}
             </span>
           </div>
           <h1 className="ms-gh-h1">
-            <span data-field="greeting.h1" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.h1')}</span>
-            <em data-field="greeting.h2" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.h2')}</em>
-            <span data-field="greeting.h3" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.h3')}</span>
+            <span data-field="greeting.h1" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.h1')}</span>
+            <em data-field="greeting.h2" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.h2')}</em>
+            <span data-field="greeting.h3" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.h3')}</span>
             <span className="ms-gh-accent" data-field="greeting.h4" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'greeting.h4')}
+              {pick('greeting.h4')}
             </span>
           </h1>
           <p className="ms-gh-lede" data-field="greeting.lede" style={{ whiteSpace: 'pre-wrap' }}>
-            {pick(cfg, 'greeting.lede')}
+            {pick('greeting.lede')}
           </p>
 
           <div className="ms-gh-signoff">
             — with care,
             <br />
-            <b data-field="greeting.sign" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.sign')}</b>
+            <b data-field="greeting.sign" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.sign')}</b>
           </div>
 
           <div className="ms-gh-illos" aria-hidden="true">
@@ -687,11 +707,11 @@ export function MsGreenhouseWidget({ config }: { config?: MsGreenhouseConfig }) 
         <div className="ms-gh-index" data-widget="agenda">
           <div className="ms-gh-head">
             <div className="ms-gh-eye">Hortus Botanicus · Index</div>
-            <h2 data-field="agenda.title" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'agenda.title')}</h2>
+            <h2 data-field="agenda.title" style={{ whiteSpace: 'pre-wrap' }}>{pick('agenda.title')}</h2>
             <div className="ms-gh-meta">
-              <span data-field="agenda.date" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'agenda.date')}</span>
-              <b data-field="agenda.label" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'agenda.label')}</b>
-              <span data-field="agenda.count" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'agenda.count')}</span>
+              <span data-field="agenda.date" style={{ whiteSpace: 'pre-wrap' }}>{pick('agenda.date')}</span>
+              <b data-field="agenda.label" style={{ whiteSpace: 'pre-wrap' }}>{pick('agenda.label')}</b>
+              <span data-field="agenda.count" style={{ whiteSpace: 'pre-wrap' }}>{pick('agenda.count')}</span>
             </div>
           </div>
           <div className="ms-gh-specimens">
@@ -716,26 +736,26 @@ export function MsGreenhouseWidget({ config }: { config?: MsGreenhouseConfig }) 
                     className="ms-gh-common"
                     data-field={`agenda.${i}.t`}
                    style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, `agenda.${i}.t` as keyof Required<MsGreenhouseConfig>)}
+                    {pick(`agenda.${i}.t` as keyof Required<MsGreenhouseConfig>)}
                   </div>
                   <div className="ms-gh-sp-latin">
                     <span data-field={`agenda.${i}.l`} style={{ whiteSpace: 'pre-wrap' }}>
-                      {pick(cfg, `agenda.${i}.l` as keyof Required<MsGreenhouseConfig>)}
+                      {pick(`agenda.${i}.l` as keyof Required<MsGreenhouseConfig>)}
                     </span>
                     <b data-field={`agenda.${i}.r`} style={{ whiteSpace: 'pre-wrap' }}>
-                      {pick(cfg, `agenda.${i}.r` as keyof Required<MsGreenhouseConfig>)}
+                      {pick(`agenda.${i}.r` as keyof Required<MsGreenhouseConfig>)}
                     </b>
                   </div>
                 </div>
                 <div className="ms-gh-when">
                   <div className="ms-gh-t" data-field={`agenda.${i}.h`} style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, `agenda.${i}.h` as keyof Required<MsGreenhouseConfig>)}
+                    {pick(`agenda.${i}.h` as keyof Required<MsGreenhouseConfig>)}
                   </div>
                   <div
                     className="ms-gh-stage-pill"
                     data-field={`agenda.${i}.s`}
                    style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, `agenda.${i}.s` as keyof Required<MsGreenhouseConfig>)}
+                    {pick(`agenda.${i}.s` as keyof Required<MsGreenhouseConfig>)}
                   </div>
                 </div>
               </div>
@@ -763,13 +783,13 @@ export function MsGreenhouseWidget({ config }: { config?: MsGreenhouseConfig }) 
                 className="ms-gh-dept"
                 data-field={`club.${i}.dept`}
                style={{ whiteSpace: 'pre-wrap' }}>
-                {pick(cfg, `club.${i}.dept` as keyof Required<MsGreenhouseConfig>)}
+                {pick(`club.${i}.dept` as keyof Required<MsGreenhouseConfig>)}
               </span>
               <span
                 className="ms-gh-lot"
                 data-field={`club.${i}.lot`}
                style={{ whiteSpace: 'pre-wrap' }}>
-                {pick(cfg, `club.${i}.lot` as keyof Required<MsGreenhouseConfig>)}
+                {pick(`club.${i}.lot` as keyof Required<MsGreenhouseConfig>)}
               </span>
             </div>
             <div className="ms-gh-pbody">
@@ -777,19 +797,19 @@ export function MsGreenhouseWidget({ config }: { config?: MsGreenhouseConfig }) 
                 className="ms-gh-pcommon"
                 data-field={`club.${i}.t`}
                style={{ whiteSpace: 'pre-wrap' }}>
-                {pick(cfg, `club.${i}.t` as keyof Required<MsGreenhouseConfig>)}
+                {pick(`club.${i}.t` as keyof Required<MsGreenhouseConfig>)}
               </div>
               <div
                 className="ms-gh-platin"
                 data-field={`club.${i}.l`}
                style={{ whiteSpace: 'pre-wrap' }}>
-                {pick(cfg, `club.${i}.l` as keyof Required<MsGreenhouseConfig>)}
+                {pick(`club.${i}.l` as keyof Required<MsGreenhouseConfig>)}
               </div>
               <div
                 className="ms-gh-where"
                 data-field={`club.${i}.r`}
                style={{ whiteSpace: 'pre-wrap' }}>
-                {pick(cfg, `club.${i}.r` as keyof Required<MsGreenhouseConfig>)}
+                {pick(`club.${i}.r` as keyof Required<MsGreenhouseConfig>)}
               </div>
             </div>
             <div className="ms-gh-foot">
@@ -797,13 +817,13 @@ export function MsGreenhouseWidget({ config }: { config?: MsGreenhouseConfig }) 
                 className="ms-gh-fwhen"
                 data-field={`club.${i}.h`}
                style={{ whiteSpace: 'pre-wrap' }}>
-                {pick(cfg, `club.${i}.h` as keyof Required<MsGreenhouseConfig>)}
+                {pick(`club.${i}.h` as keyof Required<MsGreenhouseConfig>)}
               </div>
               <div
                 className="ms-gh-tag"
                 data-field={`club.${i}.tag`}
                style={{ whiteSpace: 'pre-wrap' }}>
-                {pick(cfg, `club.${i}.tag` as keyof Required<MsGreenhouseConfig>)}
+                {pick(`club.${i}.tag` as keyof Required<MsGreenhouseConfig>)}
               </div>
             </div>
           </div>
@@ -814,13 +834,13 @@ export function MsGreenhouseWidget({ config }: { config?: MsGreenhouseConfig }) 
             className="ms-gh-stamp"
             data-field="announcement.stamp"
            style={{ whiteSpace: 'pre-wrap' }}>
-            {pick(cfg, 'announcement.stamp')}
+            {pick('announcement.stamp')}
           </span>
           <h3 data-field="announcement.headline" style={{ whiteSpace: 'pre-wrap' }}>
-            {pick(cfg, 'announcement.headline')}
+            {pick('announcement.headline')}
           </h3>
           <div className="ms-gh-msg" data-field="announcement.message" style={{ whiteSpace: 'pre-wrap' }}>
-            {pick(cfg, 'announcement.message')}
+            {pick('announcement.message')}
           </div>
         </div>
       </section>
@@ -831,30 +851,30 @@ export function MsGreenhouseWidget({ config }: { config?: MsGreenhouseConfig }) 
           <div className="ms-gh-day">
             <div>
               <div className="ms-gh-n" data-field="countdown.value" style={{ whiteSpace: 'pre-wrap' }}>
-                {pick(cfg, 'countdown.value')}
+                {pick('countdown.value')}
               </div>
               <div className="ms-gh-u" data-field="countdown.unit" style={{ whiteSpace: 'pre-wrap' }}>
-                {pick(cfg, 'countdown.unit')}
+                {pick('countdown.unit')}
               </div>
             </div>
           </div>
           <div className="ms-gh-info">
             <div className="ms-gh-eye2" data-field="countdown.kicker" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'countdown.kicker')}
+              {pick('countdown.kicker')}
             </div>
             <div className="ms-gh-tt">
               <span data-field="countdown.title" style={{ whiteSpace: 'pre-wrap' }}>
-                {pick(cfg, 'countdown.title')}
+                {pick('countdown.title')}
               </span>
               <em data-field="countdown.title2" style={{ whiteSpace: 'pre-wrap' }}>
-                {pick(cfg, 'countdown.title2')}
+                {pick('countdown.title2')}
               </em>
               <span data-field="countdown.title3" style={{ whiteSpace: 'pre-wrap' }}>
-                {pick(cfg, 'countdown.title3')}
+                {pick('countdown.title3')}
               </span>
             </div>
             <div className="ms-gh-ss" data-field="countdown.sub" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'countdown.sub')}
+              {pick('countdown.sub')}
             </div>
           </div>
         </div>
@@ -869,24 +889,24 @@ export function MsGreenhouseWidget({ config }: { config?: MsGreenhouseConfig }) 
           </div>
           <div className="ms-gh-info">
             <div className="ms-gh-eye3" data-field="lunch.eye" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'lunch.eye')}
+              {pick('lunch.eye')}
             </div>
             <div className="ms-gh-tt2" data-field="lunch.title" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'lunch.title')}
+              {pick('lunch.title')}
             </div>
             <div className="ms-gh-ss2">
               <span data-field="lunch.sides" style={{ whiteSpace: 'pre-wrap' }}>
-                {pick(cfg, 'lunch.sides')}
+                {pick('lunch.sides')}
               </span>
-              <b data-field="lunch.sides2" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'lunch.sides2')}</b>
+              <b data-field="lunch.sides2" style={{ whiteSpace: 'pre-wrap' }}>{pick('lunch.sides2')}</b>
             </div>
           </div>
           <div className="ms-gh-badges">
             <span className="ms-gh-veg" data-field="lunch.b1" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'lunch.b1')}
+              {pick('lunch.b1')}
             </span>
             <span className="ms-gh-gf" data-field="lunch.b2" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'lunch.b2')}
+              {pick('lunch.b2')}
             </span>
           </div>
         </div>
@@ -895,24 +915,24 @@ export function MsGreenhouseWidget({ config }: { config?: MsGreenhouseConfig }) 
       {/* ─── TICKER: engraved brass plate ─── */}
       <div className="ms-gh-ticker" data-widget="ticker">
         <div className="ms-gh-tag2" data-field="ticker.tag" style={{ whiteSpace: 'pre-wrap' }}>
-          {pick(cfg, 'ticker.tag')}
+          {pick('ticker.tag')}
         </div>
         <div className="ms-gh-feed">
           <div className="ms-gh-feed-inner">
-            <span data-field="ticker.0" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.0')}</span>
-            <span data-field="ticker.1" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.1')}</span>
-            <span data-field="ticker.2" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.2')}</span>
-            <span data-field="ticker.3" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.3')}</span>
-            <span data-field="ticker.4" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.4')}</span>
-            <span data-field="ticker.5" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.5')}</span>
-            <span data-field="ticker.6" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.6')}</span>
-            <span aria-hidden="true">{pick(cfg, 'ticker.0')}</span>
-            <span aria-hidden="true">{pick(cfg, 'ticker.1')}</span>
-            <span aria-hidden="true">{pick(cfg, 'ticker.2')}</span>
-            <span aria-hidden="true">{pick(cfg, 'ticker.3')}</span>
-            <span aria-hidden="true">{pick(cfg, 'ticker.4')}</span>
-            <span aria-hidden="true">{pick(cfg, 'ticker.5')}</span>
-            <span aria-hidden="true">{pick(cfg, 'ticker.6')}</span>
+            <span data-field="ticker.0" style={{ whiteSpace: 'pre-wrap' }}>{pick('ticker.0')}</span>
+            <span data-field="ticker.1" style={{ whiteSpace: 'pre-wrap' }}>{pick('ticker.1')}</span>
+            <span data-field="ticker.2" style={{ whiteSpace: 'pre-wrap' }}>{pick('ticker.2')}</span>
+            <span data-field="ticker.3" style={{ whiteSpace: 'pre-wrap' }}>{pick('ticker.3')}</span>
+            <span data-field="ticker.4" style={{ whiteSpace: 'pre-wrap' }}>{pick('ticker.4')}</span>
+            <span data-field="ticker.5" style={{ whiteSpace: 'pre-wrap' }}>{pick('ticker.5')}</span>
+            <span data-field="ticker.6" style={{ whiteSpace: 'pre-wrap' }}>{pick('ticker.6')}</span>
+            <span aria-hidden="true">{pick('ticker.0')}</span>
+            <span aria-hidden="true">{pick('ticker.1')}</span>
+            <span aria-hidden="true">{pick('ticker.2')}</span>
+            <span aria-hidden="true">{pick('ticker.3')}</span>
+            <span aria-hidden="true">{pick('ticker.4')}</span>
+            <span aria-hidden="true">{pick('ticker.5')}</span>
+            <span aria-hidden="true">{pick('ticker.6')}</span>
           </div>
         </div>
       </div>

@@ -27,6 +27,7 @@
 
 import * as React from 'react';
 import { HsStage } from '../hs/HsStage';
+import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
 
 export interface MsHomeroomConfig {
   // School / brand
@@ -283,7 +284,7 @@ export const DEFAULTS: Required<MsHomeroomConfig> = {
  * "empty string → use default" — empty strings in the editor mean
  * "blank" but in the demo we want the demo copy.
  */
-const pick = <K extends keyof Required<MsHomeroomConfig>>(
+const pickStatic = <K extends keyof Required<MsHomeroomConfig>>(
   cfg: MsHomeroomConfig,
   key: K,
 ): string => {
@@ -291,8 +292,29 @@ const pick = <K extends keyof Required<MsHomeroomConfig>>(
   return (v === undefined || v === '' ? DEFAULTS[key] : v) as string;
 };
 
-export function MsHomeroomWidget({ config }: { config?: MsHomeroomConfig }) {
+export function MsHomeroomWidget({ config, live }: { config?: MsHomeroomConfig; live?: boolean }) {
   const cfg = config || {};
+
+  // Live clock + weather. Operator-typed values still WIN — the hook
+  // is the FALLBACK for fields the teacher hasn't customized.
+  const { now, weather } = useLiveTemplateData({
+    live,
+    weatherLocation: (cfg as any).weatherLocation,
+    weatherUnits: (cfg as any).weatherUnits,
+    weatherOverride: cfg['weather.temp'],
+  });
+
+  const pick = <K extends keyof Required<MsHomeroomConfig>>(key: K): string => {
+    const v = cfg[key];
+    if (v !== undefined && v !== '') return v as string;
+    if (live) {
+      if (key === 'day.dow') return fmt.weekdayLong(now);
+      if (key === 'day.date') return fmt.monthDay(now);
+      if (key === 'clock.time') return fmt.time12NoSuffix(now);
+      if (key === 'weather.temp' && weather) return `${weather.tempF}°`;
+    }
+    return DEFAULTS[key] as string;
+  };
 
   // Per-card metadata mirroring the HTML mockup. Card 0 is "done", Card 1 is
   // "now". Avatar background colors for shoutouts pre-baked. Bus status pill
@@ -328,55 +350,55 @@ export function MsHomeroomWidget({ config }: { config?: MsHomeroomConfig }) {
           <div className="ms-hr-badge" aria-hidden="true">
             <div className="ms-hr-face" />
             <div className="ms-hr-lvl" data-field="school.team" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'school.team')}
+              {pick('school.team')}
             </div>
           </div>
           <div className="ms-hr-info">
             <div className="ms-hr-eye">Welcome, Otters</div>
             <div className="ms-hr-name" data-field="school.name" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'school.name')}
+              {pick('school.name')}
             </div>
             <div className="ms-hr-sub">
-              <span data-field="school.year" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.year')}</span>
+              <span data-field="school.year" style={{ whiteSpace: 'pre-wrap' }}>{pick('school.year')}</span>
               <span className="ms-hr-bullet" />
-              <b data-field="school.house" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'school.house')}</b>
+              <b data-field="school.house" style={{ whiteSpace: 'pre-wrap' }}>{pick('school.house')}</b>
             </div>
           </div>
         </div>
 
         <div className="ms-hr-stamp" data-widget="day">
           <div className="ms-hr-stamp-lab" data-field="day.label" style={{ whiteSpace: 'pre-wrap' }}>
-            {pick(cfg, 'day.label')}
+            {pick('day.label')}
           </div>
           <div className="ms-hr-stamp-day">
-            <span data-field="day.dow" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'day.dow')}</span>{' '}
-            <b data-field="day.date" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'day.date')}</b>
+            <span data-field="day.dow" style={{ whiteSpace: 'pre-wrap' }}>{pick('day.dow')}</span>{' '}
+            <b data-field="day.date" style={{ whiteSpace: 'pre-wrap' }}>{pick('day.date')}</b>
           </div>
         </div>
 
         <div className="ms-hr-tiles">
           <div className="ms-hr-tile" data-widget="clock">
             <span className="ms-hr-tile-k" data-field="clock.label" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'clock.label')}
+              {pick('clock.label')}
             </span>
             <span className="ms-hr-tile-v" data-field="clock.time" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'clock.time')}
+              {pick('clock.time')}
             </span>
           </div>
           <div className="ms-hr-tile" data-widget="weather">
             <span className="ms-hr-tile-k" data-field="weather.label" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'weather.label')}
+              {pick('weather.label')}
             </span>
             <span className="ms-hr-tile-v ms-hr-cool" data-field="weather.temp" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'weather.temp')}
+              {pick('weather.temp')}
             </span>
           </div>
           <div className="ms-hr-tile" data-widget="weather2">
             <span className="ms-hr-tile-k" data-field="weather2.label" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'weather2.label')}
+              {pick('weather2.label')}
             </span>
             <span className="ms-hr-tile-v ms-hr-sun" data-field="weather2.cond" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'weather2.cond')}
+              {pick('weather2.cond')}
             </span>
           </div>
         </div>
@@ -447,32 +469,32 @@ export function MsHomeroomWidget({ config }: { config?: MsHomeroomConfig }) {
         </div>
 
         <div className="ms-hr-greet-eye" data-field="greeting.eyebrow" style={{ whiteSpace: 'pre-wrap' }}>
-          {pick(cfg, 'greeting.eyebrow')}
+          {pick('greeting.eyebrow')}
         </div>
         <h1 className="ms-hr-h1">
-          <span data-field="greeting.h1" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.h1')}</span>
+          <span data-field="greeting.h1" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.h1')}</span>
           {' — '}
-          <em data-field="greeting.h2" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.h2')}</em>
+          <em data-field="greeting.h2" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.h2')}</em>
         </h1>
         <p className="ms-hr-hero-sub" data-field="greeting.subtitle" style={{ whiteSpace: 'pre-wrap' }}>
-          {pick(cfg, 'greeting.subtitle')}
+          {pick('greeting.subtitle')}
         </p>
         <div className="ms-hr-pencils" data-widget="greeting.tags">
           <span className="ms-hr-pen">
             <span className="ms-hr-dot" />
-            <span data-field="greeting.tag1" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.tag1')}</span>
+            <span data-field="greeting.tag1" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.tag1')}</span>
           </span>
           <span className="ms-hr-pen ms-hr-pen-b">
             <span className="ms-hr-dot" />
-            <span data-field="greeting.tag2" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.tag2')}</span>
+            <span data-field="greeting.tag2" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.tag2')}</span>
           </span>
           <span className="ms-hr-pen ms-hr-pen-y">
             <span className="ms-hr-dot" />
-            <span data-field="greeting.tag3" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.tag3')}</span>
+            <span data-field="greeting.tag3" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.tag3')}</span>
           </span>
           <span className="ms-hr-pen ms-hr-pen-g">
             <span className="ms-hr-dot" />
-            <span data-field="greeting.tag4" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.tag4')}</span>
+            <span data-field="greeting.tag4" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.tag4')}</span>
           </span>
         </div>
       </section>
@@ -482,10 +504,10 @@ export function MsHomeroomWidget({ config }: { config?: MsHomeroomConfig }) {
         <div className="ms-hr-polaroid" data-widget="shoutouts">
           <div className="ms-hr-tape" aria-hidden="true" />
           <div className="ms-hr-pol-ey" data-field="shoutouts.label" style={{ whiteSpace: 'pre-wrap' }}>
-            {pick(cfg, 'shoutouts.label')}
+            {pick('shoutouts.label')}
           </div>
           <h3 className="ms-hr-pol-title" data-field="shoutouts.title" style={{ whiteSpace: 'pre-wrap' }}>
-            {pick(cfg, 'shoutouts.title')}
+            {pick('shoutouts.title')}
           </h3>
           <div className="ms-hr-lines">
             {([0, 1, 2] as const).map((i) => {
@@ -500,12 +522,12 @@ export function MsHomeroomWidget({ config }: { config?: MsHomeroomConfig }) {
                     className="ms-hr-av"
                     style={{ background: shoutoutAv[i], whiteSpace: 'pre-wrap' as const }}
                     data-field={`shoutouts.${i}.av`}>
-                    {pick(cfg, `shoutouts.${i}.av` as keyof Required<MsHomeroomConfig>)}
+                    {pick(`shoutouts.${i}.av` as keyof Required<MsHomeroomConfig>)}
                   </span>
                   <span className="ms-hr-who" data-field={`shoutouts.${i}.who`} style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, `shoutouts.${i}.who` as keyof Required<MsHomeroomConfig>)}
+                    {pick(`shoutouts.${i}.who` as keyof Required<MsHomeroomConfig>)}
                     <span data-field={`shoutouts.${i}.note`} style={{ whiteSpace: 'pre-wrap' }}>
-                      {pick(cfg, `shoutouts.${i}.note` as keyof Required<MsHomeroomConfig>)}
+                      {pick(`shoutouts.${i}.note` as keyof Required<MsHomeroomConfig>)}
                     </span>
                   </span>
                   <span className="ms-hr-ic">{ic}</span>
@@ -518,16 +540,16 @@ export function MsHomeroomWidget({ config }: { config?: MsHomeroomConfig }) {
         <div className="ms-hr-countdown" data-widget="countdown">
           <div className="ms-hr-cd-ey">
             Days until{' '}
-            <b data-field="countdown.label" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'countdown.label')}</b>
+            <b data-field="countdown.label" style={{ whiteSpace: 'pre-wrap' }}>{pick('countdown.label')}</b>
           </div>
           <div className="ms-hr-cd-row">
             <div className="ms-hr-cd-num" data-field="countdown.value" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'countdown.value')}
+              {pick('countdown.value')}
             </div>
             <div className="ms-hr-cd-meta" data-field="countdown.meta" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'countdown.meta')}
+              {pick('countdown.meta')}
               <span data-field="countdown.sub" style={{ whiteSpace: 'pre-wrap' }}>
-                {pick(cfg, 'countdown.sub')}
+                {pick('countdown.sub')}
               </span>
             </div>
           </div>
@@ -546,12 +568,12 @@ export function MsHomeroomWidget({ config }: { config?: MsHomeroomConfig }) {
       <section className="ms-hr-agenda" data-widget="agenda">
         <div className="ms-hr-ag-head">
           <h2 className="ms-hr-ag-title" data-field="agenda.title" style={{ whiteSpace: 'pre-wrap' }}>
-            {pick(cfg, 'agenda.title')}
+            {pick('agenda.title')}
           </h2>
           <div className="ms-hr-ag-day">
-            <span data-field="agenda.day" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'agenda.day')}</span>{' '}
-            <b data-field="agenda.letter" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'agenda.letter')}</b>{' '}
-            <span data-field="agenda.dayName" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'agenda.dayName')}</span>
+            <span data-field="agenda.day" style={{ whiteSpace: 'pre-wrap' }}>{pick('agenda.day')}</span>{' '}
+            <b data-field="agenda.letter" style={{ whiteSpace: 'pre-wrap' }}>{pick('agenda.letter')}</b>{' '}
+            <span data-field="agenda.dayName" style={{ whiteSpace: 'pre-wrap' }}>{pick('agenda.dayName')}</span>
           </div>
         </div>
         <div className="ms-hr-ag-grid">
@@ -562,22 +584,22 @@ export function MsHomeroomWidget({ config }: { config?: MsHomeroomConfig }) {
               <div className={cls} data-widget={`agenda.${i}`} key={i}>
                 <div className="ms-hr-card-top">
                   <span className="ms-hr-card-p" data-field={`agenda.${i}.p`} style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, `agenda.${i}.p` as keyof Required<MsHomeroomConfig>)}
+                    {pick(`agenda.${i}.p` as keyof Required<MsHomeroomConfig>)}
                   </span>
                   <span className="ms-hr-card-t" data-field={`agenda.${i}.time`} style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, `agenda.${i}.time` as keyof Required<MsHomeroomConfig>)}
+                    {pick(`agenda.${i}.time` as keyof Required<MsHomeroomConfig>)}
                   </span>
                 </div>
                 <div className="ms-hr-card-c" data-field={`agenda.${i}.c`} style={{ whiteSpace: 'pre-wrap' }}>
-                  {pick(cfg, `agenda.${i}.c` as keyof Required<MsHomeroomConfig>)}
+                  {pick(`agenda.${i}.c` as keyof Required<MsHomeroomConfig>)}
                 </div>
                 <div className="ms-hr-card-r">
                   <b data-field={`agenda.${i}.r`} style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, `agenda.${i}.r` as keyof Required<MsHomeroomConfig>)}
+                    {pick(`agenda.${i}.r` as keyof Required<MsHomeroomConfig>)}
                   </b>
                   <br />
                   <span data-field={`agenda.${i}.teacher`} style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, `agenda.${i}.teacher` as keyof Required<MsHomeroomConfig>)}
+                    {pick(`agenda.${i}.teacher` as keyof Required<MsHomeroomConfig>)}
                   </span>
                 </div>
               </div>
@@ -592,26 +614,26 @@ export function MsHomeroomWidget({ config }: { config?: MsHomeroomConfig }) {
         <div className="ms-hr-lunchbag" data-widget="lunch">
           <div className="ms-hr-bag">
             <div className="ms-hr-receipt" data-field="lunch.receipt" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'lunch.receipt')}
+              {pick('lunch.receipt')}
             </div>
             <div className="ms-hr-bag-ey" data-field="lunch.label" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'lunch.label')}
+              {pick('lunch.label')}
             </div>
             <div className="ms-hr-entree" data-field="lunch.entree" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'lunch.entree')}
+              {pick('lunch.entree')}
             </div>
             <div className="ms-hr-sides" data-field="lunch.sides" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'lunch.sides')}
+              {pick('lunch.sides')}
             </div>
             <div className="ms-hr-tags">
               <span className="ms-hr-tag ms-hr-tag-veg" data-field="lunch.tag1" style={{ whiteSpace: 'pre-wrap' }}>
-                {pick(cfg, 'lunch.tag1')}
+                {pick('lunch.tag1')}
               </span>
               <span className="ms-hr-tag ms-hr-tag-gf" data-field="lunch.tag2" style={{ whiteSpace: 'pre-wrap' }}>
-                {pick(cfg, 'lunch.tag2')}
+                {pick('lunch.tag2')}
               </span>
               <span className="ms-hr-tag ms-hr-tag-df" data-field="lunch.tag3" style={{ whiteSpace: 'pre-wrap' }}>
-                {pick(cfg, 'lunch.tag3')}
+                {pick('lunch.tag3')}
               </span>
             </div>
           </div>
@@ -621,10 +643,10 @@ export function MsHomeroomWidget({ config }: { config?: MsHomeroomConfig }) {
         <div className="ms-hr-buses" data-widget="buses">
           <div className="ms-hr-bus-head">
             <span className="ms-hr-bus-t" data-field="buses.title" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'buses.title')}
+              {pick('buses.title')}
             </span>
             <span className="ms-hr-bus-ey" data-field="buses.label" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'buses.label')}
+              {pick('buses.label')}
             </span>
           </div>
           <div className="ms-hr-bus-list">
@@ -633,21 +655,21 @@ export function MsHomeroomWidget({ config }: { config?: MsHomeroomConfig }) {
               return (
                 <div className="ms-hr-bus" data-widget={`buses.${i}`} key={i}>
                   <span className="ms-hr-bus-num" data-field={`buses.${i}.num`} style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, `buses.${i}.num` as keyof Required<MsHomeroomConfig>)}
+                    {pick(`buses.${i}.num` as keyof Required<MsHomeroomConfig>)}
                   </span>
                   <div className="ms-hr-bus-info">
                     <div className="ms-hr-bus-rt" data-field={`buses.${i}.rt`} style={{ whiteSpace: 'pre-wrap' }}>
-                      {pick(cfg, `buses.${i}.rt` as keyof Required<MsHomeroomConfig>)}
+                      {pick(`buses.${i}.rt` as keyof Required<MsHomeroomConfig>)}
                     </div>
                     <div className="ms-hr-bus-sub" data-field={`buses.${i}.sub`} style={{ whiteSpace: 'pre-wrap' }}>
-                      {pick(cfg, `buses.${i}.sub` as keyof Required<MsHomeroomConfig>)}
+                      {pick(`buses.${i}.sub` as keyof Required<MsHomeroomConfig>)}
                     </div>
                   </div>
                   <span
                     className={`ms-hr-bus-st ms-hr-bus-${stCls}`}
                     data-field={`buses.${i}.st`}
                    style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, `buses.${i}.st` as keyof Required<MsHomeroomConfig>)}
+                    {pick(`buses.${i}.st` as keyof Required<MsHomeroomConfig>)}
                   </span>
                 </div>
               );
@@ -659,10 +681,10 @@ export function MsHomeroomWidget({ config }: { config?: MsHomeroomConfig }) {
         <div className="ms-hr-folder" data-widget="clubs">
           <span className="ms-hr-clip" aria-hidden="true" />
           <div className="ms-hr-folder-ey" data-field="clubs.label" style={{ whiteSpace: 'pre-wrap' }}>
-            {pick(cfg, 'clubs.label')}
+            {pick('clubs.label')}
           </div>
           <h3 className="ms-hr-folder-title" data-field="clubs.title" style={{ whiteSpace: 'pre-wrap' }}>
-            {pick(cfg, 'clubs.title')}
+            {pick('clubs.title')}
           </h3>
           <div className="ms-hr-folder-list">
             {([0, 1, 2] as const).map((i) => (
@@ -672,13 +694,13 @@ export function MsHomeroomWidget({ config }: { config?: MsHomeroomConfig }) {
                   style={{ background: clubDot[i] }}
                 />
                 <span className="ms-hr-folder-n" data-field={`clubs.${i}.n`} style={{ whiteSpace: 'pre-wrap' }}>
-                  {pick(cfg, `clubs.${i}.n` as keyof Required<MsHomeroomConfig>)}
+                  {pick(`clubs.${i}.n` as keyof Required<MsHomeroomConfig>)}
                   <span data-field={`clubs.${i}.m`} style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, `clubs.${i}.m` as keyof Required<MsHomeroomConfig>)}
+                    {pick(`clubs.${i}.m` as keyof Required<MsHomeroomConfig>)}
                   </span>
                 </span>
                 <span className="ms-hr-folder-w" data-field={`clubs.${i}.w`} style={{ whiteSpace: 'pre-wrap' }}>
-                  {pick(cfg, `clubs.${i}.w` as keyof Required<MsHomeroomConfig>)}
+                  {pick(`clubs.${i}.w` as keyof Required<MsHomeroomConfig>)}
                 </span>
               </div>
             ))}
@@ -691,14 +713,14 @@ export function MsHomeroomWidget({ config }: { config?: MsHomeroomConfig }) {
       <div className="ms-hr-ticker-pin ms-hr-ticker-pin-r" aria-hidden="true" />
       <div className="ms-hr-ticker" data-widget="announcement">
         <div className="ms-hr-ticker-badge" data-field="announcement.badge" style={{ whiteSpace: 'pre-wrap' }}>
-          {pick(cfg, 'announcement.badge')}
+          {pick('announcement.badge')}
         </div>
         <div className="ms-hr-ticker-feed">
           <div className="ms-hr-ticker-msg">
             <span data-field="announcement.message" style={{ whiteSpace: 'pre-wrap' }}>
-              {pick(cfg, 'announcement.message')}
+              {pick('announcement.message')}
             </span>
-            <span aria-hidden="true">{pick(cfg, 'announcement.message')}</span>
+            <span aria-hidden="true">{pick('announcement.message')}</span>
           </div>
         </div>
       </div>

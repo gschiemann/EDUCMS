@@ -24,6 +24,7 @@
 
 import * as React from 'react';
 import { HsStage } from '../hs/HsStage';
+import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
 
 export interface MsPaperPortraitConfig {
   // Weather cluster (top-left)
@@ -312,17 +313,37 @@ export const DEFAULTS: Required<MsPaperPortraitConfig> = {
   'ticker.endmark': '— 30 —',
 };
 
-const pick = <K extends keyof Required<MsPaperPortraitConfig>>(
+const pickStatic = <K extends keyof Required<MsPaperPortraitConfig>>(
   cfg: MsPaperPortraitConfig,
   key: K,
 ): string => (cfg[key] ?? DEFAULTS[key]) as string;
 
 export function MsPaperPortraitWidget({
   config,
+  live,
 }: {
-  config?: MsPaperPortraitConfig;
+  config?: MsPaperPortraitConfig; live?: boolean
 }) {
   const cfg = config || {};
+  // Live clock + weather. Operator-typed values still WIN — the hook
+  // is the FALLBACK for fields the teacher hasn't customized.
+  const { now, weather } = useLiveTemplateData({
+    live,
+    weatherLocation: (cfg as any).weatherLocation,
+    weatherUnits: (cfg as any).weatherUnits,
+    weatherOverride: cfg['weather.high'],
+  });
+
+  const pick = <K extends keyof Required<MsPaperPortraitConfig>>(key: K): string => {
+    const v = cfg[key];
+    if (v !== undefined && v !== '') return v as string;
+    if (live) {
+      if (key === 'clock.day') return fmt.weekdayLong(now);
+      if (key === 'clock.date') return fmt.shortDate(now);
+      if (key === 'weather.high' && weather) return `${weather.tempF}°`;
+    }
+    return DEFAULTS[key] as string;
+  };
 
   return (
     <HsStage
@@ -352,23 +373,23 @@ export function MsPaperPortraitWidget({
         {/* LEFT: weather tile cluster (2 small + 1 wide) */}
         <div className="ms-pp-p-lefttiles" data-widget="weather-cluster">
           <div className="ms-pp-p-tile ms-pp-p-warm" data-widget="weather">
-            <span className="ms-pp-p-k" data-field="weather.label" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'weather.label')}</span>
+            <span className="ms-pp-p-k" data-field="weather.label" style={{ whiteSpace: 'pre-wrap' }}>{pick('weather.label')}</span>
             <span className="ms-pp-p-v">
-              <span data-field="weather.high" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'weather.high')}</span>
+              <span data-field="weather.high" style={{ whiteSpace: 'pre-wrap' }}>{pick('weather.high')}</span>
               <small>&deg;F</small>
             </span>
           </div>
           <div className="ms-pp-p-tile" data-widget="weather-low">
-            <span className="ms-pp-p-k" data-field="weather.low_label" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'weather.low_label')}</span>
+            <span className="ms-pp-p-k" data-field="weather.low_label" style={{ whiteSpace: 'pre-wrap' }}>{pick('weather.low_label')}</span>
             <span className="ms-pp-p-v">
-              <span data-field="weather.low" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'weather.low')}</span>
+              <span data-field="weather.low" style={{ whiteSpace: 'pre-wrap' }}>{pick('weather.low')}</span>
               <small>&deg;F</small>
             </span>
           </div>
           <div className="ms-pp-p-tile ms-pp-p-full" data-widget="weather-summary">
-            <span className="ms-pp-p-k" data-field="weather.sky_label" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'weather.sky_label')}</span>
+            <span className="ms-pp-p-k" data-field="weather.sky_label" style={{ whiteSpace: 'pre-wrap' }}>{pick('weather.sky_label')}</span>
             <span className="ms-pp-p-v">
-              <span data-field="weather.sky" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'weather.sky')}</span>
+              <span data-field="weather.sky" style={{ whiteSpace: 'pre-wrap' }}>{pick('weather.sky')}</span>
               <span className="ms-pp-p-arrow">&mdash; light SW wind</span>
             </span>
           </div>
@@ -378,30 +399,30 @@ export function MsPaperPortraitWidget({
         <div className="ms-pp-p-editrail">
           <div className="ms-pp-p-stamp" data-widget="edition">
             <span className="ms-pp-p-dot" aria-hidden="true" />
-            <span data-field="edition.flag" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'edition.flag')}</span>
+            <span data-field="edition.flag" style={{ whiteSpace: 'pre-wrap' }}>{pick('edition.flag')}</span>
           </div>
           <div className="ms-pp-p-price" data-widget="price">
-            <span data-field="price.value" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'price.value')}</span>
-            <small data-field="price.note" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'price.note')}</small>
+            <span data-field="price.value" style={{ whiteSpace: 'pre-wrap' }}>{pick('price.value')}</span>
+            <small data-field="price.note" style={{ whiteSpace: 'pre-wrap' }}>{pick('price.note')}</small>
           </div>
           <div className="ms-pp-p-clock" data-widget="clock">
-            <b data-field="clock.day" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'clock.day')}</b>
+            <b data-field="clock.day" style={{ whiteSpace: 'pre-wrap' }}>{pick('clock.day')}</b>
             {', '}
-            <span data-field="clock.date" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'clock.date')}</span>
+            <span data-field="clock.date" style={{ whiteSpace: 'pre-wrap' }}>{pick('clock.date')}</span>
           </div>
         </div>
       </header>
 
       {/* ─── MASTHEAD ──────────────────────────────────────── */}
       <header className="ms-pp-p-mast" data-widget="masthead">
-        <div className="ms-pp-p-ribbon" data-field="masthead.kicker" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'masthead.kicker')}</div>
+        <div className="ms-pp-p-ribbon" data-field="masthead.kicker" style={{ whiteSpace: 'pre-wrap' }}>{pick('masthead.kicker')}</div>
         <div className="ms-pp-p-title">
-          <span className="ms-pp-p-the" data-field="masthead.the" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'masthead.the')}</span>
-          <span data-field="masthead.mascot" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'masthead.mascot')}</span>
+          <span className="ms-pp-p-the" data-field="masthead.the" style={{ whiteSpace: 'pre-wrap' }}>{pick('masthead.the')}</span>
+          <span data-field="masthead.mascot" style={{ whiteSpace: 'pre-wrap' }}>{pick('masthead.mascot')}</span>
           &nbsp;
-          <span className="ms-pp-p-accent" data-field="masthead.suffix" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'masthead.suffix')}</span>
+          <span className="ms-pp-p-accent" data-field="masthead.suffix" style={{ whiteSpace: 'pre-wrap' }}>{pick('masthead.suffix')}</span>
         </div>
-        <div className="ms-pp-p-tagline" data-field="masthead.tagline" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'masthead.tagline')}</div>
+        <div className="ms-pp-p-tagline" data-field="masthead.tagline" style={{ whiteSpace: 'pre-wrap' }}>{pick('masthead.tagline')}</div>
       </header>
 
       {/* ─── DATELINE RULE ─────────────────────────────────── */}
@@ -409,58 +430,58 @@ export function MsPaperPortraitWidget({
 
       {/* ─── INDICIA STRIP ─────────────────────────────────── */}
       <div className="ms-pp-p-indicia" data-widget="indicia">
-        <span className="ms-pp-p-vol" data-field="indicia.vol" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'indicia.vol')}</span>
-        <span className="ms-pp-p-date" data-field="indicia.date" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'indicia.date')}</span>
+        <span className="ms-pp-p-vol" data-field="indicia.vol" style={{ whiteSpace: 'pre-wrap' }}>{pick('indicia.vol')}</span>
+        <span className="ms-pp-p-date" data-field="indicia.date" style={{ whiteSpace: 'pre-wrap' }}>{pick('indicia.date')}</span>
         <span className="ms-pp-p-pipe">|</span>
-        <span className="ms-pp-p-red" data-field="indicia.flag" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'indicia.flag')}</span>
+        <span className="ms-pp-p-red" data-field="indicia.flag" style={{ whiteSpace: 'pre-wrap' }}>{pick('indicia.flag')}</span>
         <span className="ms-pp-p-pipe">|</span>
-        <span data-field="indicia.run" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'indicia.run')}</span>
+        <span data-field="indicia.run" style={{ whiteSpace: 'pre-wrap' }}>{pick('indicia.run')}</span>
       </div>
 
       {/* ─── LEAD STORY ────────────────────────────────────── */}
       <article className="ms-pp-p-lead" data-widget="greeting">
         <div className="ms-pp-p-deptline">
           <span className="ms-pp-p-swatch" aria-hidden="true" />
-          <span className="ms-pp-p-label" data-field="greeting.dept" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.dept')}</span>
+          <span className="ms-pp-p-label" data-field="greeting.dept" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.dept')}</span>
           <span className="ms-pp-p-pipe-line" aria-hidden="true" />
-          <span className="ms-pp-p-edition" data-field="greeting.edition" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.edition')}</span>
+          <span className="ms-pp-p-edition" data-field="greeting.edition" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.edition')}</span>
         </div>
 
         <h1 className="ms-pp-p-h1">
-          <span className="ms-pp-p-small" data-field="greeting.kicker" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.kicker')}</span>
-          <span data-field="greeting.headline1" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.headline1')}</span>
+          <span className="ms-pp-p-small" data-field="greeting.kicker" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.kicker')}</span>
+          <span data-field="greeting.headline1" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.headline1')}</span>
           {' '}
-          <em data-field="greeting.headline2" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.headline2')}</em>
+          <em data-field="greeting.headline2" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.headline2')}</em>
         </h1>
 
-        <p className="ms-pp-p-deck" data-field="greeting.deck" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.deck')}</p>
+        <p className="ms-pp-p-deck" data-field="greeting.deck" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.deck')}</p>
 
         <div className="ms-pp-p-byline">
-          <span>By <b data-field="greeting.byline" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.byline')}</b></span>
+          <span>By <b data-field="greeting.byline" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.byline')}</b></span>
           <span className="ms-pp-p-pipe">|</span>
-          <span data-field="greeting.dateline" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.dateline')}</span>
+          <span data-field="greeting.dateline" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.dateline')}</span>
           <span className="ms-pp-p-pipe">|</span>
-          <em data-field="greeting.tag" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.tag')}</em>
+          <em data-field="greeting.tag" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.tag')}</em>
         </div>
 
         <div className="ms-pp-p-body">
           <div className="ms-pp-p-col ms-pp-p-first">
-            <p data-field="greeting.lede" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.lede')}</p>
-            <p data-field="greeting.col1b" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.col1b')}</p>
+            <p data-field="greeting.lede" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.lede')}</p>
+            <p data-field="greeting.col1b" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.col1b')}</p>
 
             <div className="ms-pp-p-pullquote">
-              &ldquo;<span data-field="greeting.pq" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.pq')}</span>&rdquo;
-              <span className="ms-pp-p-who" data-field="greeting.pq_who" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.pq_who')}</span>
+              &ldquo;<span data-field="greeting.pq" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.pq')}</span>&rdquo;
+              <span className="ms-pp-p-who" data-field="greeting.pq_who" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.pq_who')}</span>
             </div>
           </div>
           <div className="ms-pp-p-col">
-            <p data-field="greeting.col2a" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.col2a')}</p>
-            <p data-field="greeting.col3a" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'greeting.col3a')}</p>
+            <p data-field="greeting.col2a" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.col2a')}</p>
+            <p data-field="greeting.col3a" style={{ whiteSpace: 'pre-wrap' }}>{pick('greeting.col3a')}</p>
 
             <div className="ms-pp-p-photo" data-widget="photo">
               <div className="ms-pp-p-frame" aria-hidden="true" />
               <div className="ms-pp-p-caption" data-field="photo.caption" style={{ whiteSpace: 'pre-wrap' }}>
-                <b>{pick(cfg, 'photo.caption')}</b>
+                <b>{pick('photo.caption')}</b>
                 {', mascot, surveys the courtyard before first bell. '}
                 <em>&mdash; Photograph by Yearbook Club</em>
               </div>
@@ -473,13 +494,13 @@ export function MsPaperPortraitWidget({
       <aside className="ms-pp-p-sidebar" data-widget="agenda">
         <div className="ms-pp-p-tochead">
           <div className="ms-pp-p-h">
-            <span data-field="agenda.title" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'agenda.title')}</span>
-            <em data-field="agenda.title_em" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'agenda.title_em')}</em>
+            <span data-field="agenda.title" style={{ whiteSpace: 'pre-wrap' }}>{pick('agenda.title')}</span>
+            <em data-field="agenda.title_em" style={{ whiteSpace: 'pre-wrap' }}>{pick('agenda.title_em')}</em>
           </div>
           <div className="ms-pp-p-day">
-            <span data-field="agenda.day" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'agenda.day')}</span>
+            <span data-field="agenda.day" style={{ whiteSpace: 'pre-wrap' }}>{pick('agenda.day')}</span>
             <br />
-            <span data-field="agenda.run" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'agenda.run')}</span>
+            <span data-field="agenda.run" style={{ whiteSpace: 'pre-wrap' }}>{pick('agenda.run')}</span>
           </div>
         </div>
 
@@ -493,18 +514,18 @@ export function MsPaperPortraitWidget({
                 data-widget={`agenda.${i}`}
               >
                 <span className="ms-pp-p-p" data-field={`agenda.${i}.p`} style={{ whiteSpace: 'pre-wrap' }}>
-                  {pick(cfg, `agenda.${i}.p` as keyof Required<MsPaperPortraitConfig>)}
+                  {pick(`agenda.${i}.p` as keyof Required<MsPaperPortraitConfig>)}
                 </span>
                 <span className="ms-pp-p-what">
                   <span data-field={`agenda.${i}.t`} style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, `agenda.${i}.t` as keyof Required<MsPaperPortraitConfig>)}
+                    {pick(`agenda.${i}.t` as keyof Required<MsPaperPortraitConfig>)}
                   </span>
                   <span data-field={`agenda.${i}.r`} style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, `agenda.${i}.r` as keyof Required<MsPaperPortraitConfig>)}
+                    {pick(`agenda.${i}.r` as keyof Required<MsPaperPortraitConfig>)}
                   </span>
                 </span>
                 <span className="ms-pp-p-pg" data-field={`agenda.${i}.time`} style={{ whiteSpace: 'pre-wrap' }}>
-                  {pick(cfg, `agenda.${i}.time` as keyof Required<MsPaperPortraitConfig>)}
+                  {pick(`agenda.${i}.time` as keyof Required<MsPaperPortraitConfig>)}
                 </span>
               </div>
             );
@@ -513,19 +534,19 @@ export function MsPaperPortraitWidget({
 
         <div className="ms-pp-p-stats">
           <div className="ms-pp-p-s ms-pp-p-featured" data-widget="countdown">
-            <span className="ms-pp-p-k" data-field="countdown.label" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'countdown.label')}</span>
+            <span className="ms-pp-p-k" data-field="countdown.label" style={{ whiteSpace: 'pre-wrap' }}>{pick('countdown.label')}</span>
             <span className="ms-pp-p-v">
-              <span data-field="countdown.value" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'countdown.value')}</span>
+              <span data-field="countdown.value" style={{ whiteSpace: 'pre-wrap' }}>{pick('countdown.value')}</span>
             </span>
-            <span className="ms-pp-p-sub" data-field="countdown.sub" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'countdown.sub')}</span>
+            <span className="ms-pp-p-sub" data-field="countdown.sub" style={{ whiteSpace: 'pre-wrap' }}>{pick('countdown.sub')}</span>
           </div>
           <div className="ms-pp-p-s" data-widget="attendance">
-            <span className="ms-pp-p-k" data-field="attendance.label" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'attendance.label')}</span>
+            <span className="ms-pp-p-k" data-field="attendance.label" style={{ whiteSpace: 'pre-wrap' }}>{pick('attendance.label')}</span>
             <span className="ms-pp-p-v">
-              <span data-field="attendance.value" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'attendance.value')}</span>
-              <em data-field="attendance.unit" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'attendance.unit')}</em>
+              <span data-field="attendance.value" style={{ whiteSpace: 'pre-wrap' }}>{pick('attendance.value')}</span>
+              <em data-field="attendance.unit" style={{ whiteSpace: 'pre-wrap' }}>{pick('attendance.unit')}</em>
             </span>
-            <span className="ms-pp-p-sub" data-field="attendance.sub" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'attendance.sub')}</span>
+            <span className="ms-pp-p-sub" data-field="attendance.sub" style={{ whiteSpace: 'pre-wrap' }}>{pick('attendance.sub')}</span>
           </div>
         </div>
       </aside>
@@ -535,31 +556,31 @@ export function MsPaperPortraitWidget({
         {/* DINING */}
         <div className="ms-pp-p-dept ms-pp-p-dining" data-widget="lunch">
           <div className="ms-pp-p-slug">
-            <span className="ms-pp-p-num" data-field="lunch.num" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'lunch.num')}</span>
+            <span className="ms-pp-p-num" data-field="lunch.num" style={{ whiteSpace: 'pre-wrap' }}>{pick('lunch.num')}</span>
             <span className="ms-pp-p-name">
-              <em data-field="lunch.dept_em" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'lunch.dept_em')}</em>
-              <span data-field="lunch.dept" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'lunch.dept')}</span>
+              <em data-field="lunch.dept_em" style={{ whiteSpace: 'pre-wrap' }}>{pick('lunch.dept_em')}</em>
+              <span data-field="lunch.dept" style={{ whiteSpace: 'pre-wrap' }}>{pick('lunch.dept')}</span>
             </span>
-            <span className="ms-pp-p-meta" data-field="lunch.meta" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'lunch.meta')}</span>
+            <span className="ms-pp-p-meta" data-field="lunch.meta" style={{ whiteSpace: 'pre-wrap' }}>{pick('lunch.meta')}</span>
           </div>
-          <div className="ms-pp-p-entree" data-field="lunch.entree" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'lunch.entree')}</div>
-          <div className="ms-pp-p-sides" data-field="lunch.sides" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'lunch.sides')}</div>
+          <div className="ms-pp-p-entree" data-field="lunch.entree" style={{ whiteSpace: 'pre-wrap' }}>{pick('lunch.entree')}</div>
+          <div className="ms-pp-p-sides" data-field="lunch.sides" style={{ whiteSpace: 'pre-wrap' }}>{pick('lunch.sides')}</div>
           <div className="ms-pp-p-tags">
-            <b data-field="lunch.tag1" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'lunch.tag1')}</b>
-            <b data-field="lunch.tag2" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'lunch.tag2')}</b>
-            <b className="ms-pp-p-red-tag" data-field="lunch.tag3" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'lunch.tag3')}</b>
+            <b data-field="lunch.tag1" style={{ whiteSpace: 'pre-wrap' }}>{pick('lunch.tag1')}</b>
+            <b data-field="lunch.tag2" style={{ whiteSpace: 'pre-wrap' }}>{pick('lunch.tag2')}</b>
+            <b className="ms-pp-p-red-tag" data-field="lunch.tag3" style={{ whiteSpace: 'pre-wrap' }}>{pick('lunch.tag3')}</b>
           </div>
         </div>
 
         {/* AFTER 3 / CLUBS */}
         <div className="ms-pp-p-dept ms-pp-p-clubs" data-widget="clubs">
           <div className="ms-pp-p-slug">
-            <span className="ms-pp-p-num" data-field="clubs.num" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'clubs.num')}</span>
+            <span className="ms-pp-p-num" data-field="clubs.num" style={{ whiteSpace: 'pre-wrap' }}>{pick('clubs.num')}</span>
             <span className="ms-pp-p-name">
-              <em data-field="clubs.dept_em" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'clubs.dept_em')}</em>
-              <span data-field="clubs.dept" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'clubs.dept')}</span>
+              <em data-field="clubs.dept_em" style={{ whiteSpace: 'pre-wrap' }}>{pick('clubs.dept_em')}</em>
+              <span data-field="clubs.dept" style={{ whiteSpace: 'pre-wrap' }}>{pick('clubs.dept')}</span>
             </span>
-            <span className="ms-pp-p-meta" data-field="clubs.meta" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'clubs.meta')}</span>
+            <span className="ms-pp-p-meta" data-field="clubs.meta" style={{ whiteSpace: 'pre-wrap' }}>{pick('clubs.meta')}</span>
           </div>
           <div className="ms-pp-p-list">
             {([0, 1, 2] as const).map((i) => {
@@ -570,22 +591,22 @@ export function MsPaperPortraitWidget({
                     className={`ms-pp-p-ico ${icoClass}`.trim()}
                     data-field={`clubs.${i}.ic`}
                    style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, `clubs.${i}.ic` as keyof Required<MsPaperPortraitConfig>)}
+                    {pick(`clubs.${i}.ic` as keyof Required<MsPaperPortraitConfig>)}
                   </div>
                   <div className="ms-pp-p-info">
                     <div className="ms-pp-p-t" data-field={`clubs.${i}.t`} style={{ whiteSpace: 'pre-wrap' }}>
-                      {pick(cfg, `clubs.${i}.t` as keyof Required<MsPaperPortraitConfig>)}
+                      {pick(`clubs.${i}.t` as keyof Required<MsPaperPortraitConfig>)}
                     </div>
                     <div className="ms-pp-p-s-it" data-field={`clubs.${i}.r`} style={{ whiteSpace: 'pre-wrap' }}>
-                      {pick(cfg, `clubs.${i}.r` as keyof Required<MsPaperPortraitConfig>)}
+                      {pick(`clubs.${i}.r` as keyof Required<MsPaperPortraitConfig>)}
                     </div>
                   </div>
                   <div className="ms-pp-p-when">
                     <span data-field={`clubs.${i}.w`} style={{ whiteSpace: 'pre-wrap' }}>
-                      {pick(cfg, `clubs.${i}.w` as keyof Required<MsPaperPortraitConfig>)}
+                      {pick(`clubs.${i}.w` as keyof Required<MsPaperPortraitConfig>)}
                     </span>
                     <small data-field={`clubs.${i}.note`} style={{ whiteSpace: 'pre-wrap' }}>
-                      {pick(cfg, `clubs.${i}.note` as keyof Required<MsPaperPortraitConfig>)}
+                      {pick(`clubs.${i}.note` as keyof Required<MsPaperPortraitConfig>)}
                     </small>
                   </div>
                 </div>
@@ -597,12 +618,12 @@ export function MsPaperPortraitWidget({
         {/* SEEN TODAY / SHOUTOUTS */}
         <div className="ms-pp-p-dept ms-pp-p-shoutouts" data-widget="shoutouts">
           <div className="ms-pp-p-slug">
-            <span className="ms-pp-p-num" data-field="shoutouts.num" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'shoutouts.num')}</span>
+            <span className="ms-pp-p-num" data-field="shoutouts.num" style={{ whiteSpace: 'pre-wrap' }}>{pick('shoutouts.num')}</span>
             <span className="ms-pp-p-name">
-              <em data-field="shoutouts.dept_em" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'shoutouts.dept_em')}</em>
-              <span data-field="shoutouts.dept" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'shoutouts.dept')}</span>
+              <em data-field="shoutouts.dept_em" style={{ whiteSpace: 'pre-wrap' }}>{pick('shoutouts.dept_em')}</em>
+              <span data-field="shoutouts.dept" style={{ whiteSpace: 'pre-wrap' }}>{pick('shoutouts.dept')}</span>
             </span>
-            <span className="ms-pp-p-meta" data-field="shoutouts.meta" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'shoutouts.meta')}</span>
+            <span className="ms-pp-p-meta" data-field="shoutouts.meta" style={{ whiteSpace: 'pre-wrap' }}>{pick('shoutouts.meta')}</span>
           </div>
           <div className="ms-pp-p-list">
             {([0, 1, 2] as const).map((i) => {
@@ -613,22 +634,22 @@ export function MsPaperPortraitWidget({
                     className={`ms-pp-p-ico ${icoClass}`.trim()}
                     data-field={`shoutouts.${i}.ic`}
                    style={{ whiteSpace: 'pre-wrap' }}>
-                    {pick(cfg, `shoutouts.${i}.ic` as keyof Required<MsPaperPortraitConfig>)}
+                    {pick(`shoutouts.${i}.ic` as keyof Required<MsPaperPortraitConfig>)}
                   </div>
                   <div className="ms-pp-p-info">
                     <div className="ms-pp-p-t" data-field={`shoutouts.${i}.t`} style={{ whiteSpace: 'pre-wrap' }}>
-                      {pick(cfg, `shoutouts.${i}.t` as keyof Required<MsPaperPortraitConfig>)}
+                      {pick(`shoutouts.${i}.t` as keyof Required<MsPaperPortraitConfig>)}
                     </div>
                     <div className="ms-pp-p-s-it" data-field={`shoutouts.${i}.r`} style={{ whiteSpace: 'pre-wrap' }}>
-                      {pick(cfg, `shoutouts.${i}.r` as keyof Required<MsPaperPortraitConfig>)}
+                      {pick(`shoutouts.${i}.r` as keyof Required<MsPaperPortraitConfig>)}
                     </div>
                   </div>
                   <div className="ms-pp-p-when">
                     <span data-field={`shoutouts.${i}.w`} style={{ whiteSpace: 'pre-wrap' }}>
-                      {pick(cfg, `shoutouts.${i}.w` as keyof Required<MsPaperPortraitConfig>)}
+                      {pick(`shoutouts.${i}.w` as keyof Required<MsPaperPortraitConfig>)}
                     </span>
                     <small data-field={`shoutouts.${i}.note`} style={{ whiteSpace: 'pre-wrap' }}>
-                      {pick(cfg, `shoutouts.${i}.note` as keyof Required<MsPaperPortraitConfig>)}
+                      {pick(`shoutouts.${i}.note` as keyof Required<MsPaperPortraitConfig>)}
                     </small>
                   </div>
                 </div>
@@ -640,23 +661,23 @@ export function MsPaperPortraitWidget({
 
       {/* ─── BULLETIN TICKER ─────────────────────────────── */}
       <div className="ms-pp-p-ticker" data-widget="ticker">
-        <div className="ms-pp-p-tag" data-field="ticker.tag" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.tag')}</div>
+        <div className="ms-pp-p-tag" data-field="ticker.tag" style={{ whiteSpace: 'pre-wrap' }}>{pick('ticker.tag')}</div>
         <div className="ms-pp-p-feed">
           <div className="ms-pp-p-feed-inner">
             {([0, 1, 2, 3, 4, 5, 6] as const).map((i) => (
               <span key={`a${i}`} data-field={`ticker.${i}`} style={{ whiteSpace: 'pre-wrap' }}>
-                {pick(cfg, `ticker.${i}` as keyof Required<MsPaperPortraitConfig>)}
+                {pick(`ticker.${i}` as keyof Required<MsPaperPortraitConfig>)}
               </span>
             ))}
             {/* Duplicate for seamless scroll */}
             {([0, 1, 2, 3, 4, 5, 6] as const).map((i) => (
               <span key={`b${i}`} aria-hidden="true">
-                {pick(cfg, `ticker.${i}` as keyof Required<MsPaperPortraitConfig>)}
+                {pick(`ticker.${i}` as keyof Required<MsPaperPortraitConfig>)}
               </span>
             ))}
           </div>
         </div>
-        <div className="ms-pp-p-vol-end" data-field="ticker.endmark" style={{ whiteSpace: 'pre-wrap' }}>{pick(cfg, 'ticker.endmark')}</div>
+        <div className="ms-pp-p-vol-end" data-field="ticker.endmark" style={{ whiteSpace: 'pre-wrap' }}>{pick('ticker.endmark')}</div>
       </div>
     </HsStage>
   );
