@@ -173,10 +173,15 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     const v = getVariant(cfg.variant);
     if (v && v.render) {
       const Render = v.render;
-      // Pass the merged config so the variant renderer sees both the
-      // operator's edits AND its own default config (height/width too
-      // for layout-aware variants).
-      return <Render config={cfg} compact={compact} />;
+      // Pass the merged config + onConfigChange so the variant renderer
+      // sees both the operator's edits AND can write back via inline
+      // edit (EditableText, double-click on data-field nodes). Without
+      // onConfigChange threaded through, EditableText's `canEdit` flag
+      // goes false and click-to-edit silently no-ops — the partner
+      // reported "inline editing doesnt work at all" and this was the
+      // root cause for every variant-rendered widget (which is most of
+      // the canvas, since dragging a variant tile sets cfg.variant).
+      return <Render config={cfg} compact={compact} onConfigChange={onConfigChange} />;
     }
   }
 
