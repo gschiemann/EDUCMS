@@ -647,6 +647,15 @@ export class ScreensController {
             where: { id: chosenPlaylistId },
             include: {
               items: {
+                // Sprint 1.5 approval gate. Issue #1: previously the
+                // manifest delivered every item regardless of asset
+                // approval state — meaning a CONTRIBUTOR's pending
+                // asset reached screens before any admin approved it.
+                // Filter to PUBLISHED only. Emergency assets are
+                // admin-uploaded and auto-publish so this is a strict
+                // tightening with no behavior change for the existing
+                // admin-content path.
+                where: { asset: { status: 'PUBLISHED' } },
                 include: { asset: true },
                 orderBy: { sequenceOrder: 'asc' }
               }
@@ -729,7 +738,19 @@ export class ScreensController {
       include: {
         playlist: {
           include: {
-            items: { orderBy: { sequenceOrder: 'asc' }, include: { asset: true } },
+            // Sprint 1.5 approval gate (Issue #1). PENDING_APPROVAL
+            // assets are silently dropped from the manifest so a
+            // CONTRIBUTOR's submitted-but-not-yet-approved content
+            // never reaches a screen. Approve flips the asset's status
+            // PENDING_APPROVAL→PUBLISHED and the next manifest poll
+            // includes it. All admin-uploaded assets land directly at
+            // PUBLISHED so this is a strict tightening with no impact
+            // on the existing admin-content flow.
+            items: {
+              where: { asset: { status: 'PUBLISHED' } },
+              orderBy: { sequenceOrder: 'asc' },
+              include: { asset: true },
+            },
             template: {
               include: {
                 zones: { orderBy: { sortOrder: 'asc' } },
