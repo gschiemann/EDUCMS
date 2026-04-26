@@ -9,7 +9,12 @@ import { useUIStore } from '@/store/ui-store';
 import { clog } from '@/lib/client-logger';
 import { FolderPicker } from '@/components/assets/FolderPicker';
 
-const MAX_FILE_SIZE = 200 * 1024 * 1024;
+// Match the server limit (apps/api/src/assets/assets.controller.ts).
+// 200MB was rejecting any reasonably-sized video before it even tried to
+// upload — partner reported "added a video and i get a network error and
+// it never loads" but the actual error was the client-side guard. Server
+// is 500MB.
+const MAX_FILE_SIZE = 500 * 1024 * 1024;
 const ACCEPT_STRING = '.jpg,.jpeg,.png,.webp,.gif,.svg,.bmp,.mp4,.webm,.mov,.avi,.mp3,.ogg,.wav,.pdf';
 
 type UploadPhase = 'idle' | 'uploading' | 'success' | 'error';
