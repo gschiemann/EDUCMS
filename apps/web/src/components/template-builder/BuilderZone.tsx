@@ -108,6 +108,7 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       tabIndex={previewMode ? -1 : 0}
       aria-label={`${label} zone: ${zone.name}`}
       aria-pressed={selected}
+      data-zone-id={zone.id}
       className="absolute group"
       style={{
         left: `${zone.x}%`,
@@ -276,6 +277,27 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
           onPointerDown={(e) => { e.stopPropagation(); onResizePointerDown(e, zone.id, h); }}
         />
       ))}
+      {!previewMode && !zone.locked && (
+        // Hover indicator for inline-editable text. Without this the
+        // operator can't tell which text is editable — partner reported
+        // "first template i chose called playlist has no hotspots and
+        // nothing is editable" even though every text node carries a
+        // data-field attribute. Now: hovering any data-field node shows
+        // a text cursor + dashed indigo outline + hint chip on the first
+        // one, so editability is unmistakable.
+        <style>{`
+          [data-zone-id="${zone.id}"] [data-field] {
+            cursor: text;
+            transition: outline 0.12s, background 0.12s;
+          }
+          [data-zone-id="${zone.id}"] [data-field]:hover {
+            outline: 2px dashed #6366f1;
+            outline-offset: 2px;
+            background: rgba(99, 102, 241, 0.06);
+            border-radius: 3px;
+          }
+        `}</style>
+      )}
     </div>
   );
 }

@@ -24,23 +24,43 @@ export class SupabaseStorageService implements OnModuleInit {
       auth: { persistSession: false },
     });
 
-    // Ensure the bucket exists (idempotent)
+    // Bucket file-size limit. Multer cap (500MB) + Railway request body
+    // cap mean the actual uploadable ceiling is whichever is lower; this
+    // is the Supabase side. Bumped from 50MB to 500MB to match Multer.
+    const ALLOWED_MIMES = [
+      'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml',
+      'image/x-icon', 'image/bmp',
+      'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo',
+      'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4',
+      'application/pdf',
+    ];
+    const FILE_SIZE_LIMIT = 500 * 1024 * 1024; // 500MB
+
+    // Ensure the bucket exists (idempotent on create)
     const { error } = await this.client.storage.createBucket(BUCKET, {
       public: true,
-      fileSizeLimit: 50 * 1024 * 1024, // 50 MB (Supabase default project limit boundary)
-      allowedMimeTypes: [
-        'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml',
-        'image/x-icon', 'image/bmp',
-        'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo',
-        'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4',
-        'application/pdf',
-      ],
+      fileSizeLimit: FILE_SIZE_LIMIT,
+      allowedMimeTypes: ALLOWED_MIMES,
     });
 
     if (error && !error.message?.includes('already exists') && !error.message?.includes('duplicate')) {
       this.logger.error(`Failed to create storage bucket: ${error.message}`);
+      return;
+    }
+
+    // updateBucket on every boot — createBucket only sets these on first
+    // create, so existing buckets retain their original (smaller) limits.
+    // Without this, raising fileSizeLimit in code does nothing for any
+    // tenant that already has an "assets" bucket.
+    const { error: updErr } = await this.client.storage.updateBucket(BUCKET, {
+      public: true,
+      fileSizeLimit: FILE_SIZE_LIMIT,
+      allowedMimeTypes: ALLOWED_MIMES,
+    });
+    if (updErr) {
+      this.logger.warn(`Failed to update bucket limits: ${updErr.message}`);
     } else {
-      this.logger.log('Supabase Storage bucket "assets" ready');
+      this.logger.log(`Supabase Storage bucket "assets" ready (cap ${FILE_SIZE_LIMIT / (1024*1024)}MB)`);
     }
   }
 
