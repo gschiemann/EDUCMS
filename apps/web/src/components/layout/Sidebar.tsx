@@ -129,6 +129,11 @@ export function Sidebar() {
 
   const adminNavItems = [
     { name: 'Review Queue', href: `/${activeTenant}/assets/review`, icon: ClipboardCheck, badge: pendingCount > 0 ? pendingCount : null },
+    // Sprint 1.5 — submission inbox for the submit-for-review workflow.
+    // Distinct from "Review Queue" (which is just pending assets) — this
+    // is the bundled-submission inbox where contributors submit a
+    // playlist + assets + schedule together for one approval click.
+    { name: 'Reviews', href: `/${activeTenant}/reviews`, icon: ClipboardCheck, badge: null as number | null },
     { name: 'Audit Log', href: `/${activeTenant}/audit`, icon: FileClock, badge: null as number | null },
   ];
 

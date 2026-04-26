@@ -77,6 +77,8 @@ model Tenant {
   license                 License?
   // Auto-branding (Sprint 9). One-to-one; absence means "default theme."
   branding                TenantBranding?
+  // Submit-for-review workflow (Sprint 1.5).
+  submissions             Submission[]
 
   @@map("tenants")
 }
@@ -166,6 +168,8 @@ model User {
   invitesSent      UserInvite[]         @relation("InviteInviter")
   invite           UserInvite?          @relation("InviteUser")
   notifications    Notification[]
+  submissionsSubmitted Submission[]   @relation("SubmissionsSubmitted")
+  submissionsDecided   Submission[]   @relation("SubmissionsDecided")
 
   @@map("users")
 }
@@ -586,4 +590,39 @@ model TemplateZone {
   template      Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
 
   @@map("template_zones")
+}
+
+// Sprint 1.5 — submit-for-review workflow.
+//
+// CONTRIBUTOR creates draft assets/playlists/schedules, bundles them
+// into a Submission, picks one or more admins to notify, and sends it
+// off. Admins see PENDING submissions on a Reviews page, drill in to
+// preview content, then Approve (publish) or Reject (with feedback).
+// Audit-logged on every state change. Migration is additive: new
+// table only — referenced asset/playlist/schedule ids are stored as
+// CSV strings (no foreign keys) so historical submissions remain
+// queryable even after their linked content is later edited or
+// removed, and the existing tables don't need new columns.
+model Submission {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  submittedById   String   @map("submitted_by_user_id")
+  status          String   @default("PENDING")
+  note            String?
+  reviewerNote    String?  @map("reviewer_note")
+  notifyUserIds   String   @default("") @map("notify_user_ids")
+  assetIds        String   @default("") @map("asset_ids")
+  playlistIds     String   @default("") @map("playlist_ids")
+  scheduleIds     String   @default("") @map("schedule_ids")
+  createdAt       DateTime @default(now()) @map("created_at")
+  decidedAt       DateTime? @map("decided_at")
+  decidedById     String?   @map("decided_by_user_id")
+
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  submittedBy     User     @relation("SubmissionsSubmitted", fields: [submittedById], references: [id])
+  decidedBy       User?    @relation("SubmissionsDecided",   fields: [decidedById],   references: [id])
+
+  @@index([tenantId, status, createdAt])
+  @@index([submittedById, createdAt])
+  @@map("submissions")
 }

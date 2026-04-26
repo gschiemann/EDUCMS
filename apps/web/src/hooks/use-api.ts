@@ -827,3 +827,74 @@ export function useUsbIngestEvents() {
     queryFn: () => apiFetch('/tenants/me/usb-ingest/events'),
   });
 }
+
+// ─── Submissions (Sprint 1.5 — submit-for-review workflow) ───
+export interface SubmissionRow {
+  id: string;
+  tenantId: string;
+  submittedById: string;
+  submittedBy?: { id: string; email: string };
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  note: string | null;
+  reviewerNote: string | null;
+  notifyUserIds: string[];
+  assetIds: string[];
+  playlistIds: string[];
+  scheduleIds: string[];
+  decidedAt: string | null;
+  decidedById: string | null;
+  decidedBy?: { id: string; email: string } | null;
+  createdAt: string;
+}
+
+export function useSubmissions(opts?: { status?: 'PENDING' | 'APPROVED' | 'REJECTED'; mine?: boolean }) {
+  const params = new URLSearchParams();
+  if (opts?.status) params.set('status', opts.status);
+  if (opts?.mine)   params.set('mine', '1');
+  const qs = params.toString();
+  return useQuery<SubmissionRow[]>({
+    queryKey: ['submissions', opts?.status || null, !!opts?.mine],
+    queryFn: () => apiFetch(`/submissions${qs ? `?${qs}` : ''}`),
+  });
+}
+
+export function useSubmission(id: string) {
+  return useQuery<SubmissionRow & { assets: any[]; playlists: any[]; schedules: any[] }>({
+    queryKey: ['submissions', id],
+    queryFn: () => apiFetch(`/submissions/${id}`),
+    enabled: !!id,
+  });
+}
+
+export function useCreateSubmission() {
+  const qc = useQueryClient();
+  return useMutation<
+    SubmissionRow,
+    Error,
+    { note?: string; notifyUserIds?: string[]; assetIds?: string[]; playlistIds?: string[]; scheduleIds?: string[] }
+  >({
+    mutationFn: (body) => apiFetch('/submissions', { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: () => {
+      qc.refetchQueries({ queryKey: ['submissions'] });
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+}
+
+export function useDecideSubmission() {
+  const qc = useQueryClient();
+  return useMutation<
+    SubmissionRow,
+    Error,
+    { id: string; decision: 'approve' | 'reject'; reviewerNote?: string }
+  >({
+    mutationFn: ({ id, decision, reviewerNote }) =>
+      apiFetch(`/submissions/${id}/${decision}`, { method: 'POST', body: JSON.stringify({ reviewerNote }) }),
+    onSuccess: () => {
+      qc.refetchQueries({ queryKey: ['submissions'] });
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+      qc.invalidateQueries({ queryKey: ['assets'] });
+      qc.invalidateQueries({ queryKey: ['playlists'] });
+    },
+  });
+}

@@ -18,6 +18,7 @@ import {
   useReorderPlaylistItems, useScreenGroups, useCreateSchedule,
   useSchedules, useDeleteSchedule, useToggleSchedule, useUpdateSchedule, useScreens,
   useTemplates, useAssetFolders, useSetPlaylistActive,
+  useUsers, useCreateSubmission,
 } from '@/hooks/use-api';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
@@ -478,6 +479,52 @@ export default function PlaylistsPage() {
   const [createMode, setCreateMode] = useState<'choose' | 'blank' | 'template'>('choose');
   const [showPicker, setShowPicker] = useState(false);
   const [showPublishModal, setShowPublishModal] = useState(false);
+  // Submit-for-review (Sprint 1.5). CONTRIBUTOR role can submit a
+  // playlist + its items for admin approval instead of publishing
+  // directly. The button only shows for that role.
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [submitNote, setSubmitNote] = useState('');
+  const [submitReviewerIds, setSubmitReviewerIds] = useState<string[]>([]);
+  const userRole = useUIStore((s) => s.user?.role);
+  const isContributor = userRole === 'CONTRIBUTOR';
+  const { data: tenantUsers } = useUsers();
+  const tenantAdmins = (tenantUsers as any[] | undefined)?.filter((u) => u.role === 'SUPER_ADMIN' || u.role === 'DISTRICT_ADMIN' || u.role === 'SCHOOL_ADMIN') || [];
+  const createSubmission = useCreateSubmission();
+  const handleSubmitForReview = async () => {
+    if (!selectedId) return;
+    try {
+      // Save unsaved items first — same race as publish: empty playlist
+      // gets submitted otherwise.
+      if (hasChanges) {
+        await saveItems.mutateAsync({
+          playlistId: selectedId,
+          items: localItems.map((item, i) => ({
+            assetId: item.assetId || item.asset?.id,
+            durationMs: item.durationMs || 10000,
+            sequenceOrder: i,
+            daysOfWeek: item.daysOfWeek || null,
+            timeStart: item.timeStart || null,
+            timeEnd: item.timeEnd || null,
+          })),
+        });
+        setHasChanges(false);
+      }
+      const assetIds = localItems.map((it: any) => it.assetId || it.asset?.id).filter(Boolean);
+      await createSubmission.mutateAsync({
+        note: submitNote.trim() || undefined,
+        notifyUserIds: submitReviewerIds,
+        assetIds: Array.from(new Set(assetIds)),
+        playlistIds: [selectedId],
+        scheduleIds: [],
+      });
+      setShowSubmitModal(false);
+      setSubmitNote('');
+      setSubmitReviewerIds([]);
+      alert('Submitted for review. The reviewer(s) you picked will see it on their Reviews page.');
+    } catch (err: any) {
+      alert(`Could not submit: ${err.message || 'unknown error'}`);
+    }
+  };
   const [newName, setNewName] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 
@@ -933,9 +980,17 @@ export default function PlaylistsPage() {
               </>
             )}
             <InlineDownloadButton playlistId={selectedPlaylist.id} playlistName={selectedPlaylist.name} />
-            <button onClick={() => { setEditingScheduleId(null); setSchedTargets([]); setSchedMode('always'); setShowPublishModal(true); }} className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shadow-sm">
-              <CalendarDays className="w-3.5 h-3.5" /> Schedule to Screen
-            </button>
+            {isContributor ? (
+              // CONTRIBUTOR sends to admin queue instead of scheduling
+              // directly. Sprint 1.5 workflow.
+              <button onClick={() => setShowSubmitModal(true)} className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shadow-sm">
+                <CheckSquare className="w-3.5 h-3.5" /> Submit for Review
+              </button>
+            ) : (
+              <button onClick={() => { setEditingScheduleId(null); setSchedTargets([]); setSchedMode('always'); setShowPublishModal(true); }} className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shadow-sm">
+                <CalendarDays className="w-3.5 h-3.5" /> Schedule to Screen
+              </button>
+            )}
           </div>
         </div>
 
@@ -1355,6 +1410,67 @@ export default function PlaylistsPage() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── Submit for Review Modal (CONTRIBUTOR) ─── */}
+        {showSubmitModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Submit for review">
+            <button className="absolute inset-0 cursor-default" aria-label="Close dialog" onClick={() => setShowSubmitModal(false)} />
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col p-6 relative z-10">
+              <h3 className="text-lg font-bold text-slate-800 mb-1">Submit for Review</h3>
+              <p className="text-sm text-slate-500 mb-5">
+                Send this playlist to an admin for approval. You&rsquo;ll get a notification when they approve or send feedback.
+              </p>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Notify reviewer(s)</label>
+              <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 mb-4">
+                {tenantAdmins.length === 0 ? (
+                  <div className="p-3 text-xs text-slate-400">No admins configured for this tenant.</div>
+                ) : (
+                  tenantAdmins.map((u: any) => {
+                    const checked = submitReviewerIds.includes(u.id);
+                    return (
+                      <label key={u.id} className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-xs border-b border-slate-100 last:border-b-0">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => setSubmitReviewerIds((p) => (checked ? p.filter((id) => id !== u.id) : [...p, u.id]))}
+                          className="rounded text-indigo-600 focus:ring-indigo-400"
+                        />
+                        <span className="font-semibold text-slate-700">{u.email}</span>
+                        <span className="text-[10px] text-slate-400 uppercase ml-auto">{u.role.replace('_', ' ')}</span>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Note for reviewer (optional)</label>
+              <textarea
+                value={submitNote}
+                onChange={(e) => setSubmitNote(e.target.value)}
+                placeholder="Quick context — what is this playlist for, anything to look at first…"
+                rows={3}
+                className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 mb-5"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowSubmitModal(false)}
+                  className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSubmitForReview}
+                  disabled={createSubmission.isPending || submitReviewerIds.length === 0}
+                  className="flex-1 px-4 py-2.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-bold rounded-lg shadow-sm"
+                >
+                  {createSubmission.isPending ? 'Submitting…' : 'Submit'}
+                </button>
+              </div>
+              {submitReviewerIds.length === 0 && tenantAdmins.length > 0 && (
+                <p className="text-[10px] text-amber-600 mt-2 text-center">Pick at least one reviewer.</p>
+              )}
             </div>
           </div>
         )}

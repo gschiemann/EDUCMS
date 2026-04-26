@@ -25,6 +25,7 @@ import { SsoModule } from './sso/sso.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { EmailModule } from './email/email.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { SubmissionsModule } from './submissions/submissions.module';
 import { LicenseModule } from './license/license.module';
 import { BrandingModule } from './branding/branding.module';
 import { UsbExportModule } from './usb-export/usb-export.module';
@@ -57,6 +58,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     EmailModule,
     OnboardingModule,
     NotificationsModule,
+    SubmissionsModule,
     LicenseModule,
     BrandingModule,
     UsbExportModule,
