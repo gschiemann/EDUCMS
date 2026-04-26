@@ -3,23 +3,28 @@
 /**
  * BuilderZone visual isolation test — DEV ONLY.
  *
- * Renders a freshly-dropped (empty) zone with the exact CSS
- * BuilderZone applies, on a representative grey "canvas" background.
- * If this looks like an unmistakable colored rectangle with a label
- * badge, the partner's "transparent box" symptom is fixed.
+ * Mounts the ACTUAL widgets (not just the BuilderZone wrapper) so we
+ * can verify what a freshly-dropped zone really looks like end-to-end.
+ * Partner kept reporting "transparent box" — this confirms whether
+ * the widget renders correctly inside the wrapper styling.
  */
 
-import { Type, Image as ImageIcon, Globe, Megaphone } from 'lucide-react';
+import { Type, Image as ImageIcon, Globe, Megaphone, Clock } from 'lucide-react';
+import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 
-const ZONES = [
-  { type: 'TEXT',         label: 'TEXT',         accent: '#64748b' },
-  { type: 'IMAGE',        label: 'IMAGE',        accent: '#3b82f6' },
-  { type: 'WEBPAGE',      label: 'URL / WEBSITE', accent: '#10b981' },
-  { type: 'ANNOUNCEMENT', label: 'ANNOUNCEMENT', accent: '#f59e0b' },
+const ZONES: Array<{ type: string; label: string; accent: string; config: any }> = [
+  { type: 'CLOCK',        label: 'CLOCK',         accent: '#6b7280', config: {} },
+  { type: 'TEXT',         label: 'TEXT',          accent: '#64748b', config: { content: 'Click to edit text' } },
+  { type: 'WEATHER',      label: 'WEATHER',       accent: '#06b6d4', config: {} },
+  { type: 'ANNOUNCEMENT', label: 'ANNOUNCEMENT',  accent: '#f59e0b', config: { message: 'Click to edit announcement' } },
+  { type: 'TICKER',       label: 'TICKER',        accent: '#f59e0b', config: { messages: ['Click to edit ticker'] } },
+  { type: 'WEBPAGE',      label: 'URL / WEBSITE', accent: '#10b981', config: { url: 'https://example.com' } },
+  { type: 'IMAGE',        label: 'IMAGE (empty)', accent: '#3b82f6', config: {} },
+  { type: 'COUNTDOWN',    label: 'COUNTDOWN',     accent: '#f43f5e', config: { title: 'Countdown' } },
 ];
 
 const ICONS: Record<string, any> = {
-  TEXT: Type, IMAGE: ImageIcon, WEBPAGE: Globe, ANNOUNCEMENT: Megaphone,
+  TEXT: Type, IMAGE: ImageIcon, WEBPAGE: Globe, ANNOUNCEMENT: Megaphone, CLOCK: Clock,
 };
 
 export default function ZoneTestPage() {
@@ -32,24 +37,31 @@ export default function ZoneTestPage() {
         white interior, 3px colored border, drop shadow, label badge in
         the top-left.
       </p>
-      <div style={{ background: 'linear-gradient(to bottom right, #f1f5f9, #e2e8f0)', padding: 32, borderRadius: 12, position: 'relative', minHeight: 600 }}>
+      <div style={{ background: 'linear-gradient(to bottom right, #f1f5f9, #e2e8f0)', padding: 32, borderRadius: 12, position: 'relative', minHeight: 900 }}>
         {ZONES.map((z, i) => {
-          const Icon = ICONS[z.type];
+          const Icon = ICONS[z.type] ?? Type;
+          // Stack 4 zones per row in a 4×2 grid
+          const col = i % 4;
+          const row = Math.floor(i / 4);
           return (
             <div
               key={z.type}
               style={{
                 position: 'absolute',
-                left: `${5 + i * 22}%`,
-                top: `${10 + i * 15}%`,
-                width: '20%',
-                height: '25%',
+                left: `${4 + col * 24}%`,
+                top: `${4 + row * 48}%`,
+                width: '22%',
+                height: '40%',
                 background: '#ffffff',
                 border: `3px solid ${z.accent}`,
                 boxShadow: `0 4px 12px ${z.accent}33`,
                 overflow: 'hidden',
               }}
             >
+              {/* Actual widget render — same path BuilderZone uses */}
+              <WidgetPreview widgetType={z.type} config={z.config} width={22} height={40} live={false} />
+
+              {/* Label badge — exact same as BuilderZone */}
               <div
                 style={{
                   position: 'absolute',
@@ -67,6 +79,8 @@ export default function ZoneTestPage() {
                   background: '#ffffff',
                   color: z.accent,
                   border: `1px solid ${z.accent}`,
+                  zIndex: 30,
+                  pointerEvents: 'none',
                 }}
               >
                 <Icon style={{ width: 10, height: 10 }} />
