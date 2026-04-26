@@ -13,6 +13,7 @@ import { WidgetPalette } from './WidgetPalette';
 import { VariantPicker } from './VariantPicker';
 import { LayersPanel } from './LayersPanel';
 import { PropertiesPanel } from './PropertiesPanel';
+import { TopContextToolbar } from './TopContextToolbar';
 import { useUpdateTemplate, useUpdateTemplateZones, useCreateTemplate, useDeleteTemplate } from '@/hooks/use-api';
 import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
 import type { Template, Zone } from './types';
@@ -492,7 +493,13 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
           </aside>
         )}
 
-        <BuilderCanvas />
+        {/* Canvas column: contextual toolbar on top + canvas underneath.
+            Wrapping in a flex column keeps the canvas's existing
+            scroll behaviour intact. */}
+        <div className="flex flex-col flex-1 min-w-0">
+          <TopContextToolbar />
+          <BuilderCanvas />
+        </div>
       </div>
 
       <DragOverlay dropAnimation={{ duration: 250, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)' }}>

@@ -1810,7 +1810,7 @@ function TemplateBackdropPicker({
   );
 }
 
-function FontFamilyField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+export function FontFamilyField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <div>
       <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
@@ -1835,7 +1835,7 @@ function FontFamilyField({ label, value, onChange }: { label: string; value: str
 // screen viewed from across a hallway.
 const FONT_SIZE_PRESETS = [12, 14, 16, 18, 20, 24, 32, 40, 48, 56, 64, 72, 96, 128, 160, 200];
 
-function FontSizeField({ label, value, onChange }: { label: string; value: number | null; onChange: (v: number | undefined) => void }) {
+export function FontSizeField({ label, value, onChange }: { label: string; value: number | null; onChange: (v: number | undefined) => void }) {
   const current = typeof value === 'number' && Number.isFinite(value) ? value : null;
   const display = current ?? '';
   const bump = (delta: number) => {
@@ -2049,7 +2049,7 @@ function ToggleField({ label, value, onChange }: { label: string; value: boolean
  *  text-formatting bar — bold / italic / underline / strikethrough.
  *  Operator pushes any combination; widget render in WidgetRenderer
  *  reads the four boolean fields independently. */
-function FormatToggles({
+export function FormatToggles({
   bold, italic, underline, strikethrough, onChange,
 }: {
   bold: boolean;
@@ -2117,7 +2117,7 @@ function LineHeightField({ value, onChange }: { value: number; onChange: (v: num
   );
 }
 
-function ColorField({ label, value, onChange, allowTransparent }: { label: string; value: string; onChange: (v: string) => void; allowTransparent?: boolean }) {
+export function ColorField({ label, value, onChange, allowTransparent }: { label: string; value: string; onChange: (v: string) => void; allowTransparent?: boolean }) {
   const isTransparent = value === 'transparent' || !value;
   return (
     <div>
