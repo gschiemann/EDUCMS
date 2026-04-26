@@ -588,18 +588,41 @@ function BuilderBottomBar() {
       {groupBtn(false, 'Redo (Ctrl/⌘+Y)',       redo, <Redo2 className="w-4 h-4" />, !canRedo)}
       <div className="w-px h-5 bg-slate-200 mx-1" />
 
-      {/* Zoom out / level / zoom in / reset */}
-      {groupBtn(false, 'Zoom out',              () => setZoom(zoom - 0.1), <ZoomOut className="w-4 h-4" />)}
-      <button
-        type="button"
-        aria-label="Reset zoom to 100%"
-        title="Reset zoom (click)"
-        onClick={() => setZoom(1)}
-        className="px-2 h-9 rounded-lg text-xs font-mono font-semibold text-slate-700 hover:bg-slate-100 min-w-[52px]"
-      >
-        {zoomPct}%
-      </button>
-      {groupBtn(false, 'Zoom in',               () => setZoom(zoom + 0.1), <ZoomIn className="w-4 h-4" />)}
+      {/* Zoom — preset levels rather than ±10% linear. Stops at the
+          design-tool standard set (25/50/75/100/125/150/200/300%) so
+          operators land on familiar values. The level button is a
+          combobox showing the current %; click cycles through presets,
+          right-click / shift-click would open a dropdown (TODO). */}
+      {(() => {
+        const PRESETS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+        const currIdx = (() => {
+          // Closest preset
+          let best = 0;
+          let bestDiff = Math.abs(PRESETS[0] - zoom);
+          for (let i = 1; i < PRESETS.length; i++) {
+            const d = Math.abs(PRESETS[i] - zoom);
+            if (d < bestDiff) { best = i; bestDiff = d; }
+          }
+          return best;
+        })();
+        const stepDown = () => setZoom(PRESETS[Math.max(0, currIdx - 1)]);
+        const stepUp   = () => setZoom(PRESETS[Math.min(PRESETS.length - 1, currIdx + 1)]);
+        return (
+          <>
+            {groupBtn(false, 'Zoom out (preset)', stepDown, <ZoomOut className="w-4 h-4" />, currIdx === 0)}
+            <button
+              type="button"
+              aria-label="Reset zoom to 100%"
+              title="Click to reset to 100%"
+              onClick={() => setZoom(1)}
+              className="px-2 h-9 rounded-lg text-xs font-mono font-semibold text-slate-700 hover:bg-slate-100 min-w-[52px]"
+            >
+              {zoomPct}%
+            </button>
+            {groupBtn(false, 'Zoom in (preset)', stepUp, <ZoomIn className="w-4 h-4" />, currIdx === PRESETS.length - 1)}
+          </>
+        );
+      })()}
       <div className="w-px h-5 bg-slate-200 mx-1" />
 
       {/* View toggles */}

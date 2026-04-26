@@ -1167,9 +1167,19 @@ function ImageWidget({ config }: { config: any }) {
   if (config.theme === 'middle-school-hall') return <MSHallLogo config={config} />;
   if (config.theme === 'library-quiet') return <LibraryQuietImage config={config} />;
   if (config.assetUrl) {
+    // `fit` is the canonical key set by the new top contextual toolbar
+    // (cover/contain). Legacy templates use `fitMode` — fall through.
+    const fit = (config.fit || config.fitMode || 'contain') as 'cover' | 'contain';
+    const opacity = typeof config.opacity === 'number' ? Math.max(0, Math.min(1, config.opacity)) : 1;
+    const radius = typeof config.borderRadius === 'number' ? Math.max(0, config.borderRadius) : 0;
     return (
-      <div className="absolute inset-0 overflow-hidden">
-        <img src={resolveUrl(config.assetUrl)} alt="" className="w-full h-full" style={{ objectFit: config.fitMode || 'contain' }} />
+      <div className="absolute inset-0 overflow-hidden" style={{ borderRadius: radius || undefined }}>
+        <img
+          src={resolveUrl(config.assetUrl)}
+          alt=""
+          className="w-full h-full"
+          style={{ objectFit: fit, opacity }}
+        />
       </div>
     );
   }

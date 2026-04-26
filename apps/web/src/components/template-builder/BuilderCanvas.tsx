@@ -370,14 +370,20 @@ function FloatingZoneActions({ zone }: { zone: Zone }) {
   const toggleLock      = useBuilderStore((s) => s.toggleLock);
   const moveLayer       = useBuilderStore((s) => s.moveLayer);
 
-  // Position the bar centered horizontally over the zone, just BELOW
-  // the zone's bottom edge. If the zone is at the very bottom of the
-  // canvas (less than 8% room), flip above instead.
-  const flipAbove = zone.y + zone.height > 92;
+  // Position the bar centered horizontally over the zone. Default
+  // anchor is just BELOW the zone (matches Canva). Flip above when
+  // the bar would sit too close to the canvas's bottom edge — bar
+  // height ~36px + 8px translateY offset = ~44px clearance needed.
+  // Below 88% the bar still has room; at 88-100% we flip up.
+  // Horizontally clamp so the bar's center can't push it off the
+  // canvas (zone at x=2% with width=4% would otherwise center at 4%
+  // and clip the left half of a 240px-wide bar).
+  const flipAbove = zone.y + zone.height > 88;
   const top  = flipAbove
     ? `calc(${zone.y}% - 36px)`
     : `${zone.y + zone.height}%`;
-  const left = `${zone.x + zone.width / 2}%`;
+  const centerX = zone.x + zone.width / 2;
+  const left = `${Math.max(8, Math.min(92, centerX))}%`;
 
   const btn = (label: string, onClick: () => void, icon: React.ReactNode, danger = false) => (
     <button
