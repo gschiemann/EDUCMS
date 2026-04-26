@@ -108,7 +108,6 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       tabIndex={previewMode ? -1 : 0}
       aria-label={`${label} zone: ${zone.name}`}
       aria-pressed={selected}
-      data-zone-id={zone.id}
       className="absolute group"
       style={{
         left: `${zone.x}%`,
