@@ -711,15 +711,24 @@ function TextWidget({ config, onConfigChange }: { config: any; onConfigChange?: 
 
   return (
     <div className="absolute inset-0 flex items-center justify-center p-[5%] overflow-hidden" style={{ backgroundColor: bgColor }}>
-      <p style={{
-        fontSize: `${Math.min(fontSize / 16, 3)}em`,
-        fontWeight: 600,
-        color,
-        textAlign: alignment as any,
-        lineHeight: 1.4,
-        width: '100%',
-        wordWrap: 'break-word' as const,
-      }}>
+      <p
+        data-field="content"
+        style={{
+          fontSize: `${Math.min(fontSize / 16, 3)}em`,
+          fontWeight: 600,
+          color,
+          textAlign: alignment as any,
+          lineHeight: 1.4,
+          width: '100%',
+          wordWrap: 'break-word' as const,
+          // Preserve newlines from inline editing — partner reported
+          // "i put text below and it kept it on the same line." A bare
+          // <p> collapses whitespace by default; pre-wrap keeps the \n
+          // characters that the inline-edit handler commits when the
+          // user presses Enter.
+          whiteSpace: 'pre-wrap' as const,
+        }}
+      >
         {content}
       </p>
     </div>

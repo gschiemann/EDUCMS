@@ -20,7 +20,7 @@ const ZONES: Array<{ type: string; label: string; accent: string; config: any }>
   { type: 'CLOCK',        label: 'CLOCK · DARK PILL VARIANT', accent: '#6b7280', config: { variant: 'clock-dark-pill' } },
   { type: 'CLOCK',        label: 'CLOCK · GRADIENT VARIANT',  accent: '#6b7280', config: { variant: 'clock-gradient-digital' } },
   { type: 'CLOCK',        label: 'CLOCK · WALL VARIANT',      accent: '#6b7280', config: { variant: 'clock-minimal-analog' } },
-  { type: 'TEXT',         label: 'TEXT',          accent: '#64748b', config: { content: 'Click to edit text' } },
+  { type: 'TEXT',         label: 'TEXT (multiline)', accent: '#64748b', config: { content: 'Line one\nLine two\nLine three' } },
   { type: 'WEATHER',      label: 'WEATHER',       accent: '#06b6d4', config: {} },
   { type: 'ANNOUNCEMENT', label: 'ANNOUNCEMENT',  accent: '#f59e0b', config: { message: 'Click to edit announcement' } },
   { type: 'TICKER',       label: 'TICKER',        accent: '#f59e0b', config: { messages: ['Click to edit ticker'] } },

@@ -158,12 +158,13 @@ export function TextBigBold({ config }: { config: any }) {
   const align = (config.alignment || 'center') as 'left' | 'center' | 'right';
   return (
     <div className="absolute inset-0 flex items-center justify-center overflow-hidden" style={{ padding: '4% 6%', background: C.paper, borderRadius: 24 }}>
-      <p style={{
+      <p data-field="content" style={{
         fontFamily: FONT_DISPLAY,
         fontSize: '3.8em', fontWeight: 700,
         color: C.ink,
         textAlign: align, lineHeight: 1.05, letterSpacing: '-0.03em',
         margin: 0, width: '100%',
+        whiteSpace: 'pre-wrap' as const,
       }}>{content}</p>
     </div>
   );
@@ -175,13 +176,14 @@ export function TextGradient({ config }: { config: any }) {
   const align = (config.alignment || 'center') as 'left' | 'center' | 'right';
   return (
     <div className="absolute inset-0 flex items-center justify-center overflow-hidden" style={{ padding: '4% 6%' }}>
-      <p style={{
+      <p data-field="content" style={{
         fontFamily: FONT_DISPLAY,
         fontSize: '3.6em', fontWeight: 800,
         background: `linear-gradient(135deg, ${C.indigo} 0%, ${C.pink} 50%, ${C.gold} 100%)`,
         WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', color: 'transparent',
         textAlign: align, lineHeight: 1.05, letterSpacing: '-0.03em',
         margin: 0, width: '100%',
+        whiteSpace: 'pre-wrap' as const,
       }}>{content}</p>
     </div>
   );
@@ -199,8 +201,9 @@ export function TextHighlight({ config }: { config: any }) {
         color: C.ink,
         textAlign: align, lineHeight: 1.15, letterSpacing: '-0.02em',
         margin: 0, width: '100%',
+        whiteSpace: 'pre-wrap' as const,
       }}>
-        <span style={{ background: `linear-gradient(180deg, transparent 60%, ${C.gold}80 60%)`, padding: '0 0.15em' }}>
+        <span data-field="content" style={{ background: `linear-gradient(180deg, transparent 60%, ${C.gold}80 60%)`, padding: '0 0.15em' }}>
           {content}
         </span>
       </p>
@@ -214,7 +217,7 @@ export function TextOutlined({ config }: { config: any }) {
   const align = (config.alignment || 'center') as 'left' | 'center' | 'right';
   return (
     <div className="absolute inset-0 flex items-center justify-center overflow-hidden" style={{ padding: '4% 6%' }}>
-      <p style={{
+      <p data-field="content" style={{
         fontFamily: FONT_DISPLAY,
         fontSize: '4em', fontWeight: 800,
         color: 'white',
@@ -222,6 +225,7 @@ export function TextOutlined({ config }: { config: any }) {
         textAlign: align, lineHeight: 1.0, letterSpacing: '-0.03em',
         margin: 0, width: '100%',
         textShadow: `4px 4px 0 ${C.gold}, 8px 8px 0 ${C.coral}`,
+        whiteSpace: 'pre-wrap' as const,
       }}>{content}</p>
     </div>
   );
