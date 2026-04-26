@@ -278,18 +278,59 @@ export function BuilderCanvas() {
             />
           ))}
 
-          {showGuides && activeSnapLines.map((line, i) => (
-            <div
-              key={i}
-              aria-hidden
-              className="absolute pointer-events-none"
-              style={
-                line.orientation === 'v'
-                  ? { left: `${line.position}%`, top: 0, bottom: 0, width: 1, background: line.kind === 'canvas' ? '#a855f7' : '#ec4899', boxShadow: '0 0 4px rgba(168,85,247,0.6)' }
-                  : { top: `${line.position}%`, left: 0, right: 0, height: 1, background: line.kind === 'canvas' ? '#a855f7' : '#ec4899', boxShadow: '0 0 4px rgba(168,85,247,0.6)' }
-              }
-            />
-          ))}
+          {showGuides && activeSnapLines.map((line, i) => {
+            // Human-readable label for the snap line — operators
+            // shouldn't have to guess what the pink line means. Center
+            // canvas snap → "Center". Edge canvas → "Edge". Element
+            // snaps → the position percent rounded to 1 decimal.
+            // (Canva shows pixel offsets between elements; we'd need
+            // both end positions to compute that, so percent-of-canvas
+            // is a clean v1 — matches the way every editor field is
+            // already in percent units.)
+            const isCenterCanvas = line.kind === 'canvas' && Math.abs(line.position - 50) < 0.05;
+            const isEdgeCanvas   = line.kind === 'canvas' && (line.position < 0.05 || line.position > 99.95);
+            const isCenterElem   = line.kind === 'center';
+            const label = isCenterCanvas
+              ? 'Center'
+              : isEdgeCanvas
+                ? 'Edge'
+                : isCenterElem
+                  ? 'Center match'
+                  : `${line.position.toFixed(1)}%`;
+            const lineColor = line.kind === 'canvas' ? '#a855f7' : '#ec4899';
+            return (
+              <div
+                key={i}
+                aria-hidden
+                className="absolute pointer-events-none"
+                style={
+                  line.orientation === 'v'
+                    ? { left: `${line.position}%`, top: 0, bottom: 0, width: 1, background: lineColor, boxShadow: '0 0 4px rgba(168,85,247,0.6)' }
+                    : { top: `${line.position}%`, left: 0, right: 0, height: 1, background: lineColor, boxShadow: '0 0 4px rgba(168,85,247,0.6)' }
+                }
+              >
+                <span
+                  style={{
+                    position: 'absolute',
+                    background: lineColor,
+                    color: '#fff',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: '2px 6px',
+                    borderRadius: 4,
+                    whiteSpace: 'nowrap',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                    ...(line.orientation === 'v'
+                      ? { top: '50%', left: 4, transform: 'translateY(-50%)' }
+                      : { left: '50%', top: 4, transform: 'translateX(-50%)' }
+                    ),
+                  }}
+                >
+                  {label}
+                </span>
+              </div>
+            );
+          })}
 
           {marqueeState && (
             <div
