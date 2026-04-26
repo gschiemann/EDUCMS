@@ -717,6 +717,20 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
         // common bumps, numeric input for precision, dropdown for
         // common preset sizes. Px units across the board.
         fields.push(<FontSizeField key="fontSize" label="Font size" value={cfg.fontSize ?? null} onChange={(v) => setField({ fontSize: v })} />);
+        // Inline format toggles — Canva's universal text bar pattern
+        // (B / I / U / S). Each is opt-in; off-state is the default
+        // semibold no-decoration look. Inspected from Canva's
+        // perform-editing-operations format_text op shape.
+        fields.push(
+          <FormatToggles
+            key="format"
+            bold={cfg.bold === true}
+            italic={cfg.italic === true}
+            underline={cfg.underline === true}
+            strikethrough={cfg.strikethrough === true}
+            onChange={(patch) => setField(patch)}
+          />
+        );
         fields.push(<ColorField key="color" label="Text color" value={cfg.color || '#1e293b'} onChange={(v) => setField({ color: v })} />);
         fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || 'transparent'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
       }
@@ -2019,6 +2033,55 @@ function ToggleField({ label, value, onChange }: { label: string; value: boolean
         <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${value ? 'translate-x-4' : ''}`} />
       </button>
     </label>
+  );
+}
+
+/** Inline B / I / U / S format toggles. Mirrors Canva's universal
+ *  text-formatting bar — bold / italic / underline / strikethrough.
+ *  Operator pushes any combination; widget render in WidgetRenderer
+ *  reads the four boolean fields independently. */
+function FormatToggles({
+  bold, italic, underline, strikethrough, onChange,
+}: {
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  strikethrough: boolean;
+  onChange: (patch: Record<string, boolean>) => void;
+}) {
+  const btn = (
+    on: boolean,
+    label: string,
+    glyph: React.ReactNode,
+    style: React.CSSProperties,
+    handler: () => void,
+  ) => (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={on}
+      title={label}
+      onClick={handler}
+      className={`flex-1 h-9 rounded-lg text-xs transition-colors border shadow-sm ${
+        on
+          ? 'bg-indigo-600 border-indigo-600 text-white'
+          : 'bg-white border-slate-200/60 text-slate-700 hover:bg-slate-50'
+      }`}
+      style={style}
+    >
+      {glyph}
+    </button>
+  );
+  return (
+    <div>
+      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Format</label>
+      <div className="flex gap-1">
+        {btn(bold,          'Bold',          'B', { fontWeight: 800 },                                                     () => onChange({ bold: !bold }))}
+        {btn(italic,        'Italic',        'I', { fontStyle: 'italic', fontWeight: 600 },                                () => onChange({ italic: !italic }))}
+        {btn(underline,     'Underline',     'U', { textDecoration: 'underline', fontWeight: 600 },                        () => onChange({ underline: !underline }))}
+        {btn(strikethrough, 'Strikethrough', 'S', { textDecoration: 'line-through', fontWeight: 600 },                     () => onChange({ strikethrough: !strikethrough }))}
+      </div>
+    </div>
   );
 }
 

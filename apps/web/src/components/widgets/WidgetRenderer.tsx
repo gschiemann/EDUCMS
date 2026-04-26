@@ -720,6 +720,15 @@ function TextWidget({ config, onConfigChange }: { config: any; onConfigChange?: 
   const alignment = config.alignment || 'center';
   const color = config.color || '#1e293b';
   const bgColor = config.bgColor || 'transparent';
+  // Inline format toggles — match Canva's universal toolbar.
+  // Each is opt-in (false = use default rendering).
+  const bold = config.bold === true;
+  const italic = config.italic === true;
+  const underline = config.underline === true;
+  const strikethrough = config.strikethrough === true;
+  const decorations: string[] = [];
+  if (underline) decorations.push('underline');
+  if (strikethrough) decorations.push('line-through');
 
   return (
     <div className="absolute inset-0 flex items-center justify-center p-[5%] overflow-hidden" style={{ backgroundColor: bgColor }}>
@@ -728,7 +737,12 @@ function TextWidget({ config, onConfigChange }: { config: any; onConfigChange?: 
         style={{
           fontSize: `${Math.min(fontSize / 16, 3)}em`,
           fontFamily: fontFamily || undefined,
-          fontWeight: 600,
+          // Default weight is 600 (semibold) for display readability
+          // on a wall screen. Bold toggle bumps to 800. No-bold-set
+          // keeps the legacy 600 so existing templates don't shift.
+          fontWeight: bold ? 800 : 600,
+          fontStyle: italic ? 'italic' : 'normal',
+          textDecoration: decorations.length ? decorations.join(' ') : 'none',
           color,
           textAlign: alignment as any,
           lineHeight: 1.4,
