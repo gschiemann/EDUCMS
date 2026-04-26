@@ -2,6 +2,7 @@
 
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { useDroppable } from '@dnd-kit/core';
+import { Copy, Lock, Unlock, ChevronUp, ChevronDown, Trash2 } from 'lucide-react';
 import { useBuilderStore } from './useBuilderStore';
 import { BuilderZone } from './BuilderZone';
 import { snapMove, snapResize } from './snap-engine';
@@ -344,8 +345,78 @@ export function BuilderCanvas() {
               }}
             />
           )}
+
+          {/* Floating quick-actions bar over the selected zone (Canva
+              pattern). Single-selection only — multi-select would mean
+              positioning math is ambiguous, and the LayersPanel hover
+              row already covers bulk ops. */}
+          {!previewMode && selectedIds.length === 1 && (() => {
+            const z = zones.find(zz => zz.id === selectedIds[0]);
+            if (!z) return null;
+            return <FloatingZoneActions zone={z} />;
+          })()}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Quick-actions toolbar that floats just below (or above when
+ *  there's no room) the selected zone. Mirrors Canva's "this is
+ *  selected, here are the most-common things you'd do next" UX. */
+function FloatingZoneActions({ zone }: { zone: Zone }) {
+  const duplicateZone   = useBuilderStore((s) => s.duplicateZone);
+  const removeSelected  = useBuilderStore((s) => s.removeSelected);
+  const toggleLock      = useBuilderStore((s) => s.toggleLock);
+  const moveLayer       = useBuilderStore((s) => s.moveLayer);
+
+  // Position the bar centered horizontally over the zone, just BELOW
+  // the zone's bottom edge. If the zone is at the very bottom of the
+  // canvas (less than 8% room), flip above instead.
+  const flipAbove = zone.y + zone.height > 92;
+  const top  = flipAbove
+    ? `calc(${zone.y}% - 36px)`
+    : `${zone.y + zone.height}%`;
+  const left = `${zone.x + zone.width / 2}%`;
+
+  const btn = (label: string, onClick: () => void, icon: React.ReactNode, danger = false) => (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
+        danger
+          ? 'text-slate-500 hover:bg-rose-50 hover:text-rose-600'
+          : 'text-slate-600 hover:bg-slate-100'
+      }`}
+    >
+      {icon}
+    </button>
+  );
+
+  return (
+    <div
+      role="toolbar"
+      aria-label="Selected widget actions"
+      className="absolute z-30 bg-white border border-slate-200 rounded-lg shadow-lg flex items-center gap-0.5 px-1 py-1"
+      style={{
+        top,
+        left,
+        transform: 'translate(-50%, 8px)',
+        // Don't capture pointer events that started outside the bar
+        // (e.g. drag of the zone itself). Buttons retain their own
+        // pointer-events.
+        pointerEvents: 'auto',
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      {btn('Duplicate (Ctrl/⌘+D)', () => duplicateZone(zone.id),                      <Copy className="w-3.5 h-3.5" />)}
+      {btn('Bring forward',         () => moveLayer(zone.id, 'up'),                    <ChevronUp className="w-3.5 h-3.5" />)}
+      {btn('Send back',             () => moveLayer(zone.id, 'down'),                  <ChevronDown className="w-3.5 h-3.5" />)}
+      {btn(zone.locked ? 'Unlock' : 'Lock', () => toggleLock(zone.id),                 zone.locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />)}
+      <div className="w-px h-5 bg-slate-200 mx-0.5" />
+      {btn('Delete (Del)',          () => removeSelected(),                            <Trash2 className="w-3.5 h-3.5" />, true)}
     </div>
   );
 }
