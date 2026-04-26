@@ -86,6 +86,12 @@ export class SchedulesController {
        });
     }
 
+    // Validate and normalize mode
+    const mode = body.mode || 'replace';
+    if (!['append', 'replace'].includes(mode)) {
+      throw new HttpException('Mode must be "append" or "replace"', HttpStatus.BAD_REQUEST);
+    }
+
     const res = await this.prisma.client.schedule.create({
       data: {
         tenantId: req.user.tenantId,
@@ -98,6 +104,7 @@ export class SchedulesController {
         timeStart: body.timeStart || null,
         timeEnd: body.timeEnd || null,
         priority: body.priority ?? 0,
+        mode: mode,
         isActive: willBeActive,
       },
       include: {

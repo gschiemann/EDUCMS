@@ -451,6 +451,7 @@ model Schedule {
   timeStart     String?      @map("time_start")
   timeEnd       String?      @map("time_end")
   priority      Int          @default(0)
+  mode          String       @default("replace") @map("mode")
   isActive      Boolean      @default(true) @map("is_active")
   screen        Screen?      @relation(fields: [screenId], references: [id])
   screenGroup   ScreenGroup? @relation(fields: [screenGroupId], references: [id])
