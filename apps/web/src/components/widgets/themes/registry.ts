@@ -31,6 +31,11 @@ export interface ThemeWidgetProps {
   config: any;
   compact?: boolean;
   live?: boolean;
+  // Optional inline-edit hook from the template builder (BuilderZone).
+  // Variant renderers need this so EditableText nodes inside them can
+  // commit operator edits back to the zone's defaultConfig. Without it
+  // EditableText.canEdit is false and click-to-edit silently no-ops.
+  onConfigChange?: (patch: Record<string, any>) => void;
 }
 
 export type ThemeWidgetRenderer = ComponentType<ThemeWidgetProps>;
