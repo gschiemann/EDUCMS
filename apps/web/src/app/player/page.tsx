@@ -1933,30 +1933,43 @@ function PlayerPage() {
               }
             : undefined;
           // Universal text-style override — same scoped <style> trick
-          // BuilderZone uses, mirrored on the player so the operator's
-          // font/size/color/bold/italic/underline overrides actually
-          // ship to screens. Cheap inline math — emit only when at
-          // least one override is set + the widget is non-TEXT (TEXT
-          // reads the keys directly).
-          const fam = typeof cfg.fontFamily === 'string' && cfg.fontFamily.trim();
-          const sz = typeof cfg.fontSize === 'number' && Number.isFinite(cfg.fontSize) ? cfg.fontSize : null;
-          const col = typeof cfg.color === 'string' && cfg.color.trim();
-          const _bold = cfg.bold === true;
-          const _italic = cfg.italic === true;
-          const _underline = cfg.underline === true;
-          const _strike = cfg.strikethrough === true;
-          const _decorations: string[] = [];
-          if (_underline) _decorations.push('underline');
-          if (_strike) _decorations.push('line-through');
+          // BuilderZone uses, mirrored on the player so operator
+          // overrides ship to screens. Two-tier:
+          //   - Zone-wide (cfg.fontFamily / fontSize / color / bold / italic / underline / strikethrough)
+          //   - Per-field (cfg._styles[fieldKey] = { fontFamily, ... })
+          // Per-field rules get higher specificity (zone + data-field
+          // attribute selector) so they win over zone-wide for that
+          // specific field. SVG icons excluded.
           const isTextZone = zone.widgetType === 'TEXT' || zone.widgetType === 'RICH_TEXT';
-          const overrideRules: string[] = [];
+          const _buildPlayerRules = (s: any): string[] => {
+            const r: string[] = [];
+            const fam = typeof s.fontFamily === 'string' && s.fontFamily.trim();
+            const sz = typeof s.fontSize === 'number' && Number.isFinite(s.fontSize) ? s.fontSize : null;
+            const col = typeof s.color === 'string' && s.color.trim();
+            const decos: string[] = [];
+            if (s.underline === true) decos.push('underline');
+            if (s.strikethrough === true) decos.push('line-through');
+            if (fam) r.push(`font-family: ${fam} !important`);
+            if (sz) r.push(`font-size: ${sz}px !important`);
+            if (col) r.push(`color: ${col} !important`);
+            if (s.bold === true) r.push(`font-weight: 800 !important`);
+            if (s.italic === true) r.push(`font-style: italic !important`);
+            if (decos.length) r.push(`text-decoration: ${decos.join(' ')} !important`);
+            return r;
+          };
+          const _cssChunks: string[] = [];
           if (!isTextZone) {
-            if (fam) overrideRules.push(`font-family: ${fam} !important`);
-            if (sz) overrideRules.push(`font-size: ${sz}px !important`);
-            if (col) overrideRules.push(`color: ${col} !important`);
-            if (_bold) overrideRules.push(`font-weight: 800 !important`);
-            if (_italic) overrideRules.push(`font-style: italic !important`);
-            if (_decorations.length) overrideRules.push(`text-decoration: ${_decorations.join(' ')} !important`);
+            const zoneRules = _buildPlayerRules(cfg);
+            if (zoneRules.length) {
+              _cssChunks.push(`[data-zone-id="${zone.id}"] *:not(svg):not(svg *) { ${zoneRules.join('; ')} }`);
+            }
+            const stylesPerField = (cfg._styles && typeof cfg._styles === 'object') ? cfg._styles : {};
+            for (const [fieldKey, fieldStyle] of Object.entries(stylesPerField)) {
+              const r = _buildPlayerRules(fieldStyle);
+              if (!r.length) continue;
+              const sel = `[data-zone-id="${zone.id}"] [data-field="${(fieldKey as string).replace(/"/g, '\\"')}"]`;
+              _cssChunks.push(`${sel}, ${sel} *:not(svg):not(svg *) { ${r.join('; ')} }`);
+            }
           }
           return (
           <div
@@ -1972,9 +1985,7 @@ function PlayerPage() {
               zIndex: zone.zIndex || 0,
               cursor: zoneTouchAction ? 'pointer' : undefined,
             }}>
-            {overrideRules.length > 0 && (
-              <style>{`[data-zone-id="${zone.id}"] *:not(svg):not(svg *) { ${overrideRules.join('; ')} }`}</style>
-            )}
+            {_cssChunks.length > 0 && <style>{_cssChunks.join('\n')}</style>}
             <WidgetPreview
               widgetType={zone.widgetType}
               config={cfg}

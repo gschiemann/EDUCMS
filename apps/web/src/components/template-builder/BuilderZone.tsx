@@ -272,40 +272,63 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       onDrop={handleDrop}
       data-zone-id={zone.id}
     >
-      {/* Universal text-style override. When the operator sets fontFamily /
-          fontSize / color / bold / italic / underline / strikethrough on
-          a non-TEXT widget via the top contextual toolbar, those values
-          land on the zone's defaultConfig. This scoped <style> block
-          inherits them into every text descendant of the widget render —
-          so MS pack widgets, theme widgets, anything with internal
-          typography respects the override. Specificity is `!important`
-          because each widget has its own CSS classes that would otherwise
-          win. TEXT widget renders directly from these keys (no override
-          needed) so the block is a no-op in that case. */}
+      {/* Universal text-style override. Three scopes:
+            1. Per-field (cfg._styles[fieldKey]) — ONE css rule per
+               styled field, scoped to [data-field="X"] inside the
+               zone. Highest specificity, wins over zone-wide.
+            2. Zone-wide (cfg.fontFamily / fontSize / color / bold /
+               italic / underline / strikethrough) — applies to all
+               text descendants of the zone. Lower specificity than
+               per-field.
+            3. Template-wide writes happen at the toolbar level
+               (iterates every zone, writes top-level cfg keys), so
+               renders identically to per-zone here.
+          TEXT/RICH_TEXT widgets read from cfg directly; this block
+          is a no-op there. SVG icons excluded so brand glyphs and
+          lucide icons keep their intended colors. */}
       {(() => {
         const cfg = (zone.defaultConfig || {}) as any;
-        const fam = typeof cfg.fontFamily === 'string' && cfg.fontFamily.trim();
-        const sz = typeof cfg.fontSize === 'number' && Number.isFinite(cfg.fontSize) ? cfg.fontSize : null;
-        const col = typeof cfg.color === 'string' && cfg.color.trim();
-        const bold = cfg.bold === true;
-        const italic = cfg.italic === true;
-        const underline = cfg.underline === true;
-        const strike = cfg.strikethrough === true;
-        const decorations: string[] = [];
-        if (underline) decorations.push('underline');
-        if (strike) decorations.push('line-through');
         if (zone.widgetType === 'TEXT' || zone.widgetType === 'RICH_TEXT') return null;
-        if (!fam && !sz && !col && !bold && !italic && !underline && !strike) return null;
-        const rules: string[] = [];
-        if (fam)             rules.push(`font-family: ${fam} !important`);
-        if (sz)              rules.push(`font-size: ${sz}px !important`);
-        if (col)             rules.push(`color: ${col} !important`);
-        if (bold)            rules.push(`font-weight: 800 !important`);
-        if (italic)          rules.push(`font-style: italic !important`);
-        if (decorations.length) rules.push(`text-decoration: ${decorations.join(' ')} !important`);
-        return (
-          <style>{`[data-zone-id="${zone.id}"] *:not(svg):not(svg *) { ${rules.join('; ')} }`}</style>
-        );
+
+        const stylesPerField: Record<string, any> = (cfg._styles && typeof cfg._styles === 'object') ? cfg._styles : {};
+
+        const buildRules = (s: any): string[] => {
+          const rules: string[] = [];
+          const fam = typeof s.fontFamily === 'string' && s.fontFamily.trim();
+          const sz = typeof s.fontSize === 'number' && Number.isFinite(s.fontSize) ? s.fontSize : null;
+          const col = typeof s.color === 'string' && s.color.trim();
+          const decorations: string[] = [];
+          if (s.underline === true) decorations.push('underline');
+          if (s.strikethrough === true) decorations.push('line-through');
+          if (fam) rules.push(`font-family: ${fam} !important`);
+          if (sz) rules.push(`font-size: ${sz}px !important`);
+          if (col) rules.push(`color: ${col} !important`);
+          if (s.bold === true) rules.push(`font-weight: 800 !important`);
+          if (s.italic === true) rules.push(`font-style: italic !important`);
+          if (decorations.length) rules.push(`text-decoration: ${decorations.join(' ')} !important`);
+          return rules;
+        };
+
+        const cssChunks: string[] = [];
+        // Zone-wide first (lower specificity). Selector targets every
+        // non-svg descendant of the zone.
+        const zoneRules = buildRules(cfg);
+        if (zoneRules.length) {
+          cssChunks.push(`[data-zone-id="${zone.id}"] *:not(svg):not(svg *) { ${zoneRules.join('; ')} }`);
+        }
+        // Per-field rules — higher specificity (zone + field), so they
+        // win over zone-wide for the targeted field.
+        for (const [fieldKey, fieldStyle] of Object.entries(stylesPerField)) {
+          const r = buildRules(fieldStyle);
+          if (!r.length) continue;
+          // CSS attribute selector escaping — field keys may include
+          // dots (e.g. "agenda.0.t"). The dot inside an attribute
+          // value is fine; the value just needs quoting.
+          const sel = `[data-zone-id="${zone.id}"] [data-field="${fieldKey.replace(/"/g, '\\"')}"]`;
+          cssChunks.push(`${sel}, ${sel} *:not(svg):not(svg *) { ${r.join('; ')} }`);
+        }
+        if (!cssChunks.length) return null;
+        return <style>{cssChunks.join('\n')}</style>;
       })()}
 
       <WidgetPreview

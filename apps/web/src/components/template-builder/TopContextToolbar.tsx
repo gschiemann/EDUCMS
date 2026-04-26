@@ -1,24 +1,29 @@
 "use client";
 
 /**
- * TopContextToolbar — A1 of the Canva parity sweep (scoped MVP).
+ * TopContextToolbar — Canva-style contextual editor with SCOPE control.
  *
- * Sits between the BuilderToolbar (Save/Discard) and the canvas.
- * When ONE TEXT/RICH_TEXT zone is selected, surfaces the same font /
- * size / color / B-I-U-S controls that live in the side Properties
- * panel — but at the TOP of the canvas where Canva trains operators
- * to look for them. No tab switch, no panel scrolling.
+ * Three scopes for every styling change:
+ *   - "This text"     → applies only to the most-recently-clicked
+ *                       data-field inside the selected zone. Stored
+ *                       under cfg._styles[fieldKey][prop]. BuilderZone
+ *                       emits one scoped CSS rule per field.
+ *   - "This zone"     → applies to the entire zone (stored at the
+ *                       top-level cfg.prop). Existing behavior.
+ *   - "Whole template"→ iterates every zone in the template and
+ *                       writes the prop on each zone's top-level cfg.
  *
- * For other widget types and multi-select the toolbar is hidden
- * (they fall through to the side panel where rich per-widget editors
- * live). Future scope: add image / shape / web-page contextual rows.
+ * Default scope auto-picks "This text" if a field is currently active
+ * (operator just clicked or hovered a hotspot), else "This zone."
  *
- * The controls are mirrored from PropertiesPanel — same Zustand
- * actions, same store reads, so editing here vs there is
- * indistinguishable. No new state.
+ * The active-field tracking listens to the `template-edit-field`
+ * CustomEvent that BuilderZone dispatches on every click or
+ * double-click of a data-field hotspot — so when the operator clicks
+ * the headline of an MS_PLAYLIST template, only the headline gets
+ * restyled, not the song titles + artist names + ticker.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useBuilderStore } from './useBuilderStore';
 import {
   FontFamilyField,
@@ -26,6 +31,8 @@ import {
   FormatToggles,
   ColorField,
 } from './PropertiesPanel';
+
+type Scope = 'field' | 'zone' | 'template';
 
 export function TopContextToolbar() {
   const zones        = useBuilderStore((s) => s.zones);
@@ -42,8 +49,69 @@ export function TopContextToolbar() {
   const isCalendar = zone?.widgetType === 'CALENDAR';
   const isCountdown = zone?.widgetType === 'COUNTDOWN';
   const cfg = (zone?.defaultConfig || {}) as any;
+
+  // ── Active-field + scope tracking ────────────────────────────────
+  // activeFieldKey is the most-recent [data-field] the operator
+  // touched inside the selected zone. Updated when BuilderZone
+  // dispatches `template-edit-field`. When the zone changes we reset.
+  const [activeFieldKey, setActiveFieldKey] = useState<string | null>(null);
+  const [scope, setScope] = useState<Scope>('field');
+
+  useEffect(() => {
+    setActiveFieldKey(null);
+    setScope('field');
+  }, [zone?.id]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { zoneId?: string; fieldKey?: string } | undefined;
+      if (!detail?.fieldKey) return;
+      // Only track fields inside the currently-selected zone.
+      if (zone && detail.zoneId === zone.id) {
+        setActiveFieldKey(detail.fieldKey);
+        setScope('field');
+      }
+    };
+    window.addEventListener('template-edit-field', handler);
+    return () => window.removeEventListener('template-edit-field', handler);
+  }, [zone?.id]);
+
+  // Effective scope — `field` falls back to `zone` if no field is
+  // currently active (otherwise the toolbar would silently no-op).
+  const effectiveScope: Exclude<Scope, 'field'> | 'field' =
+    scope === 'field' && !activeFieldKey ? 'zone' : scope;
+
+  /** Read the CURRENT value for a given property, respecting scope. */
+  const readVal = (prop: string): any => {
+    if (effectiveScope === 'field' && activeFieldKey) {
+      return cfg._styles?.[activeFieldKey]?.[prop];
+    }
+    return cfg[prop];
+  };
+
+  /**
+   * Write a property, respecting the active scope.
+   * - field: updates cfg._styles[activeFieldKey] (CSS rule scoped to one data-field)
+   * - zone:  updates top-level cfg.prop (CSS rule scoped to the whole zone)
+   * - template: writes cfg.prop on EVERY zone in the template
+   */
   const setField = (patch: Record<string, any>) => {
     if (!zone) return;
+    if (effectiveScope === 'field' && activeFieldKey) {
+      const styles = { ...(cfg._styles || {}) };
+      styles[activeFieldKey] = { ...(styles[activeFieldKey] || {}), ...patch };
+      updateZone(zone.id, { defaultConfig: { ...cfg, _styles: styles } }, true);
+      return;
+    }
+    if (effectiveScope === 'template') {
+      // Iterate every zone, write the patch to each.
+      for (const z of zones) {
+        const c = (z.defaultConfig || {}) as any;
+        updateZone(z.id, { defaultConfig: { ...c, ...patch } }, true);
+      }
+      return;
+    }
+    // Default: zone-wide (top-level cfg keys)
     updateZone(zone.id, { defaultConfig: { ...cfg, ...patch } }, true);
   };
 
@@ -60,10 +128,13 @@ export function TopContextToolbar() {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(t?.tagName) || t?.isContentEditable) return;
       if (!document.activeElement?.closest?.('[data-zone-id]') && document.activeElement !== document.body) return;
       const k = e.key.toLowerCase();
-      if (k === 'b') { e.preventDefault(); setField({ bold: cfg.bold !== true }); }
-      else if (k === 'i') { e.preventDefault(); setField({ italic: cfg.italic !== true }); }
-      else if (k === 'u') { e.preventDefault(); setField({ underline: cfg.underline !== true }); }
-      else if (e.shiftKey && k === 'x') { e.preventDefault(); setField({ strikethrough: cfg.strikethrough !== true }); }
+      // Read CURRENT value via readVal so the toggle respects the
+      // active scope (field/zone/template) — without this Cmd+B
+      // would always toggle the zone-level value regardless of scope.
+      if (k === 'b') { e.preventDefault(); setField({ bold: readVal('bold') !== true }); }
+      else if (k === 'i') { e.preventDefault(); setField({ italic: readVal('italic') !== true }); }
+      else if (k === 'u') { e.preventDefault(); setField({ underline: readVal('underline') !== true }); }
+      else if (e.shiftKey && k === 'x') { e.preventDefault(); setField({ strikethrough: readVal('strikethrough') !== true }); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -92,41 +163,47 @@ export function TopContextToolbar() {
     >
       {showUniversalText && (
         <div className="flex items-end gap-3 flex-wrap">
+          {/* Scope selector — Canva pattern. "This text" only enabled
+              when an active field is tracked; falls back to "This zone"
+              when no field has been clicked yet. "Whole template"
+              writes to every zone in one mutation burst. */}
+          <ScopeSelector
+            scope={scope}
+            effectiveScope={effectiveScope}
+            activeFieldKey={activeFieldKey}
+            zoneName={zone.name}
+            onChange={setScope}
+          />
           <div className="min-w-[180px]">
             <FontFamilyField
               label="Font"
-              value={cfg.fontFamily || ''}
+              value={readVal('fontFamily') || ''}
               onChange={(v) => setField({ fontFamily: v })}
             />
           </div>
           <div>
             <FontSizeField
               label="Size"
-              value={cfg.fontSize ?? null}
+              value={readVal('fontSize') ?? null}
               onChange={(v) => setField({ fontSize: v })}
             />
           </div>
           <div className="min-w-[200px]">
             <FormatToggles
-              bold={cfg.bold === true}
-              italic={cfg.italic === true}
-              underline={cfg.underline === true}
-              strikethrough={cfg.strikethrough === true}
+              bold={readVal('bold') === true}
+              italic={readVal('italic') === true}
+              underline={readVal('underline') === true}
+              strikethrough={readVal('strikethrough') === true}
               onChange={(patch) => setField(patch)}
             />
           </div>
           <div className="min-w-[180px]">
             <ColorField
               label="Color"
-              value={cfg.color || '#1e293b'}
+              value={readVal('color') || '#1e293b'}
               onChange={(v) => setField({ color: v })}
             />
           </div>
-          {!isText && (
-            <div className="ml-auto self-center text-[10px] text-slate-400 font-medium pb-1">
-              Override applies to all text in <span className="text-slate-700 font-bold">{zone.name}</span>
-            </div>
-          )}
         </div>
       )}
       {isImage && (
@@ -343,6 +420,71 @@ export function TopContextToolbar() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Scope selector — three-button group that decides where styling
+ *  changes land. "This text" auto-disables when no specific field has
+ *  been clicked yet (falls back visually to a hint that operator should
+ *  click a hotspot to scope changes more tightly). */
+function ScopeSelector({
+  scope, effectiveScope, activeFieldKey, zoneName, onChange,
+}: {
+  scope: Scope;
+  effectiveScope: 'field' | 'zone' | 'template';
+  activeFieldKey: string | null;
+  zoneName: string;
+  onChange: (s: Scope) => void;
+}) {
+  const opts: Array<{ key: Scope; label: string; hint: string; enabled: boolean }> = [
+    {
+      key: 'field',
+      label: 'This text',
+      hint: activeFieldKey ? `Just the "${activeFieldKey}" text` : 'Click a text on the canvas first',
+      enabled: !!activeFieldKey,
+    },
+    {
+      key: 'zone',
+      label: 'This zone',
+      hint: `Every text inside ${zoneName}`,
+      enabled: true,
+    },
+    {
+      key: 'template',
+      label: 'Whole template',
+      hint: 'Every zone in the template',
+      enabled: true,
+    },
+  ];
+  return (
+    <div className="min-w-[280px]">
+      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Apply to</label>
+      <div className="flex rounded-lg border border-slate-200/60 overflow-hidden shadow-sm" role="radiogroup" aria-label="Style scope">
+        {opts.map((opt) => {
+          const active = effectiveScope === opt.key;
+          return (
+            <button
+              key={opt.key}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => opt.enabled && onChange(opt.key)}
+              disabled={!opt.enabled}
+              title={opt.hint}
+              className={`flex-1 h-9 text-[11px] font-bold uppercase tracking-wide transition-colors px-2 ${
+                active
+                  ? 'bg-indigo-600 text-white'
+                  : opt.enabled
+                    ? 'bg-white text-slate-600 hover:bg-slate-50'
+                    : 'bg-slate-50 text-slate-300 cursor-not-allowed'
+              }`}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
