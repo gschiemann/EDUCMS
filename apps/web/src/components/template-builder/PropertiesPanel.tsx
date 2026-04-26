@@ -731,6 +731,15 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
             onChange={(patch) => setField(patch)}
           />
         );
+        // Line-height slider — Canva range 0.5x to 2.5x. Default 1.4
+        // (prior hardcoded value) so existing templates don't shift.
+        fields.push(
+          <LineHeightField
+            key="lineHeight"
+            value={typeof cfg.lineHeight === 'number' ? cfg.lineHeight : 1.4}
+            onChange={(v) => setField({ lineHeight: v })}
+          />
+        );
         fields.push(<ColorField key="color" label="Text color" value={cfg.color || '#1e293b'} onChange={(v) => setField({ color: v })} />);
         fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || 'transparent'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
       }
@@ -2081,6 +2090,29 @@ function FormatToggles({
         {btn(underline,     'Underline',     'U', { textDecoration: 'underline', fontWeight: 600 },                        () => onChange({ underline: !underline }))}
         {btn(strikethrough, 'Strikethrough', 'S', { textDecoration: 'line-through', fontWeight: 600 },                     () => onChange({ strikethrough: !strikethrough }))}
       </div>
+    </div>
+  );
+}
+
+/** Line-height slider. Canva range: 0.5x to 2.5x. Step 0.05 gives
+ *  fine control without overwhelming the UI. */
+function LineHeightField({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <label className="text-[10px] font-semibold text-slate-500">Line height</label>
+        <span className="text-[10px] font-mono text-slate-500">{value.toFixed(2)}×</span>
+      </div>
+      <input
+        type="range"
+        min={0.5}
+        max={2.5}
+        step={0.05}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        aria-label="Line height multiplier"
+        className="w-full accent-indigo-600"
+      />
     </div>
   );
 }

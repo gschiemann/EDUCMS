@@ -729,6 +729,11 @@ function TextWidget({ config, onConfigChange }: { config: any; onConfigChange?: 
   const decorations: string[] = [];
   if (underline) decorations.push('underline');
   if (strikethrough) decorations.push('line-through');
+  // Line-height multiplier. Canva's range is 0.5-2.5x; we accept the
+  // same and clamp here. Default 1.4 preserves the prior look so
+  // existing templates render identically until an operator slides it.
+  const rawLh = typeof config.lineHeight === 'number' ? config.lineHeight : 1.4;
+  const lineHeight = Math.max(0.5, Math.min(2.5, rawLh));
 
   return (
     <div className="absolute inset-0 flex items-center justify-center p-[5%] overflow-hidden" style={{ backgroundColor: bgColor }}>
@@ -745,7 +750,7 @@ function TextWidget({ config, onConfigChange }: { config: any; onConfigChange?: 
           textDecoration: decorations.length ? decorations.join(' ') : 'none',
           color,
           textAlign: alignment as any,
-          lineHeight: 1.4,
+          lineHeight,
           width: '100%',
           wordWrap: 'break-word' as const,
           // Preserve newlines from inline editing — partner reported
