@@ -101,6 +101,58 @@ export class TemplatesController {
   // GET — single template with all zones
   // ───────────────────────────────────────────────────────
 
+  @Get('backdrops')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  // Lightweight endpoint for backdrop swatch picker — only 5 fields per
+  // template, no zones, no parsing. Caches for 5 min; the picker rarely
+  // changes backdrops on existing templates.
+  @Header('Cache-Control', 'private, max-age=300, stale-while-revalidate=1800')
+  async getBackdrops(@Request() req: any) {
+    const tenantId = req.user.tenantId;
+
+    // Resolve caller's vertical — same as GET /templates list()
+    let callerVertical = 'K12';
+    try {
+      const tenant = await this.prisma.client.tenant.findUnique({
+        where: { id: tenantId },
+        select: { vertical: true } as any,
+      });
+      callerVertical = (tenant as any)?.vertical || 'K12';
+    } catch {
+      callerVertical = 'K12';
+    }
+
+    const templates = await this.prisma.client.template.findMany({
+      where: {
+        AND: [
+          {
+            OR: [
+              { tenantId },
+              { isSystem: true },
+            ],
+          },
+          {
+            OR: [
+              { tenantId },
+              { isSystem: true, vertical: callerVertical },
+            ],
+          },
+          { status: { not: 'ARCHIVED' as any } },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        bgColor: true,
+        bgGradient: true,
+        bgImage: true,
+      },
+      orderBy: [{ isSystem: 'desc' }, { updatedAt: 'desc' }],
+    });
+
+    return templates;
+  }
+
   @Get('system/presets')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   // Immutable in-memory catalog — filtered by caller's vertical so a

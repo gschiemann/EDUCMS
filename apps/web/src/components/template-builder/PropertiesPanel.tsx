@@ -4,7 +4,7 @@ import { useId, useState, useEffect, useRef } from 'react';
 import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon } from 'lucide-react';
 import { useBuilderStore } from './useBuilderStore';
 import { widgetLabel } from './constants';
-import { useAssets, usePlaylists, useTemplates } from '@/hooks/use-api';
+import { useAssets, usePlaylists, useTemplates, useTemplateBackdrops } from '@/hooks/use-api';
 
 // MS pack DEFAULTS registry. Every MS widget exports its `DEFAULTS`
 // keyed by dot-notation field paths (e.g. `school.eye`, `agenda.0.t`).
@@ -1764,7 +1764,7 @@ function TemplateBackdropPicker({
   current: { bgColor?: string; bgGradient?: string; bgImage?: string };
   onPick: (bg: { bgColor?: string; bgGradient?: string; bgImage?: string }) => void;
 }) {
-  const { data: templates } = useTemplates();
+  const { data: templates } = useTemplateBackdrops();
   const swatches = (() => {
     const seen = new Set<string>();
     const out: { name: string; bgColor?: string; bgGradient?: string; bgImage?: string }[] = [];
