@@ -36,6 +36,11 @@ export function TopContextToolbar() {
   const zone = selectedIds.length === 1 ? zones.find((z) => z.id === selectedIds[0]) : undefined;
   const isText  = zone?.widgetType === 'TEXT' || zone?.widgetType === 'RICH_TEXT';
   const isImage = zone?.widgetType === 'IMAGE' || zone?.widgetType === 'IMAGE_CAROUSEL' || zone?.widgetType === 'LOGO' || zone?.widgetType === 'STAFF_SPOTLIGHT';
+  const isClock = zone?.widgetType === 'CLOCK';
+  const isWeather = zone?.widgetType === 'WEATHER';
+  const isAnnouncement = zone?.widgetType === 'ANNOUNCEMENT';
+  const isCalendar = zone?.widgetType === 'CALENDAR';
+  const isCountdown = zone?.widgetType === 'COUNTDOWN';
   const cfg = (zone?.defaultConfig || {}) as any;
   const setField = (patch: Record<string, any>) => {
     if (!zone) return;
@@ -53,6 +58,9 @@ export function TopContextToolbar() {
       if (!(e.metaKey || e.ctrlKey)) return;
       const t = e.target as HTMLElement;
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(t?.tagName) || t?.isContentEditable) return;
+      // Narrow scope: only intercept Cmd+B/I/U when the user is actively
+      // in the canvas editing zone, not anywhere else in the browser window.
+      if (!document.activeElement?.closest?.('[data-zone-id]') && document.activeElement !== document.body) return;
       const k = e.key.toLowerCase();
       if (k === 'b') { e.preventDefault(); setField({ bold: cfg.bold !== true }); }
       else if (k === 'i') { e.preventDefault(); setField({ italic: cfg.italic !== true }); }
@@ -68,7 +76,7 @@ export function TopContextToolbar() {
   // — fewer pixels of noise > "always-visible" consistency.
   if (previewMode) return null;
   if (!zone) return null;
-  if (!isText && !isImage) return null;
+  if (!isText && !isImage && !isClock && !isWeather && !isAnnouncement && !isCalendar && !isCountdown) return null;
 
   return (
     <div
@@ -164,6 +172,162 @@ export function TopContextToolbar() {
               onChange={(e) => setField({ borderRadius: parseInt(e.target.value, 10) })}
               aria-label="Corner radius"
               className="w-full accent-indigo-600"
+            />
+          </div>
+        </div>
+      )}
+      {isClock && (
+        <div className="flex items-end gap-3 flex-wrap">
+          {/* Format toggle: 12h / 24h */}
+          <div className="min-w-[180px]">
+            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Format</label>
+            <div className="flex gap-1">
+              {(['12h', '24h'] as const).map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => setField({ format: opt })}
+                  className={`flex-1 h-9 rounded-lg text-xs font-bold transition-colors border shadow-sm ${
+                    (cfg.format || '12h') === opt
+                      ? 'bg-indigo-600 border-indigo-600 text-white'
+                      : 'bg-white border-slate-200/60 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Show seconds toggle */}
+          <div className="min-w-[180px]">
+            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Seconds</label>
+            <button
+              type="button"
+              onClick={() => setField({ showSeconds: !cfg.showSeconds })}
+              className={`w-full h-9 rounded-lg text-xs font-bold transition-colors border shadow-sm ${
+                cfg.showSeconds === true
+                  ? 'bg-indigo-600 border-indigo-600 text-white'
+                  : 'bg-white border-slate-200/60 text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              {cfg.showSeconds === true ? 'Show' : 'Hide'}
+            </button>
+          </div>
+        </div>
+      )}
+      {isWeather && (
+        <div className="flex items-end gap-3 flex-wrap">
+          {/* Zip code input */}
+          <div className="min-w-[180px]">
+            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Zip Code</label>
+            <input
+              type="text"
+              value={cfg.zipCode || ''}
+              onChange={(e) => setField({ zipCode: e.target.value })}
+              placeholder="e.g., 90210"
+              className="w-full h-9 px-2.5 rounded-lg text-sm border border-slate-200/60 shadow-sm focus:ring-2 focus:ring-indigo-600 focus:border-transparent"
+            />
+          </div>
+          {/* Units toggle: F / C */}
+          <div className="min-w-[180px]">
+            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Units</label>
+            <div className="flex gap-1">
+              {(['F', 'C'] as const).map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => setField({ units: opt })}
+                  className={`flex-1 h-9 rounded-lg text-xs font-bold transition-colors border shadow-sm ${
+                    (cfg.units || 'F') === opt
+                      ? 'bg-indigo-600 border-indigo-600 text-white'
+                      : 'bg-white border-slate-200/60 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  {opt}°
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+      {isAnnouncement && (
+        <div className="flex items-end gap-3 flex-wrap">
+          {/* Priority toggle: low / normal / high */}
+          <div className="min-w-[180px]">
+            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Priority</label>
+            <div className="flex gap-1">
+              {(['low', 'normal', 'high'] as const).map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => setField({ priority: opt })}
+                  className={`flex-1 h-9 rounded-lg text-xs font-bold transition-colors border shadow-sm ${
+                    (cfg.priority || 'normal') === opt
+                      ? 'bg-indigo-600 border-indigo-600 text-white'
+                      : 'bg-white border-slate-200/60 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Color field */}
+          <div className="min-w-[180px]">
+            <ColorField
+              label="Color"
+              value={cfg.color || '#f59e0b'}
+              onChange={(v) => setField({ color: v })}
+            />
+          </div>
+        </div>
+      )}
+      {isCalendar && (
+        <div className="flex items-end gap-3 flex-wrap">
+          {/* Max events numeric stepper */}
+          <div className="min-w-[180px]">
+            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Max Events</label>
+            <div className="flex gap-1 items-center">
+              <button
+                type="button"
+                onClick={() => setField({ maxEvents: Math.max(1, (cfg.maxEvents ?? 5) - 1) })}
+                className="h-9 px-2.5 rounded-lg border border-slate-200/60 bg-white hover:bg-slate-50 shadow-sm font-bold text-slate-700"
+              >
+                −
+              </button>
+              <span className="w-12 text-center text-sm font-semibold text-slate-700">{cfg.maxEvents ?? 5}</span>
+              <button
+                type="button"
+                onClick={() => setField({ maxEvents: Math.min(20, (cfg.maxEvents ?? 5) + 1) })}
+                className="h-9 px-2.5 rounded-lg border border-slate-200/60 bg-white hover:bg-slate-50 shadow-sm font-bold text-slate-700"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {isCountdown && (
+        <div className="flex items-end gap-3 flex-wrap">
+          {/* Target date input */}
+          <div className="min-w-[180px]">
+            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Target Date</label>
+            <input
+              type="date"
+              value={cfg.targetDate || ''}
+              onChange={(e) => setField({ targetDate: e.target.value })}
+              className="w-full h-9 px-2.5 rounded-lg text-sm border border-slate-200/60 shadow-sm focus:ring-2 focus:ring-indigo-600 focus:border-transparent"
+            />
+          </div>
+          {/* Label input */}
+          <div className="min-w-[180px]">
+            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Label</label>
+            <input
+              type="text"
+              value={cfg.label || ''}
+              onChange={(e) => setField({ label: e.target.value })}
+              placeholder="e.g., Days Until..."
+              className="w-full h-9 px-2.5 rounded-lg text-sm border border-slate-200/60 shadow-sm focus:ring-2 focus:ring-indigo-600 focus:border-transparent"
             />
           </div>
         </div>
