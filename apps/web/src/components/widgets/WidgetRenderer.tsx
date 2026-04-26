@@ -1370,14 +1370,9 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
     return () => clearInterval(t);
   }, [live, proxyUrl, refreshInterval]);
 
-  // Live mode — render an actual iframe routed through proxy.
-  //
-  // Narrow sandbox: scripts run (so banner rotators, image sliders,
-  // and dynamic content work — e-arc.com case) but top-navigation
-  // is blocked at the browser level so frame-busting JS can't escape.
-  // The proxy used to strip ALL <script> tags as a frame-busting
-  // defense; that also nuked everything visual on JS-driven sites.
-  // Browser-level sandbox replaces that strip and is robust.
+  // Live mode — render an actual iframe routed through proxy. The
+  // proxy strips <script> server-side; no sandbox is needed (and
+  // adding one broke the static middle of pages on 2026-04-26).
   if (live && proxyUrl) {
     return (
       <div className="absolute inset-0 overflow-hidden">
@@ -1387,7 +1382,6 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
           className="w-full h-full border-0"
           style={{ overflow: config.scrollEnabled ? 'auto' : 'hidden' }}
           allow="autoplay; encrypted-media"
-          sandbox="allow-scripts allow-same-origin"
           loading="eager"
           title="Web content"
         />

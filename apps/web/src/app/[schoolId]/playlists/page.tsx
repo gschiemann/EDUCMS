@@ -678,6 +678,36 @@ export default function PlaylistsPage() {
   const submitSchedule = async (activate: boolean) => {
     if (schedTargets.length === 0) return;
 
+    // CRITICAL: if the operator added items but didn't hit Save, the
+    // playlist is empty in the DB — scheduling it sends an empty
+    // playlist to the screen and the player drops to the splash. Save
+    // first, THEN schedule. Partner reported "added URL, hit publish,
+    // screen went to splash" — that's exactly this race. Items must
+    // persist before any Schedule rows reference the playlist.
+    if (hasChanges && selectedId) {
+      try {
+        await saveItems.mutateAsync({
+          playlistId: selectedId,
+          items: localItems.map((item, i) => ({
+            assetId: item.assetId || item.asset?.id,
+            durationMs: item.durationMs || 10000,
+            sequenceOrder: i,
+            daysOfWeek: item.daysOfWeek || null,
+            timeStart: item.timeStart || null,
+            timeEnd: item.timeEnd || null,
+          })),
+        });
+        setHasChanges(false);
+      } catch (err) {
+        // Save failed — abort the publish. Better to leave the
+        // operator on the editor with their changes intact than
+        // schedule an empty playlist that drops the screen to splash.
+        console.error('[playlists] save-before-publish failed:', err);
+        alert('Could not save your playlist before publishing. Please try Save first, then Publish.');
+        return;
+      }
+    }
+
     if (editingScheduleId) {
       // In edit mode we process the multiple targets by clearing the original and recreating them
       await deleteSchedule.mutateAsync(editingScheduleId);

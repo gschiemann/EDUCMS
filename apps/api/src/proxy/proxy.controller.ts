@@ -62,21 +62,21 @@ export class ProxyController {
 
       const baseUrl = upstream.finalUrl || url;
 
-      // KEEP <script> tags. Earlier we stripped them all to prevent
-      // frame-busting (sites running `top.location = self.location` to
-      // escape the iframe), but stripping ALL JS broke every site that
-      // depends on it for content — banner rotators (e-arc.com), image
-      // sliders, lazy-loaded content, etc. The iframe in the player +
-      // WebpageWidget now uses `sandbox="allow-scripts allow-same-origin"`
-      // which keeps scripts running but BLOCKS top-frame navigation at
-      // the browser level — the previous concern is moot.
+      // Strip <script> tags. Tried lifting this once (2026-04-26 to
+      // make e-arc.com banner rotators work) — the result was
+      // measurably WORSE: rotators still broken (cross-origin XHR
+      // CORS-blocked from inside the sandboxed iframe) AND the static
+      // middle of every page broke too because pages with JS have
+      // execution dependencies (errors halting layout, document.write
+      // changing the DOM, etc). Net-negative trade. Reverted.
       //
-      // Still strip:
-      //   - <meta http-equiv="refresh"> — would auto-refresh the iframe
-      //     out of our app
-      //   - inline `on*=` event handlers — XSS-flavored, not strictly
-      //     needed for any modern slider library
-      //   - <noscript> — operator wants the script-rendered version
+      // Modern signage sites that the operator curates should be
+      // mostly-static — if a customer wants a JS-driven dashboard
+      // embedded, recommend exporting it as a public-facing static
+      // mirror or an iframe-friendly subdomain. Banner-rotator
+      // support is a Sprint-12 problem (probably needs a per-asset
+      // proxy that rewrites every script's fetch through us).
+      html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
       html = html.replace(/<meta[^>]*http-equiv\s*=\s*["']?refresh["']?[^>]*>/gi, '');
       html = html.replace(/\s(on\w+)\s*=\s*["'][^"']*["']/gi, '');
       html = html.replace(/<\/?noscript[^>]*>/gi, '');

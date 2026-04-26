@@ -2151,21 +2151,12 @@ function PlayerPage() {
                 key={item.id}
                 src={iframeSrc}
                 className={classes}
-                // Sandbox kept narrow. The proxy was previously stripping
-                // ALL <script> tags as a frame-busting defense, but that
-                // also broke banner rotators, image sliders, and lazy-
-                // loaded content (partner reported e-arc.com banners
-                // rendering blank). Now scripts run, and we rely on the
-                // sandbox attribute instead:
-                //   - allow-scripts: lets the page's JS run (sliders,
-                //     etc.)
-                //   - allow-same-origin: lets the iframe read its own
-                //     resources (cookies, XHR back to its own origin)
-                //   - NOT allow-top-navigation: BLOCKS the classic
-                //     frame-busting attack at the browser level
-                //   - NOT allow-popups, allow-forms, allow-modals — keep
-                //     the iframe contained
-                sandbox="allow-scripts allow-same-origin"
+                // No sandbox attribute. The proxy strips <script> tags
+                // server-side — that's the frame-busting defense. Adding
+                // sandbox="allow-scripts allow-same-origin" was tried
+                // briefly and produced a regression (e-arc.com middle
+                // section broken too) so reverted to the script-strip
+                // baseline. See proxy.controller.ts comments.
                 title={item.id}
                 onError={() => {
                   console.warn('[Player] iframe error, skipping:', iframeSrc);
