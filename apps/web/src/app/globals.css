@@ -254,3 +254,24 @@
   0%   { background-color: rgba(236, 72, 153, .25); }
   100% { background-color: transparent; }
 }
+
+/* Persistent "this section is selected" state for the PropertiesPanel.
+   Stays on until the operator picks another hotspot — gives Canva-style
+   sticky confirmation of which panel field maps to the canvas selection. */
+[data-field-section].is-active-section {
+  position: relative;
+  background: rgba(99, 102, 241, .06);
+  border-radius: 8px;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, .55);
+  padding: 6px 8px;
+  margin: 2px 0;
+}
+[data-field-section].is-active-section::before {
+  content: '';
+  position: absolute;
+  left: -10px;
+  top: 0; bottom: 0;
+  width: 3px;
+  border-radius: 2px;
+  background: #6366f1;
+}

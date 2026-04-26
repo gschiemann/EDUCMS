@@ -48,28 +48,154 @@ const MS_DEFAULTS_BY_TYPE: Record<string, Record<string, string>> = {
   MS_STUDIO_PORTRAIT: MS_STUDIO_PORTRAIT_DEFAULTS as any,
 };
 
-// Title-case a field-key segment for the form label. `school.eye` →
-// "School / Eye", `agenda.0.t` → "Agenda 0 · T". Quick-and-dirty so
-// the operator gets *something* readable; per-template overrides
-// can come later for prettier labels.
+// Field-key → human-readable label. The MS-pack widgets use developer-
+// style dotted keys like `agenda.0.t` and `clock.time` because the
+// templates are auto-generated from HTML mockups; without a friendly
+// label the form reads like an API spec ("Agenda 0 T" / "Clock Time")
+// which is nonsense to a teacher. The map below covers every term that
+// shows up in the MS-pack DEFAULTS — "Period 1 · Subject" instead of
+// "Agenda 0 T", "Day of Week" instead of "Day Dow", "Bell Schedule"
+// instead of "Bell V". Add to this map when new templates land.
+const LEAF_LABELS: Record<string, string> = {
+  // Time / date
+  t: 'Subject', r: 'Room', xp: 'Reward / XP', p: 'Period', c: 'Class',
+  v: 'Value', k: 'Label', av: 'Avatar', x: 'Extra',
+  time: 'Time', date: 'Date', day: 'Day', dow: 'Day of Week',
+  letter: 'Cycle Day Letter', label: 'Label', sub: 'Subtitle',
+  // Common content fields
+  name: 'Name', title: 'Title', headline: 'Headline', subtitle: 'Subtitle',
+  message: 'Message', body: 'Message', tag: 'Tag', tagline: 'Tagline',
+  num: 'Number', emoji: 'Emoji', icon: 'Icon', image: 'Image',
+  // Weather
+  temp: 'Temperature', cond: 'Condition', sky: 'Sky', high: 'High',
+  low: 'Low', desc: 'Description',
+  // Logos / branding
+  logo: 'Logo', team: 'Team', house: 'House', year: 'Year',
+  // Counts / stats
+  pct: 'Percent', value: 'Value', volume: 'Volume',
+  // Misc widget-specific
+  hi: 'High', who: 'Who', note: 'Note', meta: 'Meta',
+  art: 'Cover Art', album: 'Album', artist: 'Artist',
+  next: 'Up Next', prev: 'Previous', stop: 'Stop', station: 'Station',
+  m: 'Time', st: 'Status', rt: 'Route',
+  big: 'Headline', top: 'Top', flag: 'Flag',
+  greeting: 'Greeting', school: 'School',
+};
+
+const SECTION_LABELS: Record<string, string> = {
+  brand: 'Brand & Identity',
+  school: 'School Identity',
+  greeting: 'Greeting',
+  hero: 'Hero',
+  agenda: 'Today\'s Schedule',
+  bell: 'Bell Schedule',
+  cycle: 'Cycle Day',
+  clock: 'Time & Date',
+  weather: 'Weather',
+  weather2: 'Weather (secondary)',
+  countdown: 'Countdown',
+  birthday: 'Birthdays',
+  birthdays: 'Birthdays',
+  shoutouts: 'Shout-outs',
+  shoutout: 'Shout-out',
+  leaderboard: 'Leaderboard',
+  loot: 'Side Quests',
+  newsbar: 'News Bar',
+  ticker: 'Ticker',
+  announcement: 'Announcement',
+  meta: 'Header Meta',
+  banner: 'Banner',
+  routes: 'Transit Routes',
+  lines: 'Transit Lines',
+  device: 'Display Device',
+  cover: 'Cover',
+  queue: 'Up-Next Queue',
+  charts: 'Top Charts',
+  stats: 'Stats',
+  alert: 'Alert',
+  lunch: 'Lunch',
+  buses: 'Buses',
+  clubs: 'Clubs',
+  edition: 'Edition',
+  day: 'Day',
+  date: 'Date',
+  profile: 'Profile',
+  segment: 'Segment',
+  segments: 'Segments',
+  studio: 'Studio',
+  fieldnotes: 'Field Notes',
+  greenhouse: 'Greenhouse',
+  homeroom: 'Homeroom',
+  paper: 'Paper',
+  playlist: 'Playlist',
+  arcade: 'Arcade',
+  atlas: 'Atlas',
+  general: 'General',
+  _root: 'General',
+};
+
 function prettyFieldLabel(key: string): string {
-  return key
-    .split('.')
-    .map((seg) => {
-      // Numeric segments stay as-is so "agenda.0.t" reads "Agenda 0 T"
-      if (/^\d+$/.test(seg)) return seg;
-      // Tiny tokens get fully uppercased ("t" → "T", "h1" → "H1")
-      if (seg.length <= 2) return seg.toUpperCase();
-      return seg.charAt(0).toUpperCase() + seg.slice(1);
-    })
-    .join(' · ');
+  // Detect numbered list patterns like `agenda.0.t` → "Period 1 · Subject"
+  // so teachers see human language instead of array indexes.
+  const parts = key.split('.');
+  if (parts.length >= 2) {
+    // Find the first numeric segment — that's the list index
+    const numIdx = parts.findIndex((p) => /^\d+$/.test(p));
+    if (numIdx >= 0) {
+      const groupKey = parts.slice(0, numIdx).join('.');
+      const groupLabel = SECTION_LABELS[parts[0]] || prettyTitle(parts[0]);
+      const itemNumber = parseInt(parts[numIdx], 10) + 1;
+      const leafKey = parts.slice(numIdx + 1).join('.');
+      const leafLabel = LEAF_LABELS[leafKey] || (leafKey ? prettyTitle(leafKey) : '');
+      const itemNoun = guessItemNoun(parts[0]);
+      return leafLabel
+        ? `${itemNoun} ${itemNumber} · ${leafLabel}`
+        : `${itemNoun} ${itemNumber}`;
+    }
+  }
+  // Fall through to leaf-or-segment lookup. e.g. "weather.temp" → "Weather · Temperature"
+  const leaf = parts[parts.length - 1];
+  const sectionLabel = parts.length > 1 ? (SECTION_LABELS[parts[0]] || prettyTitle(parts[0])) : '';
+  const leafLabel = LEAF_LABELS[leaf] || prettyTitle(leaf);
+  return sectionLabel ? `${sectionLabel} · ${leafLabel}` : leafLabel;
 }
 
-// Title-case a section name (the top-level dot-prefix). `school` →
-// "School identity", `agenda` → "Agenda".
 function prettySectionLabel(prefix: string): string {
-  if (!prefix) return 'Other';
-  return prefix.charAt(0).toUpperCase() + prefix.slice(1);
+  if (!prefix) return 'General';
+  return SECTION_LABELS[prefix] || prettyTitle(prefix);
+}
+
+function prettyTitle(s: string): string {
+  if (!s) return '';
+  if (s.length <= 2) return s.toUpperCase();
+  // camelCase / snake_case → Title Case
+  return s
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function guessItemNoun(prefix: string): string {
+  const map: Record<string, string> = {
+    agenda: 'Period',
+    bell: 'Period',
+    cycle: 'Block',
+    leaderboard: 'Rank',
+    loot: 'Side Quest',
+    routes: 'Route',
+    lines: 'Line',
+    queue: 'Track',
+    charts: 'Chart',
+    shoutouts: 'Shout-out',
+    birthdays: 'Birthday',
+    buses: 'Bus',
+    clubs: 'Club',
+    segments: 'Segment',
+    stats: 'Stat',
+    alerts: 'Alert',
+    schedule: 'Period',
+  };
+  return map[prefix] || `${prettyTitle(prefix)}`;
 }
 
 export function PropertiesPanel() {
@@ -170,8 +296,19 @@ export function PropertiesPanel() {
           } else {
             el.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }
+          // PERSISTENT selection state (was a 1.4s flash). Clear any
+          // previously-selected section first so only one is "current"
+          // at a time, then mark this one. Operator gets a sticky
+          // visual confirmation of which panel field corresponds to
+          // their clicked hotspot — Canva's pattern.
+          document.querySelectorAll('[data-field-section].is-active-section').forEach((n) => {
+            n.classList.remove('is-active-section');
+          });
+          el.classList.add('is-active-section');
+          // Brief flash on top of the persistent state — feels like a
+          // "snap to" animation when the panel locks onto the new section.
           el.classList.add('aw-section-flash');
-          setTimeout(() => el.classList.remove('aw-section-flash'), 1400);
+          setTimeout(() => el?.classList.remove('aw-section-flash'), 1400);
           return;
         }
         if (++attempts < 30) setTimeout(tryScroll, 50);
