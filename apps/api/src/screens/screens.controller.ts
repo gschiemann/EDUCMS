@@ -203,6 +203,7 @@ export class ScreensController {
     @Param('deviceFingerprint') fingerprint: string,
     @Query('v') versionName?: string,
     @Query('vc') versionCode?: string,
+    @Request() req?: any,
   ) {
     // Preview fingerprints must never write lastPingAt — they would push
     // the real paired kiosk's status to ONLINE even after closing the tab.
@@ -239,18 +240,20 @@ export class ScreensController {
     }
     // Diagnostic — operator caught dashboard chip stuck blank on
     // 2026-04-27 even with v1.0.11 installed. Log every heartbeat
-    // so we can confirm in Railway logs whether ?v= is actually
-    // reaching us. Only logs when version changes OR every ~15min
-    // to avoid filling logs. fp truncated for log brevity + privacy.
-    const fpShort = fingerprint.slice(0, 14);
+    // with the FULL request URL so we can see in Railway logs
+    // exactly what the kiosk is sending and pinpoint where ?v=
+    // is being dropped (URL nav, header strip, route mismatch).
+    // Verbose for now while diagnosing; tighten once root cause is fixed.
+    const fpShort = fingerprint.slice(0, 18);
     const versionChanged = vn && vn !== screen.playerVersion;
-    const stale = !screen.playerVersionAt || (Date.now() - new Date(screen.playerVersionAt).getTime()) > 15 * 60_000;
-    if (versionChanged || stale) {
-      console.log(
-        `[heartbeat] fp=${fpShort}… v=${vn || '(none)'} vc=${versionCode || '(none)'} ` +
-        `prior=${screen.playerVersion || '(none)'} changed=${versionChanged}`,
-      );
-    }
+    const rawUrl = req?.originalUrl || req?.url || '(unknown)';
+    const userAgent = req?.headers?.['user-agent'] || '(no-ua)';
+    const isApkUa = /EduCmsPlayer/i.test(userAgent);
+    console.log(
+      `[heartbeat] fp=${fpShort}… v=${vn || '(NONE)'} vc=${versionCode || '(NONE)'} ` +
+      `prior=${screen.playerVersion || '(none)'} changed=${versionChanged} ` +
+      `apk-ua=${isApkUa} url=${String(rawUrl).slice(0, 200)}`,
+    );
     await this.prisma.client.screen.update({
       where: { id: screen.id },
       data,
