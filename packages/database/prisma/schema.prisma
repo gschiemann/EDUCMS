@@ -381,6 +381,24 @@ model Screen {
   emergencyHoldAssetUrl       String? @map("emergency_hold_asset_url")
   emergencySecureAssetUrl     String? @map("emergency_secure_asset_url")
   emergencyMedicalAssetUrl    String? @map("emergency_medical_asset_url")
+  // Portrait variants — same 6 types again. The screen's resolution
+  // determines which set the manifest reads from. Operator can upload
+  // a horizontal "lockdown — hold position" poster AND a vertical
+  // poster designed for portrait kiosks; the player picks the right
+  // one based on its physical orientation, same way the tenant-wide
+  // panic*Portrait*PlaylistId already does.
+  emergencyLockdownPortraitPlaylistId String? @map("emergency_lockdown_portrait_playlist_id")
+  emergencyEvacuatePortraitPlaylistId String? @map("emergency_evacuate_portrait_playlist_id")
+  emergencyWeatherPortraitPlaylistId  String? @map("emergency_weather_portrait_playlist_id")
+  emergencyHoldPortraitPlaylistId     String? @map("emergency_hold_portrait_playlist_id")
+  emergencySecurePortraitPlaylistId   String? @map("emergency_secure_portrait_playlist_id")
+  emergencyMedicalPortraitPlaylistId  String? @map("emergency_medical_portrait_playlist_id")
+  emergencyLockdownPortraitAssetUrl   String? @map("emergency_lockdown_portrait_asset_url")
+  emergencyEvacuatePortraitAssetUrl   String? @map("emergency_evacuate_portrait_asset_url")
+  emergencyWeatherPortraitAssetUrl    String? @map("emergency_weather_portrait_asset_url")
+  emergencyHoldPortraitAssetUrl       String? @map("emergency_hold_portrait_asset_url")
+  emergencySecurePortraitAssetUrl     String? @map("emergency_secure_portrait_asset_url")
+  emergencyMedicalPortraitAssetUrl    String? @map("emergency_medical_portrait_asset_url")
   schedules         Schedule[]
   screenGroup       ScreenGroup? @relation(fields: [screenGroupId], references: [id])
   tenant            Tenant?      @relation(fields: [tenantId], references: [id])

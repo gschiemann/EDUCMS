@@ -486,6 +486,22 @@ export class ScreensController {
       holdAssetUrl?: string | null;
       secureAssetUrl?: string | null;
       medicalAssetUrl?: string | null;
+      // Portrait variants. Same six types again. Manifest picks
+      // landscape vs portrait based on the screen's physical
+      // resolution. Operator usually configures both so the right
+      // poster shows on each kiosk regardless of orientation.
+      lockdownPortraitPlaylistId?: string | null;
+      evacuatePortraitPlaylistId?: string | null;
+      weatherPortraitPlaylistId?: string | null;
+      holdPortraitPlaylistId?: string | null;
+      securePortraitPlaylistId?: string | null;
+      medicalPortraitPlaylistId?: string | null;
+      lockdownPortraitAssetUrl?: string | null;
+      evacuatePortraitAssetUrl?: string | null;
+      weatherPortraitAssetUrl?: string | null;
+      holdPortraitAssetUrl?: string | null;
+      securePortraitAssetUrl?: string | null;
+      medicalPortraitAssetUrl?: string | null;
     },
   ) {
     const tenantId = req.user.tenantId;
@@ -498,6 +514,8 @@ export class ScreensController {
     const ids: string[] = [
       body.lockdownPlaylistId, body.evacuatePlaylistId, body.weatherPlaylistId,
       body.holdPlaylistId, body.securePlaylistId, body.medicalPlaylistId,
+      body.lockdownPortraitPlaylistId, body.evacuatePortraitPlaylistId, body.weatherPortraitPlaylistId,
+      body.holdPortraitPlaylistId, body.securePortraitPlaylistId, body.medicalPortraitPlaylistId,
     ].filter((v): v is string => typeof v === 'string' && v.length > 0);
     let validIds = new Set<string>();
     if (ids.length > 0) {
@@ -537,6 +555,19 @@ export class ScreensController {
     if (body.holdAssetUrl       !== undefined) data.emergencyHoldAssetUrl       = sanitizeUrl(body.holdAssetUrl);
     if (body.secureAssetUrl     !== undefined) data.emergencySecureAssetUrl     = sanitizeUrl(body.secureAssetUrl);
     if (body.medicalAssetUrl    !== undefined) data.emergencyMedicalAssetUrl    = sanitizeUrl(body.medicalAssetUrl);
+    // Portrait variants — same model, _portrait suffix on the column.
+    if (body.lockdownPortraitPlaylistId !== undefined) data.emergencyLockdownPortraitPlaylistId = sanitize(body.lockdownPortraitPlaylistId);
+    if (body.evacuatePortraitPlaylistId !== undefined) data.emergencyEvacuatePortraitPlaylistId = sanitize(body.evacuatePortraitPlaylistId);
+    if (body.weatherPortraitPlaylistId  !== undefined) data.emergencyWeatherPortraitPlaylistId  = sanitize(body.weatherPortraitPlaylistId);
+    if (body.holdPortraitPlaylistId     !== undefined) data.emergencyHoldPortraitPlaylistId     = sanitize(body.holdPortraitPlaylistId);
+    if (body.securePortraitPlaylistId   !== undefined) data.emergencySecurePortraitPlaylistId   = sanitize(body.securePortraitPlaylistId);
+    if (body.medicalPortraitPlaylistId  !== undefined) data.emergencyMedicalPortraitPlaylistId  = sanitize(body.medicalPortraitPlaylistId);
+    if (body.lockdownPortraitAssetUrl   !== undefined) data.emergencyLockdownPortraitAssetUrl   = sanitizeUrl(body.lockdownPortraitAssetUrl);
+    if (body.evacuatePortraitAssetUrl   !== undefined) data.emergencyEvacuatePortraitAssetUrl   = sanitizeUrl(body.evacuatePortraitAssetUrl);
+    if (body.weatherPortraitAssetUrl    !== undefined) data.emergencyWeatherPortraitAssetUrl    = sanitizeUrl(body.weatherPortraitAssetUrl);
+    if (body.holdPortraitAssetUrl       !== undefined) data.emergencyHoldPortraitAssetUrl       = sanitizeUrl(body.holdPortraitAssetUrl);
+    if (body.securePortraitAssetUrl     !== undefined) data.emergencySecurePortraitAssetUrl     = sanitizeUrl(body.securePortraitAssetUrl);
+    if (body.medicalPortraitAssetUrl    !== undefined) data.emergencyMedicalPortraitAssetUrl    = sanitizeUrl(body.medicalPortraitAssetUrl);
 
     const updated = await this.prisma.client.screen.update({
       where: { id },
@@ -555,6 +586,18 @@ export class ScreensController {
         emergencyHoldAssetUrl: true,
         emergencySecureAssetUrl: true,
         emergencyMedicalAssetUrl: true,
+        emergencyLockdownPortraitPlaylistId: true,
+        emergencyEvacuatePortraitPlaylistId: true,
+        emergencyWeatherPortraitPlaylistId: true,
+        emergencyHoldPortraitPlaylistId: true,
+        emergencySecurePortraitPlaylistId: true,
+        emergencyMedicalPortraitPlaylistId: true,
+        emergencyLockdownPortraitAssetUrl: true,
+        emergencyEvacuatePortraitAssetUrl: true,
+        emergencyWeatherPortraitAssetUrl: true,
+        emergencyHoldPortraitAssetUrl: true,
+        emergencySecurePortraitAssetUrl: true,
+        emergencyMedicalPortraitAssetUrl: true,
       } as any,
     });
 
@@ -813,25 +856,54 @@ export class ScreensController {
         // required, configured once and forgotten.
         const screenAny = screen as any;
         const emergencyTypeKey = (activeScreenOverride?.type || tenant?.emergencyStatus || '').toUpperCase();
+        // Operator can configure separate landscape + portrait variants
+        // per emergency type per screen. The screen's actual physical
+        // orientation (computed below from `screen.resolution`) decides
+        // which set the manifest reads. We FALL BACK to the other
+        // orientation if only one was configured — mirrors the tenant-
+        // wide behavior where a single configured orientation covers
+        // every kiosk regardless of mounting.
         const perScreenForType = ((): string | null => {
+          if (isPortrait) {
+            switch (emergencyTypeKey) {
+              case 'LOCKDOWN': return screenAny.emergencyLockdownPortraitPlaylistId || screenAny.emergencyLockdownPlaylistId || null;
+              case 'EVACUATE': return screenAny.emergencyEvacuatePortraitPlaylistId || screenAny.emergencyEvacuatePlaylistId || null;
+              case 'WEATHER':  return screenAny.emergencyWeatherPortraitPlaylistId  || screenAny.emergencyWeatherPlaylistId  || null;
+              case 'HOLD':     return screenAny.emergencyHoldPortraitPlaylistId     || screenAny.emergencyHoldPlaylistId     || null;
+              case 'SECURE':   return screenAny.emergencySecurePortraitPlaylistId   || screenAny.emergencySecurePlaylistId   || null;
+              case 'MEDICAL':  return screenAny.emergencyMedicalPortraitPlaylistId  || screenAny.emergencyMedicalPlaylistId  || null;
+              default:         return null;
+            }
+          }
           switch (emergencyTypeKey) {
-            case 'LOCKDOWN': return screenAny.emergencyLockdownPlaylistId || null;
-            case 'EVACUATE': return screenAny.emergencyEvacuatePlaylistId || null;
-            case 'WEATHER':  return screenAny.emergencyWeatherPlaylistId  || null;
-            case 'HOLD':     return screenAny.emergencyHoldPlaylistId     || null;
-            case 'SECURE':   return screenAny.emergencySecurePlaylistId   || null;
-            case 'MEDICAL':  return screenAny.emergencyMedicalPlaylistId  || null;
+            case 'LOCKDOWN': return screenAny.emergencyLockdownPlaylistId || screenAny.emergencyLockdownPortraitPlaylistId || null;
+            case 'EVACUATE': return screenAny.emergencyEvacuatePlaylistId || screenAny.emergencyEvacuatePortraitPlaylistId || null;
+            case 'WEATHER':  return screenAny.emergencyWeatherPlaylistId  || screenAny.emergencyWeatherPortraitPlaylistId  || null;
+            case 'HOLD':     return screenAny.emergencyHoldPlaylistId     || screenAny.emergencyHoldPortraitPlaylistId     || null;
+            case 'SECURE':   return screenAny.emergencySecurePlaylistId   || screenAny.emergencySecurePortraitPlaylistId   || null;
+            case 'MEDICAL':  return screenAny.emergencyMedicalPlaylistId  || screenAny.emergencyMedicalPortraitPlaylistId  || null;
             default:         return null;
           }
         })();
         const perScreenAssetForType = ((): string | null => {
+          if (isPortrait) {
+            switch (emergencyTypeKey) {
+              case 'LOCKDOWN': return screenAny.emergencyLockdownPortraitAssetUrl || screenAny.emergencyLockdownAssetUrl || null;
+              case 'EVACUATE': return screenAny.emergencyEvacuatePortraitAssetUrl || screenAny.emergencyEvacuateAssetUrl || null;
+              case 'WEATHER':  return screenAny.emergencyWeatherPortraitAssetUrl  || screenAny.emergencyWeatherAssetUrl  || null;
+              case 'HOLD':     return screenAny.emergencyHoldPortraitAssetUrl     || screenAny.emergencyHoldAssetUrl     || null;
+              case 'SECURE':   return screenAny.emergencySecurePortraitAssetUrl   || screenAny.emergencySecureAssetUrl   || null;
+              case 'MEDICAL':  return screenAny.emergencyMedicalPortraitAssetUrl  || screenAny.emergencyMedicalAssetUrl  || null;
+              default:         return null;
+            }
+          }
           switch (emergencyTypeKey) {
-            case 'LOCKDOWN': return screenAny.emergencyLockdownAssetUrl || null;
-            case 'EVACUATE': return screenAny.emergencyEvacuateAssetUrl || null;
-            case 'WEATHER':  return screenAny.emergencyWeatherAssetUrl  || null;
-            case 'HOLD':     return screenAny.emergencyHoldAssetUrl     || null;
-            case 'SECURE':   return screenAny.emergencySecureAssetUrl   || null;
-            case 'MEDICAL':  return screenAny.emergencyMedicalAssetUrl  || null;
+            case 'LOCKDOWN': return screenAny.emergencyLockdownAssetUrl || screenAny.emergencyLockdownPortraitAssetUrl || null;
+            case 'EVACUATE': return screenAny.emergencyEvacuateAssetUrl || screenAny.emergencyEvacuatePortraitAssetUrl || null;
+            case 'WEATHER':  return screenAny.emergencyWeatherAssetUrl  || screenAny.emergencyWeatherPortraitAssetUrl  || null;
+            case 'HOLD':     return screenAny.emergencyHoldAssetUrl     || screenAny.emergencyHoldPortraitAssetUrl     || null;
+            case 'SECURE':   return screenAny.emergencySecureAssetUrl   || screenAny.emergencySecurePortraitAssetUrl   || null;
+            case 'MEDICAL':  return screenAny.emergencyMedicalAssetUrl  || screenAny.emergencyMedicalPortraitAssetUrl  || null;
             default:         return null;
           }
         })();

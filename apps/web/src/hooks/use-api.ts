@@ -979,6 +979,19 @@ export interface FloorPlanScreen {
   emergencyHoldAssetUrl?: string | null;
   emergencySecureAssetUrl?: string | null;
   emergencyMedicalAssetUrl?: string | null;
+  // Portrait variants
+  emergencyLockdownPortraitPlaylistId?: string | null;
+  emergencyEvacuatePortraitPlaylistId?: string | null;
+  emergencyWeatherPortraitPlaylistId?: string | null;
+  emergencyHoldPortraitPlaylistId?: string | null;
+  emergencySecurePortraitPlaylistId?: string | null;
+  emergencyMedicalPortraitPlaylistId?: string | null;
+  emergencyLockdownPortraitAssetUrl?: string | null;
+  emergencyEvacuatePortraitAssetUrl?: string | null;
+  emergencyWeatherPortraitAssetUrl?: string | null;
+  emergencyHoldPortraitAssetUrl?: string | null;
+  emergencySecurePortraitAssetUrl?: string | null;
+  emergencyMedicalPortraitAssetUrl?: string | null;
 }
 
 export interface FloorPlanZone {
@@ -1198,17 +1211,72 @@ export interface ScreenEmergencyContent {
   holdAssetUrl?: string | null;
   secureAssetUrl?: string | null;
   medicalAssetUrl?: string | null;
+  lockdownPortraitPlaylistId?: string | null;
+  evacuatePortraitPlaylistId?: string | null;
+  weatherPortraitPlaylistId?: string | null;
+  holdPortraitPlaylistId?: string | null;
+  securePortraitPlaylistId?: string | null;
+  medicalPortraitPlaylistId?: string | null;
+  lockdownPortraitAssetUrl?: string | null;
+  evacuatePortraitAssetUrl?: string | null;
+  weatherPortraitAssetUrl?: string | null;
+  holdPortraitAssetUrl?: string | null;
+  securePortraitAssetUrl?: string | null;
+  medicalPortraitAssetUrl?: string | null;
 }
 
 export function useUpdateScreenEmergencyContent() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ screenId, patch }: { screenId: string; patch: ScreenEmergencyContent }) =>
-      apiFetch(`/screens/${screenId}/emergency-content`, {
+      apiFetch<any>(`/screens/${screenId}/emergency-content`, {
         method: 'PUT',
         body: JSON.stringify(patch),
       }),
-    onSuccess: (_, vars) => {
+    // Operator reported: "i uploaded an asset and it took but still says
+    // tenant default." Root cause: the drawer's `screen` prop comes from
+    // the floor-plan query cache, and the mutation only invalidated
+    // (queueing a refetch) — so there was a visible window where the
+    // drawer was rendering with stale data even though the DB had the
+    // new value. Fix: use the API response (which contains every
+    // emergency_*_playlist_id / asset_url field for the just-updated
+    // screen) to PATCH the cached floor-plan AND screens list directly.
+    // Refetches still happen via invalidate as a safety net.
+    onSuccess: (response, vars) => {
+      // 1. Patch every floor-plan cache that contains this screen.
+      //    Floor-plan query keys look like ['floor-plan', planId].
+      const floorPlanCaches = qc.getQueriesData<any>({ queryKey: ['floor-plan'] });
+      for (const [key, cached] of floorPlanCaches) {
+        if (!cached || !Array.isArray(cached.screens)) continue;
+        const idx = cached.screens.findIndex((s: any) => s?.id === vars.screenId);
+        if (idx < 0) continue;
+        const next = {
+          ...cached,
+          screens: cached.screens.map((s: any) =>
+            s.id === vars.screenId ? { ...s, ...(response || {}) } : s,
+          ),
+        };
+        qc.setQueryData(key, next);
+      }
+      // 2. Patch the floor-plans LIST cache too, so list-tile screen
+      //    counts / pin states reflect the change without a refetch.
+      const listCaches = qc.getQueriesData<any>({ queryKey: ['floor-plans'] });
+      for (const [key, cached] of listCaches) {
+        if (!Array.isArray(cached)) continue;
+        const next = cached.map((plan: any) => {
+          if (!plan || !Array.isArray(plan.screens)) return plan;
+          if (!plan.screens.some((s: any) => s?.id === vars.screenId)) return plan;
+          return {
+            ...plan,
+            screens: plan.screens.map((s: any) =>
+              s.id === vars.screenId ? { ...s, ...(response || {}) } : s,
+            ),
+          };
+        });
+        qc.setQueryData(key, next);
+      }
+      // 3. Invalidate as a safety net — if any cache layer disagreed
+      //    with our optimistic patch, the next render reconciles.
       qc.invalidateQueries({ queryKey: ['screens'] });
       qc.invalidateQueries({ queryKey: ['floor-plans'] });
       qc.invalidateQueries({ queryKey: ['floor-plan'] });
