@@ -26,7 +26,6 @@ import { useState } from 'react';
 import { Loader2, Upload, Trash2 } from 'lucide-react';
 import {
   useUpdateScreenEmergencyContent,
-  usePlaylists,
   type FloorPlanScreen,
 } from '@/hooks/use-api';
 
@@ -73,11 +72,9 @@ export function ScreenEmergencyContentConfig({
   screenId: string;
   screen: FloorPlanScreen;
 }) {
-  const { data: playlists, isLoading: playlistsLoading } = usePlaylists();
   const updateMutation = useUpdateScreenEmergencyContent();
   // uploadingType is a composite key `${short}-${orient}` so each
-  // sub-row's spinner is independent (uploading the landscape custom
-  // asset for "lockdown" doesn't visually freeze the portrait sub-row).
+  // upload spot's spinner is independent.
   const [uploadingType, setUploadingType] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -86,17 +83,6 @@ export function ScreenEmergencyContentConfig({
       return { playlist: `${type.short}PlaylistId`, asset: `${type.short}AssetUrl` };
     }
     return { playlist: `${type.short}PortraitPlaylistId`, asset: `${type.short}PortraitAssetUrl` };
-  };
-
-  const onPickPlaylist = (type: EmergencyTypeRow, orient: Orient, value: string) => {
-    const playlistId = value === '' ? null : value;
-    const k = apiKeys(type, orient);
-    // Picking a playlist clears any custom asset for the same
-    // type+orientation so there's only ever one source of truth.
-    updateMutation.mutate({
-      screenId,
-      patch: { [k.playlist]: playlistId, [k.asset]: null } as any,
-    });
   };
 
   const onUploadCustom = async (type: EmergencyTypeRow, orient: Orient, file: File) => {
@@ -117,6 +103,8 @@ export function ScreenEmergencyContentConfig({
       if (!res.ok) throw new Error(`Upload failed (${res.status})`);
       const { url } = await res.json();
       const k = apiKeys(type, orient);
+      // Setting a custom asset clears any playlist override for the
+      // same (type, orientation) — single source of truth.
       updateMutation.mutate({
         screenId,
         patch: { [k.asset]: url, [k.playlist]: null } as any,
@@ -139,10 +127,10 @@ export function ScreenEmergencyContentConfig({
   return (
     <section>
       <p className="text-[11px] text-slate-500 leading-relaxed mb-3">
-        For each of the 6 emergency types, decide what plays on <span className="font-semibold text-slate-700">this screen only</span> when that type fires.
-        Configure <span className="font-semibold">📺 Landscape</span> and <span className="font-semibold">📱 Portrait</span> independently —
-        the player picks the one matching the screen's orientation. Within each, pick a <span className="font-semibold">playlist</span>,
-        upload a <span className="font-semibold">custom asset</span>, or leave it on <span className="font-semibold">tenant default</span>.
+        Upload the content that plays on <span className="font-semibold text-slate-700">this screen only</span> for each emergency type.
+        <span className="font-semibold"> 📺 Landscape</span> and <span className="font-semibold">📱 Portrait</span> are independent —
+        the player picks the one matching the screen's orientation. Empty slots fall back to the
+        tenant default.
       </p>
       <div className="space-y-2.5">
         {EMERGENCY_TYPES.map((t) => {
@@ -163,88 +151,73 @@ export function ScreenEmergencyContentConfig({
                 </div>
               </div>
 
-              <div className="space-y-1.5">
+              <div className="grid grid-cols-2 gap-2">
                 {orientations.map(({ orient, icon, label }) => {
                   const k = apiKeys(t, orient);
-                  const playlistId = (screen[k.playlist as keyof FloorPlanScreen] as string | null | undefined) ?? '';
                   const assetUrl = (screen[k.asset as keyof FloorPlanScreen] as string | null | undefined) ?? '';
                   const hasCustomAsset = !!assetUrl;
-                  const hasPlaylist = !!playlistId;
-                  const usingTenantDefault = !hasCustomAsset && !hasPlaylist;
                   const filename = hasCustomAsset ? assetUrl.split('/').pop()?.split('?')[0] : '';
                   const uploadKey = `${t.short}-${orient}`;
                   const isUploadingThis = uploadingType === uploadKey;
 
                   return (
-                    <div key={orient} className="rounded-md bg-white border border-slate-200 p-2">
-                      <div className="flex items-center gap-2 mb-1.5">
+                    <label
+                      key={orient}
+                      className={`relative rounded-md border-2 border-dashed p-3 text-center cursor-pointer transition-colors ${
+                        hasCustomAsset
+                          ? 'border-emerald-300 bg-emerald-50/60 hover:bg-emerald-50'
+                          : isUploadingThis
+                            ? 'border-emerald-400 bg-emerald-50'
+                            : 'border-slate-300 bg-white hover:border-emerald-400 hover:bg-emerald-50/40'
+                      }`}
+                      title={hasCustomAsset
+                        ? `${filename}\nClick to replace, or use × to clear`
+                        : `Upload ${label.toLowerCase()} ${t.label.toLowerCase()} content (image, video, or PDF)`}
+                    >
+                      <div className="flex items-center justify-center gap-1.5 mb-1.5">
                         <span className="text-xs" aria-hidden>{icon}</span>
                         <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</span>
-                        <div className={`ml-auto text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
-                          hasPlaylist     ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' :
-                          hasCustomAsset  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                                            'bg-slate-100 text-slate-500 border border-slate-200'
-                        }`}>
-                          {hasPlaylist ? 'Playlist' : hasCustomAsset ? 'Custom' : 'Default'}
-                        </div>
                       </div>
-
-                      {hasCustomAsset && (
-                        <div className="flex items-center gap-2 mb-1.5 px-2 py-1 bg-emerald-50 border border-emerald-200 rounded-md">
-                          <Upload className="w-3 h-3 text-emerald-600 shrink-0" />
-                          <span className="text-[10px] font-mono text-emerald-700 truncate flex-1" title={assetUrl}>{filename || 'custom asset'}</span>
+                      {isUploadingThis ? (
+                        <div className="flex items-center justify-center gap-1.5 text-[11px] font-bold text-emerald-700">
+                          <Loader2 className="w-3 h-3 animate-spin" /> Uploading…
+                        </div>
+                      ) : hasCustomAsset ? (
+                        <>
+                          <div className="text-[11px] font-bold text-emerald-700 truncate" title={filename || 'custom asset'}>
+                            ✓ {filename || 'custom'}
+                          </div>
+                          <div className="text-[9px] text-emerald-600 mt-0.5">Click to replace</div>
                           <button
                             type="button"
-                            onClick={() => onClear(t, orient)}
-                            aria-label={`Clear custom ${label} ${t.label} asset`}
-                            title="Clear custom asset (revert to tenant default)"
-                            className="shrink-0 w-6 h-6 rounded flex items-center justify-center text-emerald-600 hover:bg-emerald-100"
+                            onClick={(e) => { e.preventDefault(); onClear(t, orient); }}
+                            aria-label={`Clear ${label} ${t.label} asset`}
+                            title="Clear (revert to tenant default)"
+                            className="absolute top-1 right-1 w-5 h-5 rounded-full bg-white border border-emerald-300 flex items-center justify-center text-emerald-700 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700"
                           >
-                            <Trash2 className="w-3 h-3" />
+                            <Trash2 className="w-2.5 h-2.5" />
                           </button>
-                        </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-center gap-1 text-[11px] font-bold text-slate-500">
+                            <Upload className="w-3 h-3" /> Drop / click
+                          </div>
+                          <div className="text-[9px] text-slate-400 mt-0.5">Image · video · PDF</div>
+                        </>
                       )}
-
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={playlistId}
-                          disabled={playlistsLoading || updateMutation.isPending}
-                          onChange={(e) => onPickPlaylist(t, orient, e.target.value)}
-                          className="flex-1 text-[11px] font-medium px-2 py-1.5 rounded-md border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-rose-300 disabled:bg-slate-50 disabled:text-slate-400"
-                          aria-label={`${t.label} ${label.toLowerCase()} playlist for this screen`}
-                        >
-                          <option value="">{usingTenantDefault ? '↳ Use tenant default' : (hasCustomAsset ? '↳ Switch to playlist…' : '↳ Use tenant default')}</option>
-                          {(playlists || []).map((p: any) => (
-                            <option key={p.id} value={p.id}>{p.name}</option>
-                          ))}
-                        </select>
-                        <label
-                          className={`shrink-0 inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1.5 rounded-md cursor-pointer transition-colors ${
-                            isUploadingThis
-                              ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
-                              : 'bg-white text-slate-600 border border-slate-200 hover:border-emerald-400 hover:text-emerald-700'
-                          }`}
-                          title={`Upload a single ${label.toLowerCase()} image, video, or PDF for this screen + ${t.label}`}
-                        >
-                          {isUploadingThis ? (
-                            <><Loader2 className="w-3 h-3 animate-spin" /> Uploading…</>
-                          ) : (
-                            <><Upload className="w-3 h-3" /> Upload</>
-                          )}
-                          <input
-                            type="file"
-                            accept="image/*,video/*,application/pdf"
-                            className="hidden"
-                            disabled={!!uploadingType || updateMutation.isPending}
-                            onChange={(e) => {
-                              const f = e.target.files?.[0];
-                              if (f) onUploadCustom(t, orient, f);
-                              e.target.value = '';
-                            }}
-                          />
-                        </label>
-                      </div>
-                    </div>
+                      <input
+                        type="file"
+                        accept="image/*,video/*,application/pdf"
+                        className="hidden"
+                        disabled={!!uploadingType || updateMutation.isPending}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) onUploadCustom(t, orient, f);
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
                   );
                 })}
               </div>

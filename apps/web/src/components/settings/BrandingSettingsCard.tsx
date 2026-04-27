@@ -14,10 +14,10 @@ import { useEffect, useMemo, useState } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
 import { usePathname } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
-import { Paintbrush, Sparkles, RotateCcw, AlertTriangle, Upload, Check, Loader2 } from 'lucide-react';
+import { Paintbrush, Sparkles, RotateCcw, AlertTriangle, Upload, Check, Loader2, Wand2 } from 'lucide-react';
 import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 import { useAppStore } from '@/lib/store';
-import { useTenant } from '@/hooks/use-api';
+import { useTenant, useApplyBrandToTemplates } from '@/hooks/use-api';
 import { pushBrandingPreview } from '@/components/branding/BrandStyleInjector';
 import type { TenantBranding } from '@/lib/branding';
 
@@ -305,6 +305,14 @@ export function BrandingSettingsCard() {
               </div>
             </div>
 
+            {/* APPLY TO TEMPLATES — Operator (2026-04-27): "branding doesn't
+                work" in templates. The brand-kit endpoint existed but had no
+                UI button so the palette never propagated to template defaults.
+                Two modes: fill-blanks (only colors templates haven't been
+                customized away from defaults) and override (force-paint
+                everything). Default is fill-blanks — non-destructive. */}
+            <ApplyBrandToTemplatesRow />
+
             {/* NUKE / Reset row — always available when branding is set */}
             <div className="mt-5 pt-4 border-t border-slate-100">
               {!confirmReset ? (
@@ -363,6 +371,95 @@ export function BrandingSettingsCard() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * "Apply brand to all templates" row — sits inside BrandingSettingsCard.
+ *
+ * Calls POST /branding/apply-to-templates which walks every template
+ * the tenant owns + paints zone defaultConfig with the current palette
+ * (primary / accent / ink / surface) and font family. Two modes:
+ *   - fill-blanks (default): only patches zones that still hold the
+ *     stock generic colors. Won't override a template the operator
+ *     customized.
+ *   - override: force-repaint everything. Use after a brand refresh.
+ */
+function ApplyBrandToTemplatesRow() {
+  const apply = useApplyBrandToTemplates();
+  const [mode, setMode] = useState<'fill-blanks' | 'override'>('fill-blanks');
+  const [doneSummary, setDoneSummary] = useState<string | null>(null);
+  const [errMsg, setErrMsg] = useState<string | null>(null);
+
+  const onApply = async () => {
+    setDoneSummary(null);
+    setErrMsg(null);
+    try {
+      const res = await apply.mutateAsync({ mode });
+      setDoneSummary(`Applied to ${res.count} template${res.count === 1 ? '' : 's'} · ${res.zonesPatched} zone${res.zonesPatched === 1 ? '' : 's'} updated.`);
+    } catch (e: any) {
+      setErrMsg(e?.message || 'Apply failed — try again.');
+    }
+  };
+
+  return (
+    <div className="mt-5 pt-4 border-t border-slate-100">
+      <div className="flex items-start gap-3 mb-3">
+        <Wand2 className="h-5 w-5 text-indigo-500 shrink-0 mt-0.5" />
+        <div className="flex-1">
+          <div className="text-sm font-bold text-slate-700">Apply brand to all templates</div>
+          <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+            Repaint every template you own with your school&apos;s palette and fonts.
+            <span className="font-semibold"> Fill blanks</span> only touches zones still using stock colors;{' '}
+            <span className="font-semibold">override</span> force-repaints everything.
+          </p>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="inline-flex bg-slate-100 rounded-md p-0.5 border border-slate-200">
+          <button
+            type="button"
+            onClick={() => setMode('fill-blanks')}
+            className={`px-3 py-1.5 text-[11px] font-bold rounded transition-colors ${
+              mode === 'fill-blanks' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Fill blanks
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('override')}
+            className={`px-3 py-1.5 text-[11px] font-bold rounded transition-colors ${
+              mode === 'override' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Override
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={onApply}
+          disabled={apply.isPending}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-bold rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+        >
+          {apply.isPending ? (
+            <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Applying…</>
+          ) : (
+            <><Wand2 className="h-3.5 w-3.5" /> Apply brand to templates</>
+          )}
+        </button>
+      </div>
+      {doneSummary && (
+        <div className="mt-3 text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-1.5 inline-flex items-center gap-1.5">
+          <Check className="h-3.5 w-3.5" /> {doneSummary}
+        </div>
+      )}
+      {errMsg && (
+        <div className="mt-3 text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-3 py-1.5">
+          {errMsg}
+        </div>
+      )}
     </div>
   );
 }

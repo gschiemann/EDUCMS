@@ -13,7 +13,6 @@ import { useState, useRef, useEffect } from 'react';
 import { UsbIngestCard } from '@/components/settings/UsbIngestCard';
 import { LicenseCard } from '@/components/settings/LicenseCard';
 import { PanicContentEditor } from '@/components/settings/PanicContentEditor';
-import { ScreenEmergencyContentConfig } from '@/components/settings/ScreenEmergencyContentConfig';
 import { BrandingSettingsCard } from '@/components/settings/BrandingSettingsCard';
 import { DistrictSchoolsCard } from '@/components/settings/DistrictSchoolsCard';
 import { appConfirm } from '@/components/ui/app-dialog';
@@ -436,233 +435,116 @@ function PanicContentSection() {
         </button>
       </div>
       <div className="p-6 space-y-6">
-        {/* Critical / life-safety row */}
-        <div>
-          <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Critical (life-safety)</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <PanicContentEditor kind="lockdown" label="Lockdown" accent="red"
-              hint="Threat inside the building — locks, lights, out of sight." />
-            <PanicContentEditor kind="evacuate" label="Evacuate" accent="orange"
-              hint="Get out and head to the rendezvous point." />
-            <PanicContentEditor kind="medical" label="Medical" accent="rose"
-              hint="Nurse / EMS event. Specify location." />
-          </div>
-        </div>
-
-        {/* Heightened-awareness row */}
-        <div>
-          <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Heightened awareness</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <PanicContentEditor kind="secure" label="Secure (Lockout)" accent="amber"
-              hint="Threat OUTSIDE — lock perimeter, stay inside, business as usual." />
-            <PanicContentEditor kind="weather" label="Shelter (Weather / Hazmat)" accent="violet"
-              hint="Tornado, severe storm, hazmat, air-quality event." />
-            <PanicContentEditor kind="hold" label="Hold" accent="sky"
-              hint="Stay in classroom — clear hallways for medical / police passing through." />
-          </div>
-        </div>
-
-        {/* Location-based emergency — inline subsection. Only shows when
-            the toggle in the header is ON. When OFF, a slim helper line
-            invites the user to enable it. */}
-        <div className="border-t border-slate-100 pt-5">
-          <div className="flex items-start justify-between gap-3 mb-3">
+        {/* Operator ask (2026-04-27): "as soon as i enable the toggle for
+            location based, replace all the default emergency cards with
+            the floor map or the area to upload a floor map if i dont have
+            one." So the body is mode-switched: standard mode shows the 6
+            tenant-default panic editors; location mode swaps in the floor-
+            plan workflow. Per-screen overrides happen on the floor plan
+            page (drawer), NOT here — that was the duplicate menu we
+            cleaned up. */}
+        {!enabled ? (
+          <>
+            {/* Critical / life-safety row */}
             <div>
-              <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
-                <MapPin className="w-3 h-3 text-rose-500" /> Location-based emergency
-                {enabled && (
-                  <span className="text-[8px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">On</span>
-                )}
-              </h3>
-              <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                {enabled
-                  ? 'Per-screen overrides are active. Drop screens onto a floor plan to assign different emergency content per location.'
-                  : 'Turn this on (toggle at top of card) to upload floor plans, drop screens onto them, and customize emergency content per screen.'}
-              </p>
+              <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Critical (life-safety)</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <PanicContentEditor kind="lockdown" label="Lockdown" accent="red"
+                  hint="Threat inside the building — locks, lights, out of sight." />
+                <PanicContentEditor kind="evacuate" label="Evacuate" accent="orange"
+                  hint="Get out and head to the rendezvous point." />
+                <PanicContentEditor kind="medical" label="Medical" accent="rose"
+                  hint="Nurse / EMS event. Specify location." />
+              </div>
             </div>
-          </div>
 
-          {enabled && (
-            <div className="space-y-4">
-              {/* Floor plans summary */}
-              {planCount === 0 ? (
-                <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/40 p-4 flex items-start gap-3">
-                  <Building2 className="w-5 h-5 text-slate-400 shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <div className="text-[12px] font-bold text-slate-700">No floor plans yet</div>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Upload an architectural floor plan, hand-drawn sketch, or PDF for each building.
-                      Multi-floor schools get one plan per floor. Then drag screens onto the plan to map
-                      them to physical locations.
-                    </p>
+            {/* Heightened-awareness row */}
+            <div>
+              <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Heightened awareness</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <PanicContentEditor kind="secure" label="Secure (Lockout)" accent="amber"
+                  hint="Threat OUTSIDE — lock perimeter, stay inside, business as usual." />
+                <PanicContentEditor kind="weather" label="Shelter (Weather / Hazmat)" accent="violet"
+                  hint="Tornado, severe storm, hazmat, air-quality event." />
+                <PanicContentEditor kind="hold" label="Hold" accent="sky"
+                  hint="Stay in classroom — clear hallways for medical / police passing through." />
+              </div>
+            </div>
+          </>
+        ) : (
+          // LOCATION MODE — the 6 panic editors are gone. Floor plan IS
+          // the configuration surface; click a screen pin on the plan,
+          // upload the per-screen content from the drawer.
+          <div>
+            <div className="flex items-start gap-2 mb-4">
+              <MapPin className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+              <div>
+                <h3 className="text-[12px] font-bold text-slate-700">Location-based emergency</h3>
+                <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                  Open a floor plan, drag unplaced screens onto the map, and
+                  click a screen to upload landscape + portrait emergency content for each
+                  type. Empty slots fall back to the tenant default.
+                </p>
+              </div>
+            </div>
+
+            {planCount === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/40 p-6 flex flex-col items-center text-center gap-2">
+                <Building2 className="w-8 h-8 text-slate-400" />
+                <div className="text-sm font-bold text-slate-700">No floor plans yet</div>
+                <p className="text-[12px] text-slate-500 max-w-md">
+                  Upload an architectural floor plan, hand-drawn sketch, or PDF for each
+                  building. Multi-floor schools get one plan per floor.
+                </p>
+                <Link
+                  href={`/${schoolId}/floor-plans`}
+                  className="inline-flex items-center gap-1.5 mt-2 text-[12px] font-bold px-4 py-2 rounded-md bg-rose-600 text-white hover:bg-rose-700 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Upload your first floor plan
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  Your floor plans ({planCount}) — click to open
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {floorPlans!.map((p: any) => (
                     <Link
-                      href={`/${schoolId}/floor-plans`}
-                      className="inline-flex items-center gap-1.5 mt-3 text-[11px] font-bold px-3 py-1.5 rounded-md bg-rose-600 text-white hover:bg-rose-700 transition-colors"
+                      key={p.id}
+                      href={`/${schoolId}/floor-plans/${p.id}`}
+                      className="flex items-center gap-3 px-3 py-3 rounded-lg bg-slate-50 hover:bg-rose-50 hover:border-rose-200 border border-transparent transition-colors group"
                     >
-                      <Plus className="w-3.5 h-3.5" /> Create your first floor plan
+                      <Building2 className="w-5 h-5 text-slate-400 group-hover:text-rose-500 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[12px] font-bold text-slate-700 truncate">{p.name}</div>
+                        {(p.buildingLabel || p.floorLabel) && (
+                          <div className="text-[10px] text-slate-400 truncate">
+                            {[p.buildingLabel, p.floorLabel].filter(Boolean).join(' · ')}
+                          </div>
+                        )}
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-rose-500 shrink-0" />
                     </Link>
-                  </div>
+                  ))}
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Floor plans ({planCount})</div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {floorPlans!.slice(0, 6).map((p: any) => (
-                      <Link
-                        key={p.id}
-                        href={`/${schoolId}/floor-plans/${p.id}`}
-                        className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-50 hover:bg-rose-50 hover:border-rose-200 border border-transparent transition-colors group"
-                      >
-                        <Building2 className="w-4 h-4 text-slate-400 group-hover:text-rose-500 shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-[12px] font-bold text-slate-700 truncate">{p.name}</div>
-                          {(p.buildingLabel || p.floorLabel) && (
-                            <div className="text-[10px] text-slate-400 truncate">
-                              {[p.buildingLabel, p.floorLabel].filter(Boolean).join(' · ')}
-                            </div>
-                          )}
-                        </div>
-                        <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-rose-500 shrink-0" />
-                      </Link>
-                    ))}
-                  </div>
-                  <Link
-                    href={`/${schoolId}/floor-plans`}
-                    className="inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-md border border-slate-200 hover:border-rose-300 hover:text-rose-700 transition-colors"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add another floor plan
-                  </Link>
-                </div>
-              )}
-
-              {/* Per-screen overrides — admin-only inline list. Operator
-                  ask: "the applying the security assets should only be
-                  done from settings now." Each screen expands inline to
-                  show the 6-emergency-type config (landscape + portrait
-                  sub-rows). Lazy-rendered (only the open screen renders
-                  the config tree) so a 100-screen tenant doesn't pay
-                  the layout cost up front. */}
-              <PerScreenOverridesList />
-            </div>
-          )}
-        </div>
+                <Link
+                  href={`/${schoolId}/floor-plans`}
+                  className="inline-flex items-center gap-1.5 mt-2 text-[11px] font-bold px-3 py-1.5 rounded-md border border-slate-200 hover:border-rose-300 hover:text-rose-700 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Upload another floor plan
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-/**
- * Per-screen emergency overrides list — Settings page subsection.
- * Lists every paired screen in the tenant; click one to expand the full
- * 6-type x 2-orientation override config inline. Closes auto-when the
- * user opens a different screen. Honors the deep-link hash
- * #per-screen-emergency-<screenId> from the floor-plan drawer.
- */
-function PerScreenOverridesList() {
-  const { data: screensData } = useScreens();
-  const screens = (Array.isArray(screensData) ? screensData : (screensData as any)?.screens || []) as any[];
-  const [openScreenId, setOpenScreenId] = useState<string | null>(null);
-
-  // Honor the deep-link from the floor-plan drawer:
-  //   /<schoolId>/settings#per-screen-emergency-<screenId>
-  // Auto-expand that screen's row + scroll it into view.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const hash = window.location.hash;
-    const match = hash.match(/^#per-screen-emergency-([\w-]+)$/);
-    if (match) {
-      const sid = match[1];
-      setOpenScreenId(sid);
-      // Wait one frame so the row exists in the DOM before scrolling
-      requestAnimationFrame(() => {
-        document.getElementById(`per-screen-emergency-${sid}`)?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center',
-        });
-      });
-    }
-  }, []);
-
-  if (screens.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/40 p-3 text-[11px] text-slate-500">
-        No paired screens yet. Once you pair a screen, you can override
-        what plays on it during each emergency type from here.
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-        Per-screen emergency overrides ({screens.length})
-      </div>
-      <p className="text-[11px] text-slate-500 leading-relaxed">
-        Click a screen to override what plays on <span className="font-semibold">that screen only</span> during
-        each of the 6 emergency types. Independent landscape + portrait variants. Anything left on
-        &ldquo;tenant default&rdquo; falls back to the panic content above.
-      </p>
-      <div className="space-y-1.5">
-        {screens.map((s: any) => {
-          const isOpen = openScreenId === s.id;
-          const status = s.status || 'OFFLINE';
-          const groupName = s.screenGroup?.name;
-          // Count overrides set on this screen so the row shows a quick
-          // summary chip ("3 overrides set" / "default") without
-          // expanding.
-          const overrideCount = [
-            'emergencyLockdownPlaylistId', 'emergencyLockdownAssetUrl',
-            'emergencyEvacuatePlaylistId', 'emergencyEvacuateAssetUrl',
-            'emergencyHoldPlaylistId',     'emergencyHoldAssetUrl',
-            'emergencySecurePlaylistId',   'emergencySecureAssetUrl',
-            'emergencyWeatherPlaylistId',  'emergencyWeatherAssetUrl',
-            'emergencyMedicalPlaylistId',  'emergencyMedicalAssetUrl',
-            'emergencyLockdownPortraitPlaylistId', 'emergencyLockdownPortraitAssetUrl',
-            'emergencyEvacuatePortraitPlaylistId', 'emergencyEvacuatePortraitAssetUrl',
-            'emergencyHoldPortraitPlaylistId',     'emergencyHoldPortraitAssetUrl',
-            'emergencySecurePortraitPlaylistId',   'emergencySecurePortraitAssetUrl',
-            'emergencyWeatherPortraitPlaylistId',  'emergencyWeatherPortraitAssetUrl',
-            'emergencyMedicalPortraitPlaylistId',  'emergencyMedicalPortraitAssetUrl',
-          ].filter((k) => s[k]).length;
-          return (
-            <div
-              key={s.id}
-              id={`per-screen-emergency-${s.id}`}
-              className={`rounded-lg border transition-colors ${
-                isOpen ? 'border-rose-200 bg-rose-50/30' : 'border-slate-200 bg-white hover:border-slate-300'
-              }`}
-            >
-              <button
-                type="button"
-                onClick={() => setOpenScreenId(isOpen ? null : s.id)}
-                aria-expanded={isOpen}
-                className="w-full flex items-center gap-3 px-3 py-2.5 text-left"
-              >
-                <MonitorPlay className={`w-4 h-4 shrink-0 ${status === 'ONLINE' ? 'text-emerald-500' : 'text-slate-300'}`} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-[12px] font-bold text-slate-700 truncate">{s.name}</div>
-                  <div className="text-[10px] text-slate-400 truncate">
-                    {groupName ? `${groupName} · ` : ''}{status}
-                  </div>
-                </div>
-                <span className={`text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
-                  overrideCount > 0
-                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                    : 'bg-slate-50 text-slate-400 border border-slate-200'
-                }`}>
-                  {overrideCount > 0 ? `${overrideCount} override${overrideCount === 1 ? '' : 's'}` : 'Default'}
-                </span>
-                <ArrowRight className={`w-3.5 h-3.5 text-slate-300 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
-              </button>
-              {isOpen && (
-                <div className="px-3 pb-3 pt-1">
-                  <ScreenEmergencyContentConfig screenId={s.id} screen={s} />
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+// PerScreenOverridesList was removed (2026-04-27). Operator: "you have
+// multiple areas now to do the same setting" — the inline overrides
+// list duplicated the floor-plan drawer's per-screen config. Settings
+// now ONLY surfaces the floor-plan picker; per-screen upload happens in
+// the drawer that opens when you click a screen pin on the plan.
