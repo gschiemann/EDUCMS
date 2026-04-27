@@ -72,6 +72,51 @@ const SCHOOL_LEVEL_CHIPS = [
   { key: 'HIGH', label: 'High School', emoji: '🎓' },
 ];
 
+/**
+ * Portrait presets whose widget hardcodes a 1920×1080 stage. At
+ * 2160×3840 they letterbox into a centered 2160×1215 band — about
+ * 68% of the screen ends up empty bgColor. Until each gets a dedicated
+ * `*PortraitWidget.tsx` companion the preset reads as "broken portrait"
+ * to customers, so we hide them from the catalog. Removing an id from
+ * this list re-surfaces it once the corresponding portrait widget
+ * exists.
+ *
+ * The 9 portraits NOT in this list (MS pack 8 + Rainbow Animated lobby)
+ * fill the screen properly and remain visible.
+ *
+ * Tracked separately from `system-presets.ts` so re-shipping a portrait
+ * variant doesn't require a schema field — just delete the id here.
+ */
+const LETTERBOXED_PORTRAIT_PRESETS: ReadonlySet<string> = new Set([
+  'preset-achievement-showcase-portrait',
+  'preset-bell-schedule-portrait',
+  'preset-bulletin-cafeteria-portrait',
+  'preset-bulletin-hallway-portrait',
+  'preset-bus-board-portrait',
+  'preset-cafeteria-animated-elementary-portrait',
+  'preset-cafeteria-animated-high-portrait',
+  'preset-cafeteria-animated-middle-portrait',
+  'preset-cafeteria-chalkboard-portrait',
+  'preset-cafeteria-foodtruck-portrait',
+  'preset-hallway-schedule-portrait',
+  'preset-hs-blueprint-portrait',
+  'preset-hs-broadcast-portrait',
+  'preset-hs-gallery-portrait',
+  'preset-hs-terminal-portrait',
+  'preset-hs-transit-portrait',
+  'preset-hs-varsity-portrait',
+  'preset-hs-yearbook-portrait',
+  'preset-hs-zine-portrait',
+  'preset-lobby-animated-high-portrait',
+  'preset-lobby-animated-middle-portrait',
+  'preset-main-entrance-portrait',
+  'preset-morning-news-portrait',
+  'preset-scrapbook-cafeteria-portrait',
+  'preset-scrapbook-hallway-portrait',
+  'preset-storybook-cafeteria-portrait',
+  'preset-storybook-hallway-portrait',
+]);
+
 const RESOLUTION_PRESETS = [
   { label: '4K UHD', sub: 'Landscape', w: 3840, h: 2160 },
   { label: '4K UHD', sub: 'Portrait', w: 2160, h: 3840 },
@@ -306,6 +351,12 @@ export default function TemplatesPage() {
 
   const q = searchQuery.trim().toLowerCase();
   const filtered = (templates || []).filter((t: Template) => {
+    // Hide letterboxed portrait presets — see LETTERBOXED_PORTRAIT_PRESETS
+    // header. These render at 2160×3840 but their widget caps the
+    // canvas at 1920×1080 so the result is a centered band with 68%
+    // empty bgColor. Real portrait variants (with dedicated
+    // *PortraitWidget components) ship one at a time post-launch.
+    if (LETTERBOXED_PORTRAIT_PRESETS.has(t.id)) return false;
     if (activeCategory && t.category !== activeCategory) return false;
     if (activeLevel) {
       // UNIVERSAL (or missing) is always shown — it's grade-agnostic.
