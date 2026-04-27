@@ -23,13 +23,14 @@
  * restyled, not the song titles + artist names + ticker.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useBuilderStore } from './useBuilderStore';
 import {
   FontFamilyField,
   FontSizeField,
   FormatToggles,
   ColorField,
+  measureZoneFontSize,
 } from './PropertiesPanel';
 
 type Scope = 'field' | 'zone' | 'template';
@@ -88,6 +89,19 @@ export function TopContextToolbar() {
     }
     return cfg[prop];
   };
+
+  /**
+   * DOM-measured font size for the +/− stepper. Scope-aware:
+   *  - field: measure the active hotspot
+   *  - zone/template: measure the largest text inside the zone
+   * useCallback so the FontSizeField effect doesn't refire on every
+   * render — only when zoneId / scope / activeField actually shift.
+   */
+  const getMeasuredFontSize = useCallback((): number | null => {
+    if (!zone) return null;
+    const fk = effectiveScope === 'field' ? activeFieldKey : null;
+    return measureZoneFontSize(zone.id, fk);
+  }, [zone?.id, effectiveScope, activeFieldKey]);
 
   /**
    * Write a property, respecting the active scope.
@@ -217,6 +231,13 @@ export function TopContextToolbar() {
               label="Size"
               value={readVal('fontSize') ?? null}
               onChange={(v) => setField({ fontSize: v })}
+              // Anchor the +/− stepper on the actual rendered px so the
+              // operator's "make this bigger" click steps from what
+              // they SEE — including theme-default text, zone-wide
+              // overrides, and per-field overrides. Scope-aware:
+              // measures the active hotspot when scope = field, else
+              // the largest text in the zone.
+              getMeasuredSize={getMeasuredFontSize}
             />
           </div>
           <div className="min-w-[200px]">

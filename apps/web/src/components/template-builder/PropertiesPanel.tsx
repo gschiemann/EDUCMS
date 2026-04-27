@@ -5,6 +5,7 @@ import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertica
 import { useBuilderStore } from './useBuilderStore';
 import { widgetLabel } from './constants';
 import { useAssets, usePlaylists, useTemplates, useTemplateBackdrops } from '@/hooks/use-api';
+import { ColorPickerField } from '@/components/ui/color-picker';
 
 // MS pack DEFAULTS registry. Every MS widget exports its `DEFAULTS`
 // keyed by dot-notation field paths (e.g. `school.eye`, `agenda.0.t`).
@@ -716,7 +717,19 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
         // Font size — Canva-style hybrid: −/+ stepper buttons for
         // common bumps, numeric input for precision, dropdown for
         // common preset sizes. Px units across the board.
-        fields.push(<FontSizeField key="fontSize" label="Font size" value={cfg.fontSize ?? null} onChange={(v) => setField({ fontSize: v })} />);
+        // The measure callback reads the actual rendered px from the
+        // DOM so the +/− stepper anchors on what's visible (theme
+        // default, zone-wide override, or per-field override) instead
+        // of falling back to a hardcoded 48 and shrinking large text.
+        fields.push(
+          <FontSizeField
+            key="fontSize"
+            label="Font size"
+            value={cfg.fontSize ?? null}
+            onChange={(v) => setField({ fontSize: v })}
+            getMeasuredSize={() => measureZoneFontSize(zone.id)}
+          />,
+        );
         // Inline format toggles — Canva's universal text bar pattern
         // (B / I / U / S). Each is opt-in; off-state is the default
         // semibold no-decoration look. Inspected from Canva's
@@ -1810,6 +1823,50 @@ function TemplateBackdropPicker({
   );
 }
 
+/**
+ * Measure the actual rendered font-size of a zone (or a specific
+ * data-field hotspot inside a zone) on the canvas. Used by FontSizeField
+ * to anchor the stepper on the visible size instead of a hardcoded 48.
+ *
+ * Returns null if the zone isn't on screen yet (template still loading,
+ * preview mode hides the canvas, etc). The caller falls back to its
+ * hardcoded default in that case.
+ *
+ * Note: getComputedStyle returns CSS px which is invariant under the
+ * canvas's transform: scale wrapper, so what we read IS the design-px
+ * size — exactly what the operator should be stepping from.
+ */
+export function measureZoneFontSize(zoneId: string, fieldKey?: string | null): number | null {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return null;
+  const zoneSel = `[data-zone-id="${CSS.escape(zoneId)}"]`;
+  const root = document.querySelector(zoneSel) as HTMLElement | null;
+  if (!root) return null;
+  let target: HTMLElement | null = null;
+  if (fieldKey) {
+    target = root.querySelector(`[data-field="${CSS.escape(fieldKey)}"]`) as HTMLElement | null;
+  }
+  if (!target) {
+    // No specific hotspot — find the largest text-bearing descendant so
+    // we measure the headline rather than a tiny caption that happens
+    // to come first in DOM order. Falls back to the zone root itself
+    // when nothing inside has explicit text.
+    const candidates = Array.from(root.querySelectorAll('*')) as HTMLElement[];
+    let bestSize = 0;
+    for (const el of candidates) {
+      const txt = (el.textContent || '').trim();
+      if (!txt) continue;
+      const fs = parseFloat(getComputedStyle(el).fontSize);
+      if (Number.isFinite(fs) && fs > bestSize) {
+        bestSize = fs;
+        target = el;
+      }
+    }
+    if (!target) target = root;
+  }
+  const fs = parseFloat(getComputedStyle(target).fontSize);
+  return Number.isFinite(fs) ? fs : null;
+}
+
 export function FontFamilyField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <div>
@@ -1835,11 +1892,49 @@ export function FontFamilyField({ label, value, onChange }: { label: string; val
 // screen viewed from across a hallway.
 const FONT_SIZE_PRESETS = [12, 14, 16, 18, 20, 24, 32, 40, 48, 56, 64, 72, 96, 128, 160, 200];
 
-export function FontSizeField({ label, value, onChange }: { label: string; value: number | null; onChange: (v: number | undefined) => void }) {
+/**
+ * FontSizeField — number stepper with preset dropdown.
+ *
+ * Important: when there's no explicit override (`value === null`) the
+ * stepper used to fall back to a hardcoded 48 as the base, so clicking
+ * "+" on a theme-styled 144px headline shrank it to 50. Operator
+ * reported:
+ *   "i selected large text and then hit the larger size and it made
+ *    it tiny, its not defaulting the size to whatever the current
+ *    font size is"
+ *
+ * Fix: consumer can pass `getMeasuredSize` that queries the actual
+ * rendered font-size from the DOM. The stepper uses that as the base,
+ * and the input shows the measured value as a placeholder (greyed) so
+ * the operator sees what they're stepping FROM. Clicking "+" on a 144
+ * px headline now goes to 146 px, not 50.
+ */
+export function FontSizeField({ label, value, onChange, getMeasuredSize }: { label: string; value: number | null; onChange: (v: number | undefined) => void; getMeasuredSize?: () => number | null }) {
   const current = typeof value === 'number' && Number.isFinite(value) ? value : null;
+  const [measured, setMeasured] = useState<number | null>(null);
+
+  // Re-measure whenever the override goes from set→unset, when the
+  // measure function reference itself changes (zone/field switch in
+  // the consumer), or when the override value is cleared. We defer to
+  // rAF so any pending DOM mutations from a just-applied style change
+  // settle before we read computed font-size.
+  useEffect(() => {
+    if (!getMeasuredSize) { setMeasured(null); return; }
+    let cancelled = false;
+    const id = requestAnimationFrame(() => {
+      if (cancelled) return;
+      const m = getMeasuredSize();
+      setMeasured(typeof m === 'number' && Number.isFinite(m) ? Math.round(m) : null);
+    });
+    return () => { cancelled = true; cancelAnimationFrame(id); };
+  }, [getMeasuredSize, current]);
+
+  // Stepper base — explicit override > DOM-measured > 48 fallback.
+  // Without the DOM-measured tier, "+ on theme-styled 144px text"
+  // shrank to 50px, the bug the operator reported.
+  const base = current ?? measured ?? 48;
   const display = current ?? '';
   const bump = (delta: number) => {
-    const base = current ?? 48;
     onChange(Math.max(8, Math.min(400, base + delta)));
   };
   return (
@@ -1860,7 +1955,10 @@ export function FontSizeField({ label, value, onChange }: { label: string; value
           min={8}
           max={400}
           value={display}
-          placeholder="auto"
+          // Show the actual rendered size as the placeholder when no
+          // explicit override exists — gives the operator a visible
+          // anchor for what they're stepping from.
+          placeholder={measured ? `${measured}` : 'auto'}
           onChange={(e) => {
             const n = parseInt(e.target.value, 10);
             onChange(Number.isFinite(n) ? n : undefined);
@@ -2117,36 +2215,20 @@ function LineHeightField({ value, onChange }: { value: number; onChange: (v: num
   );
 }
 
+/**
+ * ColorField — thin wrapper around the app-themed ColorPickerField so
+ * we don't fall back to the OS-native <input type="color"> picker
+ * (Windows shows an unsynced bar+gradient that confuses operators).
+ * Same call signature as before — every existing import keeps working.
+ */
 export function ColorField({ label, value, onChange, allowTransparent }: { label: string; value: string; onChange: (v: string) => void; allowTransparent?: boolean }) {
-  const isTransparent = value === 'transparent' || !value;
   return (
-    <div>
-      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
-      <div className="flex items-center gap-2">
-        <input
-          type="color"
-          value={isTransparent ? '#ffffff' : value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-10 h-8 rounded border border-slate-200 cursor-pointer bg-white"
-        />
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={allowTransparent ? 'transparent or #hex' : '#hex'}
-          className="flex-1 px-2 py-1 text-xs font-mono rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-        />
-        {allowTransparent && (
-          <button
-            type="button"
-            onClick={() => onChange('transparent')}
-            className="text-[10px] font-bold text-slate-500 hover:text-indigo-600 px-2 py-1 rounded border border-slate-200 hover:border-indigo-300"
-          >
-            Clear
-          </button>
-        )}
-      </div>
-    </div>
+    <ColorPickerField
+      label={label}
+      value={value}
+      onChange={onChange}
+      allowTransparent={allowTransparent}
+    />
   );
 }
 
