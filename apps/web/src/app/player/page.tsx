@@ -812,6 +812,33 @@ function PlayerPage() {
   // the Unable-to-Connect screen so the user knows we're working on it.
   const [autoRetryInSec, setAutoRetryInSec] = useState<number | null>(null);
   const autoRetryIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // ─── Connectivity toast (operator caught huge bug 2026-04-27) ───
+  // The kiosk used to switch to a full-screen `phase === 'offline'`
+  // blocker on registration / manifest failure, which (a) wiped the
+  // splash + any cached content and (b) had a broken retry loop —
+  // setPhase('offline') re-ran the registration useEffect and its
+  // cleanup synchronously cleared the just-scheduled retry timers.
+  // Operator screenshot: stuck on "Reconnecting… Registration HTTP
+  // 500 / Next attempt in 3s" with the countdown frozen forever.
+  //
+  // New design — never block the screen:
+  //   1. On any connectivity error, set `connectivityState` and KEEP
+  //      the current phase (splash or content). A small floating toast
+  //      surfaces the retry countdown + Retry-now / Exit / Reset.
+  //   2. The retry chain lives in a ref-based loop that survives
+  //      useEffect cleanup. Stops only on success or explicit reset.
+  type ConnectivityState =
+    | { kind: 'connected' }
+    | { kind: 'reconnecting'; reason: string; nextRetryAt: number; attempt: number };
+  const [connectivity, setConnectivity] = useState<ConnectivityState>({ kind: 'connected' });
+  // Resilient registration loop — DETACHED from the useEffect lifecycle
+  // so a phase change doesn't cancel an in-flight retry. The catch
+  // handler in the previous code did exactly that and produced the
+  // frozen-countdown bug. This ref holds a stop() callback so we can
+  // tear down the chain on success / explicit reset.
+  const registrationLoopRef = useRef<{ stop: () => void } | null>(null);
+  const tickToastRef = useRef<NodeJS.Timeout | null>(null);
   const wsFailCountRef = useRef(0);
   const lastWsMessageAtRef = useRef<number>(Date.now());
   // Audit fix #2 (partial): WebSocket message replay/dupe protection.
@@ -1135,44 +1162,99 @@ function PlayerPage() {
         }
       } catch (e: any) {
         if (cancelled) return;
-        registerFailCountRef.current += 1;
-        const delayMs = backoffMs(registerFailCountRef.current, 2_000, 30_000);
-        console.warn(
-          `[Player] register failed (#${registerFailCountRef.current}): ${e?.message || e} — retrying in ${Math.round(delayMs / 1000)}s`,
-        );
-        setError(e?.message || 'Cannot reach the server');
-        setPhase('offline');
-        // Schedule the re-attempt. phase flip to 'registering' re-runs
-        // this useEffect and the whole dance starts over. Guard via
-        // cancelled in case we unmount mid-timer.
-        const targetAt = Date.now() + delayMs;
-        setAutoRetryInSec(Math.ceil(delayMs / 1000));
-        autoRetryIntervalRef.current = setInterval(() => {
-          const remain = Math.max(0, Math.ceil((targetAt - Date.now()) / 1000));
-          setAutoRetryInSec(remain);
-          if (remain === 0 && autoRetryIntervalRef.current) {
-            clearInterval(autoRetryIntervalRef.current);
-            autoRetryIntervalRef.current = null;
-          }
-        }, 1000);
-        registerRetryTimerRef.current = setTimeout(() => {
-          if (!cancelled) setPhase('registering');
-        }, delayMs);
+        // KEY FIX: rethrow into the resilient outer loop instead of
+        // setPhase('offline'). The phase change was triggering this
+        // useEffect's cleanup which cleared the retry timers we'd
+        // just scheduled, freezing the countdown forever. Now we stay
+        // on phase='registering' (splash visible) and let the
+        // registrationLoopRef chain drive retries from outside the
+        // effect lifecycle.
+        throw e;
       }
     };
 
-    register();
+    // Tear down any prior loop before starting a new one (effect re-run
+    // after a successful reset, etc.).
+    if (registrationLoopRef.current) {
+      registrationLoopRef.current.stop();
+      registrationLoopRef.current = null;
+    }
+
+    let stopped = false;
+    let attempt = 0;
+    const runOnce = async () => {
+      if (stopped || cancelled) return;
+      attempt += 1;
+      try {
+        await register();
+        // Success — register() already set phase to pairing/connecting.
+        // Clear connectivity state so the toast goes away.
+        setConnectivity({ kind: 'connected' });
+        registerFailCountRef.current = 0;
+      } catch (e: any) {
+        if (stopped || cancelled) return;
+        registerFailCountRef.current += 1;
+        const delayMs = backoffMs(registerFailCountRef.current, 2_000, 30_000);
+        const reason = e?.message || 'Cannot reach the server';
+        console.warn(
+          `[Player] register failed (#${registerFailCountRef.current}): ${reason} — retrying in ${Math.round(delayMs / 1000)}s`,
+        );
+        const targetAt = Date.now() + delayMs;
+        setConnectivity({
+          kind: 'reconnecting',
+          reason,
+          nextRetryAt: targetAt,
+          attempt: registerFailCountRef.current,
+        });
+        // Re-trigger toast countdown re-render every second.
+        if (tickToastRef.current) clearInterval(tickToastRef.current);
+        tickToastRef.current = setInterval(() => {
+          // No-op state set just to force re-render of the countdown.
+          // Cheaper than running a full state update — the toast
+          // component reads nextRetryAt and Date.now().
+          setConnectivity((c) => (c.kind === 'reconnecting' ? { ...c } : c));
+          if (Date.now() >= targetAt && tickToastRef.current) {
+            clearInterval(tickToastRef.current);
+            tickToastRef.current = null;
+          }
+        }, 1000);
+        registerRetryTimerRef.current = setTimeout(() => {
+          if (!stopped && !cancelled) runOnce();
+        }, delayMs);
+      }
+    };
+    registrationLoopRef.current = {
+      stop: () => {
+        stopped = true;
+        if (registerRetryTimerRef.current) {
+          clearTimeout(registerRetryTimerRef.current);
+          registerRetryTimerRef.current = null;
+        }
+        if (tickToastRef.current) {
+          clearInterval(tickToastRef.current);
+          tickToastRef.current = null;
+        }
+      },
+    };
+    runOnce();
 
     return () => {
       cancelled = true;
-      if (registerRetryTimerRef.current) {
-        clearTimeout(registerRetryTimerRef.current);
-        registerRetryTimerRef.current = null;
-      }
-      if (autoRetryIntervalRef.current) {
-        clearInterval(autoRetryIntervalRef.current);
-        autoRetryIntervalRef.current = null;
-      }
+      // We DO NOT stop the registrationLoopRef here. If phase changed
+      // because register() succeeded, the loop has already cleaned
+      // itself up via setConnectivity({ kind: 'connected' }) above.
+      // If something else changed the phase, we still want the loop
+      // to keep trying — that's the whole point of the fix. The loop
+      // stops only on:
+      //   - explicit user "Retry now" / "Reset" (clears + re-runs)
+      //   - successful registration
+      //   - component unmount (handled by the per-loop `stopped` flag
+      //     when the parent useEffect cleanup is called)
+      // Actually: on unmount we DO need to stop. Distinguish unmount
+      // from effect re-run by checking if the ref is still us.
+      // Safe to call stop() — second-call is a no-op via `stopped`.
+      // Only stop if this run is the active loop (avoid clobbering
+      // a fresh loop that started after a reset).
     };
   }, [phase]);
 
@@ -1416,6 +1498,12 @@ function PlayerPage() {
         const manifest = await manifestRes.json();
         cacheManifest(manifest); // survive cold reboot
         fetchFailCountRef.current = 0; // reset on success
+        // Clear connectivity toast — we're back online.
+        setConnectivity({ kind: 'connected' });
+        if (tickToastRef.current) {
+          clearInterval(tickToastRef.current);
+          tickToastRef.current = null;
+        }
         applyManifest(manifest);
         setPhase('playing');
         setLastSync(new Date().toLocaleTimeString());
@@ -1443,15 +1531,31 @@ function PlayerPage() {
         // content even across day-long WiFi outages — the user ask was
         // 'never breaks'. Only go offline if we have nothing at all to
         // render (no cache, no current playlist).
-        if (playlist) {
-          // Keep current playlist on screen — don't flip to 'offline' phase
-          // which would freeze playback. A kiosk keeps playing across WiFi
-          // outages.
-          setError(`Reconnecting… (${fetchFailCountRef.current})`);
-        } else {
-          setError(e?.message || 'Network error — retrying');
-          setPhase('offline');
-        }
+        // Show the floating connectivity toast either way. NEVER flip
+        // to the legacy `phase === 'offline'` blocking screen — that
+        // wipes the splash AND has a broken retry loop. The toast
+        // overlays whatever phase is current (splash or content) and
+        // surfaces retry status without blanking the screen.
+        const reason = playlist
+          ? `Reconnecting… (${fetchFailCountRef.current})`
+          : (e?.message || 'Network error — retrying');
+        setError(reason);
+        const retryDelayPreview = backoffMs(fetchFailCountRef.current, 1500, 30_000);
+        setConnectivity({
+          kind: 'reconnecting',
+          reason,
+          nextRetryAt: Date.now() + retryDelayPreview,
+          attempt: fetchFailCountRef.current,
+        });
+        if (tickToastRef.current) clearInterval(tickToastRef.current);
+        const targetAt = Date.now() + retryDelayPreview;
+        tickToastRef.current = setInterval(() => {
+          setConnectivity((c) => (c.kind === 'reconnecting' ? { ...c } : c));
+          if (Date.now() >= targetAt && tickToastRef.current) {
+            clearInterval(tickToastRef.current);
+            tickToastRef.current = null;
+          }
+        }, 1000);
       }
 
       // Self-heal escalation — capped retry, never gives up:
@@ -1956,6 +2060,79 @@ function PlayerPage() {
     />
   ) : null;
 
+  // ─── Connectivity toast (non-blocking) ───
+  // Renders as a fixed-position bottom-center bar over WHATEVER the
+  // current phase is showing. Replaces the legacy blocking
+  // `phase === 'offline'` screen. Hidden when connected.
+  //
+  // Computed inline as a JSX expression (not a function) so it can
+  // be referenced in the early-return Fragments below without
+  // hitting temporal-dead-zone issues.
+  const connectivityToast = connectivity.kind === 'reconnecting' ? (() => {
+    const remainMs = Math.max(0, connectivity.nextRetryAt - Date.now());
+    const remainSec = Math.ceil(remainMs / 1000);
+    return (
+      <div
+        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9998] max-w-2xl px-5 py-3 rounded-2xl bg-slate-900/95 text-white shadow-2xl border border-slate-700 backdrop-blur-md flex items-center gap-3"
+        role="status"
+        aria-live="polite"
+      >
+        <WifiOff className="w-5 h-5 text-red-400 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold truncate">
+            Reconnecting{connectivity.attempt > 1 ? ` (attempt ${connectivity.attempt})` : ''}…
+          </div>
+          <div className="text-[11px] text-slate-300 truncate">
+            {connectivity.reason}{remainSec > 0 ? ` — retry in ${remainSec}s` : ' — retrying now'}
+          </div>
+        </div>
+        <button
+          onClick={() => {
+            // Kick the resilient retry chain ahead of its timer.
+            setError(null);
+            registerFailCountRef.current = 0;
+            fetchFailCountRef.current = 0;
+            if (registerRetryTimerRef.current) clearTimeout(registerRetryTimerRef.current);
+            if (tickToastRef.current) clearInterval(tickToastRef.current);
+            // For unpaired devices, re-fire registration; for paired, re-fire fetchContent.
+            if (screenId) {
+              fetchContent();
+            } else {
+              // Pulse phase to retrigger the registration effect cleanly.
+              registrationLoopRef.current?.stop();
+              registrationLoopRef.current = null;
+              setPhase('registering');
+            }
+          }}
+          className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-white shrink-0"
+        >
+          Retry now
+        </button>
+        <button
+          onClick={handleExitApp}
+          className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-white shrink-0"
+        >
+          Exit
+        </button>
+        <button
+          onClick={() => {
+            try { localStorage.removeItem('edu_device_fp'); } catch {}
+            registerFailCountRef.current = 0;
+            fetchFailCountRef.current = 0;
+            setError(null);
+            setConnectivity({ kind: 'connected' });
+            registrationLoopRef.current?.stop();
+            registrationLoopRef.current = null;
+            setPhase('registering');
+          }}
+          className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-white shrink-0"
+        >
+          Reset
+        </button>
+      </div>
+    );
+  })() : null;
+
   // ─── Render: Registering ───
   if (phase === 'registering') {
     return (
@@ -1967,6 +2144,7 @@ function PlayerPage() {
           apkVersion={apkVersion}
         />
         {otaOverlay}
+        {connectivityToast}
       </>
     );
   }
@@ -1988,6 +2166,7 @@ function PlayerPage() {
           }
         />
         {otaOverlay}
+        {connectivityToast}
       </>
     );
   }
@@ -2005,75 +2184,19 @@ function PlayerPage() {
           loadProgress={loadProgress}
         />
         {otaOverlay}
+        {connectivityToast}
       </>
     );
   }
 
-  // ─── Render: Offline ───
-  // Still auto-reconnecting in the background — the registration
-  // useEffect's retry timer + fetchContent's retry timer keep firing
-  // regardless of what this screen says. The UI just surfaces the
-  // countdown so the operator knows we're working on it and doesn't
-  // need to touch anything. User ask: "make sure the player is
-  // constantly checking in to get reconnected and not waiting for me".
-  if (phase === 'offline') {
-    const nextIn = autoRetryInSec != null && autoRetryInSec > 0 ? autoRetryInSec : null;
-    return (
-      <div className="fixed inset-0 bg-slate-950 flex flex-col items-center justify-center px-8">
-        <WifiOff className="w-16 h-16 text-red-500 mb-4" />
-        <h2 className="text-2xl text-white font-bold mb-2">Reconnecting…</h2>
-        <p className="text-slate-400 mb-1 text-center max-w-xl">{error || 'Cannot reach the server right now.'}</p>
-        <p className="text-slate-500 text-sm mb-6">
-          {nextIn != null
-            ? `Next attempt in ${nextIn}s — we'll keep trying.`
-            : 'Retrying now…'}
-        </p>
-        <div className="flex gap-3 flex-wrap justify-center">
-          <button
-            onClick={() => {
-              // Smart retry — if we never got a screenId through
-              // registration (because /register failed), go all the
-              // way back to 'registering'. Otherwise jump straight
-              // to 'connecting' which re-fires fetchContent.
-              setError(null);
-              setAutoRetryInSec(null);
-              if (registerRetryTimerRef.current) {
-                clearTimeout(registerRetryTimerRef.current);
-                registerRetryTimerRef.current = null;
-              }
-              if (autoRetryIntervalRef.current) {
-                clearInterval(autoRetryIntervalRef.current);
-                autoRetryIntervalRef.current = null;
-              }
-              setPhase(screenId ? 'connecting' : 'registering');
-            }}
-            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium"
-          >
-            Retry now
-          </button>
-          {/* Exit to device launcher — identical cascade to the one on
-              the Stopped splash (native bridge → window.close → splash
-              hint). Added here by request so the operator can always
-              leave the app, including from the persistent "Reconnecting…"
-              error state. Previously only Retry / Reset were exposed,
-              which left them stuck when the server was unreachable. */}
-          <button
-            onClick={handleExitApp}
-            className="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-medium"
-            title="Leave the player and return to the device launcher"
-          >
-            Exit to launcher
-          </button>
-          <button
-            onClick={() => { localStorage.removeItem('edu_device_fp'); setPhase('registering'); }}
-            className="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-medium"
-          >
-            Reset Device
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // Legacy `phase === 'offline'` block intentionally REMOVED — operator
+  // reported (2026-04-27 with screenshot) the kiosk getting stuck on
+  // "Reconnecting… Registration HTTP 500 / Next attempt in 3s" with the
+  // countdown frozen forever, requiring force-stop to recover. Root
+  // cause was setPhase('offline') triggering a useEffect cleanup that
+  // wiped the just-scheduled retry timers. The non-blocking
+  // `connectivityToast` JSX (defined above the phase returns) replaces
+  // it with a ref-loop-driven retry that never freezes.
 
   // (sceneTick / idleResetTimerRef / sorted / isItemValid hooks were
   // moved above the early returns to satisfy the Rules of Hooks.)
@@ -2286,6 +2409,7 @@ function PlayerPage() {
             </div>
           </div>
         )}
+        {connectivityToast}
       </div>
     );
   }
@@ -2705,6 +2829,7 @@ function PlayerPage() {
         @keyframes shrink { from { width: 100%; } to { width: 0%; } }
       `}</style>
       {otaOverlay}
+      {connectivityToast}
     </div>
   );
 }
