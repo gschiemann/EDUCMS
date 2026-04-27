@@ -1,14 +1,18 @@
 "use client";
 
-import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon, Usb } from 'lucide-react';
-import { usePathname } from 'next/navigation';
+import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon, Usb, MapPin, Plus, ArrowRight, Building2, ShieldCheck, ShieldOff } from 'lucide-react';
+import { usePathname, useParams } from 'next/navigation';
+import Link from 'next/link';
 import { RoleGate } from '@/components/RoleGate';
-import { useUsers, useInviteUser, useCreateUserDirect, useDeleteUser, useUpdateUserRole, useTenant, useUpdateTenantPanicSettings, usePlaylists } from '@/hooks/use-api';
+import {
+  useUsers, useInviteUser, useCreateUserDirect, useDeleteUser, useUpdateUserRole, useTenant,
+  useUpdateTenantPanicSettings, usePlaylists,
+  useLocationBasedEmergencyConfig, useToggleLocationBasedEmergency, useFloorPlans,
+} from '@/hooks/use-api';
 import { useState, useRef, useEffect } from 'react';
 import { UsbIngestCard } from '@/components/settings/UsbIngestCard';
 import { LicenseCard } from '@/components/settings/LicenseCard';
 import { PanicContentEditor } from '@/components/settings/PanicContentEditor';
-import { LocationBasedEmergencyCard } from '@/components/settings/LocationBasedEmergencyCard';
 import { BrandingSettingsCard } from '@/components/settings/BrandingSettingsCard';
 import { DistrictSchoolsCard } from '@/components/settings/DistrictSchoolsCard';
 import { appConfirm } from '@/components/ui/app-dialog';
@@ -134,68 +138,15 @@ export default function SettingsPage() {
         {/* Panic Button Content — direct upload, can't be accidentally deleted.
             Aligned with the Standard Response Protocol (SRP) used by most US K-12
             districts: Hold, Secure, Lockdown, Evacuate, Shelter (= Weather here).
-            Plus a separate Medical bucket for nurse / EMS events. */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100">
-            <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2">
-              <AlertOctagon className="w-4 h-4 text-red-500" /> Panic Button Content
-            </h2>
-            <p className="text-xs text-slate-500 mt-1">
-              Upload the content that plays on screens when each panic type is triggered. Aligned with the
-              Standard Response Protocol (SRP) used by US K-12 districts. These assets are protected and
-              cannot be deleted from the regular Playlists list, so an accidental delete can never break a
-              real emergency.
-            </p>
-          </div>
-          <div className="p-6 space-y-6">
-            {/* Critical / life-safety row */}
-            <div>
-              <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Critical (life-safety)</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <PanicContentEditor
-                  kind="lockdown" label="Lockdown" accent="red"
-                  hint="Threat inside the building — locks, lights, out of sight."
-                />
-                <PanicContentEditor
-                  kind="evacuate" label="Evacuate" accent="orange"
-                  hint="Get out and head to the rendezvous point."
-                />
-                <PanicContentEditor
-                  kind="medical" label="Medical" accent="rose"
-                  hint="Nurse / EMS event. Specify location."
-                />
-              </div>
-            </div>
+            Plus a separate Medical bucket for nurse / EMS events.
 
-            {/* Heightened-awareness row */}
-            <div>
-              <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Heightened awareness</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <PanicContentEditor
-                  kind="secure" label="Secure (Lockout)" accent="amber"
-                  hint="Threat OUTSIDE — lock perimeter, stay inside, business as usual."
-                />
-                <PanicContentEditor
-                  kind="weather" label="Shelter (Weather / Hazmat)" accent="violet"
-                  hint="Tornado, severe storm, hazmat, air-quality event."
-                />
-                <PanicContentEditor
-                  kind="hold" label="Hold" accent="sky"
-                  hint="Stay in classroom — clear hallways for medical / police passing through."
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Sprint 8b — Location-based emergency mode toggle. Admin opts in
-            to floor plans + per-screen emergency content overrides. Lives
-            here (not on a separate page) so the standard vs advanced
-            workflow choice happens once, in one place. Admin-only by
-            RoleGate; the per-screen drawer section enforces the same
-            roles independently. */}
+            Sprint 8b — the "Location-based emergency" toggle now lives in this
+            same card's header. Operator wanted ONE menu, not two. Flipping ON
+            unlocks per-screen emergency overrides via floor plans, and the
+            inline section below the panic editors lets the admin jump straight
+            to the floor plans editor without leaving Settings. */}
         <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}>
-          <LocationBasedEmergencyCard />
+          <PanicContentSection />
         </RoleGate>
 
         {/* Auto-branding — paste URL → CMS re-skins (Sprint 9) */}
@@ -400,6 +351,190 @@ export default function SettingsPage() {
           )}
         </div>
       </RoleGate>
+    </div>
+  );
+}
+
+/**
+ * Panic content card — combines tenant-wide panic button uploads (the
+ * 6 SRP types) AND the Sprint 8b location-based emergency toggle into
+ * ONE settings card. Operator's exact ask:
+ *
+ *   "dont make these two separate menus, just enable location based
+ *    right from the main menu... what you built me i cant even enable
+ *    at all so no way to load a map or anything."
+ *
+ * The toggle is wired directly to the tenant flag — no confirmation
+ * gate on enable (it's reversible, non-destructive). The Floor Plans
+ * subsection appears underneath the panic editors only when the toggle
+ * is ON, with a "Manage floor plans" deep-link straight to the editor.
+ */
+function PanicContentSection() {
+  const params = useParams<{ schoolId: string }>();
+  const schoolId = params?.schoolId ?? '';
+  const { data: cfg } = useLocationBasedEmergencyConfig();
+  const { data: floorPlans } = useFloorPlans();
+  const toggle = useToggleLocationBasedEmergency();
+  const enabled = !!cfg?.enabled;
+  const planCount = floorPlans?.length ?? 0;
+
+  // The previous version also gated on `cfgLoading` which left the
+  // toggle disabled forever if the GET was racing the deploy. We rely
+  // ONLY on `toggle.isPending` now — undefined cfg is treated as OFF
+  // and the user can still click to flip it ON. Operator literally
+  // typed "i cant even enable at all" — fix is exactly that.
+  const handleToggle = async (next: boolean) => {
+    if (!next) {
+      const ok = await appConfirm({
+        title: 'Switch back to standard emergency?',
+        message:
+          'Every screen will play the tenant-wide panic content. Per-screen overrides are kept on disk; flipping back ON restores them. The change is non-destructive.',
+        confirmLabel: 'Switch back',
+        tone: 'danger',
+      });
+      if (!ok) return;
+    }
+    toggle.mutate(next);
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+            <AlertOctagon className="w-4 h-4 text-red-500" /> Panic Button Content
+          </h2>
+          <p className="text-xs text-slate-500 mt-1">
+            Upload the content that plays on screens when each panic type is triggered. Aligned with the
+            Standard Response Protocol (SRP) used by US K-12 districts. These assets are protected and
+            cannot be deleted from the regular Playlists list, so an accidental delete can never break a
+            real emergency.
+          </p>
+        </div>
+        {/* Inline location-based toggle — one menu, two modes */}
+        <button
+          type="button"
+          onClick={() => handleToggle(!enabled)}
+          disabled={toggle.isPending}
+          aria-pressed={enabled}
+          className={`shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-[11px] font-bold uppercase tracking-wide transition-colors ${
+            enabled
+              ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+              : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-400'
+          } disabled:opacity-60 disabled:cursor-not-allowed`}
+          title={enabled ? 'Switch back to standard emergency' : 'Enable per-screen location-based emergency'}
+        >
+          {toggle.isPending ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : enabled ? (
+            <ShieldCheck className="w-4 h-4" />
+          ) : (
+            <ShieldOff className="w-4 h-4" />
+          )}
+          <span>Location mode {enabled ? 'On' : 'Off'}</span>
+        </button>
+      </div>
+      <div className="p-6 space-y-6">
+        {/* Critical / life-safety row */}
+        <div>
+          <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Critical (life-safety)</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <PanicContentEditor kind="lockdown" label="Lockdown" accent="red"
+              hint="Threat inside the building — locks, lights, out of sight." />
+            <PanicContentEditor kind="evacuate" label="Evacuate" accent="orange"
+              hint="Get out and head to the rendezvous point." />
+            <PanicContentEditor kind="medical" label="Medical" accent="rose"
+              hint="Nurse / EMS event. Specify location." />
+          </div>
+        </div>
+
+        {/* Heightened-awareness row */}
+        <div>
+          <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Heightened awareness</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <PanicContentEditor kind="secure" label="Secure (Lockout)" accent="amber"
+              hint="Threat OUTSIDE — lock perimeter, stay inside, business as usual." />
+            <PanicContentEditor kind="weather" label="Shelter (Weather / Hazmat)" accent="violet"
+              hint="Tornado, severe storm, hazmat, air-quality event." />
+            <PanicContentEditor kind="hold" label="Hold" accent="sky"
+              hint="Stay in classroom — clear hallways for medical / police passing through." />
+          </div>
+        </div>
+
+        {/* Location-based emergency — inline subsection. Only shows when
+            the toggle in the header is ON. When OFF, a slim helper line
+            invites the user to enable it. */}
+        <div className="border-t border-slate-100 pt-5">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div>
+              <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                <MapPin className="w-3 h-3 text-rose-500" /> Location-based emergency
+                {enabled && (
+                  <span className="text-[8px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">On</span>
+                )}
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                {enabled
+                  ? 'Per-screen overrides are active. Drop screens onto a floor plan to assign different emergency content per location.'
+                  : 'Turn this on (toggle at top of card) to upload floor plans, drop screens onto them, and customize emergency content per screen.'}
+              </p>
+            </div>
+          </div>
+
+          {enabled && (
+            <div className="space-y-2.5">
+              {planCount === 0 ? (
+                <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/40 p-4 flex items-start gap-3">
+                  <Building2 className="w-5 h-5 text-slate-400 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <div className="text-[12px] font-bold text-slate-700">No floor plans yet</div>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Upload an architectural floor plan, hand-drawn sketch, or PDF for each building.
+                      Multi-floor schools get one plan per floor. Then drag screens onto the plan to map
+                      them to physical locations.
+                    </p>
+                    <Link
+                      href={`/${schoolId}/floor-plans`}
+                      className="inline-flex items-center gap-1.5 mt-3 text-[11px] font-bold px-3 py-1.5 rounded-md bg-rose-600 text-white hover:bg-rose-700 transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Create your first floor plan
+                    </Link>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {floorPlans!.slice(0, 6).map((p: any) => (
+                      <Link
+                        key={p.id}
+                        href={`/${schoolId}/floor-plans/${p.id}`}
+                        className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-50 hover:bg-rose-50 hover:border-rose-200 border border-transparent transition-colors group"
+                      >
+                        <Building2 className="w-4 h-4 text-slate-400 group-hover:text-rose-500 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[12px] font-bold text-slate-700 truncate">{p.name}</div>
+                          {(p.buildingLabel || p.floorLabel) && (
+                            <div className="text-[10px] text-slate-400 truncate">
+                              {[p.buildingLabel, p.floorLabel].filter(Boolean).join(' · ')}
+                            </div>
+                          )}
+                        </div>
+                        <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-rose-500 shrink-0" />
+                      </Link>
+                    ))}
+                  </div>
+                  <Link
+                    href={`/${schoolId}/floor-plans`}
+                    className="inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-md border border-slate-200 hover:border-rose-300 hover:text-rose-700 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add another floor plan
+                  </Link>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
