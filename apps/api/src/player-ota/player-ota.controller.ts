@@ -457,16 +457,34 @@ async function resolveLatestReleaseInfo(): Promise<ReleaseInfo | null> {
     releaseInfoCache = { info: null, fetchedAt: now };
     return null;
   }
-  // First non-draft, non-prerelease release with tag starting `player-v`.
-  const playerRelease = allReleases.find((r) => {
-    if (r.draft || r.prerelease) return false;
-    const tag = (r.tag_name || r.name || '').trim();
-    return tag.startsWith('player-v');
-  });
-  if (!playerRelease) {
+  // BUG FIX 2026-04-27 part 2: GitHub's /releases endpoint doesn't
+  // sort by tag semver — it returns by internal release-id order
+  // which does NOT correlate with version number (today's call
+  // returned v1.0.9 ahead of v1.0.12 even though v1.0.12 is the
+  // most recently published Player release). Sort explicitly.
+  const playerReleases = allReleases
+    .filter((r) => {
+      if (r.draft || r.prerelease) return false;
+      const tag = (r.tag_name || r.name || '').trim();
+      return tag.startsWith('player-v');
+    })
+    .map((r) => {
+      const tag = (r.tag_name || r.name || '').trim();
+      const versionStr = tag.replace(/^player-v/, '');
+      const m = versionStr.match(/^(\d+)\.(\d+)\.(\d+)/);
+      const sortKey = m
+        ? parseInt(m[1], 10) * 1_000_000 + parseInt(m[2], 10) * 1_000 + parseInt(m[3], 10)
+        : 0;
+      return { release: r, sortKey };
+    })
+    .filter((x) => x.sortKey > 0)
+    .sort((a, b) => b.sortKey - a.sortKey);
+
+  if (playerReleases.length === 0) {
     releaseInfoCache = { info: null, fetchedAt: now };
     return null;
   }
+  const playerRelease = playerReleases[0].release;
   const assets = playerRelease.assets || [];
   const pick = (pred: (name: string) => boolean) =>
     assets.find((a) => pred(a.name.toLowerCase()));
