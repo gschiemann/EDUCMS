@@ -1,6 +1,6 @@
 "use client";
 
-import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw } from 'lucide-react';
+import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
@@ -733,36 +733,31 @@ export default function ScreensPage() {
                             {screen.osInfo && <span>💻 {screen.osInfo}</span>}
                             {screen.browserInfo && <span><Globe className="w-3 h-3 inline" /> {screen.browserInfo}</span>}
                             {screen.ipAddress && <span>🌐 {screen.ipAddress}</span>}
-                            {/* APK version chip. Self-reported by the player on
-                                every OTA check (/api/v1/player/update-check).
-                                Always rendered so operators can see at a glance
-                                which screens haven't reported yet — operator
-                                ask 2026-04-27: "i should be able to see the
-                                player version from the main screens menu."
-                                Browser players (no APK at all) display
-                                "Player: web" so the operator knows it's not
-                                a missed report. */}
+                            {/* Player version chip. Self-reported by the
+                                Android APK on each /update-check (every 6h).
+                                Always rendered so operators see at a glance
+                                which screens haven't reported yet.
+                                Operator (2026-04-27): "i should be able to
+                                see the player version from the main screens
+                                menu." Note: we used to try and detect "web
+                                player" via browserInfo, but Android WebView
+                                also reports as Chrome — false-positives on
+                                APK installs. Now we just show v? until the
+                                APK actually reports a version. */}
                             {(() => {
                               const v = (screen as any).playerVersion;
                               const at = (screen as any).playerVersionAt;
-                              const isWebPlayer = !v && (screen as any).browserInfo;
                               return (
                                 <span
                                   className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-semibold ${
-                                    v
-                                      ? 'bg-slate-100 text-slate-600'
-                                      : isWebPlayer
-                                        ? 'bg-sky-50 text-sky-700'
-                                        : 'bg-amber-50 text-amber-700'
+                                    v ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-700'
                                   }`}
                                   title={v
-                                    ? `APK v${v}${at ? ` · reported ${fullDateTime(at)}` : ''}`
-                                    : isWebPlayer
-                                      ? 'Browser-based player — no APK version'
-                                      : 'Player has not reported a version yet'}
+                                    ? `Player v${v}${at ? ` · reported ${fullDateTime(at)}` : ''}`
+                                    : 'Player has not reported a version yet — pair + wait for first 6h check-in'}
                                 >
-                                  <Download className="w-3 h-3" />
-                                  {v ? `v${v}` : isWebPlayer ? 'web' : 'v?'}
+                                  <Tag className="w-3 h-3" />
+                                  {v ? `v${v}` : 'v?'}
                                 </span>
                               );
                             })()}
