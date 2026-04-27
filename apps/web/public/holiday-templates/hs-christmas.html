@@ -1,0 +1,96 @@
+<!doctype html>
+<!-- HS CHRISTMAS — varsity letter-jacket / vintage holiday department-store -->
+<html><head><meta charset="utf-8"/><title>Winter Formal · HS Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+<style>:root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;--green:#0e3a26;--green2:#1f5c3c;--red:#a82026;--red2:#d83a3a;--cream:#f5e8c4;--gold:#d4a838;--ink:#0a1a12;--snow:#fbf3e0}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;font-family:'Fraunces',serif;color:var(--cream)}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--green);box-shadow:0 80px 200px rgba(0,0,0,.6)}
+.stage::before{content:'';position:absolute;inset:0;background-image:repeating-linear-gradient(45deg,rgba(212,168,56,.06) 0 2px,transparent 2px 32px),repeating-linear-gradient(-45deg,rgba(212,168,56,.06) 0 2px,transparent 2px 32px);pointer-events:none}
+/* fancy double border */
+.frame{position:absolute;inset:30px;border:5px solid var(--gold);pointer-events:none;z-index:5}
+.frame::before{content:'';position:absolute;inset:14px;border:1px solid var(--gold);opacity:.6}
+.frame::after{content:'';position:absolute;inset:24px;border:3px double var(--gold)}
+/* corner ornaments */
+.orn{position:absolute;width:120px;height:120px;border:4px solid var(--gold);background:var(--red);z-index:6;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue';font-size:80px;color:var(--gold);transform:rotate(45deg);box-shadow:inset 0 0 0 2px var(--gold)}
+.orn span{transform:rotate(-45deg)}
+.orn.tl{top:80px;left:80px}.orn.tr{top:80px;right:80px}.orn.bl{bottom:120px;left:80px}.orn.br{bottom:120px;right:80px}
+/* masthead */
+.mast{position:absolute;top:120px;left:280px;right:280px;height:160px;display:flex;align-items:center;justify-content:space-between;border-bottom:4px solid var(--gold);padding-bottom:16px;z-index:5}
+.mast .est{font-family:'JetBrains Mono';font-weight:800;font-size:24px;letter-spacing:.4em;color:var(--gold);text-transform:uppercase}
+.mast .school{font-family:'Bebas Neue';font-size:120px;color:var(--cream);letter-spacing:.04em;line-height:1}
+.mast .school em{color:var(--gold)}
+.mast .vol{font-family:'JetBrains Mono';font-weight:800;font-size:24px;letter-spacing:.32em;color:var(--gold);text-align:right;text-transform:uppercase}
+/* main */
+.head{position:absolute;top:340px;left:280px;right:280px;text-align:center;z-index:4}
+.head .ribbon{display:inline-block;background:var(--red);color:var(--cream);font-family:'JetBrains Mono';font-weight:800;font-size:30px;letter-spacing:.4em;padding:16px 80px;text-transform:uppercase;box-shadow:0 0 0 4px var(--gold),0 0 0 8px var(--red)}
+.head h1{font-family:'Bebas Neue';font-size:560px;line-height:.85;color:var(--cream);margin:30px 0 0;letter-spacing:.02em;text-shadow:0 14px 0 var(--ink),0 -6px 0 var(--gold)}
+.head h1 em{color:var(--gold);font-style:italic;display:inline-block;transform:rotate(-3deg)}
+.head .sub{font-family:'Fraunces',serif;font-weight:700;font-style:italic;font-size:62px;color:var(--cream);margin:30px auto 0;max-width:2400px;line-height:1.18}
+/* cards */
+.grid{position:absolute;top:1280px;left:200px;right:200px;height:520px;display:grid;grid-template-columns:1fr 1.5fr 1fr;gap:36px;z-index:3}
+.cd{background:var(--cream);color:var(--ink);padding:32px 36px;border:5px solid var(--ink);position:relative;display:flex;flex-direction:column;box-shadow:14px 14px 0 var(--gold)}
+.cd::before{content:'';position:absolute;top:-22px;left:50%;transform:translateX(-50%);width:80px;height:44px;background:var(--gold);border:4px solid var(--ink);border-radius:0 0 40px 40px}
+.cd .k{font-family:'JetBrains Mono';font-weight:800;font-size:22px;color:var(--red);text-transform:uppercase;letter-spacing:.32em}
+.cd h2{font-family:'Bebas Neue';font-size:130px;line-height:.85;margin:8px 0 0;color:var(--ink);letter-spacing:.01em}
+.cd h2 em{font-style:italic;color:var(--red);transform:rotate(-2deg);display:inline-block}
+.cd.feat{background:var(--red);color:var(--cream);box-shadow:14px 14px 0 var(--ink)}
+.cd.feat .k{color:var(--gold)}
+.cd.feat h2{color:var(--cream);font-size:160px}.cd.feat h2 em{color:var(--gold)}
+.cd p{font-family:'Fraunces',serif;font-weight:500;font-style:italic;font-size:30px;margin:18px 0 0;line-height:1.22}
+.cd .meta{margin-top:auto;padding-top:18px;font-family:'JetBrains Mono';font-weight:800;font-size:22px;text-transform:uppercase;letter-spacing:.22em;color:var(--red);display:flex;gap:20px;flex-wrap:wrap}
+.cd.feat .meta{color:var(--gold)}
+/* schedule */
+.sked{position:absolute;top:1830px;left:200px;right:200px;height:230px;background:var(--ink);color:var(--cream);padding:20px 32px;border:4px solid var(--gold);z-index:3;display:flex;flex-direction:column}
+.sked .hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px solid var(--gold);padding-bottom:8px}
+.sked .hdr h3{font-family:'Bebas Neue';font-size:62px;color:var(--gold);margin:0;letter-spacing:.04em}
+.sked .hdr .d{font-family:'JetBrains Mono';font-weight:800;font-size:22px;color:var(--cream);letter-spacing:.22em;text-transform:uppercase}
+.sked ul{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:24px;flex:1}
+.sked li{display:flex;flex-direction:column;justify-content:center;border-left:4px solid var(--red);padding-left:18px}
+.sked li .d{font-family:'JetBrains Mono';font-weight:800;font-size:20px;color:var(--gold);letter-spacing:.26em;text-transform:uppercase}
+.sked li .e{font-family:'Bebas Neue';font-size:46px;color:var(--cream);line-height:1;margin-top:4px;letter-spacing:.02em}
+.sked li .e em{font-style:italic;color:var(--gold)}
+.sked li .w{font-family:'JetBrains Mono';font-weight:600;font-size:18px;color:var(--cream);margin-top:4px;text-transform:uppercase;letter-spacing:.18em;opacity:.8}</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{"schema":"edu-cms-hs-christmas-v1"}/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+<div class="frame"></div>
+<div class="orn tl"><span data-field="orn.tl">'25</span></div>
+<div class="orn tr"><span data-field="orn.tr">★</span></div>
+<div class="orn bl"><span data-field="orn.bl">★</span></div>
+<div class="orn br"><span data-field="orn.br">DEC</span></div>
+<div class="mast" data-widget="masthead">
+<div class="est" data-field="masthead.est">est. 1924</div>
+<div class="school"><span data-field="masthead.t1">Banner </span><em data-field="masthead.t2">High</em></div>
+<div class="vol" data-field="masthead.vol">winter issue</div>
+</div>
+<div class="head" data-widget="headline">
+<div class="ribbon" data-field="headline.kicker">★ winter formal · december 19 ★</div>
+<h1><span data-field="headline.t1">Snow </span><em data-field="headline.t2">Ball.</em></h1>
+<div class="sub" data-field="headline.sub">Tickets at the ASB window — $35 single, $60 couple — through Friday. Theme is "Midnight Forest." Toy drive ends Thursday; donation bins at every entrance.</div>
+</div>
+<div class="grid">
+<div class="cd" data-widget="tickets"><div class="k" data-field="tickets.k">★ formal tickets</div>
+<h2><span data-field="tickets.t1">$35 </span><em data-field="tickets.t2">solo</em></h2>
+<p data-field="tickets.p">Sales close Friday 3pm — no door sales. Couples $60. ASB window during all three lunches. Cash or card.</p>
+<div class="meta"><span data-field="tickets.m1">deadline · Fri 12/12</span></div></div>
+<div class="cd feat" data-widget="dance"><div class="k" data-field="dance.k">★ snow ball</div>
+<h2><span data-field="dance.t1">Dec </span><em data-field="dance.t2">19.</em></h2>
+<p data-field="dance.p">Doors 7:30pm at the field house · DJ Vega, photo booth, late dessert bar. Last entry 9pm. Bus pickup at midnight from lot B.</p>
+<div class="meta"><span data-field="dance.m1">Fri 12/19 · 7:30pm</span><span data-field="dance.m2">field house</span></div></div>
+<div class="cd" data-widget="toy"><div class="k" data-field="toy.k">★ toy drive</div>
+<h2 data-field="toy.t">Bring one.</h2>
+<p data-field="toy.p">New, unwrapped — drop in any red bin through Thursday. Goal: 1,200 toys. Top homeroom gets a pizza party in January.</p>
+<div class="meta"><span data-field="toy.m1">deadline · Thu 12/18</span></div></div>
+</div>
+<div class="sked" data-widget="sked">
+<div class="hdr"><h3 data-field="sked.h">★ winter week</h3><div class="d" data-field="sked.day">Mon 12/15 — Fri 12/19</div></div>
+<ul>
+<li data-widget="sked.0"><div class="d" data-field="sked.0.d">MON</div><div class="e"><span data-field="sked.0.e1">Ugly </span><em data-field="sked.0.e2">sweater</em></div><div class="w" data-field="sked.0.w">spirit · all day</div></li>
+<li data-widget="sked.1"><div class="d" data-field="sked.1.d">WED</div><div class="e"><span data-field="sked.1.e1">Choir </span><em data-field="sked.1.e2">concert</em></div><div class="w" data-field="sked.1.w">aud · 7pm · free</div></li>
+<li data-widget="sked.2"><div class="d" data-field="sked.2.d">THU</div><div class="e"><span data-field="sked.2.e1">Toy </span><em data-field="sked.2.e2">drive ends</em></div><div class="w" data-field="sked.2.w">red bins · 3pm</div></li>
+<li data-widget="sked.3"><div class="d" data-field="sked.3.d">FRI</div><div class="e"><span data-field="sked.3.e1">Snow </span><em data-field="sked.3.e2">Ball</em></div><div class="w" data-field="sked.3.w">field house · 7:30</div></li>
+</ul>
+</div>
+</div></div></div>
+<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+<script id="holiday-autoscale">(function(){function s(){var w=window.innerWidth,h=window.innerHeight,sc=Math.min(w/3840,h/2160);document.documentElement.style.setProperty("--stage-scale",sc);}s();window.addEventListener("resize",s);})();</script></body></html>

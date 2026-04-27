@@ -1007,4 +1007,172 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     bgGradient: 'linear-gradient(180deg,#fce7f3 0%,#ffe4e6 35%,#fef3c7 75%,#fed7aa 100%)',
     zones: [{ name: 'Animated Cafeteria Scene', widgetType: 'ANIMATED_CAFETERIA', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
+
+  // ───────────────────────────────────────────────────────────────
+  // HOLIDAY PACK — 18 templates (6 holidays × 3 grade levels).
+  // Imported from the holiday HTML zip. Each renders a full-canvas
+  // designed scene from /public/holiday-templates/*.html via the
+  // HolidayWidget iframe. Operator picks the matching grade level
+  // and holiday in the templates page sub-filter.
+  //
+  // The user said "these need a ton of work" — these are the v1 import.
+  // Real design polish per template lands as individual iteration loops
+  // post-launch (per CLAUDE.md "no batching" rule).
+  // ───────────────────────────────────────────────────────────────
+
+  // ─── Halloween (October) ─────────────────────────────────────────
+  {
+    id: 'preset-holiday-halloween-es',
+    name: '🎃 Halloween — Elementary',
+    description: 'Spooky-but-friendly Halloween lobby — pumpkins, friendly ghosts, candy stripes. Designed for elementary lobbies in October.',
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#1a0a2a',
+    zones: [{ name: 'Halloween Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'halloween', gradeLevel: 'es' } }],
+  },
+  {
+    id: 'preset-holiday-halloween-ms',
+    name: '🎃 Halloween — Middle School',
+    description: 'Halloween lobby tuned for middle school — cooler palette, less cartoony, more design-savvy. October install.',
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0f0a1a',
+    zones: [{ name: 'Halloween Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'halloween', gradeLevel: 'ms' } }],
+  },
+  {
+    id: 'preset-holiday-halloween-hs',
+    name: '🎃 Halloween — High School',
+    description: 'Editorial-grade Halloween lobby — typographic, vintage poster aesthetic, monster movie vibe.',
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0a0a0a',
+    zones: [{ name: 'Halloween Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'halloween', gradeLevel: 'hs' } }],
+  },
+
+  // ─── Thanksgiving (November) ─────────────────────────────────────
+  {
+    id: 'preset-holiday-thanksgiving-es',
+    name: '🦃 Thanksgiving — Elementary',
+    description: 'Warm autumn Thanksgiving lobby for elementary — turkeys, fall leaves, gratitude messages.',
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#5a2a0a',
+    zones: [{ name: 'Thanksgiving Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'thanksgiving', gradeLevel: 'es' } }],
+  },
+  {
+    id: 'preset-holiday-thanksgiving-ms',
+    name: '🦃 Thanksgiving — Middle School',
+    description: 'Thanksgiving lobby for middle school — harvest table aesthetic, autumn typography.',
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#3a1a0a',
+    zones: [{ name: 'Thanksgiving Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'thanksgiving', gradeLevel: 'ms' } }],
+  },
+  {
+    id: 'preset-holiday-thanksgiving-hs',
+    name: '🦃 Thanksgiving — High School',
+    description: 'Vintage-magazine Thanksgiving lobby — hand-letterpress feel, deep amber palette.',
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#2a1208',
+    zones: [{ name: 'Thanksgiving Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'thanksgiving', gradeLevel: 'hs' } }],
+  },
+
+  // ─── Christmas (December) ────────────────────────────────────────
+  {
+    id: 'preset-holiday-christmas-es',
+    name: '🎄 Christmas — Elementary',
+    description: 'North Pole workshop lobby — candy stripes, snowfall, advent calendar countdown, friendly trees.',
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#1a2840',
+    zones: [{ name: 'Christmas Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'christmas', gradeLevel: 'es' } }],
+  },
+  {
+    id: 'preset-holiday-christmas-ms',
+    name: '🎄 Christmas — Middle School',
+    description: 'Holiday lobby with middle-school energy — playful but polished, festive without being saccharine.',
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0e2a40',
+    zones: [{ name: 'Christmas Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'christmas', gradeLevel: 'ms' } }],
+  },
+  {
+    id: 'preset-holiday-christmas-hs',
+    name: '🎄 Christmas — High School',
+    description: 'Vintage department-store / varsity letter-jacket Christmas lobby — Bebas + Fraunces, deep green & cream.',
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0e3a26',
+    zones: [{ name: 'Christmas Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'christmas', gradeLevel: 'hs' } }],
+  },
+
+  // ─── Valentine's Day (February) ──────────────────────────────────
+  {
+    id: 'preset-holiday-valentines-es',
+    name: "💝 Valentine's Day — Elementary",
+    description: "Pink-and-red Valentine's lobby for elementary — heart confetti, friendship messages, candy palette.",
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#fdf2f8',
+    zones: [{ name: "Valentine's Scene", widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'valentines', gradeLevel: 'es' } }],
+  },
+  {
+    id: 'preset-holiday-valentines-ms',
+    name: "💝 Valentine's Day — Middle School",
+    description: "Valentine's lobby for middle school — kindness-week framing, heart motifs, paper-craft aesthetic.",
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#fce7f3',
+    zones: [{ name: "Valentine's Scene", widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'valentines', gradeLevel: 'ms' } }],
+  },
+  {
+    id: 'preset-holiday-valentines-hs',
+    name: "💝 Valentine's Day — High School",
+    description: "Editorial Valentine's lobby — magazine-cover typography, deep crimson palette, sparing heart motifs.",
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#7a1a26',
+    zones: [{ name: "Valentine's Scene", widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'valentines', gradeLevel: 'hs' } }],
+  },
+
+  // ─── St. Patrick's Day (March) ───────────────────────────────────
+  {
+    id: 'preset-holiday-stpatricks-es',
+    name: "☘️ St. Patrick's Day — Elementary",
+    description: "Lucky shamrocks + rainbow + leprechaun-friendly St. Patrick's lobby for elementary.",
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#1a4020',
+    zones: [{ name: "St. Patrick's Scene", widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'stpatricks', gradeLevel: 'es' } }],
+  },
+  {
+    id: 'preset-holiday-stpatricks-ms',
+    name: "☘️ St. Patrick's Day — Middle School",
+    description: "Irish-pub-meets-spirit-day St. Patrick's lobby — flag green palette, varsity-script title.",
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#143a1c',
+    zones: [{ name: "St. Patrick's Scene", widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'stpatricks', gradeLevel: 'ms' } }],
+  },
+  {
+    id: 'preset-holiday-stpatricks-hs',
+    name: "☘️ St. Patrick's Day — High School",
+    description: "Editorial St. Patrick's lobby — Celtic knotwork accents, deep emerald, cream serifs.",
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0f3018',
+    zones: [{ name: "St. Patrick's Scene", widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'stpatricks', gradeLevel: 'hs' } }],
+  },
+
+  // ─── Easter (April) ──────────────────────────────────────────────
+  {
+    id: 'preset-holiday-easter-es',
+    name: '🐰 Easter — Elementary',
+    description: 'Pastel Easter lobby for elementary — bunnies, decorated eggs, spring florals, soft palette.',
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#fef9e7',
+    zones: [{ name: 'Easter Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'easter', gradeLevel: 'es' } }],
+  },
+  {
+    id: 'preset-holiday-easter-ms',
+    name: '🐰 Easter — Middle School',
+    description: 'Spring Easter lobby for middle school — confident pastels, paper-craft eggs, garden vibe.',
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#fce8f0',
+    zones: [{ name: 'Easter Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'easter', gradeLevel: 'ms' } }],
+  },
+  {
+    id: 'preset-holiday-easter-hs',
+    name: '🐰 Easter — High School',
+    description: 'Editorial Easter / spring lobby — typographic, sage + rose palette, restrained botanical motifs.',
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#f4ede0',
+    zones: [{ name: 'Easter Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'easter', gradeLevel: 'hs' } }],
+  },
 ];

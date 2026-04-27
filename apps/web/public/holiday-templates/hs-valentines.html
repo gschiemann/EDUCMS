@@ -1,0 +1,93 @@
+<!doctype html>
+<!-- HS VALENTINES — risograph indie zine, deadpan teen humor -->
+<html><head><meta charset="utf-8"/><title>Valentine's · HS Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,700;9..144,900&family=JetBrains+Mono:wght@500;700;800&family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>:root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;--pink:#ff6a98;--pink2:#ffb0c8;--red:#e0203a;--cream:#fff0e8;--ink:#1c0a18;--blue:#1c40c8;--peach:#ffd0b0}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;font-family:'Fraunces',serif;color:var(--ink)}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--cream);box-shadow:0 80px 200px rgba(0,0,0,.5)}
+.stage::before{content:'';position:absolute;inset:0;background:radial-gradient(rgba(255,106,152,.18) 1.4px,transparent 1.5px);background-size:8px 8px;mix-blend-mode:multiply;pointer-events:none}
+/* big spinning hearts */
+.heart{position:absolute;width:200px;height:200px;background:var(--pink);transform:rotate(-45deg);z-index:1}
+.heart::before,.heart::after{content:'';position:absolute;width:200px;height:200px;background:var(--pink);border-radius:50%}
+.heart::before{top:-100px;left:0}.heart::after{top:0;left:100px}
+.h1{top:160px;left:40px;width:280px;height:280px;background:var(--red)}.h1::before,.h1::after{width:280px;height:280px;background:var(--red)}.h1::before{top:-140px}.h1::after{left:140px}
+.h2{bottom:160px;right:80px;width:260px;height:260px;background:var(--blue);transform:rotate(-30deg)}.h2::before,.h2::after{width:260px;height:260px;background:var(--blue)}.h2::before{top:-130px}.h2::after{left:130px}
+.h3{top:280px;right:200px;width:160px;height:160px;background:var(--pink);transform:rotate(-60deg)}.h3::before,.h3::after{width:160px;height:160px;background:var(--pink)}.h3::before{top:-80px}.h3::after{left:80px}
+/* mast */
+.mast{position:absolute;top:60px;left:80px;right:80px;height:120px;display:flex;justify-content:space-between;align-items:center;border-bottom:6px solid var(--ink);padding-bottom:24px;z-index:5}
+.brand .name{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:88px;color:var(--ink);line-height:.85;letter-spacing:-.03em}
+.brand .sub{font-family:'JetBrains Mono';font-weight:800;font-size:26px;color:var(--red);text-transform:uppercase;letter-spacing:.32em;margin-top:8px}
+.chips{display:flex;gap:36px}.chip{text-align:right}.chip .k{font-family:'JetBrains Mono';font-weight:800;font-size:20px;color:var(--ink);letter-spacing:.28em;text-transform:uppercase;opacity:.65}
+.chip .v{font-family:'Bebas Neue';font-size:62px;color:var(--ink);line-height:1;margin-top:4px}
+/* head */
+.head{position:absolute;top:240px;left:80px;right:80px;z-index:4}
+.head .kicker{font-family:'JetBrains Mono';font-weight:800;font-size:32px;letter-spacing:.36em;color:var(--blue);text-transform:uppercase;margin-bottom:14px}
+.head h1{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:420px;line-height:.82;color:var(--ink);margin:0;letter-spacing:-.04em;text-shadow:14px 14px 0 var(--pink),28px 28px 0 var(--blue)}
+.head h1 em{color:var(--red);font-style:italic;text-shadow:14px 14px 0 var(--pink)}
+.head .sub{font-family:'Fraunces',serif;font-weight:700;font-style:italic;font-size:60px;color:var(--ink);margin-top:30px;max-width:2400px;line-height:1.18}
+/* cards */
+.grid{position:absolute;top:1240px;left:80px;right:80px;height:560px;display:grid;grid-template-columns:1fr 1.5fr 1fr;gap:36px;z-index:3}
+.cd{padding:32px 36px;border:5px solid var(--ink);display:flex;flex-direction:column;position:relative;overflow:hidden;box-shadow:14px 14px 0 var(--ink)}
+.cd.a{background:var(--peach)}.cd.b{background:var(--red);color:var(--cream)}.cd.c{background:var(--blue);color:var(--cream)}
+.cd .k{font-family:'JetBrains Mono';font-weight:800;font-size:22px;text-transform:uppercase;letter-spacing:.32em}
+.cd.a .k{color:var(--red)}.cd.b .k{color:var(--cream);opacity:.8}.cd.c .k{color:var(--cream);opacity:.8}
+.cd h2{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:108px;line-height:.82;margin:8px 0 0;letter-spacing:-.03em}
+.cd.a h2{color:var(--ink)}.cd.a h2 em{color:var(--red)}
+.cd.b h2{color:var(--cream);font-size:148px}.cd.b h2 em{color:#ffe0e8}
+.cd.c h2{color:var(--cream)}.cd.c h2 em{color:var(--pink2)}
+.cd p{font-family:'Fraunces',serif;font-weight:500;font-style:italic;font-size:30px;margin:18px 0 0;line-height:1.22}
+.cd .meta{margin-top:auto;padding-top:18px;font-family:'JetBrains Mono';font-weight:800;font-size:22px;text-transform:uppercase;letter-spacing:.22em;display:flex;gap:20px;flex-wrap:wrap}
+.cd.a .meta{color:var(--red)}.cd.b .meta,.cd.c .meta{color:var(--cream);opacity:.85}
+/* sked */
+.sked{position:absolute;top:1840px;left:80px;right:80px;height:240px;background:var(--ink);color:var(--cream);padding:20px 32px;z-index:3;display:flex;flex-direction:column}
+.sked .hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px solid var(--pink);padding-bottom:8px}
+.sked .hdr h3{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:60px;color:var(--pink);margin:0}
+.sked .hdr .d{font-family:'JetBrains Mono';font-weight:800;font-size:22px;color:var(--cream);letter-spacing:.22em;text-transform:uppercase}
+.sked ul{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:24px;flex:1}
+.sked li{display:flex;flex-direction:column;justify-content:center;border-left:4px solid var(--pink);padding-left:18px}
+.sked li .d{font-family:'JetBrains Mono';font-weight:800;font-size:20px;color:var(--pink);letter-spacing:.26em;text-transform:uppercase}
+.sked li .e{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:38px;color:var(--cream);line-height:1;margin-top:4px}
+.sked li .e em{color:var(--pink)}
+.sked li .w{font-family:'JetBrains Mono';font-weight:600;font-size:18px;color:var(--cream);margin-top:4px;text-transform:uppercase;letter-spacing:.18em;opacity:.8}</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{"schema":"edu-cms-hs-valentines-v1"}/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+<div class="heart h1"></div><div class="heart h2"></div><div class="heart h3"></div>
+<div class="mast">
+<div class="brand" data-widget="school"><div class="name" data-field="school.name">Banner High</div><div class="sub" data-field="school.sub">cupid issue · vol XIII</div></div>
+<div class="chips">
+<div class="chip" data-widget="clock"><div class="k" data-field="clock.label">period</div><div class="v" data-field="clock.time">10:14</div></div>
+<div class="chip" data-widget="countdown"><div class="k" data-field="countdown.label">candygram cutoff</div><div class="v" data-field="countdown.value">02d</div></div>
+</div>
+</div>
+<div class="head" data-widget="headline">
+<div class="kicker" data-field="headline.kicker">★ asb candygrams · ½ off through wed ★</div>
+<h1><span data-field="headline.t1">Be </span><em data-field="headline.t2">mine?</em></h1>
+<div class="sub" data-field="headline.sub">Anonymous candygrams delivered Friday during 4th period — $2 each at the ASB window. Sweetheart dance Saturday 8pm in the gym, no theme this year, just vibes.</div>
+</div>
+<div class="grid">
+<div class="cd a" data-widget="grams"><div class="k" data-field="grams.k">★ candygrams</div>
+<h2><span data-field="grams.t1">$2 </span><em data-field="grams.t2">each.</em></h2>
+<p data-field="grams.p">Anonymous or signed. ASB window during lunches. Half-price three-pack through Wednesday. Delivered 4th period Friday — yes even to the office.</p>
+<div class="meta"><span data-field="grams.m1">deadline · Thu 2/13 3pm</span></div></div>
+<div class="cd b" data-widget="dance"><div class="k" data-field="dance.k">★ sweetheart dance</div>
+<h2><span data-field="dance.t1">Sat </span><em data-field="dance.t2">8pm.</em></h2>
+<p data-field="dance.p">Gym, no theme, real DJ, $10 at the door — $8 with a candygram receipt. Single, paired, group of friends, all welcome. Last entry 10pm.</p>
+<div class="meta"><span data-field="dance.m1">Sat 2/15 · 8–11pm</span><span data-field="dance.m2">main gym</span></div></div>
+<div class="cd c" data-widget="single"><div class="k" data-field="single.k">★ singles awareness</div>
+<h2 data-field="single.t">Pizza & a movie.</h2>
+<p data-field="single.p">Friday after school in the library — Spider-Verse, free pizza, ASB hosting. Open to anyone single, partnered, or just hungry.</p>
+<div class="meta"><span data-field="single.m1">Fri 2/14 · 3:30 · library</span></div></div>
+</div>
+<div class="sked" data-widget="sked">
+<div class="hdr"><h3 data-field="sked.h">★ heart week</h3><div class="d" data-field="sked.day">Mon 2/10 — Sat 2/15</div></div>
+<ul>
+<li data-widget="sked.0"><div class="d" data-field="sked.0.d">MON</div><div class="e"><span data-field="sked.0.e1">Pink </span><em data-field="sked.0.e2">day</em></div><div class="w" data-field="sked.0.w">spirit · all day</div></li>
+<li data-widget="sked.1"><div class="d" data-field="sked.1.d">WED</div><div class="e"><span data-field="sked.1.e1">Gram </span><em data-field="sked.1.e2">deadline</em></div><div class="w" data-field="sked.1.w">asb window · 3pm</div></li>
+<li data-widget="sked.2"><div class="d" data-field="sked.2.d">FRI</div><div class="e"><span data-field="sked.2.e1">Pizza </span><em data-field="sked.2.e2">+ movie</em></div><div class="w" data-field="sked.2.w">library · 3:30 free</div></li>
+<li data-widget="sked.3"><div class="d" data-field="sked.3.d">SAT</div><div class="e"><span data-field="sked.3.e1">Sweetheart </span><em data-field="sked.3.e2">dance</em></div><div class="w" data-field="sked.3.w">gym · 8pm $10</div></li>
+</ul>
+</div>
+</div></div></div>
+<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+<script id="holiday-autoscale">(function(){function s(){var w=window.innerWidth,h=window.innerHeight,sc=Math.min(w/3840,h/2160);document.documentElement.style.setProperty("--stage-scale",sc);}s();window.addEventListener("resize",s);})();</script></body></html>

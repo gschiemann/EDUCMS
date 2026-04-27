@@ -1,0 +1,92 @@
+<!doctype html>
+<!-- MS EASTER — pastel risograph egg-hunt zine -->
+<html><head><meta charset="utf-8"/><title>Easter · MS Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@500;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" rel="stylesheet">
+<style>:root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;--cream:#fbf3e8;--lilac:#d8c0e8;--mint:#bce0c8;--peach:#f8c8a8;--sky:#a8c8e8;--yolk:#f8c850;--ink:#2a1830;--pink:#f098b8}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;font-family:'Figtree',sans-serif;color:var(--ink)}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--cream);box-shadow:0 80px 200px rgba(0,0,0,.5)}
+.stage::before{content:'';position:absolute;inset:0;background:repeating-radial-gradient(circle at 50% 50%,rgba(216,192,232,.18) 0,rgba(216,192,232,.18) 2px,transparent 2px,transparent 4px);pointer-events:none}
+.eggs{position:absolute;inset:0;pointer-events:none;z-index:1}
+.egg{position:absolute;border-radius:50% 50% 48% 48%/60% 60% 40% 40%;border:6px solid var(--ink)}
+.egg::before{content:'';position:absolute;left:0;right:0;top:38%;height:18%;background:rgba(255,255,255,.55);border-top:4px dashed var(--ink);border-bottom:4px dashed var(--ink)}
+.egg::after{content:'';position:absolute;left:18%;top:14%;width:22%;height:14%;background:rgba(255,255,255,.6);border-radius:50%}
+.e1{top:140px;left:60px;width:280px;height:360px;background:var(--mint);transform:rotate(-12deg)}
+.e2{bottom:140px;left:120px;width:240px;height:300px;background:var(--peach);transform:rotate(8deg)}
+.e3{top:200px;right:380px;width:300px;height:380px;background:var(--lilac);transform:rotate(14deg)}
+.e4{bottom:120px;right:120px;width:260px;height:340px;background:var(--sky);transform:rotate(-6deg)}
+.top{position:absolute;top:60px;left:80px;right:80px;height:120px;display:flex;justify-content:space-between;align-items:center;border-bottom:5px dashed var(--ink);padding-bottom:24px;z-index:5}
+.brand .name{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:88px;color:var(--ink);line-height:.85;letter-spacing:-.03em}
+.brand .sub{font-family:'Figtree';font-weight:800;font-size:28px;color:var(--pink);text-transform:uppercase;letter-spacing:.28em;margin-top:8px}
+.chips{display:flex;gap:36px}.chip{text-align:right}.chip .k{font-family:'Figtree';font-weight:800;font-size:20px;color:var(--ink);text-transform:uppercase;letter-spacing:.24em;opacity:.7}
+.chip .v{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:62px;color:var(--ink);line-height:1;margin-top:4px}
+.hd{position:absolute;top:280px;left:80px;right:80px;z-index:4}
+.hd .k{font-family:'Figtree';font-weight:800;font-size:34px;color:var(--pink);text-transform:uppercase;letter-spacing:.32em;margin-bottom:14px}
+.hd h1{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:380px;line-height:.82;color:var(--ink);margin:0;letter-spacing:-.04em}
+.hd h1 em{font-style:italic;color:var(--pink);text-decoration:underline;text-decoration-color:var(--yolk);text-decoration-thickness:14px;text-underline-offset:24px}
+.hd .sub{font-family:'Fraunces',serif;font-weight:700;font-style:italic;font-size:60px;color:var(--ink);margin-top:30px;max-width:2200px;line-height:1.2}
+.grid{position:absolute;top:1180px;left:80px;right:80px;height:540px;display:grid;grid-template-columns:1.4fr 2fr 1.2fr;gap:48px;z-index:3}
+.cell{padding:32px 36px;border:5px solid var(--ink);overflow:hidden;display:flex;flex-direction:column;border-radius:36px;box-shadow:14px 14px 0 var(--ink)}
+.cell.a{background:var(--mint)}.cell.b{background:var(--peach)}.cell.c{background:var(--sky)}
+.cell .k{font-family:'Figtree';font-weight:800;font-size:24px;text-transform:uppercase;letter-spacing:.28em;color:var(--ink);opacity:.8}
+.cell h2{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:96px;line-height:.85;margin:8px 0 0;color:var(--ink);letter-spacing:-.03em}
+.cell h2 em{font-style:italic;color:var(--pink)}
+.cell.b h2{font-size:128px}
+.cell p{font-family:'Fraunces',serif;font-weight:500;font-style:italic;font-size:30px;margin:18px 0 0;line-height:1.25}
+.cell .meta{margin-top:auto;padding-top:18px;font-family:'Figtree';font-weight:800;font-size:24px;text-transform:uppercase;letter-spacing:.2em;color:var(--ink);display:flex;gap:24px;flex-wrap:wrap;opacity:.85}
+.events{position:absolute;top:1760px;left:80px;right:80px;height:300px;background:var(--lilac);border:5px solid var(--ink);border-radius:36px;padding:24px 32px;z-index:3;display:flex;flex-direction:column;box-shadow:14px 14px 0 var(--ink)}
+.events .hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:4px dashed var(--ink);padding-bottom:10px}
+.events .hdr h3{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:60px;color:var(--ink);margin:0}
+.events .hdr .day{font-family:'Figtree';font-weight:800;font-size:26px;color:var(--ink);text-transform:uppercase;letter-spacing:.2em}
+.events ul{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:24px;flex:1}
+.events li{display:flex;flex-direction:column;justify-content:center;border-left:5px solid var(--ink);padding-left:18px}
+.events li .d{font-family:'Figtree';font-weight:800;font-size:22px;color:var(--pink);text-transform:uppercase;letter-spacing:.24em}
+.events li .e{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:38px;color:var(--ink);line-height:1;margin-top:4px}
+.events li .e em{font-style:italic;color:var(--pink)}
+.events li .w{font-family:'Figtree';font-weight:600;font-size:18px;color:var(--ink);margin-top:4px;text-transform:uppercase;letter-spacing:.16em;opacity:.75}
+.ticker{position:absolute;bottom:0;left:0;right:0;height:80px;background:var(--ink);color:var(--cream);display:flex;align-items:center;overflow:hidden;z-index:5}
+.ticker .tag{background:var(--yolk);color:var(--ink);font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:38px;padding:0 36px;height:100%;display:flex;align-items:center;flex-shrink:0}
+.ticker .msg{font-family:'Figtree';font-weight:800;font-size:28px;padding-left:36px;white-space:nowrap;letter-spacing:.16em;text-transform:uppercase;animation:sc 80s linear infinite}
+@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{"schema":"edu-cms-ms-easter-v1"}/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+<div class="eggs"><div class="egg e1"></div><div class="egg e2"></div><div class="egg e3"></div><div class="egg e4"></div></div>
+<div class="top">
+<div class="brand" data-widget="school"><div class="name" data-field="school.name">Banner Middle</div><div class="sub" data-field="school.sub">spring break · vol 12</div></div>
+<div class="chips">
+<div class="chip" data-widget="clock"><div class="k" data-field="clock.label">period</div><div class="v" data-field="clock.time">10:14</div></div>
+<div class="chip" data-widget="countdown"><div class="k" data-field="countdown.label">break in</div><div class="v" data-field="countdown.value">02</div></div>
+</div>
+</div>
+<div class="hd" data-widget="headline">
+<div class="k" data-field="headline.kicker">★ egg hunt + spring fling all week ★</div>
+<h1><span data-field="headline.t1">Hop </span><em data-field="headline.t2">to it.</em></h1>
+<div class="sub" data-field="headline.sub">Egg hunt on the back lawn Friday lunch · 200 prize eggs hidden · ASB hosting a tie-dye station Thursday after school.</div>
+</div>
+<div class="grid">
+<div class="cell a" data-widget="hunt"><div class="k" data-field="hunt.k">★ egg hunt</div>
+<h2><span data-field="hunt.t1">200 </span><em data-field="hunt.t2">eggs</em></h2>
+<p data-field="hunt.p">Hidden across the back lawn and quad before lunch on Friday. Find one with a gold sticker — bring it to the ASB table for a real prize.</p>
+<div class="meta"><span data-field="hunt.m1">Fri · lunch · back lawn</span></div></div>
+<div class="cell b" data-widget="break"><div class="k" data-field="break.k">★ spring break</div>
+<h2><span data-field="break.t1">9 </span><em data-field="break.t2">days.</em></h2>
+<p data-field="break.p">Out Friday at 3:15 — back Monday April 6. No homework hand-ins until Tuesday. Office staffed Monday–Wednesday for transcript pickups.</p>
+<div class="meta"><span data-field="break.m1">Mar 28 — Apr 5</span><span data-field="break.m2">return Mon Apr 6</span></div></div>
+<div class="cell c" data-widget="tiedye"><div class="k" data-field="tiedye.k">★ tie-dye</div>
+<h2 data-field="tiedye.t">Bring a tee.</h2>
+<p data-field="tiedye.p">Plain cotton tee or socks — ASB supplies dye, gloves, rubber bands. Outside D-wing 3:15 Thursday. Wear clothes you don't love.</p>
+<div class="meta"><span data-field="tiedye.m1">Thu · 3:15 · D-wing</span></div></div>
+</div>
+<div class="events" data-widget="events">
+<div class="hdr"><h3 data-field="events.h">★ spring fling week</h3><div class="day" data-field="events.day">Mon Mar 23 — Fri Mar 27</div></div>
+<ul>
+<li data-widget="events.0"><div class="d" data-field="events.0.d">Mon</div><div class="e"><span data-field="events.0.e1">Pastel </span><em data-field="events.0.e2">day</em></div><div class="w" data-field="events.0.w">spirit · wear pastels</div></li>
+<li data-widget="events.1"><div class="d" data-field="events.1.d">Wed</div><div class="e"><span data-field="events.1.e1">Bunny </span><em data-field="events.1.e2">hop</em></div><div class="w" data-field="events.1.w">PE · 7th + 8th period</div></li>
+<li data-widget="events.2"><div class="d" data-field="events.2.d">Thu</div><div class="e"><span data-field="events.2.e1">Tie </span><em data-field="events.2.e2">dye</em></div><div class="w" data-field="events.2.w">D-wing · 3:15pm</div></li>
+<li data-widget="events.3"><div class="d" data-field="events.3.d">Fri</div><div class="e"><span data-field="events.3.e1">Egg </span><em data-field="events.3.e2">hunt</em></div><div class="w" data-field="events.3.w">back lawn · lunch</div></li>
+</ul>
+</div>
+<div class="ticker" data-widget="ticker"><div class="tag" data-field="ticker.tag">SPRING FLING</div><div class="msg"><span data-field="ticker.message">★ Egg hunt Friday lunch — back lawn — 200 prize eggs ★ Tie-dye Thursday after school behind D-wing — bring a plain tee ★ Pastel spirit day Monday ★ Spring break Mar 28 through Apr 5 ★ </span><span>★ Egg hunt Friday lunch — back lawn — 200 prize eggs ★ Tie-dye Thursday after school behind D-wing — bring a plain tee ★ Pastel spirit day Monday ★ Spring break Mar 28 through Apr 5 ★ </span></div></div>
+</div></div></div>
+<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+<script id="holiday-autoscale">(function(){function s(){var w=window.innerWidth,h=window.innerHeight,sc=Math.min(w/3840,h/2160);document.documentElement.style.setProperty("--stage-scale",sc);}s();window.addEventListener("resize",s);})();</script></body></html>

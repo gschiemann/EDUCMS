@@ -1,0 +1,154 @@
+<!doctype html>
+<!-- ES THANKSGIVING — gratitude tree, paper-leaf cutouts, harvest warmth. -->
+<html><head><meta charset="utf-8"/><title>Thanksgiving · ES Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Caveat:wght@600;700&family=Sniglet:wght@800&display=swap" rel="stylesheet">
+<style>
+:root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;
+  --cream:#fff1d6;--cream2:#f5e0b3;--rust:#c4502a;--rust2:#e57b3a;--gold:#e3a83b;--ink:#3a2418;--green:#5a7a3a;--brown:#7a4a26;--plum:#7a3550}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;color:var(--ink);font-family:'Fredoka',sans-serif}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:radial-gradient(ellipse at top,#fff5dc 0%,var(--cream) 50%,#f0d5a0 100%);box-shadow:0 80px 200px rgba(0,0,0,.5)}
+.stage::before{content:'';position:absolute;inset:0;background-image:radial-gradient(rgba(122,74,38,.04) 2px,transparent 3px);background-size:20px 20px;pointer-events:none}
+
+/* SCATTERED LEAVES */
+.leaf{position:absolute;width:120px;height:120px;border-radius:50% 0 50% 50%;transform:rotate(-30deg);opacity:.85;z-index:1}
+.leaf::before{content:'';position:absolute;inset:14% 14% 14% 14%;border-radius:50% 0 50% 50%;background:rgba(255,255,255,.18)}
+.l1{top:140px;left:240px;background:var(--rust)}
+.l2{top:300px;left:1340px;background:var(--gold);transform:rotate(40deg);width:90px;height:90px}
+.l3{top:120px;left:2240px;background:var(--rust2);transform:rotate(-60deg)}
+.l4{top:1880px;left:340px;background:var(--gold);transform:rotate(120deg);width:140px;height:140px}
+.l5{top:1820px;left:3440px;background:var(--rust);transform:rotate(70deg);width:110px;height:110px}
+.l6{top:1620px;left:1840px;background:var(--rust2);transform:rotate(-20deg);width:80px;height:80px}
+
+/* TOP */
+.top{position:absolute;top:60px;left:60px;right:60px;height:160px;display:flex;justify-content:space-between;align-items:center;z-index:5}
+.brand{display:flex;align-items:center;gap:30px}
+.logo{width:160px;height:160px;background:var(--rust);border-radius:50%;display:grid;place-items:center;border:8px solid var(--ink);box-shadow:0 10px 0 rgba(58,36,24,.3)}
+.logo .leaf2{width:90px;height:90px;background:var(--cream);border-radius:50% 0 50% 50%;transform:rotate(-30deg);position:relative}
+.logo .leaf2::after{content:'';position:absolute;left:50%;top:50%;width:6px;height:60%;background:var(--ink);transform:translate(-50%,-50%) rotate(30deg)}
+.brand .info .name{font-family:'Sniglet',sans-serif;font-weight:800;font-size:88px;color:var(--ink);line-height:.95;letter-spacing:-.01em}
+.brand .info .sub{font-family:'Caveat',cursive;font-weight:700;font-size:48px;color:var(--rust);margin-top:8px;line-height:1}
+
+.chips{display:flex;gap:20px}
+.chip{background:#fff;color:var(--ink);padding:18px 28px;border-radius:24px;min-width:200px;text-align:center;border:6px solid var(--rust);box-shadow:0 8px 0 var(--ink),0 14px 22px rgba(0,0,0,.18)}
+.chip .k{font-family:'Caveat',cursive;font-weight:700;font-size:32px;color:var(--rust);line-height:1}
+.chip .v{font-family:'Sniglet',sans-serif;font-weight:800;font-size:64px;color:var(--ink);line-height:1;margin-top:4px;letter-spacing:-.02em}
+.chip.warm{background:var(--gold)}
+
+/* HEADLINE */
+.hd{position:absolute;top:280px;left:60px;right:60px;z-index:4;text-align:center}
+.hd .k{font-family:'Caveat',cursive;font-weight:700;font-size:60px;color:var(--rust);letter-spacing:.04em;margin-bottom:8px}
+.hd h1{font-family:'Sniglet',sans-serif;font-weight:800;font-size:340px;line-height:.85;color:var(--ink);margin:0;letter-spacing:-.02em}
+.hd h1 em{font-style:italic;color:var(--rust);font-family:'Caveat',cursive;font-weight:700}
+.hd .sub{font-family:'Fredoka',sans-serif;font-weight:600;font-size:46px;color:var(--brown);margin-top:20px;letter-spacing:.04em}
+
+/* GRATITUDE TREE — left panel */
+.tree{position:absolute;top:880px;left:60px;width:1240px;height:1080px;background:#fff;border-radius:36px;border:8px solid var(--ink);box-shadow:0 16px 0 var(--rust),0 28px 40px rgba(0,0,0,.22);padding:36px 40px;z-index:3;overflow:hidden}
+.tree .k{font-family:'Caveat',cursive;font-weight:700;font-size:46px;color:var(--rust);line-height:1}
+.tree h2{font-family:'Sniglet',sans-serif;font-weight:800;font-size:108px;color:var(--ink);line-height:.9;margin:8px 0 0;letter-spacing:-.02em}
+.tree h2 em{font-style:normal;color:var(--rust)}
+.trunk{position:absolute;left:50%;bottom:80px;transform:translateX(-50%);width:120px;height:300px;background:var(--brown);border-radius:60px 60px 0 0;box-shadow:inset 12px 0 0 rgba(0,0,0,.15)}
+.canopy{position:absolute;left:50%;bottom:340px;transform:translateX(-50%);width:760px;height:460px}
+.gleaf{position:absolute;width:160px;height:160px;border-radius:50% 0 50% 50%;display:grid;place-items:center;font-family:'Caveat',cursive;font-weight:700;font-size:38px;color:var(--ink);text-align:center;line-height:1.05;padding:0 20px;box-sizing:border-box}
+.gl1{top:20px;left:50px;background:var(--rust);color:var(--cream);transform:rotate(-25deg)}
+.gl2{top:0;left:300px;background:var(--gold);transform:rotate(15deg)}
+.gl3{top:30px;right:50px;background:var(--rust2);color:var(--cream);transform:rotate(40deg)}
+.gl4{top:170px;left:140px;background:var(--gold);transform:rotate(-50deg);width:140px;height:140px;font-size:32px}
+.gl5{top:200px;left:340px;background:var(--rust);color:var(--cream);transform:rotate(20deg)}
+.gl6{top:160px;right:140px;background:var(--rust2);color:var(--cream);transform:rotate(-15deg);width:140px;height:140px;font-size:32px}
+.gl7{top:300px;left:240px;background:var(--gold);transform:rotate(60deg);width:130px;height:130px;font-size:28px}
+.gl8{top:300px;right:200px;background:var(--rust);color:var(--cream);transform:rotate(-40deg);width:130px;height:130px;font-size:28px}
+.tree .meta{position:absolute;bottom:30px;left:0;right:0;text-align:center;font-family:'Caveat',cursive;font-weight:700;font-size:42px;color:var(--rust)}
+
+/* RIGHT COLUMN: lunch + events */
+.right{position:absolute;top:880px;right:60px;width:2440px;display:grid;grid-template-rows:auto auto;gap:36px;z-index:3}
+.feast{background:var(--rust);color:var(--cream);border-radius:36px;border:8px solid var(--ink);padding:36px 44px;box-shadow:0 16px 0 var(--ink),0 28px 40px rgba(0,0,0,.22);position:relative;overflow:hidden;height:480px;display:flex;flex-direction:column;justify-content:center}
+.feast::before{content:'';position:absolute;top:-50px;right:-50px;width:280px;height:280px;background:var(--gold);border-radius:50%;opacity:.5}
+.feast::after{content:'';position:absolute;bottom:-100px;right:120px;width:200px;height:200px;background:var(--rust2);border-radius:50%;opacity:.4}
+.feast .k{font-family:'Caveat',cursive;font-weight:700;font-size:54px;color:var(--gold);line-height:1;position:relative;z-index:1}
+.feast h2{font-family:'Sniglet',sans-serif;font-weight:800;font-size:160px;line-height:.85;margin:6px 0 0;color:var(--cream);letter-spacing:-.03em;position:relative;z-index:1}
+.feast h2 em{font-style:normal;color:var(--gold)}
+.feast p{font-family:'Fredoka',sans-serif;font-weight:500;font-size:38px;margin:24px 0 0;line-height:1.25;max-width:1700px;position:relative;z-index:1}
+.feast .row{display:flex;gap:30px;margin-top:auto;padding-top:24px;font-family:'Caveat',cursive;font-weight:700;font-size:44px;color:var(--gold);position:relative;z-index:1}
+
+.events{background:#fff;border-radius:36px;border:8px solid var(--ink);padding:30px 36px;box-shadow:0 16px 0 var(--gold),0 28px 40px rgba(0,0,0,.22);height:540px;display:flex;flex-direction:column}
+.events .hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:4px dashed rgba(196,80,42,.4);padding-bottom:14px}
+.events .hdr h3{font-family:'Sniglet',sans-serif;font-weight:800;font-size:80px;color:var(--ink);margin:0;letter-spacing:-.01em;line-height:1}
+.events .hdr h3 em{font-style:normal;color:var(--rust)}
+.events .hdr .day{font-family:'Caveat',cursive;font-weight:700;font-size:44px;color:var(--rust)}
+.events ul{list-style:none;margin:18px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:18px;flex:1}
+.events li{display:flex;flex-direction:column;justify-content:center;background:var(--cream);color:var(--ink);border-radius:24px;padding:18px 24px;border:5px solid var(--rust);position:relative}
+.events li::before{content:'';position:absolute;top:-12px;left:24px;width:32px;height:32px;background:var(--gold);border-radius:50% 0 50% 50%;transform:rotate(-30deg)}
+.events li .d{font-family:'Caveat',cursive;font-weight:700;font-size:36px;color:var(--rust);line-height:1}
+.events li .e{font-family:'Sniglet',sans-serif;font-weight:800;font-size:42px;color:var(--ink);line-height:1;margin-top:6px;letter-spacing:-.01em}
+.events li .e em{font-style:normal;color:var(--rust)}
+.events li .w{font-family:'Fredoka',sans-serif;font-weight:500;font-size:24px;color:var(--brown);margin-top:4px}
+
+/* TICKER */
+.ticker{position:absolute;bottom:0;left:0;right:0;height:80px;background:var(--ink);color:var(--cream);display:flex;align-items:center;overflow:hidden;z-index:5;border-top:6px solid var(--rust)}
+.ticker .tag{background:var(--rust);color:var(--cream);font-family:'Sniglet',sans-serif;font-size:36px;padding:0 36px;height:100%;display:flex;align-items:center;flex-shrink:0;letter-spacing:.04em}
+.ticker .msg{font-family:'Fredoka',sans-serif;font-weight:700;font-size:30px;padding-left:36px;white-space:nowrap;letter-spacing:.06em;animation:sc 80s linear infinite}
+@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{ "schema":"edu-cms-es-thanksgiving-v1" }/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+<div class="leaf l1"></div><div class="leaf l2"></div><div class="leaf l3"></div><div class="leaf l4"></div><div class="leaf l5"></div><div class="leaf l6"></div>
+
+<div class="top">
+<div class="brand" data-widget="school"><div class="logo"><div class="leaf2"></div></div>
+<div class="info"><div class="name" data-field="school.name">Maple Tree</div><div class="sub" data-field="school.sub">~ a thankful school ~</div></div></div>
+<div class="chips">
+<div class="chip" data-widget="clock"><div class="k" data-field="clock.label">right now</div><div class="v" data-field="clock.time">9:14</div></div>
+<div class="chip warm" data-widget="countdown"><div class="k" data-field="countdown.label">break starts</div><div class="v" data-field="countdown.value">2 days</div></div>
+</div>
+</div>
+
+<div class="hd" data-widget="headline">
+<div class="k" data-field="headline.kicker">~ this week ~</div>
+<h1><span data-field="headline.t1">Give </span><em data-field="headline.t2">thanks</em></h1>
+<div class="sub" data-field="headline.sub">Add a leaf to our gratitude tree · Feast Wednesday · No school Thurs/Fri</div>
+</div>
+
+<div class="tree" data-widget="tree">
+<div class="k" data-field="tree.k">~ our gratitude tree ~</div>
+<h2><span data-field="tree.t1">What we're </span><em data-field="tree.t2">thankful for</em></h2>
+<div class="canopy">
+<div class="gleaf gl1" data-field="tree.l1">my puppy Biscuit</div>
+<div class="gleaf gl2" data-field="tree.l2">grandma's house</div>
+<div class="gleaf gl3" data-field="tree.l3">my big sister</div>
+<div class="gleaf gl4" data-field="tree.l4">recess outside</div>
+<div class="gleaf gl5" data-field="tree.l5">Mr. Park</div>
+<div class="gleaf gl6" data-field="tree.l6">books at bedtime</div>
+<div class="gleaf gl7" data-field="tree.l7">soccer team</div>
+<div class="gleaf gl8" data-field="tree.l8">sleepovers</div>
+</div>
+<div class="trunk"></div>
+<div class="meta" data-field="tree.meta">~ add yours in the front office ~</div>
+</div>
+
+<div class="right">
+<div class="feast" data-widget="feast">
+<div class="k" data-field="feast.k">~ Wednesday's feast ~</div>
+<h2><span data-field="feast.t1">Turkey </span><em data-field="feast.t2">day lunch</em></h2>
+<p data-field="feast.p">Roast turkey · cornbread stuffing · mashed potatoes · cranberry · green beans · pumpkin cookie · families eat free with their student</p>
+<div class="row"><span data-field="feast.t1r">Wed Nov 26 · 11:30</span><span data-field="feast.t2r">$3.75 students · adults $5</span></div>
+</div>
+
+<div class="events" data-widget="events">
+<div class="hdr"><h3><span data-field="events.h1">Harvest </span><em data-field="events.h2">week</em></h3><div class="day" data-field="events.day">Mon Nov 24 — Fri Nov 28</div></div>
+<ul>
+<li data-widget="events.0"><div class="d" data-field="events.0.d">Mon</div><div class="e"><span data-field="events.0.e1">Leaf </span><em data-field="events.0.e2">writing</em></div><div class="w" data-field="events.0.w">Homerooms · all morning</div></li>
+<li data-widget="events.1"><div class="d" data-field="events.1.d">Tue</div><div class="e"><span data-field="events.1.e1">Pie </span><em data-field="events.1.e2">drive</em></div><div class="w" data-field="events.1.w">Pickup in cafeteria · 3pm</div></li>
+<li data-widget="events.2"><div class="d" data-field="events.2.d">Wed</div><div class="e"><span data-field="events.2.e1">Family </span><em data-field="events.2.e2">feast</em></div><div class="w" data-field="events.2.w">Caf · 11:30 · early dismiss 1pm</div></li>
+<li data-widget="events.3"><div class="d" data-field="events.3.d">Thu/Fri</div><div class="e"><span data-field="events.3.e1">No </span><em data-field="events.3.e2">school</em></div><div class="w" data-field="events.3.w">Holiday break · back Mon Dec 1</div></li>
+</ul>
+</div>
+</div>
+
+<div class="ticker" data-widget="ticker"><div class="tag" data-field="ticker.tag">~ harvest week ~</div><div class="msg"><span data-field="ticker.message">★ Family feast Wednesday 11:30 in the cafeteria — adults $5 ★ Leaf writing in homerooms — every kid adds 3 thank-yous to our tree ★ Pie drive pickup Tuesday 3pm — proceeds for new playground balls ★ No school Thursday or Friday — happy break! ★ </span><span>★ Family feast Wednesday 11:30 in the cafeteria — adults $5 ★ Leaf writing in homerooms — every kid adds 3 thank-yous to our tree ★ Pie drive pickup Tuesday 3pm — proceeds for new playground balls ★ No school Thursday or Friday — happy break! ★ </span></div></div>
+
+</div></div></div>
+<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+<script id="holiday-autoscale">(function(){function s(){var w=window.innerWidth,h=window.innerHeight,sc=Math.min(w/3840,h/2160);document.documentElement.style.setProperty("--stage-scale",sc);}s();window.addEventListener("resize",s);})();</script></body></html>

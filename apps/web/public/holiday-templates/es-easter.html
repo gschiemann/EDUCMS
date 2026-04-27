@@ -1,0 +1,178 @@
+<!doctype html>
+<!-- ES EASTER — pastel basket, hidden eggs, bunnies and chicks. -->
+<html><head><meta charset="utf-8"/><title>Spring · ES Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Caveat:wght@600;700&family=Sniglet:wght@800&display=swap" rel="stylesheet">
+<style>
+:root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;
+  --pink:#ffd0e0;--lav:#d0c4ff;--mint:#bff0d4;--lemon:#fff0a8;--peach:#ffd0a8;--sky:#c0e0ff;--ink:#3a2a4a;--accent:#7a4fc4;--green:#5aae7a}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;color:var(--ink);font-family:'Fredoka',sans-serif}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:linear-gradient(180deg,var(--sky) 0%,#e8f5ff 50%,var(--mint) 100%);box-shadow:0 80px 200px rgba(0,0,0,.5)}
+
+/* GRASS */
+.grass{position:absolute;left:0;right:0;bottom:80px;height:160px;background:linear-gradient(180deg,transparent,var(--green));z-index:1}
+.grass::before{content:'';position:absolute;left:0;right:0;top:-40px;height:80px;background:repeating-linear-gradient(90deg,transparent 0 16px,var(--green) 16px 22px,transparent 22px 40px);clip-path:polygon(0 100%,4% 0,8% 100%,12% 0,16% 100%,20% 20%,24% 100%,28% 0,32% 100%,36% 0,40% 100%,44% 20%,48% 100%,52% 0,56% 100%,60% 0,64% 100%,68% 20%,72% 100%,76% 0,80% 100%,84% 0,88% 100%,92% 20%,96% 100%,100% 0,100% 100%)}
+
+/* EGGS scattered */
+.egg{position:absolute;width:60px;height:80px;border-radius:50%/55% 55% 45% 45%;z-index:2;box-shadow:0 4px 0 rgba(0,0,0,.18)}
+.egg::before{content:'';position:absolute;left:14%;top:14%;width:24%;height:18%;background:rgba(255,255,255,.55);border-radius:50%;transform:rotate(-30deg)}
+.egg.p{background:repeating-linear-gradient(45deg,var(--pink) 0 8px,#ffe0ec 8px 14px)}
+.egg.l{background:repeating-linear-gradient(-45deg,var(--lav) 0 6px,#e8e0ff 6px 12px)}
+.egg.m{background:repeating-linear-gradient(0deg,var(--mint) 0 8px,#dff5e8 8px 14px)}
+.egg.y{background:repeating-linear-gradient(90deg,var(--lemon) 0 8px,#fff8d0 8px 14px)}
+.egg.pe{background:radial-gradient(circle at 30% 30%,#ffe0c4,var(--peach));}
+.e1{top:160px;left:140px;transform:rotate(-12deg)}
+.e2{top:280px;left:1300px;transform:rotate(20deg)}
+.e3{top:140px;left:2200px;transform:rotate(-8deg)}
+.e4{top:240px;left:3260px;transform:rotate(15deg)}
+.e5{top:1840px;left:240px;transform:rotate(28deg)}
+.e6{top:1900px;left:1900px;transform:rotate(-22deg);width:50px;height:66px}
+.e7{top:1860px;left:3520px;transform:rotate(-10deg)}
+.e8{top:300px;left:1700px;transform:rotate(25deg);width:48px;height:64px}
+
+/* CHICK */
+.chick{position:absolute;top:260px;left:540px;width:120px;height:130px;z-index:2;animation:hop 2s ease-in-out infinite}
+@keyframes hop{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+.chick .body{position:absolute;left:0;bottom:0;width:120px;height:100px;background:var(--lemon);border-radius:50%;border:5px solid var(--ink);box-shadow:inset -10px -6px 0 rgba(0,0,0,.08)}
+.chick .head{position:absolute;left:14px;bottom:60px;width:80px;height:78px;background:var(--lemon);border-radius:50%;border:5px solid var(--ink)}
+.chick .eye{position:absolute;left:38px;bottom:104px;width:14px;height:14px;background:var(--ink);border-radius:50%}
+.chick .beak{position:absolute;left:60px;bottom:88px;width:0;height:0;border-top:10px solid transparent;border-bottom:10px solid transparent;border-left:20px solid var(--peach)}
+
+/* TOP */
+.top{position:absolute;top:60px;left:60px;right:60px;height:160px;display:flex;justify-content:space-between;align-items:center;z-index:5}
+.brand{display:flex;align-items:center;gap:30px}
+.bunny{width:160px;height:170px;position:relative;filter:drop-shadow(0 12px 0 rgba(122,79,196,.4))}
+.bunny .ear1,.bunny .ear2{position:absolute;top:0;width:34px;height:90px;background:#fff;border:6px solid var(--ink);border-radius:50%}
+.bunny .ear1{left:36px;transform:rotate(-12deg)}
+.bunny .ear2{right:36px;transform:rotate(12deg)}
+.bunny .face{position:absolute;left:14px;top:64px;width:130px;height:106px;background:#fff;border:6px solid var(--ink);border-radius:50%}
+.bunny .face::before,.bunny .face::after{content:'';position:absolute;width:14px;height:14px;background:var(--ink);border-radius:50%;top:30px}
+.bunny .face::before{left:30px}
+.bunny .face::after{right:30px}
+.bunny .nose{position:absolute;left:50%;top:60px;transform:translateX(-50%);width:18px;height:14px;background:var(--pink);border-radius:50%;border:3px solid var(--ink)}
+.brand .info .name{font-family:'Sniglet',sans-serif;font-weight:800;font-size:88px;color:var(--ink);line-height:.95;letter-spacing:-.01em}
+.brand .info .sub{font-family:'Caveat',cursive;font-weight:700;font-size:48px;color:var(--accent);margin-top:8px;line-height:1}
+
+.chips{display:flex;gap:20px}
+.chip{background:#fff;color:var(--ink);padding:18px 28px;border-radius:24px;min-width:200px;text-align:center;border:6px solid var(--accent);box-shadow:0 8px 0 var(--ink),0 14px 22px rgba(0,0,0,.18)}
+.chip .k{font-family:'Caveat',cursive;font-weight:700;font-size:32px;color:var(--accent);line-height:1}
+.chip .v{font-family:'Sniglet',sans-serif;font-weight:800;font-size:64px;color:var(--ink);line-height:1;margin-top:4px;letter-spacing:-.02em}
+.chip.gr{border-color:var(--green)}.chip.gr .k{color:var(--green)}
+
+/* HEADLINE */
+.hd{position:absolute;top:280px;left:60px;right:60px;z-index:4;text-align:center}
+.hd .k{font-family:'Caveat',cursive;font-weight:700;font-size:60px;color:var(--accent);letter-spacing:.04em;margin-bottom:8px}
+.hd h1{font-family:'Sniglet',sans-serif;font-weight:800;font-size:300px;line-height:.85;color:var(--ink);margin:0;letter-spacing:-.03em}
+.hd h1 em{font-style:normal;color:var(--accent);font-family:'Caveat',cursive;font-weight:700}
+.hd .sub{font-family:'Fredoka',sans-serif;font-weight:600;font-size:46px;color:var(--ink);margin-top:24px;letter-spacing:.04em}
+
+/* HUNT BIG CARD */
+.basket{position:absolute;top:880px;left:60px;width:1240px;height:1080px;background:#fff;border-radius:36px;border:8px solid var(--ink);padding:36px 40px;z-index:3;box-shadow:0 16px 0 var(--lav),0 28px 40px rgba(0,0,0,.22);overflow:hidden;display:flex;flex-direction:column}
+.basket::before{content:'';position:absolute;top:-30px;right:-30px;width:240px;height:240px;background:var(--pink);border-radius:50%;opacity:.6}
+.basket .k{font-family:'Caveat',cursive;font-weight:700;font-size:50px;color:var(--accent);line-height:1;position:relative}
+.basket h2{font-family:'Sniglet',sans-serif;font-weight:800;font-size:120px;color:var(--ink);line-height:.85;margin:6px 0 0;letter-spacing:-.03em;position:relative}
+.basket h2 em{font-style:normal;color:var(--accent)}
+.basket p{font-family:'Fredoka',sans-serif;font-weight:500;font-size:32px;color:var(--ink);margin:18px 0 0;line-height:1.3;position:relative}
+
+/* basket art */
+.bask{flex:1;position:relative;margin-top:20px;display:flex;justify-content:center;align-items:flex-end}
+.bskbody{width:640px;height:340px;background:repeating-linear-gradient(45deg,#c4936a 0 12px,#a8784a 12px 24px);border-radius:60px 60px 220px 220px/60px 60px 180px 180px;border:8px solid var(--ink);position:relative;box-shadow:0 12px 0 #8a5a30}
+.bskbody::before{content:'';position:absolute;left:-30px;right:-30px;top:-20px;height:50px;background:#a8784a;border-radius:14px;border:6px solid var(--ink)}
+.bskbody::after{content:'';position:absolute;left:50%;top:-150px;transform:translateX(-50%);width:560px;height:280px;border:14px solid #a8784a;border-bottom:none;border-radius:280px 280px 0 0}
+.beggs{position:absolute;left:50%;bottom:160px;transform:translateX(-50%);display:flex;gap:6px}
+.beggs .be{width:80px;height:106px;border-radius:50%/55% 55% 45% 45%;border:5px solid var(--ink);position:relative}
+.be1{background:repeating-linear-gradient(45deg,var(--pink) 0 10px,#ffe5ee 10px 20px);transform:rotate(-10deg)}
+.be2{background:repeating-linear-gradient(0deg,var(--lav) 0 10px,#e8e0ff 10px 20px);transform:rotate(8deg);margin-bottom:14px}
+.be3{background:repeating-linear-gradient(-45deg,var(--mint) 0 10px,#dff5e8 10px 20px);transform:rotate(-4deg)}
+.be4{background:repeating-linear-gradient(90deg,var(--lemon) 0 10px,#fff8d0 10px 20px);transform:rotate(12deg);margin-bottom:8px}
+.be5{background:radial-gradient(circle at 30% 30%,#ffe0c4,var(--peach));transform:rotate(-12deg)}
+
+.basket .meta{font-family:'Caveat',cursive;font-weight:700;font-size:42px;color:var(--accent);text-align:center;position:relative;margin-top:10px}
+
+/* RIGHT */
+.right{position:absolute;top:880px;right:60px;width:2440px;display:grid;grid-template-rows:auto auto;gap:36px;z-index:3}
+.feast{background:var(--lav);color:var(--ink);border-radius:36px;border:8px solid var(--ink);padding:36px 44px;box-shadow:0 16px 0 var(--accent),0 28px 40px rgba(0,0,0,.22);position:relative;overflow:hidden;height:480px;display:flex;flex-direction:column;justify-content:center}
+.feast::before{content:'';position:absolute;top:-50px;right:-50px;width:280px;height:280px;background:var(--pink);border-radius:50%;opacity:.6}
+.feast::after{content:'';position:absolute;bottom:-100px;right:200px;width:200px;height:200px;background:var(--lemon);border-radius:50%;opacity:.6}
+.feast .k{font-family:'Caveat',cursive;font-weight:700;font-size:54px;color:var(--accent);line-height:1;position:relative;z-index:1}
+.feast h2{font-family:'Sniglet',sans-serif;font-weight:800;font-size:160px;line-height:.85;margin:0;color:var(--ink);letter-spacing:-.03em;position:relative;z-index:1}
+.feast h2 em{font-style:normal;color:var(--accent)}
+.feast p{font-family:'Fredoka',sans-serif;font-weight:500;font-size:38px;margin:24px 0 0;line-height:1.25;max-width:1700px;position:relative;z-index:1}
+.feast .row{display:flex;gap:30px;margin-top:auto;padding-top:24px;font-family:'Caveat',cursive;font-weight:700;font-size:44px;color:var(--accent);position:relative;z-index:1}
+
+.events{background:#fff;border-radius:36px;border:8px solid var(--ink);padding:30px 36px;box-shadow:0 16px 0 var(--mint),0 28px 40px rgba(0,0,0,.22);height:540px;display:flex;flex-direction:column}
+.events .hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:4px dashed rgba(122,79,196,.4);padding-bottom:14px}
+.events .hdr h3{font-family:'Sniglet',sans-serif;font-weight:800;font-size:80px;color:var(--ink);margin:0;letter-spacing:-.01em;line-height:1}
+.events .hdr h3 em{font-style:normal;color:var(--accent)}
+.events .hdr .day{font-family:'Caveat',cursive;font-weight:700;font-size:44px;color:var(--green)}
+.events ul{list-style:none;margin:18px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:18px;flex:1}
+.events li{display:flex;flex-direction:column;justify-content:center;background:var(--mint);color:var(--ink);border-radius:24px;padding:18px 24px;border:5px solid var(--green);position:relative}
+.events li::before{content:'';position:absolute;top:-16px;left:50%;transform:translateX(-50%);width:30px;height:40px;border-radius:50%/55% 55% 45% 45%;background:var(--pink);border:4px solid var(--ink)}
+.events li:nth-child(2)::before{background:var(--lav)}
+.events li:nth-child(3)::before{background:var(--lemon)}
+.events li:nth-child(4)::before{background:var(--peach)}
+.events li .d{font-family:'Caveat',cursive;font-weight:700;font-size:36px;color:var(--accent);line-height:1;margin-top:14px}
+.events li .e{font-family:'Sniglet',sans-serif;font-weight:800;font-size:42px;color:var(--ink);line-height:1;margin-top:6px;letter-spacing:-.01em}
+.events li .e em{font-style:normal;color:var(--accent)}
+.events li .w{font-family:'Fredoka',sans-serif;font-weight:500;font-size:24px;color:#5a4a6e;margin-top:4px}
+
+.ticker{position:absolute;bottom:0;left:0;right:0;height:80px;background:var(--accent);color:#fff;display:flex;align-items:center;overflow:hidden;z-index:5;border-top:6px solid var(--ink)}
+.ticker .tag{background:var(--ink);color:var(--lemon);font-family:'Sniglet',sans-serif;font-weight:800;font-size:40px;padding:0 36px;height:100%;display:flex;align-items:center;flex-shrink:0;letter-spacing:.04em}
+.ticker .msg{font-family:'Fredoka',sans-serif;font-weight:700;font-size:30px;padding-left:36px;white-space:nowrap;letter-spacing:.06em;animation:sc 80s linear infinite}
+@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{ "schema":"edu-cms-es-easter-v1" }/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+<div class="grass"></div>
+<div class="egg p e1"></div><div class="egg l e2"></div><div class="egg m e3"></div><div class="egg y e4"></div><div class="egg pe e5"></div><div class="egg l e6"></div><div class="egg p e7"></div><div class="egg m e8"></div>
+<div class="chick"><div class="body"></div><div class="head"></div><div class="eye"></div><div class="beak"></div></div>
+
+<div class="top">
+<div class="brand" data-widget="school"><div class="bunny"><div class="ear1"></div><div class="ear2"></div><div class="face"></div><div class="nose"></div></div>
+<div class="info"><div class="name" data-field="school.name">Maple Tree</div><div class="sub" data-field="school.sub">~ hop into spring ~</div></div></div>
+<div class="chips">
+<div class="chip" data-widget="clock"><div class="k" data-field="clock.label">right now</div><div class="v" data-field="clock.time">10:36</div></div>
+<div class="chip gr" data-widget="countdown"><div class="k" data-field="countdown.label">spring break</div><div class="v" data-field="countdown.value">03</div></div>
+</div>
+</div>
+
+<div class="hd" data-widget="headline">
+<div class="k" data-field="headline.kicker">~ Friday's the day ~</div>
+<h1><span data-field="headline.t1">Egg </span><em data-field="headline.t2">Hunt</em></h1>
+<div class="sub" data-field="headline.sub">Bring your basket · K–2 hunt at 9:30 · 3–5 hunt at 10:30 · field behind the gym</div>
+</div>
+
+<div class="basket" data-widget="basket">
+<div class="k" data-field="basket.k">~ how it works ~</div>
+<h2><span data-field="basket.t1">Fill your </span><em data-field="basket.t2">basket</em></h2>
+<p data-field="basket.p">200+ eggs hidden across the field — find as many as you can in 10 minutes. Golden eggs win prizes! Trade your eggs at the candy table for stickers and treats.</p>
+<div class="bask"><div class="bskbody"><div class="beggs"><div class="be be1"></div><div class="be be2"></div><div class="be be3"></div><div class="be be4"></div><div class="be be5"></div></div></div></div>
+<div class="meta" data-field="basket.meta">~ baskets at the office if you forget yours ~</div>
+</div>
+
+<div class="right">
+<div class="feast" data-widget="feast">
+<div class="k" data-field="feast.k">~ Friday's lunch ~</div>
+<h2><span data-field="feast.t1">Spring </span><em data-field="feast.t2">picnic</em></h2>
+<p data-field="feast.p">Ham &amp; cheese sliders · carrot sticks · deviled eggs · fruit salad with strawberries · pastel-frosted sugar cookies · juice box</p>
+<div class="row"><span data-field="feast.t1r">Fri Apr 18 · 11:30</span><span data-field="feast.t2r">$3.75 · all lines</span></div>
+</div>
+
+<div class="events" data-widget="events">
+<div class="hdr"><h3><span data-field="events.h1">Spring </span><em data-field="events.h2">week</em></h3><div class="day" data-field="events.day">Mon Apr 14 — Fri Apr 18</div></div>
+<ul>
+<li data-widget="events.0"><div class="d" data-field="events.0.d">Mon</div><div class="e"><span data-field="events.0.e1">Egg </span><em data-field="events.0.e2">decorating</em></div><div class="w" data-field="events.0.w">Art class · all grades</div></li>
+<li data-widget="events.1"><div class="d" data-field="events.1.d">Wed</div><div class="e"><span data-field="events.1.e1">Pastel </span><em data-field="events.1.e2">day</em></div><div class="w" data-field="events.1.w">Wear pink, lavender, mint</div></li>
+<li data-widget="events.2"><div class="d" data-field="events.2.d">Fri</div><div class="e"><span data-field="events.2.e1">Egg </span><em data-field="events.2.e2">hunt</em></div><div class="w" data-field="events.2.w">Field · K–2 9:30 · 3–5 10:30</div></li>
+<li data-widget="events.3"><div class="d" data-field="events.3.d">Mon→</div><div class="e"><span data-field="events.3.e1">Spring </span><em data-field="events.3.e2">break</em></div><div class="w" data-field="events.3.w">Apr 21–25 · back Apr 28</div></li>
+</ul>
+</div>
+</div>
+
+<div class="ticker" data-widget="ticker"><div class="tag" data-field="ticker.tag">~ HOPPY SPRING ~</div><div class="msg"><span data-field="ticker.message">★ Egg hunt Friday on the back field — bring a basket from home or grab one at the office ★ K–2 hunts at 9:30 · 3–5 hunts at 10:30 ★ Pastel day Wednesday — wear your prettiest spring colors ★ Spring break starts after school Friday — see you back Apr 28 ★ </span><span>★ Egg hunt Friday on the back field — bring a basket from home or grab one at the office ★ K–2 hunts at 9:30 · 3–5 hunts at 10:30 ★ Pastel day Wednesday — wear your prettiest spring colors ★ Spring break starts after school Friday — see you back Apr 28 ★ </span></div></div>
+
+</div></div></div>
+<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+<script id="holiday-autoscale">(function(){function s(){var w=window.innerWidth,h=window.innerHeight,sc=Math.min(w/3840,h/2160);document.documentElement.style.setProperty("--stage-scale",sc);}s();window.addEventListener("resize",s);})();</script></body></html>

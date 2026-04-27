@@ -1,0 +1,168 @@
+<!doctype html>
+<!-- ES CHRISTMAS — North Pole workshop, snow, candy stripes. -->
+<html><head><meta charset="utf-8"/><title>Christmas · ES Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Caveat:wght@600;700&family=Mountains+of+Christmas:wght@700&display=swap" rel="stylesheet">
+<style>
+:root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;
+  --red:#c1272d;--red2:#e54848;--green:#1e6b3a;--green2:#2e8a4a;--gold:#e3a83b;--cream:#fff8ea;--ink:#1a2840;--snow:#eaf4ff;--berry:#7a1a26}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;color:var(--ink);font-family:'Fredoka',sans-serif}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:linear-gradient(180deg,#1a2840 0%,#2e4a78 50%,#5a8ab8 100%);box-shadow:0 80px 200px rgba(0,0,0,.55)}
+/* CANDY STRIPE BORDER */
+.stage::before{content:'';position:absolute;top:0;left:0;right:0;height:32px;background:repeating-linear-gradient(90deg,var(--red) 0,var(--red) 60px,var(--cream) 60px,var(--cream) 120px);z-index:6}
+.stage::after{content:'';position:absolute;bottom:80px;left:0;right:0;height:32px;background:repeating-linear-gradient(90deg,var(--red) 0,var(--red) 60px,var(--cream) 60px,var(--cream) 120px);z-index:6}
+
+/* SNOW HILLS */
+.hills{position:absolute;left:0;right:0;bottom:120px;height:280px;background:radial-gradient(ellipse 1200px 300px at 20% 100%,var(--snow) 0,var(--snow) 60%,transparent 61%),radial-gradient(ellipse 1400px 240px at 70% 100%,var(--snow) 0,var(--snow) 60%,transparent 61%),radial-gradient(ellipse 900px 200px at 95% 100%,var(--snow) 0,var(--snow) 60%,transparent 61%);z-index:1}
+
+/* SNOW DOTS */
+.snow{position:absolute;inset:0;pointer-events:none;z-index:2}
+.snow span{position:absolute;background:#fff;border-radius:50%;animation:fall 8s linear infinite;opacity:.85}
+@keyframes fall{from{transform:translateY(-100px)}to{transform:translateY(2400px)}}
+
+/* TREES */
+.tree{position:absolute;bottom:200px;width:200px;height:300px;z-index:2;filter:drop-shadow(0 8px 0 rgba(0,0,0,.3))}
+.tree::before{content:'';position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:0;height:0;border-left:100px solid transparent;border-right:100px solid transparent;border-bottom:280px solid var(--green)}
+.tree::after{content:'';position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:30px;height:36px;background:var(--berry);border-radius:4px}
+.t1{left:120px;height:380px}.t1::before{border-left-width:120px;border-right-width:120px;border-bottom-width:340px}
+.t2{left:3500px;height:280px}.t2::before{border-bottom-color:var(--green2)}
+.t3{left:480px;height:200px;bottom:240px}
+.t4{right:240px;height:340px;bottom:200px}.t4::before{border-left-width:110px;border-right-width:110px;border-bottom-width:300px}
+
+/* TOP */
+.top{position:absolute;top:80px;left:60px;right:60px;height:160px;display:flex;justify-content:space-between;align-items:center;z-index:5}
+.brand{display:flex;align-items:center;gap:30px}
+.wreath{width:170px;height:170px;border-radius:50%;background:radial-gradient(circle,transparent 38%,var(--green) 39% 70%,transparent 71%);position:relative;box-shadow:0 10px 0 rgba(0,0,0,.25)}
+.wreath::before{content:'';position:absolute;left:50%;top:-14px;transform:translateX(-50%);width:60px;height:48px;background:var(--red);clip-path:polygon(0 100%,50% 0,100% 100%,80% 50%,50% 100%,20% 50%);box-shadow:0 4px 0 var(--berry)}
+.wreath .b1,.wreath .b2,.wreath .b3,.wreath .b4{position:absolute;width:18px;height:18px;background:var(--red);border-radius:50%}
+.wreath .b1{top:38%;left:14%}.wreath .b2{top:14%;right:18%}.wreath .b3{bottom:18%;left:32%}.wreath .b4{bottom:32%;right:18%}
+.brand .info .name{font-family:'Mountains of Christmas',cursive;font-weight:700;font-size:96px;color:var(--cream);line-height:.95;letter-spacing:-.01em}
+.brand .info .sub{font-family:'Caveat',cursive;font-weight:700;font-size:48px;color:var(--gold);margin-top:4px;line-height:1}
+
+.chips{display:flex;gap:20px}
+.chip{background:var(--cream);color:var(--ink);padding:18px 28px;border-radius:24px;min-width:200px;text-align:center;border:6px solid var(--red);box-shadow:0 8px 0 var(--green),0 14px 22px rgba(0,0,0,.35)}
+.chip .k{font-family:'Caveat',cursive;font-weight:700;font-size:32px;color:var(--red);line-height:1}
+.chip .v{font-family:'Fredoka',sans-serif;font-weight:700;font-size:64px;color:var(--ink);line-height:1;margin-top:4px;letter-spacing:-.02em}
+.chip.green{border-color:var(--green);box-shadow:0 8px 0 var(--red),0 14px 22px rgba(0,0,0,.35)}
+.chip.green .k{color:var(--green)}
+
+/* HEADLINE */
+.hd{position:absolute;top:300px;left:60px;right:60px;z-index:4;text-align:center}
+.hd .k{font-family:'Caveat',cursive;font-weight:700;font-size:60px;color:var(--gold);letter-spacing:.04em;margin-bottom:8px}
+.hd h1{font-family:'Mountains of Christmas',cursive;font-weight:700;font-size:340px;line-height:.85;color:var(--cream);margin:0;letter-spacing:-.01em;text-shadow:8px 8px 0 var(--red),16px 16px 0 var(--green)}
+.hd .sub{font-family:'Fredoka',sans-serif;font-weight:600;font-size:46px;color:var(--cream);margin-top:24px;letter-spacing:.04em}
+
+/* COUNTDOWN BIG */
+.advent{position:absolute;top:880px;left:60px;width:1240px;height:1080px;background:var(--cream);color:var(--ink);border-radius:36px;border:10px solid var(--red);padding:36px 40px;z-index:3;box-shadow:0 16px 0 var(--green),0 30px 50px rgba(0,0,0,.4);overflow:hidden}
+.advent::before{content:'';position:absolute;top:-30px;right:-30px;width:200px;height:200px;background:var(--green);border-radius:50%;opacity:.18}
+.advent .k{font-family:'Caveat',cursive;font-weight:700;font-size:50px;color:var(--green);line-height:1}
+.advent h2{font-family:'Mountains of Christmas',cursive;font-weight:700;font-size:108px;color:var(--ink);line-height:.9;margin:8px 0 0;letter-spacing:-.01em}
+.advent h2 em{font-style:normal;color:var(--red)}
+.advent .grid{margin-top:30px;display:grid;grid-template-columns:repeat(6,1fr);grid-template-rows:repeat(4,1fr);gap:14px;height:760px}
+.advent .door{background:#fff;border:5px solid var(--green);border-radius:14px;display:grid;place-items:center;font-family:'Mountains of Christmas',cursive;font-weight:700;font-size:64px;color:var(--ink);position:relative}
+.advent .door.open{background:var(--red);color:var(--cream);border-color:var(--gold)}
+.advent .door.today{background:var(--gold);color:var(--ink);border-color:var(--red);transform:scale(1.06);box-shadow:0 6px 0 var(--red);font-size:74px}
+.advent .meta{margin-top:16px;font-family:'Caveat',cursive;font-weight:700;font-size:42px;color:var(--red);text-align:center}
+
+/* RIGHT COLUMN */
+.right{position:absolute;top:880px;right:60px;width:2440px;display:grid;grid-template-rows:auto auto;gap:36px;z-index:3}
+.feast{background:var(--red);color:var(--cream);border-radius:36px;border:10px solid var(--green);padding:36px 44px;box-shadow:0 16px 0 var(--ink),0 30px 50px rgba(0,0,0,.4);position:relative;overflow:hidden;height:480px;display:flex;flex-direction:column;justify-content:center}
+.feast::before{content:'';position:absolute;top:-50px;right:-50px;width:280px;height:280px;background:var(--green);border-radius:50%;opacity:.5}
+.feast::after{content:'';position:absolute;bottom:-100px;right:120px;width:200px;height:200px;background:var(--gold);border-radius:50%;opacity:.4}
+.feast .k{font-family:'Caveat',cursive;font-weight:700;font-size:54px;color:var(--gold);line-height:1;position:relative;z-index:1}
+.feast h2{font-family:'Mountains of Christmas',cursive;font-weight:700;font-size:170px;line-height:.85;margin:0;color:var(--cream);letter-spacing:-.02em;position:relative;z-index:1}
+.feast h2 em{font-style:normal;color:var(--gold)}
+.feast p{font-family:'Fredoka',sans-serif;font-weight:500;font-size:38px;margin:24px 0 0;line-height:1.25;max-width:1700px;position:relative;z-index:1}
+.feast .row{display:flex;gap:30px;margin-top:auto;padding-top:24px;font-family:'Caveat',cursive;font-weight:700;font-size:44px;color:var(--gold);position:relative;z-index:1}
+
+.events{background:var(--cream);border-radius:36px;border:10px solid var(--green);padding:30px 36px;box-shadow:0 16px 0 var(--red),0 30px 50px rgba(0,0,0,.35);height:540px;display:flex;flex-direction:column}
+.events .hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:4px dashed rgba(30,107,58,.4);padding-bottom:14px}
+.events .hdr h3{font-family:'Mountains of Christmas',cursive;font-weight:700;font-size:88px;color:var(--ink);margin:0;letter-spacing:-.01em;line-height:1}
+.events .hdr h3 em{font-style:normal;color:var(--red)}
+.events .hdr .day{font-family:'Caveat',cursive;font-weight:700;font-size:44px;color:var(--green)}
+.events ul{list-style:none;margin:18px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:18px;flex:1}
+.events li{display:flex;flex-direction:column;justify-content:center;background:#fff;color:var(--ink);border-radius:24px;padding:18px 24px;border:5px solid var(--red);position:relative}
+.events li::before{content:'★';position:absolute;top:-22px;left:50%;transform:translateX(-50%);width:44px;height:44px;background:var(--gold);color:var(--ink);border-radius:50%;display:grid;place-items:center;font-size:30px;border:4px solid var(--red)}
+.events li .d{font-family:'Caveat',cursive;font-weight:700;font-size:36px;color:var(--red);line-height:1;margin-top:8px}
+.events li .e{font-family:'Fredoka',sans-serif;font-weight:700;font-size:42px;color:var(--ink);line-height:1;margin-top:6px;letter-spacing:-.01em}
+.events li .e em{font-style:normal;color:var(--green)}
+.events li .w{font-family:'Fredoka',sans-serif;font-weight:500;font-size:24px;color:#5a4a3e;margin-top:4px}
+
+.ticker{position:absolute;bottom:0;left:0;right:0;height:80px;background:var(--green);color:var(--cream);display:flex;align-items:center;overflow:hidden;z-index:7}
+.ticker .tag{background:var(--red);color:var(--cream);font-family:'Mountains of Christmas',cursive;font-weight:700;font-size:42px;padding:0 36px;height:100%;display:flex;align-items:center;flex-shrink:0;letter-spacing:.02em}
+.ticker .msg{font-family:'Fredoka',sans-serif;font-weight:700;font-size:30px;padding-left:36px;white-space:nowrap;letter-spacing:.06em;animation:sc 80s linear infinite}
+@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{ "schema":"edu-cms-es-christmas-v1" }/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+<div class="hills"></div>
+<div class="snow">
+<span style="left:8%;top:0;width:14px;height:14px;animation-delay:0s"></span>
+<span style="left:22%;top:-200px;width:10px;height:10px;animation-delay:1s"></span>
+<span style="left:35%;top:-400px;width:18px;height:18px;animation-delay:2s"></span>
+<span style="left:48%;top:-100px;width:12px;height:12px;animation-delay:.5s"></span>
+<span style="left:60%;top:-300px;width:16px;height:16px;animation-delay:1.5s"></span>
+<span style="left:72%;top:-500px;width:10px;height:10px;animation-delay:3s"></span>
+<span style="left:85%;top:-200px;width:14px;height:14px;animation-delay:2.5s"></span>
+<span style="left:14%;top:-600px;width:12px;height:12px;animation-delay:4s"></span>
+<span style="left:55%;top:-700px;width:18px;height:18px;animation-delay:5s"></span>
+<span style="left:90%;top:-800px;width:14px;height:14px;animation-delay:6s"></span>
+<span style="left:42%;top:-900px;width:10px;height:10px;animation-delay:3.5s"></span>
+<span style="left:78%;top:-1000px;width:16px;height:16px;animation-delay:4.5s"></span>
+</div>
+
+<div class="tree t1"></div><div class="tree t2"></div><div class="tree t3"></div><div class="tree t4"></div>
+
+<div class="top">
+<div class="brand" data-widget="school"><div class="wreath"><div class="b1"></div><div class="b2"></div><div class="b3"></div><div class="b4"></div></div>
+<div class="info"><div class="name" data-field="school.name">Maple Tree</div><div class="sub" data-field="school.sub">~ ho ho ho ~</div></div></div>
+<div class="chips">
+<div class="chip" data-widget="clock"><div class="k" data-field="clock.label">right now</div><div class="v" data-field="clock.time">9:32</div></div>
+<div class="chip green" data-widget="countdown"><div class="k" data-field="countdown.label">days till break</div><div class="v" data-field="countdown.value">04</div></div>
+</div>
+</div>
+
+<div class="hd" data-widget="headline">
+<div class="k" data-field="headline.kicker">~ welcome to ~</div>
+<h1 data-field="headline.title">Merry Christmas</h1>
+<div class="sub" data-field="headline.sub">Pajama day Friday · Concert Wed at 7 · Break starts Dec 19</div>
+</div>
+
+<div class="advent" data-widget="advent">
+<div class="k" data-field="advent.k">~ countdown to break ~</div>
+<h2><span data-field="advent.t1">Open a </span><em data-field="advent.t2">door</em></h2>
+<div class="grid">
+<div class="door open" data-field="advent.d1">1</div><div class="door open" data-field="advent.d2">2</div><div class="door open" data-field="advent.d3">3</div><div class="door open" data-field="advent.d4">4</div><div class="door open" data-field="advent.d5">5</div><div class="door open" data-field="advent.d6">6</div>
+<div class="door open" data-field="advent.d7">7</div><div class="door open" data-field="advent.d8">8</div><div class="door open" data-field="advent.d9">9</div><div class="door open" data-field="advent.d10">10</div><div class="door open" data-field="advent.d11">11</div><div class="door open" data-field="advent.d12">12</div>
+<div class="door open" data-field="advent.d13">13</div><div class="door open" data-field="advent.d14">14</div><div class="door today" data-field="advent.d15">15</div><div class="door" data-field="advent.d16">16</div><div class="door" data-field="advent.d17">17</div><div class="door" data-field="advent.d18">18</div>
+<div class="door" data-field="advent.d19">19</div><div class="door" data-field="advent.d20">20</div><div class="door" data-field="advent.d21">21</div><div class="door" data-field="advent.d22">22</div><div class="door" data-field="advent.d23">23</div><div class="door" data-field="advent.d24">24</div>
+</div>
+<div class="meta" data-field="advent.meta">~ today: bring a canned good for the food drive ~</div>
+</div>
+
+<div class="right">
+<div class="feast" data-widget="feast">
+<div class="k" data-field="feast.k">~ Friday's lunch ~</div>
+<h2><span data-field="feast.t1">Holiday </span><em data-field="feast.t2">feast</em></h2>
+<p data-field="feast.p">Roast turkey · stuffing · mashed potatoes · gingerbread cookie · hot cocoa for everyone · pajamas welcome</p>
+<div class="row"><span data-field="feast.t1r">Fri Dec 19 · 11:30</span><span data-field="feast.t2r">$3.75 students</span></div>
+</div>
+
+<div class="events" data-widget="events">
+<div class="hdr"><h3><span data-field="events.h1">Spirit </span><em data-field="events.h2">week</em></h3><div class="day" data-field="events.day">Mon Dec 15 — Fri Dec 19</div></div>
+<ul>
+<li data-widget="events.0"><div class="d" data-field="events.0.d">Mon</div><div class="e"><span data-field="events.0.e1">Ugly </span><em data-field="events.0.e2">sweater</em></div><div class="w" data-field="events.0.w">All grades · prize at lunch</div></li>
+<li data-widget="events.1"><div class="d" data-field="events.1.d">Wed</div><div class="e"><span data-field="events.1.e1">Winter </span><em data-field="events.1.e2">concert</em></div><div class="w" data-field="events.1.w">Gym · 7pm · families welcome</div></li>
+<li data-widget="events.2"><div class="d" data-field="events.2.d">Thu</div><div class="e"><span data-field="events.2.e1">Class </span><em data-field="events.2.e2">parties</em></div><div class="w" data-field="events.2.w">After lunch · sign up to bring</div></li>
+<li data-widget="events.3"><div class="d" data-field="events.3.d">Fri</div><div class="e"><span data-field="events.3.e1">Pajama </span><em data-field="events.3.e2">day</em></div><div class="w" data-field="events.3.w">Wear your PJs · cocoa · early dismiss</div></li>
+</ul>
+</div>
+</div>
+
+<div class="ticker" data-widget="ticker"><div class="tag" data-field="ticker.tag">~ FA-LA-LA ~</div><div class="msg"><span data-field="ticker.message">★ Winter concert Wednesday 7pm in the gym — families welcome ★ Pajama day Friday — wear your coziest PJs and bring a canned good ★ Break starts after school Friday Dec 19 — see you back Jan 5 ★ Hot cocoa for everyone in the cafeteria all week ★ </span><span>★ Winter concert Wednesday 7pm in the gym — families welcome ★ Pajama day Friday — wear your coziest PJs and bring a canned good ★ Break starts after school Friday Dec 19 — see you back Jan 5 ★ Hot cocoa for everyone in the cafeteria all week ★ </span></div></div>
+
+</div></div></div>
+<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+<script id="holiday-autoscale">(function(){function s(){var w=window.innerWidth,h=window.innerHeight,sc=Math.min(w/3840,h/2160);document.documentElement.style.setProperty("--stage-scale",sc);}s();window.addEventListener("resize",s);})();</script></body></html>

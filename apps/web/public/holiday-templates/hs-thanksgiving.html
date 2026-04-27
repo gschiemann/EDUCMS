@@ -1,0 +1,101 @@
+<!doctype html>
+<!-- HS THANKSGIVING — newsprint editorial / late-edition spread -->
+<html><head><meta charset="utf-8"/><title>Thanksgiving · HS Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,700;9..144,900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+<style>:root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;--paper:#f3e8d2;--paper2:#ead09e;--rust:#9a3a18;--gold:#b88030;--ink:#1a1208;--green:#3e5a30;--plum:#5a2030}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;font-family:'Fraunces',serif;color:var(--ink)}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--paper);background-image:radial-gradient(rgba(154,58,24,.06) 1px,transparent 1.4px);background-size:6px 6px;box-shadow:0 80px 200px rgba(0,0,0,.5)}
+.stage::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,transparent 60%,rgba(154,58,24,.08) 100%),radial-gradient(ellipse at 0% 0%,rgba(26,18,8,.12),transparent 30%);pointer-events:none}
+/* masthead */
+.mast{position:absolute;top:50px;left:60px;right:60px;height:170px;border-bottom:6px double var(--ink);padding-bottom:24px;display:flex;justify-content:space-between;align-items:flex-end;z-index:5}
+.mast .ttl{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:140px;line-height:.85;color:var(--ink);letter-spacing:-.04em}
+.mast .ttl em{color:var(--rust)}
+.mast .info{text-align:right}
+.mast .info .vol{font-family:'JetBrains Mono';font-weight:800;font-size:22px;letter-spacing:.32em;color:var(--ink);text-transform:uppercase;opacity:.75}
+.mast .info .date{font-family:'Fraunces',serif;font-weight:700;font-style:italic;font-size:54px;color:var(--rust);margin-top:6px;line-height:1}
+.mast .info .price{font-family:'JetBrains Mono';font-weight:800;font-size:18px;letter-spacing:.3em;color:var(--ink);text-transform:uppercase;margin-top:8px;opacity:.7}
+/* lead */
+.lead{position:absolute;top:280px;left:60px;right:1380px;z-index:4}
+.lead .kicker{font-family:'JetBrains Mono';font-weight:800;font-size:28px;letter-spacing:.36em;color:var(--rust);text-transform:uppercase;margin-bottom:10px}
+.lead h1{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:340px;line-height:.82;color:var(--ink);margin:0;letter-spacing:-.04em}
+.lead h1 em{color:var(--rust);text-decoration:underline;text-decoration-color:var(--gold);text-decoration-thickness:14px;text-underline-offset:24px}
+.lead .deck{font-family:'Fraunces',serif;font-weight:700;font-style:italic;font-size:56px;color:var(--ink);margin-top:30px;max-width:2200px;line-height:1.2;column-count:2;column-gap:60px}
+.lead .deck::first-letter{font-size:140px;float:left;line-height:.85;padding:8px 16px 0 0;color:var(--rust);font-weight:900}
+/* sidebar */
+.side{position:absolute;top:280px;right:60px;width:1260px;z-index:4}
+.side .panel{background:var(--paper2);border:5px solid var(--ink);padding:32px 36px;margin-bottom:30px;position:relative}
+.side .panel::before{content:'';position:absolute;inset:8px;border:1px solid var(--ink);pointer-events:none;opacity:.4}
+.side .panel .k{font-family:'JetBrains Mono';font-weight:800;font-size:22px;letter-spacing:.32em;color:var(--rust);text-transform:uppercase}
+.side .panel h2{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:96px;line-height:.85;margin:8px 0 0;color:var(--ink);letter-spacing:-.03em}
+.side .panel h2 em{color:var(--rust)}
+.side .panel p{font-family:'Fraunces',serif;font-weight:500;font-style:italic;font-size:32px;margin:14px 0 0;line-height:1.22}
+.side .panel .meta{margin-top:14px;font-family:'JetBrains Mono';font-weight:800;font-size:20px;text-transform:uppercase;letter-spacing:.22em;color:var(--rust);display:flex;gap:20px;flex-wrap:wrap}
+/* footer cards */
+.foot{position:absolute;top:1430px;left:60px;right:1380px;height:380px;display:grid;grid-template-columns:1fr 1fr;gap:36px;z-index:3}
+.tile{background:var(--ink);color:var(--paper);padding:28px 32px;display:flex;flex-direction:column;border-left:8px solid var(--gold)}
+.tile .k{font-family:'JetBrains Mono';font-weight:800;font-size:20px;color:var(--gold);text-transform:uppercase;letter-spacing:.3em}
+.tile h3{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:78px;line-height:.85;margin:8px 0 0;color:var(--paper)}
+.tile h3 em{color:var(--gold)}
+.tile p{font-family:'Fraunces',serif;font-weight:500;font-style:italic;font-size:26px;margin:12px 0 0;opacity:.9;line-height:1.22}
+.tile .meta{margin-top:auto;padding-top:14px;font-family:'JetBrains Mono';font-weight:800;font-size:18px;letter-spacing:.22em;color:var(--gold);text-transform:uppercase}
+/* schedule along bottom */
+.sked{position:absolute;top:1840px;left:60px;right:60px;height:240px;background:var(--ink);color:var(--paper);padding:22px 32px;z-index:3;display:flex;flex-direction:column}
+.sked .hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px solid var(--gold);padding-bottom:8px}
+.sked .hdr h3{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:60px;color:var(--gold);margin:0}
+.sked .hdr .d{font-family:'JetBrains Mono';font-weight:800;font-size:22px;color:var(--paper);letter-spacing:.22em;text-transform:uppercase}
+.sked ul{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(5,1fr);gap:24px;flex:1}
+.sked li{display:flex;flex-direction:column;justify-content:center;border-left:4px solid var(--rust);padding-left:18px}
+.sked li .d{font-family:'JetBrains Mono';font-weight:800;font-size:20px;color:var(--gold);letter-spacing:.26em;text-transform:uppercase}
+.sked li .e{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:38px;color:var(--paper);line-height:1;margin-top:4px}
+.sked li .e em{color:var(--gold)}
+.sked li .w{font-family:'JetBrains Mono';font-weight:600;font-size:18px;color:var(--paper);margin-top:4px;letter-spacing:.18em;text-transform:uppercase;opacity:.75}
+.ticker{position:absolute;bottom:0;left:0;right:0;height:0px;display:none}</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{"schema":"edu-cms-hs-thanksgiving-v1"}/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+<div class="mast" data-widget="masthead">
+<div class="ttl"><span data-field="masthead.t1">The </span><em data-field="masthead.t2">Banner.</em></div>
+<div class="info">
+<div class="vol" data-field="masthead.vol">Vol XLI · No 9 · Banner High</div>
+<div class="date" data-field="masthead.date">Thursday, November 26</div>
+<div class="price" data-field="masthead.price">Late edition · all senses</div>
+</div>
+</div>
+<div class="lead" data-widget="headline">
+<div class="kicker" data-field="headline.kicker">★ harvest issue · gratitude · gravy ★</div>
+<h1><span data-field="headline.t1">Give </span><em data-field="headline.t2">thanks.</em></h1>
+<div class="deck" data-field="headline.deck">Three days off, one feast, and the smallest break of the school year — but we'll take it. Inside: the senior food drive blew past goal, the turkey trot route map, and a teacher pie-vote so contested it went to a runoff. School resumes Monday.</div>
+</div>
+<div class="side">
+<div class="panel" data-widget="drive"><div class="k" data-field="drive.k">★ canned food drive</div>
+<h2><span data-field="drive.t1">8,400 </span><em data-field="drive.t2">cans.</em></h2>
+<p data-field="drive.p">Goal smashed by Tuesday. Final count Friday at homeroom. Top homeroom wins a pancake breakfast in December. Drop-offs continue at the front office.</p>
+<div class="meta"><span data-field="drive.m1">deadline · Fri 11/22 3pm</span></div></div>
+<div class="panel" data-widget="trot"><div class="k" data-field="trot.k">★ turkey trot 5k</div>
+<h2><span data-field="trot.t1">Wed </span><em data-field="trot.t2">7am.</em></h2>
+<p data-field="trot.p">Route loops the practice fields and out to Maple Ave. PE credit if you finish under 40 min. Costumes encouraged. Coach Rivera pacing the back of the pack.</p>
+<div class="meta"><span data-field="trot.m1">Wed 11/25 · 7am · field A</span></div></div>
+</div>
+<div class="foot">
+<div class="tile" data-widget="break"><div class="k" data-field="break.k">★ break</div>
+<h3><span data-field="break.t1">3 </span><em data-field="break.t2">days off.</em></h3>
+<p data-field="break.p">No school Wed–Fri. Office closed Thu and Fri. Powerschool grades posted Tuesday before close.</p>
+<div class="meta" data-field="break.m1">Wed 11/25 — Fri 11/27</div></div>
+<div class="tile" data-widget="pievote"><div class="k" data-field="pievote.k">★ teacher pie vote</div>
+<h3><span data-field="pievote.t1">Pecan </span><em data-field="pievote.t2">wins.</em></h3>
+<p data-field="pievote.p">Pecan over apple by 12 votes in the runoff. Bake-off Tuesday in the cafeteria — winning teacher takes the pan home.</p>
+<div class="meta" data-field="pievote.m1">Tue 11/24 · caf · 12:30</div></div>
+</div>
+<div class="sked" data-widget="sked">
+<div class="hdr"><h3 data-field="sked.h">★ harvest week schedule</h3><div class="d" data-field="sked.day">Mon 11/23 — Fri 11/27</div></div>
+<ul>
+<li data-widget="sked.0"><div class="d" data-field="sked.0.d">MON</div><div class="e"><span data-field="sked.0.e1">Food </span><em data-field="sked.0.e2">drive</em></div><div class="w" data-field="sked.0.w">cans · all day · office</div></li>
+<li data-widget="sked.1"><div class="d" data-field="sked.1.d">TUE</div><div class="e"><span data-field="sked.1.e1">Pie </span><em data-field="sked.1.e2">vote</em></div><div class="w" data-field="sked.1.w">caf · 12:30</div></li>
+<li data-widget="sked.2"><div class="d" data-field="sked.2.d">WED</div><div class="e"><span data-field="sked.2.e1">Turkey </span><em data-field="sked.2.e2">trot</em></div><div class="w" data-field="sked.2.w">field A · 7am</div></li>
+<li data-widget="sked.3"><div class="d" data-field="sked.3.d">WED</div><div class="e"><span data-field="sked.3.e1">Half </span><em data-field="sked.3.e2">day</em></div><div class="w" data-field="sked.3.w">dismiss · 12:15</div></li>
+<li data-widget="sked.4"><div class="d" data-field="sked.4.d">MON</div><div class="e"><span data-field="sked.4.e1">Back </span><em data-field="sked.4.e2">to it</em></div><div class="w" data-field="sked.4.w">classes resume · 11/30</div></li>
+</ul>
+</div>
+</div></div></div>
+<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+<script id="holiday-autoscale">(function(){function s(){var w=window.innerWidth,h=window.innerHeight,sc=Math.min(w/3840,h/2160);document.documentElement.style.setProperty("--stage-scale",sc);}s();window.addEventListener("resize",s);})();</script></body></html>

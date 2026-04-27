@@ -99,6 +99,10 @@ import { AnimatedAchievementShowcaseWidget } from './AnimatedAchievementShowcase
 import { ScrapbookHallwayWidget } from './ScrapbookHallwayWidget';
 // Sprint 11h pre-launch: drag-drop animations as a generic decoration widget.
 import { DecorationWidget } from './DecorationWidget';
+// Holiday lobby pack — Halloween, Thanksgiving, Christmas, Valentine's,
+// St. Patrick's, Easter × ES/MS/HS. Each renders a designed full-canvas
+// scene from /public/holiday-templates/*.html via iframe (CSS isolation).
+import { HolidayWidget } from './HolidayWidget';
 import { ScrapbookCafeteriaWidget } from './ScrapbookCafeteriaWidget';
 import { StorybookHallwayWidget } from './StorybookHallwayWidget';
 import { BulletinHallwayWidget } from './BulletinHallwayWidget';
@@ -211,6 +215,10 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     // clouds, sparkles, ticker, neon-buzz, pulse-glow). Pure
     // CSS keyframes, no data sources, auto-scales to any zone size.
     case 'DECORATION':   return <DecorationWidget config={cfg} />;
+    // Holiday lobby pack — 6 holidays × 3 grade levels = 18 templates,
+    // imported from the design HTML zip. Each is a full-canvas themed
+    // scene (Halloween haunted lobby, Christmas North Pole, etc).
+    case 'HOLIDAY':      return <HolidayWidget config={cfg} />;
     // Generic category widgets (theme-agnostic).
     case 'QUOTE':        return <QuoteWidget config={cfg} onConfigChange={onConfigChange} />;
     case 'STATS':        return <StatsWidget config={cfg} />;

@@ -1,0 +1,92 @@
+<!doctype html>
+<!-- HS EASTER — Bauhaus geometric pastel · spring break gallery -->
+<html><head><meta charset="utf-8"/><title>Spring Break · HS Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=JetBrains+Mono:wght@500;700;800&family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>:root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;--cream:#fbf3e0;--lilac:#c8b0e0;--mint:#a8d8b0;--peach:#f4b890;--sky:#90b8d8;--yolk:#f4c850;--ink:#1a0e1c;--pink:#e890b0}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;font-family:'JetBrains Mono',monospace;color:var(--ink)}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--cream);box-shadow:0 80px 200px rgba(0,0,0,.5)}
+/* big bauhaus shapes */
+.shapes{position:absolute;inset:0;z-index:1;pointer-events:none}
+.s{position:absolute;border:5px solid var(--ink)}
+.s1{top:200px;right:60px;width:900px;height:900px;background:var(--peach);border-radius:50% 50% 48% 48%/55% 55% 45% 45%;box-shadow:18px 18px 0 var(--ink)}
+.s1::before{content:'';position:absolute;inset:0;border-radius:inherit;background:repeating-linear-gradient(45deg,transparent 0 30px,rgba(26,14,28,.18) 30px 36px)}
+.s2{top:1450px;left:60px;width:540px;height:540px;border-radius:50%;background:var(--mint);box-shadow:18px 18px 0 var(--ink)}
+.s2::after{content:'';position:absolute;top:50%;left:0;right:0;height:0;border-top:5px solid var(--ink)}
+.s3{top:1380px;right:1200px;width:380px;height:380px;background:var(--lilac);transform:rotate(45deg);box-shadow:14px 14px 0 var(--ink)}
+.s4{top:140px;left:80px;width:360px;height:360px;background:var(--yolk);border-radius:50%;box-shadow:14px 14px 0 var(--ink)}
+.s4::before{content:'';position:absolute;inset:60px;border-radius:50%;border:5px solid var(--ink)}
+/* mast */
+.mast{position:absolute;top:90px;left:520px;right:1080px;height:120px;display:flex;flex-direction:column;justify-content:center;z-index:5}
+.mast .name{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:96px;color:var(--ink);line-height:.85;letter-spacing:-.03em}
+.mast .sub{font-family:'JetBrains Mono';font-weight:800;font-size:26px;color:var(--pink);text-transform:uppercase;letter-spacing:.32em;margin-top:10px}
+/* head */
+.head{position:absolute;top:340px;left:60px;right:60px;z-index:4}
+.head .kicker{font-family:'JetBrains Mono';font-weight:800;font-size:32px;letter-spacing:.36em;color:var(--ink);text-transform:uppercase;margin-bottom:14px;background:var(--mint);display:inline-block;padding:10px 22px;border:4px solid var(--ink);box-shadow:6px 6px 0 var(--ink)}
+.head h1{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:440px;line-height:.82;color:var(--ink);margin:14px 0 0;letter-spacing:-.04em}
+.head h1 em{font-style:italic;color:var(--peach);text-shadow:14px 14px 0 var(--ink)}
+.head h1 .alt{color:var(--lilac);text-shadow:14px 14px 0 var(--ink)}
+.head .sub{font-family:'Fraunces',serif;font-weight:700;font-style:italic;font-size:60px;color:var(--ink);margin-top:30px;max-width:2200px;line-height:1.18}
+/* cards */
+.grid{position:absolute;top:1240px;left:680px;right:60px;height:560px;display:grid;grid-template-columns:1fr 1fr;gap:32px;z-index:3}
+.cd{padding:32px 36px;border:5px solid var(--ink);display:flex;flex-direction:column;background:var(--cream);box-shadow:14px 14px 0 var(--ink)}
+.cd .k{font-family:'JetBrains Mono';font-weight:800;font-size:22px;text-transform:uppercase;letter-spacing:.32em;color:var(--pink)}
+.cd h2{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:120px;line-height:.82;margin:8px 0 0;color:var(--ink);letter-spacing:-.03em}
+.cd h2 em{color:var(--peach)}
+.cd p{font-family:'Fraunces',serif;font-weight:500;font-style:italic;font-size:32px;margin:18px 0 0;line-height:1.22}
+.cd .meta{margin-top:auto;padding-top:14px;font-family:'JetBrains Mono';font-weight:800;font-size:22px;text-transform:uppercase;letter-spacing:.22em;color:var(--pink);display:flex;gap:20px;flex-wrap:wrap;border-top:3px solid var(--ink);padding-top:14px}
+.cd.feat{background:var(--ink);color:var(--cream);grid-column:1/-1}
+.cd.feat .k{color:var(--yolk)}
+.cd.feat h2{color:var(--cream);font-size:160px}.cd.feat h2 em{color:var(--yolk)}
+.cd.feat p{color:var(--cream);opacity:.92}
+.cd.feat .meta{color:var(--yolk);border-color:var(--yolk)}
+/* sked */
+.sked{position:absolute;top:1840px;left:60px;right:60px;height:240px;background:var(--cream);border:5px solid var(--ink);padding:20px 32px;z-index:3;display:flex;flex-direction:column;box-shadow:14px 14px 0 var(--ink)}
+.sked .hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:4px solid var(--ink);padding-bottom:8px}
+.sked .hdr h3{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:62px;color:var(--ink);margin:0}
+.sked .hdr h3 em{color:var(--peach)}
+.sked .hdr .d{font-family:'JetBrains Mono';font-weight:800;font-size:22px;color:var(--ink);letter-spacing:.22em;text-transform:uppercase;opacity:.8}
+.sked ul{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:24px;flex:1}
+.sked li{display:flex;flex-direction:column;justify-content:center;border-left:5px solid var(--peach);padding-left:18px}
+.sked li .d{font-family:'JetBrains Mono';font-weight:800;font-size:20px;color:var(--pink);letter-spacing:.26em;text-transform:uppercase}
+.sked li .e{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:42px;color:var(--ink);line-height:1;margin-top:4px}
+.sked li .e em{color:var(--peach)}
+.sked li .w{font-family:'JetBrains Mono';font-weight:600;font-size:18px;color:var(--ink);margin-top:4px;text-transform:uppercase;letter-spacing:.18em;opacity:.7}</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{"schema":"edu-cms-hs-easter-v1"}/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+<div class="shapes"><div class="s s4"></div><div class="s s1"></div><div class="s s2"></div><div class="s s3"></div></div>
+<div class="mast" data-widget="school">
+<div class="name" data-field="school.name">Banner High</div>
+<div class="sub" data-field="school.sub">spring issue · vol XV</div>
+</div>
+<div class="head" data-widget="headline">
+<div class="kicker" data-field="headline.kicker">★ spring break · march 28 → april 5 ★</div>
+<h1><span data-field="headline.t1">Out </span><em data-field="headline.t2">of </em><span class="alt" data-field="headline.t3">office.</span></h1>
+<div class="sub" data-field="headline.sub">Nine days off — return Monday April 6. AP review packets posted to Schoology Friday. SAT prep continues virtually. Drive safe.</div>
+</div>
+<div class="grid">
+<div class="cd feat" data-widget="break"><div class="k" data-field="break.k">★ closure</div>
+<h2><span data-field="break.t1">9 </span><em data-field="break.t2">days off.</em></h2>
+<p data-field="break.p">School closed Mar 28–Apr 5. Office staffed Mon–Wed for transcript pickup. Custodial/grounds on full week — keep the lot south clear.</p>
+<div class="meta"><span data-field="break.m1">Sat 3/28 — Sun 4/5</span><span data-field="break.m2">return Mon 4/6</span></div></div>
+<div class="cd" data-widget="ap"><div class="k" data-field="ap.k">★ ap review</div>
+<h2><span data-field="ap.t1">38 </span><em data-field="ap.t2">days.</em></h2>
+<p data-field="ap.p">AP exams begin May 3. Review packets drop Friday on Schoology. Optional study sessions Tuesday + Thursday over break — virtual.</p>
+<div class="meta"><span data-field="ap.m1">virtual · 10am tue/thu</span></div></div>
+<div class="cd" data-widget="prom"><div class="k" data-field="prom.k">★ prom</div>
+<h2 data-field="prom.t">May 16.</h2>
+<p data-field="prom.p">Tickets go on sale April 8 for $85. Theme reveal at the post-break assembly. Senior gallery wall in the commons opens that week.</p>
+<div class="meta"><span data-field="prom.m1">tickets · Apr 8</span></div></div>
+</div>
+<div class="sked" data-widget="sked">
+<div class="hdr"><h3><span data-field="sked.h1">★ pre-break </span><em data-field="sked.h2">week</em></h3><div class="d" data-field="sked.day">Mon 3/23 — Fri 3/27</div></div>
+<ul>
+<li data-widget="sked.0"><div class="d" data-field="sked.0.d">TUE</div><div class="e"><span data-field="sked.0.e1">Senior </span><em data-field="sked.0.e2">photos</em></div><div class="w" data-field="sked.0.w">commons · all day</div></li>
+<li data-widget="sked.1"><div class="d" data-field="sked.1.d">WED</div><div class="e"><span data-field="sked.1.e1">Spring </span><em data-field="sked.1.e2">play</em></div><div class="w" data-field="sked.1.w">aud · 7pm · $5</div></li>
+<li data-widget="sked.2"><div class="d" data-field="sked.2.d">THU</div><div class="e"><span data-field="sked.2.e1">Spirit </span><em data-field="sked.2.e2">rally</em></div><div class="w" data-field="sked.2.w">gym · 1pm</div></li>
+<li data-widget="sked.3"><div class="d" data-field="sked.3.d">FRI</div><div class="e"><span data-field="sked.3.e1">Out </span><em data-field="sked.3.e2">at 3:15</em></div><div class="w" data-field="sked.3.w">break begins · drive safe</div></li>
+</ul>
+</div>
+</div></div></div>
+<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+<script id="holiday-autoscale">(function(){function s(){var w=window.innerWidth,h=window.innerHeight,sc=Math.min(w/3840,h/2160);document.documentElement.style.setProperty("--stage-scale",sc);}s();window.addEventListener("resize",s);})();</script></body></html>

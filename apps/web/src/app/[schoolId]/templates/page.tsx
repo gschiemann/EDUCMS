@@ -35,17 +35,31 @@ import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 // Constants & Helpers
 // ─────────────────────────────────────────────────────
 
-// Four main categories. Everything else was clutter at launch — we can
-// reintroduce niche ones (Classroom, Office, Library) later when the
-// library is deeper. These four match the physical spots a school
-// actually installs a sign: main entrance, hallway wayfinding, lunch
-// line, and the gym/athletic area.
+// Four main categories + Holidays. Everything else was clutter at
+// launch — we can reintroduce niche ones (Classroom, Office, Library)
+// later when the library is deeper. These match the physical spots a
+// school actually installs a sign: main entrance, hallway wayfinding,
+// lunch line, gym/athletic area, plus the seasonal holiday lobby pack.
 const CATEGORY_TABS = [
   { key: '',          label: 'All' },
   { key: 'LOBBY',     label: 'Welcome' },
   { key: 'HALLWAY',   label: 'Hallway' },
   { key: 'CAFETERIA', label: 'Cafeteria' },
   { key: 'ATHLETICS', label: 'Athletics' },
+  { key: 'HOLIDAYS',  label: 'Holidays' },
+];
+
+// Holiday sub-filter — shown only when the Holidays category tab is
+// active. Each entry maps to the `variant` value baked into the
+// preset's `defaultConfig` (see system-presets.ts holiday block).
+const HOLIDAY_SUB_FILTERS: Array<{ key: string; label: string; emoji: string }> = [
+  { key: '',             label: 'All holidays',     emoji: '✨' },
+  { key: 'halloween',    label: 'Halloween',        emoji: '🎃' },
+  { key: 'thanksgiving', label: 'Thanksgiving',     emoji: '🦃' },
+  { key: 'christmas',    label: 'Christmas',        emoji: '🎄' },
+  { key: 'valentines',   label: "Valentine's Day",  emoji: '💝' },
+  { key: 'stpatricks',   label: "St. Patrick's",    emoji: '☘️' },
+  { key: 'easter',       label: 'Easter',           emoji: '🐰' },
 ];
 
 // School-level filter chips. UNIVERSAL templates always show (no level
@@ -236,6 +250,10 @@ interface Template {
 export default function TemplatesPage() {
   const [activeCategory, setActiveCategory] = useState('');
   const [activeLevel, setActiveLevel] = useState('');
+  // Sub-filter active only when category=HOLIDAYS. Empty key = all
+  // holidays; otherwise a specific variant ('christmas', 'easter', etc.)
+  // matched against the preset's defaultConfig.variant.
+  const [activeHoliday, setActiveHoliday] = useState('');
   const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -293,6 +311,15 @@ export default function TemplatesPage() {
       // UNIVERSAL (or missing) is always shown — it's grade-agnostic.
       const lvl = (t.schoolLevel || 'UNIVERSAL').toUpperCase();
       if (lvl !== 'UNIVERSAL' && lvl !== activeLevel) return false;
+    }
+    // Holiday sub-filter — only meaningful when category=HOLIDAYS.
+    // Reads the preset's first zone's defaultConfig.variant, which
+    // is where the preset registry stores the holiday key (christmas,
+    // easter, halloween, etc.). If no variant match, hide.
+    if (activeCategory === 'HOLIDAYS' && activeHoliday) {
+      const firstZone = (t as any).zones?.[0];
+      const variant = firstZone?.defaultConfig?.variant;
+      if (variant !== activeHoliday) return false;
     }
     if (!q) return true;
     return (
@@ -498,9 +525,39 @@ export default function TemplatesPage() {
         {activeLevel && (
           <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit flex-wrap">
             {CATEGORY_TABS.map(tab => (
-              <button key={tab.key} onClick={() => setActiveCategory(tab.key)}
+              <button key={tab.key} onClick={() => {
+                setActiveCategory(tab.key);
+                // Reset the holiday sub-filter when switching away
+                // from HOLIDAYS so it doesn't silently filter the
+                // next category to nothing.
+                if (tab.key !== 'HOLIDAYS') setActiveHoliday('');
+              }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${activeCategory === tab.key ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
                 {tab.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {/* Holiday-specific sub-filter — only when category=HOLIDAYS.
+            Pill-shaped chips with emoji + holiday name. Operators pick
+            the holiday that matches the season; "All holidays" shows
+            every variant for the current grade level. */}
+        {activeLevel && activeCategory === 'HOLIDAYS' && (
+          <div className="flex gap-1.5 flex-wrap">
+            {HOLIDAY_SUB_FILTERS.map(h => (
+              <button
+                key={h.key}
+                type="button"
+                onClick={() => setActiveHoliday(h.key)}
+                aria-pressed={activeHoliday === h.key}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all inline-flex items-center gap-1.5 ${
+                  activeHoliday === h.key
+                    ? 'bg-rose-500 text-white border-rose-500 shadow-sm'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-rose-300 hover:text-rose-600'
+                }`}
+              >
+                <span aria-hidden>{h.emoji}</span>
+                {h.label}
               </button>
             ))}
           </div>

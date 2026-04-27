@@ -1,0 +1,126 @@
+<!doctype html>
+<!-- MS CHRISTMAS — modern editorial winter, evergreen + crimson + cream. -->
+<html><head><meta charset="utf-8"/><title>Winter Holidays · MS Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@500;600;700;800;900&family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&display=swap" rel="stylesheet">
+<style>
+:root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;
+  --green:#1a4a32;--green2:#2e6a44;--red:#b8262e;--red2:#e54848;--cream:#f5e8cc;--paper:#fbf3e0;--gold:#c4912e;--ink:#0e1c14;--snow:#e8f0e8}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;color:var(--ink);font-family:'Figtree',sans-serif}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--green);box-shadow:0 80px 200px rgba(0,0,0,.5);color:var(--paper)}
+.stage::before{content:'';position:absolute;inset:0;background-image:radial-gradient(rgba(245,232,204,.04) 1px,transparent 2px);background-size:18px 18px;pointer-events:none}
+
+/* SNOW */
+.snow span{position:absolute;background:var(--paper);border-radius:50%;animation:fall 9s linear infinite;opacity:.85}
+@keyframes fall{from{transform:translateY(-100px)}to{transform:translateY(2400px)}}
+
+.top{position:absolute;top:60px;left:80px;right:80px;height:100px;display:flex;justify-content:space-between;align-items:flex-end;border-bottom:6px solid var(--gold);padding-bottom:24px;z-index:5}
+.brand{display:flex;align-items:flex-end;gap:24px}
+.brand .name{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:96px;color:var(--paper);line-height:.85;letter-spacing:-.03em}
+.brand .sub{font-family:'Figtree';font-weight:700;font-size:30px;color:var(--gold);text-transform:uppercase;letter-spacing:.24em;padding-bottom:18px;border-left:4px solid var(--red2);padding-left:24px}
+.chips{display:flex;gap:30px;align-items:flex-end}
+.chip{padding:8px 0;text-align:right}
+.chip .k{font-family:'Figtree';font-weight:800;font-size:20px;color:var(--gold);text-transform:uppercase;letter-spacing:.24em;line-height:1}
+.chip .v{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:64px;color:var(--paper);line-height:1;margin-top:4px}
+
+/* HEADLINE */
+.hd{position:absolute;top:280px;left:80px;right:80px;z-index:4}
+.hd .k{font-family:'Figtree';font-weight:800;font-size:34px;color:var(--gold);text-transform:uppercase;letter-spacing:.32em;margin-bottom:14px}
+.hd h1{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:380px;line-height:.82;color:var(--paper);margin:0;letter-spacing:-.04em;text-shadow:14px 14px 0 var(--red),28px 28px 0 var(--ink)}
+.hd h1 em{font-style:italic;color:var(--red2)}
+.hd .sub{font-family:'Fraunces',serif;font-weight:500;font-style:italic;font-size:60px;color:var(--cream);margin-top:30px;max-width:2400px;line-height:1.2}
+
+.grid{position:absolute;top:1180px;left:80px;right:80px;height:540px;display:grid;grid-template-columns:1.4fr 2fr 1.2fr;gap:48px;z-index:3}
+.cell{background:var(--paper);color:var(--ink);padding:32px 36px;position:relative;border:5px solid var(--ink);overflow:hidden;display:flex;flex-direction:column;box-shadow:14px 14px 0 var(--red)}
+.cell .k{font-family:'Figtree';font-weight:800;font-size:24px;text-transform:uppercase;letter-spacing:.28em;color:var(--red)}
+.cell h2{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:88px;line-height:.85;margin:8px 0 0;letter-spacing:-.03em}
+.cell h2 em{font-style:italic;color:var(--red)}
+.cell p{font-family:'Fraunces',serif;font-weight:500;font-style:italic;font-size:30px;margin:18px 0 0;line-height:1.25}
+.cell .meta{margin-top:auto;padding-top:18px;font-family:'Figtree';font-weight:800;font-size:24px;text-transform:uppercase;letter-spacing:.2em;color:var(--red);display:flex;gap:24px;flex-wrap:wrap}
+.cell.feat{background:var(--red);color:var(--paper);box-shadow:14px 14px 0 var(--gold)}
+.cell.feat .k{color:var(--gold)}.cell.feat h2 em{color:var(--gold)}.cell.feat .meta{color:var(--gold)}
+.cell.feat h2{font-size:120px}
+
+.events{position:absolute;top:1760px;left:80px;right:80px;height:300px;background:var(--ink);color:var(--paper);padding:24px 32px;border:5px solid var(--gold);z-index:3;display:flex;flex-direction:column;box-shadow:14px 14px 0 var(--red)}
+.events .hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px dashed var(--gold);padding-bottom:10px}
+.events .hdr h3{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:60px;color:var(--gold);margin:0;letter-spacing:-.02em}
+.events .hdr .day{font-family:'Figtree';font-weight:800;font-size:26px;color:var(--cream);text-transform:uppercase;letter-spacing:.2em}
+.events ul{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:24px;flex:1}
+.events li{display:flex;flex-direction:column;justify-content:center;border-left:4px solid var(--red2);padding-left:18px}
+.events li .d{font-family:'Figtree';font-weight:800;font-size:22px;color:var(--gold);text-transform:uppercase;letter-spacing:.24em}
+.events li .e{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:38px;color:var(--paper);line-height:1;margin-top:4px}
+.events li .e em{font-style:italic;color:var(--red2)}
+.events li .w{font-family:'Figtree';font-weight:600;font-size:18px;color:var(--cream);margin-top:4px;text-transform:uppercase;letter-spacing:.16em}
+
+.ticker{position:absolute;bottom:0;left:0;right:0;height:80px;background:var(--red);color:var(--paper);display:flex;align-items:center;overflow:hidden;z-index:5;border-top:5px solid var(--gold)}
+.ticker .tag{background:var(--ink);color:var(--gold);font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:38px;padding:0 36px;height:100%;display:flex;align-items:center;flex-shrink:0}
+.ticker .msg{font-family:'Figtree';font-weight:800;font-size:28px;padding-left:36px;white-space:nowrap;letter-spacing:.16em;text-transform:uppercase;animation:sc 80s linear infinite}
+@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{ "schema":"edu-cms-ms-christmas-v1" }/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+<div class="snow">
+<span style="left:8%;top:0;width:10px;height:10px"></span>
+<span style="left:24%;top:-200px;width:8px;height:8px;animation-delay:1s"></span>
+<span style="left:38%;top:-400px;width:14px;height:14px;animation-delay:2s"></span>
+<span style="left:52%;top:-100px;width:10px;height:10px;animation-delay:.5s"></span>
+<span style="left:64%;top:-300px;width:12px;height:12px;animation-delay:1.5s"></span>
+<span style="left:76%;top:-500px;width:8px;height:8px;animation-delay:3s"></span>
+<span style="left:88%;top:-200px;width:10px;height:10px;animation-delay:2.5s"></span>
+<span style="left:14%;top:-700px;width:12px;height:12px;animation-delay:4s"></span>
+<span style="left:60%;top:-800px;width:14px;height:14px;animation-delay:5s"></span>
+<span style="left:90%;top:-900px;width:10px;height:10px;animation-delay:6s"></span>
+</div>
+
+<div class="top">
+<div class="brand" data-widget="school"><div class="name" data-field="school.name">Banner Middle</div><div class="sub" data-field="school.sub">winter issue · vol 06</div></div>
+<div class="chips">
+<div class="chip" data-widget="clock"><div class="k" data-field="clock.label">period</div><div class="v" data-field="clock.time">9:42</div></div>
+<div class="chip" data-widget="countdown"><div class="k" data-field="countdown.label">break in</div><div class="v" data-field="countdown.value">4 days</div></div>
+</div>
+</div>
+
+<div class="hd" data-widget="headline">
+<div class="k" data-field="headline.kicker">★ winter concert wed 7pm · spirit week mon–fri ★</div>
+<h1><span data-field="headline.t1">Happy </span><em data-field="headline.t2">Holidays.</em></h1>
+<div class="sub" data-field="headline.sub">Toy drive in the front office · concert Wednesday at 7 · pajama day Friday · break starts after school Friday Dec 19.</div>
+</div>
+
+<div class="grid">
+<div class="cell" data-widget="drive">
+<div class="k" data-field="drive.k">★ toy drive</div>
+<h2><span data-field="drive.t1">Drop a </span><em data-field="drive.t2">gift</em></h2>
+<p data-field="drive.p">New, unwrapped toys benefit Banner Family Services. Bins are at the front office and outside the cafeteria. Donations through Friday.</p>
+<div class="meta"><span data-field="drive.m1">deadline Fri Dec 19</span></div>
+</div>
+<div class="cell feat" data-widget="concert">
+<div class="k" data-field="concert.k">★ winter concert</div>
+<h2><span data-field="concert.t1">Bands </span><em data-field="concert.t2">&amp; choir.</em></h2>
+<p data-field="concert.p">Sixth-grade band opens at 7:00, choir at 7:30, jazz band closes the night with three pieces. Doors at 6:30 — families and friends welcome.</p>
+<div class="meta"><span data-field="concert.m1">Wed Dec 17 · 7pm</span><span data-field="concert.m2">main gym · free</span></div>
+</div>
+<div class="cell" data-widget="spirit">
+<div class="k" data-field="spirit.k">★ spirit week</div>
+<h2 data-field="spirit.t">Dress code.</h2>
+<p data-field="spirit.p">Mon ugly sweater · Tue red &amp; green · Wed concert clothes · Thu festive socks · Fri PJ day. Prize to wildest each day.</p>
+<div class="meta"><span data-field="spirit.m1">vote in homeroom</span></div>
+</div>
+</div>
+
+<div class="events" data-widget="events">
+<div class="hdr"><h3 data-field="events.h">★ this week</h3><div class="day" data-field="events.day">Mon Dec 15 — Fri Dec 19</div></div>
+<ul>
+<li data-widget="events.0"><div class="d" data-field="events.0.d">Mon</div><div class="e"><span data-field="events.0.e1">Ugly </span><em data-field="events.0.e2">sweater</em></div><div class="w" data-field="events.0.w">all day · prizes at lunch</div></li>
+<li data-widget="events.1"><div class="d" data-field="events.1.d">Wed</div><div class="e"><span data-field="events.1.e1">Winter </span><em data-field="events.1.e2">concert</em></div><div class="w" data-field="events.1.w">gym · 7pm · families welcome</div></li>
+<li data-widget="events.2"><div class="d" data-field="events.2.d">Thu</div><div class="e"><span data-field="events.2.e1">Class </span><em data-field="events.2.e2">parties</em></div><div class="w" data-field="events.2.w">last period · sign up</div></li>
+<li data-widget="events.3"><div class="d" data-field="events.3.d">Fri</div><div class="e"><span data-field="events.3.e1">PJ </span><em data-field="events.3.e2">day</em></div><div class="w" data-field="events.3.w">cocoa · early dismiss 1pm</div></li>
+</ul>
+</div>
+
+<div class="ticker" data-widget="ticker"><div class="tag" data-field="ticker.tag">FA-LA-LA-LA-LA</div><div class="msg"><span data-field="ticker.message">★ Winter concert Wednesday 7pm in the gym — doors at 6:30 ★ Toy drive bins at the front office and cafeteria — new unwrapped only, ends Friday ★ Spirit week — ugly sweater Mon, PJ day Fri, prizes daily ★ Break starts after school Friday Dec 19 — back Mon Jan 5 ★ </span><span>★ Winter concert Wednesday 7pm in the gym — doors at 6:30 ★ Toy drive bins at the front office and cafeteria — new unwrapped only, ends Friday ★ Spirit week — ugly sweater Mon, PJ day Fri, prizes daily ★ Break starts after school Friday Dec 19 — back Mon Jan 5 ★ </span></div></div>
+
+</div></div></div>
+<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+<script id="holiday-autoscale">(function(){function s(){var w=window.innerWidth,h=window.innerHeight,sc=Math.min(w/3840,h/2160);document.documentElement.style.setProperty("--stage-scale",sc);}s();window.addEventListener("resize",s);})();</script></body></html>

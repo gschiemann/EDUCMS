@@ -1,0 +1,86 @@
+<!doctype html>
+<!-- MS ST PATRICKS — bold riso green/gold poster. -->
+<html><head><meta charset="utf-8"/><title>St Patrick's · MS Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@500;700;800;900&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" rel="stylesheet">
+<style>:root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;--green:#1e6b3a;--green2:#2e8a4a;--gold:#e8c040;--cream:#fff5d8;--ink:#0a2010;--orange:#ff8a3a}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;color:var(--ink);font-family:'Figtree',sans-serif}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--green);box-shadow:0 80px 200px rgba(0,0,0,.5);color:var(--cream)}
+.stage::before{content:'';position:absolute;inset:0;background-image:radial-gradient(rgba(232,192,64,.12) 2px,transparent 3px);background-size:24px 24px;mix-blend-mode:screen;pointer-events:none}
+.bigclover{position:absolute;top:160px;right:80px;width:1100px;height:1100px;z-index:1;filter:drop-shadow(20px 20px 0 var(--ink));opacity:.85}
+.bigclover .l{position:absolute;width:480px;height:480px;background:var(--gold);border-radius:50% 0 50% 50%}
+.bigclover .l1{top:0;left:300px;transform:rotate(-45deg)}.bigclover .l2{top:300px;left:0;transform:rotate(-135deg)}.bigclover .l3{top:300px;right:0;transform:rotate(45deg)}.bigclover .l4{top:600px;left:300px;transform:rotate(135deg)}
+.top{position:absolute;top:60px;left:80px;right:80px;height:100px;display:flex;justify-content:space-between;align-items:flex-end;border-bottom:6px solid var(--gold);padding-bottom:24px;z-index:5}
+.brand{display:flex;align-items:flex-end;gap:24px}.brand .name{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:96px;color:var(--cream);line-height:.85;letter-spacing:-.03em}
+.brand .sub{font-family:'Figtree';font-weight:700;font-size:30px;color:var(--gold);text-transform:uppercase;letter-spacing:.24em;padding-bottom:18px;border-left:4px solid var(--gold);padding-left:24px}
+.chips{display:flex;gap:30px;align-items:flex-end}.chip{padding:8px 0;text-align:right}
+.chip .k{font-family:'Figtree';font-weight:800;font-size:20px;color:var(--gold);text-transform:uppercase;letter-spacing:.24em;line-height:1}
+.chip .v{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:64px;color:var(--cream);line-height:1;margin-top:4px}
+.hd{position:absolute;top:280px;left:80px;right:80px;z-index:4}
+.hd .k{font-family:'Figtree';font-weight:800;font-size:34px;color:var(--gold);text-transform:uppercase;letter-spacing:.32em;margin-bottom:14px}
+.hd h1{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:380px;line-height:.82;color:var(--cream);margin:0;letter-spacing:-.04em;text-shadow:14px 14px 0 var(--ink)}
+.hd h1 em{font-style:italic;color:var(--gold)}
+.hd .sub{font-family:'Fraunces',serif;font-weight:700;font-style:italic;font-size:60px;color:var(--cream);margin-top:30px;max-width:2200px;line-height:1.2}
+.grid{position:absolute;top:1180px;left:80px;right:80px;height:540px;display:grid;grid-template-columns:1.4fr 2fr 1.2fr;gap:48px;z-index:3}
+.cell{background:var(--cream);color:var(--ink);padding:32px 36px;border:5px solid var(--ink);overflow:hidden;display:flex;flex-direction:column;box-shadow:14px 14px 0 var(--gold)}
+.cell .k{font-family:'Figtree';font-weight:800;font-size:24px;text-transform:uppercase;letter-spacing:.28em;color:var(--green2)}
+.cell h2{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:88px;line-height:.85;margin:8px 0 0;letter-spacing:-.03em}
+.cell h2 em{font-style:italic;color:var(--green2)}
+.cell p{font-family:'Fraunces',serif;font-weight:500;font-style:italic;font-size:30px;margin:18px 0 0;line-height:1.25}
+.cell .meta{margin-top:auto;padding-top:18px;font-family:'Figtree';font-weight:800;font-size:24px;text-transform:uppercase;letter-spacing:.2em;color:var(--green2);display:flex;gap:24px;flex-wrap:wrap}
+.cell.feat{background:var(--gold);color:var(--ink);box-shadow:14px 14px 0 var(--ink)}
+.cell.feat h2{font-size:120px}.cell.feat h2 em{color:var(--green)}
+.events{position:absolute;top:1760px;left:80px;right:80px;height:300px;background:var(--ink);color:var(--cream);padding:24px 32px;border:5px solid var(--gold);z-index:3;display:flex;flex-direction:column;box-shadow:14px 14px 0 var(--gold)}
+.events .hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px dashed var(--gold);padding-bottom:10px}
+.events .hdr h3{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:60px;color:var(--gold);margin:0}
+.events .hdr .day{font-family:'Figtree';font-weight:800;font-size:26px;color:var(--cream);text-transform:uppercase;letter-spacing:.2em}
+.events ul{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:24px;flex:1}
+.events li{display:flex;flex-direction:column;justify-content:center;border-left:4px solid var(--gold);padding-left:18px}
+.events li .d{font-family:'Figtree';font-weight:800;font-size:22px;color:var(--gold);text-transform:uppercase;letter-spacing:.24em}
+.events li .e{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:38px;color:var(--cream);line-height:1;margin-top:4px}
+.events li .e em{font-style:italic;color:var(--gold)}
+.events li .w{font-family:'Figtree';font-weight:600;font-size:18px;color:var(--cream);margin-top:4px;text-transform:uppercase;letter-spacing:.16em}
+.ticker{position:absolute;bottom:0;left:0;right:0;height:80px;background:var(--gold);color:var(--ink);display:flex;align-items:center;overflow:hidden;z-index:5;border-top:5px solid var(--ink)}
+.ticker .tag{background:var(--ink);color:var(--gold);font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:38px;padding:0 36px;height:100%;display:flex;align-items:center;flex-shrink:0}
+.ticker .msg{font-family:'Figtree';font-weight:800;font-size:28px;padding-left:36px;white-space:nowrap;letter-spacing:.16em;text-transform:uppercase;animation:sc 80s linear infinite}
+@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{ "schema":"edu-cms-ms-stpatricks-v1" }/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+<div class="bigclover"><div class="l l1"></div><div class="l l2"></div><div class="l l3"></div><div class="l l4"></div></div>
+<div class="top">
+<div class="brand" data-widget="school"><div class="name" data-field="school.name">Banner Middle</div><div class="sub" data-field="school.sub">lucky issue · vol 11</div></div>
+<div class="chips">
+<div class="chip" data-widget="clock"><div class="k" data-field="clock.label">period</div><div class="v" data-field="clock.time">10:14</div></div>
+<div class="chip" data-widget="countdown"><div class="k" data-field="countdown.label">parade in</div><div class="v" data-field="countdown.value">01</div></div>
+</div>
+</div>
+<div class="hd" data-widget="headline"><div class="k" data-field="headline.kicker">★ wear green tuesday or get pinched ★</div>
+<h1><span data-field="headline.t1">Lucky </span><em data-field="headline.t2">us.</em></h1>
+<div class="sub" data-field="headline.sub">Hallway parade Tuesday 2pm · ASB pot-of-gold raffle all week · spirit dress code: emerald or gold.</div></div>
+<div class="grid">
+<div class="cell" data-widget="raffle"><div class="k" data-field="raffle.k">★ pot-of-gold raffle</div>
+<h2><span data-field="raffle.t1">Win a </span><em data-field="raffle.t2">prize</em></h2>
+<p data-field="raffle.p">Buy tickets at the ASB table — proceeds fund spring dance. Top prize: $50 gift card. Drawing Friday at lunch in the cafeteria.</p>
+<div class="meta"><span data-field="raffle.m1">$1 each · $5 for 6</span></div></div>
+<div class="cell feat" data-widget="parade"><div class="k" data-field="parade.k">★ hallway parade</div>
+<h2><span data-field="parade.t1">March </span><em data-field="parade.t2">17.</em></h2>
+<p data-field="parade.p">Sixth grade leads · seventh in middle · eighth in back. Costumes welcome — no fake beards in classrooms please. ASB hands out shamrock pins at the start.</p>
+<div class="meta"><span data-field="parade.m1">Tue Mar 17 · 2pm</span><span data-field="parade.m2">main hall</span></div></div>
+<div class="cell" data-widget="dresscode"><div class="k" data-field="dresscode.k">★ dress code</div>
+<h2 data-field="dresscode.t">Wear green.</h2>
+<p data-field="dresscode.p">Emerald, lime, hunter, neon — all greens count. No green? Grab a shamrock sticker at the front office before first period.</p>
+<div class="meta"><span data-field="dresscode.m1">free stickers · office</span></div></div>
+</div>
+<div class="events" data-widget="events">
+<div class="hdr"><h3 data-field="events.h">★ lucky week</h3><div class="day" data-field="events.day">Mon Mar 16 — Fri Mar 20</div></div>
+<ul>
+<li data-widget="events.0"><div class="d" data-field="events.0.d">Mon</div><div class="e"><span data-field="events.0.e1">Raffle </span><em data-field="events.0.e2">opens</em></div><div class="w" data-field="events.0.w">ASB table · all lunches</div></li>
+<li data-widget="events.1"><div class="d" data-field="events.1.d">Tue</div><div class="e"><span data-field="events.1.e1">Wear </span><em data-field="events.1.e2">green</em></div><div class="w" data-field="events.1.w">spirit day · pinches happen</div></li>
+<li data-widget="events.2"><div class="d" data-field="events.2.d">Tue</div><div class="e"><span data-field="events.2.e1">The </span><em data-field="events.2.e2">parade</em></div><div class="w" data-field="events.2.w">main hall · 2pm · 6th leads</div></li>
+<li data-widget="events.3"><div class="d" data-field="events.3.d">Fri</div><div class="e"><span data-field="events.3.e1">Raffle </span><em data-field="events.3.e2">drawing</em></div><div class="w" data-field="events.3.w">caf · lunch · top prize $50</div></li>
+</ul>
+</div>
+<div class="ticker" data-widget="ticker"><div class="tag" data-field="ticker.tag">TOP O' THE MORNIN'</div><div class="msg"><span data-field="ticker.message">★ Wear green Tuesday — pinches if you forget, pins free at the office ★ Hallway parade Tuesday 2pm — 6th grade leads ★ Pot-of-gold raffle drawing Friday at lunch ★ Green eggs and ham on the menu Tuesday ★ </span><span>★ Wear green Tuesday — pinches if you forget, pins free at the office ★ Hallway parade Tuesday 2pm — 6th grade leads ★ Pot-of-gold raffle drawing Friday at lunch ★ Green eggs and ham on the menu Tuesday ★ </span></div></div>
+</div></div></div>
+<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+<script id="holiday-autoscale">(function(){function s(){var w=window.innerWidth,h=window.innerHeight,sc=Math.min(w/3840,h/2160);document.documentElement.style.setProperty("--stage-scale",sc);}s();window.addEventListener("resize",s);})();</script></body></html>

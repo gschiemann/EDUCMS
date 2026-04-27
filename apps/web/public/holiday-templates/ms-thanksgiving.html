@@ -1,0 +1,111 @@
+<!doctype html>
+<!-- MS THANKSGIVING — editorial harvest, big serif, photo-mat aesthetic. -->
+<html><head><meta charset="utf-8"/><title>Thanksgiving · MS Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@500;600;700;800;900&family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&display=swap" rel="stylesheet">
+<style>
+:root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;
+  --cream:#f5e8cc;--cream2:#ead09e;--rust:#a8451c;--rust2:#d6602a;--gold:#c4912e;--ink:#2a1a0e;--green:#4a6a3a;--plum:#6a2a3a;--paper:#fbf3e0}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;color:var(--ink);font-family:'Figtree',sans-serif}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--paper);box-shadow:0 80px 200px rgba(0,0,0,.35)}
+.stage::before{content:'';position:absolute;inset:0;background-image:radial-gradient(rgba(168,69,28,.05) 1px,transparent 2px);background-size:14px 14px;pointer-events:none}
+
+.top{position:absolute;top:60px;left:80px;right:80px;height:100px;display:flex;justify-content:space-between;align-items:flex-end;border-bottom:6px solid var(--ink);padding-bottom:24px;z-index:5}
+.brand{display:flex;align-items:flex-end;gap:24px}
+.brand .name{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:96px;color:var(--ink);line-height:.85;letter-spacing:-.03em}
+.brand .sub{font-family:'Figtree';font-weight:700;font-size:30px;color:var(--rust);text-transform:uppercase;letter-spacing:.24em;padding-bottom:18px;border-left:4px solid var(--rust);padding-left:24px;margin-left:8px}
+.chips{display:flex;gap:18px;align-items:flex-end}
+.chip{padding:8px 24px;text-align:right}
+.chip .k{font-family:'Figtree';font-weight:800;font-size:20px;color:var(--rust);text-transform:uppercase;letter-spacing:.24em;line-height:1}
+.chip .v{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:64px;color:var(--ink);line-height:1;margin-top:4px}
+
+/* HEADLINE editorial */
+.hd{position:absolute;top:280px;left:80px;right:80px;z-index:4}
+.hd .k{font-family:'Figtree';font-weight:800;font-size:34px;color:var(--rust);text-transform:uppercase;letter-spacing:.32em;margin-bottom:14px}
+.hd h1{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:380px;line-height:.82;color:var(--ink);margin:0;letter-spacing:-.04em}
+.hd h1 em{font-style:italic;color:var(--rust)}
+.hd .sub{font-family:'Fraunces',serif;font-weight:500;font-style:italic;font-size:60px;color:var(--ink);margin-top:30px;max-width:2400px;line-height:1.2}
+
+/* GRID */
+.grid{position:absolute;top:1180px;left:80px;right:80px;height:540px;display:grid;grid-template-columns:1.4fr 2fr 1.2fr;gap:48px;z-index:3}
+.cell{background:#fff;color:var(--ink);padding:32px 36px;position:relative;border:5px solid var(--ink);overflow:hidden;display:flex;flex-direction:column;box-shadow:14px 14px 0 var(--rust)}
+.cell .k{font-family:'Figtree';font-weight:800;font-size:24px;text-transform:uppercase;letter-spacing:.28em;color:var(--rust)}
+.cell h2{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:88px;line-height:.85;margin:8px 0 0;letter-spacing:-.03em}
+.cell h2 em{font-style:italic;color:var(--rust)}
+.cell p{font-family:'Fraunces',serif;font-weight:500;font-style:italic;font-size:30px;margin:18px 0 0;line-height:1.25}
+.cell .meta{margin-top:auto;padding-top:18px;font-family:'Figtree';font-weight:800;font-size:24px;text-transform:uppercase;letter-spacing:.2em;color:var(--rust);display:flex;gap:24px;flex-wrap:wrap}
+.cell.feat{background:var(--rust);color:var(--paper);box-shadow:14px 14px 0 var(--ink)}
+.cell.feat .k{color:var(--gold)}
+.cell.feat h2{font-size:120px}.cell.feat h2 em{color:var(--gold)}
+.cell.feat .meta{color:var(--gold)}
+
+.events{position:absolute;top:1760px;left:80px;right:80px;height:300px;background:var(--ink);color:var(--paper);padding:24px 32px;border:5px solid var(--rust);z-index:3;display:flex;flex-direction:column;box-shadow:14px 14px 0 var(--rust)}
+.events .hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px dashed var(--gold);padding-bottom:10px}
+.events .hdr h3{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:60px;color:var(--gold);margin:0;letter-spacing:-.02em}
+.events .hdr .day{font-family:'Figtree';font-weight:800;font-size:26px;color:var(--cream);text-transform:uppercase;letter-spacing:.2em}
+.events ul{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:24px;flex:1}
+.events li{display:flex;flex-direction:column;justify-content:center;border-left:4px solid var(--gold);padding-left:18px}
+.events li .d{font-family:'Figtree';font-weight:800;font-size:22px;color:var(--gold);text-transform:uppercase;letter-spacing:.24em}
+.events li .e{font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:38px;color:var(--paper);line-height:1;margin-top:4px}
+.events li .e em{font-style:italic;color:var(--gold)}
+.events li .w{font-family:'Figtree';font-weight:600;font-size:18px;color:var(--cream);margin-top:4px;text-transform:uppercase;letter-spacing:.16em}
+
+.ticker{position:absolute;bottom:0;left:0;right:0;height:80px;background:var(--rust);color:var(--paper);display:flex;align-items:center;overflow:hidden;z-index:5;border-top:5px solid var(--ink)}
+.ticker .tag{background:var(--ink);color:var(--gold);font-family:'Fraunces',serif;font-weight:900;font-style:italic;font-size:38px;padding:0 36px;height:100%;display:flex;align-items:center;flex-shrink:0}
+.ticker .msg{font-family:'Figtree';font-weight:800;font-size:28px;padding-left:36px;white-space:nowrap;letter-spacing:.16em;text-transform:uppercase;animation:sc 80s linear infinite}
+@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{ "schema":"edu-cms-ms-thanksgiving-v1" }/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+<div class="top">
+<div class="brand" data-widget="school"><div class="name" data-field="school.name">Banner Middle</div><div class="sub" data-field="school.sub">harvest issue · vol 04</div></div>
+<div class="chips">
+<div class="chip" data-widget="clock"><div class="k" data-field="clock.label">period</div><div class="v" data-field="clock.time">9:18</div></div>
+<div class="chip" data-widget="countdown"><div class="k" data-field="countdown.label">break in</div><div class="v" data-field="countdown.value">2 days</div></div>
+</div>
+</div>
+
+<div class="hd" data-widget="headline">
+<div class="k" data-field="headline.kicker">★ Wednesday early dismiss · Thurs–Fri no school ★</div>
+<h1><span data-field="headline.t1">Give </span><em data-field="headline.t2">thanks.</em></h1>
+<div class="sub" data-field="headline.sub">Drop a note in the gratitude jar · feast Wednesday in the cafeteria · canned-goods drive runs all week.</div>
+</div>
+
+<div class="grid">
+<div class="cell" data-widget="drive">
+<div class="k" data-field="drive.k">★ canned goods drive</div>
+<h2><span data-field="drive.t1">Pack the </span><em data-field="drive.t2">pantry</em></h2>
+<p data-field="drive.p">Each homeroom collects through Wednesday — winning class earns a pizza lunch. Most-needed: peanut butter, pasta, oatmeal, canned tuna.</p>
+<div class="meta"><span data-field="drive.m1">drop: caf entry</span><span data-field="drive.m2">deadline Wed</span></div>
+</div>
+<div class="cell feat" data-widget="feast">
+<div class="k" data-field="feast.k">★ Wednesday's feast</div>
+<h2><span data-field="feast.t1">Turkey </span><em data-field="feast.t2">&amp; the works.</em></h2>
+<p data-field="feast.p">Roast turkey · cornbread stuffing · mashed potatoes &amp; gravy · cranberry · green beans · pumpkin pie. Vegetarian shepherd's pie at line C.</p>
+<div class="meta"><span data-field="feast.m1">Wed Nov 26 · 11:30</span><span data-field="feast.m2">$4.50 · adults $7</span></div>
+</div>
+<div class="cell" data-widget="jar">
+<div class="k" data-field="jar.k">★ gratitude jar</div>
+<h2 data-field="jar.t">3 lines.</h2>
+<p data-field="jar.p">Write three things you're thankful for and drop the slip in the jar at the front office. We'll read favorites at the assembly.</p>
+<div class="meta"><span data-field="jar.m1">slips at office</span></div>
+</div>
+</div>
+
+<div class="events" data-widget="events">
+<div class="hdr"><h3 data-field="events.h">★ harvest week</h3><div class="day" data-field="events.day">Mon Nov 24 — Fri Nov 28</div></div>
+<ul>
+<li data-widget="events.0"><div class="d" data-field="events.0.d">Mon</div><div class="e"><span data-field="events.0.e1">Drive </span><em data-field="events.0.e2">begins</em></div><div class="w" data-field="events.0.w">cans · pasta · peanut butter</div></li>
+<li data-widget="events.1"><div class="d" data-field="events.1.d">Tue</div><div class="e"><span data-field="events.1.e1">Pie </span><em data-field="events.1.e2">sale</em></div><div class="w" data-field="events.1.w">caf · 3pm pickup · $12</div></li>
+<li data-widget="events.2"><div class="d" data-field="events.2.d">Wed</div><div class="e"><span data-field="events.2.e1">Family </span><em data-field="events.2.e2">feast</em></div><div class="w" data-field="events.2.w">caf · 11:30 · early dismiss 1pm</div></li>
+<li data-widget="events.3"><div class="d" data-field="events.3.d">Thu/Fri</div><div class="e"><span data-field="events.3.e1">No </span><em data-field="events.3.e2">school</em></div><div class="w" data-field="events.3.w">break · back Mon Dec 1</div></li>
+</ul>
+</div>
+
+<div class="ticker" data-widget="ticker"><div class="tag" data-field="ticker.tag">HARVEST WEEK</div><div class="msg"><span data-field="ticker.message">★ Family feast Wednesday 11:30 in the cafeteria — adults $7 ★ Canned goods drive ends Wednesday — winning homeroom earns pizza lunch ★ Pie sale Tuesday 3pm pickup outside cafeteria ★ Early dismiss 1pm Wednesday — no school Thursday or Friday ★ </span><span>★ Family feast Wednesday 11:30 in the cafeteria — adults $7 ★ Canned goods drive ends Wednesday — winning homeroom earns pizza lunch ★ Pie sale Tuesday 3pm pickup outside cafeteria ★ Early dismiss 1pm Wednesday — no school Thursday or Friday ★ </span></div></div>
+
+</div></div></div>
+<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+<script id="holiday-autoscale">(function(){function s(){var w=window.innerWidth,h=window.innerHeight,sc=Math.min(w/3840,h/2160);document.documentElement.style.setProperty("--stage-scale",sc);}s();window.addEventListener("resize",s);})();</script></body></html>

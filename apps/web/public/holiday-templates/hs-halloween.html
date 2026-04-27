@@ -1,0 +1,97 @@
+<!doctype html>
+<!-- HS HALLOWEEN — late-night horror broadcast / drive-in marquee -->
+<html><head><meta charset="utf-8"/><title>Halloween · HS Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Fraunces:opsz,wght@9..144,700;9..144,900&family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>:root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;--bg:#0a0608;--bg2:#1a0e16;--orange:#ff6a18;--orange2:#ffaa3a;--bone:#ede0c4;--blood:#a01828;--purple:#5a2a78;--toxic:#7aff5a;--ink:#0a0608}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;font-family:'JetBrains Mono',monospace;color:var(--bone)}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--bg);box-shadow:0 80px 200px rgba(0,0,0,.8)}
+.stage::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.03) 0 1px,transparent 1px 4px);pointer-events:none;z-index:9}
+.stage::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 50%,transparent 30%,rgba(0,0,0,.7) 100%);pointer-events:none;z-index:8}
+/* CRT broadcast bar */
+.broadcast{position:absolute;top:0;left:0;right:0;height:90px;background:var(--blood);color:var(--bone);display:flex;align-items:center;padding:0 60px;z-index:6;border-bottom:6px double var(--bone);font-family:'JetBrains Mono'}
+.broadcast .live{background:var(--bone);color:var(--blood);padding:6px 18px;font-weight:800;font-size:24px;letter-spacing:.3em;margin-right:32px;animation:bl 1.4s steps(2,end) infinite}
+@keyframes bl{50%{opacity:.3}}
+.broadcast .ch{font-weight:800;font-size:24px;letter-spacing:.28em}
+.broadcast .ts{margin-left:auto;font-weight:800;font-size:26px;letter-spacing:.2em}
+/* MAIN MARQUEE */
+.head{position:absolute;top:160px;left:60px;right:60px;z-index:5}
+.head .kick{font-family:'JetBrains Mono';font-weight:800;font-size:30px;letter-spacing:.4em;color:var(--toxic);text-transform:uppercase;margin-bottom:14px;border-left:8px solid var(--orange);padding-left:24px}
+.head h1{font-family:'Bebas Neue',sans-serif;font-weight:400;font-size:540px;line-height:.82;letter-spacing:-.02em;color:var(--orange);margin:0;text-shadow:18px 18px 0 var(--blood),36px 36px 0 var(--purple)}
+.head h1 em{font-style:italic;color:var(--toxic);text-shadow:18px 18px 0 var(--blood)}
+.head .sub{font-family:'Fraunces',serif;font-weight:700;font-style:italic;font-size:62px;color:var(--bone);margin-top:36px;max-width:2400px;line-height:1.18}
+/* moon */
+.moon{position:absolute;top:200px;right:120px;width:520px;height:520px;border-radius:50%;background:radial-gradient(circle at 38% 35%,#fff8e0 0%,#f0d090 50%,#a87838 95%);box-shadow:0 0 120px rgba(255,180,80,.3);z-index:4}
+.moon::before{content:'';position:absolute;top:30%;left:25%;width:80px;height:60px;background:rgba(140,90,40,.4);border-radius:50%;box-shadow:120px 40px 0 -20px rgba(140,90,40,.4),60px 110px 0 -10px rgba(140,90,40,.35),200px 90px 0 -25px rgba(140,90,40,.4)}
+.bats{position:absolute;top:280px;right:180px;font-size:80px;z-index:5;color:var(--ink);font-family:'Bebas Neue';transform:rotate(-15deg);letter-spacing:-.05em}
+/* CARDS GRID */
+.grid{position:absolute;top:1240px;left:60px;right:60px;height:560px;display:grid;grid-template-columns:1.3fr 2fr 1.2fr;gap:36px;z-index:3}
+.card{background:var(--bg2);border:4px solid var(--orange);padding:32px 36px;display:flex;flex-direction:column;position:relative;overflow:hidden;box-shadow:0 0 60px rgba(255,106,24,.2),inset 0 0 0 1px rgba(255,170,58,.2)}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:repeating-linear-gradient(90deg,var(--orange) 0 24px,transparent 24px 36px)}
+.card .k{font-family:'JetBrains Mono';font-weight:800;font-size:22px;color:var(--toxic);text-transform:uppercase;letter-spacing:.32em}
+.card h2{font-family:'Bebas Neue',sans-serif;font-size:130px;line-height:.85;margin:8px 0 0;color:var(--orange);letter-spacing:-.01em}
+.card h2 em{font-style:italic;color:var(--bone)}
+.card.feat{background:var(--blood);border-color:var(--bone)}
+.card.feat::before{background:repeating-linear-gradient(90deg,var(--bone) 0 24px,transparent 24px 36px)}
+.card.feat h2{color:var(--bone);font-size:160px}.card.feat h2 em{color:var(--toxic)}
+.card.feat .k{color:var(--orange2)}
+.card p{font-family:'Fraunces',serif;font-weight:500;font-style:italic;font-size:30px;color:var(--bone);margin:18px 0 0;line-height:1.25;opacity:.9}
+.card .meta{margin-top:auto;padding-top:18px;font-family:'JetBrains Mono';font-weight:800;font-size:22px;text-transform:uppercase;letter-spacing:.22em;color:var(--orange2);display:flex;gap:20px;flex-wrap:wrap}
+.card.feat .meta{color:var(--bone)}
+/* showtimes strip */
+.shows{position:absolute;top:1840px;left:60px;right:60px;height:240px;background:var(--ink);border:4px solid var(--toxic);padding:20px 32px;z-index:3;display:flex;flex-direction:column}
+.shows .hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px solid var(--toxic);padding-bottom:8px}
+.shows .hdr h3{font-family:'Bebas Neue';font-weight:400;font-size:64px;color:var(--toxic);margin:0;letter-spacing:.04em}
+.shows .hdr .day{font-family:'JetBrains Mono';font-weight:800;font-size:24px;color:var(--bone);letter-spacing:.22em;text-transform:uppercase}
+.shows ul{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:24px;flex:1}
+.shows li{display:flex;flex-direction:column;justify-content:center;border-left:4px solid var(--orange);padding-left:18px}
+.shows li .d{font-family:'JetBrains Mono';font-weight:800;font-size:20px;color:var(--orange2);letter-spacing:.26em;text-transform:uppercase}
+.shows li .e{font-family:'Bebas Neue';font-weight:400;font-size:46px;color:var(--bone);line-height:1;margin-top:4px;letter-spacing:.02em}
+.shows li .e em{font-style:italic;color:var(--toxic)}
+.shows li .w{font-family:'JetBrains Mono';font-weight:600;font-size:18px;color:var(--bone);margin-top:4px;text-transform:uppercase;letter-spacing:.18em;opacity:.7}
+/* ticker */
+.ticker{position:absolute;bottom:0;left:0;right:0;height:80px;background:var(--orange);color:var(--ink);display:flex;align-items:center;overflow:hidden;z-index:6;border-top:4px solid var(--bone)}
+.ticker .tag{background:var(--ink);color:var(--orange);font-family:'Bebas Neue';font-size:44px;padding:0 36px;height:100%;display:flex;align-items:center;flex-shrink:0;letter-spacing:.04em}
+.ticker .msg{font-family:'JetBrains Mono';font-weight:800;font-size:26px;padding-left:36px;white-space:nowrap;letter-spacing:.18em;text-transform:uppercase;animation:sc 80s linear infinite}
+@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{"schema":"edu-cms-hs-halloween-v1"}/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+<div class="broadcast" data-widget="broadcast">
+<div class="live" data-field="broadcast.live">● LIVE</div>
+<div class="ch" data-field="broadcast.ch">CH 31 — BANNER NIGHT REPORT</div>
+<div class="ts" data-field="broadcast.ts">FRI 10·31 · 22:14 PST</div>
+</div>
+<div class="moon"></div>
+<div class="bats" data-widget="bats" data-field="bats.icons">▼  ▼  ▼     ▼</div>
+<div class="head" data-widget="headline">
+<div class="kick" data-field="headline.kicker">★ haunted homecoming · 31 oct ★</div>
+<h1><span data-field="headline.t1">Boo </span><em data-field="headline.t2">U.</em></h1>
+<div class="sub" data-field="headline.sub">Costume contest in the gym at lunch · trunk-or-treat in the senior lot 6pm · Friday's football game is themed Monsters vs Knights — wear orange or be eaten.</div>
+</div>
+<div class="grid">
+<div class="card" data-widget="contest"><div class="k" data-field="contest.k">★ costume contest</div>
+<h2><span data-field="contest.t1">$200 </span><em data-field="contest.t2">prize</em></h2>
+<p data-field="contest.p">Three categories — solo, group, and faculty. ASB judges. No real weapons, no offensive costumes. Sign in at the gym door before 11:50.</p>
+<div class="meta"><span data-field="contest.m1">Fri · gym · 12:05</span></div></div>
+<div class="card feat" data-widget="trunk"><div class="k" data-field="trunk.k">★ trunk-or-treat</div>
+<h2><span data-field="trunk.t1">Senior </span><em data-field="trunk.t2">lot.</em></h2>
+<p data-field="trunk.p">Clubs decorate trunks · candy for grades 1–6 from the neighborhood. Volunteer slot? Sign-up sheet outside ASB room. Setup 5pm, doors 6.</p>
+<div class="meta"><span data-field="trunk.m1">Fri Oct 31 · 6–8pm</span><span data-field="trunk.m2">senior lot</span></div></div>
+<div class="card" data-widget="game"><div class="k" data-field="game.k">★ home game</div>
+<h2 data-field="game.t">Monsters vs Knights.</h2>
+<p data-field="game.p">Theme out — the louder the costume the better. Free face paint at gate D. Kickoff 7:30. Tailgate opens 5:30 in lot B with the band.</p>
+<div class="meta"><span data-field="game.m1">Fri · 7:30 · field</span></div></div>
+</div>
+<div class="shows" data-widget="shows">
+<div class="hdr"><h3 data-field="shows.h">★ haunt week showtimes</h3><div class="day" data-field="shows.day">MON OCT 27 — FRI OCT 31</div></div>
+<ul>
+<li data-widget="shows.0"><div class="d" data-field="shows.0.d">MON</div><div class="e"><span data-field="shows.0.e1">Pumpkin </span><em data-field="shows.0.e2">carve</em></div><div class="w" data-field="shows.0.w">art rm · 3:30 · $5</div></li>
+<li data-widget="shows.1"><div class="d" data-field="shows.1.d">WED</div><div class="e"><span data-field="shows.1.e1">Movie </span><em data-field="shows.1.e2">night</em></div><div class="w" data-field="shows.1.w">aud · 7pm · the thing</div></li>
+<li data-widget="shows.2"><div class="d" data-field="shows.2.d">FRI</div><div class="e"><span data-field="shows.2.e1">Costume </span><em data-field="shows.2.e2">contest</em></div><div class="w" data-field="shows.2.w">gym · 12:05</div></li>
+<li data-widget="shows.3"><div class="d" data-field="shows.3.d">FRI</div><div class="e"><span data-field="shows.3.e1">Trunk </span><em data-field="shows.3.e2">+ game</em></div><div class="w" data-field="shows.3.w">lot+field · 6 · 7:30</div></li>
+</ul>
+</div>
+<div class="ticker" data-widget="ticker"><div class="tag" data-field="ticker.tag">NIGHT REPORT</div><div class="msg"><span data-field="ticker.message">★ COSTUME CONTEST FRIDAY GYM 12:05 — $200 SOLO PRIZE ★ TRUNK OR TREAT SENIOR LOT 6PM — VOLUNTEERS NEEDED ★ HAUNTED HOMECOMING GAME 7:30 — WEAR ORANGE ★ THE THING IN THE AUDITORIUM WED 7PM ★ </span><span>★ COSTUME CONTEST FRIDAY GYM 12:05 — $200 SOLO PRIZE ★ TRUNK OR TREAT SENIOR LOT 6PM — VOLUNTEERS NEEDED ★ HAUNTED HOMECOMING GAME 7:30 — WEAR ORANGE ★ THE THING IN THE AUDITORIUM WED 7PM ★ </span></div></div>
+</div></div></div>
+<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+<script id="holiday-autoscale">(function(){function s(){var w=window.innerWidth,h=window.innerHeight,sc=Math.min(w/3840,h/2160);document.documentElement.style.setProperty("--stage-scale",sc);}s();window.addEventListener("resize",s);})();</script></body></html>

@@ -1,0 +1,173 @@
+<!doctype html>
+<!-- ES HALLOWEEN — friendly haunted: pumpkin patch, smiling ghost, glow-orange. -->
+<html><head><meta charset="utf-8"/><title>Halloween · ES Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Caveat:wght@600;700&family=Creepster&display=swap" rel="stylesheet">
+<style>
+:root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;
+  --night:#1a0e2e;--night2:#0f0822;--orange:#ff7a18;--orange2:#ffb347;--moon:#fff4c2;--green:#7cc36a;--purple:#8c4fd1;--white:#fff5e6}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;color:var(--white);font-family:'Fredoka',sans-serif}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:linear-gradient(180deg,#0a0518 0%,#1a0e2e 50%,#3a1a2e 100%);box-shadow:0 80px 200px rgba(0,0,0,.55)}
+
+/* MOON + STARS + FOG */
+.moon{position:absolute;top:120px;right:280px;width:340px;height:340px;border-radius:50%;background:radial-gradient(circle at 38% 35%,#fffaee 0%,#fff4c2 50%,#fbe48a 100%);box-shadow:0 0 120px 40px rgba(255,244,194,.25),inset -20px -16px 40px rgba(0,0,0,.18);z-index:1}
+.moon::before{content:'';position:absolute;top:35%;left:50%;width:50px;height:50px;border-radius:50%;background:rgba(0,0,0,.06)}
+.moon::after{content:'';position:absolute;top:55%;left:25%;width:34px;height:34px;border-radius:50%;background:rgba(0,0,0,.05)}
+.stars{position:absolute;inset:0;pointer-events:none;z-index:1}
+.stars span{position:absolute;width:6px;height:6px;background:#fff;border-radius:50%;animation:tw 3s ease-in-out infinite}
+@keyframes tw{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}
+.fog{position:absolute;left:-200px;right:-200px;bottom:0;height:300px;background:linear-gradient(180deg,transparent 0%,rgba(140,79,209,.18) 60%,rgba(255,122,24,.22) 100%);filter:blur(40px);z-index:1}
+
+/* BATS */
+@keyframes flap{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-12px) rotate(3deg)}}
+.bat{position:absolute;width:120px;height:50px;z-index:2;animation:flap 1.2s ease-in-out infinite}
+.bat::before,.bat::after{content:'';position:absolute;top:0;width:60px;height:50px;background:#1a0e2e}
+.bat::before{left:0;clip-path:polygon(100% 50%,80% 0,40% 30%,0 0,20% 60%,0 100%,40% 80%,60% 100%,80% 80%)}
+.bat::after{right:0;clip-path:polygon(0 50%,20% 0,60% 30%,100% 0,80% 60%,100% 100%,60% 80%,40% 100%,20% 80%)}
+
+/* TOP BAR */
+.top{position:absolute;top:60px;left:60px;right:60px;height:160px;display:flex;justify-content:space-between;align-items:center;z-index:5}
+.brand{display:flex;align-items:center;gap:30px}
+.witchhat{width:160px;height:160px;position:relative;filter:drop-shadow(0 10px 16px rgba(0,0,0,.45))}
+.witchhat::before{content:'';position:absolute;left:18px;bottom:34px;width:124px;height:24px;background:#1a0e2e;border-radius:8px}
+.witchhat::after{content:'';position:absolute;left:50%;bottom:50px;width:0;height:0;transform:translateX(-50%);border-left:48px solid transparent;border-right:48px solid transparent;border-bottom:96px solid #1a0e2e}
+.witchhat .band{position:absolute;left:30px;bottom:46px;width:100px;height:14px;background:var(--orange);border-radius:4px;z-index:2}
+.witchhat .buckle{position:absolute;left:50%;bottom:46px;width:18px;height:18px;background:var(--moon);transform:translateX(-50%);z-index:3}
+
+.brand .info .name{font-family:'Fredoka',sans-serif;font-weight:700;font-size:88px;color:var(--white);line-height:.95;letter-spacing:-.01em}
+.brand .info .sub{font-family:'Caveat',cursive;font-weight:700;font-size:48px;color:var(--orange2);margin-top:8px;line-height:1}
+
+.chips{display:flex;gap:20px}
+.chip{background:rgba(255,255,255,.92);color:var(--night);padding:18px 28px;border-radius:24px;min-width:200px;text-align:center;border:6px solid var(--orange);box-shadow:0 6px 0 var(--orange),0 12px 24px rgba(0,0,0,.3)}
+.chip .k{font-family:'Caveat',cursive;font-weight:700;font-size:32px;color:var(--purple);line-height:1}
+.chip .v{font-family:'Fredoka',sans-serif;font-weight:700;font-size:64px;color:var(--night);line-height:1;margin-top:4px;letter-spacing:-.02em}
+.chip.spook{background:var(--purple);border-color:var(--moon);color:var(--moon)}
+.chip.spook .k{color:rgba(255,244,194,.85)}.chip.spook .v{color:var(--moon)}
+
+/* HEADLINE */
+.hd{position:absolute;top:300px;left:60px;right:60px;z-index:4;text-align:center}
+.hd .k{font-family:'Caveat',cursive;font-weight:700;font-size:60px;color:var(--orange2);letter-spacing:.04em;margin-bottom:8px}
+.hd h1{font-family:'Creepster',cursive;font-weight:400;font-size:380px;line-height:.85;color:var(--orange);margin:0;letter-spacing:.02em;text-shadow:0 0 40px rgba(255,122,24,.5),12px 12px 0 var(--purple)}
+.hd .sub{font-family:'Fredoka',sans-serif;font-weight:600;font-size:46px;color:var(--white);margin-top:20px;letter-spacing:.04em}
+
+/* PUMPKIN ROW */
+.pumpkins{position:absolute;top:880px;left:60px;right:60px;height:680px;display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:36px;z-index:3}
+.pcard{background:rgba(255,255,255,.96);color:var(--night);border-radius:36px;padding:36px 40px;position:relative;box-shadow:0 16px 0 var(--purple),0 28px 40px rgba(0,0,0,.35);overflow:hidden}
+.pcard::before{content:'';position:absolute;top:-20px;right:-20px;width:160px;height:160px;background:var(--orange);border-radius:50%;opacity:.18}
+.pcard .k{font-family:'Caveat',cursive;font-weight:700;font-size:46px;color:var(--purple);line-height:1}
+.pcard h2{font-family:'Fredoka',sans-serif;font-weight:700;font-size:96px;color:var(--night);line-height:.9;margin:8px 0 0;letter-spacing:-.02em}
+.pcard h2 em{font-style:normal;color:var(--orange)}
+.pcard p{font-family:'Fredoka',sans-serif;font-weight:500;font-size:32px;color:var(--night);margin:18px 0 0;line-height:1.3}
+.pcard .meta{font-family:'Caveat',cursive;font-weight:700;font-size:54px;color:var(--orange);margin-top:auto;padding-top:18px;line-height:1;display:flex;align-items:baseline;gap:18px}
+
+/* PUMPKIN MASCOT (big middle card) */
+.pcard.mid{background:linear-gradient(180deg,#fff,#fff4d8);text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:flex-start}
+.pumpkin{width:300px;height:280px;position:relative;margin:8px auto 0}
+.pumpkin .body{position:absolute;left:0;top:30px;width:300px;height:240px;background:radial-gradient(circle at 35% 35%,#ffb347,var(--orange) 60%);border-radius:50%/45%;box-shadow:inset -20px -10px 30px rgba(0,0,0,.25),inset 30px -10px 30px rgba(255,255,255,.1)}
+.pumpkin .body::before,.pumpkin .body::after{content:'';position:absolute;top:0;width:80px;height:240px;background:radial-gradient(ellipse at 50% 50%,transparent 35%,rgba(0,0,0,.2) 60%);border-radius:50%}
+.pumpkin .body::before{left:30px}
+.pumpkin .body::after{right:30px}
+.pumpkin .stem{position:absolute;left:50%;top:0;transform:translateX(-50%);width:36px;height:50px;background:#5a3a1a;border-radius:8px}
+.pumpkin .stem::after{content:'';position:absolute;left:30px;top:6px;width:50px;height:30px;border:6px solid #5a3a1a;border-radius:50%;border-bottom-color:transparent;border-right-color:transparent}
+.pumpkin .face{position:absolute;left:0;top:90px;width:300px;height:170px;display:flex;justify-content:center;align-items:flex-start;gap:20px}
+.pumpkin .eye{width:54px;height:54px;background:var(--night);clip-path:polygon(0 100%,100% 100%,50% 0)}
+.pumpkin .mouth{position:absolute;left:50%;top:96px;transform:translateX(-50%);width:160px;height:46px;background:var(--night);clip-path:polygon(0 0,100% 0,90% 100%,75% 30%,60% 100%,50% 30%,40% 100%,25% 30%,10% 100%)}
+
+.pcard.mid h2{font-size:120px;margin-top:6px}
+
+/* EVENTS — bottom strip */
+.events{position:absolute;top:1620px;left:60px;right:60px;height:420px;background:rgba(140,79,209,.18);border:6px solid var(--orange);border-radius:36px;padding:30px 36px;z-index:3;display:flex;flex-direction:column;backdrop-filter:blur(8px)}
+.events .hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:4px dashed rgba(255,179,71,.4);padding-bottom:14px}
+.events .hdr h3{font-family:'Creepster',cursive;font-weight:400;font-size:80px;color:var(--orange2);margin:0;letter-spacing:.02em;line-height:1}
+.events .hdr .day{font-family:'Caveat',cursive;font-weight:700;font-size:48px;color:var(--moon)}
+.events ul{list-style:none;margin:18px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:18px;flex:1}
+.events li{display:flex;flex-direction:column;justify-content:center;background:rgba(255,255,255,.94);color:var(--night);border-radius:24px;padding:18px 24px;border:4px solid var(--orange);box-shadow:0 6px 0 var(--purple)}
+.events li .d{font-family:'Caveat',cursive;font-weight:700;font-size:36px;color:var(--purple);line-height:1}
+.events li .e{font-family:'Fredoka',sans-serif;font-weight:700;font-size:42px;color:var(--night);line-height:1;margin-top:6px;letter-spacing:-.01em}
+.events li .e em{font-style:normal;color:var(--orange)}
+.events li .w{font-family:'Fredoka',sans-serif;font-weight:500;font-size:24px;color:#5a4a6e;margin-top:4px}
+
+/* TICKER */
+.ticker{position:absolute;bottom:0;left:0;right:0;height:80px;background:var(--orange);color:var(--night);display:flex;align-items:center;overflow:hidden;z-index:5;border-top:6px solid var(--purple)}
+.ticker .tag{background:var(--night);color:var(--orange2);font-family:'Creepster',cursive;font-size:36px;padding:0 36px;height:100%;display:flex;align-items:center;flex-shrink:0;letter-spacing:.04em}
+.ticker .msg{font-family:'Fredoka',sans-serif;font-weight:700;font-size:30px;padding-left:36px;white-space:nowrap;letter-spacing:.06em;animation:sc 75s linear infinite}
+@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{ "schema":"edu-cms-es-halloween-v1" }/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+
+<div class="moon"></div>
+<div class="stars">
+<span style="top:80px;left:140px"></span>
+<span style="top:160px;left:520px;animation-delay:.6s"></span>
+<span style="top:60px;left:880px;animation-delay:1.1s"></span>
+<span style="top:220px;left:1280px;animation-delay:.3s"></span>
+<span style="top:120px;left:2200px;animation-delay:.9s"></span>
+<span style="top:280px;left:2900px;animation-delay:1.4s"></span>
+<span style="top:200px;left:3600px;animation-delay:.5s"></span>
+<span style="top:90px;left:3200px;animation-delay:1.7s"></span>
+</div>
+<div class="bat" style="top:240px;left:560px;animation-delay:0s"><div class="b"></div></div>
+<div class="bat" style="top:380px;left:980px;animation-delay:.4s"></div>
+<div class="bat" style="top:160px;left:1820px;animation-delay:.8s"></div>
+<div class="bat" style="top:340px;left:3320px;animation-delay:.2s"></div>
+<div class="fog"></div>
+
+<div class="top">
+<div class="brand" data-widget="school">
+<div class="witchhat"><div class="band"></div><div class="buckle"></div></div>
+<div class="info"><div class="name" data-field="school.name">Maple Tree</div><div class="sub" data-field="school.sub">~ a spooky welcome ~</div></div>
+</div>
+<div class="chips">
+<div class="chip" data-widget="clock"><div class="k" data-field="clock.label">right now</div><div class="v" data-field="clock.time">8:42</div></div>
+<div class="chip spook" data-widget="countdown"><div class="k" data-field="countdown.label">days till</div><div class="v" data-field="countdown.value">03</div></div>
+</div>
+</div>
+
+<div class="hd" data-widget="headline">
+<div class="k" data-field="headline.kicker">~ Boooo ~</div>
+<h1 data-field="headline.title">Happy Halloween</h1>
+<div class="sub" data-field="headline.sub">Costume parade Friday · 2pm in the gym</div>
+</div>
+
+<div class="pumpkins">
+
+<div class="pcard" data-widget="costume">
+<div class="k" data-field="costume.k">~ wear today ~</div>
+<h2><span data-field="costume.t1">Costume </span><em data-field="costume.t2">day</em></h2>
+<p data-field="costume.p">No masks that cover faces · no scary weapons · K–2 stay in homeroom · 3–5 to gym</p>
+<div class="meta"><span data-field="costume.t">all day Friday</span></div>
+</div>
+
+<div class="pcard mid" data-widget="parade">
+<div class="pumpkin"><div class="stem"></div><div class="body"></div><div class="face"><div class="eye"></div><div class="eye"></div></div><div class="mouth"></div></div>
+<h2 data-field="parade.t">Parade!</h2>
+<p data-field="parade.p">Line up by grade · march around the gym · families welcome</p>
+<div class="meta"><span data-field="parade.t1">Fri 2:00 pm</span></div>
+</div>
+
+<div class="pcard" data-widget="lunch">
+<div class="k" data-field="lunch.k">~ today's lunch ~</div>
+<h2><span data-field="lunch.t1">Mummy </span><em data-field="lunch.t2">dogs</em></h2>
+<p data-field="lunch.p">All-beef hot dog wrapped in pastry · ghost-shaped fries · pumpkin cookie · apple cider</p>
+<div class="meta"><span data-field="lunch.t">$3.75 · line A</span></div>
+</div>
+
+</div>
+
+<div class="events" data-widget="events">
+<div class="hdr"><h3 data-field="events.hdr">~ spooky week ~</h3><div class="day" data-field="events.day">Mon Oct 28 — Fri Nov 1</div></div>
+<ul>
+<li data-widget="events.0"><div class="d" data-field="events.0.d">Mon</div><div class="e"><span data-field="events.0.e1">Pumpkin </span><em data-field="events.0.e2">decorating</em></div><div class="w" data-field="events.0.w">Art room · 2:30 pm · K–5</div></li>
+<li data-widget="events.1"><div class="d" data-field="events.1.d">Wed</div><div class="e"><span data-field="events.1.e1">Story </span><em data-field="events.1.e2">night</em></div><div class="w" data-field="events.1.w">Library · 6 pm · families</div></li>
+<li data-widget="events.2"><div class="d" data-field="events.2.d">Thu</div><div class="e"><span data-field="events.2.e1">Spirit </span><em data-field="events.2.e2">orange</em></div><div class="w" data-field="events.2.w">Wear orange · all day</div></li>
+<li data-widget="events.3"><div class="d" data-field="events.3.d">Fri</div><div class="e"><span data-field="events.3.e1">Costume </span><em data-field="events.3.e2">parade</em></div><div class="w" data-field="events.3.w">Gym · 2 pm · families welcome</div></li>
+</ul>
+</div>
+
+<div class="ticker" data-widget="ticker"><div class="tag" data-field="ticker.tag">~ BOO! ~</div><div class="msg"><span data-field="ticker.message">★ Costume parade Friday at 2 — line up in the gym · families welcome ★ Trick-or-treat in the hallways with your buddy class · 1pm ★ NO MASKS THAT COVER FACES — costume rules in the office ★ Pumpkin cookies in the cafeteria all week ★ </span><span>★ Costume parade Friday at 2 — line up in the gym · families welcome ★ Trick-or-treat in the hallways with your buddy class · 1pm ★ NO MASKS THAT COVER FACES — costume rules in the office ★ Pumpkin cookies in the cafeteria all week ★ </span></div></div>
+
+</div></div></div>
+<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+<script id="holiday-autoscale">(function(){function s(){var w=window.innerWidth,h=window.innerHeight,sc=Math.min(w/3840,h/2160);document.documentElement.style.setProperty("--stage-scale",sc);}s();window.addEventListener("resize",s);})();</script></body></html>

@@ -1,0 +1,94 @@
+<!doctype html>
+<!-- HS ST PATRICKS — terminal / hacker green-on-black with neon accents -->
+<html><head><meta charset="utf-8"/><title>St Patrick's · HS Lobby</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Bebas+Neue&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" rel="stylesheet">
+<style>:root{--stage-w:3840px;--stage-h:2160px;--stage-scale:1;--bg:#02100a;--bg2:#06200f;--green:#33ff7a;--green2:#1ec25b;--gold:#ffd95a;--ink:#02100a;--white:#e8ffe8}
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;font-family:'JetBrains Mono',monospace;color:var(--green)}
+.viewport{position:fixed;inset:0;display:grid;place-items:center;overflow:hidden}.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--bg);box-shadow:0 80px 200px rgba(0,0,0,.7)}
+.stage::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(51,255,122,.05) 0 1px,transparent 1px 4px);pointer-events:none;z-index:9}
+.stage::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 60%,transparent 30%,rgba(0,0,0,.6) 100%);pointer-events:none;z-index:8}
+/* shamrock ascii pattern bg */
+.bgsham{position:absolute;top:160px;right:80px;width:1100px;height:1100px;z-index:1;opacity:.55}
+.bgsham .l{position:absolute;width:480px;height:480px;background:var(--green2);border-radius:50% 0 50% 50%;box-shadow:0 0 60px rgba(51,255,122,.4)}
+.bgsham .l1{top:0;left:300px;transform:rotate(-45deg)}.bgsham .l2{top:300px;left:0;transform:rotate(-135deg)}.bgsham .l3{top:300px;right:0;transform:rotate(45deg)}.bgsham .l4{top:600px;left:300px;transform:rotate(135deg)}
+/* terminal header */
+.term{position:absolute;top:50px;left:60px;right:60px;height:80px;background:var(--bg2);border:2px solid var(--green);display:flex;align-items:center;padding:0 24px;z-index:6}
+.term .dots{display:flex;gap:10px;margin-right:24px}.term .dot{width:18px;height:18px;border-radius:50%;background:var(--green);opacity:.6}.term .dot:nth-child(2){background:var(--gold)}.term .dot:nth-child(3){background:#ff5a5a}
+.term .path{font-weight:700;font-size:24px;color:var(--green);letter-spacing:.06em}
+.term .path em{font-style:normal;color:var(--gold)}
+.term .ts{margin-left:auto;font-weight:800;font-size:22px;letter-spacing:.22em;color:var(--white);opacity:.85}
+/* prompt + headline */
+.head{position:absolute;top:170px;left:60px;right:60px;z-index:5}
+.head .prompt{font-weight:800;font-size:30px;color:var(--gold);letter-spacing:.12em;margin-bottom:14px}
+.head .prompt em{font-style:normal;color:var(--green);animation:bl 1s steps(2,end) infinite}
+@keyframes bl{50%{opacity:0}}
+.head h1{font-family:'Bebas Neue';font-size:520px;line-height:.82;color:var(--green);margin:0;letter-spacing:.02em;text-shadow:0 0 40px rgba(51,255,122,.5),0 0 12px rgba(51,255,122,.7)}
+.head h1 em{color:var(--gold);font-style:italic;text-shadow:0 0 40px rgba(255,217,90,.6)}
+.head .sub{font-family:'Fraunces',serif;font-weight:700;font-style:italic;font-size:60px;color:var(--white);margin-top:30px;max-width:2400px;line-height:1.18}
+/* code blocks */
+.grid{position:absolute;top:1240px;left:60px;right:60px;height:560px;display:grid;grid-template-columns:1.2fr 2fr 1.2fr;gap:32px;z-index:3}
+.cd{background:var(--bg2);border:2px solid var(--green);padding:28px 32px;display:flex;flex-direction:column;position:relative;overflow:hidden;box-shadow:0 0 40px rgba(51,255,122,.15)}
+.cd::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:var(--green)}
+.cd .row{font-weight:700;font-size:22px;letter-spacing:.08em;color:var(--green2)}
+.cd .row .c{color:var(--gold)}.cd .row .s{color:var(--white)}
+.cd h2{font-family:'Bebas Neue';font-size:130px;line-height:.85;margin:14px 0 0;color:var(--green);letter-spacing:.01em;text-shadow:0 0 30px rgba(51,255,122,.5)}
+.cd h2 em{color:var(--gold);font-style:italic}
+.cd.feat{background:var(--green);color:var(--ink)}
+.cd.feat::before{background:var(--gold);height:6px}
+.cd.feat .row{color:var(--ink)}.cd.feat .row .c{color:var(--ink);background:var(--gold);padding:2px 6px}
+.cd.feat h2{color:var(--ink);font-size:160px;text-shadow:none}.cd.feat h2 em{color:var(--bg);background:var(--gold);padding:0 12px}
+.cd p{font-family:'Fraunces',serif;font-weight:500;font-style:italic;font-size:28px;color:var(--white);margin:18px 0 0;line-height:1.22}
+.cd.feat p{color:var(--ink)}
+.cd .meta{margin-top:auto;padding-top:14px;font-weight:800;font-size:22px;letter-spacing:.18em;color:var(--gold);text-transform:uppercase;display:flex;gap:18px;flex-wrap:wrap;border-top:1px dashed var(--green);padding-top:14px}
+.cd.feat .meta{color:var(--ink);border-color:var(--ink)}
+/* sked */
+.sked{position:absolute;top:1840px;left:60px;right:60px;height:240px;background:var(--bg2);border:2px solid var(--gold);padding:18px 28px;z-index:3;display:flex;flex-direction:column}
+.sked .hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px dashed var(--gold);padding-bottom:8px}
+.sked .hdr h3{font-family:'Bebas Neue';font-size:62px;color:var(--gold);margin:0;letter-spacing:.04em;text-shadow:0 0 20px rgba(255,217,90,.4)}
+.sked .hdr .d{font-weight:800;font-size:22px;color:var(--green);letter-spacing:.22em}
+.sked ul{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:24px;flex:1}
+.sked li{display:flex;flex-direction:column;justify-content:center;border-left:3px solid var(--green);padding-left:18px}
+.sked li .d{font-weight:800;font-size:20px;color:var(--gold);letter-spacing:.26em}
+.sked li .e{font-family:'Bebas Neue';font-size:46px;color:var(--green);line-height:1;margin-top:4px;letter-spacing:.02em;text-shadow:0 0 20px rgba(51,255,122,.5)}
+.sked li .e em{font-style:italic;color:var(--gold)}
+.sked li .w{font-weight:600;font-size:18px;color:var(--white);margin-top:4px;letter-spacing:.18em;text-transform:uppercase;opacity:.8}</style></head><body>
+<script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{"schema":"edu-cms-hs-stpatricks-v1"}/*EDITMODE-END*/;</script>
+<div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
+<div class="bgsham"><div class="l l1"></div><div class="l l2"></div><div class="l l3"></div><div class="l l4"></div></div>
+<div class="term" data-widget="term">
+<div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+<div class="path"><span data-field="term.path1">banner-hs:</span><em data-field="term.path2"> ~/march/wear-green</em></div>
+<div class="ts" data-field="term.ts">$ TUE 03·17 · 10:14:22 PST</div>
+</div>
+<div class="head" data-widget="headline">
+<div class="prompt"><span data-field="headline.prompt1">$ sudo wear-green --tuesday </span><em>_</em></div>
+<h1><span data-field="headline.t1">Lucky </span><em data-field="headline.t2">17.</em></h1>
+<div class="sub" data-field="headline.sub">School colors are emerald all week — gold lockers get spirit points. ASB hosts trivia at lunch Tuesday with cash prizes; Friday is the parade-pep rally double-header before the spring game.</div>
+</div>
+<div class="grid">
+<div class="cd" data-widget="trivia"><div class="row"><span class="c">$</span> <span data-field="trivia.cmd">./trivia --quad --noon</span></div>
+<h2><span data-field="trivia.t1">$50 </span><em data-field="trivia.t2">cash</em></h2>
+<p data-field="trivia.p">Five rounds of Irish lore + general spirit. Teams of 3 — sign up at lunch outside the senior bench. Top team takes the cash, second gets pizza for a week.</p>
+<div class="meta"><span data-field="trivia.m1">Tue · quad · 12:05</span></div></div>
+<div class="cd feat" data-widget="parade"><div class="row"><span class="c">$</span> <span data-field="parade.cmd">./parade --route=main --depart 14:00</span></div>
+<h2><span data-field="parade.t1">Pep </span><em data-field="parade.t2">parade.</em></h2>
+<p data-field="parade.p">Marching band leads down main hall to the front lawn pep rally. Spring sports captains introduced. Bring noise. Tuesday after 7th period.</p>
+<div class="meta"><span data-field="parade.m1">Tue · 2pm · main hall → lawn</span></div></div>
+<div class="cd" data-widget="spirit"><div class="row"><span class="c">$</span> <span data-field="spirit.cmd">cat /etc/dresscode</span></div>
+<h2 data-field="spirit.t">Wear green.</h2>
+<p data-field="spirit.p">Any shade — you're not getting pinched at school but you'll lose homeroom spirit points. Pins free at the front office for the unprepared.</p>
+<div class="meta"><span data-field="spirit.m1">Tue · all day</span></div></div>
+</div>
+<div class="sked" data-widget="sked">
+<div class="hdr"><h3 data-field="sked.h">★ lucky week · cron</h3><div class="d" data-field="sked.day">Mon 3/16 — Fri 3/20</div></div>
+<ul>
+<li data-widget="sked.0"><div class="d" data-field="sked.0.d">MON 8AM</div><div class="e"><span data-field="sked.0.e1">Cap </span><em data-field="sked.0.e2">decor</em></div><div class="w" data-field="sked.0.w">homeroom doors all day</div></li>
+<li data-widget="sked.1"><div class="d" data-field="sked.1.d">TUE 12P</div><div class="e"><span data-field="sked.1.e1">Quad </span><em data-field="sked.1.e2">trivia</em></div><div class="w" data-field="sked.1.w">$50 prize · teams of 3</div></li>
+<li data-widget="sked.2"><div class="d" data-field="sked.2.d">TUE 2P</div><div class="e"><span data-field="sked.2.e1">Pep </span><em data-field="sked.2.e2">parade</em></div><div class="w" data-field="sked.2.w">main hall · band leads</div></li>
+<li data-widget="sked.3"><div class="d" data-field="sked.3.d">FRI 7P</div><div class="e"><span data-field="sked.3.e1">Spring </span><em data-field="sked.3.e2">game</em></div><div class="w" data-field="sked.3.w">field · home opener</div></li>
+</ul>
+</div>
+</div></div></div>
+<script>(function(){function fit(){const s=document.getElementById('stage');if(!s)return;const c=getComputedStyle(document.documentElement);const w=parseFloat(c.getPropertyValue('--stage-w'))||3840;const h=parseFloat(c.getPropertyValue('--stage-h'))||2160;const k=Math.min(window.innerWidth/w,window.innerHeight/h);document.documentElement.style.setProperty('--stage-scale',k);}window.addEventListener('resize',fit);window.addEventListener('load',fit);setTimeout(fit,10);setTimeout(fit,300);})();</script>
+<script id="holiday-autoscale">(function(){function s(){var w=window.innerWidth,h=window.innerHeight,sc=Math.min(w/3840,h/2160);document.documentElement.style.setProperty("--stage-scale",sc);}s();window.addEventListener("resize",s);})();</script></body></html>
