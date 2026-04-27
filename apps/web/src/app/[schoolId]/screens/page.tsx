@@ -365,81 +365,64 @@ function ScreenSettingsMenu({
             </div>
           </div>
 
-          {/* Push APK update — single source of truth for the action.
-              Live "in progress" state is owned by the strip below
-              (sending → downloading → installing → restarting →
-              installed) so we don't double-message here. The button
-              always shows the action label, just disables itself
-              while a push is in flight. */}
-          <button
-            type="button"
-            onClick={onPushApk}
-            disabled={pending || stillWaiting || (upToDate === true && !pushed)}
-            className="w-full flex items-center gap-3 px-3.5 py-3 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed border-b border-slate-100"
-            title={upToDate === true && !pushed ? 'Already on the latest version' : 'Tells this kiosk to download + install the latest APK on its next check-in'}
-          >
-            <RefreshCw className={`w-4 h-4 shrink-0 ${upToDate === false ? 'text-amber-500' : 'text-indigo-500'}`} />
-            <span className="flex-1 min-w-0">
-              <span className="block">
-                {upToDate === true && !pushed
-                  ? 'On latest — push anyway'
-                  : upToDate === false
-                    ? `Push update to v${latestVersion}`
-                    : 'Push update to this screen'}
-              </span>
-              <span className="block text-[10px] font-normal text-slate-400 mt-0.5">
-                Manual only — auto-update is OFF unless you toggle it in Settings
-              </span>
-            </span>
-          </button>
-
-          {/* Push feedback strip — only when a push has been sent. Each
-              stage corresponds to a real phase of the OTA install
-              pipeline (WS hop → download → install → restart). Flips to
-              the green "installed" state the moment lastPingAt's
-              playerVersion reflects the new build — usually within
-              ~30s of the install completing thanks to the heartbeat
-              version capture. */}
-          {pushed && (updatedSincePush || stillWaiting || timedOut) && (
-            <div className="px-3.5 py-2 bg-slate-50 border-b border-slate-100 text-[11px] leading-snug">
-              {stage === 'installed' && (
-                <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  Kiosk installed v{currentVersion} ✓
+          {/* One row, two states:
+                IDLE → "Push update to v1.0.8" with the manual-only hint
+                       below it.
+                IN-FLIGHT → label morphs through the OTA stages
+                       (sending → downloading → installing → restarting
+                       → installed) with a stage-appropriate icon.
+                       Disabled so it can't be re-clicked mid-push, but
+                       still visible as a single source of truth. */}
+          {(() => {
+            const isInFlight = pushed && !updatedSincePush;
+            // Icon + label per stage — one icon, one label, no extra
+            // strip below.
+            const stageIcon: React.ReactNode =
+              stage === 'installed'   ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> :
+              stage === 'sending'     ? <Loader2 className="w-4 h-4 text-indigo-500 shrink-0 animate-spin" /> :
+              stage === 'downloading' ? <Download className="w-4 h-4 text-indigo-500 shrink-0 animate-pulse" /> :
+              stage === 'installing'  ? <Loader2 className="w-4 h-4 text-indigo-500 shrink-0 animate-spin" /> :
+              stage === 'restarting'  ? <RefreshCw className="w-4 h-4 text-indigo-500 shrink-0 animate-spin" /> :
+              stage === 'timeout'     ? <WifiOff className="w-4 h-4 text-amber-600 shrink-0" /> :
+                                         <RefreshCw className={`w-4 h-4 shrink-0 ${upToDate === false ? 'text-amber-500' : 'text-indigo-500'}`} />;
+            const stageLabel =
+              stage === 'installed'   ? `Kiosk installed v${currentVersion} ✓` :
+              stage === 'sending'     ? 'Sending update signal to kiosk…' :
+              stage === 'downloading' ? 'Kiosk downloading new APK…' :
+              stage === 'installing'  ? 'Installing on kiosk…' :
+              stage === 'restarting'  ? 'Kiosk restarting + reporting back…' :
+              stage === 'timeout'     ? 'No response after 5 min — check Wi-Fi + install permission' :
+              upToDate === true && !pushed ? 'On latest — push anyway' :
+              upToDate === false ? `Push update to v${latestVersion}` :
+                                   'Push update to this screen';
+            const stageColor =
+              stage === 'installed' ? 'text-emerald-700 font-bold' :
+              stage === 'timeout'   ? 'text-amber-700 font-bold' :
+              isInFlight            ? 'text-indigo-700 font-bold' :
+                                       'text-slate-700 font-semibold';
+            const subline = isInFlight
+              ? null
+              : 'Manual only — auto-update is OFF unless you toggle it in Settings';
+            return (
+              <button
+                type="button"
+                onClick={onPushApk}
+                disabled={pending || stillWaiting || (upToDate === true && !pushed)}
+                className="w-full flex items-center gap-3 px-3.5 py-3 text-left text-xs hover:bg-slate-50 disabled:opacity-80 disabled:cursor-not-allowed border-b border-slate-100"
+                title={upToDate === true && !pushed
+                  ? 'Already on the latest version'
+                  : 'Tells this kiosk to download + install the latest APK on its next check-in'}
+              >
+                {stageIcon}
+                <span className="flex-1 min-w-0">
+                  <span className={`block ${stageColor}`}>{stageLabel}</span>
+                  {subline && (
+                    <span className="block text-[10px] font-normal text-slate-400 mt-0.5">{subline}</span>
+                  )}
                 </span>
-              )}
-              {stage === 'sending' && (
-                <span className="inline-flex items-center gap-1.5 text-indigo-700">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-                  Sending update signal to kiosk…
-                </span>
-              )}
-              {stage === 'downloading' && (
-                <span className="inline-flex items-center gap-1.5 text-indigo-700">
-                  <Download className="w-3.5 h-3.5 animate-pulse shrink-0" />
-                  Kiosk downloading new APK…
-                </span>
-              )}
-              {stage === 'installing' && (
-                <span className="inline-flex items-center gap-1.5 text-indigo-700">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-                  Installing on kiosk… (Android prompt may show on screen)
-                </span>
-              )}
-              {stage === 'restarting' && (
-                <span className="inline-flex items-center gap-1.5 text-indigo-700">
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
-                  Kiosk restarting + reporting back…
-                </span>
-              )}
-              {stage === 'timeout' && (
-                <span className="inline-flex items-start gap-1 text-amber-700">
-                  <WifiOff className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                  <span>No response after 5 minutes — check Wi-Fi + Android &ldquo;Install unknown apps&rdquo; permission. The kiosk will still pick up the update on its next boot.</span>
-                </span>
-              )}
-            </div>
-          )}
+              </button>
+            );
+          })()}
 
           {/* Preview in browser — moved out of the row, into the menu. */}
           <a
