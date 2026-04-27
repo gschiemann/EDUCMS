@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
-import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, FileClock, Crown, ClipboardCheck } from 'lucide-react';
+import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, FileClock, Crown, ClipboardCheck, Map } from 'lucide-react';
 import { RoleGate } from '../RoleGate';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
 import { usePendingAssets } from '@/hooks/use-api';
@@ -106,6 +106,10 @@ export function Sidebar() {
   const navItems = [
     { name: 'Dashboard', href: `/${activeTenant}/dashboard`, icon: LayoutDashboard },
     { name: 'Screens', href: `/${activeTenant}/screens`, icon: MonitorPlay },
+    // Sprint 8b — indoor floor plans for per-screen emergency targeting.
+    // Sits next to Screens because operators think of it as "another way
+    // to see and manage screens" (location, not list).
+    { name: 'Floor plans', href: `/${activeTenant}/floor-plans`, icon: Map },
     { name: 'Assets', href: `/${activeTenant}/assets`, icon: Upload },
     { name: 'Templates', href: `/${activeTenant}/templates`, icon: LayoutTemplate },
     { name: 'Playlists', href: `/${activeTenant}/playlists`, icon: Folders },

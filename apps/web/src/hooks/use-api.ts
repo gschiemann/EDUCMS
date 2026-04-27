@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
+import { API_URL } from '@/lib/api-url';
+import { useUIStore } from '@/store/ui-store';
 
 // ─── Tenant Status ──────────────────────────────────────────────
 export function useTenantStatus() {
@@ -949,5 +951,229 @@ export function usePendingSubmissionsCount(enabled: boolean = true) {
     },
     enabled,
     refetchInterval: 30_000,
+  });
+}
+
+// ─── Sprint 8b — Floor Plans ────────────────────────────────────
+
+export interface FloorPlanScreen {
+  id: string;
+  name: string;
+  floorX: number | null;
+  floorY: number | null;
+  status: string;
+  lastPingAt: string | null;
+  screenGroupId?: string | null;
+  location?: string | null;
+}
+
+export interface FloorPlanZone {
+  id: string;
+  name: string;
+  color: string;
+  shape?: any;
+}
+
+export interface FloorPlan {
+  id: string;
+  tenantId: string;
+  name: string;
+  buildingLabel: string | null;
+  floorLabel: string | null;
+  imageUrl: string;
+  widthPx: number;
+  heightPx: number;
+  zones: FloorPlanZone[];
+  screens: FloorPlanScreen[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function useFloorPlans() {
+  return useQuery<FloorPlan[]>({
+    queryKey: ['floor-plans'],
+    queryFn: () => apiFetch('/floor-plans'),
+  });
+}
+
+export function useFloorPlan(id: string | undefined) {
+  return useQuery<FloorPlan>({
+    queryKey: ['floor-plan', id],
+    queryFn: () => apiFetch(`/floor-plans/${id}`),
+    enabled: !!id,
+  });
+}
+
+/**
+ * Upload a new floor plan. Multipart form because we ship the image
+ * + dimensions in one request. Auto-detects image dimensions client-
+ * side before posting so the operator doesn't have to type px counts.
+ */
+export function useUploadFloorPlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { file: File; name: string; buildingLabel?: string; floorLabel?: string }) => {
+      // Read the file into an Image to discover its natural dims
+      const dims = await new Promise<{ widthPx: number; heightPx: number }>((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(input.file);
+        img.onload = () => {
+          resolve({ widthPx: img.naturalWidth, heightPx: img.naturalHeight });
+          URL.revokeObjectURL(url);
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error('Could not read image dimensions'));
+        };
+        img.src = url;
+      });
+      const fd = new FormData();
+      fd.append('file', input.file);
+      fd.append('name', input.name);
+      if (input.buildingLabel) fd.append('buildingLabel', input.buildingLabel);
+      if (input.floorLabel) fd.append('floorLabel', input.floorLabel);
+      fd.append('widthPx', String(dims.widthPx));
+      fd.append('heightPx', String(dims.heightPx));
+      // Bypass apiFetch for multipart — its default Content-Type:
+      // application/json header would mangle the multipart boundary.
+      const token = useUIStore.getState().token;
+      const res = await fetch(`${API_URL}/floor-plans`, {
+        method: 'POST',
+        body: fd,
+        credentials: 'include',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(`Upload failed (${res.status}): ${txt || res.statusText}`);
+      }
+      return (await res.json()) as FloorPlan;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['floor-plans'] });
+    },
+  });
+}
+
+export function useDeleteFloorPlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/floor-plans/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['floor-plans'] });
+    },
+  });
+}
+
+/** Place a screen on a plan at px coords (drag-drop save). */
+export function usePlaceScreenOnFloor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ planId, screenId, floorX, floorY }: { planId: string; screenId: string; floorX: number; floorY: number }) =>
+      apiFetch(`/floor-plans/${planId}/screens/${screenId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ floorX, floorY }),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['floor-plan', vars.planId] });
+      qc.invalidateQueries({ queryKey: ['floor-plans'] });
+      qc.invalidateQueries({ queryKey: ['screens'] });
+    },
+  });
+}
+
+export function useDetachScreenFromFloor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ planId, screenId }: { planId: string; screenId: string }) =>
+      apiFetch(`/floor-plans/${planId}/screens/${screenId}`, { method: 'DELETE' }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['floor-plan', vars.planId] });
+      qc.invalidateQueries({ queryKey: ['floor-plans'] });
+      qc.invalidateQueries({ queryKey: ['screens'] });
+    },
+  });
+}
+
+// ─── Sprint 8b — Per-screen emergency override ──────────────────
+
+export interface ScreenEmergencyOverrideRow {
+  id: string;
+  screenId: string;
+  tenantId: string;
+  type: string;
+  severity: string;
+  scopeNote: string | null;
+  playlistId: string | null;
+  textBlob: string | null;
+  mediaUrl: string | null;
+  floorPlanId: string | null;
+  floorZoneId: string | null;
+  scenarioId: string | null;
+  triggeredByUserId: string;
+  triggeredAt: string;
+  expiresAt: string | null;
+}
+
+export interface ScreenEmergencyTriggerInput {
+  type: string;
+  severity?: string;
+  scopeNote?: string;
+  playlistId?: string;
+  textBlob?: string;
+  mediaUrl?: string;
+  expiresAt?: string;
+  floorPlanId?: string;
+  floorZoneId?: string;
+  scenarioId?: string;
+}
+
+export function useScreenEmergencyOverride(screenId: string | undefined) {
+  return useQuery<ScreenEmergencyOverrideRow | null>({
+    queryKey: ['screen-emergency-override', screenId],
+    queryFn: () => apiFetch(`/emergency/screens/${screenId}/override`),
+    enabled: !!screenId,
+    refetchInterval: 30_000,
+  });
+}
+
+/** Trigger emergency on a single screen. */
+export function useTriggerScreenEmergency() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ screenId, override }: { screenId: string; override: ScreenEmergencyTriggerInput }) =>
+      apiFetch(`/emergency/screens/${screenId}/trigger`, {
+        method: 'POST',
+        body: JSON.stringify(override),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['screen-emergency-override', vars.screenId] });
+      qc.invalidateQueries({ queryKey: ['floor-plans'] });
+    },
+  });
+}
+
+/** Clear a single screen's emergency override. */
+export function useClearScreenEmergency() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (screenId: string) =>
+      apiFetch(`/emergency/screens/${screenId}/all-clear`, { method: 'POST', body: JSON.stringify({}) }),
+    onSuccess: (_, screenId) => {
+      qc.invalidateQueries({ queryKey: ['screen-emergency-override', screenId] });
+      qc.invalidateQueries({ queryKey: ['floor-plans'] });
+    },
+  });
+}
+
+/** Bulk trigger across many screens (lasso / scenario). */
+export function useBulkTriggerScreenEmergency() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { screenIds: string[]; override: ScreenEmergencyTriggerInput }) =>
+      apiFetch('/emergency/screens/bulk-trigger', { method: 'POST', body: JSON.stringify(input) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['floor-plans'] });
+    },
   });
 }
