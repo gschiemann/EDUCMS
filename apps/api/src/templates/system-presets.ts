@@ -854,11 +854,11 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
   },
 {
     id: 'preset-cafeteria-foodtruck-portrait',
-    name: '🚚 Animated Cafeteria · Food Truck (Classic) — Portrait',
-    description: 'Food-truck service window — striped awning, order-window frame, chalkboard menu, weekly menu editor. · Vertical 4K layout',
+    name: '🚚 Animated Cafeteria · Food Truck — Portrait',
+    description: 'Food-truck cafeteria built FOR portrait — string lights across the top, truck + neon BUNGEE board + giant clock, full-width pickup-special banner, tall chalkboard menu, full-width countdown burst, chef + birthdays two-up, ticker. Real vertical layout, not letterboxed. · 4K portrait',
     category: 'CAFETERIA', orientation: 'PORTRAIT', schoolLevel: 'ELEMENTARY',
     screenWidth: 2160, screenHeight: 3840, bgColor: '#fef3c7',
-    zones: [{ name: 'Scene', widgetType: 'ANIMATED_CAFETERIA_FOODTRUCK', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Scene', widgetType: 'ANIMATED_CAFETERIA_FOODTRUCK_PORTRAIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
 {
     id: 'preset-hallway-schedule-portrait',

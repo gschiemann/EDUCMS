@@ -100,6 +100,7 @@ import { ScrapbookHallwayWidget } from './ScrapbookHallwayWidget';
 // Real 4K portrait companions — vertical re-flow at 2160x3840.
 import { AnimatedHallwaySchedulePortraitWidget } from './AnimatedHallwaySchedulePortraitWidget';
 import { AnimatedBellSchedulePortraitWidget } from './AnimatedBellSchedulePortraitWidget';
+import { AnimatedCafeteriaFoodtruckPortraitWidget } from './AnimatedCafeteriaFoodtruckPortraitWidget';
 // Sprint 11h pre-launch: drag-drop animations as a generic decoration widget.
 import { DecorationWidget } from './DecorationWidget';
 // Holiday lobby pack — Halloween, Thanksgiving, Christmas, Valentine's,
@@ -275,6 +276,7 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'ANIMATED_CAFETERIA_HS':         return <AnimatedCafeteriaHighWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA_CHALKBOARD': return <AnimatedCafeteriaChalkboardWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA_FOODTRUCK':  return <AnimatedCafeteriaFoodtruckWidget config={cfg} live={live} />;
+    case 'ANIMATED_CAFETERIA_FOODTRUCK_PORTRAIT': return <AnimatedCafeteriaFoodtruckPortraitWidget config={cfg} live={live} />;
     case 'ANIMATED_BUS_BOARD':            return <AnimatedBusBoardWidget config={cfg} live={live} />;
     case 'ANIMATED_MAIN_ENTRANCE':        return <AnimatedMainEntranceWidget config={cfg} live={live} />;
     case 'ANIMATED_HALLWAY_SCHEDULE':     return <AnimatedHallwayScheduleWidget config={cfg} live={live} />;

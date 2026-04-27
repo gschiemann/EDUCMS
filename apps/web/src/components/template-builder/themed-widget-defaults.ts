@@ -166,6 +166,21 @@ export const THEMED_WIDGET_FIELDS: Record<string, ThemedField[]> = {
     { key: 'tickerStamp',     label: 'Ticker stamp',    default: 'CAFÉ NEWS' },
   ],
 
+  ANIMATED_CAFETERIA_FOODTRUCK_PORTRAIT: [
+    { key: 'title',           label: 'Title',           default: 'LUNCH IS ON' },
+    { key: 'subtitle',        label: 'Subtitle',        default: '~ freshly rolled every day ~' },
+    { key: 'specialEmoji',    label: 'Special emoji',   default: '' },
+    { key: 'specialLabel',    label: 'Special label',   default: 'Pickup Special' },
+    { key: 'specialName',     label: 'Special name',    default: 'Street Taco Bowl' },
+    { key: 'countdownLabel',  label: 'Countdown label', default: 'Taco Tuesday in' },
+    { key: 'countdownNumber', label: 'Countdown number', default: '' },
+    { key: 'countdownUnit',   label: 'Countdown unit',  default: '' },
+    { key: 'chefName',        label: 'Chef name',       default: 'Ms. Rodriguez' },
+    { key: 'chefRole',        label: 'Chef role',       default: 'lunch hero of the week' },
+    { key: 'birthdayNames',   label: 'Birthday names',  default: '' },
+    { key: 'tickerStamp',     label: 'Ticker stamp',    default: 'CAFÉ NEWS' },
+  ],
+
   ANIMATED_CAFETERIA_MS: [
     { key: 'title',           label: 'Title',           default: 'EAGLE EATS' },
     { key: 'subtitle',        label: 'Subtitle',        default: '~ fuel up, Eagles ~' },
