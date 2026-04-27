@@ -34,7 +34,26 @@ export class ScreenGroupsController {
       where: { tenantId },
       include: {
         screens: {
-          select: { id: true, name: true, location: true, status: true, lastPingAt: true, resolution: true, osInfo: true, browserInfo: true, ipAddress: true, pairedAt: true, deviceFingerprint: true, tenantId: true, screenGroupId: true, latitude: true, longitude: true, address: true, lastCacheReport: true },
+          // BUG FIX 2026-04-27: this `select` was missing
+          // `playerVersion` / `playerVersionCode` / `playerVersionAt`
+          // / `forceApkUpdatePendingAt` / `userAgent`. Dashboard
+          // renders from `group.screens` (NOT useScreens()), so the
+          // PlayerKindChip read `screen.playerVersion`, got undefined,
+          // and fell back to "—" forever even though the field WAS
+          // populated in Postgres + the /screens list endpoint
+          // (different code path) returned it correctly. Operator
+          // burned ~3 hours debugging a phantom kiosk-side bug
+          // because of one missing field in this select.
+          select: {
+            id: true, name: true, location: true, status: true,
+            lastPingAt: true, resolution: true, osInfo: true,
+            browserInfo: true, userAgent: true, ipAddress: true,
+            pairedAt: true, deviceFingerprint: true, tenantId: true,
+            screenGroupId: true, latitude: true, longitude: true,
+            address: true, lastCacheReport: true, lastCacheReportAt: true,
+            playerVersion: true, playerVersionCode: true, playerVersionAt: true,
+            forceApkUpdatePendingAt: true,
+          },
         },
         schedules: {
           where: { isActive: true },
