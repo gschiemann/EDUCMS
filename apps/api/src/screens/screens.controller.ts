@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Put, Delete, Body, Param, Req, Res, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
 import type { Request as ExpressReq, Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -199,7 +199,11 @@ export class ScreensController {
 
   // ─── PUBLIC: Device heartbeat / status check ───
   @Get('status/:deviceFingerprint')
-  async deviceStatus(@Param('deviceFingerprint') fingerprint: string) {
+  async deviceStatus(
+    @Param('deviceFingerprint') fingerprint: string,
+    @Query('v') versionName?: string,
+    @Query('vc') versionCode?: string,
+  ) {
     // Preview fingerprints must never write lastPingAt — they would push
     // the real paired kiosk's status to ONLINE even after closing the tab.
     if (fingerprint.startsWith('preview-')) {
@@ -211,10 +215,31 @@ export class ScreensController {
     });
     if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
 
-    // Update lastPingAt
+    // Update lastPingAt — and if the kiosk passed its app version on
+    // this heartbeat, capture it too. Operator (2026-04-27): "we
+    // shouldnt have to wait 6 hours to see an updated version, why
+    // not grab that everytime the screen checks in?"
+    //
+    // The Kotlin HeartbeatService sends ?v=BuildConfig.VERSION_NAME
+    // (and optionally ?vc=BuildConfig.VERSION_CODE) on every 30s
+    // heartbeat — same fields the OTA endpoint already accepts but
+    // 720× more often. Old kiosks that don't pass the params still
+    // work; they just won't update the version field until their
+    // next /update-check.
+    const data: any = {
+      lastPingAt: new Date(),
+      status: screen.tenantId ? 'ONLINE' : 'PENDING',
+    };
+    const vn = (versionName || '').trim();
+    if (vn) {
+      data.playerVersion = vn;
+      data.playerVersionAt = new Date();
+      const vc = Number(versionCode);
+      if (Number.isFinite(vc) && vc > 0) data.playerVersionCode = vc;
+    }
     await this.prisma.client.screen.update({
       where: { id: screen.id },
-      data: { lastPingAt: new Date(), status: screen.tenantId ? 'ONLINE' : 'PENDING' },
+      data,
     });
 
     return {

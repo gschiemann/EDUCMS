@@ -152,7 +152,15 @@ class HeartbeatService : Service() {
         try {
             wl.acquire(8_000)
             withContext(Dispatchers.IO) {
-                val url = URL("$apiRoot/api/v1/screens/status/$fp")
+                // Pass app version on every heartbeat so the dashboard
+                // sees the kiosk's current build within ~30s instead of
+                // waiting on the 6h /update-check cycle. Operator
+                // (2026-04-27): "we shouldnt have to wait 6 hours to
+                // see an updated version, why not grab that everytime
+                // the screen checks in?"
+                val vn = java.net.URLEncoder.encode(BuildConfig.VERSION_NAME, "UTF-8")
+                val vc = BuildConfig.VERSION_CODE
+                val url = URL("$apiRoot/api/v1/screens/status/$fp?v=$vn&vc=$vc")
                 val conn = (url.openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
                     connectTimeout = 6_000

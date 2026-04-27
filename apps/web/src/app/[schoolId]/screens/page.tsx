@@ -749,15 +749,16 @@ export default function ScreensPage() {
                               const at = (screen as any).playerVersionAt;
                               return (
                                 <span
-                                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-semibold ${
-                                    v ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-700'
+                                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${
+                                    v
+                                      ? 'bg-slate-100 text-slate-600 border border-slate-200'
+                                      : 'bg-amber-50 text-amber-700 border border-amber-200'
                                   }`}
                                   title={v
                                     ? `Player v${v}${at ? ` · reported ${fullDateTime(at)}` : ''}`
-                                    : 'Player has not reported a version yet — pair + wait for first 6h check-in'}
+                                    : 'Player has not reported a version yet — appears on next heartbeat (~30s)'}
                                 >
-                                  <Tag className="w-3 h-3" />
-                                  {v ? `v${v}` : 'v?'}
+                                  Player {v ? `v${v}` : '—'}
                                 </span>
                               );
                             })()}
