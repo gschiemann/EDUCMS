@@ -392,6 +392,45 @@ export class TenantsController {
   // Read current USB ingest config for the calling tenant. Never returns
   // the raw HMAC key over the wire — admins must explicitly rotate to see
   // a new one (rotation is the only time the key is exposed).
+  // ──────────────────────────────────────────────────────────────────
+  // Sprint 8b — Location-based emergency mode toggle.
+  //
+  // OFF (default): every screen plays the same panic content from
+  // `Tenant.panic*PlaylistId`. This is the simple, opinionated path
+  // every new pilot lands on.
+  //
+  // ON: floor-plan editor + per-screen emergency content overrides
+  // become live. The manifest endpoint reads `Screen.emergency*PlaylistId`
+  // and `Screen.emergency*AssetUrl` to override the tenant default per
+  // screen. Toggling back OFF is non-destructive — the per-screen rows
+  // are kept in case the admin re-enables, but the manifest behaves
+  // as if they were null.
+  //
+  // Admin-only by RBAC. Audit logging of the flip is intentionally
+  // light here (it's a settings toggle, not an emergency action) —
+  // the manifest's behavioral change is logged at trigger time.
+  // ──────────────────────────────────────────────────────────────────
+  @Get('me/location-based-emergency')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async getLocationBasedEmergencyConfig(@Request() req: any) {
+    const t = await this.prisma.client.tenant.findUnique({
+      where: { id: req.user.tenantId },
+      select: { locationBasedEmergencyEnabled: true } as any,
+    }) as any;
+    if (!t) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    return { enabled: !!t.locationBasedEmergencyEnabled };
+  }
+
+  @Put('me/location-based-emergency')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async setLocationBasedEmergencyEnabled(@Request() req: any, @Body() body: { enabled: boolean }) {
+    await this.prisma.client.tenant.update({
+      where: { id: req.user.tenantId },
+      data: { locationBasedEmergencyEnabled: !!body.enabled } as any,
+    });
+    return { ok: true, enabled: !!body.enabled };
+  }
+
   @Get('me/usb-ingest')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async getUsbIngestConfig(@Request() req: any) {

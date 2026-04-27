@@ -809,6 +809,13 @@ export class ScreensController {
             emergencyStatus: true,
             emergencyPlaylistId: true,
             emergencyPortraitPlaylistId: true,
+            // Sprint 8b — location-based mode toggle. When false, the
+            // manifest treats every screen as if it has no per-screen
+            // overrides set (admin hasn't opted in yet, or has opted
+            // back out — flipping the toggle off should immediately
+            // restore the simpler "every screen plays the tenant
+            // default" behavior without needing to wipe data).
+            locationBasedEmergencyEnabled: true,
           } as any,
         }) as any;
         if (tenant) setTenantState(screen.tenantId, tenant);
@@ -908,13 +915,26 @@ export class ScreensController {
           }
         })();
 
+        // Sprint 8b mode gate. Per-screen config columns (and per-screen
+        // custom uploads) only matter if the tenant has opted into
+        // location-based mode. The columns themselves are kept (so
+        // toggling the mode back on is non-destructive), but the
+        // manifest behaves like they're empty until the flag flips.
+        // Per-trigger ScreenEmergencyOverride entries are ALWAYS
+        // honored — those are explicit, audit-logged operator actions
+        // that pre-date the per-screen-config layer and must never be
+        // gated by a settings toggle.
+        const locationModeOn = !!tenant?.locationBasedEmergencyEnabled;
+        const effectivePerScreenPlaylist = locationModeOn ? perScreenForType : null;
+        const effectivePerScreenAsset    = locationModeOn ? perScreenAssetForType : null;
+
         // Pick the playlist for this screen's orientation. Graceful
         // fallback in BOTH directions: a portrait screen uses the
         // landscape playlist if no portrait was configured, and
         // vice-versa.
         const chosenPlaylistId =
-          activeScreenOverride?.playlistId ||                          // 1. manual trigger override
-          perScreenForType ||                                           // 2. per-screen config for this type
+          activeScreenOverride?.playlistId ||                          // 1. manual trigger override (always honored)
+          effectivePerScreenPlaylist ||                                 // 2. per-screen config (gated by location mode)
           (isPortrait                                                   // 3. tenant default
             ? (tenant?.emergencyPortraitPlaylistId || tenant?.emergencyPlaylistId || null)
             : (tenant?.emergencyPlaylistId || tenant?.emergencyPortraitPlaylistId || null));
@@ -957,9 +977,11 @@ export class ScreensController {
         // single custom asset for this emergency type, synthesize a
         // one-item playlist around it. The player renders the asset
         // full-screen for the standard emergency duration. Image vs
-        // video MIME is inferred from the URL extension.
-        if (playlists.length === 0 && perScreenAssetForType) {
-          const url = perScreenAssetForType;
+        // video MIME is inferred from the URL extension. Gated by the
+        // same location-mode toggle as the playlist column above —
+        // see `effectivePerScreenAsset` for rationale.
+        if (playlists.length === 0 && effectivePerScreenAsset) {
+          const url = effectivePerScreenAsset;
           const ext = (url.split('?')[0].split('#')[0].split('.').pop() || '').toLowerCase();
           const mime =
             ['mp4','mov','webm','m4v'].includes(ext) ? `video/${ext === 'mov' ? 'quicktime' : ext}` :

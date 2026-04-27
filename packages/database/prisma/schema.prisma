@@ -63,6 +63,14 @@ model Tenant {
   // tenant. The HMAC key signs every USB bundle's manifest.json so a
   // random/stolen stick can't push content to a paired screen. Rotated
   // by an admin via POST /tenants/me/usb-ingest-key/rotate.
+  // Location-based emergency mode (Sprint 8b operator UX). Off by
+  // default — tenants get the simple "every screen plays the same panic
+  // content" workflow. Admin opts in via Settings → Emergency to unlock
+  // floor plans + per-screen emergency content overrides. While this
+  // flag is OFF the manifest endpoint ignores any per-screen override
+  // columns even if they're populated, so flipping the toggle is a
+  // reversible no-op for the player fleet.
+  locationBasedEmergencyEnabled Boolean @default(false) @map("location_based_emergency_enabled")
   usbIngestEnabled        Boolean       @default(false) @map("usb_ingest_enabled")
   usbIngestKey            String?       @map("usb_ingest_key")             // 64-char hex (HMAC-SHA256 secret)
   usbIngestKeyRotatedAt   DateTime?     @map("usb_ingest_key_rotated_at")

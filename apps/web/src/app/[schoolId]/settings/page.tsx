@@ -8,6 +8,7 @@ import { useState, useRef, useEffect } from 'react';
 import { UsbIngestCard } from '@/components/settings/UsbIngestCard';
 import { LicenseCard } from '@/components/settings/LicenseCard';
 import { PanicContentEditor } from '@/components/settings/PanicContentEditor';
+import { LocationBasedEmergencyCard } from '@/components/settings/LocationBasedEmergencyCard';
 import { BrandingSettingsCard } from '@/components/settings/BrandingSettingsCard';
 import { DistrictSchoolsCard } from '@/components/settings/DistrictSchoolsCard';
 import { appConfirm } from '@/components/ui/app-dialog';
@@ -186,6 +187,16 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+
+        {/* Sprint 8b — Location-based emergency mode toggle. Admin opts in
+            to floor plans + per-screen emergency content overrides. Lives
+            here (not on a separate page) so the standard vs advanced
+            workflow choice happens once, in one place. Admin-only by
+            RoleGate; the per-screen drawer section enforces the same
+            roles independently. */}
+        <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}>
+          <LocationBasedEmergencyCard />
+        </RoleGate>
 
         {/* Auto-branding — paste URL → CMS re-skins (Sprint 9) */}
         <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}>

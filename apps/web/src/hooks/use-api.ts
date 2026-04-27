@@ -809,6 +809,37 @@ export function useCompSeats() {
   });
 }
 
+// ─── Location-based emergency mode (Sprint 8b toggle) ────────────
+//
+// When OFF, the manifest ignores every per-screen override and renders
+// the tenant default panic content on every screen — the simple
+// "everyone sees the same alert" workflow.
+//
+// When ON, the floor-plan editor and per-screen content config sections
+// in the drawer become meaningful. Toggling back to OFF is reversible —
+// per-screen rows stay put in case the admin flips it back on.
+export function useLocationBasedEmergencyConfig() {
+  return useQuery<{ enabled: boolean }>({
+    queryKey: ['location-based-emergency-config'],
+    queryFn: () => apiFetch('/tenants/me/location-based-emergency'),
+  });
+}
+export function useToggleLocationBasedEmergency() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      apiFetch('/tenants/me/location-based-emergency', { method: 'PUT', body: JSON.stringify({ enabled }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['location-based-emergency-config'] });
+      // Anything that branched on the flag (floor plans / screens manifest)
+      // should refetch after the mode changes.
+      qc.invalidateQueries({ queryKey: ['floor-plans'] });
+      qc.invalidateQueries({ queryKey: ['floor-plan'] });
+      qc.invalidateQueries({ queryKey: ['screens'] });
+    },
+  });
+}
+
 // ─── USB sneakernet ingest (Sprint 7B) ───
 export function useUsbIngestConfig() {
   return useQuery<{ enabled: boolean; hasKey: boolean; keyRotatedAt: string | null }>({
