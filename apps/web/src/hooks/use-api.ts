@@ -51,7 +51,19 @@ export function useDeleteScreenGroup() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/screen-groups/${id}`, { method: 'DELETE' }),
-    onSuccess: () => {
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ['screen-groups'] });
+      const prev = qc.getQueryData<any>(['screen-groups']);
+      qc.setQueryData<any>(['screen-groups'], (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.filter((g: any) => g?.id !== id);
+      });
+      return { prev };
+    },
+    onError: (_e, _id, ctx) => {
+      if (ctx?.prev !== undefined) qc.setQueryData(['screen-groups'], ctx.prev);
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['screen-groups'] });
       qc.invalidateQueries({ queryKey: ['schedules'] });
       qc.invalidateQueries({ queryKey: ['playlists'] });
@@ -119,7 +131,37 @@ export function useUpdateScreen() {
   return useMutation({
     mutationFn: ({ id, ...data }: { id: string; name?: string; location?: string; screenGroupId?: string | null }) =>
       apiFetch(`/screens/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-    onSuccess: () => {
+    // Optimistic update — rename / move-to-group / location edit
+    // commit instantly. Rollback on server error.
+    onMutate: async ({ id, ...patch }) => {
+      await Promise.all([
+        qc.cancelQueries({ queryKey: ['screens'] }),
+        qc.cancelQueries({ queryKey: ['screen-groups'] }),
+      ]);
+      const prevScreens = qc.getQueryData<any>(['screens']);
+      const prevGroups  = qc.getQueryData<any>(['screen-groups']);
+      qc.setQueryData<any>(['screens'], (old: any) => {
+        const apply = (s: any) => (s?.id === id ? { ...s, ...patch } : s);
+        if (Array.isArray(old)) return old.map(apply);
+        if (Array.isArray(old?.screens)) return { ...old, screens: old.screens.map(apply) };
+        return old;
+      });
+      qc.setQueryData<any>(['screen-groups'], (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((g: any) => ({
+          ...g,
+          screens: Array.isArray(g?.screens)
+            ? g.screens.map((s: any) => (s?.id === id ? { ...s, ...patch } : s))
+            : g?.screens,
+        }));
+      });
+      return { prevScreens, prevGroups };
+    },
+    onError: (_e, _vars, ctx) => {
+      if (ctx?.prevScreens !== undefined) qc.setQueryData(['screens'], ctx.prevScreens);
+      if (ctx?.prevGroups  !== undefined) qc.setQueryData(['screen-groups'], ctx.prevGroups);
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['screens'] });
       qc.invalidateQueries({ queryKey: ['screen-groups'] });
       qc.invalidateQueries({ queryKey: ['schedules'] });
@@ -132,7 +174,37 @@ export function useDeleteScreen() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/screens/${id}`, { method: 'DELETE' }),
-    onSuccess: () => {
+    // Optimistic delete — operator (2026-04-27): "i delete something
+    // and count to like 3 or 4 before it deletes." Yank the screen
+    // from cache the moment they click; rollback on server error;
+    // background-invalidate as truth on settle.
+    onMutate: async (id) => {
+      await Promise.all([
+        qc.cancelQueries({ queryKey: ['screens'] }),
+        qc.cancelQueries({ queryKey: ['screen-groups'] }),
+      ]);
+      const prevScreens = qc.getQueryData<any>(['screens']);
+      const prevGroups  = qc.getQueryData<any>(['screen-groups']);
+      qc.setQueryData<any>(['screens'], (old: any) => {
+        if (!old) return old;
+        if (Array.isArray(old)) return old.filter((s: any) => s?.id !== id);
+        if (Array.isArray(old?.screens)) return { ...old, screens: old.screens.filter((s: any) => s?.id !== id) };
+        return old;
+      });
+      qc.setQueryData<any>(['screen-groups'], (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((g: any) => ({
+          ...g,
+          screens: Array.isArray(g?.screens) ? g.screens.filter((s: any) => s?.id !== id) : g?.screens,
+        }));
+      });
+      return { prevScreens, prevGroups };
+    },
+    onError: (_err, _id, ctx) => {
+      if (ctx?.prevScreens !== undefined) qc.setQueryData(['screens'], ctx.prevScreens);
+      if (ctx?.prevGroups  !== undefined) qc.setQueryData(['screen-groups'], ctx.prevGroups);
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['screens'] });
       qc.invalidateQueries({ queryKey: ['screen-groups'] });
       qc.invalidateQueries({ queryKey: ['schedules'] });
@@ -148,6 +220,11 @@ export function usePlaylists() {
   return useQuery({
     queryKey: ['playlists'],
     queryFn: () => apiFetch('/playlists'),
+    // Keep playlist list fresh for 30s — navigating Templates → Playlists
+    // → back was retriggering a network fetch on every remount, making
+    // the page feel sluggish. Mutations still invalidate explicitly so
+    // edits show up instantly.
+    staleTime: 30_000,
   });
 }
 
@@ -193,7 +270,19 @@ export function useDeletePlaylist() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/playlists/${id}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['playlists'] }),
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ['playlists'] });
+      const prev = qc.getQueryData<any>(['playlists']);
+      qc.setQueryData<any>(['playlists'], (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.filter((p: any) => p?.id !== id);
+      });
+      return { prev };
+    },
+    onError: (_e, _id, ctx) => {
+      if (ctx?.prev !== undefined) qc.setQueryData(['playlists'], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['playlists'] }),
   });
 }
 
@@ -201,6 +290,10 @@ export function useDeletePlaylist() {
  * Flip every schedule attached to a playlist on or off. Powers the
  * on/off toggle on the playlist card — one click = all the playlist's
  * schedules switch at once. Server returns `{ count, active }`.
+ *
+ * Optimistic: flip the schedules attached to this playlist locally
+ * the moment the operator toggles, so the UI updates instantly.
+ * Rollback on error.
  */
 export function useSetPlaylistActive() {
   const qc = useQueryClient();
@@ -210,7 +303,30 @@ export function useSetPlaylistActive() {
         method: 'PUT',
         body: JSON.stringify({ active }),
       }),
-    onSuccess: () => {
+    onMutate: async ({ id, active }) => {
+      await Promise.all([
+        qc.cancelQueries({ queryKey: ['schedules'] }),
+        qc.cancelQueries({ queryKey: ['playlists'] }),
+      ]);
+      const prevSchedules = qc.getQueryData<any>(['schedules']);
+      const prevPlaylists = qc.getQueryData<any>(['playlists']);
+      qc.setQueryData<any>(['schedules'], (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((s: any) => (s?.playlistId === id ? { ...s, isActive: active } : s));
+      });
+      // Some playlist views render an aggregate `isActive` based on attached
+      // schedules; nudge it on the playlist row too.
+      qc.setQueryData<any>(['playlists'], (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((p: any) => (p?.id === id ? { ...p, isActive: active } : p));
+      });
+      return { prevSchedules, prevPlaylists };
+    },
+    onError: (_e, _vars, ctx) => {
+      if (ctx?.prevSchedules !== undefined) qc.setQueryData(['schedules'], ctx.prevSchedules);
+      if (ctx?.prevPlaylists !== undefined) qc.setQueryData(['playlists'], ctx.prevPlaylists);
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['playlists'] });
       qc.invalidateQueries({ queryKey: ['schedules'] });
     },
@@ -223,6 +339,7 @@ export function useSchedules() {
   return useQuery({
     queryKey: ['schedules'],
     queryFn: () => apiFetch('/schedules'),
+    staleTime: 30_000,
   });
 }
 
@@ -268,7 +385,19 @@ export function useToggleSchedule() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/schedules/${id}/toggle`, { method: 'PUT' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['schedules'] }),
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ['schedules'] });
+      const prev = qc.getQueryData<any>(['schedules']);
+      qc.setQueryData<any>(['schedules'], (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((s: any) => (s?.id === id ? { ...s, isActive: !s.isActive } : s));
+      });
+      return { prev };
+    },
+    onError: (_e, _id, ctx) => {
+      if (ctx?.prev !== undefined) qc.setQueryData(['schedules'], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['schedules'] }),
   });
 }
 
@@ -276,7 +405,19 @@ export function useDeleteSchedule() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/schedules/${id}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['schedules'] }),
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ['schedules'] });
+      const prev = qc.getQueryData<any>(['schedules']);
+      qc.setQueryData<any>(['schedules'], (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.filter((s: any) => s?.id !== id);
+      });
+      return { prev };
+    },
+    onError: (_e, _id, ctx) => {
+      if (ctx?.prev !== undefined) qc.setQueryData(['schedules'], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['schedules'] }),
   });
 }
 
@@ -286,6 +427,7 @@ export function useAssets() {
   return useQuery({
     queryKey: ['assets'],
     queryFn: () => apiFetch('/assets'),
+    staleTime: 30_000,
   });
 }
 
@@ -303,7 +445,18 @@ export function useApproveAsset() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/assets/${id}/approve`, { method: 'PUT' }),
-    onSuccess: () => {
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ['assets', 'pending'] });
+      const prev = qc.getQueryData<any[]>(['assets', 'pending']);
+      qc.setQueryData<any[]>(['assets', 'pending'], (old: any) =>
+        Array.isArray(old) ? old.filter((a: any) => a?.id !== id) : old,
+      );
+      return { prev };
+    },
+    onError: (_e, _id, ctx) => {
+      if (ctx?.prev !== undefined) qc.setQueryData(['assets', 'pending'], ctx.prev);
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['assets'] });
       qc.invalidateQueries({ queryKey: ['assets', 'pending'] });
     },
@@ -318,7 +471,18 @@ export function useRejectAsset() {
         method: 'PUT',
         body: JSON.stringify({ reason: reason || '' }),
       }),
-    onSuccess: () => {
+    onMutate: async ({ id }) => {
+      await qc.cancelQueries({ queryKey: ['assets', 'pending'] });
+      const prev = qc.getQueryData<any[]>(['assets', 'pending']);
+      qc.setQueryData<any[]>(['assets', 'pending'], (old: any) =>
+        Array.isArray(old) ? old.filter((a: any) => a?.id !== id) : old,
+      );
+      return { prev };
+    },
+    onError: (_e, _vars, ctx) => {
+      if (ctx?.prev !== undefined) qc.setQueryData(['assets', 'pending'], ctx.prev);
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['assets'] });
       qc.invalidateQueries({ queryKey: ['assets', 'pending'] });
     },
@@ -358,7 +522,20 @@ export function useDeleteAsset() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/assets/${id}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['assets'] }),
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ['assets'] });
+      const prev = qc.getQueryData<any>(['assets']);
+      qc.setQueryData<any>(['assets'], (old: any) => {
+        if (Array.isArray(old)) return old.filter((a: any) => a?.id !== id);
+        if (Array.isArray(old?.assets)) return { ...old, assets: old.assets.filter((a: any) => a?.id !== id) };
+        return old;
+      });
+      return { prev };
+    },
+    onError: (_e, _id, ctx) => {
+      if (ctx?.prev !== undefined) qc.setQueryData(['assets'], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['assets'] }),
   });
 }
 
@@ -367,7 +544,21 @@ export function useMoveAsset() {
   return useMutation({
     mutationFn: ({ id, folderId }: { id: string; folderId: string | null }) =>
       apiFetch(`/assets/${id}/move`, { method: 'PUT', body: JSON.stringify({ folderId }) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['assets'] }),
+    onMutate: async ({ id, folderId }) => {
+      await qc.cancelQueries({ queryKey: ['assets'] });
+      const prev = qc.getQueryData<any>(['assets']);
+      qc.setQueryData<any>(['assets'], (old: any) => {
+        const apply = (a: any) => (a?.id === id ? { ...a, folderId } : a);
+        if (Array.isArray(old)) return old.map(apply);
+        if (Array.isArray(old?.assets)) return { ...old, assets: old.assets.map(apply) };
+        return old;
+      });
+      return { prev };
+    },
+    onError: (_e, _vars, ctx) => {
+      if (ctx?.prev !== undefined) qc.setQueryData(['assets'], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['assets'] }),
   });
 }
 
@@ -377,6 +568,7 @@ export function useAssetFolders() {
   return useQuery({
     queryKey: ['asset-folders'],
     queryFn: () => apiFetch('/assets/folders'),
+    staleTime: 60_000,
   });
 }
 
@@ -394,7 +586,19 @@ export function useRenameAssetFolder() {
   return useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) =>
       apiFetch(`/assets/folders/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['asset-folders'] }),
+    onMutate: async ({ id, name }) => {
+      await qc.cancelQueries({ queryKey: ['asset-folders'] });
+      const prev = qc.getQueryData<any>(['asset-folders']);
+      qc.setQueryData<any>(['asset-folders'], (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((f: any) => (f?.id === id ? { ...f, name } : f));
+      });
+      return { prev };
+    },
+    onError: (_e, _vars, ctx) => {
+      if (ctx?.prev !== undefined) qc.setQueryData(['asset-folders'], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['asset-folders'] }),
   });
 }
 
@@ -402,7 +606,19 @@ export function useDeleteAssetFolder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/assets/folders/${id}`, { method: 'DELETE' }),
-    onSuccess: () => {
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ['asset-folders'] });
+      const prev = qc.getQueryData<any>(['asset-folders']);
+      qc.setQueryData<any>(['asset-folders'], (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.filter((f: any) => f?.id !== id);
+      });
+      return { prev };
+    },
+    onError: (_e, _id, ctx) => {
+      if (ctx?.prev !== undefined) qc.setQueryData(['asset-folders'], ctx.prev);
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['asset-folders'] });
       qc.invalidateQueries({ queryKey: ['assets'] });
     },
@@ -415,6 +631,7 @@ export function useTemplates(category?: string) {
   return useQuery({
     queryKey: ['templates', category],
     queryFn: () => apiFetch(`/templates${category ? `?category=${category}` : ''}`),
+    staleTime: 60_000,
   });
 }
 
@@ -423,6 +640,7 @@ export function useTemplate(id: string) {
     queryKey: ['templates', id],
     queryFn: () => apiFetch(`/templates/${id}`),
     enabled: !!id,
+    staleTime: 60_000,
   });
 }
 
@@ -549,7 +767,24 @@ export function useDeleteTemplate() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/templates/${id}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['templates'] }),
+    onMutate: async (id) => {
+      // Templates are cached under multiple keys (root list + per-category
+      // filtered list). Snapshot + patch every cache that's currently set.
+      await qc.cancelQueries({ queryKey: ['templates'] });
+      const snapshots = qc.getQueriesData<any>({ queryKey: ['templates'] });
+      for (const [key, val] of snapshots) {
+        if (Array.isArray(val)) {
+          qc.setQueryData(key, val.filter((t: any) => t?.id !== id));
+        }
+      }
+      return { snapshots };
+    },
+    onError: (_e, _id, ctx) => {
+      if (ctx?.snapshots) {
+        for (const [key, val] of ctx.snapshots) qc.setQueryData(key, val);
+      }
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['templates'] }),
   });
 }
 
@@ -559,6 +794,7 @@ export function useUsers() {
   return useQuery({
     queryKey: ['users'],
     queryFn: () => apiFetch('/users'),
+    staleTime: 60_000,
   });
 }
 
@@ -595,7 +831,19 @@ export function useUpdateUserRole() {
   return useMutation({
     mutationFn: ({ id, role }: { id: string; role: string }) =>
       apiFetch(`/users/${id}/role`, { method: 'PUT', body: JSON.stringify({ role }) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+    onMutate: async ({ id, role }) => {
+      await qc.cancelQueries({ queryKey: ['users'] });
+      const prev = qc.getQueryData<any>(['users']);
+      qc.setQueryData<any>(['users'], (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((u: any) => (u?.id === id ? { ...u, role } : u));
+      });
+      return { prev };
+    },
+    onError: (_e, _vars, ctx) => {
+      if (ctx?.prev !== undefined) qc.setQueryData(['users'], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['users'] }),
   });
 }
 
@@ -603,7 +851,19 @@ export function useDeleteUser() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/users/${id}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ['users'] });
+      const prev = qc.getQueryData<any>(['users']);
+      qc.setQueryData<any>(['users'], (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.filter((u: any) => u?.id !== id);
+      });
+      return { prev };
+    },
+    onError: (_e, _id, ctx) => {
+      if (ctx?.prev !== undefined) qc.setQueryData(['users'], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['users'] }),
   });
 }
 
