@@ -84,6 +84,68 @@ export class PlayerOtaController {
   async updateCheck(@Body() body: UpdateCheckBody) {
     // Fire-and-forget; don't block the response path on the write.
     this.persistReportedVersion(body).catch(() => {});
+
+    // OTA gating (2026-04-27). Operator: "we shouldnt be auto
+    // updating screens unless we check a box or something on
+    // that... i would hate to break a perfectly good working
+    // screen with an update."
+    //
+    // Default behavior: NO automatic updates. The kiosk polls and
+    // gets `uptoDate: true` even if a newer APK is published. The
+    // admin must EITHER:
+    //   (a) flip Tenant.autoUpdatePlayerEnabled = true (opt-in
+    //       to background updates), OR
+    //   (b) click "Push update" on the specific screen, which
+    //       writes Screen.forceApkUpdatePendingAt = now() — the
+    //       next update-check from THAT screen returns the latest
+    //       (within a 30-min window).
+    //
+    // We resolve the screen by deviceFingerprint, then its tenant.
+    // If the fingerprint isn't paired (preview, unpaired install)
+    // we conservatively return uptoDate — those installs will be
+    // updated when they pair to a tenant whose flag is on.
+    const FORCE_WINDOW_MS = 30 * 60_000;
+    let allowUpdate = false;
+    let forcedPendingScreenId: string | null = null;
+    try {
+      const fp = (body?.fingerprint || '').trim();
+      if (fp) {
+        const screen = await this.prisma.client.screen.findFirst({
+          where: { deviceFingerprint: fp },
+          select: {
+            id: true,
+            forceApkUpdatePendingAt: true,
+            tenant: { select: { autoUpdatePlayerEnabled: true } },
+          } as any,
+        }) as any;
+        if (screen?.tenant?.autoUpdatePlayerEnabled) {
+          allowUpdate = true;
+        } else if (screen?.forceApkUpdatePendingAt) {
+          const ageMs = Date.now() - new Date(screen.forceApkUpdatePendingAt).getTime();
+          if (ageMs < FORCE_WINDOW_MS) {
+            allowUpdate = true;
+            forcedPendingScreenId = screen.id;
+          }
+        }
+      }
+    } catch (e: any) {
+      // On lookup error, fall back to the safer default (no update).
+      this.logger.warn(`OTA gate lookup failed, returning uptoDate: ${e?.message}`);
+    }
+    if (!allowUpdate) {
+      return { uptoDate: true };
+    }
+    // Best-effort: clear the pending flag once we hand back a
+    // download URL, so the screen doesn't keep returning latest on
+    // every subsequent poll within the 30-min window. The kiosk's
+    // next poll AFTER install will report a higher versionName and
+    // would naturally hit uptoDate, but clearing is cleaner.
+    if (forcedPendingScreenId) {
+      this.prisma.client.screen
+        .update({ where: { id: forcedPendingScreenId }, data: { forceApkUpdatePendingAt: null } as any })
+        .catch(() => { /* swallow */ });
+    }
+
     const latestVc = parseInt(process.env.PLAYER_APK_LATEST_VERSION_CODE || '0', 10);
     const latestVn = process.env.PLAYER_APK_LATEST_VERSION_NAME || '';
     const apkUrl = process.env.PLAYER_APK_URL || '';
@@ -153,6 +215,41 @@ export class PlayerOtaController {
       this.logger.warn(`GitHub OTA lookup failed, reporting uptoDate: ${e?.message}`);
       return { uptoDate: true };
     }
+  }
+
+  /**
+   * GET /api/v1/player/latest-version
+   *
+   * Returns the latest published player APK version so the dashboard
+   * can show "Current vX.X.X · Latest vY.Y.Y" + a Push button on each
+   * screen card. Resolves from the same source as /update-check
+   * (env-pin first, GitHub Releases second). Admin-callable.
+   */
+  @Get('latest-version')
+  async getLatestVersion() {
+    // Env override wins.
+    const envVn = (process.env.PLAYER_APK_LATEST_VERSION_NAME || '').trim();
+    const envVc = parseInt(process.env.PLAYER_APK_LATEST_VERSION_CODE || '0', 10);
+    if (envVn && envVc) {
+      return {
+        versionName: envVn,
+        versionCode: envVc,
+        source: 'env',
+      };
+    }
+    try {
+      const info = await resolveLatestReleaseInfo();
+      if (info) {
+        return {
+          versionName: info.versionName,
+          versionCode: info.derivedVersionCode,
+          source: 'github',
+        };
+      }
+    } catch (e: any) {
+      this.logger.warn(`/latest-version GitHub lookup failed: ${e?.message}`);
+    }
+    return { versionName: null, versionCode: null, source: 'unknown' };
   }
 
   @Get('apk/latest')

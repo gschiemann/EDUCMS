@@ -71,6 +71,15 @@ model Tenant {
   // columns even if they're populated, so flipping the toggle is a
   // reversible no-op for the player fleet.
   locationBasedEmergencyEnabled Boolean @default(false) @map("location_based_emergency_enabled")
+  // Auto-update for paired Android players (2026-04-27). Operator:
+  // "we shouldnt be auto updating screens unless we check a box or
+  // something on that... i would hate to break a perfectly good
+  // working screen with an update."
+  // OFF (default): /player/update-check returns uptoDate=true unless
+  // the admin manually clicked Push for that specific screen (the
+  // controller stores Screen.forceApkUpdatePendingAt and respects a
+  // 30-min window). ON: kiosks pull updates on their own 6h cadence.
+  autoUpdatePlayerEnabled Boolean       @default(false) @map("auto_update_player_enabled")
   usbIngestEnabled        Boolean       @default(false) @map("usb_ingest_enabled")
   usbIngestKey            String?       @map("usb_ingest_key")             // 64-char hex (HMAC-SHA256 secret)
   usbIngestKeyRotatedAt   DateTime?     @map("usb_ingest_key_rotated_at")
@@ -358,6 +367,13 @@ model Screen {
   playerVersion     String?      @map("player_version")      // "1.0.8"
   playerVersionCode Int?         @map("player_version_code") // 8
   playerVersionAt   DateTime?    @map("player_version_at")   // last poll that reported it
+  // Manual-push opt-in for OTA. When the admin clicks "Push update"
+  // on a specific screen we set this to now(); the next call this
+  // screen makes to /player/update-check returns the latest APK
+  // (gating-window: 30 min). After that window the field is just
+  // history. When tenant.autoUpdatePlayerEnabled = true this field
+  // is irrelevant — auto-mode always returns the latest.
+  forceApkUpdatePendingAt DateTime? @map("force_apk_update_pending_at")
   // Sprint 8b operator-config layer for the 6 emergency types (LOCKDOWN /
   // EVACUATE / WEATHER / HOLD / SECURE / MEDICAL).
   // For each type the operator can:

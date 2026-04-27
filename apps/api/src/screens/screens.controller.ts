@@ -635,6 +635,16 @@ export class ScreensController {
   async forceUpdateAll(@Request() req: any) {
     const tenantId = req.user.tenantId;
     if (!tenantId) throw new HttpException('No tenant context', HttpStatus.BAD_REQUEST);
+    // Mark every screen in the tenant as force-pending so the next
+    // /update-check from each one gets the latest APK (gated 30 min).
+    // Safe even when tenant.autoUpdatePlayerEnabled is false — the
+    // force flag is the explicit opt-in for THIS push only.
+    await this.prisma.client.screen.updateMany({
+      where: { tenantId },
+      data: { forceApkUpdatePendingAt: new Date() } as any,
+    }).catch((e) => {
+      console.warn('[force-update] forceApkUpdatePendingAt write failed', (e as Error).message);
+    });
     const signed = this.signer.signMessage('CHECK_FOR_UPDATES', {
       scope: 'tenant',
       scopeId: tenantId,
@@ -666,6 +676,14 @@ export class ScreensController {
       where: { id, tenantId: req.user.tenantId },
     });
     if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    // Set the per-screen force flag — the next update-check from
+    // this kiosk returns the latest APK (gated 30 min).
+    await this.prisma.client.screen.update({
+      where: { id },
+      data: { forceApkUpdatePendingAt: new Date() } as any,
+    }).catch((e) => {
+      console.warn('[force-update one] forceApkUpdatePendingAt write failed', (e as Error).message);
+    });
     const signed = this.signer.signMessage('CHECK_FOR_UPDATES', {
       scope: 'screen',
       scopeId: id,
