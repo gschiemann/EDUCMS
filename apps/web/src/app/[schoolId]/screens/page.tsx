@@ -97,6 +97,106 @@ function OsIcon({ os, status }: { os?: string; status?: string }) {
  * Built as a portal-free popover so it stays anchored to the row even
  * when the Screens list scrolls.
  */
+/**
+ * Platform-aware player chip on each screen card. Operator
+ * (2026-04-27): "give a little android icon instead of the word
+ * player... if its a browser do a browser icon based on what
+ * browser type it is."
+ *
+ * Detection priority:
+ *   1. osInfo === 'Android'  → Android APK player (mascot logo,
+ *      grey chip), shows reported version or "—" when not yet.
+ *   2. browserInfo present   → Browser player. Pick a brand-
+ *      specific icon (Chrome / Firefox / Safari / Edge) when the
+ *      string matches; fall back to lucide Globe for "Other".
+ *   3. Nothing reported      → grey "—" chip.
+ */
+function PlayerKindChip({ screen }: { screen: any }) {
+  const v: string | null = screen?.playerVersion ?? null;
+  const at: string | null = screen?.playerVersionAt ?? null;
+  const osInfo: string = (screen?.osInfo || '').toLowerCase();
+  const browser: string = (screen?.browserInfo || '').toLowerCase();
+
+  const isAndroidApk = osInfo.includes('android');
+  const baseClass = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide';
+
+  if (isAndroidApk) {
+    return (
+      <span
+        className={`${baseClass} ${v
+          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+          : 'bg-amber-50 text-amber-700 border border-amber-200'}`}
+        title={v
+          ? `Android Player v${v}${at ? ` · reported ${fullDateTime(at)}` : ''}`
+          : 'Android Player — version not reported yet (next heartbeat ~30s)'}
+      >
+        {/* Official Android bot mascot — full simpleicons.org path,
+            recognizable at 12px. The signature half-circle head with
+            antennae + two eye dots reads as Android instantly. */}
+        <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5" aria-hidden>
+          <path d="M17.523 15.3414c-.5511 0-.9993-.4486-.9993-1.0019 0-.5511.4486-.9993.9993-.9993.5511 0 .9993.4486.9993.9993.0001.5533-.4482 1.0019-.9993 1.0019m-11.046 0c-.5511 0-.9993-.4486-.9993-1.0019 0-.5511.4486-.9993.9993-.9993.5511 0 .9993.4486.9993.9993 0 .5533-.4482 1.0019-.9993 1.0019m11.4045-6.02l1.9973-3.4592a.416.416 0 00-.1521-.5676.416.416 0 00-.5676.1521l-2.0223 3.503C15.5902 8.2439 13.8533 7.8508 12 7.8508s-3.5902.3931-5.1357 1.0993L4.841 5.4471a.4161.4161 0 00-.5676-.1521.4161.4161 0 00-.1521.5676l1.9973 3.4592C2.6889 11.1867.3432 14.6589 0 18.761h24c-.3432-4.1021-2.6889-7.5743-6.1185-9.4396"/>
+        </svg>
+        {v ? `v${v}` : '—'}
+      </span>
+    );
+  }
+
+  // Browser player — figure out which one. Order matters; "Edge"
+  // also includes "Chrome" in modern Chromium-Edge UA strings, so
+  // check Edge first.
+  let browserName = 'Browser';
+  let icon: React.ReactNode = <Globe className="w-3 h-3" aria-hidden />;
+  if (browser.includes('edg')) {
+    browserName = 'Edge';
+    icon = (
+      // Microsoft Edge swirl
+      <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3" aria-hidden>
+        <path d="M21.86 14.32a8.46 8.46 0 01-1.39 2.83 9.42 9.42 0 01-7.55 3.71 9.43 9.43 0 01-6.34-2.5 9.5 9.5 0 003.5.66 8.5 8.5 0 008.43-7.4 6 6 0 00-2.04-4.66A8.5 8.5 0 0024 8a8.5 8.5 0 01-2.14 6.32zM5.6 17.97a8.7 8.7 0 01-3.6-7.3A8.5 8.5 0 0112 2a8.5 8.5 0 018.5 8.5 4.5 4.5 0 01-4.5 4.5c-2 0-3.5-1-3.5-3 0-2 2-2.5 2-4.5 0-2-1.5-3-3-3-3 0-5.5 3-5.5 6.5 0 2.5 1.5 5 1.5 5L5.6 18z"/>
+      </svg>
+    );
+  } else if (browser.includes('firefox') || browser.includes('fxios')) {
+    browserName = 'Firefox';
+    icon = (
+      // Firefox-ish flame
+      <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3" aria-hidden>
+        <path d="M12 2c-1 2-3 2-4 4 0-2 1-3 1-3-3 1-5 4-5 8 0 5 4 9 9 9s9-4 9-9c0-3-1-5-3-7 0 2-1 3-2 3 0-2-2-4-5-5zm-1 8c2 0 3 1 3 3s-1 3-3 3-3-1-3-3 1-3 3-3z"/>
+      </svg>
+    );
+  } else if (browser.includes('chrome') || browser.includes('crios') || browser.includes('chromium')) {
+    browserName = 'Chrome';
+    icon = (
+      // Chrome wheel — outer ring + 3-color spokes simplified to a
+      // single-color glyph that reads as Chrome at 12px.
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3" aria-hidden>
+        <circle cx="12" cy="12" r="10" />
+        <circle cx="12" cy="12" r="3.5" fill="currentColor" stroke="none" />
+        <line x1="21.17" y1="8" x2="12" y2="8" />
+        <line x1="3.95" y1="6.06" x2="8.54" y2="14" />
+        <line x1="10.88" y1="21.94" x2="15.46" y2="14" />
+      </svg>
+    );
+  } else if (browser.includes('safari')) {
+    browserName = 'Safari';
+    icon = (
+      // Compass-ish Safari mark
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3" aria-hidden>
+        <circle cx="12" cy="12" r="10" />
+        <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor" stroke="none" />
+      </svg>
+    );
+  }
+
+  return (
+    <span
+      className={`${baseClass} bg-sky-50 text-sky-700 border border-sky-200`}
+      title={`Browser player · ${screen?.browserInfo || browserName}${at ? ` · last seen ${fullDateTime(at)}` : ''}`}
+    >
+      {icon}
+      {browserName}
+    </span>
+  );
+}
+
 function ScreenSettingsMenu({
   screen,
   pushState,
@@ -775,7 +875,16 @@ export default function ScreensPage() {
                             {screen.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {screen.location}</span>}
                             {screen.resolution && <span>📐 {screen.resolution}</span>}
                             {screen.osInfo && <span>💻 {screen.osInfo}</span>}
-                            {screen.browserInfo && <span><Globe className="w-3 h-3 inline" /> {screen.browserInfo}</span>}
+                            {/* Hide the browser chip on Android APK players —
+                                the WebView always reports itself as "Chrome
+                                en-US" and operator (2026-04-27) called it
+                                misleading: "why do you have a browser on the
+                                android devices listed." Browser-only players
+                                still show the chip + we surface the brand
+                                separately in the PlayerKindChip glyph. */}
+                            {screen.browserInfo && !((screen.osInfo || '').toLowerCase().includes('android')) && (
+                              <span><Globe className="w-3 h-3 inline" /> {screen.browserInfo}</span>
+                            )}
                             {screen.ipAddress && <span>🌐 {screen.ipAddress}</span>}
                             {/* Player version chip. Self-reported by the
                                 Android APK on each /update-check (every 6h).
@@ -788,24 +897,12 @@ export default function ScreensPage() {
                                 also reports as Chrome — false-positives on
                                 APK installs. Now we just show v? until the
                                 APK actually reports a version. */}
-                            {(() => {
-                              const v = (screen as any).playerVersion;
-                              const at = (screen as any).playerVersionAt;
-                              return (
-                                <span
-                                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${
-                                    v
-                                      ? 'bg-slate-100 text-slate-600 border border-slate-200'
-                                      : 'bg-amber-50 text-amber-700 border border-amber-200'
-                                  }`}
-                                  title={v
-                                    ? `Player v${v}${at ? ` · reported ${fullDateTime(at)}` : ''}`
-                                    : 'Player has not reported a version yet — appears on next heartbeat (~30s)'}
-                                >
-                                  Player {v ? `v${v}` : '—'}
-                                </span>
-                              );
-                            })()}
+                            <PlayerKindChip screen={screen} />
+                            {/* Inline component below; renders a platform-
+                                aware chip — Android bot for APK players,
+                                Chrome / Firefox / Safari / Edge / generic
+                                Globe icon for browser players based on the
+                                screen's browserInfo string. */}
                           </div>
                         </div>
                         <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg ${
