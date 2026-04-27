@@ -99,7 +99,12 @@ export function markLastPingWritten(screenId: string): void {
 // screens) spams the Activity card with 600 identical entries an
 // hour. Key is `${screenId}:${setHash}` so a genuine content change
 // (different setHash) still produces a fresh audit entry.
-const EMERGENCY_AUDIT_DEBOUNCE_MS = 15 * 60_000; // 15 minutes
+//
+// 2026-04-27: bumped from 15min → 6h. The forensic value of these
+// entries is "did this device fetch emergency content recently"; six
+// hours is more than fine. At 50 screens the per-day audit row count
+// drops from ~4,800 to ~200 — within the spam-free target.
+const EMERGENCY_AUDIT_DEBOUNCE_MS = 6 * 60 * 60_000; // 6 hours
 const recentEmergencyAudit = new Map<string, number>();
 export function shouldSkipEmergencyAudit(screenId: string, setHash: string): boolean {
     const key = `${screenId}:${setHash}`;

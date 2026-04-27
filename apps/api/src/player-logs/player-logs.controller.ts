@@ -133,46 +133,75 @@ export class PlayerLogsController {
       this.logger.warn(`Could not resolve tenantId for screen ${attributedScreenId}: ${(err as Error).message}`);
     }
 
-    // Truncate to DETAILS_TRUNCATE chars before writing to AuditLog.
-    // details is String? in the schema — serialize metadata + log tail as JSON.
-    // Full log is NOT stored in Phase 1; Phase 2 can add Supabase object storage.
+    // Truncate to DETAILS_TRUNCATE chars before potential write.
     const logTail = rawBody.length > DETAILS_TRUNCATE
       ? rawBody.slice(rawBody.length - DETAILS_TRUNCATE) // keep tail (most recent)
       : rawBody;
 
-    const detailsJson = JSON.stringify({
-      source: 'android_apk',
-      screenId: attributedScreenId,
-      jwtVerified: jwtSub !== null,
-      bodyBytes: Buffer.byteLength(rawBody, 'utf8'),
-      truncated: rawBody.length > DETAILS_TRUNCATE,
-      log: logTail,
-    });
+    // Pre-launch audit-spam fix (2026-04-27). Operator: "no extra api
+    // calls or audits like we see happening in the audit section with
+    // screens writing logs over and over."
+    //
+    // Every paired Android player uploads its rolling diag log on a
+    // ~5-minute heartbeat. Previously each upload became a fresh
+    // AuditLog row, so a fleet of 20 screens would generate ~5,800
+    // PLAYER_DIAGNOSTICS rows per day — flooding the dashboard's
+    // Recent Activity card and bloating the audit table.
+    //
+    // PLAYER_DIAGNOSTICS is operational telemetry, NOT a security
+    // event. We now ONLY write to AuditLog when the upload contains
+    // a clear failure signature (FATAL / FATAL EXCEPTION / E/AndroidRuntime
+    // / CRASH / OutOfMemoryError). Routine heartbeat uploads still
+    // succeed; they just don't pollute the audit trail.
+    //
+    // For Phase-2 full retention we'll write the raw log to Supabase
+    // object storage (separate bucket, not AuditLog).
+    const looksLikeCrash =
+      /FATAL EXCEPTION|FATAL\b|E\/AndroidRuntime|java\.lang\.\w+Exception|kotlin\.\w+Exception|OutOfMemoryError|StackOverflowError|ANR in|Process .* died|signal 11|SIGSEGV/i
+        .test(rawBody);
 
-    try {
-      await this.prisma.client.auditLog.create({
-        data: {
-          tenantId,
-          userId: null,
-          action: 'PLAYER_DIAGNOSTICS',
-          targetType: 'Screen',
-          targetId: attributedScreenId,
-          details: detailsJson,
-        },
+    if (looksLikeCrash) {
+      const detailsJson = JSON.stringify({
+        source: 'android_apk',
+        screenId: attributedScreenId,
+        jwtVerified: jwtSub !== null,
+        bodyBytes: Buffer.byteLength(rawBody, 'utf8'),
+        truncated: rawBody.length > DETAILS_TRUNCATE,
+        crashDetected: true,
+        log: logTail,
       });
-    } catch (err) {
-      this.logger.error(`Failed to write PLAYER_DIAGNOSTICS AuditLog for screen ${attributedScreenId}: ${(err as Error).message}`);
-      // Return success anyway — the device shouldn't retry on a DB write
-      // failure; it would just generate duplicate entries.
-      return { stored: false, rows: 0 };
+      try {
+        await this.prisma.client.auditLog.create({
+          data: {
+            tenantId,
+            userId: null,
+            action: 'PLAYER_DIAGNOSTICS_CRASH',
+            targetType: 'Screen',
+            targetId: attributedScreenId,
+            details: detailsJson,
+          },
+        });
+      } catch (err) {
+        this.logger.error(`Failed to write PLAYER_DIAGNOSTICS_CRASH AuditLog for screen ${attributedScreenId}: ${(err as Error).message}`);
+        return { stored: false, rows: 0 };
+      }
+      this.logger.warn(
+        `PLAYER_DIAGNOSTICS_CRASH stored for screen=${attributedScreenId} ` +
+        `tenant=${tenantId} bytes=${Buffer.byteLength(rawBody, 'utf8')}`,
+      );
+      return { stored: true, rows: 1 };
     }
 
+    // Routine heartbeat — log to console only. The body is bounded at
+    // 1 MB and we already truncated for storage; the console line just
+    // confirms ingest happened so kiosk-side debugging still has a
+    // server-side breadcrumb.
     this.logger.log(
-      `PLAYER_DIAGNOSTICS stored for screen=${attributedScreenId} ` +
-      `tenant=${tenantId ?? 'unknown'} bytes=${Buffer.byteLength(rawBody, 'utf8')} ` +
+      `PLAYER_DIAGNOSTICS heartbeat screen=${attributedScreenId} ` +
+      `tenant=${tenantId} bytes=${Buffer.byteLength(rawBody, 'utf8')} ` +
       `jwtVerified=${jwtSub !== null}`,
     );
 
-    return { stored: true, rows: 1 };
+    return { stored: true, rows: 0 };
   }
 }
