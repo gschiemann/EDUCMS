@@ -1,18 +1,19 @@
 "use client";
 
-import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon, Usb, MapPin, Plus, ArrowRight, Building2, ShieldCheck, ShieldOff } from 'lucide-react';
+import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon, Usb, MapPin, Plus, Building2, ShieldCheck, ShieldOff } from 'lucide-react';
 import { usePathname, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { RoleGate } from '@/components/RoleGate';
 import {
   useUsers, useInviteUser, useCreateUserDirect, useDeleteUser, useUpdateUserRole, useTenant,
   useUpdateTenantPanicSettings, usePlaylists,
-  useLocationBasedEmergencyConfig, useToggleLocationBasedEmergency, useFloorPlans, useScreens,
+  useLocationBasedEmergencyConfig, useToggleLocationBasedEmergency, useFloorPlans,
 } from '@/hooks/use-api';
 import { useState, useRef, useEffect } from 'react';
 import { UsbIngestCard } from '@/components/settings/UsbIngestCard';
 import { LicenseCard } from '@/components/settings/LicenseCard';
 import { PanicContentEditor } from '@/components/settings/PanicContentEditor';
+import { EmbeddedFloorPlanView } from '@/components/floor-plans/EmbeddedFloorPlanView';
 import { BrandingSettingsCard } from '@/components/settings/BrandingSettingsCard';
 import { DistrictSchoolsCard } from '@/components/settings/DistrictSchoolsCard';
 import { appConfirm } from '@/components/ui/app-dialog';
@@ -472,79 +473,151 @@ function PanicContentSection() {
             </div>
           </>
         ) : (
-          // LOCATION MODE — the 6 panic editors are gone. Floor plan IS
-          // the configuration surface; click a screen pin on the plan,
-          // upload the per-screen content from the drawer.
-          <div>
-            <div className="flex items-start gap-2 mb-4">
-              <MapPin className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-              <div>
-                <h3 className="text-[12px] font-bold text-slate-700">Location-based emergency</h3>
-                <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-                  Open a floor plan, drag unplaced screens onto the map, and
-                  click a screen to upload landscape + portrait emergency content for each
-                  type. Empty slots fall back to the tenant default.
-                </p>
-              </div>
-            </div>
-
-            {planCount === 0 ? (
-              <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/40 p-6 flex flex-col items-center text-center gap-2">
-                <Building2 className="w-8 h-8 text-slate-400" />
-                <div className="text-sm font-bold text-slate-700">No floor plans yet</div>
-                <p className="text-[12px] text-slate-500 max-w-md">
-                  Upload an architectural floor plan, hand-drawn sketch, or PDF for each
-                  building. Multi-floor schools get one plan per floor.
-                </p>
-                <Link
-                  href={`/${schoolId}/floor-plans`}
-                  className="inline-flex items-center gap-1.5 mt-2 text-[12px] font-bold px-4 py-2 rounded-md bg-rose-600 text-white hover:bg-rose-700 transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Upload your first floor plan
-                </Link>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                  Your floor plans ({planCount}) — click to open
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {floorPlans!.map((p: any) => (
-                    <Link
-                      key={p.id}
-                      href={`/${schoolId}/floor-plans/${p.id}`}
-                      className="flex items-center gap-3 px-3 py-3 rounded-lg bg-slate-50 hover:bg-rose-50 hover:border-rose-200 border border-transparent transition-colors group"
-                    >
-                      <Building2 className="w-5 h-5 text-slate-400 group-hover:text-rose-500 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[12px] font-bold text-slate-700 truncate">{p.name}</div>
-                        {(p.buildingLabel || p.floorLabel) && (
-                          <div className="text-[10px] text-slate-400 truncate">
-                            {[p.buildingLabel, p.floorLabel].filter(Boolean).join(' · ')}
-                          </div>
-                        )}
-                      </div>
-                      <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-rose-500 shrink-0" />
-                    </Link>
-                  ))}
-                </div>
-                <Link
-                  href={`/${schoolId}/floor-plans`}
-                  className="inline-flex items-center gap-1.5 mt-2 text-[11px] font-bold px-3 py-1.5 rounded-md border border-slate-200 hover:border-rose-300 hover:text-rose-700 transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Upload another floor plan
-                </Link>
-              </div>
-            )}
-          </div>
+          // LOCATION MODE — the floor map IS embedded right here. Click
+          // a screen pin to open the right-side drawer with the upload-
+          // only emergency content config. Operator: "select the screen
+          // on the map thats showing in the main setting screen once you
+          // enable the location mode, then the right tool drawer pops out."
+          <EmbeddedLocationMode schoolId={schoolId} planCount={planCount} floorPlans={floorPlans || []} />
         )}
       </div>
     </div>
   );
 }
 
-// PerScreenOverridesList was removed (2026-04-27). Operator: "you have
-// multiple areas now to do the same setting" — the inline overrides
-// list duplicated the floor-plan drawer's per-screen config. Settings
-// now ONLY surfaces the floor-plan picker; per-screen upload happens in
-// the drawer that opens when you click a screen pin on the plan.
+// PerScreenOverridesList was removed (2026-04-27). The duplicate
+// scrolling list was replaced by an inline-embedded floor map below;
+// operator clicks a pin and the right-side drawer pops out with the
+// upload-only emergency content config.
+
+/**
+ * EmbeddedLocationMode — what the Panic Content card body shows when
+ * the location-based toggle is ON.
+ *
+ * - Zero plans  → upload-prompt CTA inline
+ * - One plan    → embed the editor straight into the card
+ * - Many plans  → tab strip across the top (one per plan), embed the
+ *                 active plan's editor underneath. State is local; no
+ *                 URL changes — the operator stays on /settings.
+ *
+ * The drawer (right-side slide-out for screen-pin clicks) is rendered
+ * by EmbeddedFloorPlanView itself, so it works the same here as on the
+ * standalone /floor-plans/[id] page.
+ */
+function EmbeddedLocationMode({
+  schoolId,
+  planCount,
+  floorPlans,
+}: {
+  schoolId: string;
+  planCount: number;
+  floorPlans: any[];
+}) {
+  const [activePlanId, setActivePlanId] = useState<string | null>(
+    floorPlans[0]?.id ?? null,
+  );
+
+  // Keep the active selection valid if the floor-plan list updates
+  // (e.g. operator just uploaded a new plan in another tab).
+  useEffect(() => {
+    if (planCount === 0) {
+      setActivePlanId(null);
+      return;
+    }
+    if (!activePlanId || !floorPlans.some((p) => p.id === activePlanId)) {
+      setActivePlanId(floorPlans[0].id);
+    }
+  }, [floorPlans, planCount, activePlanId]);
+
+  if (planCount === 0) {
+    return (
+      <div>
+        <div className="flex items-start gap-2 mb-4">
+          <MapPin className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+          <div>
+            <h3 className="text-[12px] font-bold text-slate-700">Location-based emergency</h3>
+            <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+              Upload a floor plan to start. Then drag your unplaced screens onto the map and
+              click any pin to upload landscape + portrait emergency content.
+            </p>
+          </div>
+        </div>
+        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/40 p-6 flex flex-col items-center text-center gap-2">
+          <Building2 className="w-8 h-8 text-slate-400" />
+          <div className="text-sm font-bold text-slate-700">No floor plans yet</div>
+          <p className="text-[12px] text-slate-500 max-w-md">
+            Upload an architectural floor plan, hand-drawn sketch, or PDF for each
+            building. Multi-floor schools get one plan per floor.
+          </p>
+          <Link
+            href={`/${schoolId}/floor-plans`}
+            className="inline-flex items-center gap-1.5 mt-2 text-[12px] font-bold px-4 py-2 rounded-md bg-rose-600 text-white hover:bg-rose-700 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" /> Upload your first floor plan
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-start gap-2">
+        <MapPin className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+        <div className="flex-1">
+          <h3 className="text-[12px] font-bold text-slate-700">Location-based emergency</h3>
+          <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+            Click any screen pin → right-side drawer opens with upload zones for each
+            emergency type (landscape + portrait, independent). Empty slots fall back to
+            the tenant default.
+          </p>
+        </div>
+        <Link
+          href={`/${schoolId}/floor-plans`}
+          className="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-md border border-slate-200 hover:border-rose-300 hover:text-rose-700 transition-colors"
+          title="Manage floor plans (upload new, rename, delete)"
+        >
+          <Plus className="w-3.5 h-3.5" /> Add plan
+        </Link>
+      </div>
+
+      {/* Plan tabs — only when there's more than one floor plan */}
+      {planCount > 1 && (
+        <div className="flex flex-wrap gap-1.5 border-b border-slate-100 pb-2">
+          {floorPlans.map((p: any) => {
+            const isActive = p.id === activePlanId;
+            const sub = [p.buildingLabel, p.floorLabel].filter(Boolean).join(' · ');
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setActivePlanId(p.id)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-md transition-colors ${
+                  isActive
+                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:border-rose-300 hover:text-rose-700'
+                }`}
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                <span>{p.name}</span>
+                {sub && <span className="text-[10px] font-normal opacity-70">· {sub}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* The actual embedded map — same component the standalone
+          /floor-plans/[id] page uses. The drawer it opens when a pin
+          is clicked has the upload-only emergency config. */}
+      {activePlanId && (
+        <EmbeddedFloorPlanView
+          key={activePlanId}
+          planId={activePlanId}
+          schoolId={schoolId}
+          mode="embedded"
+        />
+      )}
+    </div>
+  );
+}
