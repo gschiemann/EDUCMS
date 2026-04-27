@@ -1191,7 +1191,12 @@ export function useScreenEmergencyOverride(screenId: string | undefined) {
     queryKey: ['screen-emergency-override', screenId],
     queryFn: () => apiFetch(`/emergency/screens/${screenId}/override`),
     enabled: !!screenId,
-    refetchInterval: 30_000,
+    // 5min — was 30s, but this hook is called once per pin on the floor
+    // plan (50 pins × 30s = 100 GETs/min just for override status).
+    // Real triggers come through the signed WS pub/sub, NOT polling;
+    // the poll is purely a fallback when WS is offline. 5min is plenty.
+    refetchInterval: 5 * 60_000,
+    staleTime: 60_000,
   });
 }
 
