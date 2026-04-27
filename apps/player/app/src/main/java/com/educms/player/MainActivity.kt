@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var webView: WebView
     private val deviceStore by lazy { DeviceStore(applicationContext) }
+    private lateinit var recovery: NetworkRecoveryController
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -68,6 +69,36 @@ class MainActivity : ComponentActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         webView = binding.webview
+
+        // Self-healing recovery — catches main-frame load failures and
+        // 5xx errors, shows a branded "Reconnecting…" overlay, probes
+        // /api/v1/health on a backoff, and reloads the WebView when the
+        // server returns. Operator no longer has to power-cycle the
+        // kiosk to recover from a Vercel/Railway redeploy blip.
+        recovery = NetworkRecoveryController(
+            context = applicationContext,
+            baseUrl = BuildConfig.PLAYER_BASE_URL,
+            onShowOverlay = { state ->
+                binding.recoveryOverlay.visibility = View.VISIBLE
+                binding.recoveryTitle.text = state.title
+                binding.recoverySub.text = state.sub
+                if (state.errorLabel.isNullOrBlank()) {
+                    binding.recoveryError.visibility = View.GONE
+                } else {
+                    binding.recoveryError.visibility = View.VISIBLE
+                    binding.recoveryError.text = state.errorLabel
+                }
+            },
+            onHideOverlay = {
+                binding.recoveryOverlay.visibility = View.GONE
+            },
+            onReloadRequested = {
+                lifecycleScope.launch {
+                    val token = deviceStore.deviceToken.first().orEmpty()
+                    loadPlayer(token)
+                }
+            },
+        )
 
         configureWebView(webView)
 
@@ -231,11 +262,24 @@ class MainActivity : ComponentActivity() {
         wv.webViewClient = SafePlayerWebViewClient(
             onRendererGone = {
                 Log.w("Player", "WebView renderer crashed — reloading")
+                // Treat a renderer crash like a network failure — kick
+                // the recovery loop. If the server is fine the loop
+                // probes /health, succeeds on first try, and reloads
+                // immediately. If the server is also down the operator
+                // gets the friendly "reconnecting" overlay instead of a
+                // blank black screen until power-cycle.
+                if (::recovery.isInitialized) recovery.onError("Renderer crashed")
                 lifecycleScope.launch {
                     val token = deviceStore.deviceToken.first().orEmpty()
                     loadPlayer(token)
                 }
-            }
+            },
+            onMainFrameError = { label ->
+                if (::recovery.isInitialized) recovery.onError(label)
+            },
+            onPageFinishedOk = {
+                if (::recovery.isInitialized) recovery.onPageLoaded()
+            },
         )
     }
 
@@ -374,6 +418,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         webView.stopLoading()
+        if (::recovery.isInitialized) recovery.shutdown()
         (webView.parent as? android.view.ViewGroup)?.removeView(webView)
         webView.destroy()
         super.onDestroy()

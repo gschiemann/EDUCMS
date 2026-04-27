@@ -19,9 +19,19 @@ import java.io.FileInputStream
 /**
  * Restricts navigation to the configured PLAYER_BASE_URL host and recovers
  * from WebView renderer crashes (which are common on long-running signage).
+ *
+ * Self-healing hooks added 2026-04-27 — the OS-default "webpage not
+ * available" dialog used to wedge the kiosk forever when a Vercel /
+ * Railway deploy briefly took the server offline. Now every main-frame
+ * error and HTTP error feeds NetworkRecoveryController, which probes
+ * /api/v1/health on a backoff and reloads the player when it's healthy.
  */
 class SafePlayerWebViewClient(
     private val onRendererGone: () -> Unit,
+    /** Called on main thread for any main-frame load failure. */
+    private val onMainFrameError: ((label: String) -> Unit)? = null,
+    /** Called on main thread when the page finishes loading successfully. */
+    private val onPageFinishedOk: (() -> Unit)? = null,
 ) : WebViewClient() {
 
     private val allowedHost: String? = runCatching {
@@ -106,9 +116,42 @@ class SafePlayerWebViewClient(
         Log.d("PlayerWeb", "page started: $url")
     }
 
+    override fun onPageFinished(view: WebView, url: String) {
+        // Skip about:blank — that's our internal step during recovery,
+        // not a real success. Anything else means the WebView reached
+        // the player URL — clear any in-flight recovery state.
+        if (url == "about:blank") return
+        Log.d("PlayerWeb", "page finished: $url")
+        onPageFinishedOk?.invoke()
+    }
+
     override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
-        if (request.isForMainFrame) {
-            Log.w("PlayerWeb", "main-frame error: ${error.description} on ${request.url}")
+        if (!request.isForMainFrame) return
+        // The default Android "Webpage not available" / net::ERR_* page
+        // is the screen the operator gets stuck on. Trigger the recovery
+        // controller so the kiosk auto-heals when the server returns.
+        val msg = "${error.errorCode}: ${error.description}"
+        Log.w("PlayerWeb", "main-frame error: $msg on ${request.url}")
+        onMainFrameError?.invoke(msg)
+    }
+
+    override fun onReceivedHttpError(
+        view: WebView,
+        request: WebResourceRequest,
+        errorResponse: WebResourceResponse,
+    ) {
+        if (!request.isForMainFrame) return
+        val code = errorResponse.statusCode
+        // 5xx from origin (Railway down, Vercel returning 500) →
+        // self-heal. 4xx is intentional and shouldn't kick the loop
+        // (e.g. a paired screen hitting a deleted route shouldn't
+        // start retrying forever).
+        if (code in 500..599) {
+            val msg = "HTTP $code from ${request.url}"
+            Log.w("PlayerWeb", "main-frame HTTP error: $msg")
+            onMainFrameError?.invoke(msg)
+        } else {
+            Log.w("PlayerWeb", "main-frame HTTP $code on ${request.url} — not auto-recovering")
         }
     }
 

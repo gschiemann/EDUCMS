@@ -1,4 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    activity_main — kiosk shell layout.
+
+    The WebView fills the entire screen. The recovery overlay sits
+    on top (initially View.GONE) and pops up when NetworkRecoveryController
+    detects the API is unreachable. Visible iff main-frame load fails OR
+    renderer crashes; auto-hides when /api/v1/health returns OK and the
+    WebView reports a successful page load.
+
+    Why a sibling overlay instead of replacing the WebView: keeping the
+    WebView mounted preserves whatever the player was last showing
+    (frozen frame is fine for an evacuation drill — no flicker to a
+    blank screen during the reconnect dance).
+-->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -9,4 +23,77 @@
         android:id="@+id/webview"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
+
+    <!-- Recovery overlay. Initially hidden. -->
+    <FrameLayout
+        android:id="@+id/recoveryOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="#E60F172A">
+
+        <!-- Card centered horizontally + vertically -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:orientation="vertical"
+            android:padding="48dp"
+            android:background="#0F172A"
+            android:gravity="center">
+
+            <!-- Animated wifi-disconnect dot. ImageView with a CSS-style
+                 pulse via the activity's animator, OR simply a static
+                 view that the controller doesn't need to touch. -->
+            <View
+                android:id="@+id/recoveryDot"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:background="#FBBF24"
+                android:layout_marginBottom="24dp" />
+
+            <TextView
+                android:id="@+id/recoveryTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Reconnecting to server…"
+                android:textColor="#FFFFFF"
+                android:textSize="36sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:layout_marginBottom="12dp" />
+
+            <TextView
+                android:id="@+id/recoverySub"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Checking connection"
+                android:textColor="#94A3B8"
+                android:textSize="20sp"
+                android:gravity="center" />
+
+            <TextView
+                android:id="@+id/recoveryError"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textColor="#475569"
+                android:textSize="14sp"
+                android:gravity="center"
+                android:layout_marginTop="32dp"
+                android:fontFamily="monospace"
+                android:visibility="gone" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="The screen will resume automatically."
+                android:textColor="#64748B"
+                android:textSize="14sp"
+                android:gravity="center"
+                android:layout_marginTop="24dp" />
+        </LinearLayout>
+    </FrameLayout>
 </FrameLayout>
