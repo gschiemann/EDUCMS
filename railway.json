@@ -19,7 +19,6 @@
   },
   "deploy": {
     "startCommand": "node apps/api/dist/main.js",
-    "preDeployCommand": "cd packages/database && npx prisma db push --skip-generate",
     "healthcheckPath": "/api/v1/health",
     "healthcheckTimeout": 60,
     "numReplicas": 1,
