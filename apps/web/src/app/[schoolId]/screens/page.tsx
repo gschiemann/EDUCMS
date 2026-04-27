@@ -365,10 +365,12 @@ function ScreenSettingsMenu({
             </div>
           </div>
 
-          {/* Push APK update — disabled when already up-to-date AND no
-              push currently in flight. Operator can still re-push if
-              they want (e.g. APK install crashed mid-way), so we never
-              fully hide the button — just gray it. */}
+          {/* Push APK update — single source of truth for the action.
+              Live "in progress" state is owned by the strip below
+              (sending → downloading → installing → restarting →
+              installed) so we don't double-message here. The button
+              always shows the action label, just disables itself
+              while a push is in flight. */}
           <button
             type="button"
             onClick={onPushApk}
@@ -376,22 +378,14 @@ function ScreenSettingsMenu({
             className="w-full flex items-center gap-3 px-3.5 py-3 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed border-b border-slate-100"
             title={upToDate === true && !pushed ? 'Already on the latest version' : 'Tells this kiosk to download + install the latest APK on its next check-in'}
           >
-            {pending || stillWaiting ? (
-              <Loader2 className="w-4 h-4 text-indigo-500 shrink-0 animate-spin" />
-            ) : (
-              <RefreshCw className={`w-4 h-4 shrink-0 ${upToDate === false ? 'text-amber-500' : 'text-indigo-500'}`} />
-            )}
+            <RefreshCw className={`w-4 h-4 shrink-0 ${upToDate === false ? 'text-amber-500' : 'text-indigo-500'}`} />
             <span className="flex-1 min-w-0">
               <span className="block">
-                {pending
-                  ? 'Sending…'
-                  : stillWaiting
-                    ? 'Pushing update…'
-                    : upToDate === true && !pushed
-                      ? 'On latest — push anyway'
-                      : upToDate === false
-                        ? `Push update to v${latestVersion}`
-                        : 'Push update to this screen'}
+                {upToDate === true && !pushed
+                  ? 'On latest — push anyway'
+                  : upToDate === false
+                    ? `Push update to v${latestVersion}`
+                    : 'Push update to this screen'}
               </span>
               <span className="block text-[10px] font-normal text-slate-400 mt-0.5">
                 Manual only — auto-update is OFF unless you toggle it in Settings
