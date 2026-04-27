@@ -237,6 +237,20 @@ export class ScreensController {
       const vc = Number(versionCode);
       if (Number.isFinite(vc) && vc > 0) data.playerVersionCode = vc;
     }
+    // Diagnostic — operator caught dashboard chip stuck blank on
+    // 2026-04-27 even with v1.0.11 installed. Log every heartbeat
+    // so we can confirm in Railway logs whether ?v= is actually
+    // reaching us. Only logs when version changes OR every ~15min
+    // to avoid filling logs. fp truncated for log brevity + privacy.
+    const fpShort = fingerprint.slice(0, 14);
+    const versionChanged = vn && vn !== screen.playerVersion;
+    const stale = !screen.playerVersionAt || (Date.now() - new Date(screen.playerVersionAt).getTime()) > 15 * 60_000;
+    if (versionChanged || stale) {
+      console.log(
+        `[heartbeat] fp=${fpShort}… v=${vn || '(none)'} vc=${versionCode || '(none)'} ` +
+        `prior=${screen.playerVersion || '(none)'} changed=${versionChanged}`,
+      );
+    }
     await this.prisma.client.screen.update({
       where: { id: screen.id },
       data,

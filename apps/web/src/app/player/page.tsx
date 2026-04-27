@@ -215,11 +215,61 @@ function getDeviceFingerprint(): string {
  * and (b) belt-and-suspenders for older sideloaded APKs that haven't
  * been upgraded yet.
  */
+/**
+ * Resolve the player APK version from any of three sources, in order
+ * of precedence. Defensive against URL-param loss on navigation /
+ * page reload (operator caught us on 2026-04-27: kiosk on v1.0.11
+ * but dashboard chip stuck blank).
+ *
+ *   1. URL ?v= / ?vc= — set by the APK via MainActivity.loadPlayer
+ *   2. EduCmsNative.deviceInfo() bridge — always available on APK
+ *      (returns appVersion in JSON), survives any in-page navigation
+ *   3. localStorage — sticky cache so even a hard reload of the
+ *      WebView keeps the version in heartbeats while we wait for
+ *      the bridge to come back online
+ */
+function resolvePlayerVersion(): { v: string | null; vc: string | null } {
+  if (typeof window === 'undefined') return { v: null, vc: null };
+
+  // 1. URL params (initial APK URL)
+  const params = new URLSearchParams(window.location.search);
+  let v = params.get('v') || null;
+  let vc = params.get('vc') || null;
+
+  // 2. Native bridge — most reliable on APK
+  if (!v) {
+    try {
+      const bridge = (window as any).EduCmsNative;
+      const raw = bridge?.deviceInfo?.();
+      if (raw) {
+        const info = JSON.parse(raw);
+        if (info?.appVersion) v = String(info.appVersion);
+      }
+    } catch { /* bridge unavailable, fall through */ }
+  }
+
+  // 3. localStorage cache (set on any successful detection above)
+  if (!v) {
+    try {
+      const cached = localStorage.getItem('edu_player_apk_version');
+      if (cached) v = cached;
+      const cachedVc = localStorage.getItem('edu_player_apk_version_code');
+      if (!vc && cachedVc) vc = cachedVc;
+    } catch { /* private mode / quota — fall through */ }
+  }
+
+  // Persist whatever we found for the next page load.
+  try {
+    if (v) localStorage.setItem('edu_player_apk_version', v);
+    if (vc) localStorage.setItem('edu_player_apk_version_code', vc);
+  } catch { /* tolerated */ }
+
+  return { v, vc };
+}
+
 function buildHeartbeatUrl(apiRoot: string, fp: string): string {
   if (typeof window === 'undefined') return `${apiRoot}/api/v1/screens/status/${fp}`;
-  const params = new URLSearchParams(window.location.search);
-  const v = params.get('v');
-  const vc = params.get('vc');
+  const { v, vc } = resolvePlayerVersion();
   const qs = new URLSearchParams();
   if (v) qs.set('v', v);
   if (vc) qs.set('vc', vc);
