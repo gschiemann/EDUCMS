@@ -22,6 +22,7 @@ class WebAppBridge(
     private val getRecentLogsImpl: () -> String,
     private val uploadDiagnosticsImpl: () -> String,
     private val onExitToDeviceHome: () -> Unit,
+    private val onSetBootstrap: (apiRoot: String, fingerprint: String) -> Unit,
 ) {
     /**
      * Escape hatch — exits our kiosk task stack and returns the user to
@@ -82,5 +83,37 @@ class WebAppBridge(
     } catch (ex: Exception) {
         PlayerLogger.w("WebAppBridge", "uploadDiagnostics failed: ${ex.message}")
         "error: ${ex.message}"
+    }
+
+    /**
+     * v1.0.11 — bootstrap the native side with the API root + device
+     * fingerprint that the web player already knows.
+     *
+     * Why this exists: HeartbeatService and OtaUpdateWorker both read
+     * `api_root` and `device_fingerprint` from SharedPreferences on
+     * every run, and silently no-op when either is null. Up through
+     * v1.0.10 nothing in the native code ever wrote those keys, so
+     * BOTH services have been dead since they were added.
+     *
+     * Symptom on operator's machine (2026-04-27): pushed an OTA from
+     * the dashboard, the dashboard cycled through fake stage progress,
+     * then declared "no response." The kiosk never moved off v1.0.9
+     * because the WebSocket-triggered worker exited at line 78 of
+     * OtaUpdateWorker — `api_root` was null.
+     *
+     * Fix: web player calls EduCmsNative.setBootstrap(apiRoot, fp)
+     * once on mount. We persist both values to prefs. From that
+     * moment on every periodic + manual OTA check has what it needs
+     * to actually fire.
+     *
+     * Idempotent — safe to call on every page load.
+     */
+    @JavascriptInterface
+    fun setBootstrap(apiRoot: String, fingerprint: String) {
+        try {
+            onSetBootstrap(apiRoot, fingerprint)
+        } catch (ex: Exception) {
+            PlayerLogger.w("WebAppBridge", "setBootstrap failed: ${ex.message}")
+        }
     }
 }

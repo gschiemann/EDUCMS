@@ -272,6 +272,45 @@ class MainActivity : ComponentActivity() {
                         finishAffinity()
                     }
                 },
+                onSetBootstrap = { apiRoot, fingerprint ->
+                    // v1.0.11 — write the prefs that HeartbeatService and
+                    // OtaUpdateWorker read on every run. Up through
+                    // v1.0.10 NOTHING wrote these keys, so both services
+                    // silently no-op'd. This is the line that finally
+                    // turns native heartbeat + OTA on in the field.
+                    //
+                    // We strip a trailing /api/v1 if the web player
+                    // accidentally includes it — both services append
+                    // /api/v1/... themselves, so a doubled prefix would
+                    // produce a 404 with no log to read.
+                    val cleanApiRoot = apiRoot.trim()
+                        .removeSuffix("/")
+                        .removeSuffix("/api/v1")
+                    val cleanFp = fingerprint.trim()
+                    if (cleanApiRoot.isEmpty() || cleanFp.isEmpty()) {
+                        PlayerLogger.w(
+                            "MainActivity",
+                            "setBootstrap rejected — empty values (apiRoot=${cleanApiRoot.length} fp=${cleanFp.length})"
+                        )
+                    } else {
+                        val prefs = applicationContext.getSharedPreferences(
+                            "edu_player",
+                            android.content.Context.MODE_PRIVATE,
+                        )
+                        val priorApi = prefs.getString("api_root", null)
+                        val priorFp = prefs.getString("device_fingerprint", null)
+                        prefs.edit()
+                            .putString("api_root", cleanApiRoot)
+                            .putString("device_fingerprint", cleanFp)
+                            .apply()
+                        if (priorApi != cleanApiRoot || priorFp != cleanFp) {
+                            PlayerLogger.i(
+                                "MainActivity",
+                                "setBootstrap wrote prefs: apiRoot=$cleanApiRoot fp=${cleanFp.take(12)}…",
+                            )
+                        }
+                    }
+                },
             ),
             "EduCmsNative"
         )

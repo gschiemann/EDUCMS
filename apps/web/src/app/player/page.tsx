@@ -199,16 +199,21 @@ function getDeviceFingerprint(): string {
 
 /**
  * Build the heartbeat URL with ?v=&vc= appended when the page knows
- * its APK version. Operator (2026-04-27): "you literally built .09
- * for that purpose." Right — except the native HeartbeatService
- * never actually fires because nothing in the native code writes
- * device_fingerprint or api_root to SharedPreferences. The web
- * heartbeats DO fire (that's why kiosks show ONLINE), so this
- * helper threads the APK version (which the APK passes as ?v= on
- * the player URL) into the heartbeat URL too. End result: any
- * APK that passes ?v= on the URL gets its version captured by the
- * server within one heartbeat cycle (~30s), without depending on
- * the broken native service.
+ * its APK version.
+ *
+ * History: up through v1.0.10 the native HeartbeatService never fired
+ * because nothing in the native code wrote `device_fingerprint` or
+ * `api_root` to SharedPreferences (operator 2026-04-27 caught this
+ * after pushing an OTA that silently no-op'd). The web heartbeats DO
+ * fire (that's why kiosks show ONLINE), so this helper threads the
+ * APK version into the heartbeat URL so the server captures the
+ * version regardless of whether the native service is alive.
+ *
+ * v1.0.11 finally fixed the prefs-write bug — once an APK >=1.0.11 is
+ * installed, the native service WILL fire too. We keep this URL
+ * helper because (a) it's still the only path on browser players,
+ * and (b) belt-and-suspenders for older sideloaded APKs that haven't
+ * been upgraded yet.
  */
 function buildHeartbeatUrl(apiRoot: string, fp: string): string {
   if (typeof window === 'undefined') return `${apiRoot}/api/v1/screens/status/${fp}`;
@@ -665,6 +670,45 @@ function PlayerPage() {
         if (b?.displayName) setBrandName(b.displayName);
       }
     } catch {}
+  }, []);
+
+  // v1.0.11 OTA fix — bootstrap the native side with apiRoot + fp so
+  // HeartbeatService and OtaUpdateWorker can actually hit the API.
+  //
+  // BACKGROUND: both services read these values from SharedPreferences
+  // on every run. Up through v1.0.10 NOTHING in the native code wrote
+  // them, so both services silently no-op'd. The dashboard's force-OTA
+  // push went through the WebSocket → bridge.checkForUpdates() →
+  // OtaUpdateWorker → exit at "api_root not set" with zero HTTP calls.
+  // Operator hit this 2026-04-27 — pushed v1.0.10 to a v1.0.9 kiosk,
+  // dashboard cycled fake stages, kiosk never moved.
+  //
+  // This effect calls a new EduCmsNative.setBootstrap(apiRoot, fp)
+  // bridge method that writes both keys to prefs. Idempotent: safe to
+  // call on every page load. The native side strips a trailing
+  // /api/v1 if accidentally included so we can't double-prefix.
+  //
+  // Older APKs (v1.0.10 and below) don't expose setBootstrap on the
+  // bridge — the optional-call short-circuits silently and the device
+  // stays in the broken-prefs state until upgraded.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (isPreviewMode()) return; // preview tabs don't pair, never run native services
+    const bridge = (window as any).EduCmsNative;
+    if (!bridge?.setBootstrap) return; // older APK without the method
+    try {
+      const fp = getDeviceFingerprint();
+      const apiRoot = getApiRoot();
+      if (fp && apiRoot && fp.length >= 8) {
+        bridge.setBootstrap(apiRoot, fp);
+      }
+    } catch (e) {
+      // Bridge call failure is non-fatal — heartbeat + OTA stay in the
+      // pre-fix degraded mode (web heartbeats keep working, native
+      // worker stays asleep until next launch).
+      // eslint-disable-next-line no-console
+      console.warn('[Player] setBootstrap bridge call failed', e);
+    }
   }, []);
 
   useEffect(() => {
