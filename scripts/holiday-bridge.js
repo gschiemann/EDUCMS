@@ -56,7 +56,11 @@
       fields.push({ key: k, defaultText: txt, multiline: multiline });
     });
     try {
-      window.parent.postMessage({ type: 'holiday:ready', fields: fields }, '*');
+      // targetOrigin = our origin (sandbox is allow-same-origin so the
+      // iframe's location.origin matches the parent). Tighter than '*'
+      // and prevents the message from leaking if the iframe is ever
+      // re-hosted under a different domain.
+      window.parent.postMessage({ type: 'holiday:ready', fields: fields }, window.location.origin);
     } catch (e) {
       // parent.postMessage can throw on cross-origin; iframe is
       // same-origin so this should never fire — but defensively
@@ -78,7 +82,7 @@
           window.parent.postMessage({
             type: 'holiday:fieldClicked',
             key: el.getAttribute('data-field'),
-          }, '*');
+          }, window.location.origin);
         } catch (e) { /* swallow */ }
         return;
       }

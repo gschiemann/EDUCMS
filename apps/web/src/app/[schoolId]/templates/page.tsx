@@ -391,7 +391,16 @@ export default function TemplatesPage() {
   for (const t of (templates || [])) allById.set(t.id, t);
   const portraitSiblingFor = (t: Template): Template | undefined => {
     if (t.id.endsWith('-portrait')) return undefined;
-    return allById.get(`${t.id}-portrait`);
+    const siblingId = `${t.id}-portrait`;
+    // Hide the Portrait toggle when the sibling is a known letterboxed
+    // preset — without this, clicking "Portrait" on the landscape card
+    // showed a tiny landscape scene squeezed into the top of a portrait
+    // frame with massive empty bg space below. Operator (correctly)
+    // called this out on the catalog page; the denylist now applies
+    // BOTH to standalone tiles (filter pass above) AND to the in-card
+    // Landscape↔Portrait toggle.
+    if (LETTERBOXED_PORTRAIT_PRESETS.has(siblingId)) return undefined;
+    return allById.get(siblingId);
   };
 
   const systemTemplates = filtered
