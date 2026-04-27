@@ -620,6 +620,29 @@ model Template {
   bgImage      String?        @map("bg_image")
   bgGradient   String?        @map("bg_gradient")
   thumbnail    String?
+  // Per-template Brand Kit. Distinct from the tenant-wide
+  // `TenantBranding` row that themes the CMS dashboard chrome.
+  // Operators paste a school URL in the template builder's Brand
+  // tab → we scrape colors/logo/fonts and persist them here so the
+  // template canvas exposes them as design tokens (palette swatches
+  // in the inspector, logo auto-pinned at the top of the asset list,
+  // brand fonts at the top of the font picker). Bug fix: until this
+  // column existed, the builder's "Detect brand" button wrote to
+  // `TenantBranding` and silently re-skinned the entire CMS
+  // dashboard — which was never the intent.
+  //
+  // JSON shape:
+  //   {
+  //     palette: { primary, primaryHover, accent, ink, surface, surfaceAlt },
+  //     logoUrl: string | null,
+  //     logoSvgInline: string | null,
+  //     fontHeading: string | null,
+  //     fontBody: string | null,
+  //     displayName: string | null,
+  //     sourceUrl: string | null,
+  //     scrapedAt: ISO date string,
+  //   }
+  brandKit     Json?          @map("brand_kit")
   createdById  String?        @map("created_by_id")
   isTouchEnabled Boolean      @default(false) @map("is_touch_enabled")
   idleResetMs  Int            @default(60000) @map("idle_reset_ms")

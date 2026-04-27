@@ -1181,6 +1181,52 @@ export function useTenantBranding() {
 }
 
 /**
+ * Per-template Brand Kit adopt. Distinct from `useApplyBrandToTemplates`
+ * which writes to the GLOBAL TenantBranding row. This mutation writes
+ * ONLY to a single template's `brandKit` JSON column — no dashboard
+ * chrome repaint, no global LS cache write.
+ *
+ * Bug fix history: until 2026-04-27 the template builder's "Detect
+ * brand" button silently re-skinned the entire CMS dashboard because
+ * it was hitting /branding/adopt. Operator caught it: "you are
+ * suppose to bring in colors, logos, etc TO US ON THE CUSTOM
+ * TEMPLATE MAKER but what you really do is update the overall page
+ * brand from the template … those are two separate things."
+ *
+ * Body shape mirrors /branding/adopt — pass the scrape preview
+ * straight through.
+ */
+export function useAdoptTemplateBrandKit(templateId: string) {
+  const qc = useQueryClient();
+  return useMutation<{ ok: true; brandKit: any; template: { id: string; name: string } }, Error, any>({
+    mutationFn: (body) =>
+      apiFetch(`/branding/templates/${templateId}/adopt`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      // Invalidate ONLY the affected template — never touch the
+      // tenant-branding cache (that's the global theme).
+      qc.invalidateQueries({ queryKey: ['templates', templateId] });
+    },
+  });
+}
+
+/**
+ * Clear a template's brand kit. Doesn't touch tenant branding.
+ */
+export function useClearTemplateBrandKit(templateId: string) {
+  const qc = useQueryClient();
+  return useMutation<{ ok: true }, Error, void>({
+    mutationFn: () =>
+      apiFetch(`/branding/templates/${templateId}/brand-kit`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['templates', templateId] });
+    },
+  });
+}
+
+/**
  * One-click "apply our brand to every template I own." Invalidates
  * templates + backdrops caches so the gallery reflects the re-skin
  * the moment the mutation lands.

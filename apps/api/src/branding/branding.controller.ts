@@ -22,6 +22,7 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  Param,
   Post,
   Request,
   UseGuards,
@@ -32,7 +33,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
-import { AppRole } from '@cms/database';
+import { AppRole, Prisma } from '@cms/database';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
 
 import { BrandingScraperService, BrandingPreview } from './branding-scraper.service';
@@ -294,6 +295,156 @@ export class BrandingController {
     });
 
     return { ok: true, branding: record };
+  }
+
+  /**
+   * Per-template Brand Kit adopt — completely separate from the global
+   * `/branding/adopt` endpoint. Writes ONLY to `Template.brandKit`
+   * (a JSON column), never touches `TenantBranding`, never repaints
+   * the dashboard chrome.
+   *
+   * Bug fix (2026-04-27): the template builder's "Detect brand"
+   * button used to call /branding/adopt, which silently re-skinned
+   * the entire CMS dashboard. Operator caught this immediately:
+   * "you are suppose to bring in colors, logos, etc TO US ON THE
+   * CUSTOM TEMPLATE MAKER but what you really do is update the
+   * overall page brand from the template … those are two separate
+   * things."
+   *
+   * Same body shape as /branding/adopt so the panel can pass the
+   * scrape preview straight through. Same logo-rehost + SVG
+   * sanitize logic via the shared `processBrandingAssets` helper.
+   * Different storage path (`branding/templates/${id}/...`) so
+   * per-template logos are isolated from the tenant's global logo.
+   *
+   * RBAC: any role allowed to edit templates (matches templates
+   * controller's update path — CONTRIBUTOR can save drafts).
+   */
+  @Post('templates/:templateId/adopt')
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  async adoptTemplateBranding(
+    @Request() req: any,
+    @Param('templateId') templateId: string,
+    @Body() body: AdoptBody,
+  ) {
+    const tenantId = req.user.tenantId;
+    if (!body) throw new HttpException('body required', HttpStatus.BAD_REQUEST);
+    if (!templateId) throw new HttpException('templateId required', HttpStatus.BAD_REQUEST);
+
+    // Confirm the template exists and is in the caller's tenant.
+    // System presets are intentionally exempt — they're shared across
+    // all tenants and shouldn't carry tenant-specific brand data.
+    const tpl = await this.prisma.client.template.findFirst({
+      where: { id: templateId, tenantId },
+      select: { id: true, name: true, isSystem: true, brandKit: true },
+    });
+    if (!tpl) {
+      throw new HttpException('Template not found', HttpStatus.NOT_FOUND);
+    }
+    if (tpl.isSystem) {
+      throw new HttpException(
+        'System preset templates can\'t carry a per-template brand kit. Duplicate the preset first, then customize the copy.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Process logo + favicon + palette through the shared helper.
+    // Same SVG sanitization, same SSRF-safe rehost, scoped to a
+    // template-specific Supabase prefix so a template's logo doesn't
+    // collide with the tenant-global logo.
+    const assets = await this.processBrandingAssets(
+      body,
+      `branding/templates/${templateId}`,
+      tpl.brandKit as any,
+    );
+
+    const brandKit = {
+      palette: assets.palette,
+      logoUrl: assets.logoUrl,
+      logoSvgInline: assets.logoSvgInline,
+      faviconUrl: assets.faviconUrl,
+      fontHeading: body.fonts?.heading?.googleFont ?? body.fonts?.heading?.family ?? null,
+      fontBody: body.fonts?.body?.googleFont ?? body.fonts?.body?.family ?? null,
+      fontHeadingUrl: body.fontsCssUrl ?? null,
+      fontBodyUrl: body.fontsCssUrl ?? null,
+      displayName: body.displayName ?? null,
+      sourceUrl: body.sourceUrl ?? null,
+      scrapedAt: body.scrapedAt ? new Date(body.scrapedAt).toISOString() : new Date().toISOString(),
+    };
+
+    const updated = await this.prisma.client.template.update({
+      where: { id: templateId },
+      data: { brandKit: brandKit as any },
+      select: { id: true, name: true, brandKit: true, updatedAt: true },
+    });
+
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'ADOPT_TEMPLATE_BRAND_KIT',
+        targetType: 'template',
+        targetId: templateId,
+        tenantId,
+        userId: req.user.id,
+        details: JSON.stringify({
+          templateName: tpl.name,
+          sourceUrl: body.sourceUrl,
+          confidence: body.confidence,
+        }),
+      },
+    }).catch(() => {});
+
+    return { ok: true, brandKit: updated.brandKit, template: { id: updated.id, name: updated.name } };
+  }
+
+  /**
+   * Clear a template's brand kit. Doesn't touch the global tenant
+   * branding. Allowed for the same roles that can adopt.
+   */
+  @Delete('templates/:templateId/brand-kit')
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  async clearTemplateBranding(
+    @Request() req: any,
+    @Param('templateId') templateId: string,
+  ) {
+    const tenantId = req.user.tenantId;
+    const tpl = await this.prisma.client.template.findFirst({
+      where: { id: templateId, tenantId },
+      select: { id: true, name: true, isSystem: true },
+    });
+    if (!tpl) throw new HttpException('Template not found', HttpStatus.NOT_FOUND);
+
+    // Prisma JSON columns require an explicit `Prisma.JsonNull`
+    // sentinel to clear a value — the type rejects bare `null`.
+    // Imported from @cms/database which re-exports the prisma
+    // namespace.
+    await this.prisma.client.template.update({
+      where: { id: templateId },
+      data: { brandKit: Prisma.JsonNull },
+    });
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'CLEAR_TEMPLATE_BRAND_KIT',
+        targetType: 'template',
+        targetId: templateId,
+        tenantId,
+        userId: req.user.id,
+        details: JSON.stringify({ templateName: tpl.name }),
+      },
+    }).catch(() => {});
+
+    return { ok: true };
   }
 
   // ── Get current tenant branding (for SSR + settings page) ───────
@@ -633,6 +784,101 @@ export class BrandingController {
 
   private async rehost(content: string, path: string, contentType: string): Promise<string> {
     return this.storage.upload(path, Buffer.from(content, 'utf-8'), contentType);
+  }
+
+  /**
+   * Shared helper used by per-template adopt (and reusable for tenant
+   * adopt in a future refactor). Takes a scrape preview body, a
+   * Supabase storage prefix to scope the rehosted assets, and an
+   * optional existing record to fall back to if the new scrape
+   * didn't produce a logo. Returns the processed assets ready to
+   * persist on whichever model is calling.
+   *
+   * Same SVG validation + sanitization rules as the global adopt
+   * path. Same logo-fallback chain (override → first → next ranked
+   * candidate, skipping favicons). Just parameterized.
+   */
+  private async processBrandingAssets(
+    body: AdoptBody,
+    keyPrefix: string,
+    existing?: { logoUrl?: string | null; logoSvgInline?: string | null } | null,
+  ): Promise<{
+    logoUrl: string | null;
+    logoSvgInline: string | null;
+    faviconUrl: string | null;
+    palette: any;
+  }> {
+    let logoUrl: string | null = null;
+    let logoSvgInline: string | null = null;
+    let faviconUrl: string | null = null;
+
+    const chosenLogo = body.logoOverride?.url ?? body.logos?.[0]?.url ?? null;
+    const chosenSvg = body.logoOverride?.svgInline ?? body.logos?.[0]?.svgInline ?? null;
+
+    // SVG must contain at least one shape primitive — otherwise it's
+    // probably a decorative text-only element the scraper picked up
+    // by mistake. Same rule as the global adopt path.
+    const isRealSvg = (s: string | null): boolean => {
+      if (!s || s.length < 200) return false;
+      return /<(path|circle|rect|polygon|polyline|ellipse|image|use)\b/i.test(s);
+    };
+    const chosenSvgValid = isRealSvg(chosenSvg);
+
+    if (chosenSvg && chosenSvgValid) {
+      const cleaned = sanitizeLogoSvg(chosenSvg);
+      logoSvgInline = cleaned;
+      try {
+        // Upload the RAW (un-sanitized) SVG — served via <img> tag,
+        // sandboxed by the browser. Sanitized version goes inline
+        // via dangerouslySetInnerHTML where DOMPurify must strip
+        // scripts. Same dual-storage trust model as the global adopt.
+        logoUrl = await this.rehost(chosenSvg, `${keyPrefix}/logo.svg`, 'image/svg+xml');
+      } catch (e: any) {
+        this.logger.warn(`[brand-kit] inline SVG upload failed for ${keyPrefix}: ${e?.message}`);
+      }
+    }
+
+    if (!logoUrl && chosenLogo) {
+      try {
+        logoUrl = await this.rehostUrl(chosenLogo, `${keyPrefix}/logo`);
+      } catch (e: any) {
+        this.logger.warn(`[brand-kit] logo rehost failed for ${keyPrefix}, storing source: ${e?.message}`);
+        logoUrl = chosenLogo;
+      }
+    }
+
+    // Preserve previous logo if the scrape didn't produce a new one.
+    if (!logoUrl && existing?.logoUrl) {
+      logoUrl = existing.logoUrl;
+      if (!logoSvgInline && existing.logoSvgInline) logoSvgInline = existing.logoSvgInline;
+    }
+
+    // Fallback chain — try ranked candidates beyond the top one,
+    // skipping favicons (.ico) which are too small to use as logos.
+    if (!logoUrl && Array.isArray(body.logos)) {
+      for (const cand of body.logos.slice(1)) {
+        if (!cand?.url) continue;
+        if (/\.(ico|icns)(\?|#|$)/i.test(cand.url)) continue;
+        try {
+          logoUrl = await this.rehostUrl(cand.url, `${keyPrefix}/logo-fb`);
+          break;
+        } catch { /* try next */ }
+      }
+    }
+
+    if (body.favicon) {
+      try {
+        faviconUrl = await this.rehostUrl(body.favicon, `${keyPrefix}/favicon`);
+      } catch {
+        faviconUrl = body.favicon;
+      }
+    }
+
+    const finalPrimary = body.palette?.primary ?? '#4f46e5';
+    const finalAccent = body.palette?.accent;
+    const palette = { ...derivePalette(finalPrimary, finalAccent), ...(body.palette || {}) };
+
+    return { logoUrl, logoSvgInline, faviconUrl, palette };
   }
 }
 
