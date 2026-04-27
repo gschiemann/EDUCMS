@@ -89,7 +89,8 @@ const SCHOOL_LEVEL_CHIPS = [
  */
 const LETTERBOXED_PORTRAIT_PRESETS: ReadonlySet<string> = new Set([
   'preset-achievement-showcase-portrait',
-  'preset-bell-schedule-portrait',
+  // 'preset-bell-schedule-portrait', — REAL portrait shipped 2026-04-27
+  //   (uses ANIMATED_BELL_SCHEDULE_PORTRAIT widget)
   'preset-bulletin-cafeteria-portrait',
   'preset-bulletin-hallway-portrait',
   'preset-bus-board-portrait',

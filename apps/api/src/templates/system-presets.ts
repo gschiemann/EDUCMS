@@ -799,10 +799,10 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
 {
     id: 'preset-bell-schedule-portrait',
     name: '🔔 Animated Bell Schedule — Portrait',
-    description: 'Live bell-schedule board — current period highlighted, countdown to next bell, progress bar, period timeline. · Vertical 4K layout',
+    description: 'Bell schedule built FOR portrait — gradient title centered, NOW clock pinned below, full-width current-period hero with bell-in countdown, full-width period timeline, ticker. Real vertical layout, not letterboxed. · 4K portrait',
     category: 'HALLWAY', orientation: 'PORTRAIT', schoolLevel: 'UNIVERSAL',
     screenWidth: 2160, screenHeight: 3840, bgColor: '#0f172a',
-    zones: [{ name: 'Scene', widgetType: 'ANIMATED_BELL_SCHEDULE', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Scene', widgetType: 'ANIMATED_BELL_SCHEDULE_PORTRAIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
 {
     id: 'preset-bulletin-cafeteria-portrait',

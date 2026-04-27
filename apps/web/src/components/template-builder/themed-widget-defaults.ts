@@ -71,6 +71,14 @@ export const THEMED_WIDGET_FIELDS: Record<string, ThemedField[]> = {
     { key: 'tickerStamp', label: 'Ticker stamp', default: 'BELL SCHEDULE' },
   ],
 
+  ANIMATED_BELL_SCHEDULE_PORTRAIT: [
+    { key: 'eyebrow',     label: 'Eyebrow',     default: "★ Today's Bell Schedule ★" },
+    { key: 'title',       label: 'Title',       default: 'BELL SCHEDULE' },
+    { key: 'subtitle',    label: 'Subtitle',    default: 'Monday · April 19 · 2026 · REGULAR BELL' },
+    { key: 'currentBadge', label: 'Current badge', default: 'LIVE · IN SESSION' },
+    { key: 'tickerStamp', label: 'Ticker stamp', default: 'BELL SCHEDULE' },
+  ],
+
   ANIMATED_BUS_BOARD: [
     { key: 'title',         label: 'Title',         default: 'Bus Board' },
     { key: 'subtitle',      label: 'Subtitle',      default: 'Eagle Elementary · after-school routes' },
