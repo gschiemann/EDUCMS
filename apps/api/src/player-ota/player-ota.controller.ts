@@ -428,19 +428,46 @@ async function resolveLatestReleaseInfo(): Promise<ReleaseInfo | null> {
     return releaseInfoCache.info;
   }
   const repo = process.env.PLAYER_APK_GITHUB_REPO || 'gschiemann/EDUCMS';
-  const resp = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
+
+  // BUG FIX 2026-04-27: previously hit /releases/latest which returns
+  // the single most-recently-published release across ALL tags. After
+  // we started shipping Manager releases (manager-v1.0.0, v1.0.1) to
+  // the same repo, "latest" became the Manager tag and the player-v
+  // strip failed → info=null → both /latest-version and /update-check
+  // returned null/uptoDate even though a real Player release existed.
+  //
+  // Fix: fetch the recent releases list and pick the most recent one
+  // tagged player-v*. GitHub returns the list in published-desc order
+  // so the first match is the latest Player release.
+  const resp = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=30`, {
     headers: { 'User-Agent': 'edu-cms-player-ota' },
   });
   if (!resp.ok) {
     releaseInfoCache = { info: null, fetchedAt: now };
     return null;
   }
-  const body = await resp.json() as {
+  const allReleases = await resp.json() as Array<{
     tag_name?: string;
     name?: string;
+    draft?: boolean;
+    prerelease?: boolean;
     assets?: Array<{ name: string; browser_download_url: string }>;
-  };
-  const assets = body.assets || [];
+  }>;
+  if (!Array.isArray(allReleases)) {
+    releaseInfoCache = { info: null, fetchedAt: now };
+    return null;
+  }
+  // First non-draft, non-prerelease release with tag starting `player-v`.
+  const playerRelease = allReleases.find((r) => {
+    if (r.draft || r.prerelease) return false;
+    const tag = (r.tag_name || r.name || '').trim();
+    return tag.startsWith('player-v');
+  });
+  if (!playerRelease) {
+    releaseInfoCache = { info: null, fetchedAt: now };
+    return null;
+  }
+  const assets = playerRelease.assets || [];
   const pick = (pred: (name: string) => boolean) =>
     assets.find((a) => pred(a.name.toLowerCase()));
   const chosen =
@@ -449,7 +476,7 @@ async function resolveLatestReleaseInfo(): Promise<ReleaseInfo | null> {
     pick((n) => n.includes('armeabi-v7a') && n.endsWith('.apk')) ||
     pick((n) => n.endsWith('.apk') && !n.includes('x86'));
   const apkUrl = chosen?.browser_download_url ?? null;
-  const tag = (body.tag_name || body.name || '').trim();
+  const tag = (playerRelease.tag_name || playerRelease.name || '').trim();
   // Strip `player-v` / leading `v`, leaving bare semver like "1.0.5".
   const versionName = tag.replace(/^player-v/, '').replace(/^v/, '');
   const match = versionName.match(/^(\d+)\.(\d+)\.(\d+)/);
