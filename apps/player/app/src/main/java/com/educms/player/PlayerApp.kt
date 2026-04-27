@@ -3,9 +3,10 @@ package com.educms.player
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.util.Log
-import android.content.Context
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
@@ -157,6 +158,39 @@ class PlayerApp : Application() {
             } catch (e: Exception) {
                 PlayerLogger.w("PlayerApp", "fireOtaCheckNow failed", e)
                 Log.w("PlayerApp", "fireOtaCheckNow failed", e)
+            }
+            // ALSO notify Manager APK if installed. Manager runs the
+            // silent-install path (DEVICE_OWNER granted PackageInstaller
+            // permission). On kiosks where Manager isn't installed
+            // these broadcasts go nowhere — totally safe.
+            triggerManagerOtaCheck(ctx)
+        }
+
+        /**
+         * Cross-app broadcast to wake up Manager's OtaWorker on a
+         * dashboard-driven update push. Tries both the production
+         * (com.educms.manager) and debug (.debug) package suffixes
+         * so dev kiosks running the debug Manager build still get
+         * triggered.
+         *
+         * The receiver is permission-gated by HEALTH_PERMISSION
+         * (signature-protected, same key only) so this can't be
+         * spoofed by a third-party app on the device.
+         *
+         * Safe when Manager isn't installed — setPackage on a
+         * non-existent package is a no-op delivery.
+         */
+        private fun triggerManagerOtaCheck(ctx: Context) {
+            for (pkg in listOf("com.educms.manager", "com.educms.manager.debug")) {
+                try {
+                    val intent = Intent("com.educms.manager.TRIGGER_OTA_CHECK")
+                        .setPackage(pkg)
+                    ctx.sendBroadcast(intent, "com.educms.manager.HEALTH_PERMISSION")
+                } catch (e: Exception) {
+                    // SecurityException possible if Manager isn't installed
+                    // and the permission isn't held — silent.
+                    PlayerLogger.i("PlayerApp", "Manager OTA broadcast to $pkg skipped: ${e.message}")
+                }
             }
         }
     }

@@ -133,6 +133,26 @@
             </intent-filter>
         </receiver>
 
+        <!--
+          Cross-app trigger: Player broadcasts here when it gets a
+          CHECK_FOR_UPDATES WebSocket from the dashboard. Manager
+          runs the silent-install OTA flow.
+
+          android:permission scopes the broadcast — only senders
+          holding HEALTH_PERMISSION (signature-protected, same key)
+          can fire it. Locks out any third-party app on the device
+          from triggering an install.
+        -->
+        <receiver
+            android:name=".OtaTriggerReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="com.educms.manager.HEALTH_PERMISSION">
+            <intent-filter>
+                <action android:name="com.educms.manager.TRIGGER_OTA_CHECK" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
     <!-- Custom signature-protected permission for the health

@@ -5,30 +5,42 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.util.Log
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import java.util.concurrent.TimeUnit
 
 /**
- * Manager APK Application class. Kicks the WatchdogService into
- * foreground state on first launch and re-arms it across cold boots.
+ * Manager APK Application class. Two boot-time jobs:
  *
- * Design note: Manager is a daemon, NOT a user-facing app. There's
- * no MainActivity; the only way Manager runs is:
- *   1. Receivers (BootReceiver) firing on system events
+ *   1. Start WatchdogService — foreground service that polls Player's
+ *      heartbeat every 30s and force-restarts Player if dead.
+ *   2. Schedule periodic OtaWorker (every 6h) — backup path for OTA
+ *      installs when the dashboard's "Push update" WebSocket
+ *      doesn't reach us. Same cadence as Player's existing worker;
+ *      both are idempotent when the API returns "uptoDate".
+ *
+ * Manager is a daemon, NOT a user-facing app. There's no MainActivity;
+ * the only way Manager runs is:
+ *   1. Receivers (BootReceiver, OtaTriggerReceiver) firing on system
+ *      or cross-app events
  *   2. WatchdogService kept alive by foreground notification
  *   3. Cross-process content provider reads from Player
- *
- * If the operator manually launches Manager from app settings,
- * onCreate fires here, we ensure the service is running, and the
- * launcher does nothing further.
+ *   4. WorkManager periodic schedule for OtaWorker
  */
 class ManagerApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        Log.i(TAG, "ManagerApp.onCreate — starting watchdog")
+        Log.i(TAG, "ManagerApp.onCreate — starting watchdog + scheduling OTA worker")
         startWatchdogService(this)
+        scheduleOtaWorker(this)
     }
 
     companion object {
         private const val TAG = "ManagerApp"
+        private const val PERIODIC_OTA_NAME = "edu-manager-ota-periodic"
 
         /**
          * Launches WatchdogService as a foreground service. Called
@@ -45,6 +57,31 @@ class ManagerApp : Application() {
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "startWatchdogService failed: ${e.message}", e)
+            }
+        }
+
+        /**
+         * Schedule a 6-hour periodic OTA check. KEEP policy means
+         * onCreate-on-app-restart doesn't reset the timer; the
+         * existing schedule keeps running.
+         */
+        fun scheduleOtaWorker(ctx: Context) {
+            try {
+                val constraints = Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+                val req = PeriodicWorkRequestBuilder<OtaWorker>(6, TimeUnit.HOURS)
+                    .setConstraints(constraints)
+                    .setInitialDelay(5, TimeUnit.MINUTES)  // never block first boot
+                    .build()
+                WorkManager.getInstance(ctx).enqueueUniquePeriodicWork(
+                    PERIODIC_OTA_NAME,
+                    ExistingPeriodicWorkPolicy.KEEP,
+                    req,
+                )
+                Log.i(TAG, "Manager OTA worker scheduled (every 6h, network required)")
+            } catch (e: Exception) {
+                Log.w(TAG, "scheduleOtaWorker failed: ${e.message}", e)
             }
         }
     }
