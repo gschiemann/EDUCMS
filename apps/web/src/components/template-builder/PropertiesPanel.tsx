@@ -6,6 +6,7 @@ import { useBuilderStore } from './useBuilderStore';
 import { widgetLabel } from './constants';
 import { useAssets, usePlaylists, useTemplates, useTemplateBackdrops } from '@/hooks/use-api';
 import { ColorPickerField } from '@/components/ui/color-picker';
+import { THEMED_WIDGET_FIELDS } from './themed-widget-defaults';
 
 // MS pack DEFAULTS registry. Every MS widget exports its `DEFAULTS`
 // keyed by dot-notation field paths (e.g. `school.eye`, `agenda.0.t`).
@@ -831,6 +832,44 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="url" label="Profile / feed URL" value={cfg.url || ''} placeholder="https://twitter.com/sunnyside_elem" onChange={(v) => setField({ url: v })} />);
       fields.push(<TextField key="maxItems" label="Max posts to show" value={String(cfg.maxItems || 5)} placeholder="5" onChange={(v) => setField({ maxItems: parseInt(v) || 5 })} />);
       break;
+    // Sprint 11h pre-launch — Holiday lobby pack picker. Operator can
+    // swap the holiday + grade level on a placed HOLIDAY zone without
+    // creating a new template. Iframe re-mounts on variant change so
+    // the new HTML loads cleanly.
+    case 'HOLIDAY': {
+      const holidayOptions: Array<[string, string]> = [
+        ['halloween',    '🎃 Halloween'],
+        ['thanksgiving', '🦃 Thanksgiving'],
+        ['christmas',    '🎄 Christmas'],
+        ['valentines',   "💝 Valentine's Day"],
+        ['stpatricks',   "☘️ St. Patrick's"],
+        ['easter',       '🐰 Easter'],
+      ];
+      const gradeOptions: Array<[string, string]> = [
+        ['es', 'Elementary'],
+        ['ms', 'Middle School'],
+        ['hs', 'High School'],
+      ];
+      fields.push(
+        <SelectField
+          key="variant"
+          label="Holiday"
+          value={cfg.variant || 'christmas'}
+          options={holidayOptions}
+          onChange={(v) => setField({ variant: v })}
+        />,
+      );
+      fields.push(
+        <SelectField
+          key="gradeLevel"
+          label="Grade level"
+          value={cfg.gradeLevel || 'es'}
+          options={gradeOptions}
+          onChange={(v) => setField({ gradeLevel: v })}
+        />,
+      );
+      break;
+    }
     // Sprint 11h decorations — variant picker + per-variant tuning.
     case 'DECORATION': {
       const variantOptions: Array<[string, string]> = [
@@ -1686,6 +1725,44 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
                 />,
               );
             }
+          }
+        }
+        break;
+      }
+      // Sprint 11h pre-launch — themed widget auto-form for the 17
+      // Animated/Bulletin/Scrapbook/Storybook widgets that previously
+      // fell through to JSON-only editing. Reads from
+      // THEMED_WIDGET_FIELDS (single source of truth for editable
+      // hotspots per widget type) and renders a Text/TextArea per
+      // entry. Each `key` matches the `data-field` attribute on the
+      // widget's rendered text, so canvas click-to-edit jumps to the
+      // matching field via the same scroll-into-view flow the MS pack
+      // already uses.
+      const themed = THEMED_WIDGET_FIELDS[zone.widgetType];
+      if (themed) {
+        for (const f of themed) {
+          const currentValue = (cfg[f.key] ?? '') as string;
+          if (f.multiline) {
+            fields.push(
+              <TextAreaField
+                key={f.key}
+                label={f.label}
+                value={currentValue}
+                placeholder={f.default}
+                rows={3}
+                onChange={(v) => setField({ [f.key]: v })}
+              />,
+            );
+          } else {
+            fields.push(
+              <TextField
+                key={f.key}
+                label={f.label}
+                value={currentValue}
+                placeholder={f.default}
+                onChange={(v) => setField({ [f.key]: v })}
+              />,
+            );
           }
         }
         break;
