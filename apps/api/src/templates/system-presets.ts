@@ -863,10 +863,10 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
 {
     id: 'preset-hallway-schedule-portrait',
     name: '📘 Animated Hallway Schedule — Portrait',
-    description: 'Notebook-paper hallway schedule — class periods list, current-period auto-highlight, weather + announcement cards, ticker. · Vertical 4K layout',
+    description: 'Notebook-paper hallway schedule built FOR portrait — title band on top, full-width period notebook, attendance hero card, clock + weather two-up, countdown, announcement, ticker. Real vertical layout, not letterboxed. · 4K portrait',
     category: 'HALLWAY', orientation: 'PORTRAIT', schoolLevel: 'ELEMENTARY',
     screenWidth: 2160, screenHeight: 3840, bgColor: '#fef3c7',
-    zones: [{ name: 'Scene', widgetType: 'ANIMATED_HALLWAY_SCHEDULE', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Scene', widgetType: 'ANIMATED_HALLWAY_SCHEDULE_PORTRAIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
 {
     id: 'preset-hs-blueprint-portrait',

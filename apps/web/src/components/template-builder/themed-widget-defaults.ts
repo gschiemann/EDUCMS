@@ -47,6 +47,22 @@ export const THEMED_WIDGET_FIELDS: Record<string, ThemedField[]> = {
     { key: 'tickerStamp',     label: 'Ticker stamp',    default: 'Hallway News' },
   ],
 
+  // Real portrait companion — same field shape as landscape so the
+  // editor's behavior is identical regardless of orientation.
+  ANIMATED_HALLWAY_SCHEDULE_PORTRAIT: [
+    { key: 'title',           label: 'Title',           default: 'LEARN · GROW · SHINE' },
+    { key: 'tagline',         label: 'Tagline',         default: 'every day a new adventure' },
+    { key: 'dateTag',         label: 'Date tag',        default: 'Mon · 4/19' },
+    { key: 'notebookTitle',   label: 'Notebook title',  default: 'Period by Period' },
+    { key: 'notebookSub',     label: 'Notebook subtitle', default: "~ today's schedule ~" },
+    { key: 'weatherTemp',     label: 'Weather temp',    default: '42°' },
+    { key: 'weatherDesc',     label: 'Weather desc',    default: 'sunny + crisp' },
+    { key: 'countdownLabel',  label: 'Countdown label', default: 'Field Day in' },
+    { key: 'countdownNumber', label: 'Countdown number', default: '8' },
+    { key: 'countdownUnit',   label: 'Countdown unit',  default: 'days' },
+    { key: 'tickerStamp',     label: 'Ticker stamp',    default: 'Hallway News' },
+  ],
+
   ANIMATED_BELL_SCHEDULE: [
     { key: 'eyebrow',     label: 'Eyebrow',     default: "★ Today's Bell Schedule ★" },
     { key: 'title',       label: 'Title',       default: 'BELL SCHEDULE' },

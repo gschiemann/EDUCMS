@@ -98,7 +98,8 @@ const LETTERBOXED_PORTRAIT_PRESETS: ReadonlySet<string> = new Set([
   'preset-cafeteria-animated-middle-portrait',
   'preset-cafeteria-chalkboard-portrait',
   'preset-cafeteria-foodtruck-portrait',
-  'preset-hallway-schedule-portrait',
+  // 'preset-hallway-schedule-portrait', — REAL portrait shipped 2026-04-27
+  //   (uses ANIMATED_HALLWAY_SCHEDULE_PORTRAIT widget, vertical re-flow)
   'preset-hs-blueprint-portrait',
   'preset-hs-broadcast-portrait',
   'preset-hs-gallery-portrait',
