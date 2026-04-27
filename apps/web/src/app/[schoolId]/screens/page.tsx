@@ -180,8 +180,25 @@ function ScreenSettingsMenu({
   const pushed = !!pushState;
   const pushedMsAgo = pushState ? Date.now() - pushState.at : 0;
   const updatedSincePush = !!(pushState && currentVersion && currentVersion !== (pushState.priorVersion ?? null));
-  const stillWaiting = pushed && !updatedSincePush && pushedMsAgo < 90_000;
-  const timedOut = pushed && !updatedSincePush && pushedMsAgo >= 90_000;
+  // APK install end-to-end (WS hop + download + Android install prompt
+  // + replace + restart + first heartbeat after restart) takes 1-3 min
+  // on a fast network, longer on Wi-Fi behind a school firewall.
+  // 90s was too aggressive — operator was seeing "no response" before
+  // the install even finished. Bumped to 5 min. Stages give the
+  // operator real signal during the wait instead of one big "Waiting…".
+  const stillWaiting = pushed && !updatedSincePush && pushedMsAgo < 5 * 60_000;
+  const timedOut = pushed && !updatedSincePush && pushedMsAgo >= 5 * 60_000;
+  // Stage labels — rough phases of an OTA install. Times are
+  // worst-case-ish; the dashboard auto-flips to the green "installed"
+  // state the moment lastPingAt's playerVersion reflects the new
+  // build, which short-circuits these stages.
+  const stage = !pushed ? '' :
+    updatedSincePush ? 'installed' :
+    pushedMsAgo < 15_000  ? 'sending'      :   // 0-15s   WS dispatch + bridge call
+    pushedMsAgo < 60_000  ? 'downloading'  :   // 15-60s  APK download
+    pushedMsAgo < 150_000 ? 'installing'   :   // 60-150s install prompt + replace
+    pushedMsAgo < 300_000 ? 'restarting'   :   // 150-300s screen reboot + first heartbeat
+                            'timeout';
 
   const menu = (
     // Plain positioned div, not role="menu". Using the WAI menu role
@@ -282,22 +299,49 @@ function ScreenSettingsMenu({
             </span>
           </button>
 
-          {/* Push feedback strip — only when a push has been sent */}
+          {/* Push feedback strip — only when a push has been sent. Each
+              stage corresponds to a real phase of the OTA install
+              pipeline (WS hop → download → install → restart). Flips to
+              the green "installed" state the moment lastPingAt's
+              playerVersion reflects the new build — usually within
+              ~30s of the install completing thanks to the heartbeat
+              version capture. */}
           {pushed && (updatedSincePush || stillWaiting || timedOut) && (
             <div className="px-3.5 py-2 bg-slate-50 border-b border-slate-100 text-[11px] leading-snug">
-              {updatedSincePush && (
+              {stage === 'installed' && (
                 <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold">
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   Kiosk installed v{currentVersion} ✓
                 </span>
               )}
-              {stillWaiting && !updatedSincePush && (
-                <span className="text-slate-500">Waiting for kiosk check-in…</span>
+              {stage === 'sending' && (
+                <span className="inline-flex items-center gap-1.5 text-indigo-700">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  Sending update signal to kiosk…
+                </span>
               )}
-              {timedOut && !updatedSincePush && (
+              {stage === 'downloading' && (
+                <span className="inline-flex items-center gap-1.5 text-indigo-700">
+                  <Download className="w-3.5 h-3.5 animate-pulse shrink-0" />
+                  Kiosk downloading new APK…
+                </span>
+              )}
+              {stage === 'installing' && (
+                <span className="inline-flex items-center gap-1.5 text-indigo-700">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  Installing on kiosk… (Android prompt may show on screen)
+                </span>
+              )}
+              {stage === 'restarting' && (
+                <span className="inline-flex items-center gap-1.5 text-indigo-700">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  Kiosk restarting + reporting back…
+                </span>
+              )}
+              {stage === 'timeout' && (
                 <span className="inline-flex items-start gap-1 text-amber-700">
                   <WifiOff className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                  <span>No response after 90s — check Wi-Fi + &ldquo;Install unknown apps&rdquo; permission.</span>
+                  <span>No response after 5 minutes — check Wi-Fi + Android &ldquo;Install unknown apps&rdquo; permission. The kiosk will still pick up the update on its next boot.</span>
                 </span>
               )}
             </div>
