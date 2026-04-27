@@ -7,12 +7,13 @@ import { RoleGate } from '@/components/RoleGate';
 import {
   useUsers, useInviteUser, useCreateUserDirect, useDeleteUser, useUpdateUserRole, useTenant,
   useUpdateTenantPanicSettings, usePlaylists,
-  useLocationBasedEmergencyConfig, useToggleLocationBasedEmergency, useFloorPlans,
+  useLocationBasedEmergencyConfig, useToggleLocationBasedEmergency, useFloorPlans, useScreens,
 } from '@/hooks/use-api';
 import { useState, useRef, useEffect } from 'react';
 import { UsbIngestCard } from '@/components/settings/UsbIngestCard';
 import { LicenseCard } from '@/components/settings/LicenseCard';
 import { PanicContentEditor } from '@/components/settings/PanicContentEditor';
+import { ScreenEmergencyContentConfig } from '@/components/settings/ScreenEmergencyContentConfig';
 import { BrandingSettingsCard } from '@/components/settings/BrandingSettingsCard';
 import { DistrictSchoolsCard } from '@/components/settings/DistrictSchoolsCard';
 import { appConfirm } from '@/components/ui/app-dialog';
@@ -482,7 +483,8 @@ function PanicContentSection() {
           </div>
 
           {enabled && (
-            <div className="space-y-2.5">
+            <div className="space-y-4">
+              {/* Floor plans summary */}
               {planCount === 0 ? (
                 <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/40 p-4 flex items-start gap-3">
                   <Building2 className="w-5 h-5 text-slate-400 shrink-0 mt-0.5" />
@@ -502,7 +504,8 @@ function PanicContentSection() {
                   </div>
                 </div>
               ) : (
-                <>
+                <div className="space-y-2">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Floor plans ({planCount})</div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     {floorPlans!.slice(0, 6).map((p: any) => (
                       <Link
@@ -529,11 +532,136 @@ function PanicContentSection() {
                   >
                     <Plus className="w-3.5 h-3.5" /> Add another floor plan
                   </Link>
-                </>
+                </div>
               )}
+
+              {/* Per-screen overrides — admin-only inline list. Operator
+                  ask: "the applying the security assets should only be
+                  done from settings now." Each screen expands inline to
+                  show the 6-emergency-type config (landscape + portrait
+                  sub-rows). Lazy-rendered (only the open screen renders
+                  the config tree) so a 100-screen tenant doesn't pay
+                  the layout cost up front. */}
+              <PerScreenOverridesList />
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Per-screen emergency overrides list — Settings page subsection.
+ * Lists every paired screen in the tenant; click one to expand the full
+ * 6-type x 2-orientation override config inline. Closes auto-when the
+ * user opens a different screen. Honors the deep-link hash
+ * #per-screen-emergency-<screenId> from the floor-plan drawer.
+ */
+function PerScreenOverridesList() {
+  const { data: screensData } = useScreens();
+  const screens = (Array.isArray(screensData) ? screensData : (screensData as any)?.screens || []) as any[];
+  const [openScreenId, setOpenScreenId] = useState<string | null>(null);
+
+  // Honor the deep-link from the floor-plan drawer:
+  //   /<schoolId>/settings#per-screen-emergency-<screenId>
+  // Auto-expand that screen's row + scroll it into view.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const hash = window.location.hash;
+    const match = hash.match(/^#per-screen-emergency-([\w-]+)$/);
+    if (match) {
+      const sid = match[1];
+      setOpenScreenId(sid);
+      // Wait one frame so the row exists in the DOM before scrolling
+      requestAnimationFrame(() => {
+        document.getElementById(`per-screen-emergency-${sid}`)?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        });
+      });
+    }
+  }, []);
+
+  if (screens.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/40 p-3 text-[11px] text-slate-500">
+        No paired screens yet. Once you pair a screen, you can override
+        what plays on it during each emergency type from here.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+        Per-screen emergency overrides ({screens.length})
+      </div>
+      <p className="text-[11px] text-slate-500 leading-relaxed">
+        Click a screen to override what plays on <span className="font-semibold">that screen only</span> during
+        each of the 6 emergency types. Independent landscape + portrait variants. Anything left on
+        &ldquo;tenant default&rdquo; falls back to the panic content above.
+      </p>
+      <div className="space-y-1.5">
+        {screens.map((s: any) => {
+          const isOpen = openScreenId === s.id;
+          const status = s.status || 'OFFLINE';
+          const groupName = s.screenGroup?.name;
+          // Count overrides set on this screen so the row shows a quick
+          // summary chip ("3 overrides set" / "default") without
+          // expanding.
+          const overrideCount = [
+            'emergencyLockdownPlaylistId', 'emergencyLockdownAssetUrl',
+            'emergencyEvacuatePlaylistId', 'emergencyEvacuateAssetUrl',
+            'emergencyHoldPlaylistId',     'emergencyHoldAssetUrl',
+            'emergencySecurePlaylistId',   'emergencySecureAssetUrl',
+            'emergencyWeatherPlaylistId',  'emergencyWeatherAssetUrl',
+            'emergencyMedicalPlaylistId',  'emergencyMedicalAssetUrl',
+            'emergencyLockdownPortraitPlaylistId', 'emergencyLockdownPortraitAssetUrl',
+            'emergencyEvacuatePortraitPlaylistId', 'emergencyEvacuatePortraitAssetUrl',
+            'emergencyHoldPortraitPlaylistId',     'emergencyHoldPortraitAssetUrl',
+            'emergencySecurePortraitPlaylistId',   'emergencySecurePortraitAssetUrl',
+            'emergencyWeatherPortraitPlaylistId',  'emergencyWeatherPortraitAssetUrl',
+            'emergencyMedicalPortraitPlaylistId',  'emergencyMedicalPortraitAssetUrl',
+          ].filter((k) => s[k]).length;
+          return (
+            <div
+              key={s.id}
+              id={`per-screen-emergency-${s.id}`}
+              className={`rounded-lg border transition-colors ${
+                isOpen ? 'border-rose-200 bg-rose-50/30' : 'border-slate-200 bg-white hover:border-slate-300'
+              }`}
+            >
+              <button
+                type="button"
+                onClick={() => setOpenScreenId(isOpen ? null : s.id)}
+                aria-expanded={isOpen}
+                className="w-full flex items-center gap-3 px-3 py-2.5 text-left"
+              >
+                <MonitorPlay className={`w-4 h-4 shrink-0 ${status === 'ONLINE' ? 'text-emerald-500' : 'text-slate-300'}`} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12px] font-bold text-slate-700 truncate">{s.name}</div>
+                  <div className="text-[10px] text-slate-400 truncate">
+                    {groupName ? `${groupName} · ` : ''}{status}
+                  </div>
+                </div>
+                <span className={`text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
+                  overrideCount > 0
+                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                    : 'bg-slate-50 text-slate-400 border border-slate-200'
+                }`}>
+                  {overrideCount > 0 ? `${overrideCount} override${overrideCount === 1 ? '' : 's'}` : 'Default'}
+                </span>
+                <ArrowRight className={`w-3.5 h-3.5 text-slate-300 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+              </button>
+              {isOpen && (
+                <div className="px-3 pb-3 pt-1">
+                  <ScreenEmergencyContentConfig screenId={s.id} screen={s} />
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
