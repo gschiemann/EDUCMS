@@ -385,13 +385,27 @@ function ScreenSettingsMenu({
               stage === 'restarting'  ? <RefreshCw className="w-4 h-4 text-indigo-500 shrink-0 animate-spin" /> :
               stage === 'timeout'     ? <WifiOff className="w-4 h-4 text-amber-600 shrink-0" /> :
                                          <RefreshCw className={`w-4 h-4 shrink-0 ${upToDate === false ? 'text-amber-500' : 'text-indigo-500'}`} />;
+            // Smart timeout copy. If after 5 min the kiosk hasn't
+            // reported a new version AND we already know the kiosk is
+            // on the latest version, the most likely cause is "nothing
+            // to install" — the latest version simply hasn't published
+            // yet, or the operator pushed to a screen that was already
+            // current. Surface that instead of the generic Wi-Fi /
+            // install-permission message. Operator (2026-04-27) hit
+            // this when v1.0.9 was still building in CI but they
+            // pushed against The Den (which was on v1.0.8 = latest at
+            // that moment). Help them diagnose without reading logs.
+            const timeoutCopy =
+              upToDate === true
+                ? 'No version change after 5 min — kiosk was already on the latest. Wait for a new release to be published.'
+                : 'No response after 5 min — check Wi-Fi + Android "Install unknown apps" permission. The kiosk will pick up the update on its next boot.';
             const stageLabel =
               stage === 'installed'   ? `Kiosk installed v${currentVersion} ✓` :
               stage === 'sending'     ? 'Sending update signal to kiosk…' :
               stage === 'downloading' ? 'Kiosk downloading new APK…' :
               stage === 'installing'  ? 'Installing on kiosk…' :
               stage === 'restarting'  ? 'Kiosk restarting + reporting back…' :
-              stage === 'timeout'     ? 'No response after 5 min — check Wi-Fi + install permission' :
+              stage === 'timeout'     ? timeoutCopy :
               upToDate === true && !pushed ? 'On latest — push anyway' :
               upToDate === false ? `Push update to v${latestVersion}` :
                                    'Push update to this screen';

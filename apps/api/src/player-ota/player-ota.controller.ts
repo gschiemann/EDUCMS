@@ -104,37 +104,71 @@ export class PlayerOtaController {
     // If the fingerprint isn't paired (preview, unpaired install)
     // we conservatively return uptoDate — those installs will be
     // updated when they pair to a tenant whose flag is on.
+    // Forensic breadcrumb prefix so an operator looking at Railway
+    // logs can grep "[ota]" + a screen/fingerprint/tenant identifier
+    // and reconstruct exactly what the API did. Operator (2026-04-27):
+    // "make sure we have logs for these things so we can always
+    // trouble shoot everything in our apps." Lots of these are
+    // single-line so they're greppable; one decision per line.
+    const fp = (body?.fingerprint || '').trim();
+    const callerVn = String(body?.versionName || '').trim() || '?';
+    const callerVc = Number(body?.versionCode) || 0;
+    const fpShort = fp ? fp.slice(0, 10) : 'no-fp';
     const FORCE_WINDOW_MS = 30 * 60_000;
     let allowUpdate = false;
+    let allowReason = 'gated';
     let forcedPendingScreenId: string | null = null;
+    let lookupScreenId: string | null = null;
+    let lookupTenantId: string | null = null;
     try {
-      const fp = (body?.fingerprint || '').trim();
       if (fp) {
         const screen = await this.prisma.client.screen.findFirst({
           where: { deviceFingerprint: fp },
           select: {
             id: true,
+            tenantId: true,
             forceApkUpdatePendingAt: true,
             tenant: { select: { autoUpdatePlayerEnabled: true } },
           } as any,
         }) as any;
+        if (screen) {
+          lookupScreenId = screen.id;
+          lookupTenantId = screen.tenantId;
+        }
         if (screen?.tenant?.autoUpdatePlayerEnabled) {
           allowUpdate = true;
+          allowReason = 'tenant-auto-on';
         } else if (screen?.forceApkUpdatePendingAt) {
           const ageMs = Date.now() - new Date(screen.forceApkUpdatePendingAt).getTime();
           if (ageMs < FORCE_WINDOW_MS) {
             allowUpdate = true;
+            allowReason = `force-pending-${Math.round(ageMs / 1000)}s-ago`;
             forcedPendingScreenId = screen.id;
+          } else {
+            allowReason = `force-pending-stale-${Math.round(ageMs / 60000)}min`;
           }
+        } else {
+          allowReason = screen ? 'no-force-flag' : 'no-screen-row';
         }
+      } else {
+        allowReason = 'no-fingerprint';
       }
     } catch (e: any) {
       // On lookup error, fall back to the safer default (no update).
-      this.logger.warn(`OTA gate lookup failed, returning uptoDate: ${e?.message}`);
+      this.logger.warn(`[ota] gate-lookup-failed fp=${fpShort} err=${e?.message}`);
+      allowReason = 'lookup-error';
     }
     if (!allowUpdate) {
+      this.logger.log(
+        `[ota] decision=uptoDate caller=${callerVn} screen=${lookupScreenId || '-'} ` +
+        `tenant=${lookupTenantId || '-'} fp=${fpShort} reason=${allowReason}`,
+      );
       return { uptoDate: true };
     }
+    this.logger.log(
+      `[ota] decision=offer-latest caller=${callerVn} screen=${lookupScreenId || '-'} ` +
+      `tenant=${lookupTenantId || '-'} fp=${fpShort} reason=${allowReason}`,
+    );
     // Best-effort: clear the pending flag once we hand back a
     // download URL, so the screen doesn't keep returning latest on
     // every subsequent poll within the 30-min window. The kiosk's
@@ -157,12 +191,16 @@ export class PlayerOtaController {
     // ── Path A: explicit env-var pinning (production release train) ──
     // Ops set these after a deliberate rollout; wins over auto-resolve.
     if (latestVc && apkUrl) {
-      const current = Number(body?.versionCode) || 0;
-      if (current >= latestVc) {
+      if (callerVc >= latestVc) {
+        this.logger.log(
+          `[ota] decision=uptoDate-env caller=${callerVn} screen=${lookupScreenId || '-'} ` +
+          `latestVc=${latestVc} reason=current-already-at-or-past-pinned-version`,
+        );
         return { uptoDate: true, latestVersionCode: latestVc };
       }
       this.logger.log(
-        `[ota env] upgrade ${current}→${latestVc} | fp=${(body?.fingerprint || '').slice(0, 10)} | abi=${body?.abi}`,
+        `[ota] decision=install-env caller=${callerVn} screen=${lookupScreenId || '-'} ` +
+        `target=v${latestVn || latestVc} url=${apkUrl.slice(0, 80)}`,
       );
       return { latest: { versionCode: latestVc, versionName: latestVn, apkUrl, sha256, forced } };
     }
@@ -174,19 +212,27 @@ export class PlayerOtaController {
     // every paired kiosk pulls the update on its next 6h poll.
     try {
       const info = await resolveLatestReleaseInfo();
-      if (!info) return { uptoDate: true };
+      if (!info) {
+        this.logger.warn(
+          `[ota] decision=uptoDate-no-release caller=${callerVn} screen=${lookupScreenId || '-'} ` +
+          `reason=resolveLatestReleaseInfo-returned-null`,
+        );
+        return { uptoDate: true };
+      }
 
-      const callerVn = String(body?.versionName || '').trim();
       // Compare versionNames semver-style. If the caller is already at
       // or past the release tag, no update needed — this is the loop
       // breaker (the client's BuildConfig.VERSION_CODE is typically much
       // smaller than the derived versionCode we return below, so we
       // CANNOT rely on versionCode alone for the uptoDate check).
-      if (callerVn && semverGte(callerVn, info.versionName)) {
+      if (callerVn && callerVn !== '?' && semverGte(callerVn, info.versionName)) {
+        this.logger.log(
+          `[ota] decision=uptoDate-gh caller=${callerVn} latest=${info.versionName} ` +
+          `screen=${lookupScreenId || '-'} reason=caller-at-or-past-latest-published-tag`,
+        );
         return { uptoDate: true, latestVersionName: info.versionName };
       }
 
-      const callerVc = Number(body?.versionCode) || 0;
       // Return a versionCode strictly greater than the caller's so the
       // APK's own `latestVc <= BuildConfig.VERSION_CODE` gate clears
       // and it proceeds with the download (see OtaUpdateWorker.kt:91).
@@ -196,7 +242,8 @@ export class PlayerOtaController {
       const derivedVc = Math.max(info.derivedVersionCode, callerVc + 1);
 
       this.logger.log(
-        `[ota gh] upgrade ${callerVn || callerVc}→${info.versionName} | fp=${(body?.fingerprint || '').slice(0, 10)} | abi=${body?.abi}`,
+        `[ota] decision=install-gh caller=${callerVn} target=v${info.versionName} ` +
+        `screen=${lookupScreenId || '-'} url=${info.apkUrl.slice(0, 80)}`,
       );
       return {
         latest: {
