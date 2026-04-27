@@ -101,6 +101,17 @@ import { ScrapbookHallwayWidget } from './ScrapbookHallwayWidget';
 import { AnimatedHallwaySchedulePortraitWidget } from './AnimatedHallwaySchedulePortraitWidget';
 import { AnimatedBellSchedulePortraitWidget } from './AnimatedBellSchedulePortraitWidget';
 import { AnimatedCafeteriaFoodtruckPortraitWidget } from './AnimatedCafeteriaFoodtruckPortraitWidget';
+// Sprint 11i pre-demo wave (2026-04-27): 8 more real 4K portrait widgets
+// dispatched in parallel agent batch. Each is 2160x3840 native, NOT a
+// landscape letterboxed into a vertical frame.
+import { AnimatedBusBoardPortraitWidget } from './AnimatedBusBoardPortraitWidget';
+import { AnimatedMainEntrancePortraitWidget } from './AnimatedMainEntrancePortraitWidget';
+import { AnimatedMorningNewsPortraitWidget } from './AnimatedMorningNewsPortraitWidget';
+import { AnimatedAchievementShowcasePortraitWidget } from './AnimatedAchievementShowcasePortraitWidget';
+import { AnimatedCafeteriaElementaryPortraitWidget } from './AnimatedCafeteriaElementaryPortraitWidget';
+import { AnimatedWelcomeHighPortraitWidget } from './AnimatedWelcomeHighPortraitWidget';
+import { HsBlueprintPortraitWidget } from './hs/HsBlueprintPortraitWidget';
+import { HsVarsityPortraitWidget } from './hs/HsVarsityPortraitWidget';
 // Sprint 11h pre-launch: drag-drop animations as a generic decoration widget.
 import { DecorationWidget } from './DecorationWidget';
 // Holiday lobby pack — Halloween, Thanksgiving, Christmas, Valentine's,
@@ -244,14 +255,17 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'ANIMATED_WELCOME_PORTRAIT':     return <AnimatedWelcomePortraitWidget config={cfg} live={live} />;
     case 'ANIMATED_WELCOME_MS':           return <AnimatedWelcomeMiddleWidget config={cfg} live={live} />;
     case 'ANIMATED_WELCOME_HS':           return <AnimatedWelcomeHighWidget config={cfg} live={live} />;
+    case 'ANIMATED_WELCOME_HS_PORTRAIT':  return <AnimatedWelcomeHighPortraitWidget config={cfg} live={live} />;
     // Claude-designed HS pack:
     case 'HS_VARSITY':                    return <HsVarsityWidget config={cfg} />;
+    case 'HS_VARSITY_PORTRAIT':           return <HsVarsityPortraitWidget config={cfg} live={live} />;
     case 'HS_BROADCAST':                  return <HsBroadcastWidget config={cfg} />;
     case 'HS_YEARBOOK':                   return <HsYearbookWidget config={cfg} />;
     case 'HS_TERMINAL':                   return <HsTerminalWidget config={cfg} />;
     case 'HS_TRANSIT':                    return <HsTransitWidget config={cfg} />;
     case 'HS_GALLERY':                    return <HsGalleryWidget config={cfg} />;
     case 'HS_BLUEPRINT':                  return <HsBlueprintWidget config={cfg} />;
+    case 'HS_BLUEPRINT_PORTRAIT':         return <HsBlueprintPortraitWidget config={cfg} live={live} />;
     case 'HS_ZINE':                       return <HsZineWidget config={cfg} />;
     // MS pack:
     case 'MS_ARCADE':                     return <MsArcadeWidget config={cfg} live={live} />;
@@ -272,19 +286,24 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'MS_PLAYLIST_PORTRAIT':          return <MsPlaylistPortraitWidget config={cfg} live={live} />;
     case 'MS_STUDIO_PORTRAIT':            return <MsStudioPortraitWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA':            return <AnimatedCafeteriaElementaryWidget config={cfg} live={live} />;
+    case 'ANIMATED_CAFETERIA_PORTRAIT':   return <AnimatedCafeteriaElementaryPortraitWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA_MS':         return <AnimatedCafeteriaMiddleWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA_HS':         return <AnimatedCafeteriaHighWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA_CHALKBOARD': return <AnimatedCafeteriaChalkboardWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA_FOODTRUCK':  return <AnimatedCafeteriaFoodtruckWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA_FOODTRUCK_PORTRAIT': return <AnimatedCafeteriaFoodtruckPortraitWidget config={cfg} live={live} />;
     case 'ANIMATED_BUS_BOARD':            return <AnimatedBusBoardWidget config={cfg} live={live} />;
+    case 'ANIMATED_BUS_BOARD_PORTRAIT':   return <AnimatedBusBoardPortraitWidget config={cfg} live={live} />;
     case 'ANIMATED_MAIN_ENTRANCE':        return <AnimatedMainEntranceWidget config={cfg} live={live} />;
+    case 'ANIMATED_MAIN_ENTRANCE_PORTRAIT': return <AnimatedMainEntrancePortraitWidget config={cfg} live={live} />;
     case 'ANIMATED_HALLWAY_SCHEDULE':     return <AnimatedHallwayScheduleWidget config={cfg} live={live} />;
     case 'ANIMATED_HALLWAY_SCHEDULE_PORTRAIT': return <AnimatedHallwaySchedulePortraitWidget config={cfg} live={live} />;
     case 'ANIMATED_BELL_SCHEDULE':        return <AnimatedBellScheduleWidget config={cfg} live={live} />;
     case 'ANIMATED_BELL_SCHEDULE_PORTRAIT': return <AnimatedBellSchedulePortraitWidget config={cfg} live={live} />;
     case 'ANIMATED_MORNING_NEWS':         return <AnimatedMorningNewsWidget config={cfg} live={live} />;
+    case 'ANIMATED_MORNING_NEWS_PORTRAIT': return <AnimatedMorningNewsPortraitWidget config={cfg} live={live} />;
     case 'ANIMATED_ACHIEVEMENT_SHOWCASE': return <AnimatedAchievementShowcaseWidget config={cfg} live={live} />;
+    case 'ANIMATED_ACHIEVEMENT_SHOWCASE_PORTRAIT': return <AnimatedAchievementShowcasePortraitWidget config={cfg} live={live} />;
     case 'SCRAPBOOK_HALLWAY':             return <ScrapbookHallwayWidget config={cfg} live={live} />;
     case 'SCRAPBOOK_CAFETERIA':           return <ScrapbookCafeteriaWidget config={cfg} live={live} />;
     case 'STORYBOOK_HALLWAY':             return <StorybookHallwayWidget config={cfg} live={live} />;

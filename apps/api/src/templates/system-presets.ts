@@ -791,10 +791,10 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
 {
     id: 'preset-achievement-showcase-portrait',
     name: '🏆 Animated Achievement Showcase — Portrait',
-    description: 'Award ceremony scene — medals, honor-roll columns, stats, student-of-the-week spotlight with citation. · Vertical 4K layout',
+    description: 'Award ceremony scene built FOR portrait — medal stack hero, full-width student-of-the-week, two-column honor roll, 4-up stats, trophy ticker. Real vertical layout, not letterboxed. · 4K portrait',
     category: 'LOBBY', orientation: 'PORTRAIT', schoolLevel: 'UNIVERSAL',
     screenWidth: 2160, screenHeight: 3840, bgColor: '#fef3c7',
-    zones: [{ name: 'Scene', widgetType: 'ANIMATED_ACHIEVEMENT_SHOWCASE', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Scene', widgetType: 'ANIMATED_ACHIEVEMENT_SHOWCASE_PORTRAIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
 {
     id: 'preset-bell-schedule-portrait',
@@ -823,10 +823,10 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
 {
     id: 'preset-bus-board-portrait',
     name: '🚌 Animated Bus Route Board — Portrait',
-    description: 'School-bus route board — driving-bus graphic, animated road, route rows with ETAs, late warnings, next-bus countdown. · Vertical 4K layout',
+    description: 'Bus route board built FOR portrait — driving-bus header, full-width animated road, 7 route rows with ETAs, next-bus countdown hero, weather pill, late-bus ticker. Real vertical layout, not letterboxed. · 4K portrait',
     category: 'INFO', orientation: 'PORTRAIT', schoolLevel: 'ELEMENTARY',
     screenWidth: 2160, screenHeight: 3840, bgColor: '#fde68a',
-    zones: [{ name: 'Scene', widgetType: 'ANIMATED_BUS_BOARD', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Scene', widgetType: 'ANIMATED_BUS_BOARD_PORTRAIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
 {
     id: 'preset-cafeteria-animated-high-portrait',
@@ -871,10 +871,10 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
 {
     id: 'preset-hs-blueprint-portrait',
     name: '📐 Blueprint — Portrait',
-    description: 'Architect blueprint lobby: cyan grid paper, title-block header, dimensioned callouts, sheet annotations (A-01, A-02, A-03, A-04), schedule-as-drawings table, revision-log ticker. · Vertical 4K layout',
+    description: 'Architect blueprint lobby built FOR portrait — cyan grid paper, title-block header, vertical floor-plan elevation with dimensioned callouts, schedule-as-drawings table, revision-log ticker. Real vertical layout, not letterboxed. · 4K portrait',
     category: 'LOBBY_WELCOME', orientation: 'PORTRAIT', schoolLevel: 'HIGH',
     screenWidth: 2160, screenHeight: 3840, bgColor: '#0f3a7a',
-    zones: [{ name: 'Scene', widgetType: 'HS_BLUEPRINT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Scene', widgetType: 'HS_BLUEPRINT_PORTRAIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
 {
     id: 'preset-hs-broadcast-portrait',
@@ -911,10 +911,10 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
 {
     id: 'preset-hs-varsity-portrait',
     name: '🏟️ Varsity — Portrait',
-    description: 'Game-day scoreboard lobby: jersey chest greeting, game-of-the-week card, coach spotlight, pep-rally announcement, pennants, PA-system ticker. · Vertical 4K layout',
+    description: 'Game-day scoreboard lobby built FOR portrait — pennant bunting, hex-shield crest, full-width scoreboard hero, athlete-of-the-week trading card, 5-row schedule, highlight ticker. Real vertical layout, not letterboxed. · 4K portrait',
     category: 'LOBBY_WELCOME', orientation: 'PORTRAIT', schoolLevel: 'HIGH',
     screenWidth: 2160, screenHeight: 3840, bgColor: '#0d1b3d',
-    zones: [{ name: 'Scene', widgetType: 'HS_VARSITY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Scene', widgetType: 'HS_VARSITY_PORTRAIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
 {
     id: 'preset-hs-yearbook-portrait',
@@ -935,18 +935,18 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
 {
     id: 'preset-main-entrance-portrait',
     name: '🏛️ Animated Main Entrance Welcome — Portrait',
-    description: 'Grand-entrance welcome board — marquee bulbs, heraldic crests, three info tiles, balloon cluster, ticker. · Vertical 4K layout',
+    description: 'Grand-entrance welcome board built FOR portrait — hanging WELCOME sign with chains, three full-width info tiles (bell time / weather / coming up), hexagonal crests, ticker. Real vertical layout, not letterboxed. · 4K portrait',
     category: 'ENTRY', orientation: 'PORTRAIT', schoolLevel: 'ELEMENTARY',
     screenWidth: 2160, screenHeight: 3840, bgColor: '#1e1b4b',
-    zones: [{ name: 'Scene', widgetType: 'ANIMATED_MAIN_ENTRANCE', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Scene', widgetType: 'ANIMATED_MAIN_ENTRANCE_PORTRAIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
 {
     id: 'preset-morning-news-portrait',
     name: '📺 Animated Morning News — Portrait',
-    description: 'TV-newsroom daily digest — breaking-news stories with time chips, REC indicator, anchor desk feel. · Vertical 4K layout',
+    description: 'TV-newsroom daily digest built FOR portrait — LIVE/ON-AIR header, full-width anchor desk CSS-art, weather + lunch two-up, pledge card, full-width ticker. Real vertical layout, not letterboxed. · 4K portrait',
     category: 'LOBBY', orientation: 'PORTRAIT', schoolLevel: 'UNIVERSAL',
     screenWidth: 2160, screenHeight: 3840, bgColor: '#0b1220',
-    zones: [{ name: 'Scene', widgetType: 'ANIMATED_MORNING_NEWS', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Scene', widgetType: 'ANIMATED_MORNING_NEWS_PORTRAIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
 {
     id: 'preset-scrapbook-cafeteria-portrait',
@@ -992,20 +992,20 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
   {
     id: 'preset-lobby-animated-high-portrait',
     name: '🎓 Animated High School · Welcome — Portrait',
-    description: 'Full-screen ANIMATED high-school welcome — sunset palette, grad-cap logo, neon-sign title, sunburst clock, trophy countdown, yearbook teacher, confetti birthdays, speech-bubble announcement. · Vertical 4K layout',
+    description: 'Full-screen ANIMATED high-school welcome built FOR portrait — sunset palette, grad-cap logo with animated tassel, neon WELCOME banner, sunburst clock + sun-disc weather, yearbook teacher polaroid + speech-bubble announcement, golden trophy countdown, confetti birthdays, sunset ticker. Real vertical layout, not letterboxed. · 4K portrait',
     category: 'LOBBY', orientation: 'PORTRAIT', schoolLevel: 'HIGH',
     screenWidth: 2160, screenHeight: 3840, bgColor: '#fce7f3',
     bgGradient: 'linear-gradient(180deg,#fce7f3 0%,#ffe4e6 30%,#fef3c7 70%,#fed7aa 100%)',
-    zones: [{ name: 'Animated Welcome Scene (High School)', widgetType: 'ANIMATED_WELCOME_HS', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Animated Welcome Scene (High School)', widgetType: 'ANIMATED_WELCOME_HS_PORTRAIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
   {
     id: 'preset-cafeteria-animated-elementary-portrait',
-    name: '🚚 Animated Cafeteria · Food Truck — Portrait',
-    description: 'Full-screen ANIMATED cafeteria menu board in food-truck theme — weekly menu (Mon-Fri tabs), today auto-picked, swappable food emojis, lunch chef polaroid, allergen ticker. · Vertical 4K layout',
+    name: '🍽️ Animated Cafeteria · Elementary — Portrait',
+    description: 'Elementary cafeteria menu board built FOR portrait — neon TODAY\'S LUNCH header with marquee bulbs, Mon-Fri tab strip, swinging Pickup Special banner, chalkboard 2x3 food card grid, chef polaroid + sunburst countdown, birthdays ribbon, allergen ticker. Real vertical layout, not letterboxed. · 4K portrait',
     category: 'CAFETERIA', orientation: 'PORTRAIT', schoolLevel: 'ELEMENTARY',
     screenWidth: 2160, screenHeight: 3840, bgColor: '#fce7f3',
     bgGradient: 'linear-gradient(180deg,#fce7f3 0%,#ffe4e6 35%,#fef3c7 75%,#fed7aa 100%)',
-    zones: [{ name: 'Animated Cafeteria Scene', widgetType: 'ANIMATED_CAFETERIA', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    zones: [{ name: 'Animated Cafeteria Scene', widgetType: 'ANIMATED_CAFETERIA_PORTRAIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
 
   // ───────────────────────────────────────────────────────────────

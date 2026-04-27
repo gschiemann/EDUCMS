@@ -88,32 +88,31 @@ const SCHOOL_LEVEL_CHIPS = [
  * variant doesn't require a schema field — just delete the id here.
  */
 const LETTERBOXED_PORTRAIT_PRESETS: ReadonlySet<string> = new Set([
-  'preset-achievement-showcase-portrait',
-  // 'preset-bell-schedule-portrait', — REAL portrait shipped 2026-04-27
-  //   (uses ANIMATED_BELL_SCHEDULE_PORTRAIT widget)
+  // Real portraits shipped — keeping the comments so future agents
+  // know which ones are intentionally absent from this list:
+  //   - preset-achievement-showcase-portrait      (2026-04-27, ANIMATED_ACHIEVEMENT_SHOWCASE_PORTRAIT)
+  //   - preset-bell-schedule-portrait             (2026-04-27, ANIMATED_BELL_SCHEDULE_PORTRAIT)
+  //   - preset-bus-board-portrait                 (2026-04-27, ANIMATED_BUS_BOARD_PORTRAIT)
+  //   - preset-cafeteria-animated-elementary-portrait (2026-04-27, ANIMATED_CAFETERIA_PORTRAIT)
+  //   - preset-cafeteria-foodtruck-portrait       (2026-04-27, ANIMATED_CAFETERIA_FOODTRUCK_PORTRAIT)
+  //   - preset-hallway-schedule-portrait          (2026-04-27, ANIMATED_HALLWAY_SCHEDULE_PORTRAIT)
+  //   - preset-hs-blueprint-portrait              (2026-04-27, HS_BLUEPRINT_PORTRAIT)
+  //   - preset-hs-varsity-portrait                (2026-04-27, HS_VARSITY_PORTRAIT)
+  //   - preset-lobby-animated-high-portrait       (2026-04-27, ANIMATED_WELCOME_HS_PORTRAIT)
+  //   - preset-main-entrance-portrait             (2026-04-27, ANIMATED_MAIN_ENTRANCE_PORTRAIT)
+  //   - preset-morning-news-portrait              (2026-04-27, ANIMATED_MORNING_NEWS_PORTRAIT)
   'preset-bulletin-cafeteria-portrait',
   'preset-bulletin-hallway-portrait',
-  'preset-bus-board-portrait',
-  'preset-cafeteria-animated-elementary-portrait',
   'preset-cafeteria-animated-high-portrait',
   'preset-cafeteria-animated-middle-portrait',
   'preset-cafeteria-chalkboard-portrait',
-  // 'preset-cafeteria-foodtruck-portrait', — REAL portrait shipped 2026-04-27
-  //   (uses ANIMATED_CAFETERIA_FOODTRUCK_PORTRAIT widget)
-  // 'preset-hallway-schedule-portrait', — REAL portrait shipped 2026-04-27
-  //   (uses ANIMATED_HALLWAY_SCHEDULE_PORTRAIT widget, vertical re-flow)
-  'preset-hs-blueprint-portrait',
   'preset-hs-broadcast-portrait',
   'preset-hs-gallery-portrait',
   'preset-hs-terminal-portrait',
   'preset-hs-transit-portrait',
-  'preset-hs-varsity-portrait',
   'preset-hs-yearbook-portrait',
   'preset-hs-zine-portrait',
-  'preset-lobby-animated-high-portrait',
   'preset-lobby-animated-middle-portrait',
-  'preset-main-entrance-portrait',
-  'preset-morning-news-portrait',
   'preset-scrapbook-cafeteria-portrait',
   'preset-scrapbook-hallway-portrait',
   'preset-storybook-cafeteria-portrait',
