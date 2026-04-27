@@ -2071,64 +2071,75 @@ function PlayerPage() {
   const connectivityToast = connectivity.kind === 'reconnecting' ? (() => {
     const remainMs = Math.max(0, connectivity.nextRetryAt - Date.now());
     const remainSec = Math.ceil(remainMs / 1000);
+    // Operator screenshot 2026-04-27 (post-deploy reconnect on M Series):
+    // toast was getting clipped at the right edge because KioskSplash's
+    // own `.kiosk-tech-chips` row sits at `bottom: 20-40px` centered, AND
+    // my toast sat at `bottom-6` (24px) ALSO centered — both fighting for
+    // horizontal space at the same vertical band. Pulled the toast WAY up
+    // (bottom-40 = 160px) so it has clean separation from the splash
+    // chips, and switched to `inset-x-0 mx-auto` for centering which
+    // doesn't depend on `transform: translateX(-50%)` interacting with
+    // any parent transforms.
     return (
       <div
-        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9998] max-w-2xl px-5 py-3 rounded-2xl bg-slate-900/95 text-white shadow-2xl border border-slate-700 backdrop-blur-md flex items-center gap-3"
+        className="fixed bottom-40 inset-x-4 mx-auto z-[9998] max-w-xl px-5 py-4 rounded-2xl bg-slate-900/95 text-white shadow-2xl border border-slate-700 backdrop-blur-md flex flex-wrap items-center justify-center gap-3"
         role="status"
         aria-live="polite"
       >
-        <WifiOff className="w-5 h-5 text-red-400 shrink-0" />
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold truncate">
+        <WifiOff className="w-6 h-6 text-red-400 shrink-0" />
+        <div className="flex-1 min-w-0 text-center sm:text-left">
+          <div className="text-base font-semibold">
             Reconnecting{connectivity.attempt > 1 ? ` (attempt ${connectivity.attempt})` : ''}…
           </div>
-          <div className="text-[11px] text-slate-300 truncate">
+          <div className="text-xs text-slate-300 mt-0.5">
             {connectivity.reason}{remainSec > 0 ? ` — retry in ${remainSec}s` : ' — retrying now'}
           </div>
         </div>
-        <button
-          onClick={() => {
-            // Kick the resilient retry chain ahead of its timer.
-            setError(null);
-            registerFailCountRef.current = 0;
-            fetchFailCountRef.current = 0;
-            if (registerRetryTimerRef.current) clearTimeout(registerRetryTimerRef.current);
-            if (tickToastRef.current) clearInterval(tickToastRef.current);
-            // For unpaired devices, re-fire registration; for paired, re-fire fetchContent.
-            if (screenId) {
-              fetchContent();
-            } else {
-              // Pulse phase to retrigger the registration effect cleanly.
+        <div className="flex gap-2 shrink-0">
+          <button
+            onClick={() => {
+              // Kick the resilient retry chain ahead of its timer.
+              setError(null);
+              registerFailCountRef.current = 0;
+              fetchFailCountRef.current = 0;
+              if (registerRetryTimerRef.current) clearTimeout(registerRetryTimerRef.current);
+              if (tickToastRef.current) clearInterval(tickToastRef.current);
+              // For unpaired devices, re-fire registration; for paired, re-fire fetchContent.
+              if (screenId) {
+                fetchContent();
+              } else {
+                // Pulse phase to retrigger the registration effect cleanly.
+                registrationLoopRef.current?.stop();
+                registrationLoopRef.current = null;
+                setPhase('registering');
+              }
+            }}
+            className="text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-white"
+          >
+            Retry now
+          </button>
+          <button
+            onClick={handleExitApp}
+            className="text-xs font-bold px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white"
+          >
+            Exit
+          </button>
+          <button
+            onClick={() => {
+              try { localStorage.removeItem('edu_device_fp'); } catch {}
+              registerFailCountRef.current = 0;
+              fetchFailCountRef.current = 0;
+              setError(null);
+              setConnectivity({ kind: 'connected' });
               registrationLoopRef.current?.stop();
               registrationLoopRef.current = null;
               setPhase('registering');
-            }
-          }}
-          className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-white shrink-0"
-        >
-          Retry now
-        </button>
-        <button
-          onClick={handleExitApp}
-          className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-white shrink-0"
-        >
-          Exit
-        </button>
-        <button
-          onClick={() => {
-            try { localStorage.removeItem('edu_device_fp'); } catch {}
-            registerFailCountRef.current = 0;
-            fetchFailCountRef.current = 0;
-            setError(null);
-            setConnectivity({ kind: 'connected' });
-            registrationLoopRef.current?.stop();
-            registrationLoopRef.current = null;
-            setPhase('registering');
-          }}
-          className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-white shrink-0"
-        >
-          Reset
-        </button>
+            }}
+            className="text-xs font-bold px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white"
+          >
+            Reset
+          </button>
+        </div>
       </div>
     );
   })() : null;
