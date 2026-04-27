@@ -17,7 +17,14 @@ on:
   push:
     branches: [master, main]
     tags:
+      # Player release tag (existing) — produces edu-cms-player-v*.apk
+      # release attachment.
       - 'player-v*'
+      # Manager release tag (Phase 1+) — produces edu-cms-manager-v*.apk
+      # release attachment via the parallel `softprops/action-gh-release`
+      # step further down. Both APKs are built on every run regardless;
+      # only the matching tag triggers the corresponding release attach.
+      - 'manager-v*'
   workflow_dispatch:
     inputs:
       playerBaseUrl:
