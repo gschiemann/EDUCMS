@@ -5,35 +5,15 @@ import { safeFetch, SsrfError, FetchTooLargeError } from '../branding/safe-fetch
 
 /**
  * Proxy controller for loading external websites in iframes.
+ * Strips X-Frame-Options and CSP frame-ancestors headers so digital signage
+ * screens can embed any website in a WEBPAGE widget zone.
  *
- * Two modes on the same endpoint, switched on the upstream Content-Type:
- *
- * 1. HTML responses
- *    - Strip X-Frame-Options + CSP frame-ancestors (so the iframe is
- *      allowed to render us at all).
- *    - Strip frame-busting `<meta refresh>` and inline `on*=` handlers.
- *    - Inject a `<base href>` so relative URLs in the page resolve
- *      against the upstream origin (image src, link href, etc).
- *    - Inject a tiny prelude `<script>` at the very top of `<head>`
- *      that monkey-patches `window.fetch` and `XMLHttpRequest.open`.
- *      Every fetch the page's own scripts make gets rewritten so it
- *      flows back through THIS proxy — same-origin to the iframe,
- *      CORS-clean. That's what unblocks JS-driven banner rotators,
- *      sliders, and any other content the page builds at runtime.
- *
- * 2. Non-HTML responses (images, CSS, fonts, JSON, JS files…)
- *    - Stream the body back unchanged with the original Content-Type
- *      and an Access-Control-Allow-Origin: * header. This is what
- *      lets the rewritten fetch/XHR calls actually receive data.
- *      Without this branch, only the initial HTML loaded — every
- *      subsequent fetch from a script 502'd out.
- *
- * Security: every upstream fetch goes through `safeFetch`, which
- * DNS-resolves the hostname and rejects any address landing in a
- * private / loopback / link-local / CGNAT / cloud-metadata range
- * (e.g. 169.254.169.254 on Railway/AWS/GCP). NEVER call `fetch()`
- * directly here — every URL the user (or their page's scripts) sends
- * us could be an SSRF probe.
+ * Security: routes EVERY fetch through `safeFetch`, which DNS-resolves
+ * the hostname and rejects any address landing in a private, loopback,
+ * link-local, CGNAT, or cloud-metadata range (169.254.169.254 is the
+ * obvious attacker target on Railway/AWS/GCP). Previously this
+ * controller called `fetch(url)` directly, making it an unauthenticated
+ * SSRF gateway into the cloud provider's internal network.
  */
 @Controller('api/v1/proxy')
 export class ProxyController {
@@ -50,15 +30,15 @@ export class ProxyController {
       try {
         upstream = await safeFetch(url, {
           timeoutMs: 15000,
-          // Bumped to 25MB — pages with hero videos / large hero images
-          // would 413 at the old 10MB cap. Still bounded.
-          maxBytes: 25 * 1024 * 1024,
-          accept: '*/*',
+          maxBytes: 10 * 1024 * 1024, // 10 MB cap for embedded HTML pages
+          accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           userAgent:
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
         });
       } catch (e: any) {
         if (e instanceof SsrfError) {
+          // Don't leak whether the target was private vs invalid —
+          // uniform error for SSRF probing.
           throw new HttpException(`Upstream blocked: ${e.message}`, HttpStatus.BAD_REQUEST);
         }
         if (e instanceof FetchTooLargeError) {
@@ -72,143 +52,68 @@ export class ProxyController {
       }
 
       const contentType = upstream.contentType || 'text/html';
-      const isHtml = contentType.includes('text/html') || contentType.includes('application/xhtml');
 
-      // Headers shared between HTML and pass-through paths.
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.removeHeader('X-Frame-Options');
-      res.removeHeader('Content-Security-Policy');
-      res.setHeader('Content-Security-Policy', "frame-ancestors *");
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      // Common fetch needs these headers for CORS preflights to pass.
-      res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept');
-
-      if (!isHtml) {
-        // Pass-through for images / CSS / JS / fonts / JSON / video
-        // segments. The rewritten fetch in the iframe routes here.
-        res.setHeader('Content-Type', contentType);
-        res.send(upstream.body);
+      if (!contentType.includes('text/html') && !contentType.includes('application/xhtml')) {
+        res.redirect(url);
         return;
       }
 
-      // HTML branch
       let html = upstream.body.toString('utf8');
+
       const baseUrl = upstream.finalUrl || url;
 
-      // Frame-busting + auto-refresh + inline handlers — these can't be
-      // safely rewritten, just stripped.
+      // Strip <script> tags. Tried lifting this once (2026-04-26 to
+      // make e-arc.com banner rotators work) — the result was
+      // measurably WORSE: rotators still broken (cross-origin XHR
+      // CORS-blocked from inside the sandboxed iframe) AND the static
+      // middle of every page broke too because pages with JS have
+      // execution dependencies (errors halting layout, document.write
+      // changing the DOM, etc). Net-negative trade. Reverted.
+      //
+      // Modern signage sites that the operator curates should be
+      // mostly-static — if a customer wants a JS-driven dashboard
+      // embedded, recommend exporting it as a public-facing static
+      // mirror or an iframe-friendly subdomain. Banner-rotator
+      // support is a Sprint-12 problem (probably needs a per-asset
+      // proxy that rewrites every script's fetch through us).
+      html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
       html = html.replace(/<meta[^>]*http-equiv\s*=\s*["']?refresh["']?[^>]*>/gi, '');
       html = html.replace(/\s(on\w+)\s*=\s*["'][^"']*["']/gi, '');
       html = html.replace(/<\/?noscript[^>]*>/gi, '');
 
       // Strip <meta http-equiv="content-security-policy"> and
       // <meta http-equiv="x-frame-options">. We already strip the
-      // equivalent HTTP headers, but real-world sites (Wix, hardened
-      // WordPress, Shopify storefronts) enforce CSP via <meta> too —
-      // browsers obey both identically. Without this strip the iframe
-      // partially loads, then every external script/font/image gets
-      // refused by the page's own meta-CSP and looks broken to the
-      // user. This is the ONLY targeted addition kept from the more
-      // aggressive proxy hardening; everything else (static HTML
-      // attribute rewrite, CSS url() rewrite, iframe-detection hooks,
-      // crossorigin/integrity strip, setAttribute hook) was reverted
-      // because operator reported "no image load at all now, just
-      // weird icons and hyper links everywhere." The conservative
-      // fetch/XHR rewriter below catches the JS-driven cases.
+      // equivalent HTTP headers; some sites enforce CSP via <meta>
+      // too. Strictly subtractive — only removes a blocking tag.
+      // Operator (2026-04-27): "go back to the original URL deployer
+      // we had, this one still fucks up the middle section, then we
+      // can fix just the top section." This is the original (script-
+      // strip) proxy from 0ada976 with ONLY this one meta-CSP
+      // addition kept. Everything else (HTML rewriter, CSS url()
+      // rewriter, iframe-detection hooks, setAttribute hook, SRI
+      // strip) was reverted — those broke the middle.
       html = html.replace(/<meta[^>]*http-equiv\s*=\s*["']?(?:content-security-policy|x-frame-options)["']?[^>]*>/gi, '');
 
-      // Build the rewriter script. Three jobs:
-      //   1. Override window.fetch + XMLHttpRequest.open so any
-      //      same-origin fetch inside the iframe (relative URL or
-      //      absolute URL pointing at the upstream origin) gets
-      //      routed through OUR proxy. The proxy then streams the
-      //      resource back same-origin, CORS-clean.
-      //   2. Override window.open / location.assign / location.replace
-      //      that target the parent — best-effort frame-busting block
-      //      (location is technically unforgeable, but most real-world
-      //      busters use these wrappers).
-      //   3. Don't rewrite cross-origin URLs that aren't the upstream
-      //      origin; let the browser handle CORS for those (most
-      //      external CDNs send the right headers).
-      const proxyOrigin = ''; // same-origin to the iframe — empty string keeps fetches relative
-      const proxyPath = '/api/v1/proxy/web';
-      const upstreamOrigin = new URL(baseUrl).origin;
-
-      const rewriter = `
-<script>
-(function(){
-  try {
-    var PROXY = ${JSON.stringify(proxyOrigin + proxyPath)};
-    var UPSTREAM = ${JSON.stringify(upstreamOrigin)};
-    function looksLikeUpstream(u){
-      if (!u) return false;
-      if (typeof u !== 'string') return false;
-      if (u.startsWith('data:') || u.startsWith('blob:') || u.startsWith('javascript:')) return false;
-      if (u.startsWith('/') && !u.startsWith('//')) return true;
-      if (u.startsWith('./') || u.startsWith('../')) return true;
-      if (u.startsWith(UPSTREAM)) return true;
-      // protocol-relative pointing at upstream
-      if (u.startsWith('//') && UPSTREAM.endsWith(u.split('/')[2])) return true;
-      return false;
-    }
-    function toAbsolute(u){
-      try { return new URL(u, UPSTREAM).toString(); } catch(e){ return u; }
-    }
-    function via(u){
-      return PROXY + '?url=' + encodeURIComponent(toAbsolute(u)) + '&v=2';
-    }
-    var realFetch = window.fetch;
-    window.fetch = function(input, init){
-      try {
-        var u = typeof input === 'string' ? input : (input && input.url) || '';
-        if (looksLikeUpstream(u)) {
-          if (typeof input === 'string') return realFetch(via(u), init);
-          // Request object — clone with new URL
-          return realFetch(new Request(via(u), input), init);
-        }
-      } catch(e) {}
-      return realFetch.call(this, input, init);
-    };
-    var realOpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function(method, url){
-      try {
-        if (typeof url === 'string' && looksLikeUpstream(url)) {
-          arguments[1] = via(url);
-        }
-      } catch(e){}
-      return realOpen.apply(this, arguments);
-    };
-    // Anti-frame-busting (best-effort — location is unforgeable so we
-    // wrap the wrappers most busters reach for).
-    var realWindowOpen = window.open;
-    window.open = function(){ return null; };
-    try {
-      var locProto = Object.getPrototypeOf(window.location);
-      var realAssign  = locProto.assign;
-      var realReplace = locProto.replace;
-      locProto.assign  = function(u){ if (looksLikeUpstream(u)) return realAssign.call(window.location, via(u)); /* swallow cross-origin top-nav */ };
-      locProto.replace = function(u){ if (looksLikeUpstream(u)) return realReplace.call(window.location, via(u)); };
-    } catch(e){}
-  } catch(err) { /* prelude swallowed — page can still render */ }
-})();
-</script>`;
-
       const baseTag = `<base href="${baseUrl}">`;
-      const head = rewriter + baseTag;
       if (html.includes('<head>')) {
-        html = html.replace('<head>', `<head>\n${head}`);
+        html = html.replace('<head>', `<head>\n${baseTag}`);
       } else if (html.includes('<HEAD>')) {
-        html = html.replace('<HEAD>', `<HEAD>\n${head}`);
+        html = html.replace('<HEAD>', `<HEAD>\n${baseTag}`);
       } else if (/<head[^>]*>/i.test(html)) {
-        html = html.replace(/<head[^>]*>/i, `$&${head}`);
+        html = html.replace(/<head[^>]*>/i, `$&${baseTag}`);
       } else if (/<html[^>]*>/i.test(html)) {
-        html = html.replace(/<html[^>]*>/i, `$&<head>${head}</head>`);
+        html = html.replace(/<html[^>]*>/i, `$&<head>${baseTag}</head>`);
       } else {
-        html = head + html;
+        html = baseTag + html;
       }
 
       res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.removeHeader('X-Frame-Options');
+      res.removeHeader('Content-Security-Policy');
+      res.setHeader('Content-Security-Policy', "frame-ancestors *");
+      res.setHeader('Access-Control-Allow-Origin', '*');
+
       res.send(html);
     } catch (err: any) {
       // When catching errors, manually clear the headers Helmet injected earlier in the pipeline.
