@@ -17,6 +17,7 @@ import { TemplatesController } from './templates/templates.controller';
 import { TenantsController } from './tenants/tenants.controller';
 import { ProxyController } from './proxy/proxy.controller';
 import { HealthController } from './health/health.controller';
+import { FloorPlansController } from './floor-plans/floor-plans.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { RealtimeModule } from './realtime/realtime.module';
@@ -88,6 +89,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     TenantsController,
     ProxyController,
     HealthController,
+    FloorPlansController,
     CsrfController,
   ],
   providers: [
