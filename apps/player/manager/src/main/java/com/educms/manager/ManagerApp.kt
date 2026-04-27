@@ -8,6 +8,8 @@ import android.util.Log
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.educms.manager.crash.CrashUploader
@@ -42,6 +44,31 @@ class ManagerApp : Application() {
         }
         startWatchdogService(this)
         scheduleOtaWorker(this)
+        // Single-sideload UX (matches Yodeck's pattern): if Player
+        // isn't installed yet, fire OtaWorker IMMEDIATELY instead of
+        // waiting for the 5-min initial-delay periodic. Operator's
+        // deployment flow becomes:
+        //   1. Sideload Manager APK (one trip)
+        //   2. ADB-provision device-owner (one command)
+        //   3. ← THIS triggers Player auto-install on first launch
+        //   4. Pair Player from dashboard
+        // OtaWorker handles the bootstrap case (Player not installed →
+        // currentVc=0 → server returns latest → install).
+        if (!isPlayerInstalled()) {
+            Log.i(TAG, "Player not installed yet — firing immediate bootstrap OTA")
+            triggerImmediateOtaCheck(this)
+        }
+    }
+
+    private fun isPlayerInstalled(): Boolean {
+        val pm = packageManager
+        for (pkg in listOf(BuildConfig.PLAYER_PACKAGE, "${BuildConfig.PLAYER_PACKAGE}.debug")) {
+            try {
+                pm.getPackageInfo(pkg, 0)
+                return true
+            } catch (_: Exception) { /* not installed */ }
+        }
+        return false
     }
 
     companion object {
@@ -63,6 +90,31 @@ class ManagerApp : Application() {
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "startWatchdogService failed: ${e.message}", e)
+            }
+        }
+
+        /**
+         * One-shot OtaWorker fire for the bootstrap case (Player not
+         * installed yet on a freshly-sideloaded Manager). REPLACE
+         * policy is fine — if a previous bootstrap is somehow still
+         * running, fold into a new one.
+         */
+        fun triggerImmediateOtaCheck(ctx: Context) {
+            try {
+                val constraints = androidx.work.Constraints.Builder()
+                    .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
+                    .build()
+                val req = OneTimeWorkRequestBuilder<OtaWorker>()
+                    .setConstraints(constraints)
+                    .build()
+                WorkManager.getInstance(ctx).enqueueUniqueWork(
+                    "edu-manager-ota-bootstrap",
+                    ExistingWorkPolicy.REPLACE,
+                    req,
+                )
+                Log.i(TAG, "bootstrap OtaWorker enqueued (one-shot)")
+            } catch (e: Exception) {
+                Log.w(TAG, "triggerImmediateOtaCheck failed: ${e.message}", e)
             }
         }
 

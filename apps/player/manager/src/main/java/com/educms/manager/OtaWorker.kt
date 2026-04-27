@@ -61,12 +61,23 @@ class OtaWorker(
             val apiRoot = BuildConfig.API_ROOT
             val fp = deriveFingerprint()
             val playerVersion = readInstalledPlayerVersion()
-            if (playerVersion == null) {
-                Log.w(TAG, "Player not installed (${BuildConfig.PLAYER_PACKAGE}) — nothing to update")
-                return@withContext Result.success()
+            // Phase 2.5 — single-sideload UX: when Manager is freshly
+            // installed and Player isn't on the device yet, treat it
+            // as currentVc=0/versionName=none. The /update-check
+            // endpoint returns whatever's latest (since 0 < any), and
+            // we install Player from scratch on first run. Operator
+            // does ONE sideload (Manager) + ONE ADB provision command;
+            // Manager auto-installs Player on first launch.
+            val (currentVc, currentVn) = playerVersion ?: run {
+                Log.i(TAG, "Player not installed yet — treating as first-install bootstrap (vc=0)")
+                0 to "0.0.0"
             }
-            val (currentVc, currentVn) = playerVersion
-            Log.i(TAG, "current Player: $currentVn (vc=$currentVc) fp=${fp.take(20)}…")
+            val isBootstrap = playerVersion == null
+            Log.i(
+                TAG,
+                "current Player: $currentVn (vc=$currentVc) fp=${fp.take(20)}… " +
+                "${if (isBootstrap) "BOOTSTRAP=true" else ""}",
+            )
 
             // Report CHECKING — so dashboard sees "we're looking" even
             // before the API request lands.
@@ -160,11 +171,19 @@ class OtaWorker(
             // APK before we install the new one, so WatchdogService
             // has something to roll back to if the new APK crashes
             // first-boot. Idempotent (skips if already archived).
-            ApkArchive.archivePackage(applicationContext, BuildConfig.PLAYER_PACKAGE)
+            //
+            // Skipped on first-install bootstrap (no current Player
+            // to archive). If a bootstrap install fails, there's
+            // nothing meaningful to roll back to — Manager just
+            // retries on the next periodic tick or next boot.
+            if (!isBootstrap) {
+                ApkArchive.archivePackage(applicationContext, BuildConfig.PLAYER_PACKAGE)
+            }
 
             // Mark the install as pending. WatchdogService will watch
             // for a heartbeat from this versionCode within the grace
-            // window; missed → trigger rollback.
+            // window; missed → trigger rollback (no-op if bootstrap
+            // since prevVc=0 has no archived APK).
             InstallState.beginInstall(
                 applicationContext,
                 newVc = latestVc,

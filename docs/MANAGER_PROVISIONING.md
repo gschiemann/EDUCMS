@@ -40,29 +40,73 @@ through these steps. Once you set Manager as device owner, the
 device is bound to it until factory-reset OR until you explicitly
 remove it via `dpm remove-active-admin`.
 
-## Install order
+## Install order — single-sideload UX (matches Yodeck)
 
-The order matters once we're in production. For the initial test
-deploy on M43 + The Den, do:
+The deployment flow is **ONE sideload trip** + **ONE ADB command**.
+Manager auto-fetches and installs Player on first launch. Same UX
+as Yodeck (one APK install → multiple apps appear in Settings)
+without the wrapper-APK complexity.
 
-1. **Sideload v1.0.13+ Player APK** with the cross-app permission
-   declared in its manifest (already in master as of the Manager
-   scaffold commit). Pair the kiosk normally.
-2. **Sideload Manager APK** (`edu-cms-manager-v1.0.0.apk`).
-3. **Factory-reset the device.** Yes, this loses pairing. We're
-   doing it anyway to enable device-owner provisioning, which
-   only works on a fresh device. (Phase 3's QR provisioning flow
-   will eliminate this reset; Phase 1 ships ADB-only.)
-4. **Re-sideload both APKs** on the freshly-reset device, in any
-   order — neither is launchable yet without provisioning.
-5. **Run the ADB provisioning command** (see below).
-6. **Re-pair the Player** to the dashboard. From this point on,
-   future OTAs land silently via Manager.
+For a fresh kiosk:
 
-If you only want to TEST the watchdog (not the silent-install part)
+1. **Factory-reset the device** (or use an out-of-box one). Required
+   for `set-device-owner` to succeed — Android refuses to set device
+   owner once any user account or DPM-managed setup has happened.
+2. **Sideload Manager APK** (`edu-cms-manager-v1.0.0.apk`). Skip
+   any post-install "Open" prompt — Manager has no UI.
+3. **Run the ADB provisioning command** (see below):
+   ```
+   adb shell dpm set-device-owner com.educms.manager/.AdminReceiver
+   ```
+4. **Wait ~30 seconds.** ManagerApp.onCreate detects Player isn't
+   installed and fires the bootstrap OtaWorker. The worker:
+   - Hits `/api/v1/player/update-check` with currentVc=0
+   - Downloads the latest Player APK from GitHub Releases
+   - Verifies SHA256
+   - Installs Player silently via PackageInstaller (silent works
+     because Manager is now DEVICE_OWNER)
+5. **Pair Player from the dashboard** as normal.
+
+That's it. From this point on, every Player OTA push from the
+dashboard lands silently with no operator action at the kiosk.
+
+### Verifying the bootstrap install
+
+Watch via logcat:
+```
+adb logcat -s ManagerApp:I ManagerOtaWorker:I OtaInstaller:I
+```
+
+Expected sequence (~20-60 seconds):
+```
+ManagerApp:        ManagerApp.onCreate — starting watchdog + scheduling OTA worker
+ManagerApp:        Player not installed yet — firing immediate bootstrap OTA
+ManagerOtaWorker:  Manager OTA worker starting (deviceOwner=true)
+ManagerOtaWorker:  Player not installed yet — treating as first-install bootstrap (vc=0)
+ManagerOtaWorker:  current Player: 0.0.0 (vc=0) fp=android-XXX… BOOTSTRAP=true
+ManagerOtaWorker:  ota-state → CHECKING
+ManagerOtaWorker:  OTA update available: 1.0.13 (vc=13) — downloading
+ManagerOtaWorker:  ota-state → DOWNLOADING (0%)
+... (progress reports every 3s) ...
+ManagerOtaWorker:  ota-state → DOWNLOADING (100%)
+ManagerOtaWorker:  ota-state → VERIFYING
+ManagerOtaWorker:  ota-state → INSTALLING
+OtaInstaller:      OTA install starting — sessionId=N target=com.educms.player deviceOwner=true
+OtaInstaller:      session committed (sessionId=N) — awaiting OtaInstallReceiver callback
+OtaInstallReceiver: install result: status=SUCCESS
+```
+
+If `deviceOwner=false` shows up, the ADB provisioning step was
+skipped or failed — re-run step 3.
+
+### Watchdog-only test (no device-owner)
+
+If you want to TEST the watchdog (not the silent-install part)
 and don't want to factory-reset, install Manager normally and skip
-step 3-5. Manager runs the watchdog without DEVICE_OWNER; only the
-silent install requires it.
+step 3. Manager runs the watchdog without DEVICE_OWNER; only the
+silent install requires it. Player still must be sideloaded
+manually in this case (Manager will fall back to the system
+"Install" prompt that an unattended kiosk can't tap through).
 
 ## ADB provisioning command
 
