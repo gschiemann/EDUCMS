@@ -2,7 +2,7 @@
 
 import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate } from '@/hooks/use-api';
+import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
@@ -156,6 +156,27 @@ function ScreenSettingsMenu({
 
   // Push-feedback derivation — only renders when a push was initiated.
   const currentVersion: string | null = (screen as any).playerVersion ?? null;
+  // Latest published APK — fetched on demand when the menu opens, so a
+  // closed menu costs nothing. Cached 10min in React Query.
+  const { data: latestVersionInfo } = useLatestPlayerVersion();
+  const latestVersion: string | null = latestVersionInfo?.versionName ?? null;
+  // Compare semver-ish strings — strip leading 'v' and compare numeric
+  // dotted segments. Falls back to string equality when either side is
+  // weird.
+  const upToDate = (() => {
+    if (!currentVersion || !latestVersion) return null;
+    const norm = (v: string) => v.trim().replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0);
+    const a = norm(currentVersion);
+    const b = norm(latestVersion);
+    const len = Math.max(a.length, b.length);
+    for (let i = 0; i < len; i++) {
+      const x = a[i] ?? 0;
+      const y = b[i] ?? 0;
+      if (x < y) return false;
+      if (x > y) return true;
+    }
+    return true;
+  })();
   const pushed = !!pushState;
   const pushedMsAgo = pushState ? Date.now() - pushState.at : 0;
   const updatedSincePush = !!(pushState && currentVersion && currentVersion !== (pushState.priorVersion ?? null));
@@ -184,27 +205,80 @@ function ScreenSettingsMenu({
               called it redundant. Rows below are regular menuitem-
               style clickable entries. */}
 
-          {/* Push APK update */}
+          {/* APK version comparison strip — operator (2026-04-27):
+              "when i hit settings on a screen, it should do a check
+              and say this is the current version on the screen and
+              this is the available version and have me click a
+              button to push the upgrade." */}
+          <div className="px-3.5 py-2.5 border-b border-slate-100 bg-slate-50/40">
+            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Player version</div>
+            <div className="flex items-center justify-between gap-2 text-[11px]">
+              <div>
+                <div className="text-slate-400">Current</div>
+                <div className="font-bold text-slate-800">
+                  {currentVersion ? `v${currentVersion}` : 'Not reported'}
+                </div>
+              </div>
+              <div className="text-slate-300">→</div>
+              <div className="text-right">
+                <div className="text-slate-400">Latest</div>
+                <div className="font-bold text-slate-800">
+                  {latestVersion ? `v${latestVersion}` : <Loader2 className="w-3 h-3 inline animate-spin text-slate-300" />}
+                </div>
+              </div>
+            </div>
+            {/* Status pill — green when up-to-date, amber when behind,
+                grey when unknown. */}
+            <div className="mt-2">
+              {upToDate === true && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
+                  <CheckCircle2 className="w-3 h-3" /> Up to date
+                </span>
+              )}
+              {upToDate === false && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+                  <RefreshCw className="w-3 h-3" /> Update available
+                </span>
+              )}
+              {upToDate === null && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded-full px-2 py-0.5">
+                  Unknown — push to install latest
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Push APK update — disabled when already up-to-date AND no
+              push currently in flight. Operator can still re-push if
+              they want (e.g. APK install crashed mid-way), so we never
+              fully hide the button — just gray it. */}
           <button
             type="button"
             onClick={onPushApk}
-            disabled={pending || stillWaiting}
+            disabled={pending || stillWaiting || (upToDate === true && !pushed)}
             className="w-full flex items-center gap-3 px-3.5 py-3 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed border-b border-slate-100"
+            title={upToDate === true && !pushed ? 'Already on the latest version' : 'Tells this kiosk to download + install the latest APK on its next check-in'}
           >
             {pending || stillWaiting ? (
               <Loader2 className="w-4 h-4 text-indigo-500 shrink-0 animate-spin" />
             ) : (
-              <RefreshCw className="w-4 h-4 text-indigo-500 shrink-0" />
+              <RefreshCw className={`w-4 h-4 shrink-0 ${upToDate === false ? 'text-amber-500' : 'text-indigo-500'}`} />
             )}
             <span className="flex-1 min-w-0">
               <span className="block">
-                {pending ? 'Sending…' : stillWaiting ? 'Pushing update…' : 'Push update to this screen'}
+                {pending
+                  ? 'Sending…'
+                  : stillWaiting
+                    ? 'Pushing update…'
+                    : upToDate === true && !pushed
+                      ? 'On latest — push anyway'
+                      : upToDate === false
+                        ? `Push update to v${latestVersion}`
+                        : 'Push update to this screen'}
               </span>
-              {currentVersion && (
-                <span className="block text-[10px] font-normal text-slate-400 mt-0.5">
-                  Currently on v{currentVersion}
-                </span>
-              )}
+              <span className="block text-[10px] font-normal text-slate-400 mt-0.5">
+                Manual only — auto-update is OFF unless you toggle it in Settings
+              </span>
             </span>
           </button>
 
@@ -661,17 +735,37 @@ export default function ScreensPage() {
                             {screen.ipAddress && <span>🌐 {screen.ipAddress}</span>}
                             {/* APK version chip. Self-reported by the player on
                                 every OTA check (/api/v1/player/update-check).
-                                Browser players don't set it, so the chip is
-                                hidden for them — nothing to surface. */}
-                            {(screen as any).playerVersion && (
-                              <span
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold"
-                                title={`APK v${(screen as any).playerVersion}${(screen as any).playerVersionAt ? ` · reported ${fullDateTime((screen as any).playerVersionAt)}` : ''}`}
-                              >
-                                <Download className="w-3 h-3" />
-                                v{(screen as any).playerVersion}
-                              </span>
-                            )}
+                                Always rendered so operators can see at a glance
+                                which screens haven't reported yet — operator
+                                ask 2026-04-27: "i should be able to see the
+                                player version from the main screens menu."
+                                Browser players (no APK at all) display
+                                "Player: web" so the operator knows it's not
+                                a missed report. */}
+                            {(() => {
+                              const v = (screen as any).playerVersion;
+                              const at = (screen as any).playerVersionAt;
+                              const isWebPlayer = !v && (screen as any).browserInfo;
+                              return (
+                                <span
+                                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-semibold ${
+                                    v
+                                      ? 'bg-slate-100 text-slate-600'
+                                      : isWebPlayer
+                                        ? 'bg-sky-50 text-sky-700'
+                                        : 'bg-amber-50 text-amber-700'
+                                  }`}
+                                  title={v
+                                    ? `APK v${v}${at ? ` · reported ${fullDateTime(at)}` : ''}`
+                                    : isWebPlayer
+                                      ? 'Browser-based player — no APK version'
+                                      : 'Player has not reported a version yet'}
+                                >
+                                  <Download className="w-3 h-3" />
+                                  {v ? `v${v}` : isWebPlayer ? 'web' : 'v?'}
+                                </span>
+                              );
+                            })()}
                           </div>
                         </div>
                         <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg ${

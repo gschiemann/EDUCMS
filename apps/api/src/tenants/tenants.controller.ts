@@ -431,6 +431,42 @@ export class TenantsController {
     return { ok: true, enabled: !!body.enabled };
   }
 
+  // ──────────────────────────────────────────────────────────────────
+  // Auto-update player toggle (2026-04-27).
+  //
+  // OFF (default): paired Android players are pinned at their current
+  // APK version. /player/update-check returns uptoDate=true unless the
+  // admin clicked "Push update" on a specific screen. Operator's exact
+  // rationale: "i would hate to break a perfectly good working screen
+  // with an update."
+  //
+  // ON: kiosks pull APK updates on their own 6h cadence. Same as the
+  // pre-2026-04-27 behavior.
+  //
+  // Tenant-level. Admin-only. The flag is read at update-check time by
+  // resolving the calling screen's tenant.
+  // ──────────────────────────────────────────────────────────────────
+  @Get('me/auto-update-player')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async getAutoUpdatePlayerConfig(@Request() req: any) {
+    const t = await this.prisma.client.tenant.findUnique({
+      where: { id: req.user.tenantId },
+      select: { autoUpdatePlayerEnabled: true } as any,
+    }) as any;
+    if (!t) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    return { enabled: !!t.autoUpdatePlayerEnabled };
+  }
+
+  @Put('me/auto-update-player')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async setAutoUpdatePlayerEnabled(@Request() req: any, @Body() body: { enabled: boolean }) {
+    await this.prisma.client.tenant.update({
+      where: { id: req.user.tenantId },
+      data: { autoUpdatePlayerEnabled: !!body.enabled } as any,
+    });
+    return { ok: true, enabled: !!body.enabled };
+  }
+
   @Get('me/usb-ingest')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async getUsbIngestConfig(@Request() req: any) {

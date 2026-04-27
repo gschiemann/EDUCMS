@@ -1069,6 +1069,48 @@ export function useCompSeats() {
   });
 }
 
+// ─── Auto-update player (OTA gating, 2026-04-27) ─────────────────
+//
+// When OFF (default), paired Android players DO NOT auto-update
+// even when a newer APK is published. Admins push individual
+// screens manually. When ON, kiosks pull updates on their 6h
+// cadence — same as pre-2026 behavior. Per-screen Push override
+// (forceApkUpdatePendingAt) works regardless of the flag.
+export function useAutoUpdatePlayerConfig() {
+  return useQuery<{ enabled: boolean }>({
+    queryKey: ['auto-update-player-config'],
+    queryFn: () => apiFetch('/tenants/me/auto-update-player'),
+  });
+}
+export function useToggleAutoUpdatePlayer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      apiFetch('/tenants/me/auto-update-player', { method: 'PUT', body: JSON.stringify({ enabled }) }),
+    onMutate: async (enabled) => {
+      await qc.cancelQueries({ queryKey: ['auto-update-player-config'] });
+      const prev = qc.getQueryData<any>(['auto-update-player-config']);
+      qc.setQueryData(['auto-update-player-config'], { enabled });
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev !== undefined) qc.setQueryData(['auto-update-player-config'], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['auto-update-player-config'] }),
+  });
+}
+
+// Latest published player APK version. Powers the dashboard's
+// "Current vX · Latest vY" comparison on each screen card. Cached
+// for 10 min — release tags don't move that fast.
+export function useLatestPlayerVersion() {
+  return useQuery<{ versionName: string | null; versionCode: number | null; source: string }>({
+    queryKey: ['latest-player-version'],
+    queryFn: () => apiFetch('/player/latest-version'),
+    staleTime: 10 * 60_000,
+  });
+}
+
 // ─── Location-based emergency mode (Sprint 8b toggle) ────────────
 //
 // When OFF, the manifest ignores every per-screen override and renders

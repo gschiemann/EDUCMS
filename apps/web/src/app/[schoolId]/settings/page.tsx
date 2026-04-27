@@ -8,6 +8,7 @@ import {
   useUsers, useInviteUser, useCreateUserDirect, useDeleteUser, useUpdateUserRole, useTenant,
   useUpdateTenantPanicSettings, usePlaylists,
   useLocationBasedEmergencyConfig, useToggleLocationBasedEmergency, useFloorPlans,
+  useAutoUpdatePlayerConfig, useToggleAutoUpdatePlayer, useLatestPlayerVersion,
 } from '@/hooks/use-api';
 import { useState, useRef, useEffect } from 'react';
 import { UsbIngestCard } from '@/components/settings/UsbIngestCard';
@@ -176,8 +177,7 @@ export default function SettingsPage() {
 
           {/* Android Player APK download — Nova Taurus, BrightSign, any
               Android 7+ kiosk. Redirects to the latest signed release
-              asset. Once sideloaded, the APK OTA-updates itself every
-              6h via /api/v1/player/update-check. */}
+              asset. */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between mt-4">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center">
@@ -185,7 +185,7 @@ export default function SettingsPage() {
               </div>
               <div>
                 <div className="text-sm font-bold text-slate-800">Download Player APK</div>
-                <div className="text-[11px] text-slate-500">Android kiosk build — Nova Taurus, generic Android 7+. Auto-updates over-the-air after install.</div>
+                <div className="text-[11px] text-slate-500">Android kiosk build — Nova Taurus, generic Android 7+. Sideload once; updates are manual unless you opt in below.</div>
               </div>
             </div>
             <a
@@ -196,6 +196,14 @@ export default function SettingsPage() {
               Download APK
             </a>
           </div>
+
+          {/* Auto-update toggle — operator (2026-04-27): "we shouldnt
+              be auto updating screens unless we check a box or
+              something on that... i would hate to break a perfectly
+              good working screen with an update." Default OFF. When
+              ON, kiosks auto-pull updates on their 6h cadence. When
+              OFF, admins push individual screens manually. */}
+          <AutoUpdatePlayerToggle />
         </RoleGate>
 
         {/* Team Members */}
@@ -618,6 +626,82 @@ function EmbeddedLocationMode({
           mode="embedded"
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Auto-update Player toggle row.
+ *
+ * OFF (default): kiosks stay pinned at their current APK version
+ * even when a newer one is published. Admins push individual screens
+ * manually via the gear icon on each screen card.
+ *
+ * ON: kiosks auto-pull updates on their 6h check-in cadence — same
+ * as pre-2026-04-27. Operator turns this on when they trust the
+ * release cadence and want hands-off updates.
+ */
+function AutoUpdatePlayerToggle() {
+  const { data: cfg } = useAutoUpdatePlayerConfig();
+  const { data: latest } = useLatestPlayerVersion();
+  const toggle = useToggleAutoUpdatePlayer();
+  const enabled = !!cfg?.enabled;
+
+  const handleToggle = async (next: boolean) => {
+    if (next) {
+      const ok = await appConfirm({
+        title: 'Enable auto-update?',
+        message:
+          'Paired Android players will start pulling new APK builds on their own 6-hour cadence. A buggy release can break working screens until rolled back. Most schools leave this OFF and push updates per-screen manually.',
+        confirmLabel: 'Turn on auto-update',
+        tone: 'warn',
+      });
+      if (!ok) return;
+    }
+    toggle.mutate(next);
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-start justify-between mt-4 gap-4">
+      <div className="flex items-start gap-3 min-w-0">
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+          enabled ? 'bg-amber-50' : 'bg-slate-100'
+        }`}>
+          <MonitorPlay className={`w-4 h-4 ${enabled ? 'text-amber-600' : 'text-slate-500'}`} />
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm font-bold text-slate-800 flex items-center gap-2">
+            Auto-update Player APK
+            {enabled ? (
+              <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">On</span>
+            ) : (
+              <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">Off (recommended)</span>
+            )}
+          </div>
+          <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+            {enabled
+              ? 'Paired kiosks pull new APK builds on their 6-hour cadence — hands-off but a buggy release can break working screens.'
+              : 'Kiosks stay pinned at their current APK version. Admins push updates per-screen via the gear icon on each screen card.'}
+            {latest?.versionName && (
+              <span className="block mt-0.5 text-slate-400">Latest published: <span className="font-semibold">v{latest.versionName}</span></span>
+            )}
+          </p>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={() => handleToggle(!enabled)}
+        disabled={toggle.isPending}
+        aria-pressed={enabled}
+        className={`shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-[11px] font-bold uppercase tracking-wide transition-colors ${
+          enabled
+            ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+            : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-400'
+        } disabled:opacity-60 disabled:cursor-not-allowed`}
+      >
+        {toggle.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : enabled ? <ShieldCheck className="w-4 h-4" /> : <ShieldOff className="w-4 h-4" />}
+        <span>Auto-update {enabled ? 'On' : 'Off'}</span>
+      </button>
     </div>
   );
 }
