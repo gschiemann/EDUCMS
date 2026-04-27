@@ -711,6 +711,35 @@ function PlayerPage() {
   // with no feedback while a 50 MB asset downloaded, which operators
   // read as a hung player.
   const [loadProgress, setLoadProgress] = useState<LoadProgress | null>(null);
+  // OTA push overlay — shown on the device screen when an admin
+  // clicks "Push update" in the dashboard. Mirrors the dashboard's
+  // stage progression so the operator standing at the kiosk can see
+  // the same info as the operator at the dashboard.
+  // Operator (2026-04-27): "we should really show on the device
+  // splash screen that an update is happening."
+  // Re-renders every 5s while active so the stage label updates
+  // (the timer effect below). Auto-clears after 8 minutes (covers
+  // the 5-min dashboard timeout + buffer) — if the install actually
+  // succeeds the kiosk reboots, which clears all React state anyway.
+  const [otaProgress, setOtaProgress] = useState<{ startedAt: number; bridgeAvailable: boolean } | null>(null);
+  // Tick to drive stage advancement on the overlay. We avoid a tight
+  // setInterval; one tick every 5s is enough to advance through the
+  // stage labels in real time without hammering re-renders.
+  const [, setOtaTick] = useState(0);
+  useEffect(() => {
+    if (!otaProgress) return;
+    const t = setInterval(() => {
+      setOtaTick((n) => n + 1);
+      // Auto-clear after 8 min — if install succeeded, the kiosk
+      // reboots + this state is wiped on its own. The 8-min
+      // ceiling covers operators who saw "no response" and want
+      // the overlay to disappear.
+      if (Date.now() - otaProgress.startedAt > 8 * 60_000) {
+        setOtaProgress(null);
+      }
+    }, 5_000);
+    return () => clearInterval(t);
+  }, [otaProgress]);
   const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
   const wsReconnectRef = useRef<NodeJS.Timeout | null>(null);
   const httpFallbackRef = useRef<NodeJS.Timeout | null>(null);
@@ -1488,17 +1517,32 @@ function PlayerPage() {
               if (!targetsUs) {
                 console.log('[Player] CHECK_FOR_UPDATES ignored — not our scope', scope, scopeId);
               } else {
+                // Operator (2026-04-27): "we should really show on
+                // the device splash screen that an update is
+                // happening... show the same info as i see on the
+                // dashboard every step of the way." Surface the
+                // overlay BEFORE the bridge call so the user at the
+                // kiosk sees something happening instantly.
+                let bridgeAvailable = false;
                 try {
                   const bridge = (window as any).EduCmsNative;
                   if (bridge && typeof bridge.checkForUpdates === 'function') {
+                    bridgeAvailable = true;
                     const v = bridge.checkForUpdates();
                     console.log('[Player] CHECK_FOR_UPDATES relayed to native, currentVersion=', v);
                   } else {
-                    console.log('[Player] CHECK_FOR_UPDATES ignored — no native bridge (browser player)');
+                    console.log('[Player] CHECK_FOR_UPDATES ignored — no native bridge (legacy APK or browser player)');
                   }
                 } catch (e) {
                   console.warn('[Player] CHECK_FOR_UPDATES bridge call failed', e);
                 }
+                // Show the overlay either way — operator sees that
+                // the message reached the device. If bridge isn't
+                // available (v1.0.4 APK), the overlay copy adapts.
+                setOtaProgress({
+                  startedAt: Date.now(),
+                  bridgeAvailable,
+                });
               }
             }
           } catch (e) {
@@ -1738,44 +1782,67 @@ function PlayerPage() {
     setExitUnavailable(true);
   };
 
+  // ─── OTA progress overlay — rendered on top of every phase
+  //     when an admin has just clicked "Push update" from the
+  //     dashboard. Stage label morphs the same way the dashboard
+  //     popover does, so the on-kiosk and at-desk views stay in
+  //     sync. Bridge-missing kiosks (v1.0.4) get different copy
+  //     so the operator knows why the update can't proceed. */}
+  const otaOverlay = otaProgress ? (
+    <OtaProgressOverlay
+      startedAt={otaProgress.startedAt}
+      bridgeAvailable={otaProgress.bridgeAvailable}
+      onDismiss={() => setOtaProgress(null)}
+    />
+  ) : null;
+
   // ─── Render: Registering ───
   if (phase === 'registering') {
     return (
-      <KioskSplash
-        mode="registering"
-        brandName={brandName}
-        resolution={splashResolution}
-      />
+      <>
+        <KioskSplash
+          mode="registering"
+          brandName={brandName}
+          resolution={splashResolution}
+        />
+        {otaOverlay}
+      </>
     );
   }
 
   // ─── Render: Pairing Code Screen ───
   if (phase === 'pairing') {
     return (
-      <KioskSplash
-        mode="pairing"
-        brandName={brandName}
-        pairingCode={pairingCode}
-        resolution={splashResolution}
-        pairDeepLinkUrl={
-          typeof window !== 'undefined' && pairingCode
-            ? `${window.location.origin}/pair?code=${encodeURIComponent(pairingCode)}`
-            : null
-        }
-      />
+      <>
+        <KioskSplash
+          mode="pairing"
+          brandName={brandName}
+          pairingCode={pairingCode}
+          resolution={splashResolution}
+          pairDeepLinkUrl={
+            typeof window !== 'undefined' && pairingCode
+              ? `${window.location.origin}/pair?code=${encodeURIComponent(pairingCode)}`
+              : null
+          }
+        />
+        {otaOverlay}
+      </>
     );
   }
 
   // ─── Render: Connecting ───
   if (phase === 'connecting') {
     return (
-      <KioskSplash
-        mode="connecting"
-        brandName={brandName}
-        screenName={screenName}
-        resolution={splashResolution}
-        loadProgress={loadProgress}
-      />
+      <>
+        <KioskSplash
+          mode="connecting"
+          brandName={brandName}
+          screenName={screenName}
+          resolution={splashResolution}
+          loadProgress={loadProgress}
+        />
+        {otaOverlay}
+      </>
     );
   }
 
@@ -2346,6 +2413,107 @@ function PlayerPage() {
       <style jsx>{`
         @keyframes shrink { from { width: 100%; } to { width: 0%; } }
       `}</style>
+      {otaOverlay}
+    </div>
+  );
+}
+
+/**
+ * On-device OTA progress overlay. Mirrors the dashboard's stage
+ * progression (sending → downloading → installing → restarting) so
+ * the operator at the kiosk and the operator at the dashboard see
+ * the same info. Bridge-missing kiosks (legacy v1.0.4 or earlier)
+ * get adapted copy explaining the limitation.
+ *
+ * Bottom-right anchored, full-width-ish band, doesn't cover the
+ * actual content. Auto-dismisses on timeout (8 min); a successful
+ * install reboots the kiosk which clears all state anyway.
+ */
+function OtaProgressOverlay({
+  startedAt,
+  bridgeAvailable,
+  onDismiss,
+}: {
+  startedAt: number;
+  bridgeAvailable: boolean;
+  onDismiss: () => void;
+}) {
+  const elapsed = Date.now() - startedAt;
+
+  // No-bridge path (legacy APK that can't react to Push). Show a
+  // distinct message so the operator at the kiosk understands the
+  // update can't proceed automatically — they need to wait for the
+  // 6h periodic worker to run, OR (better) walk to the kiosk and
+  // power-cycle it (BOOT_COMPLETED also triggers an OTA check).
+  if (!bridgeAvailable) {
+    return (
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[10000] max-w-2xl px-6 py-4 rounded-2xl bg-amber-500 text-amber-950 shadow-2xl border border-amber-300 flex items-center gap-3">
+        <span className="text-2xl shrink-0">⚠️</span>
+        <div className="flex-1 min-w-0">
+          <div className="font-bold text-base">Update push received — but this kiosk needs an upgrade first</div>
+          <div className="text-sm opacity-90 mt-0.5">
+            This player APK is too old to install over-the-air. It will pick up the new build on its next 6-hour check or on reboot.
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss"
+          className="shrink-0 w-8 h-8 rounded-full bg-amber-950/20 hover:bg-amber-950/30 flex items-center justify-center font-bold"
+        >
+          ×
+        </button>
+      </div>
+    );
+  }
+
+  // Bridge available — stage based on elapsed time. Same windows as
+  // the dashboard popover's stage logic.
+  const stage =
+    elapsed < 15_000  ? 'sending'      :
+    elapsed < 60_000  ? 'downloading'  :
+    elapsed < 150_000 ? 'installing'   :
+    elapsed < 300_000 ? 'restarting'   :
+                        'timeout';
+
+  const stageEmoji =
+    stage === 'sending'     ? '📡' :
+    stage === 'downloading' ? '⬇️' :
+    stage === 'installing'  ? '⚙️' :
+    stage === 'restarting'  ? '🔄' :
+                              '⏱';
+
+  const stageTitle =
+    stage === 'sending'     ? 'Update incoming…' :
+    stage === 'downloading' ? 'Downloading new player…' :
+    stage === 'installing'  ? 'Installing player update…' :
+    stage === 'restarting'  ? 'Restarting…' :
+                              'Update timed out';
+
+  const stageSubtitle =
+    stage === 'sending'     ? 'Receiving update signal from dashboard' :
+    stage === 'downloading' ? 'Pulling the latest APK from our release server' :
+    stage === 'installing'  ? 'Android may show a system install prompt — tap Install' :
+    stage === 'restarting'  ? 'New version booting up. Display will resume in a moment.' :
+                              'No response after 5 minutes. The update will retry on next reboot.';
+
+  return (
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[10000] max-w-2xl px-6 py-4 rounded-2xl bg-indigo-600 text-white shadow-2xl border border-indigo-400/40 flex items-center gap-4">
+      <span className="text-3xl shrink-0">{stageEmoji}</span>
+      <div className="flex-1 min-w-0">
+        <div className="font-bold text-base">{stageTitle}</div>
+        <div className="text-sm opacity-90 mt-0.5">{stageSubtitle}</div>
+      </div>
+      {stage === 'timeout' && (
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss"
+          className="shrink-0 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center font-bold"
+        >
+          ×
+        </button>
+      )}
     </div>
   );
 }

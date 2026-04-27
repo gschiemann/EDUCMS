@@ -114,7 +114,15 @@ export class PlayerOtaController {
     const callerVn = String(body?.versionName || '').trim() || '?';
     const callerVc = Number(body?.versionCode) || 0;
     const fpShort = fp ? fp.slice(0, 10) : 'no-fp';
-    const FORCE_WINDOW_MS = 30 * 60_000;
+    // 24-hour force-pending window. Was 30 min, but old kiosks (pre-
+    // v1.0.5, before WebAppBridge.checkForUpdates was added) can't
+    // react to the WS push instantly — they only update on their 6h
+    // periodic OtaUpdateWorker tick. With a 30-min window the
+    // periodic poll usually fires AFTER the flag has expired and
+    // returns uptoDate. 24h guarantees the periodic catches the flag
+    // exactly once. The flag clears itself the moment we hand back a
+    // download URL, so we never re-deliver the same update.
+    const FORCE_WINDOW_MS = 24 * 60 * 60_000;
     let allowUpdate = false;
     let allowReason = 'gated';
     let forcedPendingScreenId: string | null = null;
