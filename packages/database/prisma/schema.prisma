@@ -79,6 +79,8 @@ model Tenant {
   branding                TenantBranding?
   // Submit-for-review workflow (Sprint 1.5).
   submissions             Submission[]
+  // Floor plans (Sprint 8b indoor map).
+  floorPlans              FloorPlan[]
 
   @@map("tenants")
 }
@@ -326,6 +328,14 @@ model Screen {
   latitude          Float?
   longitude         Float?
   photoUrl          String?      @map("photo_url")
+  // Sprint 8b — indoor positioning. Operator drops the screen pin on
+  // a FloorPlan; floorX / floorY are px coords on the plan image.
+  // All three nullable because most screens won't be placed on a plan
+  // until the customer uploads one.
+  floorPlanId       String?      @map("floor_plan_id")
+  floorX            Float?       @map("floor_x")
+  floorY            Float?       @map("floor_y")
+  floorPlan         FloorPlan?   @relation("ScreensOnFloorPlan", fields: [floorPlanId], references: [id])
   // Last offline-cache status the player reported. JSON shape:
   //   { playlist: { count, bytes }, emergency: { count, bytes } }
   // Lets admins verify each screen actually has emergency assets on disk
@@ -626,4 +636,100 @@ model Submission {
   @@index([tenantId, status, createdAt])
   @@index([submittedById, createdAt])
   @@map("submissions")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Sprint 8b — indoor floor plans + per-screen emergency targeting.
+// ─────────────────────────────────────────────────────────────────
+//
+// FloorPlan is the "where in the building" map. Operator uploads a
+// PNG/PDF of their architectural floor plan once per floor, stores
+// dimensions so screen positions stay consistent, and drops Screen
+// pins on it (Screen.floorPlanId + floorX + floorY in pixel coords).
+//
+// FloorZone is a named polygon drawn on a FloorPlan. Operator labels
+// "Wing A", "Cafeteria", "Gym". Used to bulk-target screens for
+// emergency triggers via "trigger lockdown on the Gym wing only."
+//
+// ScreenEmergencyOverride is the per-screen alert. Player checks this
+// FIRST — per-screen wins over the tenant-wide Tenant.emergencyStatus.
+// That's what makes "different alert per room" work without redesigning
+// the existing emergency model.
+//
+// Schema is purely ADDITIVE (memory: "additive only" for v1 pilot).
+// Three new tables + four nullable columns on Screen. No existing
+// query patterns change.
+
+model FloorPlan {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  name            String                                          // "Lincoln HS — Floor 1"
+  buildingLabel   String?  @map("building_label")                 // "Main Building"
+  floorLabel      String?  @map("floor_label")                    // "Floor 1"
+  imageUrl        String   @map("image_url")                      // Supabase-hosted PNG
+  widthPx         Int      @map("width_px")                       // Image dimensions for stable coords
+  heightPx        Int      @map("height_px")
+  // Optional: which zones on this plan should default to which alert
+  // type. Stored as JSON for flexibility. Not used in Phase 1; reserved
+  // for the scenario-picker UI in Phase 2.
+  defaultScenarioConfig Json?  @map("default_scenario_config")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+  tenant          Tenant     @relation(fields: [tenantId], references: [id])
+  zones           FloorZone[]
+  screens         Screen[]   @relation("ScreensOnFloorPlan")
+
+  @@index([tenantId])
+  @@map("floor_plans")
+}
+
+model FloorZone {
+  id              String   @id @default(uuid())
+  floorPlanId     String   @map("floor_plan_id")
+  name            String                                          // "Wing A", "Gym", "Cafeteria"
+  color           String   @default("#6366f1")                   // Pin color when zone is selected
+  // Polygon shape — JSON array of { x, y } px coords on the plan image.
+  shape           Json
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  floorPlan       FloorPlan @relation(fields: [floorPlanId], references: [id], onDelete: Cascade)
+
+  @@index([floorPlanId])
+  @@map("floor_zones")
+}
+
+// Per-screen emergency override. Player checks this FIRST; if no
+// override row exists for the current screen, falls back to the
+// tenant-wide Tenant.emergencyStatus. This is what makes Sprint 8b
+// "different alert per room" work without breaking the existing
+// global-trigger model.
+//
+// `expiresAt` is the wall-clock time at which the player should
+// stop honoring this override. The server's all-clear endpoint
+// also clears the row explicitly (deletes or sets active=false).
+// `triggeredByUserId` is the operator who fired this scoped alert
+// — surfaces in the audit log for forensics.
+model ScreenEmergencyOverride {
+  id                 String   @id @default(uuid())
+  screenId           String   @unique @map("screen_id")
+  tenantId           String   @map("tenant_id")                    // Denormalized for audit speed
+  type               String                                        // LOCKDOWN | EVACUATE | WEATHER | HOLD | SECURE | MEDICAL | ALL_CLEAR
+  severity           String   @default("HIGH")                    // LOW | MEDIUM | HIGH | CRITICAL
+  scopeNote          String?  @map("scope_note")                   // "Gym wing — hold position"
+  // Optional content overrides — null falls back to tenant defaults.
+  playlistId         String?  @map("playlist_id")
+  textBlob           String?  @map("text_blob")
+  mediaUrl           String?  @map("media_url")
+  // Floor plan / zone / scenario the operator targeted (for forensics
+  // and to show "this came from the Gym lockdown scenario" in audit).
+  floorPlanId        String?  @map("floor_plan_id")
+  floorZoneId        String?  @map("floor_zone_id")
+  scenarioId         String?  @map("scenario_id")
+  triggeredByUserId  String   @map("triggered_by_user_id")
+  triggeredAt        DateTime @default(now()) @map("triggered_at")
+  expiresAt          DateTime? @map("expires_at")
+
+  @@index([tenantId, triggeredAt])
+  @@map("screen_emergency_overrides")
 }
