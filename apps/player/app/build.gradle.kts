@@ -12,8 +12,8 @@ android {
         // Android 7.0 (Nougat) → Android 14
         minSdk = 24
         targetSdk = 34
-        versionCode = 11
-        versionName = "1.0.11"
+        versionCode = 12
+        versionName = "1.0.12"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)
@@ -44,11 +44,44 @@ android {
         }
     }
 
+    // Stable debug keystore — committed at apps/player/app/debug.keystore.
+    //
+    // Why this exists: Android's PackageInstaller refuses to install an
+    // upgrade APK that's signed with a different key than the installed
+    // version (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`). CI's default
+    // `assembleDebug` flow generates a fresh per-runner debug keystore
+    // every build, so each release was signed with a different key and
+    // OTA install was IMPOSSIBLE — operators had to uninstall + USB
+    // reinstall on every version, which also wiped pairing tokens
+    // because Settings.Secure.ANDROID_ID is scoped per (signing-key +
+    // package + user) on Android 8+.
+    //
+    // This block points the debug signingConfig at the committed
+    // keystore so every CI build signs with the same key. New APK
+    // installs cleanly over the old one; pairing survives.
+    //
+    // Earlier attempts: commit 54bb67d tried to do this with
+    // signingConfigs.create("debugStable") which created a config
+    // with no storeFile at config time and AGP rejected. Reverted in
+    // 6eb4812. This iteration uses getByName("debug") which already
+    // exists, just overrides its storeFile — no new config to break.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         getByName("debug") {
             isMinifyEnabled = false
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            // Explicit — already implicit via signingConfigs.debug, but
+            // makes intent clear at the buildType level.
+            signingConfig = signingConfigs.getByName("debug")
         }
         getByName("release") {
             isMinifyEnabled = true
@@ -59,14 +92,6 @@ android {
             )
         }
     }
-    // NOTE: stable debug-keystore signing was attempted in commit
-    // 54bb67d to keep paired kiosks across APK upgrades (Settings.Secure
-    // .ANDROID_ID is scoped per signing-key + package + user, so each
-    // CI's randomly-generated debug keystore breaks pairing on
-    // upgrade). The first attempt broke the CI build — reverted here
-    // pending a tested-locally version. Workaround until then: when
-    // tagging a new release, paired kiosks will need to re-pair once
-    // (a known annoyance, not a data-loss event).
 
     compileOptions {
         isCoreLibraryDesugaringEnabled = true

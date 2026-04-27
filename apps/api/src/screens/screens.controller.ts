@@ -267,6 +267,63 @@ export class ScreensController {
     };
   }
 
+  // ─── PUBLIC: Per-phase OTA state report from the device ──────────
+  // Called by OtaUpdateWorker on the Android player at each phase of
+  // an OTA install so the dashboard can show real progress instead of
+  // stopwatch theater.
+  //
+  // Body shape (all optional except state):
+  //   { state: 'CHECKING'|'DOWNLOADING'|'VERIFYING'|'INSTALLING'|'INSTALLED'|'ERROR',
+  //     progress?: 0-100,   // download %, only meaningful during DOWNLOADING
+  //     message?: string }  // human-readable detail (used for ERROR)
+  //
+  // Public (no auth) for the same reason /screens/status is public:
+  // the kiosk has a device JWT but using it adds latency; this
+  // endpoint just records non-sensitive progress + is rate-limited
+  // implicitly by the caller's heartbeat cadence (a worker firing
+  // every minute would still only generate 5-7 reports per OTA).
+  @Post('status/:deviceFingerprint/ota-state')
+  async reportOtaState(
+    @Param('deviceFingerprint') fingerprint: string,
+    @Body() body: { state?: string; progress?: number; message?: string },
+  ) {
+    if (fingerprint.startsWith('preview-')) return { ok: true, ignored: 'preview' };
+    const screen = await this.prisma.client.screen.findUnique({
+      where: { deviceFingerprint: fingerprint },
+      select: { id: true, name: true, lastOtaState: true },
+    });
+    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+
+    const ALLOWED = new Set([
+      'CHECKING', 'DOWNLOADING', 'VERIFYING', 'INSTALLING', 'INSTALLED', 'ERROR',
+    ]);
+    const state = String(body?.state || '').toUpperCase().trim();
+    if (!ALLOWED.has(state)) {
+      throw new HttpException(`Invalid state: ${state}`, HttpStatus.BAD_REQUEST);
+    }
+    const progress = typeof body?.progress === 'number' && Number.isFinite(body.progress)
+      ? Math.max(0, Math.min(100, Math.round(body.progress)))
+      : null;
+    const message = body?.message ? String(body.message).slice(0, 500) : null;
+
+    await this.prisma.client.screen.update({
+      where: { id: screen.id },
+      data: {
+        lastOtaState: state,
+        lastOtaProgress: progress,
+        lastOtaMessage: message,
+        lastOtaAt: new Date(),
+      } as any,
+    });
+
+    console.log(
+      `[ota-state] fp=${fingerprint.slice(0, 18)}… state=${state} ` +
+      `progress=${progress ?? '-'} message=${(message || '').slice(0, 80)}`,
+    );
+
+    return { ok: true };
+  }
+
   // ─── ADMIN: List all screens in tenant ───
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Get()

@@ -374,6 +374,15 @@ model Screen {
   // history. When tenant.autoUpdatePlayerEnabled = true this field
   // is irrelevant — auto-mode always returns the latest.
   forceApkUpdatePendingAt DateTime? @map("force_apk_update_pending_at")
+  // v1.0.12 — per-phase OTA progress reported by OtaUpdateWorker.
+  // Lets the dashboard show a real progress bar grounded in device
+  // truth instead of the time-based theater that was killing trust.
+  // States: CHECKING | DOWNLOADING | VERIFYING | INSTALLING | INSTALLED | ERROR
+  // Progress: 0-100 (only meaningful during DOWNLOADING).
+  lastOtaState     String?   @map("last_ota_state")
+  lastOtaProgress  Int?      @map("last_ota_progress")
+  lastOtaMessage   String?   @map("last_ota_message")
+  lastOtaAt        DateTime? @map("last_ota_at")
   // Sprint 8b operator-config layer for the 6 emergency types (LOCKDOWN /
   // EVACUATE / WEATHER / HOLD / SECURE / MEDICAL).
   // For each type the operator can:

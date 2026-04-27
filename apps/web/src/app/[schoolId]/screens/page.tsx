@@ -112,7 +112,13 @@ function OsIcon({ os, status }: { os?: string; status?: string }) {
  *   3. Nothing reported      → grey "—" chip.
  */
 function PlayerKindChip({ screen }: { screen: any }) {
-  const v: string | null = screen?.playerVersion ?? null;
+  // Strip the `-debug` suffix from displayed version. Debug builds set
+  // `versionNameSuffix = "-debug"` in build.gradle.kts so the kiosk
+  // reports e.g. "1.0.12-debug". The suffix is useful for crash logs
+  // but visually noisy in the dashboard. Keep raw value in title for
+  // forensics, show the clean version in the pill.
+  const rawV: string | null = screen?.playerVersion ?? null;
+  const v = rawV ? rawV.replace(/-debug$/, '') : null;
   const at: string | null = screen?.playerVersionAt ?? null;
   const osInfo: string = (screen?.osInfo || '').toLowerCase();
   const browser: string = (screen?.browserInfo || '').toLowerCase();

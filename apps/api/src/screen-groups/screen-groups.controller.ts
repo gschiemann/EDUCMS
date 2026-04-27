@@ -53,6 +53,11 @@ export class ScreenGroupsController {
             address: true, lastCacheReport: true, lastCacheReportAt: true,
             playerVersion: true, playerVersionCode: true, playerVersionAt: true,
             forceApkUpdatePendingAt: true,
+            // v1.0.12 — per-phase OTA state. Adding here proactively
+            // so the dashboard chip can read it without repeating the
+            // exact bug we just spent 3 hours on.
+            lastOtaState: true, lastOtaProgress: true,
+            lastOtaMessage: true, lastOtaAt: true,
           },
         },
         schedules: {

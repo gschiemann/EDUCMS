@@ -80,6 +80,13 @@ class OtaUpdateWorker(
             val deviceFingerprint = applicationContext.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
                 .getString("device_fingerprint", null) ?: "unknown"
 
+            // v1.0.12 — per-phase OTA progress reporting. The dashboard
+            // and on-device overlay both subscribe to lastOtaState so
+            // operators see real progress instead of stopwatch theater.
+            // Best-effort — failure to report state shouldn't block the
+            // OTA itself.
+            reportOtaState(apiRoot, deviceFingerprint, "CHECKING", null, null)
+
             val payload = JSONObject().apply {
                 put("fingerprint", deviceFingerprint)
                 put("versionCode", BuildConfig.VERSION_CODE)
@@ -129,27 +136,114 @@ class OtaUpdateWorker(
                 connectTimeout = 20_000
                 readTimeout = 60_000
             }
+
+            // Report progress periodically during download. Reports are
+            // throttled to once every ~3 seconds to avoid hammering the
+            // API on a fast network. State="DOWNLOADING", progress=0..100.
+            reportOtaState(apiRoot, deviceFingerprint, "DOWNLOADING", 0, "v$latestVn")
+            val totalBytes = dlConn.contentLengthLong.takeIf { it > 0 } ?: -1L
+            var downloaded = 0L
+            var lastReportAt = System.currentTimeMillis()
             outFile.outputStream().use { out ->
-                dlConn.inputStream.use { inp -> inp.copyTo(out) }
+                dlConn.inputStream.use { inp ->
+                    val buf = ByteArray(64 * 1024)
+                    while (true) {
+                        val n = inp.read(buf)
+                        if (n <= 0) break
+                        out.write(buf, 0, n)
+                        downloaded += n
+                        val now = System.currentTimeMillis()
+                        if (totalBytes > 0 && now - lastReportAt >= 3_000) {
+                            val pct = ((downloaded * 100) / totalBytes).toInt().coerceIn(0, 99)
+                            reportOtaState(apiRoot, deviceFingerprint, "DOWNLOADING", pct, "v$latestVn")
+                            lastReportAt = now
+                        }
+                    }
+                }
             }
+            reportOtaState(apiRoot, deviceFingerprint, "DOWNLOADING", 100, "v$latestVn")
 
             if (expectedSha.isNotEmpty()) {
+                reportOtaState(apiRoot, deviceFingerprint, "VERIFYING", null, "v$latestVn")
                 val actual = sha256(outFile)
                 if (!actual.equals(expectedSha, ignoreCase = true)) {
                     Log.e(TAG, "APK sha256 mismatch. expected=$expectedSha actual=$actual — discarding")
                     PlayerLogger.e(TAG, "APK sha256 mismatch — discarding download (expected=${expectedSha.take(16)}…)")
                     outFile.delete()
+                    reportOtaState(
+                        apiRoot,
+                        deviceFingerprint,
+                        "ERROR",
+                        null,
+                        "SHA256 mismatch (expected ${expectedSha.take(12)}…, got ${actual.take(12)}…)",
+                    )
                     return@withContext Result.retry()
                 }
             }
 
             PlayerLogger.i(TAG, "APK download complete and verified — firing install intent")
+            reportOtaState(apiRoot, deviceFingerprint, "INSTALLING", null, "v$latestVn")
             triggerInstall(outFile, forced)
+            // Success state is reported on next boot via the heartbeat
+            // (new versionName lands in playerVersion, dashboard infers
+            // INSTALLED from a version change). We don't report
+            // 'INSTALLED' here because the install hasn't actually
+            // completed yet — Android may still show the system prompt
+            // or the install may fail silently. The next-boot heartbeat
+            // is the only authoritative signal.
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "OTA worker failed", e)
             PlayerLogger.e(TAG, "OTA worker failed", e)
+            // Best-effort error report — survives transient API outages.
+            try {
+                val apiRoot = applicationContext.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
+                    .getString("api_root", null)
+                val fp = applicationContext.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
+                    .getString("device_fingerprint", null)
+                if (apiRoot != null && fp != null) {
+                    reportOtaState(apiRoot, fp, "ERROR", null, e.message?.take(400) ?: "unknown error")
+                }
+            } catch (_: Exception) { /* best-effort */ }
             Result.retry()
+        }
+    }
+
+    /**
+     * Best-effort POST to /api/v1/screens/status/:fp/ota-state. Failure
+     * is logged but never throws — state reporting is observability,
+     * not load-bearing for the install itself.
+     */
+    private fun reportOtaState(
+        apiRoot: String,
+        fingerprint: String,
+        state: String,
+        progress: Int?,
+        message: String?,
+    ) {
+        try {
+            val payload = JSONObject().apply {
+                put("state", state)
+                if (progress != null) put("progress", progress)
+                if (message != null) put("message", message)
+            }
+            val url = URL("$apiRoot/api/v1/screens/status/$fingerprint/ota-state")
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                setRequestProperty("Content-Type", "application/json")
+                doOutput = true
+                connectTimeout = 5_000
+                readTimeout = 5_000
+            }
+            conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+            val rc = conn.responseCode
+            if (rc !in 200..299) {
+                PlayerLogger.w(TAG, "OTA state report HTTP $rc (state=$state)")
+            } else {
+                PlayerLogger.i(TAG, "OTA state report → $state${progress?.let { " ($it%)" } ?: ""}")
+            }
+        } catch (e: Exception) {
+            PlayerLogger.w(TAG, "OTA state report failed (state=$state): ${e.message}")
         }
     }
 
