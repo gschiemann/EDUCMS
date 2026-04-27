@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+      Manager APK — DEVICE_OWNER-capable companion that watches Player
+      and silently installs OTA updates. See
+      scratch/manager-apk/01-architecture-decision.md for the
+      architectural rationale.
+
+      MUST be sideloaded once per kiosk, then provisioned as device
+      owner via:
+        adb shell dpm set-device-owner com.educms.manager/.AdminReceiver
+      (Or, in Phase 3, via a QR-code-driven first-boot wizard.)
+    -->
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Android 14+: typed FGS permission. dataSync covers periodic
+         heartbeat polling + OTA download. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- OTA install. Manager holds REQUEST_INSTALL_PACKAGES for the
+         normal OTA fallback; once provisioned as DEVICE_OWNER the
+         system grants INSTALL_PACKAGES (a signature-only permission)
+         silently and the install prompt is suppressed. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- Required when calling startActivity for a different package
+         (Player) on Android 11+ scoped queries. -->
+    <queries>
+        <package android:name="com.educms.player" />
+        <!-- Debug variants (different applicationIdSuffix) so debug
+             builds of Player + Manager find each other too. -->
+        <package android:name="com.educms.player.debug" />
+    </queries>
+
+    <application
+        android:name=".ManagerApp"
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="false"
+        tools:targetApi="34">
+
+        <!-- Manager has NO launcher activity intentionally. It runs
+             as a background service + receivers + content provider.
+             The Player APK is the user-facing entry point; Manager
+             is a daemon. Adding a launcher icon here would clutter
+             the kiosk's app drawer and make Manager look like a
+             user-runnable app, which it isn't. -->
+
+        <!-- Device-admin receiver. Required for set-device-owner ADB
+             provisioning. The xml/device_admin.xml file declares the
+             policies we use (just FORCE_LOCK + WIPE_DATA placeholders;
+             we don't actually wipe — DEVICE_OWNER for installs is
+             granted by virtue of being device owner, not by these
+             policies). -->
+        <receiver
+            android:name=".AdminReceiver"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Boot receiver. Launches WatchdogService + ensures Player
+             is running on every device boot. Quickboot variants
+             cover the OEM-specific boot intents that Goodview /
+             NovaStar / TCL boards fire instead of (or in addition
+             to) BOOT_COMPLETED. -->
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Watchdog foreground service. Polls PlayerHealthProvider
+             every 30s; restarts Player if no heartbeat for 3
+             consecutive ticks. Foreground because Android 8+ kills
+             background services aggressively, especially on OEMs
+             with heavy battery-saver layers. -->
+        <service
+            android:name=".WatchdogService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!--
+          Player ↔ Manager IPC channel. Player writes its heartbeat
+          row into this provider every 30s; WatchdogService reads
+          the row to detect liveness. Provider lives INSIDE Manager
+          (not Player) so a crashed Player can't accidentally take
+          its own heartbeat record down with it.
+
+          android:exported=true with android:permission lets Player
+          (a different UID) write to us, while blocking arbitrary
+          third-party apps. The custom signature-protected permission
+          ensures only apps signed with the same key (i.e. our own
+          Player + Manager) can talk through here.
+        -->
+        <provider
+            android:name=".PlayerHealthProvider"
+            android:authorities="com.educms.manager.health"
+            android:exported="true"
+            android:permission="com.educms.manager.HEALTH_PERMISSION"
+            android:grantUriPermissions="false" />
+
+        <!-- Receiver that catches PackageInstaller.Session commit
+             results during an OTA. STATUS_SUCCESS → mark version
+             healthy. STATUS_FAILURE_* → log + escalate (Phase 2
+             will trigger rollback here). -->
+        <receiver
+            android:name=".OtaInstallReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.educms.manager.OTA_INSTALL_RESULT" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+
+    <!-- Custom signature-protected permission for the health
+         provider. Both Player and Manager must declare this
+         permission (Manager's manifest defines it; Player uses it).
+         Signature-protection means only apps signed with the same
+         key can hold the permission — locks out third-party apps
+         even if they know the provider authority. -->
+    <permission
+        android:name="com.educms.manager.HEALTH_PERMISSION"
+        android:protectionLevel="signature" />
+
+</manifest>

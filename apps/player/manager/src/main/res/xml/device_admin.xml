@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Device-admin policies declared by AdminReceiver.
+
+  We don't actually exercise lock/wipe — Manager's reason for being
+  a device admin is to be eligible for DEVICE_OWNER provisioning,
+  which is what unlocks silent install of Player APK updates. The
+  policies below are required by the device-admin contract but kept
+  to the absolute minimum:
+
+    force-lock — required-but-unused; we never call .lockNow()
+    wipe-data  — required-but-unused; we never call .wipeData()
+
+  Anything beyond this list would expand the warning text Android
+  shows during set-device-owner provisioning, which is bad UX.
+-->
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android"
+    android:visible="false">
+    <uses-policies>
+        <force-lock />
+        <wipe-data />
+    </uses-policies>
+</device-admin>

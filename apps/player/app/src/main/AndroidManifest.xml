@@ -19,6 +19,28 @@
          (one-shot ADB), which makes installs silent.  -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!--
+      Permission to write to the Manager APK's PlayerHealthProvider
+      (Phase 1 of the multi-APK architecture, see
+      scratch/manager-apk/01-architecture-decision.md). Manager's
+      manifest declares this permission with signature-only protection
+      level, so only apps signed with the same debug keystore (i.e.
+      our own Player + Manager) can hold it.
+
+      Safe to declare even when Manager isn't installed: Android
+      simply doesn't grant the permission and ContentResolver writes
+      silently fail. ManagerHeartbeatPublisher handles that case.
+    -->
+    <uses-permission android:name="com.educms.manager.HEALTH_PERMISSION" />
+
+    <!-- Android 11+ scoped queries: Manager runs in a different UID,
+         we need to declare we want to talk to it. -->
+    <queries>
+        <package android:name="com.educms.manager" />
+        <package android:name="com.educms.manager.debug" />
+        <provider android:authorities="com.educms.manager.health" />
+    </queries>
+
     <!-- USB OTG sneakernet ingest (Sprint 7B) — Android 7+ supports USB host mode -->
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />

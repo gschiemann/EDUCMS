@@ -14,6 +14,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.educms.player.heartbeat.HeartbeatService
+import com.educms.player.heartbeat.ManagerHeartbeatPublisher
 import com.educms.player.logging.PlayerLogger
 import com.educms.player.ota.OtaUpdateWorker
 import com.educms.player.usb.UsbCacheIndex
@@ -59,7 +60,32 @@ class PlayerApp : Application() {
         HeartbeatService.ensureRunning(this)
         Watchdog.arm(this)
         scheduleOtaWorker()
+        startManagerHeartbeat()
         PlayerLogger.i("PlayerApp", "All background services started successfully")
+    }
+
+    /**
+     * Starts the cross-app heartbeat publisher. Writes a row to the
+     * Manager APK's ContentProvider every 30s so Manager's watchdog
+     * can detect a dead Player and force-restart it.
+     *
+     * Safe even when Manager isn't installed yet — the publisher
+     * silently no-ops in that case (the day Manager IS installed,
+     * heartbeats start flowing without needing a Player update).
+     *
+     * Stored on the Application instance so the publisher's Handler
+     * is rooted in the app process and survives Activity destruction.
+     */
+    private var managerHeartbeat: ManagerHeartbeatPublisher? = null
+    private fun startManagerHeartbeat() {
+        try {
+            val pub = ManagerHeartbeatPublisher(applicationContext)
+            pub.start()
+            managerHeartbeat = pub
+            PlayerLogger.i("PlayerApp", "Manager heartbeat publisher started")
+        } catch (e: Exception) {
+            PlayerLogger.w("PlayerApp", "Manager heartbeat publisher failed to start", e)
+        }
     }
 
     private fun ensureNotificationChannels() {

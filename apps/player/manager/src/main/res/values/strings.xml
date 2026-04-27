@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">EduCMS Manager</string>
+    <string name="watchdog_notif_channel">EduCMS watchdog</string>
+    <string name="watchdog_notif_title">EduCMS — keeping Player alive</string>
+    <string name="watchdog_notif_text">This service keeps the kiosk online and applies updates.</string>
+</resources>
