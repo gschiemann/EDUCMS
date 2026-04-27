@@ -155,6 +155,18 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
         case 'COUNTDOWN':         return { label: 'Countdown', targetDate: '' };
         case 'STAFF_SPOTLIGHT':   return { staffName: 'Staff Name', role: 'Role' };
         case 'QUOTE':             return { quote: 'Click to edit quote', author: 'Author' };
+        // Sprint 11h decorations — the palette ships eight tiles but
+        // they all spawn `widgetType='DECORATION'` rows; the variant
+        // is what differentiates them. Defaults are sane so a fresh
+        // drop renders the right animation immediately.
+        case 'DECORATION_CONFETTI':       return { variant: 'confetti', speed: 1, count: 60 };
+        case 'DECORATION_RAINBOW_RIBBON': return { variant: 'rainbow-ribbon', speed: 1 };
+        case 'DECORATION_BALLOONS':       return { variant: 'balloons', speed: 1, count: 8 };
+        case 'DECORATION_CLOUDS':         return { variant: 'clouds', speed: 1 };
+        case 'DECORATION_SPARKLES':       return { variant: 'sparkles', speed: 1, count: 24 };
+        case 'DECORATION_TICKER':         return { variant: 'ticker', speed: 1, text: 'Welcome · Have a wonderful day · Stay curious' };
+        case 'DECORATION_NEON_BUZZ':      return { variant: 'neon-buzz', text: 'OPEN', glowColor: '#f0abfc' };
+        case 'DECORATION_PULSE_GLOW':     return { variant: 'pulse-glow', speed: 1, glowColor: '#fbbf24' };
         // Image/video/logo intentionally have NO config seeded — the
         // BuilderZone now renders an "Empty" placeholder badge over
         // every zone whose widget produces no visible output, so the
@@ -162,10 +174,17 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
         default:                  return {};
       }
     };
+
+    // Sprint 11h — decorations all collapse to widgetType='DECORATION'
+    // with their variant in defaultConfig. The palette tile keeps a
+    // distinct DECORATION_* type so it can carry its own label / icon
+    // / desc; once it lands as a zone, the type folds into the canonical
+    // DECORATION dispatch in WidgetRenderer.
+    const canonicalWidgetType = widgetType.startsWith('DECORATION_') ? 'DECORATION' : widgetType;
     const next: Zone = clampZone({
       id,
       name: `${widgetLabel(widgetType)} ${zones.length + 1}`,
-      widgetType,
+      widgetType: canonicalWidgetType,
       x,
       y,
       width: w,

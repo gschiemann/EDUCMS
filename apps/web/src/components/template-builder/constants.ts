@@ -4,6 +4,8 @@ import {
   CalendarDays, Megaphone, UtensilsCrossed, Users, Rss, Share2, Shield,
   ArrowRight, Square, FileText, ListVideo,
   Cake,
+  // Sprint 11h decorations.
+  PartyPopper, Rainbow, Sparkles, Zap, Sun,
 } from 'lucide-react';
 // The "School Life" (QUOTE / STATS / SCOREBOARD / MENU_ITEM /
 // SCHEDULE_GRID / ATTENDANCE / BIRTHDAYS / HONOR_ROLL) and
@@ -57,6 +59,22 @@ export const WIDGET_GROUPS = [
       { type: 'LOGO', label: 'School Logo', desc: 'Display your logo', icon: Shield },
       { type: 'TICKER', label: 'Scrolling Ticker', desc: 'Scrolling text banner', icon: ArrowRight },
       { type: 'EMPTY', label: 'Placeholder', desc: 'Reserve a zone for later', icon: Square },
+    ],
+  },
+  // Sprint 11h — drag-drop decorations. One DECORATION widget type;
+  // a `variant` config picks which animation. Each tile in the
+  // palette spawns a zone pre-configured with that variant.
+  {
+    label: 'Decorations',
+    types: [
+      { type: 'DECORATION_CONFETTI',       label: 'Confetti',       desc: 'Falling colored particles — celebrations + birthdays',     icon: PartyPopper },
+      { type: 'DECORATION_RAINBOW_RIBBON', label: 'Rainbow Ribbon', desc: 'Animated rainbow gradient banner — pride / spirit',       icon: Rainbow },
+      { type: 'DECORATION_BALLOONS',       label: 'Balloons',       desc: 'Rising balloon cluster — party / year-end',                icon: Cake },
+      { type: 'DECORATION_CLOUDS',         label: 'Clouds',         desc: 'Slow horizontal cloud drift — sky-themed background',      icon: Cloud },
+      { type: 'DECORATION_SPARKLES',       label: 'Sparkles',       desc: 'Twinkling gold dust — festive overlay',                    icon: Sparkles },
+      { type: 'DECORATION_TICKER',         label: 'Marquee Ticker', desc: 'Big bold scrolling text — attention-grabbing banner',      icon: ArrowRight },
+      { type: 'DECORATION_NEON_BUZZ',      label: 'Neon Buzz',      desc: 'Buzzing neon-sign text — character for lobbies',           icon: Zap },
+      { type: 'DECORATION_PULSE_GLOW',     label: 'Pulse Glow',     desc: 'Breathing glow halo — sits behind featured content',       icon: Sun },
     ],
   },
   // "School Life" group hidden pending editor — see file header.
@@ -165,6 +183,18 @@ export const ZONE_COLORS: Record<string, { bg: string; border: string; text: str
   ANIMATED_WELCOME_HS:  { bg: '#fef3c7', border: '#ec4899', text: '#831843', accent: '#f59e0b' },
   ANIMATED_CAFETERIA:   { bg: '#fef3c7', border: '#dc2626', text: '#7c2d12', accent: '#dc2626' },
   ANIMATED_BACKGROUND:  { bg: '#fbcfe8', border: '#ec4899', text: '#831843', accent: '#ec4899' },
+  // Sprint 11h decorations — one canonical color for all variants;
+  // each tile in the palette gets the same pinkish theme so it's
+  // recognizable as a "decoration" group at a glance.
+  DECORATION:                   { bg: '#fae8ff', border: '#e879f9', text: '#86198f', accent: '#d946ef' },
+  DECORATION_CONFETTI:          { bg: '#fae8ff', border: '#e879f9', text: '#86198f', accent: '#d946ef' },
+  DECORATION_RAINBOW_RIBBON:    { bg: '#fae8ff', border: '#e879f9', text: '#86198f', accent: '#d946ef' },
+  DECORATION_BALLOONS:          { bg: '#fae8ff', border: '#e879f9', text: '#86198f', accent: '#d946ef' },
+  DECORATION_CLOUDS:            { bg: '#fae8ff', border: '#e879f9', text: '#86198f', accent: '#d946ef' },
+  DECORATION_SPARKLES:          { bg: '#fae8ff', border: '#e879f9', text: '#86198f', accent: '#d946ef' },
+  DECORATION_TICKER:            { bg: '#fae8ff', border: '#e879f9', text: '#86198f', accent: '#d946ef' },
+  DECORATION_NEON_BUZZ:         { bg: '#fae8ff', border: '#e879f9', text: '#86198f', accent: '#d946ef' },
+  DECORATION_PULSE_GLOW:        { bg: '#fae8ff', border: '#e879f9', text: '#86198f', accent: '#d946ef' },
 };
 
 // Hit-target validator — warn if a zone would render smaller than WCAG 44px

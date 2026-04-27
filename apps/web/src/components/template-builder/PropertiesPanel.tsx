@@ -831,6 +831,96 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="url" label="Profile / feed URL" value={cfg.url || ''} placeholder="https://twitter.com/sunnyside_elem" onChange={(v) => setField({ url: v })} />);
       fields.push(<TextField key="maxItems" label="Max posts to show" value={String(cfg.maxItems || 5)} placeholder="5" onChange={(v) => setField({ maxItems: parseInt(v) || 5 })} />);
       break;
+    // Sprint 11h decorations — variant picker + per-variant tuning.
+    case 'DECORATION': {
+      const variantOptions: Array<[string, string]> = [
+        ['confetti', 'Confetti'],
+        ['rainbow-ribbon', 'Rainbow Ribbon'],
+        ['balloons', 'Balloons'],
+        ['clouds', 'Clouds'],
+        ['sparkles', 'Sparkles'],
+        ['ticker', 'Marquee Ticker'],
+        ['neon-buzz', 'Neon Buzz'],
+        ['pulse-glow', 'Pulse Glow'],
+      ];
+      const v = cfg.variant || 'confetti';
+      fields.push(
+        <SelectField
+          key="variant"
+          label="Style"
+          value={v}
+          options={variantOptions}
+          onChange={(val) => setField({ variant: val })}
+        />,
+      );
+      // Speed slider — universal across variants. 0.5 = lazy, 2 = brisk.
+      fields.push(
+        <NumField
+          key="speed"
+          id="dec-speed"
+          label="Speed (×)"
+          value={typeof cfg.speed === 'number' ? cfg.speed : 1}
+          onChange={(val) => setField({ speed: val })}
+          min={0.25}
+          max={4}
+          step={0.25}
+        />,
+      );
+      // Particle-count slider for variants that have particles.
+      if (v === 'confetti' || v === 'balloons' || v === 'sparkles') {
+        const max = v === 'confetti' ? 80 : v === 'sparkles' ? 40 : 12;
+        const fallback = v === 'confetti' ? 60 : v === 'sparkles' ? 24 : 8;
+        fields.push(
+          <NumField
+            key="count"
+            id="dec-count"
+            label="Particle count"
+            value={typeof cfg.count === 'number' ? cfg.count : fallback}
+            onChange={(val) => setField({ count: val })}
+            min={3}
+            max={max}
+            step={1}
+          />,
+        );
+      }
+      // Text content for the variants that show text.
+      if (v === 'ticker' || v === 'neon-buzz') {
+        fields.push(
+          <TextField
+            key="text"
+            label="Text"
+            value={cfg.text || ''}
+            placeholder={v === 'ticker' ? 'Welcome · Have a wonderful day · Stay curious' : 'OPEN'}
+            onChange={(val) => setField({ text: val })}
+          />,
+        );
+      }
+      // Glow color for variants that have a glow.
+      if (v === 'neon-buzz' || v === 'pulse-glow') {
+        fields.push(
+          <ColorField
+            key="glowColor"
+            label="Glow color"
+            value={cfg.glowColor || (v === 'neon-buzz' ? '#f0abfc' : '#fbbf24')}
+            onChange={(val) => setField({ glowColor: val })}
+          />,
+        );
+      }
+      // Opacity — universal.
+      fields.push(
+        <NumField
+          key="opacity"
+          id="dec-opacity"
+          label="Opacity (0–1)"
+          value={typeof cfg.opacity === 'number' ? cfg.opacity : 1}
+          onChange={(val) => setField({ opacity: val })}
+          min={0}
+          max={1}
+          step={0.05}
+        />,
+      );
+      break;
+    }
     case 'ANIMATED_WELCOME_MS':
     case 'ANIMATED_WELCOME_HS':
     case 'ANIMATED_WELCOME': {

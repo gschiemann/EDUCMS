@@ -97,6 +97,8 @@ import { AnimatedBellScheduleWidget } from './AnimatedBellScheduleWidget';
 import { AnimatedMorningNewsWidget } from './AnimatedMorningNewsWidget';
 import { AnimatedAchievementShowcaseWidget } from './AnimatedAchievementShowcaseWidget';
 import { ScrapbookHallwayWidget } from './ScrapbookHallwayWidget';
+// Sprint 11h pre-launch: drag-drop animations as a generic decoration widget.
+import { DecorationWidget } from './DecorationWidget';
 import { ScrapbookCafeteriaWidget } from './ScrapbookCafeteriaWidget';
 import { StorybookHallwayWidget } from './StorybookHallwayWidget';
 import { BulletinHallwayWidget } from './BulletinHallwayWidget';
@@ -205,6 +207,10 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'RSS_FEED':     return <RSSWidget config={cfg} compact={compact} />;
     case 'SOCIAL_FEED':  return <SocialWidget config={cfg} />;
     case 'PLAYLIST':     return <PlaylistWidget config={cfg} />;
+    // Sprint 11h — drag-drop decorations (confetti, ribbon, balloons,
+    // clouds, sparkles, ticker, neon-buzz, pulse-glow). Pure
+    // CSS keyframes, no data sources, auto-scales to any zone size.
+    case 'DECORATION':   return <DecorationWidget config={cfg} />;
     // Generic category widgets (theme-agnostic).
     case 'QUOTE':        return <QuoteWidget config={cfg} onConfigChange={onConfigChange} />;
     case 'STATS':        return <StatsWidget config={cfg} />;
