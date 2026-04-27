@@ -868,6 +868,22 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
           onChange={(v) => setField({ gradeLevel: v })}
         />,
       );
+      // The HolidayPanelExtras component listens for the
+      // holiday:fields-loaded CustomEvent emitted by HolidayWidget on
+      // iframe load and renders one Text/TextArea per editable field.
+      // setField writes to cfg.fields[key] which HolidayWidget then
+      // posts to the iframe — the iframe's bridge updates textContent.
+      fields.push(
+        <HolidayPanelExtras
+          key="holiday-extras"
+          zoneId={zone.id}
+          values={(cfg.fields || {}) as Record<string, string>}
+          onFieldChange={(key, value) => {
+            const next = { ...(cfg.fields || {}), [key]: value };
+            setField({ fields: next });
+          }}
+        />,
+      );
       break;
     }
     // Sprint 11h decorations — variant picker + per-variant tuning.
@@ -1831,6 +1847,95 @@ function TextAreaField({ label, value, placeholder, onChange, rows = 3 }: { labe
         className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm resize-y"
       />
     </div>
+  );
+}
+
+/**
+ * HolidayPanelExtras — renders the editable text fields for a HOLIDAY
+ * widget. Schema is delivered via the `holiday:fields-loaded` window
+ * event by HolidayWidget (which gets it from the iframe bridge on
+ * load). Until the schema arrives, shows a "loading" placeholder.
+ *
+ * Why this lives in PropertiesPanel: the holiday HTML files have ~45
+ * editable hotspots each. We don't want a hand-maintained registry
+ * for ~800 entries. The bridge delivers the schema dynamically; this
+ * component just renders form fields from it.
+ */
+function HolidayPanelExtras({
+  zoneId,
+  values,
+  onFieldChange,
+}: {
+  zoneId: string;
+  values: Record<string, string>;
+  onFieldChange: (key: string, value: string) => void;
+}) {
+  const [schema, setSchema] = useState<Array<{ key: string; defaultText: string; multiline: boolean }>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    setSchema([]);
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { zoneId: string | null; fields: Array<{ key: string; defaultText: string; multiline: boolean }> } | undefined;
+      if (!detail || detail.zoneId !== zoneId) return;
+      setSchema(detail.fields || []);
+      setLoading(false);
+    };
+    window.addEventListener('holiday:fields-loaded', handler);
+    // Failsafe: if the iframe is slow or already loaded before this
+    // mount happened, we'd never get the event. After 4s give up the
+    // loading state — operator can still edit via the holiday picker.
+    const t = setTimeout(() => setLoading(false), 4000);
+    return () => {
+      window.removeEventListener('holiday:fields-loaded', handler);
+      clearTimeout(t);
+    };
+  }, [zoneId]);
+
+  if (loading && schema.length === 0) {
+    return (
+      <div className="text-[10px] text-slate-400 italic px-1">
+        Loading editable fields from the scene…
+      </div>
+    );
+  }
+  if (schema.length === 0) {
+    return (
+      <div className="text-[10px] text-slate-400 italic px-1">
+        This holiday template has no editable text fields. Pick a different holiday or grade level above.
+      </div>
+    );
+  }
+
+  // Pretty-format keys: dot notation → "Section › Field"
+  const labelFor = (key: string) => {
+    if (!key.includes('.')) return key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
+    const parts = key.split('.');
+    return parts
+      .map((p) => p.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase()))
+      .join(' › ');
+  };
+
+  return (
+    <>
+      <div className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1 pt-2">
+        Editable text <span className="font-normal lowercase">({schema.length})</span>
+      </div>
+      {schema.map((f) => {
+        const current = values[f.key] ?? '';
+        const Field = f.multiline ? TextAreaField : TextField;
+        return (
+          <Field
+            key={f.key}
+            label={labelFor(f.key)}
+            value={current}
+            placeholder={f.defaultText}
+            onChange={(v) => onFieldChange(f.key, v)}
+          />
+        );
+      })}
+    </>
   );
 }
 
