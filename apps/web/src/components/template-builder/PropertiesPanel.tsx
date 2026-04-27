@@ -501,9 +501,6 @@ function TemplateProperties() {
   const descId = useId();
   const widthId = useId();
   const heightId = useId();
-  const bgColorId = useId();
-  const bgGradientId = useId();
-  const bgImageId = useId();
 
   return (
     <div className="p-5 space-y-6 text-xs">
@@ -543,63 +540,12 @@ function TemplateProperties() {
         </div>
       </section>
 
-      <section className="space-y-3">
-        <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Backdrop</h3>
-        <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-100 shadow-sm space-y-3">
-          <div>
-            <label htmlFor={bgColorId} className="block text-[10px] font-semibold text-slate-500 mb-1.5">Solid Color</label>
-            <div className="flex gap-2 items-center">
-              <div className="relative w-9 h-9 rounded-lg shadow-sm border border-slate-200/60 overflow-hidden shrink-0">
-                <input
-                  id={bgColorId}
-                  type="color"
-                  value={meta.bgColor || '#ffffff'}
-                  onChange={(e) => setMeta({ bgColor: e.target.value })}
-                  className="absolute -inset-2 w-16 h-16 cursor-pointer"
-                />
-              </div>
-              <input
-                type="text"
-                aria-label="Background color hex"
-                value={meta.bgColor}
-                onChange={(e) => setMeta({ bgColor: e.target.value })}
-                placeholder="#ffffff"
-                className="flex-1 px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-mono uppercase focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all shadow-sm inset-shadow-sm"
-              />
-            </div>
-          </div>
-          <div>
-            <label htmlFor={bgGradientId} className="block text-[10px] font-semibold text-slate-500 mb-1.5">CSS Gradient</label>
-            <input
-              id={bgGradientId}
-              type="text"
-              value={meta.bgGradient}
-              onChange={(e) => setMeta({ bgGradient: e.target.value })}
-              placeholder="linear-gradient(...)"
-              className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all shadow-sm inset-shadow-sm"
-            />
-          </div>
-          <div>
-            <label htmlFor={bgImageId} className="block text-[10px] font-semibold text-slate-500 mb-1.5">Image URL</label>
-            <input
-              id={bgImageId}
-              type="url"
-              value={meta.bgImage}
-              onChange={(e) => setMeta({ bgImage: e.target.value })}
-              placeholder="https://..."
-              className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all shadow-sm inset-shadow-sm"
-            />
-          </div>
-          <TemplateBackdropPicker
-            current={{ bgColor: meta.bgColor, bgGradient: meta.bgGradient, bgImage: meta.bgImage }}
-            onPick={(bg) => setMeta({
-              bgColor: bg.bgColor || '',
-              bgGradient: bg.bgGradient || '',
-              bgImage: bg.bgImage || '',
-            })}
-          />
-        </div>
-      </section>
+      <CanvasBackdropSection
+        bgColor={meta.bgColor || ''}
+        bgGradient={meta.bgGradient || ''}
+        bgImage={meta.bgImage || ''}
+        onChange={(patch) => setMeta(patch)}
+      />
     </div>
   );
 }
@@ -1760,65 +1706,277 @@ const FONT_OPTIONS: { family: string; sample: string }[] = [
 ];
 
 /**
+ * CanvasBackdropSection — full canvas-background editor.
+ *
+ * Three knobs (solid color / CSS gradient / image) plus a curated
+ * swatch library (TemplateBackdropPicker) and an upload-from-computer
+ * button for the image. Re-used from:
+ *   - Right rail "Properties" tab (when no zone is selected)
+ *   - Bottom bar "Backdrop" button modal (anytime)
+ *
+ * Why a separate section: operators kept asking "where do I change
+ * the background?" The Properties tab is gated on "no zone selected"
+ * so it was always a click-deselect-click ordeal. Lifting this into
+ * a re-usable section means we can also surface it from a discoverable
+ * bottom-bar button.
+ */
+export function CanvasBackdropSection({
+  bgColor,
+  bgGradient,
+  bgImage,
+  onChange,
+  variant = 'panel',
+}: {
+  bgColor: string;
+  bgGradient: string;
+  bgImage: string;
+  onChange: (patch: { bgColor?: string; bgGradient?: string; bgImage?: string }) => void;
+  /** 'panel' = embedded in right rail. 'modal' = wider, used in popup. */
+  variant?: 'panel' | 'modal';
+}) {
+  const bgGradientId = useId();
+  const bgImageId = useId();
+  const fileInputId = useId();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  /**
+   * Upload a file from the operator's computer. Same endpoint as
+   * BuilderZone's drop-target — POST /assets/upload with bearer token,
+   * returns the asset URL. Asset goes into the operator's media library
+   * so the same image is reusable on other templates.
+   */
+  const handleFile = async (file: File) => {
+    setUploadError(null);
+    if (!file.type.startsWith('image/')) {
+      setUploadError('Please pick an image file (JPG, PNG, GIF, or WEBP).');
+      return;
+    }
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      // Lazy-load the auth + URL helpers so this section can be tree-
+      // shaken when a future build splits the panel from the modal.
+      const { useUIStore } = await import('@/store/ui-store');
+      const { API_URL } = await import('@/lib/api-url');
+      const token = useUIStore.getState().token;
+      const res = await fetch(`${API_URL}/assets/upload`, {
+        method: 'POST',
+        body: fd,
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) throw new Error(`Upload failed (${res.status})`);
+      const { url } = await res.json();
+      // Setting bgImage clears bgColor/bgGradient — they all stack with
+      // image winning, but the operator picked image so be explicit.
+      onChange({ bgImage: url, bgColor: '', bgGradient: '' });
+    } catch (err: any) {
+      setUploadError(err?.message || 'Could not upload image. Try a smaller file.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const wrapClass = variant === 'modal'
+    ? 'space-y-4 text-xs'
+    : 'space-y-3';
+
+  return (
+    <section className={variant === 'panel' ? 'space-y-3' : ''}>
+      {variant === 'panel' && (
+        <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Backdrop</h3>
+      )}
+      <div className={`${variant === 'modal' ? '' : 'bg-slate-50/50 rounded-xl p-3 border border-slate-100 shadow-sm'} ${wrapClass}`}>
+        {/* Solid color — themed picker (was OS-native before). Picking
+            a color here clears any previously-set gradient/image so
+            the swatch shown matches what's actually on the canvas. */}
+        <ColorPickerField
+          label="Solid color"
+          value={bgColor || '#ffffff'}
+          onChange={(v) => onChange({ bgColor: v, bgGradient: '', bgImage: '' })}
+          allowTransparent
+        />
+
+        {/* Gradient — power-user CSS field. Most operators will pick
+            from the swatch grid below instead of typing this by hand. */}
+        <div>
+          <label htmlFor={bgGradientId} className="block text-[10px] font-semibold text-slate-500 mb-1.5">CSS gradient (advanced)</label>
+          <input
+            id={bgGradientId}
+            type="text"
+            value={bgGradient}
+            onChange={(e) => onChange({ bgGradient: e.target.value })}
+            placeholder="linear-gradient(180deg, #fce7f3, #ffe4e6)"
+            className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all shadow-sm"
+          />
+        </div>
+
+        {/* Image — URL paste OR upload from computer. */}
+        <div>
+          <label htmlFor={bgImageId} className="block text-[10px] font-semibold text-slate-500 mb-1.5">Image background</label>
+          <div className="flex gap-2">
+            <input
+              id={bgImageId}
+              type="text"
+              inputMode="url"
+              spellCheck={false}
+              value={bgImage}
+              onChange={(e) => onChange({ bgImage: e.target.value })}
+              placeholder="Paste an image URL"
+              className="flex-1 px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all shadow-sm"
+            />
+            <input
+              id={fileInputId}
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleFile(f);
+                if (fileInputRef.current) fileInputRef.current.value = '';
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold whitespace-nowrap disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors shadow-sm"
+            >
+              {uploading ? 'Uploading…' : 'Upload'}
+            </button>
+            {bgImage && (
+              <button
+                type="button"
+                onClick={() => onChange({ bgImage: '' })}
+                className="px-2 py-2 rounded-lg text-[10px] font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          {uploadError && (
+            <div className="mt-1 text-[10px] text-rose-600">{uploadError}</div>
+          )}
+          {bgImage && (
+            <div className="mt-2 w-full h-20 rounded border border-slate-200/60 bg-slate-100" style={{ backgroundImage: `url(${bgImage.startsWith('url(') ? bgImage.slice(4, -1) : bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }} aria-label="Image preview" />
+          )}
+        </div>
+
+        {/* Swatch grid — pulls from every existing template (system +
+            tenant) and dedupes. The library answer to "do we have some
+            backgrounds to pick from" — yes, every distinct backdrop in
+            the catalog is one click away. */}
+        <TemplateBackdropPicker
+          current={{ bgColor, bgGradient, bgImage }}
+          onPick={(bg) => onChange({
+            bgColor: bg.bgColor || '',
+            bgGradient: bg.bgGradient || '',
+            bgImage: bg.bgImage || '',
+          })}
+          variant={variant}
+        />
+      </div>
+    </section>
+  );
+}
+
+/**
  * TemplateBackdropPicker — renders a swatch grid where every entry is
- * the bgColor/bgGradient/bgImage of an existing system preset. One
- * click adopts that backdrop on the current custom template. Saves the
- * operator from typing "linear-gradient(180deg,#fce7f3 0%,#ffe4e6 …)"
- * by hand or hunting through 60+ templates for the gradient they
- * remember liking.
+ * the bgColor/bgGradient/bgImage of an existing template (system +
+ * tenant). One click adopts that backdrop on the current template.
  *
  * Deduplicated by bg signature so a portrait + landscape pair don't
- * show as two separate swatches.
+ * show as two separate swatches. Grouped into Gradients / Solid colors
+ * / Images so operators can scan by category.
  */
 function TemplateBackdropPicker({
   current,
   onPick,
+  variant = 'panel',
 }: {
   current: { bgColor?: string; bgGradient?: string; bgImage?: string };
   onPick: (bg: { bgColor?: string; bgGradient?: string; bgImage?: string }) => void;
+  variant?: 'panel' | 'modal';
 }) {
   const { data: templates } = useTemplateBackdrops();
-  const swatches = (() => {
+  const groups = (() => {
     const seen = new Set<string>();
-    const out: { name: string; bgColor?: string; bgGradient?: string; bgImage?: string }[] = [];
+    const gradients: { name: string; bgColor?: string; bgGradient?: string; bgImage?: string }[] = [];
+    const solids: typeof gradients = [];
+    const images: typeof gradients = [];
     for (const t of (templates as any[] | undefined) || []) {
       const sig = `${t.bgColor || ''}|${t.bgGradient || ''}|${t.bgImage || ''}`;
       if (seen.has(sig) || sig === '||') continue;
       seen.add(sig);
-      out.push({ name: t.name || '(untitled)', bgColor: t.bgColor, bgGradient: t.bgGradient, bgImage: t.bgImage });
-      if (out.length >= 60) break;
+      const entry = { name: t.name || '(untitled)', bgColor: t.bgColor, bgGradient: t.bgGradient, bgImage: t.bgImage };
+      if (entry.bgImage) images.push(entry);
+      else if (entry.bgGradient) gradients.push(entry);
+      else if (entry.bgColor) solids.push(entry);
     }
-    return out;
+    return { gradients, solids, images };
   })();
-  const isCurrent = (s: typeof swatches[number]) =>
+
+  const isCurrent = (s: { bgColor?: string; bgGradient?: string; bgImage?: string }) =>
     (s.bgColor || '') === (current.bgColor || '') &&
     (s.bgGradient || '') === (current.bgGradient || '') &&
     (s.bgImage || '') === (current.bgImage || '');
 
-  if (swatches.length === 0) return null;
+  const total = groups.gradients.length + groups.solids.length + groups.images.length;
+  if (total === 0) return null;
+
+  const cols = variant === 'modal' ? 'grid-cols-8' : 'grid-cols-6';
+  const maxH = variant === 'modal' ? 'max-h-72' : 'max-h-48';
+
+  const renderGroup = (label: string, entries: typeof groups.gradients) => {
+    if (entries.length === 0) return null;
+    return (
+      <div className="space-y-1.5">
+        <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide pl-1">
+          {label} <span className="text-slate-300 font-normal">({entries.length})</span>
+        </div>
+        <div className={`grid ${cols} gap-1.5`}>
+          {entries.map((s, i) => {
+            const bg = s.bgImage
+              ? `url(${s.bgImage.startsWith('url(') ? s.bgImage.slice(4, -1) : s.bgImage}) center/cover`
+              : s.bgGradient || s.bgColor || '#ffffff';
+            return (
+              <button
+                key={`${label}-${i}`}
+                type="button"
+                onClick={() => onPick(s)}
+                title={s.name}
+                aria-label={`Use backdrop from ${s.name}`}
+                aria-pressed={isCurrent(s)}
+                className={`group relative aspect-square rounded-md transition-all hover:scale-105 hover:z-10 ${isCurrent(s) ? 'ring-2 ring-indigo-500 ring-offset-1' : 'border border-slate-200/60'}`}
+                style={{ background: bg }}
+              >
+                {/* Hover label — name overlay so operators recognize
+                    "oh that's the Sunny Meadow gradient." */}
+                <span className="absolute inset-x-0 bottom-0 px-1 py-0.5 text-[8px] font-semibold text-white bg-black/60 rounded-b-md opacity-0 group-hover:opacity-100 transition-opacity truncate text-center">
+                  {s.name}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div>
-      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Browse template backgrounds</label>
-      <div className="grid grid-cols-6 gap-1.5 max-h-48 overflow-y-auto p-1 rounded-lg bg-white border border-slate-200/60">
-        {swatches.map((s, i) => {
-          const bg = s.bgImage
-            ? `url(${s.bgImage.startsWith('url(') ? s.bgImage.slice(4, -1) : s.bgImage}) center/cover`
-            : s.bgGradient || s.bgColor || '#ffffff';
-          return (
-            <button
-              key={i}
-              type="button"
-              onClick={() => onPick(s)}
-              title={s.name}
-              aria-label={`Use backdrop from ${s.name}`}
-              className={`aspect-square rounded transition-all hover:scale-105 ${isCurrent(s) ? 'ring-2 ring-indigo-500 ring-offset-1' : 'border border-slate-200/60'}`}
-              style={{ background: bg }}
-            />
-          );
-        })}
+      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">
+        Pick from the library <span className="text-slate-400 font-normal">({total} backdrops)</span>
+      </label>
+      <div className={`space-y-3 ${maxH} overflow-y-auto p-2 rounded-lg bg-white border border-slate-200/60`}>
+        {renderGroup('Gradients', groups.gradients)}
+        {renderGroup('Solid colors', groups.solids)}
+        {renderGroup('Images', groups.images)}
       </div>
-      <p className="mt-1 text-[10px] text-slate-400">Click any swatch to adopt that template's background. Operator-typed values above stay as overrides.</p>
+      <p className="mt-1 text-[10px] text-slate-400">Every distinct backdrop from the template catalog. Click to apply — operator-typed values above stay as overrides.</p>
     </div>
   );
 }

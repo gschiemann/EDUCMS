@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { Plus, Layers, Settings2, Keyboard, Undo2, Redo2, ZoomIn, ZoomOut, Grid3x3, Magnet, Ruler, Palette } from 'lucide-react';
+import { Plus, Layers, Settings2, Keyboard, Undo2, Redo2, ZoomIn, ZoomOut, Grid3x3, Magnet, Ruler, Palette, Image as ImageIcon, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { DndContext, DragOverlay, DragEndEvent, pointerWithin } from '@dnd-kit/core';
 import { getZoneColor } from './constants';
@@ -12,7 +12,7 @@ import { BuilderCanvas } from './BuilderCanvas';
 import { WidgetPalette } from './WidgetPalette';
 import { VariantPicker } from './VariantPicker';
 import { LayersPanel } from './LayersPanel';
-import { PropertiesPanel } from './PropertiesPanel';
+import { PropertiesPanel, CanvasBackdropSection } from './PropertiesPanel';
 import { BrandKitPanel } from './BrandKitPanel';
 import { TopContextToolbar } from './TopContextToolbar';
 import { useUpdateTemplate, useUpdateTemplateZones, useCreateTemplate, useDeleteTemplate } from '@/hooks/use-api';
@@ -572,6 +572,17 @@ function BuilderBottomBar() {
   const setSnap      = useBuilderStore((s) => s.setSnapEnabled);
   const showGuides   = useBuilderStore((s) => s.showGuides);
   const setGuides    = useBuilderStore((s) => s.setShowGuides);
+  const meta         = useBuilderStore((s) => s.meta);
+  const setMeta      = useBuilderStore((s) => s.setMeta);
+  const [backdropOpen, setBackdropOpen] = useState(false);
+
+  // Close on Escape — standard modal UX
+  useEffect(() => {
+    if (!backdropOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setBackdropOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [backdropOpen]);
 
   const canUndo = past.length > 0;
   const canRedo = future.length > 0;
@@ -645,6 +656,56 @@ function BuilderBottomBar() {
       {groupBtn(showGrid,    'Show grid',         () => setShowGrid(!showGrid),     <Grid3x3 className="w-4 h-4" />)}
       {groupBtn(snapEnabled, 'Snap to elements',  () => setSnap(!snapEnabled),      <Magnet className="w-4 h-4" />)}
       {groupBtn(showGuides,  'Show alignment guides', () => setGuides(!showGuides), <Ruler className="w-4 h-4" />)}
+      <div className="w-px h-5 bg-slate-200 mx-1" />
+
+      {/* Canvas backdrop — discoverable from the bottom bar so the
+          operator doesn't have to deselect the current zone and dig
+          through the Properties tab. Opens a modal with the same
+          CanvasBackdropSection used in the right rail. */}
+      {groupBtn(backdropOpen, 'Canvas backdrop', () => setBackdropOpen(true), <ImageIcon className="w-4 h-4" />)}
+
+      {backdropOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Canvas backdrop picker"
+          className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
+        >
+          <div
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-150"
+            onClick={() => setBackdropOpen(false)}
+          />
+          <div className="relative bg-white rounded-2xl shadow-2xl ring-1 ring-slate-200 max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col animate-in zoom-in-95 slide-in-from-bottom-2 duration-200">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
+              <h2 className="text-sm font-bold text-slate-800">Canvas backdrop</h2>
+              <button
+                onClick={() => setBackdropOpen(false)}
+                aria-label="Close"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-4 h-4" aria-hidden />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5">
+              <CanvasBackdropSection
+                bgColor={meta.bgColor || ''}
+                bgGradient={meta.bgGradient || ''}
+                bgImage={meta.bgImage || ''}
+                onChange={(patch) => setMeta(patch)}
+                variant="modal"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-slate-100 bg-slate-50/40">
+              <button
+                onClick={() => setBackdropOpen(false)}
+                className="px-4 py-2 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
