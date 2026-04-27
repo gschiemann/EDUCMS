@@ -383,6 +383,17 @@ model Screen {
   lastOtaProgress  Int?      @map("last_ota_progress")
   lastOtaMessage   String?   @map("last_ota_message")
   lastOtaAt        DateTime? @map("last_ota_at")
+  // Phase 2 — last crash from Player or Manager. Captured by an
+  // UncaughtExceptionHandler in each APK and POSTed to
+  // /api/v1/screens/status/:fp/crash-report. Source = "player" |
+  // "manager" so dashboards can attribute. Stack is truncated at
+  // ~8KB on the API side (large enough for a full Kotlin stack
+  // trace, small enough to not blow up our row size).
+  lastCrashAt      DateTime? @map("last_crash_at")
+  lastCrashVersion String?   @map("last_crash_version")
+  lastCrashSource  String?   @map("last_crash_source")
+  lastCrashMessage String?   @map("last_crash_message")
+  lastCrashStack   String?   @map("last_crash_stack")
   // Sprint 8b operator-config layer for the 6 emergency types (LOCKDOWN /
   // EVACUATE / WEATHER / HOLD / SECURE / MEDICAL).
   // For each type the operator can:

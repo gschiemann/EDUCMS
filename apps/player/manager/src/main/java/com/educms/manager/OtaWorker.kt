@@ -5,6 +5,9 @@ import android.os.Build
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.educms.manager.rollback.ApkArchive
+import com.educms.manager.rollback.InstallState
+import com.educms.manager.rollback.QuarantineList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -101,6 +104,21 @@ class OtaWorker(
                 return@withContext Result.success()
             }
 
+            // Phase 2 rollback safeguard: refuse to download a version
+            // we previously rolled back from. If the bad release was
+            // re-published with a fix, we'd need a new versionCode for
+            // it to escape quarantine — same model Google Play uses
+            // for "this version had issues, try a fixed v+1 instead".
+            if (QuarantineList.isQuarantined(applicationContext, latestVc)) {
+                val reason = QuarantineList.reasonsFor(applicationContext, latestVc) ?: "previously rolled back"
+                Log.w(TAG, "skipping vc=$latestVc — quarantined ($reason)")
+                reportOtaState(
+                    apiRoot, fp, "ERROR", null,
+                    "vc=$latestVc quarantined: $reason",
+                )
+                return@withContext Result.success()
+            }
+
             val apkUrl = latest.optString("apkUrl")
             if (apkUrl.isEmpty()) {
                 Log.w(TAG, "no apkUrl in update response — server config issue?")
@@ -138,13 +156,30 @@ class OtaWorker(
                 }
             }
 
+            // Phase 2 rollback safety net — archive the CURRENT Player
+            // APK before we install the new one, so WatchdogService
+            // has something to roll back to if the new APK crashes
+            // first-boot. Idempotent (skips if already archived).
+            ApkArchive.archivePackage(applicationContext, BuildConfig.PLAYER_PACKAGE)
+
+            // Mark the install as pending. WatchdogService will watch
+            // for a heartbeat from this versionCode within the grace
+            // window; missed → trigger rollback.
+            InstallState.beginInstall(
+                applicationContext,
+                newVc = latestVc,
+                prevVc = currentVc,
+            )
+
             // Install — silent if DEVICE_OWNER, prompt-fallback otherwise.
             reportOtaState(apiRoot, fp, "INSTALLING", null, "v$latestVn")
             OtaInstaller.installApk(applicationContext, outFile, BuildConfig.PLAYER_PACKAGE)
             // INSTALLED state is reported implicitly by Player's NEXT
             // heartbeat after restart (server compares prior !=
             // current versionName). Don't report INSTALLED here — the
-            // PackageInstaller commit may still be in flight.
+            // PackageInstaller commit may still be in flight, AND we
+            // still want to verify first-boot health via the grace
+            // window before promoting to "good".
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "OTA worker failed", e)

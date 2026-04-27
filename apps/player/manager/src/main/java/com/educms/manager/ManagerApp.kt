@@ -10,6 +10,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.educms.manager.crash.CrashUploader
 import java.util.concurrent.TimeUnit
 
 /**
@@ -34,6 +35,11 @@ class ManagerApp : Application() {
     override fun onCreate() {
         super.onCreate()
         Log.i(TAG, "ManagerApp.onCreate — starting watchdog + scheduling OTA worker")
+        // Crash handler FIRST so we capture errors during the rest of
+        // app startup if anything throws.
+        try { CrashUploader.install(this) } catch (e: Exception) {
+            Log.w(TAG, "CrashUploader.install failed: ${e.message}")
+        }
         startWatchdogService(this)
         scheduleOtaWorker(this)
     }

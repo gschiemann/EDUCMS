@@ -14,6 +14,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.educms.player.crash.CrashUploader
 import com.educms.player.heartbeat.HeartbeatService
 import com.educms.player.heartbeat.ManagerHeartbeatPublisher
 import com.educms.player.logging.PlayerLogger
@@ -62,7 +63,61 @@ class PlayerApp : Application() {
         Watchdog.arm(this)
         scheduleOtaWorker()
         startManagerHeartbeat()
+        installCrashHandler()
         PlayerLogger.i("PlayerApp", "All background services started successfully")
+    }
+
+    /**
+     * Capture fatal Kotlin/Java exceptions and POST them to the
+     * /screens/:fp/crash-report endpoint so the dashboard surfaces
+     * crashes without an operator having to upload diagnostics
+     * manually. Best-effort; never blocks process death longer than
+     * 5s. Fingerprint + apiRoot are read at crash-time (lazy) so we
+     * don't have a stale snapshot from app boot.
+     */
+    private fun installCrashHandler() {
+        try {
+            CrashUploader.install(
+                this,
+                getApiRoot = { resolveApiRoot() },
+                getFingerprint = { resolveFingerprint() },
+            )
+        } catch (e: Exception) {
+            PlayerLogger.w("PlayerApp", "CrashUploader.install failed: ${e.message}")
+        }
+    }
+
+    /**
+     * Best-effort fingerprint resolution at crash-time. Mirrors the
+     * web-side getDeviceFingerprint() — uses Settings.Secure.ANDROID_ID
+     * with the "android-" prefix, falls back to "android-unknown".
+     */
+    @Suppress("DEPRECATION")
+    private fun resolveFingerprint(): String {
+        val androidId = try {
+            android.provider.Settings.Secure.getString(
+                contentResolver,
+                android.provider.Settings.Secure.ANDROID_ID,
+            ) ?: ""
+        } catch (_: Exception) { "" }
+        return if (androidId.isNotBlank()) "android-$androidId" else "android-unknown"
+    }
+
+    /**
+     * Read the api root the WebView is using (saved by the web
+     * player into SharedPreferences via the setBootstrap bridge).
+     * Falls back to BuildConfig.PLAYER_BASE_URL minus /player so
+     * the crash uploader has SOMETHING to hit even on a fresh install
+     * before the WebView has bootstrapped.
+     */
+    private fun resolveApiRoot(): String {
+        val saved = applicationContext
+            .getSharedPreferences("edu_player", Context.MODE_PRIVATE)
+            .getString("api_root", null)
+        if (!saved.isNullOrBlank()) return saved.trimEnd('/').removeSuffix("/api/v1")
+        return BuildConfig.PLAYER_BASE_URL
+            .trimEnd('/')
+            .removeSuffix("/player")
     }
 
     /**

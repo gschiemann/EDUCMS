@@ -13,6 +13,8 @@ import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.educms.manager.rollback.InstallState
+import com.educms.manager.rollback.RollbackInstaller
 
 /**
  * The actual watchdog — polls PlayerHealthProvider every 30s and
@@ -85,6 +87,46 @@ class WatchdogService : Service() {
 
     private fun checkHeartbeat() {
         val (ts, version) = readHeartbeat()
+
+        // Phase 2 — post-install grace window check. If we have a
+        // pending install and the grace window expired with no fresh
+        // heartbeat from the NEW version, trigger rollback. We check
+        // BEFORE the regular liveness check so a bad first-boot
+        // doesn't get classified as "missed heartbeats → force restart"
+        // (forcing restart of a broken APK doesn't help; rollback does).
+        val pendingVc = InstallState.pendingVc(applicationContext)
+        if (pendingVc > 0) {
+            val playerVersionCode = readInstalledPlayerVersionCode()
+            val sawNewBoot = (ts > 0L) &&
+                (System.currentTimeMillis() - ts <= STALE_THRESHOLD_MS) &&
+                (playerVersionCode == pendingVc)
+            if (sawNewBoot) {
+                // Fresh heartbeat from the NEW versionCode → first-boot
+                // healthy. Promote to last-known-good and prune.
+                Log.i(TAG, "post-install: heartbeat from new vc=$pendingVc detected → promoting to last-known-good")
+                InstallState.promoteToGood(applicationContext, pendingVc)
+                com.educms.manager.rollback.ApkArchive.pruneOld(applicationContext)
+            } else if (InstallState.isPendingExpired(applicationContext)) {
+                // Grace window expired with no healthy heartbeat from
+                // the new version — bad install. Roll back.
+                val prevVc = InstallState.pendingPrevVc(applicationContext)
+                Log.e(TAG, "post-install: grace window expired (pending=$pendingVc prev=$prevVc) — rolling back")
+                RollbackInstaller.rollback(
+                    applicationContext,
+                    badVc = pendingVc,
+                    previousVc = prevVc,
+                    reason = "no heartbeat in ${InstallState.GRACE_WINDOW_MS / 1000}s post-install (current vc=$playerVersionCode)",
+                )
+                // Reset streak so the next-tick force-restart logic
+                // doesn't pile on top of a rollback already in flight.
+                staleStreak = 0
+                return
+            }
+            // If still inside grace window, fall through to the regular
+            // liveness check — it's fine to count missed heartbeats
+            // here; they'll be irrelevant once the grace check fires.
+        }
+
         if (ts == 0L) {
             // No heartbeat ever recorded. Either Player isn't
             // installed, or it hasn't called us yet. Treat as stale
@@ -112,6 +154,22 @@ class WatchdogService : Service() {
             Log.e(TAG, "Player has missed $staleStreak consecutive heartbeats — force-restart")
             staleStreak = 0
             forceRestartPlayer()
+        }
+    }
+
+    /**
+     * Read the INSTALLED Player APK's versionCode via PackageManager.
+     * Used to detect "did first-boot of the new version succeed" —
+     * comparing this to InstallState.pendingVc tells us whether
+     * the new APK actually got loaded by the system.
+     */
+    @Suppress("DEPRECATION")
+    private fun readInstalledPlayerVersionCode(): Int {
+        return try {
+            val pkg = pickPlayerPackage(packageManager) ?: return 0
+            packageManager.getPackageInfo(pkg, 0).versionCode
+        } catch (e: Exception) {
+            0
         }
     }
 

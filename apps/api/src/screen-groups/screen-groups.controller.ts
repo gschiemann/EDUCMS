@@ -58,6 +58,15 @@ export class ScreenGroupsController {
             // exact bug we just spent 3 hours on.
             lastOtaState: true, lastOtaProgress: true,
             lastOtaMessage: true, lastOtaAt: true,
+            // Phase 2 — last crash from Player or Manager APK.
+            // Same proactive add for the same reason.
+            lastCrashAt: true, lastCrashVersion: true,
+            lastCrashSource: true, lastCrashMessage: true,
+            // lastCrashStack deliberately omitted from the list
+            // endpoint — 8KB per row × N screens is too much for a
+            // dashboard that re-fetches every 10s. Stack lives on the
+            // detail endpoint only (Phase 2.5: add a per-screen
+            // /screens/:id/crash-detail).
           },
         },
         schedules: {

@@ -324,6 +324,73 @@ export class ScreensController {
     return { ok: true };
   }
 
+  // ─── PUBLIC: Crash report from Player or Manager APK (Phase 2) ───
+  // Called by an UncaughtExceptionHandler in each APK when something
+  // throws fatally. Dashboard surfaces the most recent crash so we
+  // can correlate with versionCode and ship a fix without waiting
+  // for an operator to hand-walk through logcat.
+  //
+  // Body shape:
+  //   { source: 'player'|'manager',
+  //     versionName: string,
+  //     versionCode?: number,
+  //     message: string,
+  //     stack: string }
+  //
+  // Stack trace truncated at 8KB on the server side — large enough
+  // for any Kotlin trace, small enough to keep Postgres rows from
+  // bloating. Operator can pull the full trace via the existing
+  // PlayerLogger.uploadDiagnostics path if more depth is needed.
+  @Post('status/:deviceFingerprint/crash-report')
+  async reportCrash(
+    @Param('deviceFingerprint') fingerprint: string,
+    @Body() body: {
+      source?: string;
+      versionName?: string;
+      versionCode?: number;
+      message?: string;
+      stack?: string;
+    },
+  ) {
+    if (fingerprint.startsWith('preview-')) return { ok: true, ignored: 'preview' };
+    const screen = await this.prisma.client.screen.findUnique({
+      where: { deviceFingerprint: fingerprint },
+      select: { id: true, name: true },
+    });
+    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+
+    const source = (body?.source || '').toLowerCase().trim();
+    if (source !== 'player' && source !== 'manager') {
+      throw new HttpException(
+        `Invalid source: ${source} (expected player or manager)`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const message = (body?.message || '').slice(0, 500) || null;
+    const stack = (body?.stack || '').slice(0, 8 * 1024) || null;
+    const versionName = body?.versionName ? String(body.versionName).slice(0, 40) : null;
+
+    await this.prisma.client.screen.update({
+      where: { id: screen.id },
+      data: {
+        lastCrashAt: new Date(),
+        lastCrashSource: source,
+        lastCrashVersion: versionName,
+        lastCrashMessage: message,
+        lastCrashStack: stack,
+      } as any,
+    });
+
+    // Loud Railway log — these are real crashes; we want them
+    // visible in the operator's daily-glance scroll, not buried.
+    console.error(
+      `[crash] fp=${fingerprint.slice(0, 18)}… source=${source} version=${versionName ?? '-'} ` +
+      `message="${(message || '').slice(0, 200)}"`,
+    );
+
+    return { ok: true };
+  }
+
   // ─── ADMIN: List all screens in tenant ───
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Get()
