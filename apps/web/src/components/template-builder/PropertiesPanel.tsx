@@ -1968,9 +1968,11 @@ function TemplateBackdropPicker({
 
   return (
     <div>
-      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">
+      {/* Section heading for the swatch grid — not a form label
+          (the swatches are buttons, not inputs). */}
+      <div className="block text-[10px] font-semibold text-slate-500 mb-1.5">
         Pick from the library <span className="text-slate-400 font-normal">({total} backdrops)</span>
-      </label>
+      </div>
       <div className={`space-y-3 ${maxH} overflow-y-auto p-2 rounded-lg bg-white border border-slate-200/60`}>
         {renderGroup('Gradients', groups.gradients)}
         {renderGroup('Solid colors', groups.solids)}

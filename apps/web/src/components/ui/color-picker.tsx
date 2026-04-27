@@ -144,7 +144,10 @@ export function ColorPickerField({ label, value, onChange, allowTransparent }: C
 
   return (
     <div className="relative">
-      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
+      {/* Section heading — NOT a <label> because the trigger is a
+          button, not a form input. Uses aria-label on the button itself
+          for screen-readers (label-has-associated-control rule). */}
+      <div className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</div>
       <button
         ref={triggerRef}
         type="button"
@@ -152,6 +155,7 @@ export function ColorPickerField({ label, value, onChange, allowTransparent }: C
         className="w-full flex items-center gap-2 px-2 py-1.5 rounded border border-slate-200 hover:border-indigo-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-colors"
         aria-haspopup="dialog"
         aria-expanded={open}
+        aria-label={label}
       >
         <span
           className="w-6 h-6 rounded border border-slate-200 shrink-0"
