@@ -2664,35 +2664,29 @@ function OtaProgressOverlay({
     );
   }
 
-  // Bridge available — stage based on elapsed time. Same windows as
-  // the dashboard popover's stage logic.
-  const stage =
-    elapsed < 15_000  ? 'sending'      :
-    elapsed < 60_000  ? 'downloading'  :
-    elapsed < 150_000 ? 'installing'   :
-    elapsed < 300_000 ? 'restarting'   :
-                        'timeout';
+  // HONESTY FIX (2026-04-27): same change as the dashboard popover.
+  // We no longer pretend to know which phase the OTA is in based on a
+  // stopwatch — until v1.0.11's worker reports real per-phase events
+  // (CHECKING / DOWNLOADING / VERIFYING / INSTALLING / ERROR), all we
+  // can honestly say is "we sent the signal N seconds ago, still
+  // waiting." When v1.0.11 is on the device this overlay will subscribe
+  // to native progress messages via the JS bridge and show real stages.
+  const stage: 'pending' | 'timeout' = elapsed < 5 * 60_000 ? 'pending' : 'timeout';
 
-  const stageEmoji =
-    stage === 'sending'     ? '📡' :
-    stage === 'downloading' ? '⬇️' :
-    stage === 'installing'  ? '⚙️' :
-    stage === 'restarting'  ? '🔄' :
-                              '⏱';
+  const stageEmoji = stage === 'pending' ? '⏳' : '⏱';
 
-  const stageTitle =
-    stage === 'sending'     ? 'Update incoming…' :
-    stage === 'downloading' ? 'Downloading new player…' :
-    stage === 'installing'  ? 'Installing player update…' :
-    stage === 'restarting'  ? 'Restarting…' :
-                              'Update timed out';
+  const elapsedSecs = Math.floor(elapsed / 1000);
+  const elapsedHuman = elapsedSecs < 60
+    ? `${elapsedSecs}s ago`
+    : `${Math.floor(elapsedSecs / 60)}m ${elapsedSecs % 60}s ago`;
 
-  const stageSubtitle =
-    stage === 'sending'     ? 'Receiving update signal from dashboard' :
-    stage === 'downloading' ? 'Pulling the latest APK from our release server' :
-    stage === 'installing'  ? 'Android may show a system install prompt — tap Install' :
-    stage === 'restarting'  ? 'New version booting up. Display will resume in a moment.' :
-                              'No response after 5 minutes. The update will retry on next reboot.';
+  const stageTitle = stage === 'pending'
+    ? 'Player update in progress'
+    : 'Update timed out';
+
+  const stageSubtitle = stage === 'pending'
+    ? `Update signal received ${elapsedHuman} — kiosk is checking, downloading, and installing the new APK in the background. The screen will restart once install completes.`
+    : 'No version change after 5 minutes. The update will retry on next reboot, or sideload via ViPlex Express if it keeps failing.';
 
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[10000] max-w-2xl px-6 py-4 rounded-2xl bg-indigo-600 text-white shadow-2xl border border-indigo-400/40 flex items-center gap-4">

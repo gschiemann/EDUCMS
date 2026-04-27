@@ -288,17 +288,37 @@ function ScreenSettingsMenu({
   // operator real signal during the wait instead of one big "Waiting…".
   const stillWaiting = pushed && !updatedSincePush && pushedMsAgo < 5 * 60_000;
   const timedOut = pushed && !updatedSincePush && pushedMsAgo >= 5 * 60_000;
-  // Stage labels — rough phases of an OTA install. Times are
-  // worst-case-ish; the dashboard auto-flips to the green "installed"
-  // state the moment lastPingAt's playerVersion reflects the new
-  // build, which short-circuits these stages.
-  const stage = !pushed ? '' :
-    updatedSincePush ? 'installed' :
-    pushedMsAgo < 15_000  ? 'sending'      :   // 0-15s   WS dispatch + bridge call
-    pushedMsAgo < 60_000  ? 'downloading'  :   // 15-60s  APK download
-    pushedMsAgo < 150_000 ? 'installing'   :   // 60-150s install prompt + replace
-    pushedMsAgo < 300_000 ? 'restarting'   :   // 150-300s screen reboot + first heartbeat
-                            'timeout';
+  // HONESTY FIX (2026-04-27): the previous stage machine showed
+  // sending → downloading → installing → restarting purely off a
+  // stopwatch (`pushedMsAgo`). We had ZERO real signal from the kiosk
+  // for any of those phases — the screen could be powered off and the
+  // dashboard would still march through "downloading…installing…" then
+  // declare "no response." Operator caught us lying when v1.0.9's OTA
+  // worker was silently no-op'ing because SharedPreferences for
+  // `api_root` were never written by the JS bridge (this is fixed in
+  // v1.0.11 — until then the worker exits on launch).
+  //
+  // We only have TWO real signals from the kiosk:
+  //   1. pushedMsAgo  — time since the operator clicked Push
+  //   2. currentVersion — versionName the kiosk reports via heartbeat
+  // So that's all we surface. `stage` is now one of:
+  //   idle      | not pushed
+  //   pending   | pushed, no new version yet (single honest "waiting")
+  //   installed | heartbeat reports new versionName
+  //   timeout   | 5 min elapsed without a version change
+  // No fake intermediate steps. v1.0.11 will add real per-phase device
+  // reporting (POST /api/v1/screens/:id/ota-state CHECKING|DOWNLOADING|
+  // VERIFYING|INSTALLING|ERROR) and we'll surface those as honest
+  // sub-states only AFTER the kiosk has actually told us each phase
+  // started. See todo: "Replace dashboard's optimistic OTA timeline
+  // with real device-reported state".
+  const stage: 'idle' | 'pending' | 'installed' | 'timeout' = !pushed
+    ? 'idle'
+    : updatedSincePush
+    ? 'installed'
+    : pushedMsAgo >= 5 * 60_000
+    ? 'timeout'
+    : 'pending';
 
   const menu = (
     // Plain positioned div, not role="menu". Using the WAI menu role
@@ -375,37 +395,35 @@ function ScreenSettingsMenu({
                        still visible as a single source of truth. */}
           {(() => {
             const isInFlight = pushed && !updatedSincePush;
-            // Icon + label per stage — one icon, one label, no extra
-            // strip below.
+            // Single honest waiting state — we don't pretend to know
+            // which phase the kiosk is in until it actually reports
+            // back (v1.0.11+).
             const stageIcon: React.ReactNode =
-              stage === 'installed'   ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> :
-              stage === 'sending'     ? <Loader2 className="w-4 h-4 text-indigo-500 shrink-0 animate-spin" /> :
-              stage === 'downloading' ? <Download className="w-4 h-4 text-indigo-500 shrink-0 animate-pulse" /> :
-              stage === 'installing'  ? <Loader2 className="w-4 h-4 text-indigo-500 shrink-0 animate-spin" /> :
-              stage === 'restarting'  ? <RefreshCw className="w-4 h-4 text-indigo-500 shrink-0 animate-spin" /> :
-              stage === 'timeout'     ? <WifiOff className="w-4 h-4 text-amber-600 shrink-0" /> :
-                                         <RefreshCw className={`w-4 h-4 shrink-0 ${upToDate === false ? 'text-amber-500' : 'text-indigo-500'}`} />;
-            // Smart timeout copy. If after 5 min the kiosk hasn't
-            // reported a new version AND we already know the kiosk is
-            // on the latest version, the most likely cause is "nothing
-            // to install" — the latest version simply hasn't published
-            // yet, or the operator pushed to a screen that was already
-            // current. Surface that instead of the generic Wi-Fi /
-            // install-permission message. Operator (2026-04-27) hit
-            // this when v1.0.9 was still building in CI but they
-            // pushed against The Den (which was on v1.0.8 = latest at
-            // that moment). Help them diagnose without reading logs.
+              stage === 'installed' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> :
+              stage === 'pending'   ? <Loader2 className="w-4 h-4 text-indigo-500 shrink-0 animate-spin" /> :
+              stage === 'timeout'   ? <WifiOff className="w-4 h-4 text-amber-600 shrink-0" /> :
+                                       <RefreshCw className={`w-4 h-4 shrink-0 ${upToDate === false ? 'text-amber-500' : 'text-indigo-500'}`} />;
+            // Smart timeout copy. If the kiosk was already on latest
+            // before the push, the most likely cause is "nothing to
+            // install yet" (operator pushed before a new release was
+            // out). Otherwise we honestly admit we don't know which
+            // phase failed — could be the bridge call never reaching
+            // the worker (the v1.0.9 silent-fail bug), Wi-Fi, install
+            // permission, or a crash mid-install. Until the device
+            // reports per-phase state (v1.0.11) we can't be specific.
             const timeoutCopy =
               upToDate === true
                 ? 'No version change after 5 min — kiosk was already on the latest. Wait for a new release to be published.'
-                : 'No response after 5 min — check Wi-Fi + Android "Install unknown apps" permission. The kiosk will pick up the update on its next boot.';
+                : 'No version change after 5 min. Could be Wi-Fi, the kiosk\'s "Install unknown apps" permission, or an OTA worker that didn\'t fire. Power-cycle the screen or sideload via ViPlex if this persists.';
+            // How long ago we sent the push, in human terms.
+            const pendingSecs = Math.floor(pushedMsAgo / 1000);
+            const pendingLabel = pendingSecs < 60
+              ? `Update sent ${pendingSecs}s ago — waiting for kiosk to confirm install`
+              : `Update sent ${Math.floor(pendingSecs / 60)}m ${pendingSecs % 60}s ago — waiting for kiosk to confirm install`;
             const stageLabel =
-              stage === 'installed'   ? `Kiosk installed v${currentVersion} ✓` :
-              stage === 'sending'     ? 'Sending update signal to kiosk…' :
-              stage === 'downloading' ? 'Kiosk downloading new APK…' :
-              stage === 'installing'  ? 'Installing on kiosk…' :
-              stage === 'restarting'  ? 'Kiosk restarting + reporting back…' :
-              stage === 'timeout'     ? timeoutCopy :
+              stage === 'installed' ? `Kiosk installed v${currentVersion} ✓` :
+              stage === 'pending'   ? pendingLabel :
+              stage === 'timeout'   ? timeoutCopy :
               upToDate === true && !pushed ? 'On latest — push anyway' :
               upToDate === false ? `Push update to v${latestVersion}` :
                                    'Push update to this screen';
@@ -414,8 +432,11 @@ function ScreenSettingsMenu({
               stage === 'timeout'   ? 'text-amber-700 font-bold' :
               isInFlight            ? 'text-indigo-700 font-bold' :
                                        'text-slate-700 font-semibold';
+            // Sub-line under the main label. While in-flight, give the
+            // operator a real diagnostic — what we WOULD see if it
+            // worked — so they know what to check if it doesn't.
             const subline = isInFlight
-              ? null
+              ? 'Kiosk reports new version via heartbeat when install completes (~1-3 min on fast Wi-Fi)'
               : 'Manual only — auto-update is OFF unless you toggle it in Settings';
             return (
               <button
