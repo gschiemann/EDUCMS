@@ -74,96 +74,19 @@ export class ProxyController {
       const contentType = upstream.contentType || 'text/html';
       const isHtml = contentType.includes('text/html') || contentType.includes('application/xhtml');
 
-      // Headers shared between HTML and pass-through paths. We're aggressive
-      // about stripping anything that could prevent the page from rendering
-      // inside an iframe — it's a digital signage display, not a security
-      // boundary, and customers expect "paste URL → see page."
+      // Headers shared between HTML and pass-through paths.
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.removeHeader('X-Frame-Options');
       res.removeHeader('Content-Security-Policy');
-      res.removeHeader('Content-Security-Policy-Report-Only');
-      // Cross-origin isolation headers — block iframe rendering on strict
-      // sites if left in place. We're a proxy, not a same-origin replica.
-      res.removeHeader('Cross-Origin-Embedder-Policy');
-      res.removeHeader('Cross-Origin-Opener-Policy');
-      res.removeHeader('Cross-Origin-Resource-Policy');
-      // Permissions-Policy and friends can refuse autoplay / fullscreen /
-      // microphone / camera in iframes. Unblock everything since the
-      // signage operator is the only audience.
-      res.removeHeader('Permissions-Policy');
-      res.removeHeader('Feature-Policy');
-      res.removeHeader('Document-Policy');
-      // Strict-Transport-Security on the proxy origin is fine but inheriting
-      // a stricter upstream HSTS through the response would be confusing.
-      res.removeHeader('Strict-Transport-Security');
-      // Re-set permissive policies. `frame-ancestors *` is the only CSP we
-      // emit — covers the iframe-embedding need.
       res.setHeader('Content-Security-Policy', "frame-ancestors *");
       res.setHeader('Access-Control-Allow-Origin', '*');
+      // Common fetch needs these headers for CORS preflights to pass.
       res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept,Range,Origin,Referer');
-      res.setHeader('Access-Control-Expose-Headers', 'Content-Length,Content-Range,Content-Type');
-      // CORP needs to be cross-origin for fonts/images to load via fetch.
-      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-      // Resolve referrer-based bot blocks. Sending no Referer at all on
-      // upstream requests already happened in safeFetch — this hint is
-      // for the BROWSER's downstream sub-resource requests.
-      res.setHeader('Referrer-Policy', 'no-referrer');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept');
 
       if (!isHtml) {
-        const isCss = contentType.includes('text/css');
-        if (isCss) {
-          // Rewrite url(...) refs inside CSS so background images, web
-          // fonts, and @import'd stylesheets all flow through the proxy
-          // (same-origin to the iframe, CORS-clean). Without this, every
-          // CSS-driven image/font on the upstream site 404s because the
-          // browser resolves relative url(...) refs against the CSS file's
-          // URL — which is OUR proxy URL — and then asks our origin for
-          // /img/foo.png that doesn't exist here.
-          let css = upstream.body.toString('utf8');
-          const cssBaseUrl = upstream.finalUrl || url;
-          const proxyPathInner = '/api/v1/proxy/web';
-          css = css.replace(
-            /url\(\s*(['"]?)([^'")]+)\1\s*\)/g,
-            (match, _q, ref) => {
-              const trimmed = ref.trim();
-              if (
-                !trimmed ||
-                trimmed.startsWith('data:') ||
-                trimmed.startsWith('blob:') ||
-                trimmed.startsWith('javascript:') ||
-                trimmed.startsWith('about:') ||
-                trimmed.startsWith('#')
-              ) {
-                return match;
-              }
-              try {
-                const abs = new URL(trimmed, cssBaseUrl).toString();
-                return `url("${proxyPathInner}?url=${encodeURIComponent(abs)}&v=2")`;
-              } catch {
-                return match;
-              }
-            },
-          );
-          // Also rewrite @import "url" rules (no url() wrapper).
-          css = css.replace(
-            /@import\s+(['"])([^'"]+)\1/g,
-            (match, _q, ref) => {
-              const trimmed = ref.trim();
-              if (!trimmed || trimmed.startsWith('data:')) return match;
-              try {
-                const abs = new URL(trimmed, cssBaseUrl).toString();
-                return `@import "${proxyPathInner}?url=${encodeURIComponent(abs)}&v=2"`;
-              } catch {
-                return match;
-              }
-            },
-          );
-          res.setHeader('Content-Type', contentType);
-          res.send(css);
-          return;
-        }
-        // Pass-through for images / JS / fonts / JSON / video segments.
+        // Pass-through for images / CSS / JS / fonts / JSON / video
+        // segments. The rewritten fetch in the iframe routes here.
         res.setHeader('Content-Type', contentType);
         res.send(upstream.body);
         return;
@@ -181,38 +104,33 @@ export class ProxyController {
 
       // Strip <meta http-equiv="content-security-policy"> and
       // <meta http-equiv="x-frame-options">. We already strip the
-      // equivalent HTTP headers, but a LOT of real sites (Wix, hardened
+      // equivalent HTTP headers, but real-world sites (Wix, hardened
       // WordPress, Shopify storefronts) enforce CSP via <meta> too —
       // browsers obey both identically. Without this strip the iframe
-      // partially loads, then every external script/font/image is
-      // refused with "violates Content Security Policy directive" in
-      // the console and the page looks broken to the user.
+      // partially loads, then every external script/font/image gets
+      // refused by the page's own meta-CSP and looks broken to the
+      // user. This is the ONLY targeted addition kept from the more
+      // aggressive proxy hardening; everything else (static HTML
+      // attribute rewrite, CSS url() rewrite, iframe-detection hooks,
+      // crossorigin/integrity strip, setAttribute hook) was reverted
+      // because operator reported "no image load at all now, just
+      // weird icons and hyper links everywhere." The conservative
+      // fetch/XHR rewriter below catches the JS-driven cases.
       html = html.replace(/<meta[^>]*http-equiv\s*=\s*["']?(?:content-security-policy|x-frame-options)["']?[^>]*>/gi, '');
 
-      // Strip Subresource Integrity attributes from <script> and <link>.
-      // Once upstream rebuilds with a new bundle hash, every cached page
-      // that references the old hash silently fails to load the script
-      // (the browser refuses with no DOM error event). Rendering a stale
-      // version of a page that was perfect yesterday is a common "broken
-      // webpage" failure mode. We trust the upstream we just fetched —
-      // SRI buys nothing for a server-side proxy.
-      html = html.replace(/(<(?:script|link)\b[^>]*?)\sintegrity\s*=\s*(["'])[^"']*\2/gi, '$1');
-      html = html.replace(/(<(?:script|link)\b[^>]*?)\scrossorigin\s*=\s*(["'])[^"']*\2/gi, '$1');
-      html = html.replace(/(<(?:script|link)\b[^>]*?)\scrossorigin(?=[\s>])/gi, '$1');
-
       // Build the rewriter script. Three jobs:
-      //   1. Override window.fetch + XMLHttpRequest.open so EVERY
-      //      non-data: URL the page's scripts request gets routed
-      //      through OUR proxy — same-origin to the iframe, CORS-clean.
-      //      The previous "only upstream" heuristic missed cross-origin
-      //      CDN fetches (Google Fonts, jsDelivr, etc.) which then
-      //      hit CORS preflight failures and silently broke the page.
+      //   1. Override window.fetch + XMLHttpRequest.open so any
+      //      same-origin fetch inside the iframe (relative URL or
+      //      absolute URL pointing at the upstream origin) gets
+      //      routed through OUR proxy. The proxy then streams the
+      //      resource back same-origin, CORS-clean.
       //   2. Override window.open / location.assign / location.replace
       //      that target the parent — best-effort frame-busting block
       //      (location is technically unforgeable, but most real-world
       //      busters use these wrappers).
-      //   3. Hooks for setAttribute('src'/'href') so dynamically-injected
-      //      scripts and stylesheets also flow through the proxy.
+      //   3. Don't rewrite cross-origin URLs that aren't the upstream
+      //      origin; let the browser handle CORS for those (most
+      //      external CDNs send the right headers).
       const proxyOrigin = ''; // same-origin to the iframe — empty string keeps fetches relative
       const proxyPath = '/api/v1/proxy/web';
       const upstreamOrigin = new URL(baseUrl).origin;
@@ -223,17 +141,16 @@ export class ProxyController {
   try {
     var PROXY = ${JSON.stringify(proxyOrigin + proxyPath)};
     var UPSTREAM = ${JSON.stringify(upstreamOrigin)};
-    // Proxy ANY non-data: URL. Cross-origin CDN scripts/fonts/JSON
-    // would otherwise hit CORS preflight and silently break.
-    function shouldProxy(u){
-      if (!u || typeof u !== 'string') return false;
+    function looksLikeUpstream(u){
+      if (!u) return false;
+      if (typeof u !== 'string') return false;
       if (u.startsWith('data:') || u.startsWith('blob:') || u.startsWith('javascript:')) return false;
-      if (u.startsWith('about:') || u.startsWith('mailto:') || u.startsWith('tel:')) return false;
-      // Already proxied — don't double-wrap (idempotent if double-rewrites slip through)
-      if (u.indexOf(PROXY + '?url=') !== -1) return false;
-      // Pure in-page hash like "#section" — never proxy, would break scroll-to anchors
-      if (u.startsWith('#')) return false;
-      return true;
+      if (u.startsWith('/') && !u.startsWith('//')) return true;
+      if (u.startsWith('./') || u.startsWith('../')) return true;
+      if (u.startsWith(UPSTREAM)) return true;
+      // protocol-relative pointing at upstream
+      if (u.startsWith('//') && UPSTREAM.endsWith(u.split('/')[2])) return true;
+      return false;
     }
     function toAbsolute(u){
       try { return new URL(u, UPSTREAM).toString(); } catch(e){ return u; }
@@ -245,8 +162,9 @@ export class ProxyController {
     window.fetch = function(input, init){
       try {
         var u = typeof input === 'string' ? input : (input && input.url) || '';
-        if (shouldProxy(u)) {
+        if (looksLikeUpstream(u)) {
           if (typeof input === 'string') return realFetch(via(u), init);
+          // Request object — clone with new URL
           return realFetch(new Request(via(u), input), init);
         }
       } catch(e) {}
@@ -255,26 +173,12 @@ export class ProxyController {
     var realOpen = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function(method, url){
       try {
-        if (typeof url === 'string' && shouldProxy(url)) {
+        if (typeof url === 'string' && looksLikeUpstream(url)) {
           arguments[1] = via(url);
         }
       } catch(e){}
       return realOpen.apply(this, arguments);
     };
-    // Hook setAttribute on Element so dynamically-created <script>,
-    // <link>, <img>, <iframe>, <source> get their src/href routed
-    // through the proxy. Many SPA frameworks inject these at runtime.
-    try {
-      var realSetAttr = Element.prototype.setAttribute;
-      Element.prototype.setAttribute = function(name, value){
-        try {
-          if ((name === 'src' || name === 'href') && typeof value === 'string' && shouldProxy(value)) {
-            return realSetAttr.call(this, name, via(value));
-          }
-        } catch(e){}
-        return realSetAttr.call(this, name, value);
-      };
-    } catch(e){}
     // Anti-frame-busting (best-effort — location is unforgeable so we
     // wrap the wrappers most busters reach for).
     var realWindowOpen = window.open;
@@ -283,98 +187,14 @@ export class ProxyController {
       var locProto = Object.getPrototypeOf(window.location);
       var realAssign  = locProto.assign;
       var realReplace = locProto.replace;
-      locProto.assign  = function(u){ if (shouldProxy(u)) return realAssign.call(window.location, via(u)); };
-      locProto.replace = function(u){ if (shouldProxy(u)) return realReplace.call(window.location, via(u)); };
-    } catch(e){}
-    // Iframe-detection override. Many sites refuse to render or actively
-    // navigate the parent away when they detect they are inside an iframe.
-    // We make window.parent, window.top, and window.frameElement appear
-    // to point at the iframe itself so the page believes it is top-level.
-    // Sites that explicitly check window.location.ancestorOrigins can't
-    // be fooled, but this catches the 90% naive case.
-    try {
-      Object.defineProperty(window, 'parent',       { get: function(){ return window; }, configurable: true });
-      Object.defineProperty(window, 'top',          { get: function(){ return window; }, configurable: true });
-      Object.defineProperty(window, 'frameElement', { get: function(){ return null;   }, configurable: true });
-    } catch(e){}
-    // Some pages probe document.referrer for redirect logic. Hide it.
-    try {
-      Object.defineProperty(document, 'referrer', { get: function(){ return ''; }, configurable: true });
+      locProto.assign  = function(u){ if (looksLikeUpstream(u)) return realAssign.call(window.location, via(u)); /* swallow cross-origin top-nav */ };
+      locProto.replace = function(u){ if (looksLikeUpstream(u)) return realReplace.call(window.location, via(u)); };
     } catch(e){}
   } catch(err) { /* prelude swallowed — page can still render */ }
 })();
 </script>`;
 
-      // Rewrite static HTML attribute URLs at the proxy level. The
-      // runtime fetch/XHR rewriter above only catches calls made BY
-      // page scripts; <script src="...">, <link rel="stylesheet">,
-      // <img src="...">, etc. that the browser parses out of the
-      // initial HTML need to be rewritten BEFORE they hit the network.
-      // Critical for ES modules: <script type="module"> is fetched
-      // with CORS-required mode, so a cross-origin module load fails
-      // unless we proxy it. Same for fonts loaded via <link rel="preload">.
-      //
-      // We rewrite tags whose src/href flows through the network
-      // (script, link, img, iframe, source, video, audio, frame).
-      // We deliberately DO NOT rewrite <a href> — anchors should let
-      // the browser handle clicks; the prelude's location.assign hook
-      // catches any JS-driven nav.
-      const NET_TAGS = '(?:script|link|img|iframe|frame|source|video|audio|track|embed)';
-      const rewriteAttr = (attr: string) =>
-        new RegExp(`(<${NET_TAGS}\\b[^>]*?\\s${attr}\\s*=\\s*)(["'])([^"']+)\\2`, 'gi');
-      const proxyVia = (u: string) => {
-        try {
-          const abs = new URL(u, baseUrl).toString();
-          if (
-            abs.startsWith('data:') ||
-            abs.startsWith('blob:') ||
-            abs.startsWith('javascript:') ||
-            abs.startsWith('about:') ||
-            abs.startsWith('mailto:') ||
-            abs.startsWith('tel:') ||
-            abs.startsWith('#')
-          ) {
-            return null;
-          }
-          return `${proxyOrigin}${proxyPath}?url=${encodeURIComponent(abs)}&v=2`;
-        } catch {
-          return null;
-        }
-      };
-      for (const attr of ['src', 'href']) {
-        html = html.replace(rewriteAttr(attr), (match, prefix, quote, url) => {
-          const via = proxyVia(url);
-          if (!via) return match;
-          return `${prefix}${quote}${via}${quote}`;
-        });
-      }
-      // Also rewrite srcset (responsive images): "url1 1x, url2 2x".
-      html = html.replace(
-        new RegExp(`(<${NET_TAGS}\\b[^>]*?\\ssrcset\\s*=\\s*)(["'])([^"']+)\\2`, 'gi'),
-        (match, prefix, quote, srcset) => {
-          const rewritten = srcset
-            .split(',')
-            .map((part: string) => {
-              const trimmed = part.trim();
-              const sp = trimmed.indexOf(' ');
-              const u = sp === -1 ? trimmed : trimmed.slice(0, sp);
-              const desc = sp === -1 ? '' : trimmed.slice(sp);
-              const via = proxyVia(u);
-              return via ? `${via}${desc}` : trimmed;
-            })
-            .join(', ');
-          return `${prefix}${quote}${rewritten}${quote}`;
-        },
-      );
-
-      // Keep <base href> as the safety net. Static src/href are now
-      // rewritten through the proxy at the HTML level above, so the
-      // <base> only affects URLs we MISSED — CSS `url(...)` refs
-      // inside stylesheets, runtime-built URLs that escape the
-      // setAttribute hook, srcset descriptors, etc. Without it those
-      // missed-URLs would resolve against the iframe origin (our API)
-      // and 404.
-      const baseTag = `<base href="${baseUrl.replace(/"/g, '&quot;')}">`;
+      const baseTag = `<base href="${baseUrl}">`;
       const head = rewriter + baseTag;
       if (html.includes('<head>')) {
         html = html.replace('<head>', `<head>\n${head}`);
