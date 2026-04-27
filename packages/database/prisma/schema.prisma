@@ -350,6 +350,23 @@ model Screen {
   playerVersion     String?      @map("player_version")      // "1.0.8"
   playerVersionCode Int?         @map("player_version_code") // 8
   playerVersionAt   DateTime?    @map("player_version_at")   // last poll that reported it
+  // Sprint 8b operator-config layer for the 6 emergency types (LOCKDOWN /
+  // EVACUATE / WEATHER / HOLD / SECURE / MEDICAL).
+  // For each type the operator can:
+  //   1. Leave it null         → screen falls back to Tenant.panic*PlaylistId
+  //   2. Set a playlist id     → screen uses THAT playlist when this type fires
+  //   3. Set a textBlob (todo) → screen renders that text on a default emergency template
+  // The manifest endpoint reads these per-screen overrides BEFORE the
+  // tenant defaults; that's how "different content per room" works
+  // without coupling per-screen overrides to a manual trigger event.
+  // Schema is purely additive; existing screens default everything to
+  // null = "use tenant settings."
+  emergencyLockdownPlaylistId String? @map("emergency_lockdown_playlist_id")
+  emergencyEvacuatePlaylistId String? @map("emergency_evacuate_playlist_id")
+  emergencyWeatherPlaylistId  String? @map("emergency_weather_playlist_id")
+  emergencyHoldPlaylistId     String? @map("emergency_hold_playlist_id")
+  emergencySecurePlaylistId   String? @map("emergency_secure_playlist_id")
+  emergencyMedicalPlaylistId  String? @map("emergency_medical_playlist_id")
   schedules         Schedule[]
   screenGroup       ScreenGroup? @relation(fields: [screenGroupId], references: [id])
   tenant            Tenant?      @relation(fields: [tenantId], references: [id])

@@ -131,6 +131,15 @@ export class FloorPlansController {
             lastPingAt: true,
             screenGroupId: true,
             location: true,
+            // Sprint 8b — per-screen emergency content config so the
+            // drawer's 6-row picker can render the current selection
+            // without an extra round-trip.
+            emergencyLockdownPlaylistId: true,
+            emergencyEvacuatePlaylistId: true,
+            emergencyWeatherPlaylistId: true,
+            emergencyHoldPlaylistId: true,
+            emergencySecurePlaylistId: true,
+            emergencyMedicalPlaylistId: true,
           },
         },
       },

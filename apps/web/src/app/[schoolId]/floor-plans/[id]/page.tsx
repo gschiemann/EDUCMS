@@ -31,6 +31,8 @@ import {
   useTriggerScreenEmergency,
   useClearScreenEmergency,
   useScreenEmergencyOverride,
+  useUpdateScreenEmergencyContent,
+  usePlaylists,
   type FloorPlanScreen,
 } from '@/hooks/use-api';
 import { appAlert, appConfirm } from '@/components/ui/app-dialog';
@@ -332,6 +334,17 @@ function ScreenDetailDrawer({
   const [scopeNote, setScopeNote] = useState('');
   const [textBlob, setTextBlob] = useState('');
 
+  // Operator reported "you cant exit and those settings are useless".
+  // Add Escape-to-close + backdrop click + bigger visible X so the
+  // drawer is dismissible from any direction.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const handleTrigger = async () => {
     const ok = await appConfirm({
       title: `Trigger ${type} on "${screen.name}"?`,
@@ -392,16 +405,32 @@ function ScreenDetailDrawer({
   };
 
   return (
-    <div role="dialog" aria-modal="true" className="fixed inset-y-0 right-0 z-[10000] w-full max-w-md bg-white border-l border-slate-200 shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
-        <div className="flex items-center gap-2">
-          {screen.status === 'ONLINE' ? <Wifi className="w-4 h-4 text-emerald-500" /> : <WifiOff className="w-4 h-4 text-rose-500" />}
-          <h2 className="text-sm font-bold text-slate-800 truncate">{screen.name}</h2>
+    <>
+      {/* Backdrop — click to dismiss. The drawer was modal-like but
+          unreachable when the operator's mouse drifted off the X. */}
+      <div
+        className="fixed inset-0 z-[9999] bg-slate-900/30 backdrop-blur-[1px] animate-in fade-in duration-150"
+        onClick={onClose}
+        aria-hidden
+      />
+      <div role="dialog" aria-modal="true" className="fixed inset-y-0 right-0 z-[10000] w-full max-w-md bg-white border-l border-slate-200 shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            {screen.status === 'ONLINE' ? <Wifi className="w-4 h-4 text-emerald-500 shrink-0" /> : <WifiOff className="w-4 h-4 text-rose-500 shrink-0" />}
+            <h2 className="text-sm font-bold text-slate-800 truncate">{screen.name}</h2>
+          </div>
+          {/* Bigger, higher-contrast close button — operator reported
+              the previous w-8 h-8 in slate-400 was easy to miss. */}
+          <button
+            onClick={onClose}
+            aria-label="Close drawer (Esc)"
+            title="Close (Esc)"
+            className="ml-2 px-3 h-9 rounded-lg flex items-center gap-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 hover:text-slate-900 transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+            <span>Close</span>
+          </button>
         </div>
-        <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100">
-          <X className="w-4 h-4" />
-        </button>
-      </div>
 
       <div className="flex-1 overflow-y-auto p-5 space-y-5">
         {/* Status */}
@@ -500,6 +529,18 @@ function ScreenDetailDrawer({
           )}
         </section>
 
+        {/* Per-screen emergency content config — Sprint 8b. The
+            user's exact ask: "i have no way to assign the individual
+            emergency assets to each screen…each one needs to be able
+            to load the 6 different emergency content or have the
+            option to pull it from the main category so they can do
+            whatever they want." Six dropdowns, one per emergency
+            type. "Use tenant default" leaves the column null and the
+            manifest falls back to the tenant-wide panic*PlaylistId. */}
+        <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']} fallback={null}>
+          <ScreenEmergencyContentConfig screenId={screenId} screen={screen} />
+        </RoleGate>
+
         {/* Detach pin */}
         <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']} fallback={null}>
           <section>
@@ -516,5 +557,103 @@ function ScreenDetailDrawer({
         </RoleGate>
       </div>
     </div>
+    </>
+  );
+}
+
+// ─── Per-screen emergency content config ──────────────────────────
+
+/**
+ * 6 dropdowns — one per emergency type. Operator picks a Playlist or
+ * leaves the row at "Use tenant default." Saves on change (no Save
+ * button — single-select dropdowns commit immediately).
+ *
+ * Reads current selection from the FloorPlanScreen (which now includes
+ * the 6 emergency_*_playlist_id fields). Writes via PUT
+ * /screens/:id/emergency-content. The manifest endpoint is already
+ * wired to read these per-screen settings before the tenant defaults.
+ */
+function ScreenEmergencyContentConfig({
+  screenId,
+  screen,
+}: {
+  screenId: string;
+  screen: FloorPlanScreen;
+}) {
+  const { data: playlists, isLoading: playlistsLoading } = usePlaylists();
+  const updateMutation = useUpdateScreenEmergencyContent();
+
+  const TYPES: Array<{
+    key: keyof FloorPlanScreen;
+    short: string;
+    label: string;
+    emoji: string;
+    description: string;
+  }> = [
+    { key: 'emergencyLockdownPlaylistId', short: 'lockdown', label: 'Lockdown', emoji: '🔒', description: 'Threat — secure room, lights off' },
+    { key: 'emergencyEvacuatePlaylistId', short: 'evacuate', label: 'Evacuate', emoji: '🚪', description: 'Fire / hazard — leave the building' },
+    { key: 'emergencyHoldPlaylistId',     short: 'hold',     label: 'Hold',     emoji: '✋', description: 'Clear hallways, stay in current room' },
+    { key: 'emergencySecurePlaylistId',   short: 'secure',   label: 'Secure',   emoji: '🛡️', description: 'Outside threat — close perimeter, business as usual inside' },
+    { key: 'emergencyWeatherPlaylistId',  short: 'weather',  label: 'Weather',  emoji: '🌪️', description: 'Severe storm / tornado — interior safe spot' },
+    { key: 'emergencyMedicalPlaylistId',  short: 'medical',  label: 'Medical',  emoji: '🚑', description: 'Medical event — clear the area' },
+  ];
+
+  const onChange = (
+    type: { key: keyof FloorPlanScreen; short: string },
+    value: string,
+  ) => {
+    const playlistId = value === '' ? null : value;
+    // The API takes camelCase keys (lockdownPlaylistId, evacuatePlaylistId, …)
+    const apiKey = `${type.short}PlaylistId` as
+      | 'lockdownPlaylistId' | 'evacuatePlaylistId' | 'weatherPlaylistId'
+      | 'holdPlaylistId' | 'securePlaylistId' | 'medicalPlaylistId';
+    updateMutation.mutate({ screenId, patch: { [apiKey]: playlistId } as any });
+  };
+
+  return (
+    <section className="border-t border-slate-100 pt-5">
+      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1.5">
+        Emergency content for this screen
+      </div>
+      <p className="text-[11px] text-slate-400 leading-relaxed mb-3">
+        Pick which playlist plays on <span className="text-slate-600 font-semibold">this screen only</span> for each emergency type. &ldquo;Use tenant default&rdquo; falls back to the school-wide content for that type.
+      </p>
+      <div className="space-y-2">
+        {TYPES.map((t) => {
+          const current = (screen[t.key] as string | null | undefined) ?? '';
+          return (
+            <div key={String(t.key)} className="flex items-center gap-2">
+              <div className="shrink-0 w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-base" title={t.description}>
+                <span aria-hidden>{t.emoji}</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[11px] font-bold text-slate-700">{t.label}</div>
+                <div className="text-[9px] text-slate-400 truncate" title={t.description}>{t.description}</div>
+              </div>
+              <select
+                value={current}
+                disabled={playlistsLoading || updateMutation.isPending}
+                onChange={(e) => onChange(t, e.target.value)}
+                className="text-[11px] font-medium px-2 py-1.5 rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-rose-300 disabled:bg-slate-50 disabled:text-slate-400 max-w-[180px]"
+                aria-label={`${t.label} content for this screen`}
+              >
+                <option value="">↳ Use tenant default</option>
+                {(playlists || []).map((p: any) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+          );
+        })}
+      </div>
+      {updateMutation.isPending && (
+        <div className="mt-2 text-[10px] text-slate-400 italic flex items-center gap-1">
+          <Loader2 className="w-3 h-3 animate-spin" /> Saving…
+        </div>
+      )}
+      {updateMutation.isError && (
+        <div className="mt-2 text-[10px] text-rose-600">Couldn&rsquo;t save — try again.</div>
+      )}
+    </section>
   );
 }

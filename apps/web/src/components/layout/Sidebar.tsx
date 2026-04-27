@@ -105,11 +105,10 @@ export function Sidebar() {
   // asked for the swap.)
   const navItems = [
     { name: 'Dashboard', href: `/${activeTenant}/dashboard`, icon: LayoutDashboard },
+    // Floor-plans is now a tab inside Screens (List | Floor Plans toggle),
+    // not a standalone sidebar entry — operator pointed out the duplicate
+    // "this is just another way to look at screens" was sidebar bloat.
     { name: 'Screens', href: `/${activeTenant}/screens`, icon: MonitorPlay },
-    // Sprint 8b — indoor floor plans for per-screen emergency targeting.
-    // Sits next to Screens because operators think of it as "another way
-    // to see and manage screens" (location, not list).
-    { name: 'Floor plans', href: `/${activeTenant}/floor-plans`, icon: Map },
     { name: 'Assets', href: `/${activeTenant}/assets`, icon: Upload },
     { name: 'Templates', href: `/${activeTenant}/templates`, icon: LayoutTemplate },
     { name: 'Playlists', href: `/${activeTenant}/playlists`, icon: Folders },
@@ -131,13 +130,15 @@ export function Sidebar() {
   const pendingAssetsQ = usePendingAssets(isAdmin);
   const pendingCount = Array.isArray(pendingAssetsQ.data) ? pendingAssetsQ.data.length : 0;
 
+  // One reviews entry, not two. Operator reported the duplicate
+  // ("Review Queue" + "Reviews") was confusing. The Sprint 1.5
+  // reviewer workflow (bundled submissions) is now the primary path.
+  // Standalone-asset approval still works at /assets/review but isn't
+  // surfaced in the sidebar — submissions cover the workflow gap.
+  // Badge counts BOTH pending sources so operators see a unified
+  // "stuff awaiting your review" number.
   const adminNavItems = [
-    { name: 'Review Queue', href: `/${activeTenant}/assets/review`, icon: ClipboardCheck, badge: pendingCount > 0 ? pendingCount : null },
-    // Sprint 1.5 — submission inbox for the submit-for-review workflow.
-    // Distinct from "Review Queue" (which is just pending assets) — this
-    // is the bundled-submission inbox where contributors submit a
-    // playlist + assets + schedule together for one approval click.
-    { name: 'Reviews', href: `/${activeTenant}/reviews`, icon: ClipboardCheck, badge: null as number | null },
+    { name: 'Reviews', href: `/${activeTenant}/reviews`, icon: ClipboardCheck, badge: pendingCount > 0 ? pendingCount : null },
     { name: 'Audit Log', href: `/${activeTenant}/audit`, icon: FileClock, badge: null as number | null },
   ];
 

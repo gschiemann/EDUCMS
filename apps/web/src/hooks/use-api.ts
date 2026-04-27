@@ -965,6 +965,13 @@ export interface FloorPlanScreen {
   lastPingAt: string | null;
   screenGroupId?: string | null;
   location?: string | null;
+  // Per-screen emergency content config — null means "use tenant default"
+  emergencyLockdownPlaylistId?: string | null;
+  emergencyEvacuatePlaylistId?: string | null;
+  emergencyWeatherPlaylistId?: string | null;
+  emergencyHoldPlaylistId?: string | null;
+  emergencySecurePlaylistId?: string | null;
+  emergencyMedicalPlaylistId?: string | null;
 }
 
 export interface FloorPlanZone {
@@ -1162,6 +1169,37 @@ export function useClearScreenEmergency() {
     onSuccess: (_, screenId) => {
       qc.invalidateQueries({ queryKey: ['screen-emergency-override', screenId] });
       qc.invalidateQueries({ queryKey: ['floor-plans'] });
+    },
+  });
+}
+
+/**
+ * Per-screen emergency content config — declarative, NOT a manual
+ * trigger. Operator picks which playlist plays on this screen for
+ * each of the 6 emergency types. Null = use tenant default.
+ */
+export interface ScreenEmergencyContent {
+  lockdownPlaylistId?: string | null;
+  evacuatePlaylistId?: string | null;
+  weatherPlaylistId?: string | null;
+  holdPlaylistId?: string | null;
+  securePlaylistId?: string | null;
+  medicalPlaylistId?: string | null;
+}
+
+export function useUpdateScreenEmergencyContent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ screenId, patch }: { screenId: string; patch: ScreenEmergencyContent }) =>
+      apiFetch(`/screens/${screenId}/emergency-content`, {
+        method: 'PUT',
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['screens'] });
+      qc.invalidateQueries({ queryKey: ['floor-plans'] });
+      qc.invalidateQueries({ queryKey: ['floor-plan'] });
+      qc.invalidateQueries({ queryKey: ['screen-emergency-override', vars.screenId] });
     },
   });
 }

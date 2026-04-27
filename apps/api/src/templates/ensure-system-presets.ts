@@ -170,6 +170,52 @@ export async function ensureSystemPresets(prisma: PrismaService) {
       logger.warn(`Metadata sync failed: ${(e as Error).message}`);
     }
 
+    // ─── Zone widget-type sync ───
+    // The metadata sync above only touches Template-level fields. When
+    // we cut a new portrait widget (e.g. ANIMATED_HALLWAY_SCHEDULE_PORTRAIT)
+    // and point the existing preset at it, the DB row's child zones
+    // STILL hold the old widgetType ('ANIMATED_HALLWAY_SCHEDULE') and
+    // the player keeps rendering the landscape widget.
+    //
+    // Rule: for every system preset whose source declares a single
+    // full-canvas zone (one zone with widgetType X), force the DB
+    // zone's widgetType to match the source. We only touch the FIRST
+    // zone — if a preset has a multi-zone composition, hand-edits
+    // there are sacred. Single-zone presets are the "themed widget"
+    // class where the one widgetType is the entire thing.
+    //
+    // This is purely a SOURCE→DB push. If an admin somehow rewired a
+    // system preset's zone via direct SQL it gets overwritten on next
+    // boot — but system presets are read-only by contract so that's
+    // the intended behavior.
+    try {
+      let zoneSyncCount = 0;
+      for (const src of ALL_PRESETS) {
+        // Only touch single-zone presets — multi-zone compositions are
+        // out of scope for this auto-sync (those would need per-zone
+        // matching logic).
+        if (!Array.isArray(src.zones) || src.zones.length !== 1) continue;
+        const sourceWidgetType = (src.zones as any)[0]?.widgetType;
+        if (!sourceWidgetType) continue;
+        const updated = await prisma.client.templateZone.updateMany({
+          where: {
+            templateId: src.id,
+            widgetType: { not: sourceWidgetType },
+          },
+          data: { widgetType: sourceWidgetType },
+        });
+        if (updated.count > 0) {
+          zoneSyncCount += updated.count;
+          logger.log(`  ↳ ${src.id}: zone widgetType → ${sourceWidgetType}`);
+        }
+      }
+      if (zoneSyncCount > 0) {
+        logger.log(`Synced widgetType on ${zoneSyncCount} system-preset zone(s).`);
+      }
+    } catch (e) {
+      logger.warn(`Zone widgetType sync failed: ${(e as Error).message}`);
+    }
+
     // ─── Archive presets that were deleted from system-presets.ts or fitness-presets.ts ───
     // Source-of-truth is the ALL_PRESETS array. Any system
     // template row in the DB whose id no longer appears there gets

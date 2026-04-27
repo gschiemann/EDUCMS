@@ -8,6 +8,7 @@ import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
 import { apiFetch } from '@/lib/api-client';
 import { useUIStore } from '@/store/ui-store';
+import { useParams, useRouter } from 'next/navigation';
 import QRCode from 'qrcode';
 import { appConfirm } from '@/components/ui/app-dialog';
 
@@ -277,7 +278,10 @@ export default function ScreensPage() {
   const isViewer = userRole === 'RESTRICTED_VIEWER';
   // Sprint 8 — fleet map view. Toggle persists in URL via search param so a
   // bookmarked map link still opens the map.
-  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'map' | 'floor'>('list');
+  const params = useParams<{ schoolId: string }>();
+  const router = useRouter();
+  const schoolId = params?.schoolId ?? '';
   const updateLocation = useUpdateScreenLocation();
   const flatScreens = useMemo(() => (allScreens || []) as any[], [allScreens]);
 
@@ -456,7 +460,10 @@ export default function ScreensPage() {
           <p className="text-sm text-slate-500 mt-0.5">Pair devices, organize into groups, and manage your display fleet.</p>
         </div>
         <div className="flex gap-2 items-center">
-          {/* Sprint 8 — list/map toggle */}
+          {/* List / Map / Floor plans — three views of the same fleet.
+              Floor plans was its own sidebar entry until 2026-04-27 when
+              the operator pointed out "this is just another way to see
+              screens"; the toggle replaces it cleanly. */}
           <div className="inline-flex bg-slate-100 rounded-lg p-0.5 border border-slate-200">
             <button onClick={() => setViewMode('list')}
               className={`px-3 py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 transition-colors ${viewMode === 'list' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
@@ -465,6 +472,13 @@ export default function ScreensPage() {
             <button onClick={() => setViewMode('map')}
               className={`px-3 py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 transition-colors ${viewMode === 'map' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
               <MapIcon className="w-3.5 h-3.5" /> Map
+            </button>
+            <button
+              onClick={() => router.push(`/${schoolId}/floor-plans`)}
+              className="px-3 py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 text-slate-500 hover:text-slate-700 hover:bg-white/50 transition-colors"
+              title="Open the floor plans editor (drag screens onto a building map)"
+            >
+              <MapPin className="w-3.5 h-3.5" /> Floor plans
             </button>
           </div>
           {/* Per-device OTA push lives inline on each row (download

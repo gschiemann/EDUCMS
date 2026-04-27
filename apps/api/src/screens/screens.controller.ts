@@ -451,6 +451,99 @@ export class ScreensController {
     return updated;
   }
 
+  // ─── Sprint 8b — per-screen emergency content config ───
+  // Lets the operator set, for each of the 6 emergency types
+  // (LOCKDOWN / EVACUATE / WEATHER / HOLD / SECURE / MEDICAL), either:
+  //   • a specific Playlist id  → that playlist plays on THIS screen
+  //                              when this type fires
+  //   • null                    → falls back to Tenant.panic*PlaylistId
+  // The manifest endpoint resolves these per-screen settings BEFORE
+  // the tenant defaults so "different content per room" works without
+  // a manual trigger event.
+  //
+  // Body shape — all 6 keys optional. Pass null to clear an override
+  // (resume tenant default). Unspecified keys are left untouched.
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @Put(':id/emergency-content')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async setEmergencyContent(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: {
+      lockdownPlaylistId?: string | null;
+      evacuatePlaylistId?: string | null;
+      weatherPlaylistId?: string | null;
+      holdPlaylistId?: string | null;
+      securePlaylistId?: string | null;
+      medicalPlaylistId?: string | null;
+    },
+  ) {
+    const tenantId = req.user.tenantId;
+    const screen = await this.prisma.client.screen.findFirst({ where: { id, tenantId } });
+    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+
+    // Validate every supplied playlist id belongs to the same tenant.
+    // Cross-tenant assignment is silently dropped to null with an
+    // audit log entry so we know about it.
+    const ids: string[] = [
+      body.lockdownPlaylistId, body.evacuatePlaylistId, body.weatherPlaylistId,
+      body.holdPlaylistId, body.securePlaylistId, body.medicalPlaylistId,
+    ].filter((v): v is string => typeof v === 'string' && v.length > 0);
+    let validIds = new Set<string>();
+    if (ids.length > 0) {
+      const playlists = await this.prisma.client.playlist.findMany({
+        where: { id: { in: ids }, tenantId },
+        select: { id: true },
+      });
+      validIds = new Set(playlists.map((p) => p.id));
+    }
+    const sanitize = (v: string | null | undefined): string | null | undefined => {
+      if (v === undefined) return undefined;     // leave field untouched
+      if (v === null || v === '') return null;   // clear override
+      return validIds.has(v) ? v : null;         // unknown id → drop to null
+    };
+
+    const data: any = {};
+    if (body.lockdownPlaylistId !== undefined) data.emergencyLockdownPlaylistId = sanitize(body.lockdownPlaylistId);
+    if (body.evacuatePlaylistId !== undefined) data.emergencyEvacuatePlaylistId = sanitize(body.evacuatePlaylistId);
+    if (body.weatherPlaylistId  !== undefined) data.emergencyWeatherPlaylistId  = sanitize(body.weatherPlaylistId);
+    if (body.holdPlaylistId     !== undefined) data.emergencyHoldPlaylistId     = sanitize(body.holdPlaylistId);
+    if (body.securePlaylistId   !== undefined) data.emergencySecurePlaylistId   = sanitize(body.securePlaylistId);
+    if (body.medicalPlaylistId  !== undefined) data.emergencyMedicalPlaylistId  = sanitize(body.medicalPlaylistId);
+
+    const updated = await this.prisma.client.screen.update({
+      where: { id },
+      data,
+      select: {
+        id: true,
+        emergencyLockdownPlaylistId: true,
+        emergencyEvacuatePlaylistId: true,
+        emergencyWeatherPlaylistId: true,
+        emergencyHoldPlaylistId: true,
+        emergencySecurePlaylistId: true,
+        emergencyMedicalPlaylistId: true,
+      } as any,
+    });
+
+    // Audit log — operator changed which playlist plays on a specific
+    // screen during a specific emergency type. Record what they set.
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId,
+          userId: req.user.id,
+          action: 'UPDATE_SCREEN_EMERGENCY_CONTENT',
+          targetType: 'screen',
+          targetId: id,
+          details: JSON.stringify({ patch: data }),
+        },
+      });
+    } catch { /* swallow */ }
+
+    this.notifySync(tenantId);
+    return updated;
+  }
+
   // ─── ADMIN: Push an OTA update check to paired screens ───
   // When an admin clicks "Push APK update" in the dashboard we fire a
   // signed CHECK_FOR_UPDATES WebSocket message scoped to either one
@@ -675,18 +768,39 @@ export class ScreensController {
           return parseInt(m[2], 10) > parseInt(m[1], 10);
         })();
 
+        // Sprint 8b — per-screen emergency content config takes
+        // priority over the tenant defaults. Three tiers, in order:
+        //   1. Per-trigger override `playlistId` (manual incident)
+        //   2. Per-screen config column for THIS emergency type
+        //   3. Tenant-wide panic*PlaylistId for THIS emergency type
+        // Operator can mix-and-match: gym screens can use a custom
+        // "evacuate via north exit" playlist on EVACUATE while every
+        // other screen uses the tenant default — no manual trigger
+        // required, configured once and forgotten.
+        const screenAny = screen as any;
+        const perScreenForType = ((): string | null => {
+          const t = (activeScreenOverride?.type || tenant?.emergencyStatus || '').toUpperCase();
+          switch (t) {
+            case 'LOCKDOWN': return screenAny.emergencyLockdownPlaylistId || null;
+            case 'EVACUATE': return screenAny.emergencyEvacuatePlaylistId || null;
+            case 'WEATHER':  return screenAny.emergencyWeatherPlaylistId  || null;
+            case 'HOLD':     return screenAny.emergencyHoldPlaylistId     || null;
+            case 'SECURE':   return screenAny.emergencySecurePlaylistId   || null;
+            case 'MEDICAL':  return screenAny.emergencyMedicalPlaylistId  || null;
+            default:         return null;
+          }
+        })();
+
         // Pick the playlist for this screen's orientation. Graceful
         // fallback in BOTH directions: a portrait screen uses the
         // landscape playlist if no portrait was configured, and
-        // vice-versa. Admin only has to configure one to get every
-        // screen covered; configuring both is the polished path.
-        // If a per-screen override carries a playlistId, that wins
-        // over the tenant default.
-        const chosenPlaylistId = activeScreenOverride?.playlistId || (
-          isPortrait
+        // vice-versa.
+        const chosenPlaylistId =
+          activeScreenOverride?.playlistId ||                          // 1. manual trigger override
+          perScreenForType ||                                           // 2. per-screen config for this type
+          (isPortrait                                                   // 3. tenant default
             ? (tenant?.emergencyPortraitPlaylistId || tenant?.emergencyPlaylistId || null)
-            : (tenant?.emergencyPlaylistId || tenant?.emergencyPortraitPlaylistId || null)
-        );
+            : (tenant?.emergencyPlaylistId || tenant?.emergencyPortraitPlaylistId || null));
 
         if (chosenPlaylistId) {
           const emergencyPlaylist = await this.prisma.client.playlist.findUnique({
