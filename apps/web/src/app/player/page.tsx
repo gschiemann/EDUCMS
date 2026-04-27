@@ -197,6 +197,33 @@ function getDeviceFingerprint(): string {
   return fp;
 }
 
+/**
+ * Build the heartbeat URL with ?v=&vc= appended when the page knows
+ * its APK version. Operator (2026-04-27): "you literally built .09
+ * for that purpose." Right — except the native HeartbeatService
+ * never actually fires because nothing in the native code writes
+ * device_fingerprint or api_root to SharedPreferences. The web
+ * heartbeats DO fire (that's why kiosks show ONLINE), so this
+ * helper threads the APK version (which the APK passes as ?v= on
+ * the player URL) into the heartbeat URL too. End result: any
+ * APK that passes ?v= on the URL gets its version captured by the
+ * server within one heartbeat cycle (~30s), without depending on
+ * the broken native service.
+ */
+function buildHeartbeatUrl(apiRoot: string, fp: string): string {
+  if (typeof window === 'undefined') return `${apiRoot}/api/v1/screens/status/${fp}`;
+  const params = new URLSearchParams(window.location.search);
+  const v = params.get('v');
+  const vc = params.get('vc');
+  const qs = new URLSearchParams();
+  if (v) qs.set('v', v);
+  if (vc) qs.set('vc', vc);
+  const suffix = qs.toString();
+  return suffix
+    ? `${apiRoot}/api/v1/screens/status/${fp}?${suffix}`
+    : `${apiRoot}/api/v1/screens/status/${fp}`;
+}
+
 function getDeviceInfo() {
   const ua = navigator.userAgent;
   let os = 'Unknown';
@@ -947,7 +974,7 @@ function PlayerPage() {
           if (deviceId) {
             // We need to find the screenId for this fingerprint. Use the
             // status endpoint which is public and returns the screenId.
-            const statusRes = await fetch(`${getApiRoot()}/api/v1/screens/status/${deviceId}`, { cache: 'no-store' });
+            const statusRes = await fetch(buildHeartbeatUrl(getApiRoot(), deviceId), { cache: 'no-store' });
             if (statusRes.ok) {
               const statusData = await statusRes.json();
               setScreenId(statusData.screenId);
@@ -1053,7 +1080,7 @@ function PlayerPage() {
     let pollFails = 0;
     const tick = async () => {
       try {
-        const res = await fetch(`${getApiRoot()}/api/v1/screens/status/${fp}`);
+        const res = await fetch(buildHeartbeatUrl(getApiRoot(), fp));
         if (!res.ok) { pollFails += 1; return; }
         pollFails = 0;
         const data = await res.json();
@@ -1356,7 +1383,7 @@ function PlayerPage() {
     const tick = async () => {
       if (cancelled) return;
       try {
-        await fetch(`${getApiRoot()}/api/v1/screens/status/${fp}`, {
+        await fetch(buildHeartbeatUrl(getApiRoot(), fp), {
           method: 'GET', cache: 'no-store',
         });
       } catch { /* tolerated — next tick retries, forever */ }
@@ -1385,7 +1412,7 @@ function PlayerPage() {
     const fp = getDeviceFingerprint();
     const pingStatus = async () => {
       try {
-        await fetch(`${getApiRoot()}/api/v1/screens/status/${fp}`, {
+        await fetch(buildHeartbeatUrl(getApiRoot(), fp), {
           method: 'GET', cache: 'no-store',
         });
       } catch { /* silently tolerate — WS + next tick will retry */ }
