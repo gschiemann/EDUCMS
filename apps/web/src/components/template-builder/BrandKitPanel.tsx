@@ -5,6 +5,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useTenantBranding } from '@/hooks/use-api';
 import { apiFetch } from '@/lib/api-client';
 import { useBuilderStore } from './useBuilderStore';
+import { pushBrandingPreview } from '@/components/branding/BrandStyleInjector';
+import { useAppStore } from '@/lib/store';
 
 interface BrandingData {
   logoUrl: string | null;
@@ -25,29 +27,90 @@ export function BrandKitPanel() {
   const { data: branding, isLoading, error } = useTenantBranding();
   const [scrapeUrl, setScrapeUrl] = useState('');
   const [scraping, setScraping] = useState(false);
+  const [scrapePhase, setScrapePhase] = useState<'idle' | 'scanning' | 'applying'>('idle');
   const [scrapeError, setScrapeError] = useState<string | null>(null);
   const qc = useQueryClient();
   const updateZone = useBuilderStore((s) => s.updateZone);
   const selectedIds = useBuilderStore((s) => s.selectedIds);
   const zones = useBuilderStore((s) => s.zones);
+  const user = useAppStore((s) => s.user);
 
+  /**
+   * One-click "detect + apply" — scrapes the URL and immediately adopts
+   * the scraped preview. The full BrandingWizard at /settings/branding
+   * lets operators tweak each piece (logo choice, primary color, fonts)
+   * before adopting; the in-builder panel is the fast path that just
+   * snaps a brand kit on so the operator can keep designing.
+   *
+   * Two operator-reported bugs this fixes:
+   *  1. "first it didnt take the url without http" — the input was
+   *     `type="url"` so HTML5 validation silently rejected bare
+   *     hostnames like `e-arc.com`. Switched to `type="text"` and
+   *     auto-prefix `https://` if no scheme is present.
+   *  2. "i added it and it didnt do shit" — old handleScrape called
+   *     /branding/scrape (preview-only) but never /branding/adopt
+   *     (persist), so the panel reloaded with no change. Now scrape
+   *     immediately rolls into adopt and dispatches the live-update
+   *     event so the admin chrome repaints in real time.
+   */
   const handleScrape = async () => {
-    if (!scrapeUrl.trim()) return;
+    const raw = scrapeUrl.trim();
+    if (!raw) return;
+    // Accept "e-arc.com" or "www.e-arc.com" without the scheme.
+    const finalUrl = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+
     setScraping(true);
     setScrapeError(null);
+    setScrapePhase('scanning');
     try {
-      await apiFetch('/branding/scrape', {
+      const preview = await apiFetch<any>('/branding/scrape', {
         method: 'POST',
-        body: JSON.stringify({ url: scrapeUrl }),
+        body: JSON.stringify({ url: finalUrl }),
       });
+
+      // No usable signal back? Tell the operator instead of silently
+      // succeeding into "nothing happened."
+      if (!preview || (!preview.palette && !preview.colors?.length && !preview.logos?.length)) {
+        throw new Error("We couldn't find a logo or palette on that site. Try the school's main homepage URL.");
+      }
+
+      setScrapePhase('applying');
+
+      // Adopt the scraped preview verbatim. The wizard at
+      // /settings/branding is the place to fine-tune choices; the
+      // builder panel goes for "fast and good enough."
+      const adopted = await apiFetch<any>('/branding/adopt', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...preview,
+          // adopt expects palette to be the FINAL palette object —
+          // scraper already returns one, so pass it through. No
+          // logoOverride means it'll pick the top-ranked logo.
+          palette: preview.palette,
+        }),
+      });
+
+      // Push the new branding to BrandStyleInjector (live-repaint) and
+      // seed the LS cache so the next route render reads the new theme
+      // instead of falling back to defaults. Mirror of what the wizard
+      // does on adopt.
+      try {
+        const json = JSON.stringify(adopted.branding);
+        const tenantId = user?.tenantId;
+        if (tenantId) localStorage.setItem(`edu-cms-branding-cache-v1:${tenantId}`, json);
+        else localStorage.setItem('edu-cms-branding-cache-v1', json);
+      } catch {}
+      pushBrandingPreview(adopted.branding);
+
       setScrapeUrl('');
       qc.invalidateQueries({ queryKey: ['tenant-branding'] });
     } catch (err) {
       setScrapeError(
-        err instanceof Error ? err.message : 'Failed to scrape branding'
+        err instanceof Error ? err.message : 'Failed to detect brand. Try the homepage URL.'
       );
     } finally {
       setScraping(false);
+      setScrapePhase('idle');
     }
   };
 
@@ -103,24 +166,37 @@ export function BrandKitPanel() {
             logo, and fonts.
           </div>
           <div className="w-full space-y-2">
+            {/* type="text" not "url" — HTML5 url validation rejects
+                bare hostnames like "e-arc.com" before they can even
+                reach the handler. We add the https:// in JS. */}
             <input
-              type="url"
-              placeholder="https://example.com"
+              type="text"
+              inputMode="url"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              placeholder="yourschool.org or https://www.yourschool.org"
               value={scrapeUrl}
               onChange={(e) => setScrapeUrl(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleScrape()}
-              className="w-full px-2 py-1.5 rounded border border-slate-200 text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              disabled={scraping}
+              className="w-full px-2 py-1.5 rounded border border-slate-200 text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-slate-50 disabled:text-slate-400"
             />
             <button
               onClick={handleScrape}
               disabled={!scrapeUrl.trim() || scraping}
               className="w-full px-2 py-1.5 rounded bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
             >
-              {scraping ? 'Scraping...' : 'Detect brand'}
+              {scrapePhase === 'scanning' ? 'Scanning website…' :
+               scrapePhase === 'applying' ? 'Applying brand…' :
+               'Detect brand'}
             </button>
             {scrapeError && (
-              <div className="text-[11px] text-red-600">{scrapeError}</div>
+              <div className="text-[11px] text-red-600 leading-relaxed">{scrapeError}</div>
             )}
+            <div className="text-[10px] text-slate-400 leading-relaxed pt-1">
+              Need fine-tuning? Open <a href="/settings/branding" className="underline text-indigo-600 hover:text-indigo-700">Settings → Branding</a> to pick logos, tweak colors, and preview before adopting.
+            </div>
           </div>
         </div>
       </div>
