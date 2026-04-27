@@ -376,12 +376,20 @@ class MainActivity : ComponentActivity() {
             ) ?: ""
         } catch (_: Exception) { "" }
 
+        // v1.0.13 — also report Manager APK version when installed,
+        // so dashboard can show both Player + Manager versions per
+        // kiosk via the existing /screens/status heartbeat.
+        val managerVersion = readManagerVersion()
         val builder = Uri.parse(base).buildUpon()
             .appendQueryParameter("client", "android")
             .appendQueryParameter("v", BuildConfig.VERSION_NAME)
+            .appendQueryParameter("vc", BuildConfig.VERSION_CODE.toString())
             .appendQueryParameter("w", wPx.toString())
             .appendQueryParameter("h", hPx.toString())
             .appendQueryParameter("dpr", density.toString())
+        if (managerVersion != null) {
+            builder.appendQueryParameter("mv", managerVersion)
+        }
         if (androidId.isNotBlank()) {
             // Prefix so the web player can tell an APK-provided fp from a
             // browser-generated one in logs / device cards.
@@ -443,6 +451,22 @@ class MainActivity : ComponentActivity() {
                 loadPlayer(token)
             }
         }
+    }
+
+    /**
+     * Look up the installed Manager APK's versionName via
+     * PackageManager. Returns null when Manager isn't installed.
+     * Tries production package first, then debug variant.
+     */
+    @Suppress("DEPRECATION")
+    private fun readManagerVersion(): String? {
+        for (pkg in listOf("com.educms.manager", "com.educms.manager.debug")) {
+            try {
+                val info = packageManager.getPackageInfo(pkg, 0)
+                return info.versionName
+            } catch (_: Exception) { /* try next */ }
+        }
+        return null
     }
 
     private fun deviceInfoJson(): String {

@@ -62,6 +62,10 @@ export class ScreenGroupsController {
             // Same proactive add for the same reason.
             lastCrashAt: true, lastCrashVersion: true,
             lastCrashSource: true, lastCrashMessage: true,
+            // v1.0.13 — Manager APK version (Player heartbeats this
+            // for the kiosk). Add proactively to screen-groups
+            // select for the same dashboard-bug reason.
+            managerVersion: true, managerVersionAt: true,
             // lastCrashStack deliberately omitted from the list
             // endpoint — 8KB per row × N screens is too much for a
             // dashboard that re-fetches every 10s. Stack lives on the

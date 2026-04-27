@@ -307,6 +307,39 @@ export class PlayerOtaController {
     return { versionName: null, versionCode: null, source: 'unknown' };
   }
 
+  /**
+   * GET /api/v1/player/manager-apk/latest
+   *
+   * Returns the URL of the latest published Manager APK as a 302
+   * redirect (or pipes it through if no env override).
+   *
+   * Used by Player's first-launch ManagerBootstrap path so a single
+   * "Download Player APK" trip from the dashboard installs both
+   * Player AND Manager. Player downloads itself first (the operator's
+   * sideload), then on first launch fetches Manager from this URL
+   * and installs it (silently if signage hardware grants
+   * INSTALL_PACKAGES, with one prompt otherwise).
+   *
+   * Same caching semantics as /apk/latest — the resolved release URL
+   * is cached 5 min in-memory to keep us under GitHub's anonymous
+   * 60 req/hr limit.
+   */
+  @Get('manager-apk/latest')
+  async redirectToLatestManagerApk(@Res() res: Response) {
+    try {
+      const url = await resolveLatestManagerReleaseApk();
+      if (url) {
+        res.redirect(302, url);
+        return;
+      }
+    } catch (e: any) {
+      this.logger.warn(`GitHub manager release lookup failed: ${e?.message}`);
+    }
+    res.status(404).json({
+      error: 'No Manager APK is published yet. Tag a manager-v* GitHub Release.',
+    });
+  }
+
   @Get('apk/latest')
   async redirectToLatestApk(@Res() res: Response) {
     // Self-healing: prefer an explicit env override, but fall back to
@@ -405,6 +438,70 @@ const RELEASE_TTL_MS = 5 * 60 * 1000;
 async function resolveLatestReleaseApk(): Promise<string | null> {
   const info = await resolveLatestReleaseInfo();
   return info?.apkUrl ?? null;
+}
+
+// Same pattern as resolveLatestReleaseInfo but for `manager-v*` tags.
+// Cached separately so a Manager release lookup doesn't bust the
+// Player-release cache and vice versa.
+let managerReleaseCache: { url: string | null; fetchedAt: number } | null = null;
+async function resolveLatestManagerReleaseApk(): Promise<string | null> {
+  const now = Date.now();
+  if (managerReleaseCache && now - managerReleaseCache.fetchedAt < RELEASE_TTL_MS) {
+    return managerReleaseCache.url;
+  }
+  const repo = process.env.PLAYER_APK_GITHUB_REPO || 'gschiemann/EDUCMS';
+  const resp = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=30`, {
+    headers: { 'User-Agent': 'edu-cms-player-ota' },
+  });
+  if (!resp.ok) {
+    managerReleaseCache = { url: null, fetchedAt: now };
+    return null;
+  }
+  const allReleases = await resp.json() as Array<{
+    tag_name?: string;
+    name?: string;
+    draft?: boolean;
+    prerelease?: boolean;
+    assets?: Array<{ name: string; browser_download_url: string }>;
+  }>;
+  if (!Array.isArray(allReleases)) {
+    managerReleaseCache = { url: null, fetchedAt: now };
+    return null;
+  }
+  const managerReleases = allReleases
+    .filter((r) => {
+      if (r.draft || r.prerelease) return false;
+      const tag = (r.tag_name || r.name || '').trim();
+      return tag.startsWith('manager-v');
+    })
+    .map((r) => {
+      const tag = (r.tag_name || r.name || '').trim();
+      const versionStr = tag.replace(/^manager-v/, '');
+      const m = versionStr.match(/^(\d+)\.(\d+)\.(\d+)/);
+      const sortKey = m
+        ? parseInt(m[1], 10) * 1_000_000 + parseInt(m[2], 10) * 1_000 + parseInt(m[3], 10)
+        : 0;
+      return { release: r, sortKey };
+    })
+    .filter((x) => x.sortKey > 0)
+    .sort((a, b) => b.sortKey - a.sortKey);
+
+  if (managerReleases.length === 0) {
+    managerReleaseCache = { url: null, fetchedAt: now };
+    return null;
+  }
+  const release = managerReleases[0].release;
+  const assets = release.assets || [];
+  const pick = (pred: (name: string) => boolean) =>
+    assets.find((a) => pred(a.name.toLowerCase()));
+  const chosen =
+    pick((n) => n.includes('arm64-v8a') && n.endsWith('.apk')) ||
+    pick((n) => n.includes('universal') && n.endsWith('.apk')) ||
+    pick((n) => n.includes('armeabi-v7a') && n.endsWith('.apk')) ||
+    pick((n) => n.endsWith('.apk') && !n.includes('x86'));
+  const url = chosen?.browser_download_url ?? null;
+  managerReleaseCache = { url, fetchedAt: now };
+  return url;
 }
 
 // Richer release lookup used by /update-check — returns the APK URL,

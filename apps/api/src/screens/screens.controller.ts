@@ -203,6 +203,7 @@ export class ScreensController {
     @Param('deviceFingerprint') fingerprint: string,
     @Query('v') versionName?: string,
     @Query('vc') versionCode?: string,
+    @Query('mv') managerVersionName?: string,
     @Request() req?: any,
   ) {
     // Preview fingerprints must never write lastPingAt — they would push
@@ -237,6 +238,16 @@ export class ScreensController {
       data.playerVersionAt = new Date();
       const vc = Number(versionCode);
       if (Number.isFinite(vc) && vc > 0) data.playerVersionCode = vc;
+    }
+    // v1.0.13 — Manager APK version, queried by Player via
+    // PackageManager and passed as ?mv=. Empty string means
+    // "Manager not installed" (vs absent which means "old Player
+    // doesn't know about Manager"). We treat both as no-update so
+    // we don't accidentally clear a previously-reported value.
+    const mv = (managerVersionName || '').trim();
+    if (mv) {
+      data.managerVersion = mv;
+      data.managerVersionAt = new Date();
     }
     // Diagnostic — operator caught dashboard chip stuck blank on
     // 2026-04-27 even with v1.0.11 installed. Log every heartbeat

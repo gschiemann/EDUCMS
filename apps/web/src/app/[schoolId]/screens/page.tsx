@@ -120,6 +120,11 @@ function PlayerKindChip({ screen }: { screen: any }) {
   const rawV: string | null = screen?.playerVersion ?? null;
   const v = rawV ? rawV.replace(/-debug$/, '') : null;
   const at: string | null = screen?.playerVersionAt ?? null;
+  // v1.0.13 — Manager APK version (Player heartbeats &mv= when
+  // Manager is installed). Renders as a smaller secondary chip.
+  const rawMv: string | null = screen?.managerVersion ?? null;
+  const mv = rawMv ? rawMv.replace(/-debug$/, '') : null;
+  const mvAt: string | null = screen?.managerVersionAt ?? null;
   const osInfo: string = (screen?.osInfo || '').toLowerCase();
   const browser: string = (screen?.browserInfo || '').toLowerCase();
 
@@ -128,21 +133,38 @@ function PlayerKindChip({ screen }: { screen: any }) {
 
   if (isAndroidApk) {
     return (
-      <span
-        className={`${baseClass} ${v
-          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-          : 'bg-amber-50 text-amber-700 border border-amber-200'}`}
-        title={v
-          ? `Android Player v${v}${at ? ` · reported ${fullDateTime(at)}` : ''}`
-          : 'Android Player — version not reported yet (next heartbeat ~30s)'}
-      >
-        {/* Official Android bot mascot — full simpleicons.org path,
-            recognizable at 12px. The signature half-circle head with
-            antennae + two eye dots reads as Android instantly. */}
-        <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5" aria-hidden>
-          <path d="M17.523 15.3414c-.5511 0-.9993-.4486-.9993-1.0019 0-.5511.4486-.9993.9993-.9993.5511 0 .9993.4486.9993.9993.0001.5533-.4482 1.0019-.9993 1.0019m-11.046 0c-.5511 0-.9993-.4486-.9993-1.0019 0-.5511.4486-.9993.9993-.9993.5511 0 .9993.4486.9993.9993 0 .5533-.4482 1.0019-.9993 1.0019m11.4045-6.02l1.9973-3.4592a.416.416 0 00-.1521-.5676.416.416 0 00-.5676.1521l-2.0223 3.503C15.5902 8.2439 13.8533 7.8508 12 7.8508s-3.5902.3931-5.1357 1.0993L4.841 5.4471a.4161.4161 0 00-.5676-.1521.4161.4161 0 00-.1521.5676l1.9973 3.4592C2.6889 11.1867.3432 14.6589 0 18.761h24c-.3432-4.1021-2.6889-7.5743-6.1185-9.4396"/>
-        </svg>
-        {v ? `v${v}` : '—'}
+      <span className="inline-flex items-center gap-1.5 flex-wrap">
+        <span
+          className={`${baseClass} ${v
+            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+            : 'bg-amber-50 text-amber-700 border border-amber-200'}`}
+          title={v
+            ? `Android Player v${v}${at ? ` · reported ${fullDateTime(at)}` : ''}`
+            : 'Android Player — version not reported yet (next heartbeat ~30s)'}
+        >
+          {/* Official Android bot mascot — full simpleicons.org path,
+              recognizable at 12px. The signature half-circle head with
+              antennae + two eye dots reads as Android instantly. */}
+          <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5" aria-hidden>
+            <path d="M17.523 15.3414c-.5511 0-.9993-.4486-.9993-1.0019 0-.5511.4486-.9993.9993-.9993.5511 0 .9993.4486.9993.9993.0001.5533-.4482 1.0019-.9993 1.0019m-11.046 0c-.5511 0-.9993-.4486-.9993-1.0019 0-.5511.4486-.9993.9993-.9993.5511 0 .9993.4486.9993.9993 0 .5533-.4482 1.0019-.9993 1.0019m11.4045-6.02l1.9973-3.4592a.416.416 0 00-.1521-.5676.416.416 0 00-.5676.1521l-2.0223 3.503C15.5902 8.2439 13.8533 7.8508 12 7.8508s-3.5902.3931-5.1357 1.0993L4.841 5.4471a.4161.4161 0 00-.5676-.1521.4161.4161 0 00-.1521.5676l1.9973 3.4592C2.6889 11.1867.3432 14.6589 0 18.761h24c-.3432-4.1021-2.6889-7.5743-6.1185-9.4396"/>
+          </svg>
+          {v ? `v${v}` : '—'}
+        </span>
+        {/* Manager version chip — only renders when Manager is
+            installed. Smaller + slate styling so it visually
+            subordinates to the Player chip. Shield icon reads as
+            "guardian" (Manager is the device-admin / OTA supervisor). */}
+        {mv && (
+          <span
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide bg-slate-100 text-slate-600 border border-slate-200"
+            title={`EduCMS Manager v${mv}${mvAt ? ` · reported ${fullDateTime(mvAt)}` : ''}`}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3" aria-hidden>
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+            mgr v{mv}
+          </span>
+        )}
       </span>
     );
   }

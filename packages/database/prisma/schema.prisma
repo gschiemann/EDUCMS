@@ -394,6 +394,12 @@ model Screen {
   lastCrashSource  String?   @map("last_crash_source")
   lastCrashMessage String?   @map("last_crash_message")
   lastCrashStack   String?   @map("last_crash_stack")
+  // v1.0.13 — Manager APK version (companion to Player). Reported
+  // by Player's heartbeat which queries Manager via PackageManager
+  // (Manager itself doesn't heartbeat — keeps the Manager codebase
+  // small and avoids two network connections per kiosk).
+  managerVersion   String?   @map("manager_version")
+  managerVersionAt DateTime? @map("manager_version_at")
   // Sprint 8b operator-config layer for the 6 emergency types (LOCKDOWN /
   // EVACUATE / WEATHER / HOLD / SECURE / MEDICAL).
   // For each type the operator can:

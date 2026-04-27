@@ -14,6 +14,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.educms.player.bootstrap.ManagerBootstrap
 import com.educms.player.crash.CrashUploader
 import com.educms.player.heartbeat.HeartbeatService
 import com.educms.player.heartbeat.ManagerHeartbeatPublisher
@@ -64,6 +65,15 @@ class PlayerApp : Application() {
         scheduleOtaWorker()
         startManagerHeartbeat()
         installCrashHandler()
+        // v1.0.13 — single-sideload UX: if Manager APK isn't installed,
+        // fetch it from /api/v1/player/manager-apk/latest and install
+        // via PackageInstaller. On signage hardware (Goodview etc.)
+        // that pre-grants INSTALL_PACKAGES, this is silent. Otherwise
+        // the operator gets one system "Install" prompt for Manager
+        // (same UX as today's Player OTAs). Idempotent — no-op if
+        // Manager is already installed. Non-blocking; runs on a
+        // background coroutine so app startup isn't delayed.
+        ManagerBootstrap.bootstrapIfNeeded(this)
         PlayerLogger.i("PlayerApp", "All background services started successfully")
     }
 
