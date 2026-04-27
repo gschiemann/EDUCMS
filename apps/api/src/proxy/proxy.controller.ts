@@ -100,6 +100,51 @@ export class ProxyController {
       // mine because later tags win. Drop it so our injection sticks.
       html = html.replace(/<meta[^>]*name\s*=\s*["']?color-scheme["']?[^>]*>/gi, '');
 
+      // Lazy-load fix: WPRocket / WP-Smush / native lazy / Lighthouse
+      // optimizers swap <img src="…"> for <img data-lazy-src="…">
+      // and reveal it via JS. Our proxy strips JS, so without this
+      // rewrite the images stay invisible and the hero/top section
+      // looks empty. Operator (2026-04-27): "the URL is still showing
+      // black background and white text which is not what the website
+      // has... fix just the top section of this website so we can
+      // have it visible with images."
+      //
+      // We promote every common lazy attribute to its real form
+      // BEFORE the browser parses the HTML, so the image loads on
+      // first paint with no JS required.
+      // Covers: WPRocket, Smush, Lazy Load by WP Rocket, jQuery
+      // lazyload, lazysizes, native loading="lazy" (no rewrite
+      // needed; just for noscript fallbacks).
+      const lazyAttrs = [
+        'data-lazy-src',
+        'data-src',
+        'data-lazyload',
+        'data-original',
+        'data-srcset',
+        'data-lazy-srcset',
+      ];
+      for (const attr of lazyAttrs) {
+        const target = attr.replace(/^data-/, '').replace('lazy-', '').replace('original', 'src').replace('lazyload', 'src');
+        const realAttr = target === 'src' || target === 'srcset' ? target : 'src';
+        // <img data-lazy-src="…" /> → <img src="…" />
+        html = html.replace(
+          new RegExp(`(<(?:img|source|video|audio|iframe)\\b[^>]*?)\\s${attr}\\s*=\\s*(["'])([^"']*)\\2`, 'gi'),
+          `$1 ${realAttr}="$3"`,
+        );
+      }
+      // Strip the now-redundant lazy-load placeholder src that some
+      // plugins insert (a 1×1 transparent gif). Without removing it,
+      // the placeholder paints over the real image until JS runs.
+      html = html.replace(
+        /(<(?:img|source)\b[^>]*?)\ssrc\s*=\s*(["'])data:image\/[^"']*\2/gi,
+        '$1',
+      );
+
+      // Force-render lazy sections. WPRocket marks below-the-fold
+      // sections with data-wpr-lazyrender="1" and reveals them when
+      // scrolled into view. With JS stripped they never render.
+      // Our injected style below makes them visible immediately.
+
       // Force light color-scheme inside the iframe. Operator
       // (2026-04-27): "it changed the section from white background
       // with black text to a black background and white text."
@@ -116,7 +161,32 @@ export class ProxyController {
       // false even when the parent OS is in dark mode. Sites that
       // are intentionally dark-themed (no media query — just dark
       // CSS as the default) are unaffected.
-      const headInjection = `<base href="${baseUrl}"><meta name="color-scheme" content="light only"><style>:root{color-scheme:light only !important;}</style>`;
+      // Style injection — light color-scheme + force lazy-rendered
+      // sections visible (since the JS that would reveal them is
+      // stripped). Inline so it's present on first paint with no
+      // network round-trip.
+      const proxyForceVisibleCss = `:root{color-scheme:light only !important;}` +
+        // Lazy-render placeholders (WPRocket): force visible.
+        `[data-wpr-lazyrender]{content-visibility:visible !important;display:revert !important;}` +
+        // jQuery / lazysizes "lazyload" class: force visible.
+        `.lazyload,.lazyloaded,.lazyloading{opacity:1 !important;display:revert !important;}` +
+        // Hidden-by-JS until-rendered patterns common on Alpine.js sites.
+        `[x-cloak]{display:revert !important;}` +
+        // WordPress lazyload-img class some themes use to fade in.
+        `img[data-lazy-loaded='0']{opacity:1 !important;}` +
+        // Last resort: any element styled display:none INLINE on initial
+        // load is almost certainly waiting on JS to reveal — un-hide.
+        // Scoped to the body so we don't break page-level <style> blocks.
+        `body [style*="display:none"]:not(noscript):not(script):not(style):not(template):not(meta):not(link){display:revert !important;}` +
+        `body [style*="display: none"]:not(noscript):not(script):not(style):not(template):not(meta):not(link){display:revert !important;}` +
+        `body [style*="visibility:hidden"]{visibility:visible !important;}` +
+        `body [style*="visibility: hidden"]{visibility:visible !important;}` +
+        // Force white background as the base canvas — neutralizes any
+        // .has-black-background-color classes that fire BEFORE the page
+        // has a chance to set its own theme via JS. Operator-confirmed
+        // light render on e-arc.com.
+        `html,body{background-color:#fff !important;color:#222 !important;}`;
+      const headInjection = `<base href="${baseUrl}"><meta name="color-scheme" content="light only"><style>${proxyForceVisibleCss}</style>`;
       if (html.includes('<head>')) {
         html = html.replace('<head>', `<head>\n${headInjection}`);
       } else if (html.includes('<HEAD>')) {
