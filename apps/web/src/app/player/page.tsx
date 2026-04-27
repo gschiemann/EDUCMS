@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo, Component, ReactNode } from 'react';
 import '@/components/widgets/variants-register'; // Boot-time registration for custom themes
-import { MonitorPlay, Wifi, WifiOff, AlertTriangle, Loader2, Settings, CheckCircle2, HardDrive, Cpu, Server, Network, Play, Monitor, Info, Power } from 'lucide-react';
+import { MonitorPlay, Wifi, WifiOff, AlertTriangle, Loader2, Settings, CheckCircle2, HardDrive, Cpu, Server, Network, Play, Monitor, Info, Power, RefreshCw, Download, LogOut } from 'lucide-react';
 import { KioskSplash, type LoadProgress } from '@/components/player/KioskSplash';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import {
@@ -769,6 +769,24 @@ function PlayerPage() {
     };
     window.addEventListener('edu-show-stop-overlay', onShowStop as EventListener);
     return () => window.removeEventListener('edu-show-stop-overlay', onShowStop as EventListener);
+  }, []);
+
+  // Latest published APK version — fetched once at boot, used by the
+  // post-pair splash to show "Update available" + Install button.
+  // Operator (2026-04-27): "this is also the screen that should show
+  // when an upgrade is available and also allow me to kick it off."
+  const [latestApkVersion, setLatestApkVersion] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${getApiRoot()}/api/v1/player/latest-version`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && data?.versionName) setLatestApkVersion(String(data.versionName));
+      } catch { /* tolerated */ }
+    })();
+    return () => { cancelled = true; };
   }, []);
   // Tick to drive stage advancement on the overlay. We avoid a tight
   // setInterval; one tick every 5s is enough to advance through the
@@ -2341,13 +2359,49 @@ function PlayerPage() {
             <p className="text-lg font-medium text-slate-500 mt-2 mb-10 text-center">Waiting for a schedule to be assigned from the dashboard...</p>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl mb-10">
-              {/* Device Card */}
+              {/* Device Card — operator (2026-04-27): "this is the
+                  splash screen after pairing, this is where i want it
+                  to show the APK version, and also it says chrome but
+                  this is a android device." Detection rule: if the
+                  page URL has ?v= (passed by the Android APK in
+                  MainActivity) → it's the Android player. Otherwise
+                  fall back to the userAgent string for browser-only
+                  players. */}
               <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col items-center text-center">
                 <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center mb-4">
                   <Monitor className="w-6 h-6 text-indigo-500" />
                 </div>
                 <h3 className="text-sm font-bold text-slate-800">{screenName || 'Display Screen'}</h3>
-                <p className="text-xs font-semibold text-slate-400 mt-1">{typeof window !== 'undefined' ? (() => { const qp=new URLSearchParams(window.location.search); const w=parseInt(qp.get('w')||'0',10)||window.screen.width; const h=parseInt(qp.get('h')||'0',10)||window.screen.height; return `${w}×${h}`; })() : 'Unknown'} • {typeof navigator !== 'undefined' ? (navigator.userAgent.includes('Chrome') ? 'Chrome' : 'Other') : ''}</p>
+                {(() => {
+                  const qp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+                  const w = qp ? (parseInt(qp.get('w') || '0', 10) || window.screen.width) : 0;
+                  const h = qp ? (parseInt(qp.get('h') || '0', 10) || window.screen.height) : 0;
+                  const apkV = qp?.get('v') || null;
+                  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+                  // Real platform — APK presence (?v=) wins. Don't say
+                  // "Chrome" on a kiosk just because the WebView UA
+                  // contains the word.
+                  const platform = apkV
+                    ? 'Android'
+                    : /android/i.test(ua) ? 'Android'
+                    : /iphone|ipad|ipod/i.test(ua) ? 'iOS'
+                    : /windows/i.test(ua) ? 'Windows'
+                    : /mac/i.test(ua) ? 'macOS'
+                    : /linux/i.test(ua) ? 'Linux'
+                    : 'Browser';
+                  return (
+                    <>
+                      <p className="text-xs font-semibold text-slate-400 mt-1">
+                        {w && h ? `${w}×${h}` : 'Unknown'} • {platform}
+                      </p>
+                      {apkV && (
+                        <p className="text-[11px] font-semibold text-slate-500 mt-1">
+                          Player <span className="text-slate-700 font-bold">v{apkV}</span>
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
                 <div className="mt-4 flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-bold">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Online
                 </div>
@@ -2376,7 +2430,88 @@ function PlayerPage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-center gap-4">
+            {/* Update Available card — operator (2026-04-27): "this is
+                also the screen that should show when an upgrade is
+                available and also allow me to kick it off, and also
+                show the complete status of the upgrade whether i
+                trigger it from here or if i push it... feedback
+                should be from this screen."
+                Compares the APK version (?v= on URL) to the latest
+                published GitHub Release. Renders only when the kiosk
+                is behind. The Install button calls
+                EduCmsNative.checkForUpdates() — same path as the
+                dashboard's Push button. */}
+            {(() => {
+              const apkV = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('v') : null;
+              if (!apkV || !latestApkVersion) return null;
+              // Simple semver-ish compare. If kiosk is at or past
+              // latest, no card. Inflight push (otaProgress is set)
+              // takes the card over so we don't show "install" while
+              // an install is already running.
+              const norm = (v: string) => v.replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0);
+              const a = norm(apkV);
+              const b = norm(latestApkVersion);
+              let isBehind = false;
+              const len = Math.max(a.length, b.length);
+              for (let i = 0; i < len; i++) {
+                const x = a[i] ?? 0;
+                const y = b[i] ?? 0;
+                if (x < y) { isBehind = true; break; }
+                if (x > y) break;
+              }
+              if (otaProgress) {
+                // Show inline OTA progress in the same slot.
+                const elapsed = Date.now() - otaProgress.startedAt;
+                const stage =
+                  elapsed < 15_000  ? { emoji: '📡', label: 'Sending update signal…' } :
+                  elapsed < 60_000  ? { emoji: '⬇️', label: 'Downloading new player…' } :
+                  elapsed < 150_000 ? { emoji: '⚙️', label: 'Installing… (Android prompt may show)' } :
+                  elapsed < 300_000 ? { emoji: '🔄', label: 'Restarting + reporting back…' } :
+                                       { emoji: '⏱', label: 'No response after 5 minutes — retry on next reboot' };
+                return (
+                  <div className="w-full max-w-3xl mb-8 rounded-2xl bg-indigo-50 border border-indigo-200 p-5 flex items-center gap-4">
+                    <span className="text-4xl shrink-0">{stage.emoji}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-bold text-indigo-900">Update in progress</div>
+                      <div className="text-xs text-indigo-700 mt-0.5">{stage.label}</div>
+                    </div>
+                  </div>
+                );
+              }
+              if (!isBehind) return null;
+              return (
+                <div className="w-full max-w-3xl mb-8 rounded-2xl bg-amber-50 border border-amber-200 p-5 flex items-center gap-4">
+                  <span className="text-4xl shrink-0">⬆️</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold text-amber-900">Update available</div>
+                    <div className="text-xs text-amber-700 mt-0.5">
+                      Player <span className="font-mono font-bold">v{latestApkVersion}</span> is ready to install (you&rsquo;re on <span className="font-mono">v{apkV}</span>).
+                    </div>
+                  </div>
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      // Mirror the dashboard's Push flow on-device:
+                      // 1) Show progress overlay so operator sees stages.
+                      // 2) Call native bridge to trigger OTA worker.
+                      const bridge = (window as any).EduCmsNative;
+                      const bridgeAvailable = !!(bridge && typeof bridge.checkForUpdates === 'function');
+                      setOtaProgress({ startedAt: Date.now(), bridgeAvailable });
+                      if (bridgeAvailable) {
+                        try { bridge.checkForUpdates(); } catch (err) {
+                          console.warn('[Player] self-update bridge call failed', err);
+                        }
+                      }
+                    }}
+                    className="shrink-0 px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold rounded-xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative"
+                  >
+                    <Download className="w-4 h-4" /> Install now
+                  </button>
+                </div>
+              );
+            })()}
+
+            <div className="flex flex-wrap items-center justify-center gap-3">
               <button onClick={async (e) => {
                 e.stopPropagation();
                 const ok = await appConfirm({
@@ -2390,21 +2525,32 @@ function PlayerPage() {
                   setPhase('registering');
                   setShowOverlay(false);
                 }
-              }} className="px-6 py-3 bg-white border border-slate-200 hover:border-red-100 hover:bg-red-50 text-slate-700 hover:text-red-600 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative group">
-                <Power className="w-5 h-5 text-slate-400 group-hover:text-red-500" /> Unpair Device
+              }} className="px-5 py-2.5 bg-white border border-slate-200 hover:border-red-100 hover:bg-red-50 text-slate-700 hover:text-red-600 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative group">
+                <Power className="w-4 h-4 text-slate-400 group-hover:text-red-500" /> Unpair
               </button>
-              <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="px-6 py-3 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative">
-                <Network className="w-5 h-5 text-slate-400" /> Ping Server
+              {/* Renamed from "Ping Server" — what it actually does is
+                  re-fetch the manifest. "Sync now" matches the
+                  language ops use elsewhere in the app. Operator
+                  (2026-04-27) called out the old name as opaque. */}
+              <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative" title="Re-fetch the playlist + assets from the server right now">
+                <RefreshCw className="w-4 h-4 text-slate-400" /> Sync now
+              </button>
+              {/* Exit to device launcher — operator (2026-04-27): "we
+                  should have an exit button on the screen too." Uses
+                  the same handleExitApp cascade defined above
+                  (native bridge → window.close → splash hint). */}
+              <button onClick={(e) => { e.stopPropagation(); handleExitApp(); }} className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative">
+                <LogOut className="w-4 h-4 text-slate-400" /> Exit
               </button>
               <button onClick={async (e) => {
                 e.stopPropagation();
                 await appAlert({
                   title: 'Nothing to play yet',
-                  message: 'No assigned content is currently queued for this screen. Schedule a playlist from the dashboard, then tap Ping Server to refresh.',
+                  message: 'No assigned content is currently queued for this screen. Schedule a playlist from the dashboard, then tap Sync now to refresh.',
                   tone: 'info',
                 });
-              }} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-2xl transition-all shadow-[0_8px_20px_rgb(99,102,241,0.3)] hover:shadow-[0_8px_25px_rgb(99,102,241,0.4)] hover:-translate-y-0.5 flex items-center gap-2 focus:scale-95 z-20 relative">
-                <Play className="w-5 h-5 fill-current" /> Auto-Play
+              }} className="px-7 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-2xl transition-all shadow-[0_8px_20px_rgb(99,102,241,0.3)] hover:shadow-[0_8px_25px_rgb(99,102,241,0.4)] hover:-translate-y-0.5 flex items-center gap-2 focus:scale-95 z-20 relative">
+                <Play className="w-4 h-4 fill-current" /> Auto-Play
               </button>
             </div>
           </div>
