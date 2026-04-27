@@ -122,6 +122,17 @@ import { HsTerminalPortraitWidget } from './hs/HsTerminalPortraitWidget';
 import { HsTransitPortraitWidget } from './hs/HsTransitPortraitWidget';
 import { HsYearbookPortraitWidget } from './hs/HsYearbookPortraitWidget';
 import { HsZinePortraitWidget } from './hs/HsZinePortraitWidget';
+// Sprint 11i FINAL wave (2026-04-27): 8 themed-cafeteria + hallway
+// portraits — closes out the LETTERBOXED denylist. Catalog is now
+// 100% real-portrait when the preset is marked PORTRAIT.
+import { BulletinCafeteriaPortraitWidget } from './BulletinCafeteriaPortraitWidget';
+import { BulletinHallwayPortraitWidget } from './BulletinHallwayPortraitWidget';
+import { AnimatedCafeteriaHighPortraitWidget } from './AnimatedCafeteriaHighPortraitWidget';
+import { AnimatedCafeteriaChalkboardPortraitWidget } from './AnimatedCafeteriaChalkboardPortraitWidget';
+import { ScrapbookCafeteriaPortraitWidget } from './ScrapbookCafeteriaPortraitWidget';
+import { ScrapbookHallwayPortraitWidget } from './ScrapbookHallwayPortraitWidget';
+import { StorybookCafeteriaPortraitWidget } from './StorybookCafeteriaPortraitWidget';
+import { StorybookHallwayPortraitWidget } from './StorybookHallwayPortraitWidget';
 // Sprint 11h pre-launch: drag-drop animations as a generic decoration widget.
 import { DecorationWidget } from './DecorationWidget';
 // Holiday lobby pack — Halloween, Thanksgiving, Christmas, Valentine's,
@@ -307,7 +318,9 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'ANIMATED_CAFETERIA_MS':         return <AnimatedCafeteriaMiddleWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA_MS_PORTRAIT': return <AnimatedCafeteriaMiddlePortraitWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA_HS':         return <AnimatedCafeteriaHighWidget config={cfg} live={live} />;
+    case 'ANIMATED_CAFETERIA_HS_PORTRAIT': return <AnimatedCafeteriaHighPortraitWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA_CHALKBOARD': return <AnimatedCafeteriaChalkboardWidget config={cfg} live={live} />;
+    case 'ANIMATED_CAFETERIA_CHALKBOARD_PORTRAIT': return <AnimatedCafeteriaChalkboardPortraitWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA_FOODTRUCK':  return <AnimatedCafeteriaFoodtruckWidget config={cfg} live={live} />;
     case 'ANIMATED_CAFETERIA_FOODTRUCK_PORTRAIT': return <AnimatedCafeteriaFoodtruckPortraitWidget config={cfg} live={live} />;
     case 'ANIMATED_BUS_BOARD':            return <AnimatedBusBoardWidget config={cfg} live={live} />;
@@ -323,11 +336,17 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'ANIMATED_ACHIEVEMENT_SHOWCASE': return <AnimatedAchievementShowcaseWidget config={cfg} live={live} />;
     case 'ANIMATED_ACHIEVEMENT_SHOWCASE_PORTRAIT': return <AnimatedAchievementShowcasePortraitWidget config={cfg} live={live} />;
     case 'SCRAPBOOK_HALLWAY':             return <ScrapbookHallwayWidget config={cfg} live={live} />;
+    case 'SCRAPBOOK_HALLWAY_PORTRAIT':    return <ScrapbookHallwayPortraitWidget config={cfg} live={live} />;
     case 'SCRAPBOOK_CAFETERIA':           return <ScrapbookCafeteriaWidget config={cfg} live={live} />;
+    case 'SCRAPBOOK_CAFETERIA_PORTRAIT':  return <ScrapbookCafeteriaPortraitWidget config={cfg} live={live} />;
     case 'STORYBOOK_HALLWAY':             return <StorybookHallwayWidget config={cfg} live={live} />;
+    case 'STORYBOOK_HALLWAY_PORTRAIT':    return <StorybookHallwayPortraitWidget config={cfg} live={live} />;
     case 'STORYBOOK_CAFETERIA':           return <StorybookCafeteriaWidget config={cfg} live={live} />;
+    case 'STORYBOOK_CAFETERIA_PORTRAIT':  return <StorybookCafeteriaPortraitWidget config={cfg} live={live} />;
     case 'BULLETIN_HALLWAY':              return <BulletinHallwayWidget config={cfg} live={live} />;
+    case 'BULLETIN_HALLWAY_PORTRAIT':     return <BulletinHallwayPortraitWidget config={cfg} live={live} />;
     case 'BULLETIN_CAFETERIA':            return <BulletinCafeteriaWidget config={cfg} live={live} />;
+    case 'BULLETIN_CAFETERIA_PORTRAIT':   return <BulletinCafeteriaPortraitWidget config={cfg} live={live} />;
     case 'ANIMATED_BACKGROUND':           return <AnimatedBackgroundWidget config={cfg} />;
     // ── Fitness vertical widgets ──
     case 'FITNESS_MUSIC_PLAYER':          return <FitnessMusicPlayerWidget config={cfg} live={live} />;

@@ -87,39 +87,11 @@ const SCHOOL_LEVEL_CHIPS = [
  * Tracked separately from `system-presets.ts` so re-shipping a portrait
  * variant doesn't require a schema field — just delete the id here.
  */
-const LETTERBOXED_PORTRAIT_PRESETS: ReadonlySet<string> = new Set([
-  // Real portraits shipped — keeping the comments so future agents
-  // know which ones are intentionally absent from this list:
-  //   Pre-demo wave 1 (2026-04-27, commit 50e2a2b):
-  //   - preset-achievement-showcase-portrait      (ANIMATED_ACHIEVEMENT_SHOWCASE_PORTRAIT)
-  //   - preset-bell-schedule-portrait             (ANIMATED_BELL_SCHEDULE_PORTRAIT)
-  //   - preset-bus-board-portrait                 (ANIMATED_BUS_BOARD_PORTRAIT)
-  //   - preset-cafeteria-animated-elementary-portrait (ANIMATED_CAFETERIA_PORTRAIT)
-  //   - preset-cafeteria-foodtruck-portrait       (ANIMATED_CAFETERIA_FOODTRUCK_PORTRAIT)
-  //   - preset-hallway-schedule-portrait          (ANIMATED_HALLWAY_SCHEDULE_PORTRAIT)
-  //   - preset-hs-blueprint-portrait              (HS_BLUEPRINT_PORTRAIT)
-  //   - preset-hs-varsity-portrait                (HS_VARSITY_PORTRAIT)
-  //   - preset-lobby-animated-high-portrait       (ANIMATED_WELCOME_HS_PORTRAIT)
-  //   - preset-main-entrance-portrait             (ANIMATED_MAIN_ENTRANCE_PORTRAIT)
-  //   - preset-morning-news-portrait              (ANIMATED_MORNING_NEWS_PORTRAIT)
-  //   Pre-demo wave 2 (2026-04-27):
-  //   - preset-cafeteria-animated-middle-portrait (ANIMATED_CAFETERIA_MS_PORTRAIT)
-  //   - preset-hs-broadcast-portrait              (HS_BROADCAST_PORTRAIT)
-  //   - preset-hs-gallery-portrait                (HS_GALLERY_PORTRAIT)
-  //   - preset-hs-terminal-portrait               (HS_TERMINAL_PORTRAIT)
-  //   - preset-hs-transit-portrait                (HS_TRANSIT_PORTRAIT)
-  //   - preset-hs-yearbook-portrait               (HS_YEARBOOK_PORTRAIT)
-  //   - preset-hs-zine-portrait                   (HS_ZINE_PORTRAIT)
-  //   - preset-lobby-animated-middle-portrait     (ANIMATED_WELCOME_MS_PORTRAIT)
-  'preset-bulletin-cafeteria-portrait',
-  'preset-bulletin-hallway-portrait',
-  'preset-cafeteria-animated-high-portrait',
-  'preset-cafeteria-chalkboard-portrait',
-  'preset-scrapbook-cafeteria-portrait',
-  'preset-scrapbook-hallway-portrait',
-  'preset-storybook-cafeteria-portrait',
-  'preset-storybook-hallway-portrait',
-]);
+// As of 2026-04-27 (commit pending) every portrait preset has a real
+// 2160×3840 native widget. The denylist is empty. Future-proof: leave
+// the Set in place so we can hide a preset without ripping out the
+// filtering logic if we add a new letterboxed variant later.
+const LETTERBOXED_PORTRAIT_PRESETS: ReadonlySet<string> = new Set([]);
 
 const RESOLUTION_PRESETS = [
   { label: '4K UHD', sub: 'Landscape', w: 3840, h: 2160 },
