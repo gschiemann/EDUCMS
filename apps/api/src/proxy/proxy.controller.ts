@@ -74,19 +74,96 @@ export class ProxyController {
       const contentType = upstream.contentType || 'text/html';
       const isHtml = contentType.includes('text/html') || contentType.includes('application/xhtml');
 
-      // Headers shared between HTML and pass-through paths.
+      // Headers shared between HTML and pass-through paths. We're aggressive
+      // about stripping anything that could prevent the page from rendering
+      // inside an iframe — it's a digital signage display, not a security
+      // boundary, and customers expect "paste URL → see page."
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.removeHeader('X-Frame-Options');
       res.removeHeader('Content-Security-Policy');
+      res.removeHeader('Content-Security-Policy-Report-Only');
+      // Cross-origin isolation headers — block iframe rendering on strict
+      // sites if left in place. We're a proxy, not a same-origin replica.
+      res.removeHeader('Cross-Origin-Embedder-Policy');
+      res.removeHeader('Cross-Origin-Opener-Policy');
+      res.removeHeader('Cross-Origin-Resource-Policy');
+      // Permissions-Policy and friends can refuse autoplay / fullscreen /
+      // microphone / camera in iframes. Unblock everything since the
+      // signage operator is the only audience.
+      res.removeHeader('Permissions-Policy');
+      res.removeHeader('Feature-Policy');
+      res.removeHeader('Document-Policy');
+      // Strict-Transport-Security on the proxy origin is fine but inheriting
+      // a stricter upstream HSTS through the response would be confusing.
+      res.removeHeader('Strict-Transport-Security');
+      // Re-set permissive policies. `frame-ancestors *` is the only CSP we
+      // emit — covers the iframe-embedding need.
       res.setHeader('Content-Security-Policy', "frame-ancestors *");
       res.setHeader('Access-Control-Allow-Origin', '*');
-      // Common fetch needs these headers for CORS preflights to pass.
       res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept,Range,Origin,Referer');
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Length,Content-Range,Content-Type');
+      // CORP needs to be cross-origin for fonts/images to load via fetch.
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      // Resolve referrer-based bot blocks. Sending no Referer at all on
+      // upstream requests already happened in safeFetch — this hint is
+      // for the BROWSER's downstream sub-resource requests.
+      res.setHeader('Referrer-Policy', 'no-referrer');
 
       if (!isHtml) {
-        // Pass-through for images / CSS / JS / fonts / JSON / video
-        // segments. The rewritten fetch in the iframe routes here.
+        const isCss = contentType.includes('text/css');
+        if (isCss) {
+          // Rewrite url(...) refs inside CSS so background images, web
+          // fonts, and @import'd stylesheets all flow through the proxy
+          // (same-origin to the iframe, CORS-clean). Without this, every
+          // CSS-driven image/font on the upstream site 404s because the
+          // browser resolves relative url(...) refs against the CSS file's
+          // URL — which is OUR proxy URL — and then asks our origin for
+          // /img/foo.png that doesn't exist here.
+          let css = upstream.body.toString('utf8');
+          const cssBaseUrl = upstream.finalUrl || url;
+          const proxyPathInner = '/api/v1/proxy/web';
+          css = css.replace(
+            /url\(\s*(['"]?)([^'")]+)\1\s*\)/g,
+            (match, _q, ref) => {
+              const trimmed = ref.trim();
+              if (
+                !trimmed ||
+                trimmed.startsWith('data:') ||
+                trimmed.startsWith('blob:') ||
+                trimmed.startsWith('javascript:') ||
+                trimmed.startsWith('about:') ||
+                trimmed.startsWith('#')
+              ) {
+                return match;
+              }
+              try {
+                const abs = new URL(trimmed, cssBaseUrl).toString();
+                return `url("${proxyPathInner}?url=${encodeURIComponent(abs)}&v=2")`;
+              } catch {
+                return match;
+              }
+            },
+          );
+          // Also rewrite @import "url" rules (no url() wrapper).
+          css = css.replace(
+            /@import\s+(['"])([^'"]+)\1/g,
+            (match, _q, ref) => {
+              const trimmed = ref.trim();
+              if (!trimmed || trimmed.startsWith('data:')) return match;
+              try {
+                const abs = new URL(trimmed, cssBaseUrl).toString();
+                return `@import "${proxyPathInner}?url=${encodeURIComponent(abs)}&v=2"`;
+              } catch {
+                return match;
+              }
+            },
+          );
+          res.setHeader('Content-Type', contentType);
+          res.send(css);
+          return;
+        }
+        // Pass-through for images / JS / fonts / JSON / video segments.
         res.setHeader('Content-Type', contentType);
         res.send(upstream.body);
         return;
@@ -208,6 +285,21 @@ export class ProxyController {
       var realReplace = locProto.replace;
       locProto.assign  = function(u){ if (shouldProxy(u)) return realAssign.call(window.location, via(u)); };
       locProto.replace = function(u){ if (shouldProxy(u)) return realReplace.call(window.location, via(u)); };
+    } catch(e){}
+    // Iframe-detection override. Many sites refuse to render or actively
+    // navigate the parent away when they detect they are inside an iframe.
+    // We make window.parent, window.top, and window.frameElement appear
+    // to point at the iframe itself so the page believes it is top-level.
+    // Sites that explicitly check window.location.ancestorOrigins can't
+    // be fooled, but this catches the 90% naive case.
+    try {
+      Object.defineProperty(window, 'parent',       { get: function(){ return window; }, configurable: true });
+      Object.defineProperty(window, 'top',          { get: function(){ return window; }, configurable: true });
+      Object.defineProperty(window, 'frameElement', { get: function(){ return null;   }, configurable: true });
+    } catch(e){}
+    // Some pages probe document.referrer for redirect logic. Hide it.
+    try {
+      Object.defineProperty(document, 'referrer', { get: function(){ return ''; }, configurable: true });
     } catch(e){}
   } catch(err) { /* prelude swallowed — page can still render */ }
 })();
