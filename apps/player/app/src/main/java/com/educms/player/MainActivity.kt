@@ -102,8 +102,35 @@ class MainActivity : ComponentActivity() {
 
         configureWebView(webView)
 
+        // Back-button handler. Previously this just swallowed Back so
+        // operators couldn't accidentally exit. Operator (2026-04-27)
+        // now needs the remote's Back to actually do something — it
+        // does nothing on signage remotes. Two-tier behavior:
+        //   - Single press → tell the web player to surface the
+        //     Stop/Exit splash (operator chose this control on
+        //     purpose; respect it).
+        //   - The web player's overlay decides what to do next: stop
+        //     playback, exit to launcher, or unpair. If the WebView
+        //     has back-history (e.g. someone navigated to /pair via
+        //     QR), let that take precedence first.
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() { /* swallow */ }
+            override fun handleOnBackPressed() {
+                if (webView.canGoBack()) {
+                    webView.goBack()
+                    return
+                }
+                // Tell the web player to show its Stop/Exit overlay.
+                // The bridge method already exists for the dashboard's
+                // "Stop screen" action; we just trigger it locally.
+                try {
+                    webView.evaluateJavascript(
+                        "window.dispatchEvent(new CustomEvent('edu-show-stop-overlay'))",
+                        null,
+                    )
+                } catch (e: Exception) {
+                    PlayerLogger.w("MainActivity", "back-press: failed to dispatch stop-overlay event", e)
+                }
+            }
         })
 
         // Always load /player — the web player handles its own
@@ -425,10 +452,52 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        // Operator (2026-04-27): "im trying to use the goodview remote
+        // control but the enter button and back button do nothing."
+        // Cause: this method previously returned `true` for every key
+        // except volume — which silently swallowed Enter, Back, and
+        // every D-pad direction so the WebView never got them.
+        //
+        // Now: allow remote-control keys to flow through to the
+        // WebView so HTML buttons can be focused and clicked. Power /
+        // home / menu we still block (those would exit the kiosk and
+        // leave the screen on a stale frame). Anything not explicitly
+        // listed defaults to swallow.
         return when (keyCode) {
+            // Volume — let the OS handle it (mutes / changes volume).
             KeyEvent.KEYCODE_VOLUME_DOWN,
             KeyEvent.KEYCODE_VOLUME_UP,
             KeyEvent.KEYCODE_VOLUME_MUTE -> super.onKeyDown(keyCode, event)
+
+            // Remote-control navigation — pass through to the WebView so
+            // the player page can handle button focus + click. Without
+            // this the entire page is unreachable via remote.
+            KeyEvent.KEYCODE_DPAD_UP,
+            KeyEvent.KEYCODE_DPAD_DOWN,
+            KeyEvent.KEYCODE_DPAD_LEFT,
+            KeyEvent.KEYCODE_DPAD_RIGHT,
+            KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_NUMPAD_ENTER,
+            KeyEvent.KEYCODE_TAB,
+            KeyEvent.KEYCODE_SPACE,
+            // Numeric keys for entering pairing codes via remote — most
+            // signage remotes have a number pad and the operator should
+            // be able to type the 6-digit pairing code directly.
+            KeyEvent.KEYCODE_0, KeyEvent.KEYCODE_1, KeyEvent.KEYCODE_2,
+            KeyEvent.KEYCODE_3, KeyEvent.KEYCODE_4, KeyEvent.KEYCODE_5,
+            KeyEvent.KEYCODE_6, KeyEvent.KEYCODE_7, KeyEvent.KEYCODE_8,
+            KeyEvent.KEYCODE_9 -> super.onKeyDown(keyCode, event)
+
+            // Back — let it go through. The OnBackPressedCallback below
+            // owns the actual decision (back-history nav in the WebView,
+            // or exit on long-press). super() routes to that callback.
+            KeyEvent.KEYCODE_BACK,
+            KeyEvent.KEYCODE_ESCAPE -> super.onKeyDown(keyCode, event)
+
+            // Everything else (Power, Home, Menu, Search, Camera, etc.)
+            // stays swallowed — those would either exit the kiosk or
+            // leave it in a bad state.
             else -> true
         }
     }

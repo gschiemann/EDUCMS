@@ -94,6 +94,11 @@ export interface KioskSplashProps {
   screenName?: string | null;
   /** Resolution string for the tech-chip row, e.g. "1920×1080". */
   resolution?: string | null;
+  /** APK version chip on the splash — operator (2026-04-27): "we
+   *  showed the apk version on the actual splash screen now... nothing
+   *  looks like it changed at all." Pass the player BuildConfig
+   *  versionName when known (passed by the APK as ?v= on the URL). */
+  apkVersion?: string | null;
   /** Optional: when the kiosk knows its dashboard URL, we show a QR
    *  pointing to /pair?code=... so an admin can scan from their phone
    *  instead of typing. Pass the fully qualified URL. */
@@ -129,6 +134,7 @@ export function KioskSplash({
   pairingCode,
   screenName,
   resolution,
+  apkVersion,
   pairDeepLinkUrl,
   loadProgress,
   lastSync,
@@ -455,6 +461,12 @@ export function KioskSplash({
             <span className="kiosk-chip">
               <span className="kiosk-chip-label">Screen</span>
               <span className="kiosk-chip-value">{screenName}</span>
+            </span>
+          )}
+          {apkVersion && (
+            <span className="kiosk-chip" title="Player APK version reported by the device">
+              <span className="kiosk-chip-label">Player</span>
+              <span className="kiosk-chip-value">v{apkVersion}</span>
             </span>
           )}
         </div>

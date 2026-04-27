@@ -722,6 +722,27 @@ function PlayerPage() {
   // the 5-min dashboard timeout + buffer) — if the install actually
   // succeeds the kiosk reboots, which clears all React state anyway.
   const [otaProgress, setOtaProgress] = useState<{ startedAt: number; bridgeAvailable: boolean } | null>(null);
+  // APK version reported by the Android player on the URL as ?v=. Used
+  // by the splash screens (pairing / connecting / registering) so the
+  // operator can see at a glance which build a kiosk is running. Stays
+  // null for browser players (no APK).
+  const apkVersion = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('v')
+    : null;
+
+  // Remote-control Back-button bridge. The Android shell (v1.0.10+)
+  // dispatches an `edu-show-stop-overlay` window event when the user
+  // hits the remote's Back key. We surface the Stop/Exit splash so
+  // the operator can choose Resume / Exit / Unpair without a touch
+  // screen. Cleanup on unmount keeps things tidy across phase
+  // transitions.
+  useEffect(() => {
+    const onShowStop = () => {
+      setPlaybackStopped(true);
+    };
+    window.addEventListener('edu-show-stop-overlay', onShowStop as EventListener);
+    return () => window.removeEventListener('edu-show-stop-overlay', onShowStop as EventListener);
+  }, []);
   // Tick to drive stage advancement on the overlay. We avoid a tight
   // setInterval; one tick every 5s is enough to advance through the
   // stage labels in real time without hammering re-renders.
@@ -1804,6 +1825,7 @@ function PlayerPage() {
           mode="registering"
           brandName={brandName}
           resolution={splashResolution}
+          apkVersion={apkVersion}
         />
         {otaOverlay}
       </>
@@ -1819,6 +1841,7 @@ function PlayerPage() {
           brandName={brandName}
           pairingCode={pairingCode}
           resolution={splashResolution}
+          apkVersion={apkVersion}
           pairDeepLinkUrl={
             typeof window !== 'undefined' && pairingCode
               ? `${window.location.origin}/pair?code=${encodeURIComponent(pairingCode)}`
@@ -1839,6 +1862,7 @@ function PlayerPage() {
           brandName={brandName}
           screenName={screenName}
           resolution={splashResolution}
+          apkVersion={apkVersion}
           loadProgress={loadProgress}
         />
         {otaOverlay}
