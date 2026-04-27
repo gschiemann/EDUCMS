@@ -94,17 +94,39 @@ export class ProxyController {
       // strip) was reverted — those broke the middle.
       html = html.replace(/<meta[^>]*http-equiv\s*=\s*["']?(?:content-security-policy|x-frame-options)["']?[^>]*>/gi, '');
 
-      const baseTag = `<base href="${baseUrl}">`;
+      // Also strip any upstream color-scheme meta. We inject our own
+      // "light only" tag below; if the upstream page already has its
+      // own color-scheme meta later in <head>, theirs would override
+      // mine because later tags win. Drop it so our injection sticks.
+      html = html.replace(/<meta[^>]*name\s*=\s*["']?color-scheme["']?[^>]*>/gi, '');
+
+      // Force light color-scheme inside the iframe. Operator
+      // (2026-04-27): "it changed the section from white background
+      // with black text to a black background and white text."
+      //
+      // Cause: digital-signage host browser has OS dark mode set, the
+      // iframe inherits the prefers-color-scheme: dark media query,
+      // and the upstream site's dark-mode CSS fires. The page's own
+      // JS that would normally force a chosen theme is stripped, so
+      // there's nothing pinning the theme to light.
+      //
+      // Fix: pin color-scheme: light at the iframe document level.
+      // This (a) disables the browser UA's dark-mode CSS adjustments,
+      // (b) makes prefers-color-scheme: dark media queries return
+      // false even when the parent OS is in dark mode. Sites that
+      // are intentionally dark-themed (no media query — just dark
+      // CSS as the default) are unaffected.
+      const headInjection = `<base href="${baseUrl}"><meta name="color-scheme" content="light only"><style>:root{color-scheme:light only !important;}</style>`;
       if (html.includes('<head>')) {
-        html = html.replace('<head>', `<head>\n${baseTag}`);
+        html = html.replace('<head>', `<head>\n${headInjection}`);
       } else if (html.includes('<HEAD>')) {
-        html = html.replace('<HEAD>', `<HEAD>\n${baseTag}`);
+        html = html.replace('<HEAD>', `<HEAD>\n${headInjection}`);
       } else if (/<head[^>]*>/i.test(html)) {
-        html = html.replace(/<head[^>]*>/i, `$&${baseTag}`);
+        html = html.replace(/<head[^>]*>/i, `$&${headInjection}`);
       } else if (/<html[^>]*>/i.test(html)) {
-        html = html.replace(/<html[^>]*>/i, `$&<head>${baseTag}</head>`);
+        html = html.replace(/<html[^>]*>/i, `$&<head>${headInjection}</head>`);
       } else {
-        html = baseTag + html;
+        html = headInjection + html;
       }
 
       res.setHeader('Content-Type', contentType);
