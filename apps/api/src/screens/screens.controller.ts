@@ -593,6 +593,34 @@ export class ScreensController {
       }
     }
 
+    // ─── Sprint 8b — per-screen emergency override (PRECEDES tenant-wide) ───
+    // The player checks for a row in ScreenEmergencyOverride scoped to
+    // this exact screen FIRST. If one exists and isn't expired, we
+    // synthesize the same emergency state shape the tenant-wide path
+    // produces, but using the override's type/severity/playlist. The
+    // tenant-wide block below stays untouched — if no per-screen
+    // override is active we fall through to it like always.
+    //
+    // This is the load-bearing change for Sprint 8b: "different alert
+    // per room" works because the manifest path always picks per-screen
+    // before tenant. No additional protocol on the player side — same
+    // emergencyStatus shape goes out the door.
+    let activeScreenOverride: any = null;
+    try {
+      activeScreenOverride = await (this.prisma.client as any).screenEmergencyOverride.findUnique({
+        where: { screenId: screen.id },
+      });
+      if (activeScreenOverride?.expiresAt) {
+        const exp = new Date(activeScreenOverride.expiresAt).getTime();
+        if (Number.isFinite(exp) && exp < Date.now()) {
+          // Expired override — treat as cleared. Don't delete here
+          // (manifest endpoint should be read-only); a janitor / cron
+          // can prune. Just ignore for this manifest fetch.
+          activeScreenOverride = null;
+        }
+      }
+    } catch { /* schema mismatch / missing table — fall back to tenant-wide */ }
+
     if (screen.tenantId) {
       // Hot-path cache: the emergency-state lookup for this tenant is
       // shared across every screen in the tenant polling manifest.
@@ -617,8 +645,22 @@ export class ScreensController {
         if (tenant) setTenantState(screen.tenantId, tenant);
       }
 
-      // If an emergency is active, ALWAYS force an emergency override
-      if (tenant?.emergencyStatus && tenant.emergencyStatus !== 'INACTIVE') {
+      // Sprint 8b — per-screen override wins over tenant-wide. If we
+      // found a non-expired ScreenEmergencyOverride for this screen
+      // above, treat the manifest as if an emergency is active
+      // EVEN WHEN the tenant-wide status is INACTIVE. The override's
+      // type becomes the surfaced emergencyStatus; its playlist (if
+      // set) is preferred over the tenant default. Critical: a
+      // per-screen override may also be in effect during a tenant-wide
+      // alert — in that case the per-screen content trumps. e.g.,
+      // tenant is in WEATHER but the gym screen carries a LOCKDOWN
+      // override because of a localized incident. The gym renders
+      // LOCKDOWN, every other screen renders WEATHER.
+      const emergencyActiveForThisScreen =
+        !!activeScreenOverride ||
+        (tenant?.emergencyStatus && tenant.emergencyStatus !== 'INACTIVE');
+
+      if (emergencyActiveForThisScreen) {
         let playlists: any[] = [];
 
         // Parse the screen's stored resolution ("2160×3840" / "2160x3840")
@@ -638,9 +680,13 @@ export class ScreensController {
         // landscape playlist if no portrait was configured, and
         // vice-versa. Admin only has to configure one to get every
         // screen covered; configuring both is the polished path.
-        const chosenPlaylistId = isPortrait
-          ? (tenant.emergencyPortraitPlaylistId || tenant.emergencyPlaylistId || null)
-          : (tenant.emergencyPlaylistId || tenant.emergencyPortraitPlaylistId || null);
+        // If a per-screen override carries a playlistId, that wins
+        // over the tenant default.
+        const chosenPlaylistId = activeScreenOverride?.playlistId || (
+          isPortrait
+            ? (tenant?.emergencyPortraitPlaylistId || tenant?.emergencyPlaylistId || null)
+            : (tenant?.emergencyPlaylistId || tenant?.emergencyPortraitPlaylistId || null)
+        );
 
         if (chosenPlaylistId) {
           const emergencyPlaylist = await this.prisma.client.playlist.findUnique({
@@ -676,19 +722,47 @@ export class ScreensController {
           }
         }
 
+        // Effective emergency type for THIS screen — per-screen
+        // override wins; falls back to the tenant-wide emergencyStatus.
+        const effectiveType =
+          activeScreenOverride?.type ||
+          tenant?.emergencyStatus ||
+          'EMERGENCY';
+        const effectiveSeverity =
+          activeScreenOverride?.severity ||
+          tenant?.emergencyStatus ||
+          'HIGH';
+
         // BULLETPROOF FALLBACK: If the admin failed to assign an emergency playlist or it was empty,
         // we MUST still lock the screen down to protect the school.
         // Swap template width/height for portrait screens so the TEXT
         // zone fills the full canvas correctly (1920×1080 → 1080×1920).
+        // The per-screen override's textBlob (operator-typed message)
+        // and scope_note land in the fallback content so the rendered
+        // text matches the trigger UX exactly.
         if (playlists.length === 0) {
           const canvasW = isPortrait ? 1080 : 1920;
           const canvasH = isPortrait ? 1920 : 1080;
+          // Pick the most specific text we have — operator's textBlob
+          // first, then the scope_note ("Gym wing — hold position"),
+          // then a SYSTEM DEFAULT message that includes the type.
+          const fallbackContent =
+            activeScreenOverride?.textBlob
+              ? activeScreenOverride.textBlob
+              : activeScreenOverride?.scopeNote
+                ? `${effectiveType} — ${activeScreenOverride.scopeNote}\n\nFollow standard procedures.`
+                : `EMERGENCY NOTIFICATION\n\n${effectiveType} PROTOCOL ACTIVE\n\nPlease follow standard procedures`;
+          const fallbackBg =
+            effectiveSeverity === 'CRITICAL' ? '#dc2626' :
+            effectiveSeverity === 'HIGH'     ? '#dc2626' :
+            effectiveSeverity === 'MEDIUM'   ? '#d97706' :
+            '#d97706';
           playlists = [{
              id: "DEFAULT_EMERGENCY",
-             name: `SYSTEM DEFAULT - ${tenant.emergencyStatus}`,
+             name: `SYSTEM DEFAULT - ${effectiveType}`,
              template: {
                name: "EMERGENCY OVERRIDE",
-               bgColor: tenant.emergencyStatus === 'CRITICAL' ? '#dc2626' : '#d97706',
+               bgColor: fallbackBg,
                screenWidth: canvasW,
                screenHeight: canvasH,
                zones: [
@@ -697,7 +771,7 @@ export class ScreensController {
                    x: 0, y: 0, width: 100, height: 100, zIndex: 1,
                    widgetType: "TEXT",
                    defaultConfig: {
-                     content: `EMERGENCY NOTIFICATION\n\n${tenant.emergencyStatus} PROTOCOL ACTIVE\n\nPlease follow standard procedures`,
+                     content: fallbackContent,
                      fontSize: isPortrait ? 140 : 100,
                      color: "white",
                      alignment: "center",
@@ -714,6 +788,17 @@ export class ScreensController {
           screenId: screen.id,
           generatedAt: new Date().toISOString(),
           isEmergency: true,
+          // Sprint 8b — surface the active type so the player can show
+          // the right banner / icon. Per-screen wins over tenant.
+          emergencyType: effectiveType,
+          emergencySeverity: effectiveSeverity,
+          // Operator-typed scope note ("Gym — hold position") so the
+          // player can render it as a sub-banner. Empty when only the
+          // tenant-wide alert is active.
+          emergencyScopeNote: activeScreenOverride?.scopeNote || null,
+          // Tells the player whether it's running a per-screen or
+          // tenant-wide override. Useful for the Stopped splash too.
+          emergencyScope: activeScreenOverride ? 'screen' : 'tenant',
           orientation: isPortrait ? 'portrait' : 'landscape',
           playlists
         });
