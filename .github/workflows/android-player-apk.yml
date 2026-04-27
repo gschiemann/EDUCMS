@@ -75,47 +75,6 @@ jobs:
           ls -la apps/player/gradlew apps/player/gradle/wrapper/gradle-wrapper.jar
           chmod +x apps/player/gradlew
 
-      # ─── Stable debug keystore ─────────────────────────────────────
-      # Without this, Gradle generates a fresh per-run debug keystore.
-      # That breaks Settings.Secure.ANDROID_ID stability on Android 8+
-      # (it's scoped per signing-key + package + user), which means
-      # every new release looks like a brand-new app to the device →
-      # the kiosk loses its persisted pairing on every upgrade.
-      # Operator hit this 2026-04-27 reinstalling v1.0.5 → v1.0.9.
-      #
-      # First-run setup (operator does this ONCE):
-      #   1. Push any tag → this CI run generates a keystore + uploads
-      #      it as the `debug-keystore-bootstrap` artifact.
-      #   2. Download that artifact, base64-encode it:
-      #        base64 -w0 debug.keystore > keystore.b64
-      #   3. Add the contents as a GitHub repo secret named
-      #      PLAYER_DEBUG_KEYSTORE_B64.
-      # Every subsequent build decodes the secret → all releases share
-      # the same signing key → ANDROID_ID stays stable across upgrades.
-      - name: Set up debug keystore
-        run: |
-          mkdir -p apps/player/app/keystores
-          KEYSTORE_PATH="apps/player/app/keystores/debug.keystore"
-          if [ -n "${{ secrets.PLAYER_DEBUG_KEYSTORE_B64 }}" ]; then
-            echo "Using PLAYER_DEBUG_KEYSTORE_B64 secret (stable signing key across releases)"
-            echo "${{ secrets.PLAYER_DEBUG_KEYSTORE_B64 }}" | base64 -d > "$KEYSTORE_PATH"
-          else
-            echo "::warning::PLAYER_DEBUG_KEYSTORE_B64 secret not set — generating a fresh debug keystore. Save the artifact as PLAYER_DEBUG_KEYSTORE_B64 to keep ANDROID_ID stable across releases (otherwise paired kiosks will lose their pairing on upgrade)."
-            keytool -genkey -v -keystore "$KEYSTORE_PATH" \
-              -alias androiddebugkey -storepass android -keypass android \
-              -keyalg RSA -keysize 2048 -validity 25000 \
-              -dname "CN=Android Debug,O=Android,C=US"
-          fi
-          ls -la "$KEYSTORE_PATH"
-
-      - name: Upload bootstrap keystore (only if freshly generated)
-        if: ${{ secrets.PLAYER_DEBUG_KEYSTORE_B64 == '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: debug-keystore-bootstrap
-          path: apps/player/app/keystores/debug.keystore
-          retention-days: 7
-
       - name: Build debug APK
         env:
           PLAYER_BASE_URL: ${{ github.event.inputs.playerBaseUrl != '' && github.event.inputs.playerBaseUrl || 'https://educms-five.vercel.app/player' }}

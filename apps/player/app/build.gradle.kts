@@ -44,46 +44,11 @@ android {
         }
     }
 
-    // Stable debug signing config. CI provisions
-    // apps/player/app/keystores/debug.keystore from the
-    // PLAYER_DEBUG_KEYSTORE_B64 GitHub secret BEFORE running the
-    // build (see .github/workflows/android-player-apk.yml).
-    //
-    // Why we override the default debug signing: Android Gradle
-    // Plugin generates a fresh per-machine debug keystore on first
-    // build, so every CI run produces APKs signed with a different
-    // key. Android 8+ scopes Settings.Secure.ANDROID_ID per-(signing
-    // key + package + user) — meaning paired kiosks lose their
-    // persisted fingerprint on every upgrade. Pinning the debug
-    // signing config to a stable keystore solves it.
-    //
-    // For local development the same path is checked; if missing,
-    // dev runs fall back to the AGP-generated keystore (a one-time
-    // pop-up in Android Studio). CI always has the keystore in
-    // place by this stage.
-    signingConfigs {
-        create("debugStable") {
-            val ks = file("keystores/debug.keystore")
-            if (ks.exists()) {
-                storeFile = ks
-                storePassword = "android"
-                keyAlias = "androiddebugkey"
-                keyPassword = "android"
-            }
-        }
-    }
-
     buildTypes {
         getByName("debug") {
             isMinifyEnabled = false
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
-            // Only attach our stable signing config if the keystore is
-            // actually on disk — local dev without the file falls back
-            // to AGP's default debug keystore.
-            if (file("keystores/debug.keystore").exists()) {
-                signingConfig = signingConfigs.getByName("debugStable")
-            }
         }
         getByName("release") {
             isMinifyEnabled = true
@@ -94,6 +59,14 @@ android {
             )
         }
     }
+    // NOTE: stable debug-keystore signing was attempted in commit
+    // 54bb67d to keep paired kiosks across APK upgrades (Settings.Secure
+    // .ANDROID_ID is scoped per signing-key + package + user, so each
+    // CI's randomly-generated debug keystore breaks pairing on
+    // upgrade). The first attempt broke the CI build — reverted here
+    // pending a tested-locally version. Workaround until then: when
+    // tagging a new release, paired kiosks will need to re-pair once
+    // (a known annoyance, not a data-loss event).
 
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
