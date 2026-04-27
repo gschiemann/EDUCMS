@@ -367,6 +367,20 @@ model Screen {
   emergencyHoldPlaylistId     String? @map("emergency_hold_playlist_id")
   emergencySecurePlaylistId   String? @map("emergency_secure_playlist_id")
   emergencyMedicalPlaylistId  String? @map("emergency_medical_playlist_id")
+  // Per-screen custom emergency asset URLs (image / video / PDF). When
+  // set, the player renders this single asset full-screen during that
+  // emergency type. Resolution priority in the manifest endpoint:
+  //   1. emergency*PlaylistId  (explicit playlist for this type)
+  //   2. emergency*AssetUrl    (single uploaded asset for this type)
+  //   3. Tenant.panic*PlaylistId (school-wide default)
+  // Lets operators upload a "lockdown — hold position" image for the
+  // gym wing without needing to first wrap it in a one-item playlist.
+  emergencyLockdownAssetUrl   String? @map("emergency_lockdown_asset_url")
+  emergencyEvacuateAssetUrl   String? @map("emergency_evacuate_asset_url")
+  emergencyWeatherAssetUrl    String? @map("emergency_weather_asset_url")
+  emergencyHoldAssetUrl       String? @map("emergency_hold_asset_url")
+  emergencySecureAssetUrl     String? @map("emergency_secure_asset_url")
+  emergencyMedicalAssetUrl    String? @map("emergency_medical_asset_url")
   schedules         Schedule[]
   screenGroup       ScreenGroup? @relation(fields: [screenGroupId], references: [id])
   tenant            Tenant?      @relation(fields: [tenantId], references: [id])

@@ -476,6 +476,16 @@ export class ScreensController {
       holdPlaylistId?: string | null;
       securePlaylistId?: string | null;
       medicalPlaylistId?: string | null;
+      // Per-type custom asset URL — single uploaded image/video shown
+      // full-screen for that emergency. Setting either playlistId OR
+      // assetUrl for a type wins over tenant defaults; manifest checks
+      // playlist first, falls back to asset, falls back to tenant.
+      lockdownAssetUrl?: string | null;
+      evacuateAssetUrl?: string | null;
+      weatherAssetUrl?: string | null;
+      holdAssetUrl?: string | null;
+      secureAssetUrl?: string | null;
+      medicalAssetUrl?: string | null;
     },
   ) {
     const tenantId = req.user.tenantId;
@@ -502,6 +512,17 @@ export class ScreensController {
       if (v === null || v === '') return null;   // clear override
       return validIds.has(v) ? v : null;         // unknown id → drop to null
     };
+    // Asset URLs are validated lightly — must be a non-empty string
+    // that looks like a URL. The asset itself was uploaded via
+    // /assets/upload (which already enforces tenant scoping + MIME
+    // allowlist), so we trust the URL it returned.
+    const sanitizeUrl = (v: string | null | undefined): string | null | undefined => {
+      if (v === undefined) return undefined;
+      if (v === null || v === '') return null;
+      const s = v.trim();
+      if (!/^(https?:\/\/|\/)/.test(s)) return null;  // reject mailto:, data:, etc.
+      return s.slice(0, 2048);
+    };
 
     const data: any = {};
     if (body.lockdownPlaylistId !== undefined) data.emergencyLockdownPlaylistId = sanitize(body.lockdownPlaylistId);
@@ -510,6 +531,12 @@ export class ScreensController {
     if (body.holdPlaylistId     !== undefined) data.emergencyHoldPlaylistId     = sanitize(body.holdPlaylistId);
     if (body.securePlaylistId   !== undefined) data.emergencySecurePlaylistId   = sanitize(body.securePlaylistId);
     if (body.medicalPlaylistId  !== undefined) data.emergencyMedicalPlaylistId  = sanitize(body.medicalPlaylistId);
+    if (body.lockdownAssetUrl   !== undefined) data.emergencyLockdownAssetUrl   = sanitizeUrl(body.lockdownAssetUrl);
+    if (body.evacuateAssetUrl   !== undefined) data.emergencyEvacuateAssetUrl   = sanitizeUrl(body.evacuateAssetUrl);
+    if (body.weatherAssetUrl    !== undefined) data.emergencyWeatherAssetUrl    = sanitizeUrl(body.weatherAssetUrl);
+    if (body.holdAssetUrl       !== undefined) data.emergencyHoldAssetUrl       = sanitizeUrl(body.holdAssetUrl);
+    if (body.secureAssetUrl     !== undefined) data.emergencySecureAssetUrl     = sanitizeUrl(body.secureAssetUrl);
+    if (body.medicalAssetUrl    !== undefined) data.emergencyMedicalAssetUrl    = sanitizeUrl(body.medicalAssetUrl);
 
     const updated = await this.prisma.client.screen.update({
       where: { id },
@@ -522,6 +549,12 @@ export class ScreensController {
         emergencyHoldPlaylistId: true,
         emergencySecurePlaylistId: true,
         emergencyMedicalPlaylistId: true,
+        emergencyLockdownAssetUrl: true,
+        emergencyEvacuateAssetUrl: true,
+        emergencyWeatherAssetUrl: true,
+        emergencyHoldAssetUrl: true,
+        emergencySecureAssetUrl: true,
+        emergencyMedicalAssetUrl: true,
       } as any,
     });
 
@@ -769,24 +802,36 @@ export class ScreensController {
         })();
 
         // Sprint 8b — per-screen emergency content config takes
-        // priority over the tenant defaults. Three tiers, in order:
-        //   1. Per-trigger override `playlistId` (manual incident)
-        //   2. Per-screen config column for THIS emergency type
-        //   3. Tenant-wide panic*PlaylistId for THIS emergency type
-        // Operator can mix-and-match: gym screens can use a custom
+        // priority over the tenant defaults. FOUR tiers, in order:
+        //   1. Per-trigger override `playlistId`  (manual incident)
+        //   2. Per-screen `emergency*PlaylistId`   (config column)
+        //   3. Per-screen `emergency*AssetUrl`     (single uploaded file)
+        //   4. Tenant-wide `panic*PlaylistId`      (school-wide default)
+        // Operator can mix-and-match: gym screens can show a custom
         // "evacuate via north exit" playlist on EVACUATE while every
         // other screen uses the tenant default — no manual trigger
         // required, configured once and forgotten.
         const screenAny = screen as any;
+        const emergencyTypeKey = (activeScreenOverride?.type || tenant?.emergencyStatus || '').toUpperCase();
         const perScreenForType = ((): string | null => {
-          const t = (activeScreenOverride?.type || tenant?.emergencyStatus || '').toUpperCase();
-          switch (t) {
+          switch (emergencyTypeKey) {
             case 'LOCKDOWN': return screenAny.emergencyLockdownPlaylistId || null;
             case 'EVACUATE': return screenAny.emergencyEvacuatePlaylistId || null;
             case 'WEATHER':  return screenAny.emergencyWeatherPlaylistId  || null;
             case 'HOLD':     return screenAny.emergencyHoldPlaylistId     || null;
             case 'SECURE':   return screenAny.emergencySecurePlaylistId   || null;
             case 'MEDICAL':  return screenAny.emergencyMedicalPlaylistId  || null;
+            default:         return null;
+          }
+        })();
+        const perScreenAssetForType = ((): string | null => {
+          switch (emergencyTypeKey) {
+            case 'LOCKDOWN': return screenAny.emergencyLockdownAssetUrl || null;
+            case 'EVACUATE': return screenAny.emergencyEvacuateAssetUrl || null;
+            case 'WEATHER':  return screenAny.emergencyWeatherAssetUrl  || null;
+            case 'HOLD':     return screenAny.emergencyHoldAssetUrl     || null;
+            case 'SECURE':   return screenAny.emergencySecureAssetUrl   || null;
+            case 'MEDICAL':  return screenAny.emergencyMedicalAssetUrl  || null;
             default:         return null;
           }
         })();
@@ -834,6 +879,31 @@ export class ScreensController {
               }))
             }];
           }
+        }
+
+        // If no playlist was selected/found AND the operator uploaded a
+        // single custom asset for this emergency type, synthesize a
+        // one-item playlist around it. The player renders the asset
+        // full-screen for the standard emergency duration. Image vs
+        // video MIME is inferred from the URL extension.
+        if (playlists.length === 0 && perScreenAssetForType) {
+          const url = perScreenAssetForType;
+          const ext = (url.split('?')[0].split('#')[0].split('.').pop() || '').toLowerCase();
+          const mime =
+            ['mp4','mov','webm','m4v'].includes(ext) ? `video/${ext === 'mov' ? 'quicktime' : ext}` :
+            ['png','jpg','jpeg','webp','gif','svg','bmp'].includes(ext) ? `image/${ext === 'jpg' ? 'jpeg' : ext}` :
+            ext === 'pdf' ? 'application/pdf' :
+            null;
+          playlists = [{
+            id: `screen-asset-${emergencyTypeKey.toLowerCase()}`,
+            name: `${emergencyTypeKey} (custom asset)`,
+            items: [{
+              url,
+              duration_ms: 60_000,  // 60s default for a single-asset emergency loop
+              sequence: 0,
+              mime_type: mime,
+            }],
+          }];
         }
 
         // Effective emergency type for THIS screen — per-screen

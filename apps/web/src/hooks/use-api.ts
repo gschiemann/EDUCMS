@@ -972,6 +972,13 @@ export interface FloorPlanScreen {
   emergencyHoldPlaylistId?: string | null;
   emergencySecurePlaylistId?: string | null;
   emergencyMedicalPlaylistId?: string | null;
+  // Custom asset URL fallback when no playlist is set
+  emergencyLockdownAssetUrl?: string | null;
+  emergencyEvacuateAssetUrl?: string | null;
+  emergencyWeatherAssetUrl?: string | null;
+  emergencyHoldAssetUrl?: string | null;
+  emergencySecureAssetUrl?: string | null;
+  emergencyMedicalAssetUrl?: string | null;
 }
 
 export interface FloorPlanZone {
@@ -1185,6 +1192,12 @@ export interface ScreenEmergencyContent {
   holdPlaylistId?: string | null;
   securePlaylistId?: string | null;
   medicalPlaylistId?: string | null;
+  lockdownAssetUrl?: string | null;
+  evacuateAssetUrl?: string | null;
+  weatherAssetUrl?: string | null;
+  holdAssetUrl?: string | null;
+  secureAssetUrl?: string | null;
+  medicalAssetUrl?: string | null;
 }
 
 export function useUpdateScreenEmergencyContent() {

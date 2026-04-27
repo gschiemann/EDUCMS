@@ -21,7 +21,7 @@
 import { useState, useRef, useCallback, useMemo, use as usePromise, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, AlertTriangle, MapPin, X, Wifi, WifiOff, Shield, Power } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertTriangle, MapPin, X, Wifi, WifiOff, Shield, Power, Monitor, Upload, Trash2 } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
 import {
   useFloorPlan,
@@ -279,31 +279,54 @@ function ScreenPin({
     } catch { /* swallow — react-query refetches on next interaction */ }
   };
 
+  // Operator pointed out: these are SCREENS not points-of-interest.
+  // Render the pin as a small monitor (rounded rectangle with a stand)
+  // so the floor plan reads as "5 displays in the gym wing", not
+  // "5 dropped pins". Color still encodes status; the active-emergency
+  // override gets the pulsing rose treatment.
+  const baseColor = hasOverride
+    ? 'bg-rose-500 border-white'
+    : isOnline
+      ? 'bg-emerald-500 border-white'
+      : 'bg-slate-400 border-white';
   return (
     <button
       type="button"
       onClick={onSelect}
       onDragEnd={onDragEnd}
       draggable
-      title={`${screen.name} — ${screen.status}`}
+      title={`${screen.name} — ${screen.status}${hasOverride ? ' · EMERGENCY ACTIVE' : ''}`}
       aria-label={`Open ${screen.name} (${screen.status})`}
-      className={`absolute -translate-x-1/2 -translate-y-1/2 group rounded-full border-2 shadow-lg flex items-center justify-center transition-all ${
-        selected ? 'ring-4 ring-indigo-300' : ''
-      } ${
-        hasOverride
-          ? 'bg-rose-500 border-white animate-pulse'
-          : isOnline
-            ? 'bg-emerald-500 border-white hover:scale-110'
-            : 'bg-slate-400 border-white hover:scale-110'
-      }`}
+      className={`absolute -translate-x-1/2 -translate-y-1/2 group flex flex-col items-center justify-center transition-all ${
+        selected ? 'scale-110' : 'hover:scale-110'
+      } ${hasOverride ? 'animate-pulse' : ''}`}
       style={{
         left: `${xPct}%`,
         top: `${yPct}%`,
-        width: PIN_RADIUS * 2,
-        height: PIN_RADIUS * 2,
       }}
     >
-      <MapPin className="w-4 h-4 text-white" aria-hidden />
+      {/* Monitor body — rounded rect */}
+      <div
+        className={`rounded-md border-2 shadow-lg flex items-center justify-center ${baseColor} ${
+          selected ? 'ring-4 ring-indigo-300' : ''
+        }`}
+        style={{
+          width: PIN_RADIUS * 2.4,
+          height: PIN_RADIUS * 1.6,
+        }}
+      >
+        <Monitor className="w-3 h-3 text-white" aria-hidden />
+      </div>
+      {/* Monitor stand — small trapezoid below the body */}
+      <div
+        className={`${baseColor.replace('border-white', '')} mt-[-2px]`}
+        style={{
+          width: PIN_RADIUS * 0.55,
+          height: 4,
+          borderBottomLeftRadius: 2,
+          borderBottomRightRadius: 2,
+        }}
+      />
       <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-slate-900 text-white text-[9px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity max-w-[200px] truncate">
         {screen.name}
       </span>
@@ -436,6 +459,9 @@ function ScreenDetailDrawer({
         {/* Status */}
         <section>
           <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1.5">Status</div>
+          <div className="text-[10px] text-slate-400 mb-2 leading-snug">
+            Live online/offline state from the screen&rsquo;s heartbeat. Read-only.
+          </div>
           <div className={`text-xs px-2.5 py-1.5 rounded-md inline-flex items-center gap-1.5 font-bold ${
             screen.status === 'ONLINE' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
           }`}>
@@ -450,6 +476,9 @@ function ScreenDetailDrawer({
         {/* Active override */}
         <section>
           <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1.5">Per-screen emergency</div>
+          <div className="text-[10px] text-slate-400 mb-2 leading-snug">
+            One-time <span className="font-semibold text-slate-500">manual trigger</span> for THIS screen only. Pick a type and fire — the screen swaps to that emergency content immediately. Use this for a localized incident (gym fight, hallway flood) where you don&rsquo;t want to alarm the whole building. Admins only.
+          </div>
           {overrideLoading ? (
             <div className="text-[11px] text-slate-400 inline-flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Checking…</div>
           ) : override ? (
@@ -537,7 +566,25 @@ function ScreenDetailDrawer({
             whatever they want." Six dropdowns, one per emergency
             type. "Use tenant default" leaves the column null and the
             manifest falls back to the tenant-wide panic*PlaylistId. */}
-        <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']} fallback={null}>
+        {/* Admin-only — non-admins see a read-only summary, not the
+            editable config. Operator's exact ask: "this needs to not
+            be editable by non admins." Viewers + contributors get a
+            clear "Admin only" lock chip so they understand WHY the
+            controls aren't there. */}
+        <RoleGate
+          allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}
+          fallback={
+            <section className="border-t border-slate-100 pt-5">
+              <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1.5 flex items-center gap-1.5">
+                Emergency content for this screen
+                <span className="text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">🔒 Admin only</span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Per-screen emergency content is configured by school or district admins. If you need a change, ping an admin.
+              </p>
+            </section>
+          }
+        >
           <ScreenEmergencyContentConfig screenId={screenId} screen={screen} />
         </RoleGate>
 
@@ -545,6 +592,9 @@ function ScreenDetailDrawer({
         <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']} fallback={null}>
           <section>
             <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1.5">Pin</div>
+            <div className="text-[10px] text-slate-400 mb-2 leading-snug">
+              Removes this screen from THIS floor plan only. The screen stays paired and keeps playing — you can drop it on a different plan or leave it unplaced.
+            </div>
             <button
               onClick={handleDetach}
               disabled={detachMutation.isPending}
@@ -563,15 +613,38 @@ function ScreenDetailDrawer({
 
 // ─── Per-screen emergency content config ──────────────────────────
 
+interface EmergencyTypeRow {
+  short: 'lockdown' | 'evacuate' | 'hold' | 'secure' | 'weather' | 'medical';
+  playlistKey: keyof FloorPlanScreen;
+  assetKey: keyof FloorPlanScreen;
+  label: string;
+  emoji: string;
+  description: string;
+}
+
+const EMERGENCY_TYPES: EmergencyTypeRow[] = [
+  { short: 'lockdown', playlistKey: 'emergencyLockdownPlaylistId', assetKey: 'emergencyLockdownAssetUrl', label: 'Lockdown', emoji: '🔒', description: 'Threat — secure room, lights off' },
+  { short: 'evacuate', playlistKey: 'emergencyEvacuatePlaylistId', assetKey: 'emergencyEvacuateAssetUrl', label: 'Evacuate', emoji: '🚪', description: 'Fire / hazard — leave the building' },
+  { short: 'hold',     playlistKey: 'emergencyHoldPlaylistId',     assetKey: 'emergencyHoldAssetUrl',     label: 'Hold',     emoji: '✋', description: 'Clear hallways, stay in current room' },
+  { short: 'secure',   playlistKey: 'emergencySecurePlaylistId',   assetKey: 'emergencySecureAssetUrl',   label: 'Secure',   emoji: '🛡️', description: 'Outside threat — close perimeter, business as usual inside' },
+  { short: 'weather',  playlistKey: 'emergencyWeatherPlaylistId',  assetKey: 'emergencyWeatherAssetUrl',  label: 'Weather',  emoji: '🌪️', description: 'Severe storm / tornado — interior safe spot' },
+  { short: 'medical',  playlistKey: 'emergencyMedicalPlaylistId',  assetKey: 'emergencyMedicalAssetUrl',  label: 'Medical',  emoji: '🚑', description: 'Medical event — clear the area' },
+];
+
 /**
- * 6 dropdowns — one per emergency type. Operator picks a Playlist or
- * leaves the row at "Use tenant default." Saves on change (no Save
- * button — single-select dropdowns commit immediately).
+ * Per-emergency-type row. Three states the operator can land on:
+ *   1. "Use tenant default" (both playlistId AND assetUrl are null)
+ *   2. Pick an existing playlist
+ *   3. Upload a single custom asset (image / video / PDF)
  *
- * Reads current selection from the FloorPlanScreen (which now includes
- * the 6 emergency_*_playlist_id fields). Writes via PUT
- * /screens/:id/emergency-content. The manifest endpoint is already
- * wired to read these per-screen settings before the tenant defaults.
+ * State (2) wins over (3) if both are set — playlist always takes
+ * priority in the manifest. Setting either clears the other on save
+ * so the UX never shows a confusing "both set" state.
+ *
+ * Saves immediately on every change (no Save button). Uploads use the
+ * shared /assets/upload endpoint so the asset lands in the operator's
+ * media library too — they can re-pick it later via the playlist
+ * dropdown if they want to.
  */
 function ScreenEmergencyContentConfig({
   screenId,
@@ -582,32 +655,62 @@ function ScreenEmergencyContentConfig({
 }) {
   const { data: playlists, isLoading: playlistsLoading } = usePlaylists();
   const updateMutation = useUpdateScreenEmergencyContent();
+  const [uploadingType, setUploadingType] = useState<EmergencyTypeRow['short'] | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
-  const TYPES: Array<{
-    key: keyof FloorPlanScreen;
-    short: string;
-    label: string;
-    emoji: string;
-    description: string;
-  }> = [
-    { key: 'emergencyLockdownPlaylistId', short: 'lockdown', label: 'Lockdown', emoji: '🔒', description: 'Threat — secure room, lights off' },
-    { key: 'emergencyEvacuatePlaylistId', short: 'evacuate', label: 'Evacuate', emoji: '🚪', description: 'Fire / hazard — leave the building' },
-    { key: 'emergencyHoldPlaylistId',     short: 'hold',     label: 'Hold',     emoji: '✋', description: 'Clear hallways, stay in current room' },
-    { key: 'emergencySecurePlaylistId',   short: 'secure',   label: 'Secure',   emoji: '🛡️', description: 'Outside threat — close perimeter, business as usual inside' },
-    { key: 'emergencyWeatherPlaylistId',  short: 'weather',  label: 'Weather',  emoji: '🌪️', description: 'Severe storm / tornado — interior safe spot' },
-    { key: 'emergencyMedicalPlaylistId',  short: 'medical',  label: 'Medical',  emoji: '🚑', description: 'Medical event — clear the area' },
-  ];
-
-  const onChange = (
-    type: { key: keyof FloorPlanScreen; short: string },
-    value: string,
-  ) => {
+  const onPickPlaylist = (type: EmergencyTypeRow, value: string) => {
     const playlistId = value === '' ? null : value;
-    // The API takes camelCase keys (lockdownPlaylistId, evacuatePlaylistId, …)
-    const apiKey = `${type.short}PlaylistId` as
-      | 'lockdownPlaylistId' | 'evacuatePlaylistId' | 'weatherPlaylistId'
-      | 'holdPlaylistId' | 'securePlaylistId' | 'medicalPlaylistId';
-    updateMutation.mutate({ screenId, patch: { [apiKey]: playlistId } as any });
+    // Picking a playlist clears any custom asset for the same type so
+    // there's only ever one source of truth for that emergency.
+    updateMutation.mutate({
+      screenId,
+      patch: {
+        [`${type.short}PlaylistId`]: playlistId,
+        [`${type.short}AssetUrl`]: null,
+      } as any,
+    });
+  };
+
+  const onUploadCustom = async (type: EmergencyTypeRow, file: File) => {
+    setUploadError(null);
+    setUploadingType(type.short);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const { useUIStore } = await import('@/store/ui-store');
+      const { API_URL } = await import('@/lib/api-url');
+      const token = useUIStore.getState().token;
+      const res = await fetch(`${API_URL}/assets/upload`, {
+        method: 'POST',
+        body: fd,
+        credentials: 'include',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) throw new Error(`Upload failed (${res.status})`);
+      const { url } = await res.json();
+      // Setting an asset clears any picked playlist for the same type.
+      updateMutation.mutate({
+        screenId,
+        patch: {
+          [`${type.short}AssetUrl`]: url,
+          [`${type.short}PlaylistId`]: null,
+        } as any,
+      });
+    } catch (err: any) {
+      setUploadError(err?.message || 'Upload failed — try a smaller file');
+    } finally {
+      setUploadingType(null);
+    }
+  };
+
+  const onClear = (type: EmergencyTypeRow) => {
+    updateMutation.mutate({
+      screenId,
+      patch: {
+        [`${type.short}PlaylistId`]: null,
+        [`${type.short}AssetUrl`]: null,
+      } as any,
+    });
   };
 
   return (
@@ -616,32 +719,97 @@ function ScreenEmergencyContentConfig({
         Emergency content for this screen
       </div>
       <p className="text-[11px] text-slate-400 leading-relaxed mb-3">
-        Pick which playlist plays on <span className="text-slate-600 font-semibold">this screen only</span> for each emergency type. &ldquo;Use tenant default&rdquo; falls back to the school-wide content for that type.
+        For each of the 6 emergency types, decide what plays on <span className="font-semibold text-slate-600">this screen only</span> when that type fires:
+        pick an existing <span className="font-semibold">playlist</span>,
+        upload a <span className="font-semibold">custom asset</span> (image / video / PDF),
+        or leave it on <span className="font-semibold">tenant default</span>. Setting either replaces the other.
       </p>
-      <div className="space-y-2">
-        {TYPES.map((t) => {
-          const current = (screen[t.key] as string | null | undefined) ?? '';
+      <div className="space-y-2.5">
+        {EMERGENCY_TYPES.map((t) => {
+          const playlistId = (screen[t.playlistKey] as string | null | undefined) ?? '';
+          const assetUrl = (screen[t.assetKey] as string | null | undefined) ?? '';
+          const hasCustomAsset = !!assetUrl;
+          const hasPlaylist = !!playlistId;
+          const usingTenantDefault = !hasCustomAsset && !hasPlaylist;
+          const filename = hasCustomAsset ? assetUrl.split('/').pop()?.split('?')[0] : '';
+
           return (
-            <div key={String(t.key)} className="flex items-center gap-2">
-              <div className="shrink-0 w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-base" title={t.description}>
-                <span aria-hidden>{t.emoji}</span>
+            <div key={t.short} className="rounded-lg border border-slate-200 p-2.5 bg-slate-50/60">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="shrink-0 w-9 h-9 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-base shadow-sm" title={t.description}>
+                  <span aria-hidden>{t.emoji}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12px] font-bold text-slate-700">{t.label}</div>
+                  <div className="text-[10px] text-slate-400 truncate" title={t.description}>{t.description}</div>
+                </div>
+                {/* Status pill */}
+                <div className={`text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
+                  hasPlaylist     ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' :
+                  hasCustomAsset  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                                    'bg-slate-100 text-slate-500 border border-slate-200'
+                }`}>
+                  {hasPlaylist ? 'Playlist' : hasCustomAsset ? 'Custom' : 'Default'}
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[11px] font-bold text-slate-700">{t.label}</div>
-                <div className="text-[9px] text-slate-400 truncate" title={t.description}>{t.description}</div>
+
+              {/* Custom asset state — show filename + clear */}
+              {hasCustomAsset && (
+                <div className="flex items-center gap-2 mb-2 px-2 py-1.5 bg-emerald-50 border border-emerald-200 rounded-md">
+                  <Upload className="w-3 h-3 text-emerald-600 shrink-0" />
+                  <span className="text-[11px] font-mono text-emerald-700 truncate flex-1" title={assetUrl}>{filename || 'custom asset'}</span>
+                  <button
+                    type="button"
+                    onClick={() => onClear(t)}
+                    aria-label={`Clear custom ${t.label} asset`}
+                    title="Clear custom asset (revert to tenant default)"
+                    className="shrink-0 w-6 h-6 rounded flex items-center justify-center text-emerald-600 hover:bg-emerald-100"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+
+              {/* Picker row — playlist select + upload button */}
+              <div className="flex items-center gap-2">
+                <select
+                  value={playlistId}
+                  disabled={playlistsLoading || updateMutation.isPending}
+                  onChange={(e) => onPickPlaylist(t, e.target.value)}
+                  className="flex-1 text-[11px] font-medium px-2 py-1.5 rounded-md border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-rose-300 disabled:bg-slate-50 disabled:text-slate-400"
+                  aria-label={`${t.label} playlist for this screen`}
+                >
+                  <option value="">{usingTenantDefault ? '↳ Use tenant default' : (hasCustomAsset ? '↳ Switch to playlist…' : '↳ Use tenant default')}</option>
+                  {(playlists || []).map((p: any) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <label
+                  className={`shrink-0 inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1.5 rounded-md cursor-pointer transition-colors ${
+                    uploadingType === t.short
+                      ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
+                      : 'bg-white text-slate-600 border border-slate-200 hover:border-emerald-400 hover:text-emerald-700'
+                  }`}
+                  title="Upload a single image, video, or PDF for this screen + emergency type"
+                >
+                  {uploadingType === t.short ? (
+                    <><Loader2 className="w-3 h-3 animate-spin" /> Uploading…</>
+                  ) : (
+                    <><Upload className="w-3 h-3" /> Upload</>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*,video/*,application/pdf"
+                    className="hidden"
+                    disabled={!!uploadingType || updateMutation.isPending}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) onUploadCustom(t, f);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
               </div>
-              <select
-                value={current}
-                disabled={playlistsLoading || updateMutation.isPending}
-                onChange={(e) => onChange(t, e.target.value)}
-                className="text-[11px] font-medium px-2 py-1.5 rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-rose-300 disabled:bg-slate-50 disabled:text-slate-400 max-w-[180px]"
-                aria-label={`${t.label} content for this screen`}
-              >
-                <option value="">↳ Use tenant default</option>
-                {(playlists || []).map((p: any) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
             </div>
           );
         })}
@@ -651,8 +819,8 @@ function ScreenEmergencyContentConfig({
           <Loader2 className="w-3 h-3 animate-spin" /> Saving…
         </div>
       )}
-      {updateMutation.isError && (
-        <div className="mt-2 text-[10px] text-rose-600">Couldn&rsquo;t save — try again.</div>
+      {(updateMutation.isError || uploadError) && (
+        <div className="mt-2 text-[10px] text-rose-600">{uploadError || "Couldn’t save — try again."}</div>
       )}
     </section>
   );
