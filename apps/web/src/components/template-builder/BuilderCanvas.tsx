@@ -5,9 +5,21 @@ import { useDroppable } from '@dnd-kit/core';
 import {
   Copy, Lock, Unlock, ChevronUp, ChevronDown, Trash2,
   AlignLeft, AlignCenter, AlignRight,
+  Bold, Italic, Underline, Strikethrough, Palette,
   RefreshCw, Maximize2, Clock, Thermometer, Gauge, Calendar, Globe, MousePointer,
 } from 'lucide-react';
-import { AssetLibraryModal, FontFamilyField, FontSizeField, FormatToggles, ColorField, measureZoneFontSize } from './PropertiesPanel';
+import { AssetLibraryModal, measureZoneFontSize } from './PropertiesPanel';
+
+// Curated font list for the floating bar's compact <select>. Keeps
+// the dropdown short — operators get the most-common signage fonts
+// without a 50-item scrollwheel. The empty value falls back to the
+// theme's default font (set per template).
+const FLOATING_BAR_FONTS = [
+  'Inter', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins',
+  'Oswald', 'Raleway', 'Nunito', 'Source Sans Pro', 'Playfair Display',
+  'Merriweather', 'Bebas Neue', 'Caveat', 'Pacifico',
+  'Arial', 'Helvetica', 'Georgia', 'Times New Roman', 'Courier New',
+];
 import { useBuilderStore } from './useBuilderStore';
 import { BuilderZone } from './BuilderZone';
 import { snapMove, snapResize } from './snap-engine';
@@ -495,80 +507,133 @@ function FloatingZoneActions({ zone }: { zone: Zone }) {
     </>
   );
 
-  // ── TEXT / RICH_TEXT — two-row layout ─────────────────────────────
+  // ── TEXT / RICH_TEXT — single-row compact layout ─────────────────
+  // 2026-04-29 — operator: "you removed all of the editing info from
+  // the top tool bar in the template editor but you didnt add it to
+  // the floating toolbar so everything is gone now". Cause: the
+  // previous attempt used the wrapper components from PropertiesPanel
+  // (FontFamilyField / FontSizeField / FormatToggles / ColorField).
+  // Those are designed for the vertical right-rail panel — they
+  // include their own labels, vertical-stacked div wrappers, and
+  // styles that break in a horizontal flex bar context. The
+  // arbitrary-variant CSS workaround `[&_label]:hidden [&_*]:!text-xs`
+  // didn't reliably hide things in the operator's Tailwind 4 build,
+  // so the bar rendered but empty / clipped.
+  //
+  // Rewrite using NATIVE controls inline. Compact single-row layout
+  // matches Canva's float bar exactly: Font dropdown | Size input |
+  // B I U S | Color swatch | Align cycle | divider | Duplicate
+  // Forward Back Lock Delete. ~600px wide, ~36px tall, guaranteed
+  // to render on any browser/Tailwind version.
   if (isText) {
+    const measured = getMeasuredFontSize();
+    const sizeDisplay = cfg.fontSize ?? measured ?? '';
     return (
       <div
         role="toolbar"
-        aria-label="Selected widget actions"
-        className="absolute z-30 bg-white border border-slate-200 rounded-lg shadow-lg transition-[width,height] duration-150"
+        aria-label="Selected widget text actions"
+        className="absolute z-30 bg-white border border-slate-200 rounded-lg shadow-lg flex items-center gap-0.5 px-1.5 py-1"
         style={{
           top,
           left,
           transform: `translate(-50%, ${translateY})`,
           pointerEvents: 'auto',
-          minWidth: '540px',
         }}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        {/* ROW 1 — Font / Size / Color / Align */}
-        <div className="flex items-center gap-1 px-2 py-1.5 [&_label]:hidden [&_*]:!text-xs">
-          {/* Font family */}
-          <div className="min-w-[160px]">
-            <FontFamilyField
-              label=""
-              value={cfg.fontFamily || ''}
-              onChange={(v) => setCfg({ fontFamily: v })}
-            />
-          </div>
-          {/* Font size */}
-          <div className="min-w-[80px]">
-            <FontSizeField
-              label=""
-              value={cfg.fontSize ?? null}
-              onChange={(v) => setCfg({ fontSize: v })}
-              getMeasuredSize={getMeasuredFontSize}
-            />
-          </div>
-          {/* Text color */}
-          <div className="min-w-[120px]">
-            <ColorField
-              label=""
-              value={cfg.color || '#1e293b'}
-              onChange={(v) => setCfg({ color: v })}
-            />
-          </div>
-          {/* Align cycle */}
+        {/* Font family — compact native select */}
+        <select
+          aria-label="Font family"
+          title="Font family"
+          value={cfg.fontFamily || ''}
+          onChange={(e) => setCfg({ fontFamily: e.target.value })}
+          style={{ fontFamily: cfg.fontFamily || 'inherit' }}
+          className="h-8 px-2 text-xs rounded-md bg-white border border-slate-200 hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-400 cursor-pointer min-w-[120px]"
+        >
+          <option value="">Theme font</option>
+          {FLOATING_BAR_FONTS.map((f) => (
+            <option key={f} value={f} style={{ fontFamily: f }}>
+              {f}
+            </option>
+          ))}
+        </select>
+
+        {/* Font size — number input + +/- steppers */}
+        <div className="flex items-center ml-1">
           {btn(
-            `Align: ${cfg.textAlign || 'left'} (click to cycle)`,
+            'Decrease size',
             () => {
-              const cur = cfg.textAlign || 'left';
-              const next = cur === 'left' ? 'center' : cur === 'center' ? 'right' : 'left';
-              setCfg({ textAlign: next });
+              const cur = (typeof cfg.fontSize === 'number' ? cfg.fontSize : measured) || 16;
+              setCfg({ fontSize: Math.max(8, cur - 2) });
             },
-            cfg.textAlign === 'center'
-              ? <AlignCenter className="w-3.5 h-3.5" />
-              : cfg.textAlign === 'right'
-                ? <AlignRight className="w-3.5 h-3.5" />
-                : <AlignLeft className="w-3.5 h-3.5" />,
+            <span className="text-base leading-none font-semibold">−</span>,
+          )}
+          <input
+            type="number"
+            aria-label="Font size"
+            title="Font size in pixels"
+            value={sizeDisplay}
+            placeholder={measured ? String(measured) : ''}
+            onChange={(e) => {
+              const v = parseInt(e.target.value, 10);
+              setCfg({ fontSize: Number.isFinite(v) && v > 0 ? v : undefined });
+            }}
+            className="h-8 w-12 px-1 text-xs text-center rounded-md bg-white border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          />
+          {btn(
+            'Increase size',
+            () => {
+              const cur = (typeof cfg.fontSize === 'number' ? cfg.fontSize : measured) || 16;
+              setCfg({ fontSize: cur + 2 });
+            },
+            <span className="text-base leading-none font-semibold">+</span>,
           )}
         </div>
 
-        {/* Horizontal divider between rows */}
-        <div className="h-px bg-slate-100 mx-1" />
+        <div className="w-px h-5 bg-slate-200 mx-1" />
 
-        {/* ROW 2 — B/I/U/S toggles + divider + generic actions */}
-        <div className="flex items-center gap-0.5 px-1.5 py-1.5">
-          <FormatToggles
-            bold={cfg.bold === true}
-            italic={cfg.italic === true}
-            underline={cfg.underline === true}
-            strikethrough={cfg.strikethrough === true}
-            onChange={(patch) => setCfg(patch)}
+        {/* Bold / Italic / Underline / Strikethrough */}
+        {btn('Bold (Ctrl/⌘+B)', () => setCfg({ bold: cfg.bold !== true }), <Bold className="w-3.5 h-3.5" />, false, cfg.bold === true)}
+        {btn('Italic (Ctrl/⌘+I)', () => setCfg({ italic: cfg.italic !== true }), <Italic className="w-3.5 h-3.5" />, false, cfg.italic === true)}
+        {btn('Underline (Ctrl/⌘+U)', () => setCfg({ underline: cfg.underline !== true }), <Underline className="w-3.5 h-3.5" />, false, cfg.underline === true)}
+        {btn('Strikethrough', () => setCfg({ strikethrough: cfg.strikethrough !== true }), <Strikethrough className="w-3.5 h-3.5" />, false, cfg.strikethrough === true)}
+
+        <div className="w-px h-5 bg-slate-200 mx-1" />
+
+        {/* Color picker — native input + visible swatch */}
+        <label className="relative w-8 h-8 rounded-md flex items-center justify-center cursor-pointer hover:bg-slate-100" title="Text color" aria-label="Text color">
+          <Palette className="w-3.5 h-3.5 text-slate-600" />
+          <span
+            className="absolute bottom-1 left-1.5 right-1.5 h-1 rounded-sm border border-slate-300"
+            style={{ background: cfg.color || '#1e293b' }}
           />
-          <div className="w-px h-5 bg-slate-200 mx-1" />
-          {genericActions}
-        </div>
+          <input
+            type="color"
+            value={cfg.color || '#1e293b'}
+            onChange={(e) => setCfg({ color: e.target.value })}
+            className="absolute inset-0 opacity-0 cursor-pointer"
+          />
+        </label>
+
+        {/* Align cycle */}
+        {btn(
+          `Align: ${cfg.textAlign || 'left'} (click to cycle)`,
+          () => {
+            const cur = cfg.textAlign || 'left';
+            const next = cur === 'left' ? 'center' : cur === 'center' ? 'right' : 'left';
+            setCfg({ textAlign: next });
+          },
+          cfg.textAlign === 'center'
+            ? <AlignCenter className="w-3.5 h-3.5" />
+            : cfg.textAlign === 'right'
+              ? <AlignRight className="w-3.5 h-3.5" />
+              : <AlignLeft className="w-3.5 h-3.5" />,
+        )}
+
+        <div className="w-px h-5 bg-slate-200 mx-1" />
+
+        {/* Generic actions — Duplicate / Forward / Back / Lock / Delete */}
+        {genericActions}
       </div>
     );
   }
