@@ -29,8 +29,8 @@ android {
         // Same minSdk as Player so we deploy on identical hardware
         minSdk = 24
         targetSdk = 34
-        versionCode = 7
-        versionName = "1.0.6"
+        versionCode = 8
+        versionName = "1.0.7"
 
         // Override at build time to point at a non-default API:
         //   -PmanagerApiRoot="https://staging.educms-five.vercel.app"

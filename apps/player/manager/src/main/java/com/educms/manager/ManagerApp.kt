@@ -44,6 +44,27 @@ class ManagerApp : Application() {
         }
         startWatchdogService(this)
 
+        // v1.0.7 — Proactive install-permission prompt. Operator
+        // (2026-04-29): "it did not ask me fo rthe unkown
+        // permissions for the manager only for the player when i
+        // installed". Without this, the FIRST install attempt
+        // hits InstallPromptActivity's permission gate, deep-
+        // links to Settings mid-flow — the operator's "push
+        // update from dashboard" UX needs an extra round-trip
+        // and a confused "why is Settings opening?" moment.
+        //
+        // Posting the prompt notification on cold boot lets the
+        // operator grant Manager's install-unknown-apps perm
+        // upfront, BEFORE any install fires. Once granted,
+        // every future Push from the dashboard goes notification
+        // → Install dialog → tap → installed. One tap per update,
+        // no Settings detour.
+        //
+        // Skipped when Manager is already DEVICE_OWNER (silent
+        // installs work without the permission anyway) or when
+        // the permission is already granted.
+        maybePromptForInstallPermission(this)
+
         // Two periodic workers: Player OTA (existing) + Manager self-
         // update (NEW in v1.0.2). Both run on independent schedules,
         // both gracefully no-op when there's nothing to install.
@@ -81,9 +102,80 @@ class ManagerApp : Application() {
         return false
     }
 
+    /**
+     * v1.0.7 — Post a high-priority notification deep-linking to
+     * Manager's "Install unknown apps" Settings page if the perm
+     * isn't already granted (and we aren't DEVICE_OWNER, which
+     * doesn't need it). Idempotent — Android dedupes by
+     * INSTALL_PROMPT_NOTIF_ID + INSTALL_PROMPT_CHANNEL.
+     *
+     * Why this exists: the Player has its own install-unknown-apps
+     * dialog gate built into MainActivity (v1.0.23+). Manager has
+     * NO Activity equivalent — so until v1.0.7 the operator never
+     * got asked to grant Manager the permission, and the first
+     * install attempt would mysteriously deep-link to Settings
+     * mid-push. This notification surfaces the request the moment
+     * Manager boots so it gets handled before any push fires.
+     */
+    private fun maybePromptForInstallPermission(ctx: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        if (ctx.packageManager.canRequestPackageInstalls()) return
+        if (AdminReceiver.isDeviceOwner(ctx)) return
+
+        try {
+            // Channel must exist; OtaInstallReceiver creates it too —
+            // calling createNotificationChannel twice is idempotent.
+            val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE)
+                as android.app.NotificationManager
+            val channel = android.app.NotificationChannel(
+                PERMISSION_NOTIF_CHANNEL,
+                "EduCMS Updates",
+                android.app.NotificationManager.IMPORTANCE_HIGH,
+            ).apply {
+                description = "Tap to allow EduCMS to install Player updates."
+            }
+            nm.createNotificationChannel(channel)
+
+            val settingsIntent = android.content.Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
+                .setData(android.net.Uri.parse("package:${ctx.packageName}"))
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            val pi = android.app.PendingIntent.getActivity(
+                ctx,
+                PERMISSION_NOTIF_ID,
+                settingsIntent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or
+                    android.app.PendingIntent.FLAG_IMMUTABLE,
+            )
+
+            val notification = androidx.core.app.NotificationCompat.Builder(ctx, PERMISSION_NOTIF_CHANNEL)
+                .setSmallIcon(android.R.drawable.stat_sys_warning)
+                .setContentTitle("EduCMS: enable updates")
+                .setContentText("Tap to allow Player updates without sideloading.")
+                .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(
+                    "Tap to grant EduCMS Manager permission to install Player updates. " +
+                    "One-time setup; future updates will install with a single tap on the Install dialog."
+                ))
+                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+                .setCategory(androidx.core.app.NotificationCompat.CATEGORY_RECOMMENDATION)
+                .setAutoCancel(true)
+                .setContentIntent(pi)
+                .setOngoing(true)  // can't dismiss until granted
+                .build()
+            nm.notify(PERMISSION_NOTIF_ID, notification)
+            Log.i(TAG, "posted proactive install-permission prompt notification")
+        } catch (e: Exception) {
+            Log.w(TAG, "maybePromptForInstallPermission failed: ${e.message}", e)
+        }
+    }
+
     companion object {
         private const val TAG = "ManagerApp"
         private const val PERIODIC_OTA_NAME = "edu-manager-ota-periodic"
+        // v1.0.7 — proactive install-permission notification ids.
+        // Channel matches OtaInstallReceiver's so both notifications
+        // are grouped under one "EduCMS Updates" category in Settings.
+        private const val PERMISSION_NOTIF_CHANNEL = "edu_install_prompt"
+        private const val PERMISSION_NOTIF_ID = 92482
 
         /**
          * Launches WatchdogService as a foreground service. Called
