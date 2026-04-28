@@ -225,9 +225,18 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         cancelLabel: 'Keep editing',
       });
       if (!ok) return;
+      // Operator (2026-04-28): "still getting windows pop ups, ours
+      // pops first and then windows pops a second time on the same
+      // exit." Cause: the native browser `beforeunload` handler
+      // below fires unconditionally on isDirty, so Chrome shows its
+      // own ugly "Leave site?" dialog AFTER our appConfirm. Mark the
+      // store clean before navigating so beforeunload's guard turns
+      // off — the user already explicitly confirmed they want to
+      // leave via our themed dialog.
+      markClean();
     }
     onBack();
-  }, [isDirty, onBack, template.isSystem]);
+  }, [isDirty, onBack, template.isSystem, markClean]);
 
   const handleDiscard = useCallback(async () => {
     if (template.isSystem) { onBack(); return; } // system presets aren't deletable
@@ -239,13 +248,17 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       cancelLabel: 'Keep it',
     });
     if (!ok) return;
+    // Same fix as handleBack — mark clean BEFORE navigating so
+    // Chrome's native beforeunload doesn't pop a second "Leave site?"
+    // dialog on top of our themed Discard confirm.
+    markClean();
     try {
       await deleteTemplate.mutateAsync(template.id);
     } catch (err) {
       console.error('discard failed', err);
     }
     onBack();
-  }, [template.id, template.name, template.isSystem, deleteTemplate, onBack]);
+  }, [template.id, template.name, template.isSystem, deleteTemplate, onBack, markClean]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
