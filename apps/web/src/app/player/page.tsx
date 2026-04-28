@@ -2143,6 +2143,24 @@ function PlayerPage() {
     />
   ) : null;
 
+  // 2026-04-28 — Install Now handler shared by every splash mode.
+  // Operator: "screen paired screen should be our main screen with
+  // all the info" — moved from the click-to-show info overlay into
+  // KioskSplash itself so the banner appears on pairing AND
+  // post-pair splashes. Mirrors the legacy in-overlay button:
+  //  1. Set otaProgress so the banner switches to "in progress"
+  //  2. Call native bridge so OtaUpdateWorker fires
+  const handleInstallUpdate = () => {
+    const bridge = (window as any).EduCmsNative;
+    const bridgeAvailable = !!(bridge && typeof bridge.checkForUpdates === 'function');
+    setOtaProgress({ startedAt: Date.now(), bridgeAvailable });
+    if (bridgeAvailable) {
+      try { bridge.checkForUpdates(); } catch (err) {
+        console.warn('[Player] self-update bridge call failed', err);
+      }
+    }
+  };
+
   // ─── Connectivity toast (non-blocking) ───
   // Renders as a fixed-position bottom-center bar over WHATEVER the
   // current phase is showing. Replaces the legacy blocking
@@ -2237,6 +2255,9 @@ function PlayerPage() {
           resolution={splashResolution}
           apkVersion={apkVersion}
           managerVersion={managerVersion}
+          otaProgress={otaProgress}
+          latestApkVersion={latestApkVersion}
+          onInstallUpdate={handleInstallUpdate}
         />
         {otaOverlay}
         {connectivityToast}
@@ -2255,6 +2276,9 @@ function PlayerPage() {
           resolution={splashResolution}
           apkVersion={apkVersion}
           managerVersion={managerVersion}
+          otaProgress={otaProgress}
+          latestApkVersion={latestApkVersion}
+          onInstallUpdate={handleInstallUpdate}
           pairDeepLinkUrl={
             typeof window !== 'undefined' && pairingCode
               ? `${window.location.origin}/pair?code=${encodeURIComponent(pairingCode)}`
@@ -2278,6 +2302,9 @@ function PlayerPage() {
           resolution={splashResolution}
           apkVersion={apkVersion}
           managerVersion={managerVersion}
+          otaProgress={otaProgress}
+          latestApkVersion={latestApkVersion}
+          onInstallUpdate={handleInstallUpdate}
           loadProgress={loadProgress}
         />
         {otaOverlay}
@@ -2343,6 +2370,9 @@ function PlayerPage() {
           resolution={splashResolution}
           apkVersion={apkVersion}
           managerVersion={managerVersion}
+          otaProgress={otaProgress}
+          latestApkVersion={latestApkVersion}
+          onInstallUpdate={handleInstallUpdate}
           lastSync={lastSync}
           stoppedPlaylists={manifestPlaylists}
           stoppedCache={cacheStatus && cacheStatus.supported ? { playlist: cacheStatus.playlist, emergency: cacheStatus.emergency } : null}
@@ -2554,6 +2584,9 @@ function PlayerPage() {
         resolution={splashResolution}
         apkVersion={apkVersion}
         managerVersion={managerVersion}
+        otaProgress={otaProgress}
+        latestApkVersion={latestApkVersion}
+        onInstallUpdate={handleInstallUpdate}
         lastSync={lastSync}
         stoppedPlaylists={manifestPlaylists}
         stoppedCache={cacheStatus && cacheStatus.supported ? { playlist: cacheStatus.playlist, emergency: cacheStatus.emergency } : null}

@@ -36,8 +36,8 @@
  * down on narrow viewports so the code never overflows a phone.
  */
 
-import { useMemo } from 'react';
-import { Wifi, QrCode, MonitorPlay, Pause } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Wifi, QrCode, MonitorPlay, Pause, Download } from 'lucide-react';
 
 type Mode = 'registering' | 'pairing' | 'connecting' | 'stopped';
 
@@ -113,6 +113,35 @@ export interface KioskSplashProps {
    *  ("Loading content…" + pulse). */
   loadProgress?: LoadProgress | null;
 
+  // ─── OTA upgrade banners ──────────────────────────────────────
+  // Operator (2026-04-28): "screen paired screen should be our
+  // main screen with all the info" + "show progress of the
+  // upgrade...also why doesnt it say upgrade available? that
+  // should be on the pairing splash aswell". Moved from the
+  // post-pair click-overlay (where it was hidden behind a tap)
+  // to the splash itself so any operator standing in front of a
+  // kiosk can see update state at a glance.
+
+  /** Active OTA — set the moment the operator (or dashboard) kicks
+   *  off an update. Splash renders an indigo banner with stage emoji
+   *  + label (Sending signal → Downloading → Installing → Restart).
+   *  Auto-clears 8 minutes after startedAt. Pass null/undefined when
+   *  no OTA is in flight. */
+  otaProgress?: { startedAt: number; bridgeAvailable?: boolean } | null;
+
+  /** Latest published APK versionName from /api/v1/player/latest-version.
+   *  When this is strictly newer than apkVersion, the splash renders an
+   *  amber "Update available" banner with an Install Now button (only
+   *  rendered if onInstallUpdate is also provided). Omit / null when
+   *  not yet fetched. */
+  latestApkVersion?: string | null;
+
+  /** Click handler for the "Install now" button on the Update Available
+   *  banner. Typically wraps EduCmsNative.checkForUpdates() + sets
+   *  otaProgress to non-null. Omit to render the banner without a
+   *  button (e.g. on pairing mode where there's no tenant context yet). */
+  onInstallUpdate?: () => void;
+
   // ─── Stopped-mode props ──────────────────────────────────────
   /** Last successful manifest sync — shown as a chip below the
    *  headline. Omitted in stopped mode if never synced. */
@@ -144,6 +173,9 @@ export function KioskSplash({
   managerVersion,
   pairDeepLinkUrl,
   loadProgress,
+  otaProgress,
+  latestApkVersion,
+  onInstallUpdate,
   lastSync,
   stoppedPlaylists = [],
   stoppedCache,
@@ -168,6 +200,50 @@ export function KioskSplash({
   const totalStoppedAssets = stoppedPlaylists.reduce((s, p) => s + p.itemCount, 0);
   const totalStoppedBytes = stoppedPlaylists.reduce((s, p) => s + p.totalBytes, 0);
   const displayName = brandName && brandName.trim() ? brandName : 'EduSignage';
+
+  // ─── OTA banner state ────────────────────────────────────────
+  // Tick every 5s while otaProgress is active so the stage label
+  // advances based on elapsed time (15s sending → 60s download →
+  // 150s install → 300s restart timeout).
+  const [, setOtaTick] = useState(0);
+  useEffect(() => {
+    if (!otaProgress) return;
+    const t = setInterval(() => setOtaTick((n) => n + 1), 5_000);
+    return () => clearInterval(t);
+  }, [otaProgress]);
+
+  // Strict-greater compare on apk version vs latest published. Same
+  // numeric-segment compare the legacy click-overlay used; we pull
+  // it up here so the banner can render across all splash modes.
+  const isBehind = useMemo(() => {
+    if (!apkVersion || !latestApkVersion) return false;
+    const norm = (s: string) =>
+      s.replace(/^v/i, '')
+        .split(/[.\-_]/)
+        .map((seg) => parseInt(seg, 10))
+        .filter((n) => Number.isFinite(n));
+    const a = norm(apkVersion);
+    const b = norm(latestApkVersion);
+    const len = Math.max(a.length, b.length);
+    for (let i = 0; i < len; i++) {
+      const x = a[i] ?? 0;
+      const y = b[i] ?? 0;
+      if (x < y) return true;
+      if (x > y) return false;
+    }
+    return false;
+  }, [apkVersion, latestApkVersion]);
+
+  // Active stage during an OTA — derived from elapsed time.
+  const otaStage = useMemo(() => {
+    if (!otaProgress) return null;
+    const elapsed = Date.now() - otaProgress.startedAt;
+    if (elapsed < 15_000)  return { emoji: '📡', label: 'Sending update signal…' };
+    if (elapsed < 60_000)  return { emoji: '⬇️', label: 'Downloading new player…' };
+    if (elapsed < 150_000) return { emoji: '⚙️', label: 'Installing… (Android prompt may show)' };
+    if (elapsed < 300_000) return { emoji: '🔄', label: 'Restarting + reporting back…' };
+    return { emoji: '⏱', label: 'No response after 5 minutes — retry on next reboot' };
+  }, [otaProgress]);
 
   // Each pairing-code character gets its own tile. Map ahead of time
   // so React can key them stably and the stagger animation has a
@@ -229,6 +305,44 @@ export function KioskSplash({
           <h1 className="kiosk-brand-name">{displayName}</h1>
           <p className="kiosk-brand-sub">Digital Signage Player</p>
         </div>
+
+        {/* ── OTA banner (shared across all splash modes) ──
+            Renders one of:
+              - Update IN PROGRESS  (otaProgress set → indigo banner with stage)
+              - Update AVAILABLE    (apkVersion < latestApkVersion → amber banner with Install Now)
+              - nothing             (current OR no version data yet)
+            Always above mode-specific content so the operator sees
+            it whether they're paired, pairing, or stopped. */}
+        {otaProgress && otaStage ? (
+          <div className="kiosk-ota-banner kiosk-ota-banner--progress">
+            <span className="kiosk-ota-emoji">{otaStage.emoji}</span>
+            <div className="kiosk-ota-text">
+              <div className="kiosk-ota-title">Update in progress</div>
+              <div className="kiosk-ota-sub">{otaStage.label}</div>
+            </div>
+          </div>
+        ) : isBehind ? (
+          <div className="kiosk-ota-banner kiosk-ota-banner--available">
+            <span className="kiosk-ota-emoji">⬆️</span>
+            <div className="kiosk-ota-text">
+              <div className="kiosk-ota-title">Update available</div>
+              <div className="kiosk-ota-sub">
+                Player <strong>v{latestApkVersion}</strong> ready to install
+                {apkVersion ? <> · running v{apkVersion}</> : null}
+              </div>
+            </div>
+            {onInstallUpdate && (
+              <button
+                type="button"
+                className="kiosk-ota-btn"
+                onClick={(e) => { e.stopPropagation(); onInstallUpdate(); }}
+              >
+                <Download className="kiosk-ota-btn-icon" />
+                Install now
+              </button>
+            )}
+          </div>
+        ) : null}
 
         {/* ── Pairing mode: the hero is the 6-character code ── */}
         {mode === 'pairing' && (
@@ -1033,6 +1147,78 @@ const CSS = `
 }
 .kiosk-chip-warn .kiosk-chip-label { color: #fbbf24; }
 .kiosk-chip-warn .kiosk-chip-value { color: #fef3c7; }
+
+/* ─── OTA banner (Update available / Update in progress) ────── */
+.kiosk-ota-banner {
+  display: flex; align-items: center; gap: 16px;
+  padding: 14px 22px;
+  border-radius: 18px;
+  margin-bottom: clamp(20px, 3vh, 36px);
+  max-width: min(680px, 92vw);
+  width: max-content;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.32);
+  animation: ota-slide-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes ota-slide-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.kiosk-ota-banner--progress {
+  background: rgba(99, 102, 241, 0.18);
+  border: 1px solid rgba(165, 180, 252, 0.45);
+  color: #e0e7ff;
+}
+.kiosk-ota-banner--available {
+  background: rgba(245, 158, 11, 0.16);
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  color: #fef3c7;
+}
+.kiosk-ota-emoji {
+  font-size: 36px;
+  line-height: 1;
+  flex-shrink: 0;
+  filter: drop-shadow(0 2px 8px rgba(0,0,0,0.3));
+}
+.kiosk-ota-text {
+  display: flex; flex-direction: column; gap: 2px;
+  text-align: left;
+  min-width: 0;
+}
+.kiosk-ota-title {
+  font-family: 'Fredoka', 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: clamp(14px, 1.8vh, 17px);
+  letter-spacing: 0.02em;
+}
+.kiosk-ota-banner--progress .kiosk-ota-title { color: #ffffff; }
+.kiosk-ota-banner--available .kiosk-ota-title { color: #fffbeb; }
+.kiosk-ota-sub {
+  font-size: clamp(12px, 1.5vh, 14px);
+  font-weight: 500;
+  opacity: 0.92;
+}
+.kiosk-ota-sub strong {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-weight: 700;
+}
+.kiosk-ota-btn {
+  flex-shrink: 0;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 18px;
+  border-radius: 12px;
+  border: 0;
+  background: #f59e0b;
+  color: #422006;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px; font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(245, 158, 11, 0.35);
+  transition: transform 0.15s, background 0.15s;
+}
+.kiosk-ota-btn:hover { background: #fbbf24; transform: translateY(-1px); }
+.kiosk-ota-btn:active { transform: translateY(0); }
+.kiosk-ota-btn-icon { width: 14px; height: 14px; }
 
 /* ─── Portrait-orientation override ─────────────────────────── */
 /* When the splash lands on a 1080×1920 portrait display (Nova
