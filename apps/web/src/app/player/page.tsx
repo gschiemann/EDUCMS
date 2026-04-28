@@ -2292,26 +2292,15 @@ function PlayerPage() {
   }
 
   // ─── Render: Connecting ───
-  if (phase === 'connecting') {
-    return (
-      <>
-        <KioskSplash
-          mode="connecting"
-          brandName={brandName}
-          screenName={screenName}
-          resolution={splashResolution}
-          apkVersion={apkVersion}
-          managerVersion={managerVersion}
-          otaProgress={otaProgress}
-          latestApkVersion={latestApkVersion}
-          onInstallUpdate={handleInstallUpdate}
-          loadProgress={loadProgress}
-        />
-        {otaOverlay}
-        {connectivityToast}
-      </>
-    );
-  }
+  // 2026-04-28 — operator: "why cant this screen be the one that
+  // says connecting to your cms and then just refreshes connected
+  // ....so you have one screen for when you not paired and then you
+  // have this one for when your paired". Removed — we now fall
+  // through to the playback render path, which (because there's no
+  // currentItem yet) renders the inline "Screen Paired Successfully"
+  // view. That view's title/subtitle are conditional on phase so it
+  // displays "Connecting to your CMS…" while the manifest is being
+  // fetched. ONE post-pair splash, one pre-pair splash. Done.
 
   // Legacy `phase === 'offline'` block intentionally REMOVED — operator
   // reported (2026-04-27 with screenshot) the kiosk getting stuck on
@@ -2605,22 +2594,40 @@ function PlayerPage() {
   }
 
   // Media playlist rendering
+  // 2026-04-28 — operator (6th request): "the URL playlist fix list
+  // is still not working, not image carousel, no mouse pointer and
+  // a click of the mouse open some dumb ass little splash screen
+  // that shouldnt exist". Root cause was that THIS render branch
+  // (asset-based playlist, non-template) had `cursor-none` and
+  // `onClick={setShowOverlay}` HARDCODED and the inner wrapper had
+  // `pointer-events-none` HARDCODED — so for a playlist of HTML
+  // assets (URL playlist), clicks never reached the iframe and the
+  // cursor was always hidden.
+  //
+  // Mirroring the template-path's hasWebpageZone detection: if ANY
+  // item in the asset playlist has mime 'text/html', flip the whole
+  // surface into interactive mode (cursor visible, clicks pass to
+  // iframe, overlay only opens via remote/keyboard).
+  const hasHtmlAsset = sorted.some((it: any) => it?.asset?.mimeType === 'text/html');
+  const isPlaylistInteractive = hasHtmlAsset;
   return (
     <div
-      className="fixed inset-0 bg-black cursor-none overflow-hidden"
-      role="button"
-      tabIndex={0}
-      aria-label="Toggle screen info overlay"
-      onClick={() => setShowOverlay(!showOverlay)}
+      className={`fixed inset-0 bg-black overflow-hidden ${isPlaylistInteractive ? '' : 'cursor-none'}`}
+      role={isPlaylistInteractive ? undefined : 'button'}
+      tabIndex={isPlaylistInteractive ? -1 : 0}
+      aria-label={isPlaylistInteractive ? undefined : 'Toggle screen info overlay'}
+      onClick={isPlaylistInteractive ? undefined : () => setShowOverlay(!showOverlay)}
       onKeyDown={e => {
         // Same target-check as the template path above — keeps
         // button keypresses from bubbling into an overlay toggle.
         if (e.target !== e.currentTarget) return;
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowOverlay(s => !s); }
+        if (!isPlaylistInteractive && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault(); setShowOverlay(s => !s);
+        }
       }}
     >
       {currentItem ? (
-        <div className="relative w-full h-full flex items-center justify-center pointer-events-none">
+        <div className={`relative w-full h-full flex items-center justify-center ${isPlaylistInteractive ? '' : 'pointer-events-none'}`}>
           {sorted.map((item, index) => {
             const isActive = index === (currentIndex % sorted.length);
             const mime = item.asset?.mimeType || '';
@@ -2733,11 +2740,41 @@ function PlayerPage() {
           <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-400/20 rounded-full blur-3xl pointer-events-none" />
 
           <div className="w-full max-w-5xl bg-white/80 backdrop-blur-3xl rounded-[3rem] shadow-[0_20px_60px_rgb(0,0,0,0.06)] border border-white p-12 flex flex-col items-center z-10 animate-in fade-in zoom-in-95 duration-700">
-            <div className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-emerald-100 to-emerald-50 shadow-[inset_0_4px_20px_rgb(0,0,0,0.05)] flex items-center justify-center mb-6 ring-4 ring-white">
-              <CheckCircle2 className="w-12 h-12 text-emerald-500" />
-            </div>
-            <h1 className="text-4xl font-extrabold text-slate-800 tracking-tight">Screen Paired Successfully</h1>
-            <p className="text-lg font-medium text-slate-500 mt-2 mb-10 text-center">Waiting for a schedule to be assigned from the dashboard...</p>
+            {/* 2026-04-28 — operator: "removal of as many other splash
+                screens as possible...why cant this screen be the one
+                that says connecting to your cms and then just
+                refreshes connected". The hero icon + title +
+                subtitle now drive off `phase` so this single view
+                handles BOTH the connecting and ready-to-receive
+                states. The KioskSplash mode='connecting' callsite was
+                removed; phase==='connecting' now falls through here.
+                Pre-pair splash (KioskSplash mode='pairing') still
+                separate — there's no good way to mash a 6-char code
+                into this layout and we want the code to be the hero. */}
+            {phase === 'connecting' ? (
+              <>
+                <div className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-indigo-100 to-indigo-50 shadow-[inset_0_4px_20px_rgb(0,0,0,0.05)] flex items-center justify-center mb-6 ring-4 ring-white">
+                  <Loader2 className="w-12 h-12 text-indigo-500 animate-spin" />
+                </div>
+                <h1 className="text-4xl font-extrabold text-slate-800 tracking-tight">Connecting to your CMS</h1>
+                <p className="text-lg font-medium text-slate-500 mt-2 mb-10 text-center">
+                  {loadProgress?.phase === 'manifest' ? 'Fetching your playlist…' :
+                   loadProgress?.phase === 'assets' ? 'Downloading content…' :
+                   loadProgress?.phase === 'emergency' ? 'Caching emergency content…' :
+                   loadProgress?.phase === 'connecting-ws' ? 'Connecting to live updates…' :
+                   loadProgress?.phase === 'ready' ? 'Almost ready…' :
+                   'Loading your content…'}
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-emerald-100 to-emerald-50 shadow-[inset_0_4px_20px_rgb(0,0,0,0.05)] flex items-center justify-center mb-6 ring-4 ring-white">
+                  <CheckCircle2 className="w-12 h-12 text-emerald-500" />
+                </div>
+                <h1 className="text-4xl font-extrabold text-slate-800 tracking-tight">Screen Paired Successfully</h1>
+                <p className="text-lg font-medium text-slate-500 mt-2 mb-10 text-center">Waiting for a schedule to be assigned from the dashboard...</p>
+              </>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl mb-10">
               {/* Device Card — operator (2026-04-27): "this is the
