@@ -159,6 +159,68 @@ export class BrandingScraperService {
       try { return new URL(href, finalUrl).toString(); } catch { return null; }
     };
 
+    // Operator-reported bug 2026-04-27: pasting a school URL where the
+    // homepage uses lazy-loaded images returned a brand kit with no
+    // hero/top images. Real cause: scraper only checked `src` and
+    // `data-src`, missing the WPRocket-specific `data-lazy-src` and
+    // a half-dozen other lazy-load attribute variants used in the
+    // wild (jQuery LazyLoad, BLazy, Verlok, etc).
+    //
+    // bestImageSrc tries every known attribute in priority order,
+    // skips obvious 1x1/SVG placeholders, and falls back to picking
+    // the largest URL from a srcset descriptor. Returns null if
+    // nothing usable was found.
+    const PLACEHOLDER_RE = /^data:image\/svg\+xml|placeholder|blank\.(gif|png)|1x1\.(gif|png)|spacer\.(gif|png)/i;
+    const isPlaceholder = (src: string): boolean => PLACEHOLDER_RE.test(src);
+    const pickLargestSrcset = (srcset: string): string | null => {
+      let best: { url: string; width: number } | null = null;
+      for (const raw of srcset.split(',')) {
+        const part = raw.trim();
+        if (!part) continue;
+        const [url, descriptor] = part.split(/\s+/);
+        if (!url) continue;
+        const width = descriptor ? parseInt(descriptor.replace(/[^\d]/g, ''), 10) || 0 : 0;
+        if (!best || width > best.width) best = { url, width };
+      }
+      return best?.url ?? null;
+    };
+    const bestImageSrc = ($el: cheerio.Cheerio<any>): string | null => {
+      // Direct src wins UNLESS it's a known placeholder pattern (in
+      // which case we know the real URL is in a lazy-load attribute).
+      const direct = $el.attr('src') || '';
+      if (direct && !isPlaceholder(direct)) return absolutize(direct);
+
+      // Lazy-load attribute fallbacks (priority order — WPRocket and
+      // generic LazyLoad first, others by historical popularity).
+      for (const attr of [
+        'data-lazy-src',     // WPRocket
+        'data-src',          // generic LazyLoad / Verlok / BLazy
+        'data-original',     // jQuery Lazy Load (Mika Tuupola)
+        'data-lazyload-src', // some custom plugins
+        'data-lazy',
+        'data-img',
+        'data-bg',           // sometimes used for img tags
+      ]) {
+        const v = $el.attr(attr);
+        if (v && !isPlaceholder(v)) return absolutize(v);
+      }
+
+      // Srcset variants (some lazy plugins put srcset in data-srcset).
+      const srcsetAttr = $el.attr('srcset')
+        || $el.attr('data-srcset')
+        || $el.attr('data-lazy-srcset')
+        || '';
+      if (srcsetAttr) {
+        const largest = pickLargestSrcset(srcsetAttr);
+        if (largest && !isPlaceholder(largest)) return absolutize(largest);
+      }
+
+      // Last resort — return the placeholder src so we at least know
+      // there WAS an image. The downstream filter at the rehost step
+      // will skip if it's truly broken.
+      return absolutize(direct);
+    };
+
     // 2. Metadata: display name, tagline, og/twitter images.
     const ogSiteName = $('meta[property="og:site_name"]').attr('content')?.trim();
     const ogTitle = $('meta[property="og:title"]').attr('content')?.trim();
@@ -276,7 +338,10 @@ export class BrandingScraperService {
     // naming signals + "header" ancestry.
     $('img').each((_, el) => {
       const $el = $(el);
-      const src = absolutize($el.attr('src') || $el.attr('data-src') || '');
+      // Use bestImageSrc which understands data-lazy-src etc — many
+      // school sites use WPRocket / LazyLoad and the real URL isn't
+      // in `src` until JS runs (which our scraper doesn't do).
+      const src = bestImageSrc($el);
       if (!src) return;
       const alt = ($el.attr('alt') || '').toLowerCase();
       const cls = ($el.attr('class') || '').toLowerCase();
@@ -410,7 +475,10 @@ export class BrandingScraperService {
     if (twitterImage && twitterImage !== ogImage) heroImages.push({ url: twitterImage, kind: 'twitter', score: 70 });
     $('img').each((_, el) => {
       const $el = $(el);
-      const src = absolutize($el.attr('src') || $el.attr('data-src') || '');
+      // bestImageSrc also covers data-lazy-src + srcset for hero
+      // images. Without this, sites using WPRocket lazy-loading
+      // returned brand kits with no hero/top images.
+      const src = bestImageSrc($el);
       if (!src) return;
       const w = parseInt(($el.attr('width') || '0') as string, 10) || 0;
       const h = parseInt(($el.attr('height') || '0') as string, 10) || 0;
