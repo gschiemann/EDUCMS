@@ -30,6 +30,7 @@ import com.educms.player.bootstrap.ManagerBootstrap
 import com.educms.player.databinding.ActivityMainBinding
 import com.educms.player.logging.PlayerLogger
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 
 /**
@@ -353,6 +354,12 @@ class MainActivity : ComponentActivity() {
                         finishAffinity()
                     }
                 },
+                onPlayUrlFullScreen = { url, durationMs ->
+                    runOnUiThread { startUrlFullScreen(url, durationMs) }
+                },
+                onCancelUrlFullScreen = {
+                    runOnUiThread { cancelUrlFullScreen() }
+                },
                 onSetBootstrap = { apiRoot, fingerprint ->
                     // v1.0.11 — write the prefs that HeartbeatService and
                     // OtaUpdateWorker read on every run. Up through
@@ -517,6 +524,98 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) {
             val dm = resources.displayMetrics
             Pair(dm.widthPixels, dm.heightPixels)
+        }
+    }
+
+    // v1.0.36 — native fullscreen URL playback. State for the
+    // currently-playing URL escalation, if any. Captured at the moment
+    // the bridge call fires; used to navigate back to the React player
+    // when the duration timer expires.
+    private val urlFullScreenHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var urlFullScreenResumeAt: String? = null
+    private var urlFullScreenTimer: Runnable? = null
+
+    /**
+     * Navigate the WebView TOP-LEVEL to the given URL (no iframe, no
+     * proxy) for the playlist duration. After the duration expires
+     * we navigate back to whichever URL was loaded when the call
+     * fired, with `?urlPlaybackComplete=1` appended so the React
+     * player can detect the completion and advance the playlist.
+     *
+     * Why top-level navigation instead of iframe + proxy:
+     *   1. CORS / X-Frame-Options doesn't apply (WebView IS the
+     *      browser context, not a sandboxed iframe inside one).
+     *   2. Touch events native to the page — every tap, drag,
+     *      scroll, gesture works exactly like Chrome.
+     *   3. Cookies / auth / session storage persist across visits
+     *      (real browser session, not a proxied stripped variant).
+     *   4. JS frameworks run as designed — no WPRocket wake-up
+     *      hacks, no "Error loading banner slides" because the
+     *      page is in a real browser context.
+     *
+     * Tradeoff: while the URL is up, the React player UI is gone.
+     * That's fine for playlist-level URL items (they ARE the
+     * fullscreen content). Smaller embedded URL widgets in the
+     * template builder still use the iframe+proxy path.
+     */
+    private fun startUrlFullScreen(url: String, durationMs: Long) {
+        // Capture the URL we should return to. This is the React
+        // player URL with all the bootstrap params (fp, token, etc.)
+        // — what the WebView is showing right now.
+        val current = webView.url
+        if (current != null && !current.startsWith("about:")) {
+            urlFullScreenResumeAt = current
+        }
+        // Cancel any pending timer from a previous URL item — last-write-
+        // wins so a new playUrlFullScreen call replaces the prior schedule.
+        urlFullScreenTimer?.let { urlFullScreenHandler.removeCallbacks(it) }
+        // Load the upstream URL as a top-level page. WebView already has
+        // JS / DOM storage / mixed-content / wide-viewport configured
+        // upstream, so we don't need to retune for a single navigation.
+        Log.i("PlayerFS", "URL fullscreen → $url for ${durationMs / 1000}s")
+        webView.loadUrl(url)
+        // Schedule the return navigation. Runnable held in field so
+        // cancelUrlFullScreen + a new playUrlFullScreen can both
+        // invalidate the prior schedule.
+        val timer = Runnable {
+            val resume = urlFullScreenResumeAt
+            urlFullScreenResumeAt = null
+            urlFullScreenTimer = null
+            if (resume.isNullOrBlank()) {
+                Log.w("PlayerFS", "URL fullscreen finished but no resume URL — falling back to bootstrap")
+                lifecycleScope.launch {
+                    val token = deviceStore.getToken().firstOrNull() ?: ""
+                    runOnUiThread { loadPlayer(token) }
+                }
+                return@Runnable
+            }
+            // Append the playback-complete flag so React advances. If the
+            // resume URL already has query params, append; otherwise start
+            // a new query string. The flag is single-use — React strips it
+            // from the URL via history.replaceState after handling.
+            val sep = if (resume.contains("?")) "&" else "?"
+            val resumeWithFlag = "$resume${sep}urlPlaybackComplete=1"
+            Log.i("PlayerFS", "URL fullscreen returning to $resumeWithFlag")
+            webView.loadUrl(resumeWithFlag)
+        }
+        urlFullScreenTimer = timer
+        urlFullScreenHandler.postDelayed(timer, durationMs)
+    }
+
+    /**
+     * Cancel any active fullscreen URL playback and return to the
+     * captured resume URL immediately. Called from JS on emergency
+     * override or manual stop.
+     */
+    private fun cancelUrlFullScreen() {
+        val timer = urlFullScreenTimer
+        if (timer != null) {
+            urlFullScreenHandler.removeCallbacks(timer)
+            urlFullScreenTimer = null
+            // Fast-forward to the timer's expiry behavior so the React
+            // player handles the same "I came back" state as a normal
+            // duration-elapsed path.
+            timer.run()
         }
     }
 

@@ -23,6 +23,8 @@ class WebAppBridge(
     private val uploadDiagnosticsImpl: () -> String,
     private val onExitToDeviceHome: () -> Unit,
     private val onSetBootstrap: (apiRoot: String, fingerprint: String) -> Unit,
+    private val onPlayUrlFullScreen: (url: String, durationMs: Long) -> Unit,
+    private val onCancelUrlFullScreen: () -> Unit,
 ) {
     /**
      * Escape hatch — exits our kiosk task stack and returns the user to
@@ -114,6 +116,67 @@ class WebAppBridge(
             onSetBootstrap(apiRoot, fingerprint)
         } catch (ex: Exception) {
             PlayerLogger.w("WebAppBridge", "setBootstrap failed: ${ex.message}")
+        }
+    }
+
+    /**
+     * v1.0.36 — Native fullscreen URL playback. Replaces the iframe-
+     * proxy approach for playlist-level URL items.
+     *
+     * The proxy approach (rewriting + JS shim + WPRocket wake-up
+     * salvo) hit its limit on arbitrary touchscreen content because
+     * every site has a different combination of speed plugins, anti-
+     * bot detection, auth cookies, lazy-loading frameworks, and
+     * frame-busting JS. For 100% touchscreen reliability we navigate
+     * the WebView TOP-LEVEL to the upstream URL — no iframe, no
+     * rewriting, no proxy. The page renders exactly like Chrome.
+     *
+     * Contract:
+     *   - Captures current WebView URL before navigating
+     *   - Loads `url` as a top-level page (not iframe)
+     *   - Schedules navigation back to captured URL after durationMs,
+     *     with `?urlPlaybackComplete=1` appended so the React player
+     *     advances to the next playlist item on return.
+     *   - durationMs is hard-capped 10s..30min to prevent stuck states
+     *
+     * Called from web player when playlist hits a `text/html` asset.
+     * Touch events, cookies, JS, auth — all work natively because the
+     * WebView IS the page renderer (not a sandboxed iframe).
+     */
+    @JavascriptInterface
+    fun playUrlFullScreen(url: String, durationMs: Long) {
+        try {
+            val cleanUrl = url.trim()
+            if (cleanUrl.isEmpty() ||
+                !(cleanUrl.startsWith("https://") || cleanUrl.startsWith("http://"))) {
+                PlayerLogger.w("WebAppBridge", "playUrlFullScreen rejected: invalid url")
+                return
+            }
+            // Cap duration to a sane window. Below 10s is unusable for
+            // touchscreen content; above 30min usually means caller
+            // forgot to convert seconds→ms.
+            val safeDuration = durationMs.coerceIn(10_000L, 30L * 60_000L)
+            PlayerLogger.i(
+                "WebAppBridge",
+                "playUrlFullScreen url=${cleanUrl.take(80)} durationMs=$safeDuration"
+            )
+            onPlayUrlFullScreen(cleanUrl, safeDuration)
+        } catch (ex: Exception) {
+            PlayerLogger.w("WebAppBridge", "playUrlFullScreen failed: ${ex.message}")
+        }
+    }
+
+    /**
+     * Cancel any pending fullscreen-URL timer + return to the captured
+     * resume URL immediately. Used when the playlist is interrupted
+     * (emergency override, manual stop, dashboard remote command).
+     */
+    @JavascriptInterface
+    fun cancelUrlFullScreen() {
+        try {
+            onCancelUrlFullScreen()
+        } catch (ex: Exception) {
+            PlayerLogger.w("WebAppBridge", "cancelUrlFullScreen failed: ${ex.message}")
         }
     }
 }

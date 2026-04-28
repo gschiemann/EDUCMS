@@ -2076,12 +2076,87 @@ function PlayerPage() {
     }
 
     const duration = item?.durationMs || 10000;
+
+    // v1.0.36 — native fullscreen URL escalation. When the next item
+    // is a URL asset (mime=text/html, not a PDF) AND the native
+    // bridge is available, hand the URL to the WebView at the top
+    // level instead of rendering an iframe. The native side runs the
+    // playback timer and navigates back here when the duration
+    // expires; we don't set a JS timer for that case.
+    //
+    // Why: the iframe + proxy approach failed for arbitrary touchscreen
+    // content (carousels, WPRocket, anti-bot, frame-busting JS). Native
+    // top-level navigation is a real Chrome browser context — touch,
+    // cookies, JS, auth all work natively. PDFs still iframe (the
+    // browser's PDF viewer handles them inline).
+    const itemMime = item?.asset?.mimeType || '';
+    const itemFileUrl = item?.asset?.fileUrl || '';
+    const isUrlItem = itemMime === 'text/html' && /^https?:\/\//i.test(itemFileUrl);
+    if (isUrlItem && typeof window !== 'undefined') {
+      const bridge = (window as any).EduCmsNative;
+      const bridgeAvailable = !!(bridge && typeof bridge.playUrlFullScreen === 'function');
+      if (bridgeAvailable) {
+        try {
+          // Persist where to resume so the React app picks up at the
+          // next item after the URL plays out + WebView round-trips.
+          localStorage.setItem('edu_player_resume_index', String(currentIndex + 1));
+          // Microtask defer so React finishes its paint before the
+          // bridge call yanks the WebView away.
+          Promise.resolve().then(() => {
+            try {
+              console.log(`[Player] native fullscreen URL: ${itemFileUrl} for ${duration}ms`);
+              bridge.playUrlFullScreen(itemFileUrl, duration);
+            } catch (e) {
+              console.warn('[Player] playUrlFullScreen bridge failed', e);
+            }
+          });
+        } catch (e) {
+          console.warn('[Player] failed to persist resume index', e);
+        }
+        // Don't set the React timer; native handles the duration.
+        return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+      }
+      // Bridge not available — fall through to iframe path with
+      // the normal React timer. This is the browser-preview case.
+    }
+
     timerRef.current = setTimeout(() => {
       setCurrentIndex(prev => prev + 1);
     }, duration);
 
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [phase, playlist, currentIndex]);
+
+  // v1.0.36 — handle return from native fullscreen URL playback. When
+  // the WebView navigates back to /player?urlPlaybackComplete=1, jump
+  // to the resume index we persisted before handing control to native,
+  // then strip the flag so a subsequent reload doesn't re-trigger.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('urlPlaybackComplete') !== '1') return;
+    try {
+      const stored = localStorage.getItem('edu_player_resume_index');
+      if (stored) {
+        const idx = parseInt(stored, 10);
+        if (Number.isFinite(idx) && idx >= 0) {
+          console.log(`[Player] resuming from native fullscreen URL — index ${idx}`);
+          setCurrentIndex(idx);
+        }
+        localStorage.removeItem('edu_player_resume_index');
+      }
+    } catch (e) {
+      console.warn('[Player] resume-index read failed', e);
+    }
+    try {
+      params.delete('urlPlaybackComplete');
+      const qs = params.toString();
+      const newUrl = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
+      window.history.replaceState({}, '', newUrl);
+    } catch (e) {
+      console.warn('[Player] urlPlaybackComplete strip failed', e);
+    }
+  }, []);
 
   // ═══════════════════════════════════════════════════════════════
   // ALL HOOKS MUST BE CALLED BEFORE ANY EARLY RETURN (Rules of Hooks).
@@ -2814,6 +2889,18 @@ function PlayerPage() {
               // inside the proxy chain, asset fetches don't get
               // CORS-blocked, no "blank screen / Android icon"
               // regression.
+              // v1.0.36 — when the native bridge is available AND this
+              // is a URL asset (not a PDF), the timer effect above
+              // already handed the URL to native fullscreen via
+              // playUrlFullScreen. Render a black placeholder for the
+              // ~50ms before the WebView navigates away — keeps the
+              // proxy iframe from flashing.
+              if (!isPdf && isActive && typeof window !== 'undefined') {
+                const bridge = (window as any).EduCmsNative;
+                if (bridge && typeof bridge.playUrlFullScreen === 'function') {
+                  return <div key={item.id} className={classes + ' bg-black'} />;
+                }
+              }
               const iframeSrc = isPdf
                 ? resUrl
                 : `${getApiRoot()}/api/v1/proxy/web?url=${encodeURIComponent(resUrl)}&v=2&interactive=true`;
