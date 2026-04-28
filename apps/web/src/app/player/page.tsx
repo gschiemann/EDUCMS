@@ -2770,6 +2770,19 @@ function PlayerPage() {
                     : /mac/i.test(ua) ? 'macOS'
                     : /linux/i.test(ua) ? 'Linux'
                     : 'Browser';
+                  // 2026-04-28 — Manager version on paired-success
+                  // view. Operator: "i thoutgh u were adding the
+                  // manager version to the screen paired splash
+                  // screen...i only see player verision...this isi
+                  // where it should tell me manager missing".
+                  // Reads ?mv= from the URL just like apkV reads ?v=.
+                  // Three-state render: present + non-empty → green
+                  // version; present + empty → amber "missing"; absent
+                  // → don't render (legacy Player without Manager
+                  // awareness).
+                  const mvRaw = qp?.get('mv');
+                  const managerInstalled = mvRaw && mvRaw.trim().length > 0;
+                  const managerKnownAbsent = mvRaw === '';
                   return (
                     <>
                       <p className="text-xs font-semibold text-slate-400 mt-1">
@@ -2778,6 +2791,17 @@ function PlayerPage() {
                       {apkV && (
                         <p className="text-[11px] font-semibold text-slate-500 mt-1">
                           Player <span className="text-slate-700 font-bold">v{apkV}</span>
+                        </p>
+                      )}
+                      {managerInstalled && (
+                        <p className="text-[11px] font-semibold text-slate-500 mt-1">
+                          Manager <span className="text-emerald-700 font-bold">v{mvRaw}</span>
+                        </p>
+                      )}
+                      {managerKnownAbsent && (
+                        <p className="text-[11px] font-semibold text-amber-700 mt-1 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                          Manager <span className="font-bold">missing</span>
                         </p>
                       )}
                     </>
