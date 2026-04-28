@@ -161,6 +161,23 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
     target.style.background = 'rgba(99,102,241,0.08)';
     target.style.borderRadius = '3px';
     target.style.cursor = 'text';
+    // 2026-04-29 — operator: "you fucked up with editing of text on
+    // the widgets... when you edit the text its transparent and you
+    // cant see hwat you are typing until you click out of the text
+    // field". Cause: BuilderZone's parent div has `userSelect: 'none'`
+    // (line 236) which is inherited by contentEditable children.
+    // userSelect: none on a contentEditable element breaks the
+    // browser's live caret + selection rendering — typed characters
+    // aren't repainted until the field blurs.
+    //
+    // Fix: explicitly override on the editing target so the
+    // contentEditable behaves like a normal input — caret visible,
+    // selection visible, typing repaints character-by-character.
+    // Cleared in commit() / cancel() below so the parent's
+    // userSelect:none returns to effect after editing.
+    target.style.userSelect = 'text';
+    (target.style as any).webkitUserSelect = 'text';
+    (target.style as any).caretColor = 'auto';
     target.focus();
     try {
       const range = document.createRange();
@@ -179,6 +196,9 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       target.style.background = '';
       target.style.borderRadius = '';
       target.style.cursor = '';
+      target.style.userSelect = '';
+      (target.style as any).webkitUserSelect = '';
+      (target.style as any).caretColor = '';
       onConfigChange(zone.id, { [fieldKey]: newValue });
     };
     const cancel = () => {
@@ -190,6 +210,9 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       target.style.background = '';
       target.style.borderRadius = '';
       target.style.cursor = '';
+      target.style.userSelect = '';
+      (target.style as any).webkitUserSelect = '';
+      (target.style as any).caretColor = '';
       target.innerText = (zone.defaultConfig as any)?.[fieldKey] ?? target.innerText;
     };
     const onKey = (ev: KeyboardEvent) => {
