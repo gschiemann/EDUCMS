@@ -302,8 +302,25 @@ export class ScreensController {
         lastOtaAt: true,
         playerVersion: true,
         managerVersion: true,
+        forceApkUpdatePendingAt: true,
       } as any,
     });
+    // 2026-04-29 — operator (push went silent on v1.0.30 kiosk):
+    // "pushed, nothing happened anywhere" + dashboard showed
+    // "waiting for kiosk (≤ 35 min via periodic check)". WS push
+    // is fragile — kiosk's WebSocket re-handshake after the prior
+    // install can miss messages. Yodeck/Rise/etc. poll instead.
+    //
+    // Fix: surface forceUpdatePending on this heartbeat response.
+    // Web player checks this every ~30s and fires bridge.
+    // checkForUpdates locally if set. Recovers any failed-WS push
+    // within one heartbeat tick. The 24h freshness window matches
+    // the server-side gate in /update-check so we don't fire
+    // forever on a stale flag.
+    const forceAt = (screenAfterUpdate as any)?.forceApkUpdatePendingAt;
+    const FORCE_FRESH_MS = 24 * 60 * 60 * 1000;
+    const forceUpdatePending = !!forceAt &&
+      (Date.now() - new Date(forceAt).getTime()) < FORCE_FRESH_MS;
     return {
       screenId: screen.id,
       paired: !!screen.tenantId,
@@ -319,6 +336,8 @@ export class ScreensController {
         player: (screenAfterUpdate as any).playerVersion || null,
         manager: (screenAfterUpdate as any).managerVersion || null,
       } : null,
+      // Heartbeat-driven polling fallback for missed WS pushes.
+      forceUpdatePending,
     };
   }
 

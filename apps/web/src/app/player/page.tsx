@@ -814,6 +814,10 @@ function PlayerPage() {
   const [playbackStopped, setPlaybackStopped] = useState(false);
   const [exitUnavailable, setExitUnavailable] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  // 2026-04-29 — last-fired timestamp for the heartbeat-driven OTA
+  // polling fallback. Debounces so we don't fire bridge.checkForUpdates
+  // every 30s while the worker is still in flight.
+  const otaPollFireRef = useRef<number>(0);
   // Split refs: interval runs at steady cadence, timeout is the one-
   // shot backoff retry. Previously both shared `pollRef` which caused
   // races when a failing tick reassigned the same handle.
@@ -1345,6 +1349,37 @@ function PlayerPage() {
         } else if (serverOtaState) {
           // Server cleared / returned null → drop our local copy too.
           setServerOtaState(null);
+        }
+
+        // 2026-04-29 — Heartbeat-driven OTA polling fallback. The
+        // operator's v1.0.30 kiosk got NOTHING from a push because
+        // the WebSocket re-handshake after the prior install missed
+        // the CHECK_FOR_UPDATES message. Yodeck/Rise/etc. don't use
+        // WS for this — they poll. We now do both: WS for instant
+        // delivery (when it works), heartbeat polling as the safety
+        // net (when it doesn't). Maximum delay before a push is
+        // honored: one heartbeat interval (~30s).
+        //
+        // 60s debounce so we don't fire repeatedly while the worker
+        // is still in flight (heartbeat ticks faster than the worker
+        // can complete an install).
+        if (data.forceUpdatePending && screenId) {
+          const now = Date.now();
+          const lastFire = otaPollFireRef.current;
+          if (now - lastFire > 60_000) {
+            otaPollFireRef.current = now;
+            console.log('[OTA poll] heartbeat detected forceUpdatePending=true, firing bridge.checkForUpdates');
+            try {
+              const bridge = (window as any).EduCmsNative;
+              const bridgeAvailable = !!(bridge && typeof bridge.checkForUpdates === 'function');
+              setOtaProgress({ startedAt: now, bridgeAvailable });
+              if (bridgeAvailable) {
+                bridge.checkForUpdates();
+              }
+            } catch (e) {
+              console.warn('[OTA poll] bridge fire failed', e);
+            }
+          }
         }
       } catch { pollFails += 1; }
       // Stretch the interval after repeated failures so we don't hammer a down server.
