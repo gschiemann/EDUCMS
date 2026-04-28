@@ -4,10 +4,10 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import {
   Copy, Lock, Unlock, ChevronUp, ChevronDown, Trash2,
-  Bold, Italic, Palette, AlignLeft, AlignCenter, AlignRight,
+  AlignLeft, AlignCenter, AlignRight,
   RefreshCw, Maximize2, Clock, Thermometer, Gauge, Calendar, Globe, MousePointer,
 } from 'lucide-react';
-import { AssetLibraryModal } from './PropertiesPanel';
+import { AssetLibraryModal, FontFamilyField, FontSizeField, FormatToggles, ColorField, measureZoneFontSize } from './PropertiesPanel';
 import { useBuilderStore } from './useBuilderStore';
 import { BuilderZone } from './BuilderZone';
 import { snapMove, snapResize } from './snap-engine';
@@ -398,9 +398,11 @@ export function BuilderCanvas() {
  *  there's no room) the selected zone. Mirrors Canva's "this is
  *  selected, here are the most-common things you'd do next" UX.
  *
- *  TYPE-AWARE section renders BEFORE the generic cluster, separated
- *  by a vertical divider. Widget types not in the list get only the
- *  generic 5 (Duplicate / Forward / Back / Lock / Delete). */
+ *  TEXT/RICH_TEXT zones get a two-row layout:
+ *    Row 1: Font family · Font size · Text color · Align
+ *    Row 2: B/I/U/S format toggles  |  Duplicate/Forward/Back/Lock/Delete
+ *
+ *  Non-text widgets keep the single-row layout (type actions + generic). */
 function FloatingZoneActions({ zone }: { zone: Zone }) {
   // Hide floating bar for tiny zones — buttons would overwhelm the
   // widget and the bar positioning math breaks below 8% width or 5% height.
@@ -415,7 +417,6 @@ function FloatingZoneActions({ zone }: { zone: Zone }) {
   // Local popover state — one flag per popover so multiple can't open
   // at once (clicking a second button closes any open one because its
   // flag was never set).
-  const [colorOpen, setColorOpen]   = useState(false);
   const [urlOpen, setUrlOpen]       = useState(false);
   const [dateOpen, setDateOpen]     = useState(false);
   const [assetOpen, setAssetOpen]   = useState(false);
@@ -428,20 +429,41 @@ function FloatingZoneActions({ zone }: { zone: Zone }) {
     updateZone(zone.id, { defaultConfig: { ...cfg, ...patch } }, true);
   };
 
+  // ── Type-aware quick-action buttons ──────────────────────────────
+  const wt = zone.widgetType;
+  const isText    = wt === 'TEXT' || wt === 'RICH_TEXT';
+  const isImage   = wt === 'IMAGE' || wt === 'IMAGE_CAROUSEL' || wt === 'LOGO';
+  const isClock   = wt === 'CLOCK';
+  const isWeather = wt === 'WEATHER';
+  const isTicker  = wt === 'TICKER';
+  const isCountdown = wt === 'COUNTDOWN';
+  const isWebpage = wt === 'WEBPAGE';
+
+  const hasTypeActions = isImage || isClock || isWeather || isTicker || isCountdown || isWebpage;
+
+  // DOM-measured font size for the +/− stepper so the stepper starts
+  // from what the operator actually SEES, not the stored config value
+  // (which may be null / defaulted by the widget renderer).
+  const getMeasuredFontSize = useCallback((): number | null => {
+    return measureZoneFontSize(zone.id, null);
+  }, [zone.id]);
+
   // Position the bar centered horizontally over the zone. Default
-  // anchor is just BELOW the zone (matches Canva). Flip above when
-  // the bar would sit too close to the canvas's bottom edge — bar
-  // height ~36px + 8px translateY offset = ~44px clearance needed.
-  // Below 88% the bar still has room; at 88-100% we flip up.
-  // Horizontally clamp so the bar's center can't push it off the
-  // canvas (zone at x=2% with width=4% would otherwise center at 4%
-  // and clip the left half of a 240px-wide bar).
-  const flipAbove = zone.y + zone.height > 88;
-  const top  = flipAbove
-    ? `calc(${zone.y}% - 36px)`
+  // anchor is just BELOW the zone (matches Canva). TEXT bars are
+  // taller (~76px two-row) so we flip earlier and offset more.
+  // Non-text bars are ~36px single-row, flip at 88%.
+  const textBarHeight = 76;   // two rows + divider
+  const singleBarHeight = 36;
+  const flipThreshold = isText ? 82 : 88;
+  const flipAbove = zone.y + zone.height > flipThreshold;
+  const belowOffset = isText ? 16 : 8;
+  const top = flipAbove
+    ? `calc(${zone.y}% - ${isText ? textBarHeight : singleBarHeight}px - 4px)`
     : `${zone.y + zone.height}%`;
   const centerX = zone.x + zone.width / 2;
   const left = `${Math.max(8, Math.min(92, centerX))}%`;
+
+  const translateY = flipAbove ? '0px' : `${belowOffset}px`;
 
   const btn = (label: string, onClick: () => void, icon: React.ReactNode, danger = false, active = false) => (
     <button
@@ -461,21 +483,97 @@ function FloatingZoneActions({ zone }: { zone: Zone }) {
     </button>
   );
 
-  // ── Type-aware quick-action buttons ──────────────────────────────
-  const wt = zone.widgetType;
-  const isText    = wt === 'TEXT' || wt === 'RICH_TEXT';
-  const isImage   = wt === 'IMAGE' || wt === 'IMAGE_CAROUSEL' || wt === 'LOGO';
-  const isClock   = wt === 'CLOCK';
-  const isWeather = wt === 'WEATHER';
-  const isTicker  = wt === 'TICKER';
-  const isCountdown = wt === 'COUNTDOWN';
-  const isWebpage = wt === 'WEBPAGE';
+  // ── Generic action cluster (always shown) ─────────────────────────
+  const genericActions = (
+    <>
+      {btn('Duplicate (Ctrl/⌘+D)', () => duplicateZone(zone.id), <Copy className="w-3.5 h-3.5" />)}
+      {btn('Bring forward', () => moveLayer(zone.id, 'up'), <ChevronUp className="w-3.5 h-3.5" />)}
+      {btn('Send back', () => moveLayer(zone.id, 'down'), <ChevronDown className="w-3.5 h-3.5" />)}
+      {btn(zone.locked ? 'Unlock' : 'Lock', () => toggleLock(zone.id), zone.locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />)}
+      <div className="w-px h-5 bg-slate-200 mx-0.5" />
+      {btn('Delete (Del)', () => removeSelected(), <Trash2 className="w-3.5 h-3.5" />, true)}
+    </>
+  );
 
-  const hasTypeActions = isText || isImage || isClock || isWeather || isTicker || isCountdown || isWebpage;
+  // ── TEXT / RICH_TEXT — two-row layout ─────────────────────────────
+  if (isText) {
+    return (
+      <div
+        role="toolbar"
+        aria-label="Selected widget actions"
+        className="absolute z-30 bg-white border border-slate-200 rounded-lg shadow-lg transition-[width,height] duration-150"
+        style={{
+          top,
+          left,
+          transform: `translate(-50%, ${translateY})`,
+          pointerEvents: 'auto',
+          minWidth: '540px',
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        {/* ROW 1 — Font / Size / Color / Align */}
+        <div className="flex items-center gap-1 px-2 py-1.5 [&_label]:hidden [&_*]:!text-xs">
+          {/* Font family */}
+          <div className="min-w-[160px]">
+            <FontFamilyField
+              label=""
+              value={cfg.fontFamily || ''}
+              onChange={(v) => setCfg({ fontFamily: v })}
+            />
+          </div>
+          {/* Font size */}
+          <div className="min-w-[80px]">
+            <FontSizeField
+              label=""
+              value={cfg.fontSize ?? null}
+              onChange={(v) => setCfg({ fontSize: v })}
+              getMeasuredSize={getMeasuredFontSize}
+            />
+          </div>
+          {/* Text color */}
+          <div className="min-w-[120px]">
+            <ColorField
+              label=""
+              value={cfg.color || '#1e293b'}
+              onChange={(v) => setCfg({ color: v })}
+            />
+          </div>
+          {/* Align cycle */}
+          {btn(
+            `Align: ${cfg.textAlign || 'left'} (click to cycle)`,
+            () => {
+              const cur = cfg.textAlign || 'left';
+              const next = cur === 'left' ? 'center' : cur === 'center' ? 'right' : 'left';
+              setCfg({ textAlign: next });
+            },
+            cfg.textAlign === 'center'
+              ? <AlignCenter className="w-3.5 h-3.5" />
+              : cfg.textAlign === 'right'
+                ? <AlignRight className="w-3.5 h-3.5" />
+                : <AlignLeft className="w-3.5 h-3.5" />,
+          )}
+        </div>
 
-  // ── Color swatches for the text color popover ──────────────────────
-  const COLOR_SWATCHES = ['#ffffff','#0f172a','#64748b','#ef4444','#f59e0b','#10b981','#0ea5e9','#7c3aed'];
+        {/* Horizontal divider between rows */}
+        <div className="h-px bg-slate-100 mx-1" />
 
+        {/* ROW 2 — B/I/U/S toggles + divider + generic actions */}
+        <div className="flex items-center gap-0.5 px-1.5 py-1.5">
+          <FormatToggles
+            bold={cfg.bold === true}
+            italic={cfg.italic === true}
+            underline={cfg.underline === true}
+            strikethrough={cfg.strikethrough === true}
+            onChange={(patch) => setCfg(patch)}
+          />
+          <div className="w-px h-5 bg-slate-200 mx-1" />
+          {genericActions}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Single-row layout for all non-text widget types ───────────────
   return (
     <div
       role="toolbar"
@@ -484,92 +582,11 @@ function FloatingZoneActions({ zone }: { zone: Zone }) {
       style={{
         top,
         left,
-        transform: 'translate(-50%, 8px)',
-        // Don't capture pointer events that started outside the bar
-        // (e.g. drag of the zone itself). Buttons retain their own
-        // pointer-events.
+        transform: `translate(-50%, ${translateY})`,
         pointerEvents: 'auto',
       }}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      {/* ── TEXT / RICH_TEXT ── */}
-      {isText && (<>
-        {btn(
-          cfg.bold ? 'Remove bold' : 'Bold',
-          () => setCfg({ bold: !cfg.bold }),
-          <Bold className="w-3.5 h-3.5" />,
-          false,
-          cfg.bold === true,
-        )}
-        {btn(
-          cfg.italic ? 'Remove italic' : 'Italic',
-          () => setCfg({ italic: !cfg.italic }),
-          <Italic className="w-3.5 h-3.5" />,
-          false,
-          cfg.italic === true,
-        )}
-        {/* Color popover */}
-        <div className="relative">
-          <button
-            type="button"
-            aria-label="Text color"
-            title="Text color"
-            onClick={(e) => { e.stopPropagation(); setColorOpen((v) => !v); setUrlOpen(false); setDateOpen(false); setAssetOpen(false); }}
-            className="w-8 h-8 rounded-md flex items-center justify-center transition-colors text-slate-600 hover:bg-slate-100"
-          >
-            <Palette className="w-3.5 h-3.5" />
-          </button>
-          {colorOpen && (
-            <div
-              className="absolute z-40 bottom-full mb-1.5 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg shadow-xl p-2 w-44"
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              <div className="grid grid-cols-4 gap-1.5 mb-2">
-                {COLOR_SWATCHES.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    aria-label={c}
-                    title={c}
-                    onClick={() => { setCfg({ color: c }); setColorOpen(false); }}
-                    className="w-7 h-7 rounded-md border border-slate-200 shadow-sm hover:scale-110 transition-transform"
-                    style={{ background: c }}
-                  />
-                ))}
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-slate-500 font-semibold">Hex</span>
-                <input
-                  type="text"
-                  defaultValue={cfg.color || '#000000'}
-                  maxLength={7}
-                  placeholder="#000000"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (/^#[0-9a-fA-F]{6}$/.test(v)) setCfg({ color: v });
-                  }}
-                  className="flex-1 h-6 px-1.5 text-[11px] rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                />
-              </div>
-            </div>
-          )}
-        </div>
-        {/* Text-align cycle: left → center → right → left */}
-        {btn(
-          `Align: ${cfg.textAlign || 'left'} (click to cycle)`,
-          () => {
-            const cur = cfg.textAlign || 'left';
-            const next = cur === 'left' ? 'center' : cur === 'center' ? 'right' : 'left';
-            setCfg({ textAlign: next });
-          },
-          cfg.textAlign === 'center'
-            ? <AlignCenter className="w-3.5 h-3.5" />
-            : cfg.textAlign === 'right'
-              ? <AlignRight className="w-3.5 h-3.5" />
-              : <AlignLeft className="w-3.5 h-3.5" />,
-        )}
-      </>)}
 
       {/* ── IMAGE / IMAGE_CAROUSEL / LOGO ── */}
       {isImage && (<>
@@ -579,7 +596,7 @@ function FloatingZoneActions({ zone }: { zone: Zone }) {
             type="button"
             aria-label="Replace image"
             title="Replace image"
-            onClick={(e) => { e.stopPropagation(); setAssetOpen((v) => !v); setColorOpen(false); setUrlOpen(false); setDateOpen(false); }}
+            onClick={(e) => { e.stopPropagation(); setAssetOpen((v) => !v); setUrlOpen(false); setDateOpen(false); }}
             className="w-8 h-8 rounded-md flex items-center justify-center transition-colors text-slate-600 hover:bg-slate-100"
           >
             <RefreshCw className="w-3.5 h-3.5" />
@@ -638,7 +655,7 @@ function FloatingZoneActions({ zone }: { zone: Zone }) {
             type="button"
             aria-label="Set target date"
             title="Set target date"
-            onClick={(e) => { e.stopPropagation(); setDateOpen((v) => !v); setColorOpen(false); setUrlOpen(false); setAssetOpen(false); }}
+            onClick={(e) => { e.stopPropagation(); setDateOpen((v) => !v); setUrlOpen(false); setAssetOpen(false); }}
             className="w-8 h-8 rounded-md flex items-center justify-center transition-colors text-slate-600 hover:bg-slate-100"
           >
             <Calendar className="w-3.5 h-3.5" />
@@ -668,7 +685,7 @@ function FloatingZoneActions({ zone }: { zone: Zone }) {
             type="button"
             aria-label="Edit URL"
             title="Edit URL"
-            onClick={(e) => { e.stopPropagation(); setUrlOpen((v) => !v); setColorOpen(false); setDateOpen(false); setAssetOpen(false); }}
+            onClick={(e) => { e.stopPropagation(); setUrlOpen((v) => !v); setDateOpen(false); setAssetOpen(false); }}
             className="w-8 h-8 rounded-md flex items-center justify-center transition-colors text-slate-600 hover:bg-slate-100"
           >
             <Globe className="w-3.5 h-3.5" />
@@ -703,12 +720,7 @@ function FloatingZoneActions({ zone }: { zone: Zone }) {
       {hasTypeActions && <div className="w-px h-5 bg-slate-200 mx-0.5" />}
 
       {/* ── Generic actions (always visible) ── */}
-      {btn('Duplicate (Ctrl/⌘+D)', () => duplicateZone(zone.id),                      <Copy className="w-3.5 h-3.5" />)}
-      {btn('Bring forward',         () => moveLayer(zone.id, 'up'),                    <ChevronUp className="w-3.5 h-3.5" />)}
-      {btn('Send back',             () => moveLayer(zone.id, 'down'),                  <ChevronDown className="w-3.5 h-3.5" />)}
-      {btn(zone.locked ? 'Unlock' : 'Lock', () => toggleLock(zone.id),                zone.locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />)}
-      <div className="w-px h-5 bg-slate-200 mx-0.5" />
-      {btn('Delete (Del)',          () => removeSelected(),                            <Trash2 className="w-3.5 h-3.5" />, true)}
+      {genericActions}
 
       {/* Asset picker modal — rendered at root level so it escapes the
           floating bar stacking context. Triggered by the RefreshCw btn. */}
