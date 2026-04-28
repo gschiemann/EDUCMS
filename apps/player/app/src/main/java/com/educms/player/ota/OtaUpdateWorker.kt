@@ -67,35 +67,24 @@ class OtaUpdateWorker(
         //
         // 2026-04-29 — operator: "pushed the update from the app to
         // the player and got no feedback on the player that anything
-        // was pushed". Briefly removed the yield so BOTH workers ran.
+        // was pushed". Audit found Player's worker had been yielding
+        // to Manager whenever Manager was installed. The intent was
+        // "Manager is silent; let it handle it." The reality was:
+        //   - Player WS handler enqueues OtaUpdateWorker
+        //   - Worker exits immediately because Manager is installed
+        //   - The cross-app broadcast to Manager fires but no one
+        //     verifies Manager actually picked it up
+        //   - If Manager's broadcast didn't arrive (BAL block,
+        //     receiver registration race, signature-perm not yet
+        //     granted, etc.), the entire push silently dies
         //
-        // 2026-04-28 (v1.0.38) — REVERTED. Operator screenshot showed
-        // the "let both run" path producing UI chaos: Player's worker
-        // posted "Update issue: open failed: ENOENT (No such file or
-        // directory)" while Manager's worker was succeeding in
-        // parallel. PackageInstaller dedupes the install at the OS
-        // level, but the two workers download independently and
-        // post conflicting state=ERROR / state=INSTALLING messages
-        // to /ota-state. The dashboard + on-screen warning surfaced
-        // the error even though install actually completed.
-        //
-        // Real failure mode this fixes: Player's worker downloads in
-        // parallel, hits a transient network error mid-stream OR has
-        // its incomplete file deleted by Manager's parallel install,
-        // ends in catch() → state=ERROR with the ENOENT exception
-        // text. Operator sees that error message, thinks the install
-        // failed.
-        //
-        // The original concern (Manager broadcast not arriving) is
-        // already mitigated — Manager v1.0.7+ runs its own scheduled
-        // OtaWorker on a periodic cadence AND fires immediately on
-        // Manager startup. So Player yielding to Manager doesn't
-        // create a "push goes nowhere" failure mode anymore.
-        if (isManagerInstalled(applicationContext)) {
-            PlayerLogger.i(TAG, "Manager installed — yielding OTA to Manager (avoids dual-worker race)")
-            return@withContext Result.success()
-        }
-        PlayerLogger.i(TAG, "Player OTA worker firing (no Manager — Player handles OTA solo)")
+        // Fix: BOTH workers run. PackageInstaller naturally
+        // dedupes concurrent same-package commits (one wins,
+        // the other returns STATUS_FAILURE_CONFLICT and exits).
+        // Worst case: one redundant /update-check call. Best case:
+        // the first worker that hits the server installs and the
+        // operator sees feedback regardless of which path won.
+        PlayerLogger.i(TAG, "Player OTA worker firing (Manager-installed=${isManagerInstalled(applicationContext)})")
         try {
             val apiRoot = applicationContext.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
                 .getString("api_root", null) ?: run {
