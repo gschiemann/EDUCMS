@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
+import android.os.Build
 import android.util.Log
 import java.io.File
 
@@ -47,9 +48,19 @@ object OtaInstaller {
         // Pin the target package so a session can't be redirected
         // to install something else.
         params.setAppPackageName(targetPackage)
-        // (Silent-install session-params changes from v1.0.4 reverted —
-         // launch crash on Android 11. Re-add behind a feature flag
-         // after testing on a real device.)
+
+        // Silent install: on API 31+ (Android 12+) DEVICE_OWNER kiosks,
+        // suppress the "Install / Cancel" prompt entirely. The API-31
+        // symbol is isolated in Api31SilentInstall (a @RequiresApi(31)
+        // object) so Android 11 ART never resolves setRequireUserAction
+        // or USER_ACTION_NOT_REQUIRED at class-load time — this is the
+        // fix for the v1.0.4 VerifyError crash on Android 11. The check
+        // here is a runtime guard; the class isolation is the ART guard.
+        val isDeviceOwner = AdminReceiver.isDeviceOwner(ctx)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && isDeviceOwner) {
+            Api31SilentInstall.configure(params)
+            Log.i(TAG, "Silent install enabled (API ${Build.VERSION.SDK_INT}, DEVICE_OWNER)")
+        }
 
         val sessionId = try {
             installer.createSession(params)
@@ -58,8 +69,7 @@ object OtaInstaller {
             return
         }
 
-        val deviceOwner = AdminReceiver.isDeviceOwner(ctx)
-        Log.i(TAG, "OTA install starting — sessionId=$sessionId target=$targetPackage deviceOwner=$deviceOwner size=${apkFile.length()}b")
+        Log.i(TAG, "OTA install starting — sessionId=$sessionId target=$targetPackage deviceOwner=$isDeviceOwner size=${apkFile.length()}b")
 
         try {
             val session = installer.openSession(sessionId)
