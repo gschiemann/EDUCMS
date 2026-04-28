@@ -23,15 +23,9 @@
  * restyled, not the song titles + artist names + ticker.
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useBuilderStore } from './useBuilderStore';
-import {
-  FontFamilyField,
-  FontSizeField,
-  FormatToggles,
-  ColorField,
-  measureZoneFontSize,
-} from './PropertiesPanel';
+import { ColorField } from './PropertiesPanel';
 
 type Scope = 'field' | 'zone' | 'template';
 
@@ -91,19 +85,6 @@ export function TopContextToolbar() {
     }
     return cfg[prop];
   };
-
-  /**
-   * DOM-measured font size for the +/− stepper. Scope-aware:
-   *  - field: measure the active hotspot
-   *  - zone/template: measure the largest text inside the zone
-   * useCallback so the FontSizeField effect doesn't refire on every
-   * render — only when zoneId / scope / activeField actually shift.
-   */
-  const getMeasuredFontSize = useCallback((): number | null => {
-    if (!zone) return null;
-    const fk = effectiveScope === 'field' ? activeFieldKey : null;
-    return measureZoneFontSize(zone.id, fk);
-  }, [zone?.id, effectiveScope, activeFieldKey]);
 
   /**
    * Write a property, respecting the active scope.
@@ -221,43 +202,6 @@ export function TopContextToolbar() {
             zoneName={zone.name}
             zoneCount={zones.length}
           />
-          <div className="min-w-[180px]">
-            <FontFamilyField
-              label="Font"
-              value={readVal('fontFamily') || ''}
-              onChange={(v) => setField({ fontFamily: v })}
-            />
-          </div>
-          <div>
-            <FontSizeField
-              label="Size"
-              value={readVal('fontSize') ?? null}
-              onChange={(v) => setField({ fontSize: v })}
-              // Anchor the +/− stepper on the actual rendered px so the
-              // operator's "make this bigger" click steps from what
-              // they SEE — including theme-default text, zone-wide
-              // overrides, and per-field overrides. Scope-aware:
-              // measures the active hotspot when scope = field, else
-              // the largest text in the zone.
-              getMeasuredSize={getMeasuredFontSize}
-            />
-          </div>
-          <div className="min-w-[200px]">
-            <FormatToggles
-              bold={readVal('bold') === true}
-              italic={readVal('italic') === true}
-              underline={readVal('underline') === true}
-              strikethrough={readVal('strikethrough') === true}
-              onChange={(patch) => setField(patch)}
-            />
-          </div>
-          <div className="min-w-[180px]">
-            <ColorField
-              label="Color"
-              value={readVal('color') || '#1e293b'}
-              onChange={(v) => setField({ color: v })}
-            />
-          </div>
         </div>
       )}
       {isImage && (
