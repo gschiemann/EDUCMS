@@ -2082,27 +2082,36 @@ function PlayerPage() {
     try {
       await fetchContent();
       setSyncFeedback('done');
-      // Best-effort stale-bundle detection. Catches Vercel redeploys
-      // that ship without an APK bump (cursor-paths, widget render
-      // tweaks, proxy URL params). Failure to reload here is fine —
-      // the next OTA APK push will force a relaunch anyway.
-      try {
-        const mainChunk = Array.from(document.scripts)
-          .map(s => s.src)
-          .find(src => /\/_next\/static\/chunks\/main/.test(src));
-        if (mainChunk) {
-          const head = await fetch(mainChunk, { method: 'HEAD', cache: 'no-store' });
-          if (head.status === 404) {
-            const bridge = (window as any).EduCmsNative;
-            if (bridge && typeof bridge.reload === 'function') {
-              bridge.reload();
-            } else {
-              // Browser preview fallback — operator gets a fresh load.
-              window.location.reload();
-            }
+      // 2026-04-29 — operator: "i still see the old screens as
+      // well" + "sync now button literaly does nothing when you
+      // click it". Two issues addressed here:
+      //   1. The legacy 404-detection only fired when Vercel hard-
+      //      404'd the old chunk URL — but Vercel keeps deprecated
+      //      chunks alive for hours after a deploy, so the 404
+      //      branch almost never triggered. Result: kiosk stayed
+      //      on stale JS for a full power-cycle window.
+      //   2. The white paired-view Sync Now button called
+      //      fetchContent() directly, bypassing this whole feedback
+      //      machine entirely → operator clicks Sync, nothing
+      //      happens visibly.
+      //
+      // New behavior: Sync Now ALWAYS force-reloads the WebView
+      // 800ms after the manifest fetch completes. The kiosk re-
+      // requests the bundle from Vercel; any new deploy is picked
+      // up immediately. State loss is minimal — we're on a splash
+      // when the operator clicks Sync, not mid-playback. (For
+      // mid-playback Sync we'd want softer behavior, but that path
+      // doesn't currently expose a Sync button.)
+      setTimeout(() => {
+        try {
+          const bridge = (window as any).EduCmsNative;
+          if (bridge && typeof bridge.reload === 'function') {
+            bridge.reload();
+          } else if (typeof window !== 'undefined') {
+            window.location.reload();
           }
-        }
-      } catch { /* swallow — reload is best-effort */ }
+        } catch { /* swallow */ }
+      }, 800);
     } catch {
       setSyncFeedback('err');
     } finally {
@@ -2873,6 +2882,88 @@ function PlayerPage() {
               </div>
             </div>
 
+            {/* 2026-04-29 — operator: "i dont see any updates here, no
+                what programs are running, no info on the emergency
+                cached data, all the shit that was in those 6 other
+                splash screen shuold have been consolidated into this
+                screen". Folding the legacy CacheStatusRow + service
+                status info onto this view so the operator sees the
+                full picture without opening a click-overlay. Two-
+                column card under the 3 device cards. */}
+            <div className="w-full max-w-4xl mb-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Cache column */}
+              <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <HardDrive className="w-3.5 h-3.5" /> Cache
+                </div>
+                {!cacheStatus ? (
+                  <p className="text-xs text-slate-400">Checking…</p>
+                ) : !cacheStatus.supported ? (
+                  <p className="text-xs text-slate-400">Service worker unsupported on this WebView.</p>
+                ) : (
+                  <div className="space-y-2 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Playlist assets</span>
+                      <span className="font-mono font-semibold text-slate-700">
+                        {cacheStatus.playlist.count} · {formatBytes(cacheStatus.playlist.bytes)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500 flex items-center gap-1.5">
+                        <span aria-hidden>🛡️</span> Emergency assets
+                      </span>
+                      <span className={`font-mono font-semibold ${cacheStatus.emergency.count > 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
+                        {cacheStatus.emergency.count > 0
+                          ? `${cacheStatus.emergency.count} · ${formatBytes(cacheStatus.emergency.bytes)} ✓`
+                          : 'NONE — will fetch from network'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Activity / services column */}
+              <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <Cpu className="w-3.5 h-3.5" /> Activity
+                </div>
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Last sync</span>
+                    <span className="font-medium text-slate-700">{lastSync || 'Never'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Heartbeat</span>
+                    <span className="font-medium text-emerald-700 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      Running
+                    </span>
+                  </div>
+                  {/* Last OTA state — populated by the APK's OtaUpdateWorker.
+                      When idle or unset, render '—'. */}
+                  {otaProgress ? (
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">OTA</span>
+                      <span className="font-medium text-indigo-700">In progress…</span>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">OTA worker</span>
+                      <span className="font-medium text-slate-700">Scheduled (every 6h)</span>
+                    </div>
+                  )}
+                  {/* Web bundle build SHA — useful when verifying a fresh
+                      Vercel deploy actually loaded on this kiosk. */}
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Web build</span>
+                    <span className="font-mono text-[10px] text-slate-600">
+                      {(process.env.NEXT_PUBLIC_BUILD_SHA || '').slice(0, 7) || 'dev'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Update Available card — operator (2026-04-27): "this is
                 also the screen that should show when an upgrade is
                 available and also allow me to kick it off, and also
@@ -2996,8 +3087,19 @@ function PlayerPage() {
                   >
                     <Play className="w-4 h-4 fill-current" /> Resume
                   </button>
-                  <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative" title="Re-fetch the playlist + assets from the server right now">
-                    <RefreshCw className="w-4 h-4 text-slate-400" /> Sync now
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleSyncWithFeedback(); }}
+                    disabled={syncFeedback === 'syncing'}
+                    className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative"
+                    title="Re-fetch the playlist + force the kiosk to pick up the latest web bundle"
+                  >
+                    {syncFeedback === 'syncing'
+                      ? <><Loader2 className="w-4 h-4 text-indigo-500 animate-spin" /> Syncing…</>
+                      : syncFeedback === 'done'
+                        ? <><CheckCircle2 className="w-4 h-4 text-emerald-500" /> Synced</>
+                        : syncFeedback === 'err'
+                          ? <><AlertTriangle className="w-4 h-4 text-amber-500" /> Sync failed</>
+                          : <><RefreshCw className="w-4 h-4 text-slate-400" /> Sync now</>}
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); handleExitApp(); }}
@@ -3026,8 +3128,19 @@ function PlayerPage() {
                   }} className="px-5 py-2.5 bg-white border border-slate-200 hover:border-red-100 hover:bg-red-50 text-slate-700 hover:text-red-600 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative group">
                     <Power className="w-4 h-4 text-slate-400 group-hover:text-red-500" /> Unpair
                   </button>
-                  <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative" title="Re-fetch the playlist + assets from the server right now">
-                    <RefreshCw className="w-4 h-4 text-slate-400" /> Sync now
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleSyncWithFeedback(); }}
+                    disabled={syncFeedback === 'syncing'}
+                    className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative"
+                    title="Re-fetch the playlist + force the kiosk to pick up the latest web bundle"
+                  >
+                    {syncFeedback === 'syncing'
+                      ? <><Loader2 className="w-4 h-4 text-indigo-500 animate-spin" /> Syncing…</>
+                      : syncFeedback === 'done'
+                        ? <><CheckCircle2 className="w-4 h-4 text-emerald-500" /> Synced</>
+                        : syncFeedback === 'err'
+                          ? <><AlertTriangle className="w-4 h-4 text-amber-500" /> Sync failed</>
+                          : <><RefreshCw className="w-4 h-4 text-slate-400" /> Sync now</>}
                   </button>
                   <button onClick={(e) => { e.stopPropagation(); handleExitApp(); }} className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative">
                     <LogOut className="w-4 h-4 text-slate-400" /> Exit
@@ -3103,7 +3216,13 @@ function PlayerPage() {
               <DiagnosticsRow />
             </div>
             <div className="flex gap-2 pt-2">
-              <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm transition-colors">Sync Now</button>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleSyncWithFeedback(); }}
+                disabled={syncFeedback === 'syncing'}
+                className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-700/60 text-white rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-1.5"
+              >
+                {syncFeedback === 'syncing' ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Syncing…</> : 'Sync Now'}
+              </button>
               {/* Overlay actions trimmed to Sync + Stop. Exit +
                   Unpair are now on the Stopped splash where they
                   belong (the operator has already paused before
