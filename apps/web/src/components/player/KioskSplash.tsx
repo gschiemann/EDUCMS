@@ -6,13 +6,12 @@
  * "rounded rectangle + spinner on dark background" placeholder that
  * the user reasonably called "kinda lame".
  *
- * Three modes, one visual language:
+ * Two modes, one visual language:
  *   • `mode='registering'`  — quick handshake with the API, branded
  *                             loader
  *   • `mode='pairing'`      — show the 6-character pairing code as
  *                             the hero, big enough to read from the
  *                             far end of a cafeteria
- *   • `mode='connecting'`   — post-pair, waiting for first manifest
  *
  * Design DNA (inherits from the approved Rainbow / Sunny Meadow
  * templates per CLAUDE.md):
@@ -37,9 +36,9 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { Wifi, QrCode, MonitorPlay, Pause, Download } from 'lucide-react';
+import { Wifi, QrCode, MonitorPlay, Download } from 'lucide-react';
 
-type Mode = 'registering' | 'pairing' | 'connecting' | 'stopped';
+type Mode = 'registering' | 'pairing';
 
 /**
  * Progress state the player pipes into the 'connecting' mode so the
@@ -109,10 +108,6 @@ export interface KioskSplashProps {
    *  pointing to /pair?code=... so an admin can scan from their phone
    *  instead of typing. Pass the fully qualified URL. */
   pairDeepLinkUrl?: string | null;
-  /** Connecting-mode progress breakdown. Omit for old behaviour
-   *  ("Loading content…" + pulse). */
-  loadProgress?: LoadProgress | null;
-
   // ─── OTA upgrade banners ──────────────────────────────────────
   // Operator (2026-04-28): "screen paired screen should be our
   // main screen with all the info" + "show progress of the
@@ -142,24 +137,6 @@ export interface KioskSplashProps {
    *  button (e.g. on pairing mode where there's no tenant context yet). */
   onInstallUpdate?: () => void;
 
-  // ─── Stopped-mode props ──────────────────────────────────────
-  /** Last successful manifest sync — shown as a chip below the
-   *  headline. Omitted in stopped mode if never synced. */
-  lastSync?: string | null;
-  /** Per-playlist summary cards on the stop splash. */
-  stoppedPlaylists?: StoppedPlaylistSummary[];
-  /** Summary of on-disk cache: {count, bytes} per tier. */
-  stoppedCache?: {
-    playlist: { count: number; bytes: number };
-    emergency: { count: number; bytes: number };
-  } | null;
-  /** Copy + disable flag for the Exit button when no path works. */
-  stoppedExitUnavailable?: boolean;
-  /** Action handlers wired by the player. */
-  onResume?: () => void;
-  onSync?: () => void;
-  onExit?: () => void;
-  onUnpair?: () => void;
 }
 
 export function KioskSplash({
@@ -172,33 +149,10 @@ export function KioskSplash({
   apkVersion,
   managerVersion,
   pairDeepLinkUrl,
-  loadProgress,
   otaProgress,
   latestApkVersion,
   onInstallUpdate,
-  lastSync,
-  stoppedPlaylists = [],
-  stoppedCache,
-  stoppedExitUnavailable,
-  onResume,
-  onSync,
-  onExit,
-  onUnpair,
 }: KioskSplashProps) {
-  // Human-readable schedule line. Empty rules → "Every day · all day".
-  const fmtSchedule = (pl: StoppedPlaylistSummary) => {
-    const days = pl.daysOfWeek ? pl.daysOfWeek.replace(/,/g, ' · ') : 'Every day';
-    const times = pl.timeStart && pl.timeEnd ? `${pl.timeStart}–${pl.timeEnd}` : 'all day';
-    return `${days} · ${times}`;
-  };
-  const fmtBytes = (n: number) => {
-    if (!n) return '—';
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
-    if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  };
-  const totalStoppedAssets = stoppedPlaylists.reduce((s, p) => s + p.itemCount, 0);
-  const totalStoppedBytes = stoppedPlaylists.reduce((s, p) => s + p.totalBytes, 0);
   const displayName = brandName && brandName.trim() ? brandName : 'EduSignage';
 
   // ─── OTA banner state ────────────────────────────────────────
@@ -396,171 +350,6 @@ export function KioskSplash({
               <div />
             </div>
             <p className="kiosk-phase-copy">Connecting to your district&rsquo;s CMS&hellip;</p>
-          </>
-        )}
-
-        {/* ── Connecting mode: post-pair manifest fetch ── */}
-        {mode === 'connecting' && (
-          <>
-            <div className="kiosk-pulse-loader">
-              <div />
-              <div />
-              <div />
-            </div>
-            <p className="kiosk-phase-copy">
-              {(() => {
-                // Phase-specific copy. Falls back to the generic
-                // 'Loading content…' when no progress payload yet.
-                if (!loadProgress) {
-                  return screenName
-                    ? <>Loading content for <strong>{screenName}</strong>&hellip;</>
-                    : 'Loading content…';
-                }
-                switch (loadProgress.phase) {
-                  case 'manifest':
-                    return <>Fetching playlist{screenName ? <> for <strong>{screenName}</strong></> : null}&hellip;</>;
-                  case 'assets':
-                    return <>Downloading content&hellip;</>;
-                  case 'emergency':
-                    return <>Caching emergency content&hellip;</>;
-                  case 'connecting-ws':
-                    return <>Connecting to live updates&hellip;</>;
-                  case 'ready':
-                    return <>Starting playback&hellip;</>;
-                  default:
-                    return 'Loading content…';
-                }
-              })()}
-            </p>
-
-            {/* Progress bar — only when we have real counts to show.
-                'total' unknown = indeterminate shimmer; 'total' known =
-                fill proportion of loaded/total. */}
-            {loadProgress && (loadProgress.total || loadProgress.loaded) ? (
-              <div className="kiosk-progress-wrap">
-                <div
-                  className={
-                    'kiosk-progress-bar ' +
-                    (loadProgress.total ? 'kiosk-progress-bar--determinate' : 'kiosk-progress-bar--indeterminate')
-                  }
-                  style={
-                    loadProgress.total
-                      ? { width: `${Math.min(100, Math.round(((loadProgress.loaded ?? 0) / loadProgress.total) * 100))}%` }
-                      : undefined
-                  }
-                />
-              </div>
-            ) : null}
-
-            {/* Count + current-item line. Kept small so it doesn't
-                compete with the phase copy. */}
-            {loadProgress && (loadProgress.total || loadProgress.currentItem) ? (
-              <p className="kiosk-progress-detail">
-                {loadProgress.total ? (
-                  <span>
-                    {loadProgress.loaded ?? 0} of {loadProgress.total}
-                    {loadProgress.retrying ? <> · {loadProgress.retrying} retrying</> : null}
-                  </span>
-                ) : null}
-                {loadProgress.currentItem ? (
-                  <span className="kiosk-progress-current">
-                    {' '}· {loadProgress.currentItem}
-                  </span>
-                ) : null}
-              </p>
-            ) : null}
-
-            {/* Last error — shown subtle; the kiosk keeps trying but
-                the operator deserves to know something failed. */}
-            {loadProgress?.lastError ? (
-              <p className="kiosk-progress-error">⚠ {loadProgress.lastError}</p>
-            ) : null}
-          </>
-        )}
-
-        {/* ── Stopped mode: operator hit Stop in the overlay ──
-           Reuses the same branded aurora chrome as the other modes
-           (per Integration Lead's note — "use the same nice UI we
-           have that shows when a display is waiting for content").
-           Content below the brand lockup: pause chip, playlist
-           info card, and 4 action buttons. */}
-        {mode === 'stopped' && (
-          <>
-            <div className="kiosk-stop-chip">
-              <Pause className="kiosk-stop-chip-icon" />
-              Playback paused
-            </div>
-            <p className="kiosk-phase-copy">
-              {stoppedExitUnavailable
-                ? 'Use your remote\u2019s Home button to return to the launcher.'
-                : 'Content is held. Resume to go back to playback.'}
-            </p>
-            {lastSync && (
-              <p className="kiosk-progress-detail">Last sync: {lastSync}</p>
-            )}
-
-            {/* Loaded-playlist card. Grid of rows for each playlist. */}
-            <div className="kiosk-stop-info">
-              <div className="kiosk-stop-info-chips">
-                <div className="kiosk-stop-chip-card">
-                  <span className="kiosk-stop-chip-label">Playlists</span>
-                  <span className="kiosk-stop-chip-value">{stoppedPlaylists.length}</span>
-                  <span className="kiosk-stop-chip-sub">{totalStoppedAssets} assets · {fmtBytes(totalStoppedBytes)}</span>
-                </div>
-                {stoppedCache && (
-                  <div className="kiosk-stop-chip-card">
-                    <span className="kiosk-stop-chip-label">Cached on disk</span>
-                    <span className="kiosk-stop-chip-value">{stoppedCache.playlist.count}</span>
-                    <span className="kiosk-stop-chip-sub">
-                      {fmtBytes(stoppedCache.playlist.bytes)}
-                      {stoppedCache.emergency.count > 0 && <>  ·  🛡️ {stoppedCache.emergency.count}</>}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {stoppedPlaylists.length > 0 ? (
-                <ul className="kiosk-stop-list">
-                  {stoppedPlaylists.map((pl) => (
-                    <li key={pl.id} className="kiosk-stop-row">
-                      <div className="kiosk-stop-row-main">
-                        <span className="kiosk-stop-row-name">{pl.name}</span>
-                        <span className="kiosk-stop-row-sub">
-                          {pl.isTemplate ? 'Template' : `${pl.itemCount} slide${pl.itemCount === 1 ? '' : 's'}`}
-                          {pl.totalBytes ? ` · ${fmtBytes(pl.totalBytes)}` : ''}
-                        </span>
-                      </div>
-                      <span className="kiosk-stop-row-schedule">{fmtSchedule(pl)}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="kiosk-stop-empty">No playlists scheduled on this screen yet.</p>
-              )}
-            </div>
-
-            {/* Actions */}
-            <div className="kiosk-stop-actions">
-              <button type="button" className="kiosk-btn kiosk-btn-primary" onClick={onResume}>
-                Resume
-              </button>
-              <button type="button" className="kiosk-btn kiosk-btn-ghost" onClick={onSync}>
-                Sync now
-              </button>
-              <button
-                type="button"
-                className="kiosk-btn kiosk-btn-ghost"
-                onClick={onExit}
-                disabled={stoppedExitUnavailable}
-              >
-                {stoppedExitUnavailable ? 'Exit unavailable' : 'Exit to launcher'}
-              </button>
-            </div>
-            {onUnpair && (
-              <button type="button" className="kiosk-stop-unpair" onClick={onUnpair}>
-                Unpair device
-              </button>
-            )}
           </>
         )}
 
@@ -913,7 +702,7 @@ const CSS = `
   50%      { background: var(--splash-primary); transform: scale(1.4); }
 }
 
-/* ─── Registering / Connecting pulse loader ─────────────────── */
+/* ─── Registering pulse loader ──────────────────────────────── */
 .kiosk-pulse-loader {
   display: flex; gap: 12px;
   margin: 24px 0 20px 0;
@@ -939,173 +728,6 @@ const CSS = `
   font-weight: 500;
 }
 .kiosk-phase-copy strong { color: #ffffff; font-weight: 600; }
-
-/* ─── Download progress bar (connecting mode) ───────────────── */
-.kiosk-progress-wrap {
-  width: clamp(240px, 34vw, 480px);
-  height: 6px;
-  margin-top: 18px;
-  background: rgba(255,255,255,0.06);
-  border-radius: 999px;
-  overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.05);
-}
-.kiosk-progress-bar {
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    var(--splash-primary, #6366f1),
-    var(--splash-accent, #a855f7)
-  );
-  transition: width 0.35s ease-out;
-}
-.kiosk-progress-bar--determinate { width: 0%; }
-.kiosk-progress-bar--indeterminate {
-  width: 40%;
-  animation: kioskProgressSlide 1.6s ease-in-out infinite;
-}
-@keyframes kioskProgressSlide {
-  0%   { transform: translateX(-120%); }
-  100% { transform: translateX(280%); }
-}
-.kiosk-progress-detail {
-  margin: 10px 0 0 0;
-  font-size: clamp(11px, 1.5vh, 13px);
-  color: #94a3b8;
-  font-weight: 500;
-  max-width: clamp(260px, 40vw, 520px);
-  text-align: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.kiosk-progress-current {
-  color: #cbd5e1;
-  font-family: 'Inter', ui-monospace, sans-serif;
-  font-size: 0.95em;
-}
-.kiosk-progress-error {
-  margin: 8px 0 0 0;
-  font-size: clamp(11px, 1.5vh, 13px);
-  color: #fca5a5;
-  font-weight: 500;
-  max-width: clamp(260px, 40vw, 520px);
-  text-align: center;
-}
-
-/* ─── Stopped mode — "Playback paused" operator splash ────────
-   Lives on the same aurora chrome as the other modes; CSS below
-   is additive only, no overrides to the shared layers. */
-.kiosk-stop-chip {
-  margin-top: 18px;
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 8px 18px;
-  border-radius: 999px;
-  background: rgba(245, 158, 11, 0.18);
-  border: 1px solid rgba(245, 158, 11, 0.42);
-  color: #fbbf24;
-  font-family: 'Fredoka', 'Inter', sans-serif;
-  font-size: clamp(12px, 1.6vh, 15px);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-.kiosk-stop-chip-icon { width: 14px; height: 14px; }
-.kiosk-stop-info {
-  width: min(720px, 92vw);
-  margin-top: clamp(18px, 3vh, 32px);
-  display: flex; flex-direction: column; gap: 16px;
-}
-.kiosk-stop-info-chips {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
-}
-.kiosk-stop-chip-card {
-  padding: 14px 16px;
-  border-radius: 16px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.10);
-  display: flex; flex-direction: column; gap: 2px;
-  text-align: left;
-}
-.kiosk-stop-chip-label {
-  font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
-  color: rgba(226, 232, 240, 0.6); font-weight: 700;
-}
-.kiosk-stop-chip-value {
-  font-family: 'Fredoka', 'Inter', sans-serif;
-  font-size: 22px; font-weight: 600; color: #f1f5f9;
-  line-height: 1.15;
-}
-.kiosk-stop-chip-sub {
-  font-size: 11px; color: rgba(203, 213, 225, 0.75); font-weight: 500;
-}
-.kiosk-stop-list {
-  list-style: none; padding: 0; margin: 0;
-  border-radius: 16px;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.10);
-  overflow: hidden;
-}
-.kiosk-stop-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 14px;
-  padding: 12px 18px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-}
-.kiosk-stop-row:last-child { border-bottom: 0; }
-.kiosk-stop-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.kiosk-stop-row-name {
-  font-family: 'Fredoka', 'Inter', sans-serif;
-  font-weight: 600; color: #f1f5f9; font-size: 14px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.kiosk-stop-row-sub {
-  font-size: 11px; color: rgba(203, 213, 225, 0.7);
-}
-.kiosk-stop-row-schedule {
-  font-size: 11px; color: rgba(203, 213, 225, 0.85);
-  white-space: nowrap;
-}
-.kiosk-stop-empty {
-  padding: 18px; margin: 0; text-align: center;
-  color: rgba(226, 232, 240, 0.6); font-size: 13px;
-  border-radius: 16px;
-  background: rgba(255,255,255,0.04);
-  border: 1px dashed rgba(255,255,255,0.12);
-}
-.kiosk-stop-actions {
-  margin-top: clamp(14px, 2.5vh, 24px);
-  display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;
-}
-.kiosk-btn {
-  font-family: 'Inter', ui-sans-serif, sans-serif;
-  font-size: 13px; font-weight: 700;
-  padding: 10px 22px;
-  border-radius: 12px;
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: transform 0.15s, background 0.15s, color 0.15s;
-}
-.kiosk-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.kiosk-btn-primary {
-  background: #10b981;
-  color: #052e1a;
-  box-shadow: 0 6px 18px rgba(16, 185, 129, 0.35);
-}
-.kiosk-btn-primary:hover:not(:disabled) { background: #34d399; transform: translateY(-1px); }
-.kiosk-btn-ghost {
-  background: rgba(255,255,255,0.08);
-  color: #f1f5f9;
-  border-color: rgba(255,255,255,0.14);
-}
-.kiosk-btn-ghost:hover:not(:disabled) { background: rgba(255,255,255,0.14); }
-.kiosk-stop-unpair {
-  margin-top: 10px;
-  background: transparent; border: 0; cursor: pointer;
-  font-family: 'Inter', sans-serif; font-size: 11px; color: rgba(226, 232, 240, 0.55);
-  padding: 6px 12px;
-}
-.kiosk-stop-unpair:hover { color: #fca5a5; }
 
 /* ─── Tech chips (bottom of stage) ──────────────────────────── */
 .kiosk-tech-chips {
