@@ -238,24 +238,37 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       }}
       onPointerDown={(e) => {
         if (previewMode || zone.locked) return;
-        // If the user pointer-downed on a data-field text node we
-        // want to edit, do NOT start the move-drag — the dblclick
-        // that follows will turn that node into an editable field.
-        // Without this guard, the pointerdown captured the pointer
-        // and the dblclick never fired (move-drag took priority).
+        // 2026-04-29 — operator (REPEAT bug, multiple times):
+        // "click into the text of a widget and it gets stuck to
+        // the cursor moves around the entire screen and you cant
+        // get it off without a double clock..clicking inthe text
+        // window should just adit text not select the entire
+        // widget".
         //
-        // CRITICAL: stopPropagation regardless of which branch fires.
-        // BuilderCanvas's onCanvasPointerDown starts a marquee-select
-        // rectangle on every pointerdown that bubbles up to the canvas.
-        // Without stopping the event here, clicking text on a zone:
-        //   1. zone pointerdown returns early (no zone-drag) ✓
-        //   2. event bubbles to canvas → marquee drag starts
-        //   3. mouse moves → invisible marquee rectangle follows cursor
-        //   4. user sees their click "stick to the mouse"
-        // Partner reported "click to edit text → widget stuck to mouse,
-        // no way to let go" — that's the marquee, not the widget.
+        // Two guards block move-drag on content clicks:
+        //   1. Click hits a [data-field] hotspot → existing
+        //      Canva-style edit gesture (kept).
+        //   2. Click hits any descendant of a TEXT / RICH_TEXT
+        //      zone → NEW. The whole widget interior is treated
+        //      as a text-edit surface; only the 3px border (where
+        //      e.target === e.currentTarget) is a drag handle.
+        //
+        // CRITICAL: stopPropagation regardless of which branch
+        // fires, so BuilderCanvas's onCanvasPointerDown doesn't
+        // start a marquee-drag and re-create the "stuck to cursor"
+        // bug from a different source.
         const target = e.target as HTMLElement | null;
+        const isTextZone = zone.widgetType === 'TEXT' || zone.widgetType === 'RICH_TEXT';
+        const isContentClick = e.target !== e.currentTarget;
         if (target?.closest?.('[data-field]')) {
+          e.stopPropagation();
+          return;
+        }
+        if (isTextZone && isContentClick) {
+          // Pointerdown landed on text content (not the border)
+          // of a TEXT/RICH_TEXT widget. Don't drag — let the
+          // click handler enter edit mode. To MOVE a text widget,
+          // grab its border (the 3px dashed/solid edge).
           e.stopPropagation();
           return;
         }
@@ -265,16 +278,29 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       onClick={(e) => {
         if (previewMode) return;
         e.stopPropagation();
-        // If this click landed on an editable text node AND the zone
-        // is already selected, jump straight into edit mode (Canva-
-        // style single-click-to-edit). First click on an unselected
-        // zone just selects it; the next click on a hotspot edits.
-        // Without this gate, clicking on the canvas to select a zone
-        // would also enter edit mode by accident.
         const fieldEl = (e.target as HTMLElement | null)?.closest?.('[data-field]') as HTMLElement | null;
-        if (fieldEl && selected && onConfigChange && !zone.locked) {
+        const isTextZone = zone.widgetType === 'TEXT' || zone.widgetType === 'RICH_TEXT';
+        const isContentClick = e.target !== e.currentTarget;
+        // 2026-04-29 — Canva-style ONE-CLICK edit. Clicking a text
+        // hotspot now selects + edits in a single action. The old
+        // behavior required clicking once to select, THEN again to
+        // edit — that ritual is exactly what the operator hated.
+        if (fieldEl && onConfigChange && !zone.locked) {
+          if (!selected) onSelect(e, zone.id);
           enterFieldEdit(fieldEl);
           return;
+        }
+        // Fallback for TEXT/RICH_TEXT widgets whose content isn't
+        // wrapped in [data-field]: any content click enters edit
+        // on the first available text field inside the zone.
+        if (isTextZone && isContentClick && onConfigChange && !zone.locked) {
+          const firstField = (e.currentTarget as HTMLElement)
+            .querySelector('[data-field]') as HTMLElement | null;
+          if (firstField) {
+            if (!selected) onSelect(e, zone.id);
+            enterFieldEdit(firstField);
+            return;
+          }
         }
         onSelect(e, zone.id);
       }}
