@@ -207,9 +207,9 @@ export function ColorPickerField({ label, value, onChange, allowTransparent }: C
   );
 }
 
-// ─── Internal body ───────────────────────────────────────────────────
+// ─── Internal body (also exported for callers that want a custom trigger) ───
 
-function ColorPickerBody({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+export function ColorPickerBody({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   // HSV is the source of truth (see file header).
   const initialHsv = useMemo(
     () => hexToHsv(value) || { h: 0, s: 100, v: 100 },

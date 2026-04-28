@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useRef } from 'react';
-import { Palette, Image as ImageIcon, Code2, Upload, X, Check } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Palette, Image as ImageIcon, Code2, Upload, X, Check, Pipette } from 'lucide-react';
 import { useBuilderStore } from './useBuilderStore';
 import { useTemplate } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { API_URL } from '@/lib/api-url';
-import { ColorPickerField } from '@/components/ui/color-picker';
+import { ColorPickerBody } from '@/components/ui/color-picker';
 import { TemplateBackdropPicker } from './PropertiesPanel';
 
 /**
@@ -316,22 +316,16 @@ export function BackgroundPanel() {
         </section>
       )}
 
-      {/* CUSTOM COLOR PICKER — same HSV picker the font-color
-          field uses. Operator (2026-04-27): "give a color picker
-          like we have in other areas like font colors". */}
-      <section className="border-b border-slate-200/50 p-4 space-y-2">
-        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-          Pick any color
-        </div>
-        <div className="text-[11px] text-slate-500">
-          Drag the picker, click in the spectrum, or paste a hex
-        </div>
-        <ColorPickerField
-          label="Background color"
-          value={meta.bgColor || '#ffffff'}
-          onChange={(v) => applyColor(v)}
-        />
-      </section>
+      {/* CUSTOM COLOR PICKER — operator (2026-04-28): "change it
+          to a color picker icon of some sort not some dumb numbers
+          that dont mean shit to anyone." Custom trigger: big round
+          swatch showing the current color with a pipette icon
+          overlay; clicking it opens a popover with the same HSV
+          picker the font-color field uses. */}
+      <ColorPickerSection
+        currentColor={meta.bgColor || ''}
+        onPick={(hex) => applyColor(hex)}
+      />
 
       {/* FROM YOUR TEMPLATES — pulls every distinct backdrop already
           in use across system + tenant templates. Operator
@@ -516,5 +510,103 @@ export function BackgroundPanel() {
         )}
       </section>
     </div>
+  );
+}
+
+/**
+ * Icon-driven color picker section.
+ *
+ * Operator (2026-04-28): "change it to a color picker icon of some
+ * sort not some dumb numbers that dont mean shit to anyone." The
+ * trigger is a big round swatch filled with the current color and a
+ * small pipette badge in the corner; clicking it opens a popover
+ * with the same HSV picker the rest of the app uses.
+ */
+function ColorPickerSection({ currentColor, onPick }: { currentColor: string; onPick: (hex: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click + Escape — same UX the original
+  // ColorPickerField uses.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (popRef.current?.contains(e.target as Node)) return;
+      if (triggerRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const display = currentColor || '#cbd5e1';
+  const isUnset = !currentColor;
+
+  return (
+    <section className="border-b border-slate-200/50 p-4 space-y-3 relative">
+      <div>
+        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+          Pick any color
+        </div>
+        <div className="text-[11px] text-slate-500 mt-1">
+          Click the swatch to open the color picker
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <button
+          ref={triggerRef}
+          type="button"
+          aria-label="Open color picker"
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onClick={() => setOpen(o => !o)}
+          className="relative w-16 h-16 rounded-2xl border-4 border-white shadow-md hover:shadow-lg ring-1 ring-slate-200 hover:ring-indigo-400 transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 shrink-0"
+          style={{ background: isUnset ? 'repeating-conic-gradient(#e2e8f0 0% 25%, #ffffff 25% 50%) 50% / 16px 16px' : display }}
+        >
+          {/* Pipette badge in the bottom-right corner so the
+              affordance is unmistakable: this is a color picker. */}
+          <span className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-white border-2 border-slate-200 shadow-sm flex items-center justify-center">
+            <Pipette className="w-3.5 h-3.5 text-indigo-600" aria-hidden />
+          </span>
+        </button>
+        <div className="flex-1 min-w-0">
+          <div className="text-xs font-bold text-slate-800">
+            {isUnset ? 'No color set' : display.toUpperCase()}
+          </div>
+          <div className="text-[11px] text-slate-500 mt-0.5">
+            {isUnset ? 'Tap the swatch →' : 'Tap to change'}
+          </div>
+        </div>
+      </div>
+
+      {open && (
+        <div
+          ref={popRef}
+          role="dialog"
+          aria-label="Color picker"
+          className="absolute z-[10001] mt-2 left-4 right-4 bg-white rounded-xl shadow-2xl ring-1 ring-slate-200 p-3 space-y-3"
+        >
+          <ColorPickerBody
+            value={isUnset ? '#3b82f6' : display}
+            onChange={onPick}
+          />
+          <div className="flex items-center justify-end pt-1">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="px-3 py-1.5 rounded-md text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
