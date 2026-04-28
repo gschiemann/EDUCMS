@@ -105,4 +105,27 @@ object OtaInstaller {
     const val ACTION_INSTALL_RESULT = "com.educms.manager.OTA_INSTALL_RESULT"
     const val EXTRA_SESSION_ID = "sessionId"
     const val EXTRA_TARGET_PACKAGE = "targetPackage"
+
+    /**
+     * Discover which Player variant is actually installed on this device.
+     *
+     * Manager's [BuildConfig.PLAYER_PACKAGE] is the production id
+     * ("com.educms.player"). Debug Manager builds manage debug Player builds
+     * whose package id is "com.educms.player.debug". This helper checks both
+     * and returns whichever is installed. If both are somehow present (unusual),
+     * production wins because it is tried first.
+     *
+     * Returns null if neither variant is installed — caller should handle
+     * gracefully (bootstrap scenario or Player was uninstalled).
+     */
+    fun pickInstalledPlayerPackage(pm: android.content.pm.PackageManager): String? {
+        val candidates = listOf(BuildConfig.PLAYER_PACKAGE, "${BuildConfig.PLAYER_PACKAGE}.debug")
+        for (pkg in candidates) {
+            try {
+                pm.getPackageInfo(pkg, 0)
+                return pkg
+            } catch (_: android.content.pm.PackageManager.NameNotFoundException) { /* try next */ }
+        }
+        return null
+    }
 }

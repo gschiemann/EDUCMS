@@ -229,17 +229,13 @@ class WatchdogService : Service() {
      * (com.educms.player) and debug (com.educms.player.debug). On
      * a real kiosk only one is installed; pick whichever is there.
      * Falls back to production if both somehow exist.
+     *
+     * Delegates to [OtaInstaller.pickInstalledPlayerPackage] — the
+     * single source of truth for this lookup. Keeping it in one place
+     * prevents the prod/debug candidate list from drifting.
      */
-    private fun pickPlayerPackage(pm: PackageManager): String? {
-        val candidates = listOf(BuildConfig.PLAYER_PACKAGE, "${BuildConfig.PLAYER_PACKAGE}.debug")
-        for (c in candidates) {
-            try {
-                pm.getPackageInfo(c, 0)
-                return c
-            } catch (_: PackageManager.NameNotFoundException) { /* try next */ }
-        }
-        return null
-    }
+    private fun pickPlayerPackage(pm: PackageManager): String? =
+        OtaInstaller.pickInstalledPlayerPackage(pm)
 
     private fun startForegroundWithNotification() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

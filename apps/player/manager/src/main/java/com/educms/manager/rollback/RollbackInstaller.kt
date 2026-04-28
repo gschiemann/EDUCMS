@@ -3,6 +3,7 @@ package com.educms.manager.rollback
 import android.content.Context
 import android.util.Log
 import com.educms.manager.BuildConfig
+import com.educms.manager.InstallTracker
 import com.educms.manager.OtaInstaller
 
 /**
@@ -66,7 +67,15 @@ object RollbackInstaller {
         // older) versionCode. Debug builds allow downgrade
         // automatically; release builds will fail here on Android
         // versions that don't allow it without device-owner help.
-        OtaInstaller.installApk(ctx, archived, BuildConfig.PLAYER_PACKAGE)
+        //
+        // Read the package id directly from the archived APK file so
+        // rollback works for both prod ("com.educms.player") and debug
+        // ("com.educms.player.debug") variants. Passing the hardcoded
+        // BuildConfig.PLAYER_PACKAGE prod id to a debug-variant archive
+        // causes STATUS_FAILURE_INVALID at PackageInstaller.commit().
+        val archivedPkg = InstallTracker.readApkPackageId(ctx, archived)
+            ?: BuildConfig.PLAYER_PACKAGE // fallback if APK parse fails
+        OtaInstaller.installApk(ctx, archived, archivedPkg)
 
         // Clear pending state. Even if the install above didn't
         // succeed, we don't want WatchdogService re-firing the same

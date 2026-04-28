@@ -1173,10 +1173,19 @@ function PlayerPage() {
           return;
         }
 
+        // sec-fix(P0 #5): include any previously-stored device token so the
+        // server can verify proof-of-possession for paired re-registrations.
+        // Without this the server falls back to the STRICT_REPAIR_AUTH behavior
+        // (1-hour token until re-paired). Kiosks ≥ v1.0.34 send this field.
+        const storedPriorToken = getDeviceToken();
         const res = await fetch(`${getApiRoot()}/api/v1/screens/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ deviceFingerprint: fp, ...deviceInfo }),
+          body: JSON.stringify({
+            deviceFingerprint: fp,
+            ...deviceInfo,
+            ...(storedPriorToken ? { priorDeviceToken: storedPriorToken } : {}),
+          }),
         });
 
         if (cancelled) return;

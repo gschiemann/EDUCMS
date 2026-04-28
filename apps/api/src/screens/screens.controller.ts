@@ -119,6 +119,11 @@ export class ScreensController {
     osInfo?: string;
     browserInfo?: string;
     userAgent?: string;
+    /** sec-fix(P0 #5): Paired re-registration — caller sends its currently
+     *  stored device JWT to prove possession of the prior credential.
+     *  Present in kiosk builds ≥ v1.0.34; absent in older builds (handled
+     *  gracefully via STRICT_REPAIR_AUTH feature flag). */
+    priorDeviceToken?: string;
   }, @Req() req: ExpressReq) {
     if (!body.deviceFingerprint) {
       throw new HttpException('Device fingerprint is required', HttpStatus.BAD_REQUEST);
@@ -174,20 +179,123 @@ export class ScreensController {
     //
     // sec-fix(P0 #7) Defense 2: unpaired tokens expire in 15 minutes so a
     // stolen or guessed pre-claim token is worthless once the window lapses.
-    // Once a screen is paired (tenantId set), re-registration issues a
-    // full 365-day token — the kiosk stores that long-lived credential.
-    // Existing 365-day tokens issued before this fix stay valid until they
-    // naturally expire (no revocation needed — pre-claim tokens are already
-    // powerless; they can't see any tenant data before pairing).
-    const mintDeviceJwt = (screenId: string, isPaired: boolean) =>
-      jwt.sign(
+    //
+    // sec-fix(P0 #5) Graduated trust for paired re-registration:
+    //   - Caller proves possession of prior device JWT → 365-day token.
+    //   - Caller has fingerprint only (no/invalid prior token) and
+    //     STRICT_REPAIR_AUTH=true → 1-hour short-lived token + requiresRePair.
+    //   - STRICT_REPAIR_AUTH=false (default) → preserve legacy behavior
+    //     (issue 365-day token) so existing kiosks ≤ v1.0.33 keep working
+    //     until a fleet-wide APK update ships priorDeviceToken support.
+    //     Flip STRICT_REPAIR_AUTH=true after fleet update.
+    //   - Prior token INVALID (wrong screenId) → hard 401 regardless of flag.
+    //   - Prior token EXPIRED → downgrade to 1-hour fallback (don't reject,
+    //     legitimate kiosk may have had its token expire mid-day).
+    const strictRepairAuth = process.env.STRICT_REPAIR_AUTH === 'true';
+
+    const deviceJwtSecret = requireSecret('DEVICE_JWT_SECRET', { devFallback: 'dev_only_device_jwt_secret_CHANGE_ME' });
+
+    const mintDeviceJwt = (screenId: string, isPaired: boolean, ttl?: string) => {
+      const expiresIn = (ttl ?? (isPaired ? '365d' : '15m')) as import('jsonwebtoken').SignOptions['expiresIn'];
+      return jwt.sign(
         { sub: screenId, kind: 'device', fp: body.deviceFingerprint },
-        requireSecret('DEVICE_JWT_SECRET', { devFallback: 'dev_only_device_jwt_secret_CHANGE_ME' }),
-        { expiresIn: isPaired ? '365d' : '15m' },
+        deviceJwtSecret,
+        { expiresIn },
       );
+    };
+
+    /**
+     * Validate priorDeviceToken (if supplied) against the given screenId.
+     * Returns:
+     *   'valid'   — token decoded, kind=device, sub===screenId, not expired
+     *   'expired' — token is for correct screen but has expired (downgrade TTL)
+     *   'invalid' — wrong screenId or tampered (hard 401)
+     *   'absent'  — no priorDeviceToken sent
+     */
+    const verifyPriorToken = (screenId: string): 'valid' | 'expired' | 'invalid' | 'absent' => {
+      if (!body.priorDeviceToken) return 'absent';
+      try {
+        const decoded = jwt.verify(body.priorDeviceToken, deviceJwtSecret) as any;
+        if (decoded?.kind !== 'device') return 'invalid';
+        if (decoded?.sub !== screenId) return 'invalid';
+        return 'valid';
+      } catch (e: any) {
+        if (e?.name === 'TokenExpiredError') {
+          // Decode without verification to check screenId binding.
+          const decoded = jwt.decode(body.priorDeviceToken) as any;
+          if (!decoded || decoded?.kind !== 'device') return 'invalid';
+          if (decoded?.sub !== screenId) return 'invalid';
+          return 'expired';
+        }
+        return 'invalid';
+      }
+    };
 
     if (existing) {
-      // Update device info + last ping
+      // ── Paired re-registration — graduated trust (sec-fix P0 #5) ──────────
+      if (existing.tenantId) {
+        const priorStatus = verifyPriorToken(existing.id);
+
+        if (priorStatus === 'invalid') {
+          // Caller supplied a token but it binds to a different screen →
+          // hard reject regardless of flag. Fingerprint alone is not enough
+          // to prove identity when a token was actively presented.
+          throw new HttpException(
+            'Invalid prior device token: screenId mismatch',
+            HttpStatus.UNAUTHORIZED,
+          );
+        }
+
+        // Determine issued TTL:
+        //   valid prior token → 365d (caller proved possession)
+        //   expired prior token → 1h fallback (device woke up with stale creds)
+        //   absent prior token + strictRepairAuth=false → 365d (legacy compat)
+        //   absent prior token + strictRepairAuth=true → 1h + requiresRePair
+        let issuedTtl: string;
+        let requiresRePair = false;
+
+        if (priorStatus === 'valid') {
+          issuedTtl = '365d';
+        } else if (priorStatus === 'expired') {
+          // Device came back with an expired token — downgrade, don't block.
+          issuedTtl = '1h';
+          requiresRePair = true;
+        } else {
+          // absent
+          if (strictRepairAuth) {
+            issuedTtl = '1h';
+            requiresRePair = true;
+          } else {
+            // Legacy path: STRICT_REPAIR_AUTH not yet enabled.
+            // Issue 365d as before so kiosks ≤ v1.0.33 keep working.
+            issuedTtl = '365d';
+          }
+        }
+
+        const updated = await this.prisma.client.screen.update({
+          where: { id: existing.id },
+          data: {
+            resolution: body.resolution || existing.resolution,
+            osInfo: body.osInfo || existing.osInfo,
+            browserInfo: body.browserInfo || existing.browserInfo,
+            userAgent: body.userAgent || existing.userAgent,
+            ipAddress: req.ip || req.socket.remoteAddress || null,
+            lastPingAt: new Date(),
+            status: 'ONLINE',
+          },
+        });
+
+        return {
+          screenId: updated.id,
+          pairingCode: updated.pairingCode,
+          paired: true,
+          name: updated.name,
+          deviceToken: mintDeviceJwt(updated.id, true, issuedTtl),
+          ...(requiresRePair ? { requiresRePair: true } : {}),
+        };
+      }
+
+      // ── Unpaired re-registration (no tenantId yet) ────────────────────────
       const updated = await this.prisma.client.screen.update({
         where: { id: existing.id },
         data: {
@@ -197,15 +305,15 @@ export class ScreensController {
           userAgent: body.userAgent || existing.userAgent,
           ipAddress: req.ip || req.socket.remoteAddress || null,
           lastPingAt: new Date(),
-          status: existing.tenantId ? 'ONLINE' : 'PENDING',
+          status: 'PENDING',
         },
       });
       return {
         screenId: updated.id,
         pairingCode: updated.pairingCode,
-        paired: !!updated.tenantId,
+        paired: false,
         name: updated.name,
-        deviceToken: mintDeviceJwt(updated.id, !!existing.tenantId),
+        deviceToken: mintDeviceJwt(updated.id, false), // sec-fix(P0 #7): unpaired → 15m TTL
       };
     }
 
@@ -382,6 +490,7 @@ export class ScreensController {
       } : null,
       // Heartbeat-driven polling fallback for missed WS pushes.
       forceUpdatePending,
+      forceUpdatePendingAt: forceAt ? new Date(forceAt).toISOString() : null,
     };
   }
 

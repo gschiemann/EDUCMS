@@ -176,8 +176,14 @@ class OtaWorker(
             // to archive). If a bootstrap install fails, there's
             // nothing meaningful to roll back to — Manager just
             // retries on the next periodic tick or next boot.
+            // Archive the CURRENTLY-INSTALLED Player package. We resolve
+            // the actual package id from PackageManager (not the hardcoded
+            // BuildConfig value) so debug builds — where Player installs as
+            // "com.educms.player.debug" — archive the right APK.
             if (!isBootstrap) {
-                ApkArchive.archivePackage(applicationContext, BuildConfig.PLAYER_PACKAGE)
+                val installedPkg = OtaInstaller.pickInstalledPlayerPackage(applicationContext.packageManager)
+                    ?: BuildConfig.PLAYER_PACKAGE // fallback: best-effort archive under prod id
+                ApkArchive.archivePackage(applicationContext, installedPkg)
             }
 
             // Mark the install as pending. WatchdogService will watch
@@ -190,9 +196,20 @@ class OtaWorker(
                 prevVc = currentVc,
             )
 
+            // Resolve the package id declared inside the downloaded APK.
+            // This must match what PackageInstaller expects — it rejects a
+            // session whose setAppPackageName() disagrees with the APK's
+            // own manifest. For debug Player builds the manifest declares
+            // "com.educms.player.debug"; passing the prod id causes
+            // STATUS_FAILURE_INVALID. Reading directly from the file makes
+            // the id always match, regardless of which build variant was
+            // downloaded.
+            val apkPkg = InstallTracker.readApkPackageId(applicationContext, outFile)
+                ?: BuildConfig.PLAYER_PACKAGE // fallback if parsePackageInfo fails
+
             // Install — silent if DEVICE_OWNER, prompt-fallback otherwise.
             reportOtaState(apiRoot, fp, "INSTALLING", null, "v$latestVn")
-            OtaInstaller.installApk(applicationContext, outFile, BuildConfig.PLAYER_PACKAGE)
+            OtaInstaller.installApk(applicationContext, outFile, apkPkg)
             // INSTALLED state is reported implicitly by Player's NEXT
             // heartbeat after restart (server compares prior !=
             // current versionName). Don't report INSTALLED here — the
