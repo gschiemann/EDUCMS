@@ -182,35 +182,26 @@ class MainActivity : ComponentActivity() {
                 val token = deviceStore.deviceToken.first()
                 loadPlayer(token.orEmpty())
             }
+            // Fire the legacy permission prompt for future OTAs only
+            // after Manager is installed — at that point the popup
+            // can't conflict with the gate-driven install dialog.
+            maybePromptForInstallPermission()
         } else {
             // Manager NOT installed — gate the player.
-            PlayerLogger.i("MainActivity", "Manager missing — showing install gate, firing bootstrap from foreground")
-            showManagerGate("Installing companion service…")
-            // Fire bootstrap from this foregrounded Activity context.
-            // ManagerBootstrap.bootstrapIfNeeded reads the bundled APK
-            // out of assets and commits a PackageInstaller session;
-            // the system Install dialog appears (BAL is satisfied
-            // because MainActivity is foregrounded). When the user
-            // taps Install, ACTION_PACKAGE_ADDED fires →
-            // managerInstallReceiver.onReceive() → hideManagerGate()
-            // + loadPlayer().
-            ManagerBootstrap.bootstrapIfNeeded(applicationContext)
+            PlayerLogger.i("MainActivity", "Manager missing — showing install gate")
+            showManagerGate("Setting up companion service…")
             // Defensive: poll PackageManager every 2s in case the
             // PACKAGE_ADDED broadcast is dropped (some OEM ROMs
             // have been observed to do this when receivers are
             // registered late in onCreate).
             startManagerInstallPoller()
+            // v1.0.24 — gate-driven permission flow. Don't fire two
+            // dialogs at once. If we don't have install-unknown-apps
+            // permission yet, deep-link to Settings FIRST, then fire
+            // bootstrap when the user returns (onResume). If permission
+            // is already granted, fire bootstrap immediately.
+            proceedWithBootstrapOrRequestPermission()
         }
-
-        // One-time setup prompt for OTA install permission. Every
-        // Android ≥ 8 app that wants to install APKs needs the user
-        // to toggle "Install unknown apps" for that specific app —
-        // same thing Yodeck / OptiSigns / Xibo ask for on their first
-        // launch. We fire this ONCE at cold boot; if the user grants
-        // it, future OTA updates show the streamlined system prompt
-        // (or skip it entirely on some OEMs) instead of the scary
-        // "app can't be installed" dialog that greeted them tonight.
-        maybePromptForInstallPermission()
     }
 
     /**
@@ -572,6 +563,27 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         webView.onResume()
         webView.resumeTimers()
+        // v1.0.24 — if we deep-linked to Settings to get the install
+        // permission and the user is now back, re-check + auto-fire
+        // bootstrap so the system Install dialog appears without a
+        // re-launch of the app. No-op when not gating.
+        if (awaitingPermissionGrant && managerGateShown && readManagerVersion() == null) {
+            val granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+                packageManager.canRequestPackageInstalls()
+            if (granted) {
+                awaitingPermissionGrant = false
+                PlayerLogger.i("MainActivity", "Permission granted on return — firing bootstrap now")
+                binding.managerGateStatus.text = "Installing companion service…"
+                binding.managerGateHint.text = "When you see the system Install dialog, tap Install."
+                ManagerBootstrap.bootstrapIfNeeded(applicationContext)
+            } else {
+                // User came back without granting. Surface retry button
+                // so they can either re-open Settings or manually grant.
+                PlayerLogger.i("MainActivity", "Returned without grant — surfacing retry on gate")
+                binding.managerGateStatus.text = "Permission still needed — tap Retry to open Settings."
+                binding.managerGateRetry.visibility = View.VISIBLE
+            }
+        }
         // Kiosk pinning is now OPT-IN via a manifest flag (default: off).
         // Unconditionally calling startLockTask() was trapping operators
         // who sideloaded the APK for testing — without Device Owner
@@ -669,10 +681,12 @@ class MainActivity : ComponentActivity() {
         binding.managerGateOverlay.visibility = View.VISIBLE
         binding.managerGateStatus.text = status
         binding.managerGateRetry.setOnClickListener {
-            PlayerLogger.i("MainActivity", "Manager gate: retry install requested")
-            binding.managerGateStatus.text = "Retrying companion install…"
+            PlayerLogger.i("MainActivity", "Manager gate: retry requested")
             binding.managerGateRetry.visibility = View.GONE
-            ManagerBootstrap.bootstrapIfNeeded(applicationContext)
+            // v1.0.24 — retry runs through the same permission-gated
+            // flow. If permission is still missing it deep-links to
+            // Settings again; otherwise fires bootstrap directly.
+            proceedWithBootstrapOrRequestPermission()
         }
     }
 
@@ -723,6 +737,60 @@ class MainActivity : ComponentActivity() {
     }
     private fun stopManagerInstallPoller() {
         managerPollHandler.removeCallbacks(managerPollRunnable)
+    }
+
+    /**
+     * v1.0.24 — seamless permission + bootstrap flow.
+     *
+     * Operator (2026-04-28 v1.0.23 field test): "i saw the installer
+     * but when i clicked back out of the permissions window it
+     * dissappeared". Two dialogs were racing: the system Install
+     * dialog (from PackageInstaller) and the deep-linked Settings
+     * page (from maybePromptForInstallPermission) — first re-launch
+     * was needed to clear the conflict.
+     *
+     * v1.0.24 fix: do them in sequence, not in parallel.
+     *   1. If install-unknown-apps permission missing → set gate
+     *      status, deep-link to Settings, mark awaitingPermissionGrant.
+     *      Do NOT fire bootstrap yet (no install dialog to fight with).
+     *   2. User toggles permission, taps Back → onResume fires.
+     *   3. onResume re-checks permission. If granted, fire bootstrap.
+     *      Install dialog appears unobstructed.
+     *   4. User taps Install → Manager installs → gate hides →
+     *      WebView loads. One smooth sequence, no re-launch needed.
+     */
+    private var awaitingPermissionGrant = false
+    private fun proceedWithBootstrapOrRequestPermission() {
+        // API < 26 doesn't gate ACTION_INSTALL_PACKAGE behind a per-app
+        // toggle, so canRequestPackageInstalls doesn't even exist —
+        // bootstrap can fire directly.
+        val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !packageManager.canRequestPackageInstalls()
+        if (needsPermission) {
+            PlayerLogger.i("MainActivity", "Install permission missing — deep-linking to Settings, gating bootstrap")
+            binding.managerGateStatus.text = "Tap Allow on the next screen to grant install permission"
+            binding.managerGateHint.text = "We'll continue automatically when you return."
+            try {
+                val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
+                    .setData(Uri.parse("package:$packageName"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
+                awaitingPermissionGrant = true
+            } catch (e: Exception) {
+                PlayerLogger.w("MainActivity", "Could not open install-sources settings", e)
+                // Fall through to manual instructions on the gate.
+                binding.managerGateStatus.text =
+                    "Manual setup needed: Settings → Apps → EduCMS Player → Install unknown apps → Allow"
+                binding.managerGateHint.text = "Tap Retry install once permission is granted."
+                binding.managerGateRetry.visibility = View.VISIBLE
+            }
+            return
+        }
+        // Permission already granted — fire bootstrap directly.
+        PlayerLogger.i("MainActivity", "Install permission already granted — firing bootstrap from foreground")
+        binding.managerGateStatus.text = "Installing companion service…"
+        binding.managerGateHint.text = "When you see the system Install dialog, tap Install."
+        ManagerBootstrap.bootstrapIfNeeded(applicationContext)
     }
     private fun registerManagerInstallReceiver() {
         if (managerInstallReceiverRegistered) return
