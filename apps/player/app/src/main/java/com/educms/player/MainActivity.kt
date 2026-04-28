@@ -48,6 +48,44 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         PlayerLogger.i("MainActivity", "onCreate — ${Build.MANUFACTURER} ${Build.MODEL} SDK ${Build.VERSION.SDK_INT}")
 
+        // 2026-04-28 (v1.0.22) — handle install-prompt trampoline.
+        // OtaInstallReceiver routes STATUS_PENDING_USER_ACTION through
+        // here because BroadcastReceiver-launched activities are blocked
+        // by Android 11+ Background Activity Launch on Goodview signage
+        // ROMs. MainActivity is foregrounded so it satisfies BAL.
+        handleInstallPromptTrampoline(intent)
+    }
+
+    override fun onNewIntent(newIntent: Intent?) {
+        super.onNewIntent(newIntent)
+        // Same trampoline path — fires when Activity is already running
+        // and OtaInstallReceiver routes another install prompt through.
+        handleInstallPromptTrampoline(newIntent)
+    }
+
+    /**
+     * Launch a system Install confirmation Intent that was forwarded
+     * through this Activity by OtaInstallReceiver. Foreground task
+     * chaining bypasses the Android 11+ BAL block that silently drops
+     * BroadcastReceiver-issued startActivity calls on Goodview ROMs.
+     */
+    private fun handleInstallPromptTrampoline(launchIntent: Intent?) {
+        if (launchIntent?.action != com.educms.player.ota.OtaInstallReceiver.ACTION_LAUNCH_INSTALL_PROMPT) return
+        @Suppress("DEPRECATION")
+        val prompt: Intent? = launchIntent.getParcelableExtra(com.educms.player.ota.OtaInstallReceiver.EXTRA_INSTALL_PROMPT)
+        if (prompt == null) {
+            PlayerLogger.w("MainActivity", "trampoline fired but no install_prompt_intent extra")
+            return
+        }
+        prompt.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        try {
+            startActivity(prompt)
+            PlayerLogger.i("MainActivity", "install prompt launched from foreground (BAL bypass)")
+        } catch (e: Exception) {
+            PlayerLogger.e("MainActivity", "install prompt launch failed", e)
+        }
+    }
+
         // FULL sensor rotation — user mounts the display however they
         // want (portrait, landscape, reverse). The WebView handles any
         // orientation; the web player's CSS scales 1920×1080 scenes to

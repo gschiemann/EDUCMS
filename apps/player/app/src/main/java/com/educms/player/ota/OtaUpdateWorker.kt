@@ -338,28 +338,6 @@ class OtaUpdateWorker(
             // guards against an attacker swapping a different APK into
             // the updates dir and using this session to replace us.
             params.setAppPackageName(ctx.packageName)
-            // 2026-04-28 (Player v1.0.20) — Yodeck's silent-self-update
-            // trick: claim installer-of-record so the OS treats this as
-            // a same-installer update and Goodview's permissive ROM
-            // skips the system Install dialog. See PlayerApp.onCreate
-            // for the matching setInstallerPackageName(self) call.
-            try {
-                params.setInstallerPackageName(ctx.packageName)
-            } catch (e: Exception) {
-                PlayerLogger.w(TAG, "setInstallerPackageName(self) on session params failed: ${e.message}")
-            }
-            // Android 12+ silent path: combined with the
-            // UPDATE_PACKAGES_WITHOUT_USER_ACTION manifest permission,
-            // this hint tells the OS not to require a user prompt.
-            // Pre-Android-12 falls back to default (which Goodview
-            // rules permissive same-installer = silent anyway).
-            if (android.os.Build.VERSION.SDK_INT >= 31) {
-                try {
-                    params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
-                } catch (e: Exception) {
-                    PlayerLogger.w(TAG, "setRequireUserAction not supported: ${e.message}")
-                }
-            }
             val sessionId = installer.createSession(params)
             val session = installer.openSession(sessionId)
             try {

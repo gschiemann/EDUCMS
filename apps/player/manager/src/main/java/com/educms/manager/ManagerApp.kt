@@ -42,19 +42,6 @@ class ManagerApp : Application() {
         try { CrashUploader.install(this) } catch (e: Exception) {
             Log.w(TAG, "CrashUploader.install failed: ${e.message}")
         }
-        // 2026-04-28 (Manager v1.0.4) — claim installer-of-record for
-        // ourselves so future Manager self-updates skip the system
-        // Install prompt on permissive Goodview ROMs (Yodeck's
-        // silent-update trick on Android 9). See PlayerApp.kt for
-        // the same call. SecurityException on stricter ROMs falls
-        // back to user-prompt, no regression.
-        try {
-            @Suppress("DEPRECATION")
-            packageManager.setInstallerPackageName(packageName, packageName)
-            Log.i(TAG, "claimed installer-of-record (self) for $packageName")
-        } catch (e: Exception) {
-            Log.w(TAG, "setInstallerPackageName(self) failed: ${e.message}")
-        }
         startWatchdogService(this)
 
         // Two periodic workers: Player OTA (existing) + Manager self-

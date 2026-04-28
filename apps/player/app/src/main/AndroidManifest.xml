@@ -18,14 +18,9 @@
          as the default installer via `pm set-installer com.educms.player`
          (one-shot ADB), which makes installs silent.  -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <!-- Android 12+ silent self-update: combined with
-         setRequireUserAction(USER_ACTION_NOT_REQUIRED) on the
-         PackageInstaller session, this is the path Yodeck and other
-         signage products use to install updates without prompting.
-         Works for self-updates and for installing packages we
-         previously installed. Falls back to user prompt on Android 11
-         and older where the permission doesn't exist. -->
-    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
+    <!-- (UPDATE_PACKAGES_WITHOUT_USER_ACTION removed in v1.0.21 —
+         was only useful on Android 12+; we're testing on Android 11.
+         Stripping to isolate v1.0.20 crash cause.) -->
 
     <!--
       Permission to write to the Manager APK's PlayerHealthProvider
@@ -42,11 +37,18 @@
     <uses-permission android:name="com.educms.manager.HEALTH_PERMISSION" />
 
     <!-- Android 11+ scoped queries: Manager runs in a different UID,
-         we need to declare we want to talk to it. -->
+         we need to declare we want to talk to it. v1.0.22+ also
+         declares the system PackageInstaller activity packages so
+         we can resolve EXTRA_INTENT from STATUS_PENDING_USER_ACTION
+         on Goodview's stripped TaurusOS (which doesn't ship GMS;
+         the system installer is com.android.packageinstaller, not
+         the Google variant). -->
     <queries>
         <package android:name="com.educms.manager" />
         <package android:name="com.educms.manager.debug" />
         <provider android:authorities="com.educms.manager.health" />
+        <package android:name="com.android.packageinstaller" />
+        <package android:name="com.google.android.packageinstaller" />
     </queries>
 
     <!-- USB OTG sneakernet ingest (Sprint 7B) — Android 7+ supports USB host mode -->

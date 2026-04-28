@@ -250,24 +250,6 @@ object ManagerBootstrap {
         try {
             val installer = ctx.packageManager.packageInstaller
             val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
-            // 2026-04-28 (Player v1.0.20) — Yodeck-style silent install:
-            // claim installer-of-record + (Android 12+) hint NOT_REQUIRED
-            // user action. Goodview's permissive ROM treats same-installer
-            // updates as silent on Android 7-11; the explicit hint covers
-            // Android 12+. Either way, no system Install dialog if the
-            // install permission is granted.
-            try {
-                params.setInstallerPackageName(ctx.packageName)
-            } catch (e: Exception) {
-                PlayerLogger.w(TAG, "setInstallerPackageName(self) failed: ${e.message}")
-            }
-            if (android.os.Build.VERSION.SDK_INT >= 31) {
-                try {
-                    params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
-                } catch (e: Exception) {
-                    PlayerLogger.w(TAG, "setRequireUserAction not supported: ${e.message}")
-                }
-            }
             val sessionId = installer.createSession(params)
             installer.openSession(sessionId).use { session ->
                 apk.inputStream().use { input ->
