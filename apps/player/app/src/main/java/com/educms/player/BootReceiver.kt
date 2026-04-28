@@ -33,6 +33,22 @@ class BootReceiver : BroadcastReceiver() {
         com.educms.player.watchdog.Watchdog.arm(context.applicationContext)
         PlayerLogger.i("BootReceiver", "HeartbeatService and Watchdog armed")
 
+        // 2026-04-28 — operator: 'i rebooted the player and nothing
+        // fucking happened'. ROOT CAUSE: this BootReceiver did NOT
+        // kick the OTA worker. WorkManager's periodic schedule uses
+        // KEEP policy, so reboot kept the existing 6h cadence
+        // instead of running a check immediately. Adding a one-shot
+        // OTA fire here so every power-cycle starts a fresh check.
+        // Defense in depth — Manager v1.0.2's BootReceiver fires
+        // its own check, but if Manager isn't installed (legacy
+        // kiosk) Player still gets the boot-time check.
+        try {
+            PlayerApp.fireOtaCheckNow(context.applicationContext)
+            PlayerLogger.i("BootReceiver", "fired one-shot OTA check on boot")
+        } catch (e: Exception) {
+            PlayerLogger.w("BootReceiver", "fireOtaCheckNow failed on boot", e)
+        }
+
         val launch = Intent(context, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)

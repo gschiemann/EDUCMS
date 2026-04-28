@@ -65,14 +65,47 @@ export class PlayerOtaController {
     if (!fp || !vn) return;
     const vc = Number.isFinite(body?.versionCode as number) ? Number(body?.versionCode) : null;
     try {
+      // 2026-04-28 — operator: 'i rebooted the player and nothing
+      // fucking happened... we are 16 versions of the player in and
+      // i asked for OTA on the first version'. ROOT CAUSE: the
+      // force-update flag was cleared OPTIMISTICALLY in the update-
+      // check response path the first time we handed back a URL,
+      // before the kiosk had actually installed. If the install
+      // failed silently (permission, download, signature mismatch,
+      // anything), the flag was gone and subsequent polls returned
+      // uptoDate forever.
+      //
+      // Fix: stop clearing in update-check (see below). Clear here
+      // ONLY when the kiosk reports a versionCode strictly GREATER
+      // than what we previously stored — that's actual proof the
+      // install succeeded. Until then, the flag persists and every
+      // subsequent /update-check from this kiosk returns the latest
+      // APK URL.
+      const prior = await this.prisma.client.screen.findFirst({
+        where: { deviceFingerprint: fp },
+        select: { id: true, playerVersionCode: true, forceApkUpdatePendingAt: true } as any,
+      }) as any;
+      const installed = !!(
+        prior && prior.forceApkUpdatePendingAt && vc !== null
+        && (prior.playerVersionCode == null || vc > Number(prior.playerVersionCode))
+      );
       await this.prisma.client.screen.updateMany({
         where: { deviceFingerprint: fp },
         data: {
           playerVersion: vn,
           playerVersionCode: vc,
           playerVersionAt: new Date(),
-        },
+          // Clear the flag iff this report shows the install actually
+          // landed (versionCode bumped).
+          ...(installed ? { forceApkUpdatePendingAt: null as any } : {}),
+        } as any,
       });
+      if (installed) {
+        this.logger.log(
+          `[ota] flag-cleared-on-install screen=${prior.id} ` +
+          `prev=${prior.playerVersionCode || 'null'} new=${vc}`,
+        );
+      }
     } catch (e: any) {
       // Non-fatal — next poll will try again.
       this.logger.warn(`Version persist failed: ${e?.message}`);
@@ -177,15 +210,26 @@ export class PlayerOtaController {
       `[ota] decision=offer-latest caller=${callerVn} screen=${lookupScreenId || '-'} ` +
       `tenant=${lookupTenantId || '-'} fp=${fpShort} reason=${allowReason}`,
     );
-    // Best-effort: clear the pending flag once we hand back a
-    // download URL, so the screen doesn't keep returning latest on
-    // every subsequent poll within the 30-min window. The kiosk's
-    // next poll AFTER install will report a higher versionName and
-    // would naturally hit uptoDate, but clearing is cleaner.
+    // 2026-04-28 — DO NOT clear the flag here.
+    // Operator: 'i rebooted the player and nothing fucking happened
+    // ... we are 16 versions of the player in and i asked for OTA
+    // on the first version'.
+    //
+    // Old behavior (BUG): we cleared the flag the moment we handed
+    // back a download URL. If the kiosk's install failed silently
+    // (permission, download error, signature mismatch, etc), the
+    // flag was already gone and subsequent /update-check polls
+    // returned uptoDate forever — the kiosk got stuck on an old
+    // version with no way for the dashboard to retry.
+    //
+    // New behavior: keep the flag until persistReportedVersion sees
+    // a versionCode bump (above) — that's the only proof the install
+    // actually landed. The 24h auto-stale window still applies as a
+    // safety net so a permanently-failing kiosk doesn't loop forever.
     if (forcedPendingScreenId) {
-      this.prisma.client.screen
-        .update({ where: { id: forcedPendingScreenId }, data: { forceApkUpdatePendingAt: null } as any })
-        .catch(() => { /* swallow */ });
+      this.logger.log(
+        `[ota] flag-kept-until-install-confirms screen=${forcedPendingScreenId}`,
+      );
     }
 
     const latestVc = parseInt(process.env.PLAYER_APK_LATEST_VERSION_CODE || '0', 10);
@@ -338,6 +382,90 @@ export class PlayerOtaController {
     res.status(404).json({
       error: 'No Manager APK is published yet. Tag a manager-v* GitHub Release.',
     });
+  }
+
+  /**
+   * POST /api/v1/player/manager-update-check
+   *
+   * Manager's self-upgrade endpoint. Mirrors /update-check but for the
+   * Manager APK itself (com.educms.manager). The Manager's
+   * ManagerSelfUpdateWorker polls this every 30 min so it keeps itself
+   * current without sideloading.
+   *
+   * Operator (2026-04-28): 'i dont want to side load any fucking
+   * thing after this next build'. This endpoint + the worker is what
+   * makes that promise possible. Once Manager v1.0.2 is sideloaded,
+   * every subsequent Manager release auto-installs silently.
+   *
+   * No flag-gating like /update-check uses for Player — Manager
+   * updates are always opt-in (the operator chose to install
+   * Manager) and shouldn't surprise anyone, since Manager is a
+   * background daemon and updates don't visibly disrupt screens.
+   */
+  @Post('manager-update-check')
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  async managerUpdateCheck(@Body() body: UpdateCheckBody) {
+    const callerVn = String(body?.versionName || '').trim() || '?';
+    const callerVc = Number(body?.versionCode) || 0;
+    const fp = (body?.fingerprint || '').trim();
+    const fpShort = fp ? fp.slice(0, 10) : 'no-fp';
+
+    // Persist the reported Manager version to the screen row so the
+    // dashboard's chip stays in sync. Best-effort.
+    if (fp && callerVn) {
+      this.prisma.client.screen
+        .updateMany({
+          where: { deviceFingerprint: fp },
+          data: {
+            managerVersion: callerVn,
+            managerVersionAt: new Date(),
+          } as any,
+        })
+        .catch(() => { /* swallow */ });
+    }
+
+    try {
+      const info = await resolveLatestManagerReleaseInfo();
+      if (!info) {
+        this.logger.warn(
+          `[mgr-ota] decision=uptoDate-no-release caller=${callerVn} fp=${fpShort} ` +
+          `reason=resolveLatestManagerReleaseInfo-returned-null`,
+        );
+        return { uptoDate: true };
+      }
+
+      // Compare versionNames semver-style. If the caller is already
+      // at-or-past, no update needed. Same loop-breaker the Player
+      // /update-check uses.
+      if (callerVn && callerVn !== '?' && semverGte(callerVn, info.versionName)) {
+        this.logger.log(
+          `[mgr-ota] decision=uptoDate caller=${callerVn} latest=${info.versionName} fp=${fpShort}`,
+        );
+        return { uptoDate: true, latestVersionName: info.versionName };
+      }
+
+      const derivedVc = Math.max(info.derivedVersionCode, callerVc + 1);
+      this.logger.log(
+        `[mgr-ota] decision=install caller=${callerVn} target=v${info.versionName} fp=${fpShort}`,
+      );
+      return {
+        latest: {
+          versionCode: derivedVc,
+          versionName: info.versionName,
+          apkUrl: info.apkUrl,
+          // SHA isn't computed for Manager (would require an extra
+          // GitHub API hit per release). Manager's worker accepts
+          // empty sha and skips verification — install path still
+          // gated by signature check (same key), so an attacker
+          // can't swap a different APK in.
+          sha256: '',
+          forced: false,
+        },
+      };
+    } catch (e: any) {
+      this.logger.warn(`[mgr-ota] lookup failed: ${e?.message}`);
+      return { uptoDate: true };
+    }
   }
 
   @Get('apk/latest')
@@ -605,6 +733,79 @@ async function resolveLatestReleaseInfo(): Promise<ReleaseInfo | null> {
   releaseInfoCache = { info, fetchedAt: now };
   // Also fill the legacy URL cache so /apk/latest stays fast.
   releaseCache = { url: apkUrl, fetchedAt: now };
+  return info;
+}
+
+// Same pattern but for `manager-v*` tags. Called by the new
+// /manager-update-check endpoint that powers Manager's self-upgrade.
+let managerReleaseInfoCache: { info: ReleaseInfo | null; fetchedAt: number } | null = null;
+async function resolveLatestManagerReleaseInfo(): Promise<ReleaseInfo | null> {
+  const now = Date.now();
+  if (managerReleaseInfoCache && now - managerReleaseInfoCache.fetchedAt < RELEASE_TTL_MS) {
+    return managerReleaseInfoCache.info;
+  }
+  const repo = process.env.PLAYER_APK_GITHUB_REPO || 'gschiemann/EDUCMS';
+  const resp = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=30`, {
+    headers: { 'User-Agent': 'edu-cms-player-ota' },
+  });
+  if (!resp.ok) {
+    managerReleaseInfoCache = { info: null, fetchedAt: now };
+    return null;
+  }
+  const allReleases = await resp.json() as Array<{
+    tag_name?: string;
+    name?: string;
+    draft?: boolean;
+    prerelease?: boolean;
+    assets?: Array<{ name: string; browser_download_url: string }>;
+  }>;
+  if (!Array.isArray(allReleases)) {
+    managerReleaseInfoCache = { info: null, fetchedAt: now };
+    return null;
+  }
+  const managerReleases = allReleases
+    .filter((r) => {
+      if (r.draft || r.prerelease) return false;
+      const tag = (r.tag_name || r.name || '').trim();
+      return tag.startsWith('manager-v');
+    })
+    .map((r) => {
+      const tag = (r.tag_name || r.name || '').trim();
+      const versionStr = tag.replace(/^manager-v/, '');
+      const m = versionStr.match(/^(\d+)\.(\d+)\.(\d+)/);
+      const sortKey = m
+        ? parseInt(m[1], 10) * 1_000_000 + parseInt(m[2], 10) * 1_000 + parseInt(m[3], 10)
+        : 0;
+      return { release: r, sortKey };
+    })
+    .filter((x) => x.sortKey > 0)
+    .sort((a, b) => b.sortKey - a.sortKey);
+
+  if (managerReleases.length === 0) {
+    managerReleaseInfoCache = { info: null, fetchedAt: now };
+    return null;
+  }
+  const release = managerReleases[0].release;
+  const assets = release.assets || [];
+  const pick = (pred: (name: string) => boolean) =>
+    assets.find((a) => pred(a.name.toLowerCase()));
+  const chosen =
+    pick((n) => n.includes('arm64-v8a') && n.endsWith('.apk')) ||
+    pick((n) => n.includes('universal') && n.endsWith('.apk')) ||
+    pick((n) => n.includes('armeabi-v7a') && n.endsWith('.apk')) ||
+    pick((n) => n.endsWith('.apk') && !n.includes('x86'));
+  const apkUrl = chosen?.browser_download_url ?? null;
+  const tag = (release.tag_name || release.name || '').trim();
+  const versionName = tag.replace(/^manager-v/, '').replace(/^v/, '');
+  const match = versionName.match(/^(\d+)\.(\d+)\.(\d+)/);
+  const derivedVersionCode = match
+    ? parseInt(match[1], 10) * 10000 + parseInt(match[2], 10) * 100 + parseInt(match[3], 10)
+    : 0;
+
+  const info: ReleaseInfo | null = apkUrl && versionName && derivedVersionCode
+    ? { apkUrl, versionName, derivedVersionCode }
+    : null;
+  managerReleaseInfoCache = { info, fetchedAt: now };
   return info;
 }
 

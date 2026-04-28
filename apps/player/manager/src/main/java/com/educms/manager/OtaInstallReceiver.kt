@@ -42,7 +42,27 @@ class OtaInstallReceiver : BroadcastReceiver() {
 
         when (status) {
             PackageInstaller.STATUS_SUCCESS -> {
-                Log.i(TAG, "OTA install SUCCESS for $targetPackage — Manager is done; new Player will boot")
+                Log.i(TAG, "OTA install SUCCESS for $targetPackage — relaunching")
+                // 2026-04-28 — operator: 'i hit yes and it then closed
+                // the app and ttok me to the android app screen, never
+                // relanched the app... what you built was a fucking
+                // piece of shit and would have never worked'.
+                //
+                // Cause: Android's PackageInstaller does NOT auto-launch
+                // the freshly-installed app. After a successful install,
+                // the foreground activity (the Install prompt or the
+                // installer process) finishes, and the system returns
+                // the user to whatever was below — usually the home
+                // launcher. Cinematic fail for kiosk UX.
+                //
+                // Fix: launch the target package's main activity here.
+                // Skip self-installs (we just installed Manager onto
+                // ourselves; the OS will have killed our process and
+                // restarted us via the foreground service — we don't
+                // need to launch anything).
+                if (targetPackage != context.packageName) {
+                    relaunchPackage(context, targetPackage)
+                }
                 // Phase 2: report INSTALLED state to API + clear
                 // any "pending update" flags we tracked locally.
             }
@@ -72,6 +92,32 @@ class OtaInstallReceiver : BroadcastReceiver() {
                 // APK from disk.
             }
         }
+    }
+
+    /**
+     * Launch the freshly-installed package's main activity. Used
+     * after STATUS_SUCCESS so the kiosk wakes back up to running
+     * Player instead of getting stranded on the OEM home launcher.
+     *
+     * Tries production then debug variant, since Manager handles
+     * both com.educms.player and com.educms.player.debug.
+     */
+    private fun relaunchPackage(ctx: Context, pkg: String) {
+        val candidates = listOf(pkg, "$pkg.debug")
+        for (candidate in candidates) {
+            try {
+                val launch = ctx.packageManager.getLaunchIntentForPackage(candidate)
+                if (launch != null) {
+                    launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    ctx.startActivity(launch)
+                    Log.i(TAG, "relaunched $candidate after successful install")
+                    return
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "relaunch $candidate failed: ${e.message}")
+            }
+        }
+        Log.w(TAG, "no launch intent found for $pkg or $pkg.debug — kiosk stays on home")
     }
 
     private fun statusName(status: Int): String = when (status) {

@@ -36,27 +36,37 @@ import java.util.concurrent.TimeUnit
 class ManagerApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        Log.i(TAG, "ManagerApp.onCreate — starting watchdog + scheduling OTA worker")
+        Log.i(TAG, "ManagerApp.onCreate — starting watchdog + scheduling OTA workers")
         // Crash handler FIRST so we capture errors during the rest of
         // app startup if anything throws.
         try { CrashUploader.install(this) } catch (e: Exception) {
             Log.w(TAG, "CrashUploader.install failed: ${e.message}")
         }
         startWatchdogService(this)
+
+        // Two periodic workers: Player OTA (existing) + Manager self-
+        // update (NEW in v1.0.2). Both run on independent schedules,
+        // both gracefully no-op when there's nothing to install.
         scheduleOtaWorker(this)
-        // Single-sideload UX (matches Yodeck's pattern): if Player
-        // isn't installed yet, fire OtaWorker IMMEDIATELY instead of
-        // waiting for the 5-min initial-delay periodic. Operator's
-        // deployment flow becomes:
-        //   1. Sideload Manager APK (one trip)
-        //   2. ADB-provision device-owner (one command)
-        //   3. ← THIS triggers Player auto-install on first launch
-        //   4. Pair Player from dashboard
-        // OtaWorker handles the bootstrap case (Player not installed →
-        // currentVc=0 → server returns latest → install).
+        scheduleManagerSelfUpdateWorker(this)
+
+        // Bootstrap-fire BOTH workers on cold launch — covers two
+        // cases the periodic schedule alone misses:
+        //   1. Fresh install (Manager just sideloaded). The periodic
+        //      worker has its initial delay; we need an immediate
+        //      check so Player auto-installs without waiting.
+        //   2. Post-install warm boot (Manager just self-updated to a
+        //      new version). The new version's onCreate fires this,
+        //      which immediately probes for ANOTHER update — closes
+        //      the loop on multi-step upgrades within a single boot.
+        triggerImmediateOtaCheck(this)
+        triggerImmediateManagerSelfUpdate(this)
+
         if (!isPlayerInstalled()) {
-            Log.i(TAG, "Player not installed yet — firing immediate bootstrap OTA")
-            triggerImmediateOtaCheck(this)
+            // Single-sideload UX (matches Yodeck's pattern): the
+            // bootstrap-fire above already kicks the Player install,
+            // this log is just diagnostic.
+            Log.i(TAG, "Player not installed yet — bootstrap OTA fired (above)")
         }
     }
 
@@ -119,28 +129,97 @@ class ManagerApp : Application() {
         }
 
         /**
-         * Schedule a 6-hour periodic OTA check. KEEP policy means
-         * onCreate-on-app-restart doesn't reset the timer; the
-         * existing schedule keeps running.
+         * Schedule the Player OTA periodic worker.
+         *
+         * 2026-04-28 — dropped from 6h → 30 min so a published Player
+         * release reaches kiosks within an hour worst-case.
+         * Operator's lived experience with 16 sideloads says the 6h
+         * cadence was effectively never (since the WS push-trigger
+         * has been unreliable; the periodic was the real backbone
+         * but ran too rarely).
+         *
+         * Use REPLACE policy on upgrade so the cadence change
+         * actually takes effect for kiosks that already had the 6h
+         * KEEP-pinned schedule — without REPLACE, ManagerApp.onCreate
+         * sees the existing job and leaves the old cadence in place
+         * forever. The trade-off: REPLACE bumps the next-run time
+         * out by the new initial delay (90s), which is acceptable.
          */
         fun scheduleOtaWorker(ctx: Context) {
             try {
                 val constraints = Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)
                     .build()
-                val req = PeriodicWorkRequestBuilder<OtaWorker>(6, TimeUnit.HOURS)
+                val req = PeriodicWorkRequestBuilder<OtaWorker>(30, TimeUnit.MINUTES)
                     .setConstraints(constraints)
-                    .setInitialDelay(5, TimeUnit.MINUTES)  // never block first boot
+                    .setInitialDelay(90, TimeUnit.SECONDS)
                     .build()
                 WorkManager.getInstance(ctx).enqueueUniquePeriodicWork(
                     PERIODIC_OTA_NAME,
-                    ExistingPeriodicWorkPolicy.KEEP,
+                    ExistingPeriodicWorkPolicy.REPLACE,
                     req,
                 )
-                Log.i(TAG, "Manager OTA worker scheduled (every 6h, network required)")
+                Log.i(TAG, "Manager Player-OTA worker scheduled (every 30min, network required)")
             } catch (e: Exception) {
                 Log.w(TAG, "scheduleOtaWorker failed: ${e.message}", e)
             }
         }
+
+        /**
+         * Schedule the Manager-self-update periodic worker.
+         *
+         * Operator (2026-04-28): "i dont want to side load any
+         * fucking thing after this next build". 30-min cadence
+         * matches the Player schedule so both stay current at
+         * roughly the same speed.
+         *
+         * REPLACE policy so future cadence changes propagate without
+         * needing to wait for the existing schedule to expire.
+         */
+        fun scheduleManagerSelfUpdateWorker(ctx: Context) {
+            try {
+                val constraints = Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+                val req = PeriodicWorkRequestBuilder<ManagerSelfUpdateWorker>(30, TimeUnit.MINUTES)
+                    .setConstraints(constraints)
+                    .setInitialDelay(120, TimeUnit.SECONDS)  // staggered 30s after Player OTA
+                    .build()
+                WorkManager.getInstance(ctx).enqueueUniquePeriodicWork(
+                    PERIODIC_MGR_SELF_NAME,
+                    ExistingPeriodicWorkPolicy.REPLACE,
+                    req,
+                )
+                Log.i(TAG, "Manager self-update worker scheduled (every 30min, network required)")
+            } catch (e: Exception) {
+                Log.w(TAG, "scheduleManagerSelfUpdateWorker failed: ${e.message}", e)
+            }
+        }
+
+        /**
+         * One-shot Manager self-update fire — used on cold launch +
+         * boot + dashboard push. REPLACE policy so repeated triggers
+         * fold into a single in-flight check.
+         */
+        fun triggerImmediateManagerSelfUpdate(ctx: Context) {
+            try {
+                val constraints = Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+                val req = OneTimeWorkRequestBuilder<ManagerSelfUpdateWorker>()
+                    .setConstraints(constraints)
+                    .build()
+                WorkManager.getInstance(ctx).enqueueUniqueWork(
+                    "edu-manager-self-update-oneshot",
+                    ExistingWorkPolicy.REPLACE,
+                    req,
+                )
+                Log.i(TAG, "Manager self-update oneshot enqueued")
+            } catch (e: Exception) {
+                Log.w(TAG, "triggerImmediateManagerSelfUpdate failed: ${e.message}", e)
+            }
+        }
+
+        private const val PERIODIC_MGR_SELF_NAME = "edu-manager-self-update-periodic"
     }
 }

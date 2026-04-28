@@ -22,7 +22,31 @@ import android.util.Log
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         Log.i(TAG, "BootReceiver fired (action=${intent.action})")
+        // Always start the watchdog first so Player liveness
+        // monitoring is on the rails before anything else.
         ManagerApp.startWatchdogService(context)
+
+        // 2026-04-28 — operator: 'i rebooted the player and nothing
+        // fucking happened... we are 16 versions of the player in
+        // and i asked for OTA on the first version'.
+        //
+        // The single biggest reason power-cycling didn't recover:
+        // BootReceiver did NOT kick the OTA workers. The periodic
+        // schedule has KEEP semantics, so it stuck on whatever
+        // 6h cadence was last enqueued — reboot didn't re-fire it.
+        //
+        // Fix: kick BOTH OTA workers immediately on boot so a
+        // power-cycled kiosk picks up any pending update within
+        // ~90s of network coming online (the worker's network
+        // constraint waits for connectivity, which is correct).
+        //
+        // Player OTA: handles Player updates per the existing flow.
+        // Manager self-update: handles Manager updates so a sideload
+        //   of v1.0.2 today is the LAST sideload — every future
+        //   manager-v* tag is picked up automatically.
+        ManagerApp.triggerImmediateOtaCheck(context)
+        ManagerApp.triggerImmediateManagerSelfUpdate(context)
+        Log.i(TAG, "BootReceiver kicked Player-OTA + Manager-self-update workers")
     }
 
     companion object {
