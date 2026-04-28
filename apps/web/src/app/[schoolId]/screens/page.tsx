@@ -408,7 +408,19 @@ function ScreenSettingsMenu({
                   <CheckCircle2 className="w-3 h-3" /> Up to date
                 </span>
               )}
-              {upToDate === false && (
+              {/* 2026-04-29 — operator: "instead of saying upgrade
+                  it should say install player when its not deteteced".
+                  When the screen has no playerVersion at all (Manager
+                  is alone on the kiosk, OR Player was uninstalled),
+                  copy reads "Install Player" instead of "Update
+                  available". The action is the same — Manager's
+                  OtaWorker installs Player from scratch. */}
+              {upToDate === false && !currentVersion && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full px-2 py-0.5">
+                  <Download className="w-3 h-3" /> Install Player
+                </span>
+              )}
+              {upToDate === false && currentVersion && (
                 <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
                   <RefreshCw className="w-3 h-3" /> Update available
                 </span>

@@ -31,6 +31,12 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- (UPDATE_PACKAGES_WITHOUT_USER_ACTION removed in v1.0.5 —
          was only useful on Android 12+; current pilot is Android 11.) -->
+    <!-- v1.0.6 — Full-screen-intent notification is the BAL bypass
+         for launching the install-prompt Activity from a non-
+         foregrounded context (Manager has no MainActivity). The
+         user grants this implicitly via the notification permission
+         on Android 14+; on 13 and below it's auto-granted. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
     <!-- Required when calling startActivity for a different package
          (Player) on Android 11+ scoped queries. -->
@@ -55,6 +61,28 @@
              is a daemon. Adding a launcher icon here would clutter
              the kiosk's app drawer and make Manager look like a
              user-runnable app, which it isn't. -->
+
+        <!-- v1.0.6 — Transparent trampoline activity for
+             surface-from-background install prompts. Receives an
+             Intent containing the system Install dialog Intent as
+             an extra, dispatches it from this activity's
+             foregrounded context (BAL satisfied), and finishes
+             itself instantly so the operator never sees Manager
+             UI — only the system dialog. Reached via the install-
+             prompt Notification's full-screen-intent (BAL-immune)
+             posted by OtaInstallReceiver when STATUS_PENDING_USER_ACTION
+             fires.
+
+             excludeFromRecents so it doesn't show up in the
+             recents stack on devices that have one. noHistory so
+             the activity is forgotten the moment it finishes. -->
+        <activity
+            android:name=".InstallPromptActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:launchMode="singleInstance" />
 
         <!-- Device-admin receiver. Required for set-device-owner ADB
              provisioning. The xml/device_admin.xml file declares the

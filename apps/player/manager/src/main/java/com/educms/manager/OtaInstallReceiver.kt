@@ -68,23 +68,26 @@ class OtaInstallReceiver : BroadcastReceiver() {
                 // any "pending update" flags we tracked locally.
             }
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
-                // Fallback path when not provisioned as DEVICE_OWNER.
-                // The system needs the operator to tap "Install" on
-                // a confirmation prompt; relaunching that prompt is
-                // the documented dance.
+                // v1.0.6 — operator: "we gave the player the allow
+                // permissions when really it might be the manager
+                // that needs to permissions". Architectural fix:
+                // route through a full-screen-intent NOTIFICATION
+                // (BAL-immune) → InstallPromptActivity (transparent
+                // trampoline) → system Install dialog.
+                //
+                // Old code did context.startActivity(pendingIntent)
+                // straight from this BroadcastReceiver. Android 11+
+                // BAL silently drops Activity launches from non-
+                // foregrounded contexts — Manager has no Activity
+                // to be foregrounded, so the install prompt never
+                // appeared. Operator saw "nothing happens".
                 @Suppress("DEPRECATION")
                 val pendingIntent: Intent? = intent.getParcelableExtra(Intent.EXTRA_INTENT)
-                if (pendingIntent != null) {
-                    pendingIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    try {
-                        context.startActivity(pendingIntent)
-                        Log.i(TAG, "launched system Install prompt (kiosk needs DEVICE_OWNER for silent install)")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "could not launch install prompt: ${e.message}", e)
-                    }
-                } else {
+                if (pendingIntent == null) {
                     Log.w(TAG, "STATUS_PENDING_USER_ACTION but no EXTRA_INTENT — install stalled")
+                    return
                 }
+                surfaceInstallPromptViaNotification(context, pendingIntent, targetPackage)
             }
             else -> {
                 Log.e(TAG, "OTA install FAILED: ${statusName(status)} — $message")
@@ -196,7 +199,100 @@ class OtaInstallReceiver : BroadcastReceiver() {
         else -> "UNKNOWN($status)"
     }
 
+    /**
+     * v1.0.6 — surface the system Install prompt via a high-priority
+     * notification with `setFullScreenIntent`. Full-screen-intent
+     * notifications are the documented Android pattern for "launch
+     * an Activity from background" — they bypass BAL because the
+     * user-tap (or auto-fire when screen is off) counts as user
+     * interaction.
+     *
+     * The notification's contentIntent + fullScreenIntent both
+     * point at InstallPromptActivity, which is a transparent
+     * trampoline that:
+     *   1. Checks install-unknown-apps permission, deep-links to
+     *      Settings if missing
+     *   2. Otherwise dispatches the system Install dialog from a
+     *      foregrounded context (BAL satisfied)
+     *   3. finishes() so the operator never sees Manager UI
+     *
+     * Notification copy is signage-friendly: explains that the
+     * kiosk needs an action so the operator standing in front of
+     * it doesn't ignore the prompt.
+     */
+    private fun surfaceInstallPromptViaNotification(
+        ctx: android.content.Context,
+        promptIntent: Intent,
+        targetPackage: String,
+    ) {
+        // Trampoline Intent → InstallPromptActivity. We pass the
+        // system's prompt Intent as an extra; the activity launches
+        // it from its foregrounded context.
+        val trampoline = Intent(ctx, InstallPromptActivity::class.java).apply {
+            action = InstallPromptActivity.ACTION
+            putExtra(InstallPromptActivity.EXTRA_INSTALL_PROMPT, promptIntent)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pi = android.app.PendingIntent.getActivity(
+            ctx,
+            INSTALL_PROMPT_NOTIF_ID,
+            trampoline,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or
+                android.app.PendingIntent.FLAG_MUTABLE,
+        )
+
+        // Ensure the notification channel exists (idempotent).
+        val nm = ctx.getSystemService(android.content.Context.NOTIFICATION_SERVICE)
+            as android.app.NotificationManager
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val channel = android.app.NotificationChannel(
+                INSTALL_PROMPT_CHANNEL,
+                "EduCMS Updates",
+                android.app.NotificationManager.IMPORTANCE_HIGH,
+            ).apply {
+                description = "Tap to install Player updates pushed from the dashboard."
+            }
+            nm.createNotificationChannel(channel)
+        }
+
+        val target = if (targetPackage.endsWith(".debug")) "Player (debug)" else "Player"
+        val notification = androidx.core.app.NotificationCompat.Builder(ctx, INSTALL_PROMPT_CHANNEL)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle("EduCMS: install $target update")
+            .setContentText("Tap to confirm installation. The screen needs this to receive updates.")
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+            .setCategory(androidx.core.app.NotificationCompat.CATEGORY_RECOMMENDATION)
+            .setAutoCancel(true)
+            .setContentIntent(pi)
+            // setFullScreenIntent is the BAL-bypass primitive — fires
+            // the activity directly when the screen is locked OR
+            // gives the heads-up notification high priority when the
+            // screen is on. Either way, the install dialog reaches
+            // the operator.
+            .setFullScreenIntent(pi, true)
+            .build()
+
+        try {
+            nm.notify(INSTALL_PROMPT_NOTIF_ID, notification)
+            Log.i(TAG, "install-prompt notification posted (BAL bypass via full-screen-intent)")
+        } catch (e: Exception) {
+            Log.e(TAG, "could not post install-prompt notification: ${e.message}", e)
+            // Last-ditch fallback: try the direct startActivity. Will
+            // fail on strict Android 11+ but works on permissive ROMs.
+            try {
+                promptIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                ctx.startActivity(promptIntent)
+                Log.i(TAG, "fallback startActivity succeeded (permissive ROM)")
+            } catch (ee: Exception) {
+                Log.e(TAG, "fallback startActivity also failed: ${ee.message}", ee)
+            }
+        }
+    }
+
     companion object {
         private const val TAG = "OtaInstallReceiver"
+        private const val INSTALL_PROMPT_CHANNEL = "edu_install_prompt"
+        private const val INSTALL_PROMPT_NOTIF_ID = 92481
     }
 }
