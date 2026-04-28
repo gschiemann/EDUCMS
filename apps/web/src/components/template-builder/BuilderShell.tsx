@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { Plus, Layers, Settings2, Keyboard, Undo2, Redo2, ZoomIn, ZoomOut, Grid3x3, Magnet, Ruler, Palette, Image as ImageIcon, X } from 'lucide-react';
+import { Plus, Layers, Settings2, Keyboard, Undo2, Redo2, ZoomIn, ZoomOut, Grid3x3, Magnet, Ruler, Palette, Image as ImageIcon, X, Paintbrush } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { DndContext, DragOverlay, DragEndEvent, pointerWithin } from '@dnd-kit/core';
 import { getZoneColor } from './constants';
@@ -14,6 +14,7 @@ import { VariantPicker } from './VariantPicker';
 import { LayersPanel } from './LayersPanel';
 import { PropertiesPanel, CanvasBackdropSection } from './PropertiesPanel';
 import { BrandKitPanel } from './BrandKitPanel';
+import { BackgroundPanel } from './BackgroundPanel';
 import { TopContextToolbar } from './TopContextToolbar';
 import { useUpdateTemplate, useUpdateTemplateZones, useCreateTemplate, useDeleteTemplate } from '@/hooks/use-api';
 import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
@@ -25,7 +26,7 @@ interface Props {
   onSaved: (t: Template) => void;
 }
 
-type PanelKey = 'widgets' | 'layers' | 'properties' | 'brand';
+type PanelKey = 'widgets' | 'background' | 'layers' | 'properties' | 'brand';
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 const AUTO_SAVE_IDLE_MS = 15_000;
@@ -376,6 +377,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
 
   const panels: Array<{ key: PanelKey; label: string; icon: LucideIcon }> = [
     { key: 'widgets', label: 'Widgets', icon: Plus },
+    { key: 'background', label: 'Background', icon: Paintbrush },
     { key: 'layers', label: 'Layers', icon: Layers },
     { key: 'properties', label: 'Properties', icon: Settings2 },
     { key: 'brand', label: 'Brand', icon: Palette },
@@ -492,6 +494,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
             </div>
             <div className="flex-1 overflow-y-auto" role="tabpanel">
               {panel === 'widgets' && <VariantPicker />}
+              {panel === 'background' && <BackgroundPanel />}
               {panel === 'layers' && <LayersPanel />}
               {panel === 'properties' && <PropertiesPanel />}
               {panel === 'brand' && <BrandKitPanel />}
