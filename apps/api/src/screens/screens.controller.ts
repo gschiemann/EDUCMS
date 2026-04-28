@@ -241,14 +241,29 @@ export class ScreensController {
       if (Number.isFinite(vc) && vc > 0) data.playerVersionCode = vc;
     }
     // v1.0.13 — Manager APK version, queried by Player via
-    // PackageManager and passed as ?mv=. Empty string means
-    // "Manager not installed" (vs absent which means "old Player
-    // doesn't know about Manager"). We treat both as no-update so
-    // we don't accidentally clear a previously-reported value.
-    const mv = (managerVersionName || '').trim();
-    if (mv) {
-      data.managerVersion = mv;
-      data.managerVersionAt = new Date();
+    // PackageManager and passed as ?mv=. v1.0.18+ Player ALSO sends
+    // ?mv= (with empty value) when Manager isn't installed — that
+    // empty value is the explicit "Manager was uninstalled" signal,
+    // which we now use to clear the field. Operator (2026-04-28):
+    // "i deleted the old manager so cant be" — dashboard chip was
+    // showing v1.0.1 long after they uninstalled because we
+    // intentionally never cleared the column.
+    //
+    //   undefined  → param NOT in query (Player v1.0.12 or earlier
+    //                that doesn't know about Manager) — leave alone
+    //   ''         → Player explicitly says "no Manager installed" — clear
+    //   '1.0.3'    → set
+    if (managerVersionName !== undefined) {
+      const mv = managerVersionName.trim();
+      if (mv) {
+        data.managerVersion = mv;
+        data.managerVersionAt = new Date();
+      } else {
+        // Explicit empty — Manager uninstalled. Clear so dashboard
+        // chip reflects reality.
+        data.managerVersion = null;
+        data.managerVersionAt = null;
+      }
     }
     // Diagnostic — operator caught dashboard chip stuck blank on
     // 2026-04-27 even with v1.0.11 installed. Log every heartbeat

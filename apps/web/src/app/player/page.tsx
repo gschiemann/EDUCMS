@@ -274,15 +274,18 @@ function buildHeartbeatUrl(apiRoot: string, fp: string): string {
   if (v) qs.set('v', v);
   if (vc) qs.set('vc', vc);
   // v1.0.13 — Manager APK version. Player can't query Android
-  // PackageManager from the WebView directly, but Manager itself
-  // writes its own version into the cross-app HealthProvider as
-  // part of the existing heartbeat IPC. The native MainActivity
-  // (v1.0.13+) reads it from the provider and passes &mv= on the
-  // page URL just like ?v= and ?vc=. Older APKs don't pass it;
-  // server treats absent as "no manager info".
+  // PackageManager from the WebView directly, but the native
+  // MainActivity reads it via PackageManager and passes &mv= on
+  // the page URL.
+  // 2026-04-28 (Player v1.0.19+) — empty string is now an
+  // EXPLICIT "Manager uninstalled" signal that the server uses to
+  // clear the dashboard chip. Use null check (not truthy check)
+  // so we forward empty values too. params.get('mv') returns
+  // null when the param is absent, '' when it's empty, '1.0.3'
+  // when set.
   const params = new URLSearchParams(window.location.search);
   const mv = params.get('mv');
-  if (mv) qs.set('mv', mv);
+  if (mv !== null) qs.set('mv', mv);
   const suffix = qs.toString();
   return suffix
     ? `${apiRoot}/api/v1/screens/status/${fp}?${suffix}`

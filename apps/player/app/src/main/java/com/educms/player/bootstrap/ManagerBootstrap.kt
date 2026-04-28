@@ -64,31 +64,86 @@ object ManagerBootstrap {
     }
 
     private fun bootstrapInternal(ctx: Context) {
-        if (isManagerInstalled(ctx)) {
-            PlayerLogger.i(TAG, "Manager already installed — skipping bootstrap")
+        // 2026-04-28 (Player v1.0.19) — version-aware bootstrap.
+        // Operator: "i deleted the old manager so cant be" — they
+        // sideloaded Player v1.0.18 expecting bundled Manager v1.0.3
+        // to install, but the previous logic just skipped on ANY
+        // installed Manager. Without forcing a re-install, the
+        // operator was stuck on Manager v1.0.1 (which has no self-
+        // update worker, no DEVICE_OWNER skip, no anti-spoof, none
+        // of the v1.0.3 hardening).
+        //
+        // New behavior: extract bundled APK first, read its
+        // versionCode + package id, compare to installed. Install
+        // if installed is missing OR strictly older.
+        val bundledFile = extractBundledManagerApk(ctx)
+        if (bundledFile == null) {
+            // No bundled APK — fall back to network fetch IF Manager
+            // isn't installed at all. Don't network-fetch just to
+            // upgrade an existing one; the network path can't tell
+            // us the latest version cheaply.
+            if (isManagerInstalled(ctx)) {
+                PlayerLogger.i(TAG, "Manager installed + no bundled APK to compare — skipping bootstrap")
+                return
+            }
+            PlayerLogger.w(TAG, "Manager not installed AND no bundled APK — falling back to network fetch")
+            showToast(ctx, "Installing companion — downloading…")
+            val downloaded = downloadManagerApk(ctx)
+            if (downloaded != null) {
+                installViaPackageInstaller(ctx, downloaded, "network")
+            } else {
+                PlayerLogger.w(TAG, "Network fallback failed — bootstrap will retry next boot")
+                showToast(ctx, "Manager install failed (no network) — will retry")
+            }
             return
         }
 
-        PlayerLogger.i(TAG, "Manager not installed — attempting bootstrap")
-        showToast(ctx, "Installing companion (EduCMS Manager)…")
-
-        // Try bundled asset first (no network needed).
-        val bundledFile = extractBundledManagerApk(ctx)
-        if (bundledFile != null) {
-            PlayerLogger.i(TAG, "Installing Manager from bundled assets (${bundledFile.length()}b)")
+        // Bundled APK exists — compare versions.
+        val bundledVc = readApkVersionCode(ctx, bundledFile)
+        val installedVc = readInstalledManagerVersionCode(ctx)
+        if (bundledVc <= 0) {
+            PlayerLogger.w(TAG, "Couldn't read bundled APK version — falling back to install-if-missing")
+            if (isManagerInstalled(ctx)) return
             installViaPackageInstaller(ctx, bundledFile, "bundled")
             return
         }
-
-        PlayerLogger.w(TAG, "No bundled Manager APK in assets — falling back to network fetch")
-        showToast(ctx, "Installing companion — downloading…")
-        val downloaded = downloadManagerApk(ctx)
-        if (downloaded != null) {
-            installViaPackageInstaller(ctx, downloaded, "network")
-        } else {
-            PlayerLogger.w(TAG, "Network fallback also failed — bootstrap will retry next boot")
-            showToast(ctx, "Manager install failed (no network) — will retry")
+        if (installedVc != null && installedVc >= bundledVc) {
+            PlayerLogger.i(
+                TAG,
+                "Manager already current (installed vc=$installedVc >= bundled vc=$bundledVc) — skipping",
+            )
+            return
         }
+
+        val tag = if (installedVc == null) "bundled-fresh-install" else "bundled-upgrade-$installedVc-to-$bundledVc"
+        PlayerLogger.i(TAG, "Installing Manager from bundled assets (${bundledFile.length()}b) — $tag")
+        showToast(
+            ctx,
+            if (installedVc == null) "Installing companion (EduCMS Manager)…"
+            else "Upgrading companion: vc $installedVc → $bundledVc",
+        )
+        installViaPackageInstaller(ctx, bundledFile, tag)
+    }
+
+    /** Read the versionCode of an APK file via PackageManager.getPackageArchiveInfo. */
+    @Suppress("DEPRECATION")
+    private fun readApkVersionCode(ctx: Context, apk: File): Int {
+        return try {
+            val info = ctx.packageManager.getPackageArchiveInfo(apk.absolutePath, 0)
+            info?.versionCode ?: 0
+        } catch (_: Exception) { 0 }
+    }
+
+    /** Read the installed Manager APK's versionCode. Returns null if not installed. */
+    @Suppress("DEPRECATION")
+    private fun readInstalledManagerVersionCode(ctx: Context): Int? {
+        val pm = ctx.packageManager
+        for (pkg in listOf(MANAGER_PKG, MANAGER_PKG_DEBUG)) {
+            try {
+                return pm.getPackageInfo(pkg, 0).versionCode
+            } catch (_: Exception) { /* not installed */ }
+        }
+        return null
     }
 
     /**

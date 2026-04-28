@@ -394,9 +394,12 @@ class MainActivity : ComponentActivity() {
             .appendQueryParameter("w", wPx.toString())
             .appendQueryParameter("h", hPx.toString())
             .appendQueryParameter("dpr", density.toString())
-        if (managerVersion != null) {
-            builder.appendQueryParameter("mv", managerVersion)
-        }
+        // 2026-04-28 — always send mv= explicitly so the server can
+        // distinguish "Manager just got uninstalled" (empty string)
+        // from "Player too old to know about Manager" (param absent).
+        // Without this, dashboard chip stayed at the last-known
+        // Manager version forever after the operator uninstalled it.
+        builder.appendQueryParameter("mv", managerVersion ?: "")
         if (androidId.isNotBlank()) {
             // Prefix so the web player can tell an APK-provided fp from a
             // browser-generated one in logs / device cards.
