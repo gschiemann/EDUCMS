@@ -385,31 +385,27 @@ export class ProxyController {
 
         // Step B: force target="_self" on every anchor that now points
         // through the proxy. This neutralises target="_blank" (Android
-        // WebView blank-screen bug) AND any other target value that
-        // would cause the iframe to try to navigate the parent frame.
-        // We match the whole <a …> tag and replace target attr in-place.
+        // WebView blank-screen bug) AND any other non-self target that
+        // would cause the iframe to navigate the parent frame.
+        //
+        // Single whole-tag pass — handles any attribute order. The
+        // original two-step approach (one regex for existing target,
+        // one for missing target) required target to come AFTER href,
+        // but WordPress nav menus put target BEFORE href. Fixed with
+        // one pass that matches the full opening tag.
         html = html.replace(
-          /(<a\b[^>]*?href="\/api\/v1\/proxy\/web[^"]*"[^>]*?)(\starget\s*=\s*["'][^"']*["'])/gi,
-          '$1 target="_self"',
-        );
-        // Also inject target="_self" on proxy-linked anchors that have
-        // NO target attribute at all (so forward-navigation works
-        // predictably inside the iframe rather than relying on the
-        // iframe's default browsing-context behaviour on Android).
-        html = html.replace(
-          /(<a\b(?![^>]*\starget\s*=)[^>]*?href="\/api\/v1\/proxy\/web[^"]*"[^>]*?>)/gi,
-          (m) => m.replace(/^<a\b/, '<a target="_self"'),
+          /<a\b[^>]*href="\/api\/v1\/proxy\/web[^"]*"[^>]*>/gi,
+          (tag) => {
+            if (/[\t ]target\s*=/i.test(tag)) {
+              // Replace existing target value → _self
+              return tag.replace(/([\t ]target\s*=\s*)(["'])[^"']*\2/gi, ' target="_self"');
+            }
+            // No target attr → inject _self after <a
+            return tag.replace(/^<a\b/i, '<a target="_self"');
+          },
         );
 
-        // (2) Runtime shim. Wraps fetch + XMLHttpRequest.open so
-        // any same-origin (relative) request gets rewritten to go
-        // through the proxy with the upstream baseUrl. Also handles
-        // window.open and form action attributes.
-        //
-        // Single IIFE; loads BEFORE any page script runs (head
-        // injection point). All shim functions guard against
-        // already-proxied URLs to avoid double-wrapping.
-        // Runtime shim:
+        // (2) Runtime shim:
         //   - fetch + XHR: relative/same-origin requests → proxy
         //   - window.open: same
         //   - Image.src setter: banner carousels do `new Image(); img.src='/slide.jpg'`
