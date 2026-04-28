@@ -16,10 +16,8 @@ import android.view.WindowManager
 import android.webkit.ConsoleMessage
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.core.view.WindowCompat
@@ -44,7 +42,6 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var webView: WebView
-    private lateinit var urlOverlayView: WebView
     private val deviceStore by lazy { DeviceStore(applicationContext) }
     private lateinit var recovery: NetworkRecoveryController
 
@@ -81,8 +78,6 @@ class MainActivity : ComponentActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         webView = binding.webview
-        urlOverlayView = binding.urlOverlayView
-        configureUrlOverlay(urlOverlayView)
 
         // Self-healing recovery — catches main-frame load failures and
         // 5xx errors, shows a branded "Reconnecting…" overlay, probes
@@ -365,12 +360,6 @@ class MainActivity : ComponentActivity() {
                 onCancelUrlFullScreen = {
                     runOnUiThread { cancelUrlFullScreen() }
                 },
-                onShowUrlOverlay = { url ->
-                    runOnUiThread { showUrlOverlay(url) }
-                },
-                onHideUrlOverlay = {
-                    runOnUiThread { hideUrlOverlay() }
-                },
                 onSetBootstrap = { apiRoot, fingerprint ->
                     // v1.0.11 — write the prefs that HeartbeatService and
                     // OtaUpdateWorker read on every run. Up through
@@ -538,107 +527,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // v1.0.36-37 — DEPRECATED, kept for compatibility with older
-    // playUrlFullScreen bridge calls. v1.0.39 replaced this with the
-    // overlay-WebView pattern below.
+    // v1.0.36 — native fullscreen URL playback. State for the
+    // currently-playing URL escalation, if any. Captured at the moment
+    // the bridge call fires; used to navigate back to the React player
+    // when the duration timer expires.
     private val urlFullScreenHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var urlFullScreenResumeAt: String? = null
     private var urlFullScreenTimer: Runnable? = null
-
-    // v1.0.39 — URL playlist overlay state. Currently-loaded URL so we
-    // can skip a redundant loadUrl when the playlist switches between
-    // two slots that point at the same upstream URL (no flicker, no
-    // re-init of the third-party page's JS).
-    private var urlOverlayCurrentUrl: String? = null
-
-    /**
-     * Configure the overlay WebView with the same security + JS
-     * settings as the React player WebView. Called once from onCreate
-     * after layout binding. The overlay is initially View.GONE; the
-     * JS bridge flips it visible when the React player calls
-     * `EduCmsNative.showUrlOverlay(url)`.
-     *
-     * Why a separate WebView (vs reusing the React player's): the
-     * React app needs to keep running underneath so the playlist
-     * scheduler can advance items, fire heartbeats, receive emergency
-     * pushes etc. Navigating the React WebView away to a third-party
-     * URL kills all of that. Two WebViews — one for content, one for
-     * URL items — keeps both responsibilities cleanly separated.
-     */
-    @SuppressLint("SetJavaScriptEnabled")
-    private fun configureUrlOverlay(wv: WebView) {
-        wv.settings.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            databaseEnabled = true
-            mediaPlaybackRequiresUserGesture = false
-            allowFileAccess = false
-            allowContentAccess = false
-            cacheMode = WebSettings.LOAD_DEFAULT
-            loadsImagesAutomatically = true
-            useWideViewPort = true
-            loadWithOverviewMode = true
-            // Mixed content is permitted on the overlay. Many real-world
-            // signage URLs are vendor portals that load mixed http/https
-            // sub-resources; blocking them produces blank carousels.
-            // The React player WebView keeps strict mode (it only ever
-            // loads our own HTTPS Vercel origin).
-            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-            // No bridge injection on the overlay — third-party content
-            // doesn't get access to EduCmsNative. The React WebView
-            // remains the only origin with bridge access.
-        }
-        wv.webChromeClient = WebChromeClient()
-        wv.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                // Let the WebView handle all navigations natively. No
-                // proxy rewriting — that's the whole point of the
-                // overlay vs the previous iframe+proxy approach.
-                return false
-            }
-        }
-    }
-
-    /**
-     * Show the URL overlay WebView on top of the React player. Loads
-     * `url` if it differs from what's already loaded (idempotent
-     * when the playlist switches between identical URL items).
-     *
-     * Called from JS via EduCmsNative.showUrlOverlay(url) when a
-     * playlist URL item becomes the active slide.
-     */
-    private fun showUrlOverlay(url: String) {
-        val cleanUrl = url.trim()
-        if (cleanUrl.isEmpty()) {
-            PlayerLogger.w("MainActivity", "showUrlOverlay: empty url, ignoring")
-            return
-        }
-        if (urlOverlayCurrentUrl == cleanUrl && urlOverlayView.visibility == View.VISIBLE) {
-            PlayerLogger.i("MainActivity", "showUrlOverlay: already showing $cleanUrl — no-op")
-            return
-        }
-        PlayerLogger.i("MainActivity", "showUrlOverlay → $cleanUrl")
-        urlOverlayCurrentUrl = cleanUrl
-        urlOverlayView.loadUrl(cleanUrl)
-        urlOverlayView.visibility = View.VISIBLE
-        urlOverlayView.bringToFront()
-    }
-
-    /**
-     * Hide the URL overlay and free its loaded page. Called from JS
-     * when the playlist advances away from a URL item.
-     */
-    private fun hideUrlOverlay() {
-        if (urlOverlayView.visibility == View.GONE && urlOverlayCurrentUrl == null) {
-            // Already hidden; no-op. Avoid an unnecessary loadUrl
-            // (about:blank) that would fire navigation events.
-            return
-        }
-        PlayerLogger.i("MainActivity", "hideUrlOverlay")
-        urlOverlayCurrentUrl = null
-        urlOverlayView.visibility = View.GONE
-        urlOverlayView.loadUrl("about:blank")
-    }
 
     /**
      * Navigate the WebView TOP-LEVEL to the given URL (no iframe, no

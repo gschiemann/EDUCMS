@@ -25,8 +25,6 @@ class WebAppBridge(
     private val onSetBootstrap: (apiRoot: String, fingerprint: String) -> Unit,
     private val onPlayUrlFullScreen: (url: String, durationMs: Long) -> Unit,
     private val onCancelUrlFullScreen: () -> Unit,
-    private val onShowUrlOverlay: (url: String) -> Unit,
-    private val onHideUrlOverlay: () -> Unit,
 ) {
     /**
      * Escape hatch — exits our kiosk task stack and returns the user to
@@ -179,55 +177,6 @@ class WebAppBridge(
             onCancelUrlFullScreen()
         } catch (ex: Exception) {
             PlayerLogger.w("WebAppBridge", "cancelUrlFullScreen failed: ${ex.message}")
-        }
-    }
-
-    /**
-     * v1.0.39 — Show the URL overlay WebView on top of the React
-     * player. Called when a playlist URL item becomes the active
-     * slide. The React player WebView keeps running underneath
-     * (playlist scheduler, heartbeats, emergency listeners), so when
-     * the playlist advances to the next item, the React side calls
-     * hideUrlOverlay() to tear down.
-     *
-     * Idempotent — calling with the same url while overlay is
-     * already showing is a no-op (no flicker, no JS re-init on the
-     * third-party page).
-     *
-     * Replaces the broken playUrlFullScreen path. That design
-     * navigated the React WebView itself away to the URL, then
-     * back, which destroyed React state every cycle and produced
-     * a "connecting splash → URL → connecting splash" reload loop
-     * on URL-heavy or single-URL playlists.
-     */
-    @JavascriptInterface
-    fun showUrlOverlay(url: String) {
-        try {
-            val cleanUrl = url.trim()
-            if (cleanUrl.isEmpty() ||
-                !(cleanUrl.startsWith("https://") || cleanUrl.startsWith("http://"))) {
-                PlayerLogger.w("WebAppBridge", "showUrlOverlay rejected: invalid url")
-                return
-            }
-            PlayerLogger.i("WebAppBridge", "showUrlOverlay url=${cleanUrl.take(120)}")
-            onShowUrlOverlay(cleanUrl)
-        } catch (ex: Exception) {
-            PlayerLogger.w("WebAppBridge", "showUrlOverlay failed: ${ex.message}")
-        }
-    }
-
-    /**
-     * Hide the URL overlay and free its loaded page. Called when the
-     * playlist advances away from a URL item to a non-URL item, OR
-     * when the playlist would loop back to the same URL (skip the
-     * teardown — showUrlOverlay is idempotent on the same URL).
-     */
-    @JavascriptInterface
-    fun hideUrlOverlay() {
-        try {
-            onHideUrlOverlay()
-        } catch (ex: Exception) {
-            PlayerLogger.w("WebAppBridge", "hideUrlOverlay failed: ${ex.message}")
         }
     }
 }
