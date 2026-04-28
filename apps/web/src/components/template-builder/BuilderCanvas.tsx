@@ -242,8 +242,19 @@ export function BuilderCanvas() {
               left at the Widgets tab + a copy line nudges them to drag.
               Auto-hides as soon as the first zone lands. Hidden in
               previewMode so demo screenshots stay clean. Also hidden
-              during drag-over to unblock drop target. */}
-          {zones.length === 0 && !previewMode && !hoverFromDrag && (
+              during drag-over to unblock drop target.
+              2026-04-28 fix — operator: 'no fucking background get
+              apploed to the canvas. it stays white that the entire
+              issue.' Cause: this card was bg-white/85 and covered
+              ~70% of the canvas surface, so the gradient WAS being
+              applied to the canvas div underneath but the white card
+              was hiding it. Two changes:
+                a) Hide the card when the operator has set a background
+                   — they've clearly moved past 'drag a widget here'
+                   and we shouldn't fight them with a white tooltip.
+                b) Drop the card to a small chip pinned to the top
+                   so the canvas bg is fully visible. */}
+          {zones.length === 0 && !previewMode && !hoverFromDrag && !meta.bgColor && !meta.bgGradient && !meta.bgImage && (
             <div
               aria-hidden
               className="absolute inset-0 pointer-events-none flex items-center justify-center"
@@ -258,6 +269,18 @@ export function BuilderCanvas() {
                   <p className="text-xs text-slate-500 mt-1">Pick from the <strong className="text-indigo-600">Widgets</strong> tab on the left — Clock, Weather, Text, Image, Web page, and more.</p>
                 </div>
               </div>
+            </div>
+          )}
+          {/* Compact follow-up nudge — once the operator has painted
+              a bg they're decorating, but if zones is still empty
+              they may want a hint to add widgets. Small corner chip
+              that doesn't obscure the canvas bg. */}
+          {zones.length === 0 && !previewMode && !hoverFromDrag && (meta.bgColor || meta.bgGradient || meta.bgImage) && (
+            <div
+              aria-hidden
+              className="absolute top-3 left-3 pointer-events-none px-3 py-1.5 rounded-full bg-white/80 backdrop-blur-sm shadow-md border border-indigo-200/60 text-[10px] font-bold text-indigo-700 tracking-wider uppercase"
+            >
+              Now add a widget →
             </div>
           )}
 
