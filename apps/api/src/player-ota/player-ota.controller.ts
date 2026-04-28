@@ -302,13 +302,37 @@ export class PlayerOtaController {
     // player-v* release is live for OTA within ~5 min of publish (the
     // GitHub API lookup cache TTL). Operators just push the tag and
     // every paired kiosk pulls the update on its next 6h poll.
+
+    // Normalise the reported ABI. Trim whitespace; lower-case for
+    // case-insensitive asset-name comparisons (P0 audit fix 2026-04-27).
+    const callerAbi = String(body?.abi || '').trim().toLowerCase();
+
     try {
-      const info = await resolveLatestReleaseInfo();
+      // Pass the caller's ABI so we select the right per-ABI APK asset
+      // (P0 audit fix 2026-04-27 — old code always preferred arm64-v8a
+      // regardless of what the device reported, breaking armeabi-v7a
+      // Rockchip RK3288 kiosks which would receive an APK that won't
+      // install).
+      const info = await resolveLatestReleaseInfo(callerAbi);
       if (!info) {
+        // resolveLatestReleaseInfo returns null either when GitHub has no
+        // player-v* release at all, or when no APK asset is compatible
+        // with the caller's ABI. Distinguish in the log so ops can tell
+        // "release missing" from "ABI mismatch."
+        const noReleaseAtAll = !releaseAssetsCache || releaseAssetsCache.assets.length === 0;
+        const reason = noReleaseAtAll
+          ? 'resolveLatestReleaseInfo-no-player-release'
+          : `no-compatible-apk-for-abi:${callerAbi || 'unknown'}`;
         this.logger.warn(
           `[ota] decision=uptoDate-no-release caller=${callerVn} screen=${lookupScreenId || '-'} ` +
-          `reason=resolveLatestReleaseInfo-returned-null`,
+          `abi=${callerAbi || 'not-reported'} reason=${reason}`,
         );
+        if (!noReleaseAtAll && callerAbi) {
+          // Surface a clear signal to the client: we have a release but
+          // not for their ABI. Return uptoDate so they don't loop, but
+          // include a diagnostic field.
+          return { uptoDate: true, noCompatibleApk: true, reportedAbi: callerAbi };
+        }
         return { uptoDate: true };
       }
 
@@ -320,7 +344,8 @@ export class PlayerOtaController {
       if (callerVn && callerVn !== '?' && semverGte(callerVn, info.versionName)) {
         this.logger.log(
           `[ota] decision=uptoDate-gh caller=${callerVn} latest=${info.versionName} ` +
-          `screen=${lookupScreenId || '-'} reason=caller-at-or-past-latest-published-tag`,
+          `screen=${lookupScreenId || '-'} abi=${callerAbi || 'not-reported'} ` +
+          `reason=caller-at-or-past-latest-published-tag`,
         );
         return { uptoDate: true, latestVersionName: info.versionName };
       }
@@ -342,6 +367,7 @@ export class PlayerOtaController {
       if (!sha256) {
         this.logger.warn(
           `[ota] decision=uptoDate-no-sha caller=${callerVn} target=v${info.versionName} ` +
+          `abi=${callerAbi || 'not-reported'} ` +
           `reason=resolveLatestPlayerReleaseSha-returned-empty (FAIL-CLOSED)`,
         );
         return { uptoDate: true };
@@ -349,7 +375,8 @@ export class PlayerOtaController {
 
       this.logger.log(
         `[ota] decision=install-gh caller=${callerVn} target=v${info.versionName} ` +
-        `screen=${lookupScreenId || '-'} url=${info.apkUrl.slice(0, 80)} sha=${sha256.slice(0, 12)}`,
+        `screen=${lookupScreenId || '-'} abi=${callerAbi || 'not-reported'} ` +
+        `url=${info.apkUrl.slice(0, 80)} sha=${sha256.slice(0, 12)}`,
       );
       return {
         latest: {
@@ -697,87 +724,148 @@ async function resolveLatestManagerReleaseApk(): Promise<string | null> {
 // with (BuildConfig.VERSION_CODE in build.gradle.kts). Same 5-min
 // cache as the simple URL lookup to keep anonymous GitHub API usage
 // well under the 60 req/hr limit.
+//
+// `callerAbi` — the ABI string reported by the device in the
+// /update-check request body (e.g. "armeabi-v7a", "arm64-v8a",
+// "x86_64"). When provided, asset selection prefers an exact-match
+// APK before falling back to universal. If no compatible asset exists
+// the function returns null so /update-check can return a meaningful
+// error rather than silently handing a 32-bit Rockchip an arm64 APK
+// that won't install (P0 audit fix 2026-04-27).
 interface ReleaseInfo {
   apkUrl: string;
   versionName: string;      // "1.0.5"
   derivedVersionCode: number; // 10005 for "1.0.5"
 }
+// The raw release payload (assets list) is cached separately from the
+// resolved ReleaseInfo so we can re-run ABI selection against the same
+// asset list without an extra GitHub round-trip when different devices
+// with different ABIs check in during the same 5-min window.
+interface ReleaseAssetsCache {
+  assets: Array<{ name: string; browser_download_url: string }>;
+  tag: string;
+  fetchedAt: number;
+}
 interface ReleaseInfoCache { info: ReleaseInfo | null; fetchedAt: number }
 let releaseInfoCache: ReleaseInfoCache | null = null;
+let releaseAssetsCache: ReleaseAssetsCache | null = null;
 
-async function resolveLatestReleaseInfo(): Promise<ReleaseInfo | null> {
-  const now = Date.now();
-  if (releaseInfoCache && now - releaseInfoCache.fetchedAt < RELEASE_TTL_MS) {
-    return releaseInfoCache.info;
-  }
-  const repo = process.env.PLAYER_APK_GITHUB_REPO || 'gschiemann/EDUCMS';
+/** Pick the best APK asset for the given ABI.
+ *
+ *  Priority:
+ *   1. Exact ABI match  (e.g. "armeabi-v7a" in the filename)
+ *   2. Universal APK    ("universal" in the filename)
+ *   3. null             — caller gets a "no compatible APK" response
+ *
+ *  The old arm64-first hard-code is gone.  arm64-v8a devices still get
+ *  arm64-v8a because that's their exact match; armeabi-v7a devices get
+ *  armeabi-v7a.  Devices that don't report an ABI (callerAbi is empty)
+ *  fall back to universal → arm64-v8a for backwards compat.
+ */
+function pickApkAsset(
+  assets: Array<{ name: string; browser_download_url: string }>,
+  callerAbi: string,
+): { name: string; browser_download_url: string } | undefined {
+  const norm = (s: string) => s.toLowerCase();
+  const abi = norm(callerAbi || '');
+  const pick = (pred: (n: string) => boolean) =>
+    assets.find((a) => pred(norm(a.name)));
 
-  // BUG FIX 2026-04-27: previously hit /releases/latest which returns
-  // the single most-recently-published release across ALL tags. After
-  // we started shipping Manager releases (manager-v1.0.0, v1.0.1) to
-  // the same repo, "latest" became the Manager tag and the player-v
-  // strip failed → info=null → both /latest-version and /update-check
-  // returned null/uptoDate even though a real Player release existed.
-  //
-  // Fix: fetch the recent releases list and pick the most recent one
-  // tagged player-v*. GitHub returns the list in published-desc order
-  // so the first match is the latest Player release.
-  const resp = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=30`, {
-    headers: { 'User-Agent': 'edu-cms-player-ota' },
-  });
-  if (!resp.ok) {
-    releaseInfoCache = { info: null, fetchedAt: now };
-    return null;
+  if (abi) {
+    // 1. Exact ABI match
+    const exact = pick((n) => n.includes(abi) && n.endsWith('.apk'));
+    if (exact) return exact;
+    // 2. Universal APK
+    const universal = pick((n) => n.includes('universal') && n.endsWith('.apk'));
+    if (universal) return universal;
+    // No compatible asset — return undefined so caller can fail with
+    // a clear "no APK for your ABI" message rather than a wrong APK.
+    return undefined;
   }
-  const allReleases = await resp.json() as Array<{
-    tag_name?: string;
-    name?: string;
-    draft?: boolean;
-    prerelease?: boolean;
-    assets?: Array<{ name: string; browser_download_url: string }>;
-  }>;
-  if (!Array.isArray(allReleases)) {
-    releaseInfoCache = { info: null, fetchedAt: now };
-    return null;
-  }
-  // BUG FIX 2026-04-27 part 2: GitHub's /releases endpoint doesn't
-  // sort by tag semver — it returns by internal release-id order
-  // which does NOT correlate with version number (today's call
-  // returned v1.0.9 ahead of v1.0.12 even though v1.0.12 is the
-  // most recently published Player release). Sort explicitly.
-  const playerReleases = allReleases
-    .filter((r) => {
-      if (r.draft || r.prerelease) return false;
-      const tag = (r.tag_name || r.name || '').trim();
-      return tag.startsWith('player-v');
-    })
-    .map((r) => {
-      const tag = (r.tag_name || r.name || '').trim();
-      const versionStr = tag.replace(/^player-v/, '');
-      const m = versionStr.match(/^(\d+)\.(\d+)\.(\d+)/);
-      const sortKey = m
-        ? parseInt(m[1], 10) * 1_000_000 + parseInt(m[2], 10) * 1_000 + parseInt(m[3], 10)
-        : 0;
-      return { release: r, sortKey };
-    })
-    .filter((x) => x.sortKey > 0)
-    .sort((a, b) => b.sortKey - a.sortKey);
 
-  if (playerReleases.length === 0) {
-    releaseInfoCache = { info: null, fetchedAt: now };
-    return null;
-  }
-  const playerRelease = playerReleases[0].release;
-  const assets = playerRelease.assets || [];
-  const pick = (pred: (name: string) => boolean) =>
-    assets.find((a) => pred(a.name.toLowerCase()));
-  const chosen =
+  // No ABI reported (legacy callers) — use the old preference chain so
+  // existing devices that don't send `abi` continue to work.
+  return (
     pick((n) => n.includes('arm64-v8a') && n.endsWith('.apk')) ||
     pick((n) => n.includes('universal') && n.endsWith('.apk')) ||
     pick((n) => n.includes('armeabi-v7a') && n.endsWith('.apk')) ||
-    pick((n) => n.endsWith('.apk') && !n.includes('x86'));
+    pick((n) => n.endsWith('.apk') && !n.includes('x86'))
+  );
+}
+
+async function resolveLatestReleaseInfo(callerAbi?: string): Promise<ReleaseInfo | null> {
+  const now = Date.now();
+
+  // Fetch + cache the raw release assets if the cache is stale.
+  if (!releaseAssetsCache || now - releaseAssetsCache.fetchedAt >= RELEASE_TTL_MS) {
+    const repo = process.env.PLAYER_APK_GITHUB_REPO || 'gschiemann/EDUCMS';
+
+    // BUG FIX 2026-04-27: previously hit /releases/latest which returns
+    // the single most-recently-published release across ALL tags. After
+    // we started shipping Manager releases (manager-v1.0.0, v1.0.1) to
+    // the same repo, "latest" became the Manager tag and the player-v
+    // strip failed → info=null → both /latest-version and /update-check
+    // returned null/uptoDate even though a real Player release existed.
+    //
+    // Fix: fetch the recent releases list and pick the most recent one
+    // tagged player-v*. GitHub returns the list in published-desc order
+    // so the first match is the latest Player release.
+    const resp = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=30`, {
+      headers: { 'User-Agent': 'edu-cms-player-ota' },
+    });
+    if (!resp.ok) {
+      releaseInfoCache = { info: null, fetchedAt: now };
+      return null;
+    }
+    const allReleases = await resp.json() as Array<{
+      tag_name?: string;
+      name?: string;
+      draft?: boolean;
+      prerelease?: boolean;
+      assets?: Array<{ name: string; browser_download_url: string }>;
+    }>;
+    if (!Array.isArray(allReleases)) {
+      releaseInfoCache = { info: null, fetchedAt: now };
+      return null;
+    }
+    // BUG FIX 2026-04-27 part 2: GitHub's /releases endpoint doesn't
+    // sort by tag semver — it returns by internal release-id order
+    // which does NOT correlate with version number (today's call
+    // returned v1.0.9 ahead of v1.0.12 even though v1.0.12 is the
+    // most recently published Player release). Sort explicitly.
+    const playerReleases = allReleases
+      .filter((r) => {
+        if (r.draft || r.prerelease) return false;
+        const tag = (r.tag_name || r.name || '').trim();
+        return tag.startsWith('player-v');
+      })
+      .map((r) => {
+        const tag = (r.tag_name || r.name || '').trim();
+        const versionStr = tag.replace(/^player-v/, '');
+        const m = versionStr.match(/^(\d+)\.(\d+)\.(\d+)/);
+        const sortKey = m
+          ? parseInt(m[1], 10) * 1_000_000 + parseInt(m[2], 10) * 1_000 + parseInt(m[3], 10)
+          : 0;
+        return { release: r, sortKey };
+      })
+      .filter((x) => x.sortKey > 0)
+      .sort((a, b) => b.sortKey - a.sortKey);
+
+    if (playerReleases.length === 0) {
+      releaseAssetsCache = { assets: [], tag: '', fetchedAt: now };
+      releaseInfoCache = { info: null, fetchedAt: now };
+      return null;
+    }
+    const playerRelease = playerReleases[0].release;
+    const tag = (playerRelease.tag_name || playerRelease.name || '').trim();
+    releaseAssetsCache = { assets: playerRelease.assets || [], tag, fetchedAt: now };
+  }
+
+  // Re-run ABI-aware asset selection against the (possibly cached) asset list.
+  const { assets, tag } = releaseAssetsCache;
+  const chosen = pickApkAsset(assets, callerAbi || '');
   const apkUrl = chosen?.browser_download_url ?? null;
-  const tag = (playerRelease.tag_name || playerRelease.name || '').trim();
+
   // Strip `player-v` / leading `v`, leaving bare semver like "1.0.5".
   const versionName = tag.replace(/^player-v/, '').replace(/^v/, '');
   const match = versionName.match(/^(\d+)\.(\d+)\.(\d+)/);
@@ -788,9 +876,14 @@ async function resolveLatestReleaseInfo(): Promise<ReleaseInfo | null> {
   const info: ReleaseInfo | null = apkUrl && versionName && derivedVersionCode
     ? { apkUrl, versionName, derivedVersionCode }
     : null;
-  releaseInfoCache = { info, fetchedAt: now };
-  // Also fill the legacy URL cache so /apk/latest stays fast.
-  releaseCache = { url: apkUrl, fetchedAt: now };
+  // Cache the arm64 (no-ABI) result for /latest-version + /apk/latest which
+  // don't have a caller ABI. Per-ABI lookups are NOT cached separately —
+  // they re-run pickApkAsset against the already-cached asset list, which
+  // is O(n) on the small assets array and adds no network cost.
+  if (!callerAbi) {
+    releaseInfoCache = { info, fetchedAt: now };
+    releaseCache = { url: apkUrl, fetchedAt: now };
+  }
   return info;
 }
 
