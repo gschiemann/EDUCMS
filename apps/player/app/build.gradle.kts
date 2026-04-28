@@ -12,7 +12,12 @@ android {
         // Android 7.0 (Nougat) → Android 14
         minSdk = 24
         targetSdk = 34
-        versionCode = 33
+        // versionCode MUST match the API's semver-encoding formula:
+        //   major*10000 + minor*100 + patch  (e.g. 1.0.33 → 10033)
+        // WatchdogService compares PackageManager.versionCode against
+        // InstallState.pendingVc which the API returns as the derived value.
+        // Keeping them in sync prevents a false rollback after a successful install.
+        versionCode = 10033 // 1*10000 + 0*100 + 33
         versionName = "1.0.33"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
