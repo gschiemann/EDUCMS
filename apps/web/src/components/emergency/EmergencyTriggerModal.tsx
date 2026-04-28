@@ -80,7 +80,16 @@ export function EmergencyTriggerModal({ onClose }: Props) {
         role: user?.role,
       });
       try {
-        await broadcastEmergency(payload);
+        const result = await broadcastEmergency(payload);
+        // Guard: the server action returns { success: false, error: "..." } on
+        // rejection (HTTP 200 body) rather than throwing. Treat that as a
+        // failure — do NOT flip local emergency state until the server confirms.
+        if (result && result.success === false) {
+          throw new Error(result.error || 'Server rejected the alert');
+        }
+        if (!result || typeof result.success === 'undefined') {
+          throw new Error('Unexpected server response format — alert state unknown');
+        }
         clog.info('emergency', `TRIGGER success: ${payload.type}`, {
           elapsedMs: Math.round(performance.now() - started),
         });
