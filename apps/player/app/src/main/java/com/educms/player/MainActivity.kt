@@ -54,37 +54,6 @@ class MainActivity : ComponentActivity() {
         // by Android 11+ Background Activity Launch on Goodview signage
         // ROMs. MainActivity is foregrounded so it satisfies BAL.
         handleInstallPromptTrampoline(intent)
-    }
-
-    override fun onNewIntent(newIntent: Intent?) {
-        super.onNewIntent(newIntent)
-        // Same trampoline path — fires when Activity is already running
-        // and OtaInstallReceiver routes another install prompt through.
-        handleInstallPromptTrampoline(newIntent)
-    }
-
-    /**
-     * Launch a system Install confirmation Intent that was forwarded
-     * through this Activity by OtaInstallReceiver. Foreground task
-     * chaining bypasses the Android 11+ BAL block that silently drops
-     * BroadcastReceiver-issued startActivity calls on Goodview ROMs.
-     */
-    private fun handleInstallPromptTrampoline(launchIntent: Intent?) {
-        if (launchIntent?.action != com.educms.player.ota.OtaInstallReceiver.ACTION_LAUNCH_INSTALL_PROMPT) return
-        @Suppress("DEPRECATION")
-        val prompt: Intent? = launchIntent.getParcelableExtra(com.educms.player.ota.OtaInstallReceiver.EXTRA_INSTALL_PROMPT)
-        if (prompt == null) {
-            PlayerLogger.w("MainActivity", "trampoline fired but no install_prompt_intent extra")
-            return
-        }
-        prompt.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        try {
-            startActivity(prompt)
-            PlayerLogger.i("MainActivity", "install prompt launched from foreground (BAL bypass)")
-        } catch (e: Exception) {
-            PlayerLogger.e("MainActivity", "install prompt launch failed", e)
-        }
-    }
 
         // FULL sensor rotation — user mounts the display however they
         // want (portrait, landscape, reverse). The WebView handles any
@@ -198,6 +167,38 @@ class MainActivity : ComponentActivity() {
         // (or skip it entirely on some OEMs) instead of the scary
         // "app can't be installed" dialog that greeted them tonight.
         maybePromptForInstallPermission()
+    }
+
+    /**
+     * v1.0.22 — install-prompt trampoline. OtaInstallReceiver forwards
+     * STATUS_PENDING_USER_ACTION's EXTRA_INTENT here because Android 11+
+     * Background Activity Launch on Goodview ROMs silently drops
+     * BroadcastReceiver-issued startActivity calls. MainActivity is a
+     * foregrounded user-visible Activity (singleTask launchMode ensures
+     * a single instance), satisfying BAL for the system Install dialog.
+     */
+    override fun onNewIntent(newIntent: Intent?) {
+        super.onNewIntent(newIntent)
+        handleInstallPromptTrampoline(newIntent)
+    }
+
+    private fun handleInstallPromptTrampoline(launchIntent: Intent?) {
+        if (launchIntent?.action != com.educms.player.ota.OtaInstallReceiver.ACTION_LAUNCH_INSTALL_PROMPT) return
+        @Suppress("DEPRECATION")
+        val prompt: Intent? = launchIntent.getParcelableExtra(
+            com.educms.player.ota.OtaInstallReceiver.EXTRA_INSTALL_PROMPT,
+        )
+        if (prompt == null) {
+            PlayerLogger.w("MainActivity", "trampoline fired but no install_prompt_intent extra")
+            return
+        }
+        prompt.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        try {
+            startActivity(prompt)
+            PlayerLogger.i("MainActivity", "install prompt launched from foreground (BAL bypass)")
+        } catch (e: Exception) {
+            PlayerLogger.e("MainActivity", "install prompt launch failed", e)
+        }
     }
 
     /**
