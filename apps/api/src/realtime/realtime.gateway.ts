@@ -216,7 +216,17 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       if (type === 'device' && ctx.deviceId === id) match = true;
 
       if (match) {
-        this.send(ctx.socket, message.type, message.payload, crypto.randomUUID());
+        // Preserve signature + eventId from the signed envelope so players
+        // can verify message authenticity. Previously these were silently
+        // dropped — P0 life-safety bug, see audit fix #6.
+        this.send(
+          ctx.socket,
+          message.type,
+          message.payload,
+          crypto.randomUUID(),
+          message.signature,
+          message.eventId,
+        );
         sent++;
       }
     }
@@ -224,14 +234,28 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   // ─── Send a typed message to a single client ───
-  private send(client: WebSocket, type: string, payload: any, idempotencyKey?: string) {
+  // signature and eventId are optional — present for signed emergency
+  // envelopes, absent for internal control messages (AUTH_OK, etc.).
+  private send(
+    client: WebSocket,
+    type: string,
+    payload: any,
+    idempotencyKey?: string,
+    signature?: string,
+    eventId?: string,
+  ) {
     if (client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify({
+      const frame: Record<string, unknown> = {
         type,
         payload,
         idempotencyKey: idempotencyKey || crypto.randomUUID(),
-        timestamp: Math.floor(Date.now() / 1000)
-      }));
+        timestamp: Math.floor(Date.now() / 1000),
+      };
+      // Include signing fields only when present so unsigned control
+      // messages (AUTH_OK, HEARTBEAT_ACK, etc.) are not affected.
+      if (signature !== undefined) frame.signature = signature;
+      if (eventId !== undefined) frame.eventId = eventId;
+      client.send(JSON.stringify(frame));
     }
   }
 }
