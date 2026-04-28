@@ -49,6 +49,8 @@ export function TopContextToolbar() {
   const isAnnouncement = zone?.widgetType === 'ANNOUNCEMENT';
   const isCalendar = zone?.widgetType === 'CALENDAR';
   const isCountdown = zone?.widgetType === 'COUNTDOWN';
+  const isTicker = zone?.widgetType === 'TICKER';
+  const isBellSchedule = zone?.widgetType === 'BELL_SCHEDULE';
   const cfg = (zone?.defaultConfig || {}) as any;
 
   // ── Active-field + scope tracking ────────────────────────────────
@@ -469,6 +471,75 @@ export function TopContextToolbar() {
               placeholder="e.g., Days Until..."
               className="w-full h-9 px-2.5 rounded-lg text-sm border border-slate-200/60 shadow-sm focus:ring-2 focus:ring-indigo-600 focus:border-transparent"
             />
+          </div>
+        </div>
+      )}
+      {isTicker && (
+        <div className="flex items-end gap-3 flex-wrap">
+          {/* Speed toggle: slow / normal / fast */}
+          <div className="min-w-[220px]">
+            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Speed</label>
+            <div className="flex gap-1">
+              {(['slow', 'normal', 'fast'] as const).map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => setField({ speed: opt })}
+                  className={`flex-1 h-9 rounded-lg text-xs font-bold transition-colors border shadow-sm ${
+                    (cfg.speed || 'normal') === opt
+                      ? 'bg-indigo-600 border-indigo-600 text-white'
+                      : 'bg-white border-slate-200/60 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Ticker text textarea */}
+          <div className="min-w-[320px]">
+            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Ticker Text</label>
+            <textarea
+              value={cfg.text || ''}
+              onChange={(e) => setField({ text: e.target.value })}
+              rows={2}
+              placeholder="Enter scrolling ticker text..."
+              className="w-full px-2.5 py-1.5 rounded-lg text-sm border border-slate-200/60 shadow-sm focus:ring-2 focus:ring-indigo-600 focus:border-transparent resize-none"
+            />
+          </div>
+        </div>
+      )}
+      {isBellSchedule && (
+        <div className="flex items-end gap-3 flex-wrap">
+          {/* Show current period toggle */}
+          <div className="min-w-[180px]">
+            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Current Period</label>
+            <button
+              type="button"
+              onClick={() => setField({ showCurrent: !cfg.showCurrent })}
+              className={`w-full h-9 rounded-lg text-xs font-bold transition-colors border shadow-sm ${
+                cfg.showCurrent === false
+                  ? 'bg-white border-slate-200/60 text-slate-700 hover:bg-slate-50'
+                  : 'bg-indigo-600 border-indigo-600 text-white'
+              }`}
+            >
+              {cfg.showCurrent === false ? 'Hide' : 'Show'}
+            </button>
+          </div>
+          {/* Show next period toggle */}
+          <div className="min-w-[180px]">
+            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Next Period</label>
+            <button
+              type="button"
+              onClick={() => setField({ showNext: !cfg.showNext })}
+              className={`w-full h-9 rounded-lg text-xs font-bold transition-colors border shadow-sm ${
+                cfg.showNext === false
+                  ? 'bg-white border-slate-200/60 text-slate-700 hover:bg-slate-50'
+                  : 'bg-indigo-600 border-indigo-600 text-white'
+              }`}
+            >
+              {cfg.showNext === false ? 'Hide' : 'Show'}
+            </button>
           </div>
         </div>
       )}
