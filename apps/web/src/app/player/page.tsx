@@ -2341,6 +2341,8 @@ function PlayerPage() {
           brandName={brandName}
           screenName={screenName}
           resolution={splashResolution}
+          apkVersion={apkVersion}
+          managerVersion={managerVersion}
           lastSync={lastSync}
           stoppedPlaylists={manifestPlaylists}
           stoppedCache={cacheStatus && cacheStatus.supported ? { playlist: cacheStatus.playlist, emergency: cacheStatus.emergency } : null}
@@ -2550,6 +2552,8 @@ function PlayerPage() {
         brandName={brandName}
         screenName={screenName}
         resolution={splashResolution}
+        apkVersion={apkVersion}
+        managerVersion={managerVersion}
         lastSync={lastSync}
         stoppedPlaylists={manifestPlaylists}
         stoppedCache={cacheStatus && cacheStatus.supported ? { playlist: cacheStatus.playlist, emergency: cacheStatus.emergency } : null}
