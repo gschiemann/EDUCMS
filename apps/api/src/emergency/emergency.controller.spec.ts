@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { EmergencyController } from './emergency.controller';
 import { RedisService } from '../realtime/redis.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -22,6 +23,14 @@ describe('EmergencyController', () => {
         tenant: {
           findUnique: jest.fn().mockResolvedValue({ id: 't1', panicLockdownPlaylistId: null, emergencyStatus: 'INACTIVE', emergencyPlaylistId: null }),
           update: jest.fn().mockResolvedValue({}),
+        },
+        screenGroup: {
+          // Default: group 'g1' belongs to tenant 't1'
+          findUnique: jest.fn().mockResolvedValue({ tenantId: 't1' }),
+        },
+        screen: {
+          // Default: screen 'dev1' belongs to tenant 't1'
+          findUnique: jest.fn().mockResolvedValue({ tenantId: 't1' }),
         },
         auditLog: { create: jest.fn().mockResolvedValue({}) },
         emergencyMessage: {
@@ -78,7 +87,7 @@ describe('EmergencyController', () => {
   });
 
   it('should publish signed OVERRIDE to redis', async () => {
-    const req = { user: { id: 'admin1', schoolId: 'sch1' } };
+    const req = { user: { id: 'admin1', tenantId: 't1', schoolId: 't1' } };
     const payload = {
       scopeType: 'tenant' as const,
       scopeId: 't1',
@@ -111,7 +120,8 @@ describe('EmergencyController', () => {
     // asserts the message goes through WebsocketSignerService
     // (signature + eventId + timestamp present) so the player accepts
     // it on the WS path.
-    const req = { user: { id: 'admin1' } };
+    // Group 'g1' belongs to tenant 't1' (default mock) — caller must be on 't1'
+    const req = { user: { id: 'admin1', tenantId: 't1' } };
     const payload = {
       scopeType: 'group' as const,
       scopeId: 'g1'
@@ -200,7 +210,8 @@ describe('EmergencyController', () => {
   });
 
   it('all-clear on a message marks it cleared, audit-logs, and publishes ALL_CLEAR', async () => {
-    const req = { user: { id: 'admin1' } };
+    // Message belongs to 't1' (default mock) — caller must be on same tenant
+    const req = { user: { id: 'admin1', tenantId: 't1' } };
     const res = await controller.clearMessage('msg_1', req);
 
     expect(res.success).toBe(true);
@@ -250,5 +261,166 @@ describe('EmergencyController', () => {
         where: expect.objectContaining({ tenantId: 'my-tenant' }),
       }),
     );
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Security regression tests: cross-tenant calls must be rejected with 403.
+  // Same-tenant calls must still work. Unknown scopeType → 400.
+  // Non-existent scope → 404. Guards against regressions of audit P0 #5.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  describe('resolveScopeTenant — cross-tenant access control', () => {
+    it('/trigger rejects cross-tenant call with ForbiddenException', async () => {
+      const req = { user: { id: 'attacker', role: 'DISTRICT_ADMIN', tenantId: 'evil-tenant' } };
+      const payload = {
+        scopeType: 'tenant' as const,
+        scopeId: 'victim-tenant',
+        overridePayload: { severity: 'CRITICAL' as const },
+      };
+      await expect(controller.triggerEmergency(payload, req)).rejects.toThrow(ForbiddenException);
+      expect(prismaService.client.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('/trigger allows same-tenant call (regression guard against over-fixing)', async () => {
+      const req = { user: { id: 'admin1', role: 'SCHOOL_ADMIN', tenantId: 't1' } };
+      const payload = {
+        scopeType: 'tenant' as const,
+        scopeId: 't1',
+        overridePayload: { overrideId: 'o2', severity: 'CRITICAL' as const },
+      };
+      const result = await controller.triggerEmergency(payload, req);
+      expect(result.success).toBe(true);
+    });
+
+    it('/trigger allows SUPER_ADMIN to target any tenant', async () => {
+      prismaService.client.tenant.findUnique.mockResolvedValueOnce({
+        id: 'any-other-tenant', panicLockdownPlaylistId: null,
+      });
+      const req = { user: { id: 'super1', role: 'SUPER_ADMIN', tenantId: 'super-tenant' } };
+      const payload = {
+        scopeType: 'tenant' as const,
+        scopeId: 'any-other-tenant',
+        overridePayload: { overrideId: 'o3', severity: 'CRITICAL' as const },
+      };
+      const result = await controller.triggerEmergency(payload, req);
+      expect(result.success).toBe(true);
+    });
+
+    it('/trigger rejects cross-tenant group scope with ForbiddenException', async () => {
+      prismaService.client.screenGroup.findUnique.mockResolvedValueOnce({ tenantId: 't1' });
+      const req = { user: { id: 'attacker', role: 'DISTRICT_ADMIN', tenantId: 'evil-tenant' } };
+      const payload = {
+        scopeType: 'group' as const,
+        scopeId: 'g1',
+        overridePayload: { severity: 'CRITICAL' as const },
+      };
+      await expect(controller.triggerEmergency(payload, req)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('/trigger rejects cross-tenant device scope with ForbiddenException', async () => {
+      prismaService.client.screen.findUnique.mockResolvedValueOnce({ tenantId: 't1' });
+      const req = { user: { id: 'attacker', role: 'DISTRICT_ADMIN', tenantId: 'evil-tenant' } };
+      const payload = {
+        scopeType: 'device' as const,
+        scopeId: 'dev1',
+        overridePayload: { severity: 'CRITICAL' as const },
+      };
+      await expect(controller.triggerEmergency(payload, req)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('/trigger returns BadRequestException for unknown scopeType', async () => {
+      const req = { user: { id: 'admin1', role: 'SCHOOL_ADMIN', tenantId: 't1' } };
+      const payload = {
+        scopeType: 'building' as any,
+        scopeId: 'b1',
+        overridePayload: { severity: 'CRITICAL' as const },
+      };
+      await expect(controller.triggerEmergency(payload, req)).rejects.toThrow(BadRequestException);
+    });
+
+    it('/trigger returns NotFoundException for non-existent group scope', async () => {
+      prismaService.client.screenGroup.findUnique.mockResolvedValueOnce(null);
+      const req = { user: { id: 'admin1', role: 'SCHOOL_ADMIN', tenantId: 't1' } };
+      const payload = {
+        scopeType: 'group' as const,
+        scopeId: 'ghost-group',
+        overridePayload: { severity: 'CRITICAL' as const },
+      };
+      await expect(controller.triggerEmergency(payload, req)).rejects.toThrow(NotFoundException);
+    });
+
+    it('/trigger returns NotFoundException for non-existent device scope', async () => {
+      prismaService.client.screen.findUnique.mockResolvedValueOnce(null);
+      const req = { user: { id: 'admin1', role: 'SCHOOL_ADMIN', tenantId: 't1' } };
+      const payload = {
+        scopeType: 'device' as const,
+        scopeId: 'ghost-screen',
+        overridePayload: { severity: 'CRITICAL' as const },
+      };
+      await expect(controller.triggerEmergency(payload, req)).rejects.toThrow(NotFoundException);
+    });
+
+    it('/:overrideId/all-clear rejects cross-tenant call with ForbiddenException', async () => {
+      const req = { user: { id: 'attacker', role: 'DISTRICT_ADMIN', tenantId: 'evil-tenant' } };
+      const body = { scopeType: 'tenant' as const, scopeId: 'victim-tenant' };
+      await expect(controller.clearEmergency('o1', body, req)).rejects.toThrow(ForbiddenException);
+      expect(prismaService.client.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('/:overrideId/all-clear allows same-tenant call', async () => {
+      const req = { user: { id: 'admin1', role: 'SCHOOL_ADMIN', tenantId: 't1' } };
+      const body = { scopeType: 'tenant' as const, scopeId: 't1' };
+      const result = await controller.clearEmergency('o1', body, req);
+      expect(result.success).toBe(true);
+    });
+
+    it('/broadcast rejects cross-tenant call with ForbiddenException', async () => {
+      const req = { user: { id: 'attacker', role: 'DISTRICT_ADMIN', tenantId: 'evil-tenant' } };
+      const body = { scopeType: 'tenant' as const, scopeId: 'victim-tenant', text: 'hijack', severity: 'WARN' as const } as any;
+      await expect(controller.broadcastText(body, req)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('/broadcast allows same-tenant call', async () => {
+      const req = { user: { id: 'admin1', tenantId: 't1' } };
+      const body = { scopeType: 'tenant' as const, scopeId: 't1', text: 'Fire drill in 5 min', severity: 'WARN' as const } as any;
+      const result = await controller.broadcastText(body, req);
+      expect(result.success).toBe(true);
+    });
+
+    it('/media-alert rejects cross-tenant call with ForbiddenException', async () => {
+      const req = { user: { id: 'attacker', role: 'DISTRICT_ADMIN', tenantId: 'evil-tenant' } };
+      const body = { scopeType: 'tenant' as const, scopeId: 'victim-tenant', mediaUrls: [], textBlob: 'hijack', severity: 'CRITICAL' as const } as any;
+      await expect(controller.mediaAlert(body, req)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('/media-alert allows same-tenant call', async () => {
+      const req = { user: { id: 'admin1', tenantId: 't1' } };
+      const body = { scopeType: 'tenant' as const, scopeId: 't1', mediaUrls: ['https://cdn/img.jpg'], textBlob: 'SHELTER IN PLACE', severity: 'CRITICAL' as const } as any;
+      const result = await controller.mediaAlert(body, req);
+      expect(result.success).toBe(true);
+    });
+
+    it('/messages/:id/all-clear rejects cross-tenant message clear with ForbiddenException', async () => {
+      prismaService.client.emergencyMessage.findUnique.mockResolvedValueOnce({
+        id: 'msg_x', tenantId: 't1', scopeType: 'tenant', scopeId: 't1', type: 'SOS',
+      });
+      const req = { user: { id: 'attacker', role: 'DISTRICT_ADMIN', tenantId: 'evil-tenant' } };
+      await expect(controller.clearMessage('msg_x', req)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('/messages/:id/all-clear allows same-tenant message clear', async () => {
+      prismaService.client.emergencyMessage.findUnique.mockResolvedValueOnce({
+        id: 'msg_y', tenantId: 't1', scopeType: 'tenant', scopeId: 't1', type: 'SOS',
+      });
+      const req = { user: { id: 'admin1', tenantId: 't1' } };
+      const result = await controller.clearMessage('msg_y', req);
+      expect(result.success).toBe(true);
+    });
+
+    it('/messages/:id/all-clear returns NotFoundException for unknown message id', async () => {
+      prismaService.client.emergencyMessage.findUnique.mockResolvedValueOnce(null);
+      const req = { user: { id: 'admin1', tenantId: 't1' } };
+      await expect(controller.clearMessage('ghost-msg', req)).rejects.toThrow(NotFoundException);
+    });
   });
 });

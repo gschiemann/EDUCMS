@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, Query, Req, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, Req, UseGuards, ForbiddenException, BadRequestException, NotFoundException } from '@nestjs/common';
 import { RedisService } from '../realtime/redis.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppRole } from '@cms/database';
@@ -36,24 +36,87 @@ export class EmergencyController {
   ) {}
 
   /**
-   * Resolve the CANONICAL tenantId for an audit-log row given the
-   * emergency scope. Audit rows must be tenant-scoped so the incident
-   * forensics live with the affected school, not the acting admin's
-   * home tenant.
+   * SECURITY: Resolve the tenantId that OWNS the given scope and verify the
+   * requesting user is allowed to act on it.
    *
-   * Why this matters: previously every audit row used
-   *   `req.user?.schoolId || req.user?.districtId || scopeId`
-   * which for a SUPER_ADMIN triggering lockdown on a partner tenant
-   * stamped the admin's OWN tenant in the audit log. Responders
-   * reviewing the scope tenant's audit trail would see no record of
-   * the trigger.
+   * This is the single access-control gate for all emergency write endpoints.
+   * It must be called before any state mutation or pub/sub publish.
    *
-   * Rules:
-   *   - scopeType='tenant'  → scopeId IS the tenantId
-   *   - scopeType='group'   → look up ScreenGroup.tenantId
-   *   - scopeType='device'  → look up Screen.tenantId
-   *   - fallback            → req.user's own tenant (defensible for
-   *                           scope types we haven't built yet)
+   * Resolution + authorisation rules:
+   *   - scopeType='tenant' : scopeId IS the tenantId.
+   *                          SUPER_ADMIN may target any tenant.
+   *                          All others must match their own tenantId.
+   *   - scopeType='group'  : look up ScreenGroup.tenantId.
+   *                          Caller must own that tenant (same rule as above).
+   *   - scopeType='device' : look up Screen.tenantId.
+   *                          Caller must own that tenant.
+   *   - unknown scopeType  : always 400 — we never guess.
+   *
+   * Throws:
+   *   BadRequestException   — unknown scopeType
+   *   NotFoundException     — group/screen id not found in DB
+   *   ForbiddenException    — caller does not own the resolved tenant
+   *
+   * Returns the verified owning tenantId (safe to use for audit rows,
+   * pub/sub channels, and DB mutations).
+   */
+  private async resolveScopeTenant(
+    scopeType: string,
+    scopeId: string,
+    reqUser: any,
+  ): Promise<string> {
+    const callerTenantId: string =
+      reqUser?.tenantId || reqUser?.schoolId || reqUser?.districtId;
+    const isSuper: boolean = reqUser?.role === AppRole.SUPER_ADMIN;
+
+    let owningTenantId: string;
+
+    if (scopeType === 'tenant') {
+      owningTenantId = scopeId;
+    } else if (scopeType === 'group') {
+      const group = await this.prisma.client.screenGroup.findUnique({
+        where: { id: scopeId },
+        select: { tenantId: true },
+      });
+      if (!group) {
+        throw new NotFoundException(`Screen group '${scopeId}' not found`);
+      }
+      owningTenantId = group.tenantId;
+    } else if (scopeType === 'device') {
+      const screen = await this.prisma.client.screen.findUnique({
+        where: { id: scopeId },
+        select: { tenantId: true },
+      });
+      if (!screen) {
+        throw new NotFoundException(`Screen '${scopeId}' not found`);
+      }
+      if (!screen.tenantId) {
+        throw new BadRequestException(`Screen '${scopeId}' is not assigned to a tenant`);
+      }
+      // screen.tenantId is non-null here — guarded by the throw above.
+      owningTenantId = screen.tenantId!;
+    } else {
+      throw new BadRequestException(
+        `Unknown scopeType '${scopeType}'. Must be tenant, group, or device.`,
+      );
+    }
+
+    // SUPER_ADMIN may act on any tenant; everyone else is strictly
+    // confined to their own tenant. Deny anything else with 403.
+    if (!isSuper && owningTenantId !== callerTenantId) {
+      throw new ForbiddenException(
+        'You do not have permission to trigger emergency actions for this scope.',
+      );
+    }
+
+    return owningTenantId;
+  }
+
+  /**
+   * @deprecated Use resolveScopeTenant for all write endpoints.
+   * Kept only for the read-path (resolveAuditTenantId is now a thin
+   * wrapper that trusts the already-verified owningTenantId passed by
+   * resolveScopeTenant callers).
    */
   private async resolveAuditTenantId(
     scopeType: string,
@@ -79,7 +142,7 @@ export class EmergencyController {
     } catch {
       /* fall through to caller's tenant */
     }
-    return reqUser?.schoolId || reqUser?.districtId || reqUser?.tenantId || scopeId;
+    return reqUser?.tenantId || reqUser?.schoolId || reqUser?.districtId || scopeId;
   }
 
   @Post('trigger')
@@ -90,7 +153,11 @@ export class EmergencyController {
     @Req() req: any,
   ) {
     const { scopeType, scopeId, overridePayload } = body;
-    
+
+    // SECURITY: verify the caller owns the target scope before any mutation.
+    // Throws 400 (unknown scopeType), 404 (scope not found), or 403 (cross-tenant).
+    const ownedTenantId = await this.resolveScopeTenant(scopeType, scopeId, req.user);
+
     const overrideId = overridePayload.overrideId || `ovr_${crypto.randomUUID()}`;
     const severity = overridePayload.severity || 'CRITICAL';
     const message = {
@@ -148,11 +215,8 @@ export class EmergencyController {
         }
       }
 
-      // Resolve the CANONICAL tenantId for the audit row — must be the
-      // scope's tenant, not the acting admin's home tenant (see
-      // resolveAuditTenantId JSDoc).
-      const auditTenantId = await this.resolveAuditTenantId(scopeType, scopeId, req.user);
-
+      // ownedTenantId already verified above — use it for the audit row so
+      // the forensic trail lives with the school that was affected.
       // Wrap state mutation + audit in one transaction so a concurrent
       // trigger or all-clear can't leave the Tenant in a half-updated
       // state where emergencyStatus says CRITICAL but emergencyPlaylistId
@@ -173,7 +237,7 @@ export class EmergencyController {
             action: 'TRIGGER_EMERGENCY',
             targetType: scopeType,
             targetId: scopeId,
-            tenantId: auditTenantId,
+            tenantId: ownedTenantId,
             userId: req.user?.id,
             details: JSON.stringify({ overrideId, severity, portraitPlaylistId: activePortraitPlaylistId, triggeredByTenant: req.user?.tenantId }),
           },
@@ -182,13 +246,13 @@ export class EmergencyController {
     } else {
       // Non-tenant scope (group / device) — still need an audit row but
       // no Tenant.update is involved so a single insert is fine.
-      const auditTenantId = await this.resolveAuditTenantId(scopeType, scopeId, req.user);
+      // ownedTenantId already verified above — no redundant DB lookup.
       await this.prisma.client.auditLog.create({
         data: {
           action: 'TRIGGER_EMERGENCY',
           targetType: scopeType,
           targetId: scopeId,
-          tenantId: auditTenantId,
+          tenantId: ownedTenantId,
           userId: req.user?.id,
           details: JSON.stringify({ overrideId, severity, triggeredByTenant: req.user?.tenantId }),
         },
@@ -239,6 +303,9 @@ export class EmergencyController {
     const { scopeType, scopeId } = body;
     const clearedBy = req.user?.id || 'admin_system';
 
+    // SECURITY: verify the caller owns the target scope before any mutation.
+    const ownedTenantId = await this.resolveScopeTenant(scopeType, scopeId, req.user);
+
     // ALL_CLEAR is classified as SENSITIVE on the player. The player
     // DROPS any SENSITIVE event missing a `signature` field — so if we
     // publish this plain, screens stay stuck on lockdown until the 10s
@@ -249,11 +316,6 @@ export class EmergencyController {
       overrideId,
       clearedBy,
     });
-
-    // Resolve audit row's tenantId to the SCOPE's tenant (see
-    // resolveAuditTenantId) so an ALL_CLEAR by a SUPER_ADMIN on a
-    // partner tenant is logged under that tenant's audit trail.
-    const auditTenantId = await this.resolveAuditTenantId(scopeType, scopeId, req.user);
 
     // If targeting a tenant, clear its emergencyStatus + audit atomically.
     // Clear BOTH orientation pointers so a portrait screen doesn't keep
@@ -273,7 +335,7 @@ export class EmergencyController {
             action: 'CLEAR_EMERGENCY',
             targetType: scopeType,
             targetId: scopeId,
-            tenantId: auditTenantId,
+            tenantId: ownedTenantId,
             userId: req.user?.id,
             details: JSON.stringify({ overrideId, triggeredByTenant: req.user?.tenantId }),
           },
@@ -285,7 +347,7 @@ export class EmergencyController {
           action: 'CLEAR_EMERGENCY',
           targetType: scopeType,
           targetId: scopeId,
-          tenantId: auditTenantId,
+          tenantId: ownedTenantId,
           userId: req.user?.id,
           details: JSON.stringify({ overrideId, triggeredByTenant: req.user?.tenantId }),
         },
@@ -437,6 +499,9 @@ export class EmergencyController {
     const user = req.user || {};
     const { scopeType, scopeId, text, severity, durationMs } = body;
 
+    // SECURITY: verify the caller owns the target scope before any mutation.
+    const ownedTenantId = await this.resolveScopeTenant(scopeType, scopeId, user);
+
     const messageId = `bcast_${crypto.randomUUID()}`;
     const expiresAtDate = body.expiresAt
       ? new Date(typeof body.expiresAt === 'number' ? body.expiresAt * 1000 : body.expiresAt)
@@ -444,14 +509,12 @@ export class EmergencyController {
         ? new Date(Date.now() + durationMs)
         : new Date(Date.now() + 5 * 60 * 1000); // 5 min default
 
-    const resolvedTenantId = user.schoolId || user.districtId || scopeId;
-
     // Atomic message + audit so a partial failure can't orphan either row.
     await this.prisma.client.$transaction([
       this.prisma.client.emergencyMessage.create({
         data: {
           id: messageId,
-          tenantId: resolvedTenantId,
+          tenantId: ownedTenantId,
           triggeredByUserId: user.id || null,
           type: 'TEXT_BROADCAST',
           severity,
@@ -468,7 +531,7 @@ export class EmergencyController {
           action: 'BROADCAST_TEXT',
           targetType: scopeType,
           targetId: scopeId,
-          tenantId: resolvedTenantId,
+          tenantId: ownedTenantId,
           userId: user.id,
           details: JSON.stringify({ messageId, severity, len: text.length, durationMs }),
         },
@@ -513,19 +576,20 @@ export class EmergencyController {
     const user = req.user || {};
     const { scopeType, scopeId, mediaUrls, audioUrl, textBlob, severity } = body;
 
+    // SECURITY: verify the caller owns the target scope before any mutation.
+    const ownedTenantId = await this.resolveScopeTenant(scopeType, scopeId, user);
+
     const messageId = `media_${crypto.randomUUID()}`;
     const expiresAtDate = body.expiresAt
       ? new Date(typeof body.expiresAt === 'number' ? body.expiresAt * 1000 : body.expiresAt)
       : new Date(Date.now() + 60 * 60 * 1000); // 1 hr default
-
-    const resolvedTenantId = user.schoolId || user.districtId || scopeId;
 
     // Atomic message + audit — matches the other emergency endpoints.
     await this.prisma.client.$transaction([
       this.prisma.client.emergencyMessage.create({
         data: {
           id: messageId,
-          tenantId: resolvedTenantId,
+          tenantId: ownedTenantId,
           triggeredByUserId: user.id || null,
           type: 'MEDIA_ALERT',
           severity,
@@ -542,7 +606,7 @@ export class EmergencyController {
           action: 'MEDIA_ALERT',
           targetType: scopeType,
           targetId: scopeId,
-          tenantId: resolvedTenantId,
+          tenantId: ownedTenantId,
           userId: user.id,
           details: JSON.stringify({
             messageId,
@@ -595,7 +659,17 @@ export class EmergencyController {
     const user = req.user || {};
     const existing = await this.prisma.client.emergencyMessage.findUnique({ where: { id: messageId } });
     if (!existing) {
-      return { success: false, message: 'Emergency message not found' };
+      // Return 404-style response rather than swallowing — caller should know the message doesn't exist.
+      throw new NotFoundException(`Emergency message '${messageId}' not found`);
+    }
+
+    // SECURITY: verify the caller owns the message's tenant before clearing.
+    const callerTenantId: string = user?.tenantId || user?.schoolId || user?.districtId;
+    const isSuper: boolean = user?.role === AppRole.SUPER_ADMIN;
+    if (!isSuper && existing.tenantId !== callerTenantId) {
+      throw new ForbiddenException(
+        'You do not have permission to clear emergency messages for this scope.',
+      );
     }
 
     // Atomic clear + audit — if audit fails we must not leave the
