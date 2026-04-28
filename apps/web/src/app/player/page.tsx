@@ -1838,11 +1838,17 @@ function PlayerPage() {
               const pl = msg.payload || msg;
               const scope = pl?.scope;
               const scopeId = pl?.scopeId;
+              // 2026-04-29 — read corrId from server payload so this
+              // kiosk's WS receipt logs the same trace ID the server
+              // generated. Grep one corrId across Railway + Player
+              // diagnostics + Manager logs to see the entire chain.
+              const corrId = pl?.corrId || '(no-corrid)';
               const targetsUs =
                 scope === 'tenant' ||
                 (scope === 'screen' && screenId && scopeId === screenId);
+              console.log(`[OTA ${corrId}] WS CHECK_FOR_UPDATES received scope=${scope} scopeId=${scopeId} targetsUs=${targetsUs}`);
               if (!targetsUs) {
-                console.log('[Player] CHECK_FOR_UPDATES ignored — not our scope', scope, scopeId);
+                console.log(`[OTA ${corrId}] ignored — not our scope`);
               } else {
                 // Operator (2026-04-27): "we should really show on
                 // the device splash screen that an update is
@@ -2578,6 +2584,15 @@ function PlayerPage() {
             </div>
           </div>
         )}
+        {/* 2026-04-29 — operator: "pushed the update from the app to
+            the player and got no feedback on the player that anything
+            was pushed". Audit found {otaOverlay} was missing from the
+            template render branch. The WS message arrived, otaProgress
+            state was set, but the modal overlay never rendered while
+            a template playlist was active. Now ALL render branches
+            include it (registering / pairing / template / non-
+            template / playback). */}
+        {otaOverlay}
         {connectivityToast}
       </div>
     );
@@ -3018,14 +3033,35 @@ function PlayerPage() {
                 dashboard's Push button. */}
             {(() => {
               const apkV = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('v') : null;
-              if (!apkV || !latestApkVersion) return null;
+              // 2026-04-29 — operator: "i didnt have a playlist up
+              // and still saw nothing". Cause: the previous gate
+              // `if (!apkV || !latestApkVersion) return null` killed
+              // the entire banner block — including the in-progress
+              // branch — when latestApkVersion was still being
+              // fetched. Push during that window → no banner.
+              //
+              // New rule: ALWAYS render the in-progress banner when
+              // otaProgress is set, regardless of whether we know
+              // the latest version yet. The "Update available"
+              // amber-banner branch DOES still need both versions to
+              // compute isBehind, so the gate moved INTO the
+              // available branch instead of the IIFE entrance.
+              if (otaProgress) {
+                // Fall through to the in-progress render below.
+              } else if (!apkV || !latestApkVersion) {
+                return null;
+              }
               // Simple semver-ish compare. If kiosk is at or past
               // latest, no card. Inflight push (otaProgress is set)
               // takes the card over so we don't show "install" while
               // an install is already running.
               const norm = (v: string) => v.replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0);
-              const a = norm(apkV);
-              const b = norm(latestApkVersion);
+              // Defensive null fallbacks — when otaProgress is set we
+              // may have entered the IIFE before latestApkVersion
+              // loaded; the in-progress branch below doesn't need
+              // these but the fallthrough still calls norm().
+              const a = norm(apkV || '0.0.0');
+              const b = norm(latestApkVersion || '0.0.0');
               let isBehind = false;
               const len = Math.max(a.length, b.length);
               for (let i = 0; i < len; i++) {

@@ -899,27 +899,50 @@ export class ScreensController {
       where: { id, tenantId: req.user.tenantId },
     });
     if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+
+    // 2026-04-29 — Correlation ID for end-to-end OTA tracing.
+    // Operator: "how did everyone miss these issues on the last 4
+    // builds". Answer: every layer logged in its own silo with no
+    // shared identifier, so we couldn't trace a push from dashboard
+    // → server → WS → kiosk → worker → server → install. This corrId
+    // gets stamped into every log line in the chain. Grep one
+    // value, see the entire push lifetime.
+    const corrId = `ota-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const fpShort = (screen.deviceFingerprint || '').slice(0, 18);
+    console.log(
+      `[OTA ${corrId}] force-update REQUEST screenId=${id} fp=${fpShort}… ` +
+      `screenName="${screen.name}" tenantId=${screen.tenantId} ` +
+      `requestedBy=${req.user.userId || req.user.id}`,
+    );
+
     // Set the per-screen force flag — the next update-check from
     // this kiosk returns the latest APK (gated 30 min).
     await this.prisma.client.screen.update({
       where: { id },
       data: { forceApkUpdatePendingAt: new Date() } as any,
     }).catch((e) => {
-      console.warn('[force-update one] forceApkUpdatePendingAt write failed', (e as Error).message);
+      console.warn(`[OTA ${corrId}] forceApkUpdatePendingAt write FAILED: ${(e as Error).message}`);
     });
+    console.log(`[OTA ${corrId}] forceApkUpdatePendingAt SET`);
+
     const signed = this.signer.signMessage('CHECK_FOR_UPDATES', {
       scope: 'screen',
       scopeId: id,
       tenantId: screen.tenantId,
       requestedBy: req.user.userId || req.user.id || null,
+      // Embed corrId in the WS payload so the kiosk can stamp it
+      // into ITS logs + later /ota-state POSTs. Closes the loop.
+      corrId,
     });
     // Publish on the tenant channel — all kiosks receive, but only the
     // targeted screen acts on it (the payload includes scopeId).
     try {
       await this.redisService.publish(`tenant:${screen.tenantId}`, signed);
+      console.log(`[OTA ${corrId}] WS broadcast PUBLISHED on tenant:${screen.tenantId}`);
     } catch (e) {
-      console.warn('[force-update one] redis publish failed', (e as Error).message);
+      console.warn(`[OTA ${corrId}] redis publish FAILED: ${(e as Error).message}`);
     }
+
     await this.prisma.client.auditLog.create({
       data: {
         action: 'FORCE_APK_UPDATE',
@@ -927,10 +950,10 @@ export class ScreensController {
         targetId: id,
         tenantId: screen.tenantId!,
         userId: req.user.id,
-        details: JSON.stringify({ scope: 'screen', screenName: screen.name }),
+        details: JSON.stringify({ scope: 'screen', screenName: screen.name, corrId }),
       },
     }).catch(() => { /* audit best-effort */ });
-    return { ok: true, scope: 'screen', screenId: id };
+    return { ok: true, scope: 'screen', screenId: id, corrId };
   }
 
   // ─── ADMIN: Delete a screen ───

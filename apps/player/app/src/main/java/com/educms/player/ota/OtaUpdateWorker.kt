@@ -65,18 +65,26 @@ class OtaUpdateWorker(
         // mid-install. Two simultaneous PackageInstaller sessions
         // also collide (STATUS_FAILURE_CONFLICT, dropped silently).
         //
-        // Skip Player's worker entirely when Manager is installed.
-        // Manager's 30-min periodic worker covers everything we'd
-        // do here, faster and silently. If Manager isn't installed
-        // (legacy kiosks pre-bootstrap) Player's worker remains the
-        // only path.
-        if (isManagerInstalled(applicationContext)) {
-            PlayerLogger.i(
-                TAG,
-                "Manager APK is installed — yielding Player OTA to Manager's silent-install worker",
-            )
-            return@withContext Result.success()
-        }
+        // 2026-04-29 — operator: "pushed the update from the app to
+        // the player and got no feedback on the player that anything
+        // was pushed". Audit found Player's worker had been yielding
+        // to Manager whenever Manager was installed. The intent was
+        // "Manager is silent; let it handle it." The reality was:
+        //   - Player WS handler enqueues OtaUpdateWorker
+        //   - Worker exits immediately because Manager is installed
+        //   - The cross-app broadcast to Manager fires but no one
+        //     verifies Manager actually picked it up
+        //   - If Manager's broadcast didn't arrive (BAL block,
+        //     receiver registration race, signature-perm not yet
+        //     granted, etc.), the entire push silently dies
+        //
+        // Fix: BOTH workers run. PackageInstaller naturally
+        // dedupes concurrent same-package commits (one wins,
+        // the other returns STATUS_FAILURE_CONFLICT and exits).
+        // Worst case: one redundant /update-check call. Best case:
+        // the first worker that hits the server installs and the
+        // operator sees feedback regardless of which path won.
+        PlayerLogger.i(TAG, "Player OTA worker firing (Manager-installed=${isManagerInstalled(applicationContext)})")
         try {
             val apiRoot = applicationContext.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
                 .getString("api_root", null) ?: run {
