@@ -891,6 +891,18 @@ function PlayerPage() {
   // the 5-min dashboard timeout + buffer) — if the install actually
   // succeeds the kiosk reboots, which clears all React state anyway.
   const [otaProgress, setOtaProgress] = useState<{ startedAt: number; bridgeAvailable: boolean } | null>(null);
+  // 2026-04-29 — REAL OTA state from server (driven by APK's
+  // OtaUpdateWorker POSTing to /ota-state at each phase). The splash
+  // banner uses this when present; falls back to elapsed-time stage
+  // estimates when server hasn't reported anything yet (e.g. the
+  // moments between dashboard push and the worker's first POST).
+  // Updated from each heartbeat tick.
+  const [serverOtaState, setServerOtaState] = useState<{
+    state: string | null;
+    progress: number | null;
+    message: string | null;
+    at: string | null;
+  } | null>(null);
   // APK version reported by the Android player on the URL as ?v=. Used
   // by the splash screens (pairing / connecting / registering) so the
   // operator can see at a glance which build a kiosk is running. Stays
@@ -1311,6 +1323,28 @@ function PlayerPage() {
           setScreenName(data.name);
           setScreenId(data.screenId);
           setPhase('connecting');
+        }
+        // 2026-04-29 — Pull real OTA state from heartbeat (added to
+        // server response same date). Drives the splash's update
+        // banner with actual CHECKING/DOWNLOADING/INSTALLING progress
+        // instead of elapsed-time estimates.
+        if (data.ota && data.ota.state) {
+          setServerOtaState({
+            state: data.ota.state,
+            progress: typeof data.ota.progress === 'number' ? data.ota.progress : null,
+            message: data.ota.message || null,
+            at: data.ota.at || null,
+          });
+          // If the worker just landed an INSTALLED state, surface
+          // otaProgress (so the banner shows up even if the dashboard
+          // push WS message was missed) and auto-clear after 3s.
+          if (data.ota.state === 'INSTALLED' && !otaProgress) {
+            setOtaProgress({ startedAt: Date.now(), bridgeAvailable: true });
+            setTimeout(() => setOtaProgress(null), 3000);
+          }
+        } else if (serverOtaState) {
+          // Server cleared / returned null → drop our local copy too.
+          setServerOtaState(null);
         }
       } catch { pollFails += 1; }
       // Stretch the interval after repeated failures so we don't hammer a down server.
@@ -2928,6 +2962,25 @@ function PlayerPage() {
                   <Cpu className="w-3.5 h-3.5" /> Activity
                 </div>
                 <div className="space-y-2 text-xs">
+                  {/* 2026-04-29 — operator: "you showed the playlist
+                      name of whats loaded on one of the menus...add
+                      that to the whit screen". The legacy click-
+                      overlay had Playlist + Slide rows; folding them
+                      onto the Activity card here. */}
+                  <div className="flex justify-between gap-2 min-w-0">
+                    <span className="text-slate-500 shrink-0">Playlist</span>
+                    <span className="font-medium text-slate-700 truncate text-right">
+                      {playlist?.name || 'None'}
+                    </span>
+                  </div>
+                  {sorted.length > 0 && !playbackStopped && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Slide</span>
+                      <span className="font-mono font-semibold text-slate-700">
+                        {(currentIndex % sorted.length) + 1} / {sorted.length}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span className="text-slate-500">Last sync</span>
                     <span className="font-medium text-slate-700">{lastSync || 'Never'}</span>
@@ -2994,21 +3047,87 @@ function PlayerPage() {
                 if (x > y) break;
               }
               if (otaProgress) {
-                // Show inline OTA progress in the same slot.
-                const elapsed = Date.now() - otaProgress.startedAt;
-                const stage =
-                  elapsed < 15_000  ? { emoji: '📡', label: 'Sending update signal…' } :
-                  elapsed < 60_000  ? { emoji: '⬇️', label: 'Downloading new player…' } :
-                  elapsed < 150_000 ? { emoji: '⚙️', label: 'Installing… (Android prompt may show)' } :
-                  elapsed < 300_000 ? { emoji: '🔄', label: 'Restarting + reporting back…' } :
-                                       { emoji: '⏱', label: 'No response after 5 minutes — retry on next reboot' };
+                // 2026-04-29 — REAL stage from server-reported
+                // serverOtaState when present, else fall back to
+                // elapsed-time estimates. Operator pushed update
+                // from dashboard → "i want full feedback on the
+                // white screen for that". The OtaUpdateWorker on
+                // the APK POSTs CHECKING → DOWNLOADING (with %)
+                // → VERIFYING → INSTALLING → INSTALLED at each
+                // phase; we surface those exactly.
+                const realState = serverOtaState?.state;
+                const realProgress = serverOtaState?.progress;
+                const realMsg = serverOtaState?.message;
+                let stage: { emoji: string; label: string; pct?: number };
+                if (realState) {
+                  const verLabel = latestApkVersion ? ` v${latestApkVersion}` : '';
+                  switch (realState) {
+                    case 'CHECKING':
+                      stage = { emoji: '📡', label: `Checking for update${verLabel}…` };
+                      break;
+                    case 'DOWNLOADING':
+                      stage = {
+                        emoji: '⬇️',
+                        label: `Downloading new player${verLabel}${typeof realProgress === 'number' ? ` · ${realProgress}%` : '…'}`,
+                        pct: typeof realProgress === 'number' ? realProgress : undefined,
+                      };
+                      break;
+                    case 'VERIFYING':
+                      stage = { emoji: '🔍', label: 'Verifying download integrity…' };
+                      break;
+                    case 'INSTALLING':
+                      stage = { emoji: '⚙️', label: 'Installing… (Android prompt may show — tap Install)' };
+                      break;
+                    case 'INSTALLED':
+                      stage = { emoji: '✅', label: `Update complete${verLabel}. Player will restart.` };
+                      break;
+                    case 'ERROR':
+                      stage = { emoji: '⚠️', label: realMsg || 'Update failed — will retry on next OTA tick.' };
+                      break;
+                    default:
+                      stage = { emoji: '📡', label: `Update in progress (${realState})…` };
+                  }
+                } else {
+                  // Pre-server-state fallback: elapsed-time estimate.
+                  const elapsed = Date.now() - otaProgress.startedAt;
+                  stage =
+                    elapsed < 15_000  ? { emoji: '📡', label: 'Sending update signal…' } :
+                    elapsed < 60_000  ? { emoji: '⬇️', label: 'Downloading new player…' } :
+                    elapsed < 150_000 ? { emoji: '⚙️', label: 'Installing… (Android prompt may show)' } :
+                    elapsed < 300_000 ? { emoji: '🔄', label: 'Restarting + reporting back…' } :
+                                         { emoji: '⏱', label: 'No response after 5 minutes — retry on next reboot' };
+                }
+                const isError = realState === 'ERROR';
+                const isDone = realState === 'INSTALLED';
+                const bg = isError ? 'bg-amber-50 border-amber-200' :
+                           isDone  ? 'bg-emerald-50 border-emerald-200' :
+                                     'bg-indigo-50 border-indigo-200';
+                const titleColor = isError ? 'text-amber-900' :
+                                   isDone  ? 'text-emerald-900' :
+                                             'text-indigo-900';
+                const subColor   = isError ? 'text-amber-700' :
+                                   isDone  ? 'text-emerald-700' :
+                                             'text-indigo-700';
                 return (
-                  <div className="w-full max-w-3xl mb-8 rounded-2xl bg-indigo-50 border border-indigo-200 p-5 flex items-center gap-4">
-                    <span className="text-4xl shrink-0">{stage.emoji}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-bold text-indigo-900">Update in progress</div>
-                      <div className="text-xs text-indigo-700 mt-0.5">{stage.label}</div>
+                  <div className={`w-full max-w-3xl mb-8 rounded-2xl border p-5 ${bg}`}>
+                    <div className="flex items-center gap-4">
+                      <span className="text-4xl shrink-0">{stage.emoji}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className={`text-base font-bold ${titleColor}`}>
+                          {isDone ? 'Update complete' : isError ? 'Update issue' : 'Update in progress'}
+                        </div>
+                        <div className={`text-sm mt-0.5 ${subColor}`}>{stage.label}</div>
+                      </div>
                     </div>
+                    {/* Progress bar — only shown when we have a real % */}
+                    {typeof stage.pct === 'number' && (
+                      <div className="mt-3 h-2 rounded-full bg-indigo-100 overflow-hidden">
+                        <div
+                          className="h-full bg-indigo-500 rounded-full transition-all duration-300"
+                          style={{ width: `${Math.min(100, Math.max(0, stage.pct))}%` }}
+                        />
+                      </div>
+                    )}
                   </div>
                 );
               }

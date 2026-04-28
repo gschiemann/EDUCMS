@@ -286,11 +286,39 @@ export class ScreensController {
       data,
     });
 
+    // 2026-04-29 — surface OTA state on the heartbeat so the web
+    // player's splash can render REAL progress (CHECKING /
+    // DOWNLOADING N% / INSTALLING / etc.) instead of elapsed-time
+    // estimates. The OtaUpdateWorker on the APK POSTs to
+    // /ota-state at each phase; we just relay the latest values
+    // here. Web player already polls this endpoint every 30s, so
+    // we get progress feedback for free.
+    const screenAfterUpdate = await this.prisma.client.screen.findUnique({
+      where: { id: screen.id },
+      select: {
+        lastOtaState: true,
+        lastOtaProgress: true,
+        lastOtaMessage: true,
+        lastOtaAt: true,
+        playerVersion: true,
+        managerVersion: true,
+      } as any,
+    });
     return {
       screenId: screen.id,
       paired: !!screen.tenantId,
       name: screen.name,
       pairingCode: screen.pairingCode,
+      ota: screenAfterUpdate ? {
+        state: (screenAfterUpdate as any).lastOtaState || null,
+        progress: (screenAfterUpdate as any).lastOtaProgress ?? null,
+        message: (screenAfterUpdate as any).lastOtaMessage || null,
+        at: (screenAfterUpdate as any).lastOtaAt || null,
+      } : null,
+      versions: screenAfterUpdate ? {
+        player: (screenAfterUpdate as any).playerVersion || null,
+        manager: (screenAfterUpdate as any).managerVersion || null,
+      } : null,
     };
   }
 
