@@ -2051,11 +2051,47 @@ function PlayerPage() {
   // React tree never re-renders → no acknowledgment. This wrapper
   // flips syncFeedback through syncing → done so the button can
   // briefly show "Syncing…" then "Synced ✓" (~2s) before resetting.
+  //
+  // v1.0.16 second pass — operator (2026-04-28): "url playlist fix
+  // didnt hit, no carousel and no mouse pointer". Cause: Sync only
+  // refetches the manifest; it does NOT reload the page, so the
+  // WebView keeps running the OLD JS chunks the WebView pre-cached
+  // when the kiosk last booted. New web fixes shipped via Vercel
+  // never reach the kiosk until a power-cycle.
+  //
+  // Fix: after a successful manifest sync, also try to detect a
+  // stale web bundle. We sniff the Next.js build hash off any
+  // _next/static/chunks/main script and ask the server for its
+  // current value via a HEAD on the same chunk path. If the chunk
+  // 404s the bundle has been redeployed — call EduCmsNative.reload()
+  // to force a WebView reload. Native bridge missing (legacy APK
+  // or browser preview) → graceful no-op.
   const handleSyncWithFeedback = useCallback(async () => {
     setSyncFeedback('syncing');
     try {
       await fetchContent();
       setSyncFeedback('done');
+      // Best-effort stale-bundle detection. Catches Vercel redeploys
+      // that ship without an APK bump (cursor-paths, widget render
+      // tweaks, proxy URL params). Failure to reload here is fine —
+      // the next OTA APK push will force a relaunch anyway.
+      try {
+        const mainChunk = Array.from(document.scripts)
+          .map(s => s.src)
+          .find(src => /\/_next\/static\/chunks\/main/.test(src));
+        if (mainChunk) {
+          const head = await fetch(mainChunk, { method: 'HEAD', cache: 'no-store' });
+          if (head.status === 404) {
+            const bridge = (window as any).EduCmsNative;
+            if (bridge && typeof bridge.reload === 'function') {
+              bridge.reload();
+            } else {
+              // Browser preview fallback — operator gets a fresh load.
+              window.location.reload();
+            }
+          }
+        }
+      } catch { /* swallow — reload is best-effort */ }
     } catch {
       setSyncFeedback('err');
     } finally {

@@ -45,27 +45,45 @@ const WIDGET_TYPE_LABELS: Record<string, string> = {
 // Map a variant's category (the scene name) to school grade levels.
 // Each variant can fit one or more levels; "Universal" means it works K-12.
 //
-// 2026-04-27 — operator removed the "Early Childhood" filter chip
-// (we don't sell into Pre-K / daycare; the EC label was confusing
-// elementary admins who'd see EC-tagged variants and assume the
-// CMS was kid-only). Variants previously tagged 'Early Childhood'
-// fall back to 'Elementary' so they still surface for K-5 admins.
+// 2026-04-28 — operator: "the filters in widgets dont seem to do
+// anyting, i dont think you have lined up the filtered templates to
+// the widgets that belong to them for each school." Two fixes:
+//
+//  1. Categories LITERALLY named after a level (HIGH, MIDDLE,
+//     ELEMENTARY) now strictly map to that level — no Universal
+//     fallback. A "MIDDLE School Lunch Menu" should NOT appear in
+//     the Elementary filter just because its category isn't in the
+//     table. Previously the map didn't include HIGH or MIDDLE at
+//     all, so they fell through to Universal and showed everywhere.
+//
+//  2. Categories that aren't level-themed (MODERN, MINIMAL, etc) get
+//     'Universal' so they appear under every level chip — those are
+//     legit school-agnostic styles.
+//
+//  Plus filled in the previously-missing BROADCAST, LOBBY entries.
 const CATEGORY_TO_LEVELS: Record<string, string[]> = {
-  CLASSROOM:  ['Elementary', 'Middle'],
+  // Strict level categories — only that level, no Universal.
   ELEMENTARY: ['Elementary'],
+  MIDDLE:     ['Middle'],
+  HIGH:       ['High'],
+  // Functional categories — bias toward a couple of levels.
+  CLASSROOM:  ['Elementary', 'Middle'],
   PLAYFUL:    ['Elementary'],
-  CAFETERIA:  ['Universal'],
   HALLWAY:    ['Middle', 'High'],
-  SAFETY:     ['Universal'],
-  LIBRARY:    ['Universal'],
-  OFFICE:     ['Universal'],
   ATHLETICS:  ['Middle', 'High'],
   ARTS:       ['Middle', 'High'],
   STEM:       ['Middle', 'High'],
   DARK:       ['High'],
   BOLD:       ['High'],
+  // Universal — work everywhere.
+  CAFETERIA:  ['Universal'],
+  SAFETY:     ['Universal'],
+  LIBRARY:    ['Universal'],
+  OFFICE:     ['Universal'],
   MODERN:     ['Universal'],
   MINIMAL:    ['Universal'],
+  BROADCAST:  ['Universal'],
+  LOBBY:      ['Universal'],
 };
 
 function variantLevels(category?: string): string[] {

@@ -217,6 +217,21 @@ export function BackgroundPanel() {
 
   return (
     <div className="flex flex-col h-full overflow-y-auto pb-6">
+      {/* DEBUG STRIP — temporary diagnostic to verify clicks actually
+          mutate the Zustand store. Operator (2026-04-28): "no fucking
+          background get apploed to the canvas". This panel updates
+          on every store change; if clicking a swatch flips these
+          values we know the panel + store are wired correctly and
+          the bug is in BuilderCanvas's render path. If they don't
+          flip, the click isn't reaching my onClick. Remove once
+          we've confirmed the path works in production. */}
+      <div className="border-b border-amber-300 p-2 bg-amber-50 text-[10px] font-mono text-amber-900 leading-tight">
+        <div className="font-bold uppercase tracking-wider text-amber-700 mb-1">debug · store meta</div>
+        <div>color: <span className="font-semibold">{currentBgColor || '(none)'}</span></div>
+        <div>gradient: <span className="font-semibold">{(currentBgGradient || '(none)').slice(0, 60)}</span></div>
+        <div>image: <span className="font-semibold">{currentBgImage ? currentBgImage.slice(-30) : '(none)'}</span></div>
+        <div className="mt-1 italic text-amber-700">click any tile below; these values should update instantly.</div>
+      </div>
       {/* Currently-applied preview strip — shows what's on the canvas */}
       <div className="border-b border-slate-200/50 p-3 bg-slate-50/40">
         <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">
