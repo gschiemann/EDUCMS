@@ -166,7 +166,17 @@ object ManagerBootstrap {
                         session.fsync(output)
                     }
                 }
-                val resultIntent = Intent("com.educms.player.MANAGER_BOOTSTRAP_RESULT").apply {
+                // CRITICAL FIX (v1.0.15): reuse the EXISTING
+                // OtaInstallReceiver (action com.educms.player.OTA_INSTALL_RESULT)
+                // instead of inventing MANAGER_BOOTSTRAP_RESULT, which
+                // had no listener registered. The OTA receiver already
+                // knows how to handle STATUS_PENDING_USER_ACTION by
+                // launching the system Install prompt as an activity.
+                // Without this, install commits returned PENDING_USER_ACTION
+                // to a broadcast nobody received → install silently
+                // stalled. Operator on The Den (2026-04-27): "side
+                // loaded the apk and no manager loaded anywhere".
+                val resultIntent = Intent("com.educms.player.OTA_INSTALL_RESULT").apply {
                     setPackage(ctx.packageName)
                 }
                 val statusPi = PendingIntent.getBroadcast(
@@ -177,7 +187,7 @@ object ManagerBootstrap {
                 )
                 session.commit(statusPi.intentSender)
                 PlayerLogger.i(TAG, "Manager install session committed (id=$sessionId source=$source)")
-                showToast(ctx, "Companion install committed (Android may prompt to confirm)")
+                showToast(ctx, "Companion install committed (system prompt may appear)")
             }
         } catch (e: Exception) {
             PlayerLogger.w(TAG, "Manager install failed: ${e.message}", e)
