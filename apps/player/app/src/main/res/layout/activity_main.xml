@@ -24,6 +24,28 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!-- v1.0.39 — URL playlist overlay WebView.
+         Sits on TOP of the React player WebView. Hidden by default.
+         When the playlist hits a URL asset, JS bridge.showUrlOverlay
+         navigates this WebView to the upstream URL and flips it
+         visible. The React player WebView keeps running underneath
+         (its playlist scheduler ticks normally), so when the playlist
+         advances to the next non-URL item, JS bridge.hideUrlOverlay
+         tears the overlay down.
+
+         Why a separate WebView: the previous v1.0.36-37 design
+         navigated the React WebView itself away to the URL and back,
+         which (a) destroyed React state every cycle, (b) created a
+         "connecting splash → URL → connecting splash" reload loop
+         on URL-heavy or single-URL playlists. Two WebViews — one
+         for content, one for URL — is what every other CMS does
+         (Goodview Cloud, Yodeck, OptiSigns). -->
+    <WebView
+        android:id="@+id/urlOverlayView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
     <!-- Manager-install gate. v1.0.23: Player MUST NOT show its WebView
          (pairing screen, splash, kiosk content) until the Manager
          companion APK is confirmed installed. Without Manager, the
