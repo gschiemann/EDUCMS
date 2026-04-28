@@ -146,45 +146,51 @@ export class ProxyController {
       // mine because later tags win. Drop it so our injection sticks.
       html = html.replace(/<meta[^>]*name\s*=\s*["']?color-scheme["']?[^>]*>/gi, '');
 
-      // Lazy-load fix: WPRocket / WP-Smush / native lazy / Lighthouse
-      // optimizers swap <img src="…"> for <img data-lazy-src="…">
-      // and reveal it via JS. Our proxy strips JS, so without this
-      // rewrite the images stay invisible and the hero/top section
-      // looks empty. Operator (2026-04-27): "the URL is still showing
-      // black background and white text which is not what the website
-      // has... fix just the top section of this website so we can
-      // have it visible with images."
+      // Lazy-load + force-visible only when we DIDN'T render via SSR.
+      // Operator-reported regression (2026-04-27 on e-arc.com via
+      // Puppeteer SSR): "it seems to have expanded every single text
+      // field on the website and launch some google review...
+      // happens where it engages every single toggle."
       //
-      // We promote every common lazy attribute to its real form
-      // BEFORE the browser parses the HTML, so the image loads on
-      // first paint with no JS required.
-      // Covers: WPRocket, Smush, Lazy Load by WP Rocket, jQuery
-      // lazyload, lazysizes, native loading="lazy" (no rewrite
-      // needed; just for noscript fallbacks).
-      const lazyAttrs = [
-        'data-lazy-src',
-        'data-src',
-        'data-lazyload',
-        'data-original',
-        'data-srcset',
-        'data-lazy-srcset',
-      ];
-      for (const attr of lazyAttrs) {
-        const target = attr.replace(/^data-/, '').replace('lazy-', '').replace('original', 'src').replace('lazyload', 'src');
-        const realAttr = target === 'src' || target === 'srcset' ? target : 'src';
-        // <img data-lazy-src="…" /> → <img src="…" />
+      // Cause: the force-display:revert CSS we inject below was
+      // designed for the strip-scripts path (where JS-revealed
+      // content stays display:none forever). With Chromium SSR,
+      // the page is already in its proper post-load state — every
+      // display:none INTENTIONAL hides modals, dropdowns, mobile
+      // menus, accordions, hover-tooltips, click-to-expand
+      // reviews, etc. Force-revealing them all = visual chaos.
+      //
+      // Fix: lazy-attribute promotion + force-visible CSS only
+      // applies on the strip-scripts (fetch) path. SSR output
+      // gets only the color-scheme + base-href injection (still
+      // valuable — kiosks may inherit dark-mode from their host
+      // OS, and base-href fixes relative-URL resources).
+      if (renderedBy === 'fetch') {
+        const lazyAttrs = [
+          'data-lazy-src',
+          'data-src',
+          'data-lazyload',
+          'data-original',
+          'data-srcset',
+          'data-lazy-srcset',
+        ];
+        for (const attr of lazyAttrs) {
+          const target = attr.replace(/^data-/, '').replace('lazy-', '').replace('original', 'src').replace('lazyload', 'src');
+          const realAttr = target === 'src' || target === 'srcset' ? target : 'src';
+          // <img data-lazy-src="…" /> → <img src="…" />
+          html = html.replace(
+            new RegExp(`(<(?:img|source|video|audio|iframe)\\b[^>]*?)\\s${attr}\\s*=\\s*(["'])([^"']*)\\2`, 'gi'),
+            `$1 ${realAttr}="$3"`,
+          );
+        }
+        // Strip the now-redundant lazy-load placeholder src that some
+        // plugins insert (a 1×1 transparent gif). Without removing it,
+        // the placeholder paints over the real image until JS runs.
         html = html.replace(
-          new RegExp(`(<(?:img|source|video|audio|iframe)\\b[^>]*?)\\s${attr}\\s*=\\s*(["'])([^"']*)\\2`, 'gi'),
-          `$1 ${realAttr}="$3"`,
+          /(<(?:img|source)\b[^>]*?)\ssrc\s*=\s*(["'])data:image\/[^"']*\2/gi,
+          '$1',
         );
       }
-      // Strip the now-redundant lazy-load placeholder src that some
-      // plugins insert (a 1×1 transparent gif). Without removing it,
-      // the placeholder paints over the real image until JS runs.
-      html = html.replace(
-        /(<(?:img|source)\b[^>]*?)\ssrc\s*=\s*(["'])data:image\/[^"']*\2/gi,
-        '$1',
-      );
 
       // Force-render lazy sections. WPRocket marks below-the-fold
       // sections with data-wpr-lazyrender="1" and reveals them when
@@ -207,11 +213,19 @@ export class ProxyController {
       // false even when the parent OS is in dark mode. Sites that
       // are intentionally dark-themed (no media query — just dark
       // CSS as the default) are unaffected.
-      // Style injection — light color-scheme + force lazy-rendered
-      // sections visible (since the JS that would reveal them is
-      // stripped). Inline so it's present on first paint with no
-      // network round-trip.
-      const proxyForceVisibleCss = `:root{color-scheme:light only !important;}` +
+      // Style injection. The aggressive force-visible rules are ONLY
+      // safe on the strip-scripts (fetch) path — when Chromium runs
+      // the page (SSR), display:none is intentional (modals, mobile
+      // menus, accordions, click-to-expand reviews) and force-
+      // revealing them creates visual chaos.
+      //
+      // SSR path: just color-scheme normalization. Page is already
+      //           in its proper post-load state.
+      // Fetch path: full force-visible CSS so JS-revealed content
+      //           appears even though we stripped the JS.
+      const baselineCss = `:root{color-scheme:light only !important;}` +
+        `html,body{background-color:#fff !important;color:#222 !important;}`;
+      const aggressiveForceVisibleCss = baselineCss +
         // Lazy-render placeholders (WPRocket): force visible.
         `[data-wpr-lazyrender]{content-visibility:visible !important;display:revert !important;}` +
         // jQuery / lazysizes "lazyload" class: force visible.
@@ -226,12 +240,10 @@ export class ProxyController {
         `body [style*="display:none"]:not(noscript):not(script):not(style):not(template):not(meta):not(link){display:revert !important;}` +
         `body [style*="display: none"]:not(noscript):not(script):not(style):not(template):not(meta):not(link){display:revert !important;}` +
         `body [style*="visibility:hidden"]{visibility:visible !important;}` +
-        `body [style*="visibility: hidden"]{visibility:visible !important;}` +
-        // Force white background as the base canvas — neutralizes any
-        // .has-black-background-color classes that fire BEFORE the page
-        // has a chance to set its own theme via JS. Operator-confirmed
-        // light render on e-arc.com.
-        `html,body{background-color:#fff !important;color:#222 !important;}`;
+        `body [style*="visibility: hidden"]{visibility:visible !important;}`;
+      const proxyForceVisibleCss = renderedBy === 'ssr'
+        ? baselineCss
+        : aggressiveForceVisibleCss;
       const headInjection = `<base href="${baseUrl}"><meta name="color-scheme" content="light only"><style>${proxyForceVisibleCss}</style>`;
       if (html.includes('<head>')) {
         html = html.replace('<head>', `<head>\n${headInjection}`);
