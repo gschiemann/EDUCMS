@@ -8,6 +8,7 @@ import type { Zone, ResizeHandle } from './types';
 import { getZoneColor, widgetIcon, widgetLabel } from './constants';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { appAlert } from '@/components/ui/app-dialog';
+import { useBuilderStore } from './useBuilderStore';
 
 interface Props {
   zone: Zone;
@@ -36,6 +37,20 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
   const color = getZoneColor(zone.widgetType);
   const icon = widgetIcon(zone.widgetType);
   const label = widgetLabel(zone.widgetType);
+
+  // 2026-04-28 — operator: 'same white background with color
+  // selected'. Cause: every zone hardcoded background:'#ffffff' in
+  // edit mode (line ~209), so when the operator paints a canvas
+  // bg it gets covered by the placeholder zone's solid white. Fix:
+  // when the canvas has ANY background set (color/gradient/image),
+  // make zones transparent so the canvas bg shows through. The
+  // colored 3px border + corner ribbon + label badge stay, so zones
+  // remain unmistakable. When canvas is default (white), keep the
+  // solid white interior so the partner's earlier fix ('saw
+  // transparent box on white canvas') is preserved.
+  const hasCanvasBg = useBuilderStore(
+    (s) => !!(s.meta.bgColor || s.meta.bgGradient || s.meta.bgImage),
+  );
 
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -203,10 +218,15 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         // pastel zone color at 50% opacity) but those pastels are
         // already #f8/#f0/#fef9 etc., so a half-opacity tint over a
         // similar-pale canvas was effectively invisible — partner
-        // saw "transparent box". Now: solid white interior + 3px
+        // saw "transparent box". Solid white interior + 3px
         // colored border + colored corner ribbon + label badge.
-        // No way for an empty zone to read as nothing.
-        background: previewMode ? 'transparent' : '#ffffff',
+        //
+        // 2026-04-28 — when the canvas has a background painted on
+        // it, swap the white interior for transparent so the
+        // operator's bg shows through. The colored border + label
+        // badge keep zone position obvious; the white interior is
+        // only needed against the default white canvas.
+        background: previewMode ? 'transparent' : (hasCanvasBg ? 'transparent' : '#ffffff'),
         border: previewMode
           ? 'none'
           : (selected ? `3px dashed ${color.accent}` : `3px solid ${color.accent}`),

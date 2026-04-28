@@ -34,6 +34,7 @@
  */
 
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Check } from 'lucide-react';
 
 // ─── Constants ───────────────────────────────────────────────────────
@@ -118,12 +119,52 @@ export interface ColorPickerFieldProps {
 /**
  * Drop-in replacement for the old <input type="color"> ColorField.
  * Same call signature; opens a popover instead of the OS picker.
+ *
+ * 2026-04-28 — operator: 'your color picker for text sits behind
+ * the fucking canvas'. Cause: the popover was rendered as
+ * `position: absolute` inside the toolbar's local container.
+ * The canvas creates its own stacking context (its inner
+ * shadow-2xl + transform-creating styles), so even at z-[10001]
+ * the popover got painted behind. Fix: render the popover via
+ * React.createPortal into document.body, with `position: fixed`
+ * coordinates derived from the trigger's bounding rect. Escapes
+ * every clipping/stacking ancestor.
  */
 export function ColorPickerField({ label, value, onChange, allowTransparent }: ColorPickerFieldProps) {
   const [open, setOpen] = useState(false);
+  const [popPos, setPopPos] = useState<{ top: number; left: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const isTransparent = !value || value === 'transparent';
+
+  // Compute popover position from trigger bounding rect — runs every
+  // time we open and on window resize while open.
+  useEffect(() => {
+    if (!open) return;
+    const POP_W = 260;
+    const POP_H = 320;
+    const computePos = () => {
+      const t = triggerRef.current;
+      if (!t) return;
+      const r = t.getBoundingClientRect();
+      let top = r.bottom + 4;
+      let left = r.left;
+      // Flip up if it would overflow the viewport
+      if (top + POP_H > window.innerHeight - 8) {
+        top = Math.max(8, r.top - POP_H - 4);
+      }
+      // Clamp horizontally
+      left = Math.max(8, Math.min(left, window.innerWidth - POP_W - 8));
+      setPopPos({ top, left });
+    };
+    computePos();
+    window.addEventListener('resize', computePos);
+    window.addEventListener('scroll', computePos, true);
+    return () => {
+      window.removeEventListener('resize', computePos);
+      window.removeEventListener('scroll', computePos, true);
+    };
+  }, [open]);
 
   // Close on outside click + Escape
   useEffect(() => {
@@ -171,12 +212,13 @@ export function ColorPickerField({ label, value, onChange, allowTransparent }: C
           {isTransparent ? 'transparent' : value}
         </span>
       </button>
-      {open && (
+      {open && popPos && typeof document !== 'undefined' && createPortal(
         <div
           ref={popRef}
           role="dialog"
           aria-label="Color picker"
-          className="absolute z-[10001] mt-1 left-0 w-[260px] bg-white rounded-xl shadow-2xl ring-1 ring-slate-200 p-3 space-y-3"
+          className="fixed z-[100000] w-[260px] bg-white rounded-xl shadow-2xl ring-1 ring-slate-200 p-3 space-y-3"
+          style={{ top: popPos.top, left: popPos.left }}
         >
           <ColorPickerBody
             value={isTransparent ? '#3b82f6' : value}
@@ -201,7 +243,8 @@ export function ColorPickerField({ label, value, onChange, allowTransparent }: C
               Done
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

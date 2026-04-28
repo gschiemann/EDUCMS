@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Palette, Image as ImageIcon, Code2, Upload, X, Check, Pipette } from 'lucide-react';
 import { useBuilderStore } from './useBuilderStore';
 import { useTemplate } from '@/hooks/use-api';
@@ -524,8 +525,36 @@ export function BackgroundPanel() {
  */
 function ColorPickerSection({ currentColor, onPick }: { currentColor: string; onPick: (hex: string) => void }) {
   const [open, setOpen] = useState(false);
+  const [popPos, setPopPos] = useState<{ top: number; left: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
+
+  // Compute popover position from trigger bounding rect — same
+  // pattern ColorPickerField uses to escape clipping ancestors.
+  useEffect(() => {
+    if (!open) return;
+    const POP_W = 280;
+    const POP_H = 360;
+    const computePos = () => {
+      const t = triggerRef.current;
+      if (!t) return;
+      const r = t.getBoundingClientRect();
+      let top = r.bottom + 8;
+      let left = r.left;
+      if (top + POP_H > window.innerHeight - 8) {
+        top = Math.max(8, r.top - POP_H - 4);
+      }
+      left = Math.max(8, Math.min(left, window.innerWidth - POP_W - 8));
+      setPopPos({ top, left });
+    };
+    computePos();
+    window.addEventListener('resize', computePos);
+    window.addEventListener('scroll', computePos, true);
+    return () => {
+      window.removeEventListener('resize', computePos);
+      window.removeEventListener('scroll', computePos, true);
+    };
+  }, [open]);
 
   // Close on outside click + Escape — same UX the original
   // ColorPickerField uses.
@@ -585,12 +614,13 @@ function ColorPickerSection({ currentColor, onPick }: { currentColor: string; on
         </div>
       </div>
 
-      {open && (
+      {open && popPos && typeof document !== 'undefined' && createPortal(
         <div
           ref={popRef}
           role="dialog"
           aria-label="Color picker"
-          className="absolute z-[10001] mt-2 left-4 right-4 bg-white rounded-xl shadow-2xl ring-1 ring-slate-200 p-3 space-y-3"
+          className="fixed z-[100000] w-[280px] bg-white rounded-xl shadow-2xl ring-1 ring-slate-200 p-3 space-y-3"
+          style={{ top: popPos.top, left: popPos.left }}
         >
           <ColorPickerBody
             value={isUnset ? '#3b82f6' : display}
@@ -605,7 +635,8 @@ function ColorPickerSection({ currentColor, onPick }: { currentColor: string; on
               Done
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </section>
   );
