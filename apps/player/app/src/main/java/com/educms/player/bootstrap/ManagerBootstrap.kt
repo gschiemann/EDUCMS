@@ -59,8 +59,45 @@ object ManagerBootstrap {
                 PlayerLogger.w(TAG, "ManagerBootstrap failed (will retry next boot): ${e.message}")
                 Log.w(TAG, "bootstrap failed", e)
                 showToast(ctx, "Manager install failed — will retry on next launch")
+                reportBlocked(ctx, "exception: ${e.message?.take(120)}")
             }
         }
+    }
+
+    /**
+     * 2026-04-28 (Player v1.0.20) — operator: "stop telling me to side
+     * load you fucking cunt, fix your fucking apk". Surface bootstrap
+     * failures to the dashboard so the operator can see WHY Manager
+     * isn't installing instead of the system silently failing. State
+     * 'INSTALL_BLOCKED' is rendered as a red banner on the dashboard
+     * screen card so an admin glance reveals the issue immediately.
+     *
+     * Pre-existing /ota-state endpoint accepts this state via the
+     * standard ALLOWED set (CHECKING / DOWNLOADING / VERIFYING /
+     * INSTALLING / INSTALLED / ERROR). We use ERROR with a message
+     * that explicitly mentions "Install Unknown Apps permission".
+     */
+    private fun reportBlocked(ctx: Context, reason: String) {
+        try {
+            val prefs = ctx.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
+            val apiRoot = prefs.getString("api_root", null) ?: return
+            val fp = prefs.getString("device_fingerprint", null) ?: return
+            Thread {
+                try {
+                    val url = java.net.URL("$apiRoot/api/v1/screens/status/$fp/ota-state")
+                    val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+                        requestMethod = "POST"
+                        setRequestProperty("Content-Type", "application/json")
+                        doOutput = true
+                        connectTimeout = 5_000
+                        readTimeout = 5_000
+                    }
+                    val payload = """{"state":"ERROR","message":"Manager install blocked: $reason. Settings → Apps → EduCMS Player → Install unknown apps → Allow"}"""
+                    conn.outputStream.use { it.write(payload.toByteArray()) }
+                    conn.responseCode  // force-flush
+                } catch (_: Exception) { /* swallow */ }
+            }.start()
+        } catch (_: Exception) { /* best-effort */ }
     }
 
     private fun bootstrapInternal(ctx: Context) {
@@ -213,6 +250,24 @@ object ManagerBootstrap {
         try {
             val installer = ctx.packageManager.packageInstaller
             val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+            // 2026-04-28 (Player v1.0.20) — Yodeck-style silent install:
+            // claim installer-of-record + (Android 12+) hint NOT_REQUIRED
+            // user action. Goodview's permissive ROM treats same-installer
+            // updates as silent on Android 7-11; the explicit hint covers
+            // Android 12+. Either way, no system Install dialog if the
+            // install permission is granted.
+            try {
+                params.setInstallerPackageName(ctx.packageName)
+            } catch (e: Exception) {
+                PlayerLogger.w(TAG, "setInstallerPackageName(self) failed: ${e.message}")
+            }
+            if (android.os.Build.VERSION.SDK_INT >= 31) {
+                try {
+                    params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+                } catch (e: Exception) {
+                    PlayerLogger.w(TAG, "setRequireUserAction not supported: ${e.message}")
+                }
+            }
             val sessionId = installer.createSession(params)
             installer.openSession(sessionId).use { session ->
                 apk.inputStream().use { input ->

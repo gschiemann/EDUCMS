@@ -18,6 +18,14 @@
          as the default installer via `pm set-installer com.educms.player`
          (one-shot ADB), which makes installs silent.  -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Android 12+ silent self-update: combined with
+         setRequireUserAction(USER_ACTION_NOT_REQUIRED) on the
+         PackageInstaller session, this is the path Yodeck and other
+         signage products use to install updates without prompting.
+         Works for self-updates and for installing packages we
+         previously installed. Falls back to user prompt on Android 11
+         and older where the permission doesn't exist. -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <!--
       Permission to write to the Manager APK's PlayerHealthProvider

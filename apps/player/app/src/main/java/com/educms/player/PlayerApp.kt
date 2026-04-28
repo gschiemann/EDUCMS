@@ -60,6 +60,26 @@ class PlayerApp : Application() {
         )
         ensureNotificationChannels()
         UsbCacheIndex.reload(this)
+        // 2026-04-28 (Player v1.0.20) — operator: "i installed yodeck
+        // on our fucking screens... it worked on android 9". Yodeck's
+        // silent-install trick on permissive Goodview ROMs hinges on
+        // claiming installer-of-record status via setInstallerPackageName.
+        // Once we own that field, the OS treats subsequent updates as
+        // same-installer self-updates and Goodview's permissive ROM
+        // skips the system Install dialog. Idempotent — running every
+        // launch is safe; the call no-ops if we're already the installer.
+        // Required: the previous installer must hold INSTALL_PACKAGES;
+        // OEM file managers on Goodview / NovaStar typically do.
+        try {
+            @Suppress("DEPRECATION")
+            packageManager.setInstallerPackageName(packageName, packageName)
+            PlayerLogger.i("PlayerApp", "claimed installer-of-record (self) for $packageName")
+        } catch (e: Exception) {
+            // SecurityException on stricter ROMs; doesn't break anything,
+            // just means silent self-update isn't available — fall back
+            // to user-prompt path.
+            PlayerLogger.w("PlayerApp", "setInstallerPackageName(self) failed: ${e.message}")
+        }
         HeartbeatService.ensureRunning(this)
         Watchdog.arm(this)
         scheduleOtaWorker()

@@ -29,6 +29,17 @@
          system grants INSTALL_PACKAGES (a signature-only permission)
          silently and the install prompt is suppressed. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Android 12+ silent self-update: combined with
+         setRequireUserAction(USER_ACTION_NOT_REQUIRED) on the
+         PackageInstaller session, this is the path Yodeck and other
+         signage products use to install updates without prompting.
+         Works for self-updates AND for updating packages we
+         previously installed. Manager bootstraps Player initially —
+         after that first install, Manager can update Player silently
+         on Android 12+ via this permission. Falls back to user
+         prompt on Android 11 and older where the permission doesn't
+         exist. -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <!-- Required when calling startActivity for a different package
          (Player) on Android 11+ scoped queries. -->

@@ -47,6 +47,34 @@ object OtaInstaller {
         // Pin the target package so a session can't be redirected
         // to install something else.
         params.setAppPackageName(targetPackage)
+        // 2026-04-28 (Manager v1.0.4) — operator: "i installed yodeck
+        // on our fucking screens... it worked on android 7". Yodeck's
+        // silent-install trick on permissive Goodview/NovaStar ROMs
+        // is the combination of:
+        //
+        //   (a) setInstallerPackageName(ourPackage) — declare we own
+        //       the installer-of-record for the target. Goodview's
+        //       ROM uses this to short-circuit the system Install
+        //       prompt for same-installer updates.
+        //   (b) On Android 12+, setRequireUserAction(NOT_REQUIRED)
+        //       + UPDATE_PACKAGES_WITHOUT_USER_ACTION permission.
+        //
+        // We do BOTH so the silent path activates regardless of
+        // Android version. Failure of either falls back to the
+        // existing user-prompt path, no regression.
+        try {
+            params.setInstallerPackageName(ctx.packageName)
+        } catch (e: Exception) {
+            Log.w(TAG, "setInstallerPackageName(${ctx.packageName}) failed: ${e.message}")
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            try {
+                params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+                Log.i(TAG, "session params: USER_ACTION_NOT_REQUIRED set (Android 12+ path)")
+            } catch (e: Exception) {
+                Log.w(TAG, "setRequireUserAction not supported: ${e.message}")
+            }
+        }
 
         val sessionId = try {
             installer.createSession(params)
