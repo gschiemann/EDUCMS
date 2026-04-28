@@ -29,8 +29,19 @@
          system grants INSTALL_PACKAGES (a signature-only permission)
          silently and the install prompt is suppressed. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <!-- (UPDATE_PACKAGES_WITHOUT_USER_ACTION removed in v1.0.5 —
-         was only useful on Android 12+; current pilot is Android 11.) -->
+    <!-- UPDATE_PACKAGES_WITHOUT_USER_ACTION: re-added in v1.0.8 after
+         being removed in v1.0.5. This declaration is required for
+         PackageInstaller.SessionParams.setRequireUserAction(USER_ACTION_NOT_REQUIRED)
+         to take effect on API 31+ DEVICE_OWNER kiosks.
+         The v1.0.4 VerifyError crash on Android 11 was NOT caused by
+         this permission declaration — it was caused by API-31 symbols
+         (setRequireUserAction, USER_ACTION_NOT_REQUIRED) referenced
+         directly in OtaInstaller, which ART resolved at class-load
+         time on Android 11. That crash is now fixed by isolating those
+         symbols in Api31SilentInstall (@RequiresApi(31) object) which
+         ART never loads on pre-31 devices. This permission is harmless
+         on Android 11 (not enforced there). -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <!-- v1.0.6 — Full-screen-intent notification is the BAL bypass
          for launching the install-prompt Activity from a non-
          foregrounded context (Manager has no MainActivity). The
@@ -119,21 +130,29 @@
             </intent-filter>
         </receiver>
 
-        <!-- Self-install confirmation receiver (Manager v1.0.3+).
-             MY_PACKAGE_REPLACED is the only reliable "we just got
-             upgraded" signal across Goodview/NovaStar/TCL ROMs that
-             otherwise drop the install-result broadcast. Restarts
-             watchdog (Goodview kills FGS across package-replace),
-             clears the in-flight install marker, and reschedules
-             workers so cadence/constraints from the new APK take
-             effect. See PackageReplacedReceiver.kt for the full
-             rationale. -->
+        <!-- Package-replace receiver (Manager v1.0.8+).
+             Two intent-filters:
+             1. MY_PACKAGE_REPLACED — Manager upgraded itself. Restarts
+                watchdog (Goodview kills FGS across package-replace),
+                clears in-flight install marker, reschedules workers.
+             2. PACKAGE_REPLACED — ANY package on the device replaced
+                itself. Receiver filters by data URI in code; only
+                com.educms.player and .debug are acted upon. This is
+                the P0 fix for the operator-reported post-OTA relaunch
+                failure: Player's OTA completes, Player's process dies,
+                Manager observes PACKAGE_REPLACED and relaunches Player.
+                Without this, the kiosk strands on the home launcher.
+             See PackageReplacedReceiver.kt for the full rationale. -->
         <receiver
             android:name=".PackageReplacedReceiver"
             android:enabled="true"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.PACKAGE_REPLACED" />
+                <data android:scheme="package" />
             </intent-filter>
         </receiver>
 
