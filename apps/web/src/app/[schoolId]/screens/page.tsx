@@ -1,6 +1,6 @@
 "use client";
 
-import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag } from 'lucide-react';
+import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
@@ -222,6 +222,90 @@ function PlayerKindChip({ screen }: { screen: any }) {
       {icon}
       {browserName}
     </span>
+  );
+}
+
+/**
+ * Device fingerprint row — diagnostic field shown inside the gear popover.
+ *
+ * Why this exists (2026-04-28): during a live OTA incident the operator had
+ * no way to retrieve the kiosk's fingerprint without opening DevTools and
+ * reading the /api/v1/screens response JSON. The fingerprint is the only
+ * DB key that ties a support ticket back to a specific kiosk row, so it
+ * needs to be one click away from the screens list.
+ *
+ * Copy-to-clipboard pattern (not select-and-copy) because the popover is
+ * 256px wide and the fingerprint is 30+ chars; manual selection at that
+ * width is fiddly. Click → check icon flash → resets after 1.6s.
+ */
+function DeviceFingerprintRow({ fingerprint }: { fingerprint: string }) {
+  const [copied, setCopied] = useState(false);
+
+  if (!fingerprint) {
+    return (
+      <div className="px-3.5 py-2.5 border-t border-slate-100 bg-slate-50/40">
+        <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+          Device fingerprint
+        </div>
+        <div className="text-[10px] text-slate-400 italic">
+          Not yet reported — kiosk has not registered.
+        </div>
+      </div>
+    );
+  }
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(fingerprint);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // Some browsers / iframes block clipboard. Fall back to a
+      // text-area-and-execCommand selection so the operator can at
+      // least Ctrl+C from a focused field.
+      const ta = document.createElement('textarea');
+      ta.value = fingerprint;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try { document.execCommand('copy'); setCopied(true); window.setTimeout(() => setCopied(false), 1600); } catch {}
+      document.body.removeChild(ta);
+    }
+  };
+
+  return (
+    <div className="px-3.5 py-2.5 border-t border-slate-100 bg-slate-50/40">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
+          Device fingerprint
+        </div>
+        <button
+          type="button"
+          onClick={handleCopy}
+          title={copied ? 'Copied!' : 'Copy fingerprint to clipboard'}
+          aria-label={copied ? 'Copied' : 'Copy device fingerprint'}
+          className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500 hover:text-slate-800 px-1.5 py-0.5 rounded hover:bg-slate-100 transition-colors"
+        >
+          {copied ? (
+            <>
+              <Check className="w-3 h-3 text-emerald-600" />
+              <span className="text-emerald-700">Copied</span>
+            </>
+          ) : (
+            <>
+              <Copy className="w-3 h-3" />
+              <span>Copy</span>
+            </>
+          )}
+        </button>
+      </div>
+      <div className="font-mono text-[10px] text-slate-700 break-all leading-tight select-all">
+        {fingerprint}
+      </div>
+    </div>
   );
 }
 
@@ -550,6 +634,15 @@ function ScreenSettingsMenu({
             <ExternalLink className="w-4 h-4 text-slate-400 shrink-0" />
             Open preview in browser
           </a>
+
+          {/* Device fingerprint — diagnostic field. Surfaced 2026-04-28
+              after a live OTA incident where the operator had no
+              operator-friendly way to retrieve the fingerprint to
+              probe /api/v1/screens/status/<fp>. The fingerprint is the
+              only DB key tying support tickets to the kiosk. Copy
+              button instead of select-text because the string is 30+
+              chars in a 256px-wide popover. */}
+          <DeviceFingerprintRow fingerprint={(screen as any).deviceFingerprint || ''} />
 
       {/* Footer placeholder — leaves room for restart / cache /
           orientation / brightness settings as we build them. */}
