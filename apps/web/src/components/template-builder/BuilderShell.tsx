@@ -2,8 +2,16 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { Plus, Layers, Settings2, Keyboard, Undo2, Redo2, ZoomIn, ZoomOut, Grid3x3, Magnet, Ruler, Palette, Image as ImageIcon, X, Paintbrush } from 'lucide-react';
+import {
+  Plus, Layers, Settings2, Keyboard, Undo2, Redo2, ZoomIn, ZoomOut, Grid3x3, Magnet, Ruler,
+  Palette, Image as ImageIcon, X, Paintbrush,
+  Copy, Lock, Unlock, ChevronUp, ChevronDown, Trash2,
+  AlignLeft, AlignCenter, AlignRight,
+  Bold, Italic, Underline, Strikethrough,
+  RefreshCw, Maximize2, Clock, Thermometer, Gauge, Calendar, Globe, MousePointer,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { AssetLibraryModal, measureZoneFontSize } from './PropertiesPanel';
 import { DndContext, DragOverlay, DragEndEvent, pointerWithin } from '@dnd-kit/core';
 import { getZoneColor } from './constants';
 import { useBuilderStore } from './useBuilderStore';
@@ -572,10 +580,19 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
   );
 }
 
-/** Unified bottom bar — zoom, undo/redo, view toggles. Sits fixed
- *  at the bottom of the viewport so operators always know where to
- *  find these controls (spatial memory match with Canva / Figma). */
+// Curated font list for the bottom bar's compact font <select>.
+const BOTTOM_BAR_FONTS = [
+  'Inter', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins',
+  'Oswald', 'Raleway', 'Nunito', 'Source Sans Pro', 'Playfair Display',
+  'Merriweather', 'Bebas Neue', 'Caveat', 'Pacifico',
+  'Arial', 'Helvetica', 'Georgia', 'Times New Roman', 'Courier New',
+];
+
+/** Unified bottom bar — zone-context controls (left) + zoom / undo /
+ *  view toggles (right). Replaces FloatingZoneActions + the old
+ *  canvas-controls bar. Operator request 2026-04-27. */
 function BuilderBottomBar() {
+  // ── Canvas controls ──────────────────────────────────────────────
   const zoom         = useBuilderStore((s) => s.zoom);
   const setZoom      = useBuilderStore((s) => s.setZoom);
   const past         = useBuilderStore((s) => s.past);
@@ -590,20 +607,81 @@ function BuilderBottomBar() {
   const setGuides    = useBuilderStore((s) => s.setShowGuides);
   const meta         = useBuilderStore((s) => s.meta);
   const setMeta      = useBuilderStore((s) => s.setMeta);
-  const [backdropOpen, setBackdropOpen] = useState(false);
 
-  // Close on Escape — standard modal UX
+  // ── Zone-context controls ────────────────────────────────────────
+  const zones          = useBuilderStore((s) => s.zones);
+  const selectedIds    = useBuilderStore((s) => s.selectedIds);
+  const updateZone     = useBuilderStore((s) => s.updateZone);
+  const duplicateZone  = useBuilderStore((s) => s.duplicateZone);
+  const removeSelected = useBuilderStore((s) => s.removeSelected);
+  const toggleLock     = useBuilderStore((s) => s.toggleLock);
+  const moveLayer      = useBuilderStore((s) => s.moveLayer);
+
+  const [backdropOpen, setBackdropOpen] = useState(false);
+  const [urlOpen,      setUrlOpen]      = useState(false);
+  const [dateOpen,     setDateOpen]     = useState(false);
+  const [assetOpen,    setAssetOpen]    = useState(false);
+
+  // Close all popovers on Escape
   useEffect(() => {
-    if (!backdropOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setBackdropOpen(false); };
+    if (!backdropOpen && !urlOpen && !dateOpen && !assetOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setBackdropOpen(false); setUrlOpen(false);
+        setDateOpen(false); setAssetOpen(false);
+      }
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [backdropOpen]);
+  }, [backdropOpen, urlOpen, dateOpen, assetOpen]);
 
   const canUndo = past.length > 0;
   const canRedo = future.length > 0;
   const zoomPct = Math.round(zoom * 100);
 
+  // Single-selected zone — zone-context section only shown for single-select
+  const selectedZone = selectedIds.length === 1
+    ? zones.find((z) => z.id === selectedIds[0]) ?? null
+    : null;
+
+  const cfg = (selectedZone?.defaultConfig || {}) as Record<string, any>;
+  const setCfg = (patch: Record<string, any>) => {
+    if (!selectedZone) return;
+    updateZone(selectedZone.id, { defaultConfig: { ...cfg, ...patch } }, true);
+  };
+
+  const wt         = selectedZone?.widgetType ?? '';
+  const isText      = wt === 'TEXT' || wt === 'RICH_TEXT';
+  const isImage     = wt === 'IMAGE' || wt === 'IMAGE_CAROUSEL' || wt === 'LOGO';
+  const isClock     = wt === 'CLOCK';
+  const isWeather   = wt === 'WEATHER';
+  const isTicker    = wt === 'TICKER';
+  const isCountdown = wt === 'COUNTDOWN';
+  const isWebpage   = wt === 'WEBPAGE';
+
+  const measured = selectedZone ? measureZoneFontSize(selectedZone.id, null) : null;
+  const sizeDisplay = cfg.fontSize ?? measured ?? '';
+
+  // ── Small btn (32px) for zone-context controls ───────────────────
+  const smallBtn = (label: string, onClick: () => void, icon: React.ReactNode, danger = false, active = false) => (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
+        danger
+          ? 'text-slate-500 hover:bg-rose-50 hover:text-rose-600'
+          : active
+            ? 'bg-indigo-100 text-indigo-700'
+            : 'text-slate-600 hover:bg-slate-100'
+      }`}
+    >
+      {icon}
+    </button>
+  );
+
+  // ── Larger btn (36px) for canvas controls ────────────────────────
   const groupBtn = (on: boolean, label: string, onClick: () => void, icon: React.ReactNode, disabled = false) => (
     <button
       type="button"
@@ -624,22 +702,273 @@ function BuilderBottomBar() {
     </button>
   );
 
+  // Generic zone-action cluster (Dup / Forward / Back / Lock / Delete)
+  const zoneActions = selectedZone ? (
+    <>
+      {smallBtn('Duplicate (Ctrl/⌘+D)', () => duplicateZone(selectedZone.id), <Copy className="w-3.5 h-3.5" />)}
+      {smallBtn('Bring forward', () => moveLayer(selectedZone.id, 'up'), <ChevronUp className="w-3.5 h-3.5" />)}
+      {smallBtn('Send back', () => moveLayer(selectedZone.id, 'down'), <ChevronDown className="w-3.5 h-3.5" />)}
+      {smallBtn(
+        selectedZone.locked ? 'Unlock' : 'Lock',
+        () => toggleLock(selectedZone.id),
+        selectedZone.locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />,
+      )}
+      <div className="w-px h-5 bg-slate-200 mx-0.5" />
+      {smallBtn('Delete (Del)', () => removeSelected(), <Trash2 className="w-3.5 h-3.5" />, true)}
+    </>
+  ) : null;
+
   return (
     <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-30 bg-white border border-slate-200 rounded-2xl shadow-lg flex items-center gap-1 px-2 py-1.5">
+
+      {/* ══ LEFT: zone-context section ══════════════════════════════ */}
+      {selectedZone ? (
+        <>
+          {/* TEXT / RICH_TEXT ─── font, size, B/I/U/S, color, align */}
+          {isText && (
+            <>
+              <select
+                aria-label="Font family"
+                title="Font family"
+                value={cfg.fontFamily || ''}
+                onChange={(e) => setCfg({ fontFamily: e.target.value })}
+                style={{ fontFamily: cfg.fontFamily || 'inherit' }}
+                className="h-8 px-2 text-xs rounded-md bg-white border border-slate-200 hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-400 cursor-pointer min-w-[110px]"
+              >
+                <option value="">Theme font</option>
+                {BOTTOM_BAR_FONTS.map((f) => (
+                  <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>
+                ))}
+              </select>
+
+              <div className="flex items-center ml-0.5">
+                {smallBtn('Decrease size', () => {
+                  const cur = (typeof cfg.fontSize === 'number' ? cfg.fontSize : measured) || 16;
+                  setCfg({ fontSize: Math.max(8, cur - 2) });
+                }, <span className="text-base leading-none font-semibold">−</span>)}
+                <input
+                  type="number"
+                  aria-label="Font size"
+                  title="Font size in pixels"
+                  value={sizeDisplay}
+                  placeholder={measured ? String(measured) : ''}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    setCfg({ fontSize: Number.isFinite(v) && v > 0 ? v : undefined });
+                  }}
+                  className="h-8 w-12 px-1 text-xs text-center rounded-md bg-white border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+                {smallBtn('Increase size', () => {
+                  const cur = (typeof cfg.fontSize === 'number' ? cfg.fontSize : measured) || 16;
+                  setCfg({ fontSize: cur + 2 });
+                }, <span className="text-base leading-none font-semibold">+</span>)}
+              </div>
+
+              <div className="w-px h-5 bg-slate-200 mx-0.5" />
+
+              {smallBtn('Bold (Ctrl/⌘+B)', () => setCfg({ bold: cfg.bold !== true }), <Bold className="w-3.5 h-3.5" />, false, cfg.bold === true)}
+              {smallBtn('Italic (Ctrl/⌘+I)', () => setCfg({ italic: cfg.italic !== true }), <Italic className="w-3.5 h-3.5" />, false, cfg.italic === true)}
+              {smallBtn('Underline (Ctrl/⌘+U)', () => setCfg({ underline: cfg.underline !== true }), <Underline className="w-3.5 h-3.5" />, false, cfg.underline === true)}
+              {smallBtn('Strikethrough', () => setCfg({ strikethrough: cfg.strikethrough !== true }), <Strikethrough className="w-3.5 h-3.5" />, false, cfg.strikethrough === true)}
+
+              <div className="w-px h-5 bg-slate-200 mx-0.5" />
+
+              <label className="relative w-8 h-8 rounded-md flex items-center justify-center cursor-pointer hover:bg-slate-100" title="Text color" aria-label="Text color">
+                <Palette className="w-3.5 h-3.5 text-slate-600" />
+                <span
+                  className="absolute bottom-1 left-1.5 right-1.5 h-1 rounded-sm border border-slate-300"
+                  style={{ background: cfg.color || '#1e293b' }}
+                />
+                <input
+                  type="color"
+                  value={cfg.color || '#1e293b'}
+                  onChange={(e) => setCfg({ color: e.target.value })}
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                />
+              </label>
+
+              {smallBtn(
+                `Align: ${cfg.textAlign || 'left'} (click to cycle)`,
+                () => {
+                  const cur = cfg.textAlign || 'left';
+                  const next = cur === 'left' ? 'center' : cur === 'center' ? 'right' : 'left';
+                  setCfg({ textAlign: next });
+                },
+                cfg.textAlign === 'center'
+                  ? <AlignCenter className="w-3.5 h-3.5" />
+                  : cfg.textAlign === 'right'
+                    ? <AlignRight className="w-3.5 h-3.5" />
+                    : <AlignLeft className="w-3.5 h-3.5" />,
+              )}
+
+              <div className="w-px h-5 bg-slate-200 mx-0.5" />
+            </>
+          )}
+
+          {/* IMAGE / IMAGE_CAROUSEL / LOGO */}
+          {isImage && (
+            <>
+              <div className="relative">
+                <button
+                  type="button"
+                  aria-label="Replace image"
+                  title="Replace image"
+                  onClick={(e) => { e.stopPropagation(); setAssetOpen((v) => !v); setUrlOpen(false); setDateOpen(false); }}
+                  className="w-8 h-8 rounded-md flex items-center justify-center transition-colors text-slate-600 hover:bg-slate-100"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              {smallBtn(
+                `Fit: ${cfg.objectFit || cfg.fit || 'cover'} (click to cycle)`,
+                () => {
+                  const cur = cfg.objectFit || cfg.fit || 'cover';
+                  const next = cur === 'cover' ? 'contain' : cur === 'contain' ? 'fill' : 'cover';
+                  setCfg({ objectFit: next, fit: next });
+                },
+                <Maximize2 className="w-3.5 h-3.5" />,
+              )}
+              <div className="w-px h-5 bg-slate-200 mx-0.5" />
+            </>
+          )}
+
+          {/* CLOCK */}
+          {isClock && (
+            <>
+              {smallBtn(
+                `Format: ${cfg.format || '12h'} (click to toggle)`,
+                () => setCfg({ format: cfg.format === '24h' ? '12h' : '24h' }),
+                <span className="flex items-center gap-0.5">
+                  <Clock className="w-3 h-3" />
+                  <span className="text-[9px] font-bold">{cfg.format === '24h' ? '24h' : '12h'}</span>
+                </span>,
+              )}
+              <div className="w-px h-5 bg-slate-200 mx-0.5" />
+            </>
+          )}
+
+          {/* WEATHER */}
+          {isWeather && (
+            <>
+              {smallBtn(
+                `Units: ${cfg.units || 'F'} (click to toggle)`,
+                () => setCfg({ units: cfg.units === 'C' ? 'F' : 'C' }),
+                <span className="flex items-center gap-0.5">
+                  <Thermometer className="w-3 h-3" />
+                  <span className="text-[9px] font-bold">{cfg.units === 'C' ? 'C' : 'F'}</span>
+                </span>,
+              )}
+              <div className="w-px h-5 bg-slate-200 mx-0.5" />
+            </>
+          )}
+
+          {/* TICKER */}
+          {isTicker && (
+            <>
+              {smallBtn(
+                `Speed: ${typeof cfg.speed === 'string' ? cfg.speed : 'normal'} (click to cycle)`,
+                () => {
+                  const cur = (typeof cfg.speed === 'string' ? cfg.speed : 'normal') as string;
+                  const next = cur === 'slow' ? 'normal' : cur === 'normal' ? 'fast' : 'slow';
+                  setCfg({ speed: next });
+                },
+                <span className="flex items-center gap-0.5">
+                  <Gauge className="w-3 h-3" />
+                  <span className="text-[9px] font-bold capitalize">{typeof cfg.speed === 'string' ? cfg.speed : 'N'}</span>
+                </span>,
+              )}
+              <div className="w-px h-5 bg-slate-200 mx-0.5" />
+            </>
+          )}
+
+          {/* COUNTDOWN */}
+          {isCountdown && (
+            <>
+              <div className="relative">
+                <button
+                  type="button"
+                  aria-label="Set target date"
+                  title="Set target date"
+                  onClick={(e) => { e.stopPropagation(); setDateOpen((v) => !v); setUrlOpen(false); setAssetOpen(false); }}
+                  className="w-8 h-8 rounded-md flex items-center justify-center transition-colors text-slate-600 hover:bg-slate-100"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                </button>
+                {dateOpen && (
+                  <div className="absolute z-40 bottom-full mb-2 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg shadow-xl p-2 w-44">
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Target date</label>
+                    <input
+                      type="date"
+                      defaultValue={cfg.targetDate || ''}
+                      onChange={(e) => setCfg({ targetDate: e.target.value })}
+                      className="w-full h-7 px-2 text-xs rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="w-px h-5 bg-slate-200 mx-0.5" />
+            </>
+          )}
+
+          {/* WEBPAGE */}
+          {isWebpage && (
+            <>
+              <div className="relative">
+                <button
+                  type="button"
+                  aria-label="Edit URL"
+                  title="Edit URL"
+                  onClick={(e) => { e.stopPropagation(); setUrlOpen((v) => !v); setDateOpen(false); setAssetOpen(false); }}
+                  className="w-8 h-8 rounded-md flex items-center justify-center transition-colors text-slate-600 hover:bg-slate-100"
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                </button>
+                {urlOpen && (
+                  <div className="absolute z-40 bottom-full mb-2 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg shadow-xl p-2 w-56">
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Page URL</label>
+                    <input
+                      type="url"
+                      defaultValue={cfg.url || ''}
+                      placeholder="https://…"
+                      onBlur={(e) => setCfg({ url: e.target.value })}
+                      className="w-full h-7 px-2 text-xs rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                    />
+                  </div>
+                )}
+              </div>
+              {smallBtn(
+                cfg.staticMode ? 'Interactive: off (click to toggle)' : 'Interactive: on (click to toggle)',
+                () => setCfg({ staticMode: !cfg.staticMode }),
+                <MousePointer className="w-3.5 h-3.5" />,
+                false,
+                !cfg.staticMode,
+              )}
+              <div className="w-px h-5 bg-slate-200 mx-0.5" />
+            </>
+          )}
+
+          {/* Generic zone actions — always when a zone is selected */}
+          {zoneActions}
+
+          {/* Divider between zone-context and canvas-controls sections */}
+          <div className="w-px h-5 bg-slate-300 mx-1.5" />
+        </>
+      ) : (
+        /* No zone selected — static placeholder so the bar width is stable */
+        <span className="text-xs text-slate-400 italic px-3 select-none whitespace-nowrap">Select a widget</span>
+      )}
+
+      {/* ══ RIGHT: canvas controls ══════════════════════════════════ */}
+
       {/* Undo / Redo */}
-      {groupBtn(false, 'Undo (Ctrl/⌘+Z)',       undo, <Undo2 className="w-4 h-4" />, !canUndo)}
-      {groupBtn(false, 'Redo (Ctrl/⌘+Y)',       redo, <Redo2 className="w-4 h-4" />, !canRedo)}
+      {groupBtn(false, 'Undo (Ctrl/⌘+Z)', undo, <Undo2 className="w-4 h-4" />, !canUndo)}
+      {groupBtn(false, 'Redo (Ctrl/⌘+Y)', redo, <Redo2 className="w-4 h-4" />, !canRedo)}
       <div className="w-px h-5 bg-slate-200 mx-1" />
 
-      {/* Zoom — preset levels rather than ±10% linear. Stops at the
-          design-tool standard set (25/50/75/100/125/150/200/300%) so
-          operators land on familiar values. The level button is a
-          combobox showing the current %; click cycles through presets,
-          right-click / shift-click would open a dropdown (TODO). */}
+      {/* Zoom — preset levels */}
       {(() => {
         const PRESETS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3];
         const currIdx = (() => {
-          // Closest preset
           let best = 0;
           let bestDiff = Math.abs(PRESETS[0] - zoom);
           for (let i = 1; i < PRESETS.length; i++) {
@@ -669,15 +998,12 @@ function BuilderBottomBar() {
       <div className="w-px h-5 bg-slate-200 mx-1" />
 
       {/* View toggles */}
-      {groupBtn(showGrid,    'Show grid',         () => setShowGrid(!showGrid),     <Grid3x3 className="w-4 h-4" />)}
-      {groupBtn(snapEnabled, 'Snap to elements',  () => setSnap(!snapEnabled),      <Magnet className="w-4 h-4" />)}
-      {groupBtn(showGuides,  'Show alignment guides', () => setGuides(!showGuides), <Ruler className="w-4 h-4" />)}
+      {groupBtn(showGrid,    'Show grid',             () => setShowGrid(!showGrid),   <Grid3x3 className="w-4 h-4" />)}
+      {groupBtn(snapEnabled, 'Snap to elements',      () => setSnap(!snapEnabled),    <Magnet className="w-4 h-4" />)}
+      {groupBtn(showGuides,  'Show alignment guides', () => setGuides(!showGuides),   <Ruler className="w-4 h-4" />)}
       <div className="w-px h-5 bg-slate-200 mx-1" />
 
-      {/* Canvas backdrop — discoverable from the bottom bar so the
-          operator doesn't have to deselect the current zone and dig
-          through the Properties tab. Opens a modal with the same
-          CanvasBackdropSection used in the right rail. */}
+      {/* Canvas backdrop */}
       {groupBtn(backdropOpen, 'Canvas backdrop', () => setBackdropOpen(true), <ImageIcon className="w-4 h-4" />)}
 
       {backdropOpen && (
@@ -721,6 +1047,18 @@ function BuilderBottomBar() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Asset picker modal — outside bar stacking context */}
+      {assetOpen && selectedZone && (
+        <AssetLibraryModal
+          kind="image"
+          onPick={(url) => {
+            setCfg({ assetUrl: url, imageUrl: undefined });
+            setAssetOpen(false);
+          }}
+          onClose={() => setAssetOpen(false)}
+        />
       )}
     </div>
   );
