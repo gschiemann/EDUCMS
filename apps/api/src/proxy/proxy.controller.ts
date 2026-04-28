@@ -26,11 +26,41 @@ export class ProxyController {
 
   @Get('web')
   @SkipThrottle()
-  async proxyWeb(@Query('url') url: string, @Res() res: Response) {
+  async proxyWeb(
+    @Query('url') url: string,
+    @Query('interactive') interactiveParam: string | undefined,
+    @Res() res: Response,
+  ) {
     try {
       if (!url) {
         throw new HttpException('Missing url parameter', HttpStatus.BAD_REQUEST);
       }
+
+      // ─── INTERACTIVE MODE (v1.0.16 fix) ────────────────────────────
+      // Operator (2026-04-27, on e-arc.com): "the URL now loads
+      // everything correctly but the top area is a 5 card carousel of
+      // content and ours only shows the first card and never advances".
+      //
+      // Cause: the strip-scripts pipeline below removes the carousel's
+      // setInterval rotation logic. Puppeteer SSR captures one frame,
+      // we strip every script that would animate it, the iframe shows
+      // a frozen first card forever.
+      //
+      // Fix: when the WEBPAGE widget is meant to be interactive (the
+      // common case — operator pushes a URL because they want a touch
+      // screen showing a real, working website), skip the script strip
+      // so AJAX rotators, dropdown menus, accordions, and finger taps
+      // all work. SSR is bypassed too — Puppeteer's pre-render adds no
+      // value when we're letting the live JS run anyway, and skipping
+      // it keeps cold-load time fast.
+      //
+      // Strict subtractive policy still applies: we strip CSP +
+      // X-Frame-Options metas (otherwise the iframe won't render at
+      // all) and inject base href so relative URLs resolve. Nothing
+      // else is touched. The WEBPAGE widget passes &interactive=true
+      // by default in v1.0.16+. Older clients still get the legacy
+      // strip-scripts behaviour.
+      const interactive = interactiveParam === 'true' || interactiveParam === '1';
 
       // ─── SSR PRIMARY PATH ─────────────────────────────────────────
       // Try the Puppeteer renderer first. Solves AJAX-loaded content
@@ -52,7 +82,13 @@ export class ProxyController {
       let contentType = 'text/html';
       let renderedBy: 'ssr' | 'fetch' = 'fetch';
 
-      if (this.renderer) {
+      // SSR is for static-snapshot rendering. When the page is meant
+      // to stay interactive (interactive=true), we WANT the original
+      // scripts to run inside the iframe — pre-rendering with
+      // Puppeteer adds latency and no value, since the iframe will
+      // re-execute the JS anyway. Skip Chromium entirely in that mode
+      // and go straight to safeFetch.
+      if (this.renderer && !interactive) {
         const rendered = await this.renderer.render(url);
         if (rendered) {
           html = rendered.html;
@@ -107,6 +143,7 @@ export class ProxyController {
         throw new HttpException('Renderer produced no HTML', HttpStatus.INTERNAL_SERVER_ERROR);
       }
       res.setHeader('X-EduCms-Renderer', renderedBy);
+      res.setHeader('X-EduCms-Mode', interactive ? 'interactive' : 'static');
 
       // Strip <script> tags. Tried lifting this once (2026-04-26 to
       // make e-arc.com banner rotators work) — the result was
@@ -116,16 +153,28 @@ export class ProxyController {
       // execution dependencies (errors halting layout, document.write
       // changing the DOM, etc). Net-negative trade. Reverted.
       //
+      // v1.0.16: when interactive=true the operator EXPECTS the live
+      // page to keep running (the URL widget is the entire screen,
+      // touch-driven). Skip the strip so rotators, accordions, and
+      // any finger-tap behaviours work. The historical "middle of
+      // page broke" issue was on the static-only mode + sandboxed
+      // iframe; interactive mode runs the iframe unsandboxed in
+      // signage WebView with same-origin proxy host, so document.write
+      // / jQuery init / etc. behave like a normal browser load.
+      //
       // Modern signage sites that the operator curates should be
       // mostly-static — if a customer wants a JS-driven dashboard
-      // embedded, recommend exporting it as a public-facing static
-      // mirror or an iframe-friendly subdomain. Banner-rotator
-      // support is a Sprint-12 problem (probably needs a per-asset
-      // proxy that rewrites every script's fetch through us).
-      html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+      // embedded, the right answer is interactive=true.
+      if (!interactive) {
+        html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+        html = html.replace(/\s(on\w+)\s*=\s*["'][^"']*["']/gi, '');
+        html = html.replace(/<\/?noscript[^>]*>/gi, '');
+      }
+      // <meta http-equiv="refresh"> stripping is safe in BOTH modes —
+      // an embedded auto-refresh would break out of the iframe by
+      // navigating it to the upstream URL directly (which would then
+      // 404 on the original site's X-Frame-Options).
       html = html.replace(/<meta[^>]*http-equiv\s*=\s*["']?refresh["']?[^>]*>/gi, '');
-      html = html.replace(/\s(on\w+)\s*=\s*["'][^"']*["']/gi, '');
-      html = html.replace(/<\/?noscript[^>]*>/gi, '');
 
       // Strip <meta http-equiv="content-security-policy"> and
       // <meta http-equiv="x-frame-options">. We already strip the
@@ -146,6 +195,11 @@ export class ProxyController {
       // mine because later tags win. Drop it so our injection sticks.
       html = html.replace(/<meta[^>]*name\s*=\s*["']?color-scheme["']?[^>]*>/gi, '');
 
+      // INTERACTIVE MODE: the page's own scripts run, so they handle
+      // lazy-load promotion, force-visible reveals, and any DOM
+      // manipulation themselves. Skip both the lazy-attr promotion
+      // and the aggressive force-visible CSS — those are crutches
+      // for the script-stripped path.
       // Lazy-load + force-visible only when we DIDN'T render via SSR.
       // Operator-reported regression (2026-04-27 on e-arc.com via
       // Puppeteer SSR): "it seems to have expanded every single text
@@ -165,7 +219,7 @@ export class ProxyController {
       // gets only the color-scheme + base-href injection (still
       // valuable — kiosks may inherit dark-mode from their host
       // OS, and base-href fixes relative-URL resources).
-      if (renderedBy === 'fetch') {
+      if (renderedBy === 'fetch' && !interactive) {
         const lazyAttrs = [
           'data-lazy-src',
           'data-src',
@@ -241,7 +295,7 @@ export class ProxyController {
         `body [style*="display: none"]:not(noscript):not(script):not(style):not(template):not(meta):not(link){display:revert !important;}` +
         `body [style*="visibility:hidden"]{visibility:visible !important;}` +
         `body [style*="visibility: hidden"]{visibility:visible !important;}`;
-      const proxyForceVisibleCss = renderedBy === 'ssr'
+      const proxyForceVisibleCss = (renderedBy === 'ssr' || interactive)
         ? baselineCss
         : aggressiveForceVisibleCss;
       const headInjection = `<base href="${baseUrl}"><meta name="color-scheme" content="light only"><style>${proxyForceVisibleCss}</style>`;

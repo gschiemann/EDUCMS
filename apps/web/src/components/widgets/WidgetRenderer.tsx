@@ -1459,11 +1459,25 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // In live mode, route through our API proxy to bypass X-Frame-Options / CSP
-  // so any website can be embedded in digital signage screens
+  // so any website can be embedded in digital signage screens.
+  //
+  // v1.0.16: pass interactive=true by default. Operator (2026-04-27 on
+  // e-arc.com): "the URL now loads everything correctly but the top
+  // area is a 5 card carousel of content and ours only shows the first
+  // card and never advances." Cause: legacy strip-scripts mode froze
+  // the carousel's setInterval rotator. Interactive mode lets the
+  // page's own JS run inside the iframe, so rotators / accordions /
+  // touch interactions all work. Operators using URL widgets are
+  // typically setting up touchscreens; default to interactive.
+  //
+  // Allow opt-out via config.staticMode for the rare case (e.g. the
+  // upstream site has runtime errors that break under iframe).
+  const interactiveMode = config.staticMode !== true;
   const proxyUrl = useMemo(() => {
     if (!live || !url) return '';
-    return `${API_BASE}/api/v1/proxy/web?url=${encodeURIComponent(url)}&v=2`;
-  }, [live, url]);
+    const interactiveQs = interactiveMode ? '&interactive=true' : '';
+    return `${API_BASE}/api/v1/proxy/web?url=${encodeURIComponent(url)}&v=3${interactiveQs}`;
+  }, [live, url, interactiveMode]);
 
   // Auto-refresh the iframe at the configured interval
   useEffect(() => {
@@ -1476,9 +1490,23 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
     return () => clearInterval(t);
   }, [live, proxyUrl, refreshInterval]);
 
-  // Live mode — render an actual iframe routed through proxy. The
-  // proxy strips <script> server-side; no sandbox is needed (and
-  // adding one broke the static middle of pages on 2026-04-26).
+  // Live mode — render an actual iframe routed through proxy.
+  //
+  // In static (script-stripped) mode the proxy already removes
+  // <script> server-side, so no sandbox is needed (and adding one
+  // broke the static middle of pages on 2026-04-26).
+  //
+  // In interactive mode (v1.0.16+) the iframe runs the upstream
+  // page's JS. We still don't sandbox — sandbox=allow-scripts +
+  // null-origin would CORS-break every XHR the upstream site makes
+  // back to its own API. The proxy origin matches the host page,
+  // and the proxy headers explicitly allow embedding (CSP frame-
+  // ancestors:* + no X-Frame-Options).
+  //
+  // `allow` widened to include clipboard-write + accelerometer +
+  // gyroscope so touch-driven sites that read device orientation /
+  // copy URLs work without surfacing a permission prompt to the
+  // operator (signage doesn't have a way to grant it).
   if (live && proxyUrl) {
     return (
       <div className="absolute inset-0 overflow-hidden">
@@ -1487,7 +1515,7 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
           src={proxyUrl}
           className="w-full h-full border-0"
           style={{ overflow: config.scrollEnabled ? 'auto' : 'hidden' }}
-          allow="autoplay; encrypted-media"
+          allow="autoplay; encrypted-media; clipboard-write; accelerometer; gyroscope; fullscreen"
           loading="eager"
           title="Web content"
         />

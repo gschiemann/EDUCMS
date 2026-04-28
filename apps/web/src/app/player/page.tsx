@@ -793,6 +793,14 @@ function PlayerPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [showOverlay, setShowOverlay] = useState(false);
+  // v1.0.16 — visible feedback for the "Sync Now" button. Operator
+  // (2026-04-27): "hitting sync does nothing it appears, not sure
+  // what the button is used for". Cause: when fetchContent runs and
+  // the manifest hasn't changed, the React tree doesn't re-render —
+  // the operator sees no acknowledgment that the click registered.
+  // Track a short-lived state we flip into 'syncing' / 'done' / 'err'
+  // and let the button label reflect it for ~2s.
+  const [syncFeedback, setSyncFeedback] = useState<'idle' | 'syncing' | 'done' | 'err'>('idle');
   // Stop splash state — shows a branded "playback paused" screen
   // in place of the content. The operator sees player branding +
   // Resume / Exit / Unpair buttons, NOT a dismissable black curtain.
@@ -2036,6 +2044,24 @@ function PlayerPage() {
     setShowOverlay(false);
     setPlaybackStopped(true);
   };
+
+  // v1.0.16 — wraps fetchContent with visible button feedback.
+  // Operator (2026-04-27): "hitting sync does nothing it appears."
+  // Even when sync succeeds, the manifest is often unchanged so the
+  // React tree never re-renders → no acknowledgment. This wrapper
+  // flips syncFeedback through syncing → done so the button can
+  // briefly show "Syncing…" then "Synced ✓" (~2s) before resetting.
+  const handleSyncWithFeedback = useCallback(async () => {
+    setSyncFeedback('syncing');
+    try {
+      await fetchContent();
+      setSyncFeedback('done');
+    } catch {
+      setSyncFeedback('err');
+    } finally {
+      setTimeout(() => setSyncFeedback('idle'), 2000);
+    }
+  }, [fetchContent]);
   // Exit = actually leave the EduCMS player, return control to the
   // Android / OEM launcher. Priority cascade:
   //   1. Native exit bridge (injected by our Android APK).
@@ -2231,6 +2257,24 @@ function PlayerPage() {
     const tpl = playlist.template;
     const zones = tpl.zones || [];
 
+    // v1.0.16 — auto-promote interactive UX when the template
+    // contains a WEBPAGE zone. Operator (2026-04-27): "when i push a
+    // URL it will normally mean its a touch screen and if a mouse
+    // click just pops up another menu that means a finger click will
+    // do the same... what should work is an exit on the remote
+    // control takes me out of the playlist but otherwise i should be
+    // able to use the website with my finger or a mouse."
+    //
+    // We were treating webpage templates as static signage —
+    // cursor-none + click-anywhere-to-toggle-overlay killed every
+    // attempt to interact with the embedded site. Detecting WEBPAGE
+    // zones flips us into the same UX bucket as the explicit "touch
+    // template" flag: cursor visible, clicks pass through to the
+    // iframe / zone, and only the remote's Back/Exit key brings up
+    // the Stop overlay (already wired through edu-show-stop-overlay).
+    const hasWebpageZone = zones.some((z: any) => z.widgetType === 'WEBPAGE');
+    const isInteractive = isTouchTemplate || hasWebpageZone;
+
     // Stop splash short-circuit before rendering template widgets
     // so the whole widget tree tears down (stopping any animations,
     // video loops, weather polls, etc.) during the stop.
@@ -2265,12 +2309,21 @@ function PlayerPage() {
     }
 
     return (
+      // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
       <div
-        className={`fixed inset-0 ${isTouchTemplate ? '' : 'cursor-none'}`}
-        role="button"
-        tabIndex={0}
-        aria-label="Toggle screen info overlay"
-        onClick={isTouchTemplate ? undefined : () => setShowOverlay(!showOverlay)}
+        className={`fixed inset-0 ${isInteractive ? '' : 'cursor-none'}`}
+        // role / tabIndex / aria-label / onClick are conditional —
+        // a static signage template needs role=button so a11y
+        // tooling treats the whole canvas as the trigger for the
+        // info overlay, but a template containing a WEBPAGE zone
+        // is interactive: clicks pass through to the iframe and
+        // the canvas itself is just a passive container. Eslint
+        // can't statically prove the conditional pair is balanced,
+        // hence the disable above.
+        role={isInteractive ? undefined : 'button'}
+        tabIndex={isInteractive ? -1 : 0}
+        aria-label={isInteractive ? undefined : 'Toggle screen info overlay'}
+        onClick={isInteractive ? undefined : () => setShowOverlay(!showOverlay)}
         onKeyDown={e => {
           // Only toggle on direct-target keypresses. Without this
           // guard, Enter on any BUTTON inside the overlay (Stop,
@@ -2279,7 +2332,7 @@ function PlayerPage() {
           // reported "nothing happened" because the overlay
           // disappeared before they could see the Stopped splash.
           if (e.target !== e.currentTarget) return;
-          if (!isTouchTemplate && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setShowOverlay(s => !s); }
+          if (!isInteractive && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setShowOverlay(s => !s); }
         }}
         style={{
           backgroundColor: tpl.bgColor || '#000000',
@@ -2403,7 +2456,9 @@ function PlayerPage() {
                 <DiagnosticsRow />
               </div>
               <div className="flex gap-2 pt-2">
-                <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm transition-colors">Sync Now</button>
+                <button onClick={(e) => { e.stopPropagation(); handleSyncWithFeedback(); }} disabled={syncFeedback === 'syncing'} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-700/60 text-white rounded-lg font-medium text-sm transition-colors">
+                  {syncFeedback === 'syncing' ? 'Syncing…' : syncFeedback === 'done' ? 'Synced ✓' : syncFeedback === 'err' ? 'Sync failed' : 'Sync Now'}
+                </button>
                 {/* Stop button — ALWAYS shown, unlike the native-only
                     Exit below. Tries the exit bridge first, then a
                     best-effort window.close(), and finally falls back

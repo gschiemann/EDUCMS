@@ -431,10 +431,11 @@ export function BackgroundPanel() {
         {advancedOpen && (
           <div className="space-y-2 pt-1">
             <div>
-              <label className="block text-[10px] font-semibold text-slate-500 mb-1">
+              <label htmlFor="bg-panel-custom-gradient" className="block text-[10px] font-semibold text-slate-500 mb-1">
                 Custom CSS gradient
               </label>
               <input
+                id="bg-panel-custom-gradient"
                 type="text"
                 value={meta.bgGradient || ''}
                 onChange={(e) => setMeta({ bgGradient: e.target.value, bgImage: '' })}
@@ -443,10 +444,11 @@ export function BackgroundPanel() {
               />
             </div>
             <div>
-              <label className="block text-[10px] font-semibold text-slate-500 mb-1">
+              <label htmlFor="bg-panel-solid-color" className="block text-[10px] font-semibold text-slate-500 mb-1">
                 Solid color (hex)
               </label>
               <input
+                id="bg-panel-solid-color"
                 type="text"
                 value={meta.bgColor || ''}
                 onChange={(e) => setMeta({ bgColor: e.target.value, bgGradient: '', bgImage: '' })}
