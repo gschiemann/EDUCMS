@@ -339,8 +339,26 @@ export class ProxyController {
         // (1) Rewrite all <a href="…"> attributes. We don't touch
         // hrefs that are already proxy URLs, javascript:/mailto:/tel:
         // schemes, or anchors (#…).
+        //
+        // Regex uses `(?:\s|^<a\b)` approach — simpler: match href
+        // whether it is the first attribute or preceded by a space.
+        // The original `\shref` required a preceding space and missed
+        // `<a href="..."` (href as the very first attribute), though
+        // e-arc.com happened not to hit this case. Fixed defensively
+        // for other sites.
+        //
+        // Also: strip target="_blank" from every rewritten anchor.
+        // On Android WebView inside an iframe, target="_blank" tries
+        // to spawn a new tab/Intent which either results in a blank
+        // screen or an "open with…" system dialog — the exact symptom
+        // the operator reported ("I click on any link and I get a
+        // blank page"). We force target="_self" so navigation stays
+        // inside the iframe. The rewrite happens in TWO steps:
+        //   Step A: rewrite href → proxy URL (same as before)
+        //   Step B: on any <a …> that now contains a proxy href,
+        //           replace target="_blank" with target="_self".
         html = html.replace(
-          /(<a\b[^>]*?\shref\s*=\s*)(["'])([^"']+)\2/gi,
+          /(<a\b[^>]*?(?:\s|(?<=<a))href\s*=\s*)(["'])([^"']+)\2/gi,
           (_match, prefix, q, href) => {
             const trimmed = String(href).trim();
             if (
@@ -365,6 +383,24 @@ export class ProxyController {
           },
         );
 
+        // Step B: force target="_self" on every anchor that now points
+        // through the proxy. This neutralises target="_blank" (Android
+        // WebView blank-screen bug) AND any other target value that
+        // would cause the iframe to try to navigate the parent frame.
+        // We match the whole <a …> tag and replace target attr in-place.
+        html = html.replace(
+          /(<a\b[^>]*?href="\/api\/v1\/proxy\/web[^"]*"[^>]*?)(\starget\s*=\s*["'][^"']*["'])/gi,
+          '$1 target="_self"',
+        );
+        // Also inject target="_self" on proxy-linked anchors that have
+        // NO target attribute at all (so forward-navigation works
+        // predictably inside the iframe rather than relying on the
+        // iframe's default browsing-context behaviour on Android).
+        html = html.replace(
+          /(<a\b(?![^>]*\starget\s*=)[^>]*?href="\/api\/v1\/proxy\/web[^"]*"[^>]*?>)/gi,
+          (m) => m.replace(/^<a\b/, '<a target="_self"'),
+        );
+
         // (2) Runtime shim. Wraps fetch + XMLHttpRequest.open so
         // any same-origin (relative) request gets rewritten to go
         // through the proxy with the upstream baseUrl. Also handles
@@ -373,6 +409,17 @@ export class ProxyController {
         // Single IIFE; loads BEFORE any page script runs (head
         // injection point). All shim functions guard against
         // already-proxied URLs to avoid double-wrapping.
+        // Runtime shim:
+        //   - fetch + XHR: relative/same-origin requests → proxy
+        //   - window.open: same
+        //   - Image.src setter: banner carousels do `new Image(); img.src='/slide.jpg'`
+        //     — this intercepts the setter so the image is fetched via the proxy
+        //     instead of from the iframe's origin (our proxy host), which would 404.
+        //   - navigator.sendBeacon: analytics pings; safe to reroute through proxy.
+        //   - <a target="_blank"> click: runtime guard forces target=_self on any
+        //     anchor click so Android WebView never gets a _blank navigation request
+        //     (belt-and-suspenders: the server-side rewrite above handles static HTML,
+        //     this handles dynamically-inserted anchors added by the page's own JS).
         interactiveShim = `<script>(function(){try{
 var PROXY='/api/v1/proxy/web';
 var BASE=${JSON.stringify(baseUrl)};
@@ -404,6 +451,29 @@ window.open=function(u){
   try{u=wrap(u);}catch(_){/* swallow */}
   return ow.apply(this,[u].concat([].slice.call(arguments,1)));
 };
+// Image.src setter: carousel preloaders (new Image(); img.src=url)
+try{
+  var imgDesc=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src');
+  if(imgDesc&&imgDesc.set){
+    var origImgSet=imgDesc.set;
+    Object.defineProperty(HTMLImageElement.prototype,'src',{
+      set:function(v){try{v=wrap(v);}catch(_){}origImgSet.call(this,v);},
+      get:imgDesc.get,configurable:true
+    });
+  }
+}catch(_){}
+// sendBeacon: reroute analytics pings through proxy (keeps page happy, avoids CORS errors)
+if(navigator.sendBeacon){
+  var osb=navigator.sendBeacon.bind(navigator);
+  navigator.sendBeacon=function(u,d){try{u=wrap(u);}catch(_){}return osb(u,d);};
+}
+// Runtime anchor guard: any dynamically injected <a target="_blank"> gets target=_self
+// so Android WebView never tries to open a new window inside the iframe.
+document.addEventListener('click',function(e){
+  var el=e.target;
+  while(el&&el.tagName!=='A')el=el.parentElement;
+  if(el&&el.tagName==='A'&&el.target==='_blank')el.target='_self';
+},true);
 }catch(e){console.warn('proxy shim init failed',e);}})();</script>`;
       }
 
