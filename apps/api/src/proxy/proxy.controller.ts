@@ -383,24 +383,30 @@ export class ProxyController {
           },
         );
 
-        // Step B: force target="_self" on every anchor that now points
-        // through the proxy. This neutralises target="_blank" (Android
-        // WebView blank-screen bug) AND any other non-self target that
-        // would cause the iframe to navigate the parent frame.
+        // Step B: force target="_self" on EVERY <a> tag in the
+        // document. Operator (2026-04-29 Nth time): "URL dont work
+        // still". Curl of deployed proxy showed `target="_blank"`
+        // residuals — the previous regex required href to already
+        // point at /api/v1/proxy/web, but anchors with non-standard
+        // quote styles (single-quoted hrefs, escaped quotes, etc.)
+        // failed the href-match and skipped the target rewrite.
         //
-        // Single whole-tag pass — handles any attribute order. The
-        // original two-step approach (one regex for existing target,
-        // one for missing target) required target to come AFTER href,
-        // but WordPress nav menus put target BEFORE href. Fixed with
-        // one pass that matches the full opening tag.
+        // Fix: drop the href-dependence. Every <a> tag in the
+        // proxied HTML gets target="_self" regardless of its href
+        // shape. _self is the only safe target inside an Android
+        // WebView iframe — _blank tries to spawn a new window the
+        // WebView can't show (root cause of "android blank page"
+        // symptom). This is a defensive pass; href rewriting still
+        // happens in Step A so all link clicks navigate within the
+        // proxy chain.
         html = html.replace(
-          /<a\b[^>]*href="\/api\/v1\/proxy\/web[^"]*"[^>]*>/gi,
+          /<a\b[^>]*?>/gi,
           (tag) => {
-            if (/[\t ]target\s*=/i.test(tag)) {
-              // Replace existing target value → _self
-              return tag.replace(/([\t ]target\s*=\s*)(["'])[^"']*\2/gi, ' target="_self"');
+            if (/\btarget\s*=/i.test(tag)) {
+              // Replace existing target value → _self (any quote style)
+              return tag.replace(/(\btarget\s*=\s*)(["'])[^"']*\2/gi, '$1"_self"');
             }
-            // No target attr → inject _self after <a
+            // No target attr → inject _self right after <a
             return tag.replace(/^<a\b/i, '<a target="_self"');
           },
         );
