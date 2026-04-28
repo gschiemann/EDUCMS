@@ -2666,21 +2666,33 @@ function PlayerPage() {
               // inline natively; X-Frame-Options doesn't apply to
               // file/PDF responses the same way.
               const isPdf = mime === 'application/pdf';
-              // 2026-04-28 — operator (6th request): "no image
-              // carousel". Cause: the proxy strips <script> tags
-              // by default to prevent frame-busting JS from
-              // breaking out, but that ALSO kills carousel scripts
-              // / slider scripts / any client-side widget the URL
-              // depends on. The WEBPAGE widget in templates passes
-              // `interactive=true` to opt out of script stripping;
-              // mirror it here for the asset-based URL playlist so
-              // a playlist of, say, e-arc.com-style pages with
-              // image carousels actually animates. Trade-off is a
-              // tiny risk that a page's frame-bust script might
-              // succeed — same trade-off the WEBPAGE widget makes.
+              // 2026-04-29 REVERT — operator: "wow you fucked the
+              // URL up again, now my mouse works but the top images
+              // now get an error sayying error loading banner
+              // slides, and then wheni use the mouse and navigate
+              // to another page of the website and click the link
+              // i get an andoid icon in the top lefdt and a blank
+              // screen so nothing ever renders".
+              //
+              // Adding &interactive=true (last commit) opted the
+              // page into full-script execution. Two regressions:
+              //   1. Carousel scripts now run but fetch images
+              //      cross-origin → CORS-blocked → "error loading
+              //      banner slides".
+              //   2. Anchor clicks navigate the iframe to URLs the
+              //      proxy can't resolve (the iframe's location
+              //      becomes /some/page on our proxy origin, which
+              //      404s → blank screen, and on Android the
+              //      WebView sees the path navigation as a separate
+              //      activity → Android system "open with…" icon).
+              //
+              // Reverting to script-strip baseline (`&v=2` only).
+              // Carousel unfortunately can't run statically; the
+              // RIGHT fix is server-side link rewriting + a same-
+              // origin asset proxy. Tracked as a pending todo.
               const iframeSrc = isPdf
                 ? resUrl
-                : `${getApiRoot()}/api/v1/proxy/web?url=${encodeURIComponent(resUrl)}&v=2&interactive=true`;
+                : `${getApiRoot()}/api/v1/proxy/web?url=${encodeURIComponent(resUrl)}&v=2`;
               return <iframe
                 key={item.id}
                 src={iframeSrc}
