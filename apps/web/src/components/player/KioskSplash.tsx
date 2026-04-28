@@ -99,6 +99,12 @@ export interface KioskSplashProps {
    *  looks like it changed at all." Pass the player BuildConfig
    *  versionName when known (passed by the APK as ?v= on the URL). */
   apkVersion?: string | null;
+  /** Manager APK version chip on the splash, rendered next to the
+   *  Player chip so the operator can verify both components are at
+   *  the expected version without going to the dashboard. Empty
+   *  string / null = "Manager not installed". Pass the value the
+   *  APK reports as ?mv= (v1.0.13+ Player). */
+  managerVersion?: string | null;
   /** Optional: when the kiosk knows its dashboard URL, we show a QR
    *  pointing to /pair?code=... so an admin can scan from their phone
    *  instead of typing. Pass the fully qualified URL. */
@@ -135,6 +141,7 @@ export function KioskSplash({
   screenName,
   resolution,
   apkVersion,
+  managerVersion,
   pairDeepLinkUrl,
   loadProgress,
   lastSync,
@@ -469,6 +476,26 @@ export function KioskSplash({
               <span className="kiosk-chip-value">v{apkVersion}</span>
             </span>
           )}
+          {/* Manager chip — operator (2026-04-28): "show the manager
+              version on the main player splash screen as well". Two
+              states: installed → green chip with version, missing →
+              amber chip so it's instantly obvious Manager isn't on
+              this kiosk yet (and OTA updates will need a sideload or
+              prompt to recover). */}
+          {managerVersion ? (
+            <span className="kiosk-chip" title="Manager APK version reported by the device">
+              <span className="kiosk-chip-label">Manager</span>
+              <span className="kiosk-chip-value">v{managerVersion}</span>
+            </span>
+          ) : managerVersion === '' ? (
+            // Empty string is the explicit "Manager not installed"
+            // signal Player v1.0.19+ sends. Show a warning chip so
+            // operator knows OTA isn't fully wired up.
+            <span className="kiosk-chip kiosk-chip-warn" title="Manager APK not installed — OTA install requires manual confirmation per update">
+              <span className="kiosk-chip-label">Manager</span>
+              <span className="kiosk-chip-value">missing</span>
+            </span>
+          ) : null}
         </div>
       </div>
     </div>
@@ -997,6 +1024,15 @@ const CSS = `
   font-size: 12px;
 }
 .kiosk-chip-icon { width: 12px; height: 12px; color: #10b981; }
+/* Warning variant — Manager-missing chip uses this so the operator
+   instantly sees Manager isn't installed without reading the value. */
+.kiosk-chip-warn {
+  background: rgba(120, 53, 15, 0.45);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #fde68a;
+}
+.kiosk-chip-warn .kiosk-chip-label { color: #fbbf24; }
+.kiosk-chip-warn .kiosk-chip-value { color: #fef3c7; }
 
 /* ─── Portrait-orientation override ─────────────────────────── */
 /* When the splash lands on a 1080×1920 portrait display (Nova

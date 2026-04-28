@@ -898,6 +898,14 @@ function PlayerPage() {
   const apkVersion = typeof window !== 'undefined'
     ? new URLSearchParams(window.location.search).get('v')
     : null;
+  // 2026-04-28 — Manager APK version (sent by Player v1.0.13+ as
+  // ?mv=). null = old Player that doesn't know about Manager,
+  // '' = Player v1.0.19+ saying Manager not installed,
+  // '1.0.3' = installed at that version. KioskSplash renders all
+  // three states distinctly.
+  const managerVersion: string | null = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('mv')
+    : null;
 
   // Remote-control Back-button bridge. The Android shell (v1.0.10+)
   // dispatches an `edu-show-stop-overlay` window event when the user
@@ -2228,6 +2236,7 @@ function PlayerPage() {
           brandName={brandName}
           resolution={splashResolution}
           apkVersion={apkVersion}
+          managerVersion={managerVersion}
         />
         {otaOverlay}
         {connectivityToast}
@@ -2245,6 +2254,7 @@ function PlayerPage() {
           pairingCode={pairingCode}
           resolution={splashResolution}
           apkVersion={apkVersion}
+          managerVersion={managerVersion}
           pairDeepLinkUrl={
             typeof window !== 'undefined' && pairingCode
               ? `${window.location.origin}/pair?code=${encodeURIComponent(pairingCode)}`
@@ -2267,6 +2277,7 @@ function PlayerPage() {
           screenName={screenName}
           resolution={splashResolution}
           apkVersion={apkVersion}
+          managerVersion={managerVersion}
           loadProgress={loadProgress}
         />
         {otaOverlay}
