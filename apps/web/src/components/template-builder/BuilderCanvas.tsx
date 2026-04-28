@@ -1,25 +1,7 @@
-"use client";
+﻿"use client";
 
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import {
-  Copy, Lock, Unlock, ChevronUp, ChevronDown, Trash2,
-  AlignLeft, AlignCenter, AlignRight,
-  Bold, Italic, Underline, Strikethrough, Palette,
-  RefreshCw, Maximize2, Clock, Thermometer, Gauge, Calendar, Globe, MousePointer,
-} from 'lucide-react';
-import { AssetLibraryModal, measureZoneFontSize } from './PropertiesPanel';
-
-// Curated font list for the floating bar's compact <select>. Keeps
-// the dropdown short — operators get the most-common signage fonts
-// without a 50-item scrollwheel. The empty value falls back to the
-// theme's default font (set per template).
-const FLOATING_BAR_FONTS = [
-  'Inter', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins',
-  'Oswald', 'Raleway', 'Nunito', 'Source Sans Pro', 'Playfair Display',
-  'Merriweather', 'Bebas Neue', 'Caveat', 'Pacifico',
-  'Arial', 'Helvetica', 'Georgia', 'Times New Roman', 'Courier New',
-];
 import { useBuilderStore } from './useBuilderStore';
 import { BuilderZone } from './BuilderZone';
 import { snapMove, snapResize } from './snap-engine';
@@ -29,12 +11,12 @@ export function BuilderCanvas() {
   // dnd-kit drop target. BuilderShell.handleDragEnd checks
   // `over.id === 'builder-canvas'` to know whether to add a zone, but
   // before this fix the canvas wasn't registered as a droppable at all
-  // — so palette / variant drags resolved to `over === null` and the
+  // â€” so palette / variant drags resolved to `over === null` and the
   // dropped widget never landed on the canvas. Operator could drag a
   // widget tile across the canvas surface and nothing would place.
   // Critical bug for the headline template-builder feature.
   const { setNodeRef: setDroppableRef } = useDroppable({ id: 'builder-canvas' });
-  // Atomic selectors — BuilderCanvas paints every frame of every drag,
+  // Atomic selectors â€” BuilderCanvas paints every frame of every drag,
   // so subscribing to the whole store was forcing re-renders on every
   // unrelated state tick (e.g. isDirty flag flipping). Per-key lets
   // Zustand skip the render entirely when nothing this component cares
@@ -260,14 +242,14 @@ export function BuilderCanvas() {
               Auto-hides as soon as the first zone lands. Hidden in
               previewMode so demo screenshots stay clean. Also hidden
               during drag-over to unblock drop target.
-              2026-04-28 fix — operator: 'no fucking background get
+              2026-04-28 fix â€” operator: 'no fucking background get
               apploed to the canvas. it stays white that the entire
               issue.' Cause: this card was bg-white/85 and covered
               ~70% of the canvas surface, so the gradient WAS being
               applied to the canvas div underneath but the white card
               was hiding it. Two changes:
                 a) Hide the card when the operator has set a background
-                   — they've clearly moved past 'drag a widget here'
+                   â€” they've clearly moved past 'drag a widget here'
                    and we shouldn't fight them with a white tooltip.
                 b) Drop the card to a small chip pinned to the top
                    so the canvas bg is fully visible. */}
@@ -283,12 +265,12 @@ export function BuilderCanvas() {
                 </svg>
                 <div>
                   <p className="text-sm font-bold text-slate-800">Drag a widget onto the canvas to start</p>
-                  <p className="text-xs text-slate-500 mt-1">Pick from the <strong className="text-indigo-600">Widgets</strong> tab on the left — Clock, Weather, Text, Image, Web page, and more.</p>
+                  <p className="text-xs text-slate-500 mt-1">Pick from the <strong className="text-indigo-600">Widgets</strong> tab on the left â€” Clock, Weather, Text, Image, Web page, and more.</p>
                 </div>
               </div>
             </div>
           )}
-          {/* Compact follow-up nudge — once the operator has painted
+          {/* Compact follow-up nudge â€” once the operator has painted
               a bg they're decorating, but if zones is still empty
               they may want a hint to add widgets. Small corner chip
               that doesn't obscure the canvas bg. */}
@@ -297,7 +279,7 @@ export function BuilderCanvas() {
               aria-hidden
               className="absolute top-3 left-3 pointer-events-none px-3 py-1.5 rounded-full bg-white/80 backdrop-blur-sm shadow-md border border-indigo-200/60 text-[10px] font-bold text-indigo-700 tracking-wider uppercase"
             >
-              Now add a widget →
+              Now add a widget â†’
             </div>
           )}
 
@@ -313,7 +295,7 @@ export function BuilderCanvas() {
               // Inline-edit hook: when a widget's EditableText commits a
               // change, patch the zone's defaultConfig. `true` marks the
               // update dirty/undoable. Without this, double-clicking a
-              // text node did nothing — the whole EditableText chain
+              // text node did nothing â€” the whole EditableText chain
               // short-circuits to read-only when onConfigChange is
               // undefined.
               onConfigChange={(zoneId, patch) => {
@@ -325,13 +307,13 @@ export function BuilderCanvas() {
           ))}
 
           {showGuides && activeSnapLines.map((line, i) => {
-            // Human-readable label for the snap line — operators
+            // Human-readable label for the snap line â€” operators
             // shouldn't have to guess what the pink line means. Center
-            // canvas snap → "Center". Edge canvas → "Edge". Element
-            // snaps → the position percent rounded to 1 decimal.
+            // canvas snap â†’ "Center". Edge canvas â†’ "Edge". Element
+            // snaps â†’ the position percent rounded to 1 decimal.
             // (Canva shows pixel offsets between elements; we'd need
             // both end positions to compute that, so percent-of-canvas
-            // is a clean v1 — matches the way every editor field is
+            // is a clean v1 â€” matches the way every editor field is
             // already in percent units.)
             const isCenterCanvas = line.kind === 'canvas' && Math.abs(line.position - 50) < 0.05;
             const isEdgeCanvas   = line.kind === 'canvas' && (line.position < 0.05 || line.position > 99.95);
@@ -391,433 +373,11 @@ export function BuilderCanvas() {
             />
           )}
 
-          {/* Floating quick-actions bar over the selected zone (Canva
-              pattern). Single-selection only — multi-select would mean
-              positioning math is ambiguous, and the LayersPanel hover
-              row already covers bulk ops. */}
-          {!previewMode && selectedIds.length === 1 && (() => {
-            const z = zones.find(zz => zz.id === selectedIds[0]);
-            if (!z) return null;
-            return <FloatingZoneActions zone={z} />;
-          })()}
+          {/* Zone-context controls moved to the unified BuilderBottomBar
+              in BuilderShell.tsx (operator request 2026-04-27 â€” one bar
+              at the bottom, no floating bar over the canvas). */}
         </div>
       </div>
-    </div>
-  );
-}
-
-/** Quick-actions toolbar that floats just below (or above when
- *  there's no room) the selected zone. Mirrors Canva's "this is
- *  selected, here are the most-common things you'd do next" UX.
- *
- *  TEXT/RICH_TEXT zones get a two-row layout:
- *    Row 1: Font family · Font size · Text color · Align
- *    Row 2: B/I/U/S format toggles  |  Duplicate/Forward/Back/Lock/Delete
- *
- *  Non-text widgets keep the single-row layout (type actions + generic). */
-function FloatingZoneActions({ zone }: { zone: Zone }) {
-  // Hide floating bar for tiny zones — buttons would overwhelm the
-  // widget and the bar positioning math breaks below 8% width or 5% height.
-  if (zone.width < 8 || zone.height < 5) return null;
-
-  const duplicateZone   = useBuilderStore((s) => s.duplicateZone);
-  const removeSelected  = useBuilderStore((s) => s.removeSelected);
-  const toggleLock      = useBuilderStore((s) => s.toggleLock);
-  const moveLayer       = useBuilderStore((s) => s.moveLayer);
-  const updateZone      = useBuilderStore((s) => s.updateZone);
-
-  // Local popover state — one flag per popover so multiple can't open
-  // at once (clicking a second button closes any open one because its
-  // flag was never set).
-  const [urlOpen, setUrlOpen]       = useState(false);
-  const [dateOpen, setDateOpen]     = useState(false);
-  const [assetOpen, setAssetOpen]   = useState(false);
-
-  const cfg = (zone.defaultConfig || {}) as Record<string, any>;
-
-  /** Write a config patch without changing anything else on the zone.
-   *  Uses `true` as the second arg so the store marks the template dirty. */
-  const setCfg = (patch: Record<string, any>) => {
-    updateZone(zone.id, { defaultConfig: { ...cfg, ...patch } }, true);
-  };
-
-  // ── Type-aware quick-action buttons ──────────────────────────────
-  const wt = zone.widgetType;
-  const isText    = wt === 'TEXT' || wt === 'RICH_TEXT';
-  const isImage   = wt === 'IMAGE' || wt === 'IMAGE_CAROUSEL' || wt === 'LOGO';
-  const isClock   = wt === 'CLOCK';
-  const isWeather = wt === 'WEATHER';
-  const isTicker  = wt === 'TICKER';
-  const isCountdown = wt === 'COUNTDOWN';
-  const isWebpage = wt === 'WEBPAGE';
-
-  const hasTypeActions = isImage || isClock || isWeather || isTicker || isCountdown || isWebpage;
-
-  // DOM-measured font size for the +/− stepper so the stepper starts
-  // from what the operator actually SEES, not the stored config value
-  // (which may be null / defaulted by the widget renderer).
-  const getMeasuredFontSize = useCallback((): number | null => {
-    return measureZoneFontSize(zone.id, null);
-  }, [zone.id]);
-
-  // Position the bar centered horizontally over the zone. Default
-  // anchor is just BELOW the zone (matches Canva). TEXT bars are
-  // taller (~76px two-row) so we flip earlier and offset more.
-  // Non-text bars are ~36px single-row, flip at 88%.
-  const textBarHeight = 76;   // two rows + divider
-  const singleBarHeight = 36;
-  const flipThreshold = isText ? 82 : 88;
-  const flipAbove = zone.y + zone.height > flipThreshold;
-  const belowOffset = isText ? 16 : 8;
-  const top = flipAbove
-    ? `calc(${zone.y}% - ${isText ? textBarHeight : singleBarHeight}px - 4px)`
-    : `${zone.y + zone.height}%`;
-  const centerX = zone.x + zone.width / 2;
-  const left = `${Math.max(8, Math.min(92, centerX))}%`;
-
-  const translateY = flipAbove ? '0px' : `${belowOffset}px`;
-
-  const btn = (label: string, onClick: () => void, icon: React.ReactNode, danger = false, active = false) => (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
-        danger
-          ? 'text-slate-500 hover:bg-rose-50 hover:text-rose-600'
-          : active
-            ? 'bg-indigo-100 text-indigo-700'
-            : 'text-slate-600 hover:bg-slate-100'
-      }`}
-    >
-      {icon}
-    </button>
-  );
-
-  // ── Generic action cluster (always shown) ─────────────────────────
-  const genericActions = (
-    <>
-      {btn('Duplicate (Ctrl/⌘+D)', () => duplicateZone(zone.id), <Copy className="w-3.5 h-3.5" />)}
-      {btn('Bring forward', () => moveLayer(zone.id, 'up'), <ChevronUp className="w-3.5 h-3.5" />)}
-      {btn('Send back', () => moveLayer(zone.id, 'down'), <ChevronDown className="w-3.5 h-3.5" />)}
-      {btn(zone.locked ? 'Unlock' : 'Lock', () => toggleLock(zone.id), zone.locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />)}
-      <div className="w-px h-5 bg-slate-200 mx-0.5" />
-      {btn('Delete (Del)', () => removeSelected(), <Trash2 className="w-3.5 h-3.5" />, true)}
-    </>
-  );
-
-  // ── TEXT / RICH_TEXT — single-row compact layout ─────────────────
-  // 2026-04-29 — operator: "you removed all of the editing info from
-  // the top tool bar in the template editor but you didnt add it to
-  // the floating toolbar so everything is gone now". Cause: the
-  // previous attempt used the wrapper components from PropertiesPanel
-  // (FontFamilyField / FontSizeField / FormatToggles / ColorField).
-  // Those are designed for the vertical right-rail panel — they
-  // include their own labels, vertical-stacked div wrappers, and
-  // styles that break in a horizontal flex bar context. The
-  // arbitrary-variant CSS workaround `[&_label]:hidden [&_*]:!text-xs`
-  // didn't reliably hide things in the operator's Tailwind 4 build,
-  // so the bar rendered but empty / clipped.
-  //
-  // Rewrite using NATIVE controls inline. Compact single-row layout
-  // matches Canva's float bar exactly: Font dropdown | Size input |
-  // B I U S | Color swatch | Align cycle | divider | Duplicate
-  // Forward Back Lock Delete. ~600px wide, ~36px tall, guaranteed
-  // to render on any browser/Tailwind version.
-  if (isText) {
-    const measured = getMeasuredFontSize();
-    const sizeDisplay = cfg.fontSize ?? measured ?? '';
-    return (
-      <div
-        role="toolbar"
-        aria-label="Selected widget text actions"
-        className="absolute z-30 bg-white border border-slate-200 rounded-lg shadow-lg flex items-center gap-0.5 px-1.5 py-1"
-        style={{
-          top,
-          left,
-          transform: `translate(-50%, ${translateY})`,
-          // pointer-events: none on the wrapper so this bar doesn't
-          // intercept pointer-downs on zones that sit visually beneath
-          // it (z-30 would otherwise eat every drag attempt on a covered
-          // zone). The inner div restores pointer-events for controls.
-          // Root cause of the 2026-04-29 "all widgets unmoveable" bug:
-          // when one zone was selected, the floating bar appeared and
-          // covered adjacent zones; its stopPropagation swallowed their
-          // onPointerDown before the drag engine ever saw it.
-          pointerEvents: 'none',
-        }}
-      >
-        {/* Inner wrapper: display:contents makes it layout-transparent
-            so the outer flex arrangement is preserved. pointer-events:auto
-            + stopPropagation restore interactivity for all real controls
-            without giving the bar's chrome a hit area that would swallow
-            pointer-downs on zones underneath. */}
-        <div className="contents" style={{ pointerEvents: 'auto' }} onPointerDown={(e) => e.stopPropagation()}>
-        {/* Font family — compact native select */}
-        <select
-          aria-label="Font family"
-          title="Font family"
-          value={cfg.fontFamily || ''}
-          onChange={(e) => setCfg({ fontFamily: e.target.value })}
-          style={{ fontFamily: cfg.fontFamily || 'inherit' }}
-          className="h-8 px-2 text-xs rounded-md bg-white border border-slate-200 hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-400 cursor-pointer min-w-[120px]"
-        >
-          <option value="">Theme font</option>
-          {FLOATING_BAR_FONTS.map((f) => (
-            <option key={f} value={f} style={{ fontFamily: f }}>
-              {f}
-            </option>
-          ))}
-        </select>
-
-        {/* Font size — number input + +/- steppers */}
-        <div className="flex items-center ml-1">
-          {btn(
-            'Decrease size',
-            () => {
-              const cur = (typeof cfg.fontSize === 'number' ? cfg.fontSize : measured) || 16;
-              setCfg({ fontSize: Math.max(8, cur - 2) });
-            },
-            <span className="text-base leading-none font-semibold">−</span>,
-          )}
-          <input
-            type="number"
-            aria-label="Font size"
-            title="Font size in pixels"
-            value={sizeDisplay}
-            placeholder={measured ? String(measured) : ''}
-            onChange={(e) => {
-              const v = parseInt(e.target.value, 10);
-              setCfg({ fontSize: Number.isFinite(v) && v > 0 ? v : undefined });
-            }}
-            className="h-8 w-12 px-1 text-xs text-center rounded-md bg-white border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-          />
-          {btn(
-            'Increase size',
-            () => {
-              const cur = (typeof cfg.fontSize === 'number' ? cfg.fontSize : measured) || 16;
-              setCfg({ fontSize: cur + 2 });
-            },
-            <span className="text-base leading-none font-semibold">+</span>,
-          )}
-        </div>
-
-        <div className="w-px h-5 bg-slate-200 mx-1" />
-
-        {/* Bold / Italic / Underline / Strikethrough */}
-        {btn('Bold (Ctrl/⌘+B)', () => setCfg({ bold: cfg.bold !== true }), <Bold className="w-3.5 h-3.5" />, false, cfg.bold === true)}
-        {btn('Italic (Ctrl/⌘+I)', () => setCfg({ italic: cfg.italic !== true }), <Italic className="w-3.5 h-3.5" />, false, cfg.italic === true)}
-        {btn('Underline (Ctrl/⌘+U)', () => setCfg({ underline: cfg.underline !== true }), <Underline className="w-3.5 h-3.5" />, false, cfg.underline === true)}
-        {btn('Strikethrough', () => setCfg({ strikethrough: cfg.strikethrough !== true }), <Strikethrough className="w-3.5 h-3.5" />, false, cfg.strikethrough === true)}
-
-        <div className="w-px h-5 bg-slate-200 mx-1" />
-
-        {/* Color picker — native input + visible swatch */}
-        <label className="relative w-8 h-8 rounded-md flex items-center justify-center cursor-pointer hover:bg-slate-100" title="Text color" aria-label="Text color">
-          <Palette className="w-3.5 h-3.5 text-slate-600" />
-          <span
-            className="absolute bottom-1 left-1.5 right-1.5 h-1 rounded-sm border border-slate-300"
-            style={{ background: cfg.color || '#1e293b' }}
-          />
-          <input
-            type="color"
-            value={cfg.color || '#1e293b'}
-            onChange={(e) => setCfg({ color: e.target.value })}
-            className="absolute inset-0 opacity-0 cursor-pointer"
-          />
-        </label>
-
-        {/* Align cycle */}
-        {btn(
-          `Align: ${cfg.textAlign || 'left'} (click to cycle)`,
-          () => {
-            const cur = cfg.textAlign || 'left';
-            const next = cur === 'left' ? 'center' : cur === 'center' ? 'right' : 'left';
-            setCfg({ textAlign: next });
-          },
-          cfg.textAlign === 'center'
-            ? <AlignCenter className="w-3.5 h-3.5" />
-            : cfg.textAlign === 'right'
-              ? <AlignRight className="w-3.5 h-3.5" />
-              : <AlignLeft className="w-3.5 h-3.5" />,
-        )}
-
-        <div className="w-px h-5 bg-slate-200 mx-1" />
-
-        {/* Generic actions — Duplicate / Forward / Back / Lock / Delete */}
-        {genericActions}
-        </div>{/* end inner pointer-events:auto wrapper */}
-      </div>
-    );
-  }
-
-  // ── Single-row layout for all non-text widget types ───────────────
-  return (
-    <div
-      role="toolbar"
-      aria-label="Selected widget actions"
-      className="absolute z-30 bg-white border border-slate-200 rounded-lg shadow-lg flex items-center gap-0.5 px-1 py-1"
-      style={{
-        top,
-        left,
-        transform: `translate(-50%, ${translateY})`,
-        // Same pointer-events:none fix as the text toolbar above.
-        pointerEvents: 'none',
-      }}
-    >
-      <div className="contents" style={{ pointerEvents: 'auto' }} onPointerDown={(e) => e.stopPropagation()}>
-
-      {/* ── IMAGE / IMAGE_CAROUSEL / LOGO ── */}
-      {isImage && (<>
-        {/* Replace asset — opens the AssetLibraryModal */}
-        <div className="relative">
-          <button
-            type="button"
-            aria-label="Replace image"
-            title="Replace image"
-            onClick={(e) => { e.stopPropagation(); setAssetOpen((v) => !v); setUrlOpen(false); setDateOpen(false); }}
-            className="w-8 h-8 rounded-md flex items-center justify-center transition-colors text-slate-600 hover:bg-slate-100"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
-        </div>
-        {/* Object-fit cycle: contain → cover → fill → contain */}
-        {btn(
-          `Fit: ${cfg.objectFit || cfg.fit || 'cover'} (click to cycle)`,
-          () => {
-            const cur = cfg.objectFit || cfg.fit || 'cover';
-            const next = cur === 'cover' ? 'contain' : cur === 'contain' ? 'fill' : 'cover';
-            setCfg({ objectFit: next, fit: next });
-          },
-          <Maximize2 className="w-3.5 h-3.5" />,
-        )}
-      </>)}
-
-      {/* ── CLOCK ── */}
-      {isClock && btn(
-        `Format: ${cfg.format || '12h'} (click to toggle)`,
-        () => setCfg({ format: cfg.format === '24h' ? '12h' : '24h' }),
-        <span className="flex items-center gap-0.5">
-          <Clock className="w-3 h-3" />
-          <span className="text-[9px] font-bold">{cfg.format === '24h' ? '24h' : '12h'}</span>
-        </span>,
-      )}
-
-      {/* ── WEATHER ── */}
-      {isWeather && btn(
-        `Units: ${cfg.units || 'F'} (click to toggle)`,
-        () => setCfg({ units: cfg.units === 'C' ? 'F' : 'C' }),
-        <span className="flex items-center gap-0.5">
-          <Thermometer className="w-3 h-3" />
-          <span className="text-[9px] font-bold">{cfg.units === 'C' ? 'C' : 'F'}</span>
-        </span>,
-      )}
-
-      {/* ── TICKER ── */}
-      {isTicker && btn(
-        `Speed: ${typeof cfg.speed === 'string' ? cfg.speed : 'normal'} (click to cycle)`,
-        () => {
-          const cur = (typeof cfg.speed === 'string' ? cfg.speed : 'normal') as string;
-          const next = cur === 'slow' ? 'normal' : cur === 'normal' ? 'fast' : 'slow';
-          setCfg({ speed: next });
-        },
-        <span className="flex items-center gap-0.5">
-          <Gauge className="w-3 h-3" />
-          <span className="text-[9px] font-bold capitalize">{typeof cfg.speed === 'string' ? cfg.speed : 'N'}</span>
-        </span>,
-      )}
-
-      {/* ── COUNTDOWN ── */}
-      {isCountdown && (
-        <div className="relative">
-          <button
-            type="button"
-            aria-label="Set target date"
-            title="Set target date"
-            onClick={(e) => { e.stopPropagation(); setDateOpen((v) => !v); setUrlOpen(false); setAssetOpen(false); }}
-            className="w-8 h-8 rounded-md flex items-center justify-center transition-colors text-slate-600 hover:bg-slate-100"
-          >
-            <Calendar className="w-3.5 h-3.5" />
-          </button>
-          {dateOpen && (
-            <div
-              className="absolute z-40 bottom-full mb-1.5 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg shadow-xl p-2 w-44"
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              <label className="block text-[10px] font-semibold text-slate-500 mb-1">Target date</label>
-              <input
-                type="date"
-                defaultValue={cfg.targetDate || ''}
-                onPointerDown={(e) => e.stopPropagation()}
-                onChange={(e) => { setCfg({ targetDate: e.target.value }); }}
-                className="w-full h-7 px-2 text-xs rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-              />
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── WEBPAGE ── */}
-      {isWebpage && (<>
-        <div className="relative">
-          <button
-            type="button"
-            aria-label="Edit URL"
-            title="Edit URL"
-            onClick={(e) => { e.stopPropagation(); setUrlOpen((v) => !v); setDateOpen(false); setAssetOpen(false); }}
-            className="w-8 h-8 rounded-md flex items-center justify-center transition-colors text-slate-600 hover:bg-slate-100"
-          >
-            <Globe className="w-3.5 h-3.5" />
-          </button>
-          {urlOpen && (
-            <div
-              className="absolute z-40 bottom-full mb-1.5 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg shadow-xl p-2 w-56"
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              <label className="block text-[10px] font-semibold text-slate-500 mb-1">Page URL</label>
-              <input
-                type="url"
-                defaultValue={cfg.url || ''}
-                placeholder="https://…"
-                onPointerDown={(e) => e.stopPropagation()}
-                onBlur={(e) => { setCfg({ url: e.target.value }); }}
-                className="w-full h-7 px-2 text-xs rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-              />
-            </div>
-          )}
-        </div>
-        {btn(
-          cfg.staticMode ? 'Interactive: off (click to toggle)' : 'Interactive: on (click to toggle)',
-          () => setCfg({ staticMode: !cfg.staticMode }),
-          <MousePointer className="w-3.5 h-3.5" />,
-          false,
-          !cfg.staticMode,
-        )}
-      </>)}
-
-      {/* Divider between type-aware and generic sections */}
-      {hasTypeActions && <div className="w-px h-5 bg-slate-200 mx-0.5" />}
-
-      {/* ── Generic actions (always visible) ── */}
-      {genericActions}
-
-      </div>{/* end inner pointer-events:auto wrapper */}
-
-      {/* Asset picker modal — rendered at root level so it escapes the
-          floating bar stacking context. Triggered by the RefreshCw btn. */}
-      {assetOpen && (
-        <AssetLibraryModal
-          kind="image"
-          onPick={(url) => {
-            // IMAGE and LOGO store their asset in assetUrl; LOGO also accepts
-            // logoUrl. Use assetUrl as the canonical field to match PropertiesPanel.
-            setCfg({ assetUrl: url, imageUrl: undefined });
-            setAssetOpen(false);
-          }}
-          onClose={() => setAssetOpen(false)}
-        />
-      )}
     </div>
   );
 }
