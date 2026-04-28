@@ -494,6 +494,40 @@ document.addEventListener('submit',function(e){
     form.target='_self';
   }
 },true);
+// Wrap window.location.href setter + assign() + replace() so JS-driven
+// navigations stay inside the proxy chain. The static href rewrite + click
+// handler covers <a href> + <a onclick> patterns, but a LOT of sites use
+// patterns like:
+//   onclick="window.location='/page'"
+//   onclick="location.href='/page'"
+//   document.getElementById('x').addEventListener('click',()=>location.assign('/page'))
+// All of those bypass the click handler's wrap because they programmatically
+// navigate the iframe to the unproxied upstream URL, which CORS / X-Frame-
+// Options blocks → Android WebView shows the broken-icon page.
+//
+// Operator (2026-04-28) saw exactly this: clicked a link on e-arc.com,
+// kiosk went to the broken-icon screen. Fix: intercept location mutations
+// and route through the proxy.
+try{
+  var locProto=window.Location&&window.Location.prototype;
+  var locDesc=locProto&&Object.getOwnPropertyDescriptor(locProto,'href');
+  if(locDesc&&locDesc.set){
+    var origLocSet=locDesc.set;
+    Object.defineProperty(locProto,'href',{
+      configurable:true,
+      get:locDesc.get,
+      set:function(v){try{v=wrap(v);}catch(_){}return origLocSet.call(this,v);},
+    });
+  }
+  ['assign','replace'].forEach(function(method){
+    try{
+      var orig=locProto&&locProto[method];
+      if(typeof orig==='function'){
+        locProto[method]=function(u){try{u=wrap(u);}catch(_){}return orig.call(this,u);};
+      }
+    }catch(_){}
+  });
+}catch(_){}
 // Wake up "lazyload-on-interaction" page-speed plugins (WPRocket
 // Delay JS Execution, Perfmatters DOM-event delay, etc.) on signage
 // hardware where there's no real user activity. These plugins hold
