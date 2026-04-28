@@ -45,6 +45,12 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   // published. CSRF's threat model doesn't apply here anyway — the
   // caller is a native app, not a browser with ambient cookies.
   (p) => p === '/api/v1/player/update-check',
+  // Manager self-update poll (added 2026-04-28 for Manager v1.0.2).
+  // Same Kotlin-no-cookies argument as /update-check above. Without
+  // this exemption the new ManagerSelfUpdateWorker would get 403'd
+  // forever and never upgrade Manager — which is the entire point
+  // of v1.0.2.
+  (p) => p === '/api/v1/player/manager-update-check',
   // Public branding demo — no prior session; throttled + never persists.
   (p) => p === '/api/v1/branding/demo/scrape',
   // Android kiosk APK log upload — Kotlin HttpURLConnection has no cookie
