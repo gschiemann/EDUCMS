@@ -109,9 +109,14 @@ export class ScreensController {
 
   // ─── PUBLIC: Device self-registration (no auth) ───
   // The player opens, sends its device info, gets back a pairing code
-  // sec-fix(P0 #7) Defense 1: 5 registrations per IP per hour (IP throttle)
-  // + per-fingerprint 15-minute cooldown (enforced below in handler).
-  @Throttle({ default: { limit: 5, ttl: 3_600_000 } })
+  // sec-fix(P0 #7) Defense 1: 30 registrations per IP per hour (IP throttle)
+  // + per-fingerprint 15-minute cooldown (enforced below in handler — but
+  // ONLY for unpaired fingerprints; see hotfix note).
+  // 2026-04-28 hotfix: bumped from 5/hr to 30/hr after the original 5/hr
+  // bricked a pilot kiosk during an OTA-driven re-register loop. Per-FP
+  // cooldown remains the primary enumeration defense; IP throttle is a
+  // backstop, not the gate.
+  @Throttle({ default: { limit: 30, ttl: 3_600_000 } })
   @Post('register')
   async register(@Body() body: {
     deviceFingerprint: string;
@@ -144,31 +149,39 @@ export class ScreensController {
       };
     }
 
-    // sec-fix(P0 #7) Defense 1: per-fingerprint cooldown.
-    // A legitimate kiosk re-registers when it reboots; 15 min between
-    // registrations is fine for real devices. An attacker cycling
-    // fingerprints hits this wall on each new guess.
-    const fpKey = body.deviceFingerprint;
-    const lastRegTs = _registerFpCooldown.get(fpKey);
-    if (lastRegTs !== undefined && Date.now() - lastRegTs < REGISTER_FP_COOLDOWN_MS) {
-      throw new HttpException(
-        'Too Many Requests: fingerprint registered recently, retry after 15 minutes',
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
-    _registerFpCooldown.set(fpKey, Date.now());
-    // Prune stale entries to avoid unbounded growth.
-    if (_registerFpCooldown.size > 10_000) {
-      const cutoff = Date.now() - REGISTER_FP_COOLDOWN_MS;
-      for (const [k, ts] of _registerFpCooldown) {
-        if (ts < cutoff) _registerFpCooldown.delete(k);
-      }
-    }
-
-    // Check if this device is already registered
+    // Check if this device is already registered. We do this BEFORE the
+    // per-fingerprint cooldown so paired kiosks can re-register freely
+    // (no enumeration risk: the FP is already known + claimed).
     const existing = await this.prisma.client.screen.findUnique({
       where: { deviceFingerprint: body.deviceFingerprint },
     });
+
+    // sec-fix(P0 #7) Defense 1: per-fingerprint cooldown — ONLY for
+    // unpaired/unknown fingerprints. The cooldown defends against an
+    // attacker cycling fingerprint guesses to enumerate Screen rows.
+    // An already-paired kiosk re-registering (e.g. after OTA install,
+    // localStorage wipe, or webview restart) is legitimate and must not
+    // be blocked: that loop would brick the kiosk on every upgrade.
+    // 2026-04-28 hotfix: this exemption was missing; pilot kiosk hit a
+    // 429 register loop the moment v1.0.35 force-pushed.
+    const fpKey = body.deviceFingerprint;
+    if (!existing || !existing.tenantId) {
+      const lastRegTs = _registerFpCooldown.get(fpKey);
+      if (lastRegTs !== undefined && Date.now() - lastRegTs < REGISTER_FP_COOLDOWN_MS) {
+        throw new HttpException(
+          'Too Many Requests: fingerprint registered recently, retry after 15 minutes',
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+      _registerFpCooldown.set(fpKey, Date.now());
+      // Prune stale entries to avoid unbounded growth.
+      if (_registerFpCooldown.size > 10_000) {
+        const cutoff = Date.now() - REGISTER_FP_COOLDOWN_MS;
+        for (const [k, ts] of _registerFpCooldown) {
+          if (ts < cutoff) _registerFpCooldown.delete(k);
+        }
+      }
+    }
 
     // Device JWT — tied to this screenId + fingerprint. Browser players
     // have no /devices/pair code-exchange flow (the pairing code is null'd
