@@ -818,6 +818,7 @@ function PlayerPage() {
   // polling fallback. Debounces so we don't fire bridge.checkForUpdates
   // every 30s while the worker is still in flight.
   const otaPollFireRef = useRef<number>(0);
+  const otaPollKeyRef = useRef<string | null>(null);
   // Split refs: interval runs at steady cadence, timeout is the one-
   // shot backoff retry. Previously both shared `pollRef` which caused
   // races when a failing tick reassigned the same handle.
@@ -922,6 +923,53 @@ function PlayerPage() {
   const managerVersion: string | null = typeof window !== 'undefined'
     ? new URLSearchParams(window.location.search).get('mv')
     : null;
+
+  const handleHeartbeatOta = useCallback((data: any, source: string) => {
+    if (!data) return;
+
+    if (data.ota && data.ota.state) {
+      setServerOtaState({
+        state: data.ota.state,
+        progress: typeof data.ota.progress === 'number' ? data.ota.progress : null,
+        message: data.ota.message || null,
+        at: data.ota.at || null,
+      });
+      if (data.ota.state === 'INSTALLED') {
+        setOtaProgress((prev) => prev ?? { startedAt: Date.now(), bridgeAvailable: true });
+        setTimeout(() => setOtaProgress(null), 3000);
+      }
+    } else {
+      setServerOtaState(null);
+    }
+
+    if (!data.forceUpdatePending || typeof window === 'undefined') return;
+
+    const now = Date.now();
+    const pendingAt = typeof data.forceUpdatePendingAt === 'string'
+      ? data.forceUpdatePendingAt.trim()
+      : '';
+    const pendingKey = pendingAt || `legacy-${Math.floor(now / 60_000)}`;
+
+    if (pendingAt) {
+      if (otaPollKeyRef.current === pendingKey) return;
+    } else if (now - otaPollFireRef.current < 60_000) {
+      return;
+    }
+
+    otaPollKeyRef.current = pendingKey;
+    otaPollFireRef.current = now;
+    console.log(`[OTA poll] ${source} detected forceUpdatePending=true, firing bridge.checkForUpdates`);
+    try {
+      const bridge = (window as any).EduCmsNative;
+      const bridgeAvailable = !!(bridge && typeof bridge.checkForUpdates === 'function');
+      setOtaProgress({ startedAt: now, bridgeAvailable });
+      if (bridgeAvailable) {
+        bridge.checkForUpdates();
+      }
+    } catch (e) {
+      console.warn('[OTA poll] bridge fire failed', e);
+    }
+  }, []);
 
   // Remote-control Back-button bridge. The Android shell (v1.0.10+)
   // dispatches an `edu-show-stop-overlay` window event when the user
@@ -1341,24 +1389,7 @@ function PlayerPage() {
         // server response same date). Drives the splash's update
         // banner with actual CHECKING/DOWNLOADING/INSTALLING progress
         // instead of elapsed-time estimates.
-        if (data.ota && data.ota.state) {
-          setServerOtaState({
-            state: data.ota.state,
-            progress: typeof data.ota.progress === 'number' ? data.ota.progress : null,
-            message: data.ota.message || null,
-            at: data.ota.at || null,
-          });
-          // If the worker just landed an INSTALLED state, surface
-          // otaProgress (so the banner shows up even if the dashboard
-          // push WS message was missed) and auto-clear after 3s.
-          if (data.ota.state === 'INSTALLED' && !otaProgress) {
-            setOtaProgress({ startedAt: Date.now(), bridgeAvailable: true });
-            setTimeout(() => setOtaProgress(null), 3000);
-          }
-        } else if (serverOtaState) {
-          // Server cleared / returned null → drop our local copy too.
-          setServerOtaState(null);
-        }
+        handleHeartbeatOta(data, 'pairing heartbeat');
 
         // 2026-04-29 — Heartbeat-driven OTA polling fallback. The
         // operator's v1.0.30 kiosk got NOTHING from a push because
@@ -1372,24 +1403,6 @@ function PlayerPage() {
         // 60s debounce so we don't fire repeatedly while the worker
         // is still in flight (heartbeat ticks faster than the worker
         // can complete an install).
-        if (data.forceUpdatePending && screenId) {
-          const now = Date.now();
-          const lastFire = otaPollFireRef.current;
-          if (now - lastFire > 60_000) {
-            otaPollFireRef.current = now;
-            console.log('[OTA poll] heartbeat detected forceUpdatePending=true, firing bridge.checkForUpdates');
-            try {
-              const bridge = (window as any).EduCmsNative;
-              const bridgeAvailable = !!(bridge && typeof bridge.checkForUpdates === 'function');
-              setOtaProgress({ startedAt: now, bridgeAvailable });
-              if (bridgeAvailable) {
-                bridge.checkForUpdates();
-              }
-            } catch (e) {
-              console.warn('[OTA poll] bridge fire failed', e);
-            }
-          }
-        }
       } catch { pollFails += 1; }
       // Stretch the interval after repeated failures so we don't hammer a down server.
       if (pollFails >= 3) {
@@ -1409,7 +1422,7 @@ function PlayerPage() {
       if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
       if (pollTimeoutRef.current) { clearTimeout(pollTimeoutRef.current); pollTimeoutRef.current = null; }
     };
-  }, [phase]);
+  }, [phase, handleHeartbeatOta]);
 
   // ─── Phase 3: Fetch playlist content ───
   const fetchContent = useCallback(async () => {
@@ -1706,16 +1719,20 @@ function PlayerPage() {
     const tick = async () => {
       if (cancelled) return;
       try {
-        await fetch(buildHeartbeatUrl(getApiRoot(), fp), {
+        const res = await fetch(buildHeartbeatUrl(getApiRoot(), fp), {
           method: 'GET', cache: 'no-store',
         });
+        if (res.ok) {
+          const data = await res.json();
+          handleHeartbeatOta(data, 'always-on heartbeat');
+        }
       } catch { /* tolerated — next tick retries, forever */ }
     };
     // Kick immediately so dashboard flips ONLINE within seconds of load
     tick();
     const iv = setInterval(tick, 30_000);
     return () => { cancelled = true; clearInterval(iv); };
-  }, []);
+  }, [handleHeartbeatOta]);
 
   // ─── Realtime WebSocket Connection ───
   // Hardened: exponential backoff with jitter, refs (not effect-locals) for timers

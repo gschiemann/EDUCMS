@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -136,7 +137,7 @@ class HeartbeatService : Service() {
             val fp = prefs.getString("device_fingerprint", null)
             val apiRoot = prefs.getString("api_root", null)
             if (!fp.isNullOrBlank() && !apiRoot.isNullOrBlank()) {
-                tickWithWakeLock(apiRoot, fp)
+                tickWithWakeLock(apiRoot, fp, prefs)
             }
             // Backoff if we're failing — 30s baseline doubles to a 5min cap.
             val delayMs = if (consecutiveFailures > 3)
@@ -146,7 +147,7 @@ class HeartbeatService : Service() {
         }
     }
 
-    private suspend fun tickWithWakeLock(apiRoot: String, fp: String) {
+    private suspend fun tickWithWakeLock(apiRoot: String, fp: String, prefs: SharedPreferences) {
         val pm = applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
         val wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "edu:heartbeat")
         try {
@@ -169,8 +170,8 @@ class HeartbeatService : Service() {
                 val code = conn.responseCode
                 if (code in 200..299) {
                     consecutiveFailures = 0
-                    // Drain body so connection can be pooled.
-                    conn.inputStream.use { it.readBytes() }
+                    val body = conn.inputStream.bufferedReader().use { it.readText() }
+                    handleHeartbeatResponse(body, prefs)
                 } else {
                     consecutiveFailures += 1
                     Log.w(TAG, "Heartbeat returned HTTP $code (consecutive=$consecutiveFailures)")
@@ -186,9 +187,41 @@ class HeartbeatService : Service() {
         }
     }
 
+    private fun handleHeartbeatResponse(body: String, prefs: SharedPreferences) {
+        if (body.isBlank()) return
+        try {
+            val json = JSONObject(body)
+            if (!json.optBoolean("forceUpdatePending", false)) return
+
+            val pendingAt = json.optString("forceUpdatePendingAt", "").trim()
+            val now = System.currentTimeMillis()
+            val lastKey = prefs.getString(KEY_LAST_FORCE_OTA_KEY, null)
+            val lastAt = prefs.getLong(KEY_LAST_FORCE_OTA_AT, 0L)
+
+            if (pendingAt.isNotBlank()) {
+                if (pendingAt == lastKey) return
+            } else if (now - lastAt < FORCE_OTA_MIN_INTERVAL_MS) {
+                return
+            }
+
+            prefs.edit()
+                .putString(KEY_LAST_FORCE_OTA_KEY, pendingAt.ifBlank { "legacy-$now" })
+                .putLong(KEY_LAST_FORCE_OTA_AT, now)
+                .apply()
+
+            PlayerLogger.i(TAG, "Heartbeat detected forceUpdatePending; firing OTA check")
+            PlayerApp.fireOtaCheckNow(applicationContext)
+        } catch (e: Exception) {
+            PlayerLogger.w(TAG, "Heartbeat response parse failed: ${e.message}")
+        }
+    }
+
     companion object {
         private const val TAG = "HeartbeatService"
         private const val NOTIF_ID = 1001
+        private const val KEY_LAST_FORCE_OTA_KEY = "last_force_ota_key"
+        private const val KEY_LAST_FORCE_OTA_AT = "last_force_ota_at"
+        private const val FORCE_OTA_MIN_INTERVAL_MS = 60_000L
 
         /**
          * Convenience entrypoint — call from PlayerApp.onCreate and

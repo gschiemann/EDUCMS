@@ -234,7 +234,7 @@ export class ProxyController {
       // gets only the color-scheme + base-href injection (still
       // valuable — kiosks may inherit dark-mode from their host
       // OS, and base-href fixes relative-URL resources).
-      if (renderedBy === 'fetch' && !interactive) {
+      if (renderedBy === 'fetch') {
         const lazyAttrs = [
           'data-lazy-src',
           'data-src',
@@ -469,12 +469,30 @@ if(navigator.sendBeacon){
   var osb=navigator.sendBeacon.bind(navigator);
   navigator.sendBeacon=function(u,d){try{u=wrap(u);}catch(_){}return osb(u,d);};
 }
-// Runtime anchor guard: any dynamically injected <a target="_blank"> gets target=_self
-// so Android WebView never tries to open a new window inside the iframe.
+// Runtime anchor/form guard: dynamically injected navigation is routed through
+// the proxy and kept in-frame, so JS-created links cannot escape to upstream.
 document.addEventListener('click',function(e){
   var el=e.target;
   while(el&&el.tagName!=='A')el=el.parentElement;
-  if(el&&el.tagName==='A'&&el.target==='_blank')el.target='_self';
+  if(el&&el.tagName==='A'){
+    try{
+      var raw=el.getAttribute('href')||el.href;
+      var next=wrap(raw);
+      if(next&&next!==raw)el.setAttribute('href',next);
+    }catch(_){}
+    el.target='_self';
+  }
+},true);
+document.addEventListener('submit',function(e){
+  var form=e.target;
+  if(form&&form.tagName==='FORM'){
+    try{
+      var raw=form.getAttribute('action')||form.action||BASE;
+      var next=wrap(raw);
+      if(next)form.setAttribute('action',next);
+    }catch(_){}
+    form.target='_self';
+  }
 },true);
 }catch(e){console.warn('proxy shim init failed',e);}})();</script>`;
       }

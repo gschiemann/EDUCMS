@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.util.Log
+import com.educms.manager.rollback.InstallState
+import org.json.JSONObject
 
 /**
  * Catches the PackageInstaller.Session result for OTA installs
@@ -85,17 +87,51 @@ class OtaInstallReceiver : BroadcastReceiver() {
                 val pendingIntent: Intent? = intent.getParcelableExtra(Intent.EXTRA_INTENT)
                 if (pendingIntent == null) {
                     Log.w(TAG, "STATUS_PENDING_USER_ACTION but no EXTRA_INTENT — install stalled")
+                    InstallState.clearPending(context)
+                    reportInstallError(context, targetPackage, "Install stalled: user-action intent missing")
                     return
                 }
                 surfaceInstallPromptViaNotification(context, pendingIntent, targetPackage)
             }
             else -> {
                 Log.e(TAG, "OTA install FAILED: ${statusName(status)} — $message")
+                InstallState.clearPending(context)
+                reportInstallError(
+                    context,
+                    targetPackage,
+                    "Install failed: ${statusName(status)}${message?.let { " - $it" } ?: ""}",
+                )
                 // Phase 2: report ERROR state to API + trigger
                 // rollback logic if we already removed the previous
                 // APK from disk.
             }
         }
+    }
+
+    private fun reportInstallError(ctx: Context, targetPackage: String, reason: String) {
+        try {
+            val fp = readPlayerFingerprintFromHeartbeat(ctx)
+                ?: ("android-" + (android.provider.Settings.Secure.getString(
+                    ctx.contentResolver,
+                    android.provider.Settings.Secure.ANDROID_ID,
+                ).orEmpty()))
+            if (fp.isBlank() || fp == "android-") return
+
+            val url = java.net.URL("${BuildConfig.API_ROOT}/api/v1/screens/status/$fp/ota-state")
+            val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+                requestMethod = "POST"
+                setRequestProperty("Content-Type", "application/json")
+                doOutput = true
+                connectTimeout = 5_000
+                readTimeout = 5_000
+            }
+            val payload = JSONObject().apply {
+                put("state", "ERROR")
+                put("message", "$targetPackage: ${reason.take(360)}")
+            }
+            conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+            conn.responseCode
+        } catch (_: Exception) { /* best-effort */ }
     }
 
     /**

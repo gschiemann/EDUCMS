@@ -60,7 +60,7 @@ class OtaWorker(
         try {
             val apiRoot = BuildConfig.API_ROOT
             val fp = deriveFingerprint()
-            val playerVersion = readInstalledPlayerVersion()
+            val installedPlayer = readInstalledPlayer()
             // Phase 2.5 — single-sideload UX: when Manager is freshly
             // installed and Player isn't on the device yet, treat it
             // as currentVc=0/versionName=none. The /update-check
@@ -68,11 +68,12 @@ class OtaWorker(
             // we install Player from scratch on first run. Operator
             // does ONE sideload (Manager) + ONE ADB provision command;
             // Manager auto-installs Player on first launch.
-            val (currentVc, currentVn) = playerVersion ?: run {
+            val currentVc = installedPlayer?.versionCode ?: 0
+            val currentVn = installedPlayer?.versionName ?: run {
                 Log.i(TAG, "Player not installed yet — treating as first-install bootstrap (vc=0)")
-                0 to "0.0.0"
+                "0.0.0"
             }
-            val isBootstrap = playerVersion == null
+            val isBootstrap = installedPlayer == null
             Log.i(
                 TAG,
                 "current Player: $currentVn (vc=$currentVc) fp=${fp.take(20)}… " +
@@ -180,10 +181,8 @@ class OtaWorker(
             // the actual package id from PackageManager (not the hardcoded
             // BuildConfig value) so debug builds — where Player installs as
             // "com.educms.player.debug" — archive the right APK.
-            if (!isBootstrap) {
-                val installedPkg = OtaInstaller.pickInstalledPlayerPackage(applicationContext.packageManager)
-                    ?: BuildConfig.PLAYER_PACKAGE // fallback: best-effort archive under prod id
-                ApkArchive.archivePackage(applicationContext, installedPkg)
+            if (installedPlayer != null) {
+                ApkArchive.archivePackage(applicationContext, installedPlayer.packageName)
             }
 
             // Mark the install as pending. WatchdogService will watch
@@ -205,7 +204,27 @@ class OtaWorker(
             // the id always match, regardless of which build variant was
             // downloaded.
             val apkPkg = InstallTracker.readApkPackageId(applicationContext, outFile)
-                ?: BuildConfig.PLAYER_PACKAGE // fallback if parsePackageInfo fails
+            if (apkPkg.isNullOrBlank()) {
+                Log.e(TAG, "Downloaded APK has no readable package id â€” refusing install")
+                reportOtaState(apiRoot, fp, "ERROR", null, "Downloaded APK package id unreadable")
+                outFile.delete()
+                return@withContext Result.success()
+            }
+            if (installedPlayer != null && apkPkg != installedPlayer.packageName) {
+                Log.e(
+                    TAG,
+                    "Downloaded APK package mismatch: installed=${installedPlayer.packageName} apk=$apkPkg",
+                )
+                reportOtaState(
+                    apiRoot,
+                    fp,
+                    "ERROR",
+                    null,
+                    "APK package mismatch: installed ${installedPlayer.packageName}, downloaded $apkPkg",
+                )
+                outFile.delete()
+                return@withContext Result.success()
+            }
 
             // Install — silent if DEVICE_OWNER, prompt-fallback otherwise.
             reportOtaState(apiRoot, fp, "INSTALLING", null, "v$latestVn")
@@ -232,7 +251,13 @@ class OtaWorker(
      * PackageManager. Falls back to the .debug variant if the
      * production package isn't installed.
      */
-    private fun readInstalledPlayerVersion(): Pair<Int, String>? {
+    private data class InstalledPlayer(
+        val packageName: String,
+        val versionCode: Int,
+        val versionName: String,
+    )
+
+    private fun readInstalledPlayer(): InstalledPlayer? {
         val pm = applicationContext.packageManager
         val candidates = listOf(BuildConfig.PLAYER_PACKAGE, "${BuildConfig.PLAYER_PACKAGE}.debug")
         for (pkg in candidates) {
@@ -241,7 +266,7 @@ class OtaWorker(
                 @Suppress("DEPRECATION")
                 val vc = info.versionCode
                 val vn = info.versionName ?: "$vc"
-                return vc to vn
+                return InstalledPlayer(pkg, vc, vn)
             } catch (_: Exception) { /* try next */ }
         }
         return null

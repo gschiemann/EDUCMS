@@ -30,11 +30,11 @@ android {
         minSdk = 24
         targetSdk = 34
         // versionCode MUST match the API's semver-encoding formula:
-        //   major*10000 + minor*100 + patch  (e.g. 1.0.8 → 10008)
+        //   major*10000 + minor*100 + patch  (e.g. 1.0.9 → 10009)
         // ManagerSelfUpdateWorker compares installed versionCode against
         // the API-returned derivedVersionCode; they must share the same scheme.
-        versionCode = 10008 // 1*10000 + 0*100 + 8
-        versionName = "1.0.8"
+        versionCode = 10009 // 1*10000 + 0*100 + 9
+        versionName = "1.0.9"
 
         // Override at build time to point at a non-default API:
         //   -PmanagerApiRoot="https://staging.educms-five.vercel.app"

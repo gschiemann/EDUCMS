@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import com.educms.player.logging.PlayerLogger
+import org.json.JSONObject
 
 /**
  * Catches the PackageInstaller.Session commit result and logs it.
@@ -40,6 +41,7 @@ class OtaInstallReceiver : BroadcastReceiver() {
                 val confirm = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
                 if (confirm == null) {
                     PlayerLogger.w(TAG, "STATUS_PENDING_USER_ACTION but no EXTRA_INTENT")
+                    reportOtaError(context, "Install stalled: user-action intent missing")
                     return
                 }
                 // Diagnostic: log component + resolveActivity result so
@@ -74,12 +76,50 @@ class OtaInstallReceiver : BroadcastReceiver() {
             PackageInstaller.STATUS_FAILURE_CONFLICT,
             PackageInstaller.STATUS_FAILURE_INCOMPATIBLE,
             PackageInstaller.STATUS_FAILURE_INVALID,
-            PackageInstaller.STATUS_FAILURE_STORAGE ->
+            PackageInstaller.STATUS_FAILURE_STORAGE -> {
                 PlayerLogger.w(TAG, "OTA install FAILED (status=$status): $msg")
-            else ->
+                reportOtaError(context, "Install failed: ${statusName(status)}${if (msg.isNotBlank()) " - $msg" else ""}")
+            }
+            else -> {
                 PlayerLogger.w(TAG, "OTA install: unknown status=$status msg=$msg")
+                reportOtaError(context, "Install returned unknown status=$status${if (msg.isNotBlank()) " - $msg" else ""}")
+            }
         }
     }
+
+    private fun reportOtaError(context: Context, message: String) {
+        try {
+            val prefs = context.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
+            val apiRoot = prefs.getString("api_root", null) ?: return
+            val fp = prefs.getString("device_fingerprint", null) ?: return
+            val url = java.net.URL("$apiRoot/api/v1/screens/status/$fp/ota-state")
+            val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+                requestMethod = "POST"
+                setRequestProperty("Content-Type", "application/json")
+                doOutput = true
+                connectTimeout = 5_000
+                readTimeout = 5_000
+            }
+            val payload = JSONObject().apply {
+                put("state", "ERROR")
+                put("message", message.take(400))
+            }
+            conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+            conn.responseCode
+        } catch (_: Exception) { /* best-effort */ }
+    }
+
+    private fun statusName(status: Int): String = when (status) {
+        PackageInstaller.STATUS_FAILURE -> "FAILURE"
+        PackageInstaller.STATUS_FAILURE_ABORTED -> "FAILURE_ABORTED"
+        PackageInstaller.STATUS_FAILURE_BLOCKED -> "FAILURE_BLOCKED"
+        PackageInstaller.STATUS_FAILURE_CONFLICT -> "FAILURE_CONFLICT"
+        PackageInstaller.STATUS_FAILURE_INCOMPATIBLE -> "FAILURE_INCOMPATIBLE"
+        PackageInstaller.STATUS_FAILURE_INVALID -> "FAILURE_INVALID"
+        PackageInstaller.STATUS_FAILURE_STORAGE -> "FAILURE_STORAGE"
+        else -> "UNKNOWN($status)"
+    }
+
     companion object {
         private const val TAG = "OtaInstallReceiver"
         const val ACTION_LAUNCH_INSTALL_PROMPT = "com.educms.player.LAUNCH_INSTALL_PROMPT"

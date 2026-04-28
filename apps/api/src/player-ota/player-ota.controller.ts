@@ -487,6 +487,7 @@ export class PlayerOtaController {
     const callerVc = Number(body?.versionCode) || 0;
     const fp = (body?.fingerprint || '').trim();
     const fpShort = fp ? fp.slice(0, 10) : 'no-fp';
+    const callerAbi = String(body?.abi || '').trim().toLowerCase();
 
     // Persist the reported Manager version to the screen row so the
     // dashboard's chip stays in sync. Best-effort.
@@ -503,7 +504,7 @@ export class PlayerOtaController {
     }
 
     try {
-      const info = await resolveLatestManagerReleaseInfo();
+      const info = await resolveLatestManagerReleaseInfo(callerAbi);
       if (!info) {
         this.logger.warn(
           `[mgr-ota] decision=uptoDate-no-release caller=${callerVn} fp=${fpShort} ` +
@@ -526,7 +527,7 @@ export class PlayerOtaController {
       // 2026-04-28 — pin SHA-256 to close the "compromised release"
       // hole. FAIL CLOSED if we couldn't compute SHA (GitHub hiccup
       // etc.); see /update-check Path B for the same rationale.
-      const sha256 = await resolveLatestManagerReleaseSha();
+      const sha256 = await resolveLatestManagerReleaseSha(info.apkUrl);
       if (!sha256) {
         this.logger.warn(
           `[mgr-ota] decision=uptoDate-no-sha caller=${callerVn} target=v${info.versionName} ` +
@@ -890,63 +891,67 @@ async function resolveLatestReleaseInfo(callerAbi?: string): Promise<ReleaseInfo
 // Same pattern but for `manager-v*` tags. Called by the new
 // /manager-update-check endpoint that powers Manager's self-upgrade.
 let managerReleaseInfoCache: { info: ReleaseInfo | null; fetchedAt: number } | null = null;
-async function resolveLatestManagerReleaseInfo(): Promise<ReleaseInfo | null> {
+let managerReleaseAssetsCache: ReleaseAssetsCache | null = null;
+async function resolveLatestManagerReleaseInfo(callerAbi = ''): Promise<ReleaseInfo | null> {
   const now = Date.now();
-  if (managerReleaseInfoCache && now - managerReleaseInfoCache.fetchedAt < RELEASE_TTL_MS) {
+  const abi = String(callerAbi || '').trim().toLowerCase();
+  if (!abi && managerReleaseInfoCache && now - managerReleaseInfoCache.fetchedAt < RELEASE_TTL_MS) {
     return managerReleaseInfoCache.info;
   }
-  const repo = process.env.PLAYER_APK_GITHUB_REPO || 'gschiemann/EDUCMS';
-  const resp = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=30`, {
-    headers: { 'User-Agent': 'edu-cms-player-ota' },
-  });
-  if (!resp.ok) {
-    managerReleaseInfoCache = { info: null, fetchedAt: now };
-    return null;
-  }
-  const allReleases = await resp.json() as Array<{
-    tag_name?: string;
-    name?: string;
-    draft?: boolean;
-    prerelease?: boolean;
-    assets?: Array<{ name: string; browser_download_url: string }>;
-  }>;
-  if (!Array.isArray(allReleases)) {
-    managerReleaseInfoCache = { info: null, fetchedAt: now };
-    return null;
-  }
-  const managerReleases = allReleases
-    .filter((r) => {
-      if (r.draft || r.prerelease) return false;
-      const tag = (r.tag_name || r.name || '').trim();
-      return tag.startsWith('manager-v');
-    })
-    .map((r) => {
-      const tag = (r.tag_name || r.name || '').trim();
-      const versionStr = tag.replace(/^manager-v/, '');
-      const m = versionStr.match(/^(\d+)\.(\d+)\.(\d+)/);
-      const sortKey = m
-        ? parseInt(m[1], 10) * 1_000_000 + parseInt(m[2], 10) * 1_000 + parseInt(m[3], 10)
-        : 0;
-      return { release: r, sortKey };
-    })
-    .filter((x) => x.sortKey > 0)
-    .sort((a, b) => b.sortKey - a.sortKey);
 
-  if (managerReleases.length === 0) {
-    managerReleaseInfoCache = { info: null, fetchedAt: now };
-    return null;
+  if (!managerReleaseAssetsCache || now - managerReleaseAssetsCache.fetchedAt >= RELEASE_TTL_MS) {
+    const repo = process.env.PLAYER_APK_GITHUB_REPO || 'gschiemann/EDUCMS';
+    const resp = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=30`, {
+      headers: { 'User-Agent': 'edu-cms-player-ota' },
+    });
+    if (!resp.ok) {
+      managerReleaseInfoCache = { info: null, fetchedAt: now };
+      managerReleaseAssetsCache = { assets: [], tag: '', fetchedAt: now };
+      return null;
+    }
+    const allReleases = await resp.json() as Array<{
+      tag_name?: string;
+      name?: string;
+      draft?: boolean;
+      prerelease?: boolean;
+      assets?: Array<{ name: string; browser_download_url: string }>;
+    }>;
+    if (!Array.isArray(allReleases)) {
+      managerReleaseInfoCache = { info: null, fetchedAt: now };
+      managerReleaseAssetsCache = { assets: [], tag: '', fetchedAt: now };
+      return null;
+    }
+    const managerReleases = allReleases
+      .filter((r) => {
+        if (r.draft || r.prerelease) return false;
+        const tag = (r.tag_name || r.name || '').trim();
+        return tag.startsWith('manager-v');
+      })
+      .map((r) => {
+        const tag = (r.tag_name || r.name || '').trim();
+        const versionStr = tag.replace(/^manager-v/, '');
+        const m = versionStr.match(/^(\d+)\.(\d+)\.(\d+)/);
+        const sortKey = m
+          ? parseInt(m[1], 10) * 1_000_000 + parseInt(m[2], 10) * 1_000 + parseInt(m[3], 10)
+          : 0;
+        return { release: r, sortKey };
+      })
+      .filter((x) => x.sortKey > 0)
+      .sort((a, b) => b.sortKey - a.sortKey);
+
+    if (managerReleases.length === 0) {
+      managerReleaseInfoCache = { info: null, fetchedAt: now };
+      managerReleaseAssetsCache = { assets: [], tag: '', fetchedAt: now };
+      return null;
+    }
+    const release = managerReleases[0].release;
+    const tag = (release.tag_name || release.name || '').trim();
+    managerReleaseAssetsCache = { assets: release.assets || [], tag, fetchedAt: now };
   }
-  const release = managerReleases[0].release;
-  const assets = release.assets || [];
-  const pick = (pred: (name: string) => boolean) =>
-    assets.find((a) => pred(a.name.toLowerCase()));
-  const chosen =
-    pick((n) => n.includes('arm64-v8a') && n.endsWith('.apk')) ||
-    pick((n) => n.includes('universal') && n.endsWith('.apk')) ||
-    pick((n) => n.includes('armeabi-v7a') && n.endsWith('.apk')) ||
-    pick((n) => n.endsWith('.apk') && !n.includes('x86'));
+
+  const { assets, tag } = managerReleaseAssetsCache;
+  const chosen = pickApkAsset(assets, abi);
   const apkUrl = chosen?.browser_download_url ?? null;
-  const tag = (release.tag_name || release.name || '').trim();
   const versionName = tag.replace(/^manager-v/, '').replace(/^v/, '');
   const match = versionName.match(/^(\d+)\.(\d+)\.(\d+)/);
   const derivedVersionCode = match
@@ -956,7 +961,9 @@ async function resolveLatestManagerReleaseInfo(): Promise<ReleaseInfo | null> {
   const info: ReleaseInfo | null = apkUrl && versionName && derivedVersionCode
     ? { apkUrl, versionName, derivedVersionCode }
     : null;
-  managerReleaseInfoCache = { info, fetchedAt: now };
+  if (!abi) {
+    managerReleaseInfoCache = { info, fetchedAt: now };
+  }
   return info;
 }
 
@@ -971,24 +978,23 @@ async function resolveLatestManagerReleaseInfo(): Promise<ReleaseInfo | null> {
 // release artifact. Reset whenever resolveLatestManagerReleaseInfo's
 // info field changes apkUrl.
 let managerShaCache: { url: string; sha: string; fetchedAt: number } | null = null;
-async function resolveLatestManagerReleaseSha(): Promise<string> {
-  const info = await resolveLatestManagerReleaseInfo();
-  if (!info) return '';
+async function resolveLatestManagerReleaseSha(apkUrl: string): Promise<string> {
+  if (!apkUrl) return '';
   const now = Date.now();
   if (managerShaCache
-      && managerShaCache.url === info.apkUrl
+      && managerShaCache.url === apkUrl
       && now - managerShaCache.fetchedAt < RELEASE_TTL_MS) {
     return managerShaCache.sha;
   }
   try {
-    const resp = await fetch(info.apkUrl, {
+    const resp = await fetch(apkUrl, {
       redirect: 'follow',
       headers: { 'User-Agent': 'edu-cms-player-ota' },
     });
     if (!resp.ok || !resp.body) return '';
     const buf = Buffer.from(await resp.arrayBuffer());
     const sha = require('crypto').createHash('sha256').update(buf).digest('hex');
-    managerShaCache = { url: info.apkUrl, sha, fetchedAt: now };
+    managerShaCache = { url: apkUrl, sha, fetchedAt: now };
     return sha;
   } catch (e) {
     return '';

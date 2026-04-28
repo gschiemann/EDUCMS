@@ -390,7 +390,17 @@ export class ScreensController {
       data.playerVersion = vn;
       data.playerVersionAt = new Date();
       const vc = Number(versionCode);
-      if (Number.isFinite(vc) && vc > 0) data.playerVersionCode = vc;
+      if (Number.isFinite(vc) && vc > 0) {
+        data.playerVersionCode = vc;
+        const priorVc = Number((screen as any).playerVersionCode || 0);
+        if ((screen as any).forceApkUpdatePendingAt && vc > priorVc) {
+          data.forceApkUpdatePendingAt = null;
+          data.lastOtaState = 'INSTALLED';
+          data.lastOtaProgress = 100;
+          data.lastOtaMessage = `Installed v${vn}`;
+          data.lastOtaAt = new Date();
+        }
+      }
     }
     // v1.0.13 — Manager APK version, queried by Player via
     // PackageManager and passed as ?mv=. v1.0.18+ Player ALSO sends
