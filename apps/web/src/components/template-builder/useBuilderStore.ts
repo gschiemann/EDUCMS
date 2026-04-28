@@ -129,8 +129,23 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     // every new zone stacked on top of the previous one — partner
     // reported it ditto: "i drag and drop to certain places on the
     // canvas but it drops it right on top of the other one."
-    const x = dropAt ? Math.max(0, Math.min(100 - w, dropAt.x - w / 2)) : 10;
-    const y = dropAt ? Math.max(0, Math.min(100 - h, dropAt.y - h / 2)) : 10;
+    //
+    // 2026-04-29: When no dropAt (click from the palette sidebar),
+    // stagger each new zone by 5% from the previous zone so click-
+    // added widgets land visibly offset rather than all stacking at
+    // (10, 10). Wraps back to (10, 10) when we'd hit the canvas edge.
+    let x: number, y: number;
+    if (dropAt) {
+      x = Math.max(0, Math.min(100 - w, dropAt.x - w / 2));
+      y = Math.max(0, Math.min(100 - h, dropAt.y - h / 2));
+    } else {
+      const last = zones.length > 0 ? zones[zones.length - 1] : null;
+      const baseX = last ? last.x + 5 : 10;
+      const baseY = last ? last.y + 5 : 10;
+      // Wrap when a new zone would overflow the right or bottom edge
+      x = (baseX + w > 100 || baseY + h > 100) ? 10 : baseX;
+      y = (baseX + w > 100 || baseY + h > 100) ? 10 : baseY;
+    }
     // Seed a sensible defaultConfig per widget type so freshly
     // dropped zones render visibly instead of as a transparent box
     // — partner reported "when i drag and drop it doesnt keep any

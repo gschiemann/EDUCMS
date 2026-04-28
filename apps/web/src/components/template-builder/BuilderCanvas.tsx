@@ -537,10 +537,23 @@ function FloatingZoneActions({ zone }: { zone: Zone }) {
           top,
           left,
           transform: `translate(-50%, ${translateY})`,
-          pointerEvents: 'auto',
+          // pointer-events: none on the wrapper so this bar doesn't
+          // intercept pointer-downs on zones that sit visually beneath
+          // it (z-30 would otherwise eat every drag attempt on a covered
+          // zone). The inner div restores pointer-events for controls.
+          // Root cause of the 2026-04-29 "all widgets unmoveable" bug:
+          // when one zone was selected, the floating bar appeared and
+          // covered adjacent zones; its stopPropagation swallowed their
+          // onPointerDown before the drag engine ever saw it.
+          pointerEvents: 'none',
         }}
-        onPointerDown={(e) => e.stopPropagation()}
       >
+        {/* Inner wrapper: display:contents makes it layout-transparent
+            so the outer flex arrangement is preserved. pointer-events:auto
+            + stopPropagation restore interactivity for all real controls
+            without giving the bar's chrome a hit area that would swallow
+            pointer-downs on zones underneath. */}
+        <div className="contents" style={{ pointerEvents: 'auto' }} onPointerDown={(e) => e.stopPropagation()}>
         {/* Font family — compact native select */}
         <select
           aria-label="Font family"
@@ -634,6 +647,7 @@ function FloatingZoneActions({ zone }: { zone: Zone }) {
 
         {/* Generic actions — Duplicate / Forward / Back / Lock / Delete */}
         {genericActions}
+        </div>{/* end inner pointer-events:auto wrapper */}
       </div>
     );
   }
@@ -648,10 +662,11 @@ function FloatingZoneActions({ zone }: { zone: Zone }) {
         top,
         left,
         transform: `translate(-50%, ${translateY})`,
-        pointerEvents: 'auto',
+        // Same pointer-events:none fix as the text toolbar above.
+        pointerEvents: 'none',
       }}
-      onPointerDown={(e) => e.stopPropagation()}
     >
+      <div className="contents" style={{ pointerEvents: 'auto' }} onPointerDown={(e) => e.stopPropagation()}>
 
       {/* ── IMAGE / IMAGE_CAROUSEL / LOGO ── */}
       {isImage && (<>
@@ -786,6 +801,8 @@ function FloatingZoneActions({ zone }: { zone: Zone }) {
 
       {/* ── Generic actions (always visible) ── */}
       {genericActions}
+
+      </div>{/* end inner pointer-events:auto wrapper */}
 
       {/* Asset picker modal — rendered at root level so it escapes the
           floating bar stacking context. Triggered by the RefreshCw btn. */}
