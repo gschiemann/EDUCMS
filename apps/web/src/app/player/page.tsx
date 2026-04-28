@@ -1753,8 +1753,7 @@ function PlayerPage() {
           lastWsMessageAtRef.current = Date.now();
           // Stop the HTTP fallback poll if we now have a working socket.
           if (httpFallbackRef.current) { clearInterval(httpFallbackRef.current); httpFallbackRef.current = null; }
-          const activeTenant = tenantId || '00000000-0000-0000-0000-000000000002';
-          const tok = getDeviceToken() || `dev_${screenId}_${activeTenant}`;
+          const tok = getDeviceToken() || (tenantId ? `dev_${screenId}_${tenantId}` : `dev_${screenId}_unknown`);
           console.log('[Player WS] Connected — sending HELLO');
           ws.send(JSON.stringify({ event: 'HELLO', data: { token: tok } }));
           heartbeatRef.current = setInterval(() => {
