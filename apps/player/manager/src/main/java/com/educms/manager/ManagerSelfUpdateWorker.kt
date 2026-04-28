@@ -2,6 +2,7 @@ package com.educms.manager
 
 import android.content.Context
 import android.content.pm.PackageInfo
+import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.work.CoroutineWorker
@@ -22,40 +23,22 @@ import java.net.URL
  * v1.0.2 is sideloaded once, every subsequent manager-v* GitHub
  * Release auto-installs silently in the background.
  *
- * Schedule:
- *   - Periodic 30 min (kicked from ManagerApp.onCreate). 30 min
- *     instead of 6h so a published Manager release reaches kiosks
- *     within an hour worst-case, not within a day.
- *   - On boot via BootReceiver — first check fires immediately with
- *     a 90s network-settle delay.
- *   - On dashboard "Push update" via OtaTriggerReceiver — same
- *     CHECK_FOR_UPDATES signal that triggers Player OTA also kicks
- *     this worker.
- *
- * Install path:
- *   - Downloads to Manager's own external-files/updates dir
- *   - SHA-256 verified IF the server provides a hash (optional —
- *     server skips Manager SHAs to avoid an extra GitHub API hit)
- *   - PackageInstaller.Session commit with targetPackage =
- *     BuildConfig.APPLICATION_ID. Silent if Manager is DEVICE_OWNER,
- *     prompt-fallback otherwise (same as Player install path).
- *   - When the install commits, the system kills THIS process. The
- *     new Manager APK starts on next ACTION_PACKAGE_REPLACED. Any
- *     download/install state mid-flight is OK to lose — the next
- *     periodic tick re-checks the version and skips if already at
- *     latest.
- *
- * Why a separate class from OtaWorker (which handles Player updates):
- *   - Different endpoint (/manager-update-check vs /update-check)
- *   - Different version reporting (Manager's own version, not
- *     Player's installed version)
- *   - Different target package (this app vs Player)
- *   - Different periodic schedule (30 min vs 6h to match the
- *     "Manager keeps itself current" promise)
- *
- * Same wire format + install path as OtaWorker so we share zero
- * accidental coupling beyond OtaInstaller (which is generic by
- * design — it's package-id-pinned).
+ * v1.0.3 hardening (Plan + Kotlin reviewer punch list):
+ *   - Skips entirely when !isDeviceOwner so we don't stack 48
+ *     install prompts in 24h on unattended kiosks (P1-G).
+ *   - Posts state=INSTALLING to the dashboard BEFORE installApk
+ *     so we have telemetry even if the OS kills the process
+ *     mid-commit (P1-H).
+ *   - Marks InstallTracker.markInstallInFlight() before commit so
+ *     the next periodic tick can detect a stalled install and not
+ *     loop on the same APK forever (P0-B).
+ *   - Reads the APK's actual package id from disk via
+ *     InstallTracker.readApkPackageId() before passing to
+ *     OtaInstaller, so debug-variant installs work (P0-C / P1-2).
+ *   - Uses Player's fingerprint (read from PlayerHealthProvider
+ *     via WatchdogService) when reporting state — Manager and
+ *     Player share the same screen row on the dashboard, not two
+ *     ghost rows (P1-F).
  */
 class ManagerSelfUpdateWorker(
     ctx: Context,
@@ -63,12 +46,44 @@ class ManagerSelfUpdateWorker(
 ) : CoroutineWorker(ctx, params) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        Log.i(TAG, "Manager self-update worker starting (deviceOwner=${AdminReceiver.isDeviceOwner(applicationContext)})")
+        val isOwner = AdminReceiver.isDeviceOwner(applicationContext)
+        Log.i(TAG, "Manager self-update worker starting (deviceOwner=$isOwner)")
+
+        // P1-G — skip entirely when not DEVICE_OWNER. Without it the
+        // install prompts the operator every 30 min, queueing dozens
+        // of unanswered system dialogs and eventually ANR'ing. The
+        // kiosk wasn't going to silently update anyway; let the
+        // dashboard show "Manager not provisioned" and have the
+        // operator run `dpm set-device-owner` once.
+        if (!isOwner) {
+            Log.i(TAG, "skipping self-update — Manager is not DEVICE_OWNER. ADB-provision via: " +
+                "adb shell dpm set-device-owner com.educms.manager/.AdminReceiver")
+            return@withContext Result.success()
+        }
+
         try {
             val apiRoot = BuildConfig.API_ROOT
-            val fp = deriveFingerprint()
+            val fp = derivePlayerFingerprint() ?: deriveOwnFingerprint()
             val (currentVc, currentVn) = readMyVersion()
             Log.i(TAG, "current Manager: $currentVn (vc=$currentVc) fp=${fp.take(20)}…")
+
+            // P0-B — short-circuit if a previous install is in flight.
+            // The marker auto-stales after 4h so we don't loop forever
+            // on a permanently-failing install.
+            val pendingVc = InstallTracker.getPendingVc(applicationContext)
+            if (pendingVc != null) {
+                if (pendingVc <= currentVc) {
+                    // Install actually landed — clear the marker and
+                    // proceed. PackageReplacedReceiver SHOULD have
+                    // cleared this already; we're a fallback for ROMs
+                    // that drop the broadcast.
+                    Log.i(TAG, "in-flight marker=$pendingVc satisfied by current=$currentVc; clearing")
+                    InstallTracker.clearPending(applicationContext)
+                } else {
+                    Log.i(TAG, "skip — install of vc=$pendingVc already in flight (current=$currentVc)")
+                    return@withContext Result.success()
+                }
+            }
 
             val payload = JSONObject().apply {
                 put("fingerprint", fp)
@@ -110,10 +125,13 @@ class ManagerSelfUpdateWorker(
             val latestVn = latest.optString("versionName", "$latestVc")
             Log.i(TAG, "Manager update available: $latestVn (vc=$latestVc) — downloading from $apkUrl")
 
+            // P1-H — report INSTALLING state to the dashboard BEFORE
+            // we begin the network fetch. Plain best-effort; failure
+            // here should never block the install.
+            reportOtaState(apiRoot, fp, "DOWNLOADING", null, "Manager v$latestVn")
+
             val outDir = File(applicationContext.getExternalFilesDir(null), "manager-updates").apply { mkdirs() }
             val outFile = File(outDir, "edu-manager-$latestVc.apk")
-            // Best-effort cleanup of any older staged APK so the dir
-            // doesn't accumulate stale builds across upgrades.
             outDir.listFiles()?.forEach { f ->
                 if (f.name != outFile.name) {
                     runCatching { f.delete() }
@@ -122,34 +140,64 @@ class ManagerSelfUpdateWorker(
 
             if (!download(apkUrl, outFile)) {
                 outFile.delete()
+                reportOtaState(apiRoot, fp, "ERROR", null, "Manager download failed")
                 return@withContext Result.retry()
             }
 
-            // SHA verification — same security boundary OtaWorker uses.
-            // If the server provided a hash, refuse to install on
-            // mismatch. If not provided, the signature check at
-            // install time is the only remaining gate (acceptable for
-            // Manager because its release flow is GitHub-Releases-only,
-            // pinned to the same signing key as Player).
+            // P0-E — SHA verification when the server provided a hash.
+            // Now that v1.0.3 server pins SHA in the manager-update-check
+            // response, this is the primary integrity gate that closes
+            // the "compromised release" attack surface (since the
+            // committed debug keystore alone isn't enough to verify a
+            // legitimate update).
             if (expectedSha.isNotEmpty()) {
+                reportOtaState(apiRoot, fp, "VERIFYING", null, "Manager v$latestVn")
                 val actualSha = sha256(outFile)
                 if (!actualSha.equals(expectedSha, ignoreCase = true)) {
-                    Log.e(TAG, "SHA256 mismatch — discarding (expected=${expectedSha.take(16)}… got=${actualSha.take(16)}…)")
+                    Log.e(TAG, "SHA256 mismatch — discarding " +
+                        "(expected=${expectedSha.take(16)}… got=${actualSha.take(16)}…)")
+                    reportOtaState(apiRoot, fp, "ERROR", null,
+                        "Manager SHA256 mismatch (expected ${expectedSha.take(12)}…)")
                     outFile.delete()
                     return@withContext Result.retry()
                 }
             }
 
-            // Self-install. PackageInstaller will kill THIS process
-            // when the commit lands. Any code after this line may not
-            // run — assume nothing.
-            Log.i(TAG, "Installing Manager v$latestVn over self (vc=$currentVc → $latestVc)")
-            OtaInstaller.installApk(applicationContext, outFile, applicationContext.packageName)
+            // P0-C — read the APK's actual package id from disk before
+            // pinning setAppPackageName. Hardcoded ids fail on debug
+            // variants (com.educms.manager.debug) and any release/
+            // debug crossover. PackageInstaller silently rejects the
+            // session with STATUS_FAILURE_INVALID otherwise.
+            val apkPackageId = InstallTracker.readApkPackageId(applicationContext, outFile)
+                ?: applicationContext.packageName
+            Log.i(TAG, "APK package-id (read from manifest) = $apkPackageId")
+
+            // P0-B — write the in-flight marker BEFORE commit. If the
+            // OS kills us between commit and Result.success(), the
+            // marker survives and the next worker run won't loop.
+            InstallTracker.markInstallInFlight(applicationContext, latestVc)
+
+            // P1-H — final state report before commit. After commit
+            // our process may not survive long enough to report
+            // anything; the dashboard sees "INSTALLING" until either
+            // the next heartbeat reports a higher versionCode or the
+            // 5-min timeout marks the push as failed.
+            reportOtaState(apiRoot, fp, "INSTALLING", null,
+                "Manager self-install vc=$latestVc")
+
+            Log.i(TAG, "Installing Manager v$latestVn over self " +
+                "(vc=$currentVc → $latestVc, target=$apkPackageId)")
+            OtaInstaller.installApk(applicationContext, outFile, apkPackageId)
 
             // Best-effort. Process may already be dead.
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Manager self-update worker failed", e)
+            try {
+                val fp = derivePlayerFingerprint() ?: deriveOwnFingerprint()
+                reportOtaState(BuildConfig.API_ROOT, fp, "ERROR", null,
+                    "Manager self-update: ${e.message?.take(200)}")
+            } catch (_: Exception) { /* best-effort */ }
             Result.retry()
         }
     }
@@ -171,15 +219,47 @@ class ManagerSelfUpdateWorker(
             val vn = info.versionName ?: "$vc"
             vc to vn
         } catch (e: Exception) {
-            // Falls back to BuildConfig values if PackageManager hiccups
             Log.w(TAG, "PackageManager.getPackageInfo failed: ${e.message}")
             BuildConfig.VERSION_CODE to (BuildConfig.VERSION_NAME ?: "0.0.0")
         }
     }
 
-    /** Same fingerprint Player + OtaWorker derive — Settings.Secure.ANDROID_ID. */
+    /**
+     * P1-F — read Player's fingerprint via the cross-process
+     * PlayerHealthProvider so Manager and Player share the same
+     * server-side screen row. Without this, debug variants of
+     * Manager + Player (different applicationIds, hence different
+     * Settings.Secure.ANDROID_ID values per Android 8+ scoping) end
+     * up as separate ghost rows on the dashboard.
+     *
+     * Returns null if Player isn't paired yet OR the heartbeat
+     * provider isn't reachable; caller falls back to Manager's own
+     * fingerprint, which is correct for fresh installs (no Player
+     * row exists yet anyway).
+     */
+    private fun derivePlayerFingerprint(): String? {
+        return try {
+            val uri = Uri.parse("content://${PlayerHealthProvider.AUTHORITY}/heartbeat")
+            applicationContext.contentResolver.query(uri, null, null, null, null)?.use { c ->
+                if (!c.moveToFirst()) return null
+                val idx = c.getColumnIndex("device_fingerprint")
+                if (idx < 0) return null
+                val fp = c.getString(idx)
+                if (fp.isNullOrBlank()) null else fp
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "derivePlayerFingerprint failed: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Same fingerprint Player + OtaWorker derive — Settings.Secure.ANDROID_ID.
+     * Used as a fallback when we can't read Player's heartbeat (fresh
+     * install where Player hasn't paired yet).
+     */
     @Suppress("DEPRECATION")
-    private fun deriveFingerprint(): String {
+    private fun deriveOwnFingerprint(): String {
         val androidId = try {
             android.provider.Settings.Secure.getString(
                 applicationContext.contentResolver,
@@ -237,6 +317,41 @@ class ManagerSelfUpdateWorker(
         } catch (e: Exception) {
             Log.w(TAG, "POST ${url.path} threw: ${e.message}")
             null
+        }
+    }
+
+    /** P1-H — report current OTA state to the API for dashboard
+     *  visibility. Best-effort; never blocks the install path. */
+    private fun reportOtaState(
+        apiRoot: String,
+        fp: String,
+        state: String,
+        progress: Int?,
+        message: String?,
+    ) {
+        try {
+            val payload = JSONObject().apply {
+                put("state", state)
+                if (progress != null) put("progress", progress)
+                if (message != null) put("message", message)
+            }
+            val url = URL("$apiRoot/api/v1/screens/status/$fp/ota-state")
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                setRequestProperty("Content-Type", "application/json")
+                doOutput = true
+                connectTimeout = 5_000
+                readTimeout = 5_000
+            }
+            conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+            val rc = conn.responseCode
+            if (rc !in 200..299) {
+                Log.w(TAG, "ota-state report HTTP $rc (state=$state)")
+            } else {
+                Log.i(TAG, "ota-state → $state${progress?.let { " ($it%)" } ?: ""}")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "ota-state report failed (state=$state): ${e.message}")
         }
     }
 

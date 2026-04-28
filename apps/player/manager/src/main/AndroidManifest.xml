@@ -89,6 +89,24 @@
             </intent-filter>
         </receiver>
 
+        <!-- Self-install confirmation receiver (Manager v1.0.3+).
+             MY_PACKAGE_REPLACED is the only reliable "we just got
+             upgraded" signal across Goodview/NovaStar/TCL ROMs that
+             otherwise drop the install-result broadcast. Restarts
+             watchdog (Goodview kills FGS across package-replace),
+             clears the in-flight install marker, and reschedules
+             workers so cadence/constraints from the new APK take
+             effect. See PackageReplacedReceiver.kt for the full
+             rationale. -->
+        <receiver
+            android:name=".PackageReplacedReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <!-- Watchdog foreground service. Polls PlayerHealthProvider
              every 30s; restarts Player if no heartbeat for 3
              consecutive ticks. Foreground because Android 8+ kills

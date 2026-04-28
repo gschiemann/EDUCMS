@@ -38,6 +38,20 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.useWebSocketAdapter(new WsAdapter(app));
 
+  // 2026-04-28 (Server audit P0) — trust the Railway edge proxy so
+  // req.ip comes from X-Forwarded-For instead of the proxy's own
+  // 10.x.x.x address. Without this, every @Throttle decorator on
+  // a public endpoint degrades from per-IP to GLOBAL — meaning the
+  // OTA state-report throttle (30/min) caps the ENTIRE FLEET at
+  // 30 reports/min instead of 30 reports/min PER kiosk. With 50
+  // kiosks reporting 5 phases each on a synchronized boot, the
+  // cap trips after the first 6 reports and the rest of the fleet
+  // gets 429s mid-install. Same problem hits anomaly middleware,
+  // Screen.ipAddress logging for forensics, etc.
+  // Trust ONE proxy hop (Railway's edge) — anything more invites
+  // X-Forwarded-For spoofing.
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
   // Global exception filter — normalizes all error responses, scrubs
   // stack traces in prod, and captures 5xx to Sentry with route tags.
   // Registered BEFORE listen so it catches startup-adjacent errors too.

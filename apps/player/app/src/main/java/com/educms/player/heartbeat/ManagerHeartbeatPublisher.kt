@@ -63,11 +63,44 @@ class ManagerHeartbeatPublisher(private val ctx: Context) {
         handler.removeCallbacks(tick)
     }
 
+    /**
+     * Player's deviceFingerprint for OTA API calls — same `android-{ANDROID_ID}`
+     * derivation MainActivity.loadPlayer() uses. Published into the
+     * heartbeat ContentProvider so Manager's OTA workers can address
+     * the SAME server-side screen row Player heartbeats with.
+     *
+     * Settings.Secure.ANDROID_ID is per-(signing-key + package + user)
+     * on Android 8+ → Manager and Player derive different values from
+     * their own contexts. Sharing through the IPC channel is the only
+     * reliable way to keep the fleet on a single screen row.
+     */
+    @Suppress("DEPRECATION")
+    private fun deriveFingerprint(): String {
+        val androidId = try {
+            android.provider.Settings.Secure.getString(
+                ctx.contentResolver,
+                android.provider.Settings.Secure.ANDROID_ID,
+            ) ?: ""
+        } catch (_: Exception) { "" }
+        return if (androidId.isNotBlank()) "android-$androidId" else ""
+    }
+
     private fun publishOnce() {
         val values = ContentValues().apply {
             put(COL_TIMESTAMP, System.currentTimeMillis())
             put(COL_VERSION_NAME, BuildConfig.VERSION_NAME)
             put(COL_PID, Process.myPid())
+            // 2026-04-28 (Player v1.0.18+) — also publish our
+            // deviceFingerprint so Manager's OTA workers can use the
+            // SAME server-side screen row identity. Without this,
+            // Manager's ANDROID_ID (different package id → different
+            // scoped value on Android 8+) creates a ghost screen row
+            // and /manager-update-check + /update-check return
+            // 'no-screen-row' → uptoDate forever.
+            //
+            // Older Manager APKs (v1.0.2 and earlier) ignore unknown
+            // ContentValues columns — strict-additive on the wire.
+            put(COL_FINGERPRINT, deriveFingerprint())
         }
         try {
             val result = ctx.contentResolver.insert(URI_HEARTBEAT, values)
@@ -113,6 +146,13 @@ class ManagerHeartbeatPublisher(private val ctx: Context) {
         const val COL_TIMESTAMP = "timestamp_ms"
         const val COL_VERSION_NAME = "version_name"
         const val COL_PID = "pid"
+        // Added 2026-04-28 — Player publishes its OTA fingerprint to
+        // the cross-process heartbeat provider. Manager's OTA workers
+        // read this so /update-check + /manager-update-check resolve
+        // to the same Screen row Player heartbeats with. Without it,
+        // Settings.Secure.ANDROID_ID's per-app scoping creates two
+        // ghost screen rows on the dashboard.
+        const val COL_FINGERPRINT = "device_fingerprint"
 
         private val URI_HEARTBEAT = android.net.Uri.parse(
             "content://$AUTHORITY/$PATH_HEARTBEAT",

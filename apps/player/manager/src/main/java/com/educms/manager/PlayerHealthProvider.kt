@@ -61,9 +61,30 @@ class PlayerHealthProvider : ContentProvider() {
     ): Cursor? {
         return when (matcher.match(uri)) {
             CODE_HEARTBEAT -> {
-                val cursor = MatrixCursor(arrayOf(COL_TIMESTAMP, COL_VERSION_NAME, COL_PID))
+                // 2026-04-28 — schema extended with COL_FINGERPRINT
+                // (Plan + Kotlin reviewer P1-F): ManagerSelfUpdateWorker
+                // and OtaWorker need Player's deviceFingerprint to
+                // address the same dashboard screen row. Settings.Secure.
+                // ANDROID_ID is per-(signing-key + package + user) on
+                // Android 8+, so Manager and Player derive DIFFERENT
+                // values even though they share a signing key — they
+                // were creating ghost rows on the dashboard.
+                //
+                // Strict-additive change: legacy v1.0.2 callers query
+                // with projection=null (= "all columns") and got back
+                // a cursor with [timestamp, version, pid]. The new
+                // cursor adds COL_FINGERPRINT after pid. Old callers
+                // accessing by column NAME (getColumnIndex) keep
+                // working; old callers accessing by column INDEX
+                // would break, but our only consumer (WatchdogService)
+                // uses names — verified.
+                val cursor = MatrixCursor(arrayOf(
+                    COL_TIMESTAMP, COL_VERSION_NAME, COL_PID, COL_FINGERPRINT,
+                ))
                 heartbeat?.let { hb ->
-                    cursor.addRow(arrayOf<Any>(hb.timestampMs, hb.versionName, hb.pid))
+                    cursor.addRow(arrayOf<Any>(
+                        hb.timestampMs, hb.versionName, hb.pid, hb.fingerprint ?: "",
+                    ))
                 }
                 cursor
             }
@@ -77,11 +98,14 @@ class PlayerHealthProvider : ContentProvider() {
         val ts = v.getAsLong(COL_TIMESTAMP) ?: System.currentTimeMillis()
         val name = v.getAsString(COL_VERSION_NAME) ?: "unknown"
         val pid = v.getAsInteger(COL_PID) ?: 0
-        heartbeat = Heartbeat(timestampMs = ts, versionName = name, pid = pid)
-        // Optimistic — operator sees in logs that Player is alive.
-        // Throttle would help but heartbeats are 30s apart so
-        // log volume is fine.
-        Log.d(TAG, "heartbeat in: ts=$ts version=$name pid=$pid")
+        // Fingerprint is OPTIONAL on insert so v1.0.17- Player APKs
+        // (which don't write the column) keep working — they'll just
+        // not populate the heartbeat fingerprint, and Manager's worker
+        // falls back to its own ANDROID_ID. v1.0.18+ Player will
+        // write it, enabling the shared-row OTA path.
+        val fp = v.getAsString(COL_FINGERPRINT)
+        heartbeat = Heartbeat(timestampMs = ts, versionName = name, pid = pid, fingerprint = fp)
+        Log.d(TAG, "heartbeat in: ts=$ts version=$name pid=$pid fp=${fp?.take(20)}")
         return uri
     }
 
@@ -103,6 +127,7 @@ class PlayerHealthProvider : ContentProvider() {
         val timestampMs: Long,
         val versionName: String,
         val pid: Int,
+        val fingerprint: String?,
     )
 
     companion object {
@@ -113,6 +138,12 @@ class PlayerHealthProvider : ContentProvider() {
         const val COL_TIMESTAMP = "timestamp_ms"
         const val COL_VERSION_NAME = "version_name"
         const val COL_PID = "pid"
+        // Added 2026-04-28 — Player's deviceFingerprint, written on
+        // every heartbeat from v1.0.18+. Empty for older Player APKs
+        // until they upgrade. Consumed by ManagerSelfUpdateWorker +
+        // OtaWorker so all OTA API calls address the same screen row
+        // the cloud heartbeat populates. See ManagerSelfUpdateWorker.
+        const val COL_FINGERPRINT = "device_fingerprint"
 
         private const val CODE_HEARTBEAT = 1
 

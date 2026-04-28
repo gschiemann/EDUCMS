@@ -45,23 +45,24 @@ class OtaInstallReceiver : BroadcastReceiver() {
                 Log.i(TAG, "OTA install SUCCESS for $targetPackage — relaunching")
                 // 2026-04-28 — operator: 'i hit yes and it then closed
                 // the app and ttok me to the android app screen, never
-                // relanched the app... what you built was a fucking
-                // piece of shit and would have never worked'.
+                // relanched the app'. Cause: PackageInstaller doesn't
+                // auto-launch the freshly-installed app.
                 //
-                // Cause: Android's PackageInstaller does NOT auto-launch
-                // the freshly-installed app. After a successful install,
-                // the foreground activity (the Install prompt or the
-                // installer process) finishes, and the system returns
-                // the user to whatever was below — usually the home
-                // launcher. Cinematic fail for kiosk UX.
-                //
-                // Fix: launch the target package's main activity here.
-                // Skip self-installs (we just installed Manager onto
-                // ourselves; the OS will have killed our process and
-                // restarted us via the foreground service — we don't
-                // need to launch anything).
+                // Regression-audit B1 fix: relaunch retry loop now uses
+                // goAsync() so we don't block the receiver dispatch
+                // thread for ~7s (would ANR on slow Goodview SoCs).
+                // The PendingResult lets the system know we're working
+                // asynchronously, keeps our process alive long enough
+                // for the retry + telemetry POST to complete.
                 if (targetPackage != context.packageName) {
-                    relaunchPackage(context, targetPackage)
+                    val pending = goAsync()
+                    Thread {
+                        try {
+                            relaunchPackage(context, targetPackage)
+                        } finally {
+                            pending.finish()
+                        }
+                    }.start()
                 }
                 // Phase 2: report INSTALLED state to API + clear
                 // any "pending update" flags we tracked locally.
@@ -101,23 +102,85 @@ class OtaInstallReceiver : BroadcastReceiver() {
      *
      * Tries production then debug variant, since Manager handles
      * both com.educms.player and com.educms.player.debug.
+     *
+     * 2026-04-28 — UX audit P1-D fix: Slow Goodview SoCs take 2-8s
+     * AFTER STATUS_SUCCESS fires before the new APK's launch
+     * activity is registered with PackageManager. The original
+     * single-attempt code race-failed on those boards: STATUS_SUCCESS
+     * → getLaunchIntentForPackage returns null → "kiosk stays on
+     * home" → operator stuck on the launcher with no recovery.
+     *
+     * Now: retry up to 6 times with 1s backoff (≤7s wall clock).
+     * Posts an ERROR state to the API on final failure so the
+     * dashboard surfaces "Installed but did not relaunch — power-
+     * cycle required" instead of the misleading "timeout".
      */
     private fun relaunchPackage(ctx: Context, pkg: String) {
         val candidates = listOf(pkg, "$pkg.debug")
-        for (candidate in candidates) {
-            try {
-                val launch = ctx.packageManager.getLaunchIntentForPackage(candidate)
-                if (launch != null) {
-                    launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                    ctx.startActivity(launch)
-                    Log.i(TAG, "relaunched $candidate after successful install")
-                    return
+        for (attempt in 0..5) {
+            for (candidate in candidates) {
+                try {
+                    val launch = ctx.packageManager.getLaunchIntentForPackage(candidate)
+                    if (launch != null) {
+                        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        ctx.startActivity(launch)
+                        Log.i(TAG, "relaunched $candidate after successful install (attempt=$attempt)")
+                        return
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "relaunch $candidate failed (attempt=$attempt): ${e.message}")
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "relaunch $candidate failed: ${e.message}")
             }
+            try { Thread.sleep(1000) } catch (_: InterruptedException) { /* swallow */ }
         }
-        Log.w(TAG, "no launch intent found for $pkg or $pkg.debug — kiosk stays on home")
+        Log.w(TAG, "all relaunch attempts failed — kiosk stranded on home, will rely on watchdog")
+        // Best-effort: tell the API so the dashboard surfaces "Installed
+        // but did not relaunch" instead of "timeout". We're already on
+        // the goAsync() background thread (caller wraps us in
+        // Thread{}.start in onReceive), so no need to spawn another.
+        //
+        // Regression-audit B5 fix: read Player's fingerprint from
+        // PlayerHealthProvider rather than Manager's own ANDROID_ID.
+        // Player's screen row uses Player's ANDROID_ID (different from
+        // Manager's per Android-8+ scoping). POSTing with Manager's
+        // fingerprint goes to a row that doesn't exist → 404, dashboard
+        // never sees the "stranded" state.
+        try {
+            val fp = readPlayerFingerprintFromHeartbeat(ctx)
+                ?: ("android-" + (android.provider.Settings.Secure.getString(
+                    ctx.contentResolver, android.provider.Settings.Secure.ANDROID_ID,
+                ).orEmpty()))
+            if (fp.isNotBlank() && fp != "android-") {
+                val url = java.net.URL("${BuildConfig.API_ROOT}/api/v1/screens/status/$fp/ota-state")
+                val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    setRequestProperty("Content-Type", "application/json")
+                    doOutput = true
+                    connectTimeout = 5_000
+                    readTimeout = 5_000
+                }
+                val payload = """{"state":"ERROR","message":"Installed v$pkg but did not relaunch — power-cycle required"}"""
+                conn.outputStream.use { it.write(payload.toByteArray()) }
+                conn.responseCode  // force-flush
+            }
+        } catch (_: Exception) { /* best-effort */ }
+    }
+
+    /** Read Player's deviceFingerprint via the cross-process heartbeat
+     *  provider so OTA telemetry hits the same Screen row Player
+     *  populated. Returns null if the provider isn't reachable or
+     *  hasn't been written by Player v1.0.18+ yet. */
+    private fun readPlayerFingerprintFromHeartbeat(ctx: Context): String? {
+        return try {
+            val uri = android.net.Uri.parse("content://${PlayerHealthProvider.AUTHORITY}/heartbeat")
+            ctx.contentResolver.query(uri, null, null, null, null)?.use { c ->
+                if (!c.moveToFirst()) return null
+                val idx = c.getColumnIndex(PlayerHealthProvider.COL_FINGERPRINT)
+                if (idx < 0) return null
+                val fp = c.getString(idx)
+                if (fp.isNullOrBlank()) null else fp
+            }
+        } catch (_: Exception) { null }
     }
 
     private fun statusName(status: Int): String = when (status) {

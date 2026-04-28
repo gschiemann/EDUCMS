@@ -51,6 +51,16 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   // forever and never upgrade Manager — which is the entire point
   // of v1.0.2.
   (p) => p === '/api/v1/player/manager-update-check',
+  // Native APK OTA state + crash reports — Plan + Server audits
+  // (2026-04-28) found these endpoints were SILENTLY 403'ing for
+  // weeks because they were never exempted. Result: the dashboard
+  // never saw DOWNLOADING / VERIFYING / INSTALLING / ERROR states
+  // during installs (the entire reason lastOtaState columns exist).
+  // The user's reported "dashboard spins for 5 min then says
+  // failed" with no progress visibility was directly caused by
+  // this. Same Kotlin-no-cookie argument as /update-check.
+  (p) => /^\/api\/v1\/screens\/status\/[^/]+\/ota-state$/.test(p),
+  (p) => /^\/api\/v1\/screens\/status\/[^/]+\/crash-report$/.test(p),
   // Public branding demo — no prior session; throttled + never persists.
   (p) => p === '/api/v1/branding/demo/scrape',
   // Android kiosk APK log upload — Kotlin HttpURLConnection has no cookie

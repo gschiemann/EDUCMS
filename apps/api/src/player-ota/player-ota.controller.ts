@@ -64,6 +64,12 @@ export class PlayerOtaController {
     const vn = (body?.versionName || '').trim();
     if (!fp || !vn) return;
     const vc = Number.isFinite(body?.versionCode as number) ? Number(body?.versionCode) : null;
+    // Security audit P0-SEC-3 (2026-04-28) — bootstrap calls have no
+    // screen row to update; running findFirst + updateMany on every
+    // call is a DB-spam amplifier for unauthenticated /update-check.
+    // Fast-path: skip the DB read/write entirely when vc=0 (the
+    // bootstrap signal — Player not installed yet, no row exists).
+    if (!vc || vc === 0) return;
     try {
       // 2026-04-28 — operator: 'i rebooted the player and nothing
       // fucking happened... we are 16 versions of the player in and
@@ -146,7 +152,23 @@ export class PlayerOtaController {
     const fp = (body?.fingerprint || '').trim();
     const callerVn = String(body?.versionName || '').trim() || '?';
     const callerVc = Number(body?.versionCode) || 0;
+    const callerSource = String((body as any)?.source || '').trim();
     const fpShort = fp ? fp.slice(0, 10) : 'no-fp';
+
+    // 2026-04-28 (Architecture audit P0-2) — fresh-install bootstrap
+    // bypass. When operator sideloads only Manager v1.0.3 onto a brand-
+    // new kiosk, no Player is installed yet → no Screen row exists →
+    // gate normally returns uptoDate forever → Player never installs
+    // → kiosk requires manual sideload of Player too, defeating the
+    // "no more sideloads" promise.
+    //
+    // Solution: when Manager calls /update-check with versionCode=0
+    // (Player not installed) AND source identifies as Manager, return
+    // the latest Player APK regardless of force flag / autoUpdate
+    // setting / screen row existence. This is the documented bootstrap
+    // path the comment header alludes to but never actually implemented.
+    const isBootstrapCall = callerVc === 0
+      && (callerSource === 'manager' || callerSource === 'manager-self');
     // 24-hour force-pending window. Was 30 min, but old kiosks (pre-
     // v1.0.5, before WebAppBridge.checkForUpdates was added) can't
     // react to the WS push instantly — they only update on their 6h
@@ -187,6 +209,14 @@ export class PlayerOtaController {
             forcedPendingScreenId = screen.id;
           } else {
             allowReason = `force-pending-stale-${Math.round(ageMs / 60000)}min`;
+            // 2026-04-28 (Server audit P0-3) — clean up stale flag.
+            // Without this, a permanently-failing kiosk sits forever
+            // with a 25h+ old timestamp; subsequent /update-check
+            // calls correctly return uptoDate but the dashboard never
+            // sees the flag clear.
+            this.prisma.client.screen
+              .update({ where: { id: screen.id }, data: { forceApkUpdatePendingAt: null } as any })
+              .catch(() => { /* swallow */ });
           }
         } else {
           allowReason = screen ? 'no-force-flag' : 'no-screen-row';
@@ -198,6 +228,16 @@ export class PlayerOtaController {
       // On lookup error, fall back to the safer default (no update).
       this.logger.warn(`[ota] gate-lookup-failed fp=${fpShort} err=${e?.message}`);
       allowReason = 'lookup-error';
+    }
+    if (!allowUpdate && isBootstrapCall) {
+      // Bootstrap bypass — Manager just sideloaded onto a fresh
+      // kiosk needs Player. Skip the gate.
+      allowUpdate = true;
+      allowReason = 'bootstrap-bypass';
+      this.logger.log(
+        `[ota] bootstrap-bypass caller=${callerVn} fp=${fpShort} ` +
+        `source=${callerSource}`,
+      );
     }
     if (!allowUpdate) {
       this.logger.log(
@@ -292,21 +332,31 @@ export class PlayerOtaController {
       // e.g. someone hand-installed a dev build with versionCode 9999 —
       // bump it to caller+1 so they still update to the tag build.
       const derivedVc = Math.max(info.derivedVersionCode, callerVc + 1);
+      // 2026-04-28 — server-computed SHA pinning closes the wormable-
+      // fleet hole. If we can't compute SHA (GitHub 5xx, network
+      // glitch, etc.), FAIL CLOSED — the kiosk's Kotlin verifier
+      // would skip checking on empty SHA, leaving a residual install-
+      // unverified-APK window. Better to return uptoDate and retry
+      // on the next periodic tick when GitHub recovers.
+      const sha256 = await resolveLatestPlayerReleaseSha(info.apkUrl);
+      if (!sha256) {
+        this.logger.warn(
+          `[ota] decision=uptoDate-no-sha caller=${callerVn} target=v${info.versionName} ` +
+          `reason=resolveLatestPlayerReleaseSha-returned-empty (FAIL-CLOSED)`,
+        );
+        return { uptoDate: true };
+      }
 
       this.logger.log(
         `[ota] decision=install-gh caller=${callerVn} target=v${info.versionName} ` +
-        `screen=${lookupScreenId || '-'} url=${info.apkUrl.slice(0, 80)}`,
+        `screen=${lookupScreenId || '-'} url=${info.apkUrl.slice(0, 80)} sha=${sha256.slice(0, 12)}`,
       );
       return {
         latest: {
           versionCode: derivedVc,
           versionName: info.versionName,
           apkUrl: info.apkUrl,
-          // Empty sha — OtaUpdateWorker.kt:111 skips verification when
-          // the field is empty. GitHub downloads over HTTPS so the
-          // bytes are integrity-protected by TLS; add server-computed
-          // SHA later when we pre-fetch + hash releases on publish.
-          sha256: '',
+          sha256,
           forced: false,
         },
       };
@@ -369,6 +419,7 @@ export class PlayerOtaController {
    * 60 req/hr limit.
    */
   @Get('manager-apk/latest')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async redirectToLatestManagerApk(@Res() res: Response) {
     try {
       const url = await resolveLatestManagerReleaseApk();
@@ -445,20 +496,26 @@ export class PlayerOtaController {
       }
 
       const derivedVc = Math.max(info.derivedVersionCode, callerVc + 1);
+      // 2026-04-28 — pin SHA-256 to close the "compromised release"
+      // hole. FAIL CLOSED if we couldn't compute SHA (GitHub hiccup
+      // etc.); see /update-check Path B for the same rationale.
+      const sha256 = await resolveLatestManagerReleaseSha();
+      if (!sha256) {
+        this.logger.warn(
+          `[mgr-ota] decision=uptoDate-no-sha caller=${callerVn} target=v${info.versionName} ` +
+          `reason=resolveLatestManagerReleaseSha-returned-empty (FAIL-CLOSED)`,
+        );
+        return { uptoDate: true };
+      }
       this.logger.log(
-        `[mgr-ota] decision=install caller=${callerVn} target=v${info.versionName} fp=${fpShort}`,
+        `[mgr-ota] decision=install caller=${callerVn} target=v${info.versionName} fp=${fpShort} sha=${sha256.slice(0, 12)}`,
       );
       return {
         latest: {
           versionCode: derivedVc,
           versionName: info.versionName,
           apkUrl: info.apkUrl,
-          // SHA isn't computed for Manager (would require an extra
-          // GitHub API hit per release). Manager's worker accepts
-          // empty sha and skips verification — install path still
-          // gated by signature check (same key), so an attacker
-          // can't swap a different APK in.
-          sha256: '',
+          sha256,
           forced: false,
         },
       };
@@ -469,6 +526,7 @@ export class PlayerOtaController {
   }
 
   @Get('apk/latest')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async redirectToLatestApk(@Res() res: Response) {
     // Self-healing: prefer an explicit env override, but fall back to
     // pulling the latest release asset from GitHub's public API so the
@@ -807,6 +865,68 @@ async function resolveLatestManagerReleaseInfo(): Promise<ReleaseInfo | null> {
     : null;
   managerReleaseInfoCache = { info, fetchedAt: now };
   return info;
+}
+
+// 2026-04-28 — server-computed SHA-256 of the latest Manager APK.
+// Downloads the APK once, hashes the bytes, caches the result for the
+// release-info TTL. Closes the "release asset swap" attack vector
+// flagged by Plan + Server audits as a P0 — without this, the
+// committed debug.keystore + empty SHA in /manager-update-check =
+// anyone with `git clone` can sign + serve a malicious update.
+//
+// Memory cost: ~10MB per cache window. Acceptable for a single
+// release artifact. Reset whenever resolveLatestManagerReleaseInfo's
+// info field changes apkUrl.
+let managerShaCache: { url: string; sha: string; fetchedAt: number } | null = null;
+async function resolveLatestManagerReleaseSha(): Promise<string> {
+  const info = await resolveLatestManagerReleaseInfo();
+  if (!info) return '';
+  const now = Date.now();
+  if (managerShaCache
+      && managerShaCache.url === info.apkUrl
+      && now - managerShaCache.fetchedAt < RELEASE_TTL_MS) {
+    return managerShaCache.sha;
+  }
+  try {
+    const resp = await fetch(info.apkUrl, {
+      redirect: 'follow',
+      headers: { 'User-Agent': 'edu-cms-player-ota' },
+    });
+    if (!resp.ok || !resp.body) return '';
+    const buf = Buffer.from(await resp.arrayBuffer());
+    const sha = require('crypto').createHash('sha256').update(buf).digest('hex');
+    managerShaCache = { url: info.apkUrl, sha, fetchedAt: now };
+    return sha;
+  } catch (e) {
+    return '';
+  }
+}
+
+// Same pattern for Player APKs. Some env-overridden deployments set
+// PLAYER_APK_SHA256 and skip this; in the GitHub-Releases auto-resolve
+// path (the live default) we compute it here.
+let playerShaCache: { url: string; sha: string; fetchedAt: number } | null = null;
+async function resolveLatestPlayerReleaseSha(apkUrl: string): Promise<string> {
+  if (!apkUrl) return '';
+  const now = Date.now();
+  if (playerShaCache
+      && playerShaCache.url === apkUrl
+      && now - playerShaCache.fetchedAt < RELEASE_TTL_MS) {
+    return playerShaCache.sha;
+  }
+  try {
+    const resp = await fetch(apkUrl, {
+      redirect: 'follow',
+      headers: { 'User-Agent': 'edu-cms-player-ota' },
+    });
+    if (!resp.ok || !resp.body) return '';
+    const buf = Buffer.from(await resp.arrayBuffer());
+    const sha = require('crypto').createHash('sha256').update(buf).digest('hex');
+    playerShaCache = { url: apkUrl, sha, fetchedAt: now };
+    return sha;
+  } catch (e) {
+    return '';
+  }
 }
 
 // Semver-style "a >= b" for 3-part version strings (no pre-release or

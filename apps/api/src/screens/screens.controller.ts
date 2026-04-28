@@ -1,4 +1,5 @@
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { Request as ExpressReq, Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -294,6 +295,7 @@ export class ScreensController {
   // implicitly by the caller's heartbeat cadence (a worker firing
   // every minute would still only generate 5-7 reports per OTA).
   @Post('status/:deviceFingerprint/ota-state')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async reportOtaState(
     @Param('deviceFingerprint') fingerprint: string,
     @Body() body: { state?: string; progress?: number; message?: string },
@@ -353,6 +355,7 @@ export class ScreensController {
   // bloating. Operator can pull the full trace via the existing
   // PlayerLogger.uploadDiagnostics path if more depth is needed.
   @Post('status/:deviceFingerprint/crash-report')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   async reportCrash(
     @Param('deviceFingerprint') fingerprint: string,
     @Body() body: {

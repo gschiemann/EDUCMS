@@ -314,8 +314,16 @@ function ScreenSettingsMenu({
   // 90s was too aggressive — operator was seeing "no response" before
   // the install even finished. Bumped to 5 min. Stages give the
   // operator real signal during the wait instead of one big "Waiting…".
-  const stillWaiting = pushed && !updatedSincePush && pushedMsAgo < 5 * 60_000;
-  const timedOut = pushed && !updatedSincePush && pushedMsAgo >= 5 * 60_000;
+  // 2026-04-28 — bumped 5 min → 35 min to match the 30-min Manager
+  // periodic OTA cadence (UX audit P0-I). Previous 5-min wall-clock
+  // timeout fired before the periodic worker could even attempt
+  // installation, causing every WS-failed push to show "Failed" even
+  // though the next 30-min tick would succeed. The button stays
+  // disabled during this window; lastOtaState surfacing (above)
+  // gives device-truth signal in the meantime.
+  const PUSH_TIMEOUT_MS = 35 * 60_000;
+  const stillWaiting = pushed && !updatedSincePush && pushedMsAgo < PUSH_TIMEOUT_MS;
+  const timedOut = pushed && !updatedSincePush && pushedMsAgo >= PUSH_TIMEOUT_MS;
   // HONESTY FIX (2026-04-27): the previous stage machine showed
   // sending → downloading → installing → restarting purely off a
   // stopwatch (`pushedMsAgo`). We had ZERO real signal from the kiosk
@@ -344,7 +352,7 @@ function ScreenSettingsMenu({
     ? 'idle'
     : updatedSincePush
     ? 'installed'
-    : pushedMsAgo >= 5 * 60_000
+    : pushedMsAgo >= PUSH_TIMEOUT_MS
     ? 'timeout'
     : 'pending';
 
@@ -422,49 +430,81 @@ function ScreenSettingsMenu({
                        Disabled so it can't be re-clicked mid-push, but
                        still visible as a single source of truth. */}
           {(() => {
+            // 2026-04-28 (UX audit P0-C + I) — surface the device-truth
+            // signals the kiosk has been writing to lastOtaState all
+            // along. The dashboard previously ignored them entirely
+            // and ran a 5-min wall-clock timeout, lying to operators
+            // every push because the periodic worker is on a 30-min
+            // cadence. Now: device-truth wins. Wall-clock falls back
+            // only when the device is silent.
+            const otaState: string | null = (screen as any)?.lastOtaState ?? null;
+            const otaProgress: number | null = (screen as any)?.lastOtaProgress ?? null;
+            const otaMessage: string | null = (screen as any)?.lastOtaMessage ?? null;
+            const otaAt: string | null = (screen as any)?.lastOtaAt ?? null;
+            const otaAtMs = otaAt ? new Date(otaAt).getTime() : 0;
+            const pushAtMs = pushed ? pushState.at : 0;
+            // Only trust device state newer than this push. Otherwise
+            // we'd show stale state from a previous OTA cycle.
+            const deviceTruth = pushAtMs > 0 && otaAtMs > pushAtMs ? otaState : null;
+
             const isInFlight = pushed && !updatedSincePush;
-            // Single honest waiting state — we don't pretend to know
-            // which phase the kiosk is in until it actually reports
-            // back (v1.0.11+).
+            const TIMEOUT_MS = 35 * 60_000;  // matches periodic worker cadence
+            const isTimedOut = isInFlight && pushedMsAgo > TIMEOUT_MS;
+
+            // Effective stage — device truth first, wall-clock only as a
+            // last resort.
+            const effectiveStage: 'idle' | 'pending' | 'checking' | 'downloading' | 'verifying' | 'installing' | 'installed' | 'error' | 'timeout' =
+              stage === 'installed' || updatedSincePush ? 'installed' :
+              deviceTruth === 'INSTALLED' ? 'installed' :
+              deviceTruth === 'ERROR' ? 'error' :
+              deviceTruth === 'INSTALLING' ? 'installing' :
+              deviceTruth === 'VERIFYING' ? 'verifying' :
+              deviceTruth === 'DOWNLOADING' ? 'downloading' :
+              deviceTruth === 'CHECKING' ? 'checking' :
+              isTimedOut ? 'timeout' :
+              isInFlight ? 'pending' :
+              'idle';
+
             const stageIcon: React.ReactNode =
-              stage === 'installed' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> :
-              stage === 'pending'   ? <Loader2 className="w-4 h-4 text-indigo-500 shrink-0 animate-spin" /> :
-              stage === 'timeout'   ? <WifiOff className="w-4 h-4 text-amber-600 shrink-0" /> :
-                                       <RefreshCw className={`w-4 h-4 shrink-0 ${upToDate === false ? 'text-amber-500' : 'text-indigo-500'}`} />;
-            // Smart timeout copy. If the kiosk was already on latest
-            // before the push, the most likely cause is "nothing to
-            // install yet" (operator pushed before a new release was
-            // out). Otherwise we honestly admit we don't know which
-            // phase failed — could be the bridge call never reaching
-            // the worker (the v1.0.9 silent-fail bug), Wi-Fi, install
-            // permission, or a crash mid-install. Until the device
-            // reports per-phase state (v1.0.11) we can't be specific.
+              effectiveStage === 'installed' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> :
+              effectiveStage === 'error'     ? <WifiOff className="w-4 h-4 text-rose-600 shrink-0" /> :
+              effectiveStage === 'timeout'   ? <WifiOff className="w-4 h-4 text-amber-600 shrink-0" /> :
+              ['pending', 'checking', 'downloading', 'verifying', 'installing'].includes(effectiveStage)
+                ? <Loader2 className="w-4 h-4 text-indigo-500 shrink-0 animate-spin" />
+                : <RefreshCw className={`w-4 h-4 shrink-0 ${upToDate === false ? 'text-amber-500' : 'text-indigo-500'}`} />;
+
+            const pendingSecs = Math.floor(pushedMsAgo / 1000);
+            const pendingHumanAgo = pendingSecs < 60
+              ? `${pendingSecs}s ago`
+              : `${Math.floor(pendingSecs / 60)}m ${pendingSecs % 60}s ago`;
             const timeoutCopy =
               upToDate === true
-                ? 'No version change after 5 min — kiosk was already on the latest. Wait for a new release to be published.'
-                : 'No version change after 5 min. Could be Wi-Fi, the kiosk\'s "Install unknown apps" permission, or an OTA worker that didn\'t fire. Power-cycle the screen or sideload via ViPlex if this persists.';
-            // How long ago we sent the push, in human terms.
-            const pendingSecs = Math.floor(pushedMsAgo / 1000);
-            const pendingLabel = pendingSecs < 60
-              ? `Update sent ${pendingSecs}s ago — waiting for kiosk to confirm install`
-              : `Update sent ${Math.floor(pendingSecs / 60)}m ${pendingSecs % 60}s ago — waiting for kiosk to confirm install`;
+                ? `No version change after 35 min — kiosk was already on the latest.`
+                : `No update after 35 min. Power-cycle the screen, check "Install unknown apps" permission, or sideload via ViPlex.`;
+
             const stageLabel =
-              stage === 'installed' ? `Kiosk installed v${currentVersion} ✓` :
-              stage === 'pending'   ? pendingLabel :
-              stage === 'timeout'   ? timeoutCopy :
-              upToDate === true && !pushed ? 'On latest — push anyway' :
-              upToDate === false ? `Push update to v${latestVersion}` :
-                                   'Push update to this screen';
+              effectiveStage === 'installed'   ? `Kiosk installed v${currentVersion} ✓` :
+              effectiveStage === 'error'       ? `Install error: ${otaMessage || 'unknown error'}` :
+              effectiveStage === 'installing'  ? `Installing on kiosk... ${otaMessage || ''}` :
+              effectiveStage === 'verifying'   ? `Verifying APK signature on kiosk...` :
+              effectiveStage === 'downloading' ? `Downloading on kiosk${otaProgress !== null ? ` (${otaProgress}%)` : '...'}` :
+              effectiveStage === 'checking'    ? `Kiosk acknowledged push, checking server...` :
+              effectiveStage === 'timeout'     ? timeoutCopy :
+              effectiveStage === 'pending'     ? `Update sent ${pendingHumanAgo} — waiting for kiosk (≤ 35 min via periodic check)` :
+              upToDate === true && !pushed     ? 'On latest — push anyway' :
+              upToDate === false               ? `Push update to v${latestVersion}` :
+                                                 'Push update to this screen';
             const stageColor =
-              stage === 'installed' ? 'text-emerald-700 font-bold' :
-              stage === 'timeout'   ? 'text-amber-700 font-bold' :
-              isInFlight            ? 'text-indigo-700 font-bold' :
-                                       'text-slate-700 font-semibold';
-            // Sub-line under the main label. While in-flight, give the
-            // operator a real diagnostic — what we WOULD see if it
-            // worked — so they know what to check if it doesn't.
+              effectiveStage === 'installed' ? 'text-emerald-700 font-bold' :
+              effectiveStage === 'error'     ? 'text-rose-700 font-bold' :
+              effectiveStage === 'timeout'   ? 'text-amber-700 font-bold' :
+              isInFlight                     ? 'text-indigo-700 font-bold' :
+                                                 'text-slate-700 font-semibold';
+            // Sub-line — surface real device telemetry when in-flight.
             const subline = isInFlight
-              ? 'Kiosk reports new version via heartbeat when install completes (~1-3 min on fast Wi-Fi)'
+              ? (deviceTruth
+                  ? `Kiosk last reported ${deviceTruth} ${otaAt ? new Date(otaAt).toLocaleTimeString() : ''}`
+                  : `If WS push didn’t reach kiosk, periodic check installs within 30 min`)
               : 'Manual only — auto-update is OFF unless you toggle it in Settings';
             return (
               <button

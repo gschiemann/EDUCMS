@@ -58,6 +58,25 @@ class OtaUpdateWorker(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         PlayerLogger.i(TAG, "OTA check starting (versionCode=${BuildConfig.VERSION_CODE}, versionName=${BuildConfig.VERSION_NAME})")
+        // 2026-04-28 (Plan audit P0-5) — yield to Manager when it's
+        // installed. Manager's OtaWorker handles Player updates via
+        // DEVICE_OWNER silent install; Player's worker would race
+        // and trigger a system Install prompt that steals focus
+        // mid-install. Two simultaneous PackageInstaller sessions
+        // also collide (STATUS_FAILURE_CONFLICT, dropped silently).
+        //
+        // Skip Player's worker entirely when Manager is installed.
+        // Manager's 30-min periodic worker covers everything we'd
+        // do here, faster and silently. If Manager isn't installed
+        // (legacy kiosks pre-bootstrap) Player's worker remains the
+        // only path.
+        if (isManagerInstalled(applicationContext)) {
+            PlayerLogger.i(
+                TAG,
+                "Manager APK is installed — yielding Player OTA to Manager's silent-install worker",
+            )
+            return@withContext Result.success()
+        }
         try {
             val apiRoot = applicationContext.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
                 .getString("api_root", null) ?: run {
@@ -346,6 +365,22 @@ class OtaUpdateWorker(
             Log.w(TAG, "PackageInstaller.Session path failed — operator can use notification to install", ex)
             PlayerLogger.w(TAG, "PackageInstaller.Session install failed; tap-to-install notification posted", ex)
         }
+    }
+
+    /**
+     * Detect whether the Manager APK (production OR debug variant)
+     * is currently installed. Used to yield Player's OTA work to
+     * Manager's silent-install path (Plan audit P0-5).
+     */
+    private fun isManagerInstalled(ctx: Context): Boolean {
+        val pm = ctx.packageManager
+        for (pkg in listOf("com.educms.manager", "com.educms.manager.debug")) {
+            try {
+                pm.getPackageInfo(pkg, 0)
+                return true
+            } catch (_: Exception) { /* not installed */ }
+        }
+        return false
     }
 
     companion object { private const val TAG = "OtaUpdateWorker" }
