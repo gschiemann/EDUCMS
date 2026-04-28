@@ -14,6 +14,7 @@ import { useAppStore } from '@/lib/store';
 import { useUIStore } from '@/store/ui-store';
 import { API_URL } from '@/lib/api-url';
 import { AlertTriangle, Megaphone, ShieldAlert, Send, Loader2, X, Image as ImageIcon, Volume2 } from 'lucide-react';
+import * as Sentry from '@sentry/nextjs';
 
 type Severity = 'INFO' | 'WARN' | 'CRITICAL';
 
@@ -150,13 +151,23 @@ export default function BroadcastPage() {
 
   const clearMessage = async (id: string) => {
     try {
-      await fetch(`${API_URL}/emergency/messages/${id}/all-clear`, {
+      const res = await fetch(`${API_URL}/emergency/messages/${id}/all-clear`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         credentials: 'include',
       });
+      if (!res.ok) throw new Error(`Clear failed: ${res.status}`);
       fetchActive();
-    } catch { /* ignore */ }
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.error('[BroadcastPage] clearMessage FAILED — override may still be active on screens:', e);
+      Sentry.captureException(e, {
+        tags: { component: 'BroadcastPage', action: 'clearMessage' },
+        extra: { messageId: id },
+      });
+      setErrorMsg(`Clear FAILED — the broadcast may still be active on screens. ${message}`);
+      setPhase('error');
+    }
   };
 
   const severityButton = (s: Severity, label: string, color: string) => (

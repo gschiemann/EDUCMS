@@ -1,8 +1,9 @@
 import { useAppStore } from '@/lib/store';
-import { X, Megaphone, ShieldAlert, WifiOff, Hand, Lock, HeartPulse, CloudLightning } from 'lucide-react';
+import { X, Megaphone, ShieldAlert, WifiOff, Hand, Lock, HeartPulse, CloudLightning, AlertTriangle, RotateCcw } from 'lucide-react';
 import { useState, useTransition } from 'react';
 import { broadcastEmergency } from '@/actions/trigger-emergency';
 import { clog } from '@/lib/client-logger';
+import * as Sentry from '@sentry/nextjs';
 
 /**
  * Emergency Trigger — the red button on the dashboard.
@@ -17,6 +18,11 @@ import { clog } from '@/lib/client-logger';
  * etc.) and broadcasts it on the tenant's signed channel. No playlist
  * selection happens here — that shortens the time-to-trigger and stops
  * operators from pairing a Hold with an Evacuate playlist by mistake.
+ *
+ * SAFETY: local emergencyActive state is ONLY flipped after the server
+ * confirms the broadcast. If the server call rejects, a loud error
+ * banner is shown and emergencyActive stays null so the operator knows
+ * screens did NOT receive the alert.
  */
 
 interface Props {
@@ -31,6 +37,15 @@ export function EmergencyTriggerModal({ onClose }: Props) {
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [confirmKey, setConfirmKey] = useState('');
   const [isPending, startTransition] = useTransition();
+  const [dispatchError, setDispatchError] = useState<string | null>(null);
+  // Stores the last-attempted payload so the retry button re-fires the
+  // same broadcast without requiring the operator to re-fill the form.
+  const [lastPayload, setLastPayload] = useState<{
+    schoolId: string;
+    type: string;
+    triggeredBy: string;
+    token?: string;
+  } | null>(null);
 
   // Full Standard Response Protocol — used by the vast majority of US
   // K-12 districts. Each type has its own confirm word so an operator
@@ -49,37 +64,61 @@ export function EmergencyTriggerModal({ onClose }: Props) {
   const currentType = types.find((t) => t.id === selectedType);
   const confirmWord = currentType?.confirm || '';
 
-  const handleTrigger = () => {
-    if (!selectedType || confirmKey !== confirmWord) return;
+  const fireTrigger = (payload: {
+    schoolId: string;
+    type: string;
+    triggeredBy: string;
+    token?: string;
+  }) => {
+    setDispatchError(null);
+    setLastPayload(payload);
     startTransition(async () => {
       const started = performance.now();
-      clog.warn('emergency', `TRIGGER: ${selectedType}`, {
-        schoolId: user?.tenantId,
-        triggeredBy: user?.id,
+      clog.warn('emergency', `TRIGGER: ${payload.type}`, {
+        schoolId: payload.schoolId,
+        triggeredBy: payload.triggeredBy,
         role: user?.role,
       });
       try {
-        await broadcastEmergency({
-          schoolId: user?.tenantId || 'global',
-          type: selectedType,
-          // No playlistId — the server resolves the right panic playlist
-          // for this type from the tenant's stored settings.
-          triggeredBy: user?.id || 'unknown',
-          token: token || undefined,
-        });
-        clog.info('emergency', `TRIGGER success: ${selectedType}`, {
+        await broadcastEmergency(payload);
+        clog.info('emergency', `TRIGGER success: ${payload.type}`, {
           elapsedMs: Math.round(performance.now() - started),
         });
+        // ONLY flip local emergency state after the server confirms the broadcast.
         setEmergencyActive(true);
         onClose();
       } catch (err) {
-        clog.error('emergency', `TRIGGER FAILED: ${selectedType}`, {
-          err: err instanceof Error ? err.message : String(err),
+        const message = err instanceof Error ? err.message : String(err);
+        clog.error('emergency', `TRIGGER FAILED: ${payload.type}`, {
+          err: message,
           elapsedMs: Math.round(performance.now() - started),
         });
-        throw err;
+        console.error('[EmergencyTriggerModal] Dispatch FAILED — alert was NOT sent to screens:', err);
+        Sentry.captureException(err, {
+          tags: { component: 'EmergencyTriggerModal', emergencyType: payload.type },
+          extra: { schoolId: payload.schoolId, triggeredBy: payload.triggeredBy },
+        });
+        setDispatchError(message || 'Unknown server error');
+        // Local emergency state intentionally NOT set — server did not confirm broadcast.
       }
     });
+  };
+
+  const handleTrigger = () => {
+    if (!selectedType || confirmKey !== confirmWord) return;
+    fireTrigger({
+      schoolId: user?.tenantId || 'global',
+      type: selectedType,
+      // No playlistId — the server resolves the right panic playlist
+      // for this type from the tenant's stored settings.
+      triggeredBy: user?.id || 'unknown',
+      token: token || undefined,
+    });
+  };
+
+  const handleRetry = () => {
+    if (!lastPayload) return;
+    fireTrigger(lastPayload);
   };
 
   return (
@@ -115,7 +154,7 @@ export function EmergencyTriggerModal({ onClose }: Props) {
               {types.map((type) => (
                 <button
                   key={type.id}
-                  onClick={() => { setSelectedType(type.id); setConfirmKey(''); }}
+                  onClick={() => { setSelectedType(type.id); setConfirmKey(''); setDispatchError(null); }}
                   className={`p-3 rounded-xl border text-left transition-all ${
                     selectedType === type.id
                       ? 'border-red-500 bg-red-50 dark:bg-red-500/10 ring-2 ring-red-500'
@@ -162,6 +201,30 @@ export function EmergencyTriggerModal({ onClose }: Props) {
           )}
         </div>
 
+        {/* Dispatch error banner — shown only when the server call failed */}
+        {dispatchError && (
+          <div className="mx-6 mb-4 rounded-lg border border-red-600 bg-red-50 dark:bg-red-950/40 p-4 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-bold text-red-700 dark:text-red-300">
+                Emergency dispatch FAILED — alert was NOT sent to screens.
+              </p>
+              <p className="text-xs text-red-600/80 dark:text-red-400/80 mt-1 font-mono break-all">
+                {dispatchError}
+              </p>
+            </div>
+            <button
+              onClick={handleRetry}
+              disabled={isPending}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-bold rounded shrink-0 transition-colors"
+              aria-label="Retry emergency dispatch"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Retry
+            </button>
+          </div>
+        )}
+
         {/* Footer */}
         <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex justify-end gap-3">
           <button
@@ -176,7 +239,7 @@ export function EmergencyTriggerModal({ onClose }: Props) {
             className="px-6 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:hover:bg-red-600 text-white text-sm font-bold rounded-md shadow-sm transition-all flex justify-center items-center gap-2 min-w-[160px]"
           >
             {isPending ? (
-              <span className="animate-pulse">Broadcasting…</span>
+              <span className="animate-pulse">Sending alert to all screens…</span>
             ) : (
               <span className="flex items-center gap-2">
                 <WifiOff className="w-4 h-4" /> Trigger Emergency
