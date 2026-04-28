@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo, Component, ReactNode } from 'react';
 import '@/components/widgets/variants-register'; // Boot-time registration for custom themes
-import { MonitorPlay, Wifi, WifiOff, AlertTriangle, Loader2, Settings, CheckCircle2, HardDrive, Cpu, Server, Network, Play, Monitor, Info, Power, RefreshCw, Download, LogOut } from 'lucide-react';
+import { MonitorPlay, Wifi, WifiOff, AlertTriangle, Loader2, Settings, CheckCircle2, HardDrive, Cpu, Server, Network, Play, Pause, Monitor, Info, Power, RefreshCw, Download, LogOut } from 'lucide-react';
 import { KioskSplash, type LoadProgress } from '@/components/player/KioskSplash';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import {
@@ -2319,7 +2319,11 @@ function PlayerPage() {
   const resolvedUrl = fileUrl.startsWith('http') ? fileUrl : `${getApiRoot()}${fileUrl}`;
 
   // Template rendering
-  if (isTemplate) {
+  // Gated on !playbackStopped — when paused, fall through to the
+  // non-template render below so the inline "Screen Paired
+  // Successfully" view handles the paused state instead of the
+  // (now-deleted) dark KioskSplash mode='stopped' overlay.
+  if (isTemplate && !playbackStopped) {
     const tpl = playlist.template;
     const zones = tpl.zones || [];
 
@@ -2344,40 +2348,15 @@ function PlayerPage() {
     // Stop splash short-circuit before rendering template widgets
     // so the whole widget tree tears down (stopping any animations,
     // video loops, weather polls, etc.) during the stop.
-    if (playbackStopped) {
-      return (
-        // Stop splash now reuses KioskSplash (same branded chrome
-        // as the connecting / pairing splashes) per Integration
-        // Lead's note "use the same nice UI we have that shows
-        // when a display is waiting for content." A 'stopped' mode
-        // was added to KioskSplash that renders Pause chip +
-        // playlist info card + Resume/Sync/Exit/Unpair buttons.
-        <KioskSplash
-          mode="stopped"
-          brandName={brandName}
-          screenName={screenName}
-          resolution={splashResolution}
-          apkVersion={apkVersion}
-          managerVersion={managerVersion}
-          otaProgress={otaProgress}
-          latestApkVersion={latestApkVersion}
-          onInstallUpdate={handleInstallUpdate}
-          lastSync={lastSync}
-          stoppedPlaylists={manifestPlaylists}
-          stoppedCache={cacheStatus && cacheStatus.supported ? { playlist: cacheStatus.playlist, emergency: cacheStatus.emergency } : null}
-          stoppedExitUnavailable={exitUnavailable}
-          onResume={() => { setPlaybackStopped(false); setExitUnavailable(false); }}
-          onExit={handleExitApp}
-          onUnpair={() => {
-            try { localStorage.removeItem('edu_device_fp'); } catch {}
-            setPlaybackStopped(false);
-            setExitUnavailable(false);
-            setPhase('registering');
-          }}
-          onSync={() => fetchContent()}
-        />
-      );
-    }
+    // 2026-04-28 — playbackStopped no longer renders the dark
+    // KioskSplash mode='stopped'. We don't early-return here; the
+    // outer `if (isTemplate && !playbackStopped)` guard further
+    // up means a template playlist with playbackStopped=true
+    // never enters this branch in the first place. It falls
+    // through to the non-template render path, where the inline
+    // "Screen Paired Successfully" view (further down) detects
+    // playbackStopped and shows the paused variant with playlist
+    // list + Resume/Sync/Exit/Unpair buttons.
 
     return (
       // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
@@ -2561,37 +2540,14 @@ function PlayerPage() {
     );
   }
 
-  // Stop splash — KioskSplash mode='stopped' (matches the template
-  // render path above). Branded chrome reused from the connecting
-  // splash, with playlist-info card + actions added inside.
-  if (playbackStopped) {
-    return (
-      <KioskSplash
-        mode="stopped"
-        brandName={brandName}
-        screenName={screenName}
-        resolution={splashResolution}
-        apkVersion={apkVersion}
-        managerVersion={managerVersion}
-        otaProgress={otaProgress}
-        latestApkVersion={latestApkVersion}
-        onInstallUpdate={handleInstallUpdate}
-        lastSync={lastSync}
-        stoppedPlaylists={manifestPlaylists}
-        stoppedCache={cacheStatus && cacheStatus.supported ? { playlist: cacheStatus.playlist, emergency: cacheStatus.emergency } : null}
-        stoppedExitUnavailable={exitUnavailable}
-        onResume={() => { setPlaybackStopped(false); setExitUnavailable(false); }}
-        onExit={handleExitApp}
-        onUnpair={() => {
-          try { localStorage.removeItem('edu_device_fp'); } catch {}
-          setPlaybackStopped(false);
-          setExitUnavailable(false);
-          setPhase('registering');
-        }}
-        onSync={() => fetchContent()}
-      />
-    );
-  }
+  // 2026-04-28 — Stopped splash REMOVED. Operator: "this screen
+  // shouldnt exist...it should just be that other screen paired
+  // menu i just sent...consolidate all this shit onto that screen
+  // and dump this one". The dark KioskSplash mode='stopped' UI
+  // was killed; playbackStopped is now handled by the inline
+  // "Screen Paired Successfully" view below (which detects
+  // playbackStopped and renders the paused hero variant + playlist
+  // list + Resume/Sync/Exit/Unpair cluster).
 
   // Media playlist rendering
   // 2026-04-28 — operator (6th request): "the URL playlist fix list
@@ -2626,7 +2582,7 @@ function PlayerPage() {
         }
       }}
     >
-      {currentItem ? (
+      {currentItem && !playbackStopped ? (
         <div className={`relative w-full h-full flex items-center justify-center ${isPlaylistInteractive ? '' : 'pointer-events-none'}`}>
           {sorted.map((item, index) => {
             const isActive = index === (currentIndex % sorted.length);
@@ -2776,6 +2732,27 @@ function PlayerPage() {
                    loadProgress?.phase === 'connecting-ws' ? 'Connecting to live updates…' :
                    loadProgress?.phase === 'ready' ? 'Almost ready…' :
                    'Loading your content…'}
+                </p>
+              </>
+            ) : playbackStopped ? (
+              <>
+                {/* 2026-04-28 — operator: "this screen shouldnt
+                    exist...it should just be that other screen paired
+                    menu i just sent...consolidate all this shit onto
+                    that screen and dump this one...when i exit out of
+                    a playlist we go to that white screen paired
+                    screen with all this info". The dark KioskSplash
+                    mode='stopped' was killed; playbackStopped now
+                    falls through to this view with paused-specific
+                    hero / playlist list / action buttons. */}
+                <div className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-amber-100 to-amber-50 shadow-[inset_0_4px_20px_rgb(0,0,0,0.05)] flex items-center justify-center mb-6 ring-4 ring-white">
+                  <Pause className="w-12 h-12 text-amber-500" />
+                </div>
+                <h1 className="text-4xl font-extrabold text-slate-800 tracking-tight">Playback Paused</h1>
+                <p className="text-lg font-medium text-slate-500 mt-2 mb-10 text-center">
+                  {exitUnavailable
+                    ? 'Use your remote’s Home button to return to the launcher.'
+                    : 'Content is held. Resume to go back to playback.'}
                 </p>
               </>
             ) : (
@@ -2965,48 +2942,119 @@ function PlayerPage() {
               );
             })()}
 
+            {/* 2026-04-28 — Paused-only: list every scheduled playlist
+                (matches the data the dark stopped splash used to show
+                via KioskSplash mode='stopped'). Folded in here so
+                operators see the full playback context on the SAME
+                paired-success view they always use. */}
+            {playbackStopped && manifestPlaylists && manifestPlaylists.length > 0 && (
+              <div className="w-full max-w-3xl mb-8 rounded-2xl bg-white/70 border border-slate-200 overflow-hidden">
+                {manifestPlaylists.map((pl, idx) => {
+                  const days = pl.daysOfWeek ? pl.daysOfWeek.replace(/,/g, ' · ') : 'Every day';
+                  const times = pl.timeStart && pl.timeEnd ? `${pl.timeStart}–${pl.timeEnd}` : 'all day';
+                  return (
+                    <div
+                      key={pl.id}
+                      className={`flex items-center justify-between gap-4 px-5 py-3 ${idx > 0 ? 'border-t border-slate-100' : ''}`}
+                    >
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-sm font-bold text-slate-800 truncate">{pl.name}</span>
+                        <span className="text-xs font-medium text-slate-500">
+                          {pl.isTemplate ? 'Template' : `${pl.itemCount} slide${pl.itemCount === 1 ? '' : 's'}`}
+                        </span>
+                      </div>
+                      <span className="text-xs font-medium text-slate-500 whitespace-nowrap">{days} · {times}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Action buttons — shape depends on state. When paused,
+                Resume is the primary action (emerald) and Unpair is
+                demoted to a small text link below. When idle (waiting
+                or just paired), Auto-Play is the primary action and
+                Unpair sits in the row. */}
             <div className="flex flex-wrap items-center justify-center gap-3">
-              <button onClick={async (e) => {
-                e.stopPropagation();
-                const ok = await appConfirm({
-                  title: 'Unpair this screen?',
-                  message: 'Tearing down the connection wipes the pairing from this device. The next session will require a new pairing code from the dashboard.',
-                  tone: 'danger',
-                  confirmLabel: 'Unpair device',
-                });
-                if (ok) {
-                  localStorage.removeItem('edu_device_fp');
-                  setPhase('registering');
-                  setShowOverlay(false);
-                }
-              }} className="px-5 py-2.5 bg-white border border-slate-200 hover:border-red-100 hover:bg-red-50 text-slate-700 hover:text-red-600 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative group">
-                <Power className="w-4 h-4 text-slate-400 group-hover:text-red-500" /> Unpair
-              </button>
-              {/* Renamed from "Ping Server" — what it actually does is
-                  re-fetch the manifest. "Sync now" matches the
-                  language ops use elsewhere in the app. Operator
-                  (2026-04-27) called out the old name as opaque. */}
-              <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative" title="Re-fetch the playlist + assets from the server right now">
-                <RefreshCw className="w-4 h-4 text-slate-400" /> Sync now
-              </button>
-              {/* Exit to device launcher — operator (2026-04-27): "we
-                  should have an exit button on the screen too." Uses
-                  the same handleExitApp cascade defined above
-                  (native bridge → window.close → splash hint). */}
-              <button onClick={(e) => { e.stopPropagation(); handleExitApp(); }} className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative">
-                <LogOut className="w-4 h-4 text-slate-400" /> Exit
-              </button>
-              <button onClick={async (e) => {
-                e.stopPropagation();
-                await appAlert({
-                  title: 'Nothing to play yet',
-                  message: 'No assigned content is currently queued for this screen. Schedule a playlist from the dashboard, then tap Sync now to refresh.',
-                  tone: 'info',
-                });
-              }} className="px-7 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-2xl transition-all shadow-[0_8px_20px_rgb(99,102,241,0.3)] hover:shadow-[0_8px_25px_rgb(99,102,241,0.4)] hover:-translate-y-0.5 flex items-center gap-2 focus:scale-95 z-20 relative">
-                <Play className="w-4 h-4 fill-current" /> Auto-Play
-              </button>
+              {playbackStopped ? (
+                <>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setPlaybackStopped(false); setExitUnavailable(false); }}
+                    className="px-7 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-2xl transition-all shadow-[0_8px_20px_rgb(16,185,129,0.3)] hover:shadow-[0_8px_25px_rgb(16,185,129,0.4)] hover:-translate-y-0.5 flex items-center gap-2 focus:scale-95 z-20 relative"
+                  >
+                    <Play className="w-4 h-4 fill-current" /> Resume
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative" title="Re-fetch the playlist + assets from the server right now">
+                    <RefreshCw className="w-4 h-4 text-slate-400" /> Sync now
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleExitApp(); }}
+                    disabled={exitUnavailable}
+                    className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative"
+                  >
+                    <LogOut className="w-4 h-4 text-slate-400" />
+                    {exitUnavailable ? 'Exit unavailable' : 'Exit to launcher'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button onClick={async (e) => {
+                    e.stopPropagation();
+                    const ok = await appConfirm({
+                      title: 'Unpair this screen?',
+                      message: 'Tearing down the connection wipes the pairing from this device. The next session will require a new pairing code from the dashboard.',
+                      tone: 'danger',
+                      confirmLabel: 'Unpair device',
+                    });
+                    if (ok) {
+                      localStorage.removeItem('edu_device_fp');
+                      setPhase('registering');
+                      setShowOverlay(false);
+                    }
+                  }} className="px-5 py-2.5 bg-white border border-slate-200 hover:border-red-100 hover:bg-red-50 text-slate-700 hover:text-red-600 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative group">
+                    <Power className="w-4 h-4 text-slate-400 group-hover:text-red-500" /> Unpair
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); fetchContent(); }} className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative" title="Re-fetch the playlist + assets from the server right now">
+                    <RefreshCw className="w-4 h-4 text-slate-400" /> Sync now
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); handleExitApp(); }} className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative">
+                    <LogOut className="w-4 h-4 text-slate-400" /> Exit
+                  </button>
+                  <button onClick={async (e) => {
+                    e.stopPropagation();
+                    await appAlert({
+                      title: 'Nothing to play yet',
+                      message: 'No assigned content is currently queued for this screen. Schedule a playlist from the dashboard, then tap Sync now to refresh.',
+                      tone: 'info',
+                    });
+                  }} className="px-7 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-2xl transition-all shadow-[0_8px_20px_rgb(99,102,241,0.3)] hover:shadow-[0_8px_25px_rgb(99,102,241,0.4)] hover:-translate-y-0.5 flex items-center gap-2 focus:scale-95 z-20 relative">
+                    <Play className="w-4 h-4 fill-current" /> Auto-Play
+                  </button>
+                </>
+              )}
             </div>
+            {playbackStopped && (
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  const ok = await appConfirm({
+                    title: 'Unpair this screen?',
+                    message: 'Tearing down the connection wipes the pairing from this device. The next session will require a new pairing code from the dashboard.',
+                    tone: 'danger',
+                    confirmLabel: 'Unpair device',
+                  });
+                  if (ok) {
+                    try { localStorage.removeItem('edu_device_fp'); } catch {}
+                    setPlaybackStopped(false);
+                    setExitUnavailable(false);
+                    setPhase('registering');
+                  }
+                }}
+                className="mt-3 text-xs font-medium text-slate-500 hover:text-red-600 transition-colors px-3 py-1"
+              >
+                Unpair device
+              </button>
+            )}
           </div>
         </div>
       )}
