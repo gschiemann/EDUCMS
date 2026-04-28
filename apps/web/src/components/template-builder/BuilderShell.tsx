@@ -535,10 +535,15 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
 
         {/* Canvas column: contextual toolbar on top + canvas underneath.
             Wrapping in a flex column keeps the canvas's existing
-            scroll behaviour intact. */}
-        <div className="flex flex-col flex-1 min-w-0">
+            scroll behaviour intact.
+            2026-04-29 — `relative` so BuilderBottomBar can position
+            itself absolute-centered within THIS column (not the
+            entire viewport). Operator: "can you center the tool bar
+            on the canvas an not on the entire page?" */}
+        <div className="flex flex-col flex-1 min-w-0 relative">
           <TopContextToolbar />
           <BuilderCanvas />
+          {!previewMode && <BuilderBottomBar />}
         </div>
       </div>
 
@@ -552,11 +557,10 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         ) : null}
       </DragOverlay>
 
-      {/* Bottom bar — unified zoom + undo + view toggles. Canva-style
-          spatial memory ("those buttons live down there"). Replaces
-          the keyboard-only access to history + grid + snap state.
-          Hidden in previewMode so demo screenshots are clean. */}
-      {!previewMode && <BuilderBottomBar />}
+      {/* Bottom bar moved INSIDE the canvas column above (line ~542)
+          so it centers over the canvas instead of the viewport.
+          Operator (2026-04-29): "center the tool bar on the canvas
+          an not on the entire page". */}
 
       {/* Discoverable "?" floating button in bottom-right of viewport.
           Without this the only way to find the shortcut sheet was to
@@ -719,7 +723,7 @@ function BuilderBottomBar() {
   ) : null;
 
   return (
-    <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-30 bg-white border border-slate-200 rounded-2xl shadow-lg flex items-center gap-1 px-2 py-1.5">
+    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 bg-white border border-slate-200 rounded-2xl shadow-lg flex items-center gap-1 px-2 py-1.5">
 
       {/* ══ LEFT: zone-context section ══════════════════════════════ */}
       {selectedZone ? (

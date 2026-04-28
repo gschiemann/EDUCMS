@@ -1,6 +1,6 @@
 "use client";
 
-import { createElement, memo, useState } from 'react';
+import { createElement, memo, useRef, useState } from 'react';
 import { Lock, Loader2, Upload } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 import { API_URL } from '@/lib/api-url';
@@ -34,6 +34,14 @@ const HANDLE_STYLES: Record<ResizeHandle, React.CSSProperties> = {
 };
 
 function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizePointerDown, onSelect, onConfigChange }: Props) {
+  // 2026-04-29 — pointerdown movement tracking so we distinguish a
+  // click (no movement → enter edit mode) from a drag (>4px movement
+  // → move the widget). dragStartRef holds the pointer-down coords
+  // + a flag that flips the moment movement crosses the threshold.
+  // wasJustDraggedRef briefly suppresses onClick after a drag so we
+  // don't also enter edit mode on a drag-end click.
+  const dragStartRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const wasJustDraggedRef = useRef(false);
   const color = getZoneColor(zone.widgetType);
   const icon = widgetIcon(zone.widgetType);
   const label = widgetLabel(zone.widgetType);
@@ -261,46 +269,66 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       }}
       onPointerDown={(e) => {
         if (previewMode || zone.locked) return;
-        // 2026-04-29 — operator (REPEAT bug, multiple times):
-        // "click into the text of a widget and it gets stuck to
-        // the cursor moves around the entire screen and you cant
-        // get it off without a double clock..clicking inthe text
-        // window should just adit text not select the entire
-        // widget".
+        // 2026-04-29 v2 — operator: "i still cant drag and drop the
+        // widgets on the canvas, they are locked in place". The
+        // previous fix returned early for ANY text-content click,
+        // which made TEXT widgets draggable ONLY by their 3px border
+        // — an impossible-to-grab target for most operators.
         //
-        // Two guards block move-drag on content clicks:
-        //   1. Click hits a [data-field] hotspot → existing
-        //      Canva-style edit gesture (kept).
-        //   2. Click hits any descendant of a TEXT / RICH_TEXT
-        //      zone → NEW. The whole widget interior is treated
-        //      as a text-edit surface; only the 3px border (where
-        //      e.target === e.currentTarget) is a drag handle.
+        // New approach: ALWAYS start drag-tracking on pointerdown.
+        // After pointer-up, decide based on movement:
+        //   - Pointer moved < 4px → it was a click. Click handler
+        //     enters edit mode (Canva-style one-click-to-edit).
+        //   - Pointer moved >= 4px → it was a drag. The click
+        //     handler is suppressed (wasJustDraggedRef) so we don't
+        //     also enter edit mode on a drag-end.
         //
-        // CRITICAL: stopPropagation regardless of which branch
-        // fires, so BuilderCanvas's onCanvasPointerDown doesn't
-        // start a marquee-drag and re-create the "stuck to cursor"
-        // bug from a different source.
+        // [data-field] hotspots still skip drag-start so a precise
+        // text-edit click on the styled headline / song title /
+        // etc. enters edit mode immediately.
+        //
+        // CRITICAL: stopPropagation regardless of branch so
+        // BuilderCanvas's marquee-select doesn't fire.
         const target = e.target as HTMLElement | null;
-        const isTextZone = zone.widgetType === 'TEXT' || zone.widgetType === 'RICH_TEXT';
-        const isContentClick = e.target !== e.currentTarget;
         if (target?.closest?.('[data-field]')) {
           e.stopPropagation();
           return;
         }
-        if (isTextZone && isContentClick) {
-          // Pointerdown landed on text content (not the border)
-          // of a TEXT/RICH_TEXT widget. Don't drag — let the
-          // click handler enter edit mode. To MOVE a text widget,
-          // grab its border (the 3px dashed/solid edge).
-          e.stopPropagation();
-          return;
-        }
         e.stopPropagation();
+        // Track the pointer movement so onClick can decide whether
+        // to skip edit-mode (real drag happened).
+        dragStartRef.current = { x: e.clientX, y: e.clientY, moved: false };
+        const onMove = (ev: PointerEvent) => {
+          const start = dragStartRef.current;
+          if (!start) return;
+          if (Math.abs(ev.clientX - start.x) > 4 || Math.abs(ev.clientY - start.y) > 4) {
+            start.moved = true;
+          }
+        };
+        const onUp = () => {
+          const start = dragStartRef.current;
+          if (start?.moved) {
+            wasJustDraggedRef.current = true;
+            // Clear shortly after so the next click works normally.
+            setTimeout(() => { wasJustDraggedRef.current = false; }, 120);
+          }
+          dragStartRef.current = null;
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+        };
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
         onPointerDown(e, zone.id, 'move');
       }}
       onClick={(e) => {
         if (previewMode) return;
         e.stopPropagation();
+        // 2026-04-29 v2 — if pointerdown→pointerup just included a
+        // real drag (>4px movement), skip edit-mode. The click event
+        // still fires after the drag's pointerup; without this guard
+        // every drag would also enter edit mode at the end, which is
+        // confusing.
+        if (wasJustDraggedRef.current) return;
         const fieldEl = (e.target as HTMLElement | null)?.closest?.('[data-field]') as HTMLElement | null;
         const isTextZone = zone.widgetType === 'TEXT' || zone.widgetType === 'RICH_TEXT';
         const isContentClick = e.target !== e.currentTarget;
