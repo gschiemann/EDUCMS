@@ -24,6 +24,103 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!-- Manager-install gate. v1.0.23: Player MUST NOT show its WebView
+         (pairing screen, splash, kiosk content) until the Manager
+         companion APK is confirmed installed. Without Manager, the
+         pair of apps can't self-update silently (Manager is the
+         install agent for Player updates) and the kiosk is stuck on
+         a manual-sideload upgrade path forever.
+
+         Initially gone — MainActivity.onCreate flips it visible iff
+         readManagerVersion() returns null AND fires ManagerBootstrap
+         from the foreground (so Android 11+ BAL doesn't drop the
+         system Install dialog). The PACKAGE_ADDED receiver hides it
+         + calls loadPlayer() the moment Manager appears. -->
+    <FrameLayout
+        android:id="@+id/managerGateOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="#0F172A">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:orientation="vertical"
+            android:padding="64dp"
+            android:gravity="center">
+
+            <ProgressBar
+                android:id="@+id/managerGateSpinner"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:indeterminate="true"
+                android:layout_marginBottom="32dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="EduCMS"
+                android:textColor="#94A3B8"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.2"
+                android:gravity="center"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:id="@+id/managerGateTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Setting up your player"
+                android:textColor="#FFFFFF"
+                android:textSize="36sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:layout_marginBottom="16dp" />
+
+            <TextView
+                android:id="@+id/managerGateStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Installing companion service…"
+                android:textColor="#94A3B8"
+                android:textSize="20sp"
+                android:gravity="center"
+                android:layout_marginBottom="24dp" />
+
+            <TextView
+                android:id="@+id/managerGateHint"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="When you see the system Install dialog, tap Install."
+                android:textColor="#FBBF24"
+                android:textSize="16sp"
+                android:gravity="center"
+                android:layout_marginBottom="32dp" />
+
+            <Button
+                android:id="@+id/managerGateRetry"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Retry install"
+                android:textSize="14sp"
+                android:visibility="gone" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="The player will start automatically when setup completes."
+                android:textColor="#475569"
+                android:textSize="14sp"
+                android:gravity="center"
+                android:layout_marginTop="32dp" />
+        </LinearLayout>
+    </FrameLayout>
+
     <!-- Recovery overlay. Initially hidden. -->
     <FrameLayout
         android:id="@+id/recoveryOverlay"

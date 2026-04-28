@@ -26,6 +26,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
+import com.educms.player.bootstrap.ManagerBootstrap
 import com.educms.player.databinding.ActivityMainBinding
 import com.educms.player.logging.PlayerLogger
 import kotlinx.coroutines.flow.first
@@ -140,23 +141,66 @@ class MainActivity : ComponentActivity() {
             }
         })
 
-        // Always load /player — the web player handles its own
-        // register → show pairing code → poll → play flow. No native
-        // PairingActivity redirect; the APK is a kiosk shell, not a
-        // parallel pairing implementation. If a legacy native token is
-        // already in DataStore we pass it along so the player can skip
-        // the register step.
-        lifecycleScope.launch {
-            val token = deviceStore.deviceToken.first()
-            loadPlayer(token.orEmpty())
-        }
-
         // v1.0.14 — listen for Manager install so we can reload the
         // WebView the moment Manager appears (so &mv= heartbeat
         // updates). Registered here in onCreate; unregistered in
         // onDestroy. Safe even if Manager is already installed —
         // the receiver just never fires.
+        //
+        // v1.0.23 — registering BEFORE the Manager-installed check
+        // below is critical: if Manager finishes installing in the
+        // tiny window between our check and registration, we'd miss
+        // the broadcast and the gate would hang forever.
         registerManagerInstallReceiver()
+
+        // v1.0.23 — Manager-install gate. Player MUST NOT load its
+        // WebView (pairing screen, splash, kiosk content) until the
+        // Manager companion APK is confirmed installed.
+        //
+        // Why: Manager IS the install agent for future Player + Manager
+        // OTA updates (DEVICE_OWNER + UPDATE_PACKAGES_WITHOUT_USER_ACTION
+        // in v1.0.23+ Manager builds). Without Manager, every future
+        // upgrade requires the operator to physically walk to the
+        // screen with a USB stick. Operator (2026-04-28): "player
+        // shouldnt launch until manager installed" — confirmed.
+        //
+        // Why MainActivity, not PlayerApp: Android 11+ Background
+        // Activity Launch silently drops startActivity() calls from
+        // BroadcastReceivers + non-foregrounded contexts on Goodview's
+        // stripped TaurusOS. PlayerApp.onCreate runs before any Activity
+        // is foregrounded → STATUS_PENDING_USER_ACTION's system Install
+        // dialog gets dropped, no error logged, operator sees nothing.
+        // Firing bootstrap from MainActivity.onCreate AFTER setContentView
+        // means we're foregrounded → BAL bypass → dialog appears.
+        val managerVersion = readManagerVersion()
+        if (managerVersion != null) {
+            // Happy path — Manager already installed. Load WebView as
+            // we always have. If a legacy native token is in DataStore,
+            // pass it along so the player can skip the register step.
+            PlayerLogger.i("MainActivity", "Manager $managerVersion installed — loading player")
+            lifecycleScope.launch {
+                val token = deviceStore.deviceToken.first()
+                loadPlayer(token.orEmpty())
+            }
+        } else {
+            // Manager NOT installed — gate the player.
+            PlayerLogger.i("MainActivity", "Manager missing — showing install gate, firing bootstrap from foreground")
+            showManagerGate("Installing companion service…")
+            // Fire bootstrap from this foregrounded Activity context.
+            // ManagerBootstrap.bootstrapIfNeeded reads the bundled APK
+            // out of assets and commits a PackageInstaller session;
+            // the system Install dialog appears (BAL is satisfied
+            // because MainActivity is foregrounded). When the user
+            // taps Install, ACTION_PACKAGE_ADDED fires →
+            // managerInstallReceiver.onReceive() → hideManagerGate()
+            // + loadPlayer().
+            ManagerBootstrap.bootstrapIfNeeded(applicationContext)
+            // Defensive: poll PackageManager every 2s in case the
+            // PACKAGE_ADDED broadcast is dropped (some OEM ROMs
+            // have been observed to do this when receivers are
+            // registered late in onCreate).
+            startManagerInstallPoller()
+        }
 
         // One-time setup prompt for OTA install permission. Every
         // Android ≥ 8 app that wants to install APKs needs the user
@@ -564,6 +608,9 @@ class MainActivity : ComponentActivity() {
                 managerInstallReceiverRegistered = false
             }
         } catch (_: Exception) { /* tolerated */ }
+        // v1.0.23 — cancel any pending Manager-install poll callbacks
+        // so they don't fire after the activity is gone.
+        stopManagerInstallPoller()
         (webView.parent as? android.view.ViewGroup)?.removeView(webView)
         webView.destroy()
         super.onDestroy()
@@ -587,8 +634,13 @@ class MainActivity : ComponentActivity() {
         override fun onReceive(context: android.content.Context, intent: Intent) {
             val pkg = intent.data?.schemeSpecificPart
             if (pkg == "com.educms.manager" || pkg == "com.educms.manager.debug") {
-                PlayerLogger.i("MainActivity", "Manager package added ($pkg) — reloading WebView so &mv= heartbeat starts")
+                PlayerLogger.i("MainActivity", "Manager package added ($pkg) — hiding gate + loading WebView")
                 runOnUiThread {
+                    // v1.0.23 — hide the install gate + cancel poller
+                    // (no-op if neither was active, e.g. a same-version
+                    // re-install on a kiosk that already had Manager).
+                    hideManagerGate()
+                    stopManagerInstallPoller()
                     lifecycleScope.launch {
                         val token = deviceStore.deviceToken.first().orEmpty()
                         loadPlayer(token)
@@ -596,6 +648,81 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * v1.0.23 — show the Manager-install gate. Blocks the WebView
+     * behind a full-screen overlay until Manager is detected via
+     * PackageManager + ACTION_PACKAGE_ADDED.
+     *
+     * The "Retry install" button is hidden by default — surfaced by
+     * showManagerGateRetry() only after a sufficiently long stall
+     * (managerInstallStartedAt + 60s with no install) so impatient
+     * operators don't keep mashing it during the normal install
+     * flow.
+     */
+    private var managerInstallStartedAt: Long = 0L
+    private var managerGateShown = false
+    private fun showManagerGate(status: String) {
+        managerGateShown = true
+        managerInstallStartedAt = System.currentTimeMillis()
+        binding.managerGateOverlay.visibility = View.VISIBLE
+        binding.managerGateStatus.text = status
+        binding.managerGateRetry.setOnClickListener {
+            PlayerLogger.i("MainActivity", "Manager gate: retry install requested")
+            binding.managerGateStatus.text = "Retrying companion install…"
+            binding.managerGateRetry.visibility = View.GONE
+            ManagerBootstrap.bootstrapIfNeeded(applicationContext)
+        }
+    }
+
+    private fun hideManagerGate() {
+        if (!managerGateShown) return
+        managerGateShown = false
+        binding.managerGateOverlay.visibility = View.GONE
+    }
+
+    /**
+     * v1.0.23 — defensive 2-second PackageManager poll for the case
+     * where ACTION_PACKAGE_ADDED isn't delivered to our receiver
+     * (Android 14+ runtime-registered receiver edge cases, OEM doze
+     * behavior, etc.). The receiver path remains primary; this is
+     * the belt to its suspenders.
+     *
+     * Surfaces the "Retry install" button if Manager hasn't appeared
+     * after 60s — usually means the operator dismissed the system
+     * Install dialog or hasn't tapped Install yet.
+     */
+    private val managerPollHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val managerPollRunnable = object : Runnable {
+        override fun run() {
+            if (!managerGateShown) return
+            val installedVersion = readManagerVersion()
+            if (installedVersion != null) {
+                PlayerLogger.i("MainActivity", "Manager poll detected $installedVersion — proceeding")
+                hideManagerGate()
+                lifecycleScope.launch {
+                    val token = deviceStore.deviceToken.first().orEmpty()
+                    loadPlayer(token)
+                }
+                return
+            }
+            // Surface retry button + clearer status after a stall.
+            val elapsed = System.currentTimeMillis() - managerInstallStartedAt
+            if (elapsed > 60_000L && binding.managerGateRetry.visibility != View.VISIBLE) {
+                binding.managerGateStatus.text =
+                    "If the system Install dialog didn't appear, tap Retry install."
+                binding.managerGateRetry.visibility = View.VISIBLE
+            }
+            managerPollHandler.postDelayed(this, 2_000L)
+        }
+    }
+    private fun startManagerInstallPoller() {
+        managerPollHandler.removeCallbacks(managerPollRunnable)
+        managerPollHandler.postDelayed(managerPollRunnable, 2_000L)
+    }
+    private fun stopManagerInstallPoller() {
+        managerPollHandler.removeCallbacks(managerPollRunnable)
     }
     private fun registerManagerInstallReceiver() {
         if (managerInstallReceiverRegistered) return
