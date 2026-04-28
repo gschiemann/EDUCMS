@@ -819,6 +819,13 @@ function PlayerPage() {
   // every 30s while the worker is still in flight.
   const otaPollFireRef = useRef<number>(0);
   const otaPollKeyRef = useRef<string | null>(null);
+  // 2026-04-28 — dedup the INSTALLED-state banner. lastOtaState='INSTALLED'
+  // is "sticky" on the server (it gets written when the version-bump clear
+  // logic fires and is never cleared after that). Without this dedup, the
+  // banner shows on EVERY 30s heartbeat tick because data.ota.state is
+  // INSTALLED on every response. Track the last-seen ota.at and only
+  // re-fire the banner when a NEW install event arrives.
+  const otaInstalledKeyRef = useRef<string | null>(null);
   // Split refs: interval runs at steady cadence, timeout is the one-
   // shot backoff retry. Previously both shared `pollRef` which caused
   // races when a failing tick reassigned the same handle.
@@ -934,9 +941,20 @@ function PlayerPage() {
         message: data.ota.message || null,
         at: data.ota.at || null,
       });
+      // INSTALLED is a "sticky" state on the server — it gets written on
+      // the version-bump clear and never auto-clears. So data.ota.state
+      // returns INSTALLED on every heartbeat after a successful install.
+      // Dedup by ota.at: only fire the banner ONCE per unique install
+      // event timestamp. Without this dedup the kiosk's purple "Update
+      // in progress" banner pops every 30s forever after a successful
+      // install (operator caught this 2026-04-28).
       if (data.ota.state === 'INSTALLED') {
-        setOtaProgress((prev) => prev ?? { startedAt: Date.now(), bridgeAvailable: true });
-        setTimeout(() => setOtaProgress(null), 3000);
+        const installedAt = String(data.ota.at || '').trim();
+        if (installedAt && otaInstalledKeyRef.current !== installedAt) {
+          otaInstalledKeyRef.current = installedAt;
+          setOtaProgress((prev) => prev ?? { startedAt: Date.now(), bridgeAvailable: true });
+          setTimeout(() => setOtaProgress(null), 3000);
+        }
       }
     } else {
       setServerOtaState(null);
