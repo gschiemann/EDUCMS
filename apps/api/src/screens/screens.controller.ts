@@ -79,6 +79,18 @@ function verifyDeviceForScreen(req: ExpressReq, screenId: string): { ok: true; s
   return { ok: false, reason: 'no_auth' };
 }
 
+// sec-fix(P0 #7) Defense 1: per-fingerprint registration cooldown.
+// @Throttle keys on IP, which is sufficient for the bulk case, but a
+// single attacker with one IP rotating fingerprints could still enumerate.
+// This Map adds a server-side 15-minute cooldown per fingerprint so that
+// each guessed fingerprint can only be attempted once per window.
+// In-memory is intentional: this is a rate-control fence, not an audit
+// log. A server restart resets it, but the attacker still faces the IP
+// throttle (5/hr) as the primary guard.
+// Exported for unit-test access only — do not use outside this module.
+export const _registerFpCooldown = new Map<string, number>(); // fingerprint → last-register ms
+export const REGISTER_FP_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes
+
 @Controller('api/v1/screens')
 export class ScreensController {
   constructor(
@@ -97,6 +109,9 @@ export class ScreensController {
 
   // ─── PUBLIC: Device self-registration (no auth) ───
   // The player opens, sends its device info, gets back a pairing code
+  // sec-fix(P0 #7) Defense 1: 5 registrations per IP per hour (IP throttle)
+  // + per-fingerprint 15-minute cooldown (enforced below in handler).
+  @Throttle({ default: { limit: 5, ttl: 3_600_000 } })
   @Post('register')
   async register(@Body() body: {
     deviceFingerprint: string;
@@ -124,6 +139,27 @@ export class ScreensController {
       };
     }
 
+    // sec-fix(P0 #7) Defense 1: per-fingerprint cooldown.
+    // A legitimate kiosk re-registers when it reboots; 15 min between
+    // registrations is fine for real devices. An attacker cycling
+    // fingerprints hits this wall on each new guess.
+    const fpKey = body.deviceFingerprint;
+    const lastRegTs = _registerFpCooldown.get(fpKey);
+    if (lastRegTs !== undefined && Date.now() - lastRegTs < REGISTER_FP_COOLDOWN_MS) {
+      throw new HttpException(
+        'Too Many Requests: fingerprint registered recently, retry after 15 minutes',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    _registerFpCooldown.set(fpKey, Date.now());
+    // Prune stale entries to avoid unbounded growth.
+    if (_registerFpCooldown.size > 10_000) {
+      const cutoff = Date.now() - REGISTER_FP_COOLDOWN_MS;
+      for (const [k, ts] of _registerFpCooldown) {
+        if (ts < cutoff) _registerFpCooldown.delete(k);
+      }
+    }
+
     // Check if this device is already registered
     const existing = await this.prisma.client.screen.findUnique({
       where: { deviceFingerprint: body.deviceFingerprint },
@@ -135,11 +171,19 @@ export class ScreensController {
     // here and the player stores it. Before admin claim the token can't
     // see any tenant data (manifest 404s); after claim the same token
     // gains access to the newly-bound tenant's manifest automatically.
-    const mintDeviceJwt = (screenId: string) =>
+    //
+    // sec-fix(P0 #7) Defense 2: unpaired tokens expire in 15 minutes so a
+    // stolen or guessed pre-claim token is worthless once the window lapses.
+    // Once a screen is paired (tenantId set), re-registration issues a
+    // full 365-day token — the kiosk stores that long-lived credential.
+    // Existing 365-day tokens issued before this fix stay valid until they
+    // naturally expire (no revocation needed — pre-claim tokens are already
+    // powerless; they can't see any tenant data before pairing).
+    const mintDeviceJwt = (screenId: string, isPaired: boolean) =>
       jwt.sign(
         { sub: screenId, kind: 'device', fp: body.deviceFingerprint },
         requireSecret('DEVICE_JWT_SECRET', { devFallback: 'dev_only_device_jwt_secret_CHANGE_ME' }),
-        { expiresIn: '365d' },
+        { expiresIn: isPaired ? '365d' : '15m' },
       );
 
     if (existing) {
@@ -161,7 +205,7 @@ export class ScreensController {
         pairingCode: updated.pairingCode,
         paired: !!updated.tenantId,
         name: updated.name,
-        deviceToken: mintDeviceJwt(updated.id),
+        deviceToken: mintDeviceJwt(updated.id, !!existing.tenantId),
       };
     }
 
@@ -194,7 +238,7 @@ export class ScreensController {
       pairingCode: screen.pairingCode,
       paired: false,
       name: screen.name,
-      deviceToken: mintDeviceJwt(screen.id),
+      deviceToken: mintDeviceJwt(screen.id, false), // sec-fix(P0 #7): unpaired → 15m TTL
     };
   }
 
