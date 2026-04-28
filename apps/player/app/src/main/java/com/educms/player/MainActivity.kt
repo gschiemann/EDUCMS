@@ -584,7 +584,7 @@ class MainActivity : ComponentActivity() {
             if (resume.isNullOrBlank()) {
                 Log.w("PlayerFS", "URL fullscreen finished but no resume URL — falling back to bootstrap")
                 lifecycleScope.launch {
-                    val token = deviceStore.deviceToken.firstOrNull() ?: ""
+                    val token = deviceStore.getToken().firstOrNull() ?: ""
                     runOnUiThread { loadPlayer(token) }
                 }
                 return@Runnable
