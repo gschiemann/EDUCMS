@@ -269,55 +269,86 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       }}
       onPointerDown={(e) => {
         if (previewMode || zone.locked) return;
-        // 2026-04-29 v2 — operator: "i still cant drag and drop the
-        // widgets on the canvas, they are locked in place". The
-        // previous fix returned early for ANY text-content click,
-        // which made TEXT widgets draggable ONLY by their 3px border
-        // — an impossible-to-grab target for most operators.
+        // 2026-04-29 v3 — operator (THIRD time around the loop):
+        // "now the text lock on the widget when you click in the
+        // txt, complete fucking circle back to the original issue".
         //
-        // New approach: ALWAYS start drag-tracking on pointerdown.
-        // After pointer-up, decide based on movement:
-        //   - Pointer moved < 4px → it was a click. Click handler
-        //     enters edit mode (Canva-style one-click-to-edit).
-        //   - Pointer moved >= 4px → it was a drag. The click
-        //     handler is suppressed (wasJustDraggedRef) so we don't
-        //     also enter edit mode on a drag-end.
+        // The bug — and why my v2 attempt regressed: starting drag
+        // immediately on pointerdown sets dragState. The
+        // contentEditable element underneath absorbs the
+        // subsequent pointerup. dragState never clears. Widget
+        // sticks to cursor. SAME bug as the original f37cfe6
+        // attempt was trying to fix.
         //
-        // [data-field] hotspots still skip drag-start so a precise
-        // text-edit click on the styled headline / song title /
-        // etc. enters edit mode immediately.
+        // v3 — threshold BEFORE drag-start (Canva / Figma pattern):
+        //   1. pointerdown → only SELECT the zone, don't drag yet
+        //   2. window.pointermove → if moved >4px, NOW start drag
+        //      (dragState gets set mid-gesture; pointermove deltas
+        //      are computed from the original pointerdown coords)
+        //   3. pointerup → if drag started, suppress click→edit;
+        //      if drag never started, click fires normally for edit
         //
-        // CRITICAL: stopPropagation regardless of branch so
-        // BuilderCanvas's marquee-select doesn't fire.
+        // Net effects:
+        //   - Click text + release without movement → edit mode (no
+        //     drag was ever started, no dragState, no stuck)
+        //   - Click text + drag → after 4px movement, drag starts.
+        //     The 4px window before drag-start is enough for the
+        //     OS pointerup to clear naturally before any drag-state
+        //     is set.
+        //   - Click border → drag immediately (border = e.target ===
+        //     e.currentTarget = !isContentClick)
+        //   - [data-field] hotspot → edit mode, no drag
         const target = e.target as HTMLElement | null;
         if (target?.closest?.('[data-field]')) {
           e.stopPropagation();
           return;
         }
         e.stopPropagation();
-        // Track the pointer movement so onClick can decide whether
-        // to skip edit-mode (real drag happened).
-        dragStartRef.current = { x: e.clientX, y: e.clientY, moved: false };
-        const onMove = (ev: PointerEvent) => {
-          const start = dragStartRef.current;
-          if (!start) return;
-          if (Math.abs(ev.clientX - start.x) > 4 || Math.abs(ev.clientY - start.y) > 4) {
-            start.moved = true;
-          }
-        };
-        const onUp = () => {
-          const start = dragStartRef.current;
-          if (start?.moved) {
-            wasJustDraggedRef.current = true;
-            // Clear shortly after so the next click works normally.
-            setTimeout(() => { wasJustDraggedRef.current = false; }, 120);
-          }
-          dragStartRef.current = null;
-          window.removeEventListener('pointermove', onMove);
-          window.removeEventListener('pointerup', onUp);
-        };
-        window.addEventListener('pointermove', onMove);
-        window.addEventListener('pointerup', onUp);
+
+        const isTextZone = zone.widgetType === 'TEXT' || zone.widgetType === 'RICH_TEXT';
+        const isContentClick = e.target !== e.currentTarget;
+
+        // Always select the zone immediately (clicking SELECTS even
+        // if no drag follows). For non-additive clicks on already-
+        // selected zones, onSelect is a no-op.
+        if (!selected) {
+          onSelect(e as any, zone.id);
+        }
+
+        if (isTextZone && isContentClick) {
+          // Threshold-before-drag: wait for 4px movement before
+          // calling onPointerDown to set dragState. This guarantees
+          // contentEditable can't absorb pointerup before drag
+          // starts, eliminating the stuck-to-cursor bug.
+          const startX = e.clientX;
+          const startY = e.clientY;
+          let dragStarted = false;
+          const onMove = (ev: PointerEvent) => {
+            if (dragStarted) return;
+            if (Math.abs(ev.clientX - startX) > 4 || Math.abs(ev.clientY - startY) > 4) {
+              dragStarted = true;
+              wasJustDraggedRef.current = true;
+              // Cast: BuilderCanvas's handler reads clientX/clientY +
+              // shiftKey/metaKey/ctrlKey, all of which native
+              // PointerEvent has. The React.PointerEvent typing is
+              // overly strict here but the runtime shape works.
+              onPointerDown(ev as any, zone.id, 'move');
+            }
+          };
+          const onUp = () => {
+            if (dragStarted) {
+              setTimeout(() => { wasJustDraggedRef.current = false; }, 120);
+            }
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+          };
+          window.addEventListener('pointermove', onMove);
+          window.addEventListener('pointerup', onUp);
+          return;
+        }
+
+        // Non-text widgets or border-click on a text widget: drag
+        // immediately. No contentEditable risk on these paths.
         onPointerDown(e, zone.id, 'move');
       }}
       onClick={(e) => {
