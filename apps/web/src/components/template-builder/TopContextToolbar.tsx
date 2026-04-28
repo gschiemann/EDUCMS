@@ -208,7 +208,7 @@ export function TopContextToolbar() {
         <div className="flex items-end gap-3 flex-wrap">
           {/* Fit toggles — match background-size CSS values. */}
           <div className="min-w-[180px]">
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Fit</label>
+            <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Fit</span>
             <div className="flex gap-1">
               {(['cover', 'contain'] as const).map((opt) => (
                 <button
@@ -266,7 +266,7 @@ export function TopContextToolbar() {
         <div className="flex items-end gap-3 flex-wrap">
           {/* Format toggle: 12h / 24h */}
           <div className="min-w-[180px]">
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Format</label>
+            <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Format</span>
             <div className="flex gap-1">
               {(['12h', '24h'] as const).map((opt) => (
                 <button
@@ -286,7 +286,7 @@ export function TopContextToolbar() {
           </div>
           {/* Show seconds toggle */}
           <div className="min-w-[180px]">
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Seconds</label>
+            <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Seconds</span>
             <button
               type="button"
               onClick={() => setField({ showSeconds: !cfg.showSeconds })}
@@ -305,7 +305,7 @@ export function TopContextToolbar() {
         <div className="flex items-end gap-3 flex-wrap">
           {/* Zip code input */}
           <div className="min-w-[180px]">
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Zip Code</label>
+            <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Zip Code</span>
             <input
               type="text"
               value={cfg.zipCode || ''}
@@ -316,7 +316,7 @@ export function TopContextToolbar() {
           </div>
           {/* Units toggle: F / C */}
           <div className="min-w-[180px]">
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Units</label>
+            <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Units</span>
             <div className="flex gap-1">
               {(['F', 'C'] as const).map((opt) => (
                 <button
@@ -340,7 +340,7 @@ export function TopContextToolbar() {
         <div className="flex items-end gap-3 flex-wrap">
           {/* Priority toggle: low / normal / high */}
           <div className="min-w-[180px]">
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Priority</label>
+            <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Priority</span>
             <div className="flex gap-1">
               {(['low', 'normal', 'high'] as const).map((opt) => (
                 <button
@@ -372,7 +372,7 @@ export function TopContextToolbar() {
         <div className="flex items-end gap-3 flex-wrap">
           {/* Max events numeric stepper */}
           <div className="min-w-[180px]">
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Max Events</label>
+            <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Max Events</span>
             <div className="flex gap-1 items-center">
               <button
                 type="button"
@@ -397,7 +397,7 @@ export function TopContextToolbar() {
         <div className="flex items-end gap-3 flex-wrap">
           {/* Target date input */}
           <div className="min-w-[180px]">
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Target Date</label>
+            <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Target Date</span>
             <input
               type="date"
               value={cfg.targetDate || ''}
@@ -407,7 +407,7 @@ export function TopContextToolbar() {
           </div>
           {/* Label input */}
           <div className="min-w-[180px]">
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Label</label>
+            <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Label</span>
             <input
               type="text"
               value={cfg.label || ''}
@@ -422,7 +422,7 @@ export function TopContextToolbar() {
         <div className="flex items-end gap-3 flex-wrap">
           {/* Speed toggle: slow / normal / fast */}
           <div className="min-w-[220px]">
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Speed</label>
+            <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Speed</span>
             <div className="flex gap-1">
               {(['slow', 'normal', 'fast'] as const).map((opt) => (
                 <button
@@ -442,7 +442,7 @@ export function TopContextToolbar() {
           </div>
           {/* Ticker text textarea */}
           <div className="min-w-[320px]">
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Ticker Text</label>
+            <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Ticker Text</span>
             <textarea
               value={cfg.text || ''}
               onChange={(e) => setField({ text: e.target.value })}
@@ -457,7 +457,7 @@ export function TopContextToolbar() {
         <div className="flex items-end gap-3 flex-wrap">
           {/* Show current period toggle */}
           <div className="min-w-[180px]">
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Current Period</label>
+            <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Current Period</span>
             <button
               type="button"
               onClick={() => setField({ showCurrent: !cfg.showCurrent })}
@@ -472,7 +472,7 @@ export function TopContextToolbar() {
           </div>
           {/* Show next period toggle */}
           <div className="min-w-[180px]">
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Next Period</label>
+            <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Next Period</span>
             <button
               type="button"
               onClick={() => setField({ showNext: !cfg.showNext })}
@@ -527,7 +527,7 @@ function ScopeSelector({
   ];
   return (
     <div className="min-w-[280px]">
-      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Apply to</label>
+      <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Apply to</span>
       <div className="flex rounded-lg border border-slate-200/60 overflow-hidden shadow-sm" role="radiogroup" aria-label="Style scope">
         {opts.map((opt) => {
           const active = effectiveScope === opt.key;

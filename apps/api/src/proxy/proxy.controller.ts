@@ -126,7 +126,22 @@ export class ProxyController {
         contentType = upstream.contentType || 'text/html';
 
         if (!contentType.includes('text/html') && !contentType.includes('application/xhtml')) {
-          res.redirect(url);
+          // 2026-04-29 — operator (Nth time): "fix the URL asset,
+          // shit does not work yet after so many attempts". Old code
+          // 302-redirected non-HTML responses to the upstream — which
+          // caused CORS failures inside the iframe (script tries to
+          // fetch JSON / image asset, gets redirected to upstream,
+          // browser blocks the cross-origin response). Now we relay
+          // the body through the proxy with permissive CORS so the
+          // page's own carousel scripts, AJAX calls, image loads,
+          // etc. all succeed.
+          //
+          // Cap unchanged at 10 MB; same SSRF guards apply via
+          // safeFetch.
+          res.setHeader('Content-Type', contentType);
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Cache-Control', 'public, max-age=300');
+          res.send(upstream.body);
           return;
         }
 
@@ -298,7 +313,101 @@ export class ProxyController {
       const proxyForceVisibleCss = (renderedBy === 'ssr' || interactive)
         ? baselineCss
         : aggressiveForceVisibleCss;
-      const headInjection = `<base href="${baseUrl}"><meta name="color-scheme" content="light only"><style>${proxyForceVisibleCss}</style>`;
+
+      // 2026-04-29 — INTERACTIVE-MODE URL REWRITING + FETCH SHIM.
+      // Operator (Nth attempt): "fix the URL asset, shit does not
+      // work yet after so many attempts".
+      //
+      // Without these two, interactive mode broke every site:
+      //   - <a href="/about"> click → iframe navigates to OUR proxy
+      //     origin + /about → 404 / blank screen / Android system
+      //     "open with…" icon (the "blank screen" bug from this
+      //     morning's revert).
+      //   - <script>fetch('/api/banners.json')</script> →
+      //     fetches from OUR origin (because document.location is
+      //     ours) → 404 → carousel fails with "error loading
+      //     banner slides" (the carousel bug from this morning).
+      //
+      // Rewrite anchor hrefs server-side so clicks land BACK ON
+      // the proxy with the new upstream URL; injects a fetch + XHR
+      // shim that does the same dynamic rewriting at runtime so
+      // any script-driven request also routes through the proxy.
+      // Forms left alone (most carousel sites don't post forms;
+      // and POST proxying needs separate code anyway).
+      let interactiveShim = '';
+      if (interactive) {
+        // (1) Rewrite all <a href="…"> attributes. We don't touch
+        // hrefs that are already proxy URLs, javascript:/mailto:/tel:
+        // schemes, or anchors (#…).
+        html = html.replace(
+          /(<a\b[^>]*?\shref\s*=\s*)(["'])([^"']+)\2/gi,
+          (_match, prefix, q, href) => {
+            const trimmed = String(href).trim();
+            if (
+              !trimmed ||
+              trimmed.startsWith('#') ||
+              trimmed.startsWith('javascript:') ||
+              trimmed.startsWith('mailto:') ||
+              trimmed.startsWith('tel:') ||
+              trimmed.startsWith('data:') ||
+              trimmed.includes('/api/v1/proxy/web')
+            ) {
+              return `${prefix}${q}${href}${q}`;
+            }
+            try {
+              const absolute = new URL(trimmed, baseUrl).toString();
+              const proxied =
+                `/api/v1/proxy/web?url=${encodeURIComponent(absolute)}&v=2&interactive=true`;
+              return `${prefix}${q}${proxied}${q}`;
+            } catch {
+              return `${prefix}${q}${href}${q}`;
+            }
+          },
+        );
+
+        // (2) Runtime shim. Wraps fetch + XMLHttpRequest.open so
+        // any same-origin (relative) request gets rewritten to go
+        // through the proxy with the upstream baseUrl. Also handles
+        // window.open and form action attributes.
+        //
+        // Single IIFE; loads BEFORE any page script runs (head
+        // injection point). All shim functions guard against
+        // already-proxied URLs to avoid double-wrapping.
+        interactiveShim = `<script>(function(){try{
+var PROXY='/api/v1/proxy/web';
+var BASE=${JSON.stringify(baseUrl)};
+function wrap(raw){
+  if(!raw||typeof raw!=='string')return raw;
+  if(raw.indexOf('data:')===0||raw.indexOf('blob:')===0||raw.indexOf('javascript:')===0||raw.indexOf('mailto:')===0||raw.indexOf('tel:')===0)return raw;
+  if(raw.indexOf('#')===0)return raw;
+  try{
+    var u=new URL(raw,BASE);
+    if(u.pathname.indexOf(PROXY)===0)return raw;
+    return PROXY+'?url='+encodeURIComponent(u.toString())+'&v=2&interactive=true';
+  }catch(_){return raw;}
+}
+var of=window.fetch;
+window.fetch=function(input,init){
+  try{
+    if(typeof input==='string')input=wrap(input);
+    else if(input&&input.url){input=new Request(wrap(input.url),input);}
+  }catch(_){/* swallow */}
+  return of.call(this,input,init);
+};
+var oo=XMLHttpRequest.prototype.open;
+XMLHttpRequest.prototype.open=function(m,u){
+  try{u=wrap(u);}catch(_){/* swallow */}
+  return oo.apply(this,[m,u].concat([].slice.call(arguments,2)));
+};
+var ow=window.open;
+window.open=function(u){
+  try{u=wrap(u);}catch(_){/* swallow */}
+  return ow.apply(this,[u].concat([].slice.call(arguments,1)));
+};
+}catch(e){console.warn('proxy shim init failed',e);}})();</script>`;
+      }
+
+      const headInjection = `<base href="${baseUrl}"><meta name="color-scheme" content="light only"><style>${proxyForceVisibleCss}</style>${interactiveShim}`;
       if (html.includes('<head>')) {
         html = html.replace('<head>', `<head>\n${headInjection}`);
       } else if (html.includes('<HEAD>')) {

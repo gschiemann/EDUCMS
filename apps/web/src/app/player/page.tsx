@@ -2709,33 +2709,21 @@ function PlayerPage() {
               // inline natively; X-Frame-Options doesn't apply to
               // file/PDF responses the same way.
               const isPdf = mime === 'application/pdf';
-              // 2026-04-29 REVERT — operator: "wow you fucked the
-              // URL up again, now my mouse works but the top images
-              // now get an error sayying error loading banner
-              // slides, and then wheni use the mouse and navigate
-              // to another page of the website and click the link
-              // i get an andoid icon in the top lefdt and a blank
-              // screen so nothing ever renders".
-              //
-              // Adding &interactive=true (last commit) opted the
-              // page into full-script execution. Two regressions:
-              //   1. Carousel scripts now run but fetch images
-              //      cross-origin → CORS-blocked → "error loading
-              //      banner slides".
-              //   2. Anchor clicks navigate the iframe to URLs the
-              //      proxy can't resolve (the iframe's location
-              //      becomes /some/page on our proxy origin, which
-              //      404s → blank screen, and on Android the
-              //      WebView sees the path navigation as a separate
-              //      activity → Android system "open with…" icon).
-              //
-              // Reverting to script-strip baseline (`&v=2` only).
-              // Carousel unfortunately can't run statically; the
-              // RIGHT fix is server-side link rewriting + a same-
-              // origin asset proxy. Tracked as a pending todo.
+              // 2026-04-29 — interactive mode RE-ENABLED with the
+              // proper proxy URL-rewriting fix shipped same day.
+              // Server now (a) rewrites <a href> in the HTML to
+              // route through the proxy, (b) injects a fetch + XHR
+              // shim that wraps runtime URLs the same way, and (c)
+              // relays non-HTML responses (images / JSON / CSS /
+              // JS sub-resources) through the proxy with permissive
+              // CORS instead of 302-redirecting to upstream.
+              // Result: carousel scripts run, link clicks stay
+              // inside the proxy chain, asset fetches don't get
+              // CORS-blocked, no "blank screen / Android icon"
+              // regression.
               const iframeSrc = isPdf
                 ? resUrl
-                : `${getApiRoot()}/api/v1/proxy/web?url=${encodeURIComponent(resUrl)}&v=2`;
+                : `${getApiRoot()}/api/v1/proxy/web?url=${encodeURIComponent(resUrl)}&v=2&interactive=true`;
               return <iframe
                 key={item.id}
                 src={iframeSrc}
