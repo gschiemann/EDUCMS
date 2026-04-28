@@ -2710,9 +2710,21 @@ function PlayerPage() {
               // inline natively; X-Frame-Options doesn't apply to
               // file/PDF responses the same way.
               const isPdf = mime === 'application/pdf';
+              // 2026-04-28 — operator (6th request): "no image
+              // carousel". Cause: the proxy strips <script> tags
+              // by default to prevent frame-busting JS from
+              // breaking out, but that ALSO kills carousel scripts
+              // / slider scripts / any client-side widget the URL
+              // depends on. The WEBPAGE widget in templates passes
+              // `interactive=true` to opt out of script stripping;
+              // mirror it here for the asset-based URL playlist so
+              // a playlist of, say, e-arc.com-style pages with
+              // image carousels actually animates. Trade-off is a
+              // tiny risk that a page's frame-bust script might
+              // succeed — same trade-off the WEBPAGE widget makes.
               const iframeSrc = isPdf
                 ? resUrl
-                : `${getApiRoot()}/api/v1/proxy/web?url=${encodeURIComponent(resUrl)}&v=2`;
+                : `${getApiRoot()}/api/v1/proxy/web?url=${encodeURIComponent(resUrl)}&v=2&interactive=true`;
               return <iframe
                 key={item.id}
                 src={iframeSrc}
