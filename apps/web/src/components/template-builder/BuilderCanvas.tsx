@@ -2,7 +2,12 @@
 
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { Copy, Lock, Unlock, ChevronUp, ChevronDown, Trash2 } from 'lucide-react';
+import {
+  Copy, Lock, Unlock, ChevronUp, ChevronDown, Trash2,
+  Bold, Italic, Palette, AlignLeft, AlignCenter, AlignRight,
+  RefreshCw, Maximize2, Clock, Thermometer, Gauge, Calendar, Globe, MousePointer,
+} from 'lucide-react';
+import { AssetLibraryModal } from './PropertiesPanel';
 import { useBuilderStore } from './useBuilderStore';
 import { BuilderZone } from './BuilderZone';
 import { snapMove, snapResize } from './snap-engine';
@@ -391,7 +396,11 @@ export function BuilderCanvas() {
 
 /** Quick-actions toolbar that floats just below (or above when
  *  there's no room) the selected zone. Mirrors Canva's "this is
- *  selected, here are the most-common things you'd do next" UX. */
+ *  selected, here are the most-common things you'd do next" UX.
+ *
+ *  TYPE-AWARE section renders BEFORE the generic cluster, separated
+ *  by a vertical divider. Widget types not in the list get only the
+ *  generic 5 (Duplicate / Forward / Back / Lock / Delete). */
 function FloatingZoneActions({ zone }: { zone: Zone }) {
   // Hide floating bar for tiny zones — buttons would overwhelm the
   // widget and the bar positioning math breaks below 8% width or 5% height.
@@ -401,6 +410,23 @@ function FloatingZoneActions({ zone }: { zone: Zone }) {
   const removeSelected  = useBuilderStore((s) => s.removeSelected);
   const toggleLock      = useBuilderStore((s) => s.toggleLock);
   const moveLayer       = useBuilderStore((s) => s.moveLayer);
+  const updateZone      = useBuilderStore((s) => s.updateZone);
+
+  // Local popover state — one flag per popover so multiple can't open
+  // at once (clicking a second button closes any open one because its
+  // flag was never set).
+  const [colorOpen, setColorOpen]   = useState(false);
+  const [urlOpen, setUrlOpen]       = useState(false);
+  const [dateOpen, setDateOpen]     = useState(false);
+  const [assetOpen, setAssetOpen]   = useState(false);
+
+  const cfg = (zone.defaultConfig || {}) as Record<string, any>;
+
+  /** Write a config patch without changing anything else on the zone.
+   *  Uses `true` as the second arg so the store marks the template dirty. */
+  const setCfg = (patch: Record<string, any>) => {
+    updateZone(zone.id, { defaultConfig: { ...cfg, ...patch } }, true);
+  };
 
   // Position the bar centered horizontally over the zone. Default
   // anchor is just BELOW the zone (matches Canva). Flip above when
@@ -417,7 +443,7 @@ function FloatingZoneActions({ zone }: { zone: Zone }) {
   const centerX = zone.x + zone.width / 2;
   const left = `${Math.max(8, Math.min(92, centerX))}%`;
 
-  const btn = (label: string, onClick: () => void, icon: React.ReactNode, danger = false) => (
+  const btn = (label: string, onClick: () => void, icon: React.ReactNode, danger = false, active = false) => (
     <button
       type="button"
       aria-label={label}
@@ -426,12 +452,29 @@ function FloatingZoneActions({ zone }: { zone: Zone }) {
       className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
         danger
           ? 'text-slate-500 hover:bg-rose-50 hover:text-rose-600'
-          : 'text-slate-600 hover:bg-slate-100'
+          : active
+            ? 'bg-indigo-100 text-indigo-700'
+            : 'text-slate-600 hover:bg-slate-100'
       }`}
     >
       {icon}
     </button>
   );
+
+  // ── Type-aware quick-action buttons ──────────────────────────────
+  const wt = zone.widgetType;
+  const isText    = wt === 'TEXT' || wt === 'RICH_TEXT';
+  const isImage   = wt === 'IMAGE' || wt === 'IMAGE_CAROUSEL' || wt === 'LOGO';
+  const isClock   = wt === 'CLOCK';
+  const isWeather = wt === 'WEATHER';
+  const isTicker  = wt === 'TICKER';
+  const isCountdown = wt === 'COUNTDOWN';
+  const isWebpage = wt === 'WEBPAGE';
+
+  const hasTypeActions = isText || isImage || isClock || isWeather || isTicker || isCountdown || isWebpage;
+
+  // ── Color swatches for the text color popover ──────────────────────
+  const COLOR_SWATCHES = ['#ffffff','#0f172a','#64748b','#ef4444','#f59e0b','#10b981','#0ea5e9','#7c3aed'];
 
   return (
     <div
@@ -449,12 +492,238 @@ function FloatingZoneActions({ zone }: { zone: Zone }) {
       }}
       onPointerDown={(e) => e.stopPropagation()}
     >
+      {/* ── TEXT / RICH_TEXT ── */}
+      {isText && (<>
+        {btn(
+          cfg.bold ? 'Remove bold' : 'Bold',
+          () => setCfg({ bold: !cfg.bold }),
+          <Bold className="w-3.5 h-3.5" />,
+          false,
+          cfg.bold === true,
+        )}
+        {btn(
+          cfg.italic ? 'Remove italic' : 'Italic',
+          () => setCfg({ italic: !cfg.italic }),
+          <Italic className="w-3.5 h-3.5" />,
+          false,
+          cfg.italic === true,
+        )}
+        {/* Color popover */}
+        <div className="relative">
+          <button
+            type="button"
+            aria-label="Text color"
+            title="Text color"
+            onClick={(e) => { e.stopPropagation(); setColorOpen((v) => !v); setUrlOpen(false); setDateOpen(false); setAssetOpen(false); }}
+            className="w-8 h-8 rounded-md flex items-center justify-center transition-colors text-slate-600 hover:bg-slate-100"
+          >
+            <Palette className="w-3.5 h-3.5" />
+          </button>
+          {colorOpen && (
+            <div
+              className="absolute z-40 bottom-full mb-1.5 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg shadow-xl p-2 w-44"
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <div className="grid grid-cols-4 gap-1.5 mb-2">
+                {COLOR_SWATCHES.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    aria-label={c}
+                    title={c}
+                    onClick={() => { setCfg({ color: c }); setColorOpen(false); }}
+                    className="w-7 h-7 rounded-md border border-slate-200 shadow-sm hover:scale-110 transition-transform"
+                    style={{ background: c }}
+                  />
+                ))}
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] text-slate-500 font-semibold">Hex</span>
+                <input
+                  type="text"
+                  defaultValue={cfg.color || '#000000'}
+                  maxLength={7}
+                  placeholder="#000000"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (/^#[0-9a-fA-F]{6}$/.test(v)) setCfg({ color: v });
+                  }}
+                  className="flex-1 h-6 px-1.5 text-[11px] rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+        {/* Text-align cycle: left → center → right → left */}
+        {btn(
+          `Align: ${cfg.textAlign || 'left'} (click to cycle)`,
+          () => {
+            const cur = cfg.textAlign || 'left';
+            const next = cur === 'left' ? 'center' : cur === 'center' ? 'right' : 'left';
+            setCfg({ textAlign: next });
+          },
+          cfg.textAlign === 'center'
+            ? <AlignCenter className="w-3.5 h-3.5" />
+            : cfg.textAlign === 'right'
+              ? <AlignRight className="w-3.5 h-3.5" />
+              : <AlignLeft className="w-3.5 h-3.5" />,
+        )}
+      </>)}
+
+      {/* ── IMAGE / IMAGE_CAROUSEL / LOGO ── */}
+      {isImage && (<>
+        {/* Replace asset — opens the AssetLibraryModal */}
+        <div className="relative">
+          <button
+            type="button"
+            aria-label="Replace image"
+            title="Replace image"
+            onClick={(e) => { e.stopPropagation(); setAssetOpen((v) => !v); setColorOpen(false); setUrlOpen(false); setDateOpen(false); }}
+            className="w-8 h-8 rounded-md flex items-center justify-center transition-colors text-slate-600 hover:bg-slate-100"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
+        </div>
+        {/* Object-fit cycle: contain → cover → fill → contain */}
+        {btn(
+          `Fit: ${cfg.objectFit || cfg.fit || 'cover'} (click to cycle)`,
+          () => {
+            const cur = cfg.objectFit || cfg.fit || 'cover';
+            const next = cur === 'cover' ? 'contain' : cur === 'contain' ? 'fill' : 'cover';
+            setCfg({ objectFit: next, fit: next });
+          },
+          <Maximize2 className="w-3.5 h-3.5" />,
+        )}
+      </>)}
+
+      {/* ── CLOCK ── */}
+      {isClock && btn(
+        `Format: ${cfg.format || '12h'} (click to toggle)`,
+        () => setCfg({ format: cfg.format === '24h' ? '12h' : '24h' }),
+        <span className="flex items-center gap-0.5">
+          <Clock className="w-3 h-3" />
+          <span className="text-[9px] font-bold">{cfg.format === '24h' ? '24h' : '12h'}</span>
+        </span>,
+      )}
+
+      {/* ── WEATHER ── */}
+      {isWeather && btn(
+        `Units: ${cfg.units || 'F'} (click to toggle)`,
+        () => setCfg({ units: cfg.units === 'C' ? 'F' : 'C' }),
+        <span className="flex items-center gap-0.5">
+          <Thermometer className="w-3 h-3" />
+          <span className="text-[9px] font-bold">{cfg.units === 'C' ? 'C' : 'F'}</span>
+        </span>,
+      )}
+
+      {/* ── TICKER ── */}
+      {isTicker && btn(
+        `Speed: ${typeof cfg.speed === 'string' ? cfg.speed : 'normal'} (click to cycle)`,
+        () => {
+          const cur = (typeof cfg.speed === 'string' ? cfg.speed : 'normal') as string;
+          const next = cur === 'slow' ? 'normal' : cur === 'normal' ? 'fast' : 'slow';
+          setCfg({ speed: next });
+        },
+        <span className="flex items-center gap-0.5">
+          <Gauge className="w-3 h-3" />
+          <span className="text-[9px] font-bold capitalize">{typeof cfg.speed === 'string' ? cfg.speed : 'N'}</span>
+        </span>,
+      )}
+
+      {/* ── COUNTDOWN ── */}
+      {isCountdown && (
+        <div className="relative">
+          <button
+            type="button"
+            aria-label="Set target date"
+            title="Set target date"
+            onClick={(e) => { e.stopPropagation(); setDateOpen((v) => !v); setColorOpen(false); setUrlOpen(false); setAssetOpen(false); }}
+            className="w-8 h-8 rounded-md flex items-center justify-center transition-colors text-slate-600 hover:bg-slate-100"
+          >
+            <Calendar className="w-3.5 h-3.5" />
+          </button>
+          {dateOpen && (
+            <div
+              className="absolute z-40 bottom-full mb-1.5 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg shadow-xl p-2 w-44"
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <label className="block text-[10px] font-semibold text-slate-500 mb-1">Target date</label>
+              <input
+                type="date"
+                defaultValue={cfg.targetDate || ''}
+                onPointerDown={(e) => e.stopPropagation()}
+                onChange={(e) => { setCfg({ targetDate: e.target.value }); }}
+                className="w-full h-7 px-2 text-xs rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── WEBPAGE ── */}
+      {isWebpage && (<>
+        <div className="relative">
+          <button
+            type="button"
+            aria-label="Edit URL"
+            title="Edit URL"
+            onClick={(e) => { e.stopPropagation(); setUrlOpen((v) => !v); setColorOpen(false); setDateOpen(false); setAssetOpen(false); }}
+            className="w-8 h-8 rounded-md flex items-center justify-center transition-colors text-slate-600 hover:bg-slate-100"
+          >
+            <Globe className="w-3.5 h-3.5" />
+          </button>
+          {urlOpen && (
+            <div
+              className="absolute z-40 bottom-full mb-1.5 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg shadow-xl p-2 w-56"
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <label className="block text-[10px] font-semibold text-slate-500 mb-1">Page URL</label>
+              <input
+                type="url"
+                defaultValue={cfg.url || ''}
+                placeholder="https://…"
+                onPointerDown={(e) => e.stopPropagation()}
+                onBlur={(e) => { setCfg({ url: e.target.value }); }}
+                className="w-full h-7 px-2 text-xs rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              />
+            </div>
+          )}
+        </div>
+        {btn(
+          cfg.staticMode ? 'Interactive: off (click to toggle)' : 'Interactive: on (click to toggle)',
+          () => setCfg({ staticMode: !cfg.staticMode }),
+          <MousePointer className="w-3.5 h-3.5" />,
+          false,
+          !cfg.staticMode,
+        )}
+      </>)}
+
+      {/* Divider between type-aware and generic sections */}
+      {hasTypeActions && <div className="w-px h-5 bg-slate-200 mx-0.5" />}
+
+      {/* ── Generic actions (always visible) ── */}
       {btn('Duplicate (Ctrl/⌘+D)', () => duplicateZone(zone.id),                      <Copy className="w-3.5 h-3.5" />)}
       {btn('Bring forward',         () => moveLayer(zone.id, 'up'),                    <ChevronUp className="w-3.5 h-3.5" />)}
       {btn('Send back',             () => moveLayer(zone.id, 'down'),                  <ChevronDown className="w-3.5 h-3.5" />)}
-      {btn(zone.locked ? 'Unlock' : 'Lock', () => toggleLock(zone.id),                 zone.locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />)}
+      {btn(zone.locked ? 'Unlock' : 'Lock', () => toggleLock(zone.id),                zone.locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />)}
       <div className="w-px h-5 bg-slate-200 mx-0.5" />
       {btn('Delete (Del)',          () => removeSelected(),                            <Trash2 className="w-3.5 h-3.5" />, true)}
+
+      {/* Asset picker modal — rendered at root level so it escapes the
+          floating bar stacking context. Triggered by the RefreshCw btn. */}
+      {assetOpen && (
+        <AssetLibraryModal
+          kind="image"
+          onPick={(url) => {
+            // IMAGE and LOGO store their asset in assetUrl; LOGO also accepts
+            // logoUrl. Use assetUrl as the canonical field to match PropertiesPanel.
+            setCfg({ assetUrl: url, imageUrl: undefined });
+            setAssetOpen(false);
+          }}
+          onClose={() => setAssetOpen(false)}
+        />
+      )}
     </div>
   );
 }

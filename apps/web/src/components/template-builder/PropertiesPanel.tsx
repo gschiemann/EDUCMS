@@ -2769,7 +2769,7 @@ function AssetListPickerField({ label, value, onChange, kind }: { label: string;
   );
 }
 
-function AssetLibraryModal({ kind, onPick, onClose }: { kind: 'image' | 'video'; onPick: (url: string) => void; onClose: () => void }) {
+export function AssetLibraryModal({ kind, onPick, onClose }: { kind: 'image' | 'video'; onPick: (url: string) => void; onClose: () => void }) {
   const { data: assets, isLoading } = useAssets();
   const filtered = (assets || []).filter((a: any) => {
     const mt = (a.mimeType || '').toLowerCase();
