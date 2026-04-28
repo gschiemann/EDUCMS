@@ -12,8 +12,8 @@ android {
         // Android 7.0 (Nougat) → Android 14
         minSdk = 24
         targetSdk = 34
-        versionCode = 13
-        versionName = "1.0.13"
+        versionCode = 14
+        versionName = "1.0.14"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)
@@ -106,6 +106,46 @@ android {
         resources {
             excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1")
         }
+    }
+}
+
+// ─── Bundle Manager APK in Player's assets ────────────────────────
+// v1.0.14 — operator-reported repeated failures of the network-based
+// Manager bootstrap (Vercel routing, timing races, silent failures).
+// Solution: ship Manager APK INSIDE Player so first-run install is
+// purely local. ~2MB Manager + ~7.5MB Player = ~9.5MB total APK,
+// within sideload-friendly size; no network, no Vercel, no GitHub
+// rate limits at install time.
+//
+// The Copy task depends on :manager:assembleDebug so building Player
+// implicitly builds Manager first. The output universal Manager APK
+// goes into src/main/assets/bundled/edu-cms-manager.apk where AGP
+// picks it up via the standard mergeAssets task.
+val bundleManagerApk by tasks.registering(Copy::class) {
+    dependsOn(":manager:assembleDebug")
+    val managerOutDir = project(":manager").layout.buildDirectory.dir("outputs/apk/debug")
+    from(managerOutDir) {
+        // Universal APK works on any ABI. Per-ABI splits aren't
+        // useful for a bundled installer payload — we want the
+        // single artifact that PackageInstaller can hand to the
+        // system regardless of the host kiosk's CPU.
+        include("*-universal*.apk", "*universal*.apk")
+    }
+    into(layout.projectDirectory.dir("src/main/assets/bundled"))
+    rename { "edu-cms-manager.apk" }
+}
+
+// Wire the bundle task to run before any merge*Assets task so the
+// asset is included in the final APK. matching{} + configureEach{}
+// covers all variants (debug/release, per-ABI splits, universal).
+tasks.matching { it.name.matches(Regex("merge.*Assets")) }.configureEach {
+    dependsOn(bundleManagerApk)
+}
+
+// Keep the assets/bundled/ directory clean across builds.
+tasks.named("clean") {
+    doLast {
+        delete(layout.projectDirectory.dir("src/main/assets/bundled"))
     }
 }
 

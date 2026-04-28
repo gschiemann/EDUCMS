@@ -7,6 +7,9 @@ local.properties
 captures/
 *.apk
 *.aab
+# Bundled Manager APK is generated at build time by the
+# bundleManagerApk Gradle task; never commit it.
+app/src/main/assets/bundled/
 *.keystore
 *.jks
 # Stable debug keystore (committed intentionally — see comment in

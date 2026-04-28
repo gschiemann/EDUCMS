@@ -144,6 +144,13 @@ class MainActivity : ComponentActivity() {
             loadPlayer(token.orEmpty())
         }
 
+        // v1.0.14 — listen for Manager install so we can reload the
+        // WebView the moment Manager appears (so &mv= heartbeat
+        // updates). Registered here in onCreate; unregistered in
+        // onDestroy. Safe even if Manager is already installed —
+        // the receiver just never fires.
+        registerManagerInstallReceiver()
+
         // One-time setup prompt for OTA install permission. Every
         // Android ≥ 8 app that wants to install APKs needs the user
         // to toggle "Install unknown apps" for that specific app —
@@ -509,9 +516,68 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         webView.stopLoading()
         if (::recovery.isInitialized) recovery.shutdown()
+        try {
+            if (managerInstallReceiverRegistered) {
+                unregisterReceiver(managerInstallReceiver)
+                managerInstallReceiverRegistered = false
+            }
+        } catch (_: Exception) { /* tolerated */ }
         (webView.parent as? android.view.ViewGroup)?.removeView(webView)
         webView.destroy()
         super.onDestroy()
+    }
+
+    /**
+     * v1.0.14 — listen for ACTION_PACKAGE_ADDED so when Manager
+     * finishes installing (via ManagerBootstrap), Player reloads its
+     * WebView. The reload re-runs loadPlayer() which re-reads
+     * Manager's version via PackageManager and includes &mv= on the
+     * page URL. Without this reload, the page URL set on first launch
+     * has no &mv= (Manager wasn't installed yet at that point), so
+     * heartbeat keeps reporting Player-only and the dashboard chip
+     * never gets the Manager version.
+     *
+     * Filter to com.educms.manager(.debug) so we don't reload on
+     * arbitrary unrelated installs.
+     */
+    private var managerInstallReceiverRegistered = false
+    private val managerInstallReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context, intent: Intent) {
+            val pkg = intent.data?.schemeSpecificPart
+            if (pkg == "com.educms.manager" || pkg == "com.educms.manager.debug") {
+                PlayerLogger.i("MainActivity", "Manager package added ($pkg) — reloading WebView so &mv= heartbeat starts")
+                runOnUiThread {
+                    lifecycleScope.launch {
+                        val token = deviceStore.deviceToken.first().orEmpty()
+                        loadPlayer(token)
+                    }
+                }
+            }
+        }
+    }
+    private fun registerManagerInstallReceiver() {
+        if (managerInstallReceiverRegistered) return
+        try {
+            val filter = android.content.IntentFilter().apply {
+                addAction(Intent.ACTION_PACKAGE_ADDED)
+                addAction(Intent.ACTION_PACKAGE_REPLACED)
+                addDataScheme("package")
+            }
+            // Android 14+ requires explicit RECEIVER_EXPORTED/_NOT_EXPORTED
+            // when registering BroadcastReceivers at runtime. PACKAGE_ADDED
+            // is a system-protected broadcast (only the OS can send it),
+            // so EXPORTED is correct here.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                registerReceiver(managerInstallReceiver, filter, RECEIVER_EXPORTED)
+            } else {
+                @Suppress("UnspecifiedRegisterReceiverFlag")
+                registerReceiver(managerInstallReceiver, filter)
+            }
+            managerInstallReceiverRegistered = true
+            PlayerLogger.i("MainActivity", "registered PACKAGE_ADDED receiver for Manager")
+        } catch (e: Exception) {
+            PlayerLogger.w("MainActivity", "failed to register PACKAGE_ADDED receiver: ${e.message}")
+        }
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
