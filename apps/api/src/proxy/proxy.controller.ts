@@ -494,6 +494,41 @@ document.addEventListener('submit',function(e){
     form.target='_self';
   }
 },true);
+// Wake up "lazyload-on-interaction" page-speed plugins (WPRocket
+// Delay JS Execution, Perfmatters DOM-event delay, etc.) on signage
+// hardware where there's no real user activity. These plugins hold
+// every deferred script — carousels, lazyload images, dynamic
+// content fetches — until the FIRST mousedown/touchstart/keydown.
+// Kiosks never get one. Fix: 1.5s after window load, fire a salvo
+// of synthetic user events so the page believes a person showed up
+// and unfolds its real content.
+//
+// Operator (2026-04-28): "URL fix did nothing at all" — the proxy
+// shim was being injected correctly but e-arc.com's WPRocket Delay
+// JS held the carousel + lazy images dormant. This unblocks them.
+window.addEventListener('load',function(){
+  setTimeout(function(){
+    try{
+      var targets=[document,document.documentElement,document.body,window];
+      var mouseTypes=['mousemove','mousedown','mouseup','click','keydown','keyup'];
+      mouseTypes.forEach(function(t){
+        var ev;
+        try{
+          if(t.indexOf('key')===0){ev=new KeyboardEvent(t,{bubbles:true,cancelable:true,key:'a'});}
+          else{ev=new MouseEvent(t,{bubbles:true,cancelable:true,clientX:80,clientY:80,view:window});}
+        }catch(_){ev=new Event(t,{bubbles:true,cancelable:true});}
+        targets.forEach(function(tg){try{tg&&tg.dispatchEvent&&tg.dispatchEvent(ev);}catch(_){}});
+      });
+      try{
+        var te=new (window.TouchEvent||Event)('touchstart',{bubbles:true,cancelable:true});
+        targets.forEach(function(tg){try{tg&&tg.dispatchEvent&&tg.dispatchEvent(te);}catch(_){}});
+      }catch(_){}
+      // Some plugins also dispatch on visibility change.
+      try{Object.defineProperty(document,'visibilityState',{configurable:true,get:function(){return 'visible';}});}catch(_){}
+      try{document.dispatchEvent(new Event('visibilitychange'));}catch(_){}
+    }catch(e){console.warn('wakeup salvo failed',e);}
+  },1500);
+},{once:true});
 }catch(e){console.warn('proxy shim init failed',e);}})();</script>`;
       }
 
