@@ -17,6 +17,7 @@ import { AssetFilesController } from './assets/asset-files.controller';
 import { TemplatesController } from './templates/templates.controller';
 import { TenantsController } from './tenants/tenants.controller';
 import { ProxyController } from './proxy/proxy.controller';
+import { RendererService } from './proxy/renderer.service';
 import { HealthController } from './health/health.controller';
 import { FloorPlansController } from './floor-plans/floor-plans.controller';
 import { PrismaModule } from './prisma/prisma.module';
@@ -99,6 +100,10 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     WebsocketSignerService,
     AssetSanitizerService,
     SupabaseStorageService,
+    // Server-side URL renderer (Puppeteer + Alpine Chromium). Used by
+    // ProxyController to handle JS-heavy / AJAX-loaded sites that the
+    // legacy strip-scripts proxy can't render. See renderer.service.ts.
+    RendererService,
     JwtAuthGuard,
     RbacGuard,
     {

@@ -2,6 +2,7 @@ import { Controller, Get, Query, Res, HttpException, HttpStatus } from '@nestjs/
 import type { Response } from 'express';
 import { SkipThrottle } from '@nestjs/throttler';
 import { safeFetch, SsrfError, FetchTooLargeError } from '../branding/safe-fetch';
+import { RendererService } from './renderer.service';
 
 /**
  * Proxy controller for loading external websites in iframes.
@@ -18,6 +19,11 @@ import { safeFetch, SsrfError, FetchTooLargeError } from '../branding/safe-fetch
 @Controller('api/v1/proxy')
 export class ProxyController {
 
+  // Optional — Nest auto-resolves if RendererService is in providers,
+  // but we accept it as undefined to keep the controller bootable on
+  // workers/local dev where Chromium isn't available.
+  constructor(private readonly renderer?: RendererService) {}
+
   @Get('web')
   @SkipThrottle()
   async proxyWeb(@Query('url') url: string, @Res() res: Response) {
@@ -26,41 +32,81 @@ export class ProxyController {
         throw new HttpException('Missing url parameter', HttpStatus.BAD_REQUEST);
       }
 
-      let upstream;
-      try {
-        upstream = await safeFetch(url, {
-          timeoutMs: 15000,
-          maxBytes: 10 * 1024 * 1024, // 10 MB cap for embedded HTML pages
-          accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          userAgent:
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-        });
-      } catch (e: any) {
-        if (e instanceof SsrfError) {
-          // Don't leak whether the target was private vs invalid —
-          // uniform error for SSRF probing.
-          throw new HttpException(`Upstream blocked: ${e.message}`, HttpStatus.BAD_REQUEST);
+      // ─── SSR PRIMARY PATH ─────────────────────────────────────────
+      // Try the Puppeteer renderer first. Solves AJAX-loaded content
+      // (e-arc.com banner, react-rendered pages, anything with content
+      // that materializes after page-load). The renderer caches by
+      // URL with 10-min TTL, so a 50-kiosk fleet pulling the same
+      // URL only hits Chromium ~6x/hour total.
+      //
+      // Falls back to the legacy safeFetch + strip-scripts path if:
+      //   - SSR_ENABLED=false in env
+      //   - Renderer wasn't injected (shouldn't happen in prod)
+      //   - render() returns null (Chromium crash, timeout, etc.)
+      //
+      // Either way, the post-render pipeline (strip scripts, inject
+      // CSS, set headers) runs the same. SSR is just a smarter source
+      // of HTML than raw fetch.
+      let html: string | null = null;
+      let baseUrl: string = url;
+      let contentType = 'text/html';
+      let renderedBy: 'ssr' | 'fetch' = 'fetch';
+
+      if (this.renderer) {
+        const rendered = await this.renderer.render(url);
+        if (rendered) {
+          html = rendered.html;
+          baseUrl = rendered.finalUrl;
+          renderedBy = 'ssr';
         }
-        if (e instanceof FetchTooLargeError) {
-          throw new HttpException(`Upstream response too large`, HttpStatus.PAYLOAD_TOO_LARGE);
+      }
+
+      if (html === null) {
+        let upstream;
+        try {
+          upstream = await safeFetch(url, {
+            timeoutMs: 15000,
+            maxBytes: 10 * 1024 * 1024, // 10 MB cap for embedded HTML pages
+            accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            userAgent:
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+          });
+        } catch (e: any) {
+          if (e instanceof SsrfError) {
+            // Don't leak whether the target was private vs invalid —
+            // uniform error for SSRF probing.
+            throw new HttpException(`Upstream blocked: ${e.message}`, HttpStatus.BAD_REQUEST);
+          }
+          if (e instanceof FetchTooLargeError) {
+            throw new HttpException(`Upstream response too large`, HttpStatus.PAYLOAD_TOO_LARGE);
+          }
+          throw new HttpException(`Upstream connection failed: ${e.message}`, HttpStatus.BAD_GATEWAY);
         }
-        throw new HttpException(`Upstream connection failed: ${e.message}`, HttpStatus.BAD_GATEWAY);
+
+        if (upstream.status < 200 || upstream.status >= 300) {
+          throw new HttpException(`Upstream returned HTTP ${upstream.status}`, HttpStatus.BAD_GATEWAY);
+        }
+
+        contentType = upstream.contentType || 'text/html';
+
+        if (!contentType.includes('text/html') && !contentType.includes('application/xhtml')) {
+          res.redirect(url);
+          return;
+        }
+
+        html = upstream.body.toString('utf8');
+        baseUrl = upstream.finalUrl || url;
       }
-
-      if (upstream.status < 200 || upstream.status >= 300) {
-        throw new HttpException(`Upstream returned HTTP ${upstream.status}`, HttpStatus.BAD_GATEWAY);
+      // After the upstream-fetch / SSR fork, `html` and `baseUrl` are
+      // set. Narrow the nullable so the rest of the pipeline can use
+      // string operations without per-call assertions. The header
+      // lets the operator see in DevTools which path served the response.
+      if (html === null) {
+        // Should be unreachable — both branches above always set html.
+        // Defensive throw rather than swallowing.
+        throw new HttpException('Renderer produced no HTML', HttpStatus.INTERNAL_SERVER_ERROR);
       }
-
-      const contentType = upstream.contentType || 'text/html';
-
-      if (!contentType.includes('text/html') && !contentType.includes('application/xhtml')) {
-        res.redirect(url);
-        return;
-      }
-
-      let html = upstream.body.toString('utf8');
-
-      const baseUrl = upstream.finalUrl || url;
+      res.setHeader('X-EduCms-Renderer', renderedBy);
 
       // Strip <script> tags. Tried lifting this once (2026-04-26 to
       // make e-arc.com banner rotators work) — the result was

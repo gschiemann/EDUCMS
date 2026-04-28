@@ -55,8 +55,31 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-# Install OpenSSL for Prisma engine compatibility
-RUN apk add --no-cache openssl
+# Install OpenSSL for Prisma engine compatibility AND Chromium for the
+# server-side URL renderer (proxy/renderer.service.ts). Puppeteer-core
+# uses the system Chromium binary (no bundled browser download —
+# that would add ~280MB; alpine's chromium-browser package is ~150MB
+# and security-patched by the alpine maintainers).
+#
+# Font packages: Chromium needs at least one usable font family or
+# rendered pages display tofu/empty boxes. ttf-freefont covers basic
+# Latin; nss/freetype/harfbuzz are runtime requirements documented
+# by the Puppeteer Alpine setup guide.
+RUN apk add --no-cache \
+    openssl \
+    chromium \
+    nss \
+    freetype \
+    freetype-dev \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont \
+    font-noto
+
+# Tell Puppeteer where Chromium lives (it won't try to download its
+# own bundled binary). Used by RendererService.launchBrowser.
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 # Install pnpm for prod dependencies
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
