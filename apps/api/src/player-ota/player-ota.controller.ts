@@ -779,8 +779,22 @@ function pickApkAsset(
     // 2. Universal APK
     const universal = pick((n) => n.includes('universal') && n.endsWith('.apk'));
     if (universal) return universal;
-    // No compatible asset — return undefined so caller can fail with
-    // a clear "no APK for your ABI" message rather than a wrong APK.
+    // 3. Generic non-x86 .apk fallback.
+    //
+    // 2026-04-28 hotfix: previously returned `undefined` here, which
+    // bricked the live pilot kiosk in a "stuck on CHECKING" loop. The
+    // CI workflow (`find ... -name '*.apk' | head -1`) attaches a
+    // SINGLE generically-named APK to each Release (e.g.
+    // `edu-cms-manager-v1.0.9.apk`) that has no ABI marker, so the
+    // ABI-exact and universal probes both miss. Without this fallback
+    // every ABI-aware caller got `needsUpdate=false` even though a
+    // real release existed.
+    //
+    // The fallback excludes `x86` to avoid handing an emulator-only
+    // build to an arm device. AGP debug splits with no x86 → only the
+    // universal-style single APK is left, which is the right answer.
+    const generic = pick((n) => n.endsWith('.apk') && !n.includes('x86'));
+    if (generic) return generic;
     return undefined;
   }
 
