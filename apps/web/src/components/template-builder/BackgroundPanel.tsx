@@ -6,6 +6,8 @@ import { useBuilderStore } from './useBuilderStore';
 import { useTemplate } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { API_URL } from '@/lib/api-url';
+import { ColorPickerField } from '@/components/ui/color-picker';
+import { TemplateBackdropPicker } from './PropertiesPanel';
 
 /**
  * Background tab — top-level template-builder panel for setting the
@@ -238,6 +240,7 @@ export function BackgroundPanel() {
           </div>
           {(currentBgColor || currentBgGradient || currentBgImage) && (
             <button
+              type="button"
               onClick={clearAll}
               className="text-[10px] font-semibold text-slate-500 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition-colors"
               title="Remove background"
@@ -262,6 +265,7 @@ export function BackgroundPanel() {
             {brandSwatches.map((s) => (
               <button
                 key={s.label}
+                type="button"
                 onClick={() => applyColor(s.hex)}
                 title={`${s.label} • ${s.hex}`}
                 className={`group relative aspect-square rounded-lg border-2 transition-all ${
@@ -293,6 +297,7 @@ export function BackgroundPanel() {
             {brandGradients.map((g) => (
               <button
                 key={g.name}
+                type="button"
                 onClick={() => applyGradient(g.css)}
                 title={g.name}
                 className={`group relative aspect-[3/2] rounded-lg border-2 transition-all overflow-hidden ${
@@ -311,6 +316,50 @@ export function BackgroundPanel() {
         </section>
       )}
 
+      {/* CUSTOM COLOR PICKER — same HSV picker the font-color
+          field uses. Operator (2026-04-27): "give a color picker
+          like we have in other areas like font colors". */}
+      <section className="border-b border-slate-200/50 p-4 space-y-2">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+          Pick any color
+        </div>
+        <div className="text-[11px] text-slate-500">
+          Drag the picker, click in the spectrum, or paste a hex
+        </div>
+        <ColorPickerField
+          label="Background color"
+          value={meta.bgColor || '#ffffff'}
+          onChange={(v) => applyColor(v)}
+        />
+      </section>
+
+      {/* FROM YOUR TEMPLATES — pulls every distinct backdrop already
+          in use across system + tenant templates. Operator
+          (2026-04-27): "add in all the backgrounds we have from our
+          massive list of templates... lets them pick a background
+          they want." Reuses the same TemplateBackdropPicker the
+          Properties panel uses, so the two surfaces stay in sync. */}
+      <section className="border-b border-slate-200/50 p-4 space-y-3">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+          From your templates
+        </div>
+        <div className="text-[11px] text-slate-500">
+          Every background already in use across your system + custom templates
+        </div>
+        <TemplateBackdropPicker
+          current={{
+            bgColor: meta.bgColor || undefined,
+            bgGradient: meta.bgGradient || undefined,
+            bgImage: meta.bgImage || undefined,
+          }}
+          onPick={(patch) => setMeta({
+            bgColor: patch.bgColor || '',
+            bgGradient: patch.bgGradient || '',
+            bgImage: patch.bgImage || '',
+          })}
+        />
+      </section>
+
       {/* PRESET GRADIENTS — curated for signage */}
       <section className="border-b border-slate-200/50 p-4 space-y-2">
         <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
@@ -323,6 +372,7 @@ export function BackgroundPanel() {
           {PRESET_GRADIENTS.map((g) => (
             <button
               key={g.name}
+              type="button"
               onClick={() => applyGradient(g.css)}
               title={g.name}
               className={`group relative aspect-[3/2] rounded-lg border-2 transition-all overflow-hidden ${
@@ -358,6 +408,7 @@ export function BackgroundPanel() {
             return (
               <button
                 key={p.name}
+                type="button"
                 onClick={() => applyPattern(p)}
                 title={p.name}
                 className={`group relative aspect-[3/2] rounded-lg border-2 transition-all overflow-hidden ${
@@ -396,6 +447,7 @@ export function BackgroundPanel() {
           }}
         />
         <button
+          type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
           className="w-full px-3 py-2.5 rounded-lg bg-slate-900 text-white text-xs font-semibold hover:bg-slate-700 disabled:bg-slate-300 disabled:cursor-wait flex items-center justify-center gap-2"
@@ -422,6 +474,7 @@ export function BackgroundPanel() {
       {/* ADVANCED — collapsed by default; CSS gradient string for power users */}
       <section className="p-4 space-y-2">
         <button
+          type="button"
           onClick={() => setAdvancedOpen((v) => !v)}
           className="w-full text-left text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-slate-700 flex items-center gap-1"
         >

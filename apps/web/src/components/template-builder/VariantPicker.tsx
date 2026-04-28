@@ -44,10 +44,16 @@ const WIDGET_TYPE_LABELS: Record<string, string> = {
 
 // Map a variant's category (the scene name) to school grade levels.
 // Each variant can fit one or more levels; "Universal" means it works K-12.
+//
+// 2026-04-27 — operator removed the "Early Childhood" filter chip
+// (we don't sell into Pre-K / daycare; the EC label was confusing
+// elementary admins who'd see EC-tagged variants and assume the
+// CMS was kid-only). Variants previously tagged 'Early Childhood'
+// fall back to 'Elementary' so they still surface for K-5 admins.
 const CATEGORY_TO_LEVELS: Record<string, string[]> = {
   CLASSROOM:  ['Elementary', 'Middle'],
-  ELEMENTARY: ['Early Childhood', 'Elementary'],
-  PLAYFUL:    ['Early Childhood', 'Elementary'],
+  ELEMENTARY: ['Elementary'],
+  PLAYFUL:    ['Elementary'],
   CAFETERIA:  ['Universal'],
   HALLWAY:    ['Middle', 'High'],
   SAFETY:     ['Universal'],
@@ -61,8 +67,6 @@ const CATEGORY_TO_LEVELS: Record<string, string[]> = {
   MODERN:     ['Universal'],
   MINIMAL:    ['Universal'],
 };
-
-const ALL_LEVELS = ['Early Childhood', 'Elementary', 'Middle', 'High', 'Universal'] as const;
 
 function variantLevels(category?: string): string[] {
   if (!category) return ['Universal'];
@@ -80,7 +84,7 @@ export function VariantPicker() {
     : null;
 
   const [typeFilter, setTypeFilter] = useState<string>('ALL');
-  const [levelFilter, setLevelFilter] = useState<string>('ALL'); // 'ALL' | 'Early Childhood' | 'Elementary' | 'Middle' | 'High'
+  const [levelFilter, setLevelFilter] = useState<string>('ALL'); // 'ALL' | 'Elementary' | 'Middle' | 'High'
   const [search, setSearch] = useState('');
   // When user clicks a zone we auto-filter to its widgetType — but only ONCE per
   // selection. The user can still un-lock and browse other widget types via the
@@ -176,7 +180,6 @@ export function VariantPicker() {
       <div className="px-3 py-2 border-b border-slate-100 flex flex-wrap gap-1 shrink-0">
         <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 self-center mr-1">For:</span>
         <FilterChip label="All grades" active={levelFilter === 'ALL'} onClick={() => setLevelFilter('ALL')} small />
-        <FilterChip label="Early Childhood" active={levelFilter === 'Early Childhood'} onClick={() => setLevelFilter('Early Childhood')} small />
         <FilterChip label="Elementary" active={levelFilter === 'Elementary'} onClick={() => setLevelFilter('Elementary')} small />
         <FilterChip label="Middle" active={levelFilter === 'Middle'} onClick={() => setLevelFilter('Middle')} small />
         <FilterChip label="High" active={levelFilter === 'High'} onClick={() => setLevelFilter('High')} small />

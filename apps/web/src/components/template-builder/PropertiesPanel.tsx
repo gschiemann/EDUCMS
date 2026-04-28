@@ -2164,7 +2164,7 @@ export function CanvasBackdropSection({
  * show as two separate swatches. Grouped into Gradients / Solid colors
  * / Images so operators can scan by category.
  */
-function TemplateBackdropPicker({
+export function TemplateBackdropPicker({
   current,
   onPick,
   variant = 'panel',
