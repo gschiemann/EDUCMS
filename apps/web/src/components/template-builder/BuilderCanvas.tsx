@@ -7,6 +7,213 @@ import { BuilderZone } from './BuilderZone';
 import { snapMove, snapResize } from './snap-engine';
 import type { ResizeHandle, SnapLine, Zone } from './types';
 
+type BellPeriod = { label: string; start: string; end?: string };
+type CalendarEvent = { title: string; date: string; color?: string };
+
+const DEFAULT_BELL_PERIODS: BellPeriod[] = [
+  { label: 'Period 1', start: '8:00', end: '8:50' },
+  { label: 'Period 2', start: '8:55', end: '9:45' },
+  { label: 'Period 3', start: '9:50', end: '10:40' },
+  { label: 'Lunch', start: '10:45', end: '11:15' },
+  { label: 'Period 4', start: '11:20', end: '12:10' },
+  { label: 'Period 5', start: '12:15', end: '1:05' },
+  { label: 'Period 6', start: '1:10', end: '2:00' },
+];
+
+const DEFAULT_MENU_LINES = [
+  'Monday: Pizza, Garden Salad, Fruit Cup',
+  'Tuesday: Chicken Tacos, Spanish Rice',
+  'Wednesday: Pasta Bar, Garlic Bread',
+  'Thursday: Grilled Chicken, Mashed Potatoes',
+  'Friday: Burgers, Fries, Coleslaw',
+];
+
+const DEFAULT_EVENTS: CalendarEvent[] = [
+  { title: 'Spring Assembly', date: 'Today, 10:00 AM', color: '#6366f1' },
+  { title: 'PTA Meeting', date: 'Tomorrow, 6:30 PM', color: '#f59e0b' },
+  { title: 'Science Fair', date: 'This Week', color: '#22c55e' },
+  { title: 'Staff Development Day', date: 'Next Week', color: '#ec4899' },
+  { title: 'Spring Break Begins', date: 'Soon', color: '#0ea5e9' },
+];
+const DEFAULT_STATS = [
+  { value: '97%', label: 'ATTENDANCE' },
+  { value: '4.2', label: 'AVG GPA' },
+  { value: '84', label: 'CLUBS' },
+];
+const DEFAULT_PERIODS = [
+  { num: '1', name: 'Homeroom', time: '8:00 - 8:15' },
+  { num: '2', name: 'English', time: '8:20 - 9:15' },
+  { num: '3', name: 'Math', time: '9:20 - 10:15' },
+  { num: '4', name: 'Science', time: '10:20 - 11:15' },
+  { num: '5', name: 'Lunch', time: '11:20 - 12:00' },
+  { num: '6', name: 'History', time: '12:05 - 1:00' },
+  { num: '7', name: 'PE', time: '1:05 - 2:00' },
+  { num: '8', name: 'Art', time: '2:05 - 3:00' },
+];
+const DEFAULT_BIRTHDAYS = ['Morgan P.', 'Samir K.', 'Ava L.'];
+const DEFAULT_STUDENTS = [
+  { name: 'Jordan Lee', reason: 'Perfect attendance + top math score' },
+  { name: 'Maria Santos', reason: 'Kindness award' },
+  { name: 'Tyler Chen', reason: 'Band district selection' },
+  { name: 'Ava Patel', reason: 'Essay contest' },
+];
+
+function parseBellLine(line: string): BellPeriod {
+  const [labelPart, restPart = ''] = line.split(':');
+  const [start = '', end = ''] = restPart.split('-').map((part) => part.trim());
+  return {
+    label: labelPart?.trim() || 'Period',
+    start,
+    end: end || undefined,
+  };
+}
+
+function normalizeBellSchedule(value: unknown): BellPeriod[] {
+  if (Array.isArray(value)) {
+    return value.map((p, idx) => ({
+      label: String((p as any)?.label || `Period ${idx + 1}`),
+      start: String((p as any)?.start || ''),
+      end: (p as any)?.end ? String((p as any).end) : undefined,
+    }));
+  }
+  if (typeof value === 'string' && value.trim()) {
+    return value.split('\n').filter(Boolean).map(parseBellLine);
+  }
+  return DEFAULT_BELL_PERIODS.map((p) => ({ ...p }));
+}
+
+function normalizeMenuLines(value: unknown): string[] {
+  if (typeof value === 'string' && value.trim()) return value.split('\n').filter(Boolean);
+  return DEFAULT_MENU_LINES.slice();
+}
+
+function normalizeEvents(value: unknown): CalendarEvent[] {
+  if (Array.isArray(value) && value.length) {
+    return value.map((ev, idx) => ({
+      title: String((ev as any)?.title || 'Event'),
+      date: String((ev as any)?.date || ''),
+      color: (ev as any)?.color || DEFAULT_EVENTS[idx % DEFAULT_EVENTS.length]?.color,
+    }));
+  }
+  return DEFAULT_EVENTS.map((ev) => ({ ...ev }));
+}
+
+function normalizeArrayObjects(value: unknown, defaults: Array<Record<string, string>>) {
+  if (Array.isArray(value) && value.length) {
+    return value.map((item, idx) => ({ ...defaults[idx % defaults.length], ...(item as any) }));
+  }
+  return defaults.map((item) => ({ ...item }));
+}
+
+function normalizeStringArray(value: unknown, defaults: string[]) {
+  if (Array.isArray(value) && value.length) return value.map((item) => String(item));
+  return defaults.slice();
+}
+
+function mergeInlineConfigPatch(widgetType: string, current: Record<string, unknown>, patch: Record<string, any>) {
+  const next: Record<string, any> = { ...current };
+
+  for (const [key, value] of Object.entries(patch)) {
+    const scheduleMatch = widgetType === 'BELL_SCHEDULE'
+      ? key.match(/^schedule\.(\d+)\.(label|start|end)$/)
+      : null;
+    if (scheduleMatch) {
+      const idx = Number(scheduleMatch[1]);
+      const field = scheduleMatch[2] as keyof BellPeriod;
+      const schedule = normalizeBellSchedule(next.schedule);
+      schedule[idx] = { ...(schedule[idx] || { label: `Period ${idx + 1}`, start: '' }), [field]: String(value) };
+      next.schedule = schedule;
+      continue;
+    }
+
+    const eventMatch = widgetType === 'CALENDAR'
+      ? key.match(/^events\.(\d+)\.(title|date)$/)
+      : null;
+    if (eventMatch) {
+      const idx = Number(eventMatch[1]);
+      const field = eventMatch[2] as keyof CalendarEvent;
+      const events = normalizeEvents(next.events);
+      events[idx] = { ...(events[idx] || { title: 'Event', date: '' }), [field]: String(value) };
+      next.events = events;
+      continue;
+    }
+
+    const menuMatch = widgetType === 'LUNCH_MENU'
+      ? key.match(/^menu\.(\d+)\.(day|items)$/)
+      : null;
+    if (menuMatch) {
+      const idx = Number(menuMatch[1]);
+      const field = menuMatch[2];
+      const lines = normalizeMenuLines(next.menu);
+      const [day = '', ...rest] = (lines[idx] || '').split(':');
+      const items = rest.join(':').trim();
+      lines[idx] = field === 'day'
+        ? `${String(value)}${items ? `: ${items}` : ''}`
+        : `${day.trim() || 'Day'}: ${String(value)}`;
+      next.menu = lines.join('\n');
+      continue;
+    }
+
+    if (widgetType === 'TICKER' && key === 'text') {
+      const text = String(value);
+      next.text = text;
+      next.messages = text.split(/\n|\u2022/).map((part) => part.trim()).filter(Boolean);
+      continue;
+    }
+
+    const statMatch = widgetType === 'STATS' ? key.match(/^stats\.(\d+)\.(value|label)$/) : null;
+    if (statMatch) {
+      const idx = Number(statMatch[1]);
+      const field = statMatch[2];
+      const stats = normalizeArrayObjects(next.stats, DEFAULT_STATS);
+      stats[idx] = { ...(stats[idx] || DEFAULT_STATS[idx % DEFAULT_STATS.length]), [field]: String(value) };
+      next.stats = stats;
+      continue;
+    }
+
+    const periodMatch = widgetType === 'SCHEDULE_GRID' ? key.match(/^periods\.(\d+)\.(num|name|time)$/) : null;
+    if (periodMatch) {
+      const idx = Number(periodMatch[1]);
+      const field = periodMatch[2];
+      const periods = normalizeArrayObjects(next.periods, DEFAULT_PERIODS);
+      periods[idx] = { ...(periods[idx] || DEFAULT_PERIODS[idx % DEFAULT_PERIODS.length]), [field]: String(value) };
+      next.periods = periods;
+      continue;
+    }
+
+    const birthdayMatch = widgetType === 'BIRTHDAYS' ? key.match(/^birthdays\.(\d+)$/) : null;
+    if (birthdayMatch) {
+      const idx = Number(birthdayMatch[1]);
+      const birthdays = normalizeStringArray(next.birthdays, DEFAULT_BIRTHDAYS);
+      birthdays[idx] = String(value);
+      next.birthdays = birthdays;
+      continue;
+    }
+
+    const studentMatch = widgetType === 'HONOR_ROLL' ? key.match(/^students\.(\d+)\.(name|reason)$/) : null;
+    if (studentMatch) {
+      const idx = Number(studentMatch[1]);
+      const field = studentMatch[2];
+      const students = normalizeArrayObjects(next.students, DEFAULT_STUDENTS);
+      students[idx] = { ...(students[idx] || DEFAULT_STUDENTS[idx % DEFAULT_STUDENTS.length]), [field]: String(value) };
+      next.students = students;
+      continue;
+    }
+
+    if (widgetType === 'ATTENDANCE' && (key === 'presentPct' || key === 'totalStudents')) {
+      const parsed = key === 'presentPct'
+        ? Number.parseFloat(String(value).replace('%', ''))
+        : Number.parseInt(String(value).replace(/[^\d]/g, ''), 10);
+      next[key] = Number.isFinite(parsed) ? parsed : next[key];
+      continue;
+    }
+
+    next[key] = value;
+  }
+
+  return next;
+}
+
 export function BuilderCanvas() {
   // dnd-kit drop target. BuilderShell.handleDragEnd checks
   // `over.id === 'builder-canvas'` to know whether to add a zone, but
@@ -301,7 +508,9 @@ export function BuilderCanvas() {
               onConfigChange={(zoneId, patch) => {
                 const z = zones.find(z => z.id === zoneId);
                 if (!z) return;
-                updateZone(zoneId, { defaultConfig: { ...(z.defaultConfig || {}), ...patch } }, true);
+                updateZone(zoneId, {
+                  defaultConfig: mergeInlineConfigPatch(z.widgetType, (z.defaultConfig || {}) as Record<string, unknown>, patch),
+                }, true);
               }}
             />
           ))}

@@ -181,6 +181,86 @@ function resolveUrl(url: string | undefined | null): string {
   return `${API_BASE}${url}`;
 }
 
+type BellPeriod = { label: string; start: string; end?: string };
+type CalendarEvent = { title: string; date: string; color?: string };
+
+const TICKER_SEPARATOR = '     \u2022     ';
+const DEFAULT_TICKER_MESSAGES = ['Welcome to our school!', 'Stay tuned for updates', 'Have a great day!'];
+const DEFAULT_MENU_LINES = [
+  'Monday: Pizza, Garden Salad, Fruit Cup',
+  'Tuesday: Chicken Tacos, Spanish Rice',
+  'Wednesday: Pasta Bar, Garlic Bread',
+  'Thursday: Grilled Chicken, Mashed Potatoes',
+  'Friday: Burgers, Fries, Coleslaw',
+];
+const DEFAULT_BELL_PERIODS: BellPeriod[] = [
+  { label: 'Period 1', start: '8:00', end: '8:50' },
+  { label: 'Period 2', start: '8:55', end: '9:45' },
+  { label: 'Period 3', start: '9:50', end: '10:40' },
+  { label: 'Lunch', start: '10:45', end: '11:15' },
+  { label: 'Period 4', start: '11:20', end: '12:10' },
+  { label: 'Period 5', start: '12:15', end: '1:05' },
+  { label: 'Period 6', start: '1:10', end: '2:00' },
+];
+const DEFAULT_EVENTS: CalendarEvent[] = [
+  { title: 'Spring Assembly', date: 'Today, 10:00 AM', color: '#6366f1' },
+  { title: 'PTA Meeting', date: 'Tomorrow, 6:30 PM', color: '#f59e0b' },
+  { title: 'Science Fair', date: 'This Week', color: '#22c55e' },
+  { title: 'Staff Development Day', date: 'Next Week', color: '#ec4899' },
+  { title: 'Spring Break Begins', date: 'Soon', color: '#0ea5e9' },
+];
+
+function normalizeTickerMessages(config: any): string[] {
+  if (Array.isArray(config.messages)) {
+    const messages = config.messages.map((m: unknown) => String(m).trim()).filter(Boolean);
+    if (messages.length) return messages;
+  }
+  if (typeof config.text === 'string' && config.text.trim()) {
+    return config.text.split(/\n|\u2022/).map((m: string) => m.trim()).filter(Boolean);
+  }
+  return DEFAULT_TICKER_MESSAGES;
+}
+
+function parseBellLine(line: string): BellPeriod {
+  const [labelPart, restPart = ''] = line.split(':');
+  const [start = '', end = ''] = restPart.split('-').map((part) => part.trim());
+  return {
+    label: labelPart?.trim() || 'Period',
+    start,
+    end: end || undefined,
+  };
+}
+
+function normalizeBellSchedule(value: unknown): BellPeriod[] {
+  if (Array.isArray(value) && value.length) {
+    return value.map((p, idx) => ({
+      label: String((p as any)?.label || `Period ${idx + 1}`),
+      start: String((p as any)?.start || ''),
+      end: (p as any)?.end ? String((p as any).end) : undefined,
+    }));
+  }
+  if (typeof value === 'string' && value.trim()) {
+    return value.split('\n').filter(Boolean).map(parseBellLine);
+  }
+  return DEFAULT_BELL_PERIODS;
+}
+
+function normalizeMenuLines(value: unknown): string[] {
+  if (typeof value === 'string' && value.trim()) return value.split('\n').filter(Boolean);
+  return DEFAULT_MENU_LINES;
+}
+
+function normalizeCalendarEvents(value: unknown, maxEvents: number): CalendarEvent[] {
+  if (Array.isArray(value) && value.length) {
+    return value.map((ev, idx) => ({
+      title: String((ev as any)?.title || 'Event'),
+      date: String((ev as any)?.date || ''),
+      color: (ev as any)?.color || DEFAULT_EVENTS[idx % DEFAULT_EVENTS.length]?.color,
+    })).slice(0, maxEvents);
+  }
+  return DEFAULT_EVENTS.slice(0, maxEvents);
+}
+
 // ═══════════════════════════════════════════════════════
 // Master renderer — picks the right widget by type
 // ═══════════════════════════════════════════════════════
@@ -561,8 +641,9 @@ function WeatherWidget({ config, compact }: { config: any; compact: boolean }) {
   // Theme router — render a themed variant if requested
   if (config.theme === 'sunny-meadow') return <SunnyMeadowWeather config={config} compact={compact} />;
 
-  const location = config.location || 'Springfield';
-  const isCelsius = config.units === 'celsius';
+  const location = config.location || config.zipCode || 'Springfield';
+  const units = String(config.units || 'imperial').toLowerCase();
+  const isCelsius = units === 'metric' || units === 'celsius' || units === 'c';
   const unit = isCelsius ? '°C' : '°F';
   const [weather, setWeather] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -631,7 +712,7 @@ function WeatherWidget({ config, compact }: { config: any; compact: boolean }) {
             <div className="flex items-center gap-[6%] mt-[5%]">
               <div className="flex items-center gap-[2%]">
                 <MapPin style={{ width: '0.6em', height: '0.6em', color: 'rgba(255,255,255,0.5)' }} />
-                <span style={{ fontSize: '0.55em', color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>{weather.locationName}</span>
+                <span data-field="location" style={{ fontSize: '0.55em', color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>{weather.locationName}</span>
               </div>
               <span style={{ fontSize: '0.5em', color: 'rgba(255,255,255,0.5)' }}>H:{weather.high}° L:{weather.low}°</span>
             </div>
@@ -957,19 +1038,24 @@ function TickerWidget({ config }: { config: any }) {
   if (config.theme === 'music-arts') return <MusicArtsTicker config={config} />;
   if (config.theme === 'stem-science') return <StemScienceTicker config={config} />;
   if (config.theme === 'sunshine-academy') return <SunshineAcademyTicker config={config} />;
-  const messages = config.messages?.length ? config.messages : ['Welcome to our school!', 'Stay tuned for updates', 'Have a great day!'];
+  const messages = normalizeTickerMessages(config);
   const speed = config.speed === 'slow' ? 40 : config.speed === 'fast' ? 15 : 25;
-  const text = messages.join('     •     ');
-  const repeated = `${text}     •     ${text}`;
+  const text = typeof config.text === 'string' && config.text.trim()
+    ? config.text.trim()
+    : messages.join(TICKER_SEPARATOR);
+  const animation = config.scrollEnabled === false ? 'none' : `ticker-scroll ${speed}s linear infinite`;
 
   return (
     <div className="absolute inset-0 flex items-center overflow-hidden" style={{ background: 'linear-gradient(90deg, #1e293b, #334155)' }}>
-      <div style={{
+      <div data-inline-edit-pause style={{
         display: 'flex', whiteSpace: 'nowrap' as const,
-        animation: `ticker-scroll ${speed}s linear infinite`,
+        animation,
       }}>
-        <span style={{ fontSize: '0.85em', fontWeight: 600, color: '#fbbf24', paddingLeft: '100%' }}>
-          {repeated}
+        <span data-field="text" style={{ fontSize: '0.85em', fontWeight: 600, color: '#fbbf24', paddingLeft: '100%' }}>
+          {text}
+        </span>
+        <span aria-hidden="true" style={{ fontSize: '0.85em', fontWeight: 600, color: '#fbbf24' }}>
+          {TICKER_SEPARATOR}{text}
         </span>
       </div>
       <style>{`@keyframes ticker-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`}</style>
@@ -984,8 +1070,8 @@ function TickerWidget({ config }: { config: any }) {
 function BellScheduleWidget({ config, compact }: { config: any; compact: boolean }) {
   if (config.theme === 'gym-pe') return <GymPEBellSchedule config={config} compact={compact} />;
   if (config.theme === 'middle-school-hall') return <MSHallBellSchedule config={config} />;
-  const schedule = config.schedule || 'Period 1: 8:00 - 8:50\nPeriod 2: 8:55 - 9:45\nPeriod 3: 9:50 - 10:40\nLunch: 10:45 - 11:15\nPeriod 4: 11:20 - 12:10\nPeriod 5: 12:15 - 1:05\nPeriod 6: 1:10 - 2:00';
-  const lines = schedule.split('\n').filter(Boolean);
+  const title = config.title || 'Bell Schedule';
+  const periods = normalizeBellSchedule(config.schedule);
   const now = new Date();
   const currentHour = now.getHours();
 
@@ -997,11 +1083,11 @@ function BellScheduleWidget({ config, compact }: { config: any; compact: boolean
         display: 'flex', alignItems: 'center', gap: '3%',
       }}>
         <Bell style={{ width: compact ? '0.6em' : '0.8em', height: compact ? '0.6em' : '0.8em', color: 'white' }} />
-        <span style={{ fontSize: compact ? '0.5em' : '0.7em', fontWeight: 700, color: 'white', letterSpacing: '0.05em' }}>Bell Schedule</span>
+        <span data-field="title" style={{ fontSize: compact ? '0.5em' : '0.7em', fontWeight: 700, color: 'white', letterSpacing: '0.05em' }}>{title}</span>
       </div>
       <div className="flex-1 overflow-y-auto" style={{ padding: '3% 5%' }}>
-        {lines.map((line: string, i: number) => {
-          const isActive = i === Math.min(Math.floor((currentHour - 8) / 1), lines.length - 1) && currentHour >= 8 && currentHour < 15;
+        {periods.map((period, i) => {
+          const isActive = config.showCurrent !== false && i === Math.min(Math.floor((currentHour - 8) / 1), periods.length - 1) && currentHour >= 8 && currentHour < 15;
           return (
             <div key={i} style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -1016,7 +1102,19 @@ function BellScheduleWidget({ config, compact }: { config: any; compact: boolean
                 fontWeight: isActive ? 700 : 500,
                 color: isActive ? '#4338ca' : '#475569',
               }}>
-                {line}
+                <span data-field={`schedule.${i}.label`}>{period.label}</span>
+                {(period.start || period.end) && (
+                  <>
+                    <span>: </span>
+                    <span data-field={`schedule.${i}.start`}>{period.start}</span>
+                    {period.end && (
+                      <>
+                        <span> - </span>
+                        <span data-field={`schedule.${i}.end`}>{period.end}</span>
+                      </>
+                    )}
+                  </>
+                )}
               </span>
               {isActive && <span style={{ fontSize: '0.35em', fontWeight: 700, color: '#6366f1', background: '#e0e7ff', padding: '0.1em 0.4em', borderRadius: 99 }}>NOW</span>}
             </div>
@@ -1034,8 +1132,8 @@ function BellScheduleWidget({ config, compact }: { config: any; compact: boolean
 function LunchMenuWidget({ config, compact }: { config: any; compact: boolean }) {
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardLunchMenu config={config} />;
   if (config.theme === 'library-quiet') return <LibraryQuietLunch config={config} />;
-  const menu = config.menu || 'Monday: Pizza, Garden Salad, Fruit Cup\nTuesday: Chicken Tacos, Spanish Rice\nWednesday: Pasta Bar, Garlic Bread\nThursday: Grilled Chicken, Mashed Potatoes\nFriday: Burgers, Fries, Coleslaw';
-  const lines = menu.split('\n').filter(Boolean);
+  const title = config.title || 'Lunch Menu';
+  const lines = normalizeMenuLines(config.menu);
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
 
   return (
@@ -1046,7 +1144,7 @@ function LunchMenuWidget({ config, compact }: { config: any; compact: boolean })
         display: 'flex', alignItems: 'center', gap: '3%',
       }}>
         <UtensilsCrossed style={{ width: compact ? '0.6em' : '0.8em', height: compact ? '0.6em' : '0.8em', color: 'white' }} />
-        <span style={{ fontSize: compact ? '0.5em' : '0.7em', fontWeight: 700, color: 'white' }}>Lunch Menu</span>
+        <span data-field="title" style={{ fontSize: compact ? '0.5em' : '0.7em', fontWeight: 700, color: 'white' }}>{title}</span>
       </div>
       <div className="flex-1 overflow-y-auto" style={{ padding: '3% 5%' }}>
         {lines.map((line: string, i: number) => {
@@ -1059,8 +1157,8 @@ function LunchMenuWidget({ config, compact }: { config: any; compact: boolean })
               background: isToday ? 'rgba(34,197,94,0.1)' : 'transparent',
               borderLeft: isToday ? '3px solid #22c55e' : '3px solid transparent',
             }}>
-              <div style={{ fontSize: compact ? '0.4em' : '0.55em', fontWeight: 700, color: isToday ? '#15803d' : '#475569' }}>{day}</div>
-              {rest.length > 0 && <div style={{ fontSize: compact ? '0.35em' : '0.48em', color: '#64748b', marginTop: '0.1em' }}>{rest.join(':').trim()}</div>}
+              <div data-field={`menu.${i}.day`} style={{ fontSize: compact ? '0.4em' : '0.55em', fontWeight: 700, color: isToday ? '#15803d' : '#475569' }}>{day}</div>
+              {rest.length > 0 && <div data-field={`menu.${i}.items`} style={{ fontSize: compact ? '0.35em' : '0.48em', color: '#64748b', marginTop: '0.1em' }}>{rest.join(':').trim()}</div>}
             </div>
           );
         })}
@@ -1098,16 +1196,10 @@ function CalendarWidget({ config, compact }: { config: any; compact: boolean }) 
   if (config.theme === 'achievement-hall') return <AchievementHallCalendar config={config} compact={compact} />;
   if (config.theme === 'final-chance') return <FinalChanceCalendar config={config} />;
   if (config.theme === 'sunshine-academy') return <SunshineAcademyCalendar config={config} compact={compact} />;
-  const maxEvents = config.maxEvents || 5;
-  const now = new Date();
-  // Sample events for preview
-  const events = [
-    { title: 'Spring Assembly', date: 'Today, 10:00 AM', color: '#6366f1' },
-    { title: 'PTA Meeting', date: 'Tomorrow, 6:30 PM', color: '#f59e0b' },
-    { title: 'Science Fair', date: `${now.toLocaleDateString('en-US', { month: 'short' })} ${now.getDate() + 3}`, color: '#22c55e' },
-    { title: 'Staff Development Day', date: `${now.toLocaleDateString('en-US', { month: 'short' })} ${now.getDate() + 7}`, color: '#ec4899' },
-    { title: 'Spring Break Begins', date: `${now.toLocaleDateString('en-US', { month: 'short' })} ${now.getDate() + 14}`, color: '#0ea5e9' },
-  ].slice(0, maxEvents);
+  const title = config.title || 'Upcoming Events';
+  const parsedMaxEvents = Number(config.maxEvents || 5);
+  const maxEvents = Number.isFinite(parsedMaxEvents) && parsedMaxEvents > 0 ? parsedMaxEvents : 5;
+  const events = normalizeCalendarEvents(config.events, maxEvents);
 
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden" style={{ background: 'linear-gradient(180deg, #eff6ff, #dbeafe)' }}>
@@ -1117,15 +1209,15 @@ function CalendarWidget({ config, compact }: { config: any; compact: boolean }) 
         display: 'flex', alignItems: 'center', gap: '3%',
       }}>
         <CalendarDays style={{ width: compact ? '0.6em' : '0.8em', height: compact ? '0.6em' : '0.8em', color: 'white' }} />
-        <span style={{ fontSize: compact ? '0.5em' : '0.7em', fontWeight: 700, color: 'white' }}>Upcoming Events</span>
+        <span data-field="title" style={{ fontSize: compact ? '0.5em' : '0.7em', fontWeight: 700, color: 'white' }}>{title}</span>
       </div>
       <div className="flex-1 overflow-y-auto" style={{ padding: '3% 4%' }}>
         {events.map((ev, i) => (
           <div key={i} className="flex items-center" style={{ padding: compact ? '2% 2%' : '3% 3%', gap: '4%', borderBottom: i < events.length - 1 ? '1px solid #e2e8f0' : 'none' }}>
             <div style={{ width: compact ? 4 : 6, height: compact ? 4 : 6, borderRadius: 99, background: ev.color, flexShrink: 0 }} />
             <div className="min-w-0 flex-1">
-              <div style={{ fontSize: compact ? '0.4em' : '0.58em', fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.title}</div>
-              <div style={{ fontSize: compact ? '0.3em' : '0.45em', color: '#94a3b8', fontWeight: 500 }}>{ev.date}</div>
+              <div data-field={`events.${i}.title`} style={{ fontSize: compact ? '0.4em' : '0.58em', fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.title}</div>
+              <div data-field={`events.${i}.date`} style={{ fontSize: compact ? '0.3em' : '0.45em', color: '#94a3b8', fontWeight: 500 }}>{ev.date}</div>
             </div>
           </div>
         ))}

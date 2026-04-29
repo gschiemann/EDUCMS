@@ -46,6 +46,10 @@ export function TopContextToolbar() {
   const isTicker = zone?.widgetType === 'TICKER';
   const isBellSchedule = zone?.widgetType === 'BELL_SCHEDULE';
   const cfg = (zone?.defaultConfig || {}) as any;
+  const weatherUnits = ['metric', 'celsius', 'c'].includes(String(cfg.units || '').toLowerCase()) ? 'metric' : 'imperial';
+  const tickerText = Array.isArray(cfg.messages) && cfg.messages.length
+    ? cfg.messages.join('\n')
+    : (typeof cfg.text === 'string' ? cfg.text : '');
 
   // ── Active-field + scope tracking ────────────────────────────────
   // activeFieldKey is the most-recent [data-field] the operator
@@ -303,14 +307,14 @@ export function TopContextToolbar() {
       )}
       {isWeather && (
         <div className="flex items-end gap-3 flex-wrap">
-          {/* Zip code input */}
+          {/* Location input */}
           <div className="min-w-[180px]">
-            <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Zip Code</span>
+            <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Location</span>
             <input
               type="text"
-              value={cfg.zipCode || ''}
-              onChange={(e) => setField({ zipCode: e.target.value })}
-              placeholder="e.g., 90210"
+              value={cfg.location || cfg.zipCode || ''}
+              onChange={(e) => setField({ location: e.target.value, zipCode: undefined })}
+              placeholder="Springfield or 90210"
               className="w-full h-9 px-2.5 rounded-lg text-sm border border-slate-200/60 shadow-sm focus:ring-2 focus:ring-indigo-600 focus:border-transparent"
             />
           </div>
@@ -318,18 +322,18 @@ export function TopContextToolbar() {
           <div className="min-w-[180px]">
             <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Units</span>
             <div className="flex gap-1">
-              {(['F', 'C'] as const).map((opt) => (
+              {([['imperial', 'F'], ['metric', 'C']] as const).map(([value, label]) => (
                 <button
-                  key={opt}
+                  key={value}
                   type="button"
-                  onClick={() => setField({ units: opt })}
+                  onClick={() => setField({ units: value })}
                   className={`flex-1 h-9 rounded-lg text-xs font-bold transition-colors border shadow-sm ${
-                    (cfg.units || 'F') === opt
+                    weatherUnits === value
                       ? 'bg-indigo-600 border-indigo-600 text-white'
                       : 'bg-white border-slate-200/60 text-slate-700 hover:bg-slate-50'
                   }`}
                 >
-                  {opt}°
+                  {label}°
                 </button>
               ))}
             </div>
@@ -338,11 +342,11 @@ export function TopContextToolbar() {
       )}
       {isAnnouncement && (
         <div className="flex items-end gap-3 flex-wrap">
-          {/* Priority toggle: low / normal / high */}
+          {/* Priority toggle: low / normal / high / urgent */}
           <div className="min-w-[180px]">
             <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Priority</span>
             <div className="flex gap-1">
-              {(['low', 'normal', 'high'] as const).map((opt) => (
+              {(['low', 'normal', 'high', 'urgent'] as const).map((opt) => (
                 <button
                   key={opt}
                   type="button"
@@ -444,8 +448,8 @@ export function TopContextToolbar() {
           <div className="min-w-[320px]">
             <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Ticker Text</span>
             <textarea
-              value={cfg.text || ''}
-              onChange={(e) => setField({ text: e.target.value })}
+              value={tickerText}
+              onChange={(e) => setField({ text: e.target.value, messages: e.target.value.split('\n') })}
               rows={2}
               placeholder="Enter scrolling ticker text..."
               className="w-full px-2.5 py-1.5 rounded-lg text-sm border border-slate-200/60 shadow-sm focus:ring-2 focus:ring-indigo-600 focus:border-transparent resize-none"

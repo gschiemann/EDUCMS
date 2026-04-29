@@ -380,8 +380,8 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
     // with our themed AppDialog. Every OTHER confirm/alert in the app
     // uses appConfirm/appAlert; this one's the documented exception.
     //
-    // Auto-save runs every 15s of idle time, so this only fires if the
-    // operator made a change and refreshed within 15s. To keep the
+    // Auto-save is disabled, so this prompt protects any explicit-save
+    // work when the operator refreshes or closes the tab. To keep the
     // surface area tight we ALSO skip when previewMode is on (no edits
     // are happening) and when isSystem (system presets aren't editable
     // — anything they typed is in a draft copy that opens elsewhere).
@@ -1070,7 +1070,7 @@ function BuilderBottomBar() {
 
 function ShortcutsModal({ onClose }: { onClose: () => void }) {
   const rows: Array<[string, string]> = [
-    ['Ctrl / \u2318 + S', 'Save template (auto-saves after 15s idle)'],
+    ['Ctrl / \u2318 + S', 'Save template'],
     ['Ctrl / \u2318 + Shift + S', 'Save as copy'],
     ['Ctrl / \u2318 + Z', 'Undo'],
     ['Ctrl / \u2318 + Y  (or Shift+Z)', 'Redo'],

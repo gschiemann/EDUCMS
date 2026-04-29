@@ -92,13 +92,13 @@ export function StatsWidget({ config }: { config: any; compact?: boolean }) {
           <div style={{ flex: '0 0 62%', minHeight: 0 }}>
             <FitText max={280} min={20} wrap={false}
               style={{ fontFamily: "'Fredoka', system-ui, sans-serif", fontWeight: 800, color: colors[i % colors.length] }}>
-              {s.value || '—'}
+              <span data-field={`stats.${i}.value`}>{s.value || '-'}</span>
             </FitText>
           </div>
           <div style={{ flex: '0 0 38%', minHeight: 0 }}>
             <FitText max={80} min={8} wrap={false}
               style={{ fontFamily: "'Fredoka', system-ui, sans-serif", fontWeight: 700, color: '#374151', letterSpacing: '0.1em', textTransform: 'uppercase' as const }}>
-              {s.label || ''}
+              <span data-field={`stats.${i}.label`}>{s.label || ''}</span>
             </FitText>
           </div>
         </div>
@@ -137,7 +137,7 @@ export function MenuItemWidget({ config, onConfigChange }: { config: any; compac
             <div style={{ flex: '0 0 28%', minWidth: 0 }}>
               <FitText max={100} min={10} wrap={false} center={false}
                 style={{ fontFamily: "'Fredoka', system-ui", fontWeight: 800, color: '#D97706' }}>
-                {price}
+                <span data-field="price">{price}</span>
               </FitText>
             </div>
           )}
@@ -192,7 +192,7 @@ export function ScoreboardWidget({ config, onConfigChange }: { config: any; comp
         <div style={{ gridColumn: '1 / -1', textAlign: 'center' }}>
           <FitText max={60} min={8} wrap={false}
             style={{ fontFamily: "'JetBrains Mono',monospace", color: '#FFB020', letterSpacing: '0.2em' }}>
-            {status.toUpperCase()}
+            <span data-field="status">{status.toUpperCase()}</span>
           </FitText>
         </div>
         {/* Home */}
@@ -207,7 +207,7 @@ export function ScoreboardWidget({ config, onConfigChange }: { config: any; comp
           <div style={{ width: '100%', flex: '1 1 66%', minHeight: 0 }}>
             <FitText max={400} min={30} wrap={false}
               style={{ fontFamily: "'JetBrains Mono',monospace", color: '#FFB020', fontWeight: 800 }}>
-              {String(homeScore)}
+              <span data-field="homeScore">{String(homeScore)}</span>
             </FitText>
           </div>
         </div>
@@ -230,7 +230,7 @@ export function ScoreboardWidget({ config, onConfigChange }: { config: any; comp
           <div style={{ width: '100%', flex: '1 1 66%', minHeight: 0 }}>
             <FitText max={400} min={30} wrap={false}
               style={{ fontFamily: "'JetBrains Mono',monospace", color: '#FFB020', fontWeight: 800 }}>
-              {String(awayScore)}
+              <span data-field="awayScore">{String(awayScore)}</span>
             </FitText>
           </div>
         </div>
@@ -238,7 +238,7 @@ export function ScoreboardWidget({ config, onConfigChange }: { config: any; comp
         <div style={{ gridColumn: '1 / -1', textAlign: 'center' }}>
           <FitText max={80} min={9} wrap={false}
             style={{ fontFamily: "'JetBrains Mono',monospace", color: '#D4AF37', letterSpacing: '0.15em' }}>
-            {period}
+            <span data-field="period">{period}</span>
           </FitText>
         </div>
       </div>
@@ -273,7 +273,7 @@ export function ScheduleGridWidget({ config }: { config: any; compact?: boolean 
         <div style={{ flex: '0 0 12%', minHeight: 0, borderBottom: '3px solid #6366f1', paddingBottom: '1%' }}>
           <FitText max={60} min={10} wrap={false} center={false}
             style={{ fontFamily: "'Fredoka', system-ui", fontWeight: 800, color: '#1f2937', letterSpacing: '0.12em', textTransform: 'uppercase' as const }}>
-            Today's Schedule
+            <span data-field="title">{config.title || "Today's Schedule"}</span>
           </FitText>
         </div>
         <div style={{ flex: '1 1 88%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
@@ -289,19 +289,19 @@ export function ScheduleGridWidget({ config }: { config: any; compact?: boolean 
               <div style={{ minHeight: 0 }}>
                 <FitText max={48} min={8} wrap={false}
                   style={{ fontFamily: "'JetBrains Mono',monospace", color: '#6366f1', fontWeight: 800 }}>
-                  {p.num}
+                  <span data-field={`periods.${i}.num`}>{p.num}</span>
                 </FitText>
               </div>
               <div style={{ minHeight: 0 }}>
                 <FitText max={60} min={9} wrap={false} center={false}
                   style={{ fontFamily: "'Fredoka', system-ui", fontWeight: 700, color: '#1f2937' }}>
-                  {p.name}
+                  <span data-field={`periods.${i}.name`}>{p.name}</span>
                 </FitText>
               </div>
               <div style={{ minHeight: 0 }}>
                 <FitText max={36} min={8} wrap={false} center={false}
                   style={{ fontFamily: "'JetBrains Mono',monospace", color: '#6b7280' }}>
-                  {p.time}
+                  <span data-field={`periods.${i}.time`}>{p.time}</span>
                 </FitText>
               </div>
             </div>
@@ -331,13 +331,13 @@ export function AttendanceWidget({ config }: { config: any; compact?: boolean })
         <div style={{ flex: '0 0 20%', minHeight: 0 }}>
           <FitText max={60} min={10} wrap={false} center={false}
             style={{ fontFamily: "'Fredoka',system-ui", color: 'rgba(255,255,255,0.85)', letterSpacing: '0.1em', textTransform: 'uppercase' as const }}>
-            Attendance Today
+            <span data-field="title">{config.title || 'Attendance Today'}</span>
           </FitText>
         </div>
         <div style={{ flex: '1 1 60%', minHeight: 0 }}>
           <FitText max={400} min={40} wrap={false}
             style={{ fontFamily: "'Fredoka',system-ui", fontWeight: 800, color: '#fff' }}>
-            {present}%
+            <span data-field="presentPct">{present}%</span>
           </FitText>
         </div>
         <div style={{ flex: '0 0 20%', minHeight: 0, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4%' }}>
@@ -376,7 +376,7 @@ export function BirthdaysWidget({ config }: { config: any; compact?: boolean }) 
         <div style={{ flex: '0 0 24%', minHeight: 0, textAlign: 'center' }}>
           <FitText max={90} min={10} wrap={false}
             style={{ fontFamily: "'Caveat',cursive", color: '#BE185D', fontWeight: 700 }}>
-            🎂 Happy Birthday!
+            <span data-field="title">{config.title || 'Happy Birthday!'}</span>
           </FitText>
         </div>
         <div style={{ flex: '1 1 76%', minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2%' }}>
@@ -384,7 +384,7 @@ export function BirthdaysWidget({ config }: { config: any; compact?: boolean }) 
             <div key={i} style={{ minHeight: 0, flex: 1 }}>
               <FitText max={120} min={10} wrap={false}
                 style={{ fontFamily: "'Fredoka',system-ui", fontWeight: 700, color: '#1f2937' }}>
-                🎈 {n}
+                <span data-field={`birthdays.${i}`}>{n}</span>
               </FitText>
             </div>
           ))}
@@ -417,7 +417,7 @@ export function HonorRollWidget({ config }: { config: any; compact?: boolean }) 
         <div style={{ flex: '0 0 16%', minHeight: 0, textAlign: 'center', borderBottom: '2px solid #D4AF37', paddingBottom: '1%' }}>
           <FitText max={70} min={10} wrap={false}
             style={{ fontFamily: "'Fraunces',serif", color: '#D4AF37', letterSpacing: '0.12em', textTransform: 'uppercase' as const }}>
-            ★ Honor Roll ★
+            <span data-field="title">{config.title || 'Honor Roll'}</span>
           </FitText>
         </div>
         <div style={{ flex: '1 1 84%', minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-around', paddingTop: '2%' }}>
@@ -426,13 +426,13 @@ export function HonorRollWidget({ config }: { config: any; compact?: boolean }) 
               <div style={{ flex: '0 0 55%', minHeight: 0 }}>
                 <FitText max={72} min={10} wrap={false} center={false}
                   style={{ fontFamily: "'Fraunces',serif", fontWeight: 800, color: '#fff' }}>
-                  {s.name}
+                  <span data-field={`students.${i}.name`}>{s.name}</span>
                 </FitText>
               </div>
               <div style={{ flex: '0 0 45%', minHeight: 0 }}>
                 <FitText max={40} min={8} wrap={false} center={false}
                   style={{ fontFamily: "'Fredoka',system-ui", color: 'rgba(255,255,255,0.7)', fontStyle: 'italic' }}>
-                  — {s.reason}
+                  <span data-field={`students.${i}.reason`}>{s.reason}</span>
                 </FitText>
               </div>
             </div>

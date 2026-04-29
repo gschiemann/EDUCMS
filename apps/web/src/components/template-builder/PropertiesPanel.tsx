@@ -50,6 +50,93 @@ const MS_DEFAULTS_BY_TYPE: Record<string, Record<string, string>> = {
   MS_STUDIO_PORTRAIT: MS_STUDIO_PORTRAIT_DEFAULTS as any,
 };
 
+type BellPeriod = { label: string; start: string; end?: string };
+type CalendarEvent = { title: string; date: string; color?: string };
+
+const DEFAULT_BELL_PERIODS: BellPeriod[] = [
+  { label: 'Period 1', start: '8:00', end: '8:50' },
+  { label: 'Period 2', start: '8:55', end: '9:45' },
+  { label: 'Period 3', start: '9:50', end: '10:40' },
+  { label: 'Lunch', start: '10:45', end: '11:15' },
+  { label: 'Period 4', start: '11:20', end: '12:10' },
+  { label: 'Period 5', start: '12:15', end: '1:05' },
+  { label: 'Period 6', start: '1:10', end: '2:00' },
+];
+
+const DEFAULT_EVENTS: CalendarEvent[] = [
+  { title: 'Spring Assembly', date: 'Today, 10:00 AM', color: '#6366f1' },
+  { title: 'PTA Meeting', date: 'Tomorrow, 6:30 PM', color: '#f59e0b' },
+  { title: 'Science Fair', date: 'This Week', color: '#22c55e' },
+  { title: 'Staff Development Day', date: 'Next Week', color: '#ec4899' },
+  { title: 'Spring Break Begins', date: 'Soon', color: '#0ea5e9' },
+];
+const DEFAULT_STATS = [
+  { value: '97%', label: 'Attendance' },
+  { value: '4.2', label: 'Avg GPA' },
+  { value: '84', label: 'Clubs' },
+];
+const DEFAULT_PERIODS = [
+  { num: '1', name: 'Homeroom', time: '8:00 - 8:15' },
+  { num: '2', name: 'English', time: '8:20 - 9:15' },
+  { num: '3', name: 'Math', time: '9:20 - 10:15' },
+  { num: '4', name: 'Science', time: '10:20 - 11:15' },
+  { num: '5', name: 'Lunch', time: '11:20 - 12:00' },
+  { num: '6', name: 'History', time: '12:05 - 1:00' },
+  { num: '7', name: 'PE', time: '1:05 - 2:00' },
+  { num: '8', name: 'Art', time: '2:05 - 3:00' },
+];
+const DEFAULT_BIRTHDAYS = ['Morgan P.', 'Samir K.', 'Ava L.'];
+const DEFAULT_STUDENTS = [
+  { name: 'Jordan Lee', reason: 'Perfect attendance + top math score' },
+  { name: 'Maria Santos', reason: 'Kindness award' },
+  { name: 'Tyler Chen', reason: 'Band district selection' },
+  { name: 'Ava Patel', reason: 'Essay contest' },
+];
+
+function parseBellLine(line: string): BellPeriod {
+  const [labelPart, restPart = ''] = line.split(':');
+  const [start = '', end = ''] = restPart.split('-').map((part) => part.trim());
+  return {
+    label: labelPart?.trim() || 'Period',
+    start,
+    end: end || undefined,
+  };
+}
+
+function bellScheduleForEditor(value: unknown): BellPeriod[] {
+  if (Array.isArray(value) && value.length) {
+    return value.map((p, idx) => ({
+      label: String((p as any)?.label || `Period ${idx + 1}`),
+      start: String((p as any)?.start || ''),
+      end: (p as any)?.end ? String((p as any).end) : undefined,
+    }));
+  }
+  if (typeof value === 'string' && value.trim()) {
+    return value.split('\n').filter(Boolean).map(parseBellLine);
+  }
+  return DEFAULT_BELL_PERIODS.map((p) => ({ ...p }));
+}
+
+function eventsForEditor(value: unknown): CalendarEvent[] {
+  if (Array.isArray(value) && value.length) {
+    return value.map((e, idx) => ({
+      title: String((e as any)?.title || 'Event'),
+      date: String((e as any)?.date || ''),
+      color: (e as any)?.color || DEFAULT_EVENTS[idx % DEFAULT_EVENTS.length]?.color,
+    }));
+  }
+  return DEFAULT_EVENTS.map((e) => ({ ...e }));
+}
+
+function tickerTextForEditor(cfg: any): string {
+  if (Array.isArray(cfg.messages) && cfg.messages.length) return cfg.messages.join('\n');
+  return typeof cfg.text === 'string' ? cfg.text : '';
+}
+
+function arrayForEditor<T>(value: unknown, defaults: T[]): T[] {
+  return Array.isArray(value) && value.length ? value as T[] : defaults;
+}
+
 // Field-key → human-readable label. The MS-pack widgets use developer-
 // style dotted keys like `agenda.0.t` and `clock.time` because the
 // templates are auto-generated from HTML mockups; without a friendly
@@ -712,7 +799,7 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextAreaField key="message" label="Message" value={cfg.message || cfg.body || ''} placeholder="Details…" onChange={(v) => setField({ message: v, body: undefined })} rows={3} />);
       if (!isShapeTheme) {
         fields.push(<TextField key="badge" label="Badge label" value={cfg.badgeLabel || ''} placeholder="📣 Today's Announcement" onChange={(v) => setField({ badgeLabel: v })} />);
-        fields.push(<SelectField key="priority" label="Priority" value={cfg.priority || 'normal'} options={[['low','Low'],['normal','Normal'],['high','High'],['critical','Critical']]} onChange={(v) => setField({ priority: v })} />);
+        fields.push(<SelectField key="priority" label="Priority" value={cfg.priority || 'normal'} options={[['low','Low'],['normal','Normal'],['high','High'],['urgent','Urgent']]} onChange={(v) => setField({ priority: v })} />);
       }
       break;
     case 'STAFF_SPOTLIGHT':
@@ -758,33 +845,76 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
         fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || 'transparent'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
       }
       break;
-    case 'WEATHER':
-      fields.push(<TextField key="location" label="Location" value={cfg.location || ''} placeholder="Springfield" onChange={(v) => setField({ location: v })} />);
-      fields.push(<SelectField key="units" label="Units" value={cfg.units || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ units: v })} />);
-      fields.push(<TextField key="tempF" label={`Current temp (${cfg.units === 'metric' ? '°C' : '°F'})`} value={String(cfg.tempF ?? '')} placeholder="72" onChange={(v) => setField({ tempF: parseInt(v) || 0 })} />);
+    case 'WEATHER': {
+      const weatherUnits = ['metric', 'celsius', 'c'].includes(String(cfg.units || '').toLowerCase()) ? 'metric' : 'imperial';
+      fields.push(<TextField key="location" label="Location" value={cfg.location || cfg.zipCode || ''} placeholder="Springfield" onChange={(v) => setField({ location: v, zipCode: undefined })} />);
+      fields.push(<SelectField key="units" label="Units" value={weatherUnits} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ units: v })} />);
+      fields.push(<TextField key="tempF" label={`Current temp (${weatherUnits === 'metric' ? '°C' : '°F'})`} value={String(cfg.tempF ?? '')} placeholder="72" onChange={(v) => setField({ tempF: parseInt(v) || 0 })} />);
       fields.push(<TextField key="high" label="High" value={String(cfg.high ?? '')} placeholder="78" onChange={(v) => setField({ high: parseInt(v) || 0 })} />);
       fields.push(<TextField key="low" label="Low" value={String(cfg.low ?? '')} placeholder="64" onChange={(v) => setField({ low: parseInt(v) || 0 })} />);
       fields.push(<TextField key="condition" label="Condition" value={cfg.condition || ''} placeholder="Sunny" onChange={(v) => setField({ condition: v })} />);
       break;
+    }
     case 'TICKER': {
-      const msgs = Array.isArray(cfg.messages) ? cfg.messages : [];
-      const label = `Messages (one per line) — ${msgs.length} saved`;
+      const tickerText = tickerTextForEditor(cfg);
+      const msgs = tickerText.split('\n');
+      const label = `Messages (one per line) — ${msgs.filter(Boolean).length} saved`;
       // Preserve blank lines while the user is actively typing (the
       // user needs an empty line to exist briefly when pressing Enter
       // before typing the next message). Filter happens only on save,
       // not on every keystroke. We keep trailing empty as-is too;
       // saving an all-empty doesn't hurt anything.
-      fields.push(<TextAreaField key="messages" label={label} value={msgs.join('\n')} placeholder="Welcome back!" onChange={(v) => setField({ messages: v.split('\n') })} rows={6} />);
+      fields.push(<TextAreaField key="messages" label={label} value={tickerText} placeholder="Welcome back!" onChange={(v) => setField({ text: v, messages: v.split('\n') })} rows={6} />);
       fields.push(<SelectField key="speed" label="Speed" value={cfg.speed || 'medium'} options={[['slow','Slow'],['medium','Medium'],['fast','Fast']]} onChange={(v) => setField({ speed: v })} />);
       fields.push(<ToggleField key="scrollEnabled" label="Animate scroll" value={cfg.scrollEnabled !== false} onChange={(v) => setField({ scrollEnabled: v })} />);
       break;
     }
     case 'CALENDAR':
-      fields.push(<TextAreaField key="events" label="Events (date | title — one per line)" value={(cfg.events || []).map((e: any) => `${e.date || ''} | ${e.title || ''}`).join('\n')} placeholder="Today | Spring Concert&#10;Tomorrow | PTA Meeting" onChange={(v) => setField({ events: v.split('\n').filter(Boolean).map(line => { const [date, title] = line.split('|').map(s => s.trim()); return { date, title }; }) })} rows={5} />);
+      fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Upcoming Events" onChange={(v) => setField({ title: v })} />);
+      fields.push(<TextAreaField key="events" label="Events (date | title — one per line)" value={eventsForEditor(cfg.events).map((e: any) => `${e.date || ''} | ${e.title || ''}`).join('\n')} placeholder="Today | Spring Concert&#10;Tomorrow | PTA Meeting" onChange={(v) => setField({ events: v.split('\n').filter(Boolean).map(line => { const [date, title] = line.split('|').map(s => s.trim()); return { date, title }; }) })} rows={5} />);
       fields.push(<TextField key="maxEvents" label="Max events to show" value={String(cfg.maxEvents || 4)} placeholder="4" onChange={(v) => setField({ maxEvents: parseInt(v) || 4 })} />);
       break;
     case 'LUNCH_MENU':
+      fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Lunch Menu" onChange={(v) => setField({ title: v })} />);
       fields.push(<TextAreaField key="menu" label="Menu (Day: items — one per line)" value={cfg.menu || ''} placeholder="Monday: Pizza, Salad" onChange={(v) => setField({ menu: v, meals: undefined })} rows={6} />);
+      break;
+    case 'QUOTE':
+      fields.push(<TextAreaField key="quote" label="Quote" value={cfg.quote || ''} placeholder="Believe you can..." onChange={(v) => setField({ quote: v })} rows={3} />);
+      fields.push(<TextField key="author" label="Author" value={cfg.author || ''} placeholder="Theodore Roosevelt" onChange={(v) => setField({ author: v })} />);
+      break;
+    case 'STATS':
+      fields.push(<TextAreaField key="stats" label="Stats (value | label — one per line)" value={arrayForEditor(cfg.stats, DEFAULT_STATS).map((s: any) => `${s.value || ''} | ${s.label || ''}`).join('\n')} placeholder="97% | Attendance&#10;4.2 | Avg GPA" onChange={(v) => setField({ stats: v.split('\n').filter(Boolean).map(line => { const [value, label] = line.split('|').map(s => s.trim()); return { value, label }; }) })} rows={5} />);
+      break;
+    case 'MENU_ITEM':
+      fields.push(<TextField key="itemName" label="Item name" value={cfg.itemName || ''} placeholder="Today's Special" onChange={(v) => setField({ itemName: v })} />);
+      fields.push(<TextAreaField key="description" label="Description" value={cfg.description || ''} placeholder="Fresh, seasonal, made from scratch." onChange={(v) => setField({ description: v })} rows={3} />);
+      fields.push(<TextField key="price" label="Price" value={cfg.price || ''} placeholder="$4.50" onChange={(v) => setField({ price: v })} />);
+      fields.push(<TextField key="allergens" label="Allergens (comma separated)" value={Array.isArray(cfg.allergens) ? cfg.allergens.join(', ') : ''} placeholder="V, GF" onChange={(v) => setField({ allergens: v.split(',').map(s => s.trim()).filter(Boolean) })} />);
+      break;
+    case 'SCOREBOARD':
+      fields.push(<TextField key="status" label="Status" value={cfg.status || ''} placeholder="Tonight" onChange={(v) => setField({ status: v })} />);
+      fields.push(<TextField key="period" label="Period / time" value={cfg.period || ''} placeholder="1ST · 8:42" onChange={(v) => setField({ period: v })} />);
+      fields.push(<TextField key="homeName" label="Home team" value={cfg.homeName || ''} placeholder="Eagles" onChange={(v) => setField({ homeName: v })} />);
+      fields.push(<TextField key="awayName" label="Away team" value={cfg.awayName || ''} placeholder="Cougars" onChange={(v) => setField({ awayName: v })} />);
+      fields.push(<TextField key="homeScore" label="Home score" value={String(cfg.homeScore ?? '')} placeholder="0" onChange={(v) => setField({ homeScore: parseInt(v) || 0 })} />);
+      fields.push(<TextField key="awayScore" label="Away score" value={String(cfg.awayScore ?? '')} placeholder="0" onChange={(v) => setField({ awayScore: parseInt(v) || 0 })} />);
+      break;
+    case 'SCHEDULE_GRID':
+      fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Today's Schedule" onChange={(v) => setField({ title: v })} />);
+      fields.push(<TextAreaField key="periods" label="Periods (num | name | time — one per line)" value={arrayForEditor(cfg.periods, DEFAULT_PERIODS).map((p: any) => `${p.num || ''} | ${p.name || ''} | ${p.time || ''}`).join('\n')} placeholder="1 | Homeroom | 8:00 - 8:15" onChange={(v) => setField({ periods: v.split('\n').filter(Boolean).map(line => { const [num, name, time] = line.split('|').map(s => s.trim()); return { num, name, time }; }) })} rows={8} />);
+      break;
+    case 'ATTENDANCE':
+      fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Attendance Today" onChange={(v) => setField({ title: v })} />);
+      fields.push(<TextField key="presentPct" label="Present percentage" value={String(cfg.presentPct ?? '')} placeholder="97" onChange={(v) => setField({ presentPct: parseFloat(v) || 0 })} />);
+      fields.push(<TextField key="totalStudents" label="Total students" value={String(cfg.totalStudents ?? '')} placeholder="624" onChange={(v) => setField({ totalStudents: parseInt(v) || 0 })} />);
+      break;
+    case 'BIRTHDAYS':
+      fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Happy Birthday!" onChange={(v) => setField({ title: v })} />);
+      fields.push(<TextAreaField key="birthdays" label="Names (one per line)" value={arrayForEditor(cfg.birthdays, DEFAULT_BIRTHDAYS).join('\n')} placeholder="Morgan P.&#10;Samir K." onChange={(v) => setField({ birthdays: v.split('\n').filter(Boolean) })} rows={5} />);
+      break;
+    case 'HONOR_ROLL':
+      fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Honor Roll" onChange={(v) => setField({ title: v })} />);
+      fields.push(<TextAreaField key="students" label="Students (name | reason — one per line)" value={arrayForEditor(cfg.students, DEFAULT_STUDENTS).map((s: any) => `${s.name || ''} | ${s.reason || ''}`).join('\n')} placeholder="Jordan Lee | Perfect attendance" onChange={(v) => setField({ students: v.split('\n').filter(Boolean).map(line => { const [name, reason] = line.split('|').map(s => s.trim()); return { name, reason }; }) })} rows={5} />);
       break;
     case 'LOGO':
       fields.push(<TextField key="initials" label="Initials" value={cfg.initials || ''} placeholder="SE" onChange={(v) => setField({ initials: v })} />);
@@ -813,10 +943,11 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="refreshIntervalMs" label="Auto-refresh every (ms, 0 = never)" value={String(cfg.refreshIntervalMs ?? 0)} placeholder="0" onChange={(v) => setField({ refreshIntervalMs: parseInt(v) || 0 })} />);
       break;
     case 'BELL_SCHEDULE':
+      fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Bell Schedule" onChange={(v) => setField({ title: v })} />);
       fields.push(
         <BellScheduleEditor
           key="schedule"
-          value={(cfg.schedule || []) as Array<{ label: string; start: string; end?: string }>}
+          value={bellScheduleForEditor(cfg.schedule)}
           onChange={(schedule) => setField({ schedule })}
         />
       );
@@ -1816,11 +1947,16 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
 }
 
 function TextField({ label, value, placeholder, onChange }: { label: string; value: string; placeholder?: string; onChange: (v: string) => void }) {
+  const [local, setLocal] = useState(value);
+  useEffect(() => { setLocal(value); }, [value]);
   return (
     <div>
       <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
-      <input type="text" defaultValue={value} placeholder={placeholder}
-        onBlur={(e) => onChange(e.target.value)}
+      <input
+        type="text"
+        value={local}
+        placeholder={placeholder}
+        onChange={(e) => { setLocal(e.target.value); onChange(e.target.value); }}
         className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm" />
     </div>
   );
@@ -3219,22 +3355,22 @@ function BellScheduleEditor({ value, onChange }: { value: Array<{ label: string;
           <div key={idx} className="bg-white border border-slate-200 rounded-lg p-2 flex items-center gap-1.5 shadow-sm">
             <input
               type="text"
-              defaultValue={p.label}
-              onBlur={(e) => update(idx, { label: e.target.value })}
+              value={p.label}
+              onChange={(e) => update(idx, { label: e.target.value })}
               placeholder="Period 1"
               className="flex-1 px-2 py-1 text-xs font-semibold rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
             <input
               type="time"
-              defaultValue={p.start}
-              onBlur={(e) => update(idx, { start: e.target.value })}
+              value={p.start}
+              onChange={(e) => update(idx, { start: e.target.value })}
               className="px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
             <span className="text-[10px] text-slate-400">→</span>
             <input
               type="time"
-              defaultValue={p.end || ''}
-              onBlur={(e) => update(idx, { end: e.target.value || undefined })}
+              value={p.end || ''}
+              onChange={(e) => update(idx, { end: e.target.value || undefined })}
               className="px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
             <button

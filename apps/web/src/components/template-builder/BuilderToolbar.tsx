@@ -236,7 +236,7 @@ function SaveStatusChip({
   }
   if (isDirty) {
     return (
-      <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded" role="status" title="Auto-saves after 15s idle">
+      <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded" role="status" title="Click Save to persist changes">
         Unsaved
       </span>
     );

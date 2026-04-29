@@ -332,6 +332,7 @@ function TickerVariant({ speed, text, colors }: { speed: number; text?: string; 
     <div className="absolute inset-0 flex items-center overflow-hidden">
       <div
         className="whitespace-nowrap text-[6vmin] font-black tracking-tight"
+        data-inline-edit-pause
         style={{
           color: palette[0],
           animation: `dw-tickerScroll ${30 / speed}s linear infinite`,
@@ -339,7 +340,8 @@ function TickerVariant({ speed, text, colors }: { speed: number; text?: string; 
         }}
         aria-hidden
       >
-        {display} &nbsp;&nbsp;·&nbsp;&nbsp; {display}
+        <span data-field="text">{display}</span>
+        <span aria-hidden="true"> &nbsp;&nbsp;·&nbsp;&nbsp; {display}</span>
       </div>
     </div>
   );
@@ -355,6 +357,8 @@ function NeonBuzzVariant({ text, glowColor }: { text?: string; glowColor?: strin
       aria-hidden
     >
       <span
+        data-field="text"
+        data-inline-edit-pause
         className="text-[14vmin] font-black tracking-widest"
         style={{
           color: '#fff',

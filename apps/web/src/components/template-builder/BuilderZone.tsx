@@ -153,6 +153,9 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
     // can group multiple fields under one section.
     const dotIdx = fieldKey.indexOf('.');
     const sectionKey = dotIdx > 0 ? fieldKey.slice(0, dotIdx) : fieldKey;
+    const originalText = target.innerText;
+    const pauseEl = target.closest('[data-inline-edit-pause]') as HTMLElement | null;
+    const previousAnimationPlayState = pauseEl?.style.animationPlayState ?? '';
     try {
       window.dispatchEvent(new CustomEvent('template-edit-field', {
         detail: { zoneId: zone.id, fieldKey, sectionKey },
@@ -186,6 +189,7 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
     target.style.userSelect = 'text';
     (target.style as any).webkitUserSelect = 'text';
     (target.style as any).caretColor = 'auto';
+    if (pauseEl) pauseEl.style.animationPlayState = 'paused';
     target.focus();
     try {
       const range = document.createRange();
@@ -197,7 +201,7 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
     const commit = () => {
       target.removeEventListener('blur', commit);
       target.removeEventListener('keydown', onKey);
-      const newValue = target.innerText.trim();
+      const newValue = target.innerText.replace(/\u00a0/g, ' ');
       target.removeAttribute('contenteditable');
       target.style.outline = '';
       target.style.outlineOffset = '';
@@ -207,6 +211,7 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       target.style.userSelect = '';
       (target.style as any).webkitUserSelect = '';
       (target.style as any).caretColor = '';
+      if (pauseEl) pauseEl.style.animationPlayState = previousAnimationPlayState;
       onConfigChange(zone.id, { [fieldKey]: newValue });
     };
     const cancel = () => {
@@ -221,7 +226,8 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       target.style.userSelect = '';
       (target.style as any).webkitUserSelect = '';
       (target.style as any).caretColor = '';
-      target.innerText = (zone.defaultConfig as any)?.[fieldKey] ?? target.innerText;
+      if (pauseEl) pauseEl.style.animationPlayState = previousAnimationPlayState;
+      target.innerText = originalText;
     };
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); commit(); }
