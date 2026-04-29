@@ -3064,8 +3064,20 @@ function PlayerPage() {
                 full picture without opening a click-overlay. Two-
                 column card under the 3 device cards. */}
             <div className="w-full max-w-4xl mb-8 grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Cache column */}
-              <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+              {/* Cache column.
+                  2026-04-29 layout hardening: switched the row layout
+                  from `flex justify-between` (which collapsed labels
+                  into values on the Goodview G43 4K-portrait panel)
+                  to a 2-col grid with explicit `gap`. Tailwind's grid
+                  with named gap is supported back to Chromium 84,
+                  flex-justify-between with text-runs needs Chromium
+                  and flexbox to both behave correctly. Grid is the
+                  more reliable primitive here. Also bumped the border
+                  from slate-100 to slate-200 + added a subtle
+                  shadow-md so the cards are visible against a white
+                  page background even when shadow-sm is squashed by
+                  panel rendering. */}
+              <div className="bg-white rounded-2xl p-5 shadow-md border border-slate-200">
                 <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
                   <HardDrive className="w-3.5 h-3.5" /> Cache
                 </div>
@@ -3075,17 +3087,17 @@ function PlayerPage() {
                   <p className="text-xs text-slate-400">Service worker unsupported on this WebView.</p>
                 ) : (
                   <div className="space-y-2 text-xs">
-                    <div className="flex justify-between">
+                    <div className="grid grid-cols-[auto_1fr] gap-x-3 items-center">
                       <span className="text-slate-500">Playlist assets</span>
-                      <span className="font-mono font-semibold text-slate-700">
+                      <span className="font-mono font-semibold text-slate-700 text-right">
                         {cacheStatus.playlist.count} · {formatBytes(cacheStatus.playlist.bytes)}
                       </span>
                     </div>
-                    <div className="flex justify-between items-center">
+                    <div className="grid grid-cols-[auto_1fr] gap-x-3 items-center">
                       <span className="text-slate-500 flex items-center gap-1.5">
                         <span aria-hidden>🛡️</span> Emergency assets
                       </span>
-                      <span className={`font-mono font-semibold ${cacheStatus.emergency.count > 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
+                      <span className={`font-mono font-semibold text-right ${cacheStatus.emergency.count > 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
                         {cacheStatus.emergency.count > 0
                           ? `${cacheStatus.emergency.count} · ${formatBytes(cacheStatus.emergency.bytes)} ✓`
                           : 'NONE — will fetch from network'}
@@ -3095,8 +3107,9 @@ function PlayerPage() {
                 )}
               </div>
 
-              {/* Activity / services column */}
-              <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+              {/* Activity / services column. Same grid + shadow
+                  hardening as Cache above. */}
+              <div className="bg-white rounded-2xl p-5 shadow-md border border-slate-200">
                 <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
                   <Cpu className="w-3.5 h-3.5" /> Activity
                 </div>
@@ -3106,27 +3119,27 @@ function PlayerPage() {
                       that to the whit screen". The legacy click-
                       overlay had Playlist + Slide rows; folding them
                       onto the Activity card here. */}
-                  <div className="flex justify-between gap-2 min-w-0">
-                    <span className="text-slate-500 shrink-0">Playlist</span>
+                  <div className="grid grid-cols-[auto_1fr] gap-x-3 items-center">
+                    <span className="text-slate-500">Playlist</span>
                     <span className="font-medium text-slate-700 truncate text-right">
                       {playlist?.name || 'None'}
                     </span>
                   </div>
                   {sorted.length > 0 && !playbackStopped && (
-                    <div className="flex justify-between">
+                    <div className="grid grid-cols-[auto_1fr] gap-x-3 items-center">
                       <span className="text-slate-500">Slide</span>
-                      <span className="font-mono font-semibold text-slate-700">
+                      <span className="font-mono font-semibold text-slate-700 text-right">
                         {(currentIndex % sorted.length) + 1} / {sorted.length}
                       </span>
                     </div>
                   )}
-                  <div className="flex justify-between">
+                  <div className="grid grid-cols-[auto_1fr] gap-x-3 items-center">
                     <span className="text-slate-500">Last sync</span>
-                    <span className="font-medium text-slate-700">{lastSync || 'Never'}</span>
+                    <span className="font-medium text-slate-700 text-right">{lastSync || 'Never'}</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="grid grid-cols-[auto_1fr] gap-x-3 items-center">
                     <span className="text-slate-500">Heartbeat</span>
-                    <span className="font-medium text-emerald-700 flex items-center gap-1.5">
+                    <span className="font-medium text-emerald-700 flex items-center gap-1.5 justify-end">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                       Running
                     </span>
@@ -3134,21 +3147,21 @@ function PlayerPage() {
                   {/* Last OTA state — populated by the APK's OtaUpdateWorker.
                       When idle or unset, render '—'. */}
                   {otaProgress ? (
-                    <div className="flex justify-between">
+                    <div className="grid grid-cols-[auto_1fr] gap-x-3 items-center">
                       <span className="text-slate-500">OTA</span>
-                      <span className="font-medium text-indigo-700">In progress…</span>
+                      <span className="font-medium text-indigo-700 text-right">In progress…</span>
                     </div>
                   ) : (
-                    <div className="flex justify-between">
+                    <div className="grid grid-cols-[auto_1fr] gap-x-3 items-center">
                       <span className="text-slate-500">OTA worker</span>
-                      <span className="font-medium text-slate-700">Scheduled (every 6h)</span>
+                      <span className="font-medium text-slate-700 text-right">Scheduled (every 6h)</span>
                     </div>
                   )}
                   {/* Web bundle build SHA — useful when verifying a fresh
                       Vercel deploy actually loaded on this kiosk. */}
-                  <div className="flex justify-between">
+                  <div className="grid grid-cols-[auto_1fr] gap-x-3 items-center">
                     <span className="text-slate-500">Web build</span>
-                    <span className="font-mono text-[10px] text-slate-600">
+                    <span className="font-mono text-[10px] text-slate-600 text-right">
                       {(process.env.NEXT_PUBLIC_BUILD_SHA || '').slice(0, 7) || 'dev'}
                     </span>
                   </div>
