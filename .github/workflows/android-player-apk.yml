@@ -144,9 +144,22 @@ jobs:
       - name: Locate + version-rename APK
         id: locate
         run: |
-          APK=$(find apps/player/app/build/outputs/apk/debug -name '*.apk' | head -1)
+          # PREFER the universal APK (all ABIs in one — installs on
+          # arm64-v8a, armeabi-v7a, x86_64). Without this, alphabetical
+          # `head -1` picks app-arm64-v8a-debug.apk, which fails to
+          # install on older armeabi-v7a hardware (Rockchip RK3288 etc.)
+          # with INSTALL_FAILED_NO_MATCHING_ABIS. Operator (2026-04-29):
+          # "having issues installing our apk on other screens".
+          APK=$(find apps/player/app/build/outputs/apk/debug -name '*universal*.apk' | head -1)
           if [ -z "$APK" ]; then
-            echo "::error::No APK was produced"
+            # Fallback to arm64 only if universal wasn't produced (would
+            # be a build config regression — `isUniversalApk = true` in
+            # app/build.gradle.kts should always produce the universal
+            # variant).
+            APK=$(find apps/player/app/build/outputs/apk/debug -name '*arm64*.apk' | head -1)
+          fi
+          if [ -z "$APK" ]; then
+            echo "::error::No APK was produced (neither universal nor arm64-v8a)"
             exit 1
           fi
           # Extract versionName from build.gradle.kts so operators can
@@ -190,7 +203,14 @@ jobs:
         # Manager APK presence is checked explicitly below.
         continue-on-error: true
         run: |
-          MGR_APK=$(find apps/player/manager/build/outputs/apk/debug -name '*.apk' 2>/dev/null | head -1 || true)
+          # Prefer universal Manager APK — same ABI-coverage rationale
+          # as Player's locate step above. Manager's self-update path
+          # downloads this APK; armeabi-v7a screens need the universal
+          # variant or self-update fails on them too.
+          MGR_APK=$(find apps/player/manager/build/outputs/apk/debug -name '*universal*.apk' 2>/dev/null | head -1 || true)
+          if [ -z "$MGR_APK" ]; then
+            MGR_APK=$(find apps/player/manager/build/outputs/apk/debug -name '*arm64*.apk' 2>/dev/null | head -1 || true)
+          fi
           if [ -z "$MGR_APK" ]; then
             echo "no-manager-apk=true" >> $GITHUB_OUTPUT
             echo "Manager APK not found — module may not have built. Skipping upload."
