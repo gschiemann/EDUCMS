@@ -3165,6 +3165,38 @@ function PlayerPage() {
                       {(process.env.NEXT_PUBLIC_BUILD_SHA || '').slice(0, 7) || 'dev'}
                     </span>
                   </div>
+                  {/* 2026-04-29 — visible WebView Chromium version
+                      diagnostic. Operator suspects G43's runtime
+                      compatibility is the root cause of broken
+                      splash + non-advancing playlist; this exposes
+                      the actual Chromium version + Android version
+                      so we can confirm or rule out before more
+                      patches. Parses out the Chrome/N.N.N.N segment
+                      and the Android N segment from navigator.userAgent.
+                      Falls back to the full UA string if neither
+                      parses (so we still see something useful). */}
+                  {(() => {
+                    if (typeof navigator === 'undefined') return null;
+                    const ua = navigator.userAgent || '';
+                    const chromeMatch = ua.match(/Chrome\/([\d.]+)/);
+                    const androidMatch = ua.match(/Android\s*([\d.]+)/);
+                    const chrome = chromeMatch ? chromeMatch[1] : null;
+                    const android = androidMatch ? androidMatch[1] : null;
+                    return (
+                      <>
+                        <div className="grid grid-cols-[auto_1fr] gap-x-3 items-center">
+                          <span className="text-slate-500">Chromium</span>
+                          <span className={`font-mono text-[10px] text-right ${chrome && parseInt(chrome.split('.')[0], 10) < 90 ? 'text-rose-700 font-bold' : 'text-slate-600'}`}>
+                            {chrome || 'unknown'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-[auto_1fr] gap-x-3 items-center">
+                          <span className="text-slate-500">Android</span>
+                          <span className="font-mono text-[10px] text-slate-600 text-right">{android || 'unknown'}</span>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
