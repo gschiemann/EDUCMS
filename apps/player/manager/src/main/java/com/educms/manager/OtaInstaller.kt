@@ -37,7 +37,13 @@ object OtaInstaller {
      * PackageInstaller will reject any mismatch (defends against
      * an attacker swapping a malicious APK into the staging dir).
      */
-    fun installApk(ctx: Context, apkFile: File, targetPackage: String) {
+    fun installApk(
+        ctx: Context,
+        apkFile: File,
+        targetPackage: String,
+        pendingNewVc: Int? = null,
+        pendingPrevVc: Int? = null,
+    ) {
         if (!apkFile.exists() || apkFile.length() == 0L) {
             Log.e(TAG, "APK file missing or empty: ${apkFile.absolutePath}")
             return
@@ -84,6 +90,8 @@ object OtaInstaller {
                     action = ACTION_INSTALL_RESULT
                     putExtra(EXTRA_SESSION_ID, sessionId)
                     putExtra(EXTRA_TARGET_PACKAGE, targetPackage)
+                    if (pendingNewVc != null) putExtra(EXTRA_PENDING_NEW_VC, pendingNewVc)
+                    if (pendingPrevVc != null) putExtra(EXTRA_PENDING_PREV_VC, pendingPrevVc)
                 }
                 val statusPi = PendingIntent.getBroadcast(
                     ctx,
@@ -105,6 +113,8 @@ object OtaInstaller {
     const val ACTION_INSTALL_RESULT = "com.educms.manager.OTA_INSTALL_RESULT"
     const val EXTRA_SESSION_ID = "sessionId"
     const val EXTRA_TARGET_PACKAGE = "targetPackage"
+    const val EXTRA_PENDING_NEW_VC = "pendingNewVc"
+    const val EXTRA_PENDING_PREV_VC = "pendingPrevVc"
 
     /**
      * Discover which Player variant is actually installed on this device.

@@ -85,6 +85,48 @@ function readCachedManifest(): { at: number; m: any } | null {
 }
 
 /**
+ * Legacy manifests did not include playlist item ids, so older kiosks
+ * fell back to raw URLs as the playback identity. Signed/CDN URLs can
+ * change between polls even when the actual content did not, which
+ * resets the carousel to item 1. Keep only the stable part as a last
+ * resort until every API payload carries item_id/asset_id/asset_hash.
+ */
+function stableManifestUrlKey(rawUrl: string): string {
+  if (!rawUrl) return '';
+  try {
+    const base = typeof window !== 'undefined' ? window.location.origin : 'https://educms.local';
+    const url = new URL(rawUrl, base);
+    [
+      'token',
+      'signature',
+      'expires',
+      'expires_at',
+      'X-Amz-Signature',
+      'X-Amz-Expires',
+      'X-Amz-Credential',
+      'X-Amz-Date',
+      'X-Amz-Security-Token',
+      'Policy',
+      'Key-Pair-Id',
+      'AWSAccessKeyId',
+      'GoogleAccessId',
+      'Expires',
+      'Signature',
+      'download',
+      'cache',
+      'cacheBust',
+      'cb',
+      't',
+      '_',
+    ].forEach((key) => url.searchParams.delete(key));
+    url.hash = '';
+    return `${url.origin}${url.pathname}${url.search}`;
+  } catch {
+    return String(rawUrl).split('#')[0];
+  }
+}
+
+/**
  * Cache the last-known emergency override. CRITICAL for life-safety: if the
  * device power-cycles mid-emergency or loses network during the alert, we can
  * still show the cached emergency on next boot until ALL_CLEAR or a fresh
@@ -1485,18 +1527,26 @@ function PlayerPage() {
       try {
         const urls = new Set<string>();
         const playlistAssets: Array<{ url: string }> = [];
+        const playlistAssetKeys: string[] = [];
         (manifest.playlists || []).forEach((mp: any) => {
           (mp.items || []).forEach((item: any) => {
             const u = item.url;
             if (u && !urls.has(u)) {
               urls.add(u);
               playlistAssets.push({ url: u.startsWith('http') ? u : `${getApiRoot()}${u}` });
+              playlistAssetKeys.push(
+                item.item_id ||
+                item.asset_id ||
+                item.asset_hash ||
+                stableManifestUrlKey(u) ||
+                u,
+              );
             }
           });
         });
         if (playlistAssets.length > 0) {
           // Stable hash of the URL set so re-pushes are skipped when nothing changed.
-          const setHash = playlistAssets.map(a => a.url).sort().join('|');
+          const setHash = playlistAssetKeys.sort().join('|');
           if (setHash !== lastPlaylistSetHashRef.current) {
             lastPlaylistSetHashRef.current = setHash;
             // Kick the SW pre-cache AND seed the splash with the total so
@@ -1548,16 +1598,20 @@ function PlayerPage() {
         const combinedItems: any[] = [];
         manifest.playlists.forEach((mp: any) => {
           mp.items.forEach((item: any, itemIndex: number) => {
+            const itemIdentity =
+              item.item_id ||
+              item.asset_id ||
+              item.asset_hash ||
+              stableManifestUrlKey(item.url) ||
+              `${itemIndex}`;
             combinedItems.push({
-              // Stable deterministic id. Before: `item.url + Math.random()`
-              // minted a new id on every poll, which guaranteed React's
-              // key churn (remount on each update), and combined with
-              // setCurrentIndex(0) below re-triggered the slide-cycle
-              // effect on every 5-10s manifest poll. The carousel
-              // never got past slide 1 or 2 before being yanked back.
-              id: `${mp.id || mp.name || 'pl'}:${item.sequence ?? itemIndex}:${item.url}`,
+              // Stable deterministic id. Prefer server-side row ids; only
+              // fall back to a normalized URL for legacy manifests.
+              id: `${mp.id || mp.name || 'pl'}:${item.sequence ?? itemIndex}:${itemIdentity}`,
+              manifestKey: itemIdentity,
               durationMs: item.duration_ms,
               sequenceOrder: item.sequence ?? itemIndex,
+              transitionType: item.transition_type ?? undefined,
               asset: {
                 fileUrl: item.url,
                 // Use the manifest's mime_type when available (always set
@@ -1583,7 +1637,7 @@ function PlayerPage() {
           // don't reset currentIndex, don't fire the slide-cycle effect.
           // That's what keeps the carousel advancing through items 3-7.
           const newSig = combinedItems
-            .map((i: any) => `${i.sequenceOrder}|${i.durationMs}|${i.asset.fileUrl}`)
+            .map((i: any) => `${i.sequenceOrder}|${i.durationMs}|${i.manifestKey}`)
             .join('||');
           if (newSig === currentPlaylistSigRef.current) {
             return true; // identical content — keep index + playlist as-is
@@ -2892,7 +2946,18 @@ function PlayerPage() {
                 }}
               />;
             }
-            return <img key={item.id} src={resUrl} alt="" className={classes} />;
+            return (
+              <img
+                key={item.id}
+                src={resUrl}
+                alt=""
+                className={classes}
+                onError={() => {
+                  console.warn('[Player] image error, skipping:', resUrl);
+                  if (isActive) setCurrentIndex(prev => prev + 1);
+                }}
+              />
+            );
           })}
         </div>
       ) : (

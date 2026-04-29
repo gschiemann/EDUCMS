@@ -1423,10 +1423,14 @@ export class ScreensController {
               id: emergencyPlaylist.id,
               name: emergencyPlaylist.name,
               items: emergencyPlaylist.items.map(item => ({
+                item_id: item.id,
+                asset_id: item.assetId,
+                asset_hash: item.asset.fileHash ?? null,
                 url: item.asset.fileUrl,
                 duration_ms: item.durationMs,
                 sequence: item.sequenceOrder,
                 mime_type: item.asset.mimeType ?? null,
+                transition_type: item.transitionType ?? null,
               }))
             }];
           }
@@ -1451,10 +1455,14 @@ export class ScreensController {
             id: `screen-asset-${emergencyTypeKey.toLowerCase()}`,
             name: `${emergencyTypeKey} (custom asset)`,
             items: [{
+              item_id: `screen-asset-${screen.id}-${emergencyTypeKey.toLowerCase()}`,
+              asset_id: null,
+              asset_hash: null,
               url,
               duration_ms: 60_000,  // 60s default for a single-asset emergency loop
               sequence: 0,
               mime_type: mime,
+              transition_type: null,
             }],
           }];
         }
@@ -1646,6 +1654,9 @@ export class ScreensController {
         },
       } : {}),
       items: s.playlist.items.map(pi => ({
+        item_id: pi.id,
+        asset_id: pi.assetId,
+        asset_hash: pi.asset.fileHash ?? null,
         url: pi.asset.fileUrl,
         duration_ms: pi.durationMs,
         sequence: pi.sequenceOrder,
@@ -1658,6 +1669,7 @@ export class ScreensController {
         // for URL assets via /assets/url, 'application/pdf' for PDFs,
         // 'video/*' or 'image/*' for uploads.
         mime_type: pi.asset.mimeType ?? null,
+        transition_type: pi.transitionType ?? null,
       }))
     }));
 

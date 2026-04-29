@@ -19,8 +19,8 @@ import android.content.Context
  * Stored as plain SharedPreferences keys under "edu_manager_state".
  *
  * Expected lifecycle:
- *   1. OtaWorker calls beginInstall(newVc, prevVc) before commit
- *   2. PackageInstaller commits, Player restarts with newVc
+ *   1. PackageInstaller reports STATUS_SUCCESS to OtaInstallReceiver
+ *   2. OtaInstallReceiver calls beginInstall(newVc, prevVc), then relaunches Player
  *   3a. Within grace window, Player heartbeat lands → ManagerApp's
  *       Receiver (or WatchdogService) calls promoteToGood()
  *   3b. Grace window expires with no heartbeat → WatchdogService
@@ -34,8 +34,9 @@ object InstallState {
     private const val KEY_PENDING_AT_MS = "pending_install_at_ms"
     private const val KEY_PENDING_PREV_VC = "pending_install_prev_vc"
 
-    /** 90 seconds — heartbeat cadence is 30s; 3 missed heartbeats = bad. */
-    const val GRACE_WINDOW_MS = 90_000L
+    // 5 minutes; slow Goodview boards need time to install, relaunch,
+    // run WebView/React, register, and emit their first heartbeat.
+    const val GRACE_WINDOW_MS = 300_000L
 
     fun beginInstall(ctx: Context, newVc: Int, prevVc: Int) {
         prefs(ctx).edit()

@@ -6,7 +6,6 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.educms.manager.rollback.ApkArchive
-import com.educms.manager.rollback.InstallState
 import com.educms.manager.rollback.QuarantineList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -185,15 +184,11 @@ class OtaWorker(
                 ApkArchive.archivePackage(applicationContext, installedPlayer.packageName)
             }
 
-            // Mark the install as pending. WatchdogService will watch
-            // for a heartbeat from this versionCode within the grace
-            // window; missed → trigger rollback (no-op if bootstrap
-            // since prevVc=0 has no archived APK).
-            InstallState.beginInstall(
-                applicationContext,
-                newVc = latestVc,
-                prevVc = currentVc,
-            )
+            // OtaInstallReceiver starts the post-install watchdog timer
+            // only after PackageInstaller reports STATUS_SUCCESS. Starting
+            // it here is too early for beta/non-device-owner kiosks because
+            // Android may sit at STATUS_PENDING_USER_ACTION waiting for the
+            // operator to confirm the system install prompt.
 
             // Resolve the package id declared inside the downloaded APK.
             // This must match what PackageInstaller expects — it rejects a
@@ -228,7 +223,13 @@ class OtaWorker(
 
             // Install — silent if DEVICE_OWNER, prompt-fallback otherwise.
             reportOtaState(apiRoot, fp, "INSTALLING", null, "v$latestVn")
-            OtaInstaller.installApk(applicationContext, outFile, apkPkg)
+            OtaInstaller.installApk(
+                applicationContext,
+                outFile,
+                apkPkg,
+                pendingNewVc = latestVc,
+                pendingPrevVc = currentVc,
+            )
             // INSTALLED state is reported implicitly by Player's NEXT
             // heartbeat after restart (server compares prior !=
             // current versionName). Don't report INSTALLED here — the

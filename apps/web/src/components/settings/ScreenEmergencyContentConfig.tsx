@@ -22,7 +22,7 @@
  * dropdown.
  */
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Loader2, Upload, Trash2 } from 'lucide-react';
 import {
   useUpdateScreenEmergencyContent,
@@ -77,6 +77,17 @@ export function ScreenEmergencyContentConfig({
   // upload spot's spinner is independent.
   const [uploadingType, setUploadingType] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [localScreenPatch, setLocalScreenPatch] = useState<Partial<FloorPlanScreen>>({});
+
+  useEffect(() => {
+    setLocalScreenPatch({});
+    setUploadError(null);
+  }, [screenId]);
+
+  const displayScreen = useMemo(
+    () => ({ ...screen, ...localScreenPatch }) as FloorPlanScreen,
+    [screen, localScreenPatch],
+  );
 
   const apiKeys = (type: EmergencyTypeRow, orient: Orient) => {
     if (orient === 'landscape') {
@@ -85,9 +96,18 @@ export function ScreenEmergencyContentConfig({
     return { playlist: `${type.short}PortraitPlaylistId`, asset: `${type.short}PortraitAssetUrl` };
   };
 
+  const screenKeys = (type: EmergencyTypeRow, orient: Orient) => {
+    if (orient === 'landscape') {
+      return { playlist: type.playlistKey, asset: type.assetKey };
+    }
+    return { playlist: type.portraitPlaylistKey, asset: type.portraitAssetKey };
+  };
+
   const onUploadCustom = async (type: EmergencyTypeRow, orient: Orient, file: File) => {
     setUploadError(null);
     setUploadingType(`${type.short}-${orient}`);
+    const k = apiKeys(type, orient);
+    const screenK = screenKeys(type, orient);
     try {
       const fd = new FormData();
       fd.append('file', file);
@@ -102,26 +122,51 @@ export function ScreenEmergencyContentConfig({
       });
       if (!res.ok) throw new Error(`Upload failed (${res.status})`);
       const { url } = await res.json();
-      const k = apiKeys(type, orient);
       // Setting a custom asset clears any playlist override for the
       // same (type, orientation) — single source of truth.
-      updateMutation.mutate({
+      setLocalScreenPatch((prev) => ({
+        ...prev,
+        [screenK.asset]: url,
+        [screenK.playlist]: null,
+      }));
+      await updateMutation.mutateAsync({
         screenId,
         patch: { [k.asset]: url, [k.playlist]: null } as any,
       });
     } catch (err: any) {
+      setLocalScreenPatch((prev) => ({
+        ...prev,
+        [screenK.asset]: (screen[screenK.asset] as any) ?? null,
+        [screenK.playlist]: (screen[screenK.playlist] as any) ?? null,
+      }));
       setUploadError(err?.message || 'Upload failed — try a smaller file');
     } finally {
       setUploadingType(null);
     }
   };
 
-  const onClear = (type: EmergencyTypeRow, orient: Orient) => {
+  const onClear = async (type: EmergencyTypeRow, orient: Orient) => {
+    setUploadError(null);
     const k = apiKeys(type, orient);
-    updateMutation.mutate({
-      screenId,
-      patch: { [k.playlist]: null, [k.asset]: null } as any,
-    });
+    const screenK = screenKeys(type, orient);
+    setLocalScreenPatch((prev) => ({
+      ...prev,
+      [screenK.playlist]: null,
+      [screenK.asset]: null,
+    }));
+    try {
+      await updateMutation.mutateAsync({
+        screenId,
+        patch: { [k.playlist]: null, [k.asset]: null } as any,
+      });
+    } catch (err: any) {
+      setLocalScreenPatch((prev) => ({
+        ...prev,
+        [screenK.playlist]: (screen[screenK.playlist] as any) ?? null,
+        [screenK.asset]: (screen[screenK.asset] as any) ?? null,
+      }));
+      setUploadError(err?.message || "Couldn't clear asset");
+    }
   };
 
   return (
@@ -153,8 +198,8 @@ export function ScreenEmergencyContentConfig({
 
               <div className="grid grid-cols-2 gap-2">
                 {orientations.map(({ orient, icon, label }) => {
-                  const k = apiKeys(t, orient);
-                  const assetUrl = (screen[k.asset as keyof FloorPlanScreen] as string | null | undefined) ?? '';
+                  const k = screenKeys(t, orient);
+                  const assetUrl = (displayScreen[k.asset] as string | null | undefined) ?? '';
                   const hasCustomAsset = !!assetUrl;
                   const filename = hasCustomAsset ? assetUrl.split('/').pop()?.split('?')[0] : '';
                   const uploadKey = `${t.short}-${orient}`;

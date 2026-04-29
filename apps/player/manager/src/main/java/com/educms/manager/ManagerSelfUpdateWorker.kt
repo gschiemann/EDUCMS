@@ -56,6 +56,14 @@ class ManagerSelfUpdateWorker(
             applicationContext.packageManager.canRequestPackageInstalls()
         if (!isOwner && !canPromptInstall) {
             Log.i(TAG, "skipping self-update — Manager is not DEVICE_OWNER and install permission is missing")
+            val fp = derivePlayerFingerprint() ?: deriveOwnFingerprint()
+            reportOtaState(
+                BuildConfig.API_ROOT,
+                fp,
+                "ERROR",
+                null,
+                "Manager update blocked: Install unknown apps permission is missing",
+            )
             return@withContext Result.success()
         }
         if (!isOwner) {

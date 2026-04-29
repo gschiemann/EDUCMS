@@ -30,13 +30,42 @@ import {
   usePlaceScreenOnFloor,
   useDetachScreenFromFloor,
   useScreens,
-  useScreenEmergencyOverride,
   type FloorPlanScreen,
 } from '@/hooks/use-api';
 import { ScreenEmergencyContentConfig } from '@/components/settings/ScreenEmergencyContentConfig';
 import { appAlert, appConfirm } from '@/components/ui/app-dialog';
 
 const PIN_RADIUS = 18;
+const EMERGENCY_CONTENT_KEYS: Array<keyof FloorPlanScreen> = [
+  'emergencyLockdownPlaylistId',
+  'emergencyEvacuatePlaylistId',
+  'emergencyWeatherPlaylistId',
+  'emergencyHoldPlaylistId',
+  'emergencySecurePlaylistId',
+  'emergencyMedicalPlaylistId',
+  'emergencyLockdownAssetUrl',
+  'emergencyEvacuateAssetUrl',
+  'emergencyWeatherAssetUrl',
+  'emergencyHoldAssetUrl',
+  'emergencySecureAssetUrl',
+  'emergencyMedicalAssetUrl',
+  'emergencyLockdownPortraitPlaylistId',
+  'emergencyEvacuatePortraitPlaylistId',
+  'emergencyWeatherPortraitPlaylistId',
+  'emergencyHoldPortraitPlaylistId',
+  'emergencySecurePortraitPlaylistId',
+  'emergencyMedicalPortraitPlaylistId',
+  'emergencyLockdownPortraitAssetUrl',
+  'emergencyEvacuatePortraitAssetUrl',
+  'emergencyWeatherPortraitAssetUrl',
+  'emergencyHoldPortraitAssetUrl',
+  'emergencySecurePortraitAssetUrl',
+  'emergencyMedicalPortraitAssetUrl',
+];
+
+function hasConfiguredEmergencyContent(screen: FloorPlanScreen) {
+  return EMERGENCY_CONTENT_KEYS.some((key) => Boolean(screen[key]));
+}
 
 interface EmbeddedFloorPlanViewProps {
   planId: string;
@@ -52,6 +81,11 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
   const stageRef = useRef<HTMLDivElement>(null);
   const [selectedScreenId, setSelectedScreenId] = useState<string | null>(null);
   const [stageScale, setStageScale] = useState(1);
+  const [optimisticPositions, setOptimisticPositions] = useState<Record<string, { floorX: number; floorY: number }>>({});
+
+  useEffect(() => {
+    setOptimisticPositions({});
+  }, [planId]);
 
   useEffect(() => {
     if (!plan) return;
@@ -68,12 +102,56 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
     return () => window.removeEventListener('resize', update);
   }, [plan]);
 
+  const screensList = useMemo(() => {
+    return Array.isArray(allScreens) ? allScreens : (allScreens as any)?.screens || [];
+  }, [allScreens]);
+
+  const placedScreens = useMemo(() => {
+    if (!plan) return [];
+    const byId = new Set<string>();
+    const merged = plan.screens.map((screen) => {
+      byId.add(screen.id);
+      const optimistic = optimisticPositions[screen.id];
+      return optimistic ? { ...screen, ...optimistic } : screen;
+    });
+
+    for (const [screenId, position] of Object.entries(optimisticPositions)) {
+      if (byId.has(screenId)) continue;
+      const screen = screensList.find((s: any) => s.id === screenId);
+      if (screen) {
+        merged.push({ ...screen, ...position } as FloorPlanScreen);
+      }
+    }
+
+    return merged.filter((s) => s.floorX != null && s.floorY != null);
+  }, [plan, screensList, optimisticPositions]);
+
+  useEffect(() => {
+    if (!plan) return;
+    setOptimisticPositions((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [screenId, position] of Object.entries(prev)) {
+        const screen = plan.screens.find((s) => s.id === screenId);
+        if (
+          screen?.floorX != null &&
+          screen?.floorY != null &&
+          Math.abs(screen.floorX - position.floorX) < 0.5 &&
+          Math.abs(screen.floorY - position.floorY) < 0.5
+        ) {
+          delete next[screenId];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [plan]);
+
   const unplaced = useMemo(() => {
     if (!plan || !allScreens) return [];
-    const placedIds = new Set(plan.screens.filter((s) => s.floorX != null && s.floorY != null).map((s) => s.id));
-    const screensList: any[] = Array.isArray(allScreens) ? allScreens : (allScreens as any)?.screens || [];
-    return screensList.filter((s) => !placedIds.has(s.id));
-  }, [plan, allScreens]);
+    const placedIds = new Set(placedScreens.map((s) => s.id));
+    return screensList.filter((s: any) => !placedIds.has(s.id));
+  }, [plan, allScreens, screensList, placedScreens]);
 
   const onDrop = useCallback(
     async (e: React.DragEvent<HTMLDivElement>) => {
@@ -87,9 +165,15 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
       const oy = e.clientY - rect.top;
       const fx = ox / stageScale;
       const fy = oy / stageScale;
+      setOptimisticPositions((prev) => ({ ...prev, [screenId]: { floorX: fx, floorY: fy } }));
       try {
         await placeMutation.mutateAsync({ planId: plan.id, screenId, floorX: fx, floorY: fy });
       } catch (err: any) {
+        setOptimisticPositions((prev) => {
+          const next = { ...prev };
+          delete next[screenId];
+          return next;
+        });
         await appAlert({
           title: "Couldn't place screen",
           message: err?.message || 'Try again — if it keeps failing the screen may have been deleted.',
@@ -118,8 +202,6 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
       </div>
     );
   }
-
-  const placedScreens = plan.screens.filter((s) => s.floorX != null && s.floorY != null);
 
   return (
     <div className="space-y-4">
@@ -165,6 +247,16 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
                 planWidthPx={plan.widthPx}
                 planHeightPx={plan.heightPx}
                 planId={plan.id}
+                onMoveOptimistic={(screenId, position) => {
+                  setOptimisticPositions((prev) => ({ ...prev, [screenId]: position }));
+                }}
+                onMoveRejected={(screenId) => {
+                  setOptimisticPositions((prev) => {
+                    const next = { ...prev };
+                    delete next[screenId];
+                    return next;
+                  });
+                }}
                 onSelect={() => setSelectedScreenId(s.id)}
                 selected={selectedScreenId === s.id}
               />
@@ -234,6 +326,9 @@ function ScreenPin({
   screen,
   planWidthPx,
   planHeightPx,
+  planId,
+  onMoveOptimistic,
+  onMoveRejected,
   onSelect,
   selected,
 }: {
@@ -241,16 +336,17 @@ function ScreenPin({
   planWidthPx: number;
   planHeightPx: number;
   planId: string;
+  onMoveOptimistic: (screenId: string, position: { floorX: number; floorY: number }) => void;
+  onMoveRejected: (screenId: string) => void;
   onSelect: () => void;
   selected: boolean;
 }) {
   const placeMutation = usePlaceScreenOnFloor();
-  const { data: override } = useScreenEmergencyOverride(screen.id);
   const xPct = ((screen.floorX || 0) / planWidthPx) * 100;
   const yPct = ((screen.floorY || 0) / planHeightPx) * 100;
 
   const isOnline = screen.status === 'ONLINE';
-  const hasOverride = !!override;
+  const hasScreenContent = hasConfiguredEmergencyContent(screen);
 
   const onDragEnd = async (e: React.DragEvent<HTMLButtonElement>) => {
     if (!e.currentTarget) return;
@@ -261,10 +357,11 @@ function ScreenPin({
     if (ox < 0 || oy < 0 || ox > stage.width || oy > stage.height) return;
     const fx = (ox / stage.width) * planWidthPx;
     const fy = (oy / stage.height) * planHeightPx;
+    onMoveOptimistic(screen.id, { floorX: fx, floorY: fy });
     try {
-      await placeMutation.mutateAsync({ planId: '', screenId: screen.id, floorX: fx, floorY: fy });
+      await placeMutation.mutateAsync({ planId, screenId: screen.id, floorX: fx, floorY: fy });
     } catch {
-      // best-effort reposition
+      onMoveRejected(screen.id);
     }
   };
 
@@ -277,13 +374,13 @@ function ScreenPin({
       className="absolute -translate-x-1/2 -translate-y-full focus:outline-none group"
       style={{ left: `${xPct}%`, top: `${yPct}%` }}
       aria-label={`${screen.name} — ${screen.status}`}
-      title={`${screen.name}\n${screen.status}\nClick to configure`}
+      title={`${screen.name}\n${screen.status}\n${hasScreenContent ? 'Emergency content configured\n' : ''}Click to configure`}
     >
       {/* Monitor body */}
       <div
         className={`relative flex items-center justify-center rounded-md shadow-lg ring-2 transition-all group-hover:scale-110 ${
-          hasOverride
-            ? 'bg-rose-500 ring-rose-300 animate-pulse'
+          hasScreenContent
+            ? 'bg-violet-500 ring-violet-300'
             : isOnline
               ? 'bg-emerald-500 ring-emerald-300'
               : 'bg-slate-400 ring-slate-200'
@@ -291,8 +388,8 @@ function ScreenPin({
         style={{ width: PIN_RADIUS * 1.6, height: PIN_RADIUS * 1.1 }}
       >
         <Monitor className="w-3.5 h-3.5 text-white" />
-        {hasOverride && (
-          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-white border border-rose-500" />
+        {hasScreenContent && (
+          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-white border border-violet-500" />
         )}
       </div>
       {/* Stand */}

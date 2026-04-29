@@ -2634,19 +2634,19 @@ function PeriodsEditor({ value, onChange }: { value: Period[]; onChange: (next: 
         )}
         {periods.map((p, idx) => (
           <div key={idx} className="bg-white border border-slate-200 rounded-lg p-2.5 space-y-1.5 shadow-sm">
-            <div className="flex items-center gap-1.5">
+            <div className="grid grid-cols-[minmax(0,1fr)_5.75rem_1.75rem] items-center gap-1.5">
               <input
                 type="text"
-                defaultValue={p.label}
-                onBlur={(e) => update(idx, { label: e.target.value })}
+                value={p.label}
+                onChange={(e) => update(idx, { label: e.target.value })}
                 placeholder="6th Grade Lunch"
-                className="flex-1 px-2 py-1 text-xs font-semibold rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                className="min-w-0 w-full px-2 py-1 text-xs font-semibold rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
               />
               <input
                 type="time"
-                defaultValue={p.startTime}
-                onBlur={(e) => update(idx, { startTime: e.target.value })}
-                className="px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                value={p.startTime}
+                onChange={(e) => update(idx, { startTime: e.target.value })}
+                className="min-w-0 w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
               />
               <button
                 type="button"
@@ -3352,26 +3352,26 @@ function BellScheduleEditor({ value, onChange }: { value: Array<{ label: string;
       <div className="space-y-2">
         {periods.length === 0 && <p className="text-[11px] text-slate-400 italic px-1">No periods yet — add your first below.</p>}
         {periods.map((p, idx) => (
-          <div key={idx} className="bg-white border border-slate-200 rounded-lg p-2 flex items-center gap-1.5 shadow-sm">
+          <div key={idx} className="bg-white border border-slate-200 rounded-lg p-2 grid grid-cols-[minmax(0,1fr)_5.75rem_0.75rem_5.75rem_1.75rem] items-center gap-1.5 shadow-sm">
             <input
               type="text"
               value={p.label}
               onChange={(e) => update(idx, { label: e.target.value })}
               placeholder="Period 1"
-              className="flex-1 px-2 py-1 text-xs font-semibold rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="min-w-0 w-full px-2 py-1 text-xs font-semibold rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
             <input
               type="time"
               value={p.start}
               onChange={(e) => update(idx, { start: e.target.value })}
-              className="px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="min-w-0 w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
             <span className="text-[10px] text-slate-400">→</span>
             <input
               type="time"
               value={p.end || ''}
               onChange={(e) => update(idx, { end: e.target.value || undefined })}
-              className="px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="min-w-0 w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
             <button
               type="button"

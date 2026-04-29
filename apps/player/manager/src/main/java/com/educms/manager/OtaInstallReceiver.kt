@@ -36,6 +36,8 @@ class OtaInstallReceiver : BroadcastReceiver() {
         val targetPackage = intent.getStringExtra(OtaInstaller.EXTRA_TARGET_PACKAGE) ?: "(unknown)"
         val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, -999)
         val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
+        val pendingNewVc = intent.getIntExtra(OtaInstaller.EXTRA_PENDING_NEW_VC, 0)
+        val pendingPrevVc = intent.getIntExtra(OtaInstaller.EXTRA_PENDING_PREV_VC, 0)
 
         Log.i(
             TAG,
@@ -56,6 +58,14 @@ class OtaInstallReceiver : BroadcastReceiver() {
                 // The PendingResult lets the system know we're working
                 // asynchronously, keeps our process alive long enough
                 // for the retry + telemetry POST to complete.
+                if (targetPackage != context.packageName && pendingNewVc > 0) {
+                    InstallState.beginInstall(
+                        context,
+                        newVc = pendingNewVc,
+                        prevVc = pendingPrevVc,
+                    )
+                    Log.i(TAG, "post-install watchdog armed for Player vc=$pendingNewVc prev=$pendingPrevVc")
+                }
                 if (targetPackage != context.packageName) {
                     val pending = goAsync()
                     Thread {
@@ -92,6 +102,12 @@ class OtaInstallReceiver : BroadcastReceiver() {
                     reportInstallError(context, targetPackage, "Install stalled: user-action intent missing")
                     return
                 }
+                reportInstallState(
+                    context,
+                    targetPackage,
+                    "INSTALLING",
+                    "Waiting for Android install confirmation",
+                )
                 surfaceInstallPromptViaNotification(context, pendingIntent, targetPackage)
             }
             else -> {
@@ -111,6 +127,10 @@ class OtaInstallReceiver : BroadcastReceiver() {
     }
 
     private fun reportInstallError(ctx: Context, targetPackage: String, reason: String) {
+        reportInstallState(ctx, targetPackage, "ERROR", reason)
+    }
+
+    private fun reportInstallState(ctx: Context, targetPackage: String, state: String, message: String) {
         try {
             val fp = readPlayerFingerprintFromHeartbeat(ctx)
                 ?: ("android-" + (android.provider.Settings.Secure.getString(
@@ -128,8 +148,8 @@ class OtaInstallReceiver : BroadcastReceiver() {
                 readTimeout = 5_000
             }
             val payload = JSONObject().apply {
-                put("state", "ERROR")
-                put("message", "$targetPackage: ${reason.take(360)}")
+                put("state", state)
+                put("message", "$targetPackage: ${message.take(360)}")
             }
             conn.outputStream.use { it.write(payload.toString().toByteArray()) }
             conn.responseCode
