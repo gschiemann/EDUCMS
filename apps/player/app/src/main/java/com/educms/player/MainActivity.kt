@@ -16,8 +16,10 @@ import android.view.WindowManager
 import android.webkit.ConsoleMessage
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.core.view.WindowCompat
@@ -41,8 +43,10 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var webView: WebView
+    private lateinit var urlOverlayView: WebView
     private val deviceStore by lazy { DeviceStore(applicationContext) }
     private lateinit var recovery: NetworkRecoveryController
+    private var urlOverlayCurrentUrl: String? = null
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -77,6 +81,7 @@ class MainActivity : ComponentActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         webView = binding.webview
+        urlOverlayView = binding.urlOverlayView
 
         // Self-healing recovery — catches main-frame load failures and
         // 5xx errors, shows a branded "Reconnecting…" overlay, probes
@@ -109,6 +114,7 @@ class MainActivity : ComponentActivity() {
         )
 
         configureWebView(webView)
+        configureUrlOverlay(urlOverlayView)
 
         // Back-button handler. Previously this just swallowed Back so
         // operators couldn't accidentally exit. Operator (2026-04-27)
@@ -186,6 +192,10 @@ class MainActivity : ComponentActivity() {
             // after Manager is installed — at that point the popup
             // can't conflict with the gate-driven install dialog.
             maybePromptForInstallPermission()
+            // Player bundles Manager. Re-run bootstrap even when
+            // Manager is present so beta Player OTAs can carry Manager
+            // upgrades forward on non-device-owner Goodview hardware.
+            ManagerBootstrap.bootstrapIfNeeded(applicationContext)
         } else {
             // Manager NOT installed — gate the player.
             PlayerLogger.i("MainActivity", "Manager missing — showing install gate")
@@ -392,6 +402,12 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 },
+                onShowUrlOverlay = { url ->
+                    runOnUiThread { showUrlOverlay(url) }
+                },
+                onHideUrlOverlay = {
+                    runOnUiThread { hideUrlOverlay() }
+                },
             ),
             "EduCmsNative"
         )
@@ -428,6 +444,85 @@ class MainActivity : ComponentActivity() {
                 if (::recovery.isInitialized) recovery.onPageLoaded()
             },
         )
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun configureUrlOverlay(wv: WebView) {
+        wv.visibility = View.GONE
+        wv.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            databaseEnabled = true
+            mediaPlaybackRequiresUserGesture = false
+            allowFileAccess = false
+            allowContentAccess = false
+            cacheMode = WebSettings.LOAD_DEFAULT
+            loadsImagesAutomatically = true
+            useWideViewPort = true
+            loadWithOverviewMode = true
+            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            javaScriptCanOpenWindowsAutomatically = true
+            setSupportMultipleWindows(false)
+            userAgentString = "$userAgentString EduCmsUrlOverlay/${BuildConfig.VERSION_NAME} (Android ${Build.VERSION.RELEASE})"
+        }
+
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
+            @Suppress("DEPRECATION")
+            WebSettingsCompat.setForceDark(wv.settings, WebSettingsCompat.FORCE_DARK_OFF)
+        }
+
+        wv.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(cm: ConsoleMessage): Boolean {
+                Log.d("UrlOverlayWeb", "${cm.messageLevel()}: ${cm.message()} @${cm.sourceId()}:${cm.lineNumber()}")
+                return true
+            }
+
+            override fun onPermissionRequest(request: PermissionRequest) {
+                request.deny()
+            }
+        }
+
+        wv.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                return false
+            }
+
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                PlayerLogger.i("MainActivity", "URL overlay page started: ${url ?: "(unknown)"}")
+                super.onPageStarted(view, url, favicon)
+            }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                PlayerLogger.i("MainActivity", "URL overlay page finished: ${url ?: "(unknown)"}")
+                super.onPageFinished(view, url)
+            }
+        }
+    }
+
+    private fun showUrlOverlay(url: String) {
+        val cleanUrl = url.trim()
+        if (cleanUrl.isBlank()) {
+            hideUrlOverlay()
+            return
+        }
+        if (urlOverlayCurrentUrl == cleanUrl && urlOverlayView.visibility == View.VISIBLE) {
+            return
+        }
+        urlOverlayCurrentUrl = cleanUrl
+        PlayerLogger.i("MainActivity", "Showing URL overlay: $cleanUrl")
+        urlOverlayView.loadUrl(cleanUrl)
+        urlOverlayView.visibility = View.VISIBLE
+        urlOverlayView.bringToFront()
+        binding.managerGateOverlay.bringToFront()
+        binding.recoveryOverlay.bringToFront()
+    }
+
+    private fun hideUrlOverlay() {
+        if (urlOverlayView.visibility != View.VISIBLE && urlOverlayCurrentUrl == null) return
+        PlayerLogger.i("MainActivity", "Hiding URL overlay")
+        urlOverlayCurrentUrl = null
+        urlOverlayView.visibility = View.GONE
+        urlOverlayView.loadUrl("about:blank")
     }
 
     private fun loadPlayer(token: String) {
@@ -562,7 +657,13 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         webView.onResume()
+        if (::urlOverlayView.isInitialized) {
+            urlOverlayView.onResume()
+        }
         webView.resumeTimers()
+        if (::urlOverlayView.isInitialized) {
+            urlOverlayView.resumeTimers()
+        }
         // v1.0.24 — if we deep-linked to Settings to get the install
         // permission and the user is now back, re-check + auto-fire
         // bootstrap so the system Install dialog appears without a
@@ -607,12 +708,19 @@ class MainActivity : ComponentActivity() {
         // We deliberately DON'T stopLockTask here — the activity should keep
         // its pinned state while the OS swaps focus (e.g. notification panel
         // attempts). Only release on destroy / explicit unpair.
+        if (::urlOverlayView.isInitialized) {
+            urlOverlayView.onPause()
+        }
         webView.onPause()
         super.onPause()
     }
 
     override fun onDestroy() {
         webView.stopLoading()
+        if (::urlOverlayView.isInitialized) {
+            urlOverlayView.stopLoading()
+            urlOverlayView.loadUrl("about:blank")
+        }
         if (::recovery.isInitialized) recovery.shutdown()
         try {
             if (managerInstallReceiverRegistered) {
@@ -623,6 +731,10 @@ class MainActivity : ComponentActivity() {
         // v1.0.23 — cancel any pending Manager-install poll callbacks
         // so they don't fire after the activity is gone.
         stopManagerInstallPoller()
+        if (::urlOverlayView.isInitialized) {
+            (urlOverlayView.parent as? android.view.ViewGroup)?.removeView(urlOverlayView)
+            urlOverlayView.destroy()
+        }
         (webView.parent as? android.view.ViewGroup)?.removeView(webView)
         webView.destroy()
         super.onDestroy()

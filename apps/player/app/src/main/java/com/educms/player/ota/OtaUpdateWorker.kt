@@ -58,33 +58,15 @@ class OtaUpdateWorker(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         PlayerLogger.i(TAG, "OTA check starting (versionCode=${BuildConfig.VERSION_CODE}, versionName=${BuildConfig.VERSION_NAME})")
-        // 2026-04-28 (Plan audit P0-5) — yield to Manager when it's
-        // installed. Manager's OtaWorker handles Player updates via
-        // DEVICE_OWNER silent install; Player's worker would race
-        // and trigger a system Install prompt that steals focus
-        // mid-install. Two simultaneous PackageInstaller sessions
-        // also collide (STATUS_FAILURE_CONFLICT, dropped silently).
-        //
-        // 2026-04-29 — operator: "pushed the update from the app to
-        // the player and got no feedback on the player that anything
-        // was pushed". Audit found Player's worker had been yielding
-        // to Manager whenever Manager was installed. The intent was
-        // "Manager is silent; let it handle it." The reality was:
-        //   - Player WS handler enqueues OtaUpdateWorker
-        //   - Worker exits immediately because Manager is installed
-        //   - The cross-app broadcast to Manager fires but no one
-        //     verifies Manager actually picked it up
-        //   - If Manager's broadcast didn't arrive (BAL block,
-        //     receiver registration race, signature-perm not yet
-        //     granted, etc.), the entire push silently dies
-        //
-        // Fix: BOTH workers run. PackageInstaller naturally
-        // dedupes concurrent same-package commits (one wins,
-        // the other returns STATUS_FAILURE_CONFLICT and exits).
-        // Worst case: one redundant /update-check call. Best case:
-        // the first worker that hits the server installs and the
-        // operator sees feedback regardless of which path won.
-        PlayerLogger.i(TAG, "Player OTA worker firing (Manager-installed=${isManagerInstalled(applicationContext)})")
+        if (isManagerInstalled(applicationContext)) {
+            PlayerLogger.i(TAG, "Manager installed; yielding OTA to Manager to avoid dual-worker install races")
+            return@withContext Result.success()
+        }
+        // Manager absent: this standalone Player worker is the fallback
+        // OTA path for sideload/dev installs. When Manager is installed,
+        // the early return above avoids dual downloads and conflicting
+        // PackageInstaller sessions.
+        PlayerLogger.i(TAG, "Player OTA worker firing (no Manager installed; Player handles OTA solo)")
         try {
             val apiRoot = applicationContext.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
                 .getString("api_root", null) ?: run {
@@ -180,9 +162,18 @@ class OtaUpdateWorker(
                         out.write(buf, 0, n)
                         downloaded += n
                         val now = System.currentTimeMillis()
-                        if (totalBytes > 0 && now - lastReportAt >= 3_000) {
-                            val pct = ((downloaded * 100) / totalBytes).toInt().coerceIn(0, 99)
-                            reportOtaState(apiRoot, deviceFingerprint, "DOWNLOADING", pct, "v$latestVn")
+                        if (now - lastReportAt >= 3_000) {
+                            val pct = if (totalBytes > 0) {
+                                ((downloaded * 100) / totalBytes).toInt().coerceIn(0, 99)
+                            } else {
+                                ((downloaded / (512 * 1024)).toInt() + 1).coerceIn(1, 95)
+                            }
+                            val msg = if (totalBytes > 0) {
+                                "v$latestVn"
+                            } else {
+                                "v$latestVn (${String.format("%.1f", downloaded / 1048576.0)} MB)"
+                            }
+                            reportOtaState(apiRoot, deviceFingerprint, "DOWNLOADING", pct, msg)
                             lastReportAt = now
                         }
                     }
@@ -311,33 +302,6 @@ class OtaUpdateWorker(
      */
     private fun triggerInstall(apk: File, forced: Boolean) {
         val ctx = applicationContext
-        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val chan = NotificationChannel("ota", "Player updates", NotificationManager.IMPORTANCE_HIGH)
-            nm.createNotificationChannel(chan)
-        }
-
-        // Tap-to-install notification — falls back through FileProvider
-        // so if the PackageInstaller route fails entirely we still have
-        // an operator-visible install path.
-        val fallbackUri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", apk)
-        val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(fallbackUri, "application/vnd.android.package-archive")
-            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
-        }
-        val fallbackPi = PendingIntent.getActivity(
-            ctx, 0, fallbackIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        val notif = NotificationCompat.Builder(ctx, "ota")
-            .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentTitle(if (forced) "Required player update ready" else "Player update ready")
-            .setContentText("Tap to install.")
-            .setContentIntent(fallbackPi)
-            .setAutoCancel(true)
-            .build()
-        nm.notify(42, notif)
-
         // Primary path: PackageInstaller.Session.
         try {
             val installer = ctx.packageManager.packageInstaller
@@ -372,7 +336,33 @@ class OtaUpdateWorker(
         } catch (ex: Exception) {
             Log.w(TAG, "PackageInstaller.Session path failed — operator can use notification to install", ex)
             PlayerLogger.w(TAG, "PackageInstaller.Session install failed; tap-to-install notification posted", ex)
+            postFallbackInstallNotification(ctx, apk, forced)
         }
+    }
+
+    private fun postFallbackInstallNotification(ctx: Context, apk: File, forced: Boolean) {
+        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val chan = NotificationChannel("ota", "Player updates", NotificationManager.IMPORTANCE_HIGH)
+            nm.createNotificationChannel(chan)
+        }
+        val fallbackUri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", apk)
+        val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(fallbackUri, "application/vnd.android.package-archive")
+            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        val fallbackPi = PendingIntent.getActivity(
+            ctx, 0, fallbackIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notif = NotificationCompat.Builder(ctx, "ota")
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle(if (forced) "Required player update ready" else "Player update ready")
+            .setContentText("Tap to install.")
+            .setContentIntent(fallbackPi)
+            .setAutoCancel(true)
+            .build()
+        nm.notify(42, notif)
     }
 
     /**

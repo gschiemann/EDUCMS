@@ -312,9 +312,18 @@ class OtaWorker(
                         out.write(buf, 0, n)
                         downloaded += n
                         val now = System.currentTimeMillis()
-                        if (total > 0 && now - lastReport >= 3_000) {
-                            val pct = ((downloaded * 100) / total).toInt().coerceIn(0, 99)
-                            reportOtaState(apiRoot, fp, "DOWNLOADING", pct, "v$versionLabel")
+                        if (now - lastReport >= 3_000) {
+                            val pct = if (total > 0) {
+                                ((downloaded * 100) / total).toInt().coerceIn(0, 99)
+                            } else {
+                                ((downloaded / (512 * 1024)).toInt() + 1).coerceIn(1, 95)
+                            }
+                            val msg = if (total > 0) {
+                                "v$versionLabel"
+                            } else {
+                                "v$versionLabel (${String.format("%.1f", downloaded / 1048576.0)} MB)"
+                            }
+                            reportOtaState(apiRoot, fp, "DOWNLOADING", pct, msg)
                             lastReport = now
                         }
                     }

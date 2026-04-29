@@ -2152,6 +2152,52 @@ function PlayerPage() {
     return true;
   }, []);
 
+  // Native Android URL overlay. For asset playlists containing URL
+  // items, a modern APK renders the upstream site in a second top-level
+  // WebView while this React player stays mounted underneath. Browser
+  // preview and older APKs keep using the iframe/proxy fallback below.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const bridge = (window as any).EduCmsNative;
+    const showUrlOverlay = typeof bridge?.showUrlOverlay === 'function'
+      ? bridge.showUrlOverlay.bind(bridge)
+      : null;
+    const hideUrlOverlay = typeof bridge?.hideUrlOverlay === 'function'
+      ? bridge.hideUrlOverlay.bind(bridge)
+      : null;
+    if (!showUrlOverlay || !hideUrlOverlay) return;
+
+    const hide = () => {
+      try { hideUrlOverlay(); } catch (err) {
+        console.warn('[Player] hideUrlOverlay bridge call failed', err);
+      }
+    };
+
+    if (phase !== 'playing' || playbackStopped || activeEmergency || sorted.length === 0) {
+      hide();
+      return;
+    }
+
+    const current = sorted[currentIndex % sorted.length];
+    if (!isItemValid(current) || current?.asset?.mimeType !== 'text/html') {
+      hide();
+      return;
+    }
+
+    const fileUrl = current?.asset?.fileUrl || '';
+    const url = fileUrl.startsWith('http') ? fileUrl : `${getApiRoot()}${fileUrl}`;
+    if (!/^https?:\/\//i.test(url)) {
+      hide();
+      return;
+    }
+
+    try {
+      showUrlOverlay(url);
+    } catch (err) {
+      console.warn('[Player] showUrlOverlay bridge call failed', err);
+    }
+  }, [activeEmergency, currentIndex, isItemValid, phase, playbackStopped, sorted]);
+
   // Shared splash resolution string — used by all three pre-content phases.
   const splashResolution = typeof window !== 'undefined'
     ? (() => {
@@ -2802,6 +2848,18 @@ function PlayerPage() {
               // inline natively; X-Frame-Options doesn't apply to
               // file/PDF responses the same way.
               const isPdf = mime === 'application/pdf';
+              const nativeUrlOverlayAvailable = !isPdf &&
+                typeof window !== 'undefined' &&
+                typeof (window as any).EduCmsNative?.showUrlOverlay === 'function';
+              if (nativeUrlOverlayAvailable) {
+                return (
+                  <div
+                    key={item.id}
+                    className={`${classes} bg-black`}
+                    aria-label="Native URL overlay active"
+                  />
+                );
+              }
               // 2026-04-29 — interactive mode RE-ENABLED with the
               // proper proxy URL-rewriting fix shipped same day.
               // Server now (a) rewrites <a href> in the HTML to

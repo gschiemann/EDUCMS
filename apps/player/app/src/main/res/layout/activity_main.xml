@@ -24,6 +24,16 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!-- Native URL playback overlay. The React player stays mounted in
+         @id/webview underneath so heartbeat, WebSocket listeners, OTA
+         progress, and playlist timing keep running while arbitrary
+         touchscreen sites render in their own top-level WebView. -->
+    <WebView
+        android:id="@+id/urlOverlayView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
     <!-- Manager-install gate. v1.0.23: Player MUST NOT show its WebView
          (pairing screen, splash, kiosk content) until the Manager
          companion APK is confirmed installed. Without Manager, the

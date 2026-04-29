@@ -49,16 +49,17 @@ class ManagerSelfUpdateWorker(
         val isOwner = AdminReceiver.isDeviceOwner(applicationContext)
         Log.i(TAG, "Manager self-update worker starting (deviceOwner=$isOwner)")
 
-        // P1-G — skip entirely when not DEVICE_OWNER. Without it the
-        // install prompts the operator every 30 min, queueing dozens
-        // of unanswered system dialogs and eventually ANR'ing. The
-        // kiosk wasn't going to silently update anyway; let the
-        // dashboard show "Manager not provisioned" and have the
-        // operator run `dpm set-device-owner` once.
-        if (!isOwner) {
-            Log.i(TAG, "skipping self-update — Manager is not DEVICE_OWNER. ADB-provision via: " +
-                "adb shell dpm set-device-owner com.educms.manager/.AdminReceiver")
+        // Non-device-owner beta hardware cannot install silently, but
+        // it can still self-update through Android's system Install
+        // prompt once Manager has Install unknown apps permission.
+        val canPromptInstall = Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+            applicationContext.packageManager.canRequestPackageInstalls()
+        if (!isOwner && !canPromptInstall) {
+            Log.i(TAG, "skipping self-update — Manager is not DEVICE_OWNER and install permission is missing")
             return@withContext Result.success()
+        }
+        if (!isOwner) {
+            Log.i(TAG, "Manager is not DEVICE_OWNER; self-update will use the system Install prompt")
         }
 
         try {

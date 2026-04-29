@@ -23,6 +23,8 @@ class WebAppBridge(
     private val uploadDiagnosticsImpl: () -> String,
     private val onExitToDeviceHome: () -> Unit,
     private val onSetBootstrap: (apiRoot: String, fingerprint: String) -> Unit,
+    private val onShowUrlOverlay: (url: String) -> Unit,
+    private val onHideUrlOverlay: () -> Unit,
 ) {
     /**
      * Escape hatch — exits our kiosk task stack and returns the user to
@@ -114,6 +116,36 @@ class WebAppBridge(
             onSetBootstrap(apiRoot, fingerprint)
         } catch (ex: Exception) {
             PlayerLogger.w("WebAppBridge", "setBootstrap failed: ${ex.message}")
+        }
+    }
+
+    /**
+     * Show an external URL in the native overlay WebView. This is only
+     * exposed to the trusted EduCMS player page; the overlay WebView does
+     * not receive this bridge.
+     */
+    @JavascriptInterface
+    fun showUrlOverlay(url: String) {
+        val cleanUrl = url.trim()
+        if (!cleanUrl.startsWith("https://", ignoreCase = true) &&
+            !cleanUrl.startsWith("http://", ignoreCase = true)
+        ) {
+            PlayerLogger.w("WebAppBridge", "showUrlOverlay rejected non-http URL")
+            return
+        }
+        try {
+            onShowUrlOverlay(cleanUrl)
+        } catch (ex: Exception) {
+            PlayerLogger.w("WebAppBridge", "showUrlOverlay failed: ${ex.message}")
+        }
+    }
+
+    @JavascriptInterface
+    fun hideUrlOverlay() {
+        try {
+            onHideUrlOverlay()
+        } catch (ex: Exception) {
+            PlayerLogger.w("WebAppBridge", "hideUrlOverlay failed: ${ex.message}")
         }
     }
 }

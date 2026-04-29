@@ -15,9 +15,9 @@ import org.json.JSONObject
  * EXTRA_STATUS_MESSAGE and, if user consent is needed,
  * Intent.EXTRA_INTENT — a new ACTION_VIEW the user must approve.
  *
- * For silent installs on provisioned kiosks (pm set-installer) the
- * result lands here with STATUS_SUCCESS and no intent to relaunch.
- * Either way we log the outcome so the field operator has a record.
+ * For completed installs, the result lands here with STATUS_SUCCESS;
+ * we relaunch the Player so the kiosk does not strand itself on the
+ * OEM launcher after the operator taps Install.
  */
 class OtaInstallReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -68,8 +68,17 @@ class OtaInstallReceiver : BroadcastReceiver() {
                     PlayerLogger.e(TAG, "trampoline launch failed", ex)
                 }
             }
-            PackageInstaller.STATUS_SUCCESS ->
-                PlayerLogger.i(TAG, "OTA install: SUCCESS — new APK active after next process start")
+            PackageInstaller.STATUS_SUCCESS -> {
+                PlayerLogger.i(TAG, "OTA install: SUCCESS; relaunching Player")
+                val pending = goAsync()
+                Thread {
+                    try {
+                        relaunchSelf(context)
+                    } finally {
+                        pending.finish()
+                    }
+                }.start()
+            }
             PackageInstaller.STATUS_FAILURE,
             PackageInstaller.STATUS_FAILURE_ABORTED,
             PackageInstaller.STATUS_FAILURE_BLOCKED,
@@ -107,6 +116,28 @@ class OtaInstallReceiver : BroadcastReceiver() {
             conn.outputStream.use { it.write(payload.toString().toByteArray()) }
             conn.responseCode
         } catch (_: Exception) { /* best-effort */ }
+    }
+
+    private fun relaunchSelf(context: Context) {
+        for (attempt in 0..7) {
+            try {
+                val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                if (launch != null) {
+                    launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    context.startActivity(launch)
+                    PlayerLogger.i(TAG, "Player relaunched after OTA install (attempt=$attempt)")
+                    return
+                }
+            } catch (ex: Exception) {
+                PlayerLogger.w(TAG, "Player relaunch failed (attempt=$attempt): ${ex.message}")
+            }
+            try {
+                Thread.sleep(1000)
+            } catch (_: InterruptedException) {
+                break
+            }
+        }
+        reportOtaError(context, "Install succeeded but Player did not relaunch; reboot or open EduCMS Player")
     }
 
     private fun statusName(status: Int): String = when (status) {

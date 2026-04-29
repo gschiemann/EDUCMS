@@ -88,6 +88,7 @@ class OtaInstallReceiver : BroadcastReceiver() {
                 if (pendingIntent == null) {
                     Log.w(TAG, "STATUS_PENDING_USER_ACTION but no EXTRA_INTENT — install stalled")
                     InstallState.clearPending(context)
+                    InstallTracker.clearPending(context)
                     reportInstallError(context, targetPackage, "Install stalled: user-action intent missing")
                     return
                 }
@@ -96,6 +97,7 @@ class OtaInstallReceiver : BroadcastReceiver() {
             else -> {
                 Log.e(TAG, "OTA install FAILED: ${statusName(status)} — $message")
                 InstallState.clearPending(context)
+                InstallTracker.clearPending(context)
                 reportInstallError(
                     context,
                     targetPackage,

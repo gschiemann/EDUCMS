@@ -50,6 +50,7 @@ class OtaTriggerReceiver : BroadcastReceiver() {
                 req,
             )
             Log.i(TAG, "OtaWorker (one-time) enqueued")
+            ManagerApp.triggerImmediateManagerSelfUpdate(context)
         } catch (e: Exception) {
             Log.w(TAG, "fireOtaCheckNow failed: ${e.message}", e)
         }
