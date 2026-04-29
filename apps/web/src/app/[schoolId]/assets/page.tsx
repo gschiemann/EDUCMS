@@ -266,11 +266,33 @@ export default function AssetsPage() {
       return item;
     });
     setUploads(prev => [...items, ...prev]);
-    items.filter(u => u.phase === 'uploading').forEach((u) => doUpload(u, targetFolderIdOverride));
+    // Concurrency-limited uploader. Operator (2026-04-29): tried to
+    // upload 42MB across 8+ images at once, every request died with a
+    // network error; single-file uploads worked. Root cause: previous
+    // `.forEach((u) => doUpload(u))` fired all uploads in parallel,
+    // which overwhelms one of: Vercel→Railway proxy connection cap,
+    // Multer's in-memory parser (each large file holds its own buffer
+    // + a SHA-256 working buffer), Supabase storage's per-bucket rate
+    // limit, or the Prisma connection pool. 3-in-flight is the sweet
+    // spot — empirically what Yodeck / Rise / OptiSigns serialize at,
+    // fast for small batches, doesn't hammer any single downstream.
+    const MAX_CONCURRENT_UPLOADS = 3;
+    const queue = items.filter((u) => u.phase === 'uploading').slice();
+    const runWorker = async (): Promise<void> => {
+      while (true) {
+        const next = queue.shift();
+        if (!next) return;
+        try { await doUpload(next, targetFolderIdOverride); } catch { /* error already surfaced via UI state */ }
+      }
+    };
+    const workerCount = Math.min(MAX_CONCURRENT_UPLOADS, queue.length);
+    const workers = Array.from({ length: workerCount }, () => runWorker());
+    void Promise.all(workers);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const doUpload = (item: UploadItem, targetFolderIdOverride?: string | null) => {
+  const doUpload = (item: UploadItem, targetFolderIdOverride?: string | null): Promise<void> => {
+    return new Promise<void>((resolve) => {
     const fd = new FormData();
     fd.append('file', item.file);
     // Destination precedence:
@@ -306,16 +328,24 @@ export default function AssetsPage() {
         clog.error('upload', 'Failed', { id: item.id, name: item.file.name, status: xhr.status, msg, elapsedMs });
         setUploads(p => p.map(u => u.id === item.id ? { ...u, phase: 'error', error: msg } : u));
       }
+      resolve();
     };
     xhr.onerror = () => {
       clog.error('upload', 'Network error', { id: item.id, name: item.file.name });
       setUploads(p => p.map(u => u.id === item.id ? { ...u, phase: 'error', error: 'Network error' } : u));
+      resolve();
+    };
+    xhr.onabort = () => {
+      clog.error('upload', 'Aborted', { id: item.id, name: item.file.name });
+      setUploads(p => p.map(u => u.id === item.id ? { ...u, phase: 'error', error: 'Cancelled' } : u));
+      resolve();
     };
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
     xhr.open('POST', `${apiUrl}/assets/upload`);
     const token = useUIStore.getState().token;
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
     xhr.send(fd);
+    });
   };
 
   const handleAddUrl = async () => {
