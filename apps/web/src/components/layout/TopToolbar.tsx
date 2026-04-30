@@ -29,9 +29,9 @@ export function TopToolbar() {
 
   return (
     <>
-      <header className="h-[73px] min-w-0 max-w-full bg-white/60 backdrop-blur-xl px-4 sm:px-8 flex items-center justify-between sticky top-0 z-20 transition-all duration-300">
+      <header className="h-[73px] bg-white/60 backdrop-blur-xl px-4 sm:px-8 flex items-center justify-between sticky top-0 z-20 transition-all duration-300">
         {/* Left — hamburger on mobile, spacer on desktop */}
-        <div className="flex-1 min-w-0 flex items-center">
+        <div className="flex-1 flex items-center">
           <button
             type="button"
             onClick={toggleMobileSidebar}
@@ -43,7 +43,7 @@ export function TopToolbar() {
         </div>
 
         {/* Right Side */}
-        <div className="min-w-0 flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-3">
           <SchoolSwitcher />
           <NotificationsBell />
           {/* Emergency button lives in the Sidebar now (design spec update).

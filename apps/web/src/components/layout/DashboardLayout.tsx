@@ -59,7 +59,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen w-full max-w-full bg-slate-50 overflow-hidden text-slate-900 font-sans relative">
+    <div className="flex h-screen w-full bg-slate-50 overflow-hidden text-slate-900 font-sans relative">
       {/* AuthExpirationGuard redirects to /login when the session 401s
           or the user is explicitly logged out. Mounted high in the tree
           so every dashboard page is protected. */}
@@ -79,18 +79,18 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-100/50 rounded-full blur-[100px] pointer-events-none -z-0" />
       <div className="absolute bottom-0 left-64 w-[500px] h-[500px] bg-emerald-50/50 rounded-full blur-[120px] pointer-events-none -z-0" />
       <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0 max-w-full overflow-hidden relative">
+      <div className="flex-1 flex flex-col min-w-0 relative">
         <SuperAdminBanner />
         <TopToolbar />
         <main
           id="main-content"
           tabIndex={-1}
           className={cn(
-            "flex-1 min-w-0 max-w-full overflow-y-auto overflow-x-hidden p-4 sm:p-6 md:p-8 transition-all duration-300 relative z-10",
+            "flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 transition-all duration-300 relative z-10",
             isEmergencyActive ? "pointer-events-none opacity-50 blur-sm" : ""
           )}
         >
-          <div className="w-full max-w-7xl mx-auto space-y-6 md:space-y-8">
+          <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
             {children}
           </div>
         </main>

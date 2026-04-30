@@ -226,15 +226,9 @@
   }
   body {
     @apply bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary;
-    width: 100%;
-    max-width: 100%;
-    overflow-x: hidden;
   }
   html {
     @apply font-sans;
-    width: 100%;
-    max-width: 100%;
-    overflow-x: hidden;
   }
 }
 

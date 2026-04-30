@@ -220,7 +220,7 @@ export default function DashboardPage() {
   const incidentCount = fleet.offline + pendingAssets.length;
 
   return (
-    <div className="min-w-0 max-w-full overflow-x-hidden space-y-6 pb-12">
+    <div className="space-y-6 pb-12">
       {/* Brand-aware overrides — swaps hardcoded indigo for CSS vars */}
       <style>{`
         .dash-link { color: var(--brand-primary, #4f46e5); }
@@ -230,8 +230,8 @@ export default function DashboardPage() {
         .dash-quick-brand:hover { background: color-mix(in srgb, var(--brand-primary, #6366f1) 8%, white); }
       `}</style>
       {/* ─── Header ─────────────────────────────────────────── */}
-      <header className="min-w-0 flex items-start justify-between gap-6 flex-wrap">
-        <div className="min-w-0">
+      <header className="flex items-start justify-between gap-6 flex-wrap">
+        <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">
             {greeting}, {firstName}
           </h1>
@@ -239,7 +239,7 @@ export default function DashboardPage() {
             {tenantName} · {now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
           </p>
         </div>
-        <div className="shrink-0 text-right">
+        <div className="text-right">
           <div className="text-2xl font-bold text-slate-800 tabular-nums">
             {now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
           </div>
@@ -253,9 +253,9 @@ export default function DashboardPage() {
           emergency is ACTIVE, we escalate to a full red banner. Otherwise
           a quiet one-line health summary is enough. */}
       {emergencyActive ? (
-        <div className="relative max-w-full overflow-hidden rounded-2xl bg-gradient-to-r from-red-600 to-red-500 text-white shadow-lg shadow-red-500/30 border border-red-400/50">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-red-600 to-red-500 text-white shadow-lg shadow-red-500/30 border border-red-400/50">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.2),transparent)]" />
-          <div className="relative p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="relative p-5 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center shrink-0 animate-pulse">
               <Siren className="w-7 h-7" />
             </div>
@@ -273,7 +273,7 @@ export default function DashboardPage() {
           </div>
         </div>
       ) : (
-        <div className="max-w-full rounded-xl bg-white border border-slate-200 px-5 py-3 flex items-center gap-4 sm:gap-6 flex-wrap">
+        <div className="rounded-xl bg-white border border-slate-200 px-5 py-3 flex items-center gap-6 flex-wrap">
           <div className="flex items-center gap-2">
             <span className={`relative flex h-2.5 w-2.5 ${incidentCount > 0 ? '' : ''}`}>
               <span className={`absolute inset-0 rounded-full ${incidentCount > 0 ? 'bg-amber-400' : 'bg-emerald-400'} animate-ping opacity-75`} />
@@ -314,7 +314,7 @@ export default function DashboardPage() {
 
       {/* ─── Getting started — 3-step guide ────────────────────── */}
       {showOnboarding && (
-        <div className="relative max-w-full overflow-hidden bg-gradient-to-br from-indigo-50 via-white to-violet-50 rounded-2xl border border-indigo-100 p-5 sm:p-8 shadow-sm">
+        <div className="relative bg-gradient-to-br from-indigo-50 via-white to-violet-50 rounded-2xl border border-indigo-100 p-8 shadow-sm">
           <button
             type="button"
             onClick={dismissHint}
@@ -330,7 +330,7 @@ export default function DashboardPage() {
               target for a playlist if no screens are paired yet, so
               "Connect a Screen" is step 1. Assets comes next (what
               will play), then Playlist (what to play + where). */}
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <OnboardStep href={`${tenantBase}/screens`} step={1} color="emerald" Icon={MonitorPlay} title="Connect a Screen" desc="Pair the devices that will display your content — or open the web player anywhere." cta="Go to Screens" />
             <OnboardStep href={`${tenantBase}/assets`} step={2} color="sky" Icon={Upload} title="Upload Content" desc="Add images, videos, PDFs, or web URLs to your media library." cta="Go to Assets" />
             <OnboardStep href={`${tenantBase}/playlists`} step={3} color="violet" Icon={ListVideo} title="Build a Playlist" desc="Assemble a playlist from your assets, then publish it to the screens you connected." cta="Go to Playlists" />
@@ -339,7 +339,7 @@ export default function DashboardPage() {
       )}
 
       {/* ─── Fleet KPIs — aggregates, not counts ─────────────── */}
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <KpiCard
           href={`${tenantBase}/screens`}
           label="Fleet Health"
@@ -750,7 +750,7 @@ function KpiCard({
   return (
     <Link
       href={href}
-      className="dash-kpi-card group min-w-0 overflow-hidden bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md hover:-translate-y-0.5 transition-all"
+      className="dash-kpi-card group bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md hover:-translate-y-0.5 transition-all"
     >
       <div className="flex items-start justify-between mb-3">
         <div
@@ -762,7 +762,7 @@ function KpiCard({
         <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:translate-x-0.5 transition-all dash-arrow" />
       </div>
       <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">{label}</div>
-      <div className={`text-[28px] font-black tracking-tight leading-none tabular-nums truncate ${valueClass}`} style={valueStyle}>{bigValue}</div>
+      <div className={`text-[28px] font-black tracking-tight leading-none tabular-nums ${valueClass}`} style={valueStyle}>{bigValue}</div>
       <div className="mt-1 text-[11px] text-slate-500 truncate">{emptyText || sub}</div>
     </Link>
   );
@@ -779,9 +779,9 @@ function QuickLink({ href, Icon, label, tone }: { href: string; Icon: any; label
   };
   const isBrand = tone === 'indigo';
   return (
-    <Link href={href} className={`min-w-0 flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors group ${isBrand ? 'dash-quick-brand' : toneBg[tone]}`} style={isBrand ? { color: 'var(--brand-primary, #4f46e5)' } : undefined}>
+    <Link href={href} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors group ${isBrand ? 'dash-quick-brand' : toneBg[tone]}`} style={isBrand ? { color: 'var(--brand-primary, #4f46e5)' } : undefined}>
       <Icon className="w-4 h-4 shrink-0" />
-      <span className="min-w-0 text-sm font-semibold text-slate-700 flex-1 truncate">{label}</span>
+      <span className="text-sm font-semibold text-slate-700 flex-1">{label}</span>
       <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:translate-x-0.5 transition-all" />
     </Link>
   );
@@ -796,7 +796,7 @@ function OnboardStep({
     emerald: { ring: 'hover:border-emerald-300', icon: 'bg-emerald-50 text-emerald-600 group-hover:bg-emerald-100', text: 'text-emerald-600 group-hover:text-emerald-700' },
   };
   return (
-    <Link href={href} className={`group min-w-0 p-5 bg-white/70 backdrop-blur-md rounded-xl border border-slate-200 ${c[color].ring} hover:shadow-lg hover:-translate-y-1 transition-all duration-300`}>
+    <Link href={href} className={`group p-5 bg-white/70 backdrop-blur-md rounded-xl border border-slate-200 ${c[color].ring} hover:shadow-lg hover:-translate-y-1 transition-all duration-300`}>
       <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-all ${c[color].icon}`}>
         <Icon className="w-5 h-5" />
       </div>
