@@ -8,6 +8,27 @@ export class SupabaseStorageService implements OnModuleInit {
   private client: SupabaseClient;
   private readonly logger = new Logger(SupabaseStorageService.name);
 
+  private supabaseConfig(): { url: string; key: string } {
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!url || !key) {
+      throw new Error('Supabase Storage not configured - set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
+    }
+
+    return { url, key };
+  }
+
+  private ensureClient(): SupabaseClient {
+    if (!this.client) {
+      const { url, key } = this.supabaseConfig();
+      this.client = createClient(url, key, {
+        auth: { persistSession: false },
+      });
+    }
+    return this.client;
+  }
+
   async onModuleInit() {
     const url = process.env.SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -30,7 +51,7 @@ export class SupabaseStorageService implements OnModuleInit {
     const ALLOWED_MIMES = [
       'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml',
       'image/x-icon', 'image/bmp',
-      'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo',
+      'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo', 'video/x-m4v',
       'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4',
       'application/pdf',
     ];
@@ -179,6 +200,61 @@ export class SupabaseStorageService implements OnModuleInit {
 
     // Build the public URL the same way the JS client does
     return `${url}/storage/v1/object/public/${BUCKET}/${filePath}`;
+  }
+
+  publicUrlForPath(filePath: string): string {
+    const { url } = this.supabaseConfig();
+    return `${url}/storage/v1/object/public/${BUCKET}/${filePath}`;
+  }
+
+  async createSignedUploadUrl(filePath: string): Promise<{
+    path: string;
+    token: string;
+    signedUrl: string;
+    publicUrl: string;
+  }> {
+    const { url } = this.supabaseConfig();
+    const storage = this.ensureClient().storage.from(BUCKET) as any;
+    const { data, error } = await storage.createSignedUploadUrl(filePath, { upsert: true });
+
+    if (error) {
+      throw new Error(`Signed upload URL failed: ${error.message}`);
+    }
+
+    const rawUrl = data?.signedUrl || data?.signedURL || data?.url;
+    const signedUrl = typeof rawUrl === 'string' && rawUrl.startsWith('/')
+      ? `${url}/storage/v1${rawUrl}`
+      : rawUrl;
+    const token = data?.token || (signedUrl ? new URL(signedUrl).searchParams.get('token') : null);
+
+    if (!signedUrl || !token) {
+      throw new Error('Signed upload URL response did not include a usable upload URL/token');
+    }
+
+    return {
+      path: data?.path || filePath,
+      token,
+      signedUrl,
+      publicUrl: this.publicUrlForPath(filePath),
+    };
+  }
+
+  async assertObjectExists(filePath: string): Promise<void> {
+    const { url, key } = this.supabaseConfig();
+    const endpoint = `${url}/storage/v1/object/${BUCKET}/${filePath}`;
+    const res = await fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${key}`,
+        apikey: key,
+        Range: 'bytes=0-0',
+      },
+    });
+
+    if (!res.ok && res.status !== 206) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Uploaded object was not found in storage (${res.status}): ${body}`);
+    }
   }
 
   /**

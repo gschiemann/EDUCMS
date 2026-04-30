@@ -15,7 +15,7 @@ import { FolderPicker } from '@/components/assets/FolderPicker';
 // it never loads" but the actual error was the client-side guard. Server
 // is 500MB.
 const MAX_FILE_SIZE = 500 * 1024 * 1024;
-const ACCEPT_STRING = '.jpg,.jpeg,.png,.webp,.gif,.svg,.bmp,.mp4,.webm,.mov,.avi,.mp3,.ogg,.wav,.pdf';
+const ACCEPT_STRING = '.jpg,.jpeg,.png,.webp,.gif,.svg,.bmp,.mp4,.m4v,.webm,.mov,.avi,.mp3,.ogg,.wav,.pdf';
 
 type UploadPhase = 'idle' | 'uploading' | 'success' | 'error';
 type ViewMode = 'grid' | 'list';
@@ -27,6 +27,14 @@ interface UploadItem {
   progress: number;
   phase: UploadPhase;
   error?: string;
+}
+
+interface PresignedUploadResponse {
+  uploadUrl: string;
+  signedUrl: string;
+  storagePath: string;
+  fileUrl: string;
+  mimeType: string;
 }
 
 function getAssetType(mime: string): FilterType {
@@ -291,10 +299,7 @@ export default function AssetsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const doUpload = (item: UploadItem, targetFolderIdOverride?: string | null): Promise<void> => {
-    return new Promise<void>((resolve) => {
-    const fd = new FormData();
-    fd.append('file', item.file);
+  const doUpload = async (item: UploadItem, targetFolderIdOverride?: string | null): Promise<void> => {
     // Destination precedence:
     //   1. Explicit override from the FolderPicker
     //   2. Current browsed folder (uploads into whatever is open)
@@ -303,7 +308,6 @@ export default function AssetsPage() {
     // currentFolderId. `null` means "explicit root".
     const targetFolderId =
       targetFolderIdOverride !== undefined ? targetFolderIdOverride : currentFolderId;
-    if (targetFolderId) fd.append('folderId', targetFolderId);
 
     const started = performance.now();
     clog.info('upload', 'Start', {
@@ -314,38 +318,92 @@ export default function AssetsPage() {
       folderId: targetFolderId || '(root)',
     });
 
-    const xhr = new XMLHttpRequest();
-    xhr.upload.onprogress = (e) => { if (e.lengthComputable) setUploads(p => p.map(u => u.id === item.id ? { ...u, progress: Math.round(e.loaded * 100 / e.total) } : u)); };
-    xhr.onload = () => {
-      const elapsedMs = Math.round(performance.now() - started);
-      if (xhr.status >= 200 && xhr.status < 300) {
-        clog.info('upload', 'Success', { id: item.id, name: item.file.name, status: xhr.status, elapsedMs });
-        setUploads(p => p.map(u => u.id === item.id ? { ...u, progress: 100, phase: 'success' } : u));
-        queryClient.invalidateQueries({ queryKey: ['assets'] });
-      } else {
-        let msg = `Upload failed (${xhr.status})`;
-        try { const r = JSON.parse(xhr.responseText); msg = r.message || msg; } catch {}
-        clog.error('upload', 'Failed', { id: item.id, name: item.file.name, status: xhr.status, msg, elapsedMs });
-        setUploads(p => p.map(u => u.id === item.id ? { ...u, phase: 'error', error: msg } : u));
-      }
-      resolve();
-    };
-    xhr.onerror = () => {
-      clog.error('upload', 'Network error', { id: item.id, name: item.file.name });
-      setUploads(p => p.map(u => u.id === item.id ? { ...u, phase: 'error', error: 'Network error' } : u));
-      resolve();
-    };
-    xhr.onabort = () => {
-      clog.error('upload', 'Aborted', { id: item.id, name: item.file.name });
-      setUploads(p => p.map(u => u.id === item.id ? { ...u, phase: 'error', error: 'Cancelled' } : u));
-      resolve();
-    };
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
-    xhr.open('POST', `${apiUrl}/assets/upload`);
     const token = useUIStore.getState().token;
-    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-    xhr.send(fd);
+    const postJson = async <T,>(path: string, body: Record<string, unknown>): Promise<T> => {
+      const res = await fetch(`${apiUrl}${path}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        let msg = `${path} failed (${res.status})`;
+        try {
+          const payload = await res.json();
+          msg = payload?.message || payload?.error || msg;
+        } catch {}
+        throw new Error(msg);
+      }
+
+      return res.json() as Promise<T>;
+    };
+
+    const setProgress = (progress: number) => {
+      setUploads(p => p.map(u => u.id === item.id ? { ...u, progress } : u));
+    };
+
+    const uploadToSignedUrl = (signed: PresignedUploadResponse): Promise<void> => new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const storageProgress = Math.round((e.loaded * 90) / e.total);
+          setProgress(Math.min(95, 5 + storageProgress));
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          setProgress(96);
+          resolve();
+        } else {
+          let msg = `Storage upload failed (${xhr.status})`;
+          try {
+            const payload = JSON.parse(xhr.responseText);
+            msg = payload?.message || payload?.error || msg;
+          } catch {}
+          reject(new Error(msg));
+        }
+      };
+      xhr.onerror = () => {
+        reject(new Error('Storage upload network error. The file reached the direct storage step, so check Supabase Storage CORS/network and MIME settings.'));
+      };
+      xhr.onabort = () => reject(new Error('Cancelled'));
+      xhr.open('POST', signed.uploadUrl || signed.signedUrl);
+      xhr.setRequestHeader('Content-Type', signed.mimeType || item.file.type || 'application/octet-stream');
+      xhr.send(item.file);
     });
+
+    try {
+      setProgress(2);
+      const signed = await postJson<PresignedUploadResponse>('/assets/presign', {
+        filename: item.file.name,
+        contentType: item.file.type || 'application/octet-stream',
+        size: item.file.size,
+        folderId: targetFolderId || null,
+      });
+      setProgress(5);
+      await uploadToSignedUrl(signed);
+      setProgress(98);
+      await postJson('/assets/complete-upload', {
+        storagePath: signed.storagePath,
+        filename: item.file.name,
+        contentType: signed.mimeType || item.file.type || 'application/octet-stream',
+        size: item.file.size,
+        folderId: targetFolderId || null,
+      });
+      const elapsedMs = Math.round(performance.now() - started);
+      clog.info('upload', 'Success', { id: item.id, name: item.file.name, elapsedMs });
+      setUploads(p => p.map(u => u.id === item.id ? { ...u, progress: 100, phase: 'success' } : u));
+      queryClient.invalidateQueries({ queryKey: ['assets'] });
+    } catch (err: any) {
+      const elapsedMs = Math.round(performance.now() - started);
+      const msg = err?.message || 'Upload failed';
+      clog.error('upload', 'Failed', { id: item.id, name: item.file.name, msg, elapsedMs });
+      setUploads(p => p.map(u => u.id === item.id ? { ...u, phase: 'error', error: msg } : u));
+    }
   };
 
   const handleAddUrl = async () => {
@@ -515,7 +573,7 @@ export default function AssetsPage() {
           </div>
           <div className="text-left">
             <p className="text-xs font-bold text-slate-700">{dragOver ? 'Drop files to pick a folder' : 'Drag & drop files or click to browse'}</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">Choose a folder (or root) next — images, video, audio, PDF, up to 200 MB</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">Choose a folder (or root) next — images, video, audio, PDF, up to 500 MB</p>
           </div>
         </div>
       </div>

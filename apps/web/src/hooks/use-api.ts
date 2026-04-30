@@ -433,8 +433,16 @@ export function useAssets() {
 
 export function useRequestPresignedUrl() {
   return useMutation({
-    mutationFn: (data: { filename: string; contentType: string; size: number }) =>
-      apiFetch<{ url: string; assetId: string }>('/assets/presign', {
+    mutationFn: (data: { filename: string; contentType: string; size: number; folderId?: string | null }) =>
+      apiFetch<{
+        uploadUrl: string;
+        signedUrl: string;
+        token: string;
+        storagePath: string;
+        fileUrl: string;
+        mimeType: string;
+        maxFileSize: number;
+      }>('/assets/presign', {
         method: 'POST',
         body: JSON.stringify(data),
       }),

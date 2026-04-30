@@ -16,10 +16,52 @@ import { EmailService } from '../email/email.service';
 
 const ALLOWED_TYPES = [
   'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml', 'image/x-icon', 'image/bmp',
-  'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo',
+  'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo', 'video/x-m4v',
   'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4',
   'application/pdf',
 ];
+
+const MAX_ASSET_FILE_SIZE = 500 * 1024 * 1024;
+const EXTENSION_MIME_TYPES: Record<string, string> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.bmp': 'image/bmp',
+  '.mp4': 'video/mp4',
+  '.m4v': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mov': 'video/quicktime',
+  '.avi': 'video/x-msvideo',
+  '.mp3': 'audio/mpeg',
+  '.ogg': 'audio/ogg',
+  '.wav': 'audio/wav',
+  '.m4a': 'audio/mp4',
+  '.pdf': 'application/pdf',
+};
+
+const MIME_EXTENSIONS: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+  'image/svg+xml': '.svg',
+  'image/x-icon': '.ico',
+  'image/bmp': '.bmp',
+  'video/mp4': '.mp4',
+  'video/webm': '.webm',
+  'video/quicktime': '.mov',
+  'video/x-msvideo': '.avi',
+  'video/x-m4v': '.m4v',
+  'audio/mpeg': '.mp3',
+  'audio/ogg': '.ogg',
+  'audio/wav': '.wav',
+  'audio/mp4': '.m4a',
+  'application/pdf': '.pdf',
+};
 
 const SCREEN_EMERGENCY_ASSET_FIELDS = [
   'emergencyLockdownAssetUrl',
@@ -66,6 +108,54 @@ export class AssetsController {
       role === AppRole.SCHOOL_ADMIN
     ) return 'PUBLISHED';
     return 'PENDING_APPROVAL';
+  }
+
+  private normalizeMimeType(filename: string | undefined, contentType: string | undefined): string {
+    const explicit = (contentType || '').split(';')[0].trim().toLowerCase();
+    if (ALLOWED_TYPES.includes(explicit)) return explicit;
+
+    const ext = extname(filename || '').toLowerCase();
+    if (EXTENSION_MIME_TYPES[ext]) return EXTENSION_MIME_TYPES[ext];
+
+    return explicit;
+  }
+
+  private assertUploadIntent(filename: string | undefined, contentType: string | undefined, size: number | undefined): string {
+    const mimeType = this.normalizeMimeType(filename, contentType);
+    if (!ALLOWED_TYPES.includes(mimeType)) {
+      throw new HttpException(
+        'File type is not supported. Allowed: images, MP4/WebM/MOV/AVI video, audio, PDF.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    if (!Number.isFinite(size) || Number(size) <= 0) {
+      throw new HttpException('File size is required.', HttpStatus.BAD_REQUEST);
+    }
+
+    if (Number(size) > MAX_ASSET_FILE_SIZE) {
+      throw new HttpException(
+        `File is too large. Max size is ${Math.round(MAX_ASSET_FILE_SIZE / (1024 * 1024))} MB.`,
+        HttpStatus.PAYLOAD_TOO_LARGE,
+      );
+    }
+
+    return mimeType;
+  }
+
+  private storageExtension(filename: string | undefined, mimeType: string): string {
+    return extname(filename || '') || MIME_EXTENSIONS[mimeType] || '';
+  }
+
+  private async resolveFolderId(tenantId: string, folderId?: string | null): Promise<string | null> {
+    const bodyFolderId = (folderId || '').trim();
+    if (!bodyFolderId) return null;
+
+    const folder = await this.prisma.client.assetFolder.findFirst({
+      where: { id: bodyFolderId, tenantId },
+    });
+    if (!folder) throw new HttpException('Folder not found', HttpStatus.NOT_FOUND);
+    return folder.id;
   }
 
   private async listScreenEmergencyAssetUrls(tenantId: string): Promise<string[]> {
@@ -302,6 +392,105 @@ export class AssetsController {
       originalName: file.originalname,
       protected: true,
       protectedKind: 'screen-emergency',
+    };
+  }
+
+  @Post('presign')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async presignUpload(
+    @Request() req: any,
+    @Body() body: { filename?: string; contentType?: string; size?: number; folderId?: string | null } = {},
+  ) {
+    const mimeType = this.assertUploadIntent(body.filename, body.contentType, Number(body.size));
+    await this.resolveFolderId(req.user.tenantId, body.folderId);
+
+    const ext = this.storageExtension(body.filename, mimeType);
+    const storagePath = `${req.user.tenantId}/${randomUUID()}${ext}`;
+    let signed: Awaited<ReturnType<SupabaseStorageService['createSignedUploadUrl']>>;
+    try {
+      signed = await this.storage.createSignedUploadUrl(storagePath);
+    } catch (err: any) {
+      throw new HttpException(
+        `Unable to prepare upload: ${err.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    return {
+      uploadUrl: signed.signedUrl,
+      signedUrl: signed.signedUrl,
+      token: signed.token,
+      storagePath: signed.path,
+      fileUrl: signed.publicUrl,
+      mimeType,
+      maxFileSize: MAX_ASSET_FILE_SIZE,
+    };
+  }
+
+  @Post('complete-upload')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async completeUpload(
+    @Request() req: any,
+    @Body() body: {
+      storagePath?: string;
+      filename?: string;
+      contentType?: string;
+      size?: number;
+      folderId?: string | null;
+      fileHash?: string | null;
+    } = {},
+  ) {
+    const mimeType = this.assertUploadIntent(body.filename, body.contentType, Number(body.size));
+    const storagePath = (body.storagePath || '').trim();
+    if (
+      !storagePath ||
+      storagePath.includes('..') ||
+      storagePath.includes('\\') ||
+      !storagePath.startsWith(`${req.user.tenantId}/`) ||
+      storagePath.includes('/emergency/')
+    ) {
+      throw new HttpException('Invalid upload path.', HttpStatus.BAD_REQUEST);
+    }
+
+    const folderId = await this.resolveFolderId(req.user.tenantId, body.folderId);
+    try {
+      await this.storage.assertObjectExists(storagePath);
+    } catch (err: any) {
+      throw new HttpException(
+        `Upload did not finish in storage: ${err.message}`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const fileHash = typeof body.fileHash === 'string' && /^[a-f0-9]{64}$/i.test(body.fileHash)
+      ? body.fileHash.toLowerCase()
+      : null;
+    const asset = await this.prisma.client.asset.create({
+      data: {
+        tenantId: req.user.tenantId,
+        uploadedByUserId: req.user.id,
+        fileUrl: this.storage.publicUrlForPath(storagePath),
+        mimeType,
+        fileSize: Number(body.size),
+        fileHash,
+        originalName: body.filename || null,
+        status: this.initialAssetStatus(req.user.role),
+        folderId,
+      },
+    });
+
+    if (asset.status === 'PENDING_APPROVAL') {
+      this.notifyAdminsOfPendingReview(req.user.tenantId, asset);
+    }
+
+    return {
+      id: asset.id,
+      fileUrl: asset.fileUrl,
+      mimeType: asset.mimeType,
+      fileSize: asset.fileSize,
+      fileHash: asset.fileHash,
+      originalName: asset.originalName,
+      status: asset.status,
     };
   }
 
