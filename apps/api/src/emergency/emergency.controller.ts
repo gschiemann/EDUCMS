@@ -35,6 +35,134 @@ export class EmergencyController {
     private readonly signer: WebsocketSignerService
   ) {}
 
+  private emergencyTypeKey(type?: string | null): string | null {
+    const value = String(type || '').trim().toUpperCase();
+    return value || null;
+  }
+
+  private isPortraitScreen(screen: any): boolean {
+    const resolution = String(screen?.resolution || '').trim();
+    const match = resolution.match(/^(\d+)\s*[x×]\s*(\d+)$/i);
+    if (!match) return false;
+    return Number.parseInt(match[2], 10) > Number.parseInt(match[1], 10);
+  }
+
+  private pickTenantPanicPlaylists(tenantInfo: any, type?: string | null): {
+    landscape: string | null;
+    portrait: string | null;
+  } {
+    const t = tenantInfo || {};
+    switch (type) {
+      case 'lockdown':
+        return {
+          landscape: t.panicLockdownPlaylistId ?? null,
+          portrait: t.panicLockdownPortraitPlaylistId ?? null,
+        };
+      case 'weather':
+        return {
+          landscape: t.panicWeatherPlaylistId ?? null,
+          portrait: t.panicWeatherPortraitPlaylistId ?? null,
+        };
+      case 'evacuate':
+        return {
+          landscape: t.panicEvacuatePlaylistId ?? null,
+          portrait: t.panicEvacuatePortraitPlaylistId ?? null,
+        };
+      case 'hold':
+        return {
+          landscape: t.panicHoldPlaylistId ?? null,
+          portrait: t.panicHoldPortraitPlaylistId ?? null,
+        };
+      case 'secure':
+        return {
+          landscape: t.panicSecurePlaylistId ?? null,
+          portrait: t.panicSecurePortraitPlaylistId ?? null,
+        };
+      case 'medical':
+        return {
+          landscape: t.panicMedicalPlaylistId ?? null,
+          portrait: t.panicMedicalPortraitPlaylistId ?? null,
+        };
+      default:
+        return { landscape: null, portrait: null };
+    }
+  }
+
+  private pickScreenEmergencyContent(screen: any, typeKey: string | null): {
+    playlistId: string | null;
+    mediaUrl: string | null;
+  } {
+    const isPortrait = this.isPortraitScreen(screen);
+    const pick = (
+      landscapePlaylist?: string | null,
+      portraitPlaylist?: string | null,
+      landscapeAsset?: string | null,
+      portraitAsset?: string | null,
+    ) => ({
+      playlistId: isPortrait
+        ? (portraitPlaylist || landscapePlaylist || null)
+        : (landscapePlaylist || portraitPlaylist || null),
+      mediaUrl: isPortrait
+        ? (portraitAsset || landscapeAsset || null)
+        : (landscapeAsset || portraitAsset || null),
+    });
+
+    switch (typeKey) {
+      case 'LOCKDOWN':
+        return pick(
+          screen.emergencyLockdownPlaylistId,
+          screen.emergencyLockdownPortraitPlaylistId,
+          screen.emergencyLockdownAssetUrl,
+          screen.emergencyLockdownPortraitAssetUrl,
+        );
+      case 'EVACUATE':
+        return pick(
+          screen.emergencyEvacuatePlaylistId,
+          screen.emergencyEvacuatePortraitPlaylistId,
+          screen.emergencyEvacuateAssetUrl,
+          screen.emergencyEvacuatePortraitAssetUrl,
+        );
+      case 'WEATHER':
+        return pick(
+          screen.emergencyWeatherPlaylistId,
+          screen.emergencyWeatherPortraitPlaylistId,
+          screen.emergencyWeatherAssetUrl,
+          screen.emergencyWeatherPortraitAssetUrl,
+        );
+      case 'HOLD':
+        return pick(
+          screen.emergencyHoldPlaylistId,
+          screen.emergencyHoldPortraitPlaylistId,
+          screen.emergencyHoldAssetUrl,
+          screen.emergencyHoldPortraitAssetUrl,
+        );
+      case 'SECURE':
+        return pick(
+          screen.emergencySecurePlaylistId,
+          screen.emergencySecurePortraitPlaylistId,
+          screen.emergencySecureAssetUrl,
+          screen.emergencySecurePortraitAssetUrl,
+        );
+      case 'MEDICAL':
+        return pick(
+          screen.emergencyMedicalPlaylistId,
+          screen.emergencyMedicalPortraitPlaylistId,
+          screen.emergencyMedicalAssetUrl,
+          screen.emergencyMedicalPortraitAssetUrl,
+        );
+      default:
+        return { playlistId: null, mediaUrl: null };
+    }
+  }
+
+  private emergencyExpiresAt(value?: string | number | null): Date | null {
+    if (!value) return null;
+    const parsed = typeof value === 'number'
+      ? (value < 10_000_000_000 ? value * 1000 : value)
+      : Date.parse(String(value));
+    return Number.isFinite(parsed) ? new Date(parsed) : null;
+  }
+
   /**
    * SECURITY: Resolve the tenantId that OWNS the given scope and verify the
    * requesting user is allowed to act on it.
@@ -165,6 +293,8 @@ export class EmergencyController {
       payload: {
         overrideId,
         severity,
+        type: overridePayload.type,
+        playlistId: overridePayload.playlistId,
         mediaUrl: overridePayload.mediaUrl,
         textBlob: overridePayload.textBlob,
         expiresAt: overridePayload.expiresAt || (Math.floor(Date.now() / 1000) + 3600) // 1 hr default
@@ -173,45 +303,78 @@ export class EmergencyController {
 
     // If targeting a tenant (e.g., a school), update its emergencyStatus persistently
     if (scopeType === 'tenant') {
+      const explicitPlaylistId = !!overridePayload.playlistId;
       let activePlaylistId = overridePayload.playlistId || null;
       // Portrait variant resolved alongside the landscape playlist so
       // each screen can auto-pick the right one at manifest time.
       // null-safe: if a tenant hasn't configured a portrait variant,
       // this stays null and the manifest falls back to landscape.
       let activePortraitPlaylistId: string | null = null;
+      const tenantInfo = await this.prisma.client.tenant.findUnique({ where: { id: scopeId } });
 
       // If no playlist was explicitly provided, auto-resolve based on
       // the configured Panic Button content for this panic type.
-      if (!activePlaylistId) {
-        const tenantInfo = await this.prisma.client.tenant.findUnique({ where: { id: scopeId } });
-        if (tenantInfo) {
-          const t = tenantInfo as any;
-          switch (overridePayload.type) {
-            case 'lockdown':
-              activePlaylistId = tenantInfo.panicLockdownPlaylistId;
-              activePortraitPlaylistId = t.panicLockdownPortraitPlaylistId ?? null;
-              break;
-            case 'weather':
-              activePlaylistId = tenantInfo.panicWeatherPlaylistId;
-              activePortraitPlaylistId = t.panicWeatherPortraitPlaylistId ?? null;
-              break;
-            case 'evacuate':
-              activePlaylistId = tenantInfo.panicEvacuatePlaylistId;
-              activePortraitPlaylistId = t.panicEvacuatePortraitPlaylistId ?? null;
-              break;
-            case 'hold':
-              activePlaylistId = t.panicHoldPlaylistId ?? null;
-              activePortraitPlaylistId = t.panicHoldPortraitPlaylistId ?? null;
-              break;
-            case 'secure':
-              activePlaylistId = t.panicSecurePlaylistId ?? null;
-              activePortraitPlaylistId = t.panicSecurePortraitPlaylistId ?? null;
-              break;
-            case 'medical':
-              activePlaylistId = t.panicMedicalPlaylistId ?? null;
-              activePortraitPlaylistId = t.panicMedicalPortraitPlaylistId ?? null;
-              break;
+      if (tenantInfo) {
+        const tenantPlaylists = this.pickTenantPanicPlaylists(tenantInfo, overridePayload.type);
+        if (!activePlaylistId) {
+          activePlaylistId = tenantPlaylists.landscape;
+          activePortraitPlaylistId = tenantPlaylists.portrait;
+        } else if (!explicitPlaylistId) {
+          activePortraitPlaylistId = tenantPlaylists.portrait;
+        }
+      }
+
+      const typeKey = this.emergencyTypeKey(overridePayload.type);
+      const locationBasedOverrides: any[] = [];
+      let locationScreenCount = 0;
+      let locationSpecificCount = 0;
+
+      if ((tenantInfo as any)?.locationBasedEmergencyEnabled) {
+        const screens = await this.prisma.client.screen.findMany({
+          where: { tenantId: scopeId },
+        });
+        locationScreenCount = screens.length;
+
+        for (const screen of screens) {
+          const screenContent = this.pickScreenEmergencyContent(screen, typeKey);
+          const isPortrait = this.isPortraitScreen(screen);
+          const tenantFallbackPlaylistId = isPortrait
+            ? (activePortraitPlaylistId || activePlaylistId || null)
+            : (activePlaylistId || activePortraitPlaylistId || null);
+
+          if (screenContent.playlistId || screenContent.mediaUrl) {
+            locationSpecificCount += 1;
           }
+
+          const playlistId = screenContent.playlistId || (screenContent.mediaUrl ? null : tenantFallbackPlaylistId);
+          const mediaUrl = screenContent.playlistId
+            ? null
+            : (screenContent.mediaUrl || (playlistId ? null : (overridePayload.mediaUrl || null)));
+
+          locationBasedOverrides.push((this.prisma.client as any).screenEmergencyOverride.upsert({
+            where: { screenId: screen.id },
+            create: {
+              screenId: screen.id,
+              tenantId: scopeId,
+              type: typeKey || 'CUSTOM',
+              severity,
+              playlistId,
+              mediaUrl,
+              textBlob: overridePayload.textBlob || null,
+              expiresAt: this.emergencyExpiresAt(overridePayload.expiresAt),
+              triggeredByUserId: req.user?.id || 'admin_system',
+            },
+            update: {
+              type: typeKey || 'CUSTOM',
+              severity,
+              playlistId,
+              mediaUrl,
+              textBlob: overridePayload.textBlob || null,
+              expiresAt: this.emergencyExpiresAt(overridePayload.expiresAt),
+              triggeredByUserId: req.user?.id || 'admin_system',
+              triggeredAt: new Date(),
+            },
+          }));
         }
       }
 
@@ -239,9 +402,19 @@ export class EmergencyController {
             targetId: scopeId,
             tenantId: ownedTenantId,
             userId: req.user?.id,
-            details: JSON.stringify({ overrideId, severity, portraitPlaylistId: activePortraitPlaylistId, triggeredByTenant: req.user?.tenantId }),
+            details: JSON.stringify({
+              overrideId,
+              severity,
+              type: typeKey,
+              portraitPlaylistId: activePortraitPlaylistId,
+              locationBasedEnabled: !!(tenantInfo as any)?.locationBasedEmergencyEnabled,
+              locationScreenCount,
+              locationSpecificCount,
+              triggeredByTenant: req.user?.tenantId,
+            }),
           },
         }),
+        ...locationBasedOverrides,
       ]);
     } else {
       // Non-tenant scope (group / device) — still need an audit row but
@@ -329,6 +502,9 @@ export class EmergencyController {
             emergencyPlaylistId: null,
             emergencyPortraitPlaylistId: null,
           } as any,
+        }),
+        (this.prisma.client as any).screenEmergencyOverride.deleteMany({
+          where: { tenantId: scopeId },
         }),
         this.prisma.client.auditLog.create({
           data: {

@@ -1443,8 +1443,9 @@ export class ScreensController {
         // video MIME is inferred from the URL extension. Gated by the
         // same location-mode toggle as the playlist column above —
         // see `effectivePerScreenAsset` for rationale.
-        if (playlists.length === 0 && effectivePerScreenAsset) {
-          const url = effectivePerScreenAsset;
+        const effectiveOverrideAsset = activeScreenOverride?.mediaUrl || null;
+        if (playlists.length === 0 && (effectiveOverrideAsset || effectivePerScreenAsset)) {
+          const url = (effectiveOverrideAsset || effectivePerScreenAsset)!;
           const ext = (url.split('?')[0].split('#')[0].split('.').pop() || '').toLowerCase();
           const mime =
             ['mp4','mov','webm','m4v'].includes(ext) ? `video/${ext === 'mov' ? 'quicktime' : ext}` :

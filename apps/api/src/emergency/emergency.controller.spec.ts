@@ -21,7 +21,7 @@ describe('EmergencyController', () => {
     prismaService = {
       client: {
         tenant: {
-          findUnique: jest.fn().mockResolvedValue({ id: 't1', panicLockdownPlaylistId: null, emergencyStatus: 'INACTIVE', emergencyPlaylistId: null }),
+          findUnique: jest.fn().mockResolvedValue({ id: 't1', panicLockdownPlaylistId: null, emergencyStatus: 'INACTIVE', emergencyPlaylistId: null, locationBasedEmergencyEnabled: false }),
           update: jest.fn().mockResolvedValue({}),
         },
         screenGroup: {
@@ -31,6 +31,11 @@ describe('EmergencyController', () => {
         screen: {
           // Default: screen 'dev1' belongs to tenant 't1'
           findUnique: jest.fn().mockResolvedValue({ tenantId: 't1' }),
+          findMany: jest.fn().mockResolvedValue([]),
+        },
+        screenEmergencyOverride: {
+          upsert: jest.fn().mockResolvedValue({}),
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
         auditLog: { create: jest.fn().mockResolvedValue({}) },
         emergencyMessage: {
@@ -107,6 +112,79 @@ describe('EmergencyController', () => {
         type: 'OVERRIDE',
         payload: expect.objectContaining({
           overrideId: 'o1',
+        }),
+      }),
+    );
+  });
+
+  it('materializes location-based tenant triggers into per-screen overrides', async () => {
+    prismaService.client.tenant.findUnique.mockResolvedValueOnce({
+      id: 't1',
+      locationBasedEmergencyEnabled: true,
+      panicEvacuatePlaylistId: 'tenant-evacuate-landscape',
+      panicEvacuatePortraitPlaylistId: 'tenant-evacuate-portrait',
+    });
+    prismaService.client.screen.findMany.mockResolvedValueOnce([
+      {
+        id: 'east',
+        tenantId: 't1',
+        resolution: '1920x1080',
+        emergencyEvacuateAssetUrl: 'https://cdn.school/east-route.png',
+      },
+      {
+        id: 'west',
+        tenantId: 't1',
+        resolution: '1080x1920',
+        emergencyEvacuatePortraitPlaylistId: 'west-portrait-playlist',
+      },
+      {
+        id: 'cafeteria',
+        tenantId: 't1',
+        resolution: '1920x1080',
+      },
+    ]);
+
+    const req = { user: { id: 'admin1', tenantId: 't1', schoolId: 't1' } };
+    const payload = {
+      scopeType: 'tenant' as const,
+      scopeId: 't1',
+      overridePayload: {
+        overrideId: 'o-loc',
+        type: 'evacuate' as const,
+        severity: 'CRITICAL' as const,
+      },
+    };
+
+    await controller.triggerEmergency(payload, req);
+
+    expect(prismaService.client.screenEmergencyOverride.upsert).toHaveBeenCalledTimes(3);
+    expect(prismaService.client.screenEmergencyOverride.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { screenId: 'east' },
+        create: expect.objectContaining({
+          type: 'EVACUATE',
+          playlistId: null,
+          mediaUrl: 'https://cdn.school/east-route.png',
+        }),
+      }),
+    );
+    expect(prismaService.client.screenEmergencyOverride.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { screenId: 'west' },
+        create: expect.objectContaining({
+          type: 'EVACUATE',
+          playlistId: 'west-portrait-playlist',
+          mediaUrl: null,
+        }),
+      }),
+    );
+    expect(prismaService.client.screenEmergencyOverride.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { screenId: 'cafeteria' },
+        create: expect.objectContaining({
+          type: 'EVACUATE',
+          playlistId: 'tenant-evacuate-landscape',
+          mediaUrl: null,
         }),
       }),
     );
@@ -372,6 +450,9 @@ describe('EmergencyController', () => {
       const body = { scopeType: 'tenant' as const, scopeId: 't1' };
       const result = await controller.clearEmergency('o1', body, req);
       expect(result.success).toBe(true);
+      expect(prismaService.client.screenEmergencyOverride.deleteMany).toHaveBeenCalledWith({
+        where: { tenantId: 't1' },
+      });
     });
 
     it('/broadcast rejects cross-tenant call with ForbiddenException', async () => {
