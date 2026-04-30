@@ -38,9 +38,10 @@ export class PlaylistsController {
           include: { asset: { select: { id: true, fileUrl: true, mimeType: true, originalName: true } } },
         },
         template: { select: { id: true, name: true, screenWidth: true, screenHeight: true, category: true } },
+        createdBy: { select: { id: true, email: true } },
         _count: { select: { schedules: true } },
       },
-      orderBy: { name: 'asc' },
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
     });
   }
 
@@ -54,6 +55,8 @@ export class PlaylistsController {
           orderBy: { sequenceOrder: 'asc' },
           include: { asset: true },
         },
+        template: { select: { id: true, name: true, screenWidth: true, screenHeight: true, category: true } },
+        createdBy: { select: { id: true, email: true } },
       },
     });
   }
@@ -65,7 +68,17 @@ export class PlaylistsController {
       data: {
         tenantId: req.user.tenantId,
         name: body.name,
+        createdByUserId: req.user.id,
         ...(body.templateId ? { templateId: body.templateId } : {}),
+      },
+      include: {
+        template: { select: { id: true, name: true, screenWidth: true, screenHeight: true, category: true } },
+        createdBy: { select: { id: true, email: true } },
+        items: {
+          orderBy: { sequenceOrder: 'asc' },
+          include: { asset: { select: { id: true, fileUrl: true, mimeType: true, originalName: true } } },
+        },
+        _count: { select: { schedules: true } },
       },
     });
     this.notifySync(req.user.tenantId);
@@ -134,11 +147,20 @@ export class PlaylistsController {
           },
         }),
       ),
+      this.prisma.client.playlist.update({
+        where: { id },
+        data: { updatedAt: new Date() },
+      }),
     ]);
 
     const updated = await this.prisma.client.playlist.findUnique({
       where: { id },
-      include: { items: { orderBy: { sequenceOrder: 'asc' }, include: { asset: true } } },
+      include: {
+        items: { orderBy: { sequenceOrder: 'asc' }, include: { asset: true } },
+        template: { select: { id: true, name: true, screenWidth: true, screenHeight: true, category: true } },
+        createdBy: { select: { id: true, email: true } },
+        _count: { select: { schedules: true } },
+      },
     });
     this.notifySync(req.user.tenantId);
     return updated;

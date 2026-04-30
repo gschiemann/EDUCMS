@@ -24,6 +24,28 @@ import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
+type PlaylistSort = 'latest' | 'oldest' | 'az' | 'za' | 'creator' | 'modified' | 'assigned';
+type AssignmentFilter = 'all' | 'assigned' | 'unassigned';
+
+function fmtPlaylistDate(value?: string | Date | null) {
+  if (!value) return 'Unknown';
+  return new Date(value).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function creatorLabel(playlist: any) {
+  return playlist?.createdBy?.email || 'Unknown creator';
+}
+
+function playlistStamp(playlist: any, field: 'createdAt' | 'updatedAt') {
+  const value = playlist?.[field] || playlist?.createdAt || playlist?.updatedAt;
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+}
 
 function thumbUrl(asset: any) {
   if (!asset) return null;
@@ -203,6 +225,14 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
   const isLive = screenMap.activeCount > 0;
   // First few asset thumbs for the grid-view preview strip.
   const previewItems = (playlist.items || []).slice(0, 4);
+  const assignedNames = [
+    ...screenMap.screens.map((s: any) => s.name),
+    ...screenMap.groups.map((g: any) => g.name),
+  ].filter(Boolean);
+  const assignmentSummary = assignedNames.length > 0
+    ? assignedNames.slice(0, 2).join(', ') + (assignedNames.length > 2 ? ` +${assignedNames.length - 2}` : '')
+    : 'Unassigned';
+  const creator = creatorLabel(playlist);
 
   // Click handler for the toggle button. If the playlist has no
   // schedules yet, open the editor so the operator can set one up —
@@ -233,6 +263,8 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
             </div>
             <div className="flex items-center gap-3 mt-0.5 text-[10px] text-slate-400">
               <span>{isTemplate ? `${playlist.template.screenWidth}×${playlist.template.screenHeight}` : `${slideCount} slide${slideCount !== 1 ? 's' : ''}`}</span>
+              <span className="truncate max-w-36" title={creator}>{creator}</span>
+              <span>Updated {fmtPlaylistDate(playlist.updatedAt || playlist.createdAt)}</span>
               <span className="inline-flex items-center gap-1">
                 <CalendarDays className="w-3 h-3" />
                 {screenMap.activeCount}/{screenMap.scheduleCount || 0}
@@ -315,6 +347,11 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
                   : `${slideCount} slide${slideCount !== 1 ? 's' : ''}`
                 }
               </span>
+            </div>
+            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-slate-400">
+              <span className="truncate max-w-44" title={creator}>By {creator}</span>
+              <span>Created {fmtPlaylistDate(playlist.createdAt)}</span>
+              <span>Updated {fmtPlaylistDate(playlist.updatedAt || playlist.createdAt)}</span>
             </div>
           </div>
           <div className="flex items-center gap-1.5">
@@ -423,9 +460,9 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
 
       {/* Footer — click prompt */}
       <div className="px-5 py-2.5 border-t border-slate-50 bg-slate-50/30 flex items-center justify-between">
-        <span className="text-[10px] text-slate-400 font-medium">
+        <span className="text-[10px] text-slate-400 font-medium truncate" title={assignmentSummary}>
           {screenMap.scheduleCount > 0
-            ? `${onlineScreens.length} screen${onlineScreens.length !== 1 ? 's' : ''} online`
+            ? `${assignmentSummary} - ${onlineScreens.length} screen${onlineScreens.length !== 1 ? 's' : ''} online`
             : 'No schedules'
           }
         </span>
@@ -457,6 +494,11 @@ export default function PlaylistsPage() {
   // sessionStorage so a refresh doesn't reset the operator's choice.
   // Matches the Screens page pattern.
   const [playlistView, setPlaylistView] = useState<'grid' | 'list'>('grid');
+  const [playlistSort, setPlaylistSort] = useState<PlaylistSort>('latest');
+  const [playlistSearch, setPlaylistSearch] = useState('');
+  const [creatorFilter, setCreatorFilter] = useState('all');
+  const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilter>('all');
+  const [targetFilter, setTargetFilter] = useState('all');
   useEffect(() => {
     try {
       const v = sessionStorage.getItem('edu_playlist_view');
@@ -486,8 +528,8 @@ export default function PlaylistsPage() {
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [submitNote, setSubmitNote] = useState('');
   const [submitReviewerIds, setSubmitReviewerIds] = useState<string[]>([]);
-  const userRole = useUIStore((s) => s.user?.role);
-  const isContributor = userRole === 'CONTRIBUTOR';
+  const currentUser = useUIStore((s) => s.user);
+  const isContributor = currentUser?.role === 'CONTRIBUTOR';
   const { data: tenantUsers } = useUsers();
   const tenantAdmins = (tenantUsers as any[] | undefined)?.filter((u) => u.role === 'SUPER_ADMIN' || u.role === 'DISTRICT_ADMIN' || u.role === 'SCHOOL_ADMIN') || [];
   const createSubmission = useCreateSubmission();
@@ -584,6 +626,8 @@ export default function PlaylistsPage() {
   const playlistScreenMap = useMemo(() => {
     const map: Record<string, { screens: any[]; groups: any[]; scheduleCount: number; activeCount: number }> = {};
     if (!playlists) return map;
+    const screenLookup = new Map((screens || []).map((s: any) => [s.id, s]));
+    const groupLookup = new Map((screenGroups || []).map((g: any) => [g.id, g]));
 
     for (const pl of playlists) {
       const plSchedules = (schedules || []).filter((s: any) => s.playlistId === pl.id);
@@ -592,18 +636,21 @@ export default function PlaylistsPage() {
 
       for (const sched of plSchedules) {
         // Direct screen assignment
-        if (sched.screenId && sched.screen) {
-          screenSet.set(sched.screen.id, sched.screen);
+        if (sched.screenId) {
+          const liveScreen = screenLookup.get(sched.screenId) || sched.screen;
+          if (liveScreen) screenSet.set(sched.screenId, liveScreen);
         }
         // Screen group assignment — expand to individual screens
-        if (sched.screenGroupId && sched.screenGroup) {
-          groupSet.set(sched.screenGroup.id, {
-            ...sched.screenGroup,
-            screenCount: sched.screenGroup.screens?.length || 0,
+        if (sched.screenGroupId) {
+          const liveGroup = groupLookup.get(sched.screenGroupId) || sched.screenGroup;
+          if (!liveGroup) continue;
+          groupSet.set(sched.screenGroupId, {
+            ...liveGroup,
+            screenCount: liveGroup.screens?.length || 0,
           });
           // Also add individual screens from the group
-          if (sched.screenGroup.screens) {
-            for (const s of sched.screenGroup.screens) {
+          if (liveGroup.screens) {
+            for (const s of liveGroup.screens) {
               screenSet.set(s.id, s);
             }
           }
@@ -618,7 +665,7 @@ export default function PlaylistsPage() {
       };
     }
     return map;
-  }, [playlists, schedules]);
+  }, [playlists, schedules, screens, screenGroups]);
 
   // --- Quick stats ---
   const totalScreensOnline = (screens || []).filter((s: any) => s.status === 'ONLINE').length;
@@ -628,6 +675,63 @@ export default function PlaylistsPage() {
     const m = playlistScreenMap[pl.id];
     return !m || m.scheduleCount === 0;
   }).length;
+  const creatorOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const pl of playlists || []) {
+      if (pl.createdBy?.id && pl.createdBy?.email) seen.set(pl.createdBy.id, pl.createdBy.email);
+    }
+    return Array.from(seen.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [playlists]);
+  const displayedPlaylists = useMemo(() => {
+    const q = playlistSearch.trim().toLowerCase();
+    const list = (playlists || []).filter((pl: any) => {
+      const map = playlistScreenMap[pl.id] || { screens: [], groups: [], scheduleCount: 0, activeCount: 0 };
+      const creator = creatorLabel(pl);
+      const assignmentNames = [
+        ...map.screens.map((s: any) => s.name),
+        ...map.groups.map((g: any) => g.name),
+      ].filter(Boolean);
+
+      if (q) {
+        const haystack = [pl.name, creator, ...assignmentNames].join(' ').toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+
+      if (creatorFilter === 'me' && pl.createdBy?.id !== currentUser?.id) return false;
+      if (creatorFilter === 'others' && (!pl.createdBy?.id || pl.createdBy.id === currentUser?.id)) return false;
+      if (creatorFilter.startsWith('user:') && pl.createdBy?.id !== creatorFilter.slice(5)) return false;
+      if (assignmentFilter === 'assigned' && map.scheduleCount === 0) return false;
+      if (assignmentFilter === 'unassigned' && map.scheduleCount > 0) return false;
+      if (targetFilter.startsWith('screen:') && !map.screens.some((s: any) => s.id === targetFilter.slice(7))) return false;
+      if (targetFilter.startsWith('group:') && !map.groups.some((g: any) => g.id === targetFilter.slice(6))) return false;
+
+      return true;
+    });
+
+    return [...list].sort((a: any, b: any) => {
+      const mapA = playlistScreenMap[a.id] || { screens: [], groups: [] };
+      const mapB = playlistScreenMap[b.id] || { screens: [], groups: [] };
+      const assignedA = [...mapA.screens, ...mapA.groups].map((x: any) => x.name).filter(Boolean).sort()[0] || '';
+      const assignedB = [...mapB.screens, ...mapB.groups].map((x: any) => x.name).filter(Boolean).sort()[0] || '';
+      switch (playlistSort) {
+        case 'oldest':
+          return playlistStamp(a, 'createdAt') - playlistStamp(b, 'createdAt') || a.name.localeCompare(b.name);
+        case 'az':
+          return a.name.localeCompare(b.name);
+        case 'za':
+          return b.name.localeCompare(a.name);
+        case 'creator':
+          return creatorLabel(a).localeCompare(creatorLabel(b)) || a.name.localeCompare(b.name);
+        case 'modified':
+          return playlistStamp(b, 'updatedAt') - playlistStamp(a, 'updatedAt') || a.name.localeCompare(b.name);
+        case 'assigned':
+          return assignedA.localeCompare(assignedB) || a.name.localeCompare(b.name);
+        case 'latest':
+        default:
+          return playlistStamp(b, 'updatedAt') - playlistStamp(a, 'updatedAt') || playlistStamp(b, 'createdAt') - playlistStamp(a, 'createdAt') || a.name.localeCompare(b.name);
+      }
+    });
+  }, [playlists, playlistScreenMap, playlistSearch, creatorFilter, assignmentFilter, targetFilter, playlistSort, currentUser?.id]);
 
   // Activation constraint so clicks on interactive children (duration
   // input, settings button, checkbox) don't accidentally start a drag.
@@ -1745,6 +1849,66 @@ export default function PlaylistsPage() {
       )}
 
       {/* Create form — step-based */}
+      {playlists && playlists.length > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-100 px-4 py-3 flex flex-col gap-3">
+          <div className="flex flex-col lg:flex-row gap-3">
+            <label className="relative flex-1 min-w-0">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+              <input
+                value={playlistSearch}
+                onChange={(e) => setPlaylistSearch(e.target.value)}
+                placeholder="Search playlist, creator, or screen"
+                className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </label>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 lg:w-[720px]">
+              <select value={playlistSort} onChange={(e) => setPlaylistSort(e.target.value as PlaylistSort)} className="px-2 py-2 text-xs font-semibold border border-slate-200 rounded-lg bg-white text-slate-600 outline-none">
+                <option value="latest">Latest saved</option>
+                <option value="oldest">Oldest created</option>
+                <option value="az">A to Z</option>
+                <option value="za">Z to A</option>
+                <option value="creator">Created by</option>
+                <option value="modified">Last modified</option>
+                <option value="assigned">Assigned screen</option>
+              </select>
+              <select value={creatorFilter} onChange={(e) => setCreatorFilter(e.target.value)} className="px-2 py-2 text-xs font-semibold border border-slate-200 rounded-lg bg-white text-slate-600 outline-none">
+                <option value="all">All creators</option>
+                <option value="me">Created by me</option>
+                <option value="others">Created by others</option>
+                {creatorOptions.map(([id, email]) => (
+                  <option key={id} value={`user:${id}`}>{email}</option>
+                ))}
+              </select>
+              <select value={assignmentFilter} onChange={(e) => setAssignmentFilter(e.target.value as AssignmentFilter)} className="px-2 py-2 text-xs font-semibold border border-slate-200 rounded-lg bg-white text-slate-600 outline-none">
+                <option value="all">All assignments</option>
+                <option value="assigned">Assigned</option>
+                <option value="unassigned">Unassigned</option>
+              </select>
+              <select value={targetFilter} onChange={(e) => setTargetFilter(e.target.value)} className="px-2 py-2 text-xs font-semibold border border-slate-200 rounded-lg bg-white text-slate-600 outline-none">
+                <option value="all">All screens</option>
+                {(screens || []).map((screen: any) => (
+                  <option key={screen.id} value={`screen:${screen.id}`}>{screen.name}</option>
+                ))}
+                {(screenGroups || []).map((group: any) => (
+                  <option key={group.id} value={`group:${group.id}`}>{group.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+            <span>{displayedPlaylists.length} of {playlists.length} shown</span>
+            {(playlistSearch || creatorFilter !== 'all' || assignmentFilter !== 'all' || targetFilter !== 'all' || playlistSort !== 'latest') && (
+              <button
+                onClick={() => { setPlaylistSearch(''); setCreatorFilter('all'); setAssignmentFilter('all'); setTargetFilter('all'); setPlaylistSort('latest'); }}
+                className="text-indigo-600 hover:text-indigo-700"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {showCreate && (
         <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
           {createMode === 'choose' && (
@@ -1848,12 +2012,12 @@ export default function PlaylistsPage() {
       {isLoading && <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>}
 
       {/* ─── Playlist Dashboard — grid OR line layout ─── */}
-      {playlists && playlists.length > 0 && (
+      {playlists && playlists.length > 0 && displayedPlaylists.length > 0 && (
         <div className={playlistView === 'grid'
           ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4'
           : 'space-y-2'
         }>
-          {playlists.map((pl: any) => (
+          {displayedPlaylists.map((pl: any) => (
             <PlaylistCard
               key={pl.id}
               playlist={pl}
@@ -1918,6 +2082,26 @@ export default function PlaylistsPage() {
               layout={playlistView}
             />
           ))}
+        </div>
+      )}
+
+      {playlists && playlists.length > 0 && displayedPlaylists.length === 0 && !showCreate && (
+        <div className="flex flex-col items-center justify-center py-16 text-center bg-white rounded-2xl border border-slate-100">
+          <Search className="w-12 h-12 text-slate-300 mb-4" />
+          <h3 className="text-lg font-bold text-slate-900 mb-2">No playlists match those filters</h3>
+          <p className="text-sm text-slate-500 mb-5">Clear the search or filters to get back to the full playlist library.</p>
+          <button
+            onClick={() => {
+              setPlaylistSearch('');
+              setCreatorFilter('all');
+              setAssignmentFilter('all');
+              setTargetFilter('all');
+              setPlaylistSort('latest');
+            }}
+            className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-colors"
+          >
+            Reset filters
+          </button>
         </div>
       )}
 
