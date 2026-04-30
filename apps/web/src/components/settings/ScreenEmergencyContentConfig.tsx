@@ -23,7 +23,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { Loader2, Upload, Trash2 } from 'lucide-react';
+import { FileText, FileVideo, Image as ImageIcon, Loader2, Upload, Trash2 } from 'lucide-react';
 import {
   useUpdateScreenEmergencyContent,
   type FloorPlanScreen,
@@ -64,6 +64,23 @@ export const EMERGENCY_TYPES: EmergencyTypeRow[] = [
 ];
 
 type Orient = 'landscape' | 'portrait';
+
+function getAssetPreviewKind(url: string): 'image' | 'video' | 'pdf' | 'file' {
+  const clean = url.split('?')[0].split('#')[0].toLowerCase();
+  if (/\.(png|jpe?g|webp|gif|bmp|svg)$/.test(clean)) return 'image';
+  if (/\.(mp4|webm|mov|m4v)$/.test(clean)) return 'video';
+  if (/\.pdf$/.test(clean)) return 'pdf';
+  return 'file';
+}
+
+function getAssetFilename(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return parsed.pathname.split('/').filter(Boolean).pop() || 'custom asset';
+  } catch {
+    return url.split('/').pop()?.split('?')[0] || 'custom asset';
+  }
+}
 
 export function ScreenEmergencyContentConfig({
   screenId,
@@ -209,7 +226,8 @@ export function ScreenEmergencyContentConfig({
                   const k = screenKeys(t, orient);
                   const assetUrl = (displayScreen[k.asset] as string | null | undefined) ?? '';
                   const hasCustomAsset = !!assetUrl;
-                  const filename = hasCustomAsset ? assetUrl.split('/').pop()?.split('?')[0] : '';
+                  const filename = hasCustomAsset ? getAssetFilename(assetUrl) : '';
+                  const previewKind = hasCustomAsset ? getAssetPreviewKind(assetUrl) : 'file';
                   const uploadKey = `${t.short}-${orient}`;
                   const isUploadingThis = uploadingType === uploadKey;
 
@@ -249,6 +267,32 @@ export function ScreenEmergencyContentConfig({
                         </div>
                       ) : hasCustomAsset ? (
                         <>
+                          <div className="mb-2 overflow-hidden rounded-md border border-emerald-200 bg-white aspect-video flex items-center justify-center">
+                            {previewKind === 'image' ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={assetUrl}
+                                alt=""
+                                className="w-full h-full object-cover pointer-events-none"
+                                loading="lazy"
+                              />
+                            ) : previewKind === 'video' ? (
+                              <video
+                                src={assetUrl}
+                                className="w-full h-full object-cover pointer-events-none"
+                                muted
+                                playsInline
+                                preload="metadata"
+                              />
+                            ) : previewKind === 'pdf' ? (
+                              <FileText className="w-7 h-7 text-emerald-600" />
+                            ) : (
+                              <ImageIcon className="w-7 h-7 text-emerald-600" />
+                            )}
+                            {previewKind === 'video' && (
+                              <FileVideo className="absolute left-4 top-10 w-4 h-4 text-white drop-shadow" />
+                            )}
+                          </div>
                           <div className="text-[11px] font-bold text-emerald-700 truncate" title={filename || 'custom asset'}>
                             ✓ {filename || 'custom'}
                           </div>

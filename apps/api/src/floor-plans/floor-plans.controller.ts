@@ -63,6 +63,37 @@ const ALLOWED_FLOOR_PLAN_MIMES = [
   'image/webp',
 ];
 
+const SCREEN_ONLINE_STALE_MS = 35 * 1000;
+
+type FloorPlanScreenStatusRow = {
+  status: string;
+  tenantId?: string | null;
+  lastPingAt?: Date | string | null;
+  [key: string]: unknown;
+};
+
+function deriveLiveScreenStatus(screen: FloorPlanScreenStatusRow, now: number): string {
+  let liveStatus = screen.status;
+  if (screen.status !== 'REVOKED') {
+    const last = screen.lastPingAt ? new Date(screen.lastPingAt).getTime() : 0;
+    const isAlive = !!last && now - last < SCREEN_ONLINE_STALE_MS;
+    if (isAlive && screen.tenantId) liveStatus = 'ONLINE';
+    else if (screen.status === 'ONLINE' || screen.tenantId) liveStatus = 'OFFLINE';
+  }
+  return liveStatus;
+}
+
+function withLiveFloorPlanScreenStatus<T extends { screens?: FloorPlanScreenStatusRow[] }>(plan: T, now = Date.now()): T {
+  if (!plan || !Array.isArray(plan.screens)) return plan;
+  return {
+    ...plan,
+    screens: plan.screens.map((screen) => ({
+      ...screen,
+      status: deriveLiveScreenStatus(screen, now),
+    })),
+  };
+}
+
 @Controller('api/v1/floor-plans')
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class FloorPlansController {
@@ -96,13 +127,15 @@ export class FloorPlansController {
             name: true,
             floorX: true,
             floorY: true,
+            tenantId: true,
             status: true,
             lastPingAt: true,
           },
         },
       },
     });
-    return plans;
+    const now = Date.now();
+    return plans.map((plan: any) => withLiveFloorPlanScreenStatus(plan, now));
   }
 
   // ─── Single (with screens + zones) ─────────────────────────────
@@ -127,6 +160,7 @@ export class FloorPlansController {
             name: true,
             floorX: true,
             floorY: true,
+            tenantId: true,
             status: true,
             lastPingAt: true,
             screenGroupId: true,
@@ -165,7 +199,7 @@ export class FloorPlansController {
     if (!plan) {
       throw new HttpException('Floor plan not found', HttpStatus.NOT_FOUND);
     }
-    return plan;
+    return withLiveFloorPlanScreenStatus(plan);
   }
 
   // ─── Create / upload ──────────────────────────────────────────

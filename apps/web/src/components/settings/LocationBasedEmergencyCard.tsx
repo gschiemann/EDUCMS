@@ -43,8 +43,9 @@ export function LocationBasedEmergencyCard() {
   const { data: floorPlans, isLoading: plansLoading } = useFloorPlans();
   const toggle = useToggleLocationBasedEmergency();
 
-  const enabled = !!cfg?.enabled;
+  const enabled = cfg?.enabled === true;
   const planCount = floorPlans?.length ?? 0;
+  const modeLoading = cfgLoading && !cfg;
 
   const handleToggle = async (next: boolean) => {
     if (next) {
@@ -91,30 +92,35 @@ export function LocationBasedEmergencyCard() {
             enabled
               ? 'bg-rose-50 text-rose-700 border-rose-200'
               : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300'
-          } ${toggle.isPending || cfgLoading ? 'opacity-60 pointer-events-none' : ''}`}
+          } ${toggle.isPending || modeLoading ? 'opacity-60 pointer-events-none' : ''}`}
           title={enabled ? 'Switch back to standard emergency' : 'Enable location-based emergency'}
         >
           <input
             type="checkbox"
             checked={enabled}
-            disabled={toggle.isPending || cfgLoading}
+            disabled={toggle.isPending || modeLoading}
             onChange={(e) => handleToggle(e.target.checked)}
             className="sr-only"
             aria-label="Toggle location-based emergency mode"
           />
-          {toggle.isPending ? (
+          {toggle.isPending || modeLoading ? (
             <Loader2 className="w-4 h-4 animate-spin" />
           ) : enabled ? (
             <ShieldCheck className="w-4 h-4" />
           ) : (
             <ShieldOff className="w-4 h-4" />
           )}
-          <span className="text-[11px] font-bold uppercase tracking-wide">{enabled ? 'On' : 'Off'}</span>
+          <span className="text-[11px] font-bold uppercase tracking-wide">{modeLoading ? 'Loading' : enabled ? 'On' : 'Off'}</span>
         </label>
       </div>
 
       {/* Body — only render when enabled. Off-state shows a single helper line. */}
-      {!enabled ? (
+      {modeLoading ? (
+        <div className="px-6 py-5 text-xs text-slate-400 flex items-center gap-2">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          <span>Loading emergency settings...</span>
+        </div>
+      ) : !enabled ? (
         <div className="px-6 py-5 text-xs text-slate-400 flex items-center gap-2">
           <span>Mode is off. Standard emergency workflow is active for every screen.</span>
         </div>

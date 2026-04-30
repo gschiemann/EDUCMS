@@ -381,11 +381,12 @@ export default function SettingsPage() {
 function PanicContentSection() {
   const params = useParams<{ schoolId: string }>();
   const schoolId = params?.schoolId ?? '';
-  const { data: cfg } = useLocationBasedEmergencyConfig();
-  const { data: floorPlans } = useFloorPlans();
+  const { data: cfg, isLoading: cfgLoading, isError: cfgError } = useLocationBasedEmergencyConfig();
+  const { data: floorPlans, isLoading: plansLoading } = useFloorPlans();
   const toggle = useToggleLocationBasedEmergency();
   const enabled = !!cfg?.enabled;
   const planCount = floorPlans?.length ?? 0;
+  const modeKnown = !cfgLoading && !cfgError;
 
   // The previous version also gated on `cfgLoading` which left the
   // toggle disabled forever if the GET was racing the deploy. We rely
@@ -424,7 +425,7 @@ function PanicContentSection() {
         <button
           type="button"
           onClick={() => handleToggle(!enabled)}
-          disabled={toggle.isPending}
+          disabled={toggle.isPending || !modeKnown}
           aria-pressed={enabled}
           className={`shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-[11px] font-bold uppercase tracking-wide transition-colors ${
             enabled
@@ -433,14 +434,14 @@ function PanicContentSection() {
           } disabled:opacity-60 disabled:cursor-not-allowed`}
           title={enabled ? 'Switch back to standard emergency' : 'Enable per-screen location-based emergency'}
         >
-          {toggle.isPending ? (
+          {toggle.isPending || cfgLoading ? (
             <Loader2 className="w-4 h-4 animate-spin" />
           ) : enabled ? (
             <ShieldCheck className="w-4 h-4" />
           ) : (
             <ShieldOff className="w-4 h-4" />
           )}
-          <span>Location mode {enabled ? 'On' : 'Off'}</span>
+          <span>{cfgLoading ? 'Loading mode' : cfgError ? 'Mode unavailable' : `Location mode ${enabled ? 'On' : 'Off'}`}</span>
         </button>
       </div>
       <div className="p-6 space-y-6">
@@ -452,7 +453,16 @@ function PanicContentSection() {
             plan workflow. Per-screen overrides happen on the floor plan
             page (drawer), NOT here — that was the duplicate menu we
             cleaned up. */}
-        {!enabled ? (
+        {cfgLoading ? (
+          <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-6 flex items-center gap-3 text-sm font-semibold text-slate-500">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Loading emergency settings...
+          </div>
+        ) : cfgError ? (
+          <div className="rounded-lg border border-rose-200 bg-rose-50/70 p-6 text-sm font-semibold text-rose-700">
+            Could not load emergency settings. Refresh this page before changing emergency mode.
+          </div>
+        ) : !enabled ? (
           <>
             {/* Critical / life-safety row */}
             <div>
@@ -486,7 +496,12 @@ function PanicContentSection() {
           // only emergency content config. Operator: "select the screen
           // on the map thats showing in the main setting screen once you
           // enable the location mode, then the right tool drawer pops out."
-          <EmbeddedLocationMode schoolId={schoolId} planCount={planCount} floorPlans={floorPlans || []} />
+          <EmbeddedLocationMode
+            schoolId={schoolId}
+            planCount={planCount}
+            floorPlans={floorPlans || []}
+            isLoading={plansLoading}
+          />
         )}
       </div>
     </div>
@@ -516,10 +531,12 @@ function EmbeddedLocationMode({
   schoolId,
   planCount,
   floorPlans,
+  isLoading = false,
 }: {
   schoolId: string;
   planCount: number;
   floorPlans: any[];
+  isLoading?: boolean;
 }) {
   const [activePlanId, setActivePlanId] = useState<string | null>(
     floorPlans[0]?.id ?? null,
@@ -536,6 +553,15 @@ function EmbeddedLocationMode({
       setActivePlanId(floorPlans[0].id);
     }
   }, [floorPlans, planCount, activePlanId]);
+
+  if (isLoading) {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-6 flex items-center gap-3 text-sm font-semibold text-slate-500">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Loading floor plans...
+      </div>
+    );
+  }
 
   if (planCount === 0) {
     return (

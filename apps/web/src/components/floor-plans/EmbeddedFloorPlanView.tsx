@@ -112,7 +112,15 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
     const merged = plan.screens.map((screen) => {
       byId.add(screen.id);
       const optimistic = optimisticPositions[screen.id];
-      return optimistic ? { ...screen, ...optimistic } : screen;
+      const liveScreen = screensList.find((s: any) => s.id === screen.id);
+      const withLiveStatus = liveScreen
+        ? {
+            ...screen,
+            status: liveScreen.status ?? screen.status,
+            lastPingAt: liveScreen.lastPingAt ?? screen.lastPingAt,
+          }
+        : screen;
+      return optimistic ? { ...withLiveStatus, ...optimistic } : withLiveStatus;
     });
 
     for (const [screenId, position] of Object.entries(optimisticPositions)) {
