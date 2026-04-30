@@ -121,7 +121,15 @@ export function ScreenEmergencyContentConfig({
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
       if (!res.ok) throw new Error(`Upload failed (${res.status})`);
-      const { url } = await res.json();
+      const uploaded = await res.json();
+      const url =
+        uploaded?.url ||
+        uploaded?.fileUrl ||
+        uploaded?.asset?.fileUrl ||
+        uploaded?.asset?.url;
+      if (!url || typeof url !== 'string') {
+        throw new Error('Upload completed, but the server did not return a playable file URL.');
+      }
       // Setting a custom asset clears any playlist override for the
       // same (type, orientation) — single source of truth.
       setLocalScreenPatch((prev) => ({
@@ -196,7 +204,7 @@ export function ScreenEmergencyContentConfig({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2">
                 {orientations.map(({ orient, icon, label }) => {
                   const k = screenKeys(t, orient);
                   const assetUrl = (displayScreen[k.asset] as string | null | undefined) ?? '';
@@ -218,6 +226,18 @@ export function ScreenEmergencyContentConfig({
                       title={hasCustomAsset
                         ? `${filename}\nClick to replace, or use × to clear`
                         : `Upload ${label.toLowerCase()} ${t.label.toLowerCase()} content (image, video, or PDF)`}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        if (!uploadingType && !updateMutation.isPending) {
+                          e.dataTransfer.dropEffect = 'copy';
+                        }
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (uploadingType || updateMutation.isPending) return;
+                        const f = e.dataTransfer.files?.[0];
+                        if (f) onUploadCustom(t, orient, f);
+                      }}
                     >
                       <div className="flex items-center justify-center gap-1.5 mb-1.5">
                         <span className="text-xs" aria-hidden>{icon}</span>

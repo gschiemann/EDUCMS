@@ -491,7 +491,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         </div>
 
         {!previewMode && (
-          <aside className="w-[480px] min-w-[420px] max-w-[42vw] bg-white/70 backdrop-blur-2xl border-r border-slate-200/50 flex flex-col shrink-0 shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-10" aria-label="Builder tools">
+          <aside className="w-[clamp(360px,34vw,440px)] min-w-[360px] max-w-[44vw] bg-white/70 backdrop-blur-2xl border-r border-slate-200/50 flex flex-col shrink-0 shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-10" aria-label="Builder tools">
             <div className="flex p-2 gap-1 border-b border-slate-200/50 bg-white/40" role="tablist" aria-label="Panel">
               {panels.map(tab => {
                 const Icon = tab.icon;
