@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useId } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import {
   Clock, Cloud, Sun, CloudRain, CloudSnow, CloudLightning, Wind, Droplets,
   Megaphone, CalendarDays, Bell, UtensilsCrossed, Users, Globe, Rss, Share2,
@@ -261,6 +262,139 @@ function normalizeCalendarEvents(value: unknown, maxEvents: number): CalendarEve
   return DEFAULT_EVENTS.slice(0, maxEvents);
 }
 
+function parseTimeToMinutes(value: unknown): number | null {
+  if (typeof value !== 'string') return null;
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  return hour * 60 + minute;
+}
+
+function getActiveBellIndex(periods: BellPeriod[], now: Date): number {
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  for (let i = 0; i < periods.length; i += 1) {
+    const start = parseTimeToMinutes(periods[i]?.start);
+    if (start === null) continue;
+    const explicitEnd = parseTimeToMinutes(periods[i]?.end);
+    const nextStart = parseTimeToMinutes(periods[i + 1]?.start);
+    const end = explicitEnd ?? nextStart;
+    if (end === null) {
+      if (currentMinutes >= start) return i;
+      continue;
+    }
+    if (currentMinutes >= start && currentMinutes < end) return i;
+  }
+  return -1;
+}
+
+type TextStylePatch = {
+  fontFamily?: unknown;
+  fontSize?: unknown;
+  color?: unknown;
+  bold?: unknown;
+  italic?: unknown;
+  underline?: unknown;
+  strikethrough?: unknown;
+  textAlign?: unknown;
+  alignment?: unknown;
+  lineHeight?: unknown;
+};
+
+function cssString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.replace(/["\\\n\r]/g, '') : null;
+}
+
+function cssNumber(value: unknown, min: number, max: number): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return Math.max(min, Math.min(max, value));
+}
+
+function textStyleRules(style: TextStylePatch): string[] {
+  const rules: string[] = [];
+  const fontFamily = cssString(style.fontFamily);
+  const color = cssString(style.color);
+  const fontSize = cssNumber(style.fontSize, 1, 512);
+  const lineHeight = cssNumber(style.lineHeight, 0.5, 3);
+  const align = cssString(style.textAlign) || cssString(style.alignment);
+  const decorations: string[] = [];
+
+  if (style.underline === true) decorations.push('underline');
+  if (style.strikethrough === true) decorations.push('line-through');
+  if (fontFamily) rules.push(`font-family: ${fontFamily} !important`);
+  if (fontSize) rules.push(`font-size: ${fontSize}px !important`);
+  if (color) rules.push(`color: ${color} !important`);
+  if (style.bold === true) rules.push('font-weight: 800 !important');
+  if (style.italic === true) rules.push('font-style: italic !important');
+  if (decorations.length) rules.push(`text-decoration: ${decorations.join(' ')} !important`);
+  if (align && ['left', 'center', 'right', 'justify', 'start', 'end'].includes(align)) {
+    rules.push(`text-align: ${align} !important`);
+  }
+  if (lineHeight) rules.push(`line-height: ${lineHeight} !important`);
+  return rules;
+}
+
+function fieldSelector(scopeId: string, fieldKey?: string): string {
+  const root = `[data-widget-style-scope="${scopeId}"]`;
+  if (!fieldKey) return `${root} [data-field]`;
+  return `${root} [data-field="${fieldKey.replace(/"/g, '\\"')}"]`;
+}
+
+export function buildWidgetStyleCss(scopeId: string, config: any): string {
+  const cfg = config && typeof config === 'object' ? config : {};
+  const chunks: string[] = [];
+  const zoneRules = textStyleRules(cfg);
+
+  if (zoneRules.length) {
+    const selector = `[data-widget-style-scope="${scopeId}"] *:not(svg):not(svg *)`;
+    chunks.push(`${selector} { ${zoneRules.join('; ')}; }`);
+  }
+
+  const perField = cfg._styles && typeof cfg._styles === 'object' ? cfg._styles : {};
+  for (const [fieldKey, fieldStyle] of Object.entries(perField)) {
+    const rules = textStyleRules(fieldStyle as TextStylePatch);
+    if (!rules.length) continue;
+    const selector = fieldSelector(scopeId, fieldKey);
+    chunks.push(`${selector}, ${selector} *:not(svg):not(svg *) { ${rules.join('; ')}; }`);
+  }
+
+  return chunks.join('\n');
+}
+
+function widgetRootStyle(config: any): CSSProperties {
+  const cfg = config && typeof config === 'object' ? config : {};
+  const style: CSSProperties = {};
+  const opacity = cssNumber(cfg.opacity, 0, 1);
+  const fontFamily = cssString(cfg.fontFamily);
+  const color = cssString(cfg.color);
+  const bgColor = cssString(cfg.bgColor) || cssString(cfg.backgroundColor);
+  const textAlign = cssString(cfg.textAlign) || cssString(cfg.alignment);
+
+  if (opacity !== null) style.opacity = opacity;
+  if (fontFamily) style.fontFamily = fontFamily;
+  if (color) style.color = color;
+  if (bgColor) style.backgroundColor = bgColor;
+  if (textAlign && ['left', 'center', 'right', 'justify', 'start', 'end'].includes(textAlign)) {
+    style.textAlign = textAlign as CSSProperties['textAlign'];
+  }
+  return style;
+}
+
+function WidgetStyleScope({ config, children }: { config: any; children: ReactNode }) {
+  const scopeId = useId().replace(/:/g, '');
+  const css = useMemo(() => buildWidgetStyleCss(scopeId, config), [scopeId, config]);
+  return (
+    <div data-widget-style-scope={scopeId} className="absolute inset-0" style={widgetRootStyle(config)}>
+      {css ? <style>{css}</style> : null}
+      {children}
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════
 // Master renderer — picks the right widget by type
 // ═══════════════════════════════════════════════════════
@@ -278,6 +412,7 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
 }) {
   const cfg = config || {};
   const compact = height < 20 || width < 25;
+  let rendered: ReactNode = null;
 
   // Variant-registry dispatch — partner reported: drag the Dark Pill
   // clock variant onto the canvas, get the default ClockWidget
@@ -303,143 +438,146 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
       // reported "inline editing doesnt work at all" and this was the
       // root cause for every variant-rendered widget (which is most of
       // the canvas, since dragging a variant tile sets cfg.variant).
-      return <Render config={cfg} compact={compact} onConfigChange={onConfigChange} />;
+      rendered = <Render config={cfg} compact={compact} onConfigChange={onConfigChange} />;
+      return <WidgetStyleScope config={cfg}>{rendered}</WidgetStyleScope>;
     }
   }
 
   switch (widgetType) {
-    case 'CLOCK':        return <ClockWidget config={cfg} compact={compact} />;
-    case 'WEATHER':      return <WeatherWidget config={cfg} compact={compact} />;
-    case 'COUNTDOWN':    return <CountdownWidget config={cfg} compact={compact} onConfigChange={onConfigChange} />;
-    case 'TEXT':         return <TextWidget config={cfg} onConfigChange={onConfigChange} />;
-    case 'RICH_TEXT':    return <TextWidget config={cfg} onConfigChange={onConfigChange} />;
-    case 'ANNOUNCEMENT': return <AnnouncementWidget config={cfg} compact={compact} onConfigChange={onConfigChange} />;
-    case 'TICKER':       return <TickerWidget config={cfg} />;
-    case 'BELL_SCHEDULE': return <BellScheduleWidget config={cfg} compact={compact} />;
-    case 'LUNCH_MENU':   return <LunchMenuWidget config={cfg} compact={compact} />;
-    case 'CALENDAR':     return <CalendarWidget config={cfg} compact={compact} />;
-    case 'STAFF_SPOTLIGHT': return <StaffSpotlightWidget config={cfg} compact={compact} onConfigChange={onConfigChange} />;
-    case 'IMAGE':        return <ImageWidget config={cfg} />;
-    case 'IMAGE_CAROUSEL': return <ImageCarouselWidget config={cfg} />;
-    case 'VIDEO':        return <VideoWidget config={cfg} live={live} />;
-    case 'LOGO':         return <LogoWidget config={cfg} />;
-    case 'WEBPAGE':      return <WebpageWidget config={cfg} live={live} />;
-    case 'RSS_FEED':     return <RSSWidget config={cfg} compact={compact} />;
-    case 'SOCIAL_FEED':  return <SocialWidget config={cfg} />;
-    case 'PLAYLIST':     return <PlaylistWidget config={cfg} />;
+    case 'CLOCK':        rendered = <ClockWidget config={cfg} compact={compact} />; break;
+    case 'WEATHER':      rendered = <WeatherWidget config={cfg} compact={compact} />; break;
+    case 'COUNTDOWN':    rendered = <CountdownWidget config={cfg} compact={compact} onConfigChange={onConfigChange} />; break;
+    case 'TEXT':         rendered = <TextWidget config={cfg} onConfigChange={onConfigChange} />; break;
+    case 'RICH_TEXT':    rendered = <TextWidget config={cfg} onConfigChange={onConfigChange} />; break;
+    case 'ANNOUNCEMENT': rendered = <AnnouncementWidget config={cfg} compact={compact} onConfigChange={onConfigChange} />; break;
+    case 'TICKER':       rendered = <TickerWidget config={cfg} />; break;
+    case 'BELL_SCHEDULE': rendered = <BellScheduleWidget config={cfg} compact={compact} />; break;
+    case 'LUNCH_MENU':   rendered = <LunchMenuWidget config={cfg} compact={compact} />; break;
+    case 'CALENDAR':     rendered = <CalendarWidget config={cfg} compact={compact} />; break;
+    case 'STAFF_SPOTLIGHT': rendered = <StaffSpotlightWidget config={cfg} compact={compact} onConfigChange={onConfigChange} />; break;
+    case 'IMAGE':        rendered = <ImageWidget config={cfg} />; break;
+    case 'IMAGE_CAROUSEL': rendered = <ImageCarouselWidget config={cfg} />; break;
+    case 'VIDEO':        rendered = <VideoWidget config={cfg} live={live} />; break;
+    case 'LOGO':         rendered = <LogoWidget config={cfg} />; break;
+    case 'WEBPAGE':      rendered = <WebpageWidget config={cfg} live={live} />; break;
+    case 'RSS_FEED':     rendered = <RSSWidget config={cfg} compact={compact} />; break;
+    case 'SOCIAL_FEED':  rendered = <SocialWidget config={cfg} />; break;
+    case 'PLAYLIST':     rendered = <PlaylistWidget config={cfg} />; break;
     // Sprint 11h — drag-drop decorations (confetti, ribbon, balloons,
     // clouds, sparkles, ticker, neon-buzz, pulse-glow). Pure
     // CSS keyframes, no data sources, auto-scales to any zone size.
-    case 'DECORATION':   return <DecorationWidget config={cfg} />;
+    case 'DECORATION':   rendered = <DecorationWidget config={cfg} />; break;
     // Holiday lobby pack — 6 holidays × 3 grade levels = 18 templates,
     // imported from the design HTML zip. Each is a full-canvas themed
     // scene (Halloween haunted lobby, Christmas North Pole, etc).
-    case 'HOLIDAY':      return <HolidayWidget config={cfg} />;
+    case 'HOLIDAY':      rendered = <HolidayWidget config={cfg} />; break;
     // Generic category widgets (theme-agnostic).
-    case 'QUOTE':        return <QuoteWidget config={cfg} onConfigChange={onConfigChange} />;
-    case 'STATS':        return <StatsWidget config={cfg} />;
-    case 'MENU_ITEM':    return <MenuItemWidget config={cfg} onConfigChange={onConfigChange} />;
-    case 'SCOREBOARD':   return <ScoreboardWidget config={cfg} onConfigChange={onConfigChange} />;
-    case 'SCHEDULE_GRID': return <ScheduleGridWidget config={cfg} />;
-    case 'ATTENDANCE':   return <AttendanceWidget config={cfg} />;
-    case 'BIRTHDAYS':    return cfg.theme === 'rainbow-animated' ? <RainbowAnimatedBirthdays config={cfg} /> : <BirthdaysWidget config={cfg} />;
-    case 'HONOR_ROLL':   return <HonorRollWidget config={cfg} />;
+    case 'QUOTE':        rendered = <QuoteWidget config={cfg} onConfigChange={onConfigChange} />; break;
+    case 'STATS':        rendered = <StatsWidget config={cfg} />; break;
+    case 'MENU_ITEM':    rendered = <MenuItemWidget config={cfg} onConfigChange={onConfigChange} />; break;
+    case 'SCOREBOARD':   rendered = <ScoreboardWidget config={cfg} onConfigChange={onConfigChange} />; break;
+    case 'SCHEDULE_GRID': rendered = <ScheduleGridWidget config={cfg} />; break;
+    case 'ATTENDANCE':   rendered = <AttendanceWidget config={cfg} />; break;
+    case 'BIRTHDAYS':    rendered = cfg.theme === 'rainbow-animated' ? <RainbowAnimatedBirthdays config={cfg} /> : <BirthdaysWidget config={cfg} />; break;
+    case 'HONOR_ROLL':   rendered = <HonorRollWidget config={cfg} />; break;
     // ── Touch / Interactive (Sprint 4) ──────────────────────────
-    case 'TOUCH_BUTTON':     return <TouchButtonWidget config={cfg} />;
-    case 'TOUCH_MENU':       return <TouchMenuWidget config={cfg} />;
-    case 'ROOM_FINDER':      return <RoomFinderWidget config={cfg} />;
-    case 'ON_SCREEN_KEYBOARD': return <OnScreenKeyboardWidget config={cfg} />;
-    case 'WAYFINDING_MAP':   return <WayfindingMapWidget config={cfg} />;
-    case 'QUICK_POLL':       return <QuickPollWidget config={cfg} />;
+    case 'TOUCH_BUTTON':     rendered = <TouchButtonWidget config={cfg} />; break;
+    case 'TOUCH_MENU':       rendered = <TouchMenuWidget config={cfg} />; break;
+    case 'ROOM_FINDER':      rendered = <RoomFinderWidget config={cfg} />; break;
+    case 'ON_SCREEN_KEYBOARD': rendered = <OnScreenKeyboardWidget config={cfg} />; break;
+    case 'WAYFINDING_MAP':   rendered = <WayfindingMapWidget config={cfg} />; break;
+    case 'QUICK_POLL':       rendered = <QuickPollWidget config={cfg} />; break;
     // ── Animated full-screen scenes (one widget = whole template) ──
-    case 'ANIMATED_WELCOME':              return <AnimatedWelcomeWidget config={cfg} live={live} />;
-    case 'ANIMATED_WELCOME_PORTRAIT':     return <AnimatedWelcomePortraitWidget config={cfg} live={live} />;
-    case 'ANIMATED_WELCOME_MS':           return <AnimatedWelcomeMiddleWidget config={cfg} live={live} />;
-    case 'ANIMATED_WELCOME_HS':           return <AnimatedWelcomeHighWidget config={cfg} live={live} />;
-    case 'ANIMATED_WELCOME_HS_PORTRAIT':  return <AnimatedWelcomeHighPortraitWidget config={cfg} live={live} />;
-    case 'ANIMATED_WELCOME_MS_PORTRAIT':  return <AnimatedWelcomeMiddlePortraitWidget config={cfg} live={live} />;
+    case 'ANIMATED_WELCOME':              rendered = <AnimatedWelcomeWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_WELCOME_PORTRAIT':     rendered = <AnimatedWelcomePortraitWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_WELCOME_MS':           rendered = <AnimatedWelcomeMiddleWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_WELCOME_HS':           rendered = <AnimatedWelcomeHighWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_WELCOME_HS_PORTRAIT':  rendered = <AnimatedWelcomeHighPortraitWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_WELCOME_MS_PORTRAIT':  rendered = <AnimatedWelcomeMiddlePortraitWidget config={cfg} live={live} />; break;
     // Claude-designed HS pack:
-    case 'HS_VARSITY':                    return <HsVarsityWidget config={cfg} />;
-    case 'HS_VARSITY_PORTRAIT':           return <HsVarsityPortraitWidget config={cfg} live={live} />;
-    case 'HS_BROADCAST':                  return <HsBroadcastWidget config={cfg} />;
-    case 'HS_BROADCAST_PORTRAIT':         return <HsBroadcastPortraitWidget config={cfg} live={live} />;
-    case 'HS_YEARBOOK':                   return <HsYearbookWidget config={cfg} />;
-    case 'HS_YEARBOOK_PORTRAIT':          return <HsYearbookPortraitWidget config={cfg} live={live} />;
-    case 'HS_TERMINAL':                   return <HsTerminalWidget config={cfg} />;
-    case 'HS_TERMINAL_PORTRAIT':          return <HsTerminalPortraitWidget config={cfg} live={live} />;
-    case 'HS_TRANSIT':                    return <HsTransitWidget config={cfg} />;
-    case 'HS_TRANSIT_PORTRAIT':           return <HsTransitPortraitWidget config={cfg} live={live} />;
-    case 'HS_GALLERY':                    return <HsGalleryWidget config={cfg} />;
-    case 'HS_GALLERY_PORTRAIT':           return <HsGalleryPortraitWidget config={cfg} live={live} />;
-    case 'HS_BLUEPRINT':                  return <HsBlueprintWidget config={cfg} />;
-    case 'HS_BLUEPRINT_PORTRAIT':         return <HsBlueprintPortraitWidget config={cfg} live={live} />;
-    case 'HS_ZINE':                       return <HsZineWidget config={cfg} />;
-    case 'HS_ZINE_PORTRAIT':              return <HsZinePortraitWidget config={cfg} live={live} />;
+    case 'HS_VARSITY':                    rendered = <HsVarsityWidget config={cfg} />; break;
+    case 'HS_VARSITY_PORTRAIT':           rendered = <HsVarsityPortraitWidget config={cfg} live={live} />; break;
+    case 'HS_BROADCAST':                  rendered = <HsBroadcastWidget config={cfg} />; break;
+    case 'HS_BROADCAST_PORTRAIT':         rendered = <HsBroadcastPortraitWidget config={cfg} live={live} />; break;
+    case 'HS_YEARBOOK':                   rendered = <HsYearbookWidget config={cfg} />; break;
+    case 'HS_YEARBOOK_PORTRAIT':          rendered = <HsYearbookPortraitWidget config={cfg} live={live} />; break;
+    case 'HS_TERMINAL':                   rendered = <HsTerminalWidget config={cfg} />; break;
+    case 'HS_TERMINAL_PORTRAIT':          rendered = <HsTerminalPortraitWidget config={cfg} live={live} />; break;
+    case 'HS_TRANSIT':                    rendered = <HsTransitWidget config={cfg} />; break;
+    case 'HS_TRANSIT_PORTRAIT':           rendered = <HsTransitPortraitWidget config={cfg} live={live} />; break;
+    case 'HS_GALLERY':                    rendered = <HsGalleryWidget config={cfg} />; break;
+    case 'HS_GALLERY_PORTRAIT':           rendered = <HsGalleryPortraitWidget config={cfg} live={live} />; break;
+    case 'HS_BLUEPRINT':                  rendered = <HsBlueprintWidget config={cfg} />; break;
+    case 'HS_BLUEPRINT_PORTRAIT':         rendered = <HsBlueprintPortraitWidget config={cfg} live={live} />; break;
+    case 'HS_ZINE':                       rendered = <HsZineWidget config={cfg} />; break;
+    case 'HS_ZINE_PORTRAIT':              rendered = <HsZinePortraitWidget config={cfg} live={live} />; break;
     // MS pack:
-    case 'MS_ARCADE':                     return <MsArcadeWidget config={cfg} live={live} />;
-    case 'MS_ATLAS':                      return <MsAtlasWidget config={cfg} live={live} />;
-    case 'MS_FIELDNOTES':                 return <MsFieldnotesWidget config={cfg} live={live} />;
-    case 'MS_GREENHOUSE':                 return <MsGreenhouseWidget config={cfg} live={live} />;
-    case 'MS_HOMEROOM':                   return <MsHomeroomWidget config={cfg} live={live} />;
-    case 'MS_PAPER':                      return <MsPaperWidget config={cfg} live={live} />;
-    case 'MS_PLAYLIST':                   return <MsPlaylistWidget config={cfg} live={live} />;
-    case 'MS_STUDIO':                     return <MsStudioWidget config={cfg} live={live} />;
+    case 'MS_ARCADE':                     rendered = <MsArcadeWidget config={cfg} live={live} />; break;
+    case 'MS_ATLAS':                      rendered = <MsAtlasWidget config={cfg} live={live} />; break;
+    case 'MS_FIELDNOTES':                 rendered = <MsFieldnotesWidget config={cfg} live={live} />; break;
+    case 'MS_GREENHOUSE':                 rendered = <MsGreenhouseWidget config={cfg} live={live} />; break;
+    case 'MS_HOMEROOM':                   rendered = <MsHomeroomWidget config={cfg} live={live} />; break;
+    case 'MS_PAPER':                      rendered = <MsPaperWidget config={cfg} live={live} />; break;
+    case 'MS_PLAYLIST':                   rendered = <MsPlaylistWidget config={cfg} live={live} />; break;
+    case 'MS_STUDIO':                     rendered = <MsStudioWidget config={cfg} live={live} />; break;
     // ── MS pack — portrait variants (2160×3840) ──
-    case 'MS_ARCADE_PORTRAIT':            return <MsArcadePortraitWidget config={cfg} live={live} />;
-    case 'MS_ATLAS_PORTRAIT':             return <MsAtlasPortraitWidget config={cfg} live={live} />;
-    case 'MS_FIELDNOTES_PORTRAIT':        return <MsFieldnotesPortraitWidget config={cfg} live={live} />;
-    case 'MS_GREENHOUSE_PORTRAIT':        return <MsGreenhousePortraitWidget config={cfg} live={live} />;
-    case 'MS_HOMEROOM_PORTRAIT':          return <MsHomeroomPortraitWidget config={cfg} live={live} />;
-    case 'MS_PAPER_PORTRAIT':             return <MsPaperPortraitWidget config={cfg} live={live} />;
-    case 'MS_PLAYLIST_PORTRAIT':          return <MsPlaylistPortraitWidget config={cfg} live={live} />;
-    case 'MS_STUDIO_PORTRAIT':            return <MsStudioPortraitWidget config={cfg} live={live} />;
-    case 'ANIMATED_CAFETERIA':            return <AnimatedCafeteriaElementaryWidget config={cfg} live={live} />;
-    case 'ANIMATED_CAFETERIA_PORTRAIT':   return <AnimatedCafeteriaElementaryPortraitWidget config={cfg} live={live} />;
-    case 'ANIMATED_CAFETERIA_MS':         return <AnimatedCafeteriaMiddleWidget config={cfg} live={live} />;
-    case 'ANIMATED_CAFETERIA_MS_PORTRAIT': return <AnimatedCafeteriaMiddlePortraitWidget config={cfg} live={live} />;
-    case 'ANIMATED_CAFETERIA_HS':         return <AnimatedCafeteriaHighWidget config={cfg} live={live} />;
-    case 'ANIMATED_CAFETERIA_HS_PORTRAIT': return <AnimatedCafeteriaHighPortraitWidget config={cfg} live={live} />;
-    case 'ANIMATED_CAFETERIA_CHALKBOARD': return <AnimatedCafeteriaChalkboardWidget config={cfg} live={live} />;
-    case 'ANIMATED_CAFETERIA_CHALKBOARD_PORTRAIT': return <AnimatedCafeteriaChalkboardPortraitWidget config={cfg} live={live} />;
-    case 'ANIMATED_CAFETERIA_FOODTRUCK':  return <AnimatedCafeteriaFoodtruckWidget config={cfg} live={live} />;
-    case 'ANIMATED_CAFETERIA_FOODTRUCK_PORTRAIT': return <AnimatedCafeteriaFoodtruckPortraitWidget config={cfg} live={live} />;
-    case 'ANIMATED_BUS_BOARD':            return <AnimatedBusBoardWidget config={cfg} live={live} />;
-    case 'ANIMATED_BUS_BOARD_PORTRAIT':   return <AnimatedBusBoardPortraitWidget config={cfg} live={live} />;
-    case 'ANIMATED_MAIN_ENTRANCE':        return <AnimatedMainEntranceWidget config={cfg} live={live} />;
-    case 'ANIMATED_MAIN_ENTRANCE_PORTRAIT': return <AnimatedMainEntrancePortraitWidget config={cfg} live={live} />;
-    case 'ANIMATED_HALLWAY_SCHEDULE':     return <AnimatedHallwayScheduleWidget config={cfg} live={live} />;
-    case 'ANIMATED_HALLWAY_SCHEDULE_PORTRAIT': return <AnimatedHallwaySchedulePortraitWidget config={cfg} live={live} />;
-    case 'ANIMATED_BELL_SCHEDULE':        return <AnimatedBellScheduleWidget config={cfg} live={live} />;
-    case 'ANIMATED_BELL_SCHEDULE_PORTRAIT': return <AnimatedBellSchedulePortraitWidget config={cfg} live={live} />;
-    case 'ANIMATED_MORNING_NEWS':         return <AnimatedMorningNewsWidget config={cfg} live={live} />;
-    case 'ANIMATED_MORNING_NEWS_PORTRAIT': return <AnimatedMorningNewsPortraitWidget config={cfg} live={live} />;
-    case 'ANIMATED_ACHIEVEMENT_SHOWCASE': return <AnimatedAchievementShowcaseWidget config={cfg} live={live} />;
-    case 'ANIMATED_ACHIEVEMENT_SHOWCASE_PORTRAIT': return <AnimatedAchievementShowcasePortraitWidget config={cfg} live={live} />;
-    case 'SCRAPBOOK_HALLWAY':             return <ScrapbookHallwayWidget config={cfg} live={live} />;
-    case 'SCRAPBOOK_HALLWAY_PORTRAIT':    return <ScrapbookHallwayPortraitWidget config={cfg} live={live} />;
-    case 'SCRAPBOOK_CAFETERIA':           return <ScrapbookCafeteriaWidget config={cfg} live={live} />;
-    case 'SCRAPBOOK_CAFETERIA_PORTRAIT':  return <ScrapbookCafeteriaPortraitWidget config={cfg} live={live} />;
-    case 'STORYBOOK_HALLWAY':             return <StorybookHallwayWidget config={cfg} live={live} />;
-    case 'STORYBOOK_HALLWAY_PORTRAIT':    return <StorybookHallwayPortraitWidget config={cfg} live={live} />;
-    case 'STORYBOOK_CAFETERIA':           return <StorybookCafeteriaWidget config={cfg} live={live} />;
-    case 'STORYBOOK_CAFETERIA_PORTRAIT':  return <StorybookCafeteriaPortraitWidget config={cfg} live={live} />;
-    case 'BULLETIN_HALLWAY':              return <BulletinHallwayWidget config={cfg} live={live} />;
-    case 'BULLETIN_HALLWAY_PORTRAIT':     return <BulletinHallwayPortraitWidget config={cfg} live={live} />;
-    case 'BULLETIN_CAFETERIA':            return <BulletinCafeteriaWidget config={cfg} live={live} />;
-    case 'BULLETIN_CAFETERIA_PORTRAIT':   return <BulletinCafeteriaPortraitWidget config={cfg} live={live} />;
-    case 'ANIMATED_BACKGROUND':           return <AnimatedBackgroundWidget config={cfg} />;
+    case 'MS_ARCADE_PORTRAIT':            rendered = <MsArcadePortraitWidget config={cfg} live={live} />; break;
+    case 'MS_ATLAS_PORTRAIT':             rendered = <MsAtlasPortraitWidget config={cfg} live={live} />; break;
+    case 'MS_FIELDNOTES_PORTRAIT':        rendered = <MsFieldnotesPortraitWidget config={cfg} live={live} />; break;
+    case 'MS_GREENHOUSE_PORTRAIT':        rendered = <MsGreenhousePortraitWidget config={cfg} live={live} />; break;
+    case 'MS_HOMEROOM_PORTRAIT':          rendered = <MsHomeroomPortraitWidget config={cfg} live={live} />; break;
+    case 'MS_PAPER_PORTRAIT':             rendered = <MsPaperPortraitWidget config={cfg} live={live} />; break;
+    case 'MS_PLAYLIST_PORTRAIT':          rendered = <MsPlaylistPortraitWidget config={cfg} live={live} />; break;
+    case 'MS_STUDIO_PORTRAIT':            rendered = <MsStudioPortraitWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_CAFETERIA':            rendered = <AnimatedCafeteriaElementaryWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_CAFETERIA_PORTRAIT':   rendered = <AnimatedCafeteriaElementaryPortraitWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_CAFETERIA_MS':         rendered = <AnimatedCafeteriaMiddleWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_CAFETERIA_MS_PORTRAIT': rendered = <AnimatedCafeteriaMiddlePortraitWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_CAFETERIA_HS':         rendered = <AnimatedCafeteriaHighWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_CAFETERIA_HS_PORTRAIT': rendered = <AnimatedCafeteriaHighPortraitWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_CAFETERIA_CHALKBOARD': rendered = <AnimatedCafeteriaChalkboardWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_CAFETERIA_CHALKBOARD_PORTRAIT': rendered = <AnimatedCafeteriaChalkboardPortraitWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_CAFETERIA_FOODTRUCK':  rendered = <AnimatedCafeteriaFoodtruckWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_CAFETERIA_FOODTRUCK_PORTRAIT': rendered = <AnimatedCafeteriaFoodtruckPortraitWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_BUS_BOARD':            rendered = <AnimatedBusBoardWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_BUS_BOARD_PORTRAIT':   rendered = <AnimatedBusBoardPortraitWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_MAIN_ENTRANCE':        rendered = <AnimatedMainEntranceWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_MAIN_ENTRANCE_PORTRAIT': rendered = <AnimatedMainEntrancePortraitWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_HALLWAY_SCHEDULE':     rendered = <AnimatedHallwayScheduleWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_HALLWAY_SCHEDULE_PORTRAIT': rendered = <AnimatedHallwaySchedulePortraitWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_BELL_SCHEDULE':        rendered = <AnimatedBellScheduleWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_BELL_SCHEDULE_PORTRAIT': rendered = <AnimatedBellSchedulePortraitWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_MORNING_NEWS':         rendered = <AnimatedMorningNewsWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_MORNING_NEWS_PORTRAIT': rendered = <AnimatedMorningNewsPortraitWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_ACHIEVEMENT_SHOWCASE': rendered = <AnimatedAchievementShowcaseWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_ACHIEVEMENT_SHOWCASE_PORTRAIT': rendered = <AnimatedAchievementShowcasePortraitWidget config={cfg} live={live} />; break;
+    case 'SCRAPBOOK_HALLWAY':             rendered = <ScrapbookHallwayWidget config={cfg} live={live} />; break;
+    case 'SCRAPBOOK_HALLWAY_PORTRAIT':    rendered = <ScrapbookHallwayPortraitWidget config={cfg} live={live} />; break;
+    case 'SCRAPBOOK_CAFETERIA':           rendered = <ScrapbookCafeteriaWidget config={cfg} live={live} />; break;
+    case 'SCRAPBOOK_CAFETERIA_PORTRAIT':  rendered = <ScrapbookCafeteriaPortraitWidget config={cfg} live={live} />; break;
+    case 'STORYBOOK_HALLWAY':             rendered = <StorybookHallwayWidget config={cfg} live={live} />; break;
+    case 'STORYBOOK_HALLWAY_PORTRAIT':    rendered = <StorybookHallwayPortraitWidget config={cfg} live={live} />; break;
+    case 'STORYBOOK_CAFETERIA':           rendered = <StorybookCafeteriaWidget config={cfg} live={live} />; break;
+    case 'STORYBOOK_CAFETERIA_PORTRAIT':  rendered = <StorybookCafeteriaPortraitWidget config={cfg} live={live} />; break;
+    case 'BULLETIN_HALLWAY':              rendered = <BulletinHallwayWidget config={cfg} live={live} />; break;
+    case 'BULLETIN_HALLWAY_PORTRAIT':     rendered = <BulletinHallwayPortraitWidget config={cfg} live={live} />; break;
+    case 'BULLETIN_CAFETERIA':            rendered = <BulletinCafeteriaWidget config={cfg} live={live} />; break;
+    case 'BULLETIN_CAFETERIA_PORTRAIT':   rendered = <BulletinCafeteriaPortraitWidget config={cfg} live={live} />; break;
+    case 'ANIMATED_BACKGROUND':           rendered = <AnimatedBackgroundWidget config={cfg} />; break;
     // ── Fitness vertical widgets ──
-    case 'FITNESS_MUSIC_PLAYER':          return <FitnessMusicPlayerWidget config={cfg} live={live} />;
-    case 'FITNESS_LIVE_TV':               return <FitnessLiveTVWidget config={cfg} live={live} />;
-    case 'FITNESS_AD_BANNER':             return <FitnessAdBannerWidget config={cfg} live={live} />;
-    case 'FITNESS_CLASS_SCHEDULE':        return <FitnessClassScheduleWidget config={cfg} live={live} />;
-    case 'FITNESS_TRAINING_VIDEO':        return <FitnessTrainingVideoWidget config={cfg} live={live} />;
-    case 'FITNESS_WORKOUT_TIMER':         return <FitnessWorkoutTimerWidget config={cfg} live={live} />;
-    case 'FITNESS_MOTIVATIONAL_QUOTE':    return <FitnessMotivationalQuoteWidget config={cfg} live={live} />;
-    case 'FITNESS_APP_LIBRARY':           return <FitnessAppLibraryWidget config={cfg} live={live} />;
-    case 'FITNESS_STICK_LAUNCHER':        return <FitnessStickLauncherWidget config={cfg} live={live} />;
-    default:             return null;
+    case 'FITNESS_MUSIC_PLAYER':          rendered = <FitnessMusicPlayerWidget config={cfg} live={live} />; break;
+    case 'FITNESS_LIVE_TV':               rendered = <FitnessLiveTVWidget config={cfg} live={live} />; break;
+    case 'FITNESS_AD_BANNER':             rendered = <FitnessAdBannerWidget config={cfg} live={live} />; break;
+    case 'FITNESS_CLASS_SCHEDULE':        rendered = <FitnessClassScheduleWidget config={cfg} live={live} />; break;
+    case 'FITNESS_TRAINING_VIDEO':        rendered = <FitnessTrainingVideoWidget config={cfg} live={live} />; break;
+    case 'FITNESS_WORKOUT_TIMER':         rendered = <FitnessWorkoutTimerWidget config={cfg} live={live} />; break;
+    case 'FITNESS_MOTIVATIONAL_QUOTE':    rendered = <FitnessMotivationalQuoteWidget config={cfg} live={live} />; break;
+    case 'FITNESS_APP_LIBRARY':           rendered = <FitnessAppLibraryWidget config={cfg} live={live} />; break;
+    case 'FITNESS_STICK_LAUNCHER':        rendered = <FitnessStickLauncherWidget config={cfg} live={live} />; break;
+    default:                              rendered = null;
   }
+
+  return <WidgetStyleScope config={cfg}>{rendered}</WidgetStyleScope>;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -875,7 +1013,7 @@ function TextWidget({ config, onConfigChange }: { config: any; onConfigChange?: 
   const content = config.content || 'Your text here';
   const fontSize = config.fontSize || 24;
   const fontFamily = config.fontFamily;
-  const alignment = config.alignment || 'center';
+  const alignment = config.textAlign || config.alignment || 'center';
   const color = config.color || '#1e293b';
   const bgColor = config.bgColor || 'transparent';
   // Inline format toggles — match Canva's universal toolbar.
@@ -898,7 +1036,7 @@ function TextWidget({ config, onConfigChange }: { config: any; onConfigChange?: 
       <p
         data-field="content"
         style={{
-          fontSize: `${Math.min(fontSize / 16, 3)}em`,
+          fontSize: `${fontSize}px`,
           fontFamily: fontFamily || undefined,
           // Default weight is 600 (semibold) for display readability
           // on a wall screen. Bold toggle bumps to 800. No-bold-set
@@ -1073,7 +1211,7 @@ function BellScheduleWidget({ config, compact }: { config: any; compact: boolean
   const title = config.title || 'Bell Schedule';
   const periods = normalizeBellSchedule(config.schedule);
   const now = new Date();
-  const currentHour = now.getHours();
+  const activeIndex = config.showCurrent === false ? -1 : getActiveBellIndex(periods, now);
 
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden" style={{ background: 'linear-gradient(180deg, #eef2ff, #e0e7ff)' }}>
@@ -1087,7 +1225,7 @@ function BellScheduleWidget({ config, compact }: { config: any; compact: boolean
       </div>
       <div className="flex-1 overflow-y-auto" style={{ padding: '3% 5%' }}>
         {periods.map((period, i) => {
-          const isActive = config.showCurrent !== false && i === Math.min(Math.floor((currentHour - 8) / 1), periods.length - 1) && currentHour >= 8 && currentHour < 15;
+          const isActive = i === activeIndex;
           return (
             <div key={i} style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -1338,7 +1476,7 @@ function ImageWidget({ config }: { config: any }) {
   if (config.assetUrl) {
     // `fit` is the canonical key set by the new top contextual toolbar
     // (cover/contain). Legacy templates use `fitMode` — fall through.
-    const fit = (config.fit || config.fitMode || 'contain') as 'cover' | 'contain';
+    const fit = (config.objectFit || config.fit || config.fitMode || 'contain') as CSSProperties['objectFit'];
     const opacity = typeof config.opacity === 'number' ? Math.max(0, Math.min(1, config.opacity)) : 1;
     const radius = typeof config.borderRadius === 'number' ? Math.max(0, config.borderRadius) : 0;
     return (
@@ -1385,7 +1523,11 @@ function ImageCarouselWidget({ config }: { config: any }) {
   if (config.theme === 'middle-school-hall') return <MSHallImageCarousel config={config} />;
   if (config.theme === 'stem-science') return <StemScienceImageCarousel config={config} />;
   if (config.theme === 'sunshine-academy') return <SunshineAcademyImageCarousel config={config} />;
-  const urls = config.assetUrls || [];
+  const urls = Array.isArray(config.assetUrls)
+    ? config.assetUrls
+    : Array.isArray(config.urls)
+      ? config.urls
+      : [];
   const [idx, setIdx] = useState(0);
   const interval = config.intervalMs || 5000;
 
@@ -1398,7 +1540,7 @@ function ImageCarouselWidget({ config }: { config: any }) {
   if (urls.length > 0) {
     return (
       <div className="absolute inset-0 overflow-hidden">
-        <img src={resolveUrl(urls[idx % urls.length])} alt="" className="w-full h-full transition-opacity duration-500" style={{ objectFit: config.fitMode || 'contain' }} />
+        <img src={resolveUrl(urls[idx % urls.length])} alt="" className="w-full h-full transition-opacity duration-500" style={{ objectFit: config.objectFit || config.fit || config.fitMode || 'contain' }} />
         {urls.length > 1 && (
           <div className="absolute bottom-[5%] left-1/2 -translate-x-1/2 flex gap-1">
             {urls.map((_: string, i: number) => (
@@ -1444,7 +1586,7 @@ function VideoWidget({ config, live }: { config: any; live?: boolean }) {
           ref={videoRef}
           src={resolveUrl(config.assetUrl)}
           className="w-full h-full"
-          style={{ objectFit: config.fitMode || 'contain' }}
+          style={{ objectFit: config.objectFit || config.fit || config.fitMode || 'contain' }}
           autoPlay={shouldAutoplay}
           muted={shouldMute}
           loop={shouldLoop}
