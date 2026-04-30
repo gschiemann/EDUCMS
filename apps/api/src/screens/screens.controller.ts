@@ -1771,9 +1771,35 @@ export class ScreensController {
       throw new HttpException(`Device auth required (${authResult.reason})`, HttpStatus.UNAUTHORIZED);
     }
 
-    const screen = await this.prisma.client.screen.findUnique({
+    const screen = await (this.prisma.client.screen as any).findUnique({
       where: { id },
-      select: { tenantId: true },
+      select: {
+        tenantId: true,
+        emergencyLockdownPlaylistId: true,
+        emergencyEvacuatePlaylistId: true,
+        emergencyWeatherPlaylistId: true,
+        emergencyHoldPlaylistId: true,
+        emergencySecurePlaylistId: true,
+        emergencyMedicalPlaylistId: true,
+        emergencyLockdownPortraitPlaylistId: true,
+        emergencyEvacuatePortraitPlaylistId: true,
+        emergencyWeatherPortraitPlaylistId: true,
+        emergencyHoldPortraitPlaylistId: true,
+        emergencySecurePortraitPlaylistId: true,
+        emergencyMedicalPortraitPlaylistId: true,
+        emergencyLockdownAssetUrl: true,
+        emergencyEvacuateAssetUrl: true,
+        emergencyWeatherAssetUrl: true,
+        emergencyHoldAssetUrl: true,
+        emergencySecureAssetUrl: true,
+        emergencyMedicalAssetUrl: true,
+        emergencyLockdownPortraitAssetUrl: true,
+        emergencyEvacuatePortraitAssetUrl: true,
+        emergencyWeatherPortraitAssetUrl: true,
+        emergencyHoldPortraitAssetUrl: true,
+        emergencySecurePortraitAssetUrl: true,
+        emergencyMedicalPortraitAssetUrl: true,
+      },
     });
     if (!screen?.tenantId) {
       throw new HttpException('Screen not found or not paired', HttpStatus.NOT_FOUND);
@@ -1784,9 +1810,19 @@ export class ScreensController {
       select: {
         id: true,
         emergencyPlaylistId: true,
+        emergencyPortraitPlaylistId: true,
         panicLockdownPlaylistId: true,
         panicEvacuatePlaylistId: true,
         panicWeatherPlaylistId: true,
+        panicHoldPlaylistId: true,
+        panicSecurePlaylistId: true,
+        panicMedicalPlaylistId: true,
+        panicLockdownPortraitPlaylistId: true,
+        panicEvacuatePortraitPlaylistId: true,
+        panicWeatherPortraitPlaylistId: true,
+        panicHoldPortraitPlaylistId: true,
+        panicSecurePortraitPlaylistId: true,
+        panicMedicalPortraitPlaylistId: true,
       },
     });
     if (!tenant) {
@@ -1795,12 +1831,35 @@ export class ScreensController {
 
     const playlistIds = [
       tenant.emergencyPlaylistId,
+      (tenant as any).emergencyPortraitPlaylistId,
       tenant.panicLockdownPlaylistId,
       tenant.panicEvacuatePlaylistId,
       tenant.panicWeatherPlaylistId,
+      (tenant as any).panicHoldPlaylistId,
+      (tenant as any).panicSecurePlaylistId,
+      (tenant as any).panicMedicalPlaylistId,
+      (tenant as any).panicLockdownPortraitPlaylistId,
+      (tenant as any).panicEvacuatePortraitPlaylistId,
+      (tenant as any).panicWeatherPortraitPlaylistId,
+      (tenant as any).panicHoldPortraitPlaylistId,
+      (tenant as any).panicSecurePortraitPlaylistId,
+      (tenant as any).panicMedicalPortraitPlaylistId,
+      (screen as any).emergencyLockdownPlaylistId,
+      (screen as any).emergencyEvacuatePlaylistId,
+      (screen as any).emergencyWeatherPlaylistId,
+      (screen as any).emergencyHoldPlaylistId,
+      (screen as any).emergencySecurePlaylistId,
+      (screen as any).emergencyMedicalPlaylistId,
+      (screen as any).emergencyLockdownPortraitPlaylistId,
+      (screen as any).emergencyEvacuatePortraitPlaylistId,
+      (screen as any).emergencyWeatherPortraitPlaylistId,
+      (screen as any).emergencyHoldPortraitPlaylistId,
+      (screen as any).emergencySecurePortraitPlaylistId,
+      (screen as any).emergencyMedicalPortraitPlaylistId,
     ].filter((x): x is string => !!x);
 
     const assets: Array<{ url: string; sha256: string; size: number; kind: string }> = [];
+    const seen = new Set<string>();
 
     if (playlistIds.length > 0) {
       const playlists = await this.prisma.client.playlist.findMany({
@@ -1813,7 +1872,6 @@ export class ScreensController {
           },
         },
       });
-      const seen = new Set<string>();
       for (const pl of playlists) {
         for (const item of pl.items) {
           if (!item.asset?.fileUrl) continue;
@@ -1833,6 +1891,36 @@ export class ScreensController {
           });
         }
       }
+    }
+
+    const screenAssetUrls = [
+      (screen as any).emergencyLockdownAssetUrl,
+      (screen as any).emergencyEvacuateAssetUrl,
+      (screen as any).emergencyWeatherAssetUrl,
+      (screen as any).emergencyHoldAssetUrl,
+      (screen as any).emergencySecureAssetUrl,
+      (screen as any).emergencyMedicalAssetUrl,
+      (screen as any).emergencyLockdownPortraitAssetUrl,
+      (screen as any).emergencyEvacuatePortraitAssetUrl,
+      (screen as any).emergencyWeatherPortraitAssetUrl,
+      (screen as any).emergencyHoldPortraitAssetUrl,
+      (screen as any).emergencySecurePortraitAssetUrl,
+      (screen as any).emergencyMedicalPortraitAssetUrl,
+    ].filter((url): url is string => typeof url === 'string' && url.trim().length > 0);
+
+    for (const url of screenAssetUrls) {
+      if (seen.has(url)) continue;
+      seen.add(url);
+      const clean = url.split('?')[0].split('#')[0].toLowerCase();
+      const kind = /\.(mp4|webm|mov|m4v)$/.test(clean) ? 'video'
+        : /\.pdf$/.test(clean) ? 'pdf'
+          : 'image';
+      assets.push({
+        url,
+        sha256: crypto.createHash('sha256').update(`${url}:screen-emergency`).digest('hex'),
+        size: 0,
+        kind,
+      });
     }
 
     // Stable hash of the whole asset set so the player can short-circuit

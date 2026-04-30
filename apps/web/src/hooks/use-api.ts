@@ -1662,6 +1662,7 @@ export function useUpdateScreenEmergencyContent() {
       // 3. Invalidate as a safety net — if any cache layer disagreed
       //    with our optimistic patch, the next render reconciles.
       qc.invalidateQueries({ queryKey: ['screens'] });
+      qc.invalidateQueries({ queryKey: ['assets'] });
       qc.invalidateQueries({ queryKey: ['floor-plans'] });
       qc.invalidateQueries({ queryKey: ['floor-plan'] });
       qc.invalidateQueries({ queryKey: ['screen-emergency-override', vars.screenId] });

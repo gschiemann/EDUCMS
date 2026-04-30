@@ -21,6 +21,26 @@ const ALLOWED_TYPES = [
   'application/pdf',
 ];
 
+const SCREEN_EMERGENCY_ASSET_FIELDS = [
+  'emergencyLockdownAssetUrl',
+  'emergencyEvacuateAssetUrl',
+  'emergencyWeatherAssetUrl',
+  'emergencyHoldAssetUrl',
+  'emergencySecureAssetUrl',
+  'emergencyMedicalAssetUrl',
+  'emergencyLockdownPortraitAssetUrl',
+  'emergencyEvacuatePortraitAssetUrl',
+  'emergencyWeatherPortraitAssetUrl',
+  'emergencyHoldPortraitAssetUrl',
+  'emergencySecurePortraitAssetUrl',
+  'emergencyMedicalPortraitAssetUrl',
+] as const;
+
+const SCREEN_EMERGENCY_ASSET_SELECT = SCREEN_EMERGENCY_ASSET_FIELDS.reduce<Record<string, true>>((acc, field) => {
+  acc[field] = true;
+  return acc;
+}, {});
+
 @Controller('api/v1/assets')
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class AssetsController {
@@ -46,6 +66,25 @@ export class AssetsController {
       role === AppRole.SCHOOL_ADMIN
     ) return 'PUBLISHED';
     return 'PENDING_APPROVAL';
+  }
+
+  private async listScreenEmergencyAssetUrls(tenantId: string): Promise<string[]> {
+    const screens = await (this.prisma.client.screen as any).findMany({
+      where: { tenantId },
+      select: SCREEN_EMERGENCY_ASSET_SELECT,
+    }) as Array<Record<string, string | null>>;
+    const urls = new Set<string>();
+    for (const screen of screens) {
+      for (const field of SCREEN_EMERGENCY_ASSET_FIELDS) {
+        const url = screen[field];
+        if (typeof url === 'string' && url.trim()) urls.add(url);
+      }
+    }
+    return [...urls];
+  }
+
+  private screenEmergencyAssetOr(fileUrl: string) {
+    return SCREEN_EMERGENCY_ASSET_FIELDS.map((field) => ({ [field]: fileUrl }));
   }
 
   /**
@@ -170,6 +209,18 @@ export class AssetsController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   async list(@Request() req: any) {
     const tenantId = req.user.tenantId;
+    const emergencyAssetUrls = await this.listScreenEmergencyAssetUrls(tenantId);
+    const where: any = {
+      tenantId,
+      NOT: {
+        playlistItems: {
+          some: { playlist: { isProtected: true } },
+        },
+      },
+    };
+    if (emergencyAssetUrls.length > 0) {
+      where.fileUrl = { notIn: emergencyAssetUrls };
+    }
     // Hide emergency content from the main asset library. Any asset
     // that participates in a PROTECTED playlist (lockdown, evacuate,
     // weather, all-clear) is filtered out here — teachers and
@@ -179,20 +230,79 @@ export class AssetsController {
     // still enforces the DELETE guard below as defense-in-depth
     // against stale caches.
     return this.prisma.client.asset.findMany({
-      where: {
-        tenantId,
-        NOT: {
-          playlistItems: {
-            some: { playlist: { isProtected: true } },
-          },
-        },
-      },
+      where,
       include: {
         uploadedBy: { select: { id: true, email: true } },
         folder: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  @Post('emergency-upload')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(),
+    limits: { fileSize: 500 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      if (ALLOWED_TYPES.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(null, false);
+      }
+    },
+  }))
+  async uploadEmergencyAsset(
+    @Request() req: any,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new HttpException(
+        'No file uploaded, or file type is not supported. Allowed: images, video, audio, PDF.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const ext = extname(file.originalname) || '';
+    const storagePath = `${req.user.tenantId}/emergency/${randomUUID()}${ext}`;
+    const safeBuffer = this.storage.toSafeBuffer(file.buffer);
+    let fileUrl: string;
+    try {
+      fileUrl = await this.storage.upload(storagePath, safeBuffer, file.mimetype);
+    } catch (err: any) {
+      throw new HttpException(
+        `Emergency upload failed: ${err.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    const fileHash = createHash('sha256').update(safeBuffer).digest('hex');
+    await this.prisma.client.auditLog.create({
+      data: {
+        tenantId: req.user.tenantId,
+        userId: req.user.id,
+        action: 'UPLOAD_SCREEN_EMERGENCY_ASSET',
+        targetType: 'screen_emergency_asset',
+        details: JSON.stringify({
+          fileUrl,
+          mimeType: file.mimetype,
+          fileSize: file.size,
+          originalName: file.originalname,
+          fileHash,
+        }),
+      },
+    }).catch(() => {});
+
+    return {
+      fileUrl,
+      url: fileUrl,
+      mimeType: file.mimetype,
+      fileSize: file.size,
+      fileHash,
+      originalName: file.originalname,
+      protected: true,
+      protectedKind: 'screen-emergency',
+    };
   }
 
   /**
@@ -317,6 +427,24 @@ export class AssetsController {
       where: { id, tenantId: req.user.tenantId },
     });
     if (!asset) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+
+    const emergencyScreen = await this.prisma.client.screen.findFirst({
+      where: {
+        tenantId: req.user.tenantId,
+        OR: this.screenEmergencyAssetOr(asset.fileUrl),
+      } as any,
+      select: { id: true, name: true },
+    });
+    if (emergencyScreen) {
+      throw new HttpException(
+        {
+          code: 'ASSET_IN_SCREEN_EMERGENCY_CONTENT',
+          error: 'Asset is assigned as protected screen emergency content. Clear it from emergency settings first.',
+          screen: emergencyScreen,
+        },
+        HttpStatus.CONFLICT,
+      );
+    }
 
     // Protected-playlist guard: deleting an asset cascades to playlistItem
     // rows, which could silently empty an emergency (protected) playlist.

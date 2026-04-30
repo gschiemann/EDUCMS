@@ -131,7 +131,7 @@ export function ScreenEmergencyContentConfig({
       const { useUIStore } = await import('@/store/ui-store');
       const { API_URL } = await import('@/lib/api-url');
       const token = useUIStore.getState().token;
-      const res = await fetch(`${API_URL}/assets/upload`, {
+      const res = await fetch(`${API_URL}/assets/emergency-upload`, {
         method: 'POST',
         body: fd,
         credentials: 'include',
