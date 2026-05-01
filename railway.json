@@ -18,7 +18,7 @@
     ]
   },
   "deploy": {
-    "startCommand": "cd packages/database && npx prisma migrate deploy && cd ../.. && node apps/api/dist/main.js",
+    "startCommand": "node apps/api/dist/main.js",
     "healthcheckPath": "/api/v1/health",
     "healthcheckTimeout": 60,
     "numReplicas": 1,

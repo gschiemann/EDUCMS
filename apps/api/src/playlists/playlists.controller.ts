@@ -26,6 +26,7 @@ export class PlaylistsController {
   @Get()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   async list(@Request() req: any) {
+    await this.prisma.ensurePlaylistMetadataColumns();
     const tenantId = req.user.tenantId;
     return this.prisma.client.playlist.findMany({
       // Hide protected (emergency) playlists from the regular /playlists
@@ -48,6 +49,7 @@ export class PlaylistsController {
   @Get(':id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   async get(@Request() req: any, @Param('id') id: string) {
+    await this.prisma.ensurePlaylistMetadataColumns();
     return this.prisma.client.playlist.findFirst({
       where: { id, tenantId: req.user.tenantId },
       include: {
@@ -64,6 +66,7 @@ export class PlaylistsController {
   @Post()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async create(@Request() req: any, @Body() body: { name: string; templateId?: string }) {
+    await this.prisma.ensurePlaylistMetadataColumns();
     const res = await this.prisma.client.playlist.create({
       data: {
         tenantId: req.user.tenantId,
@@ -88,6 +91,7 @@ export class PlaylistsController {
   @Put(':id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async update(@Request() req: any, @Param('id') id: string, @Body() body: { name: string }) {
+    await this.prisma.ensurePlaylistMetadataColumns();
     const playlist = await this.prisma.client.playlist.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
@@ -108,6 +112,7 @@ export class PlaylistsController {
     @Param('id') id: string,
     @Body() body: { items: Array<{ assetId: string; durationMs: number; sequenceOrder: number; daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null; transitionType?: string | null }> },
   ) {
+    await this.prisma.ensurePlaylistMetadataColumns();
     const playlist = await this.prisma.client.playlist.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
@@ -185,6 +190,7 @@ export class PlaylistsController {
     @Param('id') id: string,
     @Body() body: { active: boolean },
   ) {
+    await this.prisma.ensurePlaylistMetadataColumns();
     const playlist = await this.prisma.client.playlist.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
@@ -203,6 +209,7 @@ export class PlaylistsController {
   @Delete(':id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async remove(@Request() req: any, @Param('id') id: string) {
+    await this.prisma.ensurePlaylistMetadataColumns();
     const playlist = await this.prisma.client.playlist.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
