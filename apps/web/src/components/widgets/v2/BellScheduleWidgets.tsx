@@ -7,6 +7,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { resolveStyle, frameStyle } from './_shared/styleSystem';
 import type { WidgetStyle } from './_shared/styleSystem';
 import type { WidgetProps } from './_shared/types';
+// 2026-05-03 — single source of truth for time parsing/formatting.
+// Every bell schedule renderer (v2 + legacy + theme variants) now reads
+// from this shared module so a 24-hour input never escapes to the canvas.
+import { formatTime12, parseTimeToMinutes } from '@/lib/format-time';
 
 interface Period { num?: string | number; label?: string; room?: string; startTime?: string; endTime?: string; }
 interface BellCfg { style?: WidgetStyle; title?: string; subtitle?: string; periods?: Period[]; clockTimeZone?: string; }
@@ -21,7 +25,10 @@ const FALLBACK: Period[] = [
   { num: 7, label: 'Gym / PE',  room: 'Gym',        startTime: '1:45',  endTime: '2:35'  },
   { num: 8, label: 'Art',       room: 'Studio',     startTime: '2:40',  endTime: '3:25'  },
 ];
-function parseHM(t?: string): number | null { if (!t) return null; const m = /(\d{1,2}):(\d{2})\s*(am|pm)?/i.exec(t); if (!m) return null; let h = parseInt(m[1], 10); const mm = parseInt(m[2], 10); const ap = (m[3] || '').toLowerCase(); if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0; if (!ap && h >= 1 && h <= 7) h += 12; return h * 60 + mm; }
+// 2026-05-03 — parseHM kept as a thin alias for the schedule "current
+// period" lookup. Delegates to the shared parser so 24-hour input still
+// resolves to a real minute count (used for highlighting `now`).
+const parseHM = parseTimeToMinutes;
 function useNowMin(tz?: string, live?: boolean) {
   const [m, setM] = useState<number>(() => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); });
   useEffect(() => { if (!live) return; const upd = () => { const fmt = new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, ...(tz ? { timeZone: tz } : {}) }); const parts = fmt.formatToParts(new Date()); const h = parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10); const mm = parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10); setM(h * 60 + mm); }; upd(); const id = setInterval(upd, 30_000); return () => clearInterval(id); }, [tz, live]);
@@ -50,7 +57,7 @@ export function BellNeonPitWidget({ config, live }: WidgetProps<BellCfg>) {
               <b style={{ color: active ? r.accent.primary : r.accent.secondary, fontSize: '1.1em' }}>P{p.num}</b>
               <span style={{ fontFamily: r.font.family, fontSize: r.font.size, letterSpacing: '0.05em' }}>{p.label}</span>
               <span style={{ fontSize: '0.85em', opacity: 0.85 }}>{p.room}</span>
-              <span style={{ color: r.accent.highlight, fontSize: '0.9em' }}>{p.startTime}–{p.endTime}{active && ' ◀'}</span>
+              <span style={{ color: r.accent.highlight, fontSize: '0.9em' }}>{formatTime12(p.startTime)}–{formatTime12(p.endTime)}{active && ' ◀'}</span>
             </div>
           );
         })}
@@ -78,7 +85,7 @@ export function BellPaperProgramWidget({ config, live }: WidgetProps<BellCfg>) {
             <div key={i} style={{ display: 'grid', gridTemplateColumns: '40px 1fr auto', columnGap: 12, alignItems: 'baseline', borderBottom: '1px dotted #94a3b8', padding: '4px 0', background: active ? '#fef3c7' : undefined, paddingLeft: active ? 6 : 0 }}>
               <b style={{ color: r.accent.primary, fontSize: '1.05em' }}>{p.num}.</b>
               <span><i style={{ fontSize: r.font.size, fontWeight: 600 }}>{p.label}</i><span style={{ color: '#7c7c7c', fontSize: '0.85em', marginLeft: 8 }}>· {p.room}</span></span>
-              <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>{p.startTime}–{p.endTime} {active && '◆'}</span>
+              <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>{formatTime12(p.startTime)}–{formatTime12(p.endTime)} {active && '◆'}</span>
             </div>
           );
         })}
@@ -104,7 +111,7 @@ export function BellCrayonDayplanWidget({ config, live }: WidgetProps<BellCfg>) 
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fff', padding: '8px 14px', borderRadius: 999, border: active ? `4px dashed ${color}` : `2px solid ${color}`, transform: active ? 'scale(1.02)' : 'none', boxShadow: '0 4px 0 rgba(0,0,0,0.1)' }}>
               <div style={{ background: color, color: '#fff', width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1em', fontWeight: 800 }}>{p.num}</div>
               <div style={{ flex: 1 }}><div style={{ fontWeight: 800, fontSize: r.font.size }}>{p.label} {active && '⭐'}</div><div style={{ fontSize: '0.75em', color: '#7c7c7c' }}>{p.room}</div></div>
-              <div style={{ fontWeight: 700, color, fontSize: '0.95em' }}>{p.startTime}</div>
+              <div style={{ fontWeight: 700, color, fontSize: '0.95em' }}>{formatTime12(p.startTime)}</div>
             </div>
           );
         })}
@@ -131,7 +138,7 @@ export function BellGlassTimetableWidget({ config, live }: WidgetProps<BellCfg>)
             <div key={i} style={{ display: 'grid', gridTemplateColumns: '36px 1fr auto', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 12, background: active ? `${r.accent.primary}1a` : 'rgba(255,255,255,0.4)', border: active ? `1px solid ${r.accent.primary}55` : '1px solid rgba(0,0,0,0.04)' }}>
               <span style={{ width: 28, height: 28, borderRadius: '50%', background: active ? r.accent.primary : '#e2e8f0', color: active ? '#fff' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85em', fontWeight: 700 }}>{p.num}</span>
               <div><div style={{ fontWeight: 600, fontSize: r.font.size }}>{p.label}</div><div style={{ fontSize: '0.75em', color: '#64748b' }}>{p.room}</div></div>
-              <div style={{ fontFamily: 'monospace', fontSize: '0.85em', color: active ? r.accent.primary : '#64748b', fontWeight: active ? 700 : 500 }}>{p.startTime}–{p.endTime}</div>
+              <div style={{ fontFamily: 'monospace', fontSize: '0.85em', color: active ? r.accent.primary : '#64748b', fontWeight: active ? 700 : 500 }}>{formatTime12(p.startTime)}–{formatTime12(p.endTime)}</div>
             </div>
           );
         })}
@@ -155,7 +162,7 @@ export function BellOpsDispatchWidget({ config, live }: WidgetProps<BellCfg>) {
           return (
             <>
               <span key={`n${i}`} style={{ color: r.accent.secondary }}>{p.num}</span>
-              <span key={`t${i}`} style={{ color: r.accent.highlight }}>{p.startTime}</span>
+              <span key={`t${i}`} style={{ color: r.accent.highlight }}>{formatTime12(p.startTime)}</span>
               <span key={`l${i}`} style={{ color: active ? r.accent.primary : r.font.color, fontWeight: active ? 700 : 400, textShadow: active ? `0 0 8px ${r.accent.primary}` : 'none' }}>{p.label} <span style={{ opacity: 0.5 }}>· {p.room}</span></span>
               <span key={`s${i}`} style={{ color: active ? r.accent.highlight : past ? '#475569' : r.accent.secondary }}>{active ? '▶ LIVE' : past ? 'DONE' : 'QUEUED'}</span>
             </>

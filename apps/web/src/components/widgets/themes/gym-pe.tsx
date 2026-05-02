@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { CalendarDays, Cloud, CloudRain, CloudSnow, CloudLightning, Sun, Wind, Droplets, Trophy, Activity, Flame } from 'lucide-react';
 import { fetchWeather, getWMO } from '../WidgetRenderer';
+// 2026-05-03 — operator: no military time anywhere in the app. The GymPE
+// bell schedule reads schedule as a string like "Period 1: 8:00 - 8:50";
+// we re-format the time half through the shared helper so 24-hour input
+// never escapes onto the canvas.
+import { formatTime12 } from '@/lib/format-time';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GYM & PE THEME - High energy, neon greens, dark background, sports fonts
@@ -92,8 +97,11 @@ export function GymPEBellSchedule({ config, compact }: { config: any; compact?: 
         {lines.map((line: string, i: number) => {
           const parts = line.split(':');
           const name = parts[0];
-          const time = parts.slice(1).join(':').trim();
-          
+          const timeRaw = parts.slice(1).join(':').trim();
+          // Split on en-dash / em-dash / hyphen + format each half as 12-hour
+          const tParts = timeRaw.split(/\s*[–—-]\s*/).map((s) => formatTime12(s.trim()));
+          const time = tParts.length === 2 ? `${tParts[0]} - ${tParts[1]}` : tParts[0] || timeRaw;
+
           return (
             <div key={i} style={{
               background: 'linear-gradient(90deg, rgba(34, 197, 94, 0.15), rgba(0,0,0,0.5))',

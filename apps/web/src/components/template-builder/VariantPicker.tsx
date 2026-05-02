@@ -134,28 +134,22 @@ export function VariantPicker() {
   }, [typeFilter, levelFilter, search]);
 
   const handlePick = (v: WidgetVariant) => {
-    // 2026-05-02 — operator: "Adding a 2nd welcome message overwrites
-    // the 1st." Cause: addZone auto-selects the new zone. The very next
-    // click on the same variant tile fell into the swap branch (zone
-    // selected, click same variant) and overwrote the just-added zone
-    // instead of appending a second instance. The swap behavior is
-    // still desired when the user picks a *different* variant of the
-    // same widget type (partner's original ask: "drag Wood Wall Clock
-    // onto Clock 2 → Clock 2 takes that style"), so we only swap when
-    // the picked variant differs from what's already on the selected
-    // zone. Same-variant click → ADD a new zone alongside.
-    const currentVariant = selected?.defaultConfig?.variant;
-    const isSameVariantOnSameType =
-      !!selected && selected.widgetType === v.widgetType && currentVariant === v.id;
-    if (selected && !isSameVariantOnSameType) {
-      // Swap the selected zone's variant + merge the variant's defaultConfig
-      const merged = { ...(selected.defaultConfig || {}), ...(v.defaultConfig || {}), variant: v.id };
-      updateZone(selected.id, { defaultConfig: merged, widgetType: v.widgetType });
-    } else {
-      // Add a fresh zone of this widget type, pre-configured with the variant
-      const id = addZone(v.widgetType);
-      updateZone(id, { defaultConfig: { ...(v.defaultConfig || {}), variant: v.id } });
-    }
+    // 2026-05-03 — operator: "I still can't add two of the same widgets,
+    // they overwrite each other." Earlier fix only avoided overwrite for
+    // SAME-variant clicks; clicking a *different* variant tile while a
+    // zone was selected still SWAPPED the selected zone's style. That's
+    // the wrong default — clicks should always APPEND. Swap behavior is
+    // still available, just gated to the explicit user intent of dragging
+    // a tile ONTO an existing zone (handled in BuilderShell.handleDragEnd
+    // when isVariantTile && sel.length === 1 && drop overlaps the zone).
+    //
+    // Why this is the right call: the partner's original "swap clock
+    // 2's style by dragging" feature is a DRAG gesture — and DRAG still
+    // does exactly that. CLICK is the additive gesture: tap a tile, get
+    // a new zone. No more accidental overwrites just because something
+    // happened to be selected.
+    const id = addZone(v.widgetType);
+    updateZone(id, { defaultConfig: { ...(v.defaultConfig || {}), variant: v.id } });
   };
 
   const showingLockedFilter = !!selected && !browseAll;

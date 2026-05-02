@@ -3,6 +3,11 @@
 // PORTED 2026-04-20 from scratch/design/animated-bell-schedule.html — transform:scale pattern, isLive-gated hotspots.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+// 2026-05-03 — operator: no military time anywhere in the app. The
+// AnimatedBellSchedule widget is a daily-driver template — pipe period
+// start/end through the shared 12-hour formatter so 24-hour input never
+// surfaces on the canvas.
+import { formatTime12 } from '@/lib/format-time';
 
 type Period = {
   num?: string | number;
@@ -65,11 +70,13 @@ function parseTimeToMin(t: string): number | null {
 
 function periodRange(p: Period): { start: number | null; end: number | null; display: string } {
   if (p.startTime && p.endTime) {
-    return { start: parseTimeToMin(p.startTime), end: parseTimeToMin(p.endTime), display: `${p.startTime} — ${p.endTime}` };
+    return { start: parseTimeToMin(p.startTime), end: parseTimeToMin(p.endTime), display: `${formatTime12(p.startTime)} — ${formatTime12(p.endTime)}` };
   }
   if (p.time) {
     const parts = p.time.split('—');
-    return { start: parseTimeToMin(parts[0] || ''), end: parseTimeToMin(parts[1] || ''), display: p.time };
+    const a = (parts[0] || '').trim();
+    const b = (parts[1] || '').trim();
+    return { start: parseTimeToMin(a), end: parseTimeToMin(b), display: b ? `${formatTime12(a)} — ${formatTime12(b)}` : formatTime12(a) };
   }
   return { start: null, end: null, display: '' };
 }

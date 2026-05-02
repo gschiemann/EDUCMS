@@ -17,6 +17,9 @@
  */
 
 import { useEffect, useState } from 'react';
+// 2026-05-03 — operator: no military time anywhere. Format the time half
+// of "Period 1: 8:00 - 8:50" lines through the shared 12-hour helper.
+import { formatTime12 } from '@/lib/format-time';
 
 // ─── Palette ────────────────────────────────────────────
 export const MSH = {
@@ -141,7 +144,9 @@ export function MSHallBellSchedule({ config }: { config: any }) {
         
         <div className="flex-1 overflow-y-auto" style={{ paddingRight: '4%' }}>
           {lines.map((line: string, i: number) => {
-            const [period, time] = line.split(': ');
+            const [period, timeRaw] = line.split(': ');
+            const tParts = (timeRaw || '').split(/\s*[–—-]\s*/).map((s) => formatTime12(s.trim()));
+            const time = tParts.length === 2 ? `${tParts[0]} - ${tParts[1]}` : (tParts[0] || timeRaw);
             return (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4%', fontSize: '5.5cqw', gap: '0.5em', lineHeight: 1.2 }}>
                 <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{period || line}</span>

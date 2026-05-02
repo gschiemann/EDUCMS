@@ -104,7 +104,17 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
 
   useEffect(() => {
     return useBuilderStore.subscribe((state, prev) => {
-      if (state.selectedIds.length > 0 && prev.selectedIds.length === 0) {
+      // 2026-05-03 — operator: "When I select a widget on the canvas it
+      // should take me to Properties on the left toolbar automatically."
+      // Old condition only fired on 0 → N transitions, so clicking a
+      // *different* zone (N → N) didn't reopen the properties panel
+      // when the operator was on Widgets / Layers / Brand. Now: any
+      // change in the selected-zone identity that lands on a non-empty
+      // selection switches to Properties. Compare by joined id-list so
+      // toggling between two zones still triggers the switch.
+      const nowKey = state.selectedIds.join(',');
+      const prevKey = prev.selectedIds.join(',');
+      if (state.selectedIds.length > 0 && nowKey !== prevKey) {
         setPanel('properties');
       }
     });

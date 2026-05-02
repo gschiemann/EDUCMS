@@ -139,10 +139,14 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
       x = Math.max(0, Math.min(100 - w, dropAt.x - w / 2));
       y = Math.max(0, Math.min(100 - h, dropAt.y - h / 2));
     } else {
+      // 2026-05-03 — operator: "I can't add two of the same widgets,
+      // they overwrite each other." Earlier the stagger was 5% which
+      // is barely visible at zone size 40×30 — both new zones looked
+      // stacked. Bump to 8% so the new zone visibly clears the prior
+      // one. Wrap to (10,10) when we'd hit the right/bottom edge.
       const last = zones.length > 0 ? zones[zones.length - 1] : null;
-      const baseX = last ? last.x + 5 : 10;
-      const baseY = last ? last.y + 5 : 10;
-      // Wrap when a new zone would overflow the right or bottom edge
+      const baseX = last ? last.x + 8 : 10;
+      const baseY = last ? last.y + 8 : 10;
       x = (baseX + w > 100 || baseY + h > 100) ? 10 : baseX;
       y = (baseX + w > 100 || baseY + h > 100) ? 10 : baseY;
     }
