@@ -19,6 +19,9 @@ import { useUIStore } from '@/store/ui-store';
 import {
   VERTICAL_LABELS,
   VERTICAL_GROUP_NOUN,
+  VERTICAL_DEFAULT_BRAND,
+  VERTICAL_TEMPLATE_CATEGORIES,
+  VERTICAL_ROLE_LABELS,
   DEFAULT_VERTICAL,
   isVertical,
   type Vertical,
@@ -42,6 +45,14 @@ export interface TenantCopy {
   dashboardSublineNoun: string;
   /** Settings page section title — currently "School Settings" */
   settingsSectionTitle: string;
+  /** Default brand name — "EduSignage" for K12, "VenueOS" otherwise. Tenant.branding.displayName overrides. */
+  defaultBrandName: string;
+  /** Vertical-aware template gallery category tabs */
+  templateCategories: ReadonlyArray<{ key: string; label: string }>;
+  /** Resolve a DB role enum value to its vertical-aware display label */
+  roleLabel: (role: string) => string;
+  /** Whether the K12-only school-level filter (Elementary/Middle/High) should show */
+  showSchoolLevelFilter: boolean;
 }
 
 export function useTenantCopy(): TenantCopy {
@@ -60,5 +71,9 @@ export function useTenantCopy(): TenantCopy {
     emoji: labels.emoji,
     dashboardSublineNoun: labels.singular,
     settingsSectionTitle: `${labels.singular} settings`,
+    defaultBrandName: VERTICAL_DEFAULT_BRAND[v],
+    templateCategories: VERTICAL_TEMPLATE_CATEGORIES[v],
+    roleLabel: (role: string) => VERTICAL_ROLE_LABELS[v]?.[role] || role,
+    showSchoolLevelFilter: v === 'K12',
   };
 }

@@ -29,6 +29,7 @@ import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateTh
 import { useParams, useRouter } from 'next/navigation';
 import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 import { useUIStore } from '@/store/ui-store';
+import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 
 // ─────────────────────────────────────────────────────
@@ -40,6 +41,10 @@ import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 // later when the library is deeper. These match the physical spots a
 // school actually installs a sign: main entrance, hallway wayfinding,
 // lunch line, gym/athletic area, plus the seasonal holiday lobby pack.
+// K12 default category tabs. For non-K12 verticals the gallery uses
+// VERTICAL_TEMPLATE_CATEGORIES from packages/api-types/src/verticals.ts
+// resolved via useTenantCopy().templateCategories. This const is kept
+// only as the K12 fallback for any non-tenant-aware caller.
 const CATEGORY_TABS = [
   { key: '',          label: 'All' },
   { key: 'LOBBY',     label: 'Welcome' },
@@ -284,6 +289,10 @@ export default function TemplatesPage() {
   const useV2Builder = isFeatureEnabled(FLAGS.TEMPLATE_BUILDER_V2);
   const userRole = useUIStore((s) => s.user?.role);
   const isViewer = userRole === 'RESTRICTED_VIEWER';
+  // 2026-05-03 — vertical-aware template filtering. Categories tabs
+  // shown + the K12-only school-level filter visibility both come
+  // from the current tenant's vertical via useTenantCopy().
+  const tenantCopy = useTenantCopy();
 
   const openInBuilder = useCallback((t: Template) => {
     if (useV2Builder && !t.isSystem) {
@@ -474,7 +483,7 @@ export default function TemplatesPage() {
                 className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent placeholder:text-slate-400" />
               <select value={newCategory} onChange={e => setNewCategory(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
-                {CATEGORY_TABS.filter(c => c.key).map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                {tenantCopy.templateCategories.filter(c => c.key).map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
               </select>
             </div>
 
@@ -560,7 +569,7 @@ export default function TemplatesPage() {
             is active — keeps the page calm for first-time visitors. */}
         {activeLevel && (
           <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit flex-wrap">
-            {CATEGORY_TABS.map(tab => (
+            {tenantCopy.templateCategories.map(tab => (
               <button key={tab.key} onClick={() => {
                 setActiveCategory(tab.key);
                 // Reset the holiday sub-filter when switching away

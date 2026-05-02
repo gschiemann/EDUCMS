@@ -106,7 +106,34 @@ function LoginContent() {
         } catch { /* best-effort */ }
         clog.info('auth', 'EULA accepted', { version: EULA_VERSION, userId: data.user?.id });
         login(data.access_token, data.user);
-        router.push(redirectTarget || `/${data.user.tenantSlug || data.user.tenantId}/dashboard`);
+        // 2026-05-03 — cross-tenant bleed fix. Operator (2026-05-03):
+        // "logged back out and in as the education user and kept the
+        // gym URL but the updated info for the school". The previous
+        // unconditional `redirectTarget || ...` would honor the
+        // redirect query param even when the target tenant slug
+        // doesn't match the just-authenticated user's tenant. Result:
+        // user lands on /<other-tenant>/dashboard with their actual
+        // tenant's data, which is a confusing cross-tenant URL/data
+        // mismatch and a borderline security smell.
+        //
+        // Fix: only honor `redirectTarget` if it points within the
+        // authenticated user's own tenant slug (or one of their
+        // accessible child tenants). Otherwise hard-redirect to the
+        // user's home dashboard. The accessible-child-tenant case
+        // (DISTRICT_ADMIN with multi-school access) is approximated
+        // here by allowing any path that starts with their tenantSlug
+        // OR tenantId; a stricter cross-check happens server-side
+        // when the target tenant's API responds 403/404.
+        const userSlug = data.user.tenantSlug || data.user.tenantId;
+        const homeUrl = `/${userSlug}/dashboard`;
+        const safeRedirect =
+          redirectTarget &&
+          (redirectTarget === '/' ||
+            redirectTarget.startsWith(`/${userSlug}/`) ||
+            redirectTarget.startsWith(`/${userSlug}?`))
+            ? redirectTarget
+            : homeUrl;
+        router.push(safeRedirect);
       } else {
         clog.warn('auth', 'Login rejected', { status: res.status, message: data?.message });
         setError(data.message || 'Invalid email or password. Please try again.');

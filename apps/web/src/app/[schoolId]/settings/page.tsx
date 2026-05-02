@@ -23,13 +23,12 @@ import { useTenantCopy } from '@/hooks/use-tenant-copy';
 
 const ROLES = ['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN', 'CONTRIBUTOR', 'RESTRICTED_VIEWER'] as const;
 
-const ROLE_LABELS: Record<string, string> = {
-  SUPER_ADMIN: 'Super Admin',
-  DISTRICT_ADMIN: 'District Admin',
-  SCHOOL_ADMIN: 'School Admin',
-  CONTRIBUTOR: 'Contributor',
-  RESTRICTED_VIEWER: 'Viewer',
-};
+// 2026-05-03 — ROLE_LABELS removed. Use tenantCopy.roleLabel(role)
+// inside the component instead — labels are vertical-aware now.
+// K12 sees "District Admin" / "School Admin"; gym tenant sees
+// "Region Admin" / "Gym Admin"; QSR sees "Brand Admin" / "Restaurant
+// Admin"; etc. Source of truth: VERTICAL_ROLE_LABELS in
+// packages/api-types/src/verticals.ts.
 
 const ROLE_COLORS: Record<string, string> = {
   SUPER_ADMIN: 'bg-indigo-50 text-indigo-700 border-indigo-200',
@@ -292,7 +291,7 @@ export default function SettingsPage() {
                   className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
                 <select value={newRole} onChange={(e) => setNewRole(e.target.value)}
                   className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500">
-                  {ROLES.filter(r => r !== 'SUPER_ADMIN').map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                  {ROLES.filter(r => r !== 'SUPER_ADMIN').map(r => <option key={r} value={r}>{tenantCopy.roleLabel(r)}</option>)}
                 </select>
                 {inviteMode === 'password' && (
                   <input
@@ -348,7 +347,7 @@ export default function SettingsPage() {
                       onChange={(e) => updateRole.mutate({ id: user.id, role: e.target.value })}
                       className={`px-2.5 py-1 text-[10px] font-bold border rounded-lg cursor-pointer ${ROLE_COLORS[user.role] || 'bg-slate-50 text-slate-600'}`}
                     >
-                      {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                      {ROLES.map(r => <option key={r} value={r}>{tenantCopy.roleLabel(r)}</option>)}
                     </select>
                     <button
                       onClick={async () => {

@@ -10,6 +10,7 @@ import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, L
 import { RoleGate } from '../RoleGate';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
 import { usePendingAssets } from '@/hooks/use-api';
+import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import type { TenantBranding } from '@/lib/branding';
 
 // Must match the PER-TENANT key format BrandStyleInjector writes to.
@@ -73,7 +74,14 @@ export function Sidebar() {
     };
   }, [userTenantId]);
 
-  const brandName = (mounted && branding?.displayName) || 'EduSignage';
+  // 2026-05-03 — VenueOS rebrand. Brand name fallback chain:
+  //   1. Tenant's custom branding.displayName (if they set one)
+  //   2. Vertical-aware default ("EduSignage" for K12, "VenueOS" for
+  //      everyone else — gym/retail/corporate/qsr/fashion don't want
+  //      "EduSignage" branding everywhere when they signed up as
+  //      something else entirely).
+  const tenantCopyForBrand = useTenantCopy();
+  const brandName = (mounted && branding?.displayName) || tenantCopyForBrand.defaultBrandName;
   const brandLogoUrl = mounted ? branding?.logoUrl || null : null;
   const brandLogoSvg = mounted && branding?.logoSvgInline
     ? (DOMPurify.sanitize(branding.logoSvgInline, {
@@ -192,7 +200,7 @@ export function Sidebar() {
                 aria-hidden
                 dangerouslySetInnerHTML={{ __html: brandLogoSvg }}
               />
-            ) : brandName && brandName !== 'EduSignage' ? (
+            ) : brandName && brandName !== tenantCopyForBrand.defaultBrandName ? (
               // Last-resort: branded tenant but logo scrape failed or
               // hasn't been adopted yet. Show initials in a circle using
               // the brand primary color so the chrome still feels like

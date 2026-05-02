@@ -125,3 +125,122 @@ export function isVertical(v: unknown): v is Vertical {
 }
 
 export const DEFAULT_VERTICAL: Vertical = 'K12';
+
+/**
+ * Per-vertical role display labels. The DB enum values stay constant
+ * (DISTRICT_ADMIN / SCHOOL_ADMIN / SUPER_ADMIN / CONTRIBUTOR /
+ * RESTRICTED_VIEWER) but the human labels change so a gym admin
+ * doesn't see "District Admin" on their team page. K12 keeps its
+ * existing strings exactly.
+ */
+export const VERTICAL_ROLE_LABELS: Record<Vertical, Record<string, string>> = {
+  K12: {
+    SUPER_ADMIN:        'Super Admin',
+    DISTRICT_ADMIN:     'District Admin',
+    SCHOOL_ADMIN:       'School Admin',
+    CONTRIBUTOR:        'Contributor',
+    RESTRICTED_VIEWER:  'Viewer',
+  },
+  GYM: {
+    SUPER_ADMIN:        'Super Admin',
+    DISTRICT_ADMIN:     'Region Admin',
+    SCHOOL_ADMIN:       'Gym Admin',
+    CONTRIBUTOR:        'Trainer',
+    RESTRICTED_VIEWER:  'Viewer',
+  },
+  RETAIL: {
+    SUPER_ADMIN:        'Super Admin',
+    DISTRICT_ADMIN:     'Region Admin',
+    SCHOOL_ADMIN:       'Store Admin',
+    CONTRIBUTOR:        'Associate',
+    RESTRICTED_VIEWER:  'Viewer',
+  },
+  CORPORATE: {
+    SUPER_ADMIN:        'Super Admin',
+    DISTRICT_ADMIN:     'Company Admin',
+    SCHOOL_ADMIN:       'Office Admin',
+    CONTRIBUTOR:        'Editor',
+    RESTRICTED_VIEWER:  'Viewer',
+  },
+  QSR: {
+    SUPER_ADMIN:        'Super Admin',
+    DISTRICT_ADMIN:     'Brand Admin',
+    SCHOOL_ADMIN:       'Restaurant Admin',
+    CONTRIBUTOR:        'Manager',
+    RESTRICTED_VIEWER:  'Viewer',
+  },
+  FASHION: {
+    SUPER_ADMIN:        'Super Admin',
+    DISTRICT_ADMIN:     'Brand Admin',
+    SCHOOL_ADMIN:       'Boutique Admin',
+    CONTRIBUTOR:        'Stylist',
+    RESTRICTED_VIEWER:  'Viewer',
+  },
+};
+
+export function getRoleLabel(role: string, vertical: Vertical = DEFAULT_VERTICAL): string {
+  return VERTICAL_ROLE_LABELS[vertical]?.[role] || role;
+}
+
+/**
+ * Per-vertical default brand name. K12 tenants without custom branding
+ * see "EduSignage" (existing pilot identity); everyone else sees
+ * "VenueOS". Tenant.branding.displayName overrides this when set.
+ */
+export const VERTICAL_DEFAULT_BRAND: Record<Vertical, string> = {
+  K12:       'EduSignage',
+  GYM:       'VenueOS',
+  RETAIL:    'VenueOS',
+  CORPORATE: 'VenueOS',
+  QSR:       'VenueOS',
+  FASHION:   'VenueOS',
+};
+
+/**
+ * Per-vertical template category tabs shown in the template gallery.
+ * Each vertical gets its own taxonomy that maps to template.category
+ * values seeded for that vertical. Falls back to a single "All" tab
+ * if a vertical hasn't had its category set defined yet.
+ */
+export const VERTICAL_TEMPLATE_CATEGORIES: Record<Vertical, ReadonlyArray<{ key: string; label: string }>> = {
+  K12: [
+    { key: '',          label: 'All' },
+    { key: 'LOBBY',     label: 'Welcome' },
+    { key: 'HALLWAY',   label: 'Hallway' },
+    { key: 'CAFETERIA', label: 'Cafeteria' },
+    { key: 'ATHLETICS', label: 'Athletics' },
+    { key: 'HOLIDAYS',  label: 'Holidays' },
+  ],
+  GYM: [
+    { key: '',         label: 'All' },
+    { key: 'FITNESS',  label: 'Class & training' },
+    { key: 'LOBBY',    label: 'Welcome' },
+    { key: 'PROMO',    label: 'Promo' },
+  ],
+  RETAIL: [
+    { key: '',        label: 'All' },
+    { key: 'LOBBY',   label: 'Welcome' },
+    { key: 'PROMO',   label: 'Promo & sale' },
+    { key: 'PRICING', label: 'Pricing' },
+    { key: 'LOOKBOOK', label: 'Lookbook' },
+    { key: 'HOLIDAYS', label: 'Seasonal' },
+  ],
+  CORPORATE: [
+    { key: '',        label: 'All' },
+    { key: 'LOBBY',   label: 'Welcome' },
+    { key: 'CONFERENCE', label: 'Conference rooms' },
+    { key: 'INTERNAL',   label: 'Internal comms' },
+  ],
+  QSR: [
+    { key: '',         label: 'All' },
+    { key: 'MENU',     label: 'Menu boards' },
+    { key: 'PROMO',    label: 'Promo & combos' },
+    { key: 'LOYALTY',  label: 'Loyalty' },
+  ],
+  FASHION: [
+    { key: '',         label: 'All' },
+    { key: 'LOOKBOOK', label: 'Lookbook' },
+    { key: 'LOBBY',    label: 'Welcome' },
+    { key: 'PROMO',    label: 'Promo' },
+  ],
+};

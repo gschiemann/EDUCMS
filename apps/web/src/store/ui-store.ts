@@ -145,6 +145,12 @@ export const useUIStore = create<AppState>((set) => ({
     if (ls) {
       ls.removeItem(TOKEN_KEY);
       ls.removeItem(USER_KEY);
+      // 2026-05-03 — cross-tenant bleed fix. The SchoolSwitcher caches
+      // the last-selected tenant slug here so the dashboard remembers
+      // which child school an admin was inside. On logout we clear it
+      // so the next user (potentially a different person on a different
+      // tenant) doesn't see the previous user's tenant slug pre-selected.
+      ls.removeItem('edu_cms_last_school');
     }
     clog.info('auth', 'Logout — clearing state', {});
     set({ token: null, user: null, activeTenant: null });
