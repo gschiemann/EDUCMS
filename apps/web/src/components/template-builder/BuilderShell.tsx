@@ -673,6 +673,21 @@ function BuilderBottomBar() {
   const isTicker    = wt === 'TICKER';
   const isCountdown = wt === 'COUNTDOWN';
   const isWebpage   = wt === 'WEBPAGE';
+  // 2026-05-02 — operator: "Toolbar font/size/color controls for
+  // welcome message + ticker missing." TICKER takes the standard text-
+  // style block cleanly because BuilderZone injects a `!important`
+  // CSS rule scoped by `[data-zone-id]` for cfg.fontFamily / fontSize /
+  // color (apps/web/src/components/template-builder/BuilderZone.tsx
+  // ~line 430). The injection is a no-op for TEXT/RICH_TEXT (those
+  // widgets read cfg directly), so wiring TICKER through the same UI
+  // costs nothing extra.
+  //
+  // ANIMATED_WELCOME deliberately stays out — the widget has carefully
+  // tuned per-element typography (title/subtitle/ticker/birthdays each
+  // pick their own size). A blanket font-size override would collapse
+  // the visual hierarchy. PropertiesPanel already exposes per-field
+  // controls for those widgets.
+  const isTextStyle = isText || isTicker;
 
   const measured = selectedZone ? measureZoneFontSize(selectedZone.id, null) : null;
   const sizeDisplay = cfg.fontSize ?? measured ?? '';
@@ -739,8 +754,8 @@ function BuilderBottomBar() {
       {/* ══ LEFT: zone-context section ══════════════════════════════ */}
       {selectedZone ? (
         <>
-          {/* TEXT / RICH_TEXT ─── font, size, B/I/U/S, color, align */}
-          {isText && (
+          {/* TEXT / RICH_TEXT / TICKER ─── font, size, B/I/U/S, color, align */}
+          {isTextStyle && (
             <>
               <select
                 aria-label="Font family"
