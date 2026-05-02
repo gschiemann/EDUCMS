@@ -135,6 +135,11 @@ import { StorybookCafeteriaPortraitWidget } from './StorybookCafeteriaPortraitWi
 import { StorybookHallwayPortraitWidget } from './StorybookHallwayPortraitWidget';
 // Sprint 11h pre-launch: drag-drop animations as a generic decoration widget.
 import { DecorationWidget } from './DecorationWidget';
+// 2026-05-02 — v2 widget pack (14 categories × 5 audience styles).
+// Dispatched in the switch's `default` branch via O(1) lookup; falls
+// through to `null` when the widget type isn't a v2 widget so existing
+// behaviour is untouched.
+import { V2_BY_TYPE } from './v2/registry';
 // Holiday lobby pack — Halloween, Thanksgiving, Christmas, Valentine's,
 // St. Patrick's, Easter × ES/MS/HS. Each renders a designed full-canvas
 // scene from /public/holiday-templates/*.html via iframe (CSS isolation).
@@ -438,7 +443,20 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'FITNESS_MOTIVATIONAL_QUOTE':    return <FitnessMotivationalQuoteWidget config={cfg} live={live} />;
     case 'FITNESS_APP_LIBRARY':           return <FitnessAppLibraryWidget config={cfg} live={live} />;
     case 'FITNESS_STICK_LAUNCHER':        return <FitnessStickLauncherWidget config={cfg} live={live} />;
-    default:             return null;
+    // ── v2 widget pack (2026-05-02) ─────────────────────────────────
+    // 14 categories × 5 audience-tagged styles (Neon / Paper / Crayon
+    // / Glass / Ops). Each widget owns its own type string (CLOCK_NEON
+    // etc.); the v2 registry holds the React component in V2_BY_TYPE.
+    // O(1) lookup; falls through to `null` if the type isn't a v2
+    // widget (matches existing default behaviour).
+    default: {
+      const v2 = V2_BY_TYPE[widgetType];
+      if (v2) {
+        const C = v2.Component;
+        return <C config={cfg} live={live} />;
+      }
+      return null;
+    }
   }
 }
 

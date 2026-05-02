@@ -616,3 +616,58 @@ registerVariant({ id: 'logo-jumbotron-pro', widgetType: 'LOGO', name: 'Jumbotron
 registerVariant({ id: 'ticker-jumbotron-pro', widgetType: 'TICKER', name: 'Jumbotron Pro', description: 'Jumbotron Pro themed Ticker', category: 'HIGH', render: JumbotronProTicker, defaultConfig: { theme: 'jumbotron-pro' } });
 registerVariant({ id: 'image_carousel-jumbotron-pro', widgetType: 'IMAGE_CAROUSEL', name: 'Jumbotron Pro', description: 'Jumbotron Pro themed ImageCarousel', category: 'HIGH', render: JumbotronProImageCarousel, defaultConfig: { theme: 'jumbotron-pro' } });
 
+// ─── v2 widget pack (2026-05-02) ─────────────────────────────────────
+// 14 categories × 5 audience-tagged styles (Neon / Paper / Crayon /
+// Glass / Ops). Unlike the existing variants above, each v2 widget
+// has its OWN type string (CLOCK_NEON, HEADLINE_PAPER, …) — they're
+// not variants of CLOCK, ANNOUNCEMENT, etc. The picker treats them
+// as standalone widget types: with no zone selected the operator can
+// click any tile to drop a fresh zone of that type; with a v2 zone
+// selected, clicking a different style (CLOCK_NEON → CLOCK_PAPER)
+// swaps via the existing same-type-swap path, and clicking the same
+// tile adds a new instance (post the 81298d6 swap-overwrite fix).
+//
+// `level` from the v2 registry maps onto the picker's existing level
+// filter via `CATEGORY_TO_LEVELS` (apps/web/src/components/template-
+// builder/VariantPicker.tsx). Mapping:
+//   high       → HIGH        (level filter: High)
+//   middle     → MIDDLE      (level filter: Middle)
+//   elementary → ELEMENTARY  (level filter: Elementary)
+//   universal  → MODERN      (level filter: Universal)
+//   admin      → OFFICE      (level filter: Universal — no admin chip)
+import { ALL_V2_WIDGETS } from './v2/registry';
+import type { ThemeWidgetProps } from './themes/registry';
+import type { ComponentType } from 'react';
+
+const V2_LEVEL_TO_CATEGORY: Record<string, string> = {
+  high: 'HIGH',
+  middle: 'MIDDLE',
+  elementary: 'ELEMENTARY',
+  universal: 'MODERN',
+  admin: 'OFFICE',
+};
+
+for (const w of ALL_V2_WIDGETS) {
+  registerVariant({
+    // Stable, kebab-cased id derived from the type. The id is what's
+    // persisted in `cfg.variant` and what handlePick uses to detect
+    // same-vs-different variants for the swap/append path.
+    id: w.type.toLowerCase().replace(/_/g, '-'),
+    // widgetType matches the v2 type so the renderer's V2_BY_TYPE
+    // lookup in the switch's default branch dispatches correctly.
+    widgetType: w.type as any,
+    name: w.label,
+    description: w.desc,
+    category: V2_LEVEL_TO_CATEGORY[w.level] ?? 'MODERN',
+    // ThemeWidgetProps.config is `any`; v2 widgets accept a typed
+    // `config?: <Cfg>` and ignore extra `compact` / `onConfigChange`
+    // props. The cast is safe at runtime; React doesn't enforce
+    // prop-shape at the boundary.
+    render: w.Component as ComponentType<ThemeWidgetProps>,
+    // Seed defaults so a freshly-dropped zone renders immediately
+    // (most v2 widgets ship sensible internal fallbacks already, so
+    // this is empty for most rows — defaults can be added later in
+    // v2/registry.ts).
+    defaultConfig: w.defaults || {},
+  });
+}

@@ -7,6 +7,9 @@ import {
   // Sprint 11h decorations.
   PartyPopper, Rainbow, Sparkles, Zap, Sun,
 } from 'lucide-react';
+// 2026-05-02 — v2 widget pack metadata is mirrored into WIDGET_META
+// below so widgetLabel() / widgetIcon() resolve for v2 types.
+import { V2_GROUPS } from '@/components/widgets/v2/registry';
 // The "School Life" (QUOTE / STATS / SCOREBOARD / MENU_ITEM /
 // SCHEDULE_GRID / ATTENDANCE / BIRTHDAYS / HONOR_ROLL) and
 // "Touch / Interactive" (TOUCH_BUTTON / TOUCH_MENU / ROOM_FINDER /
@@ -140,6 +143,17 @@ export const WIDGET_GROUPS = [
 export const WIDGET_META: Record<string, { label: string; icon: LucideIcon; desc: string }> = {};
 WIDGET_GROUPS.forEach(g => g.types.forEach(t => {
   WIDGET_META[t.type] = { label: t.label, icon: t.icon as LucideIcon, desc: t.desc };
+}));
+
+// 2026-05-02 — v2 widget pack metadata mirrored into WIDGET_META so
+// widgetLabel() / widgetIcon() return useful values for v2 types.
+// We deliberately do NOT splice V2_GROUPS into WIDGET_GROUPS itself —
+// existing consumers rely on its `as const` literal shape, and the
+// only live consumer of WIDGET_GROUPS (the dead WidgetPalette) isn't
+// rendered. The VariantPicker (the actual sidebar) discovers v2
+// widgets via the variants registry instead.
+V2_GROUPS.forEach(g => g.types.forEach(t => {
+  WIDGET_META[t.type] = { label: t.label, icon: t.icon, desc: t.desc };
 }));
 
 export function widgetLabel(type: string): string {
