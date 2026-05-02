@@ -337,35 +337,38 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       }}
       onPointerDown={(e) => {
         if (previewMode || zone.locked) return;
-        // 2026-04-29 v3 — operator (THIRD time around the loop):
-        // "now the text lock on the widget when you click in the
-        // txt, complete fucking circle back to the original issue".
+        // 2026-05-03 v4 — operator: "I add a welcome message and click
+        // into the text to edit, the widget gets stuck on and moves
+        // everywhere I move the cursor. It should just let me edit
+        // the text and not engage the moving of the widget."
         //
-        // The bug — and why my v2 attempt regressed: starting drag
-        // immediately on pointerdown sets dragState. The
-        // contentEditable element underneath absorbs the
-        // subsequent pointerup. dragState never clears. Widget
-        // sticks to cursor. SAME bug as the original f37cfe6
-        // attempt was trying to fix.
+        // Root cause of the regression: the v3 threshold-before-drag
+        // gate (added 2026-04-29) was guarded by `isTextZone` which is
+        // ONLY true for widgetType === 'TEXT' || 'RICH_TEXT'. The
+        // Welcome message renders as ANIMATED_WELCOME (and many other
+        // widgets — Headlines, Announcements, Bell Schedules — embed
+        // editable text fields too). For all those widgets the code
+        // fell through to `onPointerDown(...'move')` immediately,
+        // setting dragState before contentEditable could absorb the
+        // pointerup → stuck-to-cursor.
         //
-        // v3 — threshold BEFORE drag-start (Canva / Figma pattern):
-        //   1. pointerdown → only SELECT the zone, don't drag yet
-        //   2. window.pointermove → if moved >4px, NOW start drag
-        //      (dragState gets set mid-gesture; pointermove deltas
-        //      are computed from the original pointerdown coords)
-        //   3. pointerup → if drag started, suppress click→edit;
-        //      if drag never started, click fires normally for edit
+        // v4 — apply the threshold to ANY content-area click on ANY
+        // widget. Border clicks (e.target === e.currentTarget) still
+        // drag immediately so resize/move from the chrome works as
+        // before. Anywhere INSIDE the widget body — including
+        // [data-field] hotspots, embedded text, image captions — gets
+        // the 4px threshold so contentEditable / button / input
+        // children get their pointerup before drag is engaged.
         //
-        // Net effects:
-        //   - Click text + release without movement → edit mode (no
-        //     drag was ever started, no dragState, no stuck)
-        //   - Click text + drag → after 4px movement, drag starts.
-        //     The 4px window before drag-start is enough for the
-        //     OS pointerup to clear naturally before any drag-state
-        //     is set.
-        //   - Click border → drag immediately (border = e.target ===
-        //     e.currentTarget = !isContentClick)
-        //   - [data-field] hotspot → edit mode, no drag
+        //   • Click content + release (no movement) → click fires,
+        //     enterFieldEdit handles inline editing. No drag.
+        //   • Click content + drag >4px              → drag engages
+        //     mid-gesture. wasJustDraggedRef suppresses the
+        //     subsequent click→edit so a drag doesn't accidentally
+        //     enter edit mode.
+        //   • Click border                           → drag immediately,
+        //     same as before (resize handles too).
+        //   • Click [data-field] (already explicitly stopped)         → edit only.
         const target = e.target as HTMLElement | null;
         if (target?.closest?.('[data-field]')) {
           e.stopPropagation();
@@ -373,7 +376,6 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         }
         e.stopPropagation();
 
-        const isTextZone = zone.widgetType === 'TEXT' || zone.widgetType === 'RICH_TEXT';
         const isContentClick = e.target !== e.currentTarget;
 
         // Always select the zone immediately (clicking SELECTS even
@@ -383,11 +385,13 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
           onSelect(e as any, zone.id);
         }
 
-        if (isTextZone && isContentClick) {
+        if (isContentClick) {
           // Threshold-before-drag: wait for 4px movement before
           // calling onPointerDown to set dragState. This guarantees
-          // contentEditable can't absorb pointerup before drag
-          // starts, eliminating the stuck-to-cursor bug.
+          // contentEditable / inputs / buttons inside the widget
+          // body can absorb pointerup before drag starts —
+          // eliminating the stuck-to-cursor bug for every widget,
+          // not just TEXT.
           const startX = e.clientX;
           const startY = e.clientY;
           let dragStarted = false;
@@ -415,8 +419,8 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
           return;
         }
 
-        // Non-text widgets or border-click on a text widget: drag
-        // immediately. No contentEditable risk on these paths.
+        // Border-click: drag immediately. No contentEditable risk
+        // because the click is on the zone's chrome, not its body.
         onPointerDown(e, zone.id, 'move');
       }}
       onClick={(e) => {

@@ -3561,36 +3561,48 @@ function BellScheduleEditor({ value, onChange }: { value: Array<{ label: string;
       <div className="space-y-2">
         {periods.length === 0 && <p className="text-[11px] text-slate-400 italic px-1">No periods yet — add your first below.</p>}
         {periods.map((p, idx) => (
-          <div key={idx} className="bg-white border border-slate-200 rounded-lg p-2 grid grid-cols-[minmax(0,1fr)_5.75rem_0.75rem_5.75rem_1.75rem] items-center gap-1.5 shadow-sm">
-            <input
-              type="text"
-              value={p.label}
-              onChange={(e) => update(idx, { label: e.target.value })}
-              placeholder="Period 1"
-              aria-label={`Period ${idx + 1} label`}
-              className="min-w-0 w-full px-2 py-1 text-xs font-semibold rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            />
-            <input
-              type="time"
-              value={to24Hour(p.start)}
-              onChange={(e) => update(idx, { start: e.target.value })}
-              aria-label={`Period ${idx + 1} start time`}
-              className="min-w-0 w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            />
-            <span className="text-[10px] text-slate-400 text-center">→</span>
-            <input
-              type="time"
-              value={to24Hour(p.end)}
-              onChange={(e) => update(idx, { end: e.target.value || undefined })}
-              aria-label={`Period ${idx + 1} end time`}
-              className="min-w-0 w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            />
-            <button
-              type="button"
-              onClick={() => remove(idx)}
-              aria-label="Remove period"
-              className="w-7 h-7 rounded border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 flex items-center justify-center text-xs"
-            >×</button>
+          // 2026-05-03 — operator: bell schedule editor was truncating
+          // the picker's AM/PM ("08:50 A", "12:10 PI"). Native
+          // `<input type="time">` needs ~110-130px to fit HH:MM + clock
+          // glyph + AM/PM in Chromium; the prior 92px column ate the
+          // suffix. Switched from a single 5-column grid to a 2-row
+          // layout per period: label + remove on row 1 (full width),
+          // time pickers + arrow on row 2 (each picker gets 1fr =
+          // ~150px on the 420px panel, plenty for AM/PM).
+          <div key={idx} className="bg-white border border-slate-200 rounded-lg p-2 space-y-1.5 shadow-sm">
+            <div className="flex items-center gap-1.5">
+              <input
+                type="text"
+                value={p.label}
+                onChange={(e) => update(idx, { label: e.target.value })}
+                placeholder={`Period ${idx + 1}`}
+                aria-label={`Period ${idx + 1} label`}
+                className="flex-1 min-w-0 px-2 py-1 text-xs font-semibold rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+              <button
+                type="button"
+                onClick={() => remove(idx)}
+                aria-label="Remove period"
+                className="w-7 h-7 shrink-0 rounded border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 flex items-center justify-center text-xs"
+              >×</button>
+            </div>
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1.5">
+              <input
+                type="time"
+                value={to24Hour(p.start)}
+                onChange={(e) => update(idx, { start: e.target.value })}
+                aria-label={`Period ${idx + 1} start time`}
+                className="min-w-0 w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+              <span className="text-[10px] text-slate-400 px-1">→</span>
+              <input
+                type="time"
+                value={to24Hour(p.end)}
+                onChange={(e) => update(idx, { end: e.target.value || undefined })}
+                aria-label={`Period ${idx + 1} end time`}
+                className="min-w-0 w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+            </div>
           </div>
         ))}
         <button
