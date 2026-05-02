@@ -429,11 +429,22 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       // variant-tile AND has a single selected zone of the matching
       // widget type, treat the drop as a SWAP (mirrors the click-to-
       // swap behavior in VariantPicker.handlePick).
+      //
+      // 2026-05-02 — operator: "Adding a 2nd welcome message overwrites
+      // the 1st." `addZone` auto-selects the new zone, so an immediate
+      // re-drag of the same variant tile fell into this branch and
+      // overwrote the just-added zone. Mirrors the fix in
+      // VariantPicker.handlePick: only swap when the dragged variant
+      // is *different* from the variant already on the selected zone.
+      // Same-variant drag → fall through to ADD a second instance.
       const store = useBuilderStore.getState();
       const sel = store.selectedIds;
       if (isVariantTile && variantId && sel.length === 1) {
         const target = store.zones.find((z) => z.id === sel[0]);
-        if (target && target.widgetType === type) {
+        const targetVariant = target?.defaultConfig?.variant;
+        const isSameVariantOnSameType =
+          !!target && target.widgetType === type && targetVariant === variantId;
+        if (target && target.widgetType === type && !isSameVariantOnSameType) {
           store.updateZone(target.id, {
             defaultConfig: { ...(target.defaultConfig || {}), ...variantConfig, variant: variantId },
             widgetType: type,
@@ -662,6 +673,21 @@ function BuilderBottomBar() {
   const isTicker    = wt === 'TICKER';
   const isCountdown = wt === 'COUNTDOWN';
   const isWebpage   = wt === 'WEBPAGE';
+  // 2026-05-02 — operator: "Toolbar font/size/color controls for
+  // welcome message + ticker missing." TICKER takes the standard text-
+  // style block cleanly because BuilderZone injects a `!important`
+  // CSS rule scoped by `[data-zone-id]` for cfg.fontFamily / fontSize /
+  // color (apps/web/src/components/template-builder/BuilderZone.tsx
+  // ~line 430). The injection is a no-op for TEXT/RICH_TEXT (those
+  // widgets read cfg directly), so wiring TICKER through the same UI
+  // costs nothing extra.
+  //
+  // ANIMATED_WELCOME deliberately stays out — the widget has carefully
+  // tuned per-element typography (title/subtitle/ticker/birthdays each
+  // pick their own size). A blanket font-size override would collapse
+  // the visual hierarchy. PropertiesPanel already exposes per-field
+  // controls for those widgets.
+  const isTextStyle = isText || isTicker;
 
   const measured = selectedZone ? measureZoneFontSize(selectedZone.id, null) : null;
   const sizeDisplay = cfg.fontSize ?? measured ?? '';
@@ -728,8 +754,8 @@ function BuilderBottomBar() {
       {/* ══ LEFT: zone-context section ══════════════════════════════ */}
       {selectedZone ? (
         <>
-          {/* TEXT / RICH_TEXT ─── font, size, B/I/U/S, color, align */}
-          {isText && (
+          {/* TEXT / RICH_TEXT / TICKER ─── font, size, B/I/U/S, color, align */}
+          {isTextStyle && (
             <>
               <select
                 aria-label="Font family"

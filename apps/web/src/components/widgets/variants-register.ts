@@ -616,3 +616,83 @@ registerVariant({ id: 'logo-jumbotron-pro', widgetType: 'LOGO', name: 'Jumbotron
 registerVariant({ id: 'ticker-jumbotron-pro', widgetType: 'TICKER', name: 'Jumbotron Pro', description: 'Jumbotron Pro themed Ticker', category: 'HIGH', render: JumbotronProTicker, defaultConfig: { theme: 'jumbotron-pro' } });
 registerVariant({ id: 'image_carousel-jumbotron-pro', widgetType: 'IMAGE_CAROUSEL', name: 'Jumbotron Pro', description: 'Jumbotron Pro themed ImageCarousel', category: 'HIGH', render: JumbotronProImageCarousel, defaultConfig: { theme: 'jumbotron-pro' } });
 
+// ─── v2 widget pack (2026-05-02) ─────────────────────────────────────
+// 14 categories × 5 audience-tagged styles (Neon / Paper / Crayon /
+// Glass / Ops). Each v2 widget registers as a variant of an EXISTING
+// canonical widget type (CLOCK, ANNOUNCEMENT, …) — NOT under its own
+// type string. That keeps the picker's type-filter row at ~12 chips
+// (one per canonical type) instead of mushrooming to 70+. The
+// renderer dispatches via cfg.variant (existing variant lookup at
+// the top of WidgetPreview), so the canonical case statement never
+// needs a v2 branch.
+//
+// `level` from the v2 registry maps onto the picker's existing level
+// filter via `CATEGORY_TO_LEVELS` (apps/web/src/components/template-
+// builder/VariantPicker.tsx). Mapping:
+//   high       → HIGH        (level filter: High)
+//   middle     → MIDDLE      (level filter: Middle)
+//   elementary → ELEMENTARY  (level filter: Elementary)
+//   universal  → MODERN      (visible across every level chip)
+//   admin      → OFFICE      (visible across every level chip — no admin chip exists)
+import { ALL_V2_WIDGETS } from './v2/registry';
+import type { ThemeWidgetProps, WidgetType } from './themes/registry';
+import type { ComponentType } from 'react';
+
+const V2_LEVEL_TO_CATEGORY: Record<string, string> = {
+  high: 'HIGH',
+  middle: 'MIDDLE',
+  elementary: 'ELEMENTARY',
+  universal: 'MODERN',
+  admin: 'OFFICE',
+};
+
+// v2 category → canonical widget type. The variant gets registered
+// under the canonical type so it shows up in the picker chip the
+// operator already knows ("CLOCK", "WEATHER", …). Photos and Images
+// both map onto IMAGE; Headlines maps onto TEXT (large headline-as-
+// text). Anything not in this map is skipped with a console warning.
+const V2_CATEGORY_TO_CANONICAL: Record<string, WidgetType> = {
+  'Clocks':         'CLOCK',
+  'Headlines':      'TEXT',
+  'Announcements':  'ANNOUNCEMENT',
+  'Calendars':      'CALENDAR',
+  'Staff':          'STAFF_SPOTLIGHT',
+  'Countdowns':     'COUNTDOWN',
+  'Logos':          'LOGO',
+  'Tickers':        'TICKER',
+  'Weather':        'WEATHER',
+  'Photos':         'IMAGE',
+  'Rich Text':      'RICH_TEXT',
+  'Images':         'IMAGE',
+  'Lunch Menus':    'LUNCH_MENU',
+  'Bell Schedules': 'BELL_SCHEDULE',
+};
+
+for (const w of ALL_V2_WIDGETS) {
+  const canonicalType = V2_CATEGORY_TO_CANONICAL[w.category];
+  if (!canonicalType) {
+    // eslint-disable-next-line no-console
+    console.warn(`[v2] no canonical type mapped for category "${w.category}" — skipping ${w.type}`);
+    continue;
+  }
+  registerVariant({
+    // Stable, kebab-cased id derived from the v2 type. Persisted in
+    // `cfg.variant`; handlePick uses this to detect same-vs-different
+    // variants for the swap/append path.
+    id: w.type.toLowerCase().replace(/_/g, '-'),
+    // Canonical widget type so the picker's type filter shows ONE
+    // chip per category (CLOCK, WEATHER, …) and so the renderer's
+    // existing case statement still applies when no variant is set.
+    widgetType: canonicalType,
+    name: w.label,
+    description: w.desc,
+    category: V2_LEVEL_TO_CATEGORY[w.level] ?? 'MODERN',
+    // ThemeWidgetProps.config is `any`; v2 widgets accept a typed
+    // `config?: <Cfg>` and ignore extra `compact` / `onConfigChange`
+    // props. The cast is safe at runtime; React doesn't enforce
+    // prop-shape at the boundary.
+    render: w.Component as ComponentType<ThemeWidgetProps>,
+    // Seed defaults so a freshly-dropped zone renders immediately.
+    defaultConfig: w.defaults || {},
+  });
+}

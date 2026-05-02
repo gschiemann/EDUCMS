@@ -303,7 +303,14 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
       // reported "inline editing doesnt work at all" and this was the
       // root cause for every variant-rendered widget (which is most of
       // the canvas, since dragging a variant tile sets cfg.variant).
-      return <Render config={cfg} compact={compact} onConfigChange={onConfigChange} />;
+      //
+      // 2026-05-02 — also forward `live`. The v2 widget pack gates
+      // expensive work (weather fetches, animations beyond keyframes,
+      // confetti spawn) on `live` — without this passthrough, every
+      // v2 widget rendered as if in thumbnail mode, even when the
+      // player was actually running. Backwards-compatible for
+      // existing variants that ignore the prop.
+      return <Render config={cfg} compact={compact} live={live} onConfigChange={onConfigChange} />;
     }
   }
 

@@ -867,6 +867,27 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextAreaField key="messages" label={label} value={tickerText} placeholder="Welcome back!" onChange={(v) => setField({ text: v, messages: v.split('\n') })} rows={6} />);
       fields.push(<SelectField key="speed" label="Speed" value={cfg.speed || 'medium'} options={[['slow','Slow'],['medium','Medium'],['fast','Fast']]} onChange={(v) => setField({ speed: v })} />);
       fields.push(<ToggleField key="scrollEnabled" label="Animate scroll" value={cfg.scrollEnabled !== false} onChange={(v) => setField({ scrollEnabled: v })} />);
+      // 2026-05-02 — operator: "Ticker: text size + ticker dimensions
+      // not adjustable" + "Toolbar font/size/color controls for ticker
+      // missing." The renderer (WidgetRenderer.TickerWidget) hard-codes
+      // `style={{ fontSize: '0.85em', color: '#fbbf24' }}` on the
+      // visible span, but BuilderZone injects `!important` rules
+      // scoped to `[data-zone-id]` for cfg.fontFamily / fontSize /
+      // color, which override the inline style. Wiring the panel
+      // controls to those cfg keys gives the operator real control
+      // without rewriting the widget. (Ticker height = zone height,
+      // which is already adjustable via the canvas resize handles.)
+      fields.push(<FontFamilyField key="fontFamily" label="Font" value={cfg.fontFamily || ''} onChange={(v) => setField({ fontFamily: v })} />);
+      fields.push(
+        <FontSizeField
+          key="fontSize"
+          label="Font size"
+          value={cfg.fontSize ?? null}
+          onChange={(v) => setField({ fontSize: v })}
+          getMeasuredSize={() => measureZoneFontSize(zone.id)}
+        />,
+      );
+      fields.push(<ColorField key="color" label="Text color" value={cfg.color || '#fbbf24'} onChange={(v) => setField({ color: v })} />);
       break;
     }
     case 'CALENDAR':
@@ -877,6 +898,29 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
     case 'LUNCH_MENU':
       fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Lunch Menu" onChange={(v) => setField({ title: v })} />);
       fields.push(<TextAreaField key="menu" label="Menu (Day: items — one per line)" value={cfg.menu || ''} placeholder="Monday: Pizza, Salad" onChange={(v) => setField({ menu: v, meals: undefined })} rows={6} />);
+      // 2026-05-02 — operator: "Lunch menu: can't edit font size
+      // per-widget — properties panel doesn't expose a font-size
+      // control for this widget type, OR exposes one that doesn't
+      // bind to the renderer's actual style read." Same wiring path
+      // as TICKER above: BuilderZone injects `!important` rules for
+      // cfg.fontFamily / fontSize / color, which override the
+      // hard-coded inline styles inside LunchMenuWidget. Renderer
+      // doesn't need to change. Cfg writes from this panel land in
+      // the same chain the toolbar's text-style controls would write
+      // to, so the two stay in sync.
+      if (!isShapeTheme) {
+        fields.push(<FontFamilyField key="fontFamily" label="Font" value={cfg.fontFamily || ''} onChange={(v) => setField({ fontFamily: v })} />);
+        fields.push(
+          <FontSizeField
+            key="fontSize"
+            label="Font size"
+            value={cfg.fontSize ?? null}
+            onChange={(v) => setField({ fontSize: v })}
+            getMeasuredSize={() => measureZoneFontSize(zone.id)}
+          />,
+        );
+        fields.push(<ColorField key="color" label="Text color (overrides theme)" value={cfg.color || ''} onChange={(v) => setField({ color: v })} allowTransparent />);
+      }
       break;
     case 'QUOTE':
       fields.push(<TextAreaField key="quote" label="Quote" value={cfg.quote || ''} placeholder="Believe you can..." onChange={(v) => setField({ quote: v })} rows={3} />);

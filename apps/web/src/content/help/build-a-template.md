@@ -48,11 +48,11 @@ Each widget has its own configuration panel — for example, the Clock widget le
 
 Zones can overlap. Use **Bring to front** / **Send to back** in the right-click menu, or set `zIndex` numerically (higher numbers render on top).
 
-## Save, auto-save, and save-as-copy
+## Save and save-as-copy
 
-- The builder **auto-saves every 10 seconds** while you're editing. You can't lose work to a refresh.
-- Click **Save** to create a named version you can revert to.
-- Click **Save as copy** to fork — useful when you want to try a variant without losing the original.
+- Click **Save** (or press <kbd>Ctrl / ⌘ + S</kbd>) to persist your changes. The chip in the toolbar shows **Unsaved** while you have pending edits and **Saved Xs ago** after a successful save.
+- If you try to close the tab with unsaved edits, the browser warns you before leaving.
+- Click **Save as copy** (<kbd>Ctrl / ⌘ + Shift + S</kbd>) to fork — useful when you want to try a variant without losing the original.
 
 ## Publishing
 
