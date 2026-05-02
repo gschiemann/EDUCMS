@@ -6,6 +6,8 @@ import {
   Cake,
   // Sprint 11h decorations.
   PartyPopper, Rainbow, Sparkles, Zap, Sun,
+  // 2026-05-03 — VenueOS fitness/gym widget icons.
+  Tv, Music, MonitorPlay, Dumbbell, Quote, AppWindow, Joystick,
 } from 'lucide-react';
 // The "School Life" (QUOTE / STATS / SCOREBOARD / MENU_ITEM /
 // SCHEDULE_GRID / ATTENDANCE / BIRTHDAYS / HONOR_ROLL) and
@@ -20,7 +22,24 @@ import {
 // via grep), so hiding is a pure no-op for shipped content. Ship
 // them back one at a time as their editor ships.
 
-export const WIDGET_GROUPS = [
+// 2026-05-03 — VenueOS rebrand. Each group gets a `verticals` field
+// listing which industries see the group in their palette. Empty /
+// missing field means "all verticals" (universal — everyone sees it).
+//
+// Filter applied in WidgetPalette via useTenantCopy().vertical so a
+// gym admin sees Media + Web & Text + Utility + Decorations + Fitness;
+// they DON'T see Education + Animated Scenes + Scrapbook + Storybook
+// (those are K12-only). A school admin sees the K12 groups as before
+// and DOES NOT see the Fitness group.
+//
+// Adding new vertical-specific groups: set `verticals: ['QSR']` etc.
+// Universal widgets stay in groups with no verticals filter.
+export const WIDGET_GROUPS: ReadonlyArray<{
+  label: string;
+  /** If undefined OR empty, group is universal. Otherwise only shown to listed verticals. */
+  verticals?: ReadonlyArray<'K12' | 'GYM' | 'RETAIL' | 'CORPORATE' | 'QSR' | 'FASHION'>;
+  types: ReadonlyArray<{ type: string; label: string; desc: string; icon: LucideIcon }>;
+}> = [
   {
     label: 'Media',
     types: [
@@ -42,6 +61,7 @@ export const WIDGET_GROUPS = [
   },
   {
     label: 'Education',
+    verticals: ['K12'],
     types: [
       { type: 'ANNOUNCEMENT', label: 'Announcement', desc: 'Eye-catching important message', icon: Megaphone },
       { type: 'BELL_SCHEDULE', label: 'Bell Schedule', desc: 'Class periods with highlights', icon: Bell },
@@ -49,6 +69,30 @@ export const WIDGET_GROUPS = [
       { type: 'CALENDAR', label: 'Calendar', desc: 'Upcoming events from a feed', icon: CalendarDays },
       { type: 'COUNTDOWN', label: 'Countdown', desc: 'Count down to a special event', icon: Timer },
       { type: 'STAFF_SPOTLIGHT', label: 'Spotlight', desc: 'Feature a teacher or staff', icon: Users },
+    ],
+  },
+  // 2026-05-03 — VenueOS Fitness group. The 9 widget renderers in
+  // apps/web/src/components/widgets/fitness/ are wired into
+  // WidgetRenderer.tsx but were never exposed in the editor's palette,
+  // so a gym admin had no way to drop them onto a custom template.
+  // ANNOUNCEMENT + COUNTDOWN are duplicated here as a convenience —
+  // gyms also need general announce/countdown widgets and they
+  // weren't visible in the gym palette without the Education group.
+  {
+    label: 'Gym & fitness',
+    verticals: ['GYM'],
+    types: [
+      { type: 'FITNESS_CLASS_SCHEDULE',     label: 'Class schedule',      desc: "Today's gym classes — instructor, time, room", icon: CalendarDays },
+      { type: 'FITNESS_LIVE_TV',            label: 'Live TV',             desc: 'TV channel pane (ESPN / FastChannel / streaming)', icon: Tv },
+      { type: 'FITNESS_MUSIC_PLAYER',       label: 'Music player',        desc: 'Now-playing — track, artist, equalizer', icon: Music },
+      { type: 'FITNESS_TRAINING_VIDEO',     label: 'Training video',      desc: 'Equipment tutorial loop — looping how-to clips', icon: MonitorPlay },
+      { type: 'FITNESS_WORKOUT_TIMER',      label: 'Workout timer',       desc: 'HIIT / Tabata / interval countdown', icon: Dumbbell },
+      { type: 'FITNESS_AD_BANNER',          label: 'Promo banner',        desc: 'Rotating gym promo creative — class signups, deals', icon: Megaphone },
+      { type: 'FITNESS_MOTIVATIONAL_QUOTE', label: 'Motivational quote',  desc: 'Rotating quotes — one liners between sets', icon: Quote },
+      { type: 'FITNESS_APP_LIBRARY',        label: 'App library',         desc: 'Member-app launcher tiles — Peloton, MyZone, etc.', icon: AppWindow },
+      { type: 'FITNESS_STICK_LAUNCHER',     label: 'Stick launcher',      desc: 'Hardware companion launcher — Stick / Roku-style picker', icon: Joystick },
+      { type: 'ANNOUNCEMENT',               label: 'Announcement',        desc: 'Eye-catching important message', icon: Megaphone },
+      { type: 'COUNTDOWN',                  label: 'Countdown',           desc: 'Count down to a class, event, or tournament', icon: Timer },
     ],
   },
   {
@@ -80,6 +124,12 @@ export const WIDGET_GROUPS = [
   // "School Life" group hidden pending editor — see file header.
   {
     label: 'Animated Scenes',
+    // K12-only: every variant under this group is school-themed
+    // (Cafeteria, Bell Schedule, MS / HS Pack, Hallway, Bus Board,
+    // Morning News, Achievement Showcase, Scrapbook, Storybook).
+    // Gym / retail / corporate / qsr / fashion tenants see no
+    // school-themed animated scenes.
+    verticals: ['K12'],
     types: [
       // ANIMATED_BACKGROUND hidden pending editor — see file header.
       { type: 'ANIMATED_WELCOME', label: 'Animated Welcome · Elementary', desc: 'Full-screen rainbow-ribbon scene — shapes, confetti, live weather', icon: Cake },

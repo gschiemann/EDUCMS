@@ -6,6 +6,7 @@ import { useDraggable } from '@dnd-kit/core';
 import { WIDGET_GROUPS, getZoneColor } from './constants';
 import { useBuilderStore } from './useBuilderStore';
 import { CSS } from '@dnd-kit/utilities';
+import { useTenantCopy } from '@/hooks/use-tenant-copy';
 
 function DraggableWidgetButton({ type, label, desc, icon: Icon, colorTheme }: any) {
   const { attributes, listeners, setNodeRef, isDragging, transform } = useDraggable({
@@ -59,11 +60,27 @@ function DraggableWidgetButton({ type, label, desc, icon: Icon, colorTheme }: an
 export function WidgetPalette() {
   const [query, setQuery] = useState('');
   const searchId = useId();
+  // 2026-05-03 — VenueOS rebrand. Filter widget groups by current
+  // tenant's vertical: K12 sees Education + Animated Scenes (HS/MS
+  // Pack, Cafeteria, etc.); GYM sees Fitness; RETAIL/CORPORATE/QSR/
+  // FASHION see only universal groups (Media + Web & Text + Utility
+  // + Decorations) until their vertical-specific groups are added.
+  // Universal groups (no `verticals` field) are visible to everyone.
+  const tenantCopy = useTenantCopy();
+
+  // First narrow to groups visible for this tenant's vertical, then
+  // apply the search query inside that narrowed set.
+  const verticalScopedGroups = useMemo(() => {
+    return WIDGET_GROUPS.filter((g) => {
+      if (!g.verticals || g.verticals.length === 0) return true; // universal
+      return (g.verticals as readonly string[]).includes(tenantCopy.vertical);
+    });
+  }, [tenantCopy.vertical]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return WIDGET_GROUPS;
-    return WIDGET_GROUPS.map(g => ({
+    if (!q) return verticalScopedGroups;
+    return verticalScopedGroups.map(g => ({
       ...g,
       types: g.types.filter(t =>
         t.label.toLowerCase().includes(q) ||
@@ -71,7 +88,7 @@ export function WidgetPalette() {
         t.type.toLowerCase().includes(q),
       ),
     })).filter(g => g.types.length > 0);
-  }, [query]);
+  }, [query, verticalScopedGroups]);
 
   return (
     <div className="p-4 space-y-5">
