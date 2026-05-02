@@ -35,13 +35,41 @@ function useNowMin(tz?: string, live?: boolean) {
   return m;
 }
 function findCurrent(periods: Period[], nowMin: number): number {
-  for (let i = 0; i < periods.length; i++) { const s = parseHM(periods[i].startTime); const e = parseHM(periods[i].endTime); if (s != null && e != null && nowMin >= s && nowMin < e) return i; }
+  if (!Array.isArray(periods)) return -1;
+  for (let i = 0; i < periods.length; i++) {
+    const p = periods[i];
+    if (!p || typeof p !== 'object') continue;
+    const s = parseHM(p.startTime);
+    const e = parseHM(p.endTime);
+    if (s != null && e != null && nowMin >= s && nowMin < e) return i;
+  }
   return -1;
+}
+// 2026-05-03 — Operator: "When I select the 1st bell schedule in the
+// widget list and change anything the entire webpage crashes." Likely
+// trigger: c.periods stored as a non-array (legacy string from the
+// pre-mirror days, or null after a partial save). `c.periods?.length`
+// returns truthy for strings (string length), then `periods.map(...)`
+// in the render path crashes with "periods.map is not a function".
+// Coerce to a real array here so every renderer below sees a safe value.
+function safePeriods(value: unknown): Period[] {
+  if (Array.isArray(value)) {
+    return value
+      .filter((p) => p && typeof p === 'object')
+      .map((p: any) => ({
+        num: p.num,
+        label: typeof p.label === 'string' ? p.label : undefined,
+        room: typeof p.room === 'string' ? p.room : undefined,
+        startTime: typeof p.startTime === 'string' ? p.startTime : (typeof p.start === 'string' ? p.start : undefined),
+        endTime: typeof p.endTime === 'string' ? p.endTime : (typeof p.end === 'string' ? p.end : undefined),
+      }));
+  }
+  return [];
 }
 
 // 1. NEON PIT — racing/scoreboard vibe
 export function BellNeonPitWidget({ config, live }: WidgetProps<BellCfg>) {
-  const c = config || {}; const periods = c.periods?.length ? c.periods : FALLBACK; const nowMin = useNowMin(c.clockTimeZone, live);
+  const c = config || {}; const safe = safePeriods(c.periods); const periods = safe.length ? safe : FALLBACK; const nowMin = useNowMin(c.clockTimeZone, live);
   const cur = useMemo(() => findCurrent(periods, nowMin), [periods, nowMin]);
   const r = resolveStyle({ fontFamily: "'Audiowide', sans-serif", fontSize: 18, textColor: '#fff', bgColor: '#0a0014', padding: 24, borderRadius: 12, accentColor: '#ff2bd6', accentColor2: '#00f0ff', highlightColor: '#ffd60a', ...(c.style || {}) });
   return (
@@ -68,7 +96,7 @@ export function BellNeonPitWidget({ config, live }: WidgetProps<BellCfg>) {
 
 // 2. PAPER PROGRAM — playbill
 export function BellPaperProgramWidget({ config, live }: WidgetProps<BellCfg>) {
-  const c = config || {}; const periods = c.periods?.length ? c.periods : FALLBACK; const nowMin = useNowMin(c.clockTimeZone, live);
+  const c = config || {}; const safe = safePeriods(c.periods); const periods = safe.length ? safe : FALLBACK; const nowMin = useNowMin(c.clockTimeZone, live);
   const cur = useMemo(() => findCurrent(periods, nowMin), [periods, nowMin]);
   const r = resolveStyle({ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, textColor: '#0a0a0a', bgColor: '#f5f1e8', padding: 28, accentColor: '#7c1d1d', ...(c.style || {}) });
   return (
@@ -96,7 +124,7 @@ export function BellPaperProgramWidget({ config, live }: WidgetProps<BellCfg>) {
 
 // 3. CRAYON DAYPLAN — elementary
 export function BellCrayonDayplanWidget({ config, live }: WidgetProps<BellCfg>) {
-  const c = config || {}; const periods = c.periods?.length ? c.periods : FALLBACK.slice(0, 6); const nowMin = useNowMin(c.clockTimeZone, live);
+  const c = config || {}; const safe = safePeriods(c.periods); const periods = safe.length ? safe : FALLBACK.slice(0, 6); const nowMin = useNowMin(c.clockTimeZone, live);
   const cur = useMemo(() => findCurrent(periods, nowMin), [periods, nowMin]);
   const r = resolveStyle({ fontFamily: "'Fredoka', sans-serif", fontSize: 18, textColor: '#1c1917', bgColor: '#fff8e7', padding: 24, borderRadius: 32, accentColor: '#ff6b9d', accentColor2: '#4ecdc4', highlightColor: '#ffd93d', ...(c.style || {}) });
   const colors = [r.accent.primary, r.accent.secondary, r.accent.highlight, '#a78bfa', '#34d399', '#fb923c', '#60a5fa', '#f472b6'];
@@ -122,7 +150,7 @@ export function BellCrayonDayplanWidget({ config, live }: WidgetProps<BellCfg>) 
 
 // 4. GLASS TIMETABLE
 export function BellGlassTimetableWidget({ config, live }: WidgetProps<BellCfg>) {
-  const c = config || {}; const periods = c.periods?.length ? c.periods : FALLBACK; const nowMin = useNowMin(c.clockTimeZone, live);
+  const c = config || {}; const safe = safePeriods(c.periods); const periods = safe.length ? safe : FALLBACK; const nowMin = useNowMin(c.clockTimeZone, live);
   const cur = useMemo(() => findCurrent(periods, nowMin), [periods, nowMin]);
   const r = resolveStyle({ fontFamily: "'Inter', sans-serif", fontSize: 16, textColor: '#0f172a', bgColor: 'rgba(255,255,255,0.75)', bgGradient: 'linear-gradient(135deg, rgba(99,102,241,0.06), rgba(168,85,247,0.06))', padding: 28, borderRadius: 24, accentColor: '#6366f1', ...(c.style || {}) });
   return (
@@ -149,7 +177,7 @@ export function BellGlassTimetableWidget({ config, live }: WidgetProps<BellCfg>)
 
 // 5. OPS DISPATCH
 export function BellOpsDispatchWidget({ config, live }: WidgetProps<BellCfg>) {
-  const c = config || {}; const periods = c.periods?.length ? c.periods : FALLBACK; const nowMin = useNowMin(c.clockTimeZone, live);
+  const c = config || {}; const safe = safePeriods(c.periods); const periods = safe.length ? safe : FALLBACK; const nowMin = useNowMin(c.clockTimeZone, live);
   const cur = useMemo(() => findCurrent(periods, nowMin), [periods, nowMin]);
   const r = resolveStyle({ fontFamily: "'JetBrains Mono', monospace", fontSize: 14, textColor: '#cbd5e1', bgColor: '#0a0e14', padding: 20, borderRadius: 8, borderWidth: 1, borderColor: '#1e293b', accentColor: '#22d3ee', accentColor2: '#fbbf24', highlightColor: '#22c55e', ...(c.style || {}) });
   return (

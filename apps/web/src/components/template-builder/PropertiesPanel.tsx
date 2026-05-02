@@ -117,11 +117,19 @@ function parseBellLine(line: string): BellPeriod {
 
 function bellScheduleForEditor(value: unknown): BellPeriod[] {
   if (Array.isArray(value) && value.length) {
-    return value.map((p, idx) => ({
-      label: String((p as any)?.label || `Period ${idx + 1}`),
-      start: String((p as any)?.start || ''),
-      end: (p as any)?.end ? String((p as any).end) : undefined,
-    }));
+    // 2026-05-03 — accept BOTH the legacy schedule shape
+    // ({ label, start, end }) AND the v2 periods shape
+    // ({ num, label, startTime, endTime, room }). Without this branch,
+    // a zone whose only data lives under cfg.periods (v2-shaped)
+    // loaded into the editor with empty time inputs.
+    return value.map((p, idx) => {
+      const obj = (p && typeof p === 'object') ? (p as any) : {};
+      return {
+        label: String(obj.label || `Period ${idx + 1}`),
+        start: String(obj.start ?? obj.startTime ?? ''),
+        end: (obj.end ?? obj.endTime) ? String(obj.end ?? obj.endTime) : undefined,
+      };
+    });
   }
   if (typeof value === 'string' && value.trim()) {
     return value.split('\n').filter(Boolean).map(parseBellLine);
