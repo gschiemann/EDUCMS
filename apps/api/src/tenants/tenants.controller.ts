@@ -247,7 +247,16 @@ export class TenantsController {
     const data: any = {};
     if (body.vertical) {
       const v = body.vertical.toUpperCase();
-      const allowed = ['K12', 'RESTAURANT', 'RETAIL', 'HEALTHCARE', 'FITNESS', 'CORPORATE', 'OTHER'];
+      // 2026-05-03 — VenueOS launch verticals (per
+      // packages/api-types/src/verticals.ts). Legacy sprint-plan names
+      // (FITNESS, RESTAURANT, HEALTHCARE, OTHER) preserved as accepted
+      // values so any pre-existing tenants on those strings continue
+      // working without forced migration.
+      const allowed = [
+        'K12', 'GYM', 'RETAIL', 'CORPORATE', 'QSR', 'FASHION',
+        // Legacy / forward-compat
+        'FITNESS', 'RESTAURANT', 'HEALTHCARE', 'OTHER',
+      ];
       if (!allowed.includes(v)) throw new HttpException('Invalid vertical', HttpStatus.BAD_REQUEST);
       data.vertical = v;
     }
