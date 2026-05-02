@@ -30,7 +30,10 @@ interface ListResponse {
 }
 
 // Vertical-aware copy. Add new verticals here as the platform expands.
-type Vertical = 'K12' | 'RESTAURANT' | 'RETAIL' | 'HEALTHCARE' | 'FITNESS' | 'CORPORATE' | 'OTHER';
+// 2026-05-03 — VenueOS launch set: K12 / GYM / RETAIL / CORPORATE / QSR /
+// FASHION. Legacy names (RESTAURANT, HEALTHCARE, FITNESS, OTHER) kept
+// for forward-compat with any tenants on those strings.
+type Vertical = 'K12' | 'GYM' | 'RETAIL' | 'CORPORATE' | 'QSR' | 'FASHION' | 'RESTAURANT' | 'HEALTHCARE' | 'FITNESS' | 'OTHER';
 interface Copy {
   parentNoun: string;       // "district", "franchise", "group"
   childNoun: string;        // "school", "location", "gym"
@@ -98,6 +101,34 @@ const COPY: Record<Vertical, Copy> = {
     exampleName: 'New Location', exampleSlug: 'new-location',
     emptyState: 'No locations yet. Click Add a location to get started.',
     inheritanceNote: 'Each location gets its own screens, playlists, and users — but inherits your group branding.',
+  },
+  // 2026-05-03 — VenueOS launch additions. GYM mirrors FITNESS, QSR
+  // mirrors RESTAURANT semantically; FASHION is its own boutique-y
+  // language. Kept as separate entries so each can drift independently
+  // (e.g., a gym chain "region" sounds wrong; "group" reads better).
+  GYM: {
+    parentNoun: 'group', childNoun: 'gym', childNounPlural: 'gyms',
+    cardHeading: 'Gyms in this group',
+    addButton: 'Add a gym',
+    exampleName: 'Chicago Loop Gym', exampleSlug: 'chicago-loop',
+    emptyState: 'No gyms yet. Click Add a gym to onboard your first location.',
+    inheritanceNote: 'Each gym gets its own class schedule boards and member-facing screens — but inherits your group branding.',
+  },
+  QSR: {
+    parentNoun: 'brand', childNoun: 'restaurant', childNounPlural: 'restaurants',
+    cardHeading: 'Restaurants in this brand',
+    addButton: 'Add a restaurant',
+    exampleName: 'Times Square Store', exampleSlug: 'times-square',
+    emptyState: 'No restaurants yet. Click Add a restaurant to onboard your first location.',
+    inheritanceNote: 'Each restaurant gets its own menu boards, schedules, and staff — but inherits your brand styling.',
+  },
+  FASHION: {
+    parentNoun: 'brand', childNoun: 'boutique', childNounPlural: 'boutiques',
+    cardHeading: 'Boutiques in this brand',
+    addButton: 'Add a boutique',
+    exampleName: 'SoHo Studio', exampleSlug: 'soho',
+    emptyState: 'No boutiques yet. Click Add a boutique to onboard your first location.',
+    inheritanceNote: 'Each boutique gets its own lookbook signage and storefront screens — but inherits your brand styling.',
   },
 };
 function copyFor(v?: string): Copy {

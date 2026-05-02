@@ -28,6 +28,8 @@ import {
   useUpdateScreenEmergencyContent,
   type FloorPlanScreen,
 } from '@/hooks/use-api';
+import { useTenantCopy } from '@/hooks/use-tenant-copy';
+import { VERTICAL_EMERGENCY_TYPES } from '@cms/api-types';
 
 export interface EmergencyTypeRow {
   short: 'lockdown' | 'evacuate' | 'hold' | 'secure' | 'weather' | 'medical';
@@ -90,6 +92,17 @@ export function ScreenEmergencyContentConfig({
   screen: FloorPlanScreen;
 }) {
   const updateMutation = useUpdateScreenEmergencyContent();
+  // 2026-05-03 — vertical-aware emergency type filtering. K12 keeps
+  // the full panic set (lockdown / evacuate / hold / secure / weather
+  // / medical). Non-K12 verticals only show the types that make sense
+  // for them per VERTICAL_EMERGENCY_TYPES — a gym / retail store
+  // doesn't have "hold in current room" or "secure perimeter"
+  // operationally.
+  const tenantCopy = useTenantCopy();
+  const allowedTypes = VERTICAL_EMERGENCY_TYPES[tenantCopy.vertical];
+  const filteredEmergencyTypes = EMERGENCY_TYPES.filter((t) =>
+    (allowedTypes as readonly string[]).includes(t.short),
+  );
   // uploadingType is a composite key `${short}-${orient}` so each
   // upload spot's spinner is independent.
   const [uploadingType, setUploadingType] = useState<string | null>(null);
@@ -203,7 +216,7 @@ export function ScreenEmergencyContentConfig({
         tenant default.
       </p>
       <div className="space-y-2.5">
-        {EMERGENCY_TYPES.map((t) => {
+        {filteredEmergencyTypes.map((t) => {
           const orientations: { orient: Orient; icon: string; label: string }[] = [
             { orient: 'landscape', icon: '📺', label: 'Landscape' },
             { orient: 'portrait',  icon: '📱', label: 'Portrait' },
