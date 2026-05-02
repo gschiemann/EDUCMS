@@ -10,6 +10,53 @@ import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { appAlert } from '@/components/ui/app-dialog';
 import { useBuilderStore } from './useBuilderStore';
 
+/**
+ * setByPath — build a shallow-merge patch that updates a nested
+ * dotted-key path inside `root`, preserving sibling values.
+ *
+ * 2026-05-03 — fixes audit P0: BuilderZone inline-edit was committing
+ * `{ "schedule.0.label": "X" }` (literal flat key) for [data-field]
+ * elements with dotted keys, which the renderer never read. With this
+ * helper the same input becomes
+ *   { schedule: [{ ...prevSchedule[0], label: "X" }, ...prevSchedule.slice(1)] }
+ *
+ * Pure function — no mutation of `root`. Caller passes the result as
+ * the patch arg of onConfigChange (which shallow-merges into config).
+ *
+ * Path syntax:
+ *   - Plain key            "title"          → { title: value }
+ *   - Object path          "brand.color"    → { brand: { ...prev, color: value } }
+ *   - Numeric array index  "schedule.0.t"   → { schedule: [{ ...prev[0], t: value }, ...prev.slice(1)] }
+ *   - Mixed nested         "a.b.0.c"        → recursive
+ *   - Path beyond array end pads with empty objects up to the index
+ */
+function setByPath(root: Record<string, any>, path: string, value: any): Record<string, any> {
+  const parts = path.split('.');
+  if (parts.length === 1) return { [parts[0]]: value };
+  const [head, ...rest] = parts;
+  const restPath = rest.join('.');
+  const restHead = rest[0];
+  const isArrayIndex = /^\d+$/.test(restHead);
+  const existing = root?.[head];
+  if (isArrayIndex) {
+    const idx = parseInt(restHead, 10);
+    const arr: any[] = Array.isArray(existing) ? [...existing] : [];
+    while (arr.length <= idx) arr.push({});
+    if (rest.length === 1) {
+      arr[idx] = value;
+    } else {
+      const inner = arr[idx] && typeof arr[idx] === 'object' ? arr[idx] : {};
+      const innerPatch = setByPath(inner, rest.slice(1).join('.'), value);
+      arr[idx] = { ...inner, ...innerPatch };
+    }
+    return { [head]: arr };
+  }
+  // Object path
+  const innerExisting = existing && typeof existing === 'object' ? existing : {};
+  const innerPatch = setByPath(innerExisting, restPath, value);
+  return { [head]: { ...innerExisting, ...innerPatch } };
+}
+
 interface Props {
   zone: Zone;
   selected: boolean;
@@ -212,7 +259,22 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       (target.style as any).webkitUserSelect = '';
       (target.style as any).caretColor = '';
       if (pauseEl) pauseEl.style.animationPlayState = previousAnimationPlayState;
-      onConfigChange(zone.id, { [fieldKey]: newValue });
+      // 2026-05-03 \u2014 fix audit P0: data-field writes with dotted keys
+      // (e.g. `schedule.0.label`, `agenda.0.t`) must update the nested
+      // location, not store a literal flat key. The previous
+      // `{ [fieldKey]: newValue }` would write
+      //   config["schedule.0.label"] = "Period 1"
+      // which the renderer never reads (it reads config.schedule[0].label).
+      // Result: silent no-op edits \u2014 operator types, sees the canvas
+      // pulse, but nothing actually changes.
+      //
+      // setByPath() walks the dotted path on the EXISTING config and
+      // returns a top-level patch with the correct nested array/object
+      // shape preserved. Shallow-merge friendly (the patch's top key
+      // fully replaces that subtree but with all sibling indexes /
+      // properties carried through from the prior config).
+      const patch = setByPath((zone as any).config || {}, fieldKey, newValue);
+      onConfigChange(zone.id, patch);
     };
     const cancel = () => {
       target.removeEventListener('blur', commit);

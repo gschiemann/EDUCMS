@@ -803,7 +803,10 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       }
       break;
     case 'STAFF_SPOTLIGHT':
-      fields.push(<TextField key="staffName" label="Name" value={cfg.staffName || ''} placeholder="Mrs. Johnson" onChange={(v) => setField({ staffName: v })} />);
+      // 2026-05-03 — write BOTH `staffName` (legacy widget reads this)
+      // AND `name` (v2 StaffWidgets read this) so picking a v2
+      // staff variant doesn't show a blank name on the canvas.
+      fields.push(<TextField key="staffName" label="Name" value={cfg.staffName || cfg.name || ''} placeholder="Mrs. Johnson" onChange={(v) => setField({ staffName: v, name: v })} />);
       fields.push(<TextField key="role" label="Role" value={cfg.role || ''} placeholder="Teacher of the Week" onChange={(v) => setField({ role: v })} />);
       fields.push(<TextAreaField key="bio" label="Bio" value={cfg.bio || ''} placeholder="One-liner about them…" onChange={(v) => setField({ bio: v })} rows={3} />);
       fields.push(<AssetPickerField key="photoUrl" label="Photo" value={cfg.photoUrl || ''} kind="image" onChange={(v) => setField({ photoUrl: v })} />);
@@ -897,7 +900,34 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       break;
     case 'LUNCH_MENU':
       fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Lunch Menu" onChange={(v) => setField({ title: v })} />);
-      fields.push(<TextAreaField key="menu" label="Menu (Day: items — one per line)" value={cfg.menu || ''} placeholder="Monday: Pizza, Salad" onChange={(v) => setField({ menu: v, meals: undefined })} rows={6} />);
+      fields.push(<TextAreaField key="menu" label="Menu (Day: items — one per line)" value={cfg.menu || ''} placeholder="Monday: Pizza, Salad" onChange={(v) => {
+        // 2026-05-03 — mirror the string menu into v2's structured
+        // `days` shape so v2 LunchMenuWidgets render the typed
+        // content. v2 expects:
+        //   { day: 'MON', entree: 'Pizza', sides: ['Salad'], dessert: '' }
+        // Best-effort parse: first comma-separated item is the
+        // entree, rest are sides. Day name normalized to 3-letter
+        // upper. Empty parses fall through gracefully.
+        const DAY_MAP: Record<string, string> = {
+          monday: 'MON', tuesday: 'TUE', wednesday: 'WED', thursday: 'THU', friday: 'FRI',
+          mon: 'MON', tue: 'TUE', wed: 'WED', thu: 'THU', fri: 'FRI',
+        };
+        const days = v.split('\n').filter(Boolean).map((line) => {
+          const colonIdx = line.indexOf(':');
+          if (colonIdx === -1) return null;
+          const dayRaw = line.slice(0, colonIdx).trim().toLowerCase();
+          const itemsRaw = line.slice(colonIdx + 1).trim();
+          const items = itemsRaw.split(',').map((s) => s.trim()).filter(Boolean);
+          if (!items.length) return null;
+          return {
+            day: DAY_MAP[dayRaw] || dayRaw.slice(0, 3).toUpperCase(),
+            entree: items[0],
+            sides: items.slice(1),
+            dessert: '',
+          };
+        }).filter((d): d is NonNullable<typeof d> => d !== null);
+        setField({ menu: v, meals: undefined, days });
+      }} rows={6} />);
       // 2026-05-02 — operator: "Lunch menu: can't edit font size
       // per-widget — properties panel doesn't expose a font-size
       // control for this widget type, OR exposes one that doesn't
@@ -991,8 +1021,30 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(
         <BellScheduleEditor
           key="schedule"
-          value={bellScheduleForEditor(cfg.schedule)}
-          onChange={(schedule) => setField({ schedule })}
+          value={bellScheduleForEditor(cfg.schedule || (cfg.periods as any))}
+          onChange={(schedule) => setField({
+            // Legacy widget shape — old BellScheduleWidget +
+            // GymPEBellSchedule + MSHallBellSchedule all read
+            // config.schedule with {label, start, end}.
+            schedule,
+            // 2026-05-03 — v2 BellSchedule widgets
+            // (BellNeonPit, BellPaperProgram, BellCrayonDayplan,
+            // BellGlassTimetable, BellOpsDispatch) read
+            // config.periods with shape
+            //   {num, label, room, startTime, endTime}
+            // Mirror the editor's schedule into that shape so
+            // edits show up on the canvas regardless of which
+            // bell variant the user picked. Operator (2026-05-03):
+            // "i tried to update a bell schedule and I change the
+            // time in the left tool bar but nothing changes on the
+            // canvas".
+            periods: schedule.map((p, i) => ({
+              num: String(i + 1),
+              label: p.label,
+              startTime: p.start,
+              endTime: p.end,
+            })),
+          })}
         />
       );
       break;
