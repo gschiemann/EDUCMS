@@ -2855,6 +2855,26 @@ function PlayerPage() {
             else classes += isActive ? "opacity-100 z-10 duration-0" : "opacity-0 z-0 duration-0";
 
             if (isVid) {
+              // 2026-05-02 — operator: "videos play once and stop. all
+              // video files should loop unless they are mixed in with
+              // other content; if alone then it just loops non stop".
+              //
+              // Two distinct behaviors required:
+              //   - Solo video playlist (only this item, or every other
+              //     item is also THIS same video) → native HTML loop so
+              //     the browser handles seamless restart with zero
+              //     React re-render gap (smoother on slow hardware too).
+              //   - Mixed playlist → onEnded advances to the next item.
+              //     When the playlist eventually wraps back to this
+              //     video, React re-renders <video> and it auto-plays
+              //     from the start — operator gets the desired "loops
+              //     when re-encountered" behavior for free.
+              //
+              // Detection: count how many DISTINCT items the playlist
+              // has. 1 distinct item = solo, regardless of how many
+              // sequence-order copies there are.
+              const distinctItemCount = new Set(sorted.map((s: any) => s.id || s.assetId)).size;
+              const isSoloPlaylist = distinctItemCount <= 1;
               return <video
                 key={item.id}
                 src={resUrl}
@@ -2862,7 +2882,8 @@ function PlayerPage() {
                 autoPlay
                 muted
                 playsInline
-                onEnded={(e) => {
+                loop={isSoloPlaylist}
+                onEnded={isSoloPlaylist ? undefined : (e) => {
                   // HIGH-6 fix: tear down THIS video's buffer BEFORE we
                   // advance the index. If we advance first, the re-render
                   // can briefly paint the old <video> with the old src

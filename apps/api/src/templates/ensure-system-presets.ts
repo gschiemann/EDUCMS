@@ -13,7 +13,17 @@ import { FITNESS_TEMPLATE_PRESETS } from './fitness-presets';
 const ALL_PRESETS = [...SYSTEM_TEMPLATE_PRESETS, ...FITNESS_TEMPLATE_PRESETS];
 const PRESET_VERTICAL: Map<string, string> = new Map();
 SYSTEM_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'K12'));
-FITNESS_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'FITNESS'));
+// 2026-05-02 — VenueOS launch verticals are K12 / GYM / RETAIL /
+// CORPORATE / QSR / FASHION (per packages/api-types/src/verticals.ts).
+// The earlier sprint-plan name 'FITNESS' is unified to 'GYM' so the
+// templates show up for tenants with Tenant.vertical = 'GYM'. The
+// fitness-presets.ts file keeps its own internal name + category
+// strings as 'FITNESS' for backward-compat in any dashboard chrome
+// that already references that label; only the per-template VERTICAL
+// flag below is what gates visibility per tenant. Existing tenants
+// with Tenant.vertical = 'FITNESS' (if any) keep working — adding
+// 'GYM' is purely additive on the seed side.
+FITNESS_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'GYM'));
 
 /**
  * Idempotent system-preset seeder. Runs once on API startup.
