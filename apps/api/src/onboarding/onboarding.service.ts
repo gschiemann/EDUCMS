@@ -57,15 +57,27 @@ export class OnboardingService {
   /**
    * District self-signup: creates a Tenant + first DISTRICT_ADMIN User, then auto-logs them in.
    */
-  async signup(input: { districtName: string; slug: string; adminEmail: string; password: string }) {
+  async signup(input: { districtName: string; slug: string; adminEmail: string; password: string; vertical?: string }) {
     const districtName = (input.districtName || '').trim();
     const rawSlug = slugify(input.slug || districtName);
     const email = (input.adminEmail || '').trim().toLowerCase();
 
-    if (!districtName) throw new BadRequestException('District name is required.');
+    if (!districtName) throw new BadRequestException('Organization name is required.');
     if (!rawSlug) throw new BadRequestException('Slug is required.');
     if (!isValidEmail(email)) throw new BadRequestException('A valid admin email is required.');
     validatePassword(input.password);
+
+    // 2026-05-03 — VenueOS multi-vertical signup. Default K12 preserves
+    // current EDU CMS pilot behavior; new VenueOS signups pass vertical
+    // explicitly via the picker. Allowlist mirrors PATCH /tenants/me.
+    const requestedVertical = (input.vertical || 'K12').toUpperCase();
+    const allowedVerticals = [
+      'K12', 'GYM', 'RETAIL', 'CORPORATE', 'QSR', 'FASHION',
+      'FITNESS', 'RESTAURANT', 'HEALTHCARE', 'OTHER',
+    ];
+    if (!allowedVerticals.includes(requestedVertical)) {
+      throw new BadRequestException('Invalid vertical.');
+    }
 
     const [existingTenant, existingUser] = await Promise.all([
       this.prisma.client.tenant.findUnique({ where: { slug: rawSlug } }),
@@ -78,7 +90,7 @@ export class OnboardingService {
 
     const { tenant, user } = await this.prisma.client.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
-        data: { name: districtName, slug: rawSlug },
+        data: { name: districtName, slug: rawSlug, vertical: requestedVertical },
       });
       const user = await tx.user.create({
         data: {

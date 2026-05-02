@@ -54,6 +54,11 @@ export default function SignupPage() {
   const [adminEmail, setAdminEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  // 2026-05-03 — VenueOS multi-vertical signup. K12 default keeps
+  // current EDU CMS pilot copy/template behavior; switching this
+  // dropdown rebrands the workspace from day 1 (gym templates,
+  // gym terminology, gym emergency types).
+  const [vertical, setVertical] = useState<'K12' | 'GYM' | 'RETAIL' | 'CORPORATE' | 'QSR' | 'FASHION'>('K12');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const login = useUIStore((s) => s.login);
@@ -74,7 +79,7 @@ export default function SignupPage() {
       const res = await fetch(`${API_URL}/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ districtName, slug, adminEmail, password }),
+        body: JSON.stringify({ districtName, slug, adminEmail, password, vertical }),
       });
       const data = await res.json();
       if (res.ok && data.access_token) {
@@ -174,12 +179,51 @@ export default function SignupPage() {
               <p className="text-sm text-slate-500 mt-1">Takes under three minutes. You&rsquo;ll be signed in when it&rsquo;s done.</p>
             </div>
 
-            <FieldLabel label="District or school name">
+            {/* 2026-05-03 — VenueOS vertical picker. Drives template
+                library, terminology, default emergency types from day
+                1. K12 stays the first option to preserve the current
+                EDU pilot's signup muscle-memory; gym/retail/etc. are
+                the new VenueOS-era choices. */}
+            <FieldLabel label="What are you running?">
+              <select
+                required
+                value={vertical}
+                onChange={(e) => setVertical(e.target.value as typeof vertical)}
+                className="signup-input cursor-pointer"
+              >
+                <option value="K12">🎓 K-12 school or district</option>
+                <option value="GYM">🏋️ Gym, fitness club, or athletic facility</option>
+                <option value="RETAIL">🛍️ Retail store or chain</option>
+                <option value="CORPORATE">🏢 Corporate office or enterprise</option>
+                <option value="QSR">🍔 Quick-service restaurant</option>
+                <option value="FASHION">👗 Fashion boutique or apparel</option>
+              </select>
+            </FieldLabel>
+
+            <FieldLabel
+              label={
+                vertical === 'K12'      ? 'District or school name' :
+                vertical === 'GYM'      ? 'Gym or club name' :
+                vertical === 'RETAIL'   ? 'Store or chain name' :
+                vertical === 'CORPORATE' ? 'Company name' :
+                vertical === 'QSR'      ? 'Restaurant or brand name' :
+                vertical === 'FASHION'  ? 'Boutique or brand name' :
+                                          'Organization name'
+              }
+            >
               <input
                 required
                 value={districtName}
                 onChange={(e) => handleDistrictChange(e.target.value)}
-                placeholder="Springfield Unified School District"
+                placeholder={
+                  vertical === 'K12'      ? 'Springfield Unified School District' :
+                  vertical === 'GYM'      ? 'Iron Peak Fitness' :
+                  vertical === 'RETAIL'   ? 'Northside Outfitters' :
+                  vertical === 'CORPORATE' ? 'Acme Corp' :
+                  vertical === 'QSR'      ? 'Burger Junction' :
+                  vertical === 'FASHION'  ? 'Studio 5 Boutique' :
+                                            'Your organization'
+                }
                 className="signup-input"
               />
             </FieldLabel>
@@ -189,12 +233,20 @@ export default function SignupPage() {
               hint="Letters, numbers, and dashes only."
             >
               <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent transition">
-                <span className="pl-4 pr-2 py-3 text-sm text-slate-400 font-mono shrink-0 border-r border-slate-200">edu/</span>
+                <span className="pl-4 pr-2 py-3 text-sm text-slate-400 font-mono shrink-0 border-r border-slate-200">/</span>
                 <input
                   required
                   value={slug}
                   onChange={(e) => { setSlug(slugify(e.target.value)); setSlugTouched(true); }}
-                  placeholder="springfield"
+                  placeholder={
+                    vertical === 'K12'      ? 'springfield' :
+                    vertical === 'GYM'      ? 'iron-peak' :
+                    vertical === 'RETAIL'   ? 'northside' :
+                    vertical === 'CORPORATE' ? 'acme' :
+                    vertical === 'QSR'      ? 'burger-junction' :
+                    vertical === 'FASHION'  ? 'studio-5' :
+                                              'your-workspace'
+                  }
                   className="flex-1 px-3 py-3 bg-transparent text-sm font-mono text-slate-900 placeholder:text-slate-400 outline-none"
                 />
               </div>
@@ -207,7 +259,15 @@ export default function SignupPage() {
                 autoComplete="email"
                 value={adminEmail}
                 onChange={(e) => setAdminEmail(e.target.value)}
-                placeholder="you@school.edu"
+                placeholder={
+                  vertical === 'K12'      ? 'you@school.edu' :
+                  vertical === 'GYM'      ? 'you@yourgym.com' :
+                  vertical === 'RETAIL'   ? 'you@yourstore.com' :
+                  vertical === 'CORPORATE' ? 'you@company.com' :
+                  vertical === 'QSR'      ? 'you@yourbrand.com' :
+                  vertical === 'FASHION'  ? 'you@yourbrand.com' :
+                                            'you@example.com'
+                }
                 className="signup-input"
               />
             </FieldLabel>

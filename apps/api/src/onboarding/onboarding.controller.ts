@@ -14,7 +14,10 @@ export class OnboardingController {
   @Post('signup')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
-  async signup(@Body() body: { districtName: string; slug: string; adminEmail: string; password: string }) {
+  async signup(@Body() body: { districtName: string; slug: string; adminEmail: string; password: string; vertical?: string }) {
+    // 2026-05-03 — VenueOS pivot: vertical is now part of signup so
+    // a new tenant is created with the right industry context (drives
+    // template library, terminology, default emergency types).
     return this.onboarding.signup(body);
   }
 
