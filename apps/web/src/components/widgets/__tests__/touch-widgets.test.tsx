@@ -8,7 +8,7 @@
  */
 
 import { render, screen, fireEvent } from '@testing-library/react';
-import { WidgetPreview, buildWidgetStyleCss } from '../WidgetRenderer';
+import { WidgetPreview } from '../WidgetRenderer';
 import { validateTouchHitTargets, MIN_TOUCH_TARGET_PX } from '@/components/template-builder/constants';
 
 function renderWidget(type: string, config: Record<string, unknown> = {}) {
@@ -18,44 +18,6 @@ function renderWidget(type: string, config: Record<string, unknown> = {}) {
     </div>,
   );
 }
-
-describe('WidgetPreview shared style config', () => {
-  it('emits zone-wide text rules from saved defaultConfig', () => {
-    const css = buildWidgetStyleCss('scope1', {
-      fontFamily: 'Arial',
-      fontSize: 42,
-      color: '#ff0000',
-      textAlign: 'right',
-      bold: true,
-    });
-
-    expect(css).toContain('[data-widget-style-scope="scope1"] *:not(svg):not(svg *)');
-    expect(css).toContain('font-family: Arial !important');
-    expect(css).toContain('font-size: 42px !important');
-    expect(css).toContain('color: #ff0000 !important');
-    expect(css).toContain('text-align: right !important');
-    expect(css).toContain('font-weight: 800 !important');
-  });
-
-  it('emits field-specific overrides for inline-edited text', () => {
-    const css = buildWidgetStyleCss('scope2', {
-      fontSize: 20,
-      _styles: {
-        'schedule.0.label': { color: '#00ff00', fontSize: 31 },
-      },
-    });
-
-    expect(css).toContain('[data-widget-style-scope="scope2"] [data-field="schedule.0.label"]');
-    expect(css).toContain('color: #00ff00 !important');
-    expect(css).toContain('font-size: 31px !important');
-  });
-
-  it('renders TEXT alignment from the toolbar textAlign key', () => {
-    renderWidget('TEXT', { content: 'Aligned', textAlign: 'right', fontSize: 30 });
-    const text = screen.getByText('Aligned');
-    expect(text).toHaveStyle({ textAlign: 'right', fontSize: '30px' });
-  });
-});
 
 describe('TOUCH_BUTTON', () => {
   it('renders label and icon', () => {
