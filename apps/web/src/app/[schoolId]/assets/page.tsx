@@ -371,7 +371,11 @@ export default function AssetsPage() {
         reject(new Error('Storage upload network error. The file reached the direct storage step, so check Supabase Storage CORS/network and MIME settings.'));
       };
       xhr.onabort = () => reject(new Error('Cancelled'));
-      xhr.open('POST', signed.uploadUrl || signed.signedUrl);
+      // Supabase signed upload URLs require PUT, not POST. POST returns
+      // a generic "headers must have required" error from Supabase's
+      // storage edge handler. Operator hit this on every MP4 upload
+      // after Codex's d29e6c5 switched to direct-storage uploads.
+      xhr.open('PUT', signed.uploadUrl || signed.signedUrl);
       xhr.setRequestHeader('Content-Type', signed.mimeType || item.file.type || 'application/octet-stream');
       xhr.send(item.file);
     });
