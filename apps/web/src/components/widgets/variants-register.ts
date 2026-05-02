@@ -618,14 +618,13 @@ registerVariant({ id: 'image_carousel-jumbotron-pro', widgetType: 'IMAGE_CAROUSE
 
 // ─── v2 widget pack (2026-05-02) ─────────────────────────────────────
 // 14 categories × 5 audience-tagged styles (Neon / Paper / Crayon /
-// Glass / Ops). Unlike the existing variants above, each v2 widget
-// has its OWN type string (CLOCK_NEON, HEADLINE_PAPER, …) — they're
-// not variants of CLOCK, ANNOUNCEMENT, etc. The picker treats them
-// as standalone widget types: with no zone selected the operator can
-// click any tile to drop a fresh zone of that type; with a v2 zone
-// selected, clicking a different style (CLOCK_NEON → CLOCK_PAPER)
-// swaps via the existing same-type-swap path, and clicking the same
-// tile adds a new instance (post the 81298d6 swap-overwrite fix).
+// Glass / Ops). Each v2 widget registers as a variant of an EXISTING
+// canonical widget type (CLOCK, ANNOUNCEMENT, …) — NOT under its own
+// type string. That keeps the picker's type-filter row at ~12 chips
+// (one per canonical type) instead of mushrooming to 70+. The
+// renderer dispatches via cfg.variant (existing variant lookup at
+// the top of WidgetPreview), so the canonical case statement never
+// needs a v2 branch.
 //
 // `level` from the v2 registry maps onto the picker's existing level
 // filter via `CATEGORY_TO_LEVELS` (apps/web/src/components/template-
@@ -633,10 +632,10 @@ registerVariant({ id: 'image_carousel-jumbotron-pro', widgetType: 'IMAGE_CAROUSE
 //   high       → HIGH        (level filter: High)
 //   middle     → MIDDLE      (level filter: Middle)
 //   elementary → ELEMENTARY  (level filter: Elementary)
-//   universal  → MODERN      (level filter: Universal)
-//   admin      → OFFICE      (level filter: Universal — no admin chip)
+//   universal  → MODERN      (visible across every level chip)
+//   admin      → OFFICE      (visible across every level chip — no admin chip exists)
 import { ALL_V2_WIDGETS } from './v2/registry';
-import type { ThemeWidgetProps } from './themes/registry';
+import type { ThemeWidgetProps, WidgetType } from './themes/registry';
 import type { ComponentType } from 'react';
 
 const V2_LEVEL_TO_CATEGORY: Record<string, string> = {
@@ -647,15 +646,44 @@ const V2_LEVEL_TO_CATEGORY: Record<string, string> = {
   admin: 'OFFICE',
 };
 
+// v2 category → canonical widget type. The variant gets registered
+// under the canonical type so it shows up in the picker chip the
+// operator already knows ("CLOCK", "WEATHER", …). Photos and Images
+// both map onto IMAGE; Headlines maps onto TEXT (large headline-as-
+// text). Anything not in this map is skipped with a console warning.
+const V2_CATEGORY_TO_CANONICAL: Record<string, WidgetType> = {
+  'Clocks':         'CLOCK',
+  'Headlines':      'TEXT',
+  'Announcements':  'ANNOUNCEMENT',
+  'Calendars':      'CALENDAR',
+  'Staff':          'STAFF_SPOTLIGHT',
+  'Countdowns':     'COUNTDOWN',
+  'Logos':          'LOGO',
+  'Tickers':        'TICKER',
+  'Weather':        'WEATHER',
+  'Photos':         'IMAGE',
+  'Rich Text':      'RICH_TEXT',
+  'Images':         'IMAGE',
+  'Lunch Menus':    'LUNCH_MENU',
+  'Bell Schedules': 'BELL_SCHEDULE',
+};
+
 for (const w of ALL_V2_WIDGETS) {
+  const canonicalType = V2_CATEGORY_TO_CANONICAL[w.category];
+  if (!canonicalType) {
+    // eslint-disable-next-line no-console
+    console.warn(`[v2] no canonical type mapped for category "${w.category}" — skipping ${w.type}`);
+    continue;
+  }
   registerVariant({
-    // Stable, kebab-cased id derived from the type. The id is what's
-    // persisted in `cfg.variant` and what handlePick uses to detect
-    // same-vs-different variants for the swap/append path.
+    // Stable, kebab-cased id derived from the v2 type. Persisted in
+    // `cfg.variant`; handlePick uses this to detect same-vs-different
+    // variants for the swap/append path.
     id: w.type.toLowerCase().replace(/_/g, '-'),
-    // widgetType matches the v2 type so the renderer's V2_BY_TYPE
-    // lookup in the switch's default branch dispatches correctly.
-    widgetType: w.type as any,
+    // Canonical widget type so the picker's type filter shows ONE
+    // chip per category (CLOCK, WEATHER, …) and so the renderer's
+    // existing case statement still applies when no variant is set.
+    widgetType: canonicalType,
     name: w.label,
     description: w.desc,
     category: V2_LEVEL_TO_CATEGORY[w.level] ?? 'MODERN',
@@ -664,10 +692,7 @@ for (const w of ALL_V2_WIDGETS) {
     // props. The cast is safe at runtime; React doesn't enforce
     // prop-shape at the boundary.
     render: w.Component as ComponentType<ThemeWidgetProps>,
-    // Seed defaults so a freshly-dropped zone renders immediately
-    // (most v2 widgets ship sensible internal fallbacks already, so
-    // this is empty for most rows — defaults can be added later in
-    // v2/registry.ts).
+    // Seed defaults so a freshly-dropped zone renders immediately.
     defaultConfig: w.defaults || {},
   });
 }
