@@ -73,3 +73,18 @@ export function formatTime12Spaced(input?: string | null): string {
   if (h12 === 0) h12 = 12;
   return `${h12}:${String(mm).padStart(2, '0')} ${ap}`;
 }
+
+/**
+ * Convert any input format to 24-hour "HH:MM" — the format
+ * `<input type="time">` requires for its `value` prop. Returns empty
+ * string on parse failure (which makes the picker show a placeholder
+ * instead of an "invalid value" warning in the console).
+ */
+export function to24Hour(input?: string | null): string {
+  if (!input) return '';
+  const min = parseTimeToMinutes(input);
+  if (min == null) return '';
+  const h = Math.floor(min / 60);
+  const mm = min % 60;
+  return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}

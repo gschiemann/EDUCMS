@@ -432,36 +432,22 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       const variantId = active.data.current?.variantId as string | undefined;
       const variantConfig = (active.data.current?.defaultConfig || {}) as Record<string, any>;
 
-      // SWAP path — partner reported: drag a Wood Wall Clock variant
-      // while their existing Clock 2 zone is selected, expected the
-      // Clock 2 zone to take the new variant's styling. Old behavior
-      // ALWAYS added a new zone. Now: if the user is dragging a
-      // variant-tile AND has a single selected zone of the matching
-      // widget type, treat the drop as a SWAP (mirrors the click-to-
-      // swap behavior in VariantPicker.handlePick).
+      // 2026-05-03 — operator: "one widget overwrites the next 6 widgets
+      // in the same category." The previous code ran a SWAP path here:
+      // when a single zone was selected and a variant-tile was dragged,
+      // the selected zone's variant got REPLACED — regardless of where
+      // the drop landed on the canvas. Result: clicking through six
+      // bell-schedule variants in a row overwrote the same zone six
+      // times instead of creating six separate zones, because addZone
+      // auto-selects the most recent zone (so EVERY follow-up tile
+      // qualified as a "swap target").
       //
-      // 2026-05-02 — operator: "Adding a 2nd welcome message overwrites
-      // the 1st." `addZone` auto-selects the new zone, so an immediate
-      // re-drag of the same variant tile fell into this branch and
-      // overwrote the just-added zone. Mirrors the fix in
-      // VariantPicker.handlePick: only swap when the dragged variant
-      // is *different* from the variant already on the selected zone.
-      // Same-variant drag → fall through to ADD a second instance.
-      const store = useBuilderStore.getState();
-      const sel = store.selectedIds;
-      if (isVariantTile && variantId && sel.length === 1) {
-        const target = store.zones.find((z) => z.id === sel[0]);
-        const targetVariant = target?.defaultConfig?.variant;
-        const isSameVariantOnSameType =
-          !!target && target.widgetType === type && targetVariant === variantId;
-        if (target && target.widgetType === type && !isSameVariantOnSameType) {
-          store.updateZone(target.id, {
-            defaultConfig: { ...(target.defaultConfig || {}), ...variantConfig, variant: variantId },
-            widgetType: type,
-          });
-          return;
-        }
-      }
+      // The original "drag X onto Y → Y takes X's style" partner
+      // request never actually checked whether the drop fell inside Y.
+      // The Properties panel's "Widget Theme" dropdown is the right
+      // surface for swapping a zone's look. Both DRAG and CLICK from
+      // the picker are now pure ADD gestures so the behavior is
+      // predictable: tap a tile, get a new zone. Period.
 
       // ADD path — resolve the drop point to template-percentage space
       // (0-100) so the new zone CENTERS on the cursor instead of

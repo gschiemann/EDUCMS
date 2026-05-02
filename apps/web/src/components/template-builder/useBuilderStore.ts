@@ -139,16 +139,35 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
       x = Math.max(0, Math.min(100 - w, dropAt.x - w / 2));
       y = Math.max(0, Math.min(100 - h, dropAt.y - h / 2));
     } else {
-      // 2026-05-03 — operator: "I can't add two of the same widgets,
-      // they overwrite each other." Earlier the stagger was 5% which
-      // is barely visible at zone size 40×30 — both new zones looked
-      // stacked. Bump to 8% so the new zone visibly clears the prior
-      // one. Wrap to (10,10) when we'd hit the right/bottom edge.
+      // 2026-05-03 — operator: "one widget overwrites the next 6 widgets
+      // in the same category." Each new zone now goes to the right of
+      // the previous one (no overlap), wrapping to a new row when it
+      // would exceed the canvas width, and resetting to (10,10) when
+      // it would exceed canvas height. This way clicking 6 widget
+      // tiles in a row produces 6 visually distinct zones laid out in
+      // a sensible reading order — not a stack of cascading rectangles
+      // pretending to be six separate widgets but mostly hidden.
+      const gap = 2; // 2% gap between zones so borders don't touch
       const last = zones.length > 0 ? zones[zones.length - 1] : null;
-      const baseX = last ? last.x + 8 : 10;
-      const baseY = last ? last.y + 8 : 10;
-      x = (baseX + w > 100 || baseY + h > 100) ? 10 : baseX;
-      y = (baseX + w > 100 || baseY + h > 100) ? 10 : baseY;
+      if (!last) {
+        x = 10;
+        y = 10;
+      } else {
+        const tryX = last.x + last.width + gap;
+        if (tryX + w <= 100) {
+          // Same row, just to the right of the previous zone
+          x = tryX;
+          y = last.y;
+        } else {
+          // Wrap to next row at left edge, below the previous zone
+          x = 10;
+          y = last.y + last.height + gap;
+          if (y + h > 100) {
+            // Canvas full — reset to top-left, accept overlap with row 1
+            y = 10;
+          }
+        }
+      }
     }
     // Seed a sensible defaultConfig per widget type so freshly
     // dropped zones render visibly instead of as a transparent box

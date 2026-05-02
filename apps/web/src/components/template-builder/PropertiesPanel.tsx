@@ -7,15 +7,15 @@ import { widgetLabel } from './constants';
 import { useAssets, usePlaylists, useTemplates, useTemplateBackdrops } from '@/hooks/use-api';
 import { ColorPickerField } from '@/components/ui/color-picker';
 import { THEMED_WIDGET_FIELDS } from './themed-widget-defaults';
-// 2026-05-03 — operator: "I can only change the time from the picker but
-// when I manually type the time it doesn't work." `<input type="time">`
-// is browser-controlled and rejects loose input. The BellScheduleEditor
-// now uses `<input type="text">` and pipes user input through the shared
-// loose-time parser so "8", "8:30am", "13:30", "1pm" all normalize on
-// blur to a clean "8:30 AM" canonical string. parseTimeToMinutes returns
-// null on garbage input, so we display the raw text until they fix it
-// instead of silently eating the typo.
-import { formatTime12Spaced, parseTimeToMinutes } from '@/lib/format-time';
+// 2026-05-03 — Time formatting helpers. The BellScheduleEditor uses
+// the native `<input type="time">` picker (so the operator gets the
+// browser's familiar AM/PM toggle and HH:MM typing). We read existing
+// stored values through `to24Hour()` so legacy "8:30 AM" data still
+// loads into the picker, and write back the picker's HH:MM value as-is.
+// Widget renderers convert to 12-hour at display time via
+// `formatTime12()` (lib/format-time.ts) so the canvas always speaks
+// 12-hour regardless of how the data was stored.
+import { to24Hour } from '@/lib/format-time';
 
 // MS pack DEFAULTS registry. Every MS widget exports its `DEFAULTS`
 // keyed by dot-notation field paths (e.g. `school.eye`, `agenda.0.t`).
@@ -3534,75 +3534,31 @@ function WeekMenuEditor({ value, onChange }: { value: Partial<CafeWeek> | undefi
   );
 }
 
-// 2026-05-03 — Time input that accepts loose user input. Operator
-// reported `<input type="time">` blocked manual typing (only the
-// browser picker worked) AND defaulted to 24-hour rendering on most
-// platforms. This component:
-//   - Accepts free text ("8", "8:30am", "13:30", "1pm", etc.)
-//   - Validates on blur via parseTimeToMinutes — VALID input is
-//     normalized to "8:30 AM" canonical form before commit, so what
-//     gets stored is what the bell-schedule renderer can format and
-//     compare. INVALID input is committed verbatim and visually
-//     flagged so the operator sees their typo without losing it.
-//   - Shows a subtle "is this the right time?" hint preview as you
-//     type (e.g. "→ 1:30 PM") so it's clear whether the parser
-//     understood you.
-function LooseTimeInput({ value, onChange, placeholder, ariaLabel }: { value: string; onChange: (next: string) => void; placeholder: string; ariaLabel: string }) {
-  const [draft, setDraft] = useState(value);
-  // Re-sync local draft whenever the parent value changes (e.g. when
-  // the operator picks a different zone or undo/redo runs).
-  useEffect(() => { setDraft(value); }, [value]);
-  const parsedMin = parseTimeToMinutes(draft);
-  const valid = !draft || parsedMin != null;
-  const preview = parsedMin != null ? formatTime12Spaced(draft) : null;
-  const showPreview = !!preview && preview !== draft;
-  return (
-    <div className="relative min-w-0">
-      <input
-        type="text"
-        inputMode="text"
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => {
-          // Commit the canonical form on blur if the input parsed.
-          // Garbage commits as-is (so user sees their typo + can fix).
-          if (parsedMin != null) {
-            const canonical = formatTime12Spaced(draft);
-            setDraft(canonical);
-            if (canonical !== value) onChange(canonical);
-          } else if (draft !== value) {
-            onChange(draft);
-          }
-        }}
-        placeholder={placeholder}
-        aria-label={ariaLabel}
-        aria-invalid={!valid}
-        title={showPreview ? `Will save as: ${preview}` : (!valid ? 'Could not parse this time — try "8:30 AM" or "1pm"' : undefined)}
-        className={`min-w-0 w-full px-2 py-1 text-xs rounded border focus:outline-none focus:ring-2 ${valid ? 'border-slate-200 focus:ring-indigo-400' : 'border-rose-300 focus:ring-rose-400 bg-rose-50'}`}
-      />
-      {showPreview && (
-        <div className="absolute left-2 top-full mt-0.5 text-[9px] text-indigo-500 font-mono pointer-events-none whitespace-nowrap">
-          → {preview}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function BellScheduleEditor({ value, onChange }: { value: Array<{ label: string; start: string; end?: string }>; onChange: (next: Array<{ label: string; start: string; end?: string }>) => void }) {
+  // 2026-05-03 — operator complaint: "you dumped the AM/PM selection
+  // and the picker is gone now." Reverted from the loose-text input
+  // back to the native `<input type="time">` so the browser provides
+  // the picker UI + AM/PM toggle for free. Existing values stored as
+  // "8:30 AM" still load into the picker via `to24Hour()`, which
+  // converts to the HH:MM 24-hour format the input requires. We store
+  // the picker's raw HH:MM output (e.g. "08:30" / "13:30") — every
+  // bell-schedule widget renderer pipes display through formatTime12
+  // so the canvas always shows "8:30am" / "1:30pm" regardless of the
+  // stored format.
   const periods = value.length ? value : [];
   const update = (idx: number, patch: Partial<{ label: string; start: string; end?: string }>) => {
     const next = periods.slice();
     next[idx] = { ...next[idx], ...patch };
     onChange(next);
   };
-  const add = () => onChange([...periods, { label: `Period ${periods.length + 1}`, start: '8:00 AM', end: '8:50 AM' }]);
+  const add = () => onChange([...periods, { label: `Period ${periods.length + 1}`, start: '08:00', end: '08:50' }]);
   const remove = (idx: number) => onChange(periods.filter((_, i) => i !== idx));
 
   return (
     <div>
-      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Bell schedule (12-hour, e.g. &ldquo;8:30 AM&rdquo;)</label>
-      <div className="space-y-3">
+      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Bell schedule</label>
+      <p className="text-[10px] text-slate-400 mb-2 px-0.5">Click a time field to open the picker. Times always display as 12-hour on the canvas.</p>
+      <div className="space-y-2">
         {periods.length === 0 && <p className="text-[11px] text-slate-400 italic px-1">No periods yet — add your first below.</p>}
         {periods.map((p, idx) => (
           <div key={idx} className="bg-white border border-slate-200 rounded-lg p-2 grid grid-cols-[minmax(0,1fr)_5.75rem_0.75rem_5.75rem_1.75rem] items-center gap-1.5 shadow-sm">
@@ -3614,18 +3570,20 @@ function BellScheduleEditor({ value, onChange }: { value: Array<{ label: string;
               aria-label={`Period ${idx + 1} label`}
               className="min-w-0 w-full px-2 py-1 text-xs font-semibold rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
-            <LooseTimeInput
-              value={p.start || ''}
-              onChange={(next) => update(idx, { start: next })}
-              placeholder="8:00 AM"
-              ariaLabel={`Period ${idx + 1} start time`}
+            <input
+              type="time"
+              value={to24Hour(p.start)}
+              onChange={(e) => update(idx, { start: e.target.value })}
+              aria-label={`Period ${idx + 1} start time`}
+              className="min-w-0 w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
             <span className="text-[10px] text-slate-400 text-center">→</span>
-            <LooseTimeInput
-              value={p.end || ''}
-              onChange={(next) => update(idx, { end: next || undefined })}
-              placeholder="8:50 AM"
-              ariaLabel={`Period ${idx + 1} end time`}
+            <input
+              type="time"
+              value={to24Hour(p.end)}
+              onChange={(e) => update(idx, { end: e.target.value || undefined })}
+              aria-label={`Period ${idx + 1} end time`}
+              className="min-w-0 w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
             <button
               type="button"
