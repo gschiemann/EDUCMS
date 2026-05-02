@@ -134,7 +134,20 @@ export function VariantPicker() {
   }, [typeFilter, levelFilter, search]);
 
   const handlePick = (v: WidgetVariant) => {
-    if (selected) {
+    // 2026-05-02 — operator: "Adding a 2nd welcome message overwrites
+    // the 1st." Cause: addZone auto-selects the new zone. The very next
+    // click on the same variant tile fell into the swap branch (zone
+    // selected, click same variant) and overwrote the just-added zone
+    // instead of appending a second instance. The swap behavior is
+    // still desired when the user picks a *different* variant of the
+    // same widget type (partner's original ask: "drag Wood Wall Clock
+    // onto Clock 2 → Clock 2 takes that style"), so we only swap when
+    // the picked variant differs from what's already on the selected
+    // zone. Same-variant click → ADD a new zone alongside.
+    const currentVariant = selected?.defaultConfig?.variant;
+    const isSameVariantOnSameType =
+      !!selected && selected.widgetType === v.widgetType && currentVariant === v.id;
+    if (selected && !isSameVariantOnSameType) {
       // Swap the selected zone's variant + merge the variant's defaultConfig
       const merged = { ...(selected.defaultConfig || {}), ...(v.defaultConfig || {}), variant: v.id };
       updateZone(selected.id, { defaultConfig: merged, widgetType: v.widgetType });

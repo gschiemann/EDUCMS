@@ -429,11 +429,22 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       // variant-tile AND has a single selected zone of the matching
       // widget type, treat the drop as a SWAP (mirrors the click-to-
       // swap behavior in VariantPicker.handlePick).
+      //
+      // 2026-05-02 — operator: "Adding a 2nd welcome message overwrites
+      // the 1st." `addZone` auto-selects the new zone, so an immediate
+      // re-drag of the same variant tile fell into this branch and
+      // overwrote the just-added zone. Mirrors the fix in
+      // VariantPicker.handlePick: only swap when the dragged variant
+      // is *different* from the variant already on the selected zone.
+      // Same-variant drag → fall through to ADD a second instance.
       const store = useBuilderStore.getState();
       const sel = store.selectedIds;
       if (isVariantTile && variantId && sel.length === 1) {
         const target = store.zones.find((z) => z.id === sel[0]);
-        if (target && target.widgetType === type) {
+        const targetVariant = target?.defaultConfig?.variant;
+        const isSameVariantOnSameType =
+          !!target && target.widgetType === type && targetVariant === variantId;
+        if (target && target.widgetType === type && !isSameVariantOnSameType) {
           store.updateZone(target.id, {
             defaultConfig: { ...(target.defaultConfig || {}), ...variantConfig, variant: variantId },
             widgetType: type,
