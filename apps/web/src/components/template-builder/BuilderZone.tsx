@@ -392,6 +392,26 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
           // body can absorb pointerup before drag starts —
           // eliminating the stuck-to-cursor bug for every widget,
           // not just TEXT.
+          //
+          // 2026-05-03 v5 — operator: chalkboard welcome (back-to-
+          // school theme TEXT) STILL gets stuck to the cursor. Root
+          // cause: themes/EditableText.tsx attaches its own
+          // `onPointerUp` that calls `e.stopPropagation()` to keep
+          // the click from bubbling to other handlers. React's
+          // synthetic stopPropagation also calls
+          // `nativeEvent.stopPropagation()`, so the bubble-phase
+          // window listener I'd registered never fires →
+          // pointermove listener never cleans up → the next cursor
+          // movement crosses the 4px threshold → drag engages → "the
+          // widget moves everywhere I move the cursor".
+          //
+          // Fix: register both window listeners in CAPTURE phase
+          // (`{ capture: true }`). Capture-phase fires window → target
+          // BEFORE EditableText's bubble-phase handler runs, so the
+          // cleanup happens regardless of any stopPropagation
+          // downstream. The 120ms wasJustDraggedRef debounce still
+          // applies so a real drag still suppresses the trailing
+          // click→edit.
           const startX = e.clientX;
           const startY = e.clientY;
           let dragStarted = false;
@@ -411,11 +431,16 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
             if (dragStarted) {
               setTimeout(() => { wasJustDraggedRef.current = false; }, 120);
             }
-            window.removeEventListener('pointermove', onMove);
-            window.removeEventListener('pointerup', onUp);
+            window.removeEventListener('pointermove', onMove, true);
+            window.removeEventListener('pointerup', onUp, true);
+            window.removeEventListener('pointercancel', onUp, true);
           };
-          window.addEventListener('pointermove', onMove);
-          window.addEventListener('pointerup', onUp);
+          window.addEventListener('pointermove', onMove, true);
+          window.addEventListener('pointerup', onUp, true);
+          // pointercancel covers OS-level interruptions (browser tab
+          // loses focus mid-gesture, touch turns into a scroll, etc.)
+          // so the listeners are guaranteed to clean up.
+          window.addEventListener('pointercancel', onUp, true);
           return;
         }
 
