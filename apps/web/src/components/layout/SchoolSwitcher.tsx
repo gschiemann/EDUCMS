@@ -7,6 +7,7 @@ import { Building2, ChevronsUpDown, Check, Loader2 } from 'lucide-react';
 import { useAccessibleTenants } from '@/hooks/use-api';
 import { useAppStore } from '@/lib/store';
 import { apiFetch } from '@/lib/api-client';
+import { useTenantCopy } from '@/hooks/use-tenant-copy';
 
 const LS_KEY = 'edu_cms_last_school';
 
@@ -25,6 +26,7 @@ export function SchoolSwitcher() {
 
   const tenants = data?.tenants ?? [];
   const current = tenants.find((t) => t.slug === activeTenant || t.id === activeTenant);
+  const copy = useTenantCopy();
 
   // Persist last-selected to localStorage
   useEffect(() => {
@@ -78,7 +80,7 @@ export function SchoolSwitcher() {
       }
       setOpen(false);
     } catch (e: any) {
-      setSwitchError(e?.message || 'Failed to switch schools.');
+      setSwitchError(e?.message || `Failed to switch ${copy.orgPlural.toLowerCase()}.`);
     } finally {
       setSwitchingId(null);
     }
@@ -103,7 +105,7 @@ export function SchoolSwitcher() {
         className="flex items-center gap-2 px-3 h-9 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold"
       >
         <Building2 className="w-3.5 h-3.5 text-slate-400" />
-        <span className="truncate max-w-[180px]">{current?.name ?? 'Select school'}</span>
+        <span className="truncate max-w-[180px]">{current?.name ?? `Select ${copy.orgSingular.toLowerCase()}`}</span>
         <ChevronsUpDown className="w-3.5 h-3.5 text-slate-400" />
       </button>
       {open && (

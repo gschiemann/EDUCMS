@@ -57,10 +57,14 @@ export class AuthService {
   }
 
   async login(user: any, rememberMe?: boolean) {
-    // Look up the tenant slug for URL-friendly routing
+    // Look up the tenant slug + vertical for URL-friendly routing AND
+    // VenueOS-era vertical-aware UI copy. Vertical drives terminology,
+    // template library filter, default emergency types — without it
+    // the dashboard always renders K12 strings even on gym/retail
+    // tenants.
     const tenant = await this.prisma.client.tenant.findUnique({
       where: { id: user.tenantId },
-      select: { slug: true },
+      select: { slug: true, vertical: true, name: true },
     });
 
     const payload = {
@@ -75,6 +79,8 @@ export class AuthService {
       user: {
         id: user.id, email: user.email, role: user.role,
         tenantId: user.tenantId, tenantSlug: tenant?.slug || user.tenantId,
+        tenantName: tenant?.name || null,
+        tenantVertical: tenant?.vertical || 'K12',
         canTriggerPanic: user.canTriggerPanic,
       }
     };

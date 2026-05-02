@@ -17,7 +17,9 @@ import { PanicContentEditor } from '@/components/settings/PanicContentEditor';
 import { EmbeddedFloorPlanView } from '@/components/floor-plans/EmbeddedFloorPlanView';
 import { BrandingSettingsCard } from '@/components/settings/BrandingSettingsCard';
 import { DistrictSchoolsCard } from '@/components/settings/DistrictSchoolsCard';
+import { VerticalSwitcherCard } from '@/components/settings/VerticalSwitcherCard';
 import { appConfirm } from '@/components/ui/app-dialog';
+import { useTenantCopy } from '@/hooks/use-tenant-copy';
 
 const ROLES = ['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN', 'CONTRIBUTOR', 'RESTRICTED_VIEWER'] as const;
 
@@ -39,6 +41,7 @@ const ROLE_COLORS: Record<string, string> = {
 
 export default function SettingsPage() {
   const pathname = usePathname();
+  const tenantCopy = useTenantCopy();
   const { data: users, isLoading: usersLoading } = useUsers();
   const { data: tenant, isLoading: tenantLoading } = useTenant();
   const { data: playlists } = usePlaylists();
@@ -109,6 +112,14 @@ export default function SettingsPage() {
         </h1>
         <p className="text-sm text-slate-500 mt-0.5">Manage team members, roles, and system info.</p>
       </div>
+
+      {/* 2026-05-03 — VenueOS vertical switcher (DISTRICT_ADMIN +
+          SUPER_ADMIN only). Lets a tenant admin switch industry
+          post-signup if they picked the wrong vertical or pivot
+          business focus. Renders nothing for non-admin roles. */}
+      <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN']}>
+        <VerticalSwitcherCard />
+      </RoleGate>
 
       <RoleGate
         allowedRoles={['admin']}
@@ -277,7 +288,7 @@ export default function SettingsPage() {
                   : 'We\u2019ll generate an invite link. The recipient sets their own password via the link — you never see it.'}
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <input ref={inviteEmailRef} value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="teacher@school.edu" type="email"
+                <input ref={inviteEmailRef} value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder={tenantCopy.vertical === 'K12' ? 'teacher@school.edu' : 'colleague@yourcompany.com'} type="email"
                   className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
                 <select value={newRole} onChange={(e) => setNewRole(e.target.value)}
                   className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500">

@@ -74,7 +74,20 @@ const initial = typeof window !== 'undefined' ? bootstrapAuth() : { token: null,
 interface AppState {
   // Auth state
   token: string | null;
-  user: { id: string; email: string; role: string; tenantId: string; tenantSlug?: string; canTriggerPanic?: boolean } | null;
+  user: {
+    id: string;
+    email: string;
+    role: string;
+    tenantId: string;
+    tenantSlug?: string;
+    tenantName?: string | null;
+    /** 2026-05-03 — VenueOS vertical (K12 / GYM / RETAIL / CORPORATE / QSR / FASHION).
+     *  Drives useTenantCopy() — vertical-aware UI strings. Falls back to K12
+     *  in the hook if missing (preserves EDU CMS pilot behavior for any
+     *  pre-vertical session that hasn't re-logged in yet). */
+    tenantVertical?: string;
+    canTriggerPanic?: boolean;
+  } | null;
 
   // UI state
   sidebarOpen: boolean;
