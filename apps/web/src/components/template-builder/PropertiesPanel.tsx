@@ -51,7 +51,10 @@ const MS_DEFAULTS_BY_TYPE: Record<string, Record<string, string>> = {
 };
 
 type BellPeriod = { label: string; start: string; end?: string };
-type CalendarEvent = { title: string; date: string; color?: string };
+// 2026-05-03 — extended event shape mirrors v2 CalendarWidgets reads:
+// { date, time, title, location, tag }. Legacy reads {date,title,color}.
+// We persist BOTH so legacy + v2 variants render the same data.
+type CalendarEvent = { title: string; date: string; color?: string; time?: string; location?: string; tag?: string };
 
 const DEFAULT_BELL_PERIODS: BellPeriod[] = [
   { label: 'Period 1', start: '8:00', end: '8:50' },
@@ -123,6 +126,9 @@ function eventsForEditor(value: unknown): CalendarEvent[] {
       title: String((e as any)?.title || 'Event'),
       date: String((e as any)?.date || ''),
       color: (e as any)?.color || DEFAULT_EVENTS[idx % DEFAULT_EVENTS.length]?.color,
+      time: (e as any)?.time ? String((e as any).time) : undefined,
+      location: (e as any)?.location ? String((e as any).location) : undefined,
+      tag: (e as any)?.tag ? String((e as any).tag) : undefined,
     }));
   }
   return DEFAULT_EVENTS.map((e) => ({ ...e }));
@@ -735,11 +741,23 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
   switch (zone.widgetType) {
     case 'TEXT':
     case 'RICH_TEXT':
-      fields.push(<TextAreaField key="content" label="Text" value={cfg.content || ''} placeholder="Your headline…" onChange={(v) => setField({ content: v })} rows={3} />);
+      // 2026-05-03 — v2 HEADLINE_* variants (NeonMarquee, PaperPress,
+      // CrayonBanner, SlabHero, BriefMemo) live under the TEXT widget
+      // type and read `c.title` instead of `c.content`. Mirror BOTH so
+      // the same text shows on legacy + v2 renderers without retyping.
+      fields.push(<TextAreaField key="content" label="Text" value={cfg.content || cfg.title || ''} placeholder="Your headline…" onChange={(v) => setField({ content: v, title: v })} rows={3} />);
       // Banner themes often use a subtitle too. Expose it for shape
-      // themes where the widget renders both lines.
-      if (isShapeTheme) {
+      // themes where the widget renders both lines. v2 Headlines also
+      // read `subtitle`, so this field doubles as the v2 dek.
+      if (isShapeTheme || cfg.variant) {
         fields.push(<TextField key="subtitle" label="Subtitle (optional)" value={cfg.subtitle || ''} placeholder="Today is going to be amazing" onChange={(v) => setField({ subtitle: v })} />);
+      }
+      // v2 HEADLINE_* extras — only surface when a variant is selected
+      // so vanilla TEXT widgets keep their lean editor.
+      if (cfg.variant && String(cfg.variant).startsWith('headline-')) {
+        fields.push(<TextField key="eyebrow" label="Eyebrow (optional)" value={cfg.eyebrow || ''} placeholder="BREAKING" onChange={(v) => setField({ eyebrow: v })} />);
+        fields.push(<TextField key="byline" label="Byline (optional)" value={cfg.byline || ''} placeholder="Editorial Staff" onChange={(v) => setField({ byline: v })} />);
+        fields.push(<TextField key="date" label="Date (optional)" value={cfg.date || ''} placeholder="May 3, 2026" onChange={(v) => setField({ date: v })} />);
       }
       if (!isShapeTheme) {
         fields.push(<SelectField key="alignment" label="Alignment" value={cfg.alignment || 'center'} options={[['left','Left'],['center','Center'],['right','Right']]} onChange={(v) => setField({ alignment: v })} />);
@@ -798,7 +816,20 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Big news…" onChange={(v) => setField({ title: v })} />);
       fields.push(<TextAreaField key="message" label="Message" value={cfg.message || cfg.body || ''} placeholder="Details…" onChange={(v) => setField({ message: v, body: undefined })} rows={3} />);
       if (!isShapeTheme) {
-        fields.push(<TextField key="badge" label="Badge label" value={cfg.badgeLabel || ''} placeholder="📣 Today's Announcement" onChange={(v) => setField({ badgeLabel: v })} />);
+        // 2026-05-03 — v2 ANN_* widgets (NeonAlert, BulletinPin, RainbowBubble,
+        // GlassToast, OpsDispatch) read `c.label` for the badge eyebrow.
+        // Legacy widget reads `cfg.badgeLabel`. Mirror BOTH on every write
+        // so picking a v2 announcement variant doesn't show "ALERT" /
+        // "REMINDER" / "Update" placeholders forever.
+        fields.push(<TextField key="badge" label="Badge label" value={cfg.badgeLabel || cfg.label || ''} placeholder="📣 Today's Announcement" onChange={(v) => setField({ badgeLabel: v, label: v })} />);
+        // `c.icon` (emoji or short string) — used by every v2 variant
+        // for the leading glyph. Empty string falls back to the
+        // theme's default emoji (⚠ / 📌 / 🌟 / ✓ / ●).
+        fields.push(<TextField key="icon" label="Icon (emoji or short text)" value={cfg.icon || ''} placeholder="⚠" onChange={(v) => setField({ icon: v })} />);
+        // `c.cta` — call-to-action footer text (e.g. "More info at the
+        // front desk", "Tap to RSVP"). Renders as the bottom row across
+        // all v2 variants. Optional; legacy widgets ignore.
+        fields.push(<TextField key="cta" label="Call-to-action (optional)" value={cfg.cta || ''} placeholder="More info at the front desk" onChange={(v) => setField({ cta: v })} />);
         fields.push(<SelectField key="priority" label="Priority" value={cfg.priority || 'normal'} options={[['low','Low'],['normal','Normal'],['high','High'],['urgent','Urgent']]} onChange={(v) => setField({ priority: v })} />);
       }
       break;
@@ -825,6 +856,16 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       if (mode === 'date') {
         fields.push(<TextField key="label" label="Label" value={cfg.label || ''} placeholder="Field Trip in" onChange={(v) => setField({ label: v })} />);
         fields.push(<TextField key="targetDate" label="Target date (YYYY-MM-DD or full ISO)" value={cfg.targetDate || ''} placeholder="2026-05-15" onChange={(v) => setField({ targetDate: v })} />);
+        // 2026-05-03 — v2 widgets (CountdownNeonDigits, GlassRing, OpsTimer)
+        // read `c.eyebrow` for the small line above the headline. Without
+        // this field the legacy editor only writes `label`, leaving the
+        // eyebrow stuck on its default ("COUNTDOWN").
+        fields.push(<TextField key="eyebrow" label="Eyebrow text (optional)" value={cfg.eyebrow || ''} placeholder="COUNTDOWN" onChange={(v) => setField({ eyebrow: v })} />);
+        // v2 widgets also accept `c.staticDays` as a fallback when the
+        // target date is empty/in-the-past, so the canvas preview shows
+        // a sensible number instead of 0/0/0/0 in templates the editor
+        // hasn't filled yet. Optional integer.
+        fields.push(<TextField key="staticDays" label="Fallback days (preview only)" value={cfg.staticDays != null ? String(cfg.staticDays) : ''} placeholder="12" onChange={(v) => setField({ staticDays: v.trim() === '' ? undefined : parseInt(v) || undefined })} />);
       } else {
         fields.push(<TextField key="prefix" label="Prefix (optional)" value={cfg.prefix || ''} placeholder="Next lunch in" onChange={(v) => setField({ prefix: v })} />);
         fields.push(
@@ -838,13 +879,22 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       break;
     }
     case 'CLOCK':
-      fields.push(<SelectField key="format" label="Format" value={cfg.format || '12h'} options={[['12h','12-hour'],['24h','24-hour']]} onChange={(v) => setField({ format: v })} />);
-      fields.push(<TextField key="timezone" label="Timezone (optional)" value={cfg.timezone || ''} placeholder="America/Chicago" onChange={(v) => setField({ timezone: v })} />);
+      // 2026-05-03 — v2 CLOCK_* widgets (NeonPulse, RecessBlocks,
+      // LockerFlip, GlassMinimal, OpsTerminal) read camelCase keys:
+      //   c.timeZone (capital Z) — NOT c.timezone
+      //   c.format24 (boolean)   — NOT c.format === '24h'
+      // Mirror BOTH on every write so legacy + v2 variants render the
+      // same selection. Legacy widgets ignore the v2-shaped extras.
+      fields.push(<SelectField key="format" label="Format" value={cfg.format || (cfg.format24 ? '24h' : '12h')} options={[['12h','12-hour'],['24h','24-hour']]} onChange={(v) => setField({ format: v, format24: v === '24h' })} />);
+      fields.push(<TextField key="timezone" label="Timezone (optional)" value={cfg.timezone || cfg.timeZone || ''} placeholder="America/Chicago" onChange={(v) => setField({ timezone: v, timeZone: v })} />);
       if (!isShapeTheme) {
         // showSeconds / showDays / bgColor are ignored by shape
         // themes (clock face is baked into the SVG).
         fields.push(<ToggleField key="showSeconds" label="Show seconds" value={!!cfg.showSeconds} onChange={(v) => setField({ showSeconds: v })} />);
         fields.push(<ToggleField key="showDays" label="Show day & date" value={cfg.showDays !== false} onChange={(v) => setField({ showDays: v })} />);
+        // Optional eyebrow text — v2 widgets show this above the time
+        // when set ("HOMEROOM IN", "BELL @", etc.). Legacy widgets ignore.
+        fields.push(<TextField key="label" label="Eyebrow (optional)" value={cfg.label || ''} placeholder="" onChange={(v) => setField({ label: v })} />);
         fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || 'transparent'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
       }
       break;
@@ -852,10 +902,19 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       const weatherUnits = ['metric', 'celsius', 'c'].includes(String(cfg.units || '').toLowerCase()) ? 'metric' : 'imperial';
       fields.push(<TextField key="location" label="Location" value={cfg.location || cfg.zipCode || ''} placeholder="Springfield" onChange={(v) => setField({ location: v, zipCode: undefined })} />);
       fields.push(<SelectField key="units" label="Units" value={weatherUnits} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ units: v })} />);
-      fields.push(<TextField key="tempF" label={`Current temp (${weatherUnits === 'metric' ? '°C' : '°F'})`} value={String(cfg.tempF ?? '')} placeholder="72" onChange={(v) => setField({ tempF: parseInt(v) || 0 })} />);
+      // 2026-05-03 — v2 WEATHER_* widgets (NeonStorm, PaperEdition,
+      // CrayonSky, GlassFront, OpsRadar) read:
+      //   c.staticTemp  — preview temperature override
+      //   c.staticDesc  — preview condition description
+      //   c.staticIcon  — preview emoji (☀️ / 🌧 / ⛅ / etc.)
+      // Legacy widget reads tempF / condition. Mirror BOTH on every
+      // write so picking a v2 weather variant renders the typed values
+      // immediately instead of flashing the live-feed default.
+      fields.push(<TextField key="tempF" label={`Current temp (${weatherUnits === 'metric' ? '°C' : '°F'})`} value={String(cfg.tempF ?? cfg.staticTemp ?? '')} placeholder="72" onChange={(v) => { const n = parseInt(v) || 0; setField({ tempF: n, staticTemp: n }); }} />);
       fields.push(<TextField key="high" label="High" value={String(cfg.high ?? '')} placeholder="78" onChange={(v) => setField({ high: parseInt(v) || 0 })} />);
       fields.push(<TextField key="low" label="Low" value={String(cfg.low ?? '')} placeholder="64" onChange={(v) => setField({ low: parseInt(v) || 0 })} />);
-      fields.push(<TextField key="condition" label="Condition" value={cfg.condition || ''} placeholder="Sunny" onChange={(v) => setField({ condition: v })} />);
+      fields.push(<TextField key="condition" label="Condition" value={cfg.condition || cfg.staticDesc || ''} placeholder="Sunny" onChange={(v) => setField({ condition: v, staticDesc: v })} />);
+      fields.push(<TextField key="staticIcon" label="Icon (emoji, optional)" value={cfg.staticIcon || ''} placeholder="☀️" onChange={(v) => setField({ staticIcon: v })} />);
       break;
     }
     case 'TICKER': {
@@ -891,12 +950,32 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
         />,
       );
       fields.push(<ColorField key="color" label="Text color" value={cfg.color || '#fbbf24'} onChange={(v) => setField({ color: v })} />);
+      // 2026-05-03 — v2 TICKER_* variants (NeonLed, PaperPress, CrayonTrain,
+      // GlassFlow, OpsFeed) read `c.stamp` for the eyebrow/category badge
+      // ("LIVE", "EXTRA", "FEED") and `c.separator` for what divides
+      // messages on screen. Both optional; legacy widgets ignore.
+      fields.push(<TextField key="stamp" label="Eyebrow stamp (optional)" value={cfg.stamp || ''} placeholder="LIVE" onChange={(v) => setField({ stamp: v })} />);
+      fields.push(<TextField key="separator" label="Message separator" value={cfg.separator || ''} placeholder="•" onChange={(v) => setField({ separator: v })} />);
       break;
     }
     case 'CALENDAR':
       fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Upcoming Events" onChange={(v) => setField({ title: v })} />);
-      fields.push(<TextAreaField key="events" label="Events (date | title — one per line)" value={eventsForEditor(cfg.events).map((e: any) => `${e.date || ''} | ${e.title || ''}`).join('\n')} placeholder="Today | Spring Concert&#10;Tomorrow | PTA Meeting" onChange={(v) => setField({ events: v.split('\n').filter(Boolean).map(line => { const [date, title] = line.split('|').map(s => s.trim()); return { date, title }; }) })} rows={5} />);
+      // 2026-05-03 — extended pipe format: `date | title | time | location | tag`.
+      // First two fields are required; trailing fields are optional but
+      // populate v2 widgets (CalendarNeonGrid, CalendarPaperAgenda, etc.)
+      // which render time/location/tag columns. Legacy widgets ignore
+      // the extras silently. Empty trailing slots are accepted.
+      fields.push(<TextAreaField key="events" label="Events (date | title | time | location | tag — one per line)" value={eventsForEditor(cfg.events).map((e: any) => [e.date || '', e.title || '', e.time || '', e.location || '', e.tag || ''].filter((_, i, arr) => i < 2 || arr.slice(i).some(Boolean)).join(' | ')).join('\n')} placeholder="TUE 04 | Spring Concert | 7:00 PM | Auditorium | ARTS&#10;WED 05 | Robotics Meet | 3:30 PM | STEM Lab | CLUB" onChange={(v) => setField({ events: v.split('\n').filter(Boolean).map(line => {
+        const parts = line.split('|').map(s => s.trim());
+        const [date = '', title = '', time = '', location = '', tag = ''] = parts;
+        const ev: any = { date, title };
+        if (time) ev.time = time;
+        if (location) ev.location = location;
+        if (tag) ev.tag = tag;
+        return ev;
+      }) })} rows={5} />);
       fields.push(<TextField key="maxEvents" label="Max events to show" value={String(cfg.maxEvents || 4)} placeholder="4" onChange={(v) => setField({ maxEvents: parseInt(v) || 4 })} />);
+      fields.push(<TextField key="feedUrl" label="iCal/feed URL (optional)" value={cfg.feedUrl || ''} placeholder="https://…/calendar.ics" onChange={(v) => setField({ feedUrl: v })} />);
       break;
     case 'LUNCH_MENU':
       fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Lunch Menu" onChange={(v) => setField({ title: v })} />);
@@ -993,13 +1072,27 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
     case 'LOGO':
       fields.push(<TextField key="initials" label="Initials" value={cfg.initials || ''} placeholder="SE" onChange={(v) => setField({ initials: v })} />);
       fields.push(<TextField key="schoolName" label="School name (optional)" value={cfg.schoolName || ''} placeholder="Sunnyside Elementary" onChange={(v) => setField({ schoolName: v })} />);
-      fields.push(<AssetPickerField key="assetUrl" label="Logo image (optional)" value={cfg.assetUrl || ''} kind="image" onChange={(v) => setField({ assetUrl: v })} />);
+      // 2026-05-03 — v2 LOGO_* variants read `c.logoUrl` not `assetUrl`.
+      // Mirror BOTH so legacy + v2 see the same picked image. Renderer
+      // priority: image first, then mascot/emoji fallback.
+      fields.push(<AssetPickerField key="assetUrl" label="Logo image (optional)" value={cfg.assetUrl || cfg.logoUrl || ''} kind="image" onChange={(v) => setField({ assetUrl: v, logoUrl: v })} />);
+      // v2 extras — tagline, established year, mascot emoji. Optional;
+      // legacy widget ignores them silently.
+      fields.push(<TextField key="tagline" label="Tagline (optional)" value={cfg.tagline || ''} placeholder="Home of the Eagles" onChange={(v) => setField({ tagline: v })} />);
+      fields.push(<TextField key="established" label="Established (optional)" value={cfg.established || ''} placeholder="EST. 1924" onChange={(v) => setField({ established: v })} />);
+      fields.push(<TextField key="mascot" label="Mascot emoji (optional)" value={cfg.mascot || ''} placeholder="🦅" onChange={(v) => setField({ mascot: v })} />);
       break;
     case 'IMAGE_CAROUSEL':
       fields.push(<TextField key="title" label="Caption" value={cfg.title || ''} placeholder="Photo Gallery" onChange={(v) => setField({ title: v })} />);
-      fields.push(<TextField key="intervalMs" label="Rotate every (ms)" value={String(cfg.intervalMs || 5000)} placeholder="5000" onChange={(v) => setField({ intervalMs: parseInt(v) || 5000 })} />);
+      // 2026-05-03 — v2 PHOTO_* variants read `c.rotateMs` not `intervalMs`.
+      // Mirror BOTH so legacy + v2 see the same rotation cadence.
+      fields.push(<TextField key="intervalMs" label="Rotate every (ms)" value={String(cfg.intervalMs || cfg.rotateMs || 5000)} placeholder="5000" onChange={(v) => { const n = parseInt(v) || 5000; setField({ intervalMs: n, rotateMs: n }); }} />);
       fields.push(<SelectField key="fitMode" label="Image fit" value={cfg.fitMode || 'cover'} options={[['cover','Fill (crop)'],['contain','Fit (no crop)']]} onChange={(v) => setField({ fitMode: v })} />);
-      fields.push(<AssetListPickerField key="urls" label="Photos" value={(cfg.urls || cfg.assetUrls || []) as string[]} kind="image" onChange={(v) => setField({ urls: v, assetUrls: undefined })} />);
+      // v2 PHOTO_* widgets read `c.photos: { url, caption }[]` — mirror
+      // the asset url list into the structured shape so v2 carousel
+      // variants render the same images plus an empty caption (which
+      // legacy carousel variants never showed anyway).
+      fields.push(<AssetListPickerField key="urls" label="Photos" value={(cfg.urls || cfg.assetUrls || []) as string[]} kind="image" onChange={(v) => setField({ urls: v, assetUrls: undefined, photos: v.map((url) => ({ url, caption: '' })) })} />);
       break;
     case 'IMAGE':
       fields.push(<AssetPickerField key="assetUrl" label="Image" value={cfg.assetUrl || cfg.imageUrl || ''} kind="image" onChange={(v) => setField({ assetUrl: v, imageUrl: undefined })} />);
