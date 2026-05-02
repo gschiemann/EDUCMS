@@ -219,3 +219,7 @@ export const MediaAlertInputSchema = z
   .strict();
 export type MediaAlertInput = z.infer<typeof MediaAlertInputSchema>;
 
+
+// VenueOS — multi-industry vertical taxonomy (2026-05-02).
+// Drives Tenant.vertical, Template.vertical, terminology, defaults.
+export * from './verticals';
