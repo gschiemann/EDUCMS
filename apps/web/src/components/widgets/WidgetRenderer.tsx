@@ -82,6 +82,16 @@ import { HappyHourCountdownWidget } from './bar/HappyHourCountdownWidget';
 import { GameDayScheduleWidget } from './bar/GameDayScheduleWidget';
 import { EventTonightWidget } from './bar/EventTonightWidget';
 import { TriviaScoreboardWidget } from './bar/TriviaScoreboardWidget';
+// Retail widget imports — paired with the dispatch cases below.
+// Parallel agent shipped these files but ran out of tokens before
+// adding the imports + case statements; finishing now.
+import { RetailProductGridWidget } from './retail/RetailProductGridWidget';
+import { RetailPriceCalloutWidget } from './retail/RetailPriceCalloutWidget';
+import { RetailSaleCountdownWidget } from './retail/RetailSaleCountdownWidget';
+import { RetailWayfindingMapWidget } from './retail/RetailWayfindingMapWidget';
+import { RetailLoyaltyQRWidget } from './retail/RetailLoyaltyQRWidget';
+import { RetailLookbookCarouselWidget } from './retail/RetailLookbookCarouselWidget';
+import { RetailStorefrontHoursWidget } from './retail/RetailStorefrontHoursWidget';
 import { AnimatedWelcomeMiddleWidget } from './AnimatedWelcomeMiddleWidget';
 import { AnimatedWelcomeHighWidget } from './AnimatedWelcomeHighWidget';
 import { AnimatedCafeteriaElementaryWidget } from './AnimatedCafeteriaElementaryWidget';
@@ -495,6 +505,18 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'BAR_GAME_DAY_SCHEDULE':         return <GameDayScheduleWidget config={cfg} live={live} />;
     case 'BAR_EVENT_TONIGHT':             return <EventTonightWidget config={cfg} live={live} />;
     case 'BAR_TRIVIA_SCOREBOARD':         return <TriviaScoreboardWidget config={cfg} live={live} />;
+    // 2026-05-03 — RETAIL widget dispatch (parallel agent shipped the
+    // widgets but ran out of tokens before wiring them here, so the 7
+    // retail templates were rendering as the EMPTY placeholder. Adding
+    // the cases finishes the wire-up so retail tenants actually see
+    // their templates render.
+    case 'RETAIL_PRODUCT_GRID':           return <RetailProductGridWidget config={cfg} live={live} />;
+    case 'RETAIL_PRICE_CALLOUT':          return <RetailPriceCalloutWidget config={cfg} live={live} />;
+    case 'RETAIL_SALE_COUNTDOWN':         return <RetailSaleCountdownWidget config={cfg} live={live} />;
+    case 'RETAIL_WAYFINDING_MAP':         return <RetailWayfindingMapWidget config={cfg} live={live} />;
+    case 'RETAIL_LOYALTY_QR':             return <RetailLoyaltyQRWidget config={cfg} live={live} />;
+    case 'RETAIL_LOOKBOOK_CAROUSEL':      return <RetailLookbookCarouselWidget config={cfg} live={live} />;
+    case 'RETAIL_STOREFRONT_HOURS':       return <RetailStorefrontHoursWidget config={cfg} live={live} />;
     default:             return null;
   }
 }

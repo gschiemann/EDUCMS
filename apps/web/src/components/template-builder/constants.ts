@@ -12,6 +12,8 @@ import {
   Pizza, ChefHat, Hourglass, Star, BadgePercent, Leaf,
   // 2026-05-02 — VenueOS bar/nightlife widget icons.
   Beer, Wine, Martini, Trophy, Mic2, Brain,
+  // 2026-05-03 — VenueOS retail widget icons.
+  ShoppingBag, Tag, MapPin, QrCode, Layers, Store,
 } from 'lucide-react';
 // The "School Life" (QUOTE / STATS / SCOREBOARD / MENU_ITEM /
 // SCHEDULE_GRID / ATTENDANCE / BIRTHDAYS / HONOR_ROLL) and
@@ -41,7 +43,10 @@ import {
 export const WIDGET_GROUPS: ReadonlyArray<{
   label: string;
   /** If undefined OR empty, group is universal. Otherwise only shown to listed verticals. */
-  verticals?: ReadonlyArray<'K12' | 'GYM' | 'RETAIL' | 'CORPORATE' | 'QSR' | 'FASHION'>;
+  // 2026-05-03 — added 'BAR' to match the BAR vertical that landed in
+  // packages/api-types/src/verticals.ts. Keep this union in sync with
+  // VERTICALS in that file when new verticals ship.
+  verticals?: ReadonlyArray<'K12' | 'GYM' | 'RETAIL' | 'CORPORATE' | 'QSR' | 'FASHION' | 'BAR'>;
   types: ReadonlyArray<{ type: string; label: string; desc: string; icon: LucideIcon }>;
 }> = [
   {
@@ -129,6 +134,52 @@ export const WIDGET_GROUPS: ReadonlyArray<{
       { type: 'ANNOUNCEMENT',                label: 'Announcement',      desc: 'Eye-catching message — new menu drop, holiday hours, etc.', icon: Megaphone },
       { type: 'COUNTDOWN',                   label: 'Countdown',         desc: 'Count down to happy hour, opening, or event start', icon: Timer },
       { type: 'RICH_TEXT',                   label: 'Chef note',         desc: 'Kitchen / chef intro / story panel (formatted text)', icon: ChefHat },
+    ],
+  },
+  // 2026-05-03 — VenueOS Retail group. Editorial / lookbook /
+  // department-store visual DNA. The 7 widget renderers in
+  // apps/web/src/components/widgets/retail/ are wired into
+  // WidgetRenderer dispatch — without this group entry retail admins
+  // had no way to drop them onto a custom template.
+  {
+    label: 'Retail & merchandising',
+    verticals: ['RETAIL'],
+    types: [
+      { type: 'RETAIL_PRODUCT_GRID',       label: 'Product grid',       desc: 'N-column product grid — thumbnail, name, price, sale badge', icon: ShoppingBag },
+      { type: 'RETAIL_PRICE_CALLOUT',      label: 'Price callout',      desc: 'Single-product big-price hero — "$49 / was $79" with strike-through', icon: Tag },
+      { type: 'RETAIL_SALE_COUNTDOWN',     label: 'Sale countdown',     desc: 'Big "Sale ends in 2d 14h" countdown', icon: Timer },
+      { type: 'RETAIL_WAYFINDING_MAP',     label: 'Wayfinding map',     desc: 'Store map with department callouts', icon: MapPin },
+      { type: 'RETAIL_LOYALTY_QR',         label: 'Loyalty QR',         desc: 'QR-code signup card — "Scan to join rewards"', icon: QrCode },
+      { type: 'RETAIL_LOOKBOOK_CAROUSEL',  label: 'Lookbook carousel',  desc: 'Auto-rotating fashion-style hero images with overlay caption', icon: Layers },
+      { type: 'RETAIL_STOREFRONT_HOURS',   label: 'Storefront hours',   desc: 'Open hours + holiday-adjusted schedule', icon: Store },
+      { type: 'IMAGE',                     label: 'Hero image',         desc: 'Single product / lifestyle photo', icon: ImageIcon },
+      { type: 'IMAGE_CAROUSEL',            label: 'Photo slideshow',    desc: 'Rotate through product photos', icon: ImageIcon },
+      { type: 'VIDEO',                     label: 'Video promo',        desc: 'Looping product / brand reel', icon: Play },
+      { type: 'TICKER',                    label: 'Promo ticker',       desc: 'Scrolling price / promo / event strip', icon: ArrowRight },
+      { type: 'ANNOUNCEMENT',              label: 'Announcement',       desc: 'Eye-catching seasonal / sale message', icon: Megaphone },
+      { type: 'COUNTDOWN',                 label: 'Countdown',          desc: 'Count down to drop, sale, or event', icon: Timer },
+    ],
+  },
+  // 2026-05-03 — VenueOS Bar / nightlife group. Tap lists, cocktail
+  // menus, game day, happy hour, trivia, live events. Same as above —
+  // widget renderers exist in apps/web/src/components/widgets/bar/
+  // but the palette entry was missing.
+  {
+    label: 'Bar & nightlife',
+    verticals: ['BAR'],
+    types: [
+      { type: 'BAR_TAP_LIST',              label: 'Tap list',            desc: 'Beer-on-tap board — brewery, style, ABV, price', icon: Beer },
+      { type: 'BAR_COCKTAIL_MENU',         label: 'Cocktail menu',       desc: 'Hand-drawn chalkboard signature cocktails', icon: Martini },
+      { type: 'BAR_HAPPY_HOUR_COUNTDOWN',  label: 'Happy hour',          desc: 'Big countdown to happy-hour end + featured drink', icon: Wine },
+      { type: 'BAR_GAME_DAY_SCHEDULE',     label: 'Game day schedule',   desc: "Today's games — kickoff, channel, league", icon: Trophy },
+      { type: 'BAR_EVENT_TONIGHT',         label: 'Live event tonight',  desc: 'Band / show poster — doors time + cover charge', icon: Mic2 },
+      { type: 'BAR_TRIVIA_SCOREBOARD',     label: 'Trivia scoreboard',   desc: 'Round count + top 5 leaderboard + question timer', icon: Brain },
+      { type: 'IMAGE',                     label: 'Hero image',          desc: 'Bar / event / brand photo', icon: ImageIcon },
+      { type: 'IMAGE_CAROUSEL',            label: 'Photo slideshow',     desc: 'Rotate through bar photos', icon: ImageIcon },
+      { type: 'VIDEO',                     label: 'Video promo',         desc: 'Looping promo / event reel', icon: Play },
+      { type: 'TICKER',                    label: 'Ticker',              desc: 'Scrolling promos / specials / event strip', icon: ArrowRight },
+      { type: 'ANNOUNCEMENT',              label: 'Announcement',        desc: 'Eye-catching message — drink special, event, hours change', icon: Megaphone },
+      { type: 'COUNTDOWN',                 label: 'Countdown',           desc: 'Count down to happy hour, doors, kickoff, etc.', icon: Timer },
     ],
   },
   {
