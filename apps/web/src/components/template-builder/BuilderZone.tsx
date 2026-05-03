@@ -7,6 +7,7 @@ import { API_URL } from '@/lib/api-url';
 import type { Zone, ResizeHandle } from './types';
 import { getZoneColor, widgetIcon, widgetLabel } from './constants';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
+import { WidgetErrorBoundary } from '@/components/widgets/WidgetErrorBoundary';
 import { appAlert } from '@/components/ui/app-dialog';
 import { useBuilderStore } from './useBuilderStore';
 
@@ -561,14 +562,24 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         return <style>{cssChunks.join('\n')}</style>;
       })()}
 
-      <WidgetPreview
-        widgetType={zone.widgetType}
-        config={zone.defaultConfig || {}}
-        width={zone.width}
-        height={zone.height}
-        live={false}
-        onConfigChange={!previewMode && onConfigChange ? (patch) => onConfigChange(zone.id, patch) : undefined}
-      />
+      {/* 2026-05-03 — wrap widget render in an error boundary so a
+          single buggy widget can't bubble its exception up to the
+          per-tenant route boundary (`/[schoolId]/error.tsx`) and brick
+          the whole CMS page. Operator: "the second I try to change the
+          first period in the first bell schedule widget I get this
+          error and can't do anything." With this boundary the bad
+          widget shows an inline retry chip and the rest of the canvas
+          + right-hand editor stays interactive. */}
+      <WidgetErrorBoundary resetKey={zone.id} widgetLabel={label}>
+        <WidgetPreview
+          widgetType={zone.widgetType}
+          config={zone.defaultConfig || {}}
+          width={zone.width}
+          height={zone.height}
+          live={false}
+          onConfigChange={!previewMode && onConfigChange ? (patch) => onConfigChange(zone.id, patch) : undefined}
+        />
+      </WidgetErrorBoundary>
 
       {/* Always-visible widget-type label badge in edit mode. Lives
           in the top-left corner so freshly-dropped zones with empty
