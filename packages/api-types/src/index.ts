@@ -226,3 +226,5 @@ export * from './verticals';
 export * from './streaming';
 export * from './streaming-presets';
 export * from './billing';
+export * from './pos';
+export * from './ad-network';

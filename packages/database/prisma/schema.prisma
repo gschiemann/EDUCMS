@@ -1004,3 +1004,180 @@ model StreamAdSlot {
   @@index([tenantId, isActive])
   @@map("stream_ad_slots")
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// POS integrations — Sprint 8d (2026-05-03)
+// ─────────────────────────────────────────────────────────────────────
+//
+// Franchise menu boards + retail price callouts auto-sync from a
+// connected POS. Pull-only: we sync the CATALOG (menu / prices /
+// hours), not orders. Operators run their actual POS for orders.
+//
+// Architecture mirrors StreamProviderConnection: per-tenant auth,
+// envelope-encrypted credentials, optional realtime webhook receiver.
+//
+model PosProviderConnection {
+  id                  String    @id @default(uuid())
+  tenantId            String    @map("tenant_id")
+  // Canonical provider id from packages/api-types/src/pos.ts
+  // (e.g. "square" / "toast" / "clover" / "stripe-terminal").
+  providerId          String    @map("provider_id")
+  displayName         String?   @map("display_name")
+  // Same envelope-encryption scheme as StreamProviderConnection.
+  encryptedCreds      String    @map("encrypted_creds")
+  encryptedDataKey    String    @map("encrypted_data_key")
+  status              String    @default("PENDING")  // PENDING | ACTIVE | EXPIRED | REVOKED | ERROR
+  statusReason        String?   @map("status_reason")
+  lastSyncedAt        DateTime? @map("last_synced_at")
+  lastSyncItemCount   Int?      @map("last_sync_item_count")
+  // OAuth refresh metadata.
+  expiresAt           DateTime? @map("expires_at")
+  scope               String?
+  // Multi-location operators pick which provider-side location maps
+  // to which of our screens. JSON: { 'screenId': 'externalLocationId' }
+  locationMap         String?   @map("location_map")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  createdByUserId     String    @map("created_by_user_id")
+
+  items               PosMenuItem[]
+  categories          PosCategory[]
+
+  @@unique([tenantId, providerId])
+  @@index([tenantId, status])
+  @@map("pos_provider_connections")
+}
+
+// One menu item / SKU from a provider's catalog. Synced on a cron
+// (default: every 15 min for poll-based; instant for webhook-based).
+// Widget renderers (RestaurantMenuBoard, RetailPriceCallout) read
+// from these rows directly — no per-render API call.
+model PosMenuItem {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  connectionId   String    @map("connection_id")
+  externalId     String    @map("external_id")
+  name           String
+  description    String?
+  priceCents     Int       @map("price_cents")
+  salePriceCents Int?      @map("sale_price_cents")
+  category       String?
+  imageUrl       String?   @map("image_url")
+  badges         String[]  @default([])
+  available      Boolean   @default(true)
+  // Optional location filter — for multi-location chains.
+  locationId     String?   @map("location_id")
+  // Provider-side last-modified for delta sync.
+  externalUpdatedAt DateTime? @map("external_updated_at")
+  syncedAt       DateTime  @default(now()) @map("synced_at")
+
+  connection     PosProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, externalId])
+  @@index([tenantId, available])
+  @@index([connectionId, category])
+  @@map("pos_menu_items")
+}
+
+model PosCategory {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  connectionId  String   @map("connection_id")
+  externalId    String   @map("external_id")
+  name          String
+  sortOrder     Int      @default(0)
+  syncedAt      DateTime @default(now()) @map("synced_at")
+
+  connection    PosProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, externalId])
+  @@index([tenantId])
+  @@map("pos_categories")
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Ad-network integrations — Sprint 8d (2026-05-03)
+// ─────────────────────────────────────────────────────────────────────
+//
+// Programmatic display advertising. Operators opt screens into a
+// network, earn CPM-based revenue. We take a transaction fee.
+//
+// Three rows:
+//   AdNetworkConnection — per-tenant connection to a network (auth +
+//     content-safety preferences + revenue tally).
+//   AdImpression — every impression delivered, used for revenue
+//     calculation + audit. Aggregated nightly into AdRevenueDaily.
+//   AdRevenueDaily — pre-aggregated daily revenue per (tenant, network)
+//     for fast dashboard reads.
+//
+model AdNetworkConnection {
+  id                  String    @id @default(uuid())
+  tenantId            String    @map("tenant_id")
+  networkId           String    @map("network_id")  // canonical id from ad-network.ts
+  encryptedCreds      String    @map("encrypted_creds")
+  encryptedDataKey    String    @map("encrypted_data_key")
+  status              String    @default("PENDING") // PENDING | ACTIVE | PAUSED | EXPIRED | REVOKED | ERROR
+  statusReason        String?   @map("status_reason")
+  // Operator's content-safety preferences. JSON.
+  // { blockedCategories: ['IAB7', 'IAB8'], dayparts: [...],
+  //   pauseDuringEmergency: true }
+  contentControls     String    @map("content_controls")
+  // Optional rev-share override (basis points). Falls back to the
+  // network's default takeRateBps.
+  takeRateBps         Int?      @map("take_rate_bps")
+  // Cached running totals for fast dashboard reads. Updated by the
+  // nightly aggregator.
+  impressionsTotal    Int       @default(0) @map("impressions_total")
+  grossRevenueCents   Int       @default(0) @map("gross_revenue_cents")
+  feeCents            Int       @default(0) @map("fee_cents")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  createdByUserId     String    @map("created_by_user_id")
+
+  impressions         AdImpression[]
+  revenueDaily        AdRevenueDaily[]
+
+  @@unique([tenantId, networkId])
+  @@index([tenantId, status])
+  @@map("ad_network_connections")
+}
+
+model AdImpression {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  connectionId    String   @map("connection_id")
+  screenId        String   @map("screen_id")
+  // Network-side creative + campaign identifiers (for audit + recon).
+  externalCreativeId String  @map("external_creative_id")
+  externalCampaignId String? @map("external_campaign_id")
+  cpmCents        Int       @map("cpm_cents")          // CPM at time of serve
+  // Computed on insert: cpmCents / 1000 (the per-impression rev).
+  revenueCents    Int       @map("revenue_cents")
+  servedAt        DateTime  @default(now()) @map("served_at")
+
+  connection      AdNetworkConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, servedAt])
+  @@index([connectionId, servedAt])
+  @@index([screenId, servedAt])
+  @@map("ad_impressions")
+}
+
+// Daily aggregate — one row per (tenant, network, date). Populated
+// by a nightly cron from ad_impressions. Dashboard queries hit this
+// instead of scanning the impression log.
+model AdRevenueDaily {
+  id                  String   @id @default(uuid())
+  tenantId            String   @map("tenant_id")
+  connectionId        String   @map("connection_id")
+  date                DateTime @db.Date
+  impressions         Int      @default(0)
+  grossRevenueCents   Int      @default(0) @map("gross_revenue_cents")
+  feeCents            Int      @default(0) @map("fee_cents")
+
+  connection          AdNetworkConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, date])
+  @@index([tenantId, date])
+  @@map("ad_revenue_daily")
+}

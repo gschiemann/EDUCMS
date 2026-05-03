@@ -39,6 +39,10 @@ import { FitnessModule } from './fitness/fitness.module';
 import { StreamingModule } from './streaming/streaming.module';
 // 2026-05-03 — Sprint 8c billing (Stripe Checkout scaffolding).
 import { BillingModule } from './billing/billing.module';
+// 2026-05-03 — Sprint 8d POS catalog sync framework.
+import { PosModule } from './pos/pos.module';
+// 2026-05-03 — Sprint 8d ad-network monetization framework.
+import { AdsModule } from './ads/ads.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_FILTER, APP_GUARD, APP_PIPE, APP_INTERCEPTOR } from '@nestjs/core';
 import { SanitizationPipe } from './security/sanitization.pipe';
@@ -74,6 +78,8 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     FitnessModule,
     StreamingModule,
     BillingModule,
+    PosModule,
+    AdsModule,
     ThrottlerModule.forRoot([{
       ttl: 60000,
       limit: 100,
