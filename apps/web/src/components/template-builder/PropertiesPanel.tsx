@@ -9,6 +9,7 @@ import { useAssets, usePlaylists, useTemplates, useTemplateBackdrops } from '@/h
 import { apiFetch } from '@/lib/api-client';
 import { ColorPickerField } from '@/components/ui/color-picker';
 import { THEMED_WIDGET_FIELDS } from './themed-widget-defaults';
+import { AiGenerateButton } from '@/components/ai/AiGenerateButton';
 // 2026-05-03 — Time formatting helpers. The BellScheduleEditor uses
 // the native `<input type="time">` picker (so the operator gets the
 // browser's familiar AM/PM toggle and HH:MM typing). We read existing
@@ -871,6 +872,26 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       }
       break;
     case 'ANNOUNCEMENT':
+      // AI-assist for the announcement copy. Operator types a phrase
+      // ("spring break next week") → Claude returns 3 polished options.
+      fields.push(
+        <div key="ai-announcement" className="rounded-lg bg-gradient-to-br from-violet-50 to-fuchsia-50 border border-violet-200 px-3 py-2 flex items-center justify-between gap-2">
+          <span className="text-[11px] text-slate-700 font-medium">Need copy? Let Claude write 3 options.</span>
+          <AiGenerateButton
+            intent="announcement"
+            defaultContext={cfg.title || cfg.message || ''}
+            onPick={(text) => {
+              // Default behavior: drop into `message`. If the operator picked
+              // something short we also seed `title` for Schools that use the
+              // legacy two-line shape.
+              const isShort = text.length < 60;
+              setField(isShort ? { title: text, message: '' } : { message: text, body: undefined });
+            }}
+            buttonClassName="inline-flex items-center gap-1 text-[11px] font-bold text-white bg-violet-600 hover:bg-violet-700 px-2.5 py-1 rounded shadow-sm"
+            buttonLabel="Generate"
+          />
+        </div>
+      );
       fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Big news…" onChange={(v) => setField({ title: v })} />);
       fields.push(<TextAreaField key="message" label="Message" value={cfg.message || cfg.body || ''} placeholder="Details…" onChange={(v) => setField({ message: v, body: undefined })} rows={3} />);
       if (!isShapeTheme) {
@@ -979,6 +1000,24 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       const tickerText = tickerTextForEditor(cfg);
       const msgs = tickerText.split('\n');
       const label = `Messages (one per line) — ${msgs.filter(Boolean).length} saved`;
+      // AI-assist appends a fresh ticker line. Operator picks → we
+      // append to whatever they already have so a Welcome / Hours /
+      // Wifi / Promo line stack builds up naturally.
+      fields.push(
+        <div key="ai-ticker" className="rounded-lg bg-gradient-to-br from-violet-50 to-fuchsia-50 border border-violet-200 px-3 py-2 flex items-center justify-between gap-2">
+          <span className="text-[11px] text-slate-700 font-medium">Need a ticker line? Claude drafts 3.</span>
+          <AiGenerateButton
+            intent="ticker"
+            onPick={(text) => {
+              const existing = tickerText.trim();
+              const next = existing ? `${existing}\n${text}` : text;
+              setField({ text: next, messages: next.split('\n') });
+            }}
+            buttonClassName="inline-flex items-center gap-1 text-[11px] font-bold text-white bg-violet-600 hover:bg-violet-700 px-2.5 py-1 rounded shadow-sm"
+            buttonLabel="+ Generate"
+          />
+        </div>
+      );
       // Preserve blank lines while the user is actively typing (the
       // user needs an empty line to exist briefly when pressing Enter
       // before typing the next message). Filter happens only on save,
@@ -2166,6 +2205,22 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
     }
     case 'FITNESS_MOTIVATIONAL_QUOTE': {
       // Rotating quote card. quotes[] = { text, author? }
+      // AI-assist appends 3 fresh quotes onto whatever is already there
+      // — operator picks one, modal closes, JSON updates. Tone-aware.
+      fields.push(
+        <div key="ai-quote" className="rounded-lg bg-gradient-to-br from-violet-50 to-fuchsia-50 border border-violet-200 px-3 py-2 flex items-center justify-between gap-2">
+          <span className="text-[11px] text-slate-700 font-medium">Need fresh quotes? Claude writes 3 options.</span>
+          <AiGenerateButton
+            intent="quote"
+            onPick={(text) => {
+              const existing = Array.isArray(cfg.quotes) ? cfg.quotes : [];
+              setField({ quotes: [...existing, { text }] });
+            }}
+            buttonClassName="inline-flex items-center gap-1 text-[11px] font-bold text-white bg-violet-600 hover:bg-violet-700 px-2.5 py-1 rounded shadow-sm"
+            buttonLabel="+ Generate"
+          />
+        </div>
+      );
       fields.push(<TextField key="rotationMs" label="Rotate every (ms)" value={String(cfg.rotationMs || 12000)} placeholder="12000" onChange={(v) => setField({ rotationMs: parseInt(v) || 12000 })} />);
       fields.push(<ColorPickerField key="accentColor" label="Accent color" value={cfg.accentColor || '#39ff14'} onChange={(v) => setField({ accentColor: v })} />);
       fields.push(<ToggleField key="showAuthor" label="Show author name" value={cfg.showAuthor !== false} onChange={(v) => setField({ showAuthor: v })} />);
