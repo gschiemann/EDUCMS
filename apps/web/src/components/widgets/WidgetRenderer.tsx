@@ -53,6 +53,12 @@ import { FitnessLiveTVWidget } from './fitness/FitnessLiveTVWidget';
 import { FitnessAdBannerWidget } from './fitness/FitnessAdBannerWidget';
 import { FitnessClassScheduleWidget } from './fitness/FitnessClassScheduleWidget';
 import { FitnessTrainingVideoWidget } from './fitness/FitnessTrainingVideoWidget';
+// 2026-05-03 — Sprint 8c streaming integrations. New STREAMING widget
+// type backs the gym/bar/restaurant streaming framework: HLS / DASH /
+// iframe playback + scheduled ad overlays. Channels resolve to a
+// playback URL via /streaming/channels/:id (server-side signed URLs
+// for providers that need auth).
+import { StreamingWidget } from './StreamingWidget';
 import { FitnessWorkoutTimerWidget } from './fitness/FitnessWorkoutTimerWidget';
 import { FitnessMotivationalQuoteWidget } from './fitness/FitnessMotivationalQuoteWidget';
 import { FitnessAppLibraryWidget } from './fitness/FitnessAppLibraryWidget';
@@ -335,6 +341,11 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'IMAGE':        return <ImageWidget config={cfg} />;
     case 'IMAGE_CAROUSEL': return <ImageCarouselWidget config={cfg} />;
     case 'VIDEO':        return <VideoWidget config={cfg} live={live} />;
+    // 2026-05-03 — Sprint 8c streaming integrations. Widget wraps
+    // HLS / DASH / iframe playback + scheduled ad overlay. Channel
+    // metadata + signed playback URL are pre-resolved by the API
+    // (apps/api/src/streaming/) so this renderer just plays.
+    case 'STREAMING':    return <StreamingWidget config={cfg} live={live} />;
     case 'LOGO':         return <LogoWidget config={cfg} />;
     case 'WEBPAGE':      return <WebpageWidget config={cfg} live={live} />;
     case 'RSS_FEED':     return <RSSWidget config={cfg} compact={compact} />;

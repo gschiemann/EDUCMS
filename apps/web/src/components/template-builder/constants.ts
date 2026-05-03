@@ -44,6 +44,11 @@ export const WIDGET_GROUPS: ReadonlyArray<{
     label: 'Media',
     types: [
       { type: 'VIDEO', label: 'Video Player', desc: 'Play a video file or stream', icon: Play },
+      // 2026-05-03 — Sprint 8c streaming integrations. Universal across
+      // every vertical: gyms show ESPN, bars stream sports, restaurants
+      // run NHK World on the bar TV. Backed by StreamProviderConnection
+      // rows so the channel pick + ad rotation persist server-side.
+      { type: 'STREAMING', label: 'Live Stream', desc: 'HLS / YouTube / Twitch / public broadcasters with ad overlay', icon: Tv },
       { type: 'IMAGE', label: 'Single Image', desc: 'Display a photo or graphic', icon: ImageIcon },
       { type: 'IMAGE_CAROUSEL', label: 'Photo Slideshow', desc: 'Rotate through photos', icon: ImageIcon },
       { type: 'PLAYLIST', label: 'Content Playlist', desc: 'Play mixed content from a playlist', icon: ListVideo },
@@ -202,6 +207,7 @@ export function widgetIcon(type: string): LucideIcon {
 
 export const ZONE_COLORS: Record<string, { bg: string; border: string; text: string; accent: string }> = {
   VIDEO:           { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#8b5cf6' },
+  STREAMING:       { bg: '#fdf4ff', border: '#e9d5ff', text: '#7e22ce', accent: '#a855f7' },
   IMAGE:           { bg: '#f0f9ff', border: '#93c5fd', text: '#1d4ed8', accent: '#3b82f6' },
   IMAGE_CAROUSEL:  { bg: '#f0f9ff', border: '#93c5fd', text: '#1d4ed8', accent: '#3b82f6' },
   PLAYLIST:        { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#8b5cf6' },

@@ -863,3 +863,144 @@ model ScreenEmergencyOverride {
   @@index([tenantId, triggeredAt])
   @@map("screen_emergency_overrides")
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Streaming integrations — Sprint 8c (2026-05-03)
+// ─────────────────────────────────────────────────────────────────────
+//
+// Multi-tenant streaming framework: gym/bar/restaurant operators
+// connect a streaming provider (Atmosphere, Pluto TV, YouTube, Twitch,
+// custom HLS, etc.), enter their auth, pick channels, and the
+// digital-signage player streams that content alongside ad rotations.
+//
+// Three rows:
+//   StreamProviderConnection — one row per (tenant, provider). Holds
+//     per-tenant auth (encrypted). Tenant-A's Twitch creds never
+//     touch Tenant-B. envelope-encrypted with DEVICE_SECRET_KEY.
+//   StreamChannel — picked content from a provider. Channels can be
+//     live (HLS/DASH/RTMP/iframe), VOD, or curated playlists.
+//   StreamAdSlot — per-screen ad rotation that overlays the streaming
+//     content (lower-third, side-rail, or full-bleed every N min).
+//
+// Schema is ADDITIVE — no breaking change to existing models. Every
+// FK is optional or scoped to a new table so disabling the feature
+// flag (FEATURE_STREAMING) is a no-op.
+//
+// Why these live in DB (not localStorage):
+//   • Credentials need at-rest encryption.
+//   • Channels need to fan out to N screens — must be reachable from
+//     the player without each screen re-authing.
+//   • Ad slots need an audit log (who scheduled what, when).
+//
+model StreamProviderConnection {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  // Canonical provider id from packages/api-types/src/streaming.ts
+  // (e.g. "atmosphere" / "pluto-tv" / "youtube" / "twitch" / "hls").
+  providerId      String   @map("provider_id")
+  // Display name override (optional) — falls back to provider's default.
+  displayName     String?  @map("display_name")
+  // Envelope-encrypted credentials blob (JSON). Never stored
+  // plaintext. Decryption requires DEVICE_SECRET_KEY at the API layer.
+  // Shape varies per provider:
+  //   { type: 'oauth', accessToken, refreshToken, expiresAt }
+  //   { type: 'apiKey', apiKey, accountId? }
+  //   { type: 'license', licenseNumber, accountId, region }
+  //   { type: 'none' } — for free FAST channels (Pluto, Tubi)
+  encryptedCreds  String   @map("encrypted_creds")
+  // KMS-style envelope: per-row data key wrapped by DEVICE_SECRET_KEY.
+  // Rotation works by re-wrapping data keys without re-encrypting blobs.
+  encryptedDataKey String  @map("encrypted_data_key")
+  // Status — set during the OAuth handshake / API-key validation.
+  // Player checks this before subscribing to streams; UI badge.
+  status          String   @default("PENDING")  // PENDING | ACTIVE | EXPIRED | REVOKED | ERROR
+  statusReason    String?  @map("status_reason")
+  lastVerifiedAt  DateTime? @map("last_verified_at")
+  // OAuth refresh metadata (only for OAuth providers).
+  expiresAt       DateTime? @map("expires_at")
+  scope           String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdByUserId String   @map("created_by_user_id")
+
+  channels        StreamChannel[]
+
+  @@unique([tenantId, providerId])
+  @@index([tenantId, status])
+  @@map("stream_provider_connections")
+}
+
+// A picked channel / show / video from a provider. The player's
+// stream widget reads these by id. One Tenant can have many channels
+// per provider (e.g. ESPN + ESPN2 from Atmosphere).
+model StreamChannel {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  connectionId    String   @map("connection_id")
+  // Provider-specific channel identity. Atmosphere = channelId, YouTube
+  // = videoId / channelId, Twitch = login, HLS = playbackUrl.
+  externalId      String   @map("external_id")
+  kind            String                                // LIVE | VOD | PLAYLIST | RADIO
+  // Cached display metadata so the picker UI doesn't roundtrip the
+  // provider for every render. Refreshed when the channel last played.
+  title           String
+  description     String?
+  thumbnailUrl    String?  @map("thumbnail_url")
+  category        String?                              // SPORTS | NEWS | MUSIC | LIFESTYLE | …
+  // Resolved playback URL. For DRM/iframe providers this is empty
+  // until the player requests a signed URL via /streaming/play.
+  playbackUrl     String?  @map("playback_url")
+  // Playback type — drives which renderer the widget uses.
+  //   "hls"      → <video> tag with hls.js polyfill
+  //   "dash"     → <video> with shaka-player
+  //   "iframe"   → <iframe> embed (YouTube, Twitch, Vimeo)
+  //   "rtmp"     → flash-style (limited browser support; player only)
+  //   "rtsp"     → server-side transcode required (future)
+  playbackType    String?  @map("playback_type")
+  // Whether this channel allows ad overlays per provider TOS. Some
+  // forbid (DIRECTV, Atmosphere prohibits competing ads). Editor uses
+  // this to disable the "Add ads" button.
+  allowAdOverlay  Boolean  @default(true) @map("allow_ad_overlay")
+  // Provider-specific config blob (region, audio track, captions, etc.)
+  config          String?
+  status          String   @default("ACTIVE")          // ACTIVE | DISABLED | REMOVED_BY_PROVIDER
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  lastPlayedAt    DateTime? @map("last_played_at")
+
+  connection      StreamProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, externalId])
+  @@index([tenantId, status])
+  @@map("stream_channels")
+}
+
+// Ad rotation that overlays / interleaves with a stream channel.
+// Lives per-tenant; can target a channel (only show during ESPN), a
+// screen group (only the lobby TVs), a daypart (only mornings), etc.
+// Media is an Asset (existing model) — uploaded once, scheduled into
+// many rotations.
+model StreamAdSlot {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  name            String
+  // Asset to display — use existing Asset model (image, video, html).
+  assetId         String   @map("asset_id")
+  // Optional scoping — null = all channels / all screens / all dayparts.
+  channelId       String?  @map("channel_id")          // limit to one channel
+  screenGroupId   String?  @map("screen_group_id")     // limit to one group
+  // Targeting / cadence — flexible JSON.
+  // { dayparts: [{daysOfWeek:[1..5], start:"6:00 AM", end:"9:00 AM"}],
+  //   placement: "lower-third" | "side-rail" | "full-bleed",
+  //   intervalMs: 300000,    // every 5 min
+  //   durationMs: 8000,      // 8s per show
+  //   startDate, endDate, weight }
+  config          String                              // JSON
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdByUserId String   @map("created_by_user_id")
+
+  @@index([tenantId, isActive])
+  @@map("stream_ad_slots")
+}
