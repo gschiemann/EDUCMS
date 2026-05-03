@@ -256,7 +256,7 @@ card → ffmpeg → local HLS → our Custom HLS connector. Total parts
 
 ## 🚧 Known gaps / future sprints
 
-- DASH playback needs `pnpm --filter web add dashjs` to actually play DASH streams (lazy-loaded; widget shows fallback message until installed)
+- ~~DASH playback needs `pnpm --filter web add dashjs`~~ **INSTALLED 2026-05-03**. The streaming widget now plays DASH `.mpd` URLs end-to-end via lazy-loaded shaka-player. Verified via `pnpm preflight`.
 - StreamAdSlot scheduling UI (scheduler / cadence editor) not yet built — only the renderer is. Operators can define slots via API but there's no admin form yet
 - Webhook-based Stripe subscription sync not implemented — License.status must be updated manually until webhook handler ships
 - Per-provider channel discovery (auto-import from a connected provider's API) only implemented for `public-broadcasters`; other providers require manual URL entry
@@ -292,15 +292,29 @@ out to additional providers within each category.
 
 Counts as of last commit:
 - **8 verticals** (K12, GYM, RETAIL, CORPORATE, QSR, FASHION, BAR, +UNIVERSAL)
-- **30+ vertical-specific templates** + 60+ universal K12 presets
-- **80+ widget renderers** across the verticals
+- **42+ vertical-specific templates** (19 GYM presets including 15 themed 4K scenes, 9 QSR including Live POS Menu, 6 BAR, 8 RETAIL) + 60+ universal K12 presets
+- **95+ widget renderers** across the verticals (added 14 themed fitness scene widgets in the final ship — Stadium / Iron / Marquee / Channel-Guide / Discotheque / Locker / Splash / Telemetry / Crag / Cornerman / Recess / Reformer / Trailhead / Vault / Lobby)
 - **30 streaming providers** (across streaming + POS + ads catalogs combined)
 - **11 license tiers** with vertical-aware upgrade picker
 - **8 new database tables** ready for `pnpm db:push`
 - **4 new admin pages** at `/settings/streaming`, `/settings/billing`,
-  `/settings/pos`, `/settings/monetize`
+  `/settings/pos`, `/settings/monetize` + `/settings/test-integrations`
+- **HLS + DASH + iframe + RTMP playback** with capability-aware codec selection
 - **Android 7→14 single-bundle compatibility** with auto-fallback runtime
-- **2 new framework docs** in `docs/` covering the Android compat plan
+- **2 new framework docs** in `docs/` covering the Android compat plan + HARDWARE_BRIDGE.md
+- **Channel + POS category pickers** wired into PropertiesPanel — no more JSON paste for live integrations
+- **BRIDGE tier** for closed-platform streaming (Atmosphere / DIRECTV / DISH / Mood / iHeart) with HDMI capture wizard
+
+## 🟢 Final ship summary (2026-05-03 autonomous build session)
+
+Three commits pushed to `origin/master`:
+- `e31adcc` — honest tier classification + capability-aware video + APK testing doc
+- `ac0003b` — channel + POS pickers + Live POS Menu template + Stadium fitness scene + settings cleanup
+- `23f4bdc` — 14 themed 4K fitness templates (Iron through Lobby)
+
+Code-side launch readiness: **DONE.** Remaining items are all
+vendor-side (Stripe / Square / Hivestack OAuth + production secrets +
+Prisma migration). See `## ⚠️ What needs vendor-side setup` above.
 
 ---
 
