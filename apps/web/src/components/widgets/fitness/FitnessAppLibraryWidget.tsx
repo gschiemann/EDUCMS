@@ -21,12 +21,46 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiFetch } from '@/lib/api-client';
 import {
   CATEGORY_LABELS,
   sourcesByCategory,
   type FitnessSource,
   type SourceCategory,
 } from './fitnessSourceCatalog';
+
+// 2026-05-03 — Streaming-Hub honesty pass.
+//
+// The widget previously rendered a static catalog of every streaming
+// service we knew about (Pluto / Samsung TV+ / Hulu / Netflix / etc.).
+// Tiles were purely decorative — clicking did nothing, the gym admin
+// couldn't tell which services they had actually wired up, and there
+// was no path from a tile to the place that activates it. Operator
+// feedback (2026-05-03): "this streaming hub has zero integrations,
+// I can't plug in my personal Hulu, or Netflix... it's useless as is".
+//
+// Two-part fix:
+//   1. Pull live connected channels from /streaming/channels (the same
+//      endpoint the editor's StreamingChannelPicker reads). Tiles whose
+//      catalog id matches a connected provider get a green ON-AIR chip
+//      + ring, overriding the static STICK/PARTNERSHIP badge.
+//   2. Replace the cryptic "Press SELECT to launch" footer with an
+//      honest summary: "X connected · Y available · Z need hardware
+//      bridge · Settings → Streaming to connect more". So the operator
+//      can see the real state of their integrations at a glance.
+interface ConnectedChannelSummary {
+  id: string;
+  providerId: string;
+  externalId: string;
+  title: string;
+  status: string;
+}
+interface ConnectedConnectionSummary {
+  id: string;
+  providerId: string;
+  status: string;
+}
 
 /* ─────────────────────────────────────────────────────────────────
  * Config contract
@@ -86,6 +120,74 @@ export function FitnessAppLibraryWidget({
   const highlightIds  = useMemo(() => new Set(c.highlightSourceIds ?? []), [c.highlightSourceIds]);
 
   const clock = useLiveClock();
+
+  // Live connected-channel + connection lookup. Both calls fail
+  // silently (catch -> []) so the widget keeps rendering its catalog
+  // even when the API is unreachable (kiosk offline, dev preview).
+  const channelsQuery = useQuery<ConnectedChannelSummary[]>({
+    queryKey: ['fitness-applibrary-channels'],
+    queryFn: () => apiFetch<ConnectedChannelSummary[]>('/streaming/channels').catch(() => [] as ConnectedChannelSummary[]),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+  const connectionsQuery = useQuery<ConnectedConnectionSummary[]>({
+    queryKey: ['fitness-applibrary-connections'],
+    queryFn: () => apiFetch<ConnectedConnectionSummary[]>('/streaming/connections').catch(() => [] as ConnectedConnectionSummary[]),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+  const connectedSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const ch of (channelsQuery.data || [])) {
+      if (ch.providerId) set.add(ch.providerId.toLowerCase());
+      if (ch.externalId) set.add(ch.externalId.toLowerCase());
+    }
+    for (const conn of (connectionsQuery.data || [])) {
+      if (conn.status === 'ACTIVE' && conn.providerId) {
+        set.add(conn.providerId.toLowerCase());
+      }
+    }
+    return set;
+  }, [channelsQuery.data, connectionsQuery.data]);
+
+  // Catalog id ↔ streaming-provider id matcher. Catalog uses 'youtube'
+  // but providers in api-types use 'youtube-live' / 'youtube'; this
+  // map bridges the two so tiles light up when a connection lands.
+  const isSourceConnected = (sourceId: string): boolean => {
+    const id = sourceId.toLowerCase();
+    if (connectedSet.has(id)) return true;
+    const aliases: Record<string, string[]> = {
+      'youtube':         ['youtube-live', 'youtube'],
+      'twitch':          ['twitch'],
+      'vimeo':           ['vimeo-live', 'vimeo'],
+      'public-tv':       ['public-broadcasters'],
+      'custom-hls':      ['custom-hls'],
+      'iptv':            ['iptv-m3u'],
+      'soundtrack':      ['soundtrack'],
+      'iheart':          ['iheart-business'],
+      'atmosphere':      ['atmosphere'],
+      'directv':         ['directv-business'],
+      'dish':            ['dish-business'],
+      'mood':            ['mood-media'],
+    };
+    const candidates = aliases[id] || [];
+    return candidates.some((cand) => connectedSet.has(cand));
+  };
+
+  // Honest counts for the footer. The 3 categories the operator cares
+  // about: what's wired up, what they could connect today, and what
+  // needs hardware bridge work (DIRECTV / Atmosphere / etc.).
+  const counts = useMemo(() => {
+    const all = Object.values(sourcesByCategory()).flat();
+    let connected = 0;
+    let bridge = 0;
+    for (const s of all) {
+      if (isSourceConnected(s.id)) connected++;
+      else if (s.status === 'STICK') bridge++;
+    }
+    return { connected, bridge, total: all.length };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectedSet]);
 
   // Build category rows — stable reference so the tile animation
   // delays don't randomize on every render.
@@ -191,7 +293,13 @@ export function FitnessAppLibraryWidget({
               <div className="falw-tile-strip" role="list">
                 {sources.map((src) => {
                   const tileIndex   = tileIndexMap.get(src.id) ?? 0;
-                  const chip        = STATUS_CHIP[src.status];
+                  const isConnected = isSourceConnected(src.id);
+                  // Connected tiles override the static STICK/PARTNER chip
+                  // with a green ON-AIR pill so the operator can tell at
+                  // a glance which tiles are wired vs decorative.
+                  const chip        = isConnected
+                    ? { label: 'ON AIR', className: 'falw-chip-connected' }
+                    : STATUS_CHIP[src.status];
                   const isHighlight = highlightIds.has(src.id);
                   return (
                     <Tile
@@ -200,6 +308,7 @@ export function FitnessAppLibraryWidget({
                       tileIndex={tileIndex}
                       chip={chip}
                       isHighlight={isHighlight}
+                      isConnected={isConnected}
                     />
                   );
                 })}
@@ -209,9 +318,24 @@ export function FitnessAppLibraryWidget({
         })}
       </main>
 
-      {/* ── Bottom hint bar ── */}
-      <footer className="falw-footer" aria-label="Navigation hint">
-        Press SELECT to launch · Use arrow keys to navigate
+      {/* ── Bottom hint bar — honest readout of what's wired vs available.
+          Replaces the cryptic "Press SELECT to launch" placeholder so the
+          gym admin can see the real state of their streaming integrations
+          without leaving the screen. ── */}
+      <footer className="falw-footer" aria-label="Streaming summary">
+        <span className="falw-footer-stat falw-footer-on">
+          <span className="falw-footer-dot falw-footer-dot-on" /> {counts.connected} connected
+        </span>
+        <span className="falw-footer-sep">·</span>
+        <span className="falw-footer-stat">
+          {counts.total - counts.connected - counts.bridge} ready to connect
+        </span>
+        <span className="falw-footer-sep">·</span>
+        <span className="falw-footer-stat falw-footer-bridge">
+          {counts.bridge} need hardware bridge
+        </span>
+        <span className="falw-footer-sep">·</span>
+        <span className="falw-footer-cta">Settings → Streaming to connect more</span>
       </footer>
     </div>
   );
@@ -225,25 +349,27 @@ function Tile({
   tileIndex,
   chip,
   isHighlight,
+  isConnected,
 }: {
   source: FitnessSource;
   tileIndex: number;
   chip?: { label: string; className: string };
   isHighlight: boolean;
+  isConnected?: boolean;
 }) {
   const ac = source.accentColor;
   // tabIndex so the grid is keyboard-navigable for preview purposes;
   // no click handler — pure display.
   return (
     <article
-      className={`falw-tile${isHighlight ? ' falw-tile-highlight' : ''}${source.status === 'COMING' ? ' falw-tile-coming' : ''}`}
+      className={`falw-tile${isHighlight ? ' falw-tile-highlight' : ''}${source.status === 'COMING' ? ' falw-tile-coming' : ''}${isConnected ? ' falw-tile-connected' : ''}`}
       style={{
         '--falw-tile-accent': ac,
         animationDelay: `${tileIndex * 0.05}s`,
       } as React.CSSProperties}
       role="listitem"
       tabIndex={0}
-      aria-label={`${source.name}${source.status === 'COMING' ? ' — coming soon' : ''}`}
+      aria-label={`${source.name}${isConnected ? ' — connected, on air' : source.status === 'COMING' ? ' — coming soon' : source.status === 'STICK' ? ' — requires hardware bridge' : ''}`}
     >
       {/* Status chip — top-right, only for non-READY */}
       {chip && (
@@ -576,6 +702,23 @@ const CSS = `
   border: 1px solid rgba(100,116,139,0.3);
   color: #64748b;
 }
+/* Connected ON-AIR pill — overrides whatever static chip the catalog
+   would otherwise render. Bright emerald with a soft glow so it reads
+   as "live now" at a glance. */
+.falw-chip-connected {
+  background: rgba(74,222,128,0.22);
+  border: 1px solid rgba(74,222,128,0.55);
+  color: #4ade80;
+  box-shadow: 0 0 12px rgba(74,222,128,0.3);
+}
+/* Connected tile gets a subtle emerald ring so the eye finds the wired
+   tiles in a crowded grid without staring at the chips. */
+.falw-tile.falw-tile-connected {
+  border-color: rgba(74,222,128,0.5);
+  box-shadow:
+    0 0 0 1px rgba(74,222,128,0.4) inset,
+    0 6px 20px rgba(74,222,128,0.12);
+}
 /* READY: just a small green dot, no chip */
 .falw-ready-dot {
   position: absolute; top: 8px; right: 8px;
@@ -639,19 +782,28 @@ const CSS = `
   max-width: 100%;
 }
 
-/* ── Footer hint bar ── */
+/* ── Footer hint bar — honest connection-state readout ── */
 .falw-footer {
   position: relative; z-index: 20;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
+  gap: clamp(6px, 1cqw, 14px);
   padding: clamp(5px, 1cqh, 10px) clamp(16px, 3cqw, 36px);
   border-top: 1px solid rgba(255,255,255,0.05);
   background: rgba(0,0,0,0.3);
   font-family: 'Inter', sans-serif;
   font-size: clamp(9px, 1.4cqh, 13px);
-  color: #475569;
-  letter-spacing: 0.06em;
+  color: #94a3b8;
+  letter-spacing: 0.04em;
 }
+.falw-footer-stat { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.falw-footer-on { color: #4ade80; }
+.falw-footer-bridge { color: #fbbf24; }
+.falw-footer-cta { color: #00d4ff; font-weight: 700; }
+.falw-footer-sep { color: #475569; }
+.falw-footer-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.falw-footer-dot-on { background: #4ade80; box-shadow: 0 0 8px #4ade80; }
 `;
