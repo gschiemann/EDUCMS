@@ -45,6 +45,36 @@ it can do real work in production. Use this as the pre-launch checklist.
 - Tenant billing UI at `/[schoolId]/settings/billing` — current plan card + upgrade picker filtered to tenant's vertical
 - Stripe Checkout endpoint scaffolding (`/api/v1/billing/checkout`) — 501 fallback to sales@ when STRIPE_SECRET_KEY is unset
 
+### POS catalog sync (Sprint 8d) — NEW
+- `POS_PROVIDERS` catalog in `packages/api-types/src/pos.ts` — 8 providers across 5 tiers:
+  - Restaurant/QSR — Square, Toast, Clover, Aloha (NCR)
+  - Retail — Lightspeed Retail, Shopify POS
+  - Payments — Stripe Terminal
+  - Gym — MINDBODY (ABC Fitness)
+  - Custom webhook
+- Prisma additions: `PosProviderConnection` (envelope-encrypted creds, last-sync metadata, location-map), `PosMenuItem` (synced catalog rows menu-board widgets read directly), `PosCategory`
+- Server: `/api/v1/pos/providers`, `/api/v1/pos/connections` (CRUD), `/api/v1/pos/connections/:id/sync` (manual trigger), `/api/v1/pos/items` (live catalog read)
+- Tenant admin UI at `/[schoolId]/settings/pos` — connect provider, view sync status, manual re-sync, disconnect
+
+### Ad-network monetization (Sprint 8d) — NEW
+- `AD_NETWORKS` catalog in `packages/api-types/src/ad-network.ts` — 8 networks across 4 tiers:
+  - Programmatic DOOH — Hivestack, Vistar Media, Place Exchange, Broadsign Reach
+  - Venue networks — Loop Media, Atmosphere TV (monetize)
+  - Direct sales — Lamar Advertising
+  - House-only (operator's own ads, no rev share)
+- K12_FORBIDDEN gate enforced server-side — schools cannot connect third-party networks
+- Per-connection content controls — IAB-category blocks (Alcohol / Pharma / Gambling / etc.) + dayparts + pause-during-emergency
+- Prisma additions: `AdNetworkConnection`, `AdImpression`, `AdRevenueDaily` (nightly rollup for fast dashboard reads)
+- Server: `/api/v1/ads/networks`, `/api/v1/ads/connections` (CRUD + pause/resume), `/api/v1/ads/earnings` (today/month/year + top earner)
+- Tenant admin UI at `/[schoolId]/settings/monetize` — earnings dashboard + connections + content controls + network catalog
+
+### Android 7→14 compatibility (Sprint 8d) — NEW
+- `apps/web/src/lib/capabilities.ts` — boot-time detection of 22 capabilities (CSS / Web APIs / codecs / input). Memoized; SSR-safe.
+- `useCapabilities()` React hook + `pickBestVideo()` / `pickBestImage()` helpers for codec / format auto-selection
+- `ensurePolyfill('intersection-observer'|'resize-observer'|'broadcast-channel')` lazy-loader so polyfill bytes only ship to old WebView
+- Player boot reports the capability snapshot to the server in device info — per-screen diagnostics let ops spot Chromium <70 / missing-H.265 fleet members
+- `docs/ANDROID_COMPATIBILITY.md` is the load-bearing reference: three-layer strategy (CSS @supports → JS gate → polyfill), Android-version capability matrix, rules for adding new bleeding-edge features without dropping Android 7 support
+
 ### Existing platform
 - Emergency system (4 panic types, signed pub/sub, AuditLog)
 - Multi-tenant + tenant hierarchy (district→school)
@@ -79,6 +109,26 @@ Code path is `provider.auth === 'oauth2'` — currently shows "Contact sales" pl
 - [ ] Build callback endpoint `/streaming/oauth/:provider/callback`
 - [ ] Token refresh job (cron) — exchange refresh_token → access_token before expiry
 
+### POS provider sync handlers
+Code path is `apps/api/src/pos/providers/<id>.ts` — file-per-provider that maps the provider's catalog API → our `PosMenuItem` rows. Connection wizard works today; sync button currently returns "handler not yet implemented" until each handler ships.
+- [ ] `square.ts` — Square Catalog API (`GET /v2/catalog/list`); register OAuth app at squareup.com/developers
+- [ ] `toast.ts` — Toast Menus API; Toast Partner Program enrollment required
+- [ ] `clover.ts` — Clover Inventory API (`/v3/merchants/:id/items`); free dev portal
+- [ ] `lightspeed-retail.ts` — Lightspeed R-Series Items API
+- [ ] `shopify-pos.ts` — Shopify Admin API products endpoint
+- [ ] `stripe-terminal.ts` — Stripe Products + Prices listing
+- [ ] `mindbody.ts` — MINDBODY Public API (Site → Class → Retail)
+- [ ] Webhook receiver `/api/v1/pos/webhook/:provider` for custom-webhook + Square/Toast realtime updates
+
+### Ad-network creative-fetch handlers
+Code path is `apps/api/src/ads/networks/<id>.ts`. Each implements the creative fetch + impression report cycle for that network.
+- [ ] `hivestack.ts` — Hivestack Publisher API; OpenRTB 2.5 bid request
+- [ ] `vistar-media.ts` — Vistar Publisher API; their Open Direct format
+- [ ] `place-exchange.ts` — Place Exchange OpenRTB DOOH integration
+- [ ] `broadsign-reach.ts` — Broadsign Reach SSP API
+- [ ] `loop-media.ts` — Loop.tv publisher API (curated content + rev share)
+- [ ] Daily revenue aggregator cron (rolls AdImpression → AdRevenueDaily)
+
 ### Streaming partner programs (Atmosphere / DIRECTV / DISH / Mood Media / iHeart)
 These providers are partner-only (no self-serve API).
 - [ ] Email Atmosphere TV partners@ — pitch as a digital-signage integration partner
@@ -104,14 +154,28 @@ These providers are partner-only (no self-serve API).
 - [ ] Build webhook ingestion for menu/price changes
 - [ ] Add menu-board sync that re-renders RESTAURANT presets when POS data changes
 
-### Production deploy checklist
-- [ ] Run Prisma migration for the new `stream_provider_connections` / `stream_channels` / `stream_ad_slots` tables
-- [ ] Set `STRIPE_SECRET_KEY` (when ready)
+### Production deploy checklist (morning launch)
+- [ ] Run Prisma migration for the 8 new tables (streaming + POS + ads):
+       `stream_provider_connections`, `stream_channels`, `stream_ad_slots`,
+       `pos_provider_connections`, `pos_menu_items`, `pos_categories`,
+       `ad_network_connections`, `ad_impressions`, `ad_revenue_daily`
+       (run `pnpm db:push` against prod DATABASE_URL)
+- [ ] Set `STRIPE_SECRET_KEY` (when ready — until then UI falls back to sales@)
 - [ ] Set `STRIPE_WEBHOOK_SECRET` (when ready)
-- [ ] Update Railway env: `DEVICE_SECRET_KEY` must be 64 hex chars (used by streaming creds-cipher)
+- [ ] Verify `DEVICE_SECRET_KEY` = 64 hex chars (now used by streaming + POS + ads creds-cipher)
 - [ ] Verify `ALLOWED_ORIGINS` includes the Vercel prod URL
-- [ ] Smoke-test `/api/v1/streaming/providers` returns the catalog
-- [ ] Smoke-test `/api/v1/license/tiers?vertical=GYM` returns recommended GYM_PRO
+- [ ] Smoke-test the new endpoints:
+       `/api/v1/streaming/providers` → catalog
+       `/api/v1/pos/providers` → catalog
+       `/api/v1/ads/networks` → catalog
+       `/api/v1/license/tiers?vertical=GYM` → GYM_PRO recommended
+- [ ] Verify the new admin pages render:
+       `/<schoolSlug>/settings/streaming`
+       `/<schoolSlug>/settings/billing`
+       `/<schoolSlug>/settings/pos`
+       `/<schoolSlug>/settings/monetize`
+- [ ] Confirm RESTAURANT/RETAIL/BAR templates appear in the gallery for tenants of those verticals (`/<slug>/templates`)
+- [ ] Spot-check the player capability snapshot in browser dev console: `[Player] capabilities { chromium: ..., modern: ..., h265: ..., av1: ... }`
 
 ---
 
@@ -127,16 +191,41 @@ These providers are partner-only (no self-serve API).
 
 ## 🎯 Next-up sprint candidates
 
-In priority order if Greg wants to keep shipping:
+In priority order, ranked by revenue impact:
 
-1. **Stripe webhook + License sync** — closes the billing loop so paid customers automatically get their tier upgrade
-2. **YouTube OAuth + channel discovery** — lets gym/bar operators sign in once and pick from their YouTube subscriptions
-3. **Twitch channel autodetect** — same UX, easier (no OAuth needed for public embeds)
-4. **StreamAdSlot scheduler UI** — daypart picker + asset → slot binding
-5. **Canva Connect MVP** — partner application + import flow
-6. **Square POS sync** — restaurant menu boards auto-update from Square Catalog
+1. **Square POS sync handler** (`apps/api/src/pos/providers/square.ts`) —
+   first POS to wire end-to-end. Free OAuth, broad merchant base, immediate
+   value for restaurant/QSR/retail tenants.
+2. **Stripe webhook + License sync** — closes the billing loop. Once the
+   Square handler proves the credential flow, repeat for Stripe billing.
+3. **Hivestack ad-network handler** (`apps/api/src/ads/networks/hivestack.ts`) —
+   first revenue-generating ad integration. Highest fill rate of the
+   programmatic DOOH options.
+4. **YouTube OAuth + channel discovery** — gym/bar operators sign in once,
+   pick from their YouTube subscriptions instead of pasting URLs.
+5. **Toast / Clover POS handlers** — round out the QSR/restaurant integrations.
+6. **StreamAdSlot scheduler UI** — daypart picker + asset → slot binding for
+   in-house ad rotations.
+7. **Canva Connect MVP** — partner application + import flow.
+8. **Vistar / Place Exchange / Broadsign ad handlers** — broader DOOH inventory.
 
-Each is independently shippable; recommend tackling in order so revenue infrastructure (Stripe) lands before the polish features.
+Each is independently shippable. Recommended order is "first revenue path
+end-to-end" (Stripe billing → Square POS → Hivestack ads) before fanning
+out to additional providers within each category.
+
+## 📊 What you're shipping in the morning launch
+
+Counts as of last commit:
+- **8 verticals** (K12, GYM, RETAIL, CORPORATE, QSR, FASHION, BAR, +UNIVERSAL)
+- **30+ vertical-specific templates** + 60+ universal K12 presets
+- **80+ widget renderers** across the verticals
+- **30 streaming providers** (across streaming + POS + ads catalogs combined)
+- **11 license tiers** with vertical-aware upgrade picker
+- **8 new database tables** ready for `pnpm db:push`
+- **4 new admin pages** at `/settings/streaming`, `/settings/billing`,
+  `/settings/pos`, `/settings/monetize`
+- **Android 7→14 single-bundle compatibility** with auto-fallback runtime
+- **2 new framework docs** in `docs/` covering the Android compat plan
 
 ---
 
