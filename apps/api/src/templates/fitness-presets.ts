@@ -456,4 +456,312 @@ export const FITNESS_TEMPLATE_PRESETS: SystemPreset[] = [
       },
     ],
   },
+
+  // ════════════════════════════════════════════════════════════════
+  // Iron — Weight Floor
+  // Brutalist concrete + caution-tape header + plate-stack rail.
+  // Ported from scratch/design/fitness/02-iron.html.
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'fitness-iron',
+    name: 'Iron — Weight Floor',
+    description:
+      'Brutalist concrete weight-floor scene — caution-tape header ribbon, plate-stack rail, giant outlined stencil section number, tutorial pane with form cues, hero countdown timer, dashed quote panel, plate-stack ticker. Hot red + caution yellow on charcoal.',
+    category: 'FITNESS',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#181816',
+    zones: [{
+      name: 'Iron scene', widgetType: 'FITNESS_IRON',
+      x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 1,
+      defaultConfig: { liveClock: true },
+    }],
+  },
+
+  // ════════════════════════════════════════════════════════════════
+  // Marquee — Events Board
+  // Vegas marquee bulb-border events board.
+  // Ported from scratch/design/fitness/03-marquee.html.
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'fitness-marquee',
+    name: 'Marquee — Events Board',
+    description:
+      'Vegas-style marquee with chasing bulb border, gold-leaf chrome, neon "TONIGHT" headline, three-column event cards with playbills, drop-shadow ticker. Ideal for boutique studios advertising classes / events.',
+    category: 'FITNESS',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#0a0a0c',
+    zones: [{
+      name: 'Marquee scene', widgetType: 'FITNESS_MARQUEE',
+      x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 1,
+      defaultConfig: { liveClock: true },
+    }],
+  },
+
+  // ════════════════════════════════════════════════════════════════
+  // Channel Guide — Streaming Library
+  // Cable-TV channel guide for the gym's streaming app library.
+  // Ported from scratch/design/fitness/04-channel-guide.html.
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'fitness-channel-guide',
+    name: 'Channel Guide — Streaming Library',
+    description:
+      "Old-school cable-TV channel guide grid for the gym's streaming app library. Now-watching preview pane on top, 16-channel grid below, sidebar with up-next + member CTA. Use this on a streaming hub TV so members see what's available.",
+    category: 'FITNESS',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#040816',
+    zones: [{
+      name: 'Channel Guide scene', widgetType: 'FITNESS_CHANNEL_GUIDE',
+      x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 1,
+      defaultConfig: { liveClock: true },
+    }],
+  },
+
+  // ════════════════════════════════════════════════════════════════
+  // Discotheque — Disco Energy
+  // Strobe + disco ball + lasers + BPM readout.
+  // Ported from scratch/design/fitness/05-discotheque.html.
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'fitness-discotheque',
+    name: 'Discotheque — Disco Energy',
+    description:
+      'Pink + violet disco energy — animated disco ball glow, strobe-style headline, BPM readout, class promo. Built for studios running cardio / dance / Zumba blocks where the music IS the workout.',
+    category: 'FITNESS',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#0c061a',
+    zones: [{
+      name: 'Discotheque scene', widgetType: 'FITNESS_DISCOTHEQUE',
+      x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 1,
+      defaultConfig: { },
+    }],
+  },
+
+  // ════════════════════════════════════════════════════════════════
+  // Locker — Locker Room Board
+  // Corkboard + polaroid pinned-up vibe.
+  // Ported from scratch/design/fitness/06-locker.html.
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'fitness-locker',
+    name: 'Locker — Locker Room Board',
+    description:
+      'Locker-room corkboard with pinned polaroids, shift schedule, member-of-the-week, hand-written name tags. Warm cream + hot orange accents. Perfect for the locker room or staff hallway.',
+    category: 'FITNESS',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#1a1814',
+    zones: [{
+      name: 'Locker scene', widgetType: 'FITNESS_LOCKER',
+      x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 1,
+      defaultConfig: { },
+    }],
+  },
+
+  // ════════════════════════════════════════════════════════════════
+  // Splash — Pool Deck Board
+  // Aquatic deck board with lane status + water temp.
+  // Ported from scratch/design/fitness/07-splash.html.
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'fitness-splash',
+    name: 'Splash — Pool Deck Board',
+    description:
+      'Aquatic deck board — lane status (open / full / closed), pool hours, water temp, weather, lifeguard schedule. Aqua + cyan + chrome palette. Built for the pool wall.',
+    category: 'FITNESS',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#04222e',
+    zones: [{
+      name: 'Splash scene', widgetType: 'FITNESS_SPLASH',
+      x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 1,
+      defaultConfig: { },
+    }],
+  },
+
+  // ════════════════════════════════════════════════════════════════
+  // Telemetry — Data Bridge
+  // Spaceship-style live readout dashboard.
+  // Ported from scratch/design/fitness/08-telemetry.html.
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'fitness-telemetry',
+    name: 'Telemetry — Data Bridge',
+    description:
+      "Spaceship-style data dashboard — live HH:MM:SS clock with blinking cursor, leaderboard table, gauges, athlete check-in feed. Phosphor green + cyan on midnight black. The closest a gym gets to looking like a NASA control room.",
+    category: 'FITNESS',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#020608',
+    zones: [{
+      name: 'Telemetry scene', widgetType: 'FITNESS_TELEMETRY',
+      x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 1,
+      defaultConfig: { liveClock: true },
+    }],
+  },
+
+  // ════════════════════════════════════════════════════════════════
+  // Crag — Climbing Route Board
+  // Indoor climbing-gym route board.
+  // Ported from scratch/design/fitness/09-crag.html.
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'fitness-crag',
+    name: 'Crag — Climbing Route Board',
+    description:
+      'Indoor climbing-gym route board — 8-route table with grade, send count, top time, route setter. Stone + earth-tone palette. Built for the climbing wall lobby.',
+    category: 'FITNESS',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#1a140e',
+    zones: [{
+      name: 'Crag scene', widgetType: 'FITNESS_CRAG',
+      x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 1,
+      defaultConfig: { },
+    }],
+  },
+
+  // ════════════════════════════════════════════════════════════════
+  // Cornerman — Boxing Corner
+  // Boxing/MMA corner board — round timer + entrance music.
+  // Ported from scratch/design/fitness/10-cornerman.html.
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'fitness-cornerman',
+    name: 'Cornerman — Boxing Corner',
+    description:
+      "Boxing / MMA corner board — round timer, current workout block, entrance music vinyl card, opponent / VS card. Ring-rope textures and red-corner accents. For boxing gyms running circuit work.",
+    category: 'FITNESS',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#0a0608',
+    zones: [{
+      name: 'Cornerman scene', widgetType: 'FITNESS_CORNERMAN',
+      x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 1,
+      defaultConfig: { },
+    }],
+  },
+
+  // ════════════════════════════════════════════════════════════════
+  // Recess — Playful Block
+  // Block-letter playground vibe.
+  // Ported from scratch/design/fitness/11-recess.html.
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'fitness-recess',
+    name: 'Recess — Playful Block',
+    description:
+      'Block-letter playground board — colorful chunky type, kid schedule grid, recess countdown. Built for kids-fitness, after-school programs, or anywhere a playful palette beats the serious one.',
+    category: 'FITNESS',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#fff7d6',
+    zones: [{
+      name: 'Recess scene', widgetType: 'FITNESS_RECESS',
+      x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 1,
+      defaultConfig: { },
+    }],
+  },
+
+  // ════════════════════════════════════════════════════════════════
+  // Reformer — Boutique Pilates
+  // Boutique pilates studio board.
+  // Ported from scratch/design/fitness/12-reformer.html.
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'fitness-reformer',
+    name: 'Reformer — Boutique Pilates',
+    description:
+      'Boutique pilates studio board — class moves card, spring-tension legend, instructor spotlight, breathing cue ribbon. Sage + cream + brass palette. Built for reformer pilates studios.',
+    category: 'FITNESS',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#f4ede0',
+    zones: [{
+      name: 'Reformer scene', widgetType: 'FITNESS_REFORMER',
+      x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 1,
+      defaultConfig: { },
+    }],
+  },
+
+  // ════════════════════════════════════════════════════════════════
+  // Trailhead — Outdoor / Running Club
+  // Hiking-trail board — running club routes + conditions.
+  // Ported from scratch/design/fitness/13-trailhead.html.
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'fitness-trailhead',
+    name: 'Trailhead — Running Club',
+    description:
+      'Outdoor running-club / trail-running board — route cards with mile/elevation/condition, sunrise/sunset, weather alert strip. Forest green + earth-tone palette. Built for running clubs, outdoor outfitters, ultra training facilities.',
+    category: 'FITNESS',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#0e1a14',
+    zones: [{
+      name: 'Trailhead scene', widgetType: 'FITNESS_TRAILHEAD',
+      x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 1,
+      defaultConfig: { },
+    }],
+  },
+
+  // ════════════════════════════════════════════════════════════════
+  // Vault — CrossFit Box WOD Board
+  // CrossFit-style WOD whiteboard with leaderboard + foundation stats.
+  // Ported from scratch/design/fitness/14-vault.html.
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'fitness-vault',
+    name: 'Vault — CrossFit WOD Board',
+    description:
+      'CrossFit-box WOD whiteboard — chalk text on green-board panel, 8-row daily leaderboard, foundation strip with 5 active stats, day/cycle counter. Safety orange + warning yellow on concrete charcoal. The classic box look.',
+    category: 'FITNESS',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#3a3a3c',
+    zones: [{
+      name: 'Vault scene', widgetType: 'FITNESS_VAULT',
+      x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 1,
+      defaultConfig: { },
+    }],
+  },
+
+  // ════════════════════════════════════════════════════════════════
+  // Lobby — Premium Concierge
+  // Boutique-hotel vibe — recovery booking, member greeting.
+  // Ported from scratch/design/fitness/15-lobby.html.
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'fitness-lobby',
+    name: 'Lobby — Premium Concierge',
+    description:
+      'Premium concierge / spa lobby board — member greeting hero, recovery booking grid (saunas / massage / cryo), valet + coffee + news cards. Warm dark + brass + emerald palette. Built for boutique gyms with hospitality services.',
+    category: 'FITNESS',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#13100c',
+    zones: [{
+      name: 'Lobby scene', widgetType: 'FITNESS_LOBBY',
+      x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 1,
+      defaultConfig: { },
+    }],
+  },
 ];

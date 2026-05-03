@@ -65,8 +65,9 @@ the local HLS URL into the Custom HLS connector.
 
 ### Templates
 - 60+ K12 system presets (animated, themed, MS pack 8 + portrait, holiday lobby, etc.)
-- 7 fitness/GYM presets (cardio-hub, music-player, ad-banner, class-schedule, training-video, workout-timer, motivational-quote) + 6 fitness widgets
-- 8 RESTAURANT/QSR presets (Drive-Thru Menu, Counter-Order, Coffee Shop, Pizza, Sushi, Daily Specials, Loyalty, Wait Time) + 6 widgets (MenuBoard, ComboCarousel, WaitTime, LoyaltyTicker, SpecialsCallout, AllergyLegend)
+- 4 functional GYM presets (cardio-hub, weight-floor, lobby-welcome, streaming-hub) + 9 fitness widgets (live-tv, music-player, ad-banner, class-schedule, training-video, workout-timer, motivational-quote, app-library, stick-launcher)
+- **15 themed 4K GYM scene presets (NEW 2026-05-03)** — Stadium / Iron / Marquee / Channel-Guide / Discotheque / Locker / Splash / Telemetry / Crag / Cornerman / Recess / Reformer / Trailhead / Vault / Lobby. Each is a single-zone full-canvas scene ported from the approved scratch/design/fitness/01-15.html mockups via the HsStage transform:scale pattern. Editable text hotspots (every `data-field` attribute) wired through the auto-form generator in PropertiesPanel via DEFAULTS exports
+- 8 RESTAURANT/QSR presets (Drive-Thru Menu, Counter-Order, Coffee Shop, Pizza, Sushi, Daily Specials, Loyalty, Wait Time, **Live POS Menu** NEW) + 6 widgets (MenuBoard, ComboCarousel, WaitTime, LoyaltyTicker, SpecialsCallout, AllergyLegend)
 - 8 RETAIL presets (Storefront Welcome, Sale/BOGO, Lookbook, Wayfinding, Loyalty, Window Display portrait, End-Cap, Holiday) + 7 widgets (ProductGrid, PriceCallout, SaleCountdown, WayfindingMap, LoyaltyQR, LookbookCarousel, StorefrontHours)
 - 6 BAR presets (Tap List, Cocktail Menu, Game Day Hub, Live Event, Happy Hour, Trivia Night) + 6 widgets (TapList, CocktailMenu, HappyHourCountdown, GameDaySchedule, EventTonight, TriviaScoreboard)
 - ensureSystemPresets() seeds + vertical-tag migrates rows on every API boot — RESTAURANT/RETAIL/BAR vertical tags applied automatically

@@ -62,7 +62,25 @@ import { StreamingWidget } from './StreamingWidget';
 import { FitnessWorkoutTimerWidget } from './fitness/FitnessWorkoutTimerWidget';
 import { FitnessMotivationalQuoteWidget } from './fitness/FitnessMotivationalQuoteWidget';
 import { FitnessAppLibraryWidget } from './fitness/FitnessAppLibraryWidget';
+// 4K themed fitness scenes — full-canvas widgets ported from
+// scratch/design/fitness/01-15.html. One drop-zone fills the canvas;
+// every editable text node has a `data-field` attribute that the
+// auto-form generator in PropertiesPanel picks up via DEFAULTS exports.
 import { FitnessStadiumWidget } from './fitness/FitnessStadiumWidget';
+import { FitnessIronWidget } from './fitness/FitnessIronWidget';
+import { FitnessMarqueeWidget } from './fitness/FitnessMarqueeWidget';
+import { FitnessChannelGuideWidget } from './fitness/FitnessChannelGuideWidget';
+import { FitnessDiscothequeWidget } from './fitness/FitnessDiscothequeWidget';
+import { FitnessLockerWidget } from './fitness/FitnessLockerWidget';
+import { FitnessSplashWidget } from './fitness/FitnessSplashWidget';
+import { FitnessTelemetryWidget } from './fitness/FitnessTelemetryWidget';
+import { FitnessCragWidget } from './fitness/FitnessCragWidget';
+import { FitnessCornermanWidget } from './fitness/FitnessCornermanWidget';
+import { FitnessRecessWidget } from './fitness/FitnessRecessWidget';
+import { FitnessReformerWidget } from './fitness/FitnessReformerWidget';
+import { FitnessTrailheadWidget } from './fitness/FitnessTrailheadWidget';
+import { FitnessVaultWidget } from './fitness/FitnessVaultWidget';
+import { FitnessLobbyWidget } from './fitness/FitnessLobbyWidget';
 import { FitnessStickLauncherWidget } from './fitness/FitnessStickLauncherWidget';
 // ── Restaurant / QSR vertical (2026-05-02) — menu boards, combos,
 // loyalty, wait-time, specials. Same /restaurant subdir convention as
@@ -496,6 +514,20 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     // dropping presets (analogous to the K-12 MS_* and HS_* themed scenes).
     // Editable hotspots via THEMED_WIDGET_FIELDS / DEFAULTS export.
     case 'FITNESS_STADIUM':               return <FitnessStadiumWidget config={cfg} />;
+    case 'FITNESS_IRON':                  return <FitnessIronWidget config={cfg} />;
+    case 'FITNESS_MARQUEE':               return <FitnessMarqueeWidget config={cfg} />;
+    case 'FITNESS_CHANNEL_GUIDE':         return <FitnessChannelGuideWidget config={cfg} />;
+    case 'FITNESS_DISCOTHEQUE':           return <FitnessDiscothequeWidget config={cfg} />;
+    case 'FITNESS_LOCKER':                return <FitnessLockerWidget config={cfg} />;
+    case 'FITNESS_SPLASH':                return <FitnessSplashWidget config={cfg} />;
+    case 'FITNESS_TELEMETRY':             return <FitnessTelemetryWidget config={cfg} />;
+    case 'FITNESS_CRAG':                  return <FitnessCragWidget config={cfg} />;
+    case 'FITNESS_CORNERMAN':             return <FitnessCornermanWidget config={cfg} />;
+    case 'FITNESS_RECESS':                return <FitnessRecessWidget config={cfg} />;
+    case 'FITNESS_REFORMER':              return <FitnessReformerWidget config={cfg} />;
+    case 'FITNESS_TRAILHEAD':             return <FitnessTrailheadWidget config={cfg} />;
+    case 'FITNESS_VAULT':                 return <FitnessVaultWidget config={cfg} />;
+    case 'FITNESS_LOBBY':                 return <FitnessLobbyWidget config={cfg} />;
     // ── Restaurant / QSR vertical widgets ──
     case 'RESTAURANT_MENU_BOARD':         return <MenuBoardWidget config={cfg} live={live} />;
     case 'RESTAURANT_COMBO_CAROUSEL':     return <ComboCarouselWidget config={cfg} live={live} />;

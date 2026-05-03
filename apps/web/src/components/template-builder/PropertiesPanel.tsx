@@ -42,7 +42,26 @@ import { DEFAULTS as MS_PAPER_PORTRAIT_DEFAULTS } from '@/components/widgets/ms/
 import { DEFAULTS as MS_PLAYLIST_PORTRAIT_DEFAULTS } from '@/components/widgets/ms/MsPlaylistPortraitWidget';
 import { DEFAULTS as MS_STUDIO_PORTRAIT_DEFAULTS } from '@/components/widgets/ms/MsStudioPortraitWidget';
 // Themed fitness scene DEFAULTS — same auto-form pattern as MS pack.
+// 14 themed scenes ported from scratch/design/fitness/01-15.html (one
+// drop-zone per template). The auto-form generator at the default-case
+// in `fields` reads these dot-keyed records and emits one editable
+// field per key, grouped by dot-prefix. Adding a new fitness scene =
+// new file + new import + new MS_DEFAULTS_BY_TYPE entry below.
 import { DEFAULTS as FITNESS_STADIUM_DEFAULTS } from '@/components/widgets/fitness/FitnessStadiumWidget';
+import { DEFAULTS as FITNESS_IRON_DEFAULTS } from '@/components/widgets/fitness/FitnessIronWidget';
+import { DEFAULTS as FITNESS_MARQUEE_DEFAULTS } from '@/components/widgets/fitness/FitnessMarqueeWidget';
+import { DEFAULTS as FITNESS_CHANNEL_GUIDE_DEFAULTS } from '@/components/widgets/fitness/FitnessChannelGuideWidget';
+import { DEFAULTS as FITNESS_DISCOTHEQUE_DEFAULTS } from '@/components/widgets/fitness/FitnessDiscothequeWidget';
+import { DEFAULTS as FITNESS_LOCKER_DEFAULTS } from '@/components/widgets/fitness/FitnessLockerWidget';
+import { DEFAULTS as FITNESS_SPLASH_DEFAULTS } from '@/components/widgets/fitness/FitnessSplashWidget';
+import { DEFAULTS as FITNESS_TELEMETRY_DEFAULTS } from '@/components/widgets/fitness/FitnessTelemetryWidget';
+import { DEFAULTS as FITNESS_CRAG_DEFAULTS } from '@/components/widgets/fitness/FitnessCragWidget';
+import { DEFAULTS as FITNESS_CORNERMAN_DEFAULTS } from '@/components/widgets/fitness/FitnessCornermanWidget';
+import { DEFAULTS as FITNESS_RECESS_DEFAULTS } from '@/components/widgets/fitness/FitnessRecessWidget';
+import { DEFAULTS as FITNESS_REFORMER_DEFAULTS } from '@/components/widgets/fitness/FitnessReformerWidget';
+import { DEFAULTS as FITNESS_TRAILHEAD_DEFAULTS } from '@/components/widgets/fitness/FitnessTrailheadWidget';
+import { DEFAULTS as FITNESS_VAULT_DEFAULTS } from '@/components/widgets/fitness/FitnessVaultWidget';
+import { DEFAULTS as FITNESS_LOBBY_DEFAULTS } from '@/components/widgets/fitness/FitnessLobbyWidget';
 
 const MS_DEFAULTS_BY_TYPE: Record<string, Record<string, string>> = {
   MS_ARCADE: MS_ARCADE_DEFAULTS as any,
@@ -62,8 +81,23 @@ const MS_DEFAULTS_BY_TYPE: Record<string, Record<string, string>> = {
   MS_PLAYLIST_PORTRAIT: MS_PLAYLIST_PORTRAIT_DEFAULTS as any,
   MS_STUDIO_PORTRAIT: MS_STUDIO_PORTRAIT_DEFAULTS as any,
   // Fitness 4K themed scenes — same dot-keyed auto-form generator
-  // handles the editor for these.
-  FITNESS_STADIUM: FITNESS_STADIUM_DEFAULTS as any,
+  // handles the editor for these. All 15 mockups from
+  // scratch/design/fitness/ ship here as drop-in widgets.
+  FITNESS_STADIUM:        FITNESS_STADIUM_DEFAULTS as any,
+  FITNESS_IRON:           FITNESS_IRON_DEFAULTS as any,
+  FITNESS_MARQUEE:        FITNESS_MARQUEE_DEFAULTS as any,
+  FITNESS_CHANNEL_GUIDE:  FITNESS_CHANNEL_GUIDE_DEFAULTS as any,
+  FITNESS_DISCOTHEQUE:    FITNESS_DISCOTHEQUE_DEFAULTS as any,
+  FITNESS_LOCKER:         FITNESS_LOCKER_DEFAULTS as any,
+  FITNESS_SPLASH:         FITNESS_SPLASH_DEFAULTS as any,
+  FITNESS_TELEMETRY:      FITNESS_TELEMETRY_DEFAULTS as any,
+  FITNESS_CRAG:           FITNESS_CRAG_DEFAULTS as any,
+  FITNESS_CORNERMAN:      FITNESS_CORNERMAN_DEFAULTS as any,
+  FITNESS_RECESS:         FITNESS_RECESS_DEFAULTS as any,
+  FITNESS_REFORMER:       FITNESS_REFORMER_DEFAULTS as any,
+  FITNESS_TRAILHEAD:      FITNESS_TRAILHEAD_DEFAULTS as any,
+  FITNESS_VAULT:          FITNESS_VAULT_DEFAULTS as any,
+  FITNESS_LOBBY:          FITNESS_LOBBY_DEFAULTS as any,
 };
 
 type BellPeriod = { label: string; start: string; end?: string };

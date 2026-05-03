@@ -98,10 +98,23 @@ export const WIDGET_GROUPS: ReadonlyArray<{
     types: [
       // 4K themed scene presets — full-canvas widgets that drop in as a
       // single zone (same shape as the K-12 MS_* / HS_* themed scenes).
-      // Add the rest of the fitness pack (iron / marquee / channel-guide
-      // / discotheque / locker / splash / telemetry / crag / cornerman /
-      // recess / reformer / trailhead / vault / lobby) here as each lands.
-      { type: 'FITNESS_STADIUM',            label: 'Stadium scene',       desc: 'Full 4K cardio-floor scene — TV pane, now-playing, stats, ticker', icon: Tv },
+      // 14 of 15 mockups from scratch/design/fitness/ shipped — Lobby
+      // is the last one and follows the same drop-in pattern.
+      { type: 'FITNESS_STADIUM',            label: 'Stadium — broadcast',  desc: '4K Jumbotron cardio scene — TV pane, scorebug, music + promo, stats', icon: Tv },
+      { type: 'FITNESS_IRON',               label: 'Iron — weight floor',  desc: 'Brutalist concrete + caution-tape weight-floor section card', icon: Dumbbell },
+      { type: 'FITNESS_MARQUEE',            label: 'Marquee — events',     desc: 'Vegas marquee bulb-border events board — neon glow + ticker', icon: Megaphone },
+      { type: 'FITNESS_CHANNEL_GUIDE',      label: 'Channel guide',        desc: 'Cable-TV channel guide grid + now-watching preview', icon: Tv },
+      { type: 'FITNESS_DISCOTHEQUE',        label: 'Discotheque — disco',  desc: 'Strobe + disco-ball energy — class promo + BPM + lasers', icon: Music },
+      { type: 'FITNESS_LOCKER',             label: 'Locker — room board',  desc: 'Locker-room corkboard — shift schedule, polaroids, name tags', icon: AppWindow },
+      { type: 'FITNESS_SPLASH',             label: 'Splash — pool deck',   desc: 'Aquatic deck board — lane status, hours, weather, water temp', icon: MonitorPlay },
+      { type: 'FITNESS_TELEMETRY',          label: 'Telemetry — data',     desc: 'Data-dashboard bridge — gauges, leaderboard, live readouts', icon: Joystick },
+      { type: 'FITNESS_CRAG',               label: 'Crag — climbing',      desc: 'Climbing wall route map — grades, sends, current setter', icon: Quote },
+      { type: 'FITNESS_CORNERMAN',          label: 'Cornerman — boxing',   desc: 'Boxing-corner round timer + workout block + entrance music', icon: Dumbbell },
+      { type: 'FITNESS_RECESS',             label: 'Recess — playful',     desc: 'Block-letter playground vibe — class block, kid schedule', icon: Music },
+      { type: 'FITNESS_REFORMER',           label: 'Reformer — pilates',   desc: 'Boutique pilates studio — class moves, instructor, springs', icon: Quote },
+      { type: 'FITNESS_TRAILHEAD',          label: 'Trailhead — outdoor',  desc: 'Hiking-trail board — running club routes + conditions', icon: MonitorPlay },
+      { type: 'FITNESS_VAULT',              label: 'Vault — CrossFit WOD', desc: 'CrossFit-box WOD whiteboard — leaderboard + foundation stats', icon: Dumbbell },
+      { type: 'FITNESS_LOBBY',              label: 'Lobby — concierge',    desc: 'Premium concierge / spa lobby — recovery booking, member greeting', icon: AppWindow },
       { type: 'FITNESS_CLASS_SCHEDULE',     label: 'Class schedule',      desc: "Today's gym classes — instructor, time, room", icon: CalendarDays },
       { type: 'FITNESS_LIVE_TV',            label: 'Live TV',             desc: 'TV channel pane (ESPN / FastChannel / streaming)', icon: Tv },
       { type: 'FITNESS_MUSIC_PLAYER',       label: 'Music player',        desc: 'Now-playing — track, artist, equalizer', icon: Music },
