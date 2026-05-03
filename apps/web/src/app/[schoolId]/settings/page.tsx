@@ -210,6 +210,43 @@ export default function SettingsPage() {
             </div>
             <span className="text-xs text-emerald-600 font-bold">View plans →</span>
           </Link>
+
+          {/* Sprint 8d (2026-05-03) — POS catalog sync + ad-network
+              monetization. POS hidden for K12 (no menu boards in
+              schools); monetize allowed for everyone but the page
+              itself filters networks per K12-forbidden flag so K12
+              tenants only see house-only. */}
+          <Link
+            href={`${pathname}/pos`}
+            className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between mt-3 hover:border-amber-300 hover:shadow-md transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center">
+                <MonitorPlay className="w-4 h-4 text-amber-600" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-slate-800">POS catalog sync</div>
+                <div className="text-[11px] text-slate-500">Connect Square / Toast / Clover / Shopify / Stripe / MINDBODY — menu boards auto-update from your live catalog.</div>
+              </div>
+            </div>
+            <span className="text-xs text-amber-600 font-bold">Connect →</span>
+          </Link>
+
+          <Link
+            href={`${pathname}/monetize`}
+            className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between mt-3 hover:border-emerald-300 hover:shadow-md transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center">
+                <Building2 className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-slate-800">Monetize your screens</div>
+                <div className="text-[11px] text-slate-500">Programmatic DOOH — Hivestack, Vistar, Place Exchange. Earn per impression, full content controls.</div>
+              </div>
+            </div>
+            <span className="text-xs text-emerald-600 font-bold">Earn →</span>
+          </Link>
         </RoleGate>
 
         {/* USB Sneakernet Ingest (Sprint 7B) — admins enable + rotate HMAC key + see ingest events */}
