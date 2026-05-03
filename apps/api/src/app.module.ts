@@ -45,6 +45,8 @@ import { PosModule } from './pos/pos.module';
 import { AdsModule } from './ads/ads.module';
 // 2026-05-03 — Sample-data test harness for integration smoke tests.
 import { SampleDataModule } from './sample-data/sample-data.module';
+// 2026-05-03 — Canva / Slides / PowerPoint design-import pipeline.
+import { ImportsModule } from './imports/imports.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_FILTER, APP_GUARD, APP_PIPE, APP_INTERCEPTOR } from '@nestjs/core';
 import { SanitizationPipe } from './security/sanitization.pipe';
@@ -83,6 +85,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     PosModule,
     AdsModule,
     SampleDataModule,
+    ImportsModule,
     ThrottlerModule.forRoot([{
       ttl: 60000,
       limit: 100,

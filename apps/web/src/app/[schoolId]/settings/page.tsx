@@ -242,6 +242,26 @@ export default function SettingsPage() {
             <span className="text-xs text-emerald-600 font-bold">Earn →</span>
           </Link>
 
+          {/* 2026-05-03 — Design imports (Canva / Slides / PowerPoint /
+              Figma / Adobe Express). Stage 1 ships PDF + image upload
+              today; Canva Connect OAuth lights up here once the
+              partnership lands. See docs/CANVA_INTEGRATION.md. */}
+          <Link
+            href={`${pathname}/imports`}
+            className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between mt-3 hover:border-emerald-300 hover:shadow-md transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center">
+                <MonitorPlay className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-slate-800">Design imports</div>
+                <div className="text-[11px] text-slate-500">Drop a PDF / PPTX / image from Canva, Google Slides, PowerPoint, Figma, or Adobe Express. We turn it into a screen-ready playlist.</div>
+              </div>
+            </div>
+            <span className="text-xs text-emerald-600 font-bold">Import →</span>
+          </Link>
+
           {/* 2026-05-03 — One-click integration smoke-test harness.
               Loads sample data into streaming / POS / ads connections
               so the operator can demo every feature without registering

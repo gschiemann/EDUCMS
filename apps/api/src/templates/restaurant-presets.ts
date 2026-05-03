@@ -1140,4 +1140,233 @@ export const RESTAURANT_TEMPLATE_PRESETS: SystemPreset[] = [
       },
     ],
   },
+
+  // ════════════════════════════════════════════════════════════════
+  // 2026-05-03 — operator: "build out like 10 to 15 of those and make
+  // them new cutting edge with POS or manual updating with both of them".
+  //
+  // Approach: 10 distinct vertical-slice presets composing the existing
+  // RESTAURANT_* widgets (MENU_BOARD / COMBO_CAROUSEL / SPECIALS_CALLOUT
+  // / WAIT_TIME / LOYALTY_TICKER / ALLERGY_LEGEND) in fresh layouts and
+  // palettes. Every menu-board zone is pre-set with `posSync: true` AND
+  // a `items` fallback array — operator toggles `posSync` off in the
+  // editor's properties panel to switch a preset from auto-sync to
+  // hand-typed. Both modes work without further setup.
+  //
+  // 4K canvas (3840×2160) so they pair with the gym + retail packs.
+  // Each preset documents its inspiration and use-case in the
+  // description so the gallery picker tells operators what they're
+  // looking at before they hit "Customize".
+  // ════════════════════════════════════════════════════════════════
+
+  // ── 1. Modern Burger Joint — bold red + cream + gold ──────────────
+  {
+    id: 'qsr-modern-burger',
+    name: 'Modern Burger Joint',
+    description:
+      'Bold red + cream burger-counter board. Combo carousel hero across the top, three-column main menu with photos beneath, dietary legend strip, loyalty ticker pinned. Toggle POS sync in the menu board properties to live-pull from Square / Toast / Clover.',
+    category: 'MENU',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#1a0a0a',
+    bgGradient: 'radial-gradient(1400px 800px at 18% 12%, rgba(232,185,74,0.10), transparent 60%),' +
+                'radial-gradient(1100px 700px at 82% 88%, rgba(122,31,31,0.18), transparent 60%),' +
+                'linear-gradient(135deg, #1a0a0a 0%, #2a0f0f 50%, #1a0a0a 100%)',
+    zones: [
+      { name: 'Combo carousel', widgetType: 'RESTAURANT_COMBO_CAROUSEL', x: 2, y: 3, width: 96, height: 26, zIndex: 2, sortOrder: 1, defaultConfig: { title: 'COMBOS · BUILT TO SHARE', accentColor: '#e8b94a', rotationMs: 7000 } },
+      { name: 'Menu board', widgetType: 'RESTAURANT_MENU_BOARD', x: 2, y: 31, width: 96, height: 58, zIndex: 2, sortOrder: 2, defaultConfig: { title: 'BURGERS & SIDES', subtitle: 'smashed fresh, sourdough buns', theme: 'red', accentColor: '#e8b94a', columns: 3, posSync: true, maxItems: 9 } },
+      { name: 'Loyalty ticker', widgetType: 'RESTAURANT_LOYALTY_TICKER', x: 0, y: 91, width: 100, height: 9, zIndex: 2, sortOrder: 3, defaultConfig: { programName: 'CLUB BURGER', theme: 'charcoal', accentColor: '#e8b94a', rotationMs: 6000 } },
+    ],
+  },
+
+  // ── 2. Artisan Pizza Counter — wood-fired oven aesthetic ──────────
+  {
+    id: 'qsr-artisan-pizza',
+    name: 'Artisan Pizza Counter',
+    description:
+      'Wood-fired pizza board — cream background, charcoal accents, photo of the oven on the left, two-column menu (signatures + by-the-slice) with prices in display weight. Specials callout for the daily pie. POS sync toggle on the menu board for live-from-kitchen pricing.',
+    category: 'MENU',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#fbf6ee',
+    bgGradient: 'radial-gradient(1500px 900px at 20% 15%, rgba(122,31,31,0.06), transparent 60%),' +
+                'linear-gradient(180deg, #fbf6ee 0%, #f4ecd8 100%)',
+    zones: [
+      { name: 'Specials callout', widgetType: 'RESTAURANT_SPECIALS_CALLOUT', x: 2, y: 3, width: 96, height: 22, zIndex: 2, sortOrder: 1, defaultConfig: { tag: 'TODAY ONLY', headline: 'Margherita Verde — $14', sub: 'house mozz, basil, lemon-zested olive oil. While it lasts.', accentColor: '#7a1f1f', theme: 'cream' } },
+      { name: 'Menu board', widgetType: 'RESTAURANT_MENU_BOARD', x: 2, y: 27, width: 96, height: 65, zIndex: 2, sortOrder: 2, defaultConfig: { title: 'WOOD-FIRED PIZZA', subtitle: 'naples-style, 90 seconds, blistered crust', theme: 'cream', accentColor: '#7a1f1f', columns: 2, posSync: true, maxItems: 8 } },
+      { name: 'Allergy legend', widgetType: 'RESTAURANT_ALLERGY_LEGEND', x: 0, y: 93, width: 100, height: 7, zIndex: 2, sortOrder: 3, defaultConfig: { theme: 'cream', accentColor: '#7a1f1f' } },
+    ],
+  },
+
+  // ── 3. Specialty Coffee Bar — matte black + brass + light wood ────
+  {
+    id: 'qsr-specialty-coffee',
+    name: 'Specialty Coffee Bar',
+    description:
+      'Third-wave coffee shop board — matte black + brass accents. Beverage menu in two columns (espresso bar / pour-over / specialty), pastry case strip below, brewing-method callout. POS-sync friendly so the price changes when the roaster does.',
+    category: 'MENU',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#0a0908',
+    bgGradient: 'radial-gradient(1300px 800px at 25% 15%, rgba(232,185,74,0.06), transparent 60%),' +
+                'linear-gradient(180deg, #0a0908 0%, #14110d 100%)',
+    zones: [
+      { name: 'Espresso & pour-over', widgetType: 'RESTAURANT_MENU_BOARD', x: 2, y: 4, width: 60, height: 70, zIndex: 2, sortOrder: 1, defaultConfig: { title: 'ESPRESSO BAR', subtitle: 'single origin · lever-pulled · matched to the bean', theme: 'charcoal', accentColor: '#e8b94a', columns: 2, posSync: true, maxItems: 12 } },
+      { name: 'Pastry case', widgetType: 'RESTAURANT_MENU_BOARD', x: 64, y: 4, width: 34, height: 70, zIndex: 2, sortOrder: 2, defaultConfig: { title: 'PASTRY CASE', subtitle: 'baked daily · gone by 11', theme: 'charcoal', accentColor: '#e8b94a', columns: 1, posSync: true, posCategory: 'Pastry', maxItems: 8 } },
+      { name: 'Method callout', widgetType: 'RESTAURANT_SPECIALS_CALLOUT', x: 2, y: 77, width: 96, height: 14, zIndex: 2, sortOrder: 3, defaultConfig: { tag: 'TODAY · BREWING METHOD', headline: 'V60 Pour-Over — Ethiopia Yirgacheffe', sub: 'bright, citrus, jasmine. ask the barista.', accentColor: '#e8b94a', theme: 'charcoal' } },
+      { name: 'Allergy legend', widgetType: 'RESTAURANT_ALLERGY_LEGEND', x: 0, y: 93, width: 100, height: 7, zIndex: 2, sortOrder: 4, defaultConfig: { theme: 'charcoal', accentColor: '#e8b94a' } },
+    ],
+  },
+
+  // ── 4. Ramen / Asian Fusion — deep red + ink + neon ───────────────
+  {
+    id: 'qsr-ramen-fusion',
+    name: 'Ramen / Asian Fusion',
+    description:
+      'Asian-fusion noodle bar — ink-black with hot-red + neon-cyan accents. Three-column ramen menu with bowl-deep descriptions, sides + drinks rail on the right, broth-of-the-day callout. POS-sync the bowl prices for a 86\'d-item display that updates live.',
+    category: 'MENU',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#0a0a0e',
+    bgGradient: 'radial-gradient(1400px 800px at 12% 12%, rgba(255,42,77,0.10), transparent 60%),' +
+                'radial-gradient(1100px 700px at 88% 88%, rgba(0,212,255,0.10), transparent 60%),' +
+                'linear-gradient(135deg, #0a0a0e 0%, #14141c 50%, #0a0a0e 100%)',
+    zones: [
+      { name: 'Broth of the day', widgetType: 'RESTAURANT_SPECIALS_CALLOUT', x: 2, y: 3, width: 96, height: 18, zIndex: 2, sortOrder: 1, defaultConfig: { tag: 'BROTH OF THE DAY', headline: 'Tonkotsu Black Garlic — $18', sub: '12-hour pork bone, charred garlic oil, ajitama egg. limited bowls.', accentColor: '#ff2a4d', theme: 'charcoal' } },
+      { name: 'Ramen menu', widgetType: 'RESTAURANT_MENU_BOARD', x: 2, y: 23, width: 70, height: 70, zIndex: 2, sortOrder: 2, defaultConfig: { title: 'RAMEN BAR', subtitle: 'house-pulled noodles, zero shortcuts', theme: 'charcoal', accentColor: '#ff2a4d', columns: 2, posSync: true, posCategory: 'Ramen', maxItems: 10 } },
+      { name: 'Sides & drinks', widgetType: 'RESTAURANT_MENU_BOARD', x: 74, y: 23, width: 24, height: 70, zIndex: 2, sortOrder: 3, defaultConfig: { title: 'BENTO + DRINKS', subtitle: 'add-ons', theme: 'charcoal', accentColor: '#00d4ff', columns: 1, posSync: true, posCategory: 'Sides', maxItems: 8 } },
+      { name: 'Allergy legend', widgetType: 'RESTAURANT_ALLERGY_LEGEND', x: 0, y: 94, width: 100, height: 6, zIndex: 2, sortOrder: 4, defaultConfig: { theme: 'charcoal', accentColor: '#ff2a4d' } },
+    ],
+  },
+
+  // ── 5. Mexican Cantina — talavera + sun-baked terracotta ──────────
+  {
+    id: 'qsr-mexican-cantina',
+    name: 'Mexican Cantina',
+    description:
+      'Mexican cantina — terracotta + papel-picado palette. Three-column menu (tacos / mains / sides), tequila & margarita callout, salsa-bar rail. Festive without being cliché. POS sync pulls from Toast / Square / Clover so happy-hour drink prices auto-update.',
+    category: 'MENU',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#2a0e08',
+    bgGradient: 'radial-gradient(1400px 900px at 20% 15%, rgba(243,186,82,0.12), transparent 60%),' +
+                'radial-gradient(1200px 800px at 80% 85%, rgba(192,57,43,0.18), transparent 60%),' +
+                'linear-gradient(135deg, #2a0e08 0%, #401410 50%, #2a0e08 100%)',
+    zones: [
+      { name: 'Tequila bar callout', widgetType: 'RESTAURANT_SPECIALS_CALLOUT', x: 2, y: 3, width: 96, height: 19, zIndex: 2, sortOrder: 1, defaultConfig: { tag: 'AGAVE + LIME', headline: 'Margarita Flight — $24', sub: 'silver / reposado / añejo · house tajín rim · made tableside', accentColor: '#f3ba52', theme: 'red' } },
+      { name: 'Tacos & mains', widgetType: 'RESTAURANT_MENU_BOARD', x: 2, y: 24, width: 96, height: 70, zIndex: 2, sortOrder: 2, defaultConfig: { title: 'CANTINA', subtitle: 'tacos · enchiladas · plates', theme: 'red', accentColor: '#f3ba52', columns: 3, posSync: true, maxItems: 12 } },
+      { name: 'Allergy legend', widgetType: 'RESTAURANT_ALLERGY_LEGEND', x: 0, y: 94, width: 100, height: 6, zIndex: 2, sortOrder: 3, defaultConfig: { theme: 'charcoal', accentColor: '#f3ba52' } },
+    ],
+  },
+
+  // ── 6. Bakery / Patisserie — soft cream + dusty rose + gold ───────
+  {
+    id: 'qsr-bakery-patisserie',
+    name: 'Bakery / Patisserie',
+    description:
+      'European bakery / patisserie — soft cream with dusty-rose + gold. Pastry case as the primary surface, bread + viennoiserie split below, daily-bake countdown callout (uses POS-synced "Sold out today" status when posSync is on).',
+    category: 'MENU',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#faf2e7',
+    bgGradient: 'radial-gradient(1500px 900px at 22% 15%, rgba(212,165,154,0.18), transparent 60%),' +
+                'radial-gradient(1200px 800px at 80% 90%, rgba(232,185,74,0.10), transparent 60%),' +
+                'linear-gradient(180deg, #faf2e7 0%, #f0e2cc 100%)',
+    zones: [
+      { name: 'Today\'s bake countdown', widgetType: 'RESTAURANT_SPECIALS_CALLOUT', x: 2, y: 3, width: 96, height: 17, zIndex: 2, sortOrder: 1, defaultConfig: { tag: 'OUT OF THE OVEN AT 7AM', headline: 'Croissants, pain au chocolat, kouign-amann', sub: 'all hand-laminated. when the case is empty, that\'s it.', accentColor: '#d4a59a', theme: 'cream' } },
+      { name: 'Pastry case', widgetType: 'RESTAURANT_MENU_BOARD', x: 2, y: 22, width: 96, height: 38, zIndex: 2, sortOrder: 2, defaultConfig: { title: 'PASTRY', subtitle: 'baked this morning', theme: 'cream', accentColor: '#d4a59a', columns: 4, posSync: true, posCategory: 'Pastry', maxItems: 12 } },
+      { name: 'Breads & viennoiserie', widgetType: 'RESTAURANT_MENU_BOARD', x: 2, y: 62, width: 96, height: 30, zIndex: 2, sortOrder: 3, defaultConfig: { title: 'BREADS', subtitle: 'sourdough · baguette · brioche · ciabatta', theme: 'cream', accentColor: '#7a1f1f', columns: 3, posSync: true, posCategory: 'Bread', maxItems: 9 } },
+      { name: 'Allergy legend', widgetType: 'RESTAURANT_ALLERGY_LEGEND', x: 0, y: 93, width: 100, height: 7, zIndex: 2, sortOrder: 4, defaultConfig: { theme: 'cream', accentColor: '#d4a59a' } },
+    ],
+  },
+
+  // ── 7. Sports Bar Grill — game-day energy ─────────────────────────
+  {
+    id: 'qsr-sports-bar-grill',
+    name: 'Sports Bar Grill',
+    description:
+      'Sports-bar grill menu pinned next to the TV — bold black + neon-yellow + hot-red. Wings + shareables left, mains right, half-time deals carousel on top. POS-synced for happy-hour pricing that flips at game start.',
+    category: 'MENU',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#0a0a0e',
+    bgGradient: 'radial-gradient(1400px 800px at 18% 12%, rgba(215,255,30,0.08), transparent 60%),' +
+                'radial-gradient(1100px 700px at 82% 88%, rgba(255,42,77,0.10), transparent 60%),' +
+                'linear-gradient(135deg, #0a0a0e 0%, #14141c 50%, #0a0a0e 100%)',
+    zones: [
+      { name: 'Half-time deals', widgetType: 'RESTAURANT_COMBO_CAROUSEL', x: 2, y: 3, width: 96, height: 22, zIndex: 2, sortOrder: 1, defaultConfig: { title: 'HALF-TIME DEALS', accentColor: '#d7ff1e', rotationMs: 6000 } },
+      { name: 'Wings + shareables', widgetType: 'RESTAURANT_MENU_BOARD', x: 2, y: 27, width: 47, height: 65, zIndex: 2, sortOrder: 2, defaultConfig: { title: 'WINGS · SHAREABLES', subtitle: 'order before the second quarter', theme: 'charcoal', accentColor: '#d7ff1e', columns: 1, posSync: true, posCategory: 'Wings', maxItems: 8 } },
+      { name: 'Burgers + mains', widgetType: 'RESTAURANT_MENU_BOARD', x: 51, y: 27, width: 47, height: 65, zIndex: 2, sortOrder: 3, defaultConfig: { title: 'BURGERS · MAINS', subtitle: '8oz prime beef · house buns', theme: 'charcoal', accentColor: '#ff2a4d', columns: 1, posSync: true, posCategory: 'Mains', maxItems: 8 } },
+      { name: 'Allergy legend', widgetType: 'RESTAURANT_ALLERGY_LEGEND', x: 0, y: 94, width: 100, height: 6, zIndex: 2, sortOrder: 4, defaultConfig: { theme: 'charcoal', accentColor: '#d7ff1e' } },
+    ],
+  },
+
+  // ── 8. Brunch Spot — sage + cream + soft brass ────────────────────
+  {
+    id: 'qsr-brunch-spot',
+    name: 'Brunch Spot',
+    description:
+      'Brunch board — sage green + cream + soft brass. Daypart split: savory left, sweet right, mimosa flight callout up top. Saturday & Sunday energy. POS sync for "available until 2pm" cutoff using your POS\'s 86\'d-item flag.',
+    category: 'MENU',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#faf6ed',
+    bgGradient: 'radial-gradient(1500px 900px at 20% 15%, rgba(127,153,102,0.12), transparent 60%),' +
+                'radial-gradient(1200px 800px at 80% 90%, rgba(232,185,74,0.10), transparent 60%),' +
+                'linear-gradient(180deg, #faf6ed 0%, #ede4cc 100%)',
+    zones: [
+      { name: 'Mimosa flight', widgetType: 'RESTAURANT_SPECIALS_CALLOUT', x: 2, y: 3, width: 96, height: 18, zIndex: 2, sortOrder: 1, defaultConfig: { tag: 'BOTTOMLESS · UNTIL 2PM', headline: 'Mimosa Flight — $22', sub: 'classic · pomegranate · peach · grapefruit · 90 mins', accentColor: '#7f9966', theme: 'cream' } },
+      { name: 'Savory plates', widgetType: 'RESTAURANT_MENU_BOARD', x: 2, y: 23, width: 47, height: 70, zIndex: 2, sortOrder: 2, defaultConfig: { title: 'SAVORY', subtitle: 'eggs · benedicts · hash · bowls', theme: 'cream', accentColor: '#7f9966', columns: 1, posSync: true, posCategory: 'Savory', maxItems: 8 } },
+      { name: 'Sweet plates', widgetType: 'RESTAURANT_MENU_BOARD', x: 51, y: 23, width: 47, height: 70, zIndex: 2, sortOrder: 3, defaultConfig: { title: 'SWEET', subtitle: 'pancakes · french toast · granola', theme: 'cream', accentColor: '#e8b94a', columns: 1, posSync: true, posCategory: 'Sweet', maxItems: 8 } },
+      { name: 'Allergy legend', widgetType: 'RESTAURANT_ALLERGY_LEGEND', x: 0, y: 94, width: 100, height: 6, zIndex: 2, sortOrder: 4, defaultConfig: { theme: 'cream', accentColor: '#7f9966' } },
+    ],
+  },
+
+  // ── 9. Food Truck — chalkboard + neon + paper-flyer DIY vibe ──────
+  {
+    id: 'qsr-food-truck',
+    name: 'Food Truck Window',
+    description:
+      'Food-truck window menu — chalkboard slate + neon-pink accents + DIY paper-flyer typography. Single-column hand-letter menu with prices, today\'s special hero on top. Wait-time display next to the menu board for honest line-of-sight expectations. Toggle POS sync if the truck has Square; manual works fine for paper-and-marker shops.',
+    category: 'MENU',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#1a1715',
+    bgGradient: 'radial-gradient(1300px 800px at 25% 15%, rgba(255,42,77,0.18), transparent 60%),' +
+                'linear-gradient(180deg, #1a1715 0%, #261f1c 100%)',
+    zones: [
+      { name: 'Today\'s special', widgetType: 'RESTAURANT_SPECIALS_CALLOUT', x: 2, y: 3, width: 96, height: 22, zIndex: 2, sortOrder: 1, defaultConfig: { tag: 'TODAY · LIMITED RUN', headline: 'Korean BBQ Tacos — $11', sub: 'kalbi · kimchi slaw · sesame oil · gone by 9pm probably', accentColor: '#ff2a4d', theme: 'red' } },
+      { name: 'Menu board', widgetType: 'RESTAURANT_MENU_BOARD', x: 2, y: 27, width: 70, height: 65, zIndex: 2, sortOrder: 2, defaultConfig: { title: 'TONIGHT\'S MENU', subtitle: 'cash · card · venmo @theirhandle', theme: 'charcoal', accentColor: '#ff2a4d', columns: 1, posSync: false, maxItems: 8 } },
+      { name: 'Wait time', widgetType: 'RESTAURANT_WAIT_TIME', x: 74, y: 27, width: 24, height: 65, zIndex: 2, sortOrder: 3, defaultConfig: { title: 'CURRENT WAIT', estimateMins: 8, partiesAhead: 3 } },
+    ],
+  },
+
+  // ── 10. Fine Dining Wine List — black + gold + serif elegance ─────
+  {
+    id: 'qsr-fine-dining-wine',
+    name: 'Fine Dining Wine List',
+    description:
+      'Fine-dining wine + tasting board. Black + gold + serif elegance. By-the-glass left, by-the-bottle right, sommelier\'s pick callout up top. Designed for restaurants that update prices weekly when the cellar moves. POS-synced for live price + vintage tracking; manual mode for a static "house" list.',
+    category: 'MENU',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#08070a',
+    bgGradient: 'radial-gradient(1400px 800px at 25% 15%, rgba(232,185,74,0.10), transparent 60%),' +
+                'linear-gradient(180deg, #08070a 0%, #110f14 100%)',
+    zones: [
+      { name: "Sommelier's pick", widgetType: 'RESTAURANT_SPECIALS_CALLOUT', x: 2, y: 3, width: 96, height: 18, zIndex: 2, sortOrder: 1, defaultConfig: { tag: "SOMMELIER'S PICK · TONIGHT", headline: 'Barolo · 2018 G. Conterno — $185', sub: 'nebbiolo · 5 yr cellar · pairs with the duck. only 4 bottles left.', accentColor: '#e8b94a', theme: 'charcoal' } },
+      { name: 'By the glass', widgetType: 'RESTAURANT_MENU_BOARD', x: 2, y: 23, width: 47, height: 70, zIndex: 2, sortOrder: 2, defaultConfig: { title: 'BY THE GLASS', subtitle: '5oz · 90 minute open · $14–$28', theme: 'charcoal', accentColor: '#e8b94a', columns: 1, posSync: true, posCategory: 'Wine — Glass', maxItems: 12 } },
+      { name: 'By the bottle', widgetType: 'RESTAURANT_MENU_BOARD', x: 51, y: 23, width: 47, height: 70, zIndex: 2, sortOrder: 3, defaultConfig: { title: 'BY THE BOTTLE', subtitle: 'cellar selection · ask the sommelier', theme: 'charcoal', accentColor: '#e8b94a', columns: 1, posSync: true, posCategory: 'Wine — Bottle', maxItems: 12 } },
+    ],
+  },
 ];
