@@ -22,6 +22,7 @@ interface AdNetwork {
   id: string;
   name: string;
   category: string;
+  integrationTier: 'DIRECT' | 'PARTNER' | 'CLOSED';
   blurb: string;
   iconEmoji?: string;
   auth: string;
@@ -35,6 +36,7 @@ interface AdNetwork {
   capabilities: Record<string, boolean>;
   salesLedOnly?: boolean;
   k12Forbidden?: boolean;
+  tierReason?: string;
 }
 
 interface AdConnection {
@@ -243,30 +245,38 @@ function NetworkTile({ network, connected, onConnect }: { network: AdNetwork; co
   const cpmRange = network.typicalCpmCents
     ? `$${(network.typicalCpmCents.low / 100).toFixed(0)}-$${(network.typicalCpmCents.high / 100).toFixed(0)} CPM`
     : null;
+  const isClosed = network.integrationTier === 'CLOSED';
+  const isPartner = network.integrationTier === 'PARTNER';
   return (
     <button
-      onClick={onConnect}
-      disabled={connected || network.salesLedOnly}
+      onClick={isClosed ? () => network.docsUrl && window.open(network.docsUrl, '_blank') : onConnect}
+      disabled={connected}
       className={`text-left p-4 rounded-xl border-2 transition-all ${
         connected ? 'bg-emerald-50 border-emerald-200 cursor-default'
-                  : network.salesLedOnly ? 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed'
+                  : isClosed ? 'bg-slate-50 border-slate-200 opacity-75'
+                  : isPartner ? 'bg-amber-50/30 border-amber-200 hover:border-amber-400 hover:shadow-md'
                   : 'bg-white border-slate-200 hover:border-emerald-300 hover:shadow-md'
       }`}
     >
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="text-2xl">{network.iconEmoji || '💰'}</div>
-        {connected && <CheckCircle2 className="w-5 h-5 text-emerald-600" />}
+        <div className="flex items-center gap-1">
+          {connected && <CheckCircle2 className="w-5 h-5 text-emerald-600" />}
+          {isClosed && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 uppercase tracking-wider">Info only</span>}
+          {isPartner && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 uppercase tracking-wider">Partnership</span>}
+          {network.integrationTier === 'DIRECT' && !connected && (
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 uppercase tracking-wider">Self-serve</span>
+          )}
+        </div>
       </div>
       <div className="font-bold text-slate-800 text-sm">{network.name}</div>
       <div className="text-[11px] text-slate-500 mt-1 leading-snug line-clamp-2">{network.blurb}</div>
+      {network.tierReason && (
+        <div className="text-[10px] text-slate-400 mt-1 leading-snug italic line-clamp-2">{network.tierReason}</div>
+      )}
       <div className="flex items-center gap-1.5 mt-2 flex-wrap">
         {cpmRange && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">{cpmRange}</span>}
         {network.takeRateBps != null && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">we take {network.takeRateBps / 100}%</span>}
-        {network.salesLedOnly && (
-          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 inline-flex items-center gap-1">
-            <ShieldAlert className="w-2.5 h-2.5" /> Sales-led
-          </span>
-        )}
       </div>
     </button>
   );

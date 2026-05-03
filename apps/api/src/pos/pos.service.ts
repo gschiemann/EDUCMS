@@ -25,6 +25,7 @@ export class PosService {
       id: p.id,
       name: p.name,
       scope: p.scope,
+      integrationTier: p.integrationTier,
       blurb: p.blurb,
       iconEmoji: p.iconEmoji,
       iconUrl: p.iconUrl,
@@ -35,6 +36,7 @@ export class PosService {
       bestFor: p.bestFor,
       capabilities: p.capabilities,
       salesLedOnly: p.salesLedOnly,
+      tierReason: p.tierReason,
     }));
   }
 
@@ -68,11 +70,13 @@ export class PosService {
   }) {
     const provider = getPosProvider(opts.providerId);
     if (!provider) throw new BadRequestException(`Unknown POS provider: ${opts.providerId}`);
-    if (provider.salesLedOnly) {
+    if (provider.integrationTier === 'CLOSED') {
       throw new ForbiddenException(
-        `${provider.name} requires sales-led onboarding. Contact sales@venueos.app.`,
+        `${provider.name} does not have a public API for third-party CMS integration. ${provider.tierReason || ''}`,
       );
     }
+    // PARTNER tier connections save in PENDING — staff or the partner
+    // OAuth callback flips them to ACTIVE.
     // Per-provider auth-shape validation (minimal — handlers do deeper validation).
     const creds = opts.credentials || {};
     if (provider.auth === 'apiKey' && !(creds as any).apiKey) {

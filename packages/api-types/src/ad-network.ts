@@ -52,10 +52,15 @@ export type AdNetworkCategory =
   | 'venue-network'     // Atmosphere, Loop Media — vertical-specific
   | 'house-only';       // Operator runs their own ads, no network — no rev
 
+/** Same DIRECT/PARTNER/CLOSED model as streaming providers. Drives UI. */
+export type AdNetworkIntegrationTier = 'DIRECT' | 'PARTNER' | 'CLOSED';
+
 export interface AdNetworkDef {
   id: string;
   name: string;
   category: AdNetworkCategory;
+  /** Real-world integration tier. */
+  integrationTier: AdNetworkIntegrationTier;
   blurb: string;
   iconEmoji?: string;
   iconUrl?: string;
@@ -71,16 +76,18 @@ export interface AdNetworkDef {
   bestFor?: ReadonlyArray<'GYM' | 'BAR' | 'RESTAURANT' | 'RETAIL' | 'CORPORATE' | 'QSR' | 'FASHION' | 'K12'>;
   /** Capabilities — drives the per-network UI. */
   capabilities: {
-    creativeFetch?: boolean;     // network sends us VAST/HTML5 creative
-    impressionReporting?: boolean;// we report back impression counts
-    daypartTargeting?: boolean;   // network respects our daypart filters
-    contentSafety?: boolean;      // network has IAB category controls
-    realtimeFill?: boolean;       // RTB-style real-time bidding
+    creativeFetch?: boolean;
+    impressionReporting?: boolean;
+    daypartTargeting?: boolean;
+    contentSafety?: boolean;
+    realtimeFill?: boolean;
   };
   /** Sales-led only? Hides self-serve "Connect" button. */
   salesLedOnly?: boolean;
   /** Schools (K12) cannot show third-party ads — gating flag. */
   k12Forbidden?: boolean;
+  /** Plain-English explanation of why this network is in its tier. */
+  tierReason?: string;
 }
 
 /**
@@ -89,12 +96,18 @@ export interface AdNetworkDef {
  * Mark NEW networks with `// NEW 2026-05-DD` so release notes can grep them.
  */
 export const AD_NETWORKS: ReadonlyArray<AdNetworkDef> = [
-  // ─── TIER 1 — PROGRAMMATIC DOOH (open exchange) ───────────────────
+  // ─── TIER 1 — PROGRAMMATIC DOOH (real OpenRTB SSPs, but partner-only) ───
+  // 2026-05-03 — operator audit: every DOOH SSP has a real public
+  // RTB endpoint, BUT they all require a publisher contract +
+  // inventory review before activating. Marked PARTNER (real API,
+  // requires application). UI shows "Apply for partnership" instead
+  // of "Connect" until the operator's account is approved.
   {
     id: 'hivestack',
     name: 'Hivestack',
     category: 'dooh-programmatic',
-    blurb: 'Global programmatic DOOH SSP. Highest fill rate for venue networks.',
+    integrationTier: 'PARTNER',
+    blurb: 'Global programmatic DOOH SSP. Real OpenRTB API after publisher contract.',
     iconEmoji: '🐝',
     auth: 'oauth2',
     pricingModel: 'cpm',
@@ -104,20 +117,16 @@ export const AD_NETWORKS: ReadonlyArray<AdNetworkDef> = [
     websiteUrl: 'https://hivestack.com',
     pricingNote: '~$5-15 CPM, we take 15%',
     bestFor: ['GYM', 'BAR', 'RESTAURANT', 'QSR', 'RETAIL'],
-    capabilities: {
-      creativeFetch: true,
-      impressionReporting: true,
-      daypartTargeting: true,
-      contentSafety: true,
-      realtimeFill: true,
-    },
+    capabilities: { creativeFetch: true, impressionReporting: true, daypartTargeting: true, contentSafety: true, realtimeFill: true },
     k12Forbidden: true,
+    tierReason: 'Real OpenRTB 2.5 publisher API at hivestack.com/publishers, but requires Hivestack to approve your inventory before activation. Apply via their publisher form first.',
   },
   {
     id: 'vistar-media',
     name: 'Vistar Media',
     category: 'dooh-programmatic',
-    blurb: 'Largest US programmatic DOOH SSP. Premium venue network.',
+    integrationTier: 'PARTNER',
+    blurb: 'US-leading DOOH SSP. Open Direct API after publisher contract.',
     iconEmoji: '✨',
     auth: 'oauth2',
     pricingModel: 'cpm',
@@ -127,20 +136,16 @@ export const AD_NETWORKS: ReadonlyArray<AdNetworkDef> = [
     websiteUrl: 'https://www.vistarmedia.com',
     pricingNote: '~$6-20 CPM, we take 15%',
     bestFor: ['GYM', 'BAR', 'RESTAURANT', 'QSR', 'RETAIL'],
-    capabilities: {
-      creativeFetch: true,
-      impressionReporting: true,
-      daypartTargeting: true,
-      contentSafety: true,
-      realtimeFill: true,
-    },
+    capabilities: { creativeFetch: true, impressionReporting: true, daypartTargeting: true, contentSafety: true, realtimeFill: true },
     k12Forbidden: true,
+    tierReason: 'Vistar has a real Open Direct API, but only after their publisher review approves your venue network. Apply at vistarmedia.com/publishers.',
   },
   {
     id: 'place-exchange',
     name: 'Place Exchange',
     category: 'dooh-programmatic',
-    blurb: 'IAB OpenRTB-compliant DOOH exchange. Strong RTB integration.',
+    integrationTier: 'PARTNER',
+    blurb: 'IAB OpenRTB DOOH exchange. Real RTB after publisher onboarding.',
     iconEmoji: '📍',
     auth: 'oauth2',
     pricingModel: 'cpm',
@@ -150,20 +155,16 @@ export const AD_NETWORKS: ReadonlyArray<AdNetworkDef> = [
     websiteUrl: 'https://placeexchange.com',
     pricingNote: '~$4-12 CPM, we take 12%',
     bestFor: ['GYM', 'BAR', 'RESTAURANT', 'QSR', 'RETAIL'],
-    capabilities: {
-      creativeFetch: true,
-      impressionReporting: true,
-      daypartTargeting: true,
-      contentSafety: true,
-      realtimeFill: true,
-    },
+    capabilities: { creativeFetch: true, impressionReporting: true, daypartTargeting: true, contentSafety: true, realtimeFill: true },
     k12Forbidden: true,
+    tierReason: 'OpenRTB 2.5-compliant DOOH exchange. Same as the others — public docs, but inventory needs publisher approval first.',
   },
   {
     id: 'broadsign-reach',
     name: 'Broadsign Reach',
     category: 'dooh-programmatic',
-    blurb: 'Broadsign\'s SSP — strong with cinema, transit, and retail networks.',
+    integrationTier: 'PARTNER',
+    blurb: "Broadsign's SSP — strong with cinema + retail. Partner contract.",
     iconEmoji: '📡',
     auth: 'apiKey',
     pricingModel: 'cpm',
@@ -173,21 +174,18 @@ export const AD_NETWORKS: ReadonlyArray<AdNetworkDef> = [
     websiteUrl: 'https://broadsign.com',
     pricingNote: '~$5-15 CPM, we take 15%',
     bestFor: ['RETAIL', 'CORPORATE', 'RESTAURANT'],
-    capabilities: {
-      creativeFetch: true,
-      impressionReporting: true,
-      daypartTargeting: true,
-      contentSafety: true,
-    },
+    capabilities: { creativeFetch: true, impressionReporting: true, daypartTargeting: true, contentSafety: true },
     k12Forbidden: true,
+    tierReason: 'Broadsign Reach is a real publisher SSP with API access — but they require a Broadsign Suite contract or partner relationship to activate.',
   },
 
-  // ─── TIER 2 — VENUE NETWORKS (vertical-specific) ──────────────────
+  // ─── TIER 2 — VENUE NETWORKS (mostly closed today) ────────────────
   {
     id: 'loop-media',
     name: 'Loop Media',
     category: 'venue-network',
-    blurb: 'Music videos + branded content for bars, restaurants, gyms. Rev share.',
+    integrationTier: 'PARTNER',
+    blurb: 'Music videos + branded content for venues. Publisher contract required.',
     iconEmoji: '🎵',
     auth: 'oauth2',
     pricingModel: 'revshare',
@@ -196,41 +194,37 @@ export const AD_NETWORKS: ReadonlyArray<AdNetworkDef> = [
     websiteUrl: 'https://loop.tv',
     pricingNote: 'Free content + revenue share',
     bestFor: ['BAR', 'RESTAURANT', 'GYM'],
-    capabilities: {
-      creativeFetch: true,
-      impressionReporting: true,
-      daypartTargeting: true,
-      contentSafety: true,
-    },
+    capabilities: { creativeFetch: true, impressionReporting: true, daypartTargeting: true, contentSafety: true },
     k12Forbidden: true,
+    tierReason: 'Loop has a publisher program but onboarding is sales-led — they review your inventory before granting API access.',
   },
   {
     id: 'atmosphere-monetize',
     name: 'Atmosphere TV (monetize)',
     category: 'venue-network',
-    blurb: "Atmosphere's revenue program — earn from ads alongside their content.",
+    integrationTier: 'CLOSED',
+    blurb: 'Atmosphere distributes through their own app — no third-party CMS embed.',
     iconEmoji: '📺',
     auth: 'partnerKey',
     pricingModel: 'revshare',
     takeRateBps: 1000,
     docsUrl: 'https://atmosphere.tv/business/',
     websiteUrl: 'https://atmosphere.tv',
-    pricingNote: 'Free + rev share',
+    pricingNote: 'Via their own player',
     bestFor: ['BAR', 'RESTAURANT', 'GYM'],
-    capabilities: {
-      creativeFetch: true,
-      impressionReporting: true,
-    },
+    capabilities: { creativeFetch: true, impressionReporting: true },
     salesLedOnly: true,
     k12Forbidden: true,
+    tierReason: 'Atmosphere runs a closed-platform model — Fire TV / Apple TV apps + venue partnerships. No publisher API for third-party CMS systems. Customers run Atmosphere on a dedicated screen.',
   },
 
-  // ─── TIER 3 — DIRECT SALES (sales-led, no API) ────────────────────
+  // ─── TIER 3 — DIRECT SALES (no API at all) ────────────────────────
   {
     id: 'lamar-direct',
     name: 'Lamar Advertising',
     category: 'dooh-direct',
-    blurb: "Lamar's national digital network. Direct sales — they sell, we host.",
+    integrationTier: 'CLOSED',
+    blurb: 'Direct-sold static placements. No publisher API for CMS.',
     iconEmoji: '🛣',
     auth: 'partnerKey',
     pricingModel: 'cpd',
@@ -238,30 +232,25 @@ export const AD_NETWORKS: ReadonlyArray<AdNetworkDef> = [
     websiteUrl: 'https://www.lamar.com',
     salesLedOnly: true,
     bestFor: ['RETAIL', 'CORPORATE'],
-    capabilities: {
-      creativeFetch: true,
-      impressionReporting: false,
-    },
+    capabilities: { creativeFetch: true, impressionReporting: false },
     k12Forbidden: true,
+    tierReason: 'Lamar runs a direct-sales DOOH network — no publisher API for venue CMS systems. They sell their own inventory, you contract directly.',
   },
 
-  // ─── TIER 4 — HOUSE ONLY (operator's own ads, no network) ─────────
+  // ─── TIER 4 — HOUSE ONLY (real, works today) ──────────────────────
   {
     id: 'house-only',
     name: 'House ads only (no network)',
     category: 'house-only',
+    integrationTier: 'DIRECT',
     blurb: 'Run only your own creatives, no third-party network. Full control.',
     iconEmoji: '🏠',
     auth: 'apiKey',
     pricingModel: 'revshare',
     pricingNote: 'Free — no rev share',
     bestFor: ['K12', 'CORPORATE', 'GYM', 'BAR', 'RESTAURANT', 'RETAIL', 'QSR', 'FASHION'],
-    capabilities: {
-      creativeFetch: false,
-      impressionReporting: true,
-      daypartTargeting: true,
-      contentSafety: true,
-    },
+    capabilities: { creativeFetch: false, impressionReporting: true, daypartTargeting: true, contentSafety: true },
+    tierReason: 'Operator uploads their own creatives + schedules them via the existing StreamAdSlot path. Zero third-party dependency. Works today end-to-end.',
   },
 ];
 

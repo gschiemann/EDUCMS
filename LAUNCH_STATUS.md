@@ -3,6 +3,41 @@
 Honest accounting of what's wired up vs. what needs vendor-side setup before
 it can do real work in production. Use this as the pre-launch checklist.
 
+## 🎯 Integration tier reality check (2026-05-03)
+
+After audit, every provider in our streaming + POS + ad-network catalogs
+is now classified into one of three tiers. The UI surfaces these as
+badges so operators see at a glance what they're looking at:
+
+- **DIRECT (green Self-serve badge)** — Real public API or open embed.
+  Operator can self-serve today.
+  - Streaming: YouTube, Twitch, Vimeo, Public Broadcasters, Custom HLS,
+    IPTV M3U, Soundtrack Your Brand
+  - POS: Square, Clover, Lightspeed Retail, Shopify POS, Stripe Catalog,
+    Custom Webhook
+  - Ads: House-only
+
+- **PARTNER (amber Partnership badge)** — Real public API exists, but
+  vendor requires a publisher contract / application before activating.
+  We let the operator save in PENDING; staff or the OAuth callback
+  flips ACTIVE once the partnership lands.
+  - Streaming: (none currently)
+  - POS: Toast, MINDBODY (ABC Fitness)
+  - Ads: Hivestack, Vistar Media, Place Exchange, Broadsign Reach,
+    Loop Media
+
+- **CLOSED (grey Info-only badge)** — No public API for third-party CMS
+  integration. Listed so customers know we know about them; tile
+  links to the vendor's site instead of opening a Connect modal.
+  - Streaming: Atmosphere TV, DIRECTV for Business, DISH Business,
+    Mood Media, iHeart for Business
+  - POS: Aloha (NCR)
+  - Ads: Atmosphere TV (monetize), Lamar Advertising
+
+The server enforces these tiers — POST /streaming/connections,
+/pos/connections, /ads/connections all 403 on CLOSED-tier providers
+even if the operator hits the API directly.
+
 ## ✅ What's live and working
 
 ### Multi-vertical platform
@@ -67,6 +102,22 @@ it can do real work in production. Use this as the pre-launch checklist.
 - Prisma additions: `AdNetworkConnection`, `AdImpression`, `AdRevenueDaily` (nightly rollup for fast dashboard reads)
 - Server: `/api/v1/ads/networks`, `/api/v1/ads/connections` (CRUD + pause/resume), `/api/v1/ads/earnings` (today/month/year + top earner)
 - Tenant admin UI at `/[schoolId]/settings/monetize` — earnings dashboard + connections + content controls + network catalog
+
+### APK status (2026-05-03)
+- **No new APK has been built or shipped.** All Sprint 8c/8d features
+  (streaming, POS, ads, billing UI, capability runtime) live in the
+  Next.js web bundle that the existing APK loads on boot. **No APK
+  rebuild needed for any of the new functionality.**
+- Existing APK on test devices auto-picks up the new bundle on next
+  page reload / pairing handshake — usually within 2 min of Vercel
+  deploy.
+- StreamingWidget now uses `pickBestVideo()` from the capability layer
+  to auto-select H.264 over H.265 / AV1 on devices that don't decode
+  the modern codec. Surfaces a friendly fallback message on Chromium
+  <51 instead of a black box.
+- Docs at `docs/APK_TESTING.md` cover three paths to verify Chromium
+  95-and-older devices: BrowserStack, ADB-on-real-kiosk, browser UA
+  override.
 
 ### Android 7→14 compatibility (Sprint 8d) — NEW
 - `apps/web/src/lib/capabilities.ts` — boot-time detection of 22 capabilities (CSS / Web APIs / codecs / input). Memoized; SSR-safe.

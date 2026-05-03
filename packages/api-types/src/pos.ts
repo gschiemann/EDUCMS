@@ -47,11 +47,16 @@ export type PosVerticalScope =
   | 'bar'              // Square, Toast Bar — drink menus, happy-hour
   | 'universal';       // Stripe Terminal — works anywhere
 
+/** Same DIRECT/PARTNER/CLOSED model as streaming providers. Drives UI. */
+export type PosIntegrationTier = 'DIRECT' | 'PARTNER' | 'CLOSED';
+
 export interface PosProviderDef {
   /** Stable kebab-case id stored in DB / URLs. */
   id: string;
   name: string;
   scope: PosVerticalScope;
+  /** Real-world integration tier. */
+  integrationTier: PosIntegrationTier;
   /** ≤ 80 char marketing line shown in the connection wizard tile. */
   blurb: string;
   iconEmoji?: string;
@@ -64,17 +69,18 @@ export interface PosProviderDef {
   pricingNote?: string;
   /** Best-fit verticals (drives provider visibility in the picker). */
   bestFor?: ReadonlyArray<'GYM' | 'BAR' | 'RESTAURANT' | 'RETAIL' | 'CORPORATE' | 'QSR' | 'FASHION' | 'K12'>;
-  /** Sync features actually wired up. Each `true` enables a panel in
-   *  the connection's drill-in view. */
+  /** Sync features actually wired up. */
   capabilities: {
-    menuSync?: boolean;        // pulls menu items + prices
-    categorySync?: boolean;    // pulls category structure
-    availabilitySync?: boolean;// 86'd items auto-hidden
-    locationsSync?: boolean;   // multi-location operators get a picker
-    realtimeUpdates?: boolean; // webhook push for instant updates
+    menuSync?: boolean;
+    categorySync?: boolean;
+    availabilitySync?: boolean;
+    locationsSync?: boolean;
+    realtimeUpdates?: boolean;
   };
-  /** Sales-led only? (Toast Enterprise, etc.) Hides self-serve "Connect" button. */
+  /** Sales-led only? Hides self-serve "Connect" button. */
   salesLedOnly?: boolean;
+  /** Plain-English tier explanation. */
+  tierReason?: string;
 }
 
 /**
@@ -84,104 +90,88 @@ export interface PosProviderDef {
  * notes can grep them.
  */
 export const POS_PROVIDERS: ReadonlyArray<PosProviderDef> = [
-  // ─── TIER 1 — RESTAURANT / QSR ─────────────────────────────────────
+  // ─── TIER 1 — RESTAURANT / QSR (mostly self-serve) ─────────────────
   {
     id: 'square',
     name: 'Square',
     scope: 'restaurant-qsr',
-    blurb: 'Square Catalog API — items, modifiers, prices auto-sync to menu boards.',
+    integrationTier: 'DIRECT',
+    blurb: 'Square Catalog API — items, modifiers, prices auto-sync.',
     iconEmoji: '◾',
     auth: 'oauth2',
     docsUrl: 'https://developer.squareup.com/docs/catalog-api/what-it-does',
     websiteUrl: 'https://squareup.com',
-    pricingNote: 'Free OAuth integration',
+    pricingNote: 'Free sandbox + production OAuth',
     bestFor: ['QSR', 'BAR', 'RETAIL', 'GYM'],
-    capabilities: {
-      menuSync: true,
-      categorySync: true,
-      availabilitySync: true,
-      locationsSync: true,
-      realtimeUpdates: true,
-    },
+    capabilities: { menuSync: true, categorySync: true, availabilitySync: true, locationsSync: true, realtimeUpdates: true },
+    tierReason: 'Square has a fully public Catalog API + free sandbox at developer.squareup.com. Real-time webhook updates included. Self-serve OAuth.',
   },
   {
     id: 'toast',
     name: 'Toast',
     scope: 'restaurant-table',
-    blurb: 'Toast POS — menu, modifiers, dayparts. Restaurant industry standard.',
+    integrationTier: 'PARTNER',
+    blurb: 'Toast Menus API — restaurant-grade. Partner program required.',
     iconEmoji: '🍞',
     auth: 'oauth2',
     docsUrl: 'https://doc.toasttab.com/',
     websiteUrl: 'https://pos.toasttab.com',
-    pricingNote: 'Toast Partner Program required',
+    pricingNote: 'Toast Partner Program (paid)',
     bestFor: ['QSR'],
-    capabilities: {
-      menuSync: true,
-      categorySync: true,
-      availabilitySync: true,
-      locationsSync: true,
-      realtimeUpdates: true,
-    },
+    capabilities: { menuSync: true, categorySync: true, availabilitySync: true, locationsSync: true, realtimeUpdates: true },
+    tierReason: 'Real public Menus API at doc.toasttab.com — but requires Toast Partner Program enrollment + commercial vetting before activation.',
   },
   {
     id: 'clover',
     name: 'Clover',
     scope: 'restaurant-qsr',
-    blurb: 'Clover Inventory + Menu — small-business POS, broad merchant base.',
+    integrationTier: 'DIRECT',
+    blurb: 'Clover Inventory + Menu API — small-business POS, broad reach.',
     iconEmoji: '🍀',
     auth: 'apiKey',
     docsUrl: 'https://docs.clover.com/docs/inventory-overview',
     websiteUrl: 'https://www.clover.com',
-    pricingNote: 'Free API access',
+    pricingNote: 'Free dev account + API access',
     bestFor: ['QSR', 'RETAIL', 'BAR'],
-    capabilities: {
-      menuSync: true,
-      categorySync: true,
-      availabilitySync: true,
-      locationsSync: true,
-      realtimeUpdates: false, // poll-based
-    },
+    capabilities: { menuSync: true, categorySync: true, availabilitySync: true, locationsSync: true, realtimeUpdates: false },
+    tierReason: 'Free dev portal at docs.clover.com — sandbox merchant id + API token immediately. Self-serve.',
   },
   {
     id: 'aloha-ncr',
     name: 'Aloha (NCR)',
     scope: 'restaurant-table',
-    blurb: 'NCR Aloha — enterprise restaurant POS. Sales-led integration.',
+    integrationTier: 'CLOSED',
+    blurb: 'NCR Aloha — enterprise restaurant POS. No public CMS API.',
     iconEmoji: '🌺',
     auth: 'partnerKey',
     docsUrl: 'https://www.ncr.com/restaurants',
     salesLedOnly: true,
     bestFor: ['QSR'],
-    capabilities: {
-      menuSync: true,
-      categorySync: true,
-      availabilitySync: true,
-      locationsSync: true,
-    },
+    capabilities: { menuSync: true, categorySync: true, availabilitySync: true, locationsSync: true },
+    tierReason: 'Aloha integrations go through NCR Connected Payments / partner channel deals. No public API for third-party signage CMS — would require a custom SI engagement.',
   },
 
-  // ─── TIER 2 — RETAIL ───────────────────────────────────────────────
+  // ─── TIER 2 — RETAIL (self-serve) ──────────────────────────────────
   {
     id: 'lightspeed-retail',
     name: 'Lightspeed Retail',
     scope: 'retail',
-    blurb: 'Lightspeed (R-Series) — multi-location retail catalog + pricing.',
+    integrationTier: 'DIRECT',
+    blurb: 'Lightspeed R-Series Items API — multi-location retail.',
     iconEmoji: '⚡',
     auth: 'oauth2',
     docsUrl: 'https://developers.lightspeedhq.com/retail/',
     websiteUrl: 'https://www.lightspeedhq.com/pos/retail/',
-    pricingNote: 'Free OAuth integration',
+    pricingNote: 'Free sandbox + OAuth',
     bestFor: ['RETAIL', 'FASHION'],
-    capabilities: {
-      menuSync: true,        // "items" in retail land
-      categorySync: true,
-      locationsSync: true,
-    },
+    capabilities: { menuSync: true, categorySync: true, locationsSync: true },
+    tierReason: 'Public R-Series Items API — free sandbox, OAuth client request via dev portal.',
   },
   {
     id: 'shopify-pos',
     name: 'Shopify POS',
     scope: 'retail',
+    integrationTier: 'DIRECT',
     blurb: 'Shopify Admin API — products, variants, inventory, locations.',
     iconEmoji: '🛍',
     auth: 'oauth2',
@@ -189,70 +179,58 @@ export const POS_PROVIDERS: ReadonlyArray<PosProviderDef> = [
     websiteUrl: 'https://www.shopify.com/pos',
     pricingNote: 'Shopify Plus plan recommended',
     bestFor: ['RETAIL', 'FASHION'],
-    capabilities: {
-      menuSync: true,
-      categorySync: true,
-      availabilitySync: true,
-      locationsSync: true,
-      realtimeUpdates: true, // webhooks
-    },
+    capabilities: { menuSync: true, categorySync: true, availabilitySync: true, locationsSync: true, realtimeUpdates: true },
+    tierReason: 'Public Shopify Admin API + free Partner account + dev store. Webhooks for real-time updates.',
   },
 
-  // ─── TIER 3 — UNIVERSAL / PAYMENTS ─────────────────────────────────
+  // ─── TIER 3 — UNIVERSAL ────────────────────────────────────────────
   {
     id: 'stripe-terminal',
-    name: 'Stripe Terminal',
+    name: 'Stripe (Catalog)',
     scope: 'universal',
-    blurb: 'Stripe Catalog (Products + Prices) — works anywhere Stripe runs.',
+    integrationTier: 'DIRECT',
+    blurb: 'Stripe Products + Prices — works anywhere Stripe runs.',
     iconEmoji: '💳',
     auth: 'apiKey',
-    docsUrl: 'https://docs.stripe.com/terminal',
-    websiteUrl: 'https://stripe.com/terminal',
+    docsUrl: 'https://docs.stripe.com/api/products',
+    websiteUrl: 'https://stripe.com',
     pricingNote: 'Standard Stripe fees',
     bestFor: ['QSR', 'RETAIL', 'GYM', 'BAR'],
-    capabilities: {
-      menuSync: true,
-      categorySync: true,
-    },
+    capabilities: { menuSync: true, categorySync: true },
+    tierReason: 'Stripe API + free test mode. Operator already has a Stripe account if they take card payments — perfect catalog source.',
   },
 
-  // ─── TIER 4 — GYM-SPECIFIC ─────────────────────────────────────────
+  // ─── TIER 4 — GYM-SPECIFIC (partner) ───────────────────────────────
   {
     id: 'mindbody',
     name: 'MINDBODY',
     scope: 'universal',
-    blurb: 'MINDBODY (now ABC Fitness) — class schedules + retail items for gyms.',
+    integrationTier: 'PARTNER',
+    blurb: 'MINDBODY (ABC Fitness) — class schedules + retail. Partner program.',
     iconEmoji: '🧘',
     auth: 'oauth2',
     docsUrl: 'https://developers.mindbodyonline.com/',
     websiteUrl: 'https://www.mindbodyonline.com',
-    pricingNote: 'Partner program required',
+    pricingNote: 'Partner program (application required)',
     bestFor: ['GYM'],
-    capabilities: {
-      menuSync: true,        // retail items + memberships
-      categorySync: true,
-      locationsSync: true,
-    },
+    capabilities: { menuSync: true, categorySync: true, locationsSync: true },
+    tierReason: 'Public Public API at developers.mindbodyonline.com — but partner registration + ABC Fitness review required before activating.',
   },
 
-  // ─── TIER 5 — CUSTOM (operator brings webhook) ─────────────────────
+  // ─── TIER 5 — CUSTOM (always works) ────────────────────────────────
   {
     id: 'custom-webhook',
     name: 'Custom Webhook',
     scope: 'universal',
+    integrationTier: 'DIRECT',
     blurb: 'Push your own catalog from any internal system. JSON spec we publish.',
     iconEmoji: '🔗',
     auth: 'webhook',
     docsUrl: '/docs/pos/custom-webhook-spec',
     pricingNote: 'Free',
     bestFor: ['QSR', 'RETAIL', 'GYM', 'BAR', 'CORPORATE'],
-    capabilities: {
-      menuSync: true,
-      categorySync: true,
-      availabilitySync: true,
-      locationsSync: true,
-      realtimeUpdates: true,
-    },
+    capabilities: { menuSync: true, categorySync: true, availabilitySync: true, locationsSync: true, realtimeUpdates: true },
+    tierReason: 'Operator pushes their catalog to our webhook endpoint. Bring-your-own — works with any internal system that can fire HTTP.',
   },
 ];
 

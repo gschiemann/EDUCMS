@@ -24,6 +24,7 @@ export class AdsService {
       id: n.id,
       name: n.name,
       category: n.category,
+      integrationTier: n.integrationTier,
       blurb: n.blurb,
       iconEmoji: n.iconEmoji,
       iconUrl: n.iconUrl,
@@ -38,6 +39,7 @@ export class AdsService {
       capabilities: n.capabilities,
       salesLedOnly: n.salesLedOnly,
       k12Forbidden: n.k12Forbidden,
+      tierReason: n.tierReason,
     }));
   }
 
@@ -84,11 +86,14 @@ export class AdsService {
         `${network.name} is not available for K-12 tenants. Schools cannot run third-party advertising.`,
       );
     }
-    if (network.salesLedOnly) {
+    if (network.integrationTier === 'CLOSED') {
       throw new ForbiddenException(
-        `${network.name} requires sales-led onboarding. Contact sales@venueos.app.`,
+        `${network.name} is closed-platform — no third-party CMS API. ${network.tierReason || ''}`,
       );
     }
+    // PARTNER networks are allowed to save in PENDING — staff flips
+    // them ACTIVE once the publisher contract lands. Wizard surfaces
+    // the partnership-required note before the operator gets here.
     const sealed = sealCredentials(opts.credentials || {});
     const controls = {
       blockedCategories: opts.contentControls?.blockedCategories || [],

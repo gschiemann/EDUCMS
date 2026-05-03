@@ -23,6 +23,7 @@ interface PosProvider {
   id: string;
   name: string;
   scope: string;
+  integrationTier: 'DIRECT' | 'PARTNER' | 'CLOSED';
   blurb: string;
   iconEmoji?: string;
   iconUrl?: string;
@@ -39,6 +40,7 @@ interface PosProvider {
     realtimeUpdates?: boolean;
   };
   salesLedOnly?: boolean;
+  tierReason?: string;
 }
 
 interface PosConnection {
@@ -194,22 +196,35 @@ function ConnectionRow({ connection, onSync, onDisconnect }: { connection: PosCo
 
 function ProviderTile({ provider, connected, onConnect }: { provider: PosProvider; connected?: boolean; onConnect: () => void }) {
   const caps = provider.capabilities;
+  const isClosed = provider.integrationTier === 'CLOSED';
+  const isPartner = provider.integrationTier === 'PARTNER';
   return (
     <button
-      onClick={onConnect}
-      disabled={connected || provider.salesLedOnly}
+      onClick={isClosed ? () => provider.docsUrl && window.open(provider.docsUrl, '_blank') : onConnect}
+      disabled={connected}
       className={`text-left p-4 rounded-xl border-2 transition-all ${
         connected ? 'bg-emerald-50 border-emerald-200 cursor-default'
-                  : provider.salesLedOnly ? 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed'
+                  : isClosed ? 'bg-slate-50 border-slate-200 opacity-75'
+                  : isPartner ? 'bg-amber-50/30 border-amber-200 hover:border-amber-400 hover:shadow-md'
                   : 'bg-white border-slate-200 hover:border-amber-300 hover:shadow-md'
       }`}
     >
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="text-2xl">{provider.iconEmoji || '🛒'}</div>
-        {connected && <CheckCircle2 className="w-5 h-5 text-emerald-600" />}
+        <div className="flex items-center gap-1">
+          {connected && <CheckCircle2 className="w-5 h-5 text-emerald-600" />}
+          {isClosed && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 uppercase tracking-wider">Info only</span>}
+          {isPartner && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 uppercase tracking-wider">Partnership</span>}
+          {provider.integrationTier === 'DIRECT' && !connected && (
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 uppercase tracking-wider">Self-serve</span>
+          )}
+        </div>
       </div>
       <div className="font-bold text-slate-800 text-sm">{provider.name}</div>
       <div className="text-[11px] text-slate-500 mt-1 leading-snug line-clamp-2">{provider.blurb}</div>
+      {provider.tierReason && (
+        <div className="text-[10px] text-slate-400 mt-1 leading-snug italic line-clamp-2">{provider.tierReason}</div>
+      )}
       <div className="flex items-center gap-1.5 mt-2 flex-wrap">
         {provider.pricingNote && (
           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{provider.pricingNote}</span>
@@ -219,11 +234,6 @@ function ProviderTile({ provider, connected, onConnect }: { provider: PosProvide
         )}
         {caps.locationsSync && (
           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">multi-loc</span>
-        )}
-        {provider.salesLedOnly && (
-          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 inline-flex items-center gap-1">
-            <ShieldAlert className="w-2.5 h-2.5" /> Sales-led
-          </span>
         )}
       </div>
     </button>

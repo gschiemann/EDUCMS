@@ -43,6 +43,17 @@
  *     dropped stream doesn't blank the screen.
  */
 import { useEffect, useRef, useState } from 'react';
+// 2026-05-03 — capability layer integration. The widget reads the
+// detected device caps so it can:
+//   • Pick H.264 transcode over H.265 / AV1 on devices that don't
+//     decode the modern codec (server-side transcoding pipeline
+//     supplies the per-codec URLs in `playbackUrlVariants`).
+//   • Surface a friendly "this Android version is too old for HLS"
+//     message instead of a black box on Chromium < ~50.
+//   • Skip ad overlays that need backdrop-filter on devices that
+//     can't render it (avoids the "ad blob covers the entire
+//     screen with a solid black panel" failure mode).
+import { detectCapabilities, pickBestVideo } from '@/lib/capabilities';
 
 interface AdSlotCfg {
   id: string;
@@ -57,6 +68,12 @@ interface AdSlotCfg {
 interface StreamingCfg {
   channelTitle?: string;
   playbackUrl?: string;
+  /** Optional per-codec URL variants for capability-aware selection.
+   *  Set when the transcode pipeline produces multiple codecs from
+   *  a single source. The widget picks the BEST codec the current
+   *  device can decode (AV1 → H.265 → VP9 → H.264). Falls back to
+   *  `playbackUrl` when this isn't provided. */
+  playbackUrlVariants?: Array<{ url: string; codec: 'av1' | 'h265' | 'vp9' | 'h264' }>;
   embedUrl?: string;
   playbackType?: 'hls' | 'dash' | 'iframe' | 'rtmp' | 'rtsp';
   allowAdOverlay?: boolean;
@@ -72,6 +89,35 @@ export function StreamingWidget({ config, live }: { config?: StreamingCfg; live?
   const isLive = !!live;
   const playbackType = c.playbackType || guessPlaybackType(c.playbackUrl, c.embedUrl);
   const fit = c.fitMode || 'cover';
+
+  // 2026-05-03 — capability-aware codec selection. If the operator
+  // (or the transcode pipeline) supplied multiple codec variants,
+  // pick the best one the device can play. Otherwise fall through
+  // to the single playbackUrl. This is the load-bearing piece of
+  // Android-7-to-14 compatibility for video — older WebViews can't
+  // decode H.265 or AV1, but they all play H.264 fine.
+  const resolvedPlaybackUrl = c.playbackUrlVariants && c.playbackUrlVariants.length > 0
+    ? pickBestVideo(c.playbackUrlVariants) || c.playbackUrl || ''
+    : c.playbackUrl || '';
+
+  // Surface a friendly fallback when the device's WebView is too old
+  // for HLS playback. Chromium <51 doesn't have native HLS or
+  // hls.js compatibility — operator should know to upgrade hardware
+  // rather than seeing a black box.
+  if (typeof window !== 'undefined' && playbackType === 'hls') {
+    const caps = detectCapabilities();
+    if (caps.chromiumMajor > 0 && caps.chromiumMajor < 51) {
+      return (
+        <div className="absolute inset-0 flex items-center justify-center" style={{ background: '#0f172a', color: '#fbbf24', fontSize: '0.9em', textAlign: 'center', padding: 16 }}>
+          <div>
+            <div style={{ fontSize: '2em' }}>⚠️</div>
+            <div style={{ fontWeight: 700 }}>This screen's Android version is too old for HLS streaming.</div>
+            <div style={{ fontSize: '0.85em', marginTop: 4 }}>Detected Chromium {caps.chromiumMajor}. Need 51 or newer. Use a YouTube embed channel instead, or upgrade the device's WebView via Play Store.</div>
+          </div>
+        </div>
+      );
+    }
+  }
 
   if (!c.playbackUrl && !c.embedUrl) {
     return (
@@ -100,12 +146,12 @@ export function StreamingWidget({ config, live }: { config?: StreamingCfg; live?
   return (
     <div className="absolute inset-0" style={{ overflow: 'hidden', background: '#000' }}>
       {playbackType === 'iframe' ? (
-        <IframeStream url={c.embedUrl || c.playbackUrl || ''} muted={c.muted ?? true} live={isLive} />
+        <IframeStream url={c.embedUrl || resolvedPlaybackUrl} muted={c.muted ?? true} live={isLive} />
       ) : playbackType === 'dash' ? (
-        <DashStream url={c.playbackUrl || ''} muted={c.muted ?? true} fit={fit} live={isLive} />
+        <DashStream url={resolvedPlaybackUrl} muted={c.muted ?? true} fit={fit} live={isLive} />
       ) : (
-        // Default to HLS
-        <HlsStream url={c.playbackUrl || ''} muted={c.muted ?? true} fit={fit} live={isLive} />
+        // Default to HLS — uses capability-resolved best-codec URL
+        <HlsStream url={resolvedPlaybackUrl} muted={c.muted ?? true} fit={fit} live={isLive} />
       )}
 
       {/* Ad overlay layer — only when allowed by channel + slots present
