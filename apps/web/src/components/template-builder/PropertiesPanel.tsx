@@ -2123,6 +2123,99 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<ToggleField key="muted" label="Muted" value={cfg.muted !== false} onChange={(v) => setField({ muted: v })} />);
       break;
     }
+    // ─── Gym widget editors — same workflow as the K-12 widgets above.
+    // Operator (2026-05-03): "make sure they are editable just like the
+    // k-12 units, exact same workflow for everything." Each widget gets
+    // an explicit `case` here so the operator sees a real form (title /
+    // accent / rotation / etc.) instead of falling through to the
+    // generic auto-form that doesn't know about color pickers, asset
+    // pickers, or array editors.
+    case 'FITNESS_AD_BANNER': {
+      // Rotating gym promo creative. Each creative is { headline, sub,
+      // ctaText, ctaUrl?, durationMs? }; we render a small array editor.
+      fields.push(<TextField key="rotationMs" label="Rotate every (ms)" value={String(cfg.rotationMs || 8000)} placeholder="8000" onChange={(v) => setField({ rotationMs: parseInt(v) || 8000 })} />);
+      fields.push(<ColorPickerField key="accentColor" label="Accent color (AD chip + progress)" value={cfg.accentColor || '#fbbf24'} onChange={(v) => setField({ accentColor: v })} />);
+      fields.push(<ToggleField key="showAdBadge" label='Show "AD" disclosure chip' value={cfg.showAdBadge !== false} onChange={(v) => setField({ showAdBadge: v })} />);
+      fields.push(<ToggleField key="enableImpressionLogging" label="Log impressions to /ads/impressions" value={cfg.enableImpressionLogging !== false} onChange={(v) => setField({ enableImpressionLogging: v })} />);
+      fields.push(<TextAreaField key="creativesJson" label="Creatives (JSON array of { headline, sub, ctaText, ctaUrl })" value={typeof cfg.creatives === 'string' ? cfg.creatives : JSON.stringify(cfg.creatives || [], null, 2)} rows={6} onChange={(v) => {
+        try { setField({ creatives: JSON.parse(v) }); } catch { setField({ creatives: v }); }
+      }} />);
+      break;
+    }
+    case 'FITNESS_APP_LIBRARY': {
+      // Live "STREAMING LIBRARY" hub — pulls connected channels from
+      // /streaming/channels at render time and overrides catalog tiles
+      // with green ON-AIR pills. Editor controls the visual chrome.
+      fields.push(<TextField key="title" label="Header title" value={cfg.title || ''} placeholder="STREAMING LIBRARY" onChange={(v) => setField({ title: v })} />);
+      fields.push(<ColorPickerField key="accentColor" label="Header accent color" value={cfg.accentColor || '#00d4ff'} onChange={(v) => setField({ accentColor: v })} />);
+      fields.push(<SelectField key="stickStatus" label="Stick connection pill" value={cfg.stickStatus || 'unknown'} options={[['online','Online'],['offline','Offline'],['unknown','Unknown']]} onChange={(v) => setField({ stickStatus: v })} />);
+      fields.push(<TextField key="stickCount" label="Sticks online (display only)" value={String(cfg.stickCount ?? 0)} placeholder="1" onChange={(v) => setField({ stickCount: parseInt(v) || 0 })} />);
+      break;
+    }
+    case 'FITNESS_CLASS_SCHEDULE': {
+      // Today's classes table. classes[] = { time, name, instructor, room?, durationMin?, status? }
+      fields.push(<TextField key="title" label="Header title" value={cfg.title || ''} placeholder="TODAY'S CLASSES" onChange={(v) => setField({ title: v })} />);
+      fields.push(<ColorPickerField key="accentColor" label="Accent color" value={cfg.accentColor || '#00d4ff'} onChange={(v) => setField({ accentColor: v })} />);
+      fields.push(<TextField key="maxRows" label="Max rows shown" value={String(cfg.maxRows || 6)} placeholder="6" onChange={(v) => setField({ maxRows: parseInt(v) || 6 })} />);
+      fields.push(<ToggleField key="highlightNextClass" label="Highlight next upcoming class" value={cfg.highlightNextClass !== false} onChange={(v) => setField({ highlightNextClass: v })} />);
+      fields.push(<ToggleField key="showPastClasses" label="Show past classes (dimmed)" value={!!cfg.showPastClasses} onChange={(v) => setField({ showPastClasses: v })} />);
+      fields.push(<TextAreaField key="classesJson" label="Classes (JSON array of { time, name, instructor, room })" value={typeof cfg.classes === 'string' ? cfg.classes : JSON.stringify(cfg.classes || [], null, 2)} rows={8} onChange={(v) => {
+        try { setField({ classes: JSON.parse(v) }); } catch { setField({ classes: v }); }
+      }} />);
+      break;
+    }
+    case 'FITNESS_MOTIVATIONAL_QUOTE': {
+      // Rotating quote card. quotes[] = { text, author? }
+      fields.push(<TextField key="rotationMs" label="Rotate every (ms)" value={String(cfg.rotationMs || 12000)} placeholder="12000" onChange={(v) => setField({ rotationMs: parseInt(v) || 12000 })} />);
+      fields.push(<ColorPickerField key="accentColor" label="Accent color" value={cfg.accentColor || '#39ff14'} onChange={(v) => setField({ accentColor: v })} />);
+      fields.push(<ToggleField key="showAuthor" label="Show author name" value={cfg.showAuthor !== false} onChange={(v) => setField({ showAuthor: v })} />);
+      fields.push(<SelectField key="transitionStyle" label="Transition" value={cfg.transitionStyle || 'crossfade'} options={[['crossfade','Crossfade'],['typewriter','Typewriter'],['slide','Slide']]} onChange={(v) => setField({ transitionStyle: v })} />);
+      fields.push(<SelectField key="align" label="Text alignment" value={cfg.align || 'center'} options={[['center','Center'],['left','Left']]} onChange={(v) => setField({ align: v })} />);
+      fields.push(<SelectField key="bgStyle" label="Background style" value={cfg.bgStyle || 'gradient'} options={[['solid','Solid color'],['gradient','Gradient'],['photo-overlay','Photo with overlay']]} onChange={(v) => setField({ bgStyle: v })} />);
+      fields.push(<TextAreaField key="quotesJson" label="Quotes (JSON array of { text, author })" value={typeof cfg.quotes === 'string' ? cfg.quotes : JSON.stringify(cfg.quotes || [], null, 2)} rows={6} onChange={(v) => {
+        try { setField({ quotes: JSON.parse(v) }); } catch { setField({ quotes: v }); }
+      }} />);
+      break;
+    }
+    case 'FITNESS_MUSIC_PLAYER': {
+      // Now-playing card. Either static (operator types track + artist)
+      // or dynamic (provider polls a now-playing endpoint).
+      fields.push(<SelectField key="provider" label="Music provider" value={cfg.provider || 'demo'} options={[['demo','Demo (placeholder)'],['spotify','Spotify Connect'],['apple_music','Apple Music'],['pandora_business','Pandora for Business'],['soundmachine','SoundMachine'],['custom','Custom endpoint']]} onChange={(v) => setField({ provider: v })} />);
+      fields.push(<TextField key="zoneLabel" label="Zone label (e.g. CARDIO FLOOR)" value={cfg.zoneLabel || ''} placeholder="CARDIO FLOOR" onChange={(v) => setField({ zoneLabel: v })} />);
+      fields.push(<TextField key="trackTitle" label="Track title (override)" value={cfg.trackTitle || ''} placeholder="Titanium" onChange={(v) => setField({ trackTitle: v })} />);
+      fields.push(<TextField key="artist" label="Artist (override)" value={cfg.artist || ''} placeholder="David Guetta ft. Sia" onChange={(v) => setField({ artist: v })} />);
+      fields.push(<TextField key="album" label="Album" value={cfg.album || ''} placeholder="Nothing but the Beat" onChange={(v) => setField({ album: v })} />);
+      fields.push(<AssetPickerField key="albumArtUrl" label="Album art" value={cfg.albumArtUrl || ''} kind="image" onChange={(v) => setField({ albumArtUrl: v })} />);
+      fields.push(<ColorPickerField key="accentColor" label="Accent color" value={cfg.accentColor || '#39ff14'} onChange={(v) => setField({ accentColor: v })} />);
+      fields.push(<TextField key="durationSeconds" label="Track duration (seconds, for progress bar)" value={String(cfg.durationSeconds || 240)} placeholder="240" onChange={(v) => setField({ durationSeconds: parseInt(v) || 240 })} />);
+      fields.push(<TextField key="nowPlayingEndpoint" label="Now-playing API URL (optional, for live data)" value={cfg.nowPlayingEndpoint || ''} placeholder="https://api.example.com/now-playing" onChange={(v) => setField({ nowPlayingEndpoint: v })} />);
+      break;
+    }
+    case 'FITNESS_STICK_LAUNCHER': {
+      // Hardware-companion launcher. Operator picks a target streaming
+      // service (catalog id from fitnessSourceCatalog) + the registered
+      // stick id; the kiosk-side player controls the stick over LAN.
+      fields.push(<TextField key="sourceId" label="Streaming service id (e.g. netflix, hulu, peacock)" value={cfg.sourceId || ''} placeholder="netflix" onChange={(v) => setField({ sourceId: v })} />);
+      fields.push(<TextField key="stickName" label="Stick display name" value={cfg.stickName || ''} placeholder="Lobby TV Roku" onChange={(v) => setField({ stickName: v })} />);
+      fields.push(<SelectField key="stickType" label="Hardware type" value={cfg.stickType || 'roku'} options={[['roku','Roku'],['fire-tv','Fire TV'],['apple-tv','Apple TV'],['chromecast','Chromecast'],['android-tv','Android TV']]} onChange={(v) => setField({ stickType: v })} />);
+      fields.push(<TextField key="stickIp" label="Stick LAN IP (for diagnostics)" value={cfg.stickIp || ''} placeholder="10.0.0.42" onChange={(v) => setField({ stickIp: v })} />);
+      fields.push(<TextField key="stickId" label="Stick registry id (optional)" value={cfg.stickId || ''} placeholder="stick_12345" onChange={(v) => setField({ stickId: v })} />);
+      fields.push(<SelectField key="displayState" label="Force display state" value={cfg.displayState || ''} options={[['','(Auto from live status)'],['launching','Launching…'],['ready','Ready'],['offline','Offline']]} onChange={(v) => setField({ displayState: v || undefined })} />);
+      fields.push(<ToggleField key="showTechDetails" label="Show IP / hardware badge" value={cfg.showTechDetails !== false} onChange={(v) => setField({ showTechDetails: v })} />);
+      break;
+    }
+    case 'FITNESS_TRAINING_VIDEO': {
+      // Equipment tutorial loop. Plays muted + looped.
+      fields.push(<AssetPickerField key="videoUrl" label="Tutorial video (.mp4)" value={cfg.videoUrl || ''} kind="video" onChange={(v) => setField({ videoUrl: v })} />);
+      fields.push(<AssetPickerField key="posterUrl" label="Poster image (shown before play)" value={cfg.posterUrl || ''} kind="image" onChange={(v) => setField({ posterUrl: v })} />);
+      fields.push(<TextField key="equipmentName" label="Equipment name" value={cfg.equipmentName || ''} placeholder="LEG PRESS" onChange={(v) => setField({ equipmentName: v })} />);
+      fields.push(<TextField key="equipmentCategory" label="Category chip" value={cfg.equipmentCategory || ''} placeholder="STRENGTH" onChange={(v) => setField({ equipmentCategory: v })} />);
+      fields.push(<TextField key="trainerName" label="Trainer credit" value={cfg.trainerName || ''} placeholder="Coach Maya" onChange={(v) => setField({ trainerName: v })} />);
+      fields.push(<ColorPickerField key="accentColor" label="Accent color" value={cfg.accentColor || '#39ff14'} onChange={(v) => setField({ accentColor: v })} />);
+      fields.push(<ToggleField key="showControls" label="Show video controls (play/pause/seek)" value={!!cfg.showControls} onChange={(v) => setField({ showControls: v })} />);
+      fields.push(<TextAreaField key="safetyTipsText" label="Safety tips (one per line)" value={Array.isArray(cfg.safetyTips) ? cfg.safetyTips.join('\n') : (cfg.safetyTipsText || '')} rows={4} onChange={(v) => setField({ safetyTips: v.split('\n').filter((line: string) => line.trim()), safetyTipsText: v })} />);
+      break;
+    }
     // ─── Sprint 8d follow-up — POS-driven menu boards ──────────────
     // The four widgets that read PosMenuItem live data: restaurant
     // menu board, bar tap list, bar cocktail menu, retail product grid.
