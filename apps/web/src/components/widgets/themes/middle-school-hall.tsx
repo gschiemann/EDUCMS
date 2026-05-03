@@ -114,7 +114,24 @@ export function MSHallClock({ config }: { config: any }) {
 // BELL SCHEDULE — Printed paper pinned to corkboard
 // ═══════════════════════════════════════════════════════════
 export function MSHallBellSchedule({ config }: { config: any }) {
-  const schedule = config.schedule || 'Period 1: 8:00 - 8:50\nPeriod 2: 8:55 - 9:45\nPeriod 3: 9:50 - 10:40\nLunch: 10:45 - 11:15\nPeriod 4: 11:20 - 12:10\nPeriod 5: 12:15 - 1:05\nPeriod 6: 1:10 - 2:00';
+  // 2026-05-03 — same fix as GymPEBellSchedule. PropertiesPanel writes
+  // `config.schedule` as an array now (so v2 widgets can read it); this
+  // legacy renderer used to assume a string and call `.split('\n')`,
+  // which crashed the moment the operator edited any period.
+  const DEFAULT_TEXT = 'Period 1: 8:00 - 8:50\nPeriod 2: 8:55 - 9:45\nPeriod 3: 9:50 - 10:40\nLunch: 10:45 - 11:15\nPeriod 4: 11:20 - 12:10\nPeriod 5: 12:15 - 1:05\nPeriod 6: 1:10 - 2:00';
+  let schedule: string;
+  if (Array.isArray(config.schedule) && config.schedule.length) {
+    schedule = config.schedule.map((p: any, i: number) => {
+      const label = String(p?.label || `Period ${i + 1}`);
+      const start = p?.start ?? p?.startTime ?? '';
+      const end = p?.end ?? p?.endTime ?? '';
+      return `${label}: ${start}${end ? ` - ${end}` : ''}`;
+    }).join('\n');
+  } else if (typeof config.schedule === 'string' && config.schedule.trim()) {
+    schedule = config.schedule;
+  } else {
+    schedule = DEFAULT_TEXT;
+  }
   const lines = schedule.split('\n').filter(Boolean);
   
   return (

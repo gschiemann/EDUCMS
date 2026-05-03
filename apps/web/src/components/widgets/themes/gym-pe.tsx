@@ -77,7 +77,32 @@ export function GymPEWeather({ config, compact }: { config: any; compact?: boole
 }
 
 export function GymPEBellSchedule({ config, compact }: { config: any; compact?: boolean }) {
-  const scheduleText = config.schedule || 'Period 1: 8:00 - 8:50\nPeriod 2: 8:55 - 9:45\nPeriod 3: 9:50 - 10:40\nLunch: 10:45 - 11:15\nPeriod 4: 11:20 - 12:10\nPeriod 5: 12:15 - 1:05\nPeriod 6: 1:10 - 2:00';
+  // 2026-05-03 — operator hit `(e.schedule || "...").split is not a function`.
+  // Root cause: PropertiesPanel BELL_SCHEDULE editor mirror writes
+  // `config.schedule` as an array of `{label, start, end}` so v2 widgets
+  // can read structured periods. This legacy themed renderer expected a
+  // newline-delimited STRING and called `.split('\n')` on it. Once the
+  // operator edited any period via the right toolbar, schedule became an
+  // array and `.split` blew up the entire widget render.
+  //
+  // Fix: accept BOTH shapes. If schedule is an array, format each item
+  // back into the legacy "Label: start - end" line so the rest of this
+  // renderer keeps working unchanged. If it's a string (or unset),
+  // behave as before.
+  const DEFAULT_TEXT = 'Period 1: 8:00 - 8:50\nPeriod 2: 8:55 - 9:45\nPeriod 3: 9:50 - 10:40\nLunch: 10:45 - 11:15\nPeriod 4: 11:20 - 12:10\nPeriod 5: 12:15 - 1:05\nPeriod 6: 1:10 - 2:00';
+  let scheduleText: string;
+  if (Array.isArray(config.schedule) && config.schedule.length) {
+    scheduleText = config.schedule.map((p: any, i: number) => {
+      const label = String(p?.label || `Period ${i + 1}`);
+      const start = p?.start ?? p?.startTime ?? '';
+      const end = p?.end ?? p?.endTime ?? '';
+      return `${label}: ${start}${end ? ` - ${end}` : ''}`;
+    }).join('\n');
+  } else if (typeof config.schedule === 'string' && config.schedule.trim()) {
+    scheduleText = config.schedule;
+  } else {
+    scheduleText = DEFAULT_TEXT;
+  }
   const lines = scheduleText.split('\n').filter(Boolean).slice(0, 6); // Max 6 periods
   
   return (
