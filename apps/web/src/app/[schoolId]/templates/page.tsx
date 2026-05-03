@@ -449,7 +449,11 @@ export default function TemplatesPage() {
               Screen Templates
             </h1>
             <p className="text-indigo-100 mt-1.5 text-sm max-w-lg">
-              Design beautiful screen layouts for every space in your school. Pick a ready-made template or build your own from scratch.
+              {/* 2026-05-03 — vertical-aware copy. K12 reads "in your
+                  school"; gym reads "in your gym"; retail reads "in
+                  your store"; etc. Driven off useTenantCopy().orgSingular
+                  so we don't fork the marketing copy per vertical. */}
+              Design beautiful screen layouts for every space in your {tenantCopy.orgSingular.toLowerCase()}. Pick a ready-made template or build your own from scratch.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -528,31 +532,63 @@ export default function TemplatesPage() {
       )}
 
       {/* Two-tier filter bar.
-          Primary = grade level (Elementary / Middle / High) — most
-          teachers know their grade before anything else. Secondary
-          (LOBBY / HALLWAY / CAFETERIA / …) only appears AFTER a level
-          is chosen, keeping the top of the page clean and matching
-          the mental model of "pick your school, then pick the spot". */}
+          K12: Primary = grade level (Elementary / Middle / High);
+          Secondary = room category (LOBBY / HALLWAY / CAFETERIA / …),
+          which only appears once a level is chosen.
+          Non-K12 (GYM / RETAIL / QSR / CORPORATE / FASHION): drop the
+          grade-level row entirely (gyms don't have grades) and surface
+          the vertical-specific category tabs as the PRIMARY filter so
+          a gym admin sees "Class & training / Welcome / Promo" right
+          on the catalog instead of "Elementary / Middle / High". */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-3 items-center">
-          <div className="flex gap-1.5 items-center">
-            {SCHOOL_LEVEL_CHIPS.map(chip => (
-              <button
-                key={chip.key}
-                type="button"
-                onClick={() => setActiveLevel(chip.key)}
-                aria-pressed={activeLevel === chip.key}
-                className={`px-4 py-2 rounded-full text-sm font-bold border transition-all ${
-                  activeLevel === chip.key
-                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                    : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
-                }`}
-              >
-                <span className="mr-1.5" aria-hidden>{chip.emoji}</span>
-                {chip.label}
-              </button>
-            ))}
-          </div>
+          {tenantCopy.showSchoolLevelFilter && (
+            <div className="flex gap-1.5 items-center">
+              {SCHOOL_LEVEL_CHIPS.map(chip => (
+                <button
+                  key={chip.key}
+                  type="button"
+                  onClick={() => setActiveLevel(chip.key)}
+                  aria-pressed={activeLevel === chip.key}
+                  className={`px-4 py-2 rounded-full text-sm font-bold border transition-all ${
+                    activeLevel === chip.key
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
+                  }`}
+                >
+                  <span className="mr-1.5" aria-hidden>{chip.emoji}</span>
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {!tenantCopy.showSchoolLevelFilter && (
+            // Non-K12 verticals: vertical-specific category chips as
+            // the primary filter row. Picks straight from
+            // useTenantCopy().templateCategories so a GYM tenant sees
+            // "All / Class & training / Welcome / Promo" and a RETAIL
+            // tenant sees "All / Welcome / Promo / Pricing / Lookbook".
+            <div className="flex gap-1.5 items-center flex-wrap">
+              {tenantCopy.templateCategories.map(tab => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => {
+                    setActiveCategory(tab.key);
+                    if (tab.key !== 'HOLIDAYS') setActiveHoliday('');
+                  }}
+                  aria-pressed={activeCategory === tab.key}
+                  className={`px-4 py-2 rounded-full text-sm font-bold border transition-all ${
+                    activeCategory === tab.key
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="relative flex-1 min-w-[200px] max-w-md">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" aria-hidden />
             <input
@@ -565,9 +601,10 @@ export default function TemplatesPage() {
             />
           </div>
         </div>
-        {/* Room/category sub-filter. Only renders once a grade level
-            is active — keeps the page calm for first-time visitors. */}
-        {activeLevel && (
+        {/* Room/category sub-filter. Only renders for K12 once a grade
+            level is active — non-K12 tenants already have categories on
+            the primary row so this would just duplicate them. */}
+        {tenantCopy.showSchoolLevelFilter && activeLevel && (
           <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit flex-wrap">
             {tenantCopy.templateCategories.map(tab => (
               <button key={tab.key} onClick={() => {
@@ -586,8 +623,10 @@ export default function TemplatesPage() {
         {/* Holiday-specific sub-filter — only when category=HOLIDAYS.
             Pill-shaped chips with emoji + holiday name. Operators pick
             the holiday that matches the season; "All holidays" shows
-            every variant for the current grade level. */}
-        {activeLevel && activeCategory === 'HOLIDAYS' && (
+            every variant for the current grade level. K12-only — gym
+            and retail HOLIDAYS categories have their own seasonal
+            chips driven from VERTICAL_TEMPLATE_CATEGORIES. */}
+        {tenantCopy.showSchoolLevelFilter && activeLevel && activeCategory === 'HOLIDAYS' && (
           <div className="flex gap-1.5 flex-wrap">
             {HOLIDAY_SUB_FILTERS.map(h => (
               <button
@@ -2269,6 +2308,7 @@ function PlaylistPicker({ config, setConfig, inputClass }: { config: any; setCon
 function ApplyBrandButton({ disabled }: { disabled: boolean }) {
   const branding = useTenantBranding();
   const apply = useApplyBrandToTemplates();
+  const tenantCopy = useTenantCopy();
   const [open, setOpen] = useState(false);
   const [override, setOverride] = useState(false);
 
@@ -2300,7 +2340,7 @@ function ApplyBrandButton({ disabled }: { disabled: boolean }) {
       <button
         onClick={() => setOpen(true)}
         disabled={disabled || !hasBrand}
-        title={!hasBrand ? 'Configure your brand kit first (Brand tab in any template builder)' : disabled ? 'Read-only — viewer role' : 'Re-skin every template with your school brand'}
+        title={!hasBrand ? 'Configure your brand kit first (Brand tab in any template builder)' : disabled ? 'Read-only — viewer role' : `Re-skin every template with your ${tenantCopy.orgSingular.toLowerCase()} brand`}
         className="px-4 py-3 bg-gradient-to-r from-pink-500 to-violet-500 text-white font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <Sparkles className="w-5 h-5" /> Brand all templates
@@ -2317,7 +2357,7 @@ function ApplyBrandButton({ disabled }: { disabled: boolean }) {
               <button onClick={() => setOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
             </div>
             <p className="text-sm text-slate-600 leading-relaxed">
-              Re-skins every <strong>custom</strong> template you own with your school&apos;s brand colors, fonts, and ink color. System presets are left alone.
+              Re-skins every <strong>custom</strong> template you own with your {tenantCopy.orgSingular.toLowerCase()}&apos;s brand colors, fonts, and ink color. System presets are left alone.
             </p>
 
             {/* Brand palette preview */}

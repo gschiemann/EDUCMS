@@ -156,10 +156,10 @@ export async function ensureSystemPresets(prisma: PrismaService) {
           isSystem: true,
           id: { in: ALL_PRESETS.map((p) => p.id) },
         },
-        select: { id: true, name: true, category: true, schoolLevel: true, description: true },
+        select: { id: true, name: true, category: true, schoolLevel: true, description: true, vertical: true } as any,
       });
       let syncCount = 0;
-      for (const row of presentRows) {
+      for (const row of presentRows as any[]) {
         const src: any = ALL_PRESETS.find((p) => p.id === row.id);
         if (!src) continue;
         const patch: Record<string, any> = {};
@@ -168,6 +168,18 @@ export async function ensureSystemPresets(prisma: PrismaService) {
         if (src.description && src.description !== row.description) patch.description = src.description;
         const srcLevel = ('schoolLevel' in src && src.schoolLevel) ? src.schoolLevel : undefined;
         if (srcLevel && srcLevel !== row.schoolLevel) patch.schoolLevel = srcLevel;
+        // 2026-05-03 — operator: "I logged in as the gym user and it's
+        // all school still, I thought you loaded all the new templates
+        // we created." Cause: existing fitness preset rows had been
+        // seeded earlier with `vertical: 'FITNESS'`, but the templates
+        // list endpoint queries by the new tag `vertical: 'GYM'` (per
+        // the VenueOS rebrand). Those rows never matched the GYM
+        // tenant's vertical filter so the catalog rendered empty.
+        // Re-sync the vertical tag from the source map on every boot
+        // so old rows migrate to the canonical vertical without
+        // requiring a hand-rolled migration.
+        const srcVertical = PRESET_VERTICAL.get(src.id) ?? 'K12';
+        if (srcVertical !== row.vertical) patch.vertical = srcVertical;
         if (Object.keys(patch).length > 0) {
           await prisma.client.template.update({ where: { id: row.id }, data: patch });
           syncCount += 1;

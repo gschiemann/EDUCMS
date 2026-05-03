@@ -169,7 +169,13 @@ export class TemplatesController {
       });
       vertical = (tenant as any)?.vertical || 'K12';
     } catch { /* default to K12 */ }
-    if (vertical === 'FITNESS') return FITNESS_TEMPLATE_PRESETS;
+    // 2026-05-03 — operator: "I logged in as the gym user and it's all
+    // school still." Tenant verticals are tagged 'GYM' (per the VenueOS
+    // rebrand in 2026-05-02), but this endpoint was still checking the
+    // old sprint-plan name 'FITNESS'. Result: gym tenants got the K-12
+    // preset list. Accept BOTH spellings so existing 'FITNESS' tenants
+    // (if any) keep working AND new 'GYM' tenants see the right catalog.
+    if (vertical === 'GYM' || vertical === 'FITNESS') return FITNESS_TEMPLATE_PRESETS;
     return SYSTEM_TEMPLATE_PRESETS;
   }
 
