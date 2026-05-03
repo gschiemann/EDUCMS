@@ -8,6 +8,10 @@ import {
   PartyPopper, Rainbow, Sparkles, Zap, Sun,
   // 2026-05-03 — VenueOS fitness/gym widget icons.
   Tv, Music, MonitorPlay, Dumbbell, Quote, AppWindow, Joystick,
+  // 2026-05-02 — VenueOS restaurant/QSR widget icons.
+  Pizza, ChefHat, Hourglass, Star, BadgePercent, Leaf,
+  // 2026-05-02 — VenueOS bar/nightlife widget icons.
+  Beer, Wine, Martini, Trophy, Mic2, Brain,
 } from 'lucide-react';
 // The "School Life" (QUOTE / STATS / SCOREBOARD / MENU_ITEM /
 // SCHEDULE_GRID / ATTENDANCE / BIRTHDAYS / HONOR_ROLL) and
@@ -98,6 +102,33 @@ export const WIDGET_GROUPS: ReadonlyArray<{
       { type: 'FITNESS_STICK_LAUNCHER',     label: 'Stick launcher',      desc: 'Hardware companion launcher — Stick / Roku-style picker', icon: Joystick },
       { type: 'ANNOUNCEMENT',               label: 'Announcement',        desc: 'Eye-catching important message', icon: Megaphone },
       { type: 'COUNTDOWN',                  label: 'Countdown',           desc: 'Count down to a class, event, or tournament', icon: Timer },
+    ],
+  },
+  // 2026-05-02 — VenueOS Restaurant & QSR group. Six widgets purpose-
+  // built for counter-service, drive-thru, fast-casual menu walls,
+  // promo carousels, loyalty programs, and lobby wait-time displays.
+  // Filtered to QSR vertical so a school admin never sees menu boards
+  // and a restaurant admin never sees bell schedules. ANNOUNCEMENT +
+  // COUNTDOWN are exposed here as conveniences (e.g. countdown to
+  // happy hour, announcement for a new menu drop) since QSR tenants
+  // don't get the K12 Education group.
+  {
+    label: 'Restaurant & QSR',
+    verticals: ['QSR'],
+    types: [
+      { type: 'RESTAURANT_MENU_BOARD',       label: 'Menu board',        desc: 'Multi-column menu — items, descriptions, prices, dietary chips', icon: UtensilsCrossed },
+      { type: 'RESTAURANT_COMBO_CAROUSEL',   label: 'Combo carousel',    desc: 'Auto-rotating combo deals with "starting at $X" callout', icon: Pizza },
+      { type: 'RESTAURANT_WAIT_TIME',        label: 'Wait time',         desc: 'Big wait-time readout, queue position, SMS sign-up hint', icon: Hourglass },
+      { type: 'RESTAURANT_LOYALTY_TICKER',   label: 'Loyalty ticker',    desc: 'Rewards messaging strip with optional QR sign-up', icon: Star },
+      { type: 'RESTAURANT_SPECIALS_CALLOUT', label: 'Specials callout',  desc: '"Today only" big-type promo card with price callout', icon: BadgePercent },
+      { type: 'RESTAURANT_ALLERGY_LEGEND',   label: 'Dietary legend',    desc: 'Compact icon legend — V / GF / DF / nut-free / spicy', icon: Leaf },
+      { type: 'IMAGE',                       label: 'Food photo',        desc: 'Hero food / drink photo for the wall', icon: ImageIcon },
+      { type: 'IMAGE_CAROUSEL',              label: 'Photo slideshow',   desc: 'Rotate through dish photos', icon: ImageIcon },
+      { type: 'VIDEO',                       label: 'Video promo',       desc: 'Looping cooking / promo reel', icon: Play },
+      { type: 'TICKER',                      label: 'Ticker',            desc: 'Scrolling promo / hours / menu announcements', icon: ArrowRight },
+      { type: 'ANNOUNCEMENT',                label: 'Announcement',      desc: 'Eye-catching message — new menu drop, holiday hours, etc.', icon: Megaphone },
+      { type: 'COUNTDOWN',                   label: 'Countdown',         desc: 'Count down to happy hour, opening, or event start', icon: Timer },
+      { type: 'RICH_TEXT',                   label: 'Chef note',         desc: 'Kitchen / chef intro / story panel (formatted text)', icon: ChefHat },
     ],
   },
   {
@@ -251,6 +282,13 @@ export const ZONE_COLORS: Record<string, { bg: string; border: string; text: str
   DECORATION_TICKER:            { bg: '#fae8ff', border: '#e879f9', text: '#86198f', accent: '#d946ef' },
   DECORATION_NEON_BUZZ:         { bg: '#fae8ff', border: '#e879f9', text: '#86198f', accent: '#d946ef' },
   DECORATION_PULSE_GLOW:        { bg: '#fae8ff', border: '#e879f9', text: '#86198f', accent: '#d946ef' },
+  // ── Restaurant / QSR vertical (warm cream + caramel + deep red) ──
+  RESTAURANT_MENU_BOARD:        { bg: '#fef3c7', border: '#fcd34d', text: '#7a1f1f', accent: '#e8b94a' },
+  RESTAURANT_COMBO_CAROUSEL:    { bg: '#fef2f2', border: '#fca5a5', text: '#7a1f1f', accent: '#dc2626' },
+  RESTAURANT_WAIT_TIME:         { bg: '#fef9c3', border: '#fde047', text: '#854d0e', accent: '#d68a1f' },
+  RESTAURANT_LOYALTY_TICKER:    { bg: '#fff7ed', border: '#fdba74', text: '#9a3412', accent: '#ea580c' },
+  RESTAURANT_SPECIALS_CALLOUT:  { bg: '#fee2e2', border: '#fca5a5', text: '#7a1f1f', accent: '#b91c1c' },
+  RESTAURANT_ALLERGY_LEGEND:    { bg: '#ecfdf5', border: '#86efac', text: '#15803d', accent: '#22c55e' },
 };
 
 // Hit-target validator — warn if a zone would render smaller than WCAG 44px

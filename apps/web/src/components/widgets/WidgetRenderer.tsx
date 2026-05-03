@@ -63,6 +63,25 @@ import { FitnessWorkoutTimerWidget } from './fitness/FitnessWorkoutTimerWidget';
 import { FitnessMotivationalQuoteWidget } from './fitness/FitnessMotivationalQuoteWidget';
 import { FitnessAppLibraryWidget } from './fitness/FitnessAppLibraryWidget';
 import { FitnessStickLauncherWidget } from './fitness/FitnessStickLauncherWidget';
+// ── Restaurant / QSR vertical (2026-05-02) — menu boards, combos,
+// loyalty, wait-time, specials. Same /restaurant subdir convention as
+// /fitness so the EDU import list above stays uncluttered. ──
+import { MenuBoardWidget } from './restaurant/MenuBoardWidget';
+import { ComboCarouselWidget } from './restaurant/ComboCarouselWidget';
+import { WaitTimeWidget } from './restaurant/WaitTimeWidget';
+import { LoyaltyTickerWidget } from './restaurant/LoyaltyTickerWidget';
+import { SpecialsCalloutWidget } from './restaurant/SpecialsCalloutWidget';
+import { AllergyLegendWidget } from './restaurant/AllergyLegendWidget';
+// ── BAR / nightlife vertical (2026-05-02) — taproom + sports pub +
+// nightclub widgets. Visual DNA: charcoal + amber + neon, hand-drawn
+// chalkboard for cocktails, stadium scoreboard for trivia / game-day.
+// Lives in /bar so the file list stays grouped per vertical. ──
+import { TapListWidget } from './bar/TapListWidget';
+import { CocktailMenuWidget } from './bar/CocktailMenuWidget';
+import { HappyHourCountdownWidget } from './bar/HappyHourCountdownWidget';
+import { GameDayScheduleWidget } from './bar/GameDayScheduleWidget';
+import { EventTonightWidget } from './bar/EventTonightWidget';
+import { TriviaScoreboardWidget } from './bar/TriviaScoreboardWidget';
 import { AnimatedWelcomeMiddleWidget } from './AnimatedWelcomeMiddleWidget';
 import { AnimatedWelcomeHighWidget } from './AnimatedWelcomeHighWidget';
 import { AnimatedCafeteriaElementaryWidget } from './AnimatedCafeteriaElementaryWidget';
@@ -462,6 +481,20 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'FITNESS_MOTIVATIONAL_QUOTE':    return <FitnessMotivationalQuoteWidget config={cfg} live={live} />;
     case 'FITNESS_APP_LIBRARY':           return <FitnessAppLibraryWidget config={cfg} live={live} />;
     case 'FITNESS_STICK_LAUNCHER':        return <FitnessStickLauncherWidget config={cfg} live={live} />;
+    // ── Restaurant / QSR vertical widgets ──
+    case 'RESTAURANT_MENU_BOARD':         return <MenuBoardWidget config={cfg} live={live} />;
+    case 'RESTAURANT_COMBO_CAROUSEL':     return <ComboCarouselWidget config={cfg} live={live} />;
+    case 'RESTAURANT_WAIT_TIME':          return <WaitTimeWidget config={cfg} live={live} />;
+    case 'RESTAURANT_LOYALTY_TICKER':     return <LoyaltyTickerWidget config={cfg} live={live} />;
+    case 'RESTAURANT_SPECIALS_CALLOUT':   return <SpecialsCalloutWidget config={cfg} live={live} />;
+    case 'RESTAURANT_ALLERGY_LEGEND':     return <AllergyLegendWidget config={cfg} live={live} />;
+    // ── BAR / nightlife vertical widgets ──
+    case 'BAR_TAP_LIST':                  return <TapListWidget config={cfg} live={live} />;
+    case 'BAR_COCKTAIL_MENU':             return <CocktailMenuWidget config={cfg} live={live} />;
+    case 'BAR_HAPPY_HOUR_COUNTDOWN':      return <HappyHourCountdownWidget config={cfg} live={live} />;
+    case 'BAR_GAME_DAY_SCHEDULE':         return <GameDayScheduleWidget config={cfg} live={live} />;
+    case 'BAR_EVENT_TONIGHT':             return <EventTonightWidget config={cfg} live={live} />;
+    case 'BAR_TRIVIA_SCOREBOARD':         return <TriviaScoreboardWidget config={cfg} live={live} />;
     default:             return null;
   }
 }

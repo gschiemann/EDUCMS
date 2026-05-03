@@ -2,6 +2,9 @@ import { Logger } from '@nestjs/common';
 import type { PrismaService } from '../prisma/prisma.service';
 import { SYSTEM_TEMPLATE_PRESETS } from './system-presets';
 import { FITNESS_TEMPLATE_PRESETS } from './fitness-presets';
+import { RESTAURANT_TEMPLATE_PRESETS } from './restaurant-presets';
+import { BAR_TEMPLATE_PRESETS } from './bar-presets';
+import { RETAIL_TEMPLATE_PRESETS } from './retail-presets';
 
 // Fitness presets live in their own file so the EDU pack stays
 // uncontaminated. At seed time we tag each row with the vertical it
@@ -10,7 +13,13 @@ import { FITNESS_TEMPLATE_PRESETS } from './fitness-presets';
 // so a gym never sees K-12 templates and a school never sees fitness
 // ones. `ALL_PRESETS` is the union we reconcile against the DB; the
 // per-preset vertical is resolved via the map below.
-const ALL_PRESETS = [...SYSTEM_TEMPLATE_PRESETS, ...FITNESS_TEMPLATE_PRESETS];
+const ALL_PRESETS = [
+  ...SYSTEM_TEMPLATE_PRESETS,
+  ...FITNESS_TEMPLATE_PRESETS,
+  ...RESTAURANT_TEMPLATE_PRESETS,
+  ...BAR_TEMPLATE_PRESETS,
+  ...RETAIL_TEMPLATE_PRESETS,
+];
 const PRESET_VERTICAL: Map<string, string> = new Map();
 SYSTEM_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'K12'));
 // 2026-05-02 — VenueOS launch verticals are K12 / GYM / RETAIL /
@@ -24,6 +33,21 @@ SYSTEM_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'K12'));
 // with Tenant.vertical = 'FITNESS' (if any) keep working — adding
 // 'GYM' is purely additive on the seed side.
 FITNESS_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'GYM'));
+// Restaurant / QSR vertical (2026-05-02 launch). Quick-service menu
+// boards, drive-thru displays, loyalty boards, wait-time displays.
+// Tagged with vertical='QSR' so QSR-tenant catalogs surface them and
+// no other vertical does. RESTAURANT remains valid as a forward-
+// compat tag per verticals.ts comment but QSR is the canonical
+// launch vertical (per packages/api-types/src/verticals.ts).
+RESTAURANT_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'QSR'));
+// Bar / nightlife / sports-pub vertical (2026-05-02 launch). Taproom +
+// cocktail menu + game day + happy hour + live event + trivia. Tagged
+// 'BAR' so bar tenants see this catalog and no other vertical does.
+BAR_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'BAR'));
+// Retail vertical (2026-05-02 launch). Editorial / boutique /
+// department-store visual DNA — kept separate from the K12 + GYM
+// packs so each vertical can ship templates without crosstalk.
+RETAIL_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'RETAIL'));
 
 /**
  * Idempotent system-preset seeder. Runs once on API startup.

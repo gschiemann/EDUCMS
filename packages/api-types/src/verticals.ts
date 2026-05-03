@@ -28,6 +28,8 @@
  *   CORPORATE (lobbies, internal comms, conference rooms)
  *   QSR (quick-service restaurants — menu boards, promo)
  *   FASHION (boutique apparel, runway, e-comm tie-ins)
+ *   BAR (bars, taprooms, sports pubs, nightclubs — tap lists,
+ *        cocktail menus, game day, happy hour, trivia, live events)
  *
  * The schema.prisma comment also lists FITNESS / RESTAURANT /
  * HEALTHCARE / OTHER from the original sprint plan; those remain
@@ -42,6 +44,7 @@ export const VERTICALS = [
   'CORPORATE',
   'QSR',
   'FASHION',
+  'BAR',
 ] as const;
 
 export type Vertical = (typeof VERTICALS)[number];
@@ -88,6 +91,12 @@ export const VERTICAL_LABELS: Record<Vertical, { singular: string; plural: strin
     emoji: '👗',
     tagline: 'Fashion boutiques, apparel, runway',
   },
+  BAR: {
+    singular: 'Bar',
+    plural: 'Bars',
+    emoji: '🍺',
+    tagline: 'Bars, taprooms, nightclubs, sports pubs',
+  },
 };
 
 /**
@@ -102,6 +111,7 @@ export const VERTICAL_GROUP_NOUN: Record<Vertical, { singular: string; plural: s
   CORPORATE: { singular: 'Company',      plural: 'Companies' },
   QSR:       { singular: 'Brand',        plural: 'Brands' },
   FASHION:   { singular: 'Brand',        plural: 'Brands' },
+  BAR:       { singular: 'Group',        plural: 'Groups' },
 };
 
 /**
@@ -118,6 +128,7 @@ export const VERTICAL_EMERGENCY_TYPES: Record<Vertical, ReadonlyArray<'lockdown'
   CORPORATE: ['evacuate', 'lockdown', 'weather', 'medical'],
   QSR:       ['evacuate', 'weather', 'medical'],
   FASHION:   ['evacuate', 'weather', 'medical'],
+  BAR:       ['evacuate', 'weather', 'medical'],
 };
 
 export function isVertical(v: unknown): v is Vertical {
@@ -176,6 +187,13 @@ export const VERTICAL_ROLE_LABELS: Record<Vertical, Record<string, string>> = {
     CONTRIBUTOR:        'Stylist',
     RESTRICTED_VIEWER:  'Viewer',
   },
+  BAR: {
+    SUPER_ADMIN:        'Super Admin',
+    DISTRICT_ADMIN:     'Owner',
+    SCHOOL_ADMIN:       'Manager',
+    CONTRIBUTOR:        'Manager',
+    RESTRICTED_VIEWER:  'Viewer',
+  },
 };
 
 export function getRoleLabel(role: string, vertical: Vertical = DEFAULT_VERTICAL): string {
@@ -194,6 +212,7 @@ export const VERTICAL_DEFAULT_BRAND: Record<Vertical, string> = {
   CORPORATE: 'VenueOS',
   QSR:       'VenueOS',
   FASHION:   'VenueOS',
+  BAR:       'VenueOS',
 };
 
 /**
@@ -242,5 +261,12 @@ export const VERTICAL_TEMPLATE_CATEGORIES: Record<Vertical, ReadonlyArray<{ key:
     { key: 'LOOKBOOK', label: 'Lookbook' },
     { key: 'LOBBY',    label: 'Welcome' },
     { key: 'PROMO',    label: 'Promo' },
+  ],
+  BAR: [
+    { key: '',       label: 'All' },
+    { key: 'TAPS',   label: 'Tap list' },
+    { key: 'PROMO',  label: 'Drink specials' },
+    { key: 'EVENTS', label: 'Events' },
+    { key: 'SPORTS', label: 'Sports' },
   ],
 };
