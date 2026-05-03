@@ -334,6 +334,12 @@ function buildHeartbeatUrl(apiRoot: string, fp: string): string {
     : `${apiRoot}/api/v1/screens/status/${fp}`;
 }
 
+// 2026-05-03 — Sprint 8d Android compatibility: detect device capabilities
+// at boot and surface them in the device info we report to the server.
+// Lets ops see per-screen "is this device modern enough to run feature X"
+// at a glance, and drives the auto-fallback layer at render time.
+import { detectCapabilities } from '@/lib/capabilities';
+
 function getDeviceInfo() {
   const ua = navigator.userAgent;
   let os = 'Unknown';
@@ -366,11 +372,42 @@ function getDeviceInfo() {
     pxH = window.screen.height;
   }
 
+  // 2026-05-03 — capability snapshot. Lets the server know which
+  // CSS / Web API / codec features this device supports, so we can
+  // render per-screen diagnostics + spot devices that need attention
+  // (Chromium <70, missing H.265, etc.) without combing through UAs.
+  const caps = detectCapabilities();
+  // eslint-disable-next-line no-console
+  console.log('[Player] capabilities', {
+    chromium: caps.chromiumMajor || 'unknown',
+    modern: caps.modernChromium,
+    containerQueries: caps.containerQueries,
+    backdropFilter: caps.backdropFilter,
+    h265: caps.codecH265,
+    av1: caps.codecAv1,
+  });
+
   return {
     resolution: `${pxW}×${pxH}`,
     osInfo: os,
     browserInfo: `${browser} ${navigator.language}`,
     userAgent: ua,
+    chromiumVersion: caps.chromiumMajor || null,
+    capabilities: {
+      modernChromium: caps.modernChromium,
+      containerQueries: caps.containerQueries,
+      backdropFilter: caps.backdropFilter,
+      hasSelector: caps.hasSelector,
+      oklchColors: caps.oklchColors,
+      colorMix: caps.colorMix,
+      subgrid: caps.subgrid,
+      codecH264: caps.codecH264,
+      codecH265: caps.codecH265,
+      codecVp9: caps.codecVp9,
+      codecAv1: caps.codecAv1,
+      imageWebp: caps.imageWebp,
+      imageAvif: caps.imageAvif,
+    },
   };
 }
 
