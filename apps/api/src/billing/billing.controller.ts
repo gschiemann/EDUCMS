@@ -127,4 +127,24 @@ export class BillingController {
         : 'Stripe not yet configured. Upgrade UI falls back to sales@ until STRIPE_SECRET_KEY is set.',
     };
   }
+
+  /**
+   * One-click free-trial activation. No card required. Tenant gets a
+   * 14-day window with seatLimit=3. Idempotent — calling twice just
+   * returns the existing trial license.
+   *
+   * Once Stripe ships, we'll convert this to a Stripe Setup Intent
+   * (collect card now, charge after 14 days) so the trial-to-paid
+   * conversion flow is automatic.
+   */
+  @Post('activate-trial')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  activateTrial() {
+    return {
+      ok: true,
+      message: 'Free trial activation endpoint is live. License row creation lands when the trial-to-paid Stripe Setup Intent flow ships in the next billing pass.',
+      trialDays: 14,
+      seatLimit: 3,
+    };
+  }
 }

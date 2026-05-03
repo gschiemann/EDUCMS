@@ -37,14 +37,11 @@ export class LicenseController {
    * the upgrade UI can highlight it).
    */
   @Get('tiers')
-  tiers(@Query('vertical') vertical?: string) {
-    const all = LICENSE_TIERS;
-    const recommended = vertical ? recommendedTiersForVertical(vertical) : all;
-    const recIds = new Set(recommended.map((t) => t.id));
-    // Return only tiers shown to this vertical, plus add-ons (which are
-    // universal across verticals — operator decides if they want them).
-    return all
-      .filter((t) => recIds.has(t.id) || t.isAddon || t.id === 'PILOT' || t.id === 'CMS_CORE')
+  tiers() {
+    // 2026-05-03 — pricing simplified to FREE_TRIAL / MONTHLY / ANNUAL.
+    // No vertical filtering, no add-ons. Annual is recommended for the
+    // 17% savings call-out.
+    return LICENSE_TIERS
       .filter((t) => t.id !== 'COMP' && t.id !== 'CUSTOM')
       .map((t) => ({
         id: t.id,
@@ -56,9 +53,7 @@ export class LicenseController {
         features: t.features,
         selfServe: t.selfServe,
         isAddon: t.isAddon,
-        // Mark the most relevant tier per vertical as the recommended
-        // one. Pick the first non-PILOT, non-add-on tier in `bestFor`.
-        recommended: vertical ? (t.bestFor as readonly string[]).includes(vertical) && !t.isAddon : false,
+        recommended: t.id === 'ANNUAL',
       }));
   }
 }

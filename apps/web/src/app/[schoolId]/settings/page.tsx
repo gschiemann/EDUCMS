@@ -247,6 +247,26 @@ export default function SettingsPage() {
             </div>
             <span className="text-xs text-emerald-600 font-bold">Earn →</span>
           </Link>
+
+          {/* 2026-05-03 — One-click integration smoke-test harness.
+              Loads sample data into streaming / POS / ads connections
+              so the operator can demo every feature without registering
+              for vendor sandbox accounts. */}
+          <Link
+            href={`${pathname}/test-integrations`}
+            className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between mt-3 hover:border-pink-300 hover:shadow-md transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-pink-50 flex items-center justify-center">
+                <MonitorPlay className="w-4 h-4 text-pink-600" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-slate-800">Test integrations</div>
+                <div className="text-[11px] text-slate-500">One-click sample data for streaming / POS / ads — demo every feature without vendor sandbox accounts.</div>
+              </div>
+            </div>
+            <span className="text-xs text-pink-600 font-bold">Try →</span>
+          </Link>
         </RoleGate>
 
         {/* USB Sneakernet Ingest (Sprint 7B) — admins enable + rotate HMAC key + see ingest events */}

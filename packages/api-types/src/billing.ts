@@ -17,18 +17,16 @@
  * Customer Portal once Stripe is wired.
  */
 
+// 2026-05-03 — Operator: simplify the catalog to launch with three
+// SKUs only. No unlimited, no add-ons, no school references. Per-screen
+// metering across the board. Add tiers back in later sprints once
+// real demand from a specific buyer makes them worth supporting.
 export type LicenseTierId =
-  | 'PILOT'                    // 90-day free, 5 screens
-  | 'CMS_CORE'                 // entry tier
-  | 'SCHOOL_UNLIMITED'         // K12 full
-  | 'GYM_PRO'                  // GYM full
-  | 'RESTAURANT_CHAIN'         // QSR/Restaurant chains
-  | 'RETAIL_CHAIN'             // Retail chains
-  | 'COMMAND'                  // Add-on: incident workflows + accountability
-  | 'DISTRICT_OPS'             // Multi-school district / multi-location
-  | 'RESPONDER_BRIDGE'         // Add-on: 911/ECC integration
-  | 'COMP'                     // Internal / partner / staff comps
-  | 'CUSTOM';                  // Negotiated; see License.notes
+  | 'FREE_TRIAL'   // 14-day free, 3 screens, no credit card needed
+  | 'MONTHLY'      // $15 / screen / month, billed monthly
+  | 'ANNUAL'       // $150 / screen / year, billed annually (2 months free vs monthly)
+  | 'COMP'         // Internal / partner — admin only
+  | 'CUSTOM';      // Negotiated — admin only
 
 export interface LicenseTier {
   id: LicenseTierId;
@@ -56,166 +54,67 @@ export interface LicenseTier {
 }
 
 export const LICENSE_TIERS: ReadonlyArray<LicenseTier> = [
+  // Three public SKUs. Same features across all three tiers — only
+  // the price and billing cadence change. Per-screen metering for
+  // every tier so we never have to retroactively remap existing
+  // customers when we add seats / locations.
   {
-    id: 'PILOT',
-    name: 'Pilot',
-    blurb: 'Free 90-day trial — up to 5 screens, full features.',
+    id: 'FREE_TRIAL',
+    name: 'Free trial',
+    blurb: '14 days, up to 3 screens, no credit card needed.',
     monthlyPriceCents: 0,
     annualPriceCents: 0,
-    seatLimit: 5,
+    seatLimit: 3,
     bestFor: [],
     features: [
-      'Up to 5 screens',
-      '90-day trial',
+      '3 screens',
+      '14-day trial',
       'Full template library',
-      'Emergency alerts',
-      'Email + chat support',
-    ],
-    selfServe: true,
-    isAddon: false,
-  },
-  {
-    id: 'CMS_CORE',
-    name: 'CMS Core',
-    blurb: 'Entry-tier signage. Per-screen billing, self-serve.',
-    monthlyPriceCents: 700,            // $7 / screen / month
-    annualPriceCents: 7000,
-    seatLimit: null,                    // metered per screen
-    bestFor: ['CORPORATE', 'RETAIL', 'QSR', 'BAR'],
-    features: [
-      'Unlimited templates',
-      'Drag-and-drop builder',
-      'Standard alerts',
+      'All integrations',
       'Email support',
     ],
     selfServe: true,
     isAddon: false,
   },
   {
-    id: 'SCHOOL_UNLIMITED',
-    name: 'School Unlimited',
-    blurb: 'K-12 full — unlimited screens per school.',
-    monthlyPriceCents: 16600,          // $1,999 / year ÷ 12
-    annualPriceCents: 199900,
-    seatLimit: null,
-    bestFor: ['K12'],
-    features: [
-      'Unlimited screens per school',
-      'District + school tenancy',
-      'Emergency alert routing',
-      'CAP / custom provider ingest',
-      'All-clear handling',
-      'Premium support',
-    ],
-    selfServe: true,
-    isAddon: false,
-  },
-  {
-    id: 'GYM_PRO',
-    name: 'Gym Pro',
-    blurb: 'Fitness venue full plan — unlimited screens, streaming included.',
-    monthlyPriceCents: 14900,          // $149 / location / month
-    annualPriceCents: 149000,
-    seatLimit: null,
-    bestFor: ['GYM'],
-    features: [
-      'Unlimited screens per gym',
-      'Class schedule + live TV widgets',
-      'Streaming integrations (Atmosphere, public broadcasters)',
-      'Member-app launcher',
-      'Premium support',
-    ],
-    selfServe: true,
-    isAddon: false,
-  },
-  {
-    id: 'RESTAURANT_CHAIN',
-    name: 'Restaurant / QSR',
-    blurb: 'Menu boards + drive-thru + loyalty for QSR + casual dining.',
-    monthlyPriceCents: 9900,           // $99 / location / month
-    annualPriceCents: 99000,
-    seatLimit: null,
-    bestFor: ['QSR'],
-    features: [
-      'Unlimited screens per location',
-      'Menu boards + combo carousel',
-      'Wait-time + queue widgets',
-      'Loyalty + promo rotations',
-      'Multi-location publish',
-    ],
-    selfServe: true,
-    isAddon: false,
-  },
-  {
-    id: 'RETAIL_CHAIN',
-    name: 'Retail Chain',
-    blurb: 'Lookbook + pricing + storefront promo. Multi-store roll-out ready.',
-    monthlyPriceCents: 12900,          // $129 / location / month
-    annualPriceCents: 129000,
-    seatLimit: null,
-    bestFor: ['RETAIL', 'FASHION'],
-    features: [
-      'Unlimited screens per store',
-      'Editorial lookbook templates',
-      'Sale + price-point widgets',
-      'Wayfinding map',
-      'Multi-store publishing',
-    ],
-    selfServe: true,
-    isAddon: false,
-  },
-  {
-    id: 'COMMAND',
-    name: 'Command (Add-on)',
-    blurb: 'Incident workflows, accountability, drill reporting, reunification-lite.',
-    monthlyPriceCents: 8300,           // $1,000-$2,000/yr add-on
-    annualPriceCents: 100000,
-    seatLimit: null,
-    bestFor: ['K12'],
-    features: [
-      'Incident state machine',
-      'Roll-call + reunification',
-      'Drill reporting',
-      'Responder packet (Raptor / RapidSOS handoff)',
-    ],
-    selfServe: false,
-    isAddon: true,
-  },
-  {
-    id: 'DISTRICT_OPS',
-    name: 'District Ops',
-    blurb: 'Cross-school command center, mutual-aid, governance. Annual contract.',
-    monthlyPriceCents: null,            // sales-led
+    id: 'MONTHLY',
+    name: 'Monthly',
+    blurb: '$15 per screen, billed monthly. Cancel anytime.',
+    monthlyPriceCents: 1500,
     annualPriceCents: null,
     seatLimit: null,
-    bestFor: ['K12', 'CORPORATE'],
+    bestFor: [],
     features: [
-      'Cross-school dashboard',
-      'Inherited policies',
-      'SSO + audit exports',
-      'Premium support',
-      'Annual contract',
+      'Per-screen billing',
+      'Full template library',
+      'All integrations (streaming, POS, ads)',
+      'Emergency alerts',
+      'Email + chat support',
+      'Cancel any time',
     ],
-    selfServe: false,
+    selfServe: true,
     isAddon: false,
   },
   {
-    id: 'RESPONDER_BRIDGE',
-    name: 'Responder Bridge',
-    blurb: '911/ECC integration via Raptor / RapidSOS. Sales-led.',
+    id: 'ANNUAL',
+    name: 'Annual',
+    blurb: '$150 per screen, billed yearly. Save 17% vs monthly.',
     monthlyPriceCents: null,
-    annualPriceCents: null,
+    annualPriceCents: 15000,
     seatLimit: null,
-    bestFor: ['K12'],
+    bestFor: [],
     features: [
-      'Raptor / RapidSOS connector',
-      'Structured responder data',
-      'Drill testing support',
-      'Sales-led onboarding',
+      'Per-screen billing',
+      'Save 17% vs monthly',
+      'Full template library',
+      'All integrations (streaming, POS, ads)',
+      'Emergency alerts',
+      'Priority support',
     ],
-    selfServe: false,
-    isAddon: true,
+    selfServe: true,
+    isAddon: false,
   },
+  // Internal-only — never shown in the public picker.
   {
     id: 'COMP',
     name: 'Comp / Partner',
@@ -231,7 +130,7 @@ export const LICENSE_TIERS: ReadonlyArray<LicenseTier> = [
   {
     id: 'CUSTOM',
     name: 'Custom',
-    blurb: 'Negotiated tier. Pricing + limits captured in License.notes.',
+    blurb: 'Negotiated. Pricing + limits captured in License.notes.',
     monthlyPriceCents: null,
     annualPriceCents: null,
     seatLimit: null,
@@ -246,11 +145,8 @@ export function getLicenseTier(id: string): LicenseTier | undefined {
   return LICENSE_TIERS.find((t) => t.id === id);
 }
 
-/** Tiers a tenant of this vertical should see in the upgrade picker. */
-export function recommendedTiersForVertical(vertical: string): ReadonlyArray<LicenseTier> {
-  return LICENSE_TIERS.filter((t) => {
-    if (t.id === 'COMP' || t.id === 'CUSTOM') return false;       // hidden from public
-    if (t.bestFor.length === 0) return true;                       // universal
-    return t.bestFor.includes(vertical as any);
-  });
+/** Tiers a tenant should see in the upgrade picker. Every public
+ *  tier is universal — vertical doesn't filter the tier list anymore. */
+export function recommendedTiersForVertical(_vertical: string): ReadonlyArray<LicenseTier> {
+  return LICENSE_TIERS.filter((t) => t.id !== 'COMP' && t.id !== 'CUSTOM');
 }

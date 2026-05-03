@@ -1,4 +1,11 @@
 'use client';
+// 2026-05-03 — POS sync: when `config.posSync` is true the widget
+// fetches items live from /api/v1/pos/items (optionally filtered by
+// `config.posCategory`) instead of using static config. Falls through
+// to static items / DEMO_ITEMS if the fetch fails or returns empty so
+// the widget NEVER renders blank even when the POS is unhealthy.
+import { useEffect, useState } from 'react';
+import { apiFetch } from '@/lib/api-client';
 
 /**
  * MenuBoardWidget — multi-column QSR / counter-service menu.
@@ -45,6 +52,13 @@ export interface MenuBoardConfig {
   bgColor?: string;
   /** Color theme: cream/dark/charcoal */
   theme?: 'cream' | 'charcoal' | 'red';
+  /** When true, fetch live items from the connected POS instead of
+   *  using `items` above. Falls back to static items on error. */
+  posSync?: boolean;
+  /** Optional category filter when posSync is true (e.g. "Burgers"). */
+  posCategory?: string;
+  /** Cap how many items to display; default 12 (4 cols × 3 rows). */
+  maxItems?: number;
 }
 
 const DEMO_ITEMS: MenuBoardItem[] = [
@@ -90,7 +104,13 @@ export function MenuBoardWidget({
   const ink = theme === 'cream' ? '#1a1714' : '#fbf6ee';
   const subInk = theme === 'cream' ? 'rgba(26,23,20,0.7)' : 'rgba(251,246,238,0.75)';
   const colCount = Math.max(1, Math.min(5, c.columns || 3));
-  const items = normalizeItems(c.items);
+  // POS-synced live items override the static config when posSync is on.
+  // Hook only fires when the flag is set so the widget stays SSR-safe
+  // for static templates.
+  const posItems = usePosMenuItems(!!c.posSync, c.posCategory);
+  const items = (c.posSync && posItems && posItems.length > 0)
+    ? posItems.slice(0, c.maxItems || 12)
+    : normalizeItems(c.items).slice(0, c.maxItems || 12);
   const title = c.title || 'OUR MENU';
   const subtitle = c.subtitle || 'made fresh daily';
 
@@ -246,3 +266,30 @@ const CSS = `
   opacity: 0.8;
 }
 `;
+
+// 2026-05-03 — POS-sync hook. When `enabled` (config.posSync) is true,
+// fetches /api/v1/pos/items optionally filtered by category. Returns
+// an array of MenuBoardItems mapped from PosMenuItem rows. Returns
+// null on error / loading so the caller falls back to static items.
+function usePosMenuItems(enabled: boolean, category?: string): MenuBoardItem[] | null {
+  const [items, setItems] = useState<MenuBoardItem[] | null>(null);
+  useEffect(() => {
+    if (!enabled) { setItems(null); return; }
+    let cancelled = false;
+    const path = category ? `/pos/items?category=${encodeURIComponent(category)}` : "/pos/items";
+    apiFetch<any[]>(path).then((rows) => {
+      if (cancelled) return;
+      if (!Array.isArray(rows) || rows.length === 0) { setItems(null); return; }
+      const mapped: MenuBoardItem[] = rows.map((r) => ({
+        name: r.name,
+        desc: r.description,
+        price: `$${(r.priceCents / 100).toFixed(2)}`,
+        dietary: r.badges,
+      }));
+      setItems(mapped);
+    }).catch(() => { if (!cancelled) setItems(null); });
+    return () => { cancelled = true; };
+  }, [enabled, category]);
+  return items;
+}
+

@@ -43,6 +43,8 @@ import { BillingModule } from './billing/billing.module';
 import { PosModule } from './pos/pos.module';
 // 2026-05-03 — Sprint 8d ad-network monetization framework.
 import { AdsModule } from './ads/ads.module';
+// 2026-05-03 — Sample-data test harness for integration smoke tests.
+import { SampleDataModule } from './sample-data/sample-data.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_FILTER, APP_GUARD, APP_PIPE, APP_INTERCEPTOR } from '@nestjs/core';
 import { SanitizationPipe } from './security/sanitization.pipe';
@@ -80,6 +82,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     BillingModule,
     PosModule,
     AdsModule,
+    SampleDataModule,
     ThrottlerModule.forRoot([{
       ttl: 60000,
       limit: 100,
