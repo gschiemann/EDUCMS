@@ -174,6 +174,44 @@ export default function SettingsPage() {
         {/* License & Billing (Sprint 7E) — current tier, seats used, expiry */}
         <LicenseCard />
 
+        {/* Sprint 8c (2026-05-03) — link cards to the new full-page
+            settings: Streaming providers + Billing tier picker. The
+            existing LicenseCard above stays as a compact summary;
+            these are the deeper drill-in screens. */}
+        <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}>
+          <Link
+            href={`${pathname}/streaming`}
+            className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between mt-4 hover:border-violet-300 hover:shadow-md transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-violet-50 flex items-center justify-center">
+                <MonitorPlay className="w-4 h-4 text-violet-600" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-slate-800">Streaming providers</div>
+                <div className="text-[11px] text-slate-500">Connect Atmosphere, public broadcasters, YouTube, Twitch, custom HLS — pick channels for the streaming widget.</div>
+              </div>
+            </div>
+            <span className="text-xs text-violet-600 font-bold">Manage →</span>
+          </Link>
+
+          <Link
+            href={`${pathname}/billing`}
+            className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between mt-3 hover:border-emerald-300 hover:shadow-md transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center">
+                <Building2 className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-slate-800">Plans & billing</div>
+                <div className="text-[11px] text-slate-500">View your current plan + upgrade / downgrade. Compare tiers and add-ons.</div>
+              </div>
+            </div>
+            <span className="text-xs text-emerald-600 font-bold">View plans →</span>
+          </Link>
+        </RoleGate>
+
         {/* USB Sneakernet Ingest (Sprint 7B) — admins enable + rotate HMAC key + see ingest events */}
         <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}>
           {/* USB export was moved to an inline 'Download' button on each
