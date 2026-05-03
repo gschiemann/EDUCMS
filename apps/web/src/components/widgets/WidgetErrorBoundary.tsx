@@ -58,18 +58,32 @@ export class WidgetErrorBoundary extends React.Component<Props, State> {
   render() {
     if (this.state.error) {
       const label = this.props.widgetLabel || 'Widget';
+      const msg = this.state.error.message || String(this.state.error);
+      // First two stack frames give the function + file:line that
+      // actually threw — enough to point a developer at the line
+      // without dumping the whole stack into the operator's view.
+      const stackHead = (this.state.error.stack || '')
+        .split('\n')
+        .slice(1, 3) // skip "Error: ..." then take next 2 frames
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .join(' · ');
       return (
         <div
           role="alert"
-          className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3 text-center bg-rose-50/80 border-2 border-dashed border-rose-300 rounded-lg"
+          className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3 text-center bg-rose-50/80 border-2 border-dashed border-rose-300 rounded-lg overflow-auto"
         >
           <div className="text-[11px] font-bold text-rose-700">
             {label} hit an error
           </div>
-          <div className="text-[10px] text-rose-600 leading-snug max-w-[90%]">
-            The rest of the page is still usable. Edit the widget config or
-            click the button below to retry.
+          <div className="text-[10px] text-rose-600 leading-snug max-w-[95%] font-mono break-words">
+            {msg}
           </div>
+          {stackHead && (
+            <div className="text-[9px] text-rose-500/80 leading-snug max-w-[95%] font-mono break-words opacity-80">
+              {stackHead}
+            </div>
+          )}
           <button
             type="button"
             onClick={this.reset}

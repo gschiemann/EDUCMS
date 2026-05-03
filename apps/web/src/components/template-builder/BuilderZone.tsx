@@ -274,7 +274,15 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       // shape preserved. Shallow-merge friendly (the patch's top key
       // fully replaces that subtree but with all sibling indexes /
       // properties carried through from the prior config).
-      const patch = setByPath((zone as any).config || {}, fieldKey, newValue);
+      //
+      // 2026-05-03 — was reading `(zone as any).config`, which is
+      // ALWAYS undefined (the field is `defaultConfig`). Result: the
+      // patch was built from an empty `{}` base, so an inline edit to
+      // e.g. `schedule.0.label` produced
+      //   { schedule: [{ label: "..." }] }
+      // and the merge wiped all sibling periods (1..N) on commit.
+      // Reading from `defaultConfig` preserves siblings as intended.
+      const patch = setByPath((zone.defaultConfig || {}) as Record<string, any>, fieldKey, newValue);
       onConfigChange(zone.id, patch);
     };
     const cancel = () => {
