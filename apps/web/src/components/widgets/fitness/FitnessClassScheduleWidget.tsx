@@ -1,4 +1,14 @@
 'use client';
+// 2026-05-03 — operator: "make sure all the widget fixes are applied to
+// every widget we have." The fitness class schedule had its own narrow
+// parser that ONLY accepted "7:30 AM" 12-hour input. If the operator
+// typed "13:30" or "07:00" (or pasted from a 24-hour source), parseTime
+// returned -1 and the row's "next class" detection silently broke.
+// Switched to the shared loose-time parser + 12-hour formatter so:
+//   • 24-hour input is accepted ("13:30" → 1:30pm shown)
+//   • Loose input ("8" → 8:00am, "1pm" → 1:00pm) works
+//   • Display always renders 12-hour, matching every other widget.
+import { parseTimeToMinutes, formatTime12Spaced } from '@/lib/format-time';
 
 /**
  * FitnessClassScheduleWidget — today's gym class schedule on a wall display.
@@ -59,16 +69,12 @@ const DEMO_CLASSES: FitnessClassScheduleClass[] = [
   { time: '6:30 PM', name: 'Restorative Yoga',       instructor: 'Sara K.',   studio: 'Studio B', intensity: 'easy',     durationMin: 60 },
 ];
 
-/** Parse a 12-hour time string ("7:30 AM") to minutes-since-midnight. */
+/** Parse a loose time string ("7:30 AM" / "13:30" / "1pm" / "8") to
+ *  minutes-since-midnight. Returns -1 on parse failure (matches the
+ *  prior contract — sentinel used by the next-class detector below). */
 function parseTime(t: string): number {
-  const m = t.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-  if (!m) return -1;
-  let h = parseInt(m[1], 10);
-  const min = parseInt(m[2], 10);
-  const period = m[3].toUpperCase();
-  if (period === 'AM' && h === 12) h = 0;
-  if (period === 'PM' && h !== 12) h += 12;
-  return h * 60 + min;
+  const m = parseTimeToMinutes(t);
+  return m == null ? -1 : m;
 }
 
 function nowMinutes(): number {
@@ -158,8 +164,10 @@ export function FitnessClassScheduleWidget({
               {/* Neon left bar — only shown on the next class */}
               {cls._isNext && <div className="fcsw-next-bar" aria-hidden />}
 
-              {/* Time column */}
-              <div className="fcsw-time">{cls.time}</div>
+              {/* Time column — pipe through formatTime12Spaced so a
+                  24-hour entry ("13:30") still renders as "1:30 PM" on
+                  the wall display. Matches every bell-schedule widget. */}
+              <div className="fcsw-time">{formatTime12Spaced(cls.time) || cls.time}</div>
 
               {/* Class name + instructor */}
               <div className="fcsw-meta">

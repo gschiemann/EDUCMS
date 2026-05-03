@@ -22,6 +22,11 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+// 2026-05-03 — operator: "make sure all the widget fixes are applied to
+// every widget we have." The portrait variant is a daily-driver display
+// (hallway tower screens). Pipe period start/end through the shared
+// 12-hour formatter so 24-hour input never escapes onto the screen.
+import { formatTime12 } from '@/lib/format-time';
 
 type Period = {
   num?: string | number;
@@ -81,11 +86,13 @@ function parseTimeToMin(t: string): number | null {
 
 function periodRange(p: Period): { start: number | null; end: number | null; display: string } {
   if (p.startTime && p.endTime) {
-    return { start: parseTimeToMin(p.startTime), end: parseTimeToMin(p.endTime), display: `${p.startTime} — ${p.endTime}` };
+    return { start: parseTimeToMin(p.startTime), end: parseTimeToMin(p.endTime), display: `${formatTime12(p.startTime)} — ${formatTime12(p.endTime)}` };
   }
   if (p.time) {
     const parts = p.time.split('—');
-    return { start: parseTimeToMin(parts[0] || ''), end: parseTimeToMin(parts[1] || ''), display: p.time };
+    const a = (parts[0] || '').trim();
+    const b = (parts[1] || '').trim();
+    return { start: parseTimeToMin(a), end: parseTimeToMin(b), display: b ? `${formatTime12(a)} — ${formatTime12(b)}` : formatTime12(a) };
   }
   return { start: null, end: null, display: '' };
 }
