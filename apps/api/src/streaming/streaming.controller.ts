@@ -22,7 +22,7 @@ import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 
 @UseGuards(JwtAuthGuard, RbacGuard)
-@Controller('streaming')
+@Controller('api/v1/streaming')
 export class StreamingController {
   constructor(private readonly svc: StreamingService) {}
 
