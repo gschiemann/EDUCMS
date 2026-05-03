@@ -203,19 +203,26 @@ export const AD_NETWORKS: ReadonlyArray<AdNetworkDef> = [
     name: 'Atmosphere TV (monetize)',
     category: 'venue-network',
     integrationTier: 'CLOSED',
-    blurb: 'Atmosphere distributes through their own app — no third-party CMS embed.',
+    blurb: 'Atmosphere ad revenue requires their own player. Stream via Settings → Streaming bridge.',
     iconEmoji: '📺',
     auth: 'partnerKey',
     pricingModel: 'revshare',
     takeRateBps: 1000,
     docsUrl: 'https://atmosphere.tv/business/',
     websiteUrl: 'https://atmosphere.tv',
-    pricingNote: 'Via their own player',
+    pricingNote: 'Atmosphere keeps its ad share via their player',
     bestFor: ['BAR', 'RESTAURANT', 'GYM'],
     capabilities: { creativeFetch: true, impressionReporting: true },
     salesLedOnly: true,
     k12Forbidden: true,
-    tierReason: 'Atmosphere runs a closed-platform model — Fire TV / Apple TV apps + venue partnerships. No publisher API for third-party CMS systems. Customers run Atmosphere on a dedicated screen.',
+    // 2026-05-03 — separate from the streaming-side BRIDGE entry. The
+    // streaming BRIDGE captures Atmosphere's HDMI output and renders it
+    // inside our CMS as a channel. That's playback only — Atmosphere
+    // keeps the ad relationship with the venue and pays the revenue
+    // share through their own dashboard. We don't broker their ad money.
+    // For our own ad inventory the operator should plug into Hivestack /
+    // Vistar / Place Exchange instead.
+    tierReason: 'Atmosphere\'s ad revenue stream is bound to their player + venue contract — there\'s no third-party SSP API. If you want Atmosphere CONTENT on screen, use the streaming bridge (Settings → Streaming → Atmosphere TV); Atmosphere\'s own ad revenue continues to land in their dashboard. For programmatic ads on our own templates, use Hivestack / Vistar / Place Exchange.',
   },
 
   // ─── TIER 3 — DIRECT SALES (no API at all) ────────────────────────

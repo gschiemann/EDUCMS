@@ -1022,4 +1022,122 @@ export const RESTAURANT_TEMPLATE_PRESETS: SystemPreset[] = [
       },
     ],
   },
+
+  // ════════════════════════════════════════════════════════════════
+  // Preset — Live POS Menu (Universal)
+  //
+  // 2026-05-03 — operator request: "do we need a new menu template
+  // for the POS integrations?" — yes, this one.
+  //
+  // Drop-in template that renders WHATEVER is in the operator's
+  // connected POS catalog. No hardcoded items, no hardcoded
+  // categories — RESTAURANT_MENU_BOARD with `posSync: true` pulls
+  // every available PosMenuItem at render time. As the operator
+  // updates Square / Toast / Clover, the menu board updates with no
+  // CMS changes.
+  //
+  // Purposefully understated visual chrome (no busy combo carousel,
+  // no specials callout) — the live catalog IS the content. Big
+  // title strip + clock + dietary legend + the menu board at full
+  // size so prices and items stay legible at counter distance.
+  //
+  // Vertical: tagged QSR but works for BAR / RETAIL too — the
+  // PosCategoryPicker in the editor lets the admin scope to a
+  // specific category like "Burgers" or "On Tap" or "New Arrivals".
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'qsr-live-pos-menu',
+    name: 'Live POS Menu',
+    description:
+      "Drops in next to your existing menu board and renders whatever's in your connected POS catalog — Square, Toast, Clover, Shopify, Stripe. No hardcoded items: as you update prices in your POS, the screen updates automatically. Optional category filter so you can run a 'Burgers Only' or 'On Tap' board on a specific zone.",
+    category: 'MENU',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#1a1714',
+    bgGradient:
+      'radial-gradient(1400px 800px at 15% 10%, rgba(232,185,74,0.08), transparent 60%),' +
+      'radial-gradient(1100px 700px at 85% 90%, rgba(122,31,31,0.08), transparent 60%),' +
+      'linear-gradient(135deg, #1a1714 0%, #221814 50%, #1a1714 100%)',
+    zones: [
+      // ── Title strip ──
+      {
+        name: 'Header',
+        widgetType: 'RICH_TEXT',
+        x: 2, y: 2, width: 76, height: 11,
+        zIndex: 2,
+        sortOrder: 1,
+        defaultConfig: {
+          html:
+            '<div style="font-family:Bebas Neue,sans-serif;font-size:200px;line-height:.85;letter-spacing:.04em;color:#fbf6ee;">OUR MENU</div>' +
+            '<div style="font-family:\'Playfair Display\',serif;font-style:italic;font-size:48px;color:#e8b94a;margin-top:8px;">live from our kitchen</div>',
+        },
+      },
+      // ── Clock — top right ──
+      {
+        name: 'Clock',
+        widgetType: 'CLOCK',
+        x: 80, y: 2, width: 18, height: 11,
+        zIndex: 2,
+        sortOrder: 2,
+        defaultConfig: {
+          format: '12h',
+          showSeconds: false,
+          color: '#fbf6ee',
+          fontSize: 120,
+          align: 'right',
+          theme: 'minimal',
+        },
+      },
+      // ── Live menu board — main canvas. posSync ON so it pulls
+      //    PosMenuItem from the connected POS. ──
+      {
+        name: 'Live menu',
+        widgetType: 'RESTAURANT_MENU_BOARD',
+        x: 2, y: 14, width: 96, height: 78,
+        zIndex: 2,
+        sortOrder: 3,
+        defaultConfig: {
+          title: 'TODAY\'S MENU',
+          subtitle: 'updated live from our kitchen',
+          theme: 'cream',
+          accentColor: '#e8b94a',
+          columns: 3,
+          posSync: true,
+          // posCategory left empty so the board shows EVERY available
+          // item across every category. Operator can scope per-zone
+          // via PropertiesPanel → "Category (optional)".
+          posCategory: undefined,
+          maxItems: 18,
+          // items[] still provided as a graceful fallback when the
+          // operator hasn't connected a POS yet — they see realistic
+          // demo data rather than a blank board.
+          items: [
+            { name: 'Connect a POS', desc: 'Settings → POS to wire up your Square / Toast / Clover catalog.', price: '—' },
+            { name: 'Items will sync automatically', desc: 'Your live catalog will replace this list.', price: '—' },
+          ],
+        },
+      },
+      // ── Dietary legend strip — pinned bottom ──
+      {
+        name: 'Dietary legend',
+        widgetType: 'RESTAURANT_ALLERGY_LEGEND',
+        x: 0, y: 92, width: 100, height: 8,
+        zIndex: 2,
+        sortOrder: 4,
+        defaultConfig: {
+          theme: 'charcoal',
+          accentColor: '#e8b94a',
+          legend: [
+            { code: 'V',  label: 'Vegetarian' },
+            { code: 'VG', label: 'Vegan' },
+            { code: 'GF', label: 'Gluten-free' },
+            { code: 'DF', label: 'Dairy-free' },
+            { code: 'NF', label: 'Nut-free' },
+            { code: 'S',  label: 'Spicy' },
+          ],
+        },
+      },
+    ],
+  },
 ];

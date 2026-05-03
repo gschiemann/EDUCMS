@@ -42,6 +42,7 @@ export class StreamingService {
       bestFor: p.bestFor,
       requiresVenueLicense: p.requiresVenueLicense,
       tierReason: p.tierReason,
+      bridgeSteps: p.bridgeSteps,
     }));
   }
 
@@ -101,17 +102,12 @@ export class StreamingService {
     }
     if (provider.integrationTier === 'CLOSED') {
       throw new ForbiddenException(
-        `${provider.name} does not have a public API for third-party CMS integration. ${provider.tierReason || ''} Customers run this provider on their own dedicated screen alongside our CMS.`,
+        `${provider.name} does not have a public API or bridge workflow. ${provider.tierReason || ''}`,
       );
     }
-    if (provider.integrationTier === 'PARTNER') {
-      // Only allow PARTNER connections if the operator has been
-      // pre-approved (in practice — we let the connection save in
-      // PENDING status and a staff member flips it ACTIVE after the
-      // partnership lands). For now we let it through with a flag.
-      // No throw; the wizard surfaces the partnership warning before
-      // we get here.
-    }
+    // PARTNER + BRIDGE both save in PENDING. PARTNER waits on vendor
+    // OAuth approval; BRIDGE waits on the operator getting their
+    // capture-card workflow live and pasting the local HLS URL.
     // Validate auth shape per provider — minimal at the framework
     // level; per-provider handlers can do deeper validation in a
     // future commit.

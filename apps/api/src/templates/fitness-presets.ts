@@ -416,4 +416,44 @@ export const FITNESS_TEMPLATE_PRESETS: SystemPreset[] = [
       },
     ],
   },
+
+  // ════════════════════════════════════════════════════════════════
+  // Preset — Stadium (4K Cardio Floor scene, Themed)
+  //
+  // Sprint 8c follow-up (2026-05-03). Drop-in 4K scene built from the
+  // approved scratch/design/fitness/01-stadium.html mockup. Single
+  // FITNESS_STADIUM zone fills the canvas — every editable hotspot
+  // (LIVE / channel / clock / TV mark / now-playing / promo / stats /
+  // ticker) is a `data-field` text node the PropertiesPanel auto-form
+  // exposes via the FITNESS_STADIUM_DEFAULTS export.
+  //
+  // Use case: cardio floor TV, "we want one cool wallpaper" gyms
+  // that don't want to lay out individual zones. The scene IS the
+  // template.
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'fitness-stadium',
+    name: 'Stadium — Broadcast Cardio Floor',
+    description:
+      'Massive Jumbotron-style cardio scene — LIVE scorebug ribbon, 2300×1280 TV pane on the left, music + promo cards on the right rail, four neon-accented stats, scrolling neon-yellow ticker on the bottom. Charcoal + neon yellow + hot red palette. 4K canvas; auto-fits any 16:9 screen.',
+    category: 'FITNESS',
+    orientation: 'LANDSCAPE',
+    screenWidth: 3840,
+    screenHeight: 2160,
+    bgColor: '#07070c',
+    zones: [
+      {
+        name: 'Stadium scene',
+        widgetType: 'FITNESS_STADIUM',
+        x: 0, y: 0, width: 100, height: 100,
+        zIndex: 1,
+        sortOrder: 1,
+        defaultConfig: {
+          // Defaults are baked into the widget via FITNESS_STADIUM_DEFAULTS;
+          // the operator's customizations land here as field overrides.
+          liveClock: true,
+        },
+      },
+    ],
+  },
 ];

@@ -1,6 +1,6 @@
 "use client";
 
-import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon, Usb, MapPin, Plus, Building2, ShieldCheck, ShieldOff } from 'lucide-react';
+import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon, Usb, MapPin, Plus, Building2, ShieldCheck, ShieldOff, ChevronDown } from 'lucide-react';
 import { usePathname, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { RoleGate } from '@/components/RoleGate';
@@ -156,9 +156,14 @@ export default function SettingsPage() {
             same card's header. Operator wanted ONE menu, not two. Flipping ON
             unlocks per-screen emergency overrides via floor plans, and the
             inline section below the panic editors lets the admin jump straight
-            to the floor plans editor without leaving Settings. */}
+            to the floor plans editor without leaving Settings.
+
+            2026-05-03 — multi-vertical: K12 keeps it always-on (life-safety
+            critical for schools). Other verticals get an opt-in toggle —
+            most gyms / restaurants / retailers don't run lockdown drills,
+            so this section is hidden by default and enabled per-tenant. */}
         <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}>
-          <PanicContentSection />
+          <PanicContentGate />
         </RoleGate>
 
         {/* Auto-branding — paste URL → CMS re-skins (Sprint 9) */}
@@ -195,21 +200,10 @@ export default function SettingsPage() {
             <span className="text-xs text-violet-600 font-bold">Manage →</span>
           </Link>
 
-          <Link
-            href={`${pathname}/billing`}
-            className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between mt-3 hover:border-emerald-300 hover:shadow-md transition-all"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center">
-                <Building2 className="w-4 h-4 text-emerald-600" />
-              </div>
-              <div>
-                <div className="text-sm font-bold text-slate-800">Plans & billing</div>
-                <div className="text-[11px] text-slate-500">View your current plan + upgrade / downgrade. Compare tiers and add-ons.</div>
-              </div>
-            </div>
-            <span className="text-xs text-emerald-600 font-bold">View plans →</span>
-          </Link>
+          {/* 2026-05-03 — operator removed the standalone "Plans &
+              billing" tile here. The LicenseCard above already carries
+              the upgrade CTA + "View all plans →" drill-in to
+              `${pathname}/billing`. One billing surface, not two. */}
 
           {/* Sprint 8d (2026-05-03) — POS catalog sync + ad-network
               monetization. POS hidden for K12 (no menu boards in
@@ -269,46 +263,75 @@ export default function SettingsPage() {
           </Link>
         </RoleGate>
 
-        {/* USB Sneakernet Ingest (Sprint 7B) — admins enable + rotate HMAC key + see ingest events */}
         <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}>
-          {/* USB export was moved to an inline 'Download' button on each
-              playlist header — the user wanted a single-click flow with
-              no separate USB settings page. Signing key + enable flag
-              are now auto-provisioned on first export, so nothing here
-              to configure. The UsbIngestCard below stays for power users
-              who want to rotate/revoke, but isn't required for the
-              basic workflow. */}
-          <UsbIngestCard />
-
-          {/* Android Player APK download — Nova Taurus, BrightSign, any
-              Android 7+ kiosk. Redirects to the latest signed release
-              asset. */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between mt-4">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center">
-                <MonitorPlay className="w-4 h-4 text-emerald-600" />
-              </div>
-              <div>
-                <div className="text-sm font-bold text-slate-800">Download Player APK</div>
-                <div className="text-[11px] text-slate-500">Android kiosk build — Nova Taurus, generic Android 7+. Sideload once; updates are manual unless you opt in below.</div>
-              </div>
+          {/* Player APK — single shared card combining the manual download
+              button + the auto-update toggle. Two separate cards used to
+              live here; operator (2026-05-03): "the settings page is
+              cluttered" — collapsed into one with a download row on top
+              and an auto-update row underneath. */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mt-4">
+            <div className="px-6 py-4 border-b border-slate-100">
+              <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                <MonitorPlay className="w-4 h-4 text-emerald-600" /> Player APK
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Download the Android kiosk build and decide whether paired screens auto-update.
+              </p>
             </div>
-            <a
-              href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1'}/player/apk/latest`}
-              target="_blank" rel="noopener"
-              className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg"
-            >
-              Download APK
-            </a>
+
+            {/* Row 1 — manual APK download. Sideload once on Nova Taurus,
+                BrightSign, or any Android 7+ kiosk. */}
+            <div className="px-6 py-4 flex items-center justify-between gap-4 border-b border-slate-100">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
+                  <MonitorPlay className="w-4 h-4 text-emerald-600" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-slate-800">Download Player APK</div>
+                  <div className="text-[11px] text-slate-500">Android kiosk build — Nova Taurus, generic Android 7+. Sideload once; updates are manual unless you opt in below.</div>
+                </div>
+              </div>
+              <a
+                href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1'}/player/apk/latest`}
+                target="_blank" rel="noopener"
+                className="shrink-0 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg"
+              >
+                Download APK
+              </a>
+            </div>
+
+            {/* Row 2 — auto-update toggle. Operator (2026-04-27): "we
+                shouldnt be auto updating screens unless we check a box
+                or something on that... i would hate to break a perfectly
+                good working screen with an update." Default OFF. */}
+            <AutoUpdatePlayerToggle />
           </div>
 
-          {/* Auto-update toggle — operator (2026-04-27): "we shouldnt
-              be auto updating screens unless we check a box or
-              something on that... i would hate to break a perfectly
-              good working screen with an update." Default OFF. When
-              ON, kiosks auto-pull updates on their 6h cadence. When
-              OFF, admins push individual screens manually. */}
-          <AutoUpdatePlayerToggle />
+          {/* USB Sneakernet Ingest (Sprint 7B) — collapsed by default.
+              The everyday USB export is now an inline "Download" button
+              on each playlist header (single-click flow, no separate
+              settings page). What stays here is the security/audit
+              surface: rotate the HMAC signing key, inspect the ingest
+              event log, disable the feature for the tenant. Power-user
+              only — hidden behind a <details> so it doesn't clutter the
+              page. */}
+          <details className="group bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mt-4">
+            <summary className="px-6 py-4 cursor-pointer list-none flex items-center justify-between gap-3 hover:bg-slate-50/60">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-lg bg-violet-50 flex items-center justify-center shrink-0">
+                  <Usb className="w-4 h-4 text-violet-500" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-slate-800">Advanced: USB sneakernet ingest</div>
+                  <div className="text-[11px] text-slate-500">Manage USB security keys + offline content delivery — separate from the per-playlist download button.</div>
+                </div>
+              </div>
+              <ChevronDown className="w-4 h-4 text-slate-400 shrink-0 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="border-t border-slate-100">
+              <UsbIngestCard />
+            </div>
+          </details>
         </RoleGate>
 
         {/* Team Members */}
@@ -466,6 +489,116 @@ export default function SettingsPage() {
         </div>
       </RoleGate>
     </div>
+  );
+}
+
+/**
+ * PanicContentGate — vertical-aware opt-in shell around
+ * PanicContentSection.
+ *
+ * K12 tenants always see the panic content editor (lockdown drills are
+ * life-safety-critical). Other verticals (gym, restaurant, retail, bar,
+ * corporate, ...) get an opt-in toggle. Most don't run lockdown drills,
+ * so the editor is hidden by default to keep the settings page tidy.
+ *
+ * Persistence: stored client-side in localStorage under
+ * `emergencyEnabled:${tenantId}` for now — switching to a real
+ * `Tenant.emergencyEnabled` column on the API is a follow-up.
+ *
+ * TODO(api): persist the opt-in flag server-side via
+ * `Tenant.emergencyEnabled` so it follows the user across devices and
+ * survives localStorage clears. For now this is a UX-only gate.
+ */
+function PanicContentGate() {
+  const tenantCopy = useTenantCopy();
+  const { data: tenant } = useTenant();
+  const tenantId = (tenant as any)?.id ?? '';
+  const isK12 = tenantCopy.vertical === 'K12';
+
+  // Default: K12 = on, all others = off. Once mounted, hydrate from
+  // localStorage if a saved preference exists for this tenant.
+  const [enabled, setEnabled] = useState<boolean>(isK12);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    if (!tenantId || typeof window === 'undefined') {
+      setHydrated(true);
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(`emergencyEnabled:${tenantId}`);
+      if (raw === 'true') setEnabled(true);
+      else if (raw === 'false') setEnabled(false);
+      else setEnabled(isK12);
+    } catch {
+      // Private mode / disabled storage — fall back to vertical default.
+      setEnabled(isK12);
+    }
+    setHydrated(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, isK12]);
+
+  const handleToggle = (next: boolean) => {
+    setEnabled(next);
+    if (typeof window !== 'undefined' && tenantId) {
+      try {
+        window.localStorage.setItem(
+          `emergencyEnabled:${tenantId}`,
+          next ? 'true' : 'false',
+        );
+      } catch {
+        // ignore — UI still reflects the in-memory toggle
+      }
+    }
+  };
+
+  // K12 keeps the always-on contract. No toggle, no opt-in copy.
+  if (isK12) {
+    return <PanicContentSection />;
+  }
+
+  // Avoid flashing the wrong default before localStorage is read.
+  if (!hydrated) {
+    return (
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex items-center gap-3 text-sm font-semibold text-slate-500">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Loading emergency settings...
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3 min-w-0">
+          <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+            enabled ? 'bg-rose-50' : 'bg-slate-100'
+          }`}>
+            <AlertOctagon className={`w-4 h-4 ${enabled ? 'text-rose-600' : 'text-slate-500'}`} />
+          </div>
+          <div className="min-w-0">
+            <div className="text-sm font-bold text-slate-800">Enable emergency alert system</div>
+            <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+              Optional. Configure lockdown / evacuate / weather alerts for incidents on premises.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => handleToggle(!enabled)}
+          aria-pressed={enabled}
+          className={`shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-[11px] font-bold uppercase tracking-wide transition-colors ${
+            enabled
+              ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+              : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-400'
+          }`}
+        >
+          {enabled ? <ShieldCheck className="w-4 h-4" /> : <ShieldOff className="w-4 h-4" />}
+          <span>Emergency {enabled ? 'On' : 'Off'}</span>
+        </button>
+      </div>
+      {enabled && <PanicContentSection />}
+    </>
   );
 }
 
@@ -792,8 +925,11 @@ function AutoUpdatePlayerToggle() {
     toggle.mutate(next);
   };
 
+  // 2026-05-03 — formerly an outer card; now a row inside the combined
+  // "Player APK" card so the page isn't cluttered with three sibling
+  // tiles. Keeps all toggle logic untouched.
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-start justify-between mt-4 gap-4">
+    <div className="px-6 py-4 flex items-start justify-between gap-4">
       <div className="flex items-start gap-3 min-w-0">
         <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
           enabled ? 'bg-amber-50' : 'bg-slate-100'

@@ -78,4 +78,12 @@ export class PosController {
   ) {
     return this.svc.listMenuItems(req.user.tenantId, { connectionId, category, locationId });
   }
+
+  // Sprint 8d follow-up (2026-05-03) — distinct categories + item counts
+  // for the PosCategoryPicker in the template editor.
+  @Get('categories')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR, AppRole.RESTRICTED_VIEWER)
+  async listCategories(@Request() req: any) {
+    return this.svc.listCategories(req.user.tenantId);
+  }
 }

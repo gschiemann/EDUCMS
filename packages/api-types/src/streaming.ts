@@ -35,25 +35,32 @@ export type StreamAuthKind =
   | 'iframeOnly'; // pure iframe embed, no auth (YouTube public videos)
 
 /**
- * 2026-05-03 — operator audit: be honest about which providers actually
- * have a working public integration vs. which are essentially closed
- * platforms ("they have an app, not an API"). Atmosphere TV is the
- * canonical example: they sell their own Fire Stick / Apple TV
- * hardware + a B2B sales-only partnership, but no public Publisher
- * API a third-party CMS can embed.
+ * 2026-05-03 — integration-tier reality. Be honest about each
+ * provider's path so operators don't see "Connect" buttons that
+ * lead nowhere.
  *
- * Tier semantics drive UI:
- *   - DIRECT  → green "Connect" button visible to operators today.
- *               Real public API or open embed. Self-serve possible.
- *   - PARTNER → amber "Apply for partnership" link. Real API exists
- *               but requires a vendor-side application + approval
- *               (Toast, MINDBODY, the DOOH SSPs).
- *   - CLOSED  → grey info-only tile. No public API path; the operator
- *               can't connect this from our CMS even with our help.
- *               We list them so customers KNOW we know about them and
- *               can route to a sales-led discussion if they ask.
+ *   DIRECT          — Real public API or open embed. Self-serve today.
+ *                     Green badge.
+ *
+ *   PARTNER         — Real public API but vendor requires publisher
+ *                     contract / application before activating
+ *                     (Toast, Hivestack, etc.). Amber badge.
+ *
+ *   BRIDGE          — Provider has no third-party CMS API, BUT the
+ *                     customer can subscribe directly + run the
+ *                     provider's signal through HDMI capture → HLS
+ *                     encoder → our Custom HLS connector. We supply
+ *                     the templates + setup guide. Blue badge.
+ *                     Examples: DIRECTV, DISH, Atmosphere TV.
+ *
+ *   CLOSED          — No public API and no clean bridge workflow.
+ *                     Customer runs the service entirely outside our
+ *                     CMS (e.g. on a separate screen). Listed so
+ *                     customers know we know about them. Grey badge.
+ *                     (Currently no Streaming providers fall here —
+ *                     everything has at least a bridge path.)
  */
-export type StreamIntegrationTier = 'DIRECT' | 'PARTNER' | 'CLOSED';
+export type StreamIntegrationTier = 'DIRECT' | 'PARTNER' | 'BRIDGE' | 'CLOSED';
 
 /** Playback technology — drives which renderer the streaming widget uses. */
 export type StreamPlaybackKind =
@@ -107,6 +114,9 @@ export interface StreamProviderDef {
   /** Plain-English explanation of why this provider is in its tier.
    *  Shown in the UI tooltip / docs link. */
   tierReason?: string;
+  /** For BRIDGE-tier providers: ordered list of hardware/software the
+   *  customer needs to bridge the provider's signal into our CMS. */
+  bridgeSteps?: ReadonlyArray<{ step: string; detail?: string; productExamples?: ReadonlyArray<string> }>;
 }
 
 /**
@@ -116,81 +126,107 @@ export interface StreamProviderDef {
  * release notes can grep them.
  */
 export const STREAM_PROVIDERS: ReadonlyArray<StreamProviderDef> = [
-  // ─── TIER 1 — VENUE-NATIVE (purpose-built for businesses) ───────────
-  // 2026-05-03 — operator audit: every provider in this section is
-  // CLOSED. We list them so operators see we know they exist, but
-  // there's no public API to embed their content from a third-party
-  // CMS. They sell their own player apps + appliances. UI shows
-  // these as info-only with a "contact sales" link rather than a
-  // working "Connect" button.
+  // ─── TIER 1 — VENUE-NATIVE via HARDWARE BRIDGE ─────────────────────
+  // 2026-05-03 — operator follow-up: customer brings their own
+  // subscription, we provide the integration. None of these have a
+  // public CMS API, but they ALL have HDMI output (or run on a Fire
+  // TV / Apple TV that has HDMI). Pro-AV integrators bridge them
+  // into a CMS via a USB capture card → ffmpeg encoder → local HLS
+  // server, then our Custom HLS connector renders the captured
+  // stream as a normal channel inside our CMS.
   {
     id: 'atmosphere',
     name: 'Atmosphere TV',
     category: 'venue-fast',
-    integrationTier: 'CLOSED',
-    blurb: 'Free FAST channels for venues. Closed app — no public API.',
+    integrationTier: 'BRIDGE',
+    blurb: 'Customer brings Atmosphere subscription; we render via HDMI capture bridge.',
     iconEmoji: '📺',
-    auth: 'apiKey',
+    auth: 'customHls',
     playback: 'hls',
     commercialUseLegal: true,
-    pricingNote: 'Free for venues — via their own app',
+    pricingNote: 'Free Atmosphere subscription + ~$200 capture card',
     allowsAdOverlay: false,
     docsUrl: 'https://atmosphere.tv/business/',
     websiteUrl: 'https://atmosphere.tv',
     bestFor: ['BAR', 'RESTAURANT', 'GYM'],
-    tierReason: 'Atmosphere distributes through their own Fire TV / Apple TV app and has no public Publisher API. Customers run Atmosphere on their own dedicated screen, alongside (not inside) our CMS.',
+    tierReason: 'Atmosphere has no public CMS API but their app runs on Fire TV / Apple TV with HDMI output. Customer captures that HDMI, encodes to HLS, and we play it inside our CMS like any custom HLS channel.',
+    bridgeSteps: [
+      { step: 'Customer signs up for free Atmosphere venue account at atmosphere.tv/business', productExamples: ['Atmosphere TV (free)'] },
+      { step: 'Install Atmosphere app on a streaming device (Fire TV Stick 4K is cheapest, ~$50)', productExamples: ['Amazon Fire TV Stick 4K', 'Apple TV 4K'] },
+      { step: 'Connect that device\'s HDMI output to a USB HDMI capture card', productExamples: ['Magewell USB Capture HDMI 4K Plus (~$400)', 'AVerMedia Live Gamer ULTRA (~$200)', 'Elgato HD60 X (~$180)'] },
+      { step: 'Plug the capture card into a small Linux PC / mini-PC running OBS Studio or ffmpeg → HLS', productExamples: ['Beelink Mini S12 (~$170)', 'Intel NUC (~$300)', 'Raspberry Pi 5 + capture HAT'] },
+      { step: 'Configure ffmpeg to push HLS to a local web server (we provide a one-click Docker image)', productExamples: ['venueos/hls-bridge Docker image (free)'] },
+      { step: 'In our CMS, connect "Custom HLS" with the local HLS URL — done. Templates render Atmosphere as a channel.', productExamples: [] },
+    ],
   },
   {
     id: 'directv-business',
     name: 'DIRECTV for Business',
     category: 'sports-news',
-    integrationTier: 'CLOSED',
-    blurb: 'Venue cable + sports. Hardware receivers — no software embed.',
+    integrationTier: 'BRIDGE',
+    blurb: 'Customer brings DIRECTV subscription; HDMI capture bridges into our CMS.',
     iconEmoji: '🏈',
-    auth: 'license',
+    auth: 'customHls',
     playback: 'hls',
     commercialUseLegal: true,
-    pricingNote: 'Venue subscription, hardware-only',
+    pricingNote: 'DIRECTV venue subscription + ~$200 capture card',
     allowsAdOverlay: false,
     docsUrl: 'https://www.business.directv.com/',
     websiteUrl: 'https://www.business.directv.com',
     requiresVenueLicense: true,
     bestFor: ['BAR', 'RESTAURANT', 'GYM'],
-    tierReason: 'DIRECTV for Business is a satellite/IP receiver product. No developer API to stream their channels into a third-party CMS.',
+    tierReason: 'DIRECTV for Business is a hardware receiver (satellite or IP). Same bridge pattern as Atmosphere — capture the receiver\'s HDMI output, encode to HLS, render through our Custom HLS connector. Common pro-AV setup for sports bars.',
+    bridgeSteps: [
+      { step: 'Customer subscribes to DIRECTV for Business with their existing venue license', productExamples: ['DIRECTV STREAM for Business', 'DIRECTV Satellite for Business'] },
+      { step: 'Connect DIRECTV receiver\'s HDMI output to a capture card', productExamples: ['Magewell USB Capture HDMI 4K Plus', 'Datavideo CAP-2 (rack-mount)'] },
+      { step: 'Run capture card → mini-PC → ffmpeg → local HLS server', productExamples: ['Our venueos/hls-bridge Docker image', 'OBS Studio with HLS output plugin'] },
+      { step: 'Connect "Custom HLS" in our CMS to the local HLS URL', productExamples: [] },
+      { step: 'Templates can now render DIRECTV inside our streaming widget alongside ad overlays + tap list + happy hour countdown', productExamples: [] },
+    ],
   },
   {
     id: 'dish-business',
     name: 'DISH Business',
     category: 'sports-news',
-    integrationTier: 'CLOSED',
-    blurb: 'Venue cable receivers — no software embed path.',
+    integrationTier: 'BRIDGE',
+    blurb: 'Customer brings DISH subscription; HDMI capture bridges into our CMS.',
     iconEmoji: '📡',
-    auth: 'license',
+    auth: 'customHls',
     playback: 'hls',
     commercialUseLegal: true,
-    pricingNote: 'Venue subscription, hardware-only',
+    pricingNote: 'DISH venue subscription + ~$200 capture card',
     allowsAdOverlay: false,
     docsUrl: 'https://business.dish.com/',
     websiteUrl: 'https://business.dish.com',
     requiresVenueLicense: true,
     bestFor: ['BAR', 'RESTAURANT'],
-    tierReason: 'Same as DIRECTV — receiver hardware, not a software API. Customers run DISH on a dedicated TV.',
+    tierReason: 'Same bridge pattern as DIRECTV. DISH Smartbox commercial receivers have HDMI output; capture + encode + render via Custom HLS.',
+    bridgeSteps: [
+      { step: 'Customer subscribes to DISH Business or DISH Outdoor', productExamples: ['DISH Smartbox Premium', 'DISH Outdoor'] },
+      { step: 'Connect Smartbox HDMI to a capture card → mini-PC → ffmpeg HLS encoder', productExamples: ['Magewell USB Capture HDMI', 'Elgato HD60 X'] },
+      { step: 'Connect "Custom HLS" in our CMS to the local HLS URL', productExamples: [] },
+    ],
   },
   {
     id: 'mood-media',
     name: 'Mood Media',
     category: 'venue-fast',
-    integrationTier: 'CLOSED',
-    blurb: 'Background music/video for hospitality. Proprietary players only.',
+    integrationTier: 'BRIDGE',
+    blurb: 'Customer brings Mood subscription; capture audio + visual via Mood Player HDMI.',
     iconEmoji: '🎬',
-    auth: 'apiKey',
+    auth: 'customHls',
     playback: 'hls',
     commercialUseLegal: true,
-    pricingNote: 'Subscription via Mood',
+    pricingNote: 'Mood subscription + capture card',
     allowsAdOverlay: false,
     websiteUrl: 'https://us.moodmedia.com',
     bestFor: ['BAR', 'RESTAURANT', 'RETAIL'],
-    tierReason: 'Mood Media uses proprietary playback hardware and contracts. No public API; customer would buy directly from Mood.',
+    tierReason: 'Mood Media supplies their own player hardware which has HDMI / line-out. Same bridge pattern works.',
+    bridgeSteps: [
+      { step: 'Customer keeps their existing Mood Media contract + player', productExamples: ['Mood ProFusion iO', 'Mood ProFusion iV'] },
+      { step: 'Capture player HDMI output → encode to HLS', productExamples: ['Magewell USB Capture HDMI'] },
+      { step: 'Connect "Custom HLS" in our CMS to the local HLS URL', productExamples: [] },
+    ],
   },
 
   // ─── TIER 2 — FREE FAST ─────────────────────────────────────────────
@@ -298,17 +334,23 @@ export const STREAM_PROVIDERS: ReadonlyArray<StreamProviderDef> = [
     id: 'iheart-business',
     name: 'iHeart for Business',
     category: 'music',
-    integrationTier: 'CLOSED',
-    blurb: 'Licensed radio for venues (operated by Stingray). No public API.',
+    integrationTier: 'BRIDGE',
+    blurb: 'Customer brings Stingray subscription; capture line-out audio.',
     iconEmoji: '📻',
-    auth: 'apiKey',
-    playback: 'iframe',
+    auth: 'customHls',
+    playback: 'hls',
     commercialUseLegal: true,
-    pricingNote: 'Stingray subscription, hardware-only',
+    pricingNote: 'Stingray subscription + audio capture',
     allowsAdOverlay: false,
     websiteUrl: 'https://business.iheart.com',
     bestFor: ['GYM', 'RESTAURANT'],
-    tierReason: 'iHeart for Business is operated by Stingray Business Music as a hardware/contracted service. No public developer API for third-party CMS embed.',
+    tierReason: 'iHeart for Business runs through Stingray hardware players. Capture the player\'s line-out / digital-out into a local HLS audio stream and we render it as a channel.',
+    bridgeSteps: [
+      { step: 'Customer keeps existing Stingray Business Music contract + player', productExamples: ['Stingray Business Music player'] },
+      { step: 'Capture line-out / digital audio output to a USB audio interface', productExamples: ['Behringer U-Phoria UM2 (~$30)', 'Focusrite Scarlett 2i2'] },
+      { step: 'Encode to audio-only HLS via ffmpeg', productExamples: ['Our venueos/hls-bridge Docker image with audio-only flag'] },
+      { step: 'Connect "Custom HLS" in our CMS to the local audio HLS URL', productExamples: [] },
+    ],
   },
 
   // ─── TIER 5 — CUSTOM (operator brings their own URL) ────────────────

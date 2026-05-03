@@ -6,7 +6,7 @@ it can do real work in production. Use this as the pre-launch checklist.
 ## 🎯 Integration tier reality check (2026-05-03)
 
 After audit, every provider in our streaming + POS + ad-network catalogs
-is now classified into one of three tiers. The UI surfaces these as
+is now classified into one of four tiers. The UI surfaces these as
 badges so operators see at a glance what they're looking at:
 
 - **DIRECT (green Self-serve badge)** — Real public API or open embed.
@@ -26,17 +26,34 @@ badges so operators see at a glance what they're looking at:
   - Ads: Hivestack, Vistar Media, Place Exchange, Broadsign Reach,
     Loop Media
 
-- **CLOSED (grey Info-only badge)** — No public API for third-party CMS
-  integration. Listed so customers know we know about them; tile
-  links to the vendor's site instead of opening a Connect modal.
+- **BRIDGE (blue Hardware bridge badge)** — Provider has no public CMS
+  API, but the customer can subscribe directly + run the provider's
+  signal through HDMI capture → HLS encoder → our Custom HLS
+  connector. Real working integration path; just needs hardware
+  on the venue side. UI walks the operator through the steps with
+  a `BridgeSetupModal` checklist (concrete product recommendations
+  + price points), then hands off to the Custom HLS connect modal.
+  Full guide in [`docs/HARDWARE_BRIDGE.md`](docs/HARDWARE_BRIDGE.md).
   - Streaming: Atmosphere TV, DIRECTV for Business, DISH Business,
     Mood Media, iHeart for Business
-  - POS: Aloha (NCR)
-  - Ads: Atmosphere TV (monetize), Lamar Advertising
+  - POS: (none — HDMI capture doesn't apply to catalog sync)
+  - Ads: (none — bridge captures pixels, not programmatic inventory)
+
+- **CLOSED (grey Info-only badge)** — No public API and no clean bridge
+  workflow. Customer runs the service entirely outside our CMS (e.g.
+  Aloha runs as a separate POS terminal, billboard ads are sold
+  direct). Listed so customers know we know about them; tile links
+  to the vendor's site instead of opening a Connect modal.
+  - Streaming: (none — every closed-platform provider has a bridge path)
+  - POS: Aloha (NCR) — workaround: CSV export from Aloha → manual upload
+  - Ads: Atmosphere TV (monetize), Lamar Advertising — Atmosphere ad
+    revenue stays bound to their player; Lamar is direct-sold billboards
 
 The server enforces these tiers — POST /streaming/connections,
 /pos/connections, /ads/connections all 403 on CLOSED-tier providers
-even if the operator hits the API directly.
+even if the operator hits the API directly. BRIDGE tier saves in
+PENDING (same as PARTNER) and flips ACTIVE once the operator pastes
+the local HLS URL into the Custom HLS connector.
 
 ## ✅ What's live and working
 
@@ -180,11 +197,17 @@ Code path is `apps/api/src/ads/networks/<id>.ts`. Each implements the creative f
 - [ ] `loop-media.ts` — Loop.tv publisher API (curated content + rev share)
 - [ ] Daily revenue aggregator cron (rolls AdImpression → AdRevenueDaily)
 
-### Streaming partner programs (Atmosphere / DIRECTV / DISH / Mood Media / iHeart)
-These providers are partner-only (no self-serve API).
-- [ ] Email Atmosphere TV partners@ — pitch as a digital-signage integration partner
-- [ ] Same for DIRECTV STREAM for Business, DISH Business, Mood Media
-- [ ] Once granted, build per-provider handler in `apps/api/src/streaming/providers/`
+### Streaming bridge tier (Atmosphere / DIRECTV / DISH / Mood Media / iHeart)
+Now reclassified from CLOSED → BRIDGE. Customer brings their own
+subscription; we capture the player's HDMI output via USB capture
+card → ffmpeg → local HLS → our Custom HLS connector. Total parts
+~$430 one-time per venue.
+- [x] BRIDGE tier in catalog with per-provider `bridgeSteps` (atmosphere, directv-business, dish-business, mood-media, iheart-business)
+- [x] `BridgeSetupModal` UI walks operator through the steps
+- [x] `docs/HARDWARE_BRIDGE.md` published — full setup guide + ffmpeg command
+- [ ] Publish `venueos/hls-bridge` Docker image to Docker Hub (referenced in docs)
+- [ ] Build pre-configured bridge appliance ($430 BOM + $200 margin = $629 retail) — optional revenue stream
+- [ ] Optional: still pursue Atmosphere / DIRECTV / etc. partner programs for direct API access if they ever publish one — would let us deprecate the bridge for those providers
 
 ### Canva Connect
 - [ ] Apply to Canva Connect partner program (canva.dev/docs/connect)

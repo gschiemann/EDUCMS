@@ -149,6 +149,33 @@ export class PosService {
     }));
   }
 
+  /** Distinct categories with item counts — drives the PosCategoryPicker
+   *  in the template editor so an admin can scope a menu board to e.g.
+   *  "Burgers" or "On Tap" instead of dumping every item from every
+   *  category onto a single screen.
+   *
+   *  Sprint 8d follow-up (2026-05-03). Built when the picker landed in
+   *  PropertiesPanel — without this endpoint the picker silently fell
+   *  back to the "no categories" empty state. */
+  async listCategories(tenantId: string) {
+    const rows = await (this.prisma.client as any).posMenuItem.groupBy({
+      by: ['category'],
+      where: { tenantId, available: true },
+      _count: { _all: true },
+    });
+    return rows
+      .filter((r: any) => r.category)
+      .map((r: any) => ({
+        // Use the category name as both id + name — POS providers don't
+        // expose stable category ids consistently, and operators pick by
+        // human-readable name in the picker anyway.
+        id: r.category as string,
+        name: r.category as string,
+        itemCount: r._count?._all ?? 0,
+      }))
+      .sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name));
+  }
+
   /** Stub for the per-provider sync runner. Wired-up handlers land
    *  in a future commit (one file per provider in
    *  `apps/api/src/pos/providers/`). For now this returns a pending

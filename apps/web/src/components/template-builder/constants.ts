@@ -96,6 +96,12 @@ export const WIDGET_GROUPS: ReadonlyArray<{
     label: 'Gym & fitness',
     verticals: ['GYM'],
     types: [
+      // 4K themed scene presets — full-canvas widgets that drop in as a
+      // single zone (same shape as the K-12 MS_* / HS_* themed scenes).
+      // Add the rest of the fitness pack (iron / marquee / channel-guide
+      // / discotheque / locker / splash / telemetry / crag / cornerman /
+      // recess / reformer / trailhead / vault / lobby) here as each lands.
+      { type: 'FITNESS_STADIUM',            label: 'Stadium scene',       desc: 'Full 4K cardio-floor scene — TV pane, now-playing, stats, ticker', icon: Tv },
       { type: 'FITNESS_CLASS_SCHEDULE',     label: 'Class schedule',      desc: "Today's gym classes — instructor, time, room", icon: CalendarDays },
       { type: 'FITNESS_LIVE_TV',            label: 'Live TV',             desc: 'TV channel pane (ESPN / FastChannel / streaming)', icon: Tv },
       { type: 'FITNESS_MUSIC_PLAYER',       label: 'Music player',        desc: 'Now-playing — track, artist, equalizer', icon: Music },

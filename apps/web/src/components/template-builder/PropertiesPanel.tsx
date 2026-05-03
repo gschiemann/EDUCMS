@@ -1,10 +1,12 @@
 "use client";
 
 import { useId, useState, useEffect, useRef } from 'react';
-import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon } from 'lucide-react';
+import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon, Tv, ExternalLink, RefreshCw } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { useBuilderStore } from './useBuilderStore';
 import { widgetLabel } from './constants';
 import { useAssets, usePlaylists, useTemplates, useTemplateBackdrops } from '@/hooks/use-api';
+import { apiFetch } from '@/lib/api-client';
 import { ColorPickerField } from '@/components/ui/color-picker';
 import { THEMED_WIDGET_FIELDS } from './themed-widget-defaults';
 // 2026-05-03 — Time formatting helpers. The BellScheduleEditor uses
@@ -39,6 +41,8 @@ import { DEFAULTS as MS_HOMEROOM_PORTRAIT_DEFAULTS } from '@/components/widgets/
 import { DEFAULTS as MS_PAPER_PORTRAIT_DEFAULTS } from '@/components/widgets/ms/MsPaperPortraitWidget';
 import { DEFAULTS as MS_PLAYLIST_PORTRAIT_DEFAULTS } from '@/components/widgets/ms/MsPlaylistPortraitWidget';
 import { DEFAULTS as MS_STUDIO_PORTRAIT_DEFAULTS } from '@/components/widgets/ms/MsStudioPortraitWidget';
+// Themed fitness scene DEFAULTS — same auto-form pattern as MS pack.
+import { DEFAULTS as FITNESS_STADIUM_DEFAULTS } from '@/components/widgets/fitness/FitnessStadiumWidget';
 
 const MS_DEFAULTS_BY_TYPE: Record<string, Record<string, string>> = {
   MS_ARCADE: MS_ARCADE_DEFAULTS as any,
@@ -57,6 +61,9 @@ const MS_DEFAULTS_BY_TYPE: Record<string, Record<string, string>> = {
   MS_PAPER_PORTRAIT: MS_PAPER_PORTRAIT_DEFAULTS as any,
   MS_PLAYLIST_PORTRAIT: MS_PLAYLIST_PORTRAIT_DEFAULTS as any,
   MS_STUDIO_PORTRAIT: MS_STUDIO_PORTRAIT_DEFAULTS as any,
+  // Fitness 4K themed scenes — same dot-keyed auto-form generator
+  // handles the editor for these.
+  FITNESS_STADIUM: FITNESS_STADIUM_DEFAULTS as any,
 };
 
 type BellPeriod = { label: string; start: string; end?: string };
@@ -2020,6 +2027,116 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextAreaField key="tickerMessage" label="Typewriter crawl" value={cfg.tickerMessage || ''} rows={3} onChange={(v) => setField({ tickerMessage: v })} />);
       break;
     }
+    // ─── Sprint 8c follow-up — STREAMING widget editor ─────────────
+    // Bridges the Settings → Streaming connections into the canvas.
+    // Operator picks a channel they've already added in settings;
+    // we copy the channel's playback fields into the widget config so
+    // the StreamingWidget renders without further setup. Without this
+    // editor case, the widget had no UI to pick a channel and operators
+    // were stuck pasting raw HLS URLs into JSON.
+    case 'STREAMING': {
+      fields.push(
+        <StreamingChannelPickerField
+          key="streamingChannelId"
+          value={cfg.streamingChannelId || ''}
+          onPick={(channel) => setField({
+            streamingChannelId: channel.id,
+            playbackUrl: channel.playbackUrl,
+            playbackType: channel.playbackType || 'hls',
+            embedUrl: channel.playbackType === 'iframe' ? channel.playbackUrl : undefined,
+            channelTitle: channel.title,
+            allowAdOverlay: channel.allowAdOverlay,
+          })}
+          onClear={() => setField({
+            streamingChannelId: undefined,
+            playbackUrl: undefined,
+            playbackType: undefined,
+            embedUrl: undefined,
+            channelTitle: undefined,
+          })}
+        />,
+      );
+      fields.push(<ToggleField key="muted" label="Muted (venue default)" value={cfg.muted !== false} onChange={(v) => setField({ muted: v })} />);
+      fields.push(<SelectField key="fitMode" label="Fit mode" value={cfg.fitMode || 'cover'} options={[['cover','Fill (crop)'],['contain','Fit (no crop)']]} onChange={(v) => setField({ fitMode: v })} />);
+      fields.push(<ToggleField key="allowAdOverlay" label="Allow ad overlay" value={cfg.allowAdOverlay !== false} onChange={(v) => setField({ allowAdOverlay: v })} />);
+      break;
+    }
+    // FITNESS_LIVE_TV uses its own catalog-driven config but ALSO accepts
+    // a connected channel. Same picker; we map channel into the widget's
+    // legacy `streamUrl` + `streamType` fields so existing fitness
+    // templates keep working.
+    case 'FITNESS_LIVE_TV': {
+      fields.push(
+        <StreamingChannelPickerField
+          key="streamingChannelId"
+          value={cfg.streamingChannelId || ''}
+          onPick={(channel) => setField({
+            streamingChannelId: channel.id,
+            streamUrl: channel.playbackUrl,
+            streamType: channel.playbackType === 'iframe' ? 'iframe' : 'hls',
+            channelName: channel.title,
+            channelLogoUrl: channel.thumbnailUrl,
+          })}
+          onClear={() => setField({
+            streamingChannelId: undefined,
+            streamUrl: undefined,
+            streamType: 'demo',
+            channelName: undefined,
+          })}
+        />,
+      );
+      fields.push(<TextField key="channelName" label="Channel name (override)" value={cfg.channelName || ''} placeholder="ESPN" onChange={(v) => setField({ channelName: v })} />);
+      fields.push(<ToggleField key="muted" label="Muted" value={cfg.muted !== false} onChange={(v) => setField({ muted: v })} />);
+      break;
+    }
+    // ─── Sprint 8d follow-up — POS-driven menu boards ──────────────
+    // The four widgets that read PosMenuItem live data: restaurant
+    // menu board, bar tap list, bar cocktail menu, retail product grid.
+    // All take an optional categoryId — empty means "show every item
+    // across every category." When a category is picked, the widget
+    // filters PosMenuItem by category at render time.
+    case 'RESTAURANT_MENU_BOARD': {
+      // Widget reads `posSync` + `posCategory` (see MenuBoardWidget.tsx
+      // line 110). When posSync is on it ignores config.items and pulls
+      // live PosMenuItem rows from /api/v1/pos/items?category=X.
+      fields.push(<TextField key="title" label="Board title" value={cfg.title || ''} placeholder="Menu" onChange={(v) => setField({ title: v })} />);
+      fields.push(<TextField key="subtitle" label="Subtitle" value={cfg.subtitle || ''} placeholder="made fresh daily" onChange={(v) => setField({ subtitle: v })} />);
+      fields.push(<ToggleField key="posSync" label="Pull live items from connected POS" value={!!cfg.posSync} onChange={(v) => setField({ posSync: v })} />);
+      if (cfg.posSync) {
+        fields.push(<PosCategoryPickerField key="posCategory" label="Category (optional — leave blank for all)" value={cfg.posCategory || ''} onChange={(v) => setField({ posCategory: v || undefined })} />);
+        fields.push(<TextField key="maxItems" label="Max items to show" value={String(cfg.maxItems || 12)} placeholder="12" onChange={(v) => setField({ maxItems: parseInt(v) || 12 })} />);
+      }
+      fields.push(<TextField key="columns" label="Columns (1–5)" value={String(cfg.columns || 3)} placeholder="3" onChange={(v) => setField({ columns: parseInt(v) || 3 })} />);
+      fields.push(<SelectField key="theme" label="Color theme" value={cfg.theme || 'cream'} options={[['cream','Cream'],['charcoal','Charcoal'],['red','Red']]} onChange={(v) => setField({ theme: v })} />);
+      break;
+    }
+    case 'BAR_TAP_LIST': {
+      fields.push(<TextField key="title" label="Tap list title" value={cfg.title || ''} placeholder="On Tap" onChange={(v) => setField({ title: v })} />);
+      fields.push(<ToggleField key="posSync" label="Pull live taps from connected POS" value={!!cfg.posSync} onChange={(v) => setField({ posSync: v })} />);
+      if (cfg.posSync) {
+        fields.push(<PosCategoryPickerField key="posCategory" label="Tap category (optional)" value={cfg.posCategory || ''} onChange={(v) => setField({ posCategory: v || undefined })} />);
+      }
+      fields.push(<TextField key="columns" label="Columns" value={String(cfg.columns || 2)} placeholder="2" onChange={(v) => setField({ columns: parseInt(v) || 2 })} />);
+      break;
+    }
+    case 'BAR_COCKTAIL_MENU': {
+      fields.push(<TextField key="title" label="Cocktail menu title" value={cfg.title || ''} placeholder="Signature Cocktails" onChange={(v) => setField({ title: v })} />);
+      fields.push(<ToggleField key="posSync" label="Pull live cocktails from connected POS" value={!!cfg.posSync} onChange={(v) => setField({ posSync: v })} />);
+      if (cfg.posSync) {
+        fields.push(<PosCategoryPickerField key="posCategory" label="Cocktail category (optional)" value={cfg.posCategory || ''} onChange={(v) => setField({ posCategory: v || undefined })} />);
+      }
+      break;
+    }
+    case 'RETAIL_PRODUCT_GRID': {
+      fields.push(<TextField key="title" label="Grid title" value={cfg.title || ''} placeholder="New Arrivals" onChange={(v) => setField({ title: v })} />);
+      fields.push(<ToggleField key="posSync" label="Pull live products from connected POS" value={!!cfg.posSync} onChange={(v) => setField({ posSync: v })} />);
+      if (cfg.posSync) {
+        fields.push(<PosCategoryPickerField key="posCategory" label="Department / category (optional)" value={cfg.posCategory || ''} onChange={(v) => setField({ posCategory: v || undefined })} />);
+      }
+      fields.push(<TextField key="columns" label="Columns" value={String(cfg.columns || 4)} placeholder="4" onChange={(v) => setField({ columns: parseInt(v) || 4 })} />);
+      fields.push(<ToggleField key="showSaleBadges" label="Show sale badges" value={cfg.showSaleBadges !== false} onChange={(v) => setField({ showSaleBadges: v })} />);
+      break;
+    }
     default: {
       // Generic MS pack handler — all 16 MS widget types (8 landscape +
       // 8 portrait) share this same auto-form generator. Each widget
@@ -3189,6 +3306,159 @@ function PlaylistPickerField({ label, value, onChange }: { label: string; value:
       {isLoading && <p className="text-[10px] text-slate-400 mt-1">Loading playlists…</p>}
       {!isLoading && (!playlists || playlists.length === 0) && (
         <p className="text-[10px] text-slate-400 mt-1">No playlists yet — create one in <strong>Playlists</strong>.</p>
+      )}
+    </div>
+  );
+}
+
+// ─── Streaming channel picker ──────────────────────────────────────────
+//
+// Sprint 8c follow-up (2026-05-03). When the operator drops a STREAMING
+// or FITNESS_LIVE_TV widget on the canvas, they need to pick from
+// channels they've connected via Settings → Streaming. Without this
+// picker the widget needed JSON-edited config to play anything — the
+// integration was wired through the API but invisible in the editor.
+//
+// Picking a channel populates ALL the playback fields the widget needs:
+//   • playbackUrl (HLS m3u8)  OR  embedUrl (iframe)
+//   • playbackType (hls / dash / iframe)
+//   • channelTitle (display text in the widget bug)
+//   • allowAdOverlay (channel-level flag from the catalog)
+//   • streamingChannelId (so we can re-resolve later)
+//
+// "Refresh" re-fetches /streaming/channels/:id so a channel that had its
+// signed playback URL rotated server-side updates without the operator
+// re-picking. No-op if the channel was deleted (clears the fields and
+// surfaces a "channel disconnected" warning).
+interface StreamingChannelDto {
+  id: string;
+  connectionId: string;
+  providerId: string;
+  externalId: string;
+  title: string;
+  description?: string;
+  thumbnailUrl?: string;
+  category?: string;
+  playbackUrl?: string;
+  playbackType?: string;
+  allowAdOverlay: boolean;
+  status: string;
+}
+
+function StreamingChannelPickerField({
+  value,
+  onPick,
+  onClear,
+}: {
+  value: string;
+  onPick: (channel: StreamingChannelDto) => void;
+  onClear: () => void;
+}) {
+  const { data: channels, isLoading } = useQuery<StreamingChannelDto[]>({
+    queryKey: ['streaming-channels-picker'],
+    queryFn: () => apiFetch<StreamingChannelDto[]>('/streaming/channels'),
+    staleTime: 30_000,
+  });
+  const picked = (channels || []).find((c) => c.id === value);
+
+  return (
+    <div>
+      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5 flex items-center gap-1">
+        <Tv className="w-3 h-3" /> Streaming channel
+      </label>
+      <select
+        value={value || ''}
+        onChange={(e) => {
+          const id = e.target.value;
+          if (!id) { onClear(); return; }
+          const ch = (channels || []).find((c) => c.id === id);
+          if (ch) onPick(ch);
+        }}
+        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all shadow-sm cursor-pointer"
+      >
+        <option value="">— Pick a channel —</option>
+        {(channels || []).map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.title}{c.category ? ` · ${c.category}` : ''}
+          </option>
+        ))}
+      </select>
+      {isLoading && <p className="text-[10px] text-slate-400 mt-1">Loading channels…</p>}
+      {!isLoading && (!channels || channels.length === 0) && (
+        <p className="text-[10px] text-slate-400 mt-1">
+          No channels picked yet — connect a provider + pick channels in{' '}
+          <a href="settings/streaming" className="underline text-indigo-600 inline-flex items-center gap-0.5">
+            Settings → Streaming <ExternalLink className="w-2.5 h-2.5" />
+          </a>
+        </p>
+      )}
+      {picked && (
+        <div className="mt-2 px-2 py-1.5 rounded bg-slate-50 border border-slate-200/60 text-[10px] text-slate-600 flex items-center gap-1.5">
+          <span className="font-bold">{picked.providerId}</span>
+          <span className="text-slate-400">·</span>
+          <span>{picked.playbackType || 'hls'}</span>
+          {picked.allowAdOverlay && <span className="ml-auto text-emerald-600 font-bold">Ad overlay OK</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── POS category picker ──────────────────────────────────────────────
+//
+// Sprint 8d follow-up (2026-05-03). Menu-board widgets (RESTAURANT_MENU_BOARD,
+// BAR_TAP_LIST, BAR_COCKTAIL_MENU, RETAIL_PRODUCT_GRID) need to pull
+// from the live PosMenuItem catalog the operator synced from Square /
+// Toast / Clover / etc. The picker fetches /pos/categories so the
+// operator can scope a board to e.g. "Burgers" or "On Tap" instead of
+// dumping every item from every category onto one screen.
+//
+// Falls back gracefully when no POS is connected — admin sees
+// "Connect a POS first" with link to settings/pos.
+interface PosCategoryDto {
+  id: string;
+  name: string;
+  itemCount: number;
+}
+
+function PosCategoryPickerField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (categoryId: string) => void;
+}) {
+  const { data: categories, isLoading } = useQuery<PosCategoryDto[]>({
+    queryKey: ['pos-categories-picker'],
+    queryFn: () => apiFetch<PosCategoryDto[]>('/pos/categories').catch(() => [] as PosCategoryDto[]),
+    staleTime: 60_000,
+  });
+
+  return (
+    <div>
+      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
+      <select
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all shadow-sm cursor-pointer"
+      >
+        <option value="">— All categories —</option>
+        {(categories || []).map((cat) => (
+          <option key={cat.id} value={cat.id}>
+            {cat.name} ({cat.itemCount})
+          </option>
+        ))}
+      </select>
+      {isLoading && <p className="text-[10px] text-slate-400 mt-1">Loading POS catalog…</p>}
+      {!isLoading && (!categories || categories.length === 0) && (
+        <p className="text-[10px] text-slate-400 mt-1">
+          No POS connected yet —{' '}
+          <a href="settings/pos" className="underline text-indigo-600 inline-flex items-center gap-0.5">
+            connect Square / Toast / Clover <ExternalLink className="w-2.5 h-2.5" />
+          </a>
+        </p>
       )}
     </div>
   );

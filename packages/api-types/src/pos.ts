@@ -141,14 +141,20 @@ export const POS_PROVIDERS: ReadonlyArray<PosProviderDef> = [
     name: 'Aloha (NCR)',
     scope: 'restaurant-table',
     integrationTier: 'CLOSED',
-    blurb: 'NCR Aloha — enterprise restaurant POS. No public CMS API.',
+    blurb: 'Aloha menus require CSV export → manual upload (no public CMS API).',
     iconEmoji: '🌺',
     auth: 'partnerKey',
     docsUrl: 'https://www.ncr.com/restaurants',
     salesLedOnly: true,
     bestFor: ['QSR'],
     capabilities: { menuSync: true, categorySync: true, availabilitySync: true, locationsSync: true },
-    tierReason: 'Aloha integrations go through NCR Connected Payments / partner channel deals. No public API for third-party signage CMS — would require a custom SI engagement.',
+    // 2026-05-03 — equivalent of the streaming BRIDGE tier doesn't exist
+    // for Aloha (you can't HDMI-capture a price catalog). The closest
+    // workaround is the operator runs Aloha's built-in Item Library
+    // export (CSV) and uploads it through our standard Asset uploader,
+    // which our menu-board widget can pull from. Documented but not a
+    // first-class connector.
+    tierReason: 'Aloha integrations go through NCR Connected Payments / partner channel deals. No public API for third-party signage CMS — operators today export items as CSV from Aloha\'s back office and import via Settings → Menu Catalog. A direct API integration would require a custom SI engagement with NCR.',
   },
 
   // ─── TIER 2 — RETAIL (self-serve) ──────────────────────────────────

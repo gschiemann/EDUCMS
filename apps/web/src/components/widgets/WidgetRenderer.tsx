@@ -62,6 +62,7 @@ import { StreamingWidget } from './StreamingWidget';
 import { FitnessWorkoutTimerWidget } from './fitness/FitnessWorkoutTimerWidget';
 import { FitnessMotivationalQuoteWidget } from './fitness/FitnessMotivationalQuoteWidget';
 import { FitnessAppLibraryWidget } from './fitness/FitnessAppLibraryWidget';
+import { FitnessStadiumWidget } from './fitness/FitnessStadiumWidget';
 import { FitnessStickLauncherWidget } from './fitness/FitnessStickLauncherWidget';
 // ── Restaurant / QSR vertical (2026-05-02) — menu boards, combos,
 // loyalty, wait-time, specials. Same /restaurant subdir convention as
@@ -491,6 +492,10 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'FITNESS_MOTIVATIONAL_QUOTE':    return <FitnessMotivationalQuoteWidget config={cfg} live={live} />;
     case 'FITNESS_APP_LIBRARY':           return <FitnessAppLibraryWidget config={cfg} live={live} />;
     case 'FITNESS_STICK_LAUNCHER':        return <FitnessStickLauncherWidget config={cfg} live={live} />;
+    // 4K themed fitness scenes — full-canvas widgets that ship as single
+    // dropping presets (analogous to the K-12 MS_* and HS_* themed scenes).
+    // Editable hotspots via THEMED_WIDGET_FIELDS / DEFAULTS export.
+    case 'FITNESS_STADIUM':               return <FitnessStadiumWidget config={cfg} />;
     // ── Restaurant / QSR vertical widgets ──
     case 'RESTAURANT_MENU_BOARD':         return <MenuBoardWidget config={cfg} live={live} />;
     case 'RESTAURANT_COMBO_CAROUSEL':     return <ComboCarouselWidget config={cfg} live={live} />;

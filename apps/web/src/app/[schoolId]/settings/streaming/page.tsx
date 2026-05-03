@@ -17,13 +17,13 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
-import { Loader2, Tv, ExternalLink, Trash2, Plus, X, AlertCircle, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { Loader2, Tv, ExternalLink, Trash2, Plus, X, AlertCircle, CheckCircle2, ShieldAlert, Wrench, Cable, ArrowRight } from 'lucide-react';
 
 interface Provider {
   id: string;
   name: string;
   category: string;
-  integrationTier: 'DIRECT' | 'PARTNER' | 'CLOSED';
+  integrationTier: 'DIRECT' | 'PARTNER' | 'BRIDGE' | 'CLOSED';
   blurb: string;
   iconEmoji?: string;
   iconUrl?: string;
@@ -37,6 +37,7 @@ interface Provider {
   bestFor?: string[];
   requiresVenueLicense?: boolean;
   tierReason?: string;
+  bridgeSteps?: Array<{ step: string; detail?: string; productExamples?: string[] }>;
 }
 
 interface Connection {
@@ -90,6 +91,7 @@ export default function StreamingSettingsPage() {
   });
 
   const [connectModalProvider, setConnectModalProvider] = useState<Provider | null>(null);
+  const [bridgeGuideProvider, setBridgeGuideProvider] = useState<Provider | null>(null);
   const [pickerConnection, setPickerConnection] = useState<Connection | null>(null);
 
   const grouped = (providers.data || []).reduce<Record<string, Provider[]>>((acc, p) => {
@@ -161,7 +163,17 @@ export default function StreamingSettingsPage() {
                       key={p.id}
                       provider={p}
                       connected={connections.data?.some((c) => c.providerId === p.id)}
-                      onConnect={() => setConnectModalProvider(p)}
+                      onConnect={() => {
+                        if (p.integrationTier === 'BRIDGE') {
+                          // Bridge tier opens the setup wizard first;
+                          // the operator finishes wiring their capture
+                          // card, then we jump them to the regular
+                          // Custom HLS connect modal pre-filled.
+                          setBridgeGuideProvider(p);
+                        } else {
+                          setConnectModalProvider(p);
+                        }
+                      }}
                     />
                   ))}
                 </div>
@@ -190,6 +202,27 @@ export default function StreamingSettingsPage() {
           onClose={() => setPickerConnection(null)}
           onChanged={() => {
             qc.invalidateQueries({ queryKey: ['streaming-channels'] });
+          }}
+        />
+      )}
+
+      {/* Bridge setup wizard */}
+      {bridgeGuideProvider && (
+        <BridgeSetupModal
+          provider={bridgeGuideProvider}
+          onClose={() => setBridgeGuideProvider(null)}
+          onContinue={() => {
+            // Once the operator says they have the capture card running,
+            // jump them straight into the Custom HLS connect modal so
+            // they can paste their local HLS URL.
+            setBridgeGuideProvider(null);
+            const customHls = providers.data?.find((p) => p.id === 'custom-hls');
+            if (customHls) {
+              setConnectModalProvider({
+                ...customHls,
+                name: `${bridgeGuideProvider.name} (via Custom HLS bridge)`,
+              });
+            }
           }}
         />
       )}
@@ -240,6 +273,7 @@ function ConnectionRow({ connection, channelCount, onPickChannels, onDisconnect 
 function ProviderTile({ provider, connected, onConnect }: { provider: Provider; connected?: boolean; onConnect: () => void }) {
   const isClosed = provider.integrationTier === 'CLOSED';
   const isPartner = provider.integrationTier === 'PARTNER';
+  const isBridge = provider.integrationTier === 'BRIDGE';
   return (
     <button
       onClick={isClosed ? () => provider.docsUrl && window.open(provider.docsUrl, '_blank') : onConnect}
@@ -248,6 +282,7 @@ function ProviderTile({ provider, connected, onConnect }: { provider: Provider; 
         connected ? 'bg-emerald-50 border-emerald-200 cursor-default'
                   : isClosed ? 'bg-slate-50 border-slate-200 opacity-75'
                   : isPartner ? 'bg-amber-50/30 border-amber-200 hover:border-amber-400 hover:shadow-md'
+                  : isBridge ? 'bg-sky-50/40 border-sky-200 hover:border-sky-400 hover:shadow-md'
                   : 'bg-white border-slate-200 hover:border-indigo-300 hover:shadow-md'
       }`}
     >
@@ -257,7 +292,11 @@ function ProviderTile({ provider, connected, onConnect }: { provider: Provider; 
           {connected && <CheckCircle2 className="w-5 h-5 text-emerald-600" />}
           {/* 2026-05-03 — integration-tier badge. Operator audit:
               be honest about which providers actually have a public
-              API path vs. which are closed-app-only. */}
+              API path vs. which are closed-app-only.
+              BRIDGE = customer brings their own subscription (DIRECTV,
+              Atmosphere, etc.) and we connect via an HDMI capture card →
+              local HLS → our Custom HLS connector. Real working path,
+              just needs hardware on the venue side. */}
           {isClosed && (
             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 uppercase tracking-wider">
               Info only
@@ -266,6 +305,11 @@ function ProviderTile({ provider, connected, onConnect }: { provider: Provider; 
           {isPartner && (
             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 uppercase tracking-wider">
               Partnership
+            </span>
+          )}
+          {isBridge && !connected && (
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 uppercase tracking-wider inline-flex items-center gap-0.5">
+              <Cable className="w-2.5 h-2.5" /> Hardware bridge
             </span>
           )}
           {provider.integrationTier === 'DIRECT' && !connected && (
@@ -593,5 +637,162 @@ function Field({ label, value, onChange, placeholder }: { label: string; value: 
         className="mt-1 w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-300"
       />
     </label>
+  );
+}
+
+// ─── Bridge setup wizard ────────────────────────────────────────────────
+/**
+ * BRIDGE-tier providers (DIRECTV, Atmosphere TV, DISH Business, Mood
+ * Media, iHeart for Business) don't have a public API we can call. They
+ * sell their content through their own player apps + venue accounts.
+ *
+ * The bridge workflow: customer keeps their existing subscription → runs
+ * the provider's app on a cheap streaming stick → HDMI out into a USB
+ * capture card → mini-PC running ffmpeg pushes a local HLS stream → our
+ * "Custom HLS" connector picks it up. Total parts ~$300-700 one-time per
+ * venue, cheaper than the $1,000+/yr signage retainers competitors charge.
+ *
+ * This modal walks the operator through the steps with concrete product
+ * recommendations + price points pulled from the catalog's bridgeSteps.
+ * When they confirm "I've got my capture working," we jump them straight
+ * into the Custom HLS connect modal so they can paste their local URL.
+ */
+function BridgeSetupModal({ provider, onClose, onContinue }: {
+  provider: Provider;
+  onClose: () => void;
+  onContinue: () => void;
+}) {
+  const [confirmed, setConfirmed] = useState<Record<number, boolean>>({});
+  const steps = provider.bridgeSteps || [];
+  const allConfirmed = steps.length > 0 && steps.every((_, i) => confirmed[i]);
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="p-6 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center text-white">
+              <Cable className="w-6 h-6" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                Bridge {provider.name} <span className="text-2xl">{provider.iconEmoji}</span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">Hardware capture workflow — about 30 minutes one-time setup.</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+        </div>
+
+        {/* Why this is needed */}
+        <div className="p-6 space-y-4 bg-sky-50/40 border-b border-sky-100">
+          <div className="flex items-start gap-2">
+            <Wrench className="w-4 h-4 text-sky-600 flex-shrink-0 mt-0.5" />
+            <div className="text-xs text-slate-700 leading-relaxed">
+              <strong className="text-slate-900">{provider.name}</strong> doesn't expose a public API for content delivery —
+              they sell through their own player app on dedicated devices.
+              {' '}
+              {provider.tierReason}
+              <br /><br />
+              The good news: <strong>your subscription is fine as-is.</strong> We capture
+              the HDMI output of {provider.name}'s player and stream it into VenueOS as a
+              regular channel, so it shows up in our templates with overlays, ad slots,
+              schedules, and emergency takeover just like any other source.
+            </div>
+          </div>
+        </div>
+
+        {/* Steps */}
+        <div className="p-6 space-y-4">
+          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Setup checklist</h3>
+
+          {steps.length === 0 ? (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
+              Bridge setup steps are still being authored for this provider. In the meantime,
+              the general workflow is: HDMI output → USB capture card → mini-PC running ffmpeg →
+              local HLS URL. Reach out to support and we'll walk you through it.
+            </div>
+          ) : (
+            <ol className="space-y-3">
+              {steps.map((s, i) => {
+                const isChecked = confirmed[i] ?? false;
+                return (
+                  <li key={i}>
+                    <label className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                      isChecked ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200 hover:border-sky-300'
+                    }`}>
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => setConfirmed({ ...confirmed, [i]: e.target.checked })}
+                        className="mt-0.5 flex-shrink-0 w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-400"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start gap-2">
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider flex-shrink-0 ${
+                            isChecked ? 'bg-emerald-200 text-emerald-800' : 'bg-slate-200 text-slate-700'
+                          }`}>
+                            Step {i + 1}
+                          </span>
+                          <span className={`text-sm font-semibold ${isChecked ? 'text-emerald-900' : 'text-slate-800'}`}>
+                            {s.step}
+                          </span>
+                        </div>
+                        {s.detail && (
+                          <p className="text-[11px] text-slate-500 mt-1 ml-2 leading-relaxed">{s.detail}</p>
+                        )}
+                        {s.productExamples && s.productExamples.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mt-2 ml-1">
+                            {s.productExamples.map((ex, k) => (
+                              <span
+                                key={k}
+                                className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200"
+                              >
+                                {ex}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </div>
+
+        {/* Help box */}
+        <div className="px-6 pb-2">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600 leading-relaxed">
+            <strong className="text-slate-800">Need help wiring this up?</strong> See{' '}
+            <a href="/docs/HARDWARE_BRIDGE.md" target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline inline-flex items-center gap-0.5">
+              docs/HARDWARE_BRIDGE.md <ExternalLink className="w-2.5 h-2.5" />
+            </a>{' '}
+            for the full guide, including the one-line ffmpeg command and our{' '}
+            <code className="text-[10px] bg-slate-200 px-1 py-0.5 rounded">venueos/hls-bridge</code> Docker image.
+            Email{' '}
+            <a href="mailto:support@venueos.com" className="text-indigo-600 hover:underline">support@venueos.com</a>{' '}
+            and we'll do the install over Zoom.
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="p-6 border-t border-slate-100 sticky bottom-0 bg-white rounded-b-2xl flex gap-2 justify-between items-center">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-bold rounded-lg text-slate-600 hover:bg-slate-50">
+            I'll do this later
+          </button>
+          <button
+            onClick={onContinue}
+            disabled={!allConfirmed && steps.length > 0}
+            className="px-4 py-2 text-sm font-bold rounded-lg bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+            title={!allConfirmed && steps.length > 0 ? 'Confirm each step above' : ''}
+          >
+            My capture is running — connect Custom HLS <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

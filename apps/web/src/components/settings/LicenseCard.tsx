@@ -1,5 +1,7 @@
 "use client";
 
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { CreditCard, Loader2, AlertTriangle, MonitorPlay, Calendar, ArrowUpCircle } from 'lucide-react';
 import { useLicense } from '@/hooks/use-api';
 
@@ -13,6 +15,11 @@ const TIER_META: Record<string, { label: string; color: string; description: str
 
 export function LicenseCard() {
   const { data, isLoading } = useLicense();
+  const pathname = usePathname() || '';
+  // Compose `${schoolId}/billing` from the current pathname. Settings
+  // page lives at /[schoolId]/settings so we point billing at the
+  // sibling route. Falls back to /billing if pathname is empty.
+  const billingHref = pathname ? `${pathname}/billing` : '/billing';
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -80,19 +87,32 @@ export function LicenseCard() {
 
             {/* Upgrade CTA — Pilot tier only */}
             {data.isPilot && (
-              <a
-                href="/pricing"
+              <Link
+                href={billingHref}
                 className="block w-full text-center py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-500/20 transition-all"
               >
                 <ArrowUpCircle className="w-4 h-4 inline -mt-0.5 mr-1" />
                 Upgrade for unlimited screens
-              </a>
+              </Link>
             )}
 
             <p className="text-[11px] text-slate-400 text-center">
               {TIER_META[data.tier]?.description ?? 'Custom plan'}
               {data.isPilot && <span> · No card required.</span>}
             </p>
+
+            {/* Always-visible drill-in to the full billing / plans page.
+                Supersedes the standalone "Plans & billing" link card we
+                removed from the settings page (operator: "we have two
+                billing areas — combine them"). */}
+            <div className="pt-3 border-t border-slate-100 text-center">
+              <Link
+                href={billingHref}
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
+              >
+                View all plans &rarr;
+              </Link>
+            </div>
           </div>
         )}
       </div>

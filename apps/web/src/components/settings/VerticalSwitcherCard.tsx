@@ -14,10 +14,17 @@
  * reloads so all useTenantCopy() consumers re-render with the new
  * vertical's strings (sidebar, switcher, settings labels, default
  * emergency types, template library filter).
+ *
+ * 2026-05-03 (later) — operator feedback: "the industry selection at
+ * the top of the settings is overkill, we don't need big giant
+ * buttons for each industry... eventually we won't have any of these,
+ * you will pick your industry during sign up but i like that i can
+ * switch and test for right now." Compressed to a one-line pill +
+ * dropdown popover. Same logic + RoleGate.
  */
 
-import { useState } from 'react';
-import { Loader2, ArrowRightLeft } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Loader2, ArrowRightLeft, ChevronDown, Check } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 import { apiFetch } from '@/lib/api-client';
 import {
@@ -36,11 +43,35 @@ export function VerticalSwitcherCard() {
     : 'K12';
   const [pending, setPending] = useState<Vertical | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+
+  // Close popover on outside click / Esc.
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('mousedown', onClick);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', onClick);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
 
   if (!isAdmin) return null;
 
   const switchTo = async (next: Vertical) => {
-    if (next === currentVertical) return;
+    if (next === currentVertical) {
+      setOpen(false);
+      return;
+    }
     setPending(next);
     setError(null);
     try {
@@ -65,58 +96,76 @@ export function VerticalSwitcherCard() {
   const currentLabel = VERTICAL_LABELS[currentVertical];
 
   return (
-    <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3">
-        <ArrowRightLeft className="w-5 h-5 text-indigo-500" />
-        <div className="flex-1 min-w-0">
-          <h2 className="text-sm font-bold text-slate-800">Industry vertical</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Currently <span className="font-semibold text-slate-800">{currentLabel.emoji} {currentLabel.singular}</span> — drives template library, terminology, and default emergency types.
-          </p>
+    <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
+      <ArrowRightLeft className="w-4 h-4 text-indigo-500 shrink-0" />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-bold text-slate-700">Industry:</span>
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-[11px] font-bold text-indigo-700">
+            <span aria-hidden>{currentLabel.emoji}</span>
+            <span>{currentLabel.singular}</span>
+          </span>
         </div>
+        <p className="text-[11px] text-slate-500 mt-0.5">Switch industry context — testing only.</p>
       </div>
-      <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {VERTICALS.map((v) => {
-          const labels = VERTICAL_LABELS[v];
-          const isActive = v === currentVertical;
-          const isPending = pending === v;
-          return (
-            <button
-              key={v}
-              type="button"
-              onClick={() => switchTo(v)}
-              disabled={isActive || pending !== null}
-              className={`text-left p-4 rounded-xl border-2 transition-all ${
-                isActive
-                  ? 'border-indigo-500 bg-indigo-50/40 cursor-default'
-                  : pending !== null
-                    ? 'border-slate-100 bg-slate-50 opacity-50 cursor-not-allowed'
-                    : 'border-slate-200 bg-white hover:border-indigo-300 hover:bg-slate-50'
-              }`}
-            >
-              <div className="flex items-center gap-2 mb-1.5">
-                <span className="text-xl" aria-hidden>{labels.emoji}</span>
-                <span className="text-sm font-bold text-slate-800">{labels.singular}</span>
-                {isActive && (
-                  <span className="ml-auto text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Active</span>
-                )}
-                {isPending && (
-                  <Loader2 className="ml-auto w-3.5 h-3.5 text-indigo-500 animate-spin" />
-                )}
-              </div>
-              <p className="text-[11px] text-slate-500 leading-snug">{labels.tagline}</p>
-            </button>
-          );
-        })}
+      <div className="relative shrink-0" ref={popoverRef}>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          disabled={pending !== null}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-50"
+          aria-haspopup="menu"
+          aria-expanded={open}
+        >
+          {pending !== null ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5" />
+          )}
+          <span>Switch</span>
+        </button>
+        {open && (
+          <div
+            role="menu"
+            className="absolute right-0 top-full mt-1.5 z-30 w-64 rounded-lg border border-slate-200 bg-white shadow-lg overflow-hidden"
+          >
+            <ul className="py-1 max-h-72 overflow-y-auto">
+              {VERTICALS.map((v) => {
+                const labels = VERTICAL_LABELS[v];
+                const isActive = v === currentVertical;
+                const isPending = pending === v;
+                return (
+                  <li key={v}>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => switchTo(v)}
+                      disabled={isActive || pending !== null}
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-left text-xs transition-colors ${
+                        isActive
+                          ? 'bg-indigo-50/60 text-indigo-700 cursor-default'
+                          : pending !== null
+                            ? 'text-slate-400 cursor-not-allowed'
+                            : 'text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span aria-hidden className="text-base">{labels.emoji}</span>
+                      <span className="flex-1 font-semibold truncate">{labels.singular}</span>
+                      {isActive && <Check className="w-3.5 h-3.5 text-indigo-600" />}
+                      {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
       </div>
       {error && (
-        <div className="mx-5 mb-4 px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700">
+        <div className="absolute mt-12 right-4 px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-[11px] text-rose-700">
           {error}
         </div>
       )}
-      <div className="px-5 py-3 bg-slate-50/60 border-t border-slate-100 text-[11px] text-slate-500">
-        Switching reloads the dashboard. Existing screens, playlists, and assets stay — only the vertical-aware UI strings + template library filter change.
-      </div>
     </section>
   );
 }
