@@ -35,6 +35,8 @@ import { UsbExportModule } from './usb-export/usb-export.module';
 import { PlayerOtaModule } from './player-ota/player-ota.module';
 import { PlayerLogsModule } from './player-logs/player-logs.module';
 import { FitnessModule } from './fitness/fitness.module';
+// 2026-05-03 — Sprint 8c streaming integrations.
+import { StreamingModule } from './streaming/streaming.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_FILTER, APP_GUARD, APP_PIPE, APP_INTERCEPTOR } from '@nestjs/core';
 import { SanitizationPipe } from './security/sanitization.pipe';
@@ -68,6 +70,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     PlayerOtaModule,
     PlayerLogsModule,
     FitnessModule,
+    StreamingModule,
     ThrottlerModule.forRoot([{
       ttl: 60000,
       limit: 100,
