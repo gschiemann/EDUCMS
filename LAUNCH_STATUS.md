@@ -6,18 +6,18 @@ it can do real work in production. Use this as the pre-launch checklist.
 ## ✅ What's live and working
 
 ### Multi-vertical platform
-- K12 / GYM / RETAIL / CORPORATE / QSR / FASHION verticals all routed
+- K12 / GYM / RETAIL / CORPORATE / QSR / FASHION / **BAR** verticals all routed
 - Vertical-aware UI copy via `useTenantCopy()` (org noun, role labels, template categories, default brand)
 - Tenant.vertical column drives template visibility per tenant
 - Templates page hides K12 grade-level chips for non-K12 tenants
 
 ### Templates
 - 60+ K12 system presets (animated, themed, MS pack 8 + portrait, holiday lobby, etc.)
-- 7 fitness/GYM presets (cardio-hub, music-player, ad-banner, class-schedule, training-video, workout-timer, motivational-quote)
-- Restaurant/QSR presets (just landed by parallel agent — verify in `apps/api/src/templates/restaurant-presets.ts`)
-- Retail presets (just landed by parallel agent — verify in `apps/api/src/templates/retail-presets.ts`)
-- Bar presets (just landed by parallel agent — verify in `apps/api/src/templates/bar-presets.ts`)
-- ensureSystemPresets() seeds + vertical-tag migrates rows on every API boot
+- 7 fitness/GYM presets (cardio-hub, music-player, ad-banner, class-schedule, training-video, workout-timer, motivational-quote) + 6 fitness widgets
+- 8 RESTAURANT/QSR presets (Drive-Thru Menu, Counter-Order, Coffee Shop, Pizza, Sushi, Daily Specials, Loyalty, Wait Time) + 6 widgets (MenuBoard, ComboCarousel, WaitTime, LoyaltyTicker, SpecialsCallout, AllergyLegend)
+- 8 RETAIL presets (Storefront Welcome, Sale/BOGO, Lookbook, Wayfinding, Loyalty, Window Display portrait, End-Cap, Holiday) + 7 widgets (ProductGrid, PriceCallout, SaleCountdown, WayfindingMap, LoyaltyQR, LookbookCarousel, StorefrontHours)
+- 6 BAR presets (Tap List, Cocktail Menu, Game Day Hub, Live Event, Happy Hour, Trivia Night) + 6 widgets (TapList, CocktailMenu, HappyHourCountdown, GameDaySchedule, EventTonight, TriviaScoreboard)
+- ensureSystemPresets() seeds + vertical-tag migrates rows on every API boot — RESTAURANT/RETAIL/BAR vertical tags applied automatically
 
 ### Widget framework
 - `WidgetErrorBoundary` wraps every WidgetPreview — single bad widget no longer tanks the whole route
