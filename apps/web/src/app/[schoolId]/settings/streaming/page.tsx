@@ -17,7 +17,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
-import { Loader2, Tv, ExternalLink, Trash2, Plus, X, AlertCircle, CheckCircle2, ShieldAlert, Wrench, Cable, ArrowRight } from 'lucide-react';
+import { Loader2, Tv, ExternalLink, Trash2, Plus, X, AlertCircle, CheckCircle2, ShieldAlert, Wrench, Cable, ArrowRight, Globe, Music, Radio, Lock, Zap, Sparkles } from 'lucide-react';
 
 interface Provider {
   id: string;
@@ -93,6 +93,28 @@ export default function StreamingSettingsPage() {
   const [connectModalProvider, setConnectModalProvider] = useState<Provider | null>(null);
   const [bridgeGuideProvider, setBridgeGuideProvider] = useState<Provider | null>(null);
   const [pickerConnection, setPickerConnection] = useState<Connection | null>(null);
+  const [showWhyClosed, setShowWhyClosed] = useState(false);
+  const [quickStartStatus, setQuickStartStatus] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null);
+  const [quickStartRunning, setQuickStartRunning] = useState<string | null>(null);
+
+  // Quick Start one-click — calls sample-data endpoint to auto-connect
+  // Public Broadcasters with all 9 channels picked. Same path the
+  // /settings/test-integrations page uses; here it's the dummy-proof
+  // entry for "I just want free TV on my screen, do everything for me".
+  const runQuickStart = async (key: string, path: string) => {
+    setQuickStartRunning(key);
+    setQuickStartStatus(null);
+    try {
+      const res: any = await apiFetch(path, { method: 'POST' });
+      qc.invalidateQueries({ queryKey: ['streaming-connections'] });
+      qc.invalidateQueries({ queryKey: ['streaming-channels'] });
+      setQuickStartStatus({ kind: 'ok', msg: res?.message || 'Connected. Drop a Live Stream widget on any template to play.' });
+    } catch (e) {
+      setQuickStartStatus({ kind: 'err', msg: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setQuickStartRunning(null);
+    }
+  };
 
   const grouped = (providers.data || []).reduce<Record<string, Provider[]>>((acc, p) => {
     (acc[p.category] = acc[p.category] || []).push(p);
@@ -110,11 +132,119 @@ export default function StreamingSettingsPage() {
               <Tv className="w-6 h-6" /> Streaming
             </h1>
             <p className="text-fuchsia-100 mt-1.5 text-sm max-w-xl">
-              Connect a provider, pick channels, and stream live content to your venue screens — with optional ad overlays.
+              Pick what you want to play. We handle the setup. Your content shows up in any template's Live Stream widget within seconds.
             </p>
           </div>
         </div>
       </div>
+
+      {/* ─── Quick Start — dummy-proof "what do you want to play?" hero ───
+          Operator (2026-05-03): "did you make it easy so the customer just
+          enters their credentials and it loads up the supported streaming
+          app? make this dummy proof". Five big visual cards ranked by
+          how-fast-can-you-go: free 1-click → URL paste → premium bridge.
+          Honest about closed platforms (Hulu/Netflix/Disney+) — they're a
+          full card with the explainer link rather than buried in a tier
+          badge. */}
+      <section>
+        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+          <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Quick start — what do you want to play?
+        </h2>
+        {quickStartStatus && (
+          <div className={`mb-3 rounded-xl px-4 py-3 text-xs flex items-start gap-2 ${
+            quickStartStatus.kind === 'ok'
+              ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+              : 'bg-rose-50 border border-rose-200 text-rose-800'
+          }`}>
+            {quickStartStatus.kind === 'ok'
+              ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              : <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />}
+            <div>{quickStartStatus.msg}</div>
+          </div>
+        )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {/* 1. Free TV — one click, zero auth, plays today */}
+          <QuickStartCard
+            tone="emerald"
+            icon={<Globe className="w-5 h-5" />}
+            badge="1 CLICK · FREE"
+            title="Free venue TV"
+            blurb="9 free channels: NHK, France 24, DW, Al Jazeera, Bloomberg, Sky News, CBS. Legal for venues. No signup."
+            cta={quickStartRunning === 'public-broadcasters' ? 'Adding…' : 'Add 9 free channels'}
+            disabled={quickStartRunning !== null}
+            onClick={() => runQuickStart('public-broadcasters', '/sample-data/streaming/public-broadcasters')}
+          />
+          {/* 2. YouTube — paste URL, no account needed */}
+          <QuickStartCard
+            tone="rose"
+            icon={<Tv className="w-5 h-5" />}
+            badge="PASTE URL"
+            title="YouTube channel"
+            blurb="Any public YouTube channel or live stream. Paste the URL, that's it. Same for Twitch and Vimeo."
+            cta="Connect YouTube"
+            onClick={() => {
+              const yt = providers.data?.find((p) => p.id === 'youtube');
+              if (yt) setConnectModalProvider(yt);
+            }}
+          />
+          {/* 3. Custom HLS — for owned content / IPTV / capture bridges */}
+          <QuickStartCard
+            tone="indigo"
+            icon={<Zap className="w-5 h-5" />}
+            badge="OWN URL"
+            title="My own video stream"
+            blurb="Got an HLS / DASH / IPTV URL from your AV integrator? Paste it. Works with anything that ends .m3u8 or .mpd."
+            cta="Add custom stream"
+            onClick={() => {
+              const hls = providers.data?.find((p) => p.id === 'custom-hls');
+              if (hls) setConnectModalProvider(hls);
+            }}
+          />
+          {/* 4. Music — Soundtrack Your Brand (real OAuth + commercial license) */}
+          <QuickStartCard
+            tone="violet"
+            icon={<Music className="w-5 h-5" />}
+            badge="OAUTH · ~$35/MO"
+            title="Background music"
+            blurb="Soundtrack Your Brand — millions of commercial-licensed songs. Spotify-backed. ~$35/mo per location."
+            cta="Connect Soundtrack"
+            onClick={() => {
+              const sb = providers.data?.find((p) => p.id === 'soundtrack');
+              if (sb) setConnectModalProvider(sb);
+            }}
+          />
+          {/* 5. Premium streaming — HONEST about why this is the hard one */}
+          <QuickStartCard
+            tone="amber"
+            icon={<Lock className="w-5 h-5" />}
+            badge="HARDWARE BRIDGE"
+            title="Hulu / Netflix / Disney+ / Max"
+            blurb="Premium streaming services don't have a public API — no signage CMS can play them directly. We fix this with an HDMI capture bridge (~$430 one-time)."
+            cta="Why? + setup guide"
+            onClick={() => setShowWhyClosed(true)}
+          />
+          {/* 6. Atmosphere — partner content via bridge */}
+          <QuickStartCard
+            tone="sky"
+            icon={<Radio className="w-5 h-5" />}
+            badge="HARDWARE BRIDGE"
+            title="Atmosphere TV / DIRECTV"
+            blurb="Venue-friendly TV from Atmosphere, DIRECTV for Business, DISH Business — same HDMI capture bridge as premium streaming."
+            cta="Setup guide"
+            onClick={() => {
+              const atmo = providers.data?.find((p) => p.id === 'atmosphere');
+              if (atmo) setBridgeGuideProvider(atmo);
+            }}
+          />
+        </div>
+        <p className="text-[11px] text-slate-500 mt-3 leading-relaxed">
+          New to streaming on signage?{' '}
+          <button onClick={() => setShowWhyClosed(true)} className="underline text-indigo-600 hover:text-indigo-700">
+            Why can't I just paste my Hulu password?
+          </button>
+          {' '}— short, honest answer.
+        </p>
+      </section>
 
       {/* Connections */}
       <section>
@@ -202,6 +332,25 @@ export default function StreamingSettingsPage() {
           onClose={() => setPickerConnection(null)}
           onChanged={() => {
             qc.invalidateQueries({ queryKey: ['streaming-channels'] });
+          }}
+        />
+      )}
+
+      {/* Why-closed explainer — the dummy-proof "but why can't I just
+          paste my Hulu password?" answer in plain English with a CTA
+          to the bridge wizard. */}
+      {showWhyClosed && (
+        <WhyClosedModal
+          onClose={() => setShowWhyClosed(false)}
+          onPickAtmosphere={() => {
+            setShowWhyClosed(false);
+            const atmo = providers.data?.find((p) => p.id === 'atmosphere');
+            if (atmo) setBridgeGuideProvider(atmo);
+          }}
+          onPickDirectv={() => {
+            setShowWhyClosed(false);
+            const dtv = providers.data?.find((p) => p.id === 'directv-business');
+            if (dtv) setBridgeGuideProvider(dtv);
           }}
         />
       )}
@@ -790,6 +939,184 @@ function BridgeSetupModal({ provider, onClose, onContinue }: {
             title={!allConfirmed && steps.length > 0 ? 'Confirm each step above' : ''}
           >
             My capture is running — connect Custom HLS <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Quick Start card ──────────────────────────────────────────────────
+//
+// One of 6 cards in the dummy-proof "what do you want to play?" hero at
+// the top of /settings/streaming. Each card is one CTA — no nested
+// drilldowns. The visual tone (emerald / rose / indigo / etc) is keyed
+// to the action's complexity so the easiest paths read as the most
+// inviting:
+//   • emerald — 1-click free
+//   • rose / indigo — paste-URL forms
+//   • violet — OAuth / paid
+//   • amber — closed platform / explainer
+//   • sky — partner content via bridge
+const TONE_STYLES: Record<string, { bg: string; ring: string; iconBg: string; iconText: string; badge: string; cta: string }> = {
+  emerald: { bg: 'bg-emerald-50/60', ring: 'border-emerald-200 hover:border-emerald-400', iconBg: 'bg-emerald-100', iconText: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-800', cta: 'bg-emerald-600 hover:bg-emerald-700' },
+  rose:    { bg: 'bg-rose-50/60',    ring: 'border-rose-200 hover:border-rose-400',       iconBg: 'bg-rose-100',    iconText: 'text-rose-700',    badge: 'bg-rose-100 text-rose-800',       cta: 'bg-rose-600 hover:bg-rose-700' },
+  indigo:  { bg: 'bg-indigo-50/60',  ring: 'border-indigo-200 hover:border-indigo-400',   iconBg: 'bg-indigo-100',  iconText: 'text-indigo-700',  badge: 'bg-indigo-100 text-indigo-800',   cta: 'bg-indigo-600 hover:bg-indigo-700' },
+  violet:  { bg: 'bg-violet-50/60',  ring: 'border-violet-200 hover:border-violet-400',   iconBg: 'bg-violet-100',  iconText: 'text-violet-700',  badge: 'bg-violet-100 text-violet-800',   cta: 'bg-violet-600 hover:bg-violet-700' },
+  amber:   { bg: 'bg-amber-50/60',   ring: 'border-amber-200 hover:border-amber-400',     iconBg: 'bg-amber-100',   iconText: 'text-amber-700',   badge: 'bg-amber-100 text-amber-800',     cta: 'bg-amber-600 hover:bg-amber-700' },
+  sky:     { bg: 'bg-sky-50/60',     ring: 'border-sky-200 hover:border-sky-400',         iconBg: 'bg-sky-100',     iconText: 'text-sky-700',     badge: 'bg-sky-100 text-sky-800',         cta: 'bg-sky-600 hover:bg-sky-700' },
+};
+function QuickStartCard({
+  tone, icon, badge, title, blurb, cta, disabled, onClick,
+}: {
+  tone: 'emerald' | 'rose' | 'indigo' | 'violet' | 'amber' | 'sky';
+  icon: React.ReactNode;
+  badge: string;
+  title: string;
+  blurb: string;
+  cta: string;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  const t = TONE_STYLES[tone];
+  return (
+    <div className={`rounded-xl border-2 p-4 flex flex-col gap-3 transition-all shadow-sm hover:shadow-md ${t.bg} ${t.ring}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${t.iconBg} ${t.iconText}`}>
+          {icon}
+        </div>
+        <span className={`text-[9px] font-bold tracking-wider uppercase px-2 py-0.5 rounded ${t.badge}`}>{badge}</span>
+      </div>
+      <div className="flex-1">
+        <h3 className="text-sm font-bold text-slate-900">{title}</h3>
+        <p className="text-[11px] text-slate-600 leading-relaxed mt-1">{blurb}</p>
+      </div>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        className={`w-full text-xs font-bold rounded-lg py-2 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${t.cta}`}
+      >
+        {cta}
+      </button>
+    </div>
+  );
+}
+
+// ─── "Why can't I just paste my Hulu password?" explainer ──────────────
+//
+// Operator-friendly answer to the FAQ that comes up the moment they look
+// at the Streaming Hub and see Hulu / Netflix / Disney+ tiles. Honest,
+// short, and ends with a path forward (the BRIDGE workflow).
+//
+// Marketing differentiator: every signage CMS hits the same wall on
+// closed platforms. We're the only one who explains it upfront and
+// ships a working alternative (HDMI capture → local HLS → custom-hls).
+function WhyClosedModal({
+  onClose,
+  onPickAtmosphere,
+  onPickDirectv,
+}: {
+  onClose: () => void;
+  onPickAtmosphere: () => void;
+  onPickDirectv: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="p-6 border-b border-slate-100 flex items-start justify-between sticky top-0 bg-white rounded-t-2xl">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700">
+              <Lock className="w-6 h-6" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-slate-800">Why can't I just paste my Hulu password?</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Short, honest answer + the path forward.</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="p-6 space-y-5 text-sm text-slate-700 leading-relaxed">
+          <div className="rounded-lg bg-amber-50 border border-amber-200 p-4">
+            <p>
+              <strong className="text-amber-900">No signage CMS can play Hulu, Netflix, Disney+, Max, Peacock,
+              Paramount+, fuboTV, or Sling directly.</strong> That's not a VenueOS limitation —
+              none of our competitors (Yodeck, Rise Vision, OptiSigns, ScreenCloud,
+              BrightSign) can either. Three reasons:
+            </p>
+          </div>
+
+          <ol className="list-decimal pl-5 space-y-3">
+            <li>
+              <strong>No public API.</strong> These services don't publish a way for
+              third-party apps to authenticate and play their content. Their apps
+              only run on licensed devices (Roku, Fire TV, Apple TV, Smart TVs).
+            </li>
+            <li>
+              <strong>DRM (Widevine / FairPlay).</strong> Their video files are encrypted
+              with DRM that requires a hardware-backed license. Browser-based
+              players in a CMS don't have those licenses.
+            </li>
+            <li>
+              <strong>Commercial use forbidden.</strong> Even if you could technically embed
+              their video, their consumer Terms of Service explicitly prohibit
+              displaying it in commercial venues. That's a contract problem,
+              not a tech problem.
+            </li>
+          </ol>
+
+          <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4 space-y-3">
+            <h3 className="font-bold text-emerald-900 flex items-center gap-2">
+              <Cable className="w-4 h-4" /> What works: the Hardware Bridge
+            </h3>
+            <p className="text-emerald-900/90">
+              You keep your existing Hulu / Netflix subscription on a $50 Fire TV
+              Stick. We capture its HDMI output through a $180 USB capture card,
+              encode to HLS on a $170 mini-PC, and play that HLS stream inside
+              VenueOS like any other channel. <strong>~$430 one-time per venue.</strong>
+            </p>
+            <p className="text-emerald-900/90 text-xs">
+              The same bridge works for every closed platform: DIRECTV for Business,
+              DISH, Atmosphere TV, Mood Media, Stingray (iHeart for Business).
+              Setup takes about 30 minutes — we ship a step-by-step wizard.
+            </p>
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={onPickAtmosphere}
+                className="flex-1 px-3 py-2 text-xs font-bold rounded-lg bg-sky-600 text-white hover:bg-sky-700 inline-flex items-center justify-center gap-1.5"
+              >
+                <Cable className="w-3.5 h-3.5" /> Atmosphere bridge guide
+              </button>
+              <button
+                onClick={onPickDirectv}
+                className="flex-1 px-3 py-2 text-xs font-bold rounded-lg bg-sky-600 text-white hover:bg-sky-700 inline-flex items-center justify-center gap-1.5"
+              >
+                <Cable className="w-3.5 h-3.5" /> DIRECTV bridge guide
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-slate-50 border border-slate-200 p-4 text-xs space-y-2">
+            <h4 className="font-bold text-slate-800">What works without a bridge today</h4>
+            <ul className="list-disc pl-5 space-y-1 text-slate-700">
+              <li><strong>Public Broadcasters</strong> (NHK, France 24, DW, Al Jazeera, Bloomberg, Sky News, CBS) — 1-click connect, free, legal for venues</li>
+              <li><strong>YouTube + Twitch + Vimeo</strong> — paste any public URL, plays as iframe</li>
+              <li><strong>Custom HLS / DASH / IPTV M3U</strong> — paste any URL you own or are licensed for</li>
+              <li><strong>Soundtrack Your Brand</strong> — commercial-licensed background music (~$35/mo)</li>
+            </ul>
+            <p className="pt-2">
+              Full setup guide:{' '}
+              <a href="/docs/HARDWARE_BRIDGE.md" target="_blank" rel="noreferrer" className="text-indigo-600 underline inline-flex items-center gap-0.5">
+                docs/HARDWARE_BRIDGE.md <ExternalLink className="w-3 h-3" />
+              </a>
+            </p>
+          </div>
+        </div>
+
+        <div className="p-6 border-t border-slate-100 flex justify-end sticky bottom-0 bg-white rounded-b-2xl">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-bold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200">
+            Got it
           </button>
         </div>
       </div>
