@@ -549,11 +549,18 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         };
 
         const cssChunks: string[] = [];
-        // Zone-wide first (lower specificity). Selector targets every
-        // non-svg descendant of the zone.
+        // 2026-05-03 — scope every font-style rule to the
+        // `[data-widget-content]` wrapper instead of `[data-zone-id]`.
+        // Otherwise the rules cascade to the BuilderZone chrome (the
+        // tiny text-[9px] widget-type badge in the corner, the zone-
+        // name pill, resize handles) and font-size !important grows
+        // the badge along with the widget. Operator screenshot showed
+        // a giant "SCROLLING TICKER" chip taking over the ticker row
+        // because the BADGE was scaling, not the message text.
+        const contentSel = `[data-zone-id="${zone.id}"] [data-widget-content]`;
         const zoneRules = buildRules(cfg);
         if (zoneRules.length) {
-          cssChunks.push(`[data-zone-id="${zone.id}"] *:not(svg):not(svg *) { ${zoneRules.join('; ')} }`);
+          cssChunks.push(`${contentSel} *:not(svg):not(svg *) { ${zoneRules.join('; ')} }`);
         }
         // Per-field rules — higher specificity (zone + field), so they
         // win over zone-wide for the targeted field.
@@ -563,7 +570,7 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
           // CSS attribute selector escaping — field keys may include
           // dots (e.g. "agenda.0.t"). The dot inside an attribute
           // value is fine; the value just needs quoting.
-          const sel = `[data-zone-id="${zone.id}"] [data-field="${fieldKey.replace(/"/g, '\\"')}"]`;
+          const sel = `${contentSel} [data-field="${fieldKey.replace(/"/g, '\\"')}"]`;
           cssChunks.push(`${sel}, ${sel} *:not(svg):not(svg *) { ${r.join('; ')} }`);
         }
         if (!cssChunks.length) return null;
@@ -573,21 +580,30 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       {/* 2026-05-03 — wrap widget render in an error boundary so a
           single buggy widget can't bubble its exception up to the
           per-tenant route boundary (`/[schoolId]/error.tsx`) and brick
-          the whole CMS page. Operator: "the second I try to change the
-          first period in the first bell schedule widget I get this
-          error and can't do anything." With this boundary the bad
-          widget shows an inline retry chip and the rest of the canvas
-          + right-hand editor stays interactive. */}
-      <WidgetErrorBoundary resetKey={zone.id} widgetLabel={label}>
-        <WidgetPreview
-          widgetType={zone.widgetType}
-          config={zone.defaultConfig || {}}
-          width={zone.width}
-          height={zone.height}
-          live={false}
-          onConfigChange={!previewMode && onConfigChange ? (patch) => onConfigChange(zone.id, patch) : undefined}
-        />
-      </WidgetErrorBoundary>
+          the whole CMS page.
+          Also wrapped in `data-widget-content` so the universal
+          text-style override above only targets the widget body, NOT
+          the BuilderZone chrome (label badges, name pill above the
+          zone, resize handles). Operator: "when I increase the text
+          size, the SCROLLING TICKER text shows up and it's what
+          increases instead of the actual scrolling text." Cause: the
+          previous selector `[data-zone-id] *:not(svg):not(svg *)`
+          matched the `text-[9px]` widget-type badge that lives inside
+          the same zone, so font-size !important grew the badge text.
+          Scoping to `[data-widget-content]` keeps chrome at its fixed
+          design size and only restyles the actual widget rendering. */}
+      <div data-widget-content="true" style={{ position: 'absolute', inset: 0 }}>
+        <WidgetErrorBoundary resetKey={zone.id} widgetLabel={label}>
+          <WidgetPreview
+            widgetType={zone.widgetType}
+            config={zone.defaultConfig || {}}
+            width={zone.width}
+            height={zone.height}
+            live={false}
+            onConfigChange={!previewMode && onConfigChange ? (patch) => onConfigChange(zone.id, patch) : undefined}
+          />
+        </WidgetErrorBoundary>
+      </div>
 
       {/* Always-visible widget-type label badge in edit mode. Lives
           in the top-left corner so freshly-dropped zones with empty
@@ -659,18 +675,18 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         // Unselected zones DON'T show hotspots — they'd visually compete
         // with the zone's own border and overwhelm the canvas.
         <style>{`
-          [data-zone-id="${zone.id}"] [data-field] {
+          [data-zone-id="${zone.id}"] [data-widget-content] [data-field] {
             cursor: text;
             transition: outline 0.12s, background 0.12s;
           }
           ${selected ? `
-          [data-zone-id="${zone.id}"] [data-field]:not([contenteditable="true"]) {
+          [data-zone-id="${zone.id}"] [data-widget-content] [data-field]:not([contenteditable="true"]) {
             outline: 1px dotted rgba(99, 102, 241, 0.55);
             outline-offset: 2px;
             border-radius: 3px;
           }
           ` : ''}
-          [data-zone-id="${zone.id}"] [data-field]:not([contenteditable="true"]):hover {
+          [data-zone-id="${zone.id}"] [data-widget-content] [data-field]:not([contenteditable="true"]):hover {
             outline: 2px dashed #6366f1;
             outline-offset: 2px;
             background: rgba(99, 102, 241, 0.08);
