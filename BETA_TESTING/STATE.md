@@ -5,122 +5,91 @@ operation between Claude sessions.** Read this first when a new session starts.
 
 ## Current cycle
 
-- **Cycle**: 1 ✅ DONE · 2 ✅ DONE · 3 IN-PROGRESS.
-- **Status**: `TESTING_DISPATCHED` for cycle 3
-- **Last commit**: `ff4df07` (Cycle 2 STATE update)
-- **Open after cycle 2**: ~11 P1 (mostly retail editors + a few small) + 24 P2
-
-## Cycle 3 dispatch — running NOW
-
-5 retest agents + 1 retail-editor cleanup agent in parallel:
-- `auth` retest (verify cycle 1+2 fixes hold + find new bugs)
-- `editor` retest
-- `integrations` retest
-- `emergency` retest (life-safety paranoia mode)
-- `player + ai-imports` combined retest
-- **retail-editors cleanup** — adding the 6 missing RETAIL widget editors
-  (LOOKBOOK_CAROUSEL, STOREFRONT_HOURS, PRICE_CALLOUT, SALE_COUNTDOWN,
-  LOYALTY_QR, WAYFINDING_MAP) deferred from cycle 2
-
-Reports persist to:
-- `BETA_TESTING/BUG_REPORTS/CYCLE-3-{auth,editor,integrations,emergency,player-ai}.md`
-- `BETA_TESTING/FIX_LOG/CYCLE-3-fixes.md` (cleanup agent)
+- **Cycle**: 1 ✅ DONE · 2 ✅ DONE · 3 ✅ DONE. Cycle 4 ready to start.
+- **Status**: `CYCLE_DONE` after cycle 3.
+- **Last commit**: `642c2b4` (Cycle 3 P0 regression fixes)
+- **Open after cycle 3**: ~15 P1 (mostly small UX + asymmetry) + 30+ P2
 
 ## ✅ Cycle 1 — 13 P0 closed
-
-- `d1e8ff7` — integrations ConnectModal + multipart + PPTX mime + panic 3s
-- `0898a8d` — auth-001/002, emergency-002/003/004, player-001/002/003
+- `d1e8ff7` integrations + multipart + PPTX + panic 3s
+- `0898a8d` auth + emergency + player bundles
 
 ## ✅ Cycle 2 — 16 P1 closed (+ 9 new widget editors)
+- `7b30bb1` auth + integrations + editor + emergency-mix batches
 
-- `7b30bb1` — auth + integrations + editor + emergency-mix batches
+## ✅ Cycle 3 — 22 cycle-1+2 fixes verified GREEN, 4 P0 regressions fixed, 6 RETAIL editors added
+- `b0aa3a8` retail editor cleanup + 5 retest reports
+- `642c2b4` 4 P0 regressions:
+  - emergency-011 device JWT missing tenantId/deviceId (WS broadcasts silently dropping in prod)
+  - emergency-012 SUPER_ADMIN cross-tenant regression
+  - player-014 page-side ref poisoned before SW acks (nullified player-001 fix)
+  - player-015 SW v2 deleted v1 emergency cache before populating v2
 
-Fixes shipped this cycle:
-- **auth**: cross-tenant FK validation on schedules + playlists; Argon2 timing oracle closed
-- **integrations**: POS oauth2 reject (frontend + backend); ad-network PARTNER vs DIRECT branch; PropertiesPanel picker hrefs absolute; api-types bridgeSteps
-- **editor**: FITNESS_WORKOUT_TIMER editor; 9 missing widget editors (5 RESTAURANT + 4 BAR); JSON-parse leak fix in 6 array editors
-- **emergency**: SOS location string bounded; allClear @AllowPanicBypass
-- **player**: latest-version auth gate + throttle
-- **ai-imports**: filename sanitization (200-char cap + Windows reserved chars stripped); sample-loader connection separation; AiGenerateModal a11y (role=dialog, aria-modal, focus trap, focus restoration)
+## 🟡 Cycle 4 — remaining P1 work (~15 bugs)
 
-## 🟡 Cycle 3 — remaining P1 work
+From cycle-3 retest reports:
 
-From `BUG_REPORTS/CYCLE-1-TRIAGE.md` not yet fixed:
+### auth (P1 from cycle 3)
+- BUG-011 — `PUT /users/:id/role` allows SUPER_ADMIN to demote another SUPER_ADMIN in same tenant
+- BUG-012 — `PUT /schedules/:id` body type drops `playlistId`; silent no-op on re-target
+- BUG-013 — `DELETE /users/:id` returns HTTP 200 + `{error}` body instead of HttpException
 
-### editor (deferred from cycle 2)
-- 6 RETAIL widget editors still missing: RETAIL_LOOKBOOK_CAROUSEL, RETAIL_STOREFRONT_HOURS, RETAIL_PRICE_CALLOUT, RETAIL_SALE_COUNTDOWN, RETAIL_LOYALTY_QR, RETAIL_WAYFINDING_MAP
-- BAR_TAP_LIST + BAR_COCKTAIL_MENU have minimal cases — extend to match other RESTAURANT widgets
+### integrations (P1 from cycle 3)
+- BUG-007 — Streaming oauth2 has no API-side reject (asymmetric vs POS); curl bypass creates orphan PENDING rows
+- BUG-008 — Quick Start "Background music" card opens a permanently-disabled Connect modal (oauth2 dead-end UX)
 
-### emergency
-- BUG-005 — Client-side WS verification only checks signature presence (acknowledged tech debt)
-- BUG-006 — Per-screen audit failures silently swallowed
+### emergency (P1 + P2 still open from cycle 1+3)
+- BUG-005 — Client-side WS verification only checks signature presence not validity
+- BUG-006 — Per-screen audit failures silently swallowed (still not fixed; cycle-3 confirmed open)
 - BUG-008 — Floor plan dimensions from client without server-side probe
-- BUG-010 — Player does NOT subscribe to `device:<screenId>` channels — Sprint 8b WS broadcasts only reach screens via HTTP polling
+- BUG-013 — Panic page UI string still says "1.5 seconds" but actual hold is 3000ms (cycle-3 finding)
 
-### player
-- BUG-004 — Capability data collected but typed body drops it
-- BUG-005 — SW precachePlaylist evicts entries by raw URL — Supabase signed URLs rotate hourly
+### editor (P1 from cycle 3)
+- `BAR_TAP_LIST` + `BAR_COCKTAIL_MENU` minimal editor cases — only title + posSync. Operator can't edit `taps[]` / `cocktails[]` rows when posSync is off. Same fix pattern as editor-BUG-002 cycle-2 work.
+
+### player (P1 from cycle 1+3)
+- BUG-005 — SW precachePlaylist evicts entries by raw URL — Supabase signed URLs rotate hourly, evicting entire cache
 - BUG-006 — `ALL_CLEAR` is in `SENSITIVE_TYPES` — race against AUTH_OK on clock-skewed kiosks
 - BUG-007 — WS HELLO falls back to unsigned `dev_` tokens
 - BUG-009 — Pairing code 10-attempt collision retry — 11th miss = 500
 
-### ai-imports
+### ai-imports (P1 + P2)
 - BUG-005 — Imports dropzone has no keyboard/SR path
 
-### auth
-- BUG-005 — Already covered by auth-002 fix; spot-check needed
+## 🔵 P2 — defer to cycle 5+ (30+ bugs)
+See cycle-1 + cycle-3 area reports.
 
-### integrations
-- (none open after cycle 2)
-
-## 🔵 P2 — defer to cycle 4 (24 bugs across 6 areas)
-
-See individual area reports in `BUG_REPORTS/CYCLE-1-*.md`. Mostly UX
-polish, edge cases, Sprint-2 hardening.
-
-## Cycle 3 plan
+## Cycle 4 plan
 
 **Recommended order:**
-1. **RETEST**: dispatch 6 cycle-3 tester agents to verify cycle 1+2 fixes
-   hold + look for regressions introduced by the fixes
-2. **P1 cleanup wave**: 1-2 agents for the remaining P1s (mostly editor
-   + player + emergency leftovers)
-3. **P2 batch**: low-priority fixes batched into 2-3 large agents
+1. Single fix wave — 1 batch agent per area covering the remaining P1s
+2. Optional: cycle-4 retest (lighter pass — only re-verify cycle 3's P0 fixes + the new P1 fixes)
+3. P2 batch — 2-3 large agents for the 30+ P2s
 
-Token budget: cycle 3 should be roughly half a session given the smaller
-P1 surface remaining.
+Token budget: cycle 4 P1 wave should be a half-session.
 
-## How to dispatch cycle 3 retest
+## How to resume
 
-```
-Agent({
-  description: "Cycle 3 retest — auth area",
-  subagent_type: "general-purpose",
-  run_in_background: true,
-  prompt: "Re-run TEST_PLAN.md Area 1 brief PLUS verify these fixes hold: auth-001 (sso.controller.ts assertTenantAccess), auth-002 (users.controller allowlist), auth-003 (schedules FK validation), auth-004 (playlist templateId gate), auth-006 (Argon2 dummy hash). Look for new regressions introduced by these fixes. Write to BETA_TESTING/BUG_REPORTS/CYCLE-3-auth.md."
-})
-```
+When user says "resume beta testing":
+1. Read this STATE.md → see cycle 3 done
+2. Decide: cycle 4 P1 fix wave OR cycle 4 retest first
+3. Use the same dispatch pattern as cycles 2+3 (Agent + run_in_background + GROUND RULES + write to FIX_LOG/CYCLE-4-fixes.md)
+4. After fixes land, preflight + commit + push + STATE update
 
-Repeat for editor / integrations / emergency / player / ai-imports
-(parallel).
-
-## Files committed this run
+## Commit ledger
 
 ```
-a4546fa — BETA_TESTING infrastructure
-fb287f6 — first 4 cycle-1 reports
-d1e8ff7 — 4 cycle-1 P0 fixes
-1494766 — TRIAGE doc + STATE
-3c0b0f1 — fix-wave-2 dispatch state
-0898a8d — 8 cycle-1 P0 fixes (auth + emergency + player bundles)
-11cf4f1 — STATE update for cycle 2
-7b30bb1 — cycle 2 P1 fix wave (16 fixes + 9 new editor cases)
-(this commit) — STATE update for cycle 3
+a4546fa  BETA_TESTING infrastructure
+fb287f6  4 cycle-1 reports mid-cycle save
+d1e8ff7  4 cycle-1 P0 fixes
+1494766  TRIAGE doc
+3c0b0f1  fix-wave-2 dispatch state
+0898a8d  8 cycle-1 P0 fixes (full)
+11cf4f1  STATE for cycle 2
+7b30bb1  16 cycle-2 P1 fixes + 9 editors
+ff4df07  STATE for cycle 3
+49c513c  Cycle 3 dispatch state
+b0aa3a8  Cycle 3 retests + 6 RETAIL editors
+642c2b4  4 cycle-3 P0 regression fixes  ← current
+(this commit)  STATE for cycle 4
 ```
-
-## Token-budget note for next session
-
-Cycle 1 + Cycle 2 used roughly one full session's tokens. The user
-told us tokens would run out and that was expected. State.md is
-designed to make resuming trivial — read this file → know exactly
-where to start.
