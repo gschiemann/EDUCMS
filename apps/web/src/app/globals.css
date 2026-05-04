@@ -276,57 +276,12 @@
   background: #6366f1;
 }
 
-/* ──────────────────────────────────────────────────────────────────
- * 2026-05-04 — DEBUG INSTRUMENTATION (operator-requested).
- * "i didnt see any change, how do i know if you fixes even got applied?
- *  can you add some text to this CSS so i know?"
- *
- * Visible top-right debug pill so operators can verify at a glance:
- *   1. Whether the new CSS bundle has loaded (build ID changes per
- *      deploy — if you see an OLD id, the kiosk is still serving a
- *      cached bundle).
- *   2. Which CSS code path is active — modern (color-mix supported)
- *      or fallback (older Chromium / Android System WebView).
- *
- * Modern browsers: GREEN pill, "build-b7b0d98 · modern".
- * Chromium <111:   ORANGE pill, "build-b7b0d98 · CR95 FALLBACK ACTIVE".
- * No pill at all:  the new CSS hasn't loaded yet → kiosk is serving
- *                  cached CSS; refresh / unpair-pair / power-cycle.
- *
- * Pointer-events:none so it never blocks clicks. z-index:2147483647
- * (max int32) so it's above EVERYTHING including modals + emergency
- * overlays. Pure CSS — no JS required, runs even if hydration fails.
- *
- * Remove this block before final v1 ship; for now operators need a
- * visible signal that the fix is live.
- * ────────────────────────────────────────────────────────────── */
-/* Scoped to body[data-player-route] only — operator: "your dumb
-   fucking pill is in the app no too not just the fucking player".
-   The pill is a kiosk-debug aid; dashboard chrome doesn't need it.
-   The PlayerPage component sets `document.body.dataset.playerRoute='true'`
-   on mount so this selector matches. Plain attribute selector works
-   on every browser, no :has() required. */
-body[data-player-route]::before {
-  content: "build-VENUEOS-v9 · modern (color-mix OK)";
-  position: fixed;
-  top: 4px;
-  right: 4px;
-  z-index: 2147483647;
-  font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  padding: 4px 7px;
-  background: #16a34a;
-  color: #ffffff;
-  border-radius: 4px;
-  pointer-events: none;
-  letter-spacing: 0.02em;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
-}
-@supports not (color: color-mix(in oklab, red 50%, blue)) {
-  body[data-player-route]::before {
-    content: "build-VENUEOS-v9 · CR95 + LAYER-POLYFILL ACTIVE";
-    background: #f59e0b !important;
-  }
-}
+/* 2026-05-04 — debug pill REMOVED.
+   Operator confirmed the @layer-flat + color-mix fallback fixes
+   work; pill is no longer needed in production. The verification
+   tooling served its purpose. If we need to re-instrument later,
+   restore this block from git history (look for "build-VENUEOS-v9"
+   string). */
 
 /* ──────────────────────────────────────────────────────────────────
  * Chromium 95 / older Android System WebView opacity fallback.
