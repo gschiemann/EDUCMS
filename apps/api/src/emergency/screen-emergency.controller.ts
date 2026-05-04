@@ -161,16 +161,48 @@ export class ScreenEmergencyController {
    * subsequent emergency trigger against that screen would write a
    * cross-tenant override.  Reject with 403 before any DB call so the
    * tenant-isolation invariant cannot leak.
+   *
+   * emergency-012 fix: SUPER_ADMIN tokens legitimately may not carry a
+   * tenantId (cross-tenant operators). Match the EmergencyController
+   * pattern (resolveScopeTenant) — let SUPER_ADMIN pass through with
+   * no tenantId so cross-tenant per-screen triggers work; everyone
+   * else is still rejected before any DB call.
    */
-  private requireTenantId(req: any): string {
+  private requireTenantId(req: any): string | null {
+    const isSuper = req?.user?.role === AppRole.SUPER_ADMIN;
     const tenantId = req?.user?.tenantId;
-    if (typeof tenantId !== 'string' || tenantId.trim().length === 0) {
-      throw new ForbiddenException('Token missing tenantId');
+    if (typeof tenantId === 'string' && tenantId.trim().length > 0) {
+      return tenantId;
     }
-    return tenantId;
+    if (isSuper) {
+      // SUPER_ADMIN may operate cross-tenant; no tenant filter needed.
+      return null;
+    }
+    throw new ForbiddenException('Token missing tenantId');
   }
 
-  private async resolveScreen(screenId: string, callerTenantId: string) {
+  /**
+   * emergency-012 fix: SUPER_ADMIN may target a screen in any tenant.
+   * For non-super callers we still strictly filter by their tenantId
+   * so a DISTRICT_ADMIN of tenant A cannot resolve a screen in tenant
+   * B. The screen row itself carries `tenantId`, so the override row
+   * we write later is denormalized from the screen — never from the
+   * caller's token — keeping audit forensics correct regardless of
+   * which admin fired the trigger.
+   */
+  private async resolveScreen(screenId: string, callerTenantId: string | null) {
+    if (callerTenantId === null) {
+      // SUPER_ADMIN path — look up by id only. No cross-tenant leak
+      // possible because only SUPER_ADMIN reaches this branch (see
+      // requireTenantId).
+      const screen = await this.prisma.client.screen.findUnique({
+        where: { id: screenId },
+      });
+      if (!screen) {
+        throw new HttpException('Screen not found', HttpStatus.NOT_FOUND);
+      }
+      return screen;
+    }
     if (typeof callerTenantId !== 'string' || callerTenantId.trim().length === 0) {
       // Defense-in-depth: callers should already have invoked
       // requireTenantId, but if anyone forgets we still refuse rather
@@ -391,6 +423,12 @@ export class ScreenEmergencyController {
     // emergencies on every screen in the fleet that happened to share an
     // id with their input list. Refuse the request before any DB call so
     // the tenant-isolation invariant cannot leak.
+    //
+    // emergency-012 fix: SUPER_ADMIN may bulk-trigger across tenants
+    // (e.g. multi-tenant lasso of screens during a district-wide
+    // incident). requireTenantId returns null for SUPER_ADMIN, which we
+    // translate into a tenantId-less findMany — non-super callers are
+    // still strictly tenant-scoped.
     const callerTenantId = this.requireTenantId(req);
     if (!Array.isArray(body?.screenIds) || body.screenIds.length === 0) {
       throw new HttpException('screenIds required', HttpStatus.BAD_REQUEST);
@@ -403,9 +441,11 @@ export class ScreenEmergencyController {
       throw new HttpException('Too many screens — use tenant scope for fleet-wide', HttpStatus.BAD_REQUEST);
     }
     const override = this.validateOverride(body.override);
-    const screens = await this.prisma.client.screen.findMany({
-      where: { id: { in: body.screenIds }, tenantId: callerTenantId },
-    });
+    const where: any = { id: { in: body.screenIds } };
+    if (callerTenantId !== null) {
+      where.tenantId = callerTenantId;
+    }
+    const screens = await this.prisma.client.screen.findMany({ where });
     if (screens.length === 0) {
       throw new HttpException('No matching screens found in your tenant', HttpStatus.NOT_FOUND);
     }

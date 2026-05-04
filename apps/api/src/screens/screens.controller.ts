@@ -208,13 +208,45 @@ export class ScreensController {
 
     const deviceJwtSecret = requireSecret('DEVICE_JWT_SECRET', { devFallback: 'dev_only_device_jwt_secret_CHANGE_ME' });
 
-    const mintDeviceJwt = (screenId: string, isPaired: boolean, ttl?: string) => {
+    // CYCLE-3 emergency-011: include `deviceId` and `tenantId` in the payload.
+    // The realtime gateway (apps/api/src/realtime/realtime.gateway.ts:125-127)
+    // reads `decoded.deviceId` / `decoded.tenantId` to populate ClientContext
+    // and route signed WS broadcasts via broadcastToScope. Without these
+    // fields the match `ctx.deviceId === id` / `ctx.tenantId === id` always
+    // fails in production and every emergency event drops on the WS path
+    // (players fall back to 10s HTTP polling — life-safety regression).
+    //
+    // `sub` and `deviceId` carry the same screenId — `sub` is the JWT
+    // standard claim and is preserved so existing verifiers
+    // (player-logs.controller, verifyDeviceForScreen, verifyPriorToken,
+    // JwtAuthGuard) continue to work unchanged. The dev-only
+    // `dev_<screenId>_<tenantId>` token branch in the gateway already
+    // populates these fields, which masked the prod bug.
+    //
+    // BACKWARD COMPAT: existing paired kiosks hold tokens minted before
+    // this fix that lack deviceId/tenantId. Those tokens still parse
+    // (additive payload only), but their WS broadcastToScope match will
+    // continue to fail until the device re-fetches a token via the next
+    // /screens/register or /devices/pair round-trip. HTTP-polling
+    // fallback keeps those screens functional in the meantime.
+    //
+    // For unpaired devices (no tenant claim yet) tenantId is omitted —
+    // they aren't subscribed to any tenant scope until claimed.
+    const mintDeviceJwt = (
+      screenId: string,
+      isPaired: boolean,
+      ttl?: string,
+      tenantId?: string | null,
+    ) => {
       const expiresIn = (ttl ?? (isPaired ? '365d' : '15m')) as import('jsonwebtoken').SignOptions['expiresIn'];
-      return jwt.sign(
-        { sub: screenId, kind: 'device', fp: body.deviceFingerprint },
-        deviceJwtSecret,
-        { expiresIn },
-      );
+      const payload: Record<string, unknown> = {
+        sub: screenId,
+        deviceId: screenId,
+        kind: 'device',
+        fp: body.deviceFingerprint,
+      };
+      if (tenantId) payload.tenantId = tenantId;
+      return jwt.sign(payload, deviceJwtSecret, { expiresIn });
     };
 
     /**
@@ -303,7 +335,7 @@ export class ScreensController {
           pairingCode: updated.pairingCode,
           paired: true,
           name: updated.name,
-          deviceToken: mintDeviceJwt(updated.id, true, issuedTtl),
+          deviceToken: mintDeviceJwt(updated.id, true, issuedTtl, existing.tenantId),
           ...(requiresRePair ? { requiresRePair: true } : {}),
         };
       }

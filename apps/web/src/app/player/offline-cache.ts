@@ -54,14 +54,52 @@ export async function precachePlaylist(
   sw.postMessage({ type: 'PRECACHE_PLAYLIST', assets, softCapBytes });
 }
 
-/** Push every emergency-tier asset URL — never evicted by the SW. */
+/**
+ * Push every emergency-tier asset URL — never evicted by the SW.
+ *
+ * FIX (player-014): now waits for a MessageChannel ack from the SW so
+ * callers can know whether the precache actually completed. The SW
+ * acks `{ ok: true }` only when every asset is verified in cache.
+ * Caller uses this to decide whether to commit a "last pushed" ref —
+ * if `ok: false`, the next periodic sync should retry the full push.
+ *
+ * Resolves with `{ ok: false }` if SW is unsupported / inactive so
+ * callers fall through the same retry path as a real partial.
+ */
 export async function precacheEmergency(
   assets: Array<{ url: string; sha256?: string; size?: number }>,
   setHash?: string,
-): Promise<void> {
+): Promise<{ ok: boolean; failures?: number; count?: number }> {
   const sw = await activeWorker();
-  if (!sw || !assets) return;
-  sw.postMessage({ type: 'PRECACHE_EMERGENCY', assets, setHash });
+  if (!sw || !assets) return { ok: false };
+  return new Promise((resolve) => {
+    let settled = false;
+    const channel = new MessageChannel();
+    const finish = (result: { ok: boolean; failures?: number; count?: number }) => {
+      if (settled) return;
+      settled = true;
+      try { channel.port1.close(); } catch { /* noop */ }
+      resolve(result);
+    };
+    channel.port1.onmessage = (ev: MessageEvent) => {
+      const data = ev?.data;
+      if (data && typeof data === 'object' && typeof data.ok === 'boolean') {
+        finish({ ok: data.ok, failures: data.failures, count: data.count });
+      } else {
+        finish({ ok: false });
+      }
+    };
+    try {
+      sw.postMessage({ type: 'PRECACHE_EMERGENCY', assets, setHash }, [channel.port2]);
+    } catch (e) {
+      finish({ ok: false });
+      return;
+    }
+    // Watchdog: emergency precache for very large sets shouldn't hang
+    // the page-side commit logic. 60 s is generous; if the SW is still
+    // running it'll continue downloading and the next 5-min sync retries.
+    setTimeout(() => finish({ ok: false }), 60_000);
+  });
 }
 
 /** Ask the SW for its current cache utilisation. Resolves with null if SW absent. */

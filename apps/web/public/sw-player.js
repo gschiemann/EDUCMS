@@ -23,7 +23,15 @@
 // downloads succeed (player-001), and sumCacheBytes uses blob().size with a
 // per-URL size map instead of trusting the missing content-length header on
 // opaque/CORS responses (player-002).
-const VERSION = 'v2';
+// v3 bundles two CYCLE-3 P0 fixes:
+//   - player-014: PRECACHE_EMERGENCY now acks the page via MessageChannel
+//     port so the page-side lastEmergencySetHashRef commits ONLY after the
+//     SW confirms allCached.
+//   - player-015: activate now COPIES emergency entries from the previous
+//     versioned emergency cache into the new one BEFORE deleting the old
+//     cache, so a SW upgrade never leaves the kiosk with 0 cached
+//     emergency assets in the gap before the next refreshEmergencyCache.
+const VERSION = 'v3';
 const PLAYLIST_CACHE = `edu-player-playlist-${VERSION}`;
 const EMERGENCY_CACHE = `edu-player-emergency-${VERSION}`;
 const META_CACHE = `edu-player-meta-${VERSION}`; // stores sha hashes per URL
@@ -49,13 +57,62 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
-    // Clear stale versioned caches.
+    // FIX (player-015): when bumping VERSION (e.g. v2 -> v3), copy the
+    // old versioned EMERGENCY cache and its META entries into the new
+    // versioned caches BEFORE deleting the old ones. Hashes still match
+    // so no re-download is needed; the kiosk never has 0 cached
+    // emergency assets during the SW upgrade window. We do the same for
+    // META so the per-URL hash + size records survive — without them,
+    // refreshEmergencyCache would re-download unnecessarily.
     const keys = await caches.keys();
-    await Promise.all(
-      keys
-        .filter((k) => k.startsWith('edu-player-') && !ALL_CACHES.includes(k))
-        .map((k) => caches.delete(k))
-    );
+    const stale = keys.filter((k) => k.startsWith('edu-player-') && !ALL_CACHES.includes(k));
+
+    // Find the most recent stale emergency + meta caches (best-effort by
+    // string ordering — versioning is monotonic vN where N grows).
+    const staleEmergency = stale.filter((k) => k.startsWith('edu-player-emergency-')).sort();
+    const staleMeta = stale.filter((k) => k.startsWith('edu-player-meta-')).sort();
+    const oldEmergencyName = staleEmergency.length ? staleEmergency[staleEmergency.length - 1] : null;
+    const oldMetaName = staleMeta.length ? staleMeta[staleMeta.length - 1] : null;
+
+    if (oldEmergencyName) {
+      try {
+        const [oldEm, newEm] = await Promise.all([
+          caches.open(oldEmergencyName),
+          caches.open(EMERGENCY_CACHE),
+        ]);
+        const oldKeys = await oldEm.keys();
+        for (const req of oldKeys) {
+          const res = await oldEm.match(req);
+          if (res) {
+            // Use put() with the original Request so headers + URL are preserved.
+            await newEm.put(req, res.clone());
+          }
+        }
+      } catch (e) {
+        console.warn('[SW] activate: failed to copy old emergency cache', e);
+      }
+    }
+
+    if (oldMetaName) {
+      try {
+        const [oldMeta, newMeta] = await Promise.all([
+          caches.open(oldMetaName),
+          caches.open(META_CACHE),
+        ]);
+        const oldKeys = await oldMeta.keys();
+        for (const req of oldKeys) {
+          const res = await oldMeta.match(req);
+          if (res) {
+            await newMeta.put(req, res.clone());
+          }
+        }
+      } catch (e) {
+        console.warn('[SW] activate: failed to copy old meta cache', e);
+      }
+    }
+
+    // Now safe to delete stale versioned caches.
+    await Promise.all(stale.map((k) => caches.delete(k)));
     await self.clients.claim();
   })());
 });
@@ -131,7 +188,11 @@ self.addEventListener('message', (event) => {
   if (msg.type === 'PRECACHE_PLAYLIST') {
     event.waitUntil(precachePlaylist(msg.assets || [], msg.softCapBytes || DEFAULT_SOFT_CAP_BYTES));
   } else if (msg.type === 'PRECACHE_EMERGENCY') {
-    event.waitUntil(precacheEmergency(msg.assets || [], msg.setHash || ''));
+    // FIX (player-014): if the page passed a MessageChannel port,
+    // we ack with { ok: true|false } AFTER deciding allCached so the
+    // page only commits its lastEmergencySetHashRef on full success.
+    const ackPort = (event.ports && event.ports[0]) || null;
+    event.waitUntil(precacheEmergency(msg.assets || [], msg.setHash || '', ackPort));
   } else if (msg.type === 'STATUS_REQUEST') {
     event.waitUntil(replyStatus(event.source));
   } else if (msg.type === 'CLEAR_CACHE') {
@@ -193,7 +254,7 @@ async function precachePlaylist(assets, softCapBytes) {
 }
 
 // ─── Pre-cache emergency assets — never evicted, hash-versioned ───
-async function precacheEmergency(assets, setHash) {
+async function precacheEmergency(assets, setHash, ackPort) {
   const cache = await caches.open(EMERGENCY_CACHE);
   const meta = await caches.open(META_CACHE);
 
@@ -263,6 +324,19 @@ async function precacheEmergency(assets, setHash) {
     complete: allCached,
     failures,
   });
+
+  // FIX (player-014): ack the page-side caller via the MessageChannel
+  // port so the page commits its lastEmergencySetHashRef ONLY when we
+  // confirm allCached. Without this ack the page used to optimistically
+  // commit the ref before the SW finished, and a partial-download path
+  // would short-circuit the next 5-min retry forever.
+  if (ackPort) {
+    try {
+      ackPort.postMessage({ ok: allCached, failures, count: assets.length });
+    } catch (e) {
+      // Port may have been closed by the page (rare). Best-effort.
+    }
+  }
 }
 
 async function fetchAndStore(asset, cache, meta) {

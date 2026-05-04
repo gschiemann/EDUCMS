@@ -1249,9 +1249,19 @@ function PlayerPage() {
       const data = await res.json();
       // Short-circuit if the asset set is unchanged since last push.
       if (data.setHash && data.setHash === lastEmergencySetHashRef.current) return;
-      lastEmergencySetHashRef.current = data.setHash || '';
-      await precacheEmergency(data.assets || [], data.setHash || '');
-      console.log(`[Player] Emergency pre-cache push: ${data.assets?.length || 0} assets, ${formatBytes(data.totalBytes || 0)}`);
+      // FIX (player-014): do NOT commit the page-side ref yet. The SW
+      // refuses to write its hash on partial download (player-001), but
+      // the page-side ref was poisoning the next retry — a partial push
+      // would set lastEmergencySetHashRef to the new hash and the next
+      // 5-min cycle would short-circuit on the unchanged-hash check
+      // forever. Only commit AFTER the SW acks ok via MessageChannel.
+      const ack = await precacheEmergency(data.assets || [], data.setHash || '');
+      if (ack.ok) {
+        lastEmergencySetHashRef.current = data.setHash || '';
+        console.log(`[Player] Emergency pre-cache push: ${data.assets?.length || 0} assets, ${formatBytes(data.totalBytes || 0)}`);
+      } else {
+        console.warn(`[Player] Emergency pre-cache partial (${ack.failures ?? '?'} failures of ${ack.count ?? data.assets?.length ?? 0}) — leaving ref uncommitted so next 5-min sync retries`);
+      }
     } catch (e) {
       // Best-effort; emergency play still works from network if push fails.
     }
