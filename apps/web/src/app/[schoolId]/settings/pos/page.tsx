@@ -316,8 +316,9 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
           <button onClick={onClose} className="px-4 py-2 text-sm font-bold rounded-lg text-slate-600 hover:bg-slate-50">Cancel</button>
           <button
             onClick={submit}
-            disabled={submitting}
-            className="px-4 py-2 text-sm font-bold rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 inline-flex items-center gap-2"
+            disabled={submitting || provider.auth === 'oauth2'}
+            className="px-4 py-2 text-sm font-bold rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+            title={provider.auth === 'oauth2' ? 'OAuth flow not yet implemented for this provider' : ''}
           >
             {submitting && <Loader2 className="w-3 h-3 animate-spin" />}
             Connect

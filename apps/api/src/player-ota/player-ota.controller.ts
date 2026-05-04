@@ -30,10 +30,14 @@
  * keeps it current; operators never have to re-sideload.
  */
 
-import { Controller, Post, Get, Body, Res, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Body, Res, Logger, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { PrismaService } from '../prisma/prisma.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RbacGuard } from '../auth/rbac.guard';
+import { RequireRoles } from '../auth/roles.decorator';
+import { AppRole } from '@cms/database';
 
 interface UpdateCheckBody {
   fingerprint?: string;
@@ -400,8 +404,23 @@ export class PlayerOtaController {
    * can show "Current vX.X.X · Latest vY.Y.Y" + a Push button on each
    * screen card. Resolves from the same source as /update-check
    * (env-pin first, GitHub Releases second). Admin-callable.
+   *
+   * player-008 fix: previously this endpoint was unauthenticated and
+   * unthrottled. Anonymous callers could (a) enumerate the upstream
+   * GitHub release URL and SHA, leaking the exact APK build chain, and
+   * (b) DoS the GitHub Releases API by churning the cache through the
+   * server. Gate behind JwtAuthGuard + RbacGuard (admin roles only —
+   * the dashboard's "current vs latest" chip is the only legitimate
+   * caller) and add a throttle that matches /update-check's pattern.
    */
   @Get('latest-version')
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+  )
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async getLatestVersion() {
     // Env override wins.
     const envVn = (process.env.PLAYER_APK_LATEST_VERSION_NAME || '').trim();

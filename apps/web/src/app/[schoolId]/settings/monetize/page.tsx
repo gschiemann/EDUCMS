@@ -247,9 +247,24 @@ function NetworkTile({ network, connected, onConnect }: { network: AdNetwork; co
     : null;
   const isClosed = network.integrationTier === 'CLOSED';
   const isPartner = network.integrationTier === 'PARTNER';
+  // Cycle-2 BUG-004 fix (2026-05-03) — PARTNER networks (Hivestack,
+  // Vistar, Place Exchange, Broadsign Reach, Loop Media) all require
+  // a publisher contract before activation. Opening the same Connect
+  // form as DIRECT tiles created empty-cred PENDING rows that never
+  // resolved. Now PARTNER tiles open the vendor's publisher page in
+  // a new tab so the operator can apply for partnership instead.
+  const handleClick = isClosed
+    ? () => network.docsUrl && window.open(network.docsUrl, '_blank')
+    : isPartner
+      ? () => {
+          const url = network.docsUrl || network.websiteUrl;
+          if (url) window.open(url, '_blank', 'noopener,noreferrer');
+          else window.location.href = `mailto:partners@venueos.com?subject=${encodeURIComponent(`Partnership inquiry — ${network.name}`)}`;
+        }
+      : onConnect;
   return (
     <button
-      onClick={isClosed ? () => network.docsUrl && window.open(network.docsUrl, '_blank') : onConnect}
+      onClick={handleClick}
       disabled={connected}
       className={`text-left p-4 rounded-xl border-2 transition-all ${
         connected ? 'bg-emerald-50 border-emerald-200 cursor-default'
@@ -278,6 +293,11 @@ function NetworkTile({ network, connected, onConnect }: { network: AdNetwork; co
         {cpmRange && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">{cpmRange}</span>}
         {network.takeRateBps != null && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">we take {network.takeRateBps / 100}%</span>}
       </div>
+      {isPartner && !connected && (
+        <div className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-amber-700">
+          <ExternalLink className="w-2.5 h-2.5" /> Apply for partnership
+        </div>
+      )}
     </button>
   );
 }

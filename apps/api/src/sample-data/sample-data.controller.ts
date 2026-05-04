@@ -143,23 +143,54 @@ export class SampleDataController {
   }
 
   // ─── POS sample data ─────────────────────────────────────────────
+  // ai-imports-004 fix: both restaurant + retail loaders use the same
+  // `custom-webhook` providerId, but @@unique([tenantId, providerId])
+  // means they collide silently — calling restaurant then retail merges
+  // the retail items into the existing restaurant connection (or vice
+  // versa). The fix is to look up the connection by displayName prefix
+  // instead of providerId. The first loader to run for a given tenant
+  // creates a connection tagged "[Sample] Restaurant Webhook" /
+  // "[Sample] Retail Webhook"; subsequent calls find that exact tagged
+  // row instead of stomping the other loader's connection.
+  //
+  // We still write providerId='custom-webhook' on create — the unique
+  // index is per-tenant-per-providerId, so the SECOND loader will fail
+  // its index check with the new tag. We catch that and fall back to
+  // looking up the existing same-tag row (idempotency) but do NOT reuse
+  // the OTHER loader's connection.
   @Post('pos/sample-restaurant')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async loadSampleRestaurantPos(@Request() req: any) {
     const tenantId = req.user.tenantId;
     const userId = req.user.id;
 
+    const restaurantDisplayName = `${SAMPLE_TAG} Restaurant Webhook`;
     let conn = await (this.prisma.client as any).posProviderConnection.findFirst({
-      where: { tenantId, providerId: 'custom-webhook' },
+      where: { tenantId, displayName: restaurantDisplayName },
     });
     if (!conn) {
-      conn = await this.pos.createConnection({
-        tenantId,
-        userId,
-        providerId: 'custom-webhook',
-        displayName: `${SAMPLE_TAG} Restaurant menu`,
-        credentials: { webhookSecret: 'sample-' + Math.random().toString(36).slice(2) },
-      });
+      try {
+        conn = await this.pos.createConnection({
+          tenantId,
+          userId,
+          providerId: 'custom-webhook',
+          displayName: restaurantDisplayName,
+          credentials: { webhookSecret: 'sample-' + Math.random().toString(36).slice(2) },
+        });
+      } catch (err: any) {
+        // The unique([tenantId, providerId]) constraint already holds a
+        // 'custom-webhook' row from the OTHER loader. Don't merge into
+        // it — surface a clear error so the operator wipes sample data
+        // first and re-runs.
+        if (String(err?.message || '').includes('Unique')) {
+          return {
+            ok: false,
+            message:
+              'Another sample POS connection already exists for this tenant. Run DELETE /api/v1/sample-data/all to wipe sample data, then re-run this loader.',
+          };
+        }
+        throw err;
+      }
     }
 
     // 24-item sample menu across 4 categories.
@@ -235,17 +266,32 @@ export class SampleDataController {
     const tenantId = req.user.tenantId;
     const userId = req.user.id;
 
+    // ai-imports-004 fix: see loadSampleRestaurantPos for context. Look
+    // up by tagged displayName, not providerId, so retail does not
+    // accidentally merge its catalog into the restaurant connection.
+    const retailDisplayName = `${SAMPLE_TAG} Retail Webhook`;
     let conn = await (this.prisma.client as any).posProviderConnection.findFirst({
-      where: { tenantId, providerId: 'custom-webhook' },
+      where: { tenantId, displayName: retailDisplayName },
     });
     if (!conn) {
-      conn = await this.pos.createConnection({
-        tenantId,
-        userId,
-        providerId: 'custom-webhook',
-        displayName: `${SAMPLE_TAG} Retail catalog`,
-        credentials: { webhookSecret: 'sample-' + Math.random().toString(36).slice(2) },
-      });
+      try {
+        conn = await this.pos.createConnection({
+          tenantId,
+          userId,
+          providerId: 'custom-webhook',
+          displayName: retailDisplayName,
+          credentials: { webhookSecret: 'sample-' + Math.random().toString(36).slice(2) },
+        });
+      } catch (err: any) {
+        if (String(err?.message || '').includes('Unique')) {
+          return {
+            ok: false,
+            message:
+              'Another sample POS connection already exists for this tenant. Run DELETE /api/v1/sample-data/all to wipe sample data, then re-run this loader.',
+          };
+        }
+        throw err;
+      }
     }
 
     const items = [

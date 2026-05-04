@@ -67,6 +67,28 @@ export class PlaylistsController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async create(@Request() req: any, @Body() body: { name: string; templateId?: string }) {
     await this.prisma.ensurePlaylistMetadataColumns();
+
+    // auth-BUG-004: when the body provides a templateId, verify it's
+    // either a system preset (isSystem: true, shared globally) or a
+    // template belonging to the caller's tenant. Without this gate a
+    // user could attach another tenant's custom template to their own
+    // playlist and the player would render that tenant's layout.
+    if (body.templateId) {
+      const templateOwned = await this.prisma.client.template.findFirst({
+        where: {
+          id: body.templateId,
+          OR: [
+            { tenantId: req.user.tenantId },
+            { isSystem: true },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!templateOwned) {
+        throw new HttpException('Template not found', HttpStatus.NOT_FOUND);
+      }
+    }
+
     const res = await this.prisma.client.playlist.create({
       data: {
         tenantId: req.user.tenantId,

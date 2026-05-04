@@ -616,8 +616,19 @@ export class EmergencyController {
     const severity = 'CRITICAL';
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min
 
-    const textBlob = body.location
-      ? `SOS from ${user.email || 'staff'} — ${body.location}`
+    // emergency-007 fix: even though SosInputSchema caps location at 500
+    // chars, it doesn't strip control characters. The string flows into
+    // (a) textBlob rendered onscreen, (b) AuditLog.details, (c) console
+    // and Sentry log lines. A `\r\n` injection could forge a fake log
+    // entry, splice arbitrary content into the screen overlay, or
+    // confuse downstream log-processing pipelines. Strip CR/LF/TAB and
+    // re-cap length defensively.
+    const safeLocation = body.location
+      ? String(body.location).replace(/[\r\n\t]/g, ' ').trim().slice(0, 500)
+      : null;
+
+    const textBlob = safeLocation
+      ? `SOS from ${user.email || 'staff'} — ${safeLocation}`
       : `SOS from ${user.email || 'staff'}`;
 
     // Wrap message + audit in one transaction so a failure in either
@@ -649,7 +660,9 @@ export class EmergencyController {
           details: JSON.stringify({
             messageId,
             severity,
-            location: body.location || null,
+            // emergency-007: sanitized location goes into the audit log so
+            // a malicious \r\n can't split log entries during forensic review.
+            location: safeLocation,
             hasVoiceClip: !!body.voiceClipUrl,
             triggerAt: new Date().toISOString(),
           }),
@@ -662,7 +675,8 @@ export class EmergencyController {
       severity,
       textBlob,
       audioUrl: body.voiceClipUrl,
-      location: body.location,
+      // emergency-007: signed payload also carries the sanitized version.
+      location: safeLocation,
       triggeredBy: user.email || user.id,
       expiresAt: Math.floor(expiresAt.getTime() / 1000),
     });

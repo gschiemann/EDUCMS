@@ -64,6 +64,30 @@ const ACCEPTED_MIMES = new Set([
 
 const MAX_BYTES = 50 * 1024 * 1024; // 50 MB — matches the front-end cap.
 
+// ai-imports-003 fix: cap + sanitize filenames before they ever land in
+// the database. originalName is persisted for display in the asset
+// library; niceName is derived from basename and used as the playlist
+// name. Both used to be passed raw, exposing log/UI to:
+//   - control characters (\r, \n, \t, NUL, other C0)
+//   - reserved Windows filename chars (< > : " | ? * / \)
+//   - unbounded length (a 5 MB filename would round-trip into responses)
+// Sanitize once here so the rest of the pipeline can trust the strings.
+const NAME_MAX_LEN = 200;
+function sanitizeOriginalName(raw: string | undefined | null): string {
+  const s = String(raw || '').replace(/[\r\n\t\x00-\x1f]/g, '').trim();
+  return s.slice(0, NAME_MAX_LEN);
+}
+function sanitizePlaylistName(raw: string | undefined | null): string {
+  // Strip the same control chars + reserved filename chars; collapse
+  // whitespace; cap length. Empty result falls back to a literal default
+  // upstream so we never write "" into Playlist.name.
+  const s = String(raw || '')
+    .replace(/[\r\n\t/\\<>:"|?*\x00-\x1f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return s.slice(0, NAME_MAX_LEN);
+}
+
 @UseGuards(JwtAuthGuard, RbacGuard)
 @Controller('api/v1/imports')
 export class ImportsController {
@@ -122,7 +146,12 @@ export class ImportsController {
     }
 
     const fileHash = createHash('sha256').update(safeBuffer).digest('hex');
-    const niceName = basename(file.originalname, ext) || 'Imported design';
+    // ai-imports-003 fix: sanitize before any DB write or message string
+    // builder uses these. Empty-after-sanitize falls back to a literal
+    // default so Playlist.name and downstream UI never see "".
+    const safeOriginalName = sanitizeOriginalName(file.originalname);
+    const baseFromName = basename(file.originalname, ext);
+    const niceName = sanitizePlaylistName(baseFromName) || 'Imported design';
 
     const asset = await this.prisma.client.asset.create({
       data: {
@@ -132,7 +161,7 @@ export class ImportsController {
         mimeType: file.mimetype,
         fileSize: file.size,
         fileHash,
-        originalName: file.originalname,
+        originalName: safeOriginalName,
         // Imports auto-publish for ADMIN+. CONTRIBUTORs land in the
         // review queue same as a regular upload.
         status: req.user.role === 'CONTRIBUTOR' ? 'PENDING_APPROVAL' : 'APPROVED',

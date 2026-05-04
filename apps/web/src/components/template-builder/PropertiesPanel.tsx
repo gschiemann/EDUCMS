@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState, useEffect, useRef } from 'react';
+import { useParams } from 'next/navigation';
 import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon, Tv, ExternalLink, RefreshCw } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useBuilderStore } from './useBuilderStore';
@@ -2177,7 +2178,12 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<ToggleField key="showAdBadge" label='Show "AD" disclosure chip' value={cfg.showAdBadge !== false} onChange={(v) => setField({ showAdBadge: v })} />);
       fields.push(<ToggleField key="enableImpressionLogging" label="Log impressions to /ads/impressions" value={cfg.enableImpressionLogging !== false} onChange={(v) => setField({ enableImpressionLogging: v })} />);
       fields.push(<TextAreaField key="creativesJson" label="Creatives (JSON array of { headline, sub, ctaText, ctaUrl })" value={typeof cfg.creatives === 'string' ? cfg.creatives : JSON.stringify(cfg.creatives || [], null, 2)} rows={6} onChange={(v) => {
-        try { setField({ creatives: JSON.parse(v) }); } catch { setField({ creatives: v }); }
+        // editor-BUG-003 fix: only commit on successful parse. Mid-typing
+        // strings used to leak into cfg.creatives and crash the renderer
+        // when it tried to .map() the raw string. Keep the previous valid
+        // value while the user is editing — the textarea retains the
+        // in-progress text via its own local state.
+        try { setField({ creatives: JSON.parse(v) }); } catch { /* keep previous value; user is mid-typing */ }
       }} />);
       break;
     }
@@ -2199,7 +2205,8 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<ToggleField key="highlightNextClass" label="Highlight next upcoming class" value={cfg.highlightNextClass !== false} onChange={(v) => setField({ highlightNextClass: v })} />);
       fields.push(<ToggleField key="showPastClasses" label="Show past classes (dimmed)" value={!!cfg.showPastClasses} onChange={(v) => setField({ showPastClasses: v })} />);
       fields.push(<TextAreaField key="classesJson" label="Classes (JSON array of { time, name, instructor, room })" value={typeof cfg.classes === 'string' ? cfg.classes : JSON.stringify(cfg.classes || [], null, 2)} rows={8} onChange={(v) => {
-        try { setField({ classes: JSON.parse(v) }); } catch { setField({ classes: v }); }
+        // editor-BUG-003 fix: don't leak partial keystrokes into cfg.classes.
+        try { setField({ classes: JSON.parse(v) }); } catch { /* keep previous value; user is mid-typing */ }
       }} />);
       break;
     }
@@ -2228,7 +2235,8 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<SelectField key="align" label="Text alignment" value={cfg.align || 'center'} options={[['center','Center'],['left','Left']]} onChange={(v) => setField({ align: v })} />);
       fields.push(<SelectField key="bgStyle" label="Background style" value={cfg.bgStyle || 'gradient'} options={[['solid','Solid color'],['gradient','Gradient'],['photo-overlay','Photo with overlay']]} onChange={(v) => setField({ bgStyle: v })} />);
       fields.push(<TextAreaField key="quotesJson" label="Quotes (JSON array of { text, author })" value={typeof cfg.quotes === 'string' ? cfg.quotes : JSON.stringify(cfg.quotes || [], null, 2)} rows={6} onChange={(v) => {
-        try { setField({ quotes: JSON.parse(v) }); } catch { setField({ quotes: v }); }
+        // editor-BUG-003 fix: don't leak partial keystrokes into cfg.quotes.
+        try { setField({ quotes: JSON.parse(v) }); } catch { /* keep previous value; user is mid-typing */ }
       }} />);
       break;
     }
@@ -2269,6 +2277,33 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<ColorPickerField key="accentColor" label="Accent color" value={cfg.accentColor || '#39ff14'} onChange={(v) => setField({ accentColor: v })} />);
       fields.push(<ToggleField key="showControls" label="Show video controls (play/pause/seek)" value={!!cfg.showControls} onChange={(v) => setField({ showControls: v })} />);
       fields.push(<TextAreaField key="safetyTipsText" label="Safety tips (one per line)" value={Array.isArray(cfg.safetyTips) ? cfg.safetyTips.join('\n') : (cfg.safetyTipsText || '')} rows={4} onChange={(v) => setField({ safetyTips: v.split('\n').filter((line: string) => line.trim()), safetyTipsText: v })} />);
+      break;
+    }
+    case 'FITNESS_WORKOUT_TIMER': {
+      // editor-BUG-001 fix: HIIT / Tabata / interval timer was rendered
+      // + had presets but fell through to JSON-only Advanced. Surface the
+      // full FitnessWorkoutTimerConfig as a real form so the operator
+      // can pick a preset (Tabata = 20/10x8, HIIT = 40/20x8, EMOM, AMRAP,
+      // custom), tweak the work/rest seconds, set rounds, accent colors,
+      // and class metadata.
+      fields.push(<TextField key="classTitle" label="Class title" value={cfg.classTitle || ''} placeholder="HIIT BURN" onChange={(v) => setField({ classTitle: v })} />);
+      fields.push(<TextField key="trainerName" label="Trainer name (optional)" value={cfg.trainerName || ''} placeholder="Coach Maya" onChange={(v) => setField({ trainerName: v })} />);
+      fields.push(<SelectField key="mode" label="Interval preset" value={cfg.mode || 'hiit'} options={[['tabata','Tabata (20/10 × 8)'],['hiit','HIIT (40/20 × 8)'],['emom','EMOM (60s rounds)'],['amrap','AMRAP (work-only)'],['custom','Custom']]} onChange={(v) => {
+        // Apply preset defaults so flipping mode sets sensible work/rest/rounds.
+        if (v === 'tabata') setField({ mode: v, workSeconds: 20, restSeconds: 10, totalRounds: 8 });
+        else if (v === 'hiit') setField({ mode: v, workSeconds: 40, restSeconds: 20, totalRounds: 8 });
+        else if (v === 'emom') setField({ mode: v, workSeconds: 60, restSeconds: 0, totalRounds: 10 });
+        else if (v === 'amrap') setField({ mode: v, workSeconds: 600, restSeconds: 0, totalRounds: 1 });
+        else setField({ mode: v });
+      }} />);
+      fields.push(<TextField key="workSeconds" label="Work (seconds)" value={String(cfg.workSeconds ?? 40)} placeholder="40" onChange={(v) => setField({ workSeconds: parseInt(v) || 40 })} />);
+      fields.push(<TextField key="restSeconds" label="Rest (seconds)" value={String(cfg.restSeconds ?? 20)} placeholder="20" onChange={(v) => setField({ restSeconds: parseInt(v) || 20 })} />);
+      fields.push(<TextField key="totalRounds" label="Total rounds" value={String(cfg.totalRounds ?? 8)} placeholder="8" onChange={(v) => setField({ totalRounds: parseInt(v) || 8 })} />);
+      fields.push(<TextField key="currentRound" label="Starting round (1-indexed)" value={String(cfg.currentRound ?? 1)} placeholder="1" onChange={(v) => setField({ currentRound: parseInt(v) || 1 })} />);
+      fields.push(<ColorPickerField key="workColor" label="Work-phase color" value={cfg.workColor || '#ff2a4d'} onChange={(v) => setField({ workColor: v })} />);
+      fields.push(<ColorPickerField key="restColor" label="Rest-phase color" value={cfg.restColor || '#39ff14'} onChange={(v) => setField({ restColor: v })} />);
+      fields.push(<ToggleField key="autoStart" label="Auto-start when widget mounts (live mode)" value={!!cfg.autoStart} onChange={(v) => setField({ autoStart: v })} />);
+      fields.push(<ToggleField key="audioCues" label="Audio cues on phase transitions" value={cfg.audioCues !== false} onChange={(v) => setField({ audioCues: v })} />);
       break;
     }
     // ─── Sprint 8d follow-up — POS-driven menu boards ──────────────
@@ -2317,6 +2352,115 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       }
       fields.push(<TextField key="columns" label="Columns" value={String(cfg.columns || 4)} placeholder="4" onChange={(v) => setField({ columns: parseInt(v) || 4 })} />);
       fields.push(<ToggleField key="showSaleBadges" label="Show sale badges" value={cfg.showSaleBadges !== false} onChange={(v) => setField({ showSaleBadges: v })} />);
+      break;
+    }
+    // editor-BUG-002 fix — explicit cases for the 9 highest-priority
+    // restaurant/bar widgets that previously fell through to JSON-only
+    // Advanced. Surfaces title / theme / accent / array editors backed
+    // by the Config interfaces in each Widget.tsx. Same pattern as the
+    // FITNESS_* cases above (TextField / ToggleField / SelectField /
+    // ColorPickerField / TextAreaField with safe JSON parse).
+    case 'RESTAURANT_COMBO_CAROUSEL': {
+      fields.push(<TextField key="title" label="Section title" value={cfg.title || ''} placeholder="COMBOS · BUILT TO SHARE" onChange={(v) => setField({ title: v })} />);
+      fields.push(<ColorPickerField key="accentColor" label="Mustard accent color" value={cfg.accentColor || '#e8b94a'} onChange={(v) => setField({ accentColor: v })} />);
+      fields.push(<TextField key="rotationMs" label="Rotate every (ms)" value={String(cfg.rotationMs || 7000)} placeholder="7000" onChange={(v) => setField({ rotationMs: parseInt(v) || 7000 })} />);
+      fields.push(<TextAreaField key="combosJson" label="Combos (JSON array of { name, includes, price, emoji, badge })" value={typeof cfg.combos === 'string' ? cfg.combos : JSON.stringify(cfg.combos || [], null, 2)} rows={8} onChange={(v) => {
+        try { setField({ combos: JSON.parse(v) }); } catch { /* keep previous value; user is mid-typing */ }
+      }} />);
+      break;
+    }
+    case 'RESTAURANT_SPECIALS_CALLOUT': {
+      fields.push(<TextField key="headline" label="Top headline" value={cfg.headline || ''} placeholder="TODAY ONLY" onChange={(v) => setField({ headline: v })} />);
+      fields.push(<TextField key="subhead" label="Subhead" value={cfg.subhead || ''} placeholder="while supplies last" onChange={(v) => setField({ subhead: v })} />);
+      fields.push(<TextField key="itemName" label="Item name" value={cfg.itemName || ''} placeholder="Smash Burger Combo" onChange={(v) => setField({ itemName: v })} />);
+      fields.push(<TextField key="itemDesc" label="Item description" value={cfg.itemDesc || ''} placeholder="1/3 lb smash, fries & 22oz drink" onChange={(v) => setField({ itemDesc: v })} />);
+      fields.push(<TextField key="price" label="Sale price" value={cfg.price || ''} placeholder="$5.99" onChange={(v) => setField({ price: v })} />);
+      fields.push(<TextField key="originalPrice" label="Strike-through price (optional)" value={cfg.originalPrice || ''} placeholder="$8.99" onChange={(v) => setField({ originalPrice: v })} />);
+      fields.push(<TextField key="emoji" label="Emoji" value={cfg.emoji || ''} placeholder="hamburger" onChange={(v) => setField({ emoji: v })} />);
+      fields.push(<SelectField key="theme" label="Background theme" value={cfg.theme || 'red'} options={[['red','Red'],['charcoal','Charcoal'],['mustard','Mustard']]} onChange={(v) => setField({ theme: v })} />);
+      // Schema also surfaces tag/accentColor on legacy presets — keep them editable.
+      fields.push(<TextField key="tag" label="Tag (legacy alias for headline)" value={cfg.tag || ''} placeholder="TODAY ONLY" onChange={(v) => setField({ tag: v })} />);
+      fields.push(<ColorPickerField key="accentColor" label="Accent color (legacy)" value={cfg.accentColor || '#e8b94a'} onChange={(v) => setField({ accentColor: v })} />);
+      break;
+    }
+    case 'RESTAURANT_LOYALTY_TICKER': {
+      fields.push(<TextField key="programName" label="Program name (eyebrow chip)" value={cfg.programName || ''} placeholder="REWARDS" onChange={(v) => setField({ programName: v })} />);
+      fields.push(<TextField key="rotationMs" label="Rotate every (ms)" value={String(cfg.rotationMs || 5500)} placeholder="5500" onChange={(v) => setField({ rotationMs: parseInt(v) || 5500 })} />);
+      fields.push(<ColorPickerField key="accentColor" label="Mustard accent color" value={cfg.accentColor || '#e8b94a'} onChange={(v) => setField({ accentColor: v })} />);
+      fields.push(<SelectField key="theme" label="Background theme" value={cfg.theme || 'charcoal'} options={[['cream','Cream'],['charcoal','Charcoal'],['red','Red']]} onChange={(v) => setField({ theme: v })} />);
+      fields.push(<TextField key="qrUrl" label="QR sign-up URL (optional)" value={cfg.qrUrl || ''} placeholder="https://example.com/join" onChange={(v) => setField({ qrUrl: v })} />);
+      fields.push(<TextField key="qrCaption" label="QR caption" value={cfg.qrCaption || ''} placeholder="Scan to join" onChange={(v) => setField({ qrCaption: v })} />);
+      // messages can be array OR newline-delimited string — widget normalizes.
+      fields.push(<TextAreaField key="messagesText" label="Loyalty messages (one per line)" value={Array.isArray(cfg.messages) ? cfg.messages.join('\n') : (typeof cfg.messages === 'string' ? cfg.messages : '')} rows={5} onChange={(v) => setField({ messages: v.split(/\r?\n/).map((s: string) => s.trim()).filter(Boolean) })} />);
+      break;
+    }
+    case 'RESTAURANT_WAIT_TIME': {
+      fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="WAIT TIME" onChange={(v) => setField({ title: v })} />);
+      fields.push(<TextField key="estimateMins" label="Estimated wait (mins)" value={String(cfg.estimateMins ?? 12)} placeholder="12" onChange={(v) => setField({ estimateMins: parseInt(v) || 0 })} />);
+      fields.push(<TextField key="partiesAhead" label="Parties ahead" value={String(cfg.partiesAhead ?? 3)} placeholder="3" onChange={(v) => setField({ partiesAhead: parseInt(v) || 0 })} />);
+      fields.push(<TextField key="venueName" label="Venue name (in SMS hint)" value={cfg.venueName || ''} placeholder="The Boardwalk" onChange={(v) => setField({ venueName: v })} />);
+      fields.push(<TextField key="smsNumber" label="SMS short-code" value={cfg.smsNumber || ''} placeholder="55512" onChange={(v) => setField({ smsNumber: v })} />);
+      fields.push(<TextField key="smsKeyword" label="SMS keyword" value={cfg.smsKeyword || ''} placeholder="QUEUE" onChange={(v) => setField({ smsKeyword: v })} />);
+      fields.push(<SelectField key="statusOverride" label="Force status (else auto from mins)" value={cfg.statusOverride || ''} options={[['','Auto-detect'],['open','Walk right in (green)'],['short','Short wait (amber)'],['busy','Busy (red)']]} onChange={(v) => setField({ statusOverride: v || undefined })} />);
+      break;
+    }
+    case 'RESTAURANT_ALLERGY_LEGEND': {
+      fields.push(<TextField key="title" label="Title above legend" value={cfg.title || ''} placeholder="DIETARY GUIDE" onChange={(v) => setField({ title: v })} />);
+      fields.push(<SelectField key="layout" label="Layout" value={cfg.layout || 'horizontal'} options={[['horizontal','Horizontal strip'],['grid','2-column grid card']]} onChange={(v) => setField({ layout: v })} />);
+      fields.push(<SelectField key="theme" label="Background theme" value={cfg.theme || 'cream'} options={[['cream','Cream'],['charcoal','Charcoal']]} onChange={(v) => setField({ theme: v })} />);
+      fields.push(<ColorPickerField key="accentColor" label="Accent color (codes)" value={cfg.accentColor || '#7a1f1f'} onChange={(v) => setField({ accentColor: v })} />);
+      fields.push(<TextAreaField key="entriesJson" label="Custom entries (JSON array of { code, label, emoji }) — leave blank for defaults" value={typeof cfg.entries === 'string' ? cfg.entries : JSON.stringify(cfg.entries || [], null, 2)} rows={6} onChange={(v) => {
+        try { setField({ entries: JSON.parse(v) }); } catch { /* keep previous value; user is mid-typing */ }
+      }} />);
+      break;
+    }
+    case 'BAR_HAPPY_HOUR_COUNTDOWN': {
+      fields.push(<TextField key="title" label="Headline" value={cfg.title || ''} placeholder="HAPPY HOUR" onChange={(v) => setField({ title: v })} />);
+      fields.push(<TextField key="subtitle" label="Subtitle" value={cfg.subtitle || ''} placeholder="Tap drinks · House wine · Apps" onChange={(v) => setField({ subtitle: v })} />);
+      fields.push(<TextField key="startsAt" label="Start time (e.g. 4:00 PM, 16:00, 4pm)" value={cfg.startsAt || ''} placeholder="4:00 PM" onChange={(v) => setField({ startsAt: v })} />);
+      fields.push(<TextField key="endsAt" label="End time (e.g. 7:00 PM, 19:00, 7pm)" value={cfg.endsAt || ''} placeholder="7:00 PM" onChange={(v) => setField({ endsAt: v })} />);
+      fields.push(<ColorPickerField key="accentColor" label="Accent neon color" value={cfg.accentColor || '#ec4899'} onChange={(v) => setField({ accentColor: v })} />);
+      fields.push(<TextField key="postEndedMs" label="Show 'ended' state for (ms)" value={String(cfg.postEndedMs || 1800000)} placeholder="1800000" onChange={(v) => setField({ postEndedMs: parseInt(v) || 1800000 })} />);
+      fields.push(<TextAreaField key="drinksJson" label="Featured drinks (JSON array of { name, regularPrice, happyPrice, emoji })" value={typeof cfg.drinks === 'string' ? cfg.drinks : JSON.stringify(cfg.drinks || [], null, 2)} rows={6} onChange={(v) => {
+        try { setField({ drinks: JSON.parse(v) }); } catch { /* keep previous value; user is mid-typing */ }
+      }} />);
+      break;
+    }
+    case 'BAR_GAME_DAY_SCHEDULE': {
+      fields.push(<TextField key="title" label="Headline" value={cfg.title || ''} placeholder="GAME DAY" onChange={(v) => setField({ title: v })} />);
+      fields.push(<TextField key="subtitle" label="Subtitle" value={cfg.subtitle || ''} placeholder="TODAY'S MATCHUPS" onChange={(v) => setField({ subtitle: v })} />);
+      fields.push(<ColorPickerField key="accentColor" label="LIVE chip / accent color" value={cfg.accentColor || '#ef4444'} onChange={(v) => setField({ accentColor: v })} />);
+      fields.push(<TextField key="maxRows" label="Max games shown" value={String(cfg.maxRows || 6)} placeholder="6" onChange={(v) => setField({ maxRows: parseInt(v) || 6 })} />);
+      fields.push(<TextAreaField key="gamesJson" label="Games (JSON array of { league, away, home, time, channel, status, emoji })" value={typeof cfg.games === 'string' ? cfg.games : JSON.stringify(cfg.games || [], null, 2)} rows={8} onChange={(v) => {
+        try { setField({ games: JSON.parse(v) }); } catch { /* keep previous value; user is mid-typing */ }
+      }} />);
+      break;
+    }
+    case 'BAR_EVENT_TONIGHT': {
+      fields.push(<TextField key="eyebrow" label="Eyebrow label" value={cfg.eyebrow || ''} placeholder="TONIGHT" onChange={(v) => setField({ eyebrow: v })} />);
+      fields.push(<TextField key="artist" label="Artist / band / DJ" value={cfg.artist || ''} placeholder="THE WALKMEN" onChange={(v) => setField({ artist: v })} />);
+      fields.push(<TextField key="subtitle" label="Subtitle / opener / genre" value={cfg.subtitle || ''} placeholder="with special guest" onChange={(v) => setField({ subtitle: v })} />);
+      fields.push(<TextField key="doorsAt" label="Doors at (e.g. 8:00 PM, 20:00)" value={cfg.doorsAt || ''} placeholder="8:00 PM" onChange={(v) => setField({ doorsAt: v })} />);
+      fields.push(<TextField key="showAt" label="Show start (e.g. 9:00 PM, 21:00)" value={cfg.showAt || ''} placeholder="9:00 PM" onChange={(v) => setField({ showAt: v })} />);
+      fields.push(<TextField key="cover" label="Cover charge label" value={cfg.cover || ''} placeholder="$10 cover" onChange={(v) => setField({ cover: v })} />);
+      fields.push(<TextField key="footer" label="Footer rule line" value={cfg.footer || ''} placeholder="21+ · Cash bar · No RSVP" onChange={(v) => setField({ footer: v })} />);
+      fields.push(<ColorPickerField key="accentColor" label="Primary neon (magenta)" value={cfg.accentColor || '#d946ef'} onChange={(v) => setField({ accentColor: v })} />);
+      fields.push(<ColorPickerField key="accent2" label="Secondary neon (cyan)" value={cfg.accent2 || '#22d3ee'} onChange={(v) => setField({ accent2: v })} />);
+      break;
+    }
+    case 'BAR_TRIVIA_SCOREBOARD': {
+      fields.push(<TextField key="title" label="Headline" value={cfg.title || ''} placeholder="TRIVIA NIGHT" onChange={(v) => setField({ title: v })} />);
+      fields.push(<TextField key="subtitle" label="Subtitle" value={cfg.subtitle || ''} placeholder="LIVE LEADERBOARD" onChange={(v) => setField({ subtitle: v })} />);
+      fields.push(<TextField key="roundNumber" label="Current round" value={String(cfg.roundNumber ?? 1)} placeholder="1" onChange={(v) => setField({ roundNumber: parseInt(v) || 1 })} />);
+      fields.push(<TextField key="totalRounds" label="Total rounds" value={String(cfg.totalRounds ?? 6)} placeholder="6" onChange={(v) => setField({ totalRounds: parseInt(v) || 6 })} />);
+      fields.push(<TextField key="questionNumber" label="Current question (within round)" value={String(cfg.questionNumber ?? 1)} placeholder="1" onChange={(v) => setField({ questionNumber: parseInt(v) || 1 })} />);
+      fields.push(<TextField key="totalQuestions" label="Questions per round" value={String(cfg.totalQuestions ?? 10)} placeholder="10" onChange={(v) => setField({ totalQuestions: parseInt(v) || 10 })} />);
+      fields.push(<TextField key="questionDeadline" label="Question deadline (ISO timestamp, optional)" value={cfg.questionDeadline || ''} placeholder="2026-05-03T20:30:00Z" onChange={(v) => setField({ questionDeadline: v })} />);
+      fields.push(<ColorPickerField key="accentColor" label="Accent color (neon green)" value={cfg.accentColor || '#22c55e'} onChange={(v) => setField({ accentColor: v })} />);
+      fields.push(<TextField key="maxRows" label="Visible rows" value={String(cfg.maxRows || 5)} placeholder="5" onChange={(v) => setField({ maxRows: parseInt(v) || 5 })} />);
+      fields.push(<TextAreaField key="teamsJson" label="Teams (JSON array of { name, score, emoji, delta })" value={typeof cfg.teams === 'string' ? cfg.teams : JSON.stringify(cfg.teams || [], null, 2)} rows={8} onChange={(v) => {
+        try { setField({ teams: JSON.parse(v) }); } catch { /* keep previous value; user is mid-typing */ }
+      }} />);
       break;
     }
     default: {
@@ -3536,6 +3680,13 @@ function StreamingChannelPickerField({
   onPick: (channel: StreamingChannelDto) => void;
   onClear: () => void;
 }) {
+  // Cycle-2 BUG-005 fix (2026-05-03) — relative href resolved to
+  // /[schoolId]/templates/[id]/edit/settings/streaming (404). Resolve
+  // the schoolId from the dynamic route segment so the link points at
+  // /[schoolId]/settings/streaming regardless of where the picker is
+  // rendered.
+  const params = useParams<{ schoolId?: string | string[] }>();
+  const schoolId = Array.isArray(params?.schoolId) ? params.schoolId[0] : params?.schoolId;
   const { data: channels, isLoading } = useQuery<StreamingChannelDto[]>({
     queryKey: ['streaming-channels-picker'],
     queryFn: () => apiFetch<StreamingChannelDto[]>('/streaming/channels'),
@@ -3569,7 +3720,7 @@ function StreamingChannelPickerField({
       {!isLoading && (!channels || channels.length === 0) && (
         <p className="text-[10px] text-slate-400 mt-1">
           No channels picked yet — connect a provider + pick channels in{' '}
-          <a href="settings/streaming" className="underline text-indigo-600 inline-flex items-center gap-0.5">
+          <a href={schoolId ? `/${schoolId}/settings/streaming` : '/settings/streaming'} className="underline text-indigo-600 inline-flex items-center gap-0.5">
             Settings → Streaming <ExternalLink className="w-2.5 h-2.5" />
           </a>
         </p>
@@ -3612,6 +3763,11 @@ function PosCategoryPickerField({
   value: string;
   onChange: (categoryId: string) => void;
 }) {
+  // Cycle-2 BUG-005 fix (2026-05-03) — see StreamingChannelPickerField
+  // above. Resolve schoolId from the dynamic route so the link to
+  // settings/pos lands at /[schoolId]/settings/pos.
+  const params = useParams<{ schoolId?: string | string[] }>();
+  const schoolId = Array.isArray(params?.schoolId) ? params.schoolId[0] : params?.schoolId;
   const { data: categories, isLoading } = useQuery<PosCategoryDto[]>({
     queryKey: ['pos-categories-picker'],
     queryFn: () => apiFetch<PosCategoryDto[]>('/pos/categories').catch(() => [] as PosCategoryDto[]),
@@ -3637,7 +3793,7 @@ function PosCategoryPickerField({
       {!isLoading && (!categories || categories.length === 0) && (
         <p className="text-[10px] text-slate-400 mt-1">
           No POS connected yet —{' '}
-          <a href="settings/pos" className="underline text-indigo-600 inline-flex items-center gap-0.5">
+          <a href={schoolId ? `/${schoolId}/settings/pos` : '/settings/pos'} className="underline text-indigo-600 inline-flex items-center gap-0.5">
             connect Square / Toast / Clover <ExternalLink className="w-2.5 h-2.5" />
           </a>
         </p>

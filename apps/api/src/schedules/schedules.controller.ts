@@ -66,6 +66,40 @@ export class SchedulesController {
       throw new HttpException('Either screenGroupId or screenId must be specified', HttpStatus.BAD_REQUEST);
     }
 
+    // auth-BUG-003: validate every foreign id in the body actually
+    // belongs to the caller's tenant before writing. Without these
+    // checks Prisma would happily insert a Schedule referencing
+    // another tenant's playlist/screen/screenGroup, leaking content
+    // across tenants. Mirrors submissions.controller.ts:78-89 pattern.
+    if (!body.playlistId) {
+      throw new HttpException('playlistId is required', HttpStatus.BAD_REQUEST);
+    }
+    const playlistOwned = await this.prisma.client.playlist.findFirst({
+      where: { id: body.playlistId, tenantId: req.user.tenantId },
+      select: { id: true },
+    });
+    if (!playlistOwned) {
+      throw new HttpException('Playlist not found', HttpStatus.NOT_FOUND);
+    }
+    if (body.screenId) {
+      const screenOwned = await this.prisma.client.screen.findFirst({
+        where: { id: body.screenId, tenantId: req.user.tenantId },
+        select: { id: true },
+      });
+      if (!screenOwned) {
+        throw new HttpException('Screen not found', HttpStatus.NOT_FOUND);
+      }
+    }
+    if (body.screenGroupId) {
+      const groupOwned = await this.prisma.client.screenGroup.findFirst({
+        where: { id: body.screenGroupId, tenantId: req.user.tenantId },
+        select: { id: true },
+      });
+      if (!groupOwned) {
+        throw new HttpException('Screen group not found', HttpStatus.NOT_FOUND);
+      }
+    }
+
     const willBeActive = body.isActive !== false;
 
     // Only displace other active schedules when THIS schedule is going
@@ -140,6 +174,29 @@ export class SchedulesController {
       where: { id, tenantId: req.user.tenantId },
     });
     if (!schedule) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+
+    // auth-BUG-003: same cross-tenant validation as create — when a
+    // PUT body re-targets the schedule at a different screen or group
+    // we must confirm the new id belongs to this tenant. A bare string
+    // (with no truthy id) clears the field and is fine.
+    if (body.screenId) {
+      const screenOwned = await this.prisma.client.screen.findFirst({
+        where: { id: body.screenId, tenantId: req.user.tenantId },
+        select: { id: true },
+      });
+      if (!screenOwned) {
+        throw new HttpException('Screen not found', HttpStatus.NOT_FOUND);
+      }
+    }
+    if (body.screenGroupId) {
+      const groupOwned = await this.prisma.client.screenGroup.findFirst({
+        where: { id: body.screenGroupId, tenantId: req.user.tenantId },
+        select: { id: true },
+      });
+      if (!groupOwned) {
+        throw new HttpException('Screen group not found', HttpStatus.NOT_FOUND);
+      }
+    }
 
     const data: any = {};
     if (body.screenGroupId !== undefined) { data.screenGroupId = body.screenGroupId || null; data.screenId = null; }

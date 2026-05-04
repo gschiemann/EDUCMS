@@ -416,6 +416,15 @@ export interface StreamProviderListItem {
   bestFor?: ReadonlyArray<string>;
   requiresVenueLicense?: boolean;
   tierReason?: string;
+  // Cycle-2 BUG-006 fix (2026-05-03) — controller's listProviders()
+  // already passes through `bridgeSteps`; the DTO interface dropped
+  // it, so the web app fell back to `any` for the BRIDGE-tier setup
+  // wizard. Mirrors the source-of-truth shape on StreamProviderDef.
+  bridgeSteps?: ReadonlyArray<{
+    step: string;
+    detail?: string;
+    productExamples?: ReadonlyArray<string>;
+  }>;
 }
 
 export interface StreamConnectionDto {

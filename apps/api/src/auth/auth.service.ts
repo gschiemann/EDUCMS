@@ -4,6 +4,27 @@ import { PrismaService } from '../prisma/prisma.service';
 import * as argon2 from 'argon2';
 import { cryptoPlatformConfig } from './crypto.config';
 
+/**
+ * auth-BUG-006: pre-computed Argon2id hash used as a timing decoy when
+ * the user lookup misses. Without this, the "user not found" branch
+ * skips the ~45ms argon2.verify call and returns ~200ms faster than
+ * the "wrong password" branch — a measurable side channel that lets an
+ * attacker enumerate which emails exist in the system. We compute this
+ * once at module load using the project's argon2id params, then verify
+ * against it on every miss so both branches take the same time.
+ *
+ * The plaintext "not_a_real_password" is a constant, not a secret —
+ * its only purpose is to give argon2.verify something to chew on for
+ * the same number of CPU cycles as the real path.
+ */
+const DUMMY_PASSWORD_FOR_TIMING = 'not_a_real_password';
+const DUMMY_HASH_PROMISE: Promise<string> = argon2.hash(DUMMY_PASSWORD_FOR_TIMING, {
+  type: cryptoPlatformConfig.type,
+  memoryCost: cryptoPlatformConfig.memoryCost,
+  timeCost: cryptoPlatformConfig.timeCost,
+  parallelism: cryptoPlatformConfig.parallelism,
+});
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -30,7 +51,20 @@ export class AuthService {
    */
   async validateUser(email: string, pass: string): Promise<any> {
     const user = await this.prisma.client.user.findUnique({ where: { email } });
-    if (!user) return null;
+    if (!user) {
+      // auth-BUG-006: even though we have nothing to verify, run a
+      // dummy argon2.verify so the response time matches the
+      // "user found, wrong password" branch. Otherwise an attacker
+      // can enumerate valid emails by measuring the latency gap
+      // (~200ms missing-user vs ~245ms wrong-password).
+      try {
+        const dummyHash = await DUMMY_HASH_PROMISE;
+        await argon2.verify(dummyHash, pass, cryptoPlatformConfig);
+      } catch {
+        // Don't leak the dummy verify failing; just absorb.
+      }
+      return null;
+    }
 
     // Audit fix #8: refuse login for users still in the INVITED state.
     // They must accept their invite and set a password before they can log
@@ -38,6 +72,13 @@ export class AuthService {
     // invite creation could (in theory) be guessed before the operator
     // accepts.
     if (user.status && user.status !== 'ACTIVE') {
+      // Same timing-equalization trick — run a dummy verify so an
+      // attacker can't tell ACTIVE-but-wrong-password apart from
+      // INVITED-but-correct-email-shape.
+      try {
+        const dummyHash = await DUMMY_HASH_PROMISE;
+        await argon2.verify(dummyHash, pass, cryptoPlatformConfig);
+      } catch {}
       return null;
     }
 

@@ -79,6 +79,13 @@ export class PosService {
     // OAuth callback flips them to ACTIVE.
     // Per-provider auth-shape validation (minimal — handlers do deeper validation).
     const creds = opts.credentials || {};
+    // Cycle-2 BUG-003 fix (2026-05-03) — reject oauth2 connect attempts
+    // server-side. Frontend already disables the Connect button, but
+    // double-check at the API boundary so a curl/Postman call cannot
+    // create empty PENDING rows that pollute the connections list.
+    if (provider.auth === 'oauth2') {
+      throw new BadRequestException('OAuth flow not yet implemented for this provider. Contact sales for activation.');
+    }
     if (provider.auth === 'apiKey' && !(creds as any).apiKey) {
       throw new BadRequestException('apiKey required for this provider.');
     }

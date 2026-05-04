@@ -115,17 +115,62 @@ function AiGenerateModal({
   const [options, setOptions] = useState<AiOption[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Escape-key close + AbortController on unmount. Both come out of the
-  // 2026-05-03 audit: operator typing context with a typo couldn't
-  // recover via keyboard, and an unmount mid-fetch logged a React
-  // setState-on-unmounted warning.
+  // ai-imports-006 fix: a11y + focus management.
+  //  - role="dialog" + aria-modal="true" + aria-labelledby tells screen
+  //    readers this is a modal and points at its title.
+  //  - Auto-focus the textarea on open so keyboard users land in the
+  //    primary input instead of having to tab in.
+  //  - Restore focus to the previously-focused element on close so the
+  //    user's keyboard place isn't lost.
+  //  - Trap Tab / Shift+Tab inside the modal's focusable elements so
+  //    focus can't leak to background page content while the modal is
+  //    open (per ARIA APG dialog pattern).
   const abortRef = useRef<AbortController | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const titleId = 'ai-generate-modal-title';
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const previouslyFocused = (typeof document !== 'undefined'
+      ? (document.activeElement as HTMLElement | null)
+      : null);
+    // Auto-focus the textarea when the modal mounts.
+    textareaRef.current?.focus();
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      // Tab-trap. Find every focusable element inside the dialog and
+      // cycle Tab / Shift+Tab between first and last.
+      if (e.key === 'Tab' && dialogRef.current) {
+        const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        );
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement as HTMLElement | null;
+        if (e.shiftKey) {
+          if (active === first || !dialogRef.current.contains(active)) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (active === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    };
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
       abortRef.current?.abort();
+      // Restore focus to whatever opened the modal.
+      previouslyFocused?.focus?.();
     };
   }, [onClose]);
 
@@ -182,18 +227,25 @@ function AiGenerateModal({
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="p-6 border-b border-slate-100 flex items-start justify-between sticky top-0 bg-white rounded-t-2xl">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-white">
               <Sparkles className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-800 capitalize">Generate {INTENT_LABELS[intent]} with AI</h2>
+              <h2 id={titleId} className="text-lg font-bold text-slate-800 capitalize">Generate {INTENT_LABELS[intent]} with AI</h2>
               <p className="text-xs text-slate-500 mt-0.5">Claude writes 3 options. Pick one, edit if needed.</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} aria-label="Close" className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="p-6 space-y-4">
@@ -201,6 +253,7 @@ function AiGenerateModal({
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1.5">What's this about?</label>
             <textarea
+              ref={textareaRef}
               value={context}
               onChange={(e) => setContext(e.target.value)}
               placeholder={INTENT_PLACEHOLDERS[intent]}

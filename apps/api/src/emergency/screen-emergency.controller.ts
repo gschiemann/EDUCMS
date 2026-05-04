@@ -305,8 +305,15 @@ export class ScreenEmergencyController {
   // ─── All-clear (delete the override) ───────────────────────────
 
   @Post(':screenId/all-clear')
+  @AllowPanicBypass()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async allClear(@Req() req: any, @Param('screenId') screenId: string) {
+    // emergency-009 fix: trigger has @AllowPanicBypass() — allClear must
+    // mirror it. Without parity, an operator with `canTriggerPanic: false`
+    // who fired an emergency through @AllowPanicBypass cannot clear it
+    // again, leaving a screen stuck in lockdown until an admin steps in.
+    // Life-safety adjacent: trigger and clear must always be reachable
+    // by the same operator-set.
     // emergency-004 fix: refuse missing-tenantId tokens before any DB call.
     const tenantId = this.requireTenantId(req);
     const screen = await this.resolveScreen(screenId, tenantId);
