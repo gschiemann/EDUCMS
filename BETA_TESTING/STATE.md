@@ -5,111 +5,111 @@ operation between Claude sessions.** Read this first when a new session starts.
 
 ## Current cycle
 
-- **Cycle**: 1 (fixing wave 2 dispatched)
+- **Cycle**: 1 → COMPLETE. Cycle 2 ready to start.
 - **Started**: 2026-05-03
-- **Status**: `FIXING_DISPATCHED` — 4 fix agents covering 8 remaining P0s in parallel
-- **Last commit**: `1494766` (TRIAGE doc + STATE)
-- **Fix agents in flight**:
-  - `auth-001` — SSO cross-tenant write
-  - `auth-002` — role escalation + email/password validation
-  - `emergency-002+003+004` — 3 bundled (overrideId, device-scope all-clear, tenantId guard)
-  - `player-001+002+003` — 3 bundled (SW emergency hash, sumCacheBytes, USB silent enable)
-- **Reports persist to**: `BETA_TESTING/FIX_LOG/CYCLE-1-fixes.md`
-- **Triage**: see `BUG_REPORTS/CYCLE-1-TRIAGE.md` for the full work-list
+- **Status**: `CYCLE_DONE` — all 13 P0s from cycle 1 closed.
+- **Last commit**: `0898a8d` (8 P0 fix wave + final push)
+- **Open**: 27 P1 + 24 P2 — see `BUG_REPORTS/CYCLE-1-TRIAGE.md`
 
-## What to do if THIS session ends before agents finish
+## ✅ Cycle 1 — DONE
 
-1. Read `BETA_TESTING/FIX_LOG/CYCLE-1-fixes.md` — see what's been fixed
-2. `git status` — check what files were modified by agents
-3. For any bug NOT in the fix log, dispatch another agent to fix it
-4. Run `pnpm preflight` — verify nothing broken
-5. Commit with message listing every bug fixed: "Cycle 1 fix wave 2 — auth-001, auth-002, emergency-002+003+004, player-001+002+003"
-6. Push, update STATE.md status to `CYCLE_DONE`
-7. Start cycle 2 — re-test all areas (especially auth + emergency + player) for regressions
+13 P0 bugs found, 13 P0 bugs fixed across 4 commits:
+- `d1e8ff7` — integrations ConnectModal + BridgeSetupModal (auto-fix), multipart upload, Supabase PPTX mime, panic 3s
+- `0898a8d` — auth-001 (SSO), auth-002 (role escalation), emergency-002 (overrideId), emergency-003 (device-scope all-clear), emergency-004 (tenantId guard), player-001 (SW emergency hash), player-002 (sumCacheBytes), player-003 (USB silent enable)
 
 ## How to resume in a fresh session
 
-When the user says "resume beta testing" in a new session:
+When the user says "resume beta testing":
 
-1. Read `BETA_TESTING/STATE.md` (this file) — confirms current cycle + status
-2. Read `BETA_TESTING/BUG_REPORTS/CYCLE-1-TRIAGE.md` — that's the punch-list
-3. Dispatch fix agents for the remaining P0s — one bug per agent, run in parallel
-4. After fixes land, run `pnpm preflight`, commit, push
-5. When all P0s clear, start cycle 2 (re-test the fixed areas + start P1 wave)
+1. Read `BETA_TESTING/STATE.md` (this file) → confirms cycle 1 done
+2. Decide next cycle:
+   - **Cycle 2 P1 wave** — pick up from `BUG_REPORTS/CYCLE-1-TRIAGE.md` "P1 — fix this week" section. 27 bugs to address.
+   - **Cycle 2 RETEST** — dispatch the same 6 tester agents from cycle 1 to verify the P0 fixes hold + look for regressions. If clean, move to P1 wave.
+3. Recommended order: RETEST first (1 wave of 6 agents), then P1 batches (5-7 agents per batch).
 
-## Remaining P0 bugs (9) — pick agents up here
+## Cycle 2 plan — P1 wave
 
-From `BUG_REPORTS/CYCLE-1-TRIAGE.md`:
+The P1 list from `CYCLE-1-TRIAGE.md`:
 
-| ID | Area | File | One-line |
-|---|---|---|---|
-| auth-001 | Security | `apps/api/src/sso/sso.controller.ts:140-172` | Cross-tenant SSO config write — DISTRICT_ADMIN can take over another tenant's login |
-| auth-002 | Security | `apps/api/src/users/users.controller.ts:26-48` | Role escalation at user creation — no enum validation on role string |
-| emergency-002 | Forensics | `apps/web/src/actions/trigger-emergency.ts:41` | All-clear hardcodes overrideId='global_clear' — breaks audit chain |
-| emergency-003 | Reliability | `apps/api/src/emergency/emergency.controller.ts:520-531` | Device-scope all-clear doesn't delete screenEmergencyOverride — screens stuck on lockdown |
-| emergency-004 | Security | `apps/api/src/screens/screen-emergency.controller.ts:359` | DISTRICT_ADMIN with undefined tenantId can bulk-trigger across tenants |
-| player-001 | Reliability | `apps/web/public/sw-player.js refreshEmergencyCache` | SW writes emergency hash before downloads complete — emergency cache silently broken on retry |
-| player-002 | Reliability | `apps/web/public/sw-player.js sumCacheBytes` | content-length missing on Supabase responses — soft-cap eviction never fires |
-| player-003 | Security | (USB export endpoint) | USB auto-flips usbIngestEnabled silently — contradicts default-off opt-in policy |
-| (BridgeSetupModal continue) | UX | (auto-fixed by integrations-001 fix) | ✅ Fixed via the ConnectModal default fix |
+### auth (4)
+- BUG-003 — Schedule create/update missing cross-tenant FK validation
+- BUG-004 — Playlist create accepts foreign templateId
+- BUG-005 — `PUT /users/:id/role` was already covered by auth-002 fix; verify no regression
+- BUG-006 — Argon2 timing oracle on user-not-found path
 
-## How to dispatch fix agents (one bug each)
+### editor (3)
+- BUG-001 — `FITNESS_WORKOUT_TIMER` has no editor case in PropertiesPanel
+- BUG-002 — 12 of 19 RESTAURANT/BAR/RETAIL widgets have no editor case
+- BUG-003 — JSON-parse failure leaks string into cfg.creatives / classes / quotes mid-keystroke
+
+### integrations (4)
+- BUG-003 — POS oauth2 providers save empty PENDING rows silently
+- BUG-004 — Ad-network ConnectModal has no PARTNER vs DIRECT differentiation
+- BUG-005 — PropertiesPanel picker links use relative `href="settings/streaming"` (404 from template builder)
+- BUG-006 — `StreamProviderListItem` API type missing `bridgeSteps`
+
+### emergency (6)
+- BUG-005 — Client-side WS verification only checks signature presence not validity
+- BUG-006 — Per-screen audit failures silently swallowed
+- BUG-007 — SOS location string not strictly bounded
+- BUG-008 — Floor plan dimensions from client without server-side probe
+- BUG-009 — `ScreenEmergencyController.allClear` lacks `@AllowPanicBypass`
+- BUG-010 — Player does NOT subscribe to `device:<screenId>` channels
+
+### player (6)
+- BUG-004 — Capability data collected but typed body drops it
+- BUG-005 — SW `precachePlaylist` evicts entries by raw URL — Supabase signed URLs rotate hourly
+- BUG-006 — `ALL_CLEAR` is in `SENSITIVE_TYPES` — race against AUTH_OK on clock-skewed kiosks
+- BUG-007 — WS HELLO falls back to unsigned `dev_` tokens
+- BUG-008 — `/api/v1/player/latest-version` is unauthenticated and unthrottled
+- BUG-009 — Pairing code 10-attempt collision retry — 11th miss = 500
+
+### ai-imports (4)
+- BUG-003 — Filename not sanitized/length-capped in imports
+- BUG-004 — Retail+restaurant sample loaders share one POS connection
+- BUG-005 — Imports dropzone has no keyboard/SR path
+- BUG-006 — AiGenerateModal missing `role="dialog"` / `aria-modal` / focus trap
+
+## How to dispatch cycle 2 — RETEST first
 
 ```
 Agent({
-  description: "Fix auth-001 cross-tenant SSO write",
+  description: "Cycle 2 RETEST — auth area",
   subagent_type: "general-purpose",
   run_in_background: true,
-  prompt: "<bug description from TRIAGE.md + acceptance criteria + GROUND RULES + write to BETA_TESTING/FIX_LOG/CYCLE-1-fixes.md when done>"
+  prompt: "Same brief as cycle-1 auth tester (TEST_PLAN.md Area 1) PLUS verify these P0 fixes hold: auth-001 (sso.controller.ts assertTenantAccess gate works), auth-002 (users.controller role allowlist + email/password validation). Also confirm no regression introduced. Write to BETA_TESTING/BUG_REPORTS/CYCLE-2-auth.md."
 })
 ```
 
-GROUND RULES (paste into every fix-agent prompt):
+Repeat for editor / integrations / emergency / player / ai-imports.
 
-```
-1. Read before edit. Read the file FULLY first.
-2. Don't break TypeScript. Run `cd apps/web && npx tsc --noEmit` and
-   `cd apps/api && npx tsc --noEmit` after the fix. Pre-existing test
-   errors (RoleGate.test.tsx, touch-widgets.test.tsx, screens.register
-   .spec.ts) are NOISE — IGNORE.
-3. Preserve existing data flow. Don't refactor logic, only fix the bug.
-4. NO EMOJI in code.
-5. Don't write new docs / .md files unless explicitly asked.
-6. DO NOT push or commit. Leave that to the orchestrator.
-7. Final report: under 200 words. List exactly what changed:
-   `Files changed: <path:line>`. Acceptance test that proves it works.
-```
+## How to dispatch cycle 2 — P1 fix wave (after RETEST passes)
 
-## How to dispatch round-2 testers (after P0 fixes land)
-
-After the P0 wave clears:
+Group P1 bugs into batches of 5-7 per agent (each agent gets multiple
+bugs from one area). Pattern:
 
 ```
 Agent({
-  description: "Cycle 2 — re-test auth area",
+  description: "Cycle 2 fix — auth P1 batch",
   subagent_type: "general-purpose",
   run_in_background: true,
-  prompt: "<area brief from TEST_PLAN.md + 'verify the cycle-1 P0s flagged for this area are now fixed' + look for NEW bugs introduced by the fixes>"
+  prompt: "Fix all auth P1s from CYCLE-1-TRIAGE.md (BUG-003, 004, 005, 006). One commit at the end is fine. Run typecheck after each. GROUND RULES + write summary to FIX_LOG/CYCLE-2-fixes.md."
 })
 ```
 
 ## Token budget tracking
 
-Each cycle uses approximately:
-- 6 testers × ~5 min each + ~50k tokens each = 300k tokens
-- Triage step (orchestrator reads + writes) = 30k tokens
-- Fix agents: 9 P0 × ~30k each = 270k tokens
-- Preflight + commit + push = 5k tokens
-- TOTAL per cycle = ~600k tokens
+Cycle 1 used ~80% of a session's tokens. Cycle 2 will be similar.
+Plan to span 2 sessions if necessary — STATE.md is what makes that
+survivable. Save state every commit.
 
-Cycle 1 used roughly 80% of this. Cycle 2 will be similar — likely
-spans a session boundary. State.md is what makes that survivable.
-
-## Files committed so far
+## Files committed
 
 ```
 a4546fa — BETA_TESTING infrastructure
-fb287f6 — 4 of 6 cycle-1 reports saved mid-cycle
-d1e8ff7 — 4 P0 fixes (integrations + multipart + Supabase mime + panic 3s)
-(this commit) — TRIAGE doc + STATE update for next session
+fb287f6 — first 4 of 6 cycle-1 reports
+d1e8ff7 — 4 P0 fixes (integrations + multipart + PPTX + panic 3s)
+1494766 — TRIAGE doc + STATE update
+3c0b0f1 — fix-wave-2 dispatch state
+0898a8d — 8 P0 fixes (auth + emergency + player bundles)  ← current
 ```
