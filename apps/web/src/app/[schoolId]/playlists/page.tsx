@@ -2071,21 +2071,38 @@ export default function PlaylistsPage() {
                 //   want to replace the existing playlist and i hit
                 //   yes and my switch goes to green on the new one
                 //   and off on the old one"
-                const myMap = playlistScreenMap[pl.id];
-                const myScreenIds = new Set<string>(
-                  (myMap?.screens || []).map((s: any) => s.id),
+                // 2026-05-04 — operator: "when i turn on another playlist
+                // it auto turns off the active playlist even if it for
+                // different screens, it need to allow playing multiple
+                // playlists just not two on the same screen".
+                //
+                // Cause: playlistScreenMap aggregates screens from ALL
+                // schedules (active + inactive). A leftover inactive
+                // schedule on Screen S2 caused the conflict check to
+                // think URL was "occupying" S2, even though only its
+                // S1 schedule was actually active. Enabling Video on
+                // S2 then prompted to replace URL.
+                //
+                // Fix: compute conflict-check screen sets from the
+                // RAW schedules list filtered by isActive=true. Only
+                // screens currently being played on by an active
+                // schedule count as "occupied".
+                const liveSchedules = (schedules || []).filter((s: any) => s.isActive);
+                const myActiveScreens = new Set<string>(
+                  liveSchedules.filter((s: any) => s.playlistId === pl.id && s.screenId).map((s: any) => s.screenId),
                 );
-                const myGroupIds = new Set<string>(
-                  (myMap?.groups || []).map((g: any) => g.id),
+                const myActiveGroups = new Set<string>(
+                  liveSchedules.filter((s: any) => s.playlistId === pl.id && s.screenGroupId).map((s: any) => s.screenGroupId),
                 );
                 const conflicts: any[] = [];
                 for (const other of playlists || []) {
                   if (other.id === pl.id) continue;
-                  const om = playlistScreenMap[other.id];
-                  if (!om || om.activeCount === 0) continue;
-                  const overlap =
-                    (om.screens || []).some((s: any) => myScreenIds.has(s.id)) ||
-                    (om.groups || []).some((g: any) => myGroupIds.has(g.id));
+                  const otherActive = liveSchedules.filter((s: any) => s.playlistId === other.id);
+                  if (otherActive.length === 0) continue;
+                  const overlap = otherActive.some((s: any) =>
+                    (s.screenId && myActiveScreens.has(s.screenId)) ||
+                    (s.screenGroupId && myActiveGroups.has(s.screenGroupId)),
+                  );
                   if (overlap) conflicts.push(other);
                 }
                 if (conflicts.length > 0) {
