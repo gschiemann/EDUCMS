@@ -5,87 +5,67 @@ operation between Claude sessions.** Read this first when a new session starts.
 
 ## Current cycle
 
-- **Cycle**: 1 ✅ DONE · 2 ✅ DONE · 3 ✅ DONE · 4 IN-PROGRESS.
-- **Status**: `FIXING_DISPATCHED` for cycle 4
-- **Last commit**: `bab1e55` (Cycle 3 STATE close)
-- **Open after cycle 3**: ~15 P1 (mostly small UX + asymmetry) + 30+ P2
+- **Cycle**: 1 ✅ DONE · 2 ✅ DONE · 3 ✅ DONE · 4 ✅ DONE. Cycle 5 = P2 polish wave.
+- **Status**: `CYCLE_DONE` after cycle 4.
+- **Last commit**: `3501bc0` (Cycle 4 P1 wave)
+- **Open after cycle 4**: ~30 P2 polish bugs across 6 areas
 
-## Cycle 4 dispatch — 3 fix agents running
+## ✅ Cycles 1-4 — what closed
 
-Covering 14 P1 bugs in parallel:
-- **auth+integrations batch** (5 bugs): users role-demote guard, schedule playlistId update, DELETE error shape, streaming oauth2 backend reject, Quick Start music card UX
-- **emergency+editor batch** (5 bugs): per-screen audit transaction, floor plan dimension probe, panic UI string fix, BAR_TAP_LIST + BAR_COCKTAIL_MENU full editors, imports dropzone keyboard a11y
-- **player batch** (4 bugs): SW signed-URL stable cache key, ALL_CLEAR removed from SENSITIVE_TYPES, dev_ token fallback warning, pairing-code 11th-miss
+| Cycle | Outcome |
+|---|---|
+| 1 | 13 P0 closed (security + life-safety + demo-breakers) |
+| 2 | 16 P1 closed + 9 new widget editors |
+| 3 | 22 cycle-1+2 fixes verified, 4 P0 regressions fixed, 6 RETAIL editors added |
+| 4 | 14 P1 fixed (auth role-guard, schedule playlistId, oauth2 backend symmetry, SW signed-URL key, ALL_CLEAR, pairing collision, BAR editors, dropzone a11y, etc.) |
 
-If session ends mid-batch, agents have written fixes to disk before
-their completion notification fires — `git status` will show modified
-files; FIX_LOG/CYCLE-4-fixes.md captures progress.
+**Total bugs fixed across 4 cycles: 13 P0 + 30 P1 + 15 widget editors added = 58 issues closed.**
 
-## ✅ Cycle 1 — 13 P0 closed
-- `d1e8ff7` integrations + multipart + PPTX + panic 3s
-- `0898a8d` auth + emergency + player bundles
+## 🟡 Cycle 5 — P2 polish wave (~30 bugs)
 
-## ✅ Cycle 2 — 16 P1 closed (+ 9 new widget editors)
-- `7b30bb1` auth + integrations + editor + emergency-mix batches
+The P2 list is mostly cosmetic / edge-case bugs that don't block ship:
+- AI rate-limit slot consumption on failed Anthropic calls (still leaks counter)
+- AI rate-limit Map leaks tenants forever (no eviction)
+- AI docstring promises Billing log that doesn't exist
+- Re-importing same file creates duplicate Playlists
+- Imports leaks Supabase error text to client
+- non-numeric `count` field produces "Generate NaN options" prompt
+- Streaming channel picker has no `.catch` for query errors — infinite "Loading…"
+- POS category picker swallows ALL errors as empty result
+- Ad-network ConnectModal doesn't gate on `salesLedOnly`
+- iframeOnly connections stuck in PENDING forever
+- Sample-data restaurant + retail mutually exclusive per tenant (unique constraint)
+- Capability data collected at boot but typed body drops it
+- player BUG-014 (DUMMY_HASH_PROMISE no error path)
+- editor SECTION_LABELS missing ~30 fitness-scene prefixes
+- v2 admin Ops Console widgets disappear for non-K12 (admin→OFFICE in K12_ONLY)
+- AssetPickerField uses uncontrolled defaultValue
+- emergency BUG-014 spec file may still assert old 'global_clear' literal
+- Unicode NFC + RTL/zero-width chars not stripped by sanitizeOriginalName
+- ...etc.
 
-## ✅ Cycle 3 — 22 cycle-1+2 fixes verified GREEN, 4 P0 regressions fixed, 6 RETAIL editors added
-- `b0aa3a8` retail editor cleanup + 5 retest reports
-- `642c2b4` 4 P0 regressions:
-  - emergency-011 device JWT missing tenantId/deviceId (WS broadcasts silently dropping in prod)
-  - emergency-012 SUPER_ADMIN cross-tenant regression
-  - player-014 page-side ref poisoned before SW acks (nullified player-001 fix)
-  - player-015 SW v2 deleted v1 emergency cache before populating v2
+See full lists in `BUG_REPORTS/CYCLE-1-*.md` (P2 sections) and
+`BUG_REPORTS/CYCLE-3-*.md` (NEW bugs sections).
 
-## 🟡 Cycle 4 — remaining P1 work (~15 bugs)
+## How to resume cycle 5
 
-From cycle-3 retest reports:
+```
+Agent({
+  description: "Cycle 5 — P2 polish batch 1 of 3",
+  subagent_type: "general-purpose",
+  run_in_background: true,
+  prompt: "Fix the P2 bugs from cycle-1+3 reports listed in this batch [list 8-10 bugs with file:line]. Use safe-parse / silent-skip / display-only patterns where appropriate. GROUND RULES + write to FIX_LOG/CYCLE-5-fixes.md."
+})
+```
 
-### auth (P1 from cycle 3)
-- BUG-011 — `PUT /users/:id/role` allows SUPER_ADMIN to demote another SUPER_ADMIN in same tenant
-- BUG-012 — `PUT /schedules/:id` body type drops `playlistId`; silent no-op on re-target
-- BUG-013 — `DELETE /users/:id` returns HTTP 200 + `{error}` body instead of HttpException
+3 P2 batch agents in parallel (10 bugs each) covers everything.
 
-### integrations (P1 from cycle 3)
-- BUG-007 — Streaming oauth2 has no API-side reject (asymmetric vs POS); curl bypass creates orphan PENDING rows
-- BUG-008 — Quick Start "Background music" card opens a permanently-disabled Connect modal (oauth2 dead-end UX)
+## Token-budget note
 
-### emergency (P1 + P2 still open from cycle 1+3)
-- BUG-005 — Client-side WS verification only checks signature presence not validity
-- BUG-006 — Per-screen audit failures silently swallowed (still not fixed; cycle-3 confirmed open)
-- BUG-008 — Floor plan dimensions from client without server-side probe
-- BUG-013 — Panic page UI string still says "1.5 seconds" but actual hold is 3000ms (cycle-3 finding)
-
-### editor (P1 from cycle 3)
-- `BAR_TAP_LIST` + `BAR_COCKTAIL_MENU` minimal editor cases — only title + posSync. Operator can't edit `taps[]` / `cocktails[]` rows when posSync is off. Same fix pattern as editor-BUG-002 cycle-2 work.
-
-### player (P1 from cycle 1+3)
-- BUG-005 — SW precachePlaylist evicts entries by raw URL — Supabase signed URLs rotate hourly, evicting entire cache
-- BUG-006 — `ALL_CLEAR` is in `SENSITIVE_TYPES` — race against AUTH_OK on clock-skewed kiosks
-- BUG-007 — WS HELLO falls back to unsigned `dev_` tokens
-- BUG-009 — Pairing code 10-attempt collision retry — 11th miss = 500
-
-### ai-imports (P1 + P2)
-- BUG-005 — Imports dropzone has no keyboard/SR path
-
-## 🔵 P2 — defer to cycle 5+ (30+ bugs)
-See cycle-1 + cycle-3 area reports.
-
-## Cycle 4 plan
-
-**Recommended order:**
-1. Single fix wave — 1 batch agent per area covering the remaining P1s
-2. Optional: cycle-4 retest (lighter pass — only re-verify cycle 3's P0 fixes + the new P1 fixes)
-3. P2 batch — 2-3 large agents for the 30+ P2s
-
-Token budget: cycle 4 P1 wave should be a half-session.
-
-## How to resume
-
-When user says "resume beta testing":
-1. Read this STATE.md → see cycle 3 done
-2. Decide: cycle 4 P1 fix wave OR cycle 4 retest first
-3. Use the same dispatch pattern as cycles 2+3 (Agent + run_in_background + GROUND RULES + write to FIX_LOG/CYCLE-4-fixes.md)
-4. After fixes land, preflight + commit + push + STATE update
+Each cycle uses roughly half a session's tokens. We've now done 4
+cycles. The user signalled tokens would run out and we should resume
+across sessions — STATE.md makes that survivable. Cycle 5 (P2 polish)
+is a smaller scope and could be a single short batch.
 
 ## Commit ledger
 
@@ -93,7 +73,7 @@ When user says "resume beta testing":
 a4546fa  BETA_TESTING infrastructure
 fb287f6  4 cycle-1 reports mid-cycle save
 d1e8ff7  4 cycle-1 P0 fixes
-1494766  TRIAGE doc
+1494766  TRIAGE doc + STATE
 3c0b0f1  fix-wave-2 dispatch state
 0898a8d  8 cycle-1 P0 fixes (full)
 11cf4f1  STATE for cycle 2
@@ -101,6 +81,15 @@ d1e8ff7  4 cycle-1 P0 fixes
 ff4df07  STATE for cycle 3
 49c513c  Cycle 3 dispatch state
 b0aa3a8  Cycle 3 retests + 6 RETAIL editors
-642c2b4  4 cycle-3 P0 regression fixes  ← current
-(this commit)  STATE for cycle 4
+642c2b4  4 cycle-3 P0 regression fixes
+bab1e55  STATE for cycle 4
+bc29eef  Cycle 4 dispatch state
+3501bc0  14 cycle-4 P1 fixes  ← current
+(this commit)  STATE for cycle 5
 ```
+
+## Resume phrase
+
+User pastes "resume beta testing" → Claude reads STATE.md → sees cycle
+4 done → dispatches cycle 5 P2 polish wave. Three batches of ~10 P2
+bugs each, parallel.
