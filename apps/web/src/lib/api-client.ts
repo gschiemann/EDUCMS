@@ -71,11 +71,21 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
   // cached by spec. GETs now respect any Cache-Control the API sends. Per
   // 2026-04-19 perf audit — one of the three root causes of the Vercel
   // "click-to-click feels slow" report.
+  // 2026-05-03 BUG FIX (cycle 1 ai-imports BUG-001) — when the body is
+  // a FormData (multipart upload), DO NOT force Content-Type. The
+  // browser will auto-set `multipart/form-data; boundary=...` based on
+  // the FormData boundary. Forcing application/json here was killing
+  // every PDF / PPTX / image upload from /settings/imports — multer
+  // received an unparseable JSON-typed body and dropped the file.
+  const isMultipart = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  const baseHeaders: Record<string, string> = isMultipart
+    ? {} // browser sets Content-Type with boundary
+    : { 'Content-Type': 'application/json' };
   const init: RequestInit = {
     credentials: 'include',
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      ...baseHeaders,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...csrfHeader,
       ...options.headers,

@@ -8,7 +8,11 @@ import { broadcastEmergency } from '@/actions/trigger-emergency';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
-const HOLD_DURATION_MS = 1500;
+// 2026-05-03 BUG FIX (cycle 1 emergency BUG-001) — was 1500ms, but
+// CLAUDE.md "Key Safeguards #5: Hold-to-Trigger UX" requires
+// 3 seconds to prevent accidental taps. Life-safety regression
+// restored. The animated progress ring matches this duration.
+const HOLD_DURATION_MS = 3000;
 
 // Full SRP — same id strings + order as the dashboard EmergencyTriggerModal.
 const TYPES = [

@@ -498,7 +498,16 @@ function ProviderTile({ provider, connected, onConnect }: { provider: Provider; 
 function ConnectModal({ provider, onClose, onConnected }: { provider: Provider; onClose: () => void; onConnected: () => void }) {
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [displayName, setDisplayName] = useState('');
-  const [agreed, setAgreed] = useState(provider.auth === 'none');
+  // 2026-05-03 BUG FIX (cycle 1 integrations BUG-001+002) — `agreed`
+  // was a venue-license confirmation but the default was `provider.auth
+  // === 'none'`, leaving the Connect button permanently disabled for
+  // every provider that didn't require a venue license AND wasn't auth=
+  // 'none'. That killed YouTube / Twitch / Custom HLS / IPTV / Atmosphere
+  // setup-bridge / etc. Now the checkbox defaults to true UNLESS the
+  // provider actually requires a venue license, in which case the
+  // operator must tick the box first (existing UX) and the Connect
+  // button remains disabled until they do.
+  const [agreed, setAgreed] = useState(!provider.requiresVenueLicense);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 

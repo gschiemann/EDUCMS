@@ -54,6 +54,13 @@ export class SupabaseStorageService implements OnModuleInit {
       'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo', 'video/x-m4v',
       'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4',
       'application/pdf',
+      // 2026-05-03 BUG FIX (cycle 1 ai-imports BUG-002) — added PowerPoint
+      // mimes for the Canva / Slides / PPTX import pipeline. Without these
+      // the imports controller's MIME filter accepts the upload but
+      // Supabase rejects it with "mime type not allowed" so the upload
+      // silently fails after multer + before Asset row creation.
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+      'application/vnd.ms-powerpoint', // .ppt
     ];
     const FILE_SIZE_LIMIT = 500 * 1024 * 1024; // 500MB
 
