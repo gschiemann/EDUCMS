@@ -831,6 +831,25 @@ export default function PlaylistsPage() {
     setHasChanges(false);
   };
 
+  // 2026-05-04 — operator: "when i edit a playlist and add a new
+  // screen to it, it makes me hit publish 3 times before it
+  // publishes, its like each time i hit its saving or adding
+  // instead of doing it all in one button push of publish".
+  //
+  // Cause: the Publish button's loading state was bound to
+  // `createSchedule.isPending` only — but submitSchedule does
+  // saveItems FIRST, then createSchedule second. During the
+  // saveItems phase (which can take several seconds on a
+  // multi-asset playlist), the button STILL says "Publish" with
+  // no spinner. Operator clicks again. Each click fires another
+  // submitSchedule call. The click flood eventually completes
+  // the whole pipeline by accident.
+  //
+  // Fix: a single `publishSubmitting` flag covers the ENTIRE
+  // pipeline (save → schedule loop → state cleanup). Button
+  // disabled + "Publishing…" text shows from first click to
+  // final completion. Subsequent clicks are dropped.
+  const [publishSubmitting, setPublishSubmitting] = useState(false);
   // Unified submit for the Publish/Save modal. `activate=false` = save
   // as a draft (isActive: false server-side). The UI wires two buttons
   // to this function — "Save" (activate=false) and "Publish"
@@ -838,6 +857,9 @@ export default function PlaylistsPage() {
   // time and then flip it live from the playlist card's on/off toggle.
   const submitSchedule = async (activate: boolean) => {
     if (schedTargets.length === 0) return;
+    if (publishSubmitting) return; // dedupe rapid clicks
+    setPublishSubmitting(true);
+    try {
 
     // CRITICAL: if the operator added items but didn't hit Save, the
     // playlist is empty in the DB — scheduling it sends an empty
@@ -917,6 +939,10 @@ export default function PlaylistsPage() {
     setShowPublishModal(false);
     setSchedTargets([]);
     setTab('schedules');
+    } finally {
+      // Always release the dedupe flag, success or fail.
+      setPublishSubmitting(false);
+    }
   };
 
   // Back-compat alias so older call-sites keep working while we migrate.
@@ -1742,21 +1768,25 @@ export default function PlaylistsPage() {
                     running playlist on its target(s) until it's
                     activated. */}
                 <button
-                  disabled={schedTargets.length === 0 || createSchedule.isPending}
+                  disabled={schedTargets.length === 0 || publishSubmitting}
                   onClick={handleSaveDraft}
-                  className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50 text-slate-700 text-sm font-bold rounded-lg shadow-sm flex items-center gap-2"
+                  className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-slate-700 text-sm font-bold rounded-lg shadow-sm flex items-center gap-2"
                   title="Save this schedule as a draft — won't go live until you turn the playlist on"
                 >
-                  {createSchedule.isPending ? 'Saving…' : (
+                  {publishSubmitting ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
+                  ) : (
                     <><Save className="w-4 h-4" /> Save</>
                   )}
                 </button>
                 <button
-                  disabled={schedTargets.length === 0 || createSchedule.isPending}
+                  disabled={schedTargets.length === 0 || publishSubmitting}
                   onClick={handlePublish}
-                  className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-sm font-bold rounded-lg shadow-sm flex items-center gap-2"
+                  className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-lg shadow-sm flex items-center gap-2"
                 >
-                  {createSchedule.isPending ? 'Publishing…' : (
+                  {publishSubmitting ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Publishing…</>
+                  ) : (
                     <><CalendarDays className="w-4 h-4" /> Publish</>
                   )}
                 </button>
