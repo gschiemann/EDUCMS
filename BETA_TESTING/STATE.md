@@ -5,11 +5,27 @@ operation between Claude sessions.** Read this first when a new session starts.
 
 ## Current cycle
 
-- **Cycle**: 1 (in progress — testing complete, partial fixes shipped)
+- **Cycle**: 1 (fixing wave 2 dispatched)
 - **Started**: 2026-05-03
-- **Status**: `FIXING_PARTIAL` — 4 of 13 P0 fixed in commit `d1e8ff7`; 9 P0 + 27 P1 remain
-- **Last commit**: `d1e8ff7` (4 P0 fixes)
+- **Status**: `FIXING_DISPATCHED` — 4 fix agents covering 8 remaining P0s in parallel
+- **Last commit**: `1494766` (TRIAGE doc + STATE)
+- **Fix agents in flight**:
+  - `auth-001` — SSO cross-tenant write
+  - `auth-002` — role escalation + email/password validation
+  - `emergency-002+003+004` — 3 bundled (overrideId, device-scope all-clear, tenantId guard)
+  - `player-001+002+003` — 3 bundled (SW emergency hash, sumCacheBytes, USB silent enable)
+- **Reports persist to**: `BETA_TESTING/FIX_LOG/CYCLE-1-fixes.md`
 - **Triage**: see `BUG_REPORTS/CYCLE-1-TRIAGE.md` for the full work-list
+
+## What to do if THIS session ends before agents finish
+
+1. Read `BETA_TESTING/FIX_LOG/CYCLE-1-fixes.md` — see what's been fixed
+2. `git status` — check what files were modified by agents
+3. For any bug NOT in the fix log, dispatch another agent to fix it
+4. Run `pnpm preflight` — verify nothing broken
+5. Commit with message listing every bug fixed: "Cycle 1 fix wave 2 — auth-001, auth-002, emergency-002+003+004, player-001+002+003"
+6. Push, update STATE.md status to `CYCLE_DONE`
+7. Start cycle 2 — re-test all areas (especially auth + emergency + player) for regressions
 
 ## How to resume in a fresh session
 
