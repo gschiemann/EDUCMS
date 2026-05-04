@@ -448,6 +448,48 @@ export class PlayerOtaController {
   }
 
   /**
+   * GET /api/v1/player/latest-version-public
+   *
+   * 2026-05-04 — operator: "why doesnt it know that there is an update
+   * pending to go to .44?". Cause: paired kiosks were calling
+   * /latest-version (above) which is admin-auth-gated. A device token
+   * isn't an admin token, so the fetch failed with 401, `latestApkVersion`
+   * stayed null on the splash, and the "Update available" banner never
+   * rendered.
+   *
+   * This route is the public-safe twin: returns ONLY versionName +
+   * versionCode (NO apkUrl, NO commit SHA, NO release notes — the
+   * security concern from player-008 was leaking the exact build
+   * chain. Just the version digits is fine to expose anonymously —
+   * any visitor to github.com/gschiemann/EDUCMS/releases sees the
+   * same numbers).
+   *
+   * Throttled aggressively (30/min/IP) to prevent GitHub-API DoS via
+   * cache churn. Kiosk's natural call rate is ~1/min so well under.
+   */
+  @Get('latest-version-public')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  async getLatestVersionPublic() {
+    const envVn = (process.env.PLAYER_APK_LATEST_VERSION_NAME || '').trim();
+    const envVc = parseInt(process.env.PLAYER_APK_LATEST_VERSION_CODE || '0', 10);
+    if (envVn && envVc) {
+      return { versionName: envVn, versionCode: envVc };
+    }
+    try {
+      const info = await resolveLatestReleaseInfo();
+      if (info) {
+        return {
+          versionName: info.versionName,
+          versionCode: info.derivedVersionCode,
+        };
+      }
+    } catch (e: any) {
+      this.logger.warn(`/latest-version-public GitHub lookup failed: ${e?.message}`);
+    }
+    return { versionName: null, versionCode: null };
+  }
+
+  /**
    * GET /api/v1/player/manager-apk/latest
    *
    * Returns the URL of the latest published Manager APK as a 302

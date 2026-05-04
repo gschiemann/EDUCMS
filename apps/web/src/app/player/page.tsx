@@ -1231,15 +1231,28 @@ function PlayerPage() {
   const [latestApkVersion, setLatestApkVersion] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    // 2026-05-04 — operator: "why doesnt it know that there is an
+    // update pending to go to .44?". Was hitting /player/latest-version
+    // which is admin-auth-gated (player-008 hardening). Paired
+    // kiosks have device tokens, not admin tokens, so the fetch
+    // failed silently with 401 and the splash never showed the
+    // "Update available" banner. Switched to /latest-version-public
+    // which returns version digits only (no apkUrl, no SHA — same
+    // info anyone can see on the public Releases page) and is
+    // throttled to 30 req/min/IP. Refetches every 60s while the
+    // splash is mounted so a fresh release lands within a minute
+    // instead of waiting for the kiosk's 6h OTA cron.
+    const fetchLatest = async () => {
       try {
-        const res = await fetch(`${getApiRoot()}/api/v1/player/latest-version`, { cache: 'no-store' });
+        const res = await fetch(`${getApiRoot()}/api/v1/player/latest-version-public`, { cache: 'no-store' });
         if (!res.ok) return;
         const data = await res.json();
         if (!cancelled && data?.versionName) setLatestApkVersion(String(data.versionName));
       } catch { /* tolerated */ }
-    })();
-    return () => { cancelled = true; };
+    };
+    fetchLatest();
+    const t = setInterval(fetchLatest, 60_000);
+    return () => { cancelled = true; clearInterval(t); };
   }, []);
   // Tick to drive stage advancement on the overlay. We avoid a tight
   // setInterval; one tick every 5s is enough to advance through the
@@ -3601,6 +3614,29 @@ function PlayerPage() {
                   <p className="text-xs text-slate-400">Service worker unsupported on this WebView.</p>
                 ) : (
                   <div className="space-y-2 text-xs">
+                    {/* 2026-05-04 — operator: "just put the playlist
+                        name and all the details about it right above
+                        the emergency info in the cache section". Each
+                        scheduled playlist now appears as a row inside
+                        the Cache card right above the Emergency assets
+                        row, instead of having its own bottom-section
+                        block (which was overflowing the splash). */}
+                    {manifestPlaylists && manifestPlaylists.length > 0 && (
+                      <>
+                        {manifestPlaylists.map((pl) => {
+                          const days = pl.daysOfWeek ? pl.daysOfWeek.replace(/,/g, ' · ') : 'Every day';
+                          const times = pl.timeStart && pl.timeEnd ? `${pl.timeStart}–${pl.timeEnd}` : 'all day';
+                          return (
+                            <div key={pl.id} className="grid grid-cols-[auto_1fr] gap-x-3 items-baseline pb-1.5 border-b border-slate-100">
+                              <span className="text-slate-500 truncate font-semibold">{pl.name}</span>
+                              <span className="font-mono text-[10px] text-slate-500 text-right">
+                                {pl.isTemplate ? 'Template' : `${pl.itemCount} slide${pl.itemCount === 1 ? '' : 's'}`} · {days} · {times}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </>
+                    )}
                     <div className="grid grid-cols-[auto_1fr] gap-x-3 items-center">
                       <span className="text-slate-500">Playlist assets</span>
                       <span className="font-mono font-semibold text-slate-700 text-right">
@@ -3883,33 +3919,13 @@ function PlayerPage() {
               );
             })()}
 
-            {/* 2026-04-28 — Paused-only: list every scheduled playlist
-                (matches the data the dark stopped splash used to show
-                via KioskSplash mode='stopped'). Folded in here so
-                operators see the full playback context on the SAME
-                paired-success view they always use. */}
-            {playbackStopped && manifestPlaylists && manifestPlaylists.length > 0 && (
-              <div className="w-full max-w-3xl mb-8 rounded-2xl bg-white/70 border border-slate-200 overflow-hidden">
-                {manifestPlaylists.map((pl, idx) => {
-                  const days = pl.daysOfWeek ? pl.daysOfWeek.replace(/,/g, ' · ') : 'Every day';
-                  const times = pl.timeStart && pl.timeEnd ? `${pl.timeStart}–${pl.timeEnd}` : 'all day';
-                  return (
-                    <div
-                      key={pl.id}
-                      className={`flex items-center justify-between gap-4 px-5 py-3 ${idx > 0 ? 'border-t border-slate-100' : ''}`}
-                    >
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-sm font-bold text-slate-800 truncate">{pl.name}</span>
-                        <span className="text-xs font-medium text-slate-500">
-                          {pl.isTemplate ? 'Template' : `${pl.itemCount} slide${pl.itemCount === 1 ? '' : 's'}`}
-                        </span>
-                      </div>
-                      <span className="text-xs font-medium text-slate-500 whitespace-nowrap">{days} · {times}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            {/* 2026-05-04 — playlist-list block REMOVED.
+                Operator: "just put the playlist name and all the
+                details about it right above the emergency info in
+                the cache section". Playlists now render as rows
+                inside the Cache card (above the Emergency assets
+                row) so they don't take a separate full-width section
+                that overflowed the splash on tall portrait kiosks. */}
 
             </div>
             {/* /SCROLL-BODY end — anything below is the sticky footer
