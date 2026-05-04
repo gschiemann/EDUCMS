@@ -11,7 +11,7 @@ export function BrandMark({ size = 'md' }: { size?: 'sm' | 'md' }) {
         <MonitorPlay className={`${iconSize} text-white`} strokeWidth={2.25} />
       </span>
       <span className={`${textSize} font-bold tracking-tight text-slate-900 font-[family-name:var(--font-fredoka)]`}>
-        EduSignage
+        VenueOS
       </span>
     </Link>
   );

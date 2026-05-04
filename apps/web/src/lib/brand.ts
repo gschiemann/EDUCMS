@@ -86,13 +86,17 @@ export const BRANDS: Record<BrandKey, BrandConfig> = {
 
 /**
  * Server-side brand resolution. Call from RSC / route handlers.
- * Reads NEXT_PUBLIC_CMS_BRAND env var; defaults to EDU CMS to preserve
- * current pilot behavior without an explicit env config.
+ * Reads NEXT_PUBLIC_CMS_BRAND env var; defaults to VenueOS so the
+ * platform reads as industry-agnostic by default. Operator decision
+ * 2026-05-04: "remove the text that says EDU Signage and replace it
+ * all with Venue OS so that the app can be used for any industry".
+ * The educms brand still exists as an explicit override for the
+ * K-12 pilot deployment.
  */
 export function getServerBrand(): BrandConfig {
   const envBrand = (process.env.NEXT_PUBLIC_CMS_BRAND || '').toLowerCase().trim();
-  if (envBrand === 'venueos') return BRANDS.venueos;
-  return BRANDS.educms;
+  if (envBrand === 'educms') return BRANDS.educms;
+  return BRANDS.venueos;
 }
 
 /**
@@ -105,8 +109,9 @@ export function getClientBrand(): BrandConfig {
   const envBrand = (process.env.NEXT_PUBLIC_CMS_BRAND || '').toLowerCase().trim();
   if (envBrand === 'venueos') return BRANDS.venueos;
   if (envBrand === 'educms') return BRANDS.educms;
-  // Domain-based fallback
+  // Domain-based fallback — VenueOS is the default brand; only flip
+  // to EDU CMS when explicitly served from the educms domain.
   const host = window.location.host.toLowerCase();
-  if (host.includes('venueos')) return BRANDS.venueos;
-  return BRANDS.educms;
+  if (host.includes('educms')) return BRANDS.educms;
+  return BRANDS.venueos;
 }

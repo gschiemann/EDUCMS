@@ -2,12 +2,12 @@
 title: How to pair a new screen
 category: Screens
 updated: 2026-04-16
-excerpt: Turn any Chromebook, smart TV, or kiosk into an EduSignage display in under 2 minutes.
+excerpt: Turn any Chromebook, smart TV, or kiosk into an VenueOS display in under 2 minutes.
 ---
 
 # How to pair a new screen
 
-EduSignage doesn't require special hardware. Any device with a modern web browser can become a signage display.
+VenueOS doesn't require special hardware. Any device with a modern web browser can become a signage display.
 
 ## Supported devices
 

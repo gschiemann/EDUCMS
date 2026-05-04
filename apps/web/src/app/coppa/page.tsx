@@ -1,17 +1,17 @@
 import { LegalPage } from '@/components/marketing/LegalPage';
 
-export const metadata = { title: 'COPPA statement — EduSignage' };
+export const metadata = { title: 'COPPA statement — VenueOS' };
 
 export default function CoppaPage() {
   return (
     <LegalPage
       title="COPPA statement"
-      subtitle="How EduSignage complies with the Children's Online Privacy Protection Act."
+      subtitle="How VenueOS complies with the Children's Online Privacy Protection Act."
       updated="April 16, 2026"
     >
       <h2>Our product is designed for schools, not children</h2>
       <p>
-        EduSignage is a business-to-business (B2B) service sold to K-12 school districts. We are not
+        VenueOS is a business-to-business (B2B) service sold to K-12 school districts. We are not
         directed to children, and we do not knowingly collect personal information directly from
         children under 13. Administrative users — teachers, principals, district IT staff — are always
         adults.
@@ -22,7 +22,7 @@ export default function CoppaPage() {
         Under the Children&apos;s Online Privacy Protection Act (COPPA), a school can provide consent on
         behalf of parents for the collection of personal information from children under 13, but only for
         the use and benefit of the school and for no other commercial purpose. Where your district uses
-        EduSignage features that touch information about students under 13, we rely on this
+        VenueOS features that touch information about students under 13, we rely on this
         school-authorized consent, consistent with FTC guidance.
       </p>
       <p>As a condition of the service, your district represents that:</p>
@@ -34,7 +34,7 @@ export default function CoppaPage() {
 
       <h2>What we collect</h2>
       <p>
-        EduSignage&apos;s core product does not collect personal information from students under 13. If
+        VenueOS&apos;s core product does not collect personal information from students under 13. If
         your district enables optional features (for example, a student-portal kiosk or an interactive
         classroom display that shows individual student names), we process only the minimum information
         necessary to deliver that feature and only as instructed by your district.

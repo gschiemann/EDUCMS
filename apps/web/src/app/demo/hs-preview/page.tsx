@@ -118,7 +118,7 @@ export default function HsPreviewPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#0f172a', color: '#fff', padding: 32, fontFamily: 'Inter, system-ui, sans-serif' }}>
-      <h1 style={{ fontSize: 28, fontWeight: 800, margin: '0 0 8px' }}>EDU CMS · Template Preview Gallery</h1>
+      <h1 style={{ fontSize: 28, fontWeight: 800, margin: '0 0 8px' }}>VenueOS · Template Preview Gallery</h1>
       <p style={{ color: '#94a3b8', margin: '0 0 28px', fontSize: 14 }}>
         Every productized lobby template, rendered full-scene at 16:9. Click any tile for the full-screen preview. The MS pack and HS pack are listed in separate sections below — they are independent design systems.
       </p>

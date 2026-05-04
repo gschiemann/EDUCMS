@@ -153,7 +153,7 @@ export function KioskSplash({
   latestApkVersion,
   onInstallUpdate,
 }: KioskSplashProps) {
-  const displayName = brandName && brandName.trim() ? brandName : 'EduSignage';
+  const displayName = brandName && brandName.trim() ? brandName : 'VenueOS';
 
   // ─── OTA banner state ────────────────────────────────────────
   // Tick every 5s while otaProgress is active so the stage label

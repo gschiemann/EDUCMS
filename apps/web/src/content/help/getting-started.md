@@ -1,11 +1,11 @@
 ---
-title: Getting started with EduSignage
+title: Getting started with VenueOS
 category: Getting Started
 updated: 2026-04-16
 excerpt: A 10-minute walkthrough from creating your tenant to showing content on your first screen.
 ---
 
-# Getting started with EduSignage
+# Getting started with VenueOS
 
 Welcome! This guide will get your first screen running in about 10 minutes. You'll create an account, add a screen, and schedule a playlist.
 
@@ -25,7 +25,7 @@ If you have more than a few screens, create **Screen Groups** (e.g. "Main Hallwa
 
 ## 3. Pick a template (or build one)
 
-EduSignage ships with **17 system templates** covering every common layout:
+VenueOS ships with **17 system templates** covering every common layout:
 
 - Welcome boards, info boards, tri-zone hallways
 - Cafeteria menus, bell schedules, bus boards

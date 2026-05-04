@@ -816,8 +816,8 @@ function PlayerPage() {
   // Read the tenant display name from the LS branding cache if this
   // machine has ever been used as an admin browser with that tenant.
   // Pre-pair the player has no tenant scope, so this is best-effort —
-  // falls back to "EduSignage" when no brand is cached.
-  const [brandName, setBrandName] = useState<string>('EduSignage');
+  // falls back to "VenueOS" when no brand is cached.
+  const [brandName, setBrandName] = useState<string>('VenueOS');
   useEffect(() => {
     try {
       const raw = localStorage.getItem('edu-cms-branding-cache-v1');

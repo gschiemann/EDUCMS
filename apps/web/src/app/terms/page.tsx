@@ -1,23 +1,23 @@
 import { LegalPage } from '@/components/marketing/LegalPage';
 
-export const metadata = { title: 'Terms of service — EduSignage' };
+export const metadata = { title: 'Terms of service — VenueOS' };
 
 export default function TermsPage() {
   return (
     <LegalPage
       title="Terms of service"
-      subtitle="The agreement between EduSignage and the schools and districts that use our service."
+      subtitle="The agreement between VenueOS and the schools and districts that use our service."
       updated="April 16, 2026"
     >
       <p>
-        These Terms of Service (&quot;<strong>Terms</strong>&quot;) govern your use of EduSignage. By
+        These Terms of Service (&quot;<strong>Terms</strong>&quot;) govern your use of VenueOS. By
         creating an account, using the dashboard, or connecting a display device, you agree to these
         Terms on behalf of yourself and the organization you represent.
       </p>
 
       <h2>1. The service</h2>
       <p>
-        EduSignage provides cloud-hosted software for managing digital signage, emergency alerts, and
+        VenueOS provides cloud-hosted software for managing digital signage, emergency alerts, and
         interactive displays across K-12 schools. The service is delivered on a subscription basis at the
         pricing tier agreed to by your district.
       </p>
@@ -48,7 +48,7 @@ export default function TermsPage() {
 
       <h2>5. Emergency system</h2>
       <p>
-        EduSignage&apos;s emergency alert system is designed to be highly reliable but is not a substitute
+        VenueOS&apos;s emergency alert system is designed to be highly reliable but is not a substitute
         for calling 911 or your local emergency services. You remain responsible for following applicable
         laws, district policies, and state drill requirements. We are not liable for any harm resulting
         from failure to follow established emergency protocols.

@@ -7,7 +7,7 @@ excerpt: How invoicing works, when you get charged, and how to upgrade or cancel
 
 # Billing and invoicing
 
-EduSignage bills per building (tenant), not per screen or per user. Here's how it works.
+VenueOS bills per building (tenant), not per screen or per user. Here's how it works.
 
 ## Billing cycles
 

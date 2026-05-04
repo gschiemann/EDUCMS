@@ -104,7 +104,7 @@ function PrintControls() {
     const originalTitle = document.title;
     const stamp = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
     const hhmm = new Date().toTimeString().slice(0, 5).replace(':', '');
-    document.title = `EduSignage — Quick-Start Guide — ${stamp} ${hhmm}`;
+    document.title = `VenueOS — Quick-Start Guide — ${stamp} ${hhmm}`;
     // Restore on next tick so the print dialog has captured the title.
     // afterprint handles the modern path; setTimeout is the fallback.
     const restore = () => {
@@ -119,7 +119,7 @@ function PrintControls() {
     <div className="guide-controls">
       <div className="guide-controls-inner">
         <div className="guide-controls-meta">
-          <span className="guide-controls-eyebrow">EduSignage</span>
+          <span className="guide-controls-eyebrow">VenueOS</span>
           <span className="guide-controls-title">Getting Started Guide</span>
         </div>
         <div className="guide-controls-actions">
@@ -156,7 +156,7 @@ function CoverPage() {
         <div className="guide-cover-mark">
           <MonitorPlay strokeWidth={1.5} />
         </div>
-        <p className="guide-cover-eyebrow">EduSignage Quick-Start</p>
+        <p className="guide-cover-eyebrow">VenueOS Quick-Start</p>
         <h1 className="guide-cover-title">
           Light up your screens
           <br />
@@ -185,7 +185,7 @@ function Welcome() {
     <section className="guide-page">
       <PageHeader chapter="Welcome" title="Before you start" />
       <p className="guide-lede">
-        This guide takes you through the four moves every new EduSignage
+        This guide takes you through the four moves every new VenueOS
         customer makes on day one: <strong>connect a screen</strong>,
         <strong> upload your content</strong>, <strong>pick a template</strong>,
         and <strong>publish a playlist</strong>. By the last page you&rsquo;ll
@@ -266,7 +266,7 @@ function Chapter1Pair() {
     <section className="guide-page">
       <PageHeader chapter="Chapter 1" title="Connect your first screen" />
       <p className="guide-lede">
-        Any web browser becomes an EduSignage display. You don&rsquo;t need
+        Any web browser becomes an VenueOS display. You don&rsquo;t need
         special hardware — Smart TVs, Chromebooks on a wheeled cart, and
         existing wall-mounted kiosks all work the same way. <strong>Don&rsquo;t
         have a screen handy?</strong> Pair a browser tab as your first display
@@ -280,7 +280,7 @@ function Chapter1Pair() {
           screen.
         </Step>
         <Step n={2} title="Open Screens in your dashboard">
-          On your laptop, log in to the EduSignage dashboard and click
+          On your laptop, log in to the VenueOS dashboard and click
           <strong> Screens</strong> in the left sidebar. Click
           <strong> Pair Screen</strong>.
         </Step>
@@ -500,7 +500,7 @@ function Chapter5Emergency() {
     <section className="guide-page">
       <PageHeader chapter="Chapter 5" title="Emergency alerts" />
       <p className="guide-lede">
-        EduSignage can flash a lockdown, weather, or evacuation message
+        VenueOS can flash a lockdown, weather, or evacuation message
         across every screen in the district within seconds. The same
         infrastructure that pushes daily content carries the alerts —
         no extra hardware, no separate app to install.
@@ -532,11 +532,11 @@ function Chapter5Emergency() {
       </div>
 
       <p className="guide-disclaimer">
-        Important: EduSignage emergency features are a <em>communications
+        Important: VenueOS emergency features are a <em>communications
         layer</em>, not a replacement for fire alarms, PA systems, 911
         dispatch, or NFPA 72 / UL 2572 certified equipment. Every district
         should run drills with their primary safety systems first; treat
-        EduSignage as a high-reliability secondary channel.
+        VenueOS as a high-reliability secondary channel.
       </p>
     </section>
   );
@@ -579,7 +579,7 @@ function SupportPage() {
       </div>
 
       <p className="guide-thanks">
-        Thank you for choosing EduSignage. We built this for every district
+        Thank you for choosing VenueOS. We built this for every district
         that ever wished their school&rsquo;s signage just <em>worked</em>.
       </p>
     </section>

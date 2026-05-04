@@ -2,18 +2,18 @@
 title: Inviting staff and assigning roles
 category: Getting Started
 updated: 2026-04-16
-excerpt: Bring your team into EduSignage, give them the right permissions, and revoke access cleanly when someone leaves.
+excerpt: Bring your team into VenueOS, give them the right permissions, and revoke access cleanly when someone leaves.
 ---
 
 # Inviting staff and assigning roles
 
-Every EduSignage account starts with one user — the person who created the account. To get useful, you'll want to bring in colleagues.
+Every VenueOS account starts with one user — the person who created the account. To get useful, you'll want to bring in colleagues.
 
 ## Role overview
 
 | Role | Can do |
 |---|---|
-| **SUPER_ADMIN** | Manage every tenant in the system. Only EduSignage staff have this. |
+| **SUPER_ADMIN** | Manage every tenant in the system. Only VenueOS staff have this. |
 | **DISTRICT_ADMIN** | Manage schools, users, and branding for the whole district. |
 | **SCHOOL_ADMIN** | Manage screens, playlists, staff, and settings within one school. |
 | **CONTRIBUTOR** | Upload assets, build templates, create schedules. Cannot manage users or settings. |
@@ -55,4 +55,4 @@ Disabling is reversible; deleting is not.
 
 ## When someone leaves the district
 
-If you use SSO, de-provisioning from your IdP (Google Workspace, Entra, Clever) automatically blocks login. We recommend **also** disabling the user in EduSignage to revoke any active sessions and API tokens.
+If you use SSO, de-provisioning from your IdP (Google Workspace, Entra, Clever) automatically blocks login. We recommend **also** disabling the user in VenueOS to revoke any active sessions and API tokens.

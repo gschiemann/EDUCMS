@@ -27,7 +27,7 @@ export default function OnboardingBrandingPage() {
     <div className="min-h-screen">
       <header className="px-6 py-3 border-b border-slate-200 bg-white flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="font-bold">EduSignage</span>
+          <span className="font-bold">VenueOS</span>
           <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">Onboarding · step 2 of 4</span>
         </div>
         <Link href={activeTenant ? `/${activeTenant}/dashboard` : '/'} className="text-sm text-slate-500 hover:text-slate-900">Skip for now →</Link>

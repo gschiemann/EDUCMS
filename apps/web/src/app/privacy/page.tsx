@@ -1,19 +1,19 @@
 import { LegalPage } from '@/components/marketing/LegalPage';
 
-export const metadata = { title: 'Privacy policy — EduSignage' };
+export const metadata = { title: 'Privacy policy — VenueOS' };
 
 export default function PrivacyPage() {
   return (
     <LegalPage
       title="Privacy policy"
-      subtitle="How EduSignage collects, uses, and protects your data."
+      subtitle="How VenueOS collects, uses, and protects your data."
       updated="April 16, 2026"
     >
       <p>
-        EduSignage (&quot;<strong>we</strong>&quot;, &quot;<strong>us</strong>&quot;) provides digital signage
+        VenueOS (&quot;<strong>we</strong>&quot;, &quot;<strong>us</strong>&quot;) provides digital signage
         and emergency alerting software to K-12 school districts. This policy explains what information we
         collect from staff users and connected devices, how we use it, and your choices. By using
-        EduSignage, you agree to the practices described here.
+        VenueOS, you agree to the practices described here.
       </p>
 
       <h2>1. Information we collect</h2>
@@ -21,7 +21,7 @@ export default function PrivacyPage() {
       <ul>
         <li>Your name, email address, and the school or district you are affiliated with.</li>
         <li>Authentication data (hashed password, or identifier tokens issued by your SSO provider).</li>
-        <li>Role and permissions assigned to you within your organization&apos;s EduSignage tenant.</li>
+        <li>Role and permissions assigned to you within your organization&apos;s VenueOS tenant.</li>
       </ul>
       <h3>Content you upload</h3>
       <ul>
@@ -37,7 +37,7 @@ export default function PrivacyPage() {
 
       <h2>2. Student data</h2>
       <p>
-        EduSignage is designed so that we rarely need to process personally identifiable information (PII)
+        VenueOS is designed so that we rarely need to process personally identifiable information (PII)
         about students. Our standard product does not ingest student records. If your district enables
         optional features (for example, an attendance ticker or a classroom portal) that display or
         reference student PII, that data is processed under a separate data processing agreement and in
@@ -47,7 +47,7 @@ export default function PrivacyPage() {
 
       <h2>3. How we use information</h2>
       <ul>
-        <li>To operate EduSignage and deliver the signage and alerting services you and your district request.</li>
+        <li>To operate VenueOS and deliver the signage and alerting services you and your district request.</li>
         <li>To authenticate users and enforce role-based access controls.</li>
         <li>To produce audit logs that your district can review for compliance and safety investigations.</li>
         <li>To diagnose and fix service issues.</li>
@@ -59,7 +59,7 @@ export default function PrivacyPage() {
       </p>
 
       <h2>4. Sharing and sub-processors</h2>
-      <p>We use a small number of vetted sub-processors to run EduSignage:</p>
+      <p>We use a small number of vetted sub-processors to run VenueOS:</p>
       <ul>
         <li><strong>Supabase</strong> — managed PostgreSQL database and object storage.</li>
         <li><strong>Railway / Vercel</strong> — hosting for our backend API and web dashboard.</li>
@@ -82,7 +82,7 @@ export default function PrivacyPage() {
 
       <h2>6. Security</h2>
       <ul>
-        <li>All traffic to EduSignage is encrypted in transit via TLS 1.2+.</li>
+        <li>All traffic to VenueOS is encrypted in transit via TLS 1.2+.</li>
         <li>Passwords are hashed with Argon2id; we never store plaintext.</li>
         <li>Emergency broadcast messages are cryptographically signed and verified on the receiving device.</li>
         <li>Role-based access control is enforced on every API endpoint.</li>
@@ -102,14 +102,14 @@ export default function PrivacyPage() {
 
       <h2>8. Children under 13</h2>
       <p>
-        EduSignage is a business-to-business product contracted by schools and districts. We do not
+        VenueOS is a business-to-business product contracted by schools and districts. We do not
         knowingly collect personal information directly from children under 13. See our{' '}
         <a href="/coppa">COPPA statement</a> for details on how we handle any child-directed data.
       </p>
 
       <h2>9. International users</h2>
       <p>
-        EduSignage is hosted in the United States. If you access the service from outside the US, you
+        VenueOS is hosted in the United States. If you access the service from outside the US, you
         consent to the transfer of your information to the US. Districts with additional regulatory
         requirements (for example, under state data privacy laws such as CSDPA, SOPIPA, or SHIELD) should
         contact us to put an appropriate data processing addendum in place.

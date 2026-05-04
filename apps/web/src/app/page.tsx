@@ -15,7 +15,7 @@ import { PublicShell } from '@/components/marketing/PublicShell';
  * retired, features trimmed from 6 → 4 plain-English cards,
  * emergency section stripped of developer jargon.
  *
- * The hero visual is a live-rendered EduSignage template (the
+ * The hero visual is a live-rendered VenueOS template (the
  * Elementary "Rainbow" preset) embedded inside a browser-chrome
  * frame, scaled to fit via the same `scale-embed` pattern the HS
  * template gallery uses. Three tile thumbnails below the hero show
@@ -30,7 +30,7 @@ import { PublicShell } from '@/components/marketing/PublicShell';
  */
 
 export const metadata = {
-  title: 'EduSignage — every screen in your school, in one place',
+  title: 'VenueOS — every screen in your school, in one place',
   description:
     'One secure platform for hallway displays, cafeteria menus, classroom boards, and emergency lockdown alerts — across every screen in your district.',
 };
@@ -308,7 +308,7 @@ function Features() {
       <div className="max-w-6xl mx-auto px-6">
         <div className="text-center mb-14">
           <p className="text-xs font-bold tracking-[0.12em] uppercase text-indigo-600 mb-2">
-            Why schools pick EduSignage
+            Why schools pick VenueOS
           </p>
           <h2 className="font-[family-name:var(--font-fredoka)] text-3xl md:text-5xl font-semibold tracking-tight text-slate-900">
             Built for the people actually running the school.

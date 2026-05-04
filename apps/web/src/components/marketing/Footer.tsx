@@ -43,7 +43,7 @@ export function Footer() {
       </div>
       <div className="border-t border-slate-200/60">
         <div className="max-w-6xl mx-auto px-6 py-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs text-slate-500">
-          <p>&copy; {year} EduSignage. Built for K-12 schools.</p>
+          <p>&copy; {year} VenueOS. Built for K-12 schools.</p>
           <p className="italic">Review with your district&apos;s legal counsel before adoption.</p>
         </div>
       </div>

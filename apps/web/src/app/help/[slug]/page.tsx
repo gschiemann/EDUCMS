@@ -16,9 +16,9 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: Props) {
   const { slug } = await params;
   const article = getArticle(slug);
-  if (!article) return { title: 'Article not found — EduSignage' };
+  if (!article) return { title: 'Article not found — VenueOS' };
   return {
-    title: `${article.title} — EduSignage help`,
+    title: `${article.title} — VenueOS help`,
     description: article.excerpt,
   };
 }

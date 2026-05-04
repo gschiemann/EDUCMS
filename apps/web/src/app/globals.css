@@ -307,7 +307,7 @@
    on mount so this selector matches. Plain attribute selector works
    on every browser, no :has() required. */
 body[data-player-route]::before {
-  content: "build-LAYERFLAT-v8 · modern (color-mix OK)";
+  content: "build-VENUEOS-v9 · modern (color-mix OK)";
   position: fixed;
   top: 4px;
   right: 4px;
@@ -323,7 +323,7 @@ body[data-player-route]::before {
 }
 @supports not (color: color-mix(in oklab, red 50%, blue)) {
   body[data-player-route]::before {
-    content: "build-LAYERFLAT-v8 · CR95 + LAYER-POLYFILL ACTIVE";
+    content: "build-VENUEOS-v9 · CR95 + LAYER-POLYFILL ACTIVE";
     background: #f59e0b !important;
   }
 }

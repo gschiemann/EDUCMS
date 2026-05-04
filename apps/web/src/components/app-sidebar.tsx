@@ -50,7 +50,7 @@ export function AppSidebar() {
           <div className="bg-primary/10 p-1.5 rounded-lg edu-glow">
             <MonitorPlay className="w-6 h-6 text-primary" />
           </div>
-          <span className="bg-clip-text text-transparent bg-gradient-to-r from-primary to-indigo-400 font-extrabold">EduSignage</span>
+          <span className="bg-clip-text text-transparent bg-gradient-to-r from-primary to-indigo-400 font-extrabold">VenueOS</span>
         </h2>
         {user && (
           <p className="text-xs text-sidebar-foreground/60 mt-1 truncate">{user.email}</p>

@@ -7,7 +7,7 @@ excerpt: Configure district-wide single sign-on so staff never have to remember 
 
 # Setting up SSO
 
-EduSignage supports three SSO paths on District and Enterprise plans:
+VenueOS supports three SSO paths on District and Enterprise plans:
 
 - **Google Workspace** (OIDC)
 - **Microsoft Entra ID / Azure AD** (OIDC)
@@ -23,9 +23,9 @@ EduSignage supports three SSO paths on District and Enterprise plans:
 
 1. Go to **Settings → Authentication → Add identity provider**.
 2. Pick **Google**.
-3. In your Google Admin console, add EduSignage as an OAuth client. The redirect URI we require is:
+3. In your Google Admin console, add VenueOS as an OAuth client. The redirect URI we require is:
    `https://your-domain.edusignage.app/api/v1/auth/oidc/callback`
-4. Paste the client ID and secret back into the EduSignage dashboard.
+4. Paste the client ID and secret back into the VenueOS dashboard.
 5. Restrict sign-in to users whose email ends in your district domain (e.g. `@lincolnusd.org`).
 6. Click **Test connection**, then **Enable**.
 
@@ -34,7 +34,7 @@ EduSignage supports three SSO paths on District and Enterprise plans:
 1. In the Azure portal, register a new **App** with the redirect URI above.
 2. Under **API Permissions**, add `openid`, `profile`, `email`.
 3. Copy the tenant ID, client ID, and generate a client secret.
-4. In EduSignage: **Settings → Authentication → Add identity provider → Microsoft**, and paste the three values.
+4. In VenueOS: **Settings → Authentication → Add identity provider → Microsoft**, and paste the three values.
 5. Test, then enable.
 
 ## Generic SAML 2.0
@@ -50,7 +50,7 @@ On your IdP, create a new SAML app with those values. Required attributes:
 - `email` (NameID format)
 - `firstName`
 - `lastName`
-- *(Optional)* `role` — if you send this, we map it to EduSignage roles; otherwise everyone comes in as CONTRIBUTOR and admins promote from there.
+- *(Optional)* `role` — if you send this, we map it to VenueOS roles; otherwise everyone comes in as CONTRIBUTOR and admins promote from there.
 
 ## Just-In-Time (JIT) provisioning
 

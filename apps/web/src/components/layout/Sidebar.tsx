@@ -17,7 +17,7 @@ import type { TenantBranding } from '@/lib/branding';
 // Mobile-Claude's cross-tenant fix moved the injector to per-tenant
 // keys but the Sidebar was still reading the legacy global key, which
 // is always empty after migration. That left the sidebar stuck on
-// default "EduSignage" branding no matter what the tenant adopted.
+// default "VenueOS" branding no matter what the tenant adopted.
 const BRAND_LS_PREFIX = 'edu-cms-branding-cache-v1:';
 const BRAND_LS_LEGACY = 'edu-cms-branding-cache-v1';
 
@@ -41,7 +41,7 @@ export function Sidebar() {
   // Tenant branding for sidebar header. Reads from the PER-TENANT LS
   // cache written by <BrandStyleInjector> + re-fires on the
   // 'branding:update' event so newly-adopted brands repaint the header
-  // live. Defaults to EduSignage when no branding is set for this
+  // live. Defaults to VenueOS when no branding is set for this
   // tenant. The cache key depends on the active tenantId; re-reads
   // whenever that changes so tenant-switch picks up the other
   // tenant's brand immediately.
@@ -76,9 +76,9 @@ export function Sidebar() {
 
   // 2026-05-03 — VenueOS rebrand. Brand name fallback chain:
   //   1. Tenant's custom branding.displayName (if they set one)
-  //   2. Vertical-aware default ("EduSignage" for K12, "VenueOS" for
+  //   2. Vertical-aware default ("VenueOS" for K12, "VenueOS" for
   //      everyone else — gym/retail/corporate/qsr/fashion don't want
-  //      "EduSignage" branding everywhere when they signed up as
+  //      "VenueOS" branding everywhere when they signed up as
   //      something else entirely).
   const tenantCopyForBrand = useTenantCopy();
   const brandName = (mounted && branding?.displayName) || tenantCopyForBrand.defaultBrandName;

@@ -2,7 +2,7 @@
 
 /**
  * Signup page — the first impression a school administrator has of
- * EduSignage. Previously a small dark form card on a slate gradient
+ * VenueOS. Previously a small dark form card on a slate gradient
  * that read as an indie side project ("kinda lame", per user).
  *
  * Rebuilt as a split-screen product story:
@@ -20,7 +20,7 @@
  *     gold-standard templates.
  *
  * Explicitly NOT themed per-tenant: this is the PRODUCT surface
- * (public, pre-auth) so brand colors stay locked to EduSignage's
+ * (public, pre-auth) so brand colors stay locked to VenueOS's
  * identity. No --brand-primary reads here.
  */
 
@@ -116,7 +116,7 @@ export default function SignupPage() {
             <MonitorPlay className="w-5 h-5 text-white" />
           </div>
           <span className="font-[family-name:var(--font-fredoka)] text-xl font-semibold tracking-tight text-slate-900">
-            EduSignage
+            VenueOS
           </span>
         </Link>
         <Link
@@ -334,7 +334,7 @@ export default function SignupPage() {
 
       {/* Tiny footer — keeps pre-auth weight on the signup CTA. */}
       <footer className="relative z-10 max-w-7xl mx-auto px-6 pb-8 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-        <div>&copy; {new Date().getFullYear()} EduSignage. Built for K-12.</div>
+        <div>&copy; {new Date().getFullYear()} VenueOS. Built for K-12.</div>
         <div className="flex items-center gap-4">
           <Link href="/terms" className="hover:text-slate-700">Terms</Link>
           <Link href="/privacy" className="hover:text-slate-700">Privacy</Link>

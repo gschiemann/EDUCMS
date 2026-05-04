@@ -7,7 +7,7 @@ excerpt: Auto-sync staff, classrooms, and bell schedules from your SIS via Cleve
 
 # Connecting Clever for rostering
 
-Clever is the most common way US K-12 districts share SIS data with edtech vendors. EduSignage uses Clever to keep staff accounts, classrooms, and bell schedules in sync — so you don't have to re-enter them every August.
+Clever is the most common way US K-12 districts share SIS data with edtech vendors. VenueOS uses Clever to keep staff accounts, classrooms, and bell schedules in sync — so you don't have to re-enter them every August.
 
 ## What we sync
 
@@ -21,7 +21,7 @@ We do **not** sync student PII. Student data is scoped to the Clever `students` 
 
 ## Connecting your district
 
-1. In the EduSignage dashboard, go to **Settings → Integrations → Clever**.
+1. In the VenueOS dashboard, go to **Settings → Integrations → Clever**.
 2. Click **Connect via Clever OAuth**.
 3. A Clever-hosted consent screen opens. Log in as a Clever district admin and approve the data scopes we request.
 4. You'll be redirected back and the first sync kicks off automatically. Initial syncs for a 10-school district take about 5 minutes.
@@ -30,9 +30,9 @@ We do **not** sync student PII. Student data is scoped to the Clever `students` 
 
 Clever pushes deltas to us via webhook as changes happen, plus a full reconciliation nightly. You can force a manual sync from the integrations page if you've just made a big change in your SIS.
 
-## Mapping Clever roles to EduSignage roles
+## Mapping Clever roles to VenueOS roles
 
-| Clever job title | EduSignage role |
+| Clever job title | VenueOS role |
 |---|---|
 | District Administrator | DISTRICT_ADMIN |
 | School Administrator / Principal | SCHOOL_ADMIN |

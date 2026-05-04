@@ -7,7 +7,7 @@ excerpt: How lockdown, weather, and evacuation alerts work — and the safeguard
 
 # Emergency system overview
 
-The emergency system is the most load-bearing feature in EduSignage. It's designed to be **reliable**, **auditable**, and **resistant to misuse** — in that order.
+The emergency system is the most load-bearing feature in VenueOS. It's designed to be **reliable**, **auditable**, and **resistant to misuse** — in that order.
 
 ## What it does
 

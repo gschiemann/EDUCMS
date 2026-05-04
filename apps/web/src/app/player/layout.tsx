@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { AppDialogHost } from '@/components/ui/app-dialog';
 
 export const metadata: Metadata = {
-  title: 'EDU CMS Player',
+  title: 'VenueOS Player',
   description: 'Digital signage player for screens',
   manifest: '/player/manifest.json',
 };

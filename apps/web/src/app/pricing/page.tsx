@@ -3,7 +3,7 @@ import { Check, ArrowRight, Sparkles, Shield, Building2 } from 'lucide-react';
 import { PublicShell } from '@/components/marketing/PublicShell';
 
 export const metadata = {
-  title: 'Pricing — EduSignage',
+  title: 'Pricing — VenueOS',
   description: 'Flat per-building pricing. Unlimited screens, users, and templates. Free pilot for K-12 schools.',
 };
 

@@ -166,7 +166,7 @@ function LoginContent() {
             <MonitorPlay className="w-7 h-7 text-white" />
           </div>
           <h1 className="text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700">
-            EduSignage
+            VenueOS
           </h1>
           <p className="text-sm font-medium text-slate-500 mt-1">K-12 digital signage, made simple.</p>
         </div>

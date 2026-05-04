@@ -12,7 +12,7 @@ import { BrandingWizard } from '@/components/branding/BrandingWizard';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Try auto-branding · EduSignage',
+  title: 'Try auto-branding · VenueOS',
   description: 'Paste your school website URL — we instantly re-skin the CMS to match your brand.',
 };
 
@@ -20,7 +20,7 @@ export default function DemoBrandingPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
       <header className="px-6 py-4 flex items-center justify-between border-b border-slate-200 bg-white/70 backdrop-blur sticky top-0 z-10">
-        <Link href="/" className="font-bold text-lg">EduSignage</Link>
+        <Link href="/" className="font-bold text-lg">VenueOS</Link>
         <div className="flex gap-2 text-sm items-center">
           <span className="text-slate-500">Try the live demo</span>
           <Link href="/signup" className="bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700">Start a pilot</Link>

@@ -15,9 +15,9 @@ The cleanest option if you already use Google Workspace for Education.
 
 1. In the Google Admin console, go to **Devices → Chrome → Devices**.
 2. Enroll the Chromebook or Chromebox into a dedicated **Kiosk** OU.
-3. Under **Apps & extensions → Kiosks**, add the EduSignage player as a kiosk app (Chrome app ID provided in your district settings).
-4. Set **Auto-launch kiosk app** to the EduSignage player.
-5. Reboot the device — it now boots directly into EduSignage, with no way to exit to the OS without the device password.
+3. Under **Apps & extensions → Kiosks**, add the VenueOS player as a kiosk app (Chrome app ID provided in your district settings).
+4. Set **Auto-launch kiosk app** to the VenueOS player.
+5. Reboot the device — it now boots directly into VenueOS, with no way to exit to the OS without the device password.
 
 Disable developer mode at the hardware level with a **cr50 lock** if possible.
 
@@ -37,7 +37,7 @@ Disable developer mode at the hardware level with a **cr50 lock** if possible.
 
 ## Touch displays
 
-EduSignage player respects touch input when the current template has tappable widgets (wayfinding, menus, student portals). To allow or restrict touch:
+VenueOS player respects touch input when the current template has tappable widgets (wayfinding, menus, student portals). To allow or restrict touch:
 
 - Set the **Interactive** flag per template in the builder
 - Non-interactive templates ignore touch to prevent accidental navigation

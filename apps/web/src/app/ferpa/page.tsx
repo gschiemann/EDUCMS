@@ -1,12 +1,12 @@
 import { LegalPage } from '@/components/marketing/LegalPage';
 
-export const metadata = { title: 'FERPA statement — EduSignage' };
+export const metadata = { title: 'FERPA statement — VenueOS' };
 
 export default function FerpaPage() {
   return (
     <LegalPage
       title="FERPA statement"
-      subtitle="How EduSignage complies with the Family Educational Rights and Privacy Act."
+      subtitle="How VenueOS complies with the Family Educational Rights and Privacy Act."
       updated="April 16, 2026"
     >
       <h2>Our role as a &quot;school official&quot;</h2>
@@ -17,7 +17,7 @@ export default function FerpaPage() {
         educational interests,&quot; including outside service providers under the conditions of 34 CFR
         &sect; 99.31(a)(1)(i)(B).
       </p>
-      <p>When your school or district uses EduSignage, we act as a school official because:</p>
+      <p>When your school or district uses VenueOS, we act as a school official because:</p>
       <ul>
         <li>We perform a service for which the school would otherwise use its own employees.</li>
         <li>We operate under the direct control of the school with respect to the use and maintenance of education records.</li>
@@ -26,7 +26,7 @@ export default function FerpaPage() {
 
       <h2>What we do (and don&apos;t) collect</h2>
       <p>
-        EduSignage is designed to minimize contact with student records. The core product operates on
+        VenueOS is designed to minimize contact with student records. The core product operates on
         signage content (announcements, menus, bell schedules) that does not typically include student
         PII. When your district enables optional features that could include student PII (for example, a
         classroom directory on a touchscreen display), we process that data solely to provide the
@@ -45,7 +45,7 @@ export default function FerpaPage() {
         Your school may have designated certain items as &quot;directory information&quot; that can be
         publicly displayed (for example, student name on an honor-roll board). Your district is
         responsible for ensuring parental opt-out procedures have been honored before any student name or
-        photograph is uploaded to EduSignage for public display.
+        photograph is uploaded to VenueOS for public display.
       </p>
 
       <h2>Parental rights</h2>

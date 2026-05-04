@@ -9,7 +9,7 @@ excerpt: Give specific non-admin staff the ability to trigger emergencies withou
 
 Most districts want more than just the principal to be able to trigger a lockdown. Front-office staff, SROs, and trained teachers often need the same power without getting full admin access to the CMS.
 
-EduSignage handles this through a per-user capability flag: `canTriggerPanic`.
+VenueOS handles this through a per-user capability flag: `canTriggerPanic`.
 
 ## How it works
 

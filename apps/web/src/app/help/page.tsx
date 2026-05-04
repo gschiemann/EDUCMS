@@ -3,8 +3,8 @@ import { HelpHub } from '@/components/help/HelpHub';
 import { getAllArticles } from '@/content/help';
 
 export const metadata = {
-  title: 'Help center — EduSignage',
-  description: 'Guides, how-tos, and answers for EduSignage admins, teachers, and district IT.',
+  title: 'Help center — VenueOS',
+  description: 'Guides, how-tos, and answers for VenueOS admins, teachers, and district IT.',
 };
 
 export default function HelpPage() {

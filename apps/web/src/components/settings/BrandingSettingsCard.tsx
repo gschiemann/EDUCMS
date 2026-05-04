@@ -330,7 +330,7 @@ export function BrandingSettingsCard() {
                     <AlertTriangle className="h-5 w-5 text-rose-600 flex-shrink-0 mt-0.5" />
                     <div className="flex-1">
                       <div className="font-semibold text-rose-900 text-sm">
-                        Wipe custom branding and revert to EduSignage defaults?
+                        Wipe custom branding and revert to VenueOS defaults?
                       </div>
                       <div className="text-xs text-rose-700/90 mt-1">
                         Logo, colors, fonts, display name, and tagline will all reset. This is reversible — you can re-scan any time.
