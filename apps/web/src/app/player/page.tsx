@@ -2159,26 +2159,45 @@ function PlayerPage() {
   }, [phase, screenId, fetchContent, activeEmergency]);
 
   // ─── Cycle through slides ───
-  // 2026-05-04 — Goodview / Chromium 95 hotfix.
-  // Operator (live install): "the content only loads one image from the
-  // 8 image carousel and gets stuck never moves on". Same class of bug
-  // the prior ee28970 fix tried to kill: any spurious re-render that
-  // changes the `playlist` REFERENCE (even with identical content) used
-  // to make this effect fire its cleanup → clearTimeout → the next
-  // tick's setTimeout never fires because immediately after another
-  // re-render fires the cleanup again. The signature gate inside
-  // applyManifest catches the common case but doesn't cover every
-  // reference-churn path on older WebViews (e.g. parent-state changes
-  // bumping the playlist object via spread, token refresh, async
-  // setPhase races on Chromium 95's stricter-but-buggier microtask
-  // queueing). Fix: dep on a STABLE STRING signature derived from
-  // items, not on the playlist object reference. Identical contents
-  // produce identical strings, so the effect re-fires only when the
-  // playlist's items actually change OR currentIndex advances.
-  // The body still reads `playlist?.items` from the latest closure;
-  // when the sig is unchanged the closure has identical-content items,
-  // so reading from a "stale" closure is functionally identical to
-  // reading from the current one.
+  // 2026-05-04 — Goodview / Chromium 95 / older Android System WebView
+  // bulletproofing. THIRD attempt at this bug.
+  //
+  // Symptoms over time:
+  //   - "carousel 1→2→1 loop"     (ee28970, fixed for modern Chromium)
+  //   - "stuck on slide 1, never advances on Goodview Chromium 95"
+  //     (fed6313, fixed playlist-ref churn via stable string sig)
+  //   - "force quit + relaunch, same issue, yodeck and optisigns work"
+  //     (THIS COMMIT — replace the fragile setTimeout pattern entirely)
+  //
+  // Why setTimeout was wrong:
+  //   - setTimeout is throttled aggressively on older Android System
+  //     WebView builds, especially when the WebView thinks the page
+  //     is "idle" (no user input, fixed background, no animations
+  //     visible to the OS).
+  //   - Single setTimeout(N) means: if the OS skips this single
+  //     callback for any reason (GC, background throttle, JS thread
+  //     contention from image decode), the slide NEVER advances.
+  //   - useEffect cleanup fires on every dep-change re-render, which
+  //     resets the timer. Even with the stable-string fix from
+  //     fed6313, edge cases (manifest refetch coinciding with the
+  //     timer's tail end) could still kill the single setTimeout.
+  //
+  // Why this version is bulletproof:
+  //   - Uses a setInterval heartbeat ticking every 500ms. Even if
+  //     individual ticks are throttled, the next one self-corrects.
+  //   - Each tick computes `Date.now() - slideStartedAtRef.current`
+  //     and advances when elapsed >= duration. So if the OS skips
+  //     5 consecutive ticks (unlikely but possible on a stressed
+  //     kiosk), the next tick that fires WILL detect the elapsed
+  //     duration and advance immediately.
+  //   - slideStartedAtRef tracks WHEN the current slide started.
+  //     Reset on every advance OR when sorted/playlist changes.
+  //   - Refs (not state) hold the loop-relevant data so the interval
+  //     callback always reads the latest values without re-creating
+  //     the interval on every render.
+  //
+  // This is the same pattern Yodeck/OptiSigns use under the hood:
+  // a single self-correcting interval, not a one-shot setTimeout.
   const playlistItemsSig = useMemo(() => {
     if (!playlist?.items?.length) return '';
     return playlist.items
@@ -2186,12 +2205,31 @@ function PlayerPage() {
       .join('||');
   }, [playlist]);
 
+  // Refs the heartbeat reads — kept fresh by the render-time mirror below.
+  const slideStartedAtRef = useRef<number>(Date.now());
+  const sortedItemsRef = useRef<any[]>([]);
+  const currentIndexRef = useRef<number>(0);
+
+  // Mirror render-time values into refs so the interval callback can
+  // read the latest snapshot without restarting the interval.
+  useEffect(() => {
+    sortedItemsRef.current = playlist?.items
+      ? [...playlist.items].sort((a: any, b: any) => a.sequenceOrder - b.sequenceOrder)
+      : [];
+    currentIndexRef.current = currentIndex;
+  });
+
+  // Reset the slide-started timestamp whenever the active slide changes
+  // OR the playlist content changes. Without this, advancing to slide 2
+  // would inherit slide 1's start time, immediately re-fire the advance,
+  // and skip slide 2 entirely.
+  useEffect(() => {
+    slideStartedAtRef.current = Date.now();
+  }, [currentIndex, playlistItemsSig]);
+
   useEffect(() => {
     if (phase !== 'playing' || !playlist?.items?.length) return;
 
-    const sorted = [...playlist.items].sort((a: any, b: any) => a.sequenceOrder - b.sequenceOrder);
-
-    // Core slide scheduler logic
     const isItemValid = (item: any) => {
       if (!item.daysOfWeek && !item.timeStart && !item.timeEnd) return true;
       const now = new Date();
@@ -2210,47 +2248,48 @@ function PlayerPage() {
       return true;
     };
 
-    // Find the next VALID index, up to a full cycle search
-    let nextIndex = currentIndex % sorted.length;
-    let found = false;
-    for (let i = 0; i < sorted.length; i++) {
-      if (isItemValid(sorted[nextIndex])) {
-        found = true;
-        break;
+    // Heartbeat — fires every 500ms. Self-correcting: any single missed
+    // tick is recovered by the next one. Reads sortedItemsRef +
+    // currentIndexRef so it never goes stale.
+    const heartbeat = setInterval(() => {
+      const sorted = sortedItemsRef.current;
+      if (!sorted.length) return;
+      const idx = currentIndexRef.current % sorted.length;
+      const item = sorted[idx];
+      if (!item) return;
+
+      // If the current slide is invalid (daypart filter), skip forward
+      // to the next valid one immediately.
+      if (!isItemValid(item)) {
+        let nextIndex = idx;
+        let found = false;
+        for (let i = 0; i < sorted.length; i++) {
+          nextIndex = (nextIndex + 1) % sorted.length;
+          if (isItemValid(sorted[nextIndex])) {
+            found = true;
+            break;
+          }
+        }
+        if (found && nextIndex !== idx) {
+          setCurrentIndex(nextIndex);
+        }
+        return;
       }
-      nextIndex = (nextIndex + 1) % sorted.length;
-    }
 
-    if (!found) {
-      // Entire playlist is locked right now! Fallback loop retry every 30s.
-      // Cleanup return added 2026-05-04 — was missing; the fallback timer
-      // could leak on re-fire and double-up. Symptoms on Chromium 95:
-      // multiple advances per tick when the daypart filter flapped near
-      // a window edge.
-      timerRef.current = setTimeout(() => setCurrentIndex(prev => prev + 1), 30000);
-      return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-    }
+      // Videos drive their own advance via <video onEnded>. Don't
+      // tick them — the heartbeat would race the natural completion.
+      if (item.asset?.mimeType?.startsWith('video/')) return;
 
-    // If we skipped invalid slides to arrive at nextIndex, update state immediately
-    if (nextIndex !== (currentIndex % sorted.length)) {
-      setCurrentIndex(nextIndex);
-      return;
-    }
+      const duration = item.durationMs || 10000;
+      const elapsed = Date.now() - slideStartedAtRef.current;
+      if (elapsed >= duration) {
+        setCurrentIndex((prev) => prev + 1);
+      }
+    }, 500);
 
-    const item = sorted[nextIndex];
-    if (item?.asset?.mimeType?.startsWith('video/')) {
-      // For videos, do NOT set a timer. Let the <video onEnded> execute the sequence increment naturally.
-      return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-    }
-
-    const duration = item?.durationMs || 10000;
-    timerRef.current = setTimeout(() => {
-      setCurrentIndex(prev => prev + 1);
-    }, duration);
-
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+    return () => clearInterval(heartbeat);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, playlistItemsSig, currentIndex]);
+  }, [phase, playlistItemsSig]);
 
   // ═══════════════════════════════════════════════════════════════
   // ALL HOOKS MUST BE CALLED BEFORE ANY EARLY RETURN (Rules of Hooks).

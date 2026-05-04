@@ -38,7 +38,13 @@
 //     network Request still uses the full signed URL (cache.put preserves
 //     the original Request) so authorized fetches still succeed; only
 //     the dedupe / eviction / size-tracking maps key on the stable form.
-const VERSION = 'v4';
+// v5 — 2026-05-04 — bump only to force every paired kiosk to drop its
+// stale playlist cache and re-fetch fresh from the network the next
+// time activate fires. No code change here; the version bump itself
+// is the cache-bust mechanism. Combined with the page-side fix to
+// the slide-cycle (Goodview / Chromium 95 stuck-on-slide-1), this
+// guarantees old kiosks pick up the new behavior on next reload.
+const VERSION = 'v5';
 const PLAYLIST_CACHE = `edu-player-playlist-${VERSION}`;
 const EMERGENCY_CACHE = `edu-player-emergency-${VERSION}`;
 const META_CACHE = `edu-player-meta-${VERSION}`; // stores sha hashes per URL
