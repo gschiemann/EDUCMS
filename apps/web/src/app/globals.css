@@ -275,3 +275,130 @@
   border-radius: 2px;
   background: #6366f1;
 }
+
+/* ──────────────────────────────────────────────────────────────────
+ * Chromium 95 / older Android System WebView opacity fallback.
+ *
+ * 2026-05-04 — operator (live install on Goodview Chromium 95):
+ *   "the splash screen still has no UI, it just the text"
+ *
+ * Tailwind v4 emits opacity-modified utilities (bg-white/80,
+ * bg-indigo-400/20, text-slate-700/30, etc.) as
+ *
+ *   background-color: color-mix(in oklab, var(--color-X) Y%, transparent)
+ *
+ * `color-mix()` is Chromium 111+ only. Chromium 95 fails to parse
+ * the declaration → the rule is invalid → the element renders with
+ * NO background at all. The white panel disappears, the gradient
+ * blurs disappear, the rounded card chrome disappears. All that's
+ * left is unstyled text, which is exactly what the operator
+ * screenshotted.
+ *
+ * Fix: wrap rgba() fallbacks in `@supports not (color-mix(...))`
+ * so they apply ONLY on Chromium <111 / older WebViews. Modern
+ * browsers ignore this entire block. The !important wins over
+ * the cascade order whatever Tailwind emits.
+ *
+ * Restricted to the opacity utilities the player splash + builder
+ * rely on (white/x for cards, indigo-X/20 for decorative blurs,
+ * black/x for overlays). Other opacity utilities used only in
+ * dashboard chrome will still degrade silently — operator can't
+ * see those on a kiosk anyway.
+ *
+ * Yodeck / OptiSigns avoid this class of bug because they ship a
+ * pre-Tailwind-v4 stylesheet (they don't use color-mix at all).
+ * We can't easily downgrade Tailwind, so this fallback layer is
+ * the bridge.
+ * ────────────────────────────────────────────────────────────── */
+@supports not (color: color-mix(in oklab, red 50%, blue)) {
+  /* Pure white card backgrounds */
+  .bg-white\/80 { background-color: rgba(255, 255, 255, 0.8) !important; }
+  .bg-white\/85 { background-color: rgba(255, 255, 255, 0.85) !important; }
+  .bg-white\/90 { background-color: rgba(255, 255, 255, 0.9) !important; }
+  .bg-white\/95 { background-color: rgba(255, 255, 255, 0.95) !important; }
+  .bg-white\/30 { background-color: rgba(255, 255, 255, 0.3) !important; }
+  .bg-white\/50 { background-color: rgba(255, 255, 255, 0.5) !important; }
+  .bg-white\/60 { background-color: rgba(255, 255, 255, 0.6) !important; }
+  .bg-white\/70 { background-color: rgba(255, 255, 255, 0.7) !important; }
+
+  /* Pure black overlays + scrim */
+  .bg-black\/20 { background-color: rgba(0, 0, 0, 0.2) !important; }
+  .bg-black\/30 { background-color: rgba(0, 0, 0, 0.3) !important; }
+  .bg-black\/40 { background-color: rgba(0, 0, 0, 0.4) !important; }
+  .bg-black\/50 { background-color: rgba(0, 0, 0, 0.5) !important; }
+  .bg-black\/60 { background-color: rgba(0, 0, 0, 0.6) !important; }
+  .bg-black\/70 { background-color: rgba(0, 0, 0, 0.7) !important; }
+  .bg-black\/80 { background-color: rgba(0, 0, 0, 0.8) !important; }
+
+  /* Decorative gradient blurs in player splash + dashboard hero */
+  .bg-indigo-400\/20 { background-color: rgba(129, 140, 248, 0.2) !important; }
+  .bg-indigo-500\/10 { background-color: rgba(99, 102, 241, 0.1) !important; }
+  .bg-indigo-500\/20 { background-color: rgba(99, 102, 241, 0.2) !important; }
+  .bg-emerald-400\/20 { background-color: rgba(52, 211, 153, 0.2) !important; }
+  .bg-emerald-500\/20 { background-color: rgba(16, 185, 129, 0.2) !important; }
+  .bg-amber-200\/40 { background-color: rgba(253, 230, 138, 0.4) !important; }
+  .bg-amber-500\/90 { background-color: rgba(245, 158, 11, 0.9) !important; }
+  .bg-rose-500\/90 { background-color: rgba(244, 63, 94, 0.9) !important; }
+  .bg-violet-500\/20 { background-color: rgba(139, 92, 246, 0.2) !important; }
+  .bg-fuchsia-500\/20 { background-color: rgba(217, 70, 239, 0.2) !important; }
+
+  /* Slate / muted backgrounds used for cards in info overlay */
+  .bg-slate-50 { background-color: #f8fafc !important; }
+  .bg-slate-100 { background-color: #f1f5f9 !important; }
+  .bg-slate-50\/50 { background-color: rgba(248, 250, 252, 0.5) !important; }
+  .bg-slate-50\/80 { background-color: rgba(248, 250, 252, 0.8) !important; }
+  .bg-slate-200\/50 { background-color: rgba(226, 232, 240, 0.5) !important; }
+
+  /* Border-with-opacity — used on the splash card rim + popovers */
+  .border-white\/50 { border-color: rgba(255, 255, 255, 0.5) !important; }
+  .border-white\/80 { border-color: rgba(255, 255, 255, 0.8) !important; }
+  .border-slate-200\/50 { border-color: rgba(226, 232, 240, 0.5) !important; }
+  .border-indigo-200\/60 { border-color: rgba(199, 210, 254, 0.6) !important; }
+  .border-amber-300 { border-color: #fcd34d !important; }
+
+  /* Ring (focus + selected) — ring-X colors don't generally use
+     color-mix but the ring-offset-color does. Force solid white
+     so focused buttons get a visible ring instead of nothing. */
+  .ring-offset-white { --tw-ring-offset-color: #ffffff !important; }
+
+  /* Text-on-glass utilities */
+  .text-slate-500\/80 { color: rgba(100, 116, 139, 0.8) !important; }
+  .text-slate-700\/80 { color: rgba(51, 65, 85, 0.8) !important; }
+  .text-white\/80 { color: rgba(255, 255, 255, 0.8) !important; }
+  .text-white\/90 { color: rgba(255, 255, 255, 0.9) !important; }
+
+  /* The decorative aurora orbs in the kiosk splash use radial
+     gradients with mixed colors — give them solid fallbacks so
+     the player splash actually has visible chrome on Chromium 95. */
+  .kiosk-aurora,
+  .kiosk-aurora-1,
+  .kiosk-aurora-2 {
+    background: radial-gradient(circle, rgba(99, 102, 241, 0.4), transparent 70%) !important;
+  }
+  .kiosk-orb,
+  .kiosk-orb-1, .kiosk-orb-2, .kiosk-orb-3, .kiosk-orb-4, .kiosk-orb-5 {
+    background: radial-gradient(circle, rgba(168, 85, 247, 0.5), transparent 70%) !important;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────
+ * Backdrop-filter fallback for older Android System WebView.
+ * Chromium 76+ supports backdrop-filter via -webkit prefix BUT some
+ * vendor builds (Goodview, certain Rockchip OEM ROMs) ship a
+ * Chromium that doesn't actually wire it up. When backdrop-blur
+ * silently fails, glass-card UI looks transparent and unreadable.
+ *
+ * Fix: when backdrop-filter isn't supported, opaque-up the glass
+ * surfaces so text stays legible.
+ * ────────────────────────────────────────────────────────────── */
+@supports not ((-webkit-backdrop-filter: blur(8px)) or (backdrop-filter: blur(8px))) {
+  .backdrop-blur-sm,
+  .backdrop-blur,
+  .backdrop-blur-md,
+  .backdrop-blur-lg,
+  .backdrop-blur-xl,
+  .backdrop-blur-2xl,
+  .backdrop-blur-3xl {
+    background-color: rgba(255, 255, 255, 0.95) !important;
+  }
+}

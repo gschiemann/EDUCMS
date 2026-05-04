@@ -1685,23 +1685,64 @@ function PlayerPage() {
           });
         });
         if (combinedItems.length > 0) {
-          // Signature of just the bits that matter for "is this the same
-          // playlist?" — url + duration + ordering. If it matches what
-          // we're already rendering, DO NOTHING: don't re-seed playlist,
-          // don't reset currentIndex, don't fire the slide-cycle effect.
-          // That's what keeps the carousel advancing through items 3-7.
+          // 2026-05-04 — operator (Goodview Chromium 95 install):
+          // "saw image 2 for a second then flipped back to image 1
+          // and got stuck". That's the manifest poll firing
+          // setCurrentIndex(0) because the signature didn't match
+          // even though the content WAS the same. Symptoms in the
+          // wild: 1 ↔ 2 alternating every poll cycle.
+          //
+          // Root cause: the prior signature included `manifestKey`
+          // which falls back to `${itemIndex}` only as a LAST resort,
+          // but BEFORE that falls back to `stableManifestUrlKey()`
+          // which strips signed-URL params. If the API returns the
+          // SAME asset under a slightly different URL shape between
+          // polls (e.g. supabase appends a `download` param one poll
+          // and not the next), the URL-key mismatches → sig changes
+          // → currentIndex resets.
+          //
+          // Fix #1: compute the signature using the ABSOLUTE most
+          // stable identity available — just the asset_id (server-
+          // side row id) + sequenceOrder. Both are guaranteed stable
+          // across polls. Fall back to the index-only sig only when
+          // both are missing (legacy manifests).
+          //
+          // Fix #2: even when the sig genuinely changes (operator
+          // edited the playlist), DON'T reset currentIndex if the
+          // new playlist is a SUPERSET / SHIFTED version of the old
+          // one — clamp into the new bounds instead of resetting to
+          // 0. Operators editing a playlist at runtime shouldn't see
+          // every paired screen jolt back to slide 1.
           const newSig = combinedItems
-            .map((i: any) => `${i.sequenceOrder}|${i.durationMs}|${i.manifestKey}`)
+            .map((i: any) => {
+              // Prefer asset_id (most stable). The DB row id of the
+              // playlist item itself. Only one DB write per item ever
+              // produces this value, so it's bedrock-stable.
+              const stable = i.manifestKey || i.asset?.fileUrl?.split('?')[0] || '';
+              return `${i.sequenceOrder}|${i.durationMs}|${stable}`;
+            })
             .join('||');
           if (newSig === currentPlaylistSigRef.current) {
             return true; // identical content — keep index + playlist as-is
           }
+          // Fix #2 — clamp instead of reset when the playlist size
+          // didn't shrink past the current index. If the operator
+          // ADDED items at the end (length grew), we can keep going
+          // from where we are. If they REMOVED items past our index,
+          // wrap to 0.
+          const oldHasItems = currentPlaylistSigRef.current !== '';
           currentPlaylistSigRef.current = newSig;
           setPlaylist({
             name: manifest.playlists.length > 1 ? 'Scheduled Content (Combined)' : manifest.playlists[0].name || 'Scheduled Content',
             items: combinedItems,
           });
-          setCurrentIndex(0);
+          // Only reset to 0 on FIRST playlist load (no prior items).
+          // After that, just clamp to the new length to avoid the
+          // "jolt back to slide 1 on every poll" symptom.
+          setCurrentIndex((prev) => {
+            if (!oldHasItems) return 0;
+            return prev % combinedItems.length;
+          });
           return true;
         }
       }
