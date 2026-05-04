@@ -300,7 +300,13 @@
  * Remove this block before final v1 ship; for now operators need a
  * visible signal that the fix is live.
  * ────────────────────────────────────────────────────────────── */
-body::before {
+/* Scoped to body[data-player-route] only — operator: "your dumb
+   fucking pill is in the app no too not just the fucking player".
+   The pill is a kiosk-debug aid; dashboard chrome doesn't need it.
+   The PlayerPage component sets `document.body.dataset.playerRoute='true'`
+   on mount so this selector matches. Plain attribute selector works
+   on every browser, no :has() required. */
+body[data-player-route]::before {
   content: "build-LAYERFLAT-v8 · modern (color-mix OK)";
   position: fixed;
   top: 4px;
@@ -316,7 +322,7 @@ body::before {
   box-shadow: 0 1px 4px rgba(0,0,0,0.3);
 }
 @supports not (color: color-mix(in oklab, red 50%, blue)) {
-  body::before {
+  body[data-player-route]::before {
     content: "build-LAYERFLAT-v8 · CR95 + LAYER-POLYFILL ACTIVE";
     background: #f59e0b !important;
   }

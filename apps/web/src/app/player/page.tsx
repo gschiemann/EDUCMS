@@ -733,6 +733,20 @@ function PlayerPage() {
   // available to fetchContent without being serializable state.
   const previewHandoffTokenRef = useRef<string | null>(null);
   const [previewOrientation, setPreviewOrientation] = useState<'portrait' | 'landscape'>('landscape');
+
+  // Tag <body> with data-player-route so the debug pill in globals.css
+  // ONLY appears on the kiosk player, NEVER on the dashboard. Operator
+  // (2026-05-04): "your dumb fucking pill is in the app no too not just
+  // the fucking player". Set on mount, cleared on unmount so SPA
+  // navigation back to the dashboard hides the pill again.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.body.dataset.playerRoute = 'true';
+    return () => {
+      delete document.body.dataset.playerRoute;
+    };
+  }, []);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const hash = window.location.hash || '';
