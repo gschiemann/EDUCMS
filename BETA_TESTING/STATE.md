@@ -5,111 +5,106 @@ operation between Claude sessions.** Read this first when a new session starts.
 
 ## Current cycle
 
-- **Cycle**: 1 → COMPLETE. Cycle 2 ready to start.
-- **Started**: 2026-05-03
-- **Status**: `CYCLE_DONE` — all 13 P0s from cycle 1 closed.
-- **Last commit**: `0898a8d` (8 P0 fix wave + final push)
-- **Open**: 27 P1 + 24 P2 — see `BUG_REPORTS/CYCLE-1-TRIAGE.md`
+- **Cycle**: 1 ✅ DONE · 2 ✅ DONE. Cycle 3 ready to start.
+- **Status**: `CYCLE_DONE` after cycle 2.
+- **Last commit**: `7b30bb1` (Cycle 2 P1 fix wave)
+- **Open after cycle 2**: ~11 P1 (mostly retail editors + a few small) + 24 P2
 
-## ✅ Cycle 1 — DONE
+## ✅ Cycle 1 — 13 P0 closed
 
-13 P0 bugs found, 13 P0 bugs fixed across 4 commits:
-- `d1e8ff7` — integrations ConnectModal + BridgeSetupModal (auto-fix), multipart upload, Supabase PPTX mime, panic 3s
-- `0898a8d` — auth-001 (SSO), auth-002 (role escalation), emergency-002 (overrideId), emergency-003 (device-scope all-clear), emergency-004 (tenantId guard), player-001 (SW emergency hash), player-002 (sumCacheBytes), player-003 (USB silent enable)
+- `d1e8ff7` — integrations ConnectModal + multipart + PPTX mime + panic 3s
+- `0898a8d` — auth-001/002, emergency-002/003/004, player-001/002/003
 
-## How to resume in a fresh session
+## ✅ Cycle 2 — 16 P1 closed (+ 9 new widget editors)
 
-When the user says "resume beta testing":
+- `7b30bb1` — auth + integrations + editor + emergency-mix batches
 
-1. Read `BETA_TESTING/STATE.md` (this file) → confirms cycle 1 done
-2. Decide next cycle:
-   - **Cycle 2 P1 wave** — pick up from `BUG_REPORTS/CYCLE-1-TRIAGE.md` "P1 — fix this week" section. 27 bugs to address.
-   - **Cycle 2 RETEST** — dispatch the same 6 tester agents from cycle 1 to verify the P0 fixes hold + look for regressions. If clean, move to P1 wave.
-3. Recommended order: RETEST first (1 wave of 6 agents), then P1 batches (5-7 agents per batch).
+Fixes shipped this cycle:
+- **auth**: cross-tenant FK validation on schedules + playlists; Argon2 timing oracle closed
+- **integrations**: POS oauth2 reject (frontend + backend); ad-network PARTNER vs DIRECT branch; PropertiesPanel picker hrefs absolute; api-types bridgeSteps
+- **editor**: FITNESS_WORKOUT_TIMER editor; 9 missing widget editors (5 RESTAURANT + 4 BAR); JSON-parse leak fix in 6 array editors
+- **emergency**: SOS location string bounded; allClear @AllowPanicBypass
+- **player**: latest-version auth gate + throttle
+- **ai-imports**: filename sanitization (200-char cap + Windows reserved chars stripped); sample-loader connection separation; AiGenerateModal a11y (role=dialog, aria-modal, focus trap, focus restoration)
 
-## Cycle 2 plan — P1 wave
+## 🟡 Cycle 3 — remaining P1 work
 
-The P1 list from `CYCLE-1-TRIAGE.md`:
+From `BUG_REPORTS/CYCLE-1-TRIAGE.md` not yet fixed:
 
-### auth (4)
-- BUG-003 — Schedule create/update missing cross-tenant FK validation
-- BUG-004 — Playlist create accepts foreign templateId
-- BUG-005 — `PUT /users/:id/role` was already covered by auth-002 fix; verify no regression
-- BUG-006 — Argon2 timing oracle on user-not-found path
+### editor (deferred from cycle 2)
+- 6 RETAIL widget editors still missing: RETAIL_LOOKBOOK_CAROUSEL, RETAIL_STOREFRONT_HOURS, RETAIL_PRICE_CALLOUT, RETAIL_SALE_COUNTDOWN, RETAIL_LOYALTY_QR, RETAIL_WAYFINDING_MAP
+- BAR_TAP_LIST + BAR_COCKTAIL_MENU have minimal cases — extend to match other RESTAURANT widgets
 
-### editor (3)
-- BUG-001 — `FITNESS_WORKOUT_TIMER` has no editor case in PropertiesPanel
-- BUG-002 — 12 of 19 RESTAURANT/BAR/RETAIL widgets have no editor case
-- BUG-003 — JSON-parse failure leaks string into cfg.creatives / classes / quotes mid-keystroke
-
-### integrations (4)
-- BUG-003 — POS oauth2 providers save empty PENDING rows silently
-- BUG-004 — Ad-network ConnectModal has no PARTNER vs DIRECT differentiation
-- BUG-005 — PropertiesPanel picker links use relative `href="settings/streaming"` (404 from template builder)
-- BUG-006 — `StreamProviderListItem` API type missing `bridgeSteps`
-
-### emergency (6)
-- BUG-005 — Client-side WS verification only checks signature presence not validity
+### emergency
+- BUG-005 — Client-side WS verification only checks signature presence (acknowledged tech debt)
 - BUG-006 — Per-screen audit failures silently swallowed
-- BUG-007 — SOS location string not strictly bounded
 - BUG-008 — Floor plan dimensions from client without server-side probe
-- BUG-009 — `ScreenEmergencyController.allClear` lacks `@AllowPanicBypass`
-- BUG-010 — Player does NOT subscribe to `device:<screenId>` channels
+- BUG-010 — Player does NOT subscribe to `device:<screenId>` channels — Sprint 8b WS broadcasts only reach screens via HTTP polling
 
-### player (6)
+### player
 - BUG-004 — Capability data collected but typed body drops it
-- BUG-005 — SW `precachePlaylist` evicts entries by raw URL — Supabase signed URLs rotate hourly
+- BUG-005 — SW precachePlaylist evicts entries by raw URL — Supabase signed URLs rotate hourly
 - BUG-006 — `ALL_CLEAR` is in `SENSITIVE_TYPES` — race against AUTH_OK on clock-skewed kiosks
 - BUG-007 — WS HELLO falls back to unsigned `dev_` tokens
-- BUG-008 — `/api/v1/player/latest-version` is unauthenticated and unthrottled
 - BUG-009 — Pairing code 10-attempt collision retry — 11th miss = 500
 
-### ai-imports (4)
-- BUG-003 — Filename not sanitized/length-capped in imports
-- BUG-004 — Retail+restaurant sample loaders share one POS connection
+### ai-imports
 - BUG-005 — Imports dropzone has no keyboard/SR path
-- BUG-006 — AiGenerateModal missing `role="dialog"` / `aria-modal` / focus trap
 
-## How to dispatch cycle 2 — RETEST first
+### auth
+- BUG-005 — Already covered by auth-002 fix; spot-check needed
+
+### integrations
+- (none open after cycle 2)
+
+## 🔵 P2 — defer to cycle 4 (24 bugs across 6 areas)
+
+See individual area reports in `BUG_REPORTS/CYCLE-1-*.md`. Mostly UX
+polish, edge cases, Sprint-2 hardening.
+
+## Cycle 3 plan
+
+**Recommended order:**
+1. **RETEST**: dispatch 6 cycle-3 tester agents to verify cycle 1+2 fixes
+   hold + look for regressions introduced by the fixes
+2. **P1 cleanup wave**: 1-2 agents for the remaining P1s (mostly editor
+   + player + emergency leftovers)
+3. **P2 batch**: low-priority fixes batched into 2-3 large agents
+
+Token budget: cycle 3 should be roughly half a session given the smaller
+P1 surface remaining.
+
+## How to dispatch cycle 3 retest
 
 ```
 Agent({
-  description: "Cycle 2 RETEST — auth area",
+  description: "Cycle 3 retest — auth area",
   subagent_type: "general-purpose",
   run_in_background: true,
-  prompt: "Same brief as cycle-1 auth tester (TEST_PLAN.md Area 1) PLUS verify these P0 fixes hold: auth-001 (sso.controller.ts assertTenantAccess gate works), auth-002 (users.controller role allowlist + email/password validation). Also confirm no regression introduced. Write to BETA_TESTING/BUG_REPORTS/CYCLE-2-auth.md."
+  prompt: "Re-run TEST_PLAN.md Area 1 brief PLUS verify these fixes hold: auth-001 (sso.controller.ts assertTenantAccess), auth-002 (users.controller allowlist), auth-003 (schedules FK validation), auth-004 (playlist templateId gate), auth-006 (Argon2 dummy hash). Look for new regressions introduced by these fixes. Write to BETA_TESTING/BUG_REPORTS/CYCLE-3-auth.md."
 })
 ```
 
-Repeat for editor / integrations / emergency / player / ai-imports.
+Repeat for editor / integrations / emergency / player / ai-imports
+(parallel).
 
-## How to dispatch cycle 2 — P1 fix wave (after RETEST passes)
-
-Group P1 bugs into batches of 5-7 per agent (each agent gets multiple
-bugs from one area). Pattern:
-
-```
-Agent({
-  description: "Cycle 2 fix — auth P1 batch",
-  subagent_type: "general-purpose",
-  run_in_background: true,
-  prompt: "Fix all auth P1s from CYCLE-1-TRIAGE.md (BUG-003, 004, 005, 006). One commit at the end is fine. Run typecheck after each. GROUND RULES + write summary to FIX_LOG/CYCLE-2-fixes.md."
-})
-```
-
-## Token budget tracking
-
-Cycle 1 used ~80% of a session's tokens. Cycle 2 will be similar.
-Plan to span 2 sessions if necessary — STATE.md is what makes that
-survivable. Save state every commit.
-
-## Files committed
+## Files committed this run
 
 ```
 a4546fa — BETA_TESTING infrastructure
-fb287f6 — first 4 of 6 cycle-1 reports
-d1e8ff7 — 4 P0 fixes (integrations + multipart + PPTX + panic 3s)
-1494766 — TRIAGE doc + STATE update
+fb287f6 — first 4 cycle-1 reports
+d1e8ff7 — 4 cycle-1 P0 fixes
+1494766 — TRIAGE doc + STATE
 3c0b0f1 — fix-wave-2 dispatch state
-0898a8d — 8 P0 fixes (auth + emergency + player bundles)  ← current
+0898a8d — 8 cycle-1 P0 fixes (auth + emergency + player bundles)
+11cf4f1 — STATE update for cycle 2
+7b30bb1 — cycle 2 P1 fix wave (16 fixes + 9 new editor cases)
+(this commit) — STATE update for cycle 3
 ```
+
+## Token-budget note for next session
+
+Cycle 1 + Cycle 2 used roughly one full session's tokens. The user
+told us tokens would run out and that was expected. State.md is
+designed to make resuming trivial — read this file → know exactly
+where to start.
