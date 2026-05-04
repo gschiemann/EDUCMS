@@ -36,7 +36,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { Wifi, QrCode, MonitorPlay, Download } from 'lucide-react';
+import { Wifi, QrCode, MonitorPlay } from 'lucide-react';
 
 type Mode = 'registering' | 'pairing';
 
@@ -166,27 +166,16 @@ export function KioskSplash({
     return () => clearInterval(t);
   }, [otaProgress]);
 
-  // Strict-greater compare on apk version vs latest published. Same
-  // numeric-segment compare the legacy click-overlay used; we pull
-  // it up here so the banner can render across all splash modes.
-  const isBehind = useMemo(() => {
-    if (!apkVersion || !latestApkVersion) return false;
-    const norm = (s: string) =>
-      s.replace(/^v/i, '')
-        .split(/[.\-_]/)
-        .map((seg) => parseInt(seg, 10))
-        .filter((n) => Number.isFinite(n));
-    const a = norm(apkVersion);
-    const b = norm(latestApkVersion);
-    const len = Math.max(a.length, b.length);
-    for (let i = 0; i < len; i++) {
-      const x = a[i] ?? 0;
-      const y = b[i] ?? 0;
-      if (x < y) return true;
-      if (x > y) return false;
-    }
-    return false;
-  }, [apkVersion, latestApkVersion]);
+  // 2026-05-04 — `isBehind` removed. The dark-blue KioskSplash no
+  // longer renders an "Update available" banner; that's the white
+  // connected-splash's job (player/page.tsx). KioskSplash still
+  // renders the in-progress banner via otaStage below — version
+  // comparison isn't needed for that.
+  // Reference apkVersion + latestApkVersion + onInstallUpdate so the
+  // unused-prop lint doesn't fire when callers still pass them.
+  void apkVersion;
+  void latestApkVersion;
+  void onInstallUpdate;
 
   // Active stage during an OTA — derived from elapsed time.
   const otaStage = useMemo(() => {
@@ -260,13 +249,18 @@ export function KioskSplash({
           <p className="kiosk-brand-sub">Digital Signage Player</p>
         </div>
 
-        {/* ── OTA banner (shared across all splash modes) ──
-            Renders one of:
-              - Update IN PROGRESS  (otaProgress set → indigo banner with stage)
-              - Update AVAILABLE    (apkVersion < latestApkVersion → amber banner with Install Now)
-              - nothing             (current OR no version data yet)
-            Always above mode-specific content so the operator sees
-            it whether they're paired, pairing, or stopped. */}
+        {/* ── OTA in-progress banner (shared across all splash modes) ──
+            2026-05-04 — operator: "the upgrade available is showing
+            on the connecting screen and not on the connected screen".
+            Removed the "Update available" branch from KioskSplash
+            (this dark-blue boot/registering/pairing splash). The
+            white connected-splash already has its own Update banner
+            inside the SCROLL-BODY (see player/page.tsx ~line 3878);
+            duplicating it on the boot splash made the operator think
+            the update prompt belonged to the wrong phase.
+            Kept the Update IN PROGRESS branch — operators need to
+            see "Installing v1.0.44…" no matter which splash phase
+            they happen to be on when the OTA fires. */}
         {otaProgress && otaStage ? (
           <div className="kiosk-ota-banner kiosk-ota-banner--progress">
             <span className="kiosk-ota-emoji">{otaStage.emoji}</span>
@@ -274,27 +268,6 @@ export function KioskSplash({
               <div className="kiosk-ota-title">Update in progress</div>
               <div className="kiosk-ota-sub">{otaStage.label}</div>
             </div>
-          </div>
-        ) : isBehind ? (
-          <div className="kiosk-ota-banner kiosk-ota-banner--available">
-            <span className="kiosk-ota-emoji">⬆️</span>
-            <div className="kiosk-ota-text">
-              <div className="kiosk-ota-title">Update available</div>
-              <div className="kiosk-ota-sub">
-                Player <strong>v{latestApkVersion}</strong> ready to install
-                {apkVersion ? <> · running v{apkVersion}</> : null}
-              </div>
-            </div>
-            {onInstallUpdate && (
-              <button
-                type="button"
-                className="kiosk-ota-btn"
-                onClick={(e) => { e.stopPropagation(); onInstallUpdate(); }}
-              >
-                <Download className="kiosk-ota-btn-icon" />
-                Install now
-              </button>
-            )}
           </div>
         ) : null}
 

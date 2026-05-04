@@ -1306,6 +1306,12 @@ function PlayerPage() {
     id: string;
     name: string;
     itemCount: number;
+    /** 2026-05-04 — operator: "my playlist should show the name and
+     *  how many videos or images, the size of it, etc". Per-mime
+     *  breakdown alongside the total count. */
+    videoCount: number;
+    imageCount: number;
+    otherCount: number;
     totalBytes: number;
     daysOfWeek: string | null;
     timeStart: string | null;
@@ -1783,16 +1789,42 @@ function PlayerPage() {
         // below; even if content didn't change, we still update the
         // summary cheaply (same objects coming in anyway).
         setManifestPlaylists(
-          manifest.playlists.map((pl: any) => ({
-            id: pl.id,
-            name: pl.name || pl.template?.name || 'Unnamed playlist',
-            itemCount: pl.items?.length || 0,
-            totalBytes: typeof pl.totalBytes === 'number' ? pl.totalBytes : 0,
-            daysOfWeek: pl.schedule?.daysOfWeek ?? null,
-            timeStart: pl.schedule?.timeStart ?? null,
-            timeEnd: pl.schedule?.timeEnd ?? null,
-            isTemplate: !!pl.template,
-          }))
+          manifest.playlists.map((pl: any) => {
+            // 2026-05-04 — count items by mime category so the
+            // splash can render "3 videos · 5 images" instead of
+            // a generic "8 slides".
+            const items: any[] = pl.items || [];
+            let videoCount = 0;
+            let imageCount = 0;
+            let otherCount = 0;
+            let aggregateBytes = 0;
+            for (const it of items) {
+              const mime: string = it.mime_type || it.asset?.mimeType || '';
+              if (mime.startsWith('video/')) videoCount += 1;
+              else if (mime.startsWith('image/')) imageCount += 1;
+              else otherCount += 1;
+              const sz = typeof it.size === 'number' ? it.size
+                : typeof it.bytes === 'number' ? it.bytes
+                : typeof it.asset?.bytes === 'number' ? it.asset.bytes
+                : 0;
+              aggregateBytes += sz;
+            }
+            return {
+              id: pl.id,
+              name: pl.name || pl.template?.name || 'Unnamed playlist',
+              itemCount: items.length,
+              videoCount,
+              imageCount,
+              otherCount,
+              totalBytes: typeof pl.totalBytes === 'number' && pl.totalBytes > 0
+                ? pl.totalBytes
+                : aggregateBytes,
+              daysOfWeek: pl.schedule?.daysOfWeek ?? null,
+              timeStart: pl.schedule?.timeStart ?? null,
+              timeEnd: pl.schedule?.timeEnd ?? null,
+              isTemplate: !!pl.template,
+            };
+          })
         );
         const firstTemplate = manifest.playlists.find((pl: any) => pl.template);
         if (firstTemplate) {
@@ -3486,29 +3518,23 @@ function PlayerPage() {
                 instead of pushing the action buttons off-screen. */}
             <div className="flex-1 min-h-0 w-full overflow-y-auto flex flex-col items-center">
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl mb-10">
-              {/* Device Card — operator (2026-04-27): "this is the
-                  splash screen after pairing, this is where i want it
-                  to show the APK version, and also it says chrome but
-                  this is a android device." Detection rule: if the
-                  page URL has ?v= (passed by the Android APK in
-                  MainActivity) → it's the Android player. Otherwise
-                  fall back to the userAgent string for browser-only
-                  players. */}
-              <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col items-center text-center">
-                <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center mb-4">
-                  <Monitor className="w-6 h-6 text-indigo-500" />
-                </div>
-                <h3 className="text-sm font-bold text-slate-800">{screenName || 'Display Screen'}</h3>
+            {/* 2026-05-04 — operator: "if we need to combine some of
+                the cards lets do it... CMS server and the first M43
+                could be combined, just show the connected server up
+                there, that gives us more space for the upgrade info
+                to pop in and not lose the buttons." Combined Device +
+                Server into a single card. Local Storage moved INTO
+                the Cache card below (since storage IS cache for our
+                purposes). Net effect: 3 cards → 1 + 1 = 2 cards
+                stacked, half the vertical footprint. */}
+            <div className="w-full max-w-4xl mb-6">
+              <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
                 {(() => {
                   const qp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
                   const w = qp ? (parseInt(qp.get('w') || '0', 10) || window.screen.width) : 0;
                   const h = qp ? (parseInt(qp.get('h') || '0', 10) || window.screen.height) : 0;
                   const apkV = qp?.get('v') || null;
                   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
-                  // Real platform — APK presence (?v=) wins. Don't say
-                  // "Chrome" on a kiosk just because the WebView UA
-                  // contains the word.
                   const platform = apkV
                     ? 'Android'
                     : /android/i.test(ua) ? 'Android'
@@ -3517,68 +3543,52 @@ function PlayerPage() {
                     : /mac/i.test(ua) ? 'macOS'
                     : /linux/i.test(ua) ? 'Linux'
                     : 'Browser';
-                  // 2026-04-28 — Manager version on paired-success
-                  // view. Operator: "i thoutgh u were adding the
-                  // manager version to the screen paired splash
-                  // screen...i only see player verision...this isi
-                  // where it should tell me manager missing".
-                  // Reads ?mv= from the URL just like apkV reads ?v=.
-                  // Three-state render: present + non-empty → green
-                  // version; present + empty → amber "missing"; absent
-                  // → don't render (legacy Player without Manager
-                  // awareness).
                   const mvRaw = qp?.get('mv');
                   const managerInstalled = mvRaw && mvRaw.trim().length > 0;
                   const managerKnownAbsent = mvRaw === '';
+                  const host = typeof window !== 'undefined' ? window.location.hostname : 'Local';
                   return (
-                    <>
-                      <p className="text-xs font-semibold text-slate-400 mt-1">
-                        {w && h ? `${w}×${h}` : 'Unknown'} • {platform}
-                      </p>
-                      {apkV && (
-                        <p className="text-[11px] font-semibold text-slate-500 mt-1">
-                          Player <span className="text-slate-700 font-bold">v{apkV}</span>
-                        </p>
-                      )}
-                      {managerInstalled && (
-                        <p className="text-[11px] font-semibold text-slate-500 mt-1">
-                          Manager <span className="text-emerald-700 font-bold">v{mvRaw}</span>
-                        </p>
-                      )}
-                      {managerKnownAbsent && (
-                        <p className="text-[11px] font-semibold text-amber-700 mt-1 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                          Manager <span className="font-bold">missing</span>
-                        </p>
-                      )}
-                    </>
+                    <div className="flex items-center gap-5">
+                      <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center flex-shrink-0">
+                        <Monitor className="w-7 h-7 text-indigo-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline gap-3 flex-wrap">
+                          <h3 className="text-base font-bold text-slate-800 truncate">{screenName || 'Display Screen'}</h3>
+                          <span className="text-[11px] font-semibold text-slate-400">
+                            {w && h ? `${w}×${h}` : ''} {platform ? `• ${platform}` : ''}
+                          </span>
+                        </div>
+                        <div className="text-[11px] font-semibold text-slate-500 mt-0.5 flex items-center gap-x-3 gap-y-1 flex-wrap">
+                          {apkV && (
+                            <span>Player <span className="text-slate-700 font-bold">v{apkV}</span></span>
+                          )}
+                          {managerInstalled && (
+                            <span>Manager <span className="text-emerald-700 font-bold">v{mvRaw}</span></span>
+                          )}
+                          {managerKnownAbsent && (
+                            <span className="text-amber-700 font-bold flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                              Manager missing
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] font-semibold text-slate-500 mt-1 flex items-center gap-x-3 gap-y-1 flex-wrap">
+                          <span className="flex items-center gap-1.5 text-emerald-700">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Online
+                          </span>
+                          <span className="text-slate-400">·</span>
+                          <span className="truncate" title={host}>
+                            <Server className="inline w-3 h-3 mr-1 text-violet-500 align-text-bottom" />
+                            {host}
+                          </span>
+                          <span className="text-slate-400">·</span>
+                          <span>Last sync: {lastSync || 'Never'}</span>
+                        </div>
+                      </div>
+                    </div>
                   );
                 })()}
-                <div className="mt-4 flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-bold">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Online
-                </div>
-              </div>
-
-              {/* Storage Card */}
-              <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col items-center text-center">
-                <div className="w-12 h-12 rounded-2xl bg-sky-50 flex items-center justify-center mb-4">
-                  <HardDrive className="w-6 h-6 text-sky-500" />
-                </div>
-                <h3 className="text-sm font-bold text-slate-800">Local Storage</h3>
-                <p className="text-xs font-semibold text-slate-400 mt-1">{storageInfo.used} used of {storageInfo.total}</p>
-                <div className="w-full h-2 bg-slate-100 rounded-full mt-4 overflow-hidden">
-                  <div className="h-full bg-sky-500 rounded-full transition-all duration-1000" style={{ width: `${storageInfo.percent}%` }} />
-                </div>
-              </div>
-
-              {/* Server Card */}
-              <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col items-center text-center">
-                <div className="w-12 h-12 rounded-2xl bg-violet-50 flex items-center justify-center mb-4">
-                  <Server className="w-6 h-6 text-violet-500" />
-                </div>
-                <h3 className="text-sm font-bold text-slate-800">CMS Server</h3>
-                <p className="text-xs font-semibold text-slate-400 mt-1 truncate w-full px-2" title={typeof window !== 'undefined' ? window.location.hostname : 'Local'}>{typeof window !== 'undefined' ? window.location.hostname : 'Local'}</p>
-                <p className="text-[10px] font-semibold text-slate-400 mt-1">Last sync: {lastSync || 'Never'}</p>
               </div>
             </div>
 
@@ -3606,55 +3616,80 @@ function PlayerPage() {
                   panel rendering. */}
               <div className="bg-white rounded-2xl p-5 shadow-md border border-slate-200">
                 <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <HardDrive className="w-3.5 h-3.5" /> Cache
+                  <HardDrive className="w-3.5 h-3.5" /> Storage &amp; Cache
                 </div>
-                {!cacheStatus ? (
-                  <p className="text-xs text-slate-400">Checking…</p>
-                ) : !cacheStatus.supported ? (
-                  <p className="text-xs text-slate-400">Service worker unsupported on this WebView.</p>
-                ) : (
-                  <div className="space-y-2 text-xs">
-                    {/* 2026-05-04 — operator: "just put the playlist
-                        name and all the details about it right above
-                        the emergency info in the cache section". Each
-                        scheduled playlist now appears as a row inside
-                        the Cache card right above the Emergency assets
-                        row, instead of having its own bottom-section
-                        block (which was overflowing the splash). */}
-                    {manifestPlaylists && manifestPlaylists.length > 0 && (
-                      <>
-                        {manifestPlaylists.map((pl) => {
-                          const days = pl.daysOfWeek ? pl.daysOfWeek.replace(/,/g, ' · ') : 'Every day';
-                          const times = pl.timeStart && pl.timeEnd ? `${pl.timeStart}–${pl.timeEnd}` : 'all day';
-                          return (
-                            <div key={pl.id} className="grid grid-cols-[auto_1fr] gap-x-3 items-baseline pb-1.5 border-b border-slate-100">
-                              <span className="text-slate-500 truncate font-semibold">{pl.name}</span>
-                              <span className="font-mono text-[10px] text-slate-500 text-right">
-                                {pl.isTemplate ? 'Template' : `${pl.itemCount} slide${pl.itemCount === 1 ? '' : 's'}`} · {days} · {times}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </>
-                    )}
-                    <div className="grid grid-cols-[auto_1fr] gap-x-3 items-center">
-                      <span className="text-slate-500">Playlist assets</span>
-                      <span className="font-mono font-semibold text-slate-700 text-right">
-                        {cacheStatus.playlist.count} · {formatBytes(cacheStatus.playlist.bytes)}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-[auto_1fr] gap-x-3 items-center">
-                      <span className="text-slate-500 flex items-center gap-1.5">
-                        <span aria-hidden>🛡️</span> Emergency assets
-                      </span>
-                      <span className={`font-mono font-semibold text-right ${cacheStatus.emergency.count > 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
-                        {cacheStatus.emergency.count > 0
-                          ? `${cacheStatus.emergency.count} · ${formatBytes(cacheStatus.emergency.bytes)} ✓`
-                          : 'NONE — will fetch from network'}
-                      </span>
-                    </div>
+                <div className="space-y-2 text-xs">
+                  {/* 2026-05-04 — operator: "local storage could
+                      include all the Cache info in one card". Folded
+                      Local Storage usage bar in here at the top so
+                      operator sees disk pressure + cache contents in
+                      one card. */}
+                  <div className="grid grid-cols-[auto_1fr] gap-x-3 items-center">
+                    <span className="text-slate-500">Local storage</span>
+                    <span className="font-mono font-semibold text-slate-700 text-right">
+                      {storageInfo.used} of {storageInfo.total}
+                    </span>
                   </div>
-                )}
+                  <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-sky-500 rounded-full transition-all duration-1000" style={{ width: `${storageInfo.percent}%` }} />
+                  </div>
+
+                  {/* 2026-05-04 — operator: "my playlist should show
+                      the name and how many videos or images, the size
+                      of it, etc". Each row now reads:
+                          PlaylistName
+                          Nv · Mi · S MB · daysOfWeek · time-range
+                      where Nv = video count, Mi = image count, S =
+                      total bytes for the playlist. */}
+                  {manifestPlaylists && manifestPlaylists.length > 0 && (
+                    <div className="pt-1.5 border-t border-slate-100 space-y-1.5">
+                      {manifestPlaylists.map((pl) => {
+                        const days = pl.daysOfWeek ? pl.daysOfWeek.replace(/,/g, ' · ') : 'Every day';
+                        const times = pl.timeStart && pl.timeEnd ? `${pl.timeStart}–${pl.timeEnd}` : 'all day';
+                        const breakdown: string[] = [];
+                        if (pl.videoCount) breakdown.push(`${pl.videoCount} video${pl.videoCount === 1 ? '' : 's'}`);
+                        if (pl.imageCount) breakdown.push(`${pl.imageCount} image${pl.imageCount === 1 ? '' : 's'}`);
+                        if (pl.otherCount) breakdown.push(`${pl.otherCount} other`);
+                        if (breakdown.length === 0 && !pl.isTemplate) breakdown.push(`${pl.itemCount} item${pl.itemCount === 1 ? '' : 's'}`);
+                        const sizeChip = pl.totalBytes > 0 ? ` · ${formatBytes(pl.totalBytes)}` : '';
+                        return (
+                          <div key={pl.id} className="text-[11px]">
+                            <div className="font-semibold text-slate-700 truncate">{pl.name}</div>
+                            <div className="text-[10px] font-mono text-slate-500 truncate">
+                              {pl.isTemplate ? 'Template' : breakdown.join(' · ')}{sizeChip}
+                              {' · '}{days} · {times}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {!cacheStatus ? (
+                    <p className="text-xs text-slate-400 pt-1.5 border-t border-slate-100">Checking cache…</p>
+                  ) : !cacheStatus.supported ? (
+                    <p className="text-xs text-slate-400 pt-1.5 border-t border-slate-100">Service worker unsupported on this WebView.</p>
+                  ) : (
+                    <div className="pt-1.5 border-t border-slate-100 space-y-1.5">
+                      <div className="grid grid-cols-[auto_1fr] gap-x-3 items-center">
+                        <span className="text-slate-500">Playlist assets cached</span>
+                        <span className="font-mono font-semibold text-slate-700 text-right">
+                          {cacheStatus.playlist.count} · {formatBytes(cacheStatus.playlist.bytes)}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-[auto_1fr] gap-x-3 items-center">
+                        <span className="text-slate-500 flex items-center gap-1.5">
+                          <span aria-hidden>🛡️</span> Emergency assets
+                        </span>
+                        <span className={`font-mono font-semibold text-right ${cacheStatus.emergency.count > 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
+                          {cacheStatus.emergency.count > 0
+                            ? `${cacheStatus.emergency.count} · ${formatBytes(cacheStatus.emergency.bytes)} ✓`
+                            : 'NONE — will fetch from network'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Activity / services column. Same grid + shadow
