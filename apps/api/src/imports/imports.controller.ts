@@ -35,6 +35,7 @@ import {
   Controller,
   HttpException,
   HttpStatus,
+  Logger,
   Post,
   Request,
   UploadedFile,
@@ -72,9 +73,25 @@ const MAX_BYTES = 50 * 1024 * 1024; // 50 MB — matches the front-end cap.
 //   - reserved Windows filename chars (< > : " | ? * / \)
 //   - unbounded length (a 5 MB filename would round-trip into responses)
 // Sanitize once here so the rest of the pipeline can trust the strings.
+//
+// CYCLE-5 unicode-NFC-not-stripped fix — also strip Unicode RTL marks,
+// LTR/RTL embedding/override controls, BOMs, and zero-width spaces. Then
+// normalize to NFC so visually-identical canonical/decomposed forms
+// resolve to the same stored bytes — without this, two filenames that
+// render identically can collide unpredictably in dedupe / search and
+// invisible bidi controls can be used to spoof filenames in the UI.
 const NAME_MAX_LEN = 200;
+// Covers: U+200B–U+200F (zero-width + LRM/RLM), U+202A–U+202E (LRE/RLE/
+// PDF/LRO/RLO bidi controls), U+2060 (word joiner), U+FEFF (BOM /
+// zero-width no-break space).
+// eslint-disable-next-line no-misleading-character-class
+const STRIP_ZW_RTL = /[​-‏‪-‮⁠﻿]/g;
 function sanitizeOriginalName(raw: string | undefined | null): string {
-  const s = String(raw || '').replace(/[\r\n\t\x00-\x1f]/g, '').trim();
+  const s = String(raw || '')
+    .normalize('NFC')
+    .replace(STRIP_ZW_RTL, '')
+    .replace(/[\r\n\t\x00-\x1f]/g, '')
+    .trim();
   return s.slice(0, NAME_MAX_LEN);
 }
 function sanitizePlaylistName(raw: string | undefined | null): string {
@@ -82,6 +99,8 @@ function sanitizePlaylistName(raw: string | undefined | null): string {
   // whitespace; cap length. Empty result falls back to a literal default
   // upstream so we never write "" into Playlist.name.
   const s = String(raw || '')
+    .normalize('NFC')
+    .replace(STRIP_ZW_RTL, '')
     .replace(/[\r\n\t/\\<>:"|?*\x00-\x1f]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -91,6 +110,8 @@ function sanitizePlaylistName(raw: string | undefined | null): string {
 @UseGuards(JwtAuthGuard, RbacGuard)
 @Controller('api/v1/imports')
 export class ImportsController {
+  private readonly logger = new Logger(ImportsController.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: SupabaseStorageService,
@@ -139,8 +160,16 @@ export class ImportsController {
     try {
       fileUrl = await this.storage.upload(storagePath, safeBuffer, file.mimetype);
     } catch (err: any) {
+      // CYCLE-5 imports-supabase-error-leak fix: log the actual
+      // upstream error server-side, but ship a generic message to
+      // the client so we don't leak storage bucket names, signed
+      // URLs, or stack frames into the browser response.
+      this.logger.error(
+        `Supabase upload failed for tenant=${tenantId} path=${storagePath}: ${err?.message || err}`,
+        err?.stack,
+      );
       throw new HttpException(
-        `Upload failed: ${err.message}`,
+        'Upload failed. Try again or contact support.',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -174,10 +203,38 @@ export class ImportsController {
     // page-split worker (follow-up commit) will append additional
     // PlaylistItem rows for pages 2..N once it lands.
     await this.prisma.ensurePlaylistMetadataColumns();
+    // CYCLE-5 imports-duplicate-playlist fix: re-importing the same
+    // file used to create a fresh Playlist with the same name every
+    // time, leaving the operator with a stack of duplicates. Look
+    // for an existing tenantId+name match; if any exist, append the
+    // next free "(N)" suffix so the new import is clearly a re-import
+    // and the original Playlist is preserved.
+    const existing = await this.prisma.client.playlist.findMany({
+      where: {
+        tenantId,
+        OR: [
+          { name: niceName },
+          { name: { startsWith: `${niceName} (` } },
+        ],
+      },
+      select: { name: true },
+    });
+    let playlistName = niceName;
+    if (existing.length > 0) {
+      const usedSuffixes = new Set<number>();
+      for (const p of existing) {
+        if (p.name === niceName) usedSuffixes.add(0);
+        const m = p.name.match(/ \((\d+)\)$/);
+        if (m) usedSuffixes.add(parseInt(m[1], 10));
+      }
+      let n = 2;
+      while (usedSuffixes.has(n)) n++;
+      playlistName = `${niceName} (${n})`;
+    }
     const playlist = await this.prisma.client.playlist.create({
       data: {
         tenantId,
-        name: niceName,
+        name: playlistName,
         createdByUserId: userId,
       },
     });
@@ -196,11 +253,11 @@ export class ImportsController {
 
     let message: string;
     if (isImage) {
-      message = `Imported "${niceName}". The image is ready as an Asset and a 1-page Playlist named "${niceName}". Drop the playlist on any screen, or use the asset directly in an IMAGE widget.`;
+      message = `Imported "${niceName}". The image is ready as an Asset and a 1-page Playlist named "${playlistName}". Drop the playlist on any screen, or use the asset directly in an IMAGE widget.`;
     } else if (isPdf) {
-      message = `Imported "${niceName}" as PDF. Multi-page page-split rendering is on a follow-up commit — the file is uploaded and a 1-item Playlist exists. For multi-page decks today, export each page individually from Canva (Download → PDF Print → Select pages) and re-import each as its own asset.`;
+      message = `Imported "${niceName}" as PDF. Multi-page page-split rendering is on a follow-up commit — the file is uploaded and a 1-item Playlist named "${playlistName}" exists. For multi-page decks today, export each page individually from Canva (Download → PDF Print → Select pages) and re-import each as its own asset.`;
     } else if (isPptx) {
-      message = `Imported "${niceName}" as PPTX. The PowerPoint→PDF→PNG pipeline ships in a follow-up commit. For now the .pptx file is stored as an Asset; the playlist points at it but only browsers with native PPTX rendering will display it. Workaround: open in PowerPoint → File → Export → PDF, then re-import the PDF.`;
+      message = `Imported "${niceName}" as PPTX. The PowerPoint→PDF→PNG pipeline ships in a follow-up commit. For now the .pptx file is stored as an Asset; the playlist "${playlistName}" points at it but only browsers with native PPTX rendering will display it. Workaround: open in PowerPoint → File → Export → PDF, then re-import the PDF.`;
     } else {
       message = `Imported "${niceName}".`;
     }

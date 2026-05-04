@@ -114,10 +114,15 @@ function variantLevels(category?: string): string[] {
 // when we ship gym-themed CLOCK variants). The default for missing
 // categories is "show everywhere except when the operator filters it
 // out themselves", so brand-new variants don't silently disappear.
+// CYCLE-5 v2-ops-console-not-k12-only fix — 'OFFICE' was K-12-gated but
+// the v2 admin-tier "Ops Console" widgets (OPS_FLEET_GRID, OPS_INCIDENT_BOARD,
+// OPS_LICENSE_USAGE, etc.) carry category=OFFICE and are neutral cyber-
+// aesthetic — equally relevant to a gym, restaurant, retail, or corporate
+// tenant. Removed OFFICE so non-K12 tenants can see those tiles.
 const K12_ONLY_CATEGORIES: ReadonlySet<string> = new Set([
   'ELEMENTARY', 'MIDDLE', 'HIGH',
   'CLASSROOM', 'PLAYFUL', 'HALLWAY',
-  'CAFETERIA', 'LIBRARY', 'OFFICE',
+  'CAFETERIA', 'LIBRARY',
   'ATHLETICS', 'ARTS', 'STEM',
   'SAFETY',
 ]);

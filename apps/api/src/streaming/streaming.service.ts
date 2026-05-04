@@ -131,6 +131,13 @@ export class StreamingService {
     }
 
     const sealed = sealCredentials(creds);
+    // CYCLE-5 streaming-iframeOnly-stuck-pending fix: providers whose
+    // auth is `iframeOnly` need no credential exchange — the embed URL
+    // is the whole integration. Without flipping these to ACTIVE on
+    // create, they sit in PENDING forever and the player can't pull
+    // playback. Same logic as `auth === 'none'`: nothing to verify
+    // server-side, the connection is usable as soon as it's saved.
+    const autoActiveAuth = provider.auth === 'none' || provider.auth === 'iframeOnly';
     const row = await (this.prisma.client as any).streamProviderConnection.create({
       data: {
         tenantId: opts.tenantId,
@@ -138,7 +145,7 @@ export class StreamingService {
         displayName: opts.displayName,
         encryptedCreds: sealed.encryptedCreds,
         encryptedDataKey: sealed.encryptedDataKey,
-        status: provider.auth === 'none' ? 'ACTIVE' : 'PENDING',
+        status: autoActiveAuth ? 'ACTIVE' : 'PENDING',
         createdByUserId: opts.userId,
       },
     });

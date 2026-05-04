@@ -119,16 +119,26 @@ export class AiService {
     }
 
     // Rate-limit: 30/hour/tenant. Sliding window kept in-memory.
+    // CYCLE-5 ai-rate-limit-leak fix: do NOT increment before the
+    // upstream call — a failed call would otherwise consume a quota
+    // slot. The push is moved to AFTER the successful Anthropic
+    // response below.
+    // CYCLE-5 ai-tenant-map-leak fix: prune entries during the check.
+    // If the filtered list is empty, drop the Map entry entirely so
+    // the Map can't grow unbounded across long-lived tenants.
     const now = Date.now();
     const oneHourAgo = now - 60 * 60 * 1000;
     const recent = (this.recentByTenant.get(opts.tenantId) || []).filter((t) => t > oneHourAgo);
+    if (recent.length === 0) {
+      this.recentByTenant.delete(opts.tenantId);
+    } else {
+      this.recentByTenant.set(opts.tenantId, recent);
+    }
     if (recent.length >= this.HOURLY_CAP) {
       throw new BadRequestException(
         `Hit the hourly AI cap (${this.HOURLY_CAP} generations/hour). Try again later or contact sales for a higher tier.`,
       );
     }
-    recent.push(now);
-    this.recentByTenant.set(opts.tenantId, recent);
 
     const count = Math.min(Math.max(opts.count ?? 3, 1), 5);
     const tone = opts.tone || 'casual';
@@ -196,6 +206,13 @@ export class AiService {
     if (options.length === 0) {
       throw new ServiceUnavailableException('AI returned an empty result. Try rephrasing your context.');
     }
+
+    // CYCLE-5 ai-rate-limit-leak fix: only count a quota slot once
+    // the upstream call returned a usable, non-empty result. A failed
+    // fetch / non-2xx / empty parse earlier in this method now does
+    // NOT consume the tenant's hourly cap.
+    recent.push(now);
+    this.recentByTenant.set(opts.tenantId, recent);
 
     return { options, intent: opts.intent };
   }

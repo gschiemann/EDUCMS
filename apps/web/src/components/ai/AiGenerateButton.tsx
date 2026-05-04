@@ -194,13 +194,21 @@ function AiGenerateModal({
     abortRef.current?.abort();
     abortRef.current = new AbortController();
     try {
+      // CYCLE-5 ai-NaN-count fix — clamp count to a positive integer before
+      // sending. If a future caller passes a non-numeric count via prop /
+      // env / form input, the backend would receive NaN which serialized to
+      // `Generate NaN options` in the prompt. Defensive clamp here so the
+      // server-side `Math.min(Math.max(count ?? 3, 1), 5)` always sees a
+      // finite number — NaN passes the ?? but breaks min/max.
+      const rawCount = 3;
+      const safeCount = Number.isFinite(rawCount) ? Math.max(1, Math.min(5, Math.trunc(rawCount))) : 3;
       const res = await apiFetch<{ options: AiOption[] }>('/ai/generate', {
         method: 'POST',
         body: JSON.stringify({
           intent,
           context,
           tone,
-          count: 3,
+          count: safeCount,
           vertical: tenantCopy.vertical,
         }),
         signal: abortRef.current.signal,

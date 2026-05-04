@@ -287,6 +287,72 @@ const SECTION_LABELS: Record<string, string> = {
   atlas: 'Atlas',
   general: 'General',
   _root: 'General',
+  // CYCLE-5 editor-section-labels fix — fitness scenes (15 widgets) were
+  // exposing dot-prefixes like `lf`, `mq`, `header`, `tutorial`, etc. as
+  // raw uppercase tokens (LF / Mq) in the auto-form's section headers.
+  // Added the most-common prefixes from FitnessIron / FitnessReformer /
+  // FitnessLockerWidget / FitnessMarquee / FitnessChannelGuide /
+  // FitnessTelemetry / FitnessLobby / etc. Easy to extend when new
+  // fitness scenes ship. (Duplicates of existing entries above — hero,
+  // next, routes, stats, ticker, banner — intentionally omitted.)
+  head: 'Header',
+  header: 'Header',
+  body: 'Body',
+  foot: 'Footer',
+  lf: 'Live feed',
+  mq: 'Marquee',
+  marquee: 'Marquee',
+  tutorial: 'Tutorial',
+  timer: 'Timer',
+  deadlift: 'Deadlift',
+  reformers: 'Reformers',
+  scorebug: 'Scorebug',
+  roster: 'Roster',
+  zones: 'Zones',
+  lanes: 'Lanes',
+  flow: 'Flow',
+  promo: 'Promo',
+  log: 'Activity log',
+  rec: 'Recommendations',
+  feature: 'Feature',
+  greet: 'Greeting',
+  service: 'Service',
+  tv: 'TV channel',
+  live: 'Live',
+  nowplaying: 'Now playing',
+  play: 'Playback',
+  ch: 'Channel',
+  leader: 'Leaderboard',
+  lb: 'Leaderboard',
+  ksched: 'Class schedule',
+  sched: 'Schedule',
+  round: 'Round',
+  weigh: 'Weigh-in',
+  vs: 'Versus',
+  meet: 'Meet',
+  event: 'Event',
+  setter: 'Setter',
+  sign: 'Sign',
+  slot: 'Slot',
+  strap: 'Strap',
+  strip: 'Strip',
+  rules: 'Rules',
+  runs: 'Runs',
+  reset: 'Reset',
+  exit: 'Exit',
+  valet: 'Valet',
+  cond: 'Conditions',
+  cta: 'Call to action',
+  found: 'Lost & Found',
+  instr: 'Instructions',
+  news: 'News',
+  ath: 'Athlete',
+  left: 'Left',
+  right: 'Right',
+  top: 'Top',
+  in: 'Indoors',
+  screen: 'Screen',
+  mod: 'Module',
 };
 
 function prettyFieldLabel(key: string): string {
@@ -3562,6 +3628,35 @@ export function ColorField({ label, value, onChange, allowTransparent }: { label
   );
 }
 
+// CYCLE-5 asset-picker-uncontrolled fix — small controlled-but-deferred
+// wrapper. Mirrors `value` from props into local state so external picker
+// updates flow back into the input (the bug), but defers parent onChange
+// to onBlur / Enter so per-keystroke typing doesn't thrash the widget
+// config. Empty deps + value-sync effect handles the picker case.
+function ControlledUrlInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+  return (
+    <input
+      type="text"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={(e) => {
+        if (e.target.value !== value) onChange(e.target.value);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.currentTarget.blur();
+        }
+      }}
+      placeholder="https://… or pick from library"
+      className="w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+    />
+  );
+}
+
 // Single-asset picker — opens an inline modal of uploaded assets
 function AssetPickerField({ label, value, onChange, kind }: { label: string; value: string; onChange: (v: string) => void; kind: 'image' | 'video' }) {
   const [open, setOpen] = useState(false);
@@ -3590,13 +3685,13 @@ function AssetPickerField({ label, value, onChange, kind }: { label: string; val
           </div>
         )}
         <div className="flex-1 flex flex-col gap-1.5">
-          <input
-            type="text"
-            defaultValue={value}
-            onBlur={(e) => onChange(e.target.value)}
-            placeholder="https://… or pick from library"
-            className="w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-          />
+          {/* CYCLE-5 asset-picker-uncontrolled fix — was uncontrolled
+              (defaultValue), so when "Browse library" picked a new URL
+              the input didn't refresh, only the thumbnail did. Now
+              controlled (value + onChange), with a local commit-on-blur
+              shadow so per-keystroke onChange doesn't thrash the parent
+              widget config. */}
+          <ControlledUrlInput value={value} onChange={onChange} />
           <div className="flex gap-1.5">
             <button
               type="button"
@@ -3800,7 +3895,11 @@ function StreamingChannelPickerField({
   // rendered.
   const params = useParams<{ schoolId?: string | string[] }>();
   const schoolId = Array.isArray(params?.schoolId) ? params.schoolId[0] : params?.schoolId;
-  const { data: channels, isLoading } = useQuery<StreamingChannelDto[]>({
+  // CYCLE-5 streaming-picker-no-catch fix — surface query errors instead
+  // of leaving the picker spinning forever on 401 / 5xx / transient
+  // network drops. `isError` from useQuery toggles the error message
+  // below; `isLoading` only fires while the request is in flight.
+  const { data: channels, isLoading, isError } = useQuery<StreamingChannelDto[]>({
     queryKey: ['streaming-channels-picker'],
     queryFn: () => apiFetch<StreamingChannelDto[]>('/streaming/channels'),
     staleTime: 30_000,
@@ -3830,7 +3929,12 @@ function StreamingChannelPickerField({
         ))}
       </select>
       {isLoading && <p className="text-[10px] text-slate-400 mt-1">Loading channels…</p>}
-      {!isLoading && (!channels || channels.length === 0) && (
+      {!isLoading && isError && (
+        <p className="text-[10px] text-rose-600 mt-1">
+          Couldn't load channels — try refresh.
+        </p>
+      )}
+      {!isLoading && !isError && (!channels || channels.length === 0) && (
         <p className="text-[10px] text-slate-400 mt-1">
           No channels picked yet — connect a provider + pick channels in{' '}
           <a href={schoolId ? `/${schoolId}/settings/streaming` : '/settings/streaming'} className="underline text-indigo-600 inline-flex items-center gap-0.5">
@@ -3881,9 +3985,15 @@ function PosCategoryPickerField({
   // settings/pos lands at /[schoolId]/settings/pos.
   const params = useParams<{ schoolId?: string | string[] }>();
   const schoolId = Array.isArray(params?.schoolId) ? params.schoolId[0] : params?.schoolId;
-  const { data: categories, isLoading } = useQuery<PosCategoryDto[]>({
+  // CYCLE-5 pos-picker-error-swallow fix — the previous .catch(() => [])
+  // hid every transient 5xx behind an empty result, making operators
+  // think no POS was connected when really the categories endpoint was
+  // briefly down. Surface isError separately so the empty-list path
+  // genuinely means "no POS connected" and the fetch-failed path shows
+  // a different message.
+  const { data: categories, isLoading, isError } = useQuery<PosCategoryDto[]>({
     queryKey: ['pos-categories-picker'],
-    queryFn: () => apiFetch<PosCategoryDto[]>('/pos/categories').catch(() => [] as PosCategoryDto[]),
+    queryFn: () => apiFetch<PosCategoryDto[]>('/pos/categories'),
     staleTime: 60_000,
   });
 
@@ -3903,7 +4013,12 @@ function PosCategoryPickerField({
         ))}
       </select>
       {isLoading && <p className="text-[10px] text-slate-400 mt-1">Loading POS catalog…</p>}
-      {!isLoading && (!categories || categories.length === 0) && (
+      {!isLoading && isError && (
+        <p className="text-[10px] text-rose-600 mt-1">
+          Couldn't load POS categories — try refresh.
+        </p>
+      )}
+      {!isLoading && !isError && (!categories || categories.length === 0) && (
         <p className="text-[10px] text-slate-400 mt-1">
           No POS connected yet —{' '}
           <a href={schoolId ? `/${schoolId}/settings/pos` : '/settings/pos'} className="underline text-indigo-600 inline-flex items-center gap-0.5">

@@ -91,6 +91,16 @@ export class AdsService {
         `${network.name} is closed-platform — no third-party CMS API. ${network.tierReason || ''}`,
       );
     }
+    // CYCLE-5 ad-network-salesLedOnly fix: networks marked
+    // `salesLedOnly` (Loop Media etc.) require a signed publisher
+    // contract before any inventory flows. Self-serve connect would
+    // leave the operator with an ACTIVE-looking row that never
+    // earns. Reject up front and route them to sales.
+    if (network.salesLedOnly) {
+      throw new ForbiddenException(
+        `${network.name} is sales-led only. Contact sales to onboard — self-serve connection is not available.`,
+      );
+    }
     // PARTNER networks are allowed to save in PENDING — staff flips
     // them ACTIVE once the publisher contract lands. Wizard surfaces
     // the partnership-required note before the operator gets here.
