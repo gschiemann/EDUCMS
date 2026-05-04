@@ -5,10 +5,16 @@ operation between Claude sessions.** Read this first when a new session starts.
 
 ## Current cycle
 
-- **Cycle**: 1 ✅ DONE · 2 ✅ DONE · 3 ✅ DONE · 4 ✅ DONE. Cycle 5 = P2 polish wave.
-- **Status**: `CYCLE_DONE` after cycle 4.
-- **Last commit**: `3501bc0` (Cycle 4 P1 wave)
+- **Cycle**: 1 ✅ DONE · 2 ✅ DONE · 3 ✅ DONE · 4 ✅ DONE · 5 IN-PROGRESS.
+- **Status**: `FIXING_DISPATCHED` for cycle 5
+- **Last commit**: `91582b0` (Cycle 4 STATE close)
 - **Open after cycle 4**: ~30 P2 polish bugs across 6 areas
+
+## Cycle 5 dispatch — 2 P2 polish agents running
+
+15 P2 bugs in 2 batches:
+- **backend batch** (7): AI rate-limit slot leak on failure, AI tenant-Map leak, imports Supabase error leak, imports duplicate Playlist, emergency spec global_clear, streaming iframeOnly stuck PENDING, ad-network salesLedOnly reject
+- **frontend batch** (8): AI NaN count, streaming picker no-catch, POS picker error swallow, editor SECTION_LABELS missing, v2 Ops Console hidden for non-K12, AssetPicker uncontrolled, streaming Quick Start music spot-check, Unicode NFC sanitize
 
 ## ✅ Cycles 1-4 — what closed
 
