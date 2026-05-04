@@ -195,6 +195,83 @@ function getApiRoot(): string {
   return env.replace('/api/v1', '');
 }
 
+// 2026-05-04 — PlayerVideoSlide component.
+// Operator: "the new player does not auto play the second video in the
+// playlist, it should be looping both videos and not showing the player
+// icon in between, instead it now finished the first video and shows
+// nothing but the giant play icon on the screen never playing the
+// second video".
+//
+// Cause: my earlier preload-the-next-video fix used `autoPlay={isActive}`.
+// `autoPlay` is a one-time HTML attribute that fires when the element
+// MOUNTS — not when the prop changes. So when video 2 was rendered
+// pre-active with autoPlay={false} for preloading, flipping the prop
+// later does nothing. The video stays paused, paints the empty
+// placeholder over the black background, and operator sees nothing
+// playing.
+//
+// Fix: imperative play()/pause() via a ref + useEffect on isActive
+// change. The element STAYS MOUNTED across the transition (so the
+// preload fix still works — no remount-flash), but we explicitly
+// command playback when it becomes active.
+//
+// Solo-playlist case (single video repeated): still uses native
+// `loop` attribute for browser-handled seamless restart with zero
+// React re-render gap. The play/pause effect is a no-op for solo
+// playlists because isActive stays true forever.
+function PlayerVideoSlide({
+  src,
+  isActive,
+  classes,
+  isSoloPlaylist,
+  onEnded,
+  onError,
+  videoKey,
+}: {
+  src: string;
+  isActive: boolean;
+  classes: string;
+  isSoloPlaylist: boolean;
+  onEnded: () => void;
+  onError: () => void;
+  videoKey: string;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (isActive) {
+      // Reset to start when becoming active so a previous play that
+      // ended at duration doesn't replay from the end. For initial
+      // mount, currentTime is already 0 — this is a no-op.
+      try { v.currentTime = 0; } catch { /* some browsers reject if not ready */ }
+      // Play() returns a promise on modern browsers; muted videos
+      // should always succeed. Catch swallows any "interrupted by
+      // pause" rejection that occurs when isActive flips fast.
+      const p = v.play();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } else {
+      try { v.pause(); } catch { /* noop */ }
+    }
+  }, [isActive]);
+
+  return (
+    <video
+      ref={videoRef}
+      key={videoKey}
+      src={src}
+      className={classes}
+      preload="auto"
+      style={{ background: '#000' }}
+      muted
+      playsInline
+      loop={isSoloPlaylist}
+      onEnded={isSoloPlaylist ? undefined : onEnded}
+      onError={onError}
+    />
+  );
+}
+
 // Generate a stable device fingerprint for this physical device.
 //
 // PRECEDENCE (first match wins):
@@ -3203,46 +3280,21 @@ function PlayerPage() {
               // sequence-order copies there are.
               const distinctItemCount = new Set(sorted.map((s: any) => s.id || s.assetId)).size;
               const isSoloPlaylist = distinctItemCount <= 1;
-              return <video
-                key={item.id}
-                src={resUrl}
-                className={classes}
-                // 2026-05-04 — preload=auto ensures the inactive next-up
-                // video is fully buffered before it becomes active.
-                // Old default of "metadata" only fetched the header,
-                // forcing the browser to download + decode the first
-                // frame at swap time which produced the play-icon
-                // placeholder flash.
-                preload="auto"
-                // Solid black background suppresses the default
-                // <video> placeholder (centered Play triangle on
-                // grey) during any unavoidable load gap. The play
-                // icon was the most visible artifact of the
-                // transition; black is invisible inside the FADE
-                // crossfade.
-                style={{ background: '#000' }}
-                autoPlay={isActive}
-                muted
-                playsInline
-                loop={isSoloPlaylist}
-                onEnded={isSoloPlaylist ? undefined : () => {
-                  // 2026-05-04 — DO NOT teardown src on the outgoing
-                  // video. The previous fix (HIGH-6) explicitly
-                  // released src to "blank the outgoing element"
-                  // BUT that's exactly what made the empty default
-                  // placeholder visible during the transition.
-                  // The fade-out crossfade hides any final-frame
-                  // artifact for 1000ms; the next <video> is already
-                  // buffered (we render it pre-active with
-                  // preload=auto) so no swap gap. Just advance.
-                  setCurrentIndex(prev => prev + 1);
-                }}
-                onError={() => {
-                  // Corrupted file or 404 → skip ahead instead of stalling forever.
-                  console.warn('[Player] video error, skipping:', resUrl);
-                  setCurrentIndex(prev => prev + 1);
-                }}
-              />;
+              return (
+                <PlayerVideoSlide
+                  key={item.id}
+                  videoKey={item.id}
+                  src={resUrl}
+                  isActive={isActive}
+                  classes={classes}
+                  isSoloPlaylist={isSoloPlaylist}
+                  onEnded={() => setCurrentIndex(prev => prev + 1)}
+                  onError={() => {
+                    console.warn('[Player] video error, skipping:', resUrl);
+                    setCurrentIndex(prev => prev + 1);
+                  }}
+                />
+              );
             }
             if (isWeb) {
               // Web pages: route through the API proxy so we can strip
