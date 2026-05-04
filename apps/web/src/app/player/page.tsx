@@ -3423,7 +3423,7 @@ function PlayerPage() {
           })}
         </div>
       ) : (
-        <div className="w-full h-full bg-slate-50 flex items-stretch justify-center p-8 overflow-hidden relative cursor-default" onClick={(e) => e.stopPropagation()} role="presentation">
+        <div className="absolute inset-0 bg-slate-50 flex items-stretch justify-center p-8 overflow-hidden cursor-default" onClick={(e) => e.stopPropagation()} role="presentation">
           {/* Decorative background blurs to match Pastel Pop */}
           <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-400/20 rounded-full blur-3xl pointer-events-none" />
           <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-400/20 rounded-full blur-3xl pointer-events-none" />

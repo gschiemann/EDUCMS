@@ -88,7 +88,26 @@
             android:showWhenLocked="true"
             android:turnScreenOn="true"
             android:resizeableActivity="false"
-            tools:ignore="LockedOrientationActivity">
+            tools:ignore="LockedOrientationActivity"
+            android:windowSoftInputMode="adjustResize|stateAlwaysHidden"><!--
+              2026-05-04 — operator: "clicked on a field to type a location
+              search and as soon as the keyboard pulls up i get the black bar".
+              Default Android behavior is `adjustPan` — when the soft keyboard
+              appears, Android pans the entire WebView UPWARD so the focused
+              input stays visible above the keyboard. After dismissing the
+              keyboard, the content STAYS scrolled, leaving a black gap at
+              the top of the screen.
+
+              Fix: `adjustResize` instead. The viewport itself shrinks to
+              accommodate the keyboard, but the top stays anchored. CSS
+              `position: fixed` + `inset-0` re-layouts to the new viewport
+              size. After dismissing, viewport returns to full size with no
+              black gap.
+
+              `stateAlwaysHidden` is belt + suspenders for kiosk mode — we
+              don't want the soft keyboard auto-popping on activity start
+              if a stale focus state lingers from the prior session.
+        -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
