@@ -1124,6 +1124,13 @@ function PlayerPage() {
   const cachedAuthTokenRef = useRef<string | null>(null);
   const [activeEmergency, setActiveEmergency] = useState<any | null>(null);
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null);
+  // FIX (player-007): when the kiosk is in production but cannot find a
+  // signed device JWT, the WS HELLO falls back to a `dev_<screenId>_*`
+  // token that the server rejects unless DEV_WS_ALLOW=true. In prod
+  // this means real-time silently degrades to HTTP polling — operator
+  // sees no warning. We surface a visible banner so the kiosk can be
+  // re-paired or the token re-issued.
+  const [unsignedWsTokenWarning, setUnsignedWsTokenWarning] = useState<boolean>(false);
   const lastEmergencySetHashRef = useRef<string>('');
   // HIGH-5: track the last set of playlist asset URLs we pushed to the SW.
   // Equal hash = no-op skip; saves a postMessage + SW work on every poll.
@@ -1898,7 +1905,24 @@ function PlayerPage() {
           lastWsMessageAtRef.current = Date.now();
           // Stop the HTTP fallback poll if we now have a working socket.
           if (httpFallbackRef.current) { clearInterval(httpFallbackRef.current); httpFallbackRef.current = null; }
-          const tok = getDeviceToken() || (tenantId ? `dev_${screenId}_${tenantId}` : `dev_${screenId}_unknown`);
+          // FIX (player-007): detect signed-token absence and warn the
+          // operator instead of silently degrading to HTTP polling. In
+          // production with DEV_WS_ALLOW unset/false the server will
+          // reject `dev_*` tokens, so real-time emergency events stop
+          // arriving on this socket. The HTTP polling fallback still
+          // covers life-safety (5–10s cadence) but the operator deserves
+          // a clear "kiosk needs re-pairing" prompt instead of guessing
+          // why their drill went 8s slower than expected.
+          const signedToken = getDeviceToken();
+          const tok = signedToken || (tenantId ? `dev_${screenId}_${tenantId}` : `dev_${screenId}_unknown`);
+          const devWsAllow = process.env.NEXT_PUBLIC_DEV_WS_ALLOW === 'true';
+          if (!signedToken && !devWsAllow) {
+            console.warn('[Player WS] No signed device JWT available — server will reject dev_ token in prod. Banner surfaced.');
+            setUnsignedWsTokenWarning(true);
+          } else if (signedToken) {
+            // Recovered (e.g. user re-paired): clear the banner.
+            setUnsignedWsTokenWarning(false);
+          }
           console.log('[Player WS] Connected — sending HELLO');
           ws.send(JSON.stringify({ event: 'HELLO', data: { token: tok } }));
           heartbeatRef.current = setInterval(() => {
@@ -1947,7 +1971,19 @@ function PlayerPage() {
             //      signer service and is rejected outright.
             // Full asymmetric verification requires per-tenant Ed25519
             // keys issued at pair time — slated as a follow-up.
-            const SENSITIVE_TYPES = new Set(['OVERRIDE', 'TENANT_CHANGED', 'ALL_CLEAR']);
+            //
+            // FIX (player-006): ALL_CLEAR is intentionally NOT in this set.
+            // A clock-skewed kiosk that boots after lockdown has been
+            // cleared could otherwise drop the ALL_CLEAR for arriving
+            // before AUTH_OK (no clock offset captured yet) and stay
+            // stuck on the lockdown screen until the next manifest poll
+            // (5–10 s) catches up. ALL_CLEAR is the safest possible
+            // message — losing it has worse consequences than a brief
+            // acceptance window. Trust + verify rather than fail-closed:
+            // we still pass the message through the same OVERRIDE-type
+            // sanity logic (cacheEmergency(null), setActiveEmergency(null))
+            // and the next 10s poll re-confirms via /emergency/status.
+            const SENSITIVE_TYPES = new Set(['OVERRIDE', 'TENANT_CHANGED']);
             if (SENSITIVE_TYPES.has(msg.type)) {
               if (!msg.signature || typeof msg.signature !== 'string') {
                 console.warn('[Player WS] dropped unsigned sensitive event:', msg.type);
@@ -2519,6 +2555,30 @@ function PlayerPage() {
     );
   })() : null;
 
+  // FIX (player-007): visible banner when the kiosk is connected over WS
+  // but had to fall back to an unsigned dev_ token (no signed device JWT
+  // in localStorage AND DEV_WS_ALLOW is not 'true'). Server rejects this
+  // token in prod, so realtime is dead and the operator needs to act.
+  // Bottom-right amber banner, kept distinct from the bottom-center
+  // reconnecting toast so they don't visually collide.
+  const unsignedWsBanner = unsignedWsTokenWarning ? (
+    <div
+      className="fixed bottom-6 right-6 z-[10001] max-w-md px-5 py-4 rounded-2xl bg-amber-500 text-amber-950 shadow-2xl border border-amber-300 flex items-start gap-3"
+      role="alert"
+      aria-live="assertive"
+    >
+      <AlertTriangle className="w-6 h-6 shrink-0 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <div className="text-base font-bold">Real-time disabled</div>
+        <div className="text-xs mt-1 leading-relaxed">
+          Kiosk needs re-pairing — no signed device token available.
+          Emergency events still arrive via 5–10 s polling fallback,
+          but instant real-time is offline.
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   // ─── Render: Registering ───
   if (phase === 'registering') {
     return (
@@ -2535,6 +2595,7 @@ function PlayerPage() {
         />
         {otaOverlay}
         {connectivityToast}
+        {unsignedWsBanner}
       </>
     );
   }
@@ -2561,6 +2622,7 @@ function PlayerPage() {
         />
         {otaOverlay}
         {connectivityToast}
+        {unsignedWsBanner}
       </>
     );
   }
@@ -2819,6 +2881,7 @@ function PlayerPage() {
             template / playback). */}
         {otaOverlay}
         {connectivityToast}
+        {unsignedWsBanner}
       </div>
     );
   }
@@ -3702,6 +3765,7 @@ function PlayerPage() {
       `}</style>
       {otaOverlay}
       {connectivityToast}
+      {unsignedWsBanner}
     </div>
   );
 }

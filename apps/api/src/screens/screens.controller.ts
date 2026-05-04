@@ -23,11 +23,13 @@ import {
 
 const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
-function generatePairingCode(): string {
+function generatePairingCode(length: number = 6): string {
   // sec-fix(wave1) #3: use crypto.randomInt (CSPRNG) instead of
-  // Math.random() (predictable xorshift). Same 6-char alphabet & length.
+  // Math.random() (predictable xorshift). Same alphabet; default
+  // length 6 — but FIX (player-009) callers can request length 8
+  // when collision-retry exhausts the 6-char namespace.
   let code = '';
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < length; i++) {
     code += PAIRING_CODE_ALPHABET[crypto.randomInt(0, PAIRING_CODE_ALPHABET.length)];
   }
   return code;
@@ -362,13 +364,28 @@ export class ScreensController {
       };
     }
 
-    // New device — create with pairing code
+    // New device — create with pairing code.
+    // FIX (player-009): the previous retry budget was 10 attempts — on
+    // the 11th collision the controller fell through to a unique-index
+    // 500 because the duplicate pairingCode hit the DB. The 6-char code
+    // in a 32-char alphabet has a 32^6 ≈ 1.07B namespace; a real fleet
+    // of 100k unpaired screens has a per-code collision rate of <1e-4,
+    // and 100 retries at that rate is effectively zero (1e-400-ish).
+    // We also fall back to an 8-char code after 50 collisions in case
+    // the namespace is artificially exhausted (test seeding, malicious
+    // pre-claiming, etc) so that an unpaired kiosk NEVER receives 500.
     let pairingCode = generatePairingCode();
-    // Ensure uniqueness
-    for (let attempt = 0; attempt < 10; attempt++) {
+    let pairingCodeLength = 6;
+    for (let attempt = 0; attempt < 100; attempt++) {
       const exists = await this.prisma.client.screen.findUnique({ where: { pairingCode } });
       if (!exists) break;
-      pairingCode = generatePairingCode();
+      // After 50 collisions at length 6, escalate to length 8 — same
+      // alphabet, ~1.1T-entry namespace. This branch is essentially
+      // unreachable in practice but keeps the failure mode bounded.
+      if (attempt >= 50 && pairingCodeLength === 6) {
+        pairingCodeLength = 8;
+      }
+      pairingCode = generatePairingCode(pairingCodeLength);
     }
 
     const screen = await this.prisma.client.screen.create({

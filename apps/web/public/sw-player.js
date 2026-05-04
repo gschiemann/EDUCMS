@@ -31,7 +31,14 @@
 //     versioned emergency cache into the new one BEFORE deleting the old
 //     cache, so a SW upgrade never leaves the kiosk with 0 cached
 //     emergency assets in the gap before the next refreshEmergencyCache.
-const VERSION = 'v3';
+// v4 bundles CYCLE-4 P1 fix:
+//   - player-005: cache eviction + lookup now use a stable key (origin +
+//     pathname, query stripped) so Supabase signed-URL token rotation no
+//     longer wipes + re-downloads the entire playlist every hour. The
+//     network Request still uses the full signed URL (cache.put preserves
+//     the original Request) so authorized fetches still succeed; only
+//     the dedupe / eviction / size-tracking maps key on the stable form.
+const VERSION = 'v4';
 const PLAYLIST_CACHE = `edu-player-playlist-${VERSION}`;
 const EMERGENCY_CACHE = `edu-player-emergency-${VERSION}`;
 const META_CACHE = `edu-player-meta-${VERSION}`; // stores sha hashes per URL
@@ -300,7 +307,12 @@ async function precacheEmergency(assets, setHash, ackPort) {
   if (allCached) {
     for (const asset of assets) {
       if (!asset?.url) continue;
-      const present = await cache.match(new Request(asset.url, { mode: 'cors', credentials: 'omit' }));
+      // FIX (player-005): ignoreSearch so token rotation doesn't make a
+      // freshly-cached asset look "missing" on the verification pass.
+      const present = await cache.match(
+        new Request(asset.url, { mode: 'cors', credentials: 'omit' }),
+        { ignoreSearch: true },
+      );
       if (!present) { allCached = false; break; }
     }
   }
@@ -346,9 +358,13 @@ async function fetchAndStore(asset, cache, meta) {
 
   // If we already have it AND the hash matches, skip — but ensure we have a
   // size record (cold-boot SW may have lost the in-memory map).
+  // FIX (player-005): use ignoreSearch so a rotated `?token=...` on the
+  // manifest URL still matches the previously-cached entry stored under
+  // the old token. Without this, every token rotation looked like a fresh
+  // asset and we re-downloaded the whole playlist hourly.
   const storedHashRes = await meta.match(metaKey(asset.url));
   const storedHash = storedHashRes ? await storedHashRes.text() : '';
-  const cached = await cache.match(req);
+  const cached = await cache.match(req, { ignoreSearch: true });
   if (cached && asset.sha256 && storedHash === asset.sha256) {
     if (!SIZE_BY_URL.has(norm)) {
       const sz = await measureResponseSize(cached, asset);
@@ -495,23 +511,40 @@ async function broadcast(msg) {
 }
 
 function metaKey(url) {
-  return new Request(`/__edu_meta__/${encodeURIComponent(url)}`);
+  // FIX (player-005): key meta entries by the STABLE form so they survive
+  // Supabase signed-URL token rotation. Same asset = same meta record
+  // regardless of which `?token=` revision the manifest currently shows.
+  return new Request(`/__edu_meta__/${encodeURIComponent(stableKey(url))}`);
 }
 
 function sizeMetaKey(url) {
-  return new Request(`${SIZE_META_PREFIX}${encodeURIComponent(url)}`);
+  return new Request(`${SIZE_META_PREFIX}${encodeURIComponent(stableKey(url))}`);
 }
 
-function normalizeUrl(u) {
-  try { return new URL(u, self.location.origin).toString().split('#')[0]; }
-  catch { return u; }
-}
-
-function stripQuery(u) {
+// FIX (player-005): stableKey is the cache-dedupe identity for an asset.
+// Supabase signed URLs append a `?token=...` that rotates ~hourly; if we
+// keyed by the full URL, every manifest poll would see "new" URLs for the
+// same asset and the playlist precache would wipe + re-download the whole
+// fleet's worth of assets every hour. We strip the query (and hash) so
+// `https://x/y/foo.mp4?token=abc` and `...?token=def` collapse to the same
+// key. The actual fetch + cache.put still uses the full signed URL — only
+// the dedupe / eviction / size maps key on this stripped form.
+function stableKey(u) {
   try {
     const p = new URL(u, self.location.origin);
     p.search = '';
     p.hash = '';
     return p.toString();
-  } catch { return u; }
+  } catch { return String(u || '').split('?')[0].split('#')[0]; }
+}
+
+// normalizeUrl is now an alias for stableKey — kept as a separate name so
+// future work can re-introduce a query-preserving normalize if a non-
+// Supabase asset class ever needs token-aware dedupe.
+function normalizeUrl(u) {
+  return stableKey(u);
+}
+
+function stripQuery(u) {
+  return stableKey(u);
 }

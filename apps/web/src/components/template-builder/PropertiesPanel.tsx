@@ -2328,19 +2328,46 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       break;
     }
     case 'BAR_TAP_LIST': {
+      // 2026-05-03 BUG FIX (cycle 4 editor-BUG-extend-bar) — minimal
+      // case had no editor for taps[]/subtitle/accentColor; with
+      // posSync OFF the operator literally could not edit the menu.
+      // Added subtitle, accentColor, taps[] JSON editor (safe-parse
+      // pattern from cycle-2 editor-BUG-003). Field shapes confirmed
+      // against TapListConfig in apps/web/src/components/widgets/bar/
+      // TapListWidget.tsx.
       fields.push(<TextField key="title" label="Tap list title" value={cfg.title || ''} placeholder="On Tap" onChange={(v) => setField({ title: v })} />);
+      fields.push(<TextField key="subtitle" label="Subtitle" value={cfg.subtitle || ''} placeholder="16 LOCAL CRAFT" onChange={(v) => setField({ subtitle: v })} />);
+      fields.push(<ColorPickerField key="accentColor" label="Accent color (neon edge / handle ring)" value={cfg.accentColor || '#f59e0b'} onChange={(v) => setField({ accentColor: v })} />);
       fields.push(<ToggleField key="posSync" label="Pull live taps from connected POS" value={!!cfg.posSync} onChange={(v) => setField({ posSync: v })} />);
       if (cfg.posSync) {
         fields.push(<PosCategoryPickerField key="posCategory" label="Tap category (optional)" value={cfg.posCategory || ''} onChange={(v) => setField({ posCategory: v || undefined })} />);
       }
-      fields.push(<TextField key="columns" label="Columns" value={String(cfg.columns || 2)} placeholder="2" onChange={(v) => setField({ columns: parseInt(v) || 2 })} />);
+      fields.push(<TextField key="columns" label="Columns (1-3)" value={String(cfg.columns || 2)} placeholder="2" onChange={(v) => setField({ columns: parseInt(v) || 2 })} />);
+      if (!cfg.posSync) {
+        fields.push(<TextAreaField key="tapsJson" label="Taps (JSON array of { name, brewery, style, abv, ibu, price, color, isNew })" value={typeof cfg.taps === 'string' ? cfg.taps : JSON.stringify(cfg.taps || [], null, 2)} rows={10} onChange={(v) => {
+          try { setField({ taps: JSON.parse(v) }); } catch { /* keep previous valid value */ }
+        }} />);
+      }
       break;
     }
     case 'BAR_COCKTAIL_MENU': {
+      // 2026-05-03 BUG FIX (cycle 4 editor-BUG-extend-bar) — same as
+      // BAR_TAP_LIST: with posSync OFF the operator had no UI for
+      // cocktails[]. Added subtitle, footer, columns, cocktails[] JSON
+      // editor. Field shapes confirmed against CocktailMenuConfig in
+      // apps/web/src/components/widgets/bar/CocktailMenuWidget.tsx.
       fields.push(<TextField key="title" label="Cocktail menu title" value={cfg.title || ''} placeholder="Signature Cocktails" onChange={(v) => setField({ title: v })} />);
+      fields.push(<TextField key="subtitle" label="Subtitle" value={cfg.subtitle || ''} placeholder="House & Classics" onChange={(v) => setField({ subtitle: v })} />);
+      fields.push(<TextField key="footer" label="Footer flourish" value={cfg.footer || ''} placeholder="Ask your bartender." onChange={(v) => setField({ footer: v })} />);
       fields.push(<ToggleField key="posSync" label="Pull live cocktails from connected POS" value={!!cfg.posSync} onChange={(v) => setField({ posSync: v })} />);
       if (cfg.posSync) {
         fields.push(<PosCategoryPickerField key="posCategory" label="Cocktail category (optional)" value={cfg.posCategory || ''} onChange={(v) => setField({ posCategory: v || undefined })} />);
+      }
+      fields.push(<TextField key="columns" label="Columns (1-2)" value={String(cfg.columns || 2)} placeholder="2" onChange={(v) => setField({ columns: parseInt(v) || 2 })} />);
+      if (!cfg.posSync) {
+        fields.push(<TextAreaField key="cocktailsJson" label="Cocktails (JSON array of { name, ingredients, note, price, garnish, featured })" value={typeof cfg.cocktails === 'string' ? cfg.cocktails : JSON.stringify(cfg.cocktails || [], null, 2)} rows={10} onChange={(v) => {
+          try { setField({ cocktails: JSON.parse(v) }); } catch { /* keep previous valid value */ }
+        }} />);
       }
       break;
     }

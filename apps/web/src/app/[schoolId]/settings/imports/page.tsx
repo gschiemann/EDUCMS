@@ -108,12 +108,29 @@ export default function DesignImportsPage() {
           <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">Available now</span>
           <h2 className="text-base font-bold text-slate-800">Drop a PDF, PowerPoint, or image</h2>
         </div>
+        {/* 2026-05-03 BUG FIX (cycle 4 ai-imports-BUG-005) — drop zone
+            previously had no role / tabIndex / keyboard handler, so users
+            on keyboard-only or screen-reader paths could not open the
+            file picker. Added role=button + tabIndex + Enter/Space
+            activation + descriptive aria-label so the dropzone is now
+            reachable and announced by AT. */}
         <div
+          role="button"
+          tabIndex={0}
+          aria-label="Click or drag a file to import a design (PDF, PowerPoint, or image)"
+          aria-disabled={uploading || undefined}
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
           onDrop={onDrop}
           onClick={() => fileInputRef.current?.click()}
-          className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
+          onKeyDown={(e) => {
+            if (uploading) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              fileInputRef.current?.click();
+            }
+          }}
+          className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 ${
             dragOver
               ? 'border-emerald-500 bg-emerald-50'
               : uploading

@@ -58,12 +58,14 @@ import {
   Get,
   HttpException,
   HttpStatus,
+  Logger,
   Param,
   Post,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import * as crypto from 'crypto';
+import * as Sentry from '@sentry/nestjs';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
@@ -95,6 +97,8 @@ interface OverrideInput {
 @Controller('api/v1/emergency/screens')
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class ScreenEmergencyController {
+  private readonly logger = new Logger(ScreenEmergencyController.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
@@ -232,64 +236,89 @@ export class ScreenEmergencyController {
     }
     const overrideId = `ovr_${crypto.randomUUID()}`;
 
-    // Upsert — there's a unique on screen_id, so a second trigger on
-    // the same screen replaces the first override rather than failing.
-    await (this.prisma.client as any).screenEmergencyOverride.upsert({
-      where: { screenId: screen.id },
-      create: {
-        screenId: screen.id,
-        tenantId,
-        type: override.type,
-        severity: override.severity,
-        scopeNote: override.scopeNote,
-        playlistId: override.playlistId,
-        mediaUrl: override.mediaUrl,
-        textBlob: override.textBlob,
-        expiresAt: override.expiresAt,
-        floorPlanId: override.floorPlanId,
-        floorZoneId: override.floorZoneId,
-        scenarioId: override.scenarioId,
-        triggeredByUserId: userId,
-      },
-      update: {
-        type: override.type,
-        severity: override.severity,
-        scopeNote: override.scopeNote,
-        playlistId: override.playlistId,
-        mediaUrl: override.mediaUrl,
-        textBlob: override.textBlob,
-        expiresAt: override.expiresAt,
-        floorPlanId: override.floorPlanId,
-        floorZoneId: override.floorZoneId,
-        scenarioId: override.scenarioId,
-        triggeredByUserId: userId,
-        triggeredAt: new Date(),
-      },
-    });
-
-    // Audit log — every per-screen trigger is forensic-grade. The
-    // details JSON includes the floor plan / zone / scenario so a
-    // post-incident review can reconstruct which playbook fired this.
+    // 2026-05-03 BUG FIX (cycle 4 emergency-BUG-006) — previously the
+    // upsert and audit-log writes were two separate calls, with the
+    // audit wrapped in `try { ... } catch { /* swallow */ }`. If the
+    // audit write failed (DB blip, FK race) we'd return success to the
+    // operator with NO forensic record — a worse state than no trigger
+    // at all. Wrap both in a Prisma transaction (matching cycle-1
+    // emergency-003 pattern in emergency.controller.ts:520-555). If the
+    // audit cannot be written, the override is rolled back too and the
+    // caller gets a 500 — which is correct: a failed-audit trigger is
+    // a worse state than no-trigger.
     try {
-      await this.prisma.client.auditLog.create({
-        data: {
-          action: 'TRIGGER_SCREEN_EMERGENCY',
-          targetType: 'screen',
-          targetId: screen.id,
-          tenantId,
-          userId,
-          details: JSON.stringify({
-            overrideId,
+      await this.prisma.client.$transaction([
+        (this.prisma.client as any).screenEmergencyOverride.upsert({
+          where: { screenId: screen.id },
+          create: {
+            screenId: screen.id,
+            tenantId,
             type: override.type,
             severity: override.severity,
             scopeNote: override.scopeNote,
+            playlistId: override.playlistId,
+            mediaUrl: override.mediaUrl,
+            textBlob: override.textBlob,
+            expiresAt: override.expiresAt,
             floorPlanId: override.floorPlanId,
             floorZoneId: override.floorZoneId,
             scenarioId: override.scenarioId,
-          }),
-        },
+            triggeredByUserId: userId,
+          },
+          update: {
+            type: override.type,
+            severity: override.severity,
+            scopeNote: override.scopeNote,
+            playlistId: override.playlistId,
+            mediaUrl: override.mediaUrl,
+            textBlob: override.textBlob,
+            expiresAt: override.expiresAt,
+            floorPlanId: override.floorPlanId,
+            floorZoneId: override.floorZoneId,
+            scenarioId: override.scenarioId,
+            triggeredByUserId: userId,
+            triggeredAt: new Date(),
+          },
+        }),
+        // Audit log — every per-screen trigger is forensic-grade. The
+        // details JSON includes the floor plan / zone / scenario so a
+        // post-incident review can reconstruct which playbook fired this.
+        this.prisma.client.auditLog.create({
+          data: {
+            action: 'TRIGGER_SCREEN_EMERGENCY',
+            targetType: 'screen',
+            targetId: screen.id,
+            tenantId,
+            userId,
+            details: JSON.stringify({
+              overrideId,
+              type: override.type,
+              severity: override.severity,
+              scopeNote: override.scopeNote,
+              floorPlanId: override.floorPlanId,
+              floorZoneId: override.floorZoneId,
+              scenarioId: override.scenarioId,
+            }),
+          },
+        }),
+      ]);
+    } catch (error) {
+      Sentry.withScope((s) => {
+        s.setTag('emergency.action', 'screen-trigger');
+        s.setUser({ id: userId });
+        s.setExtra('screenId', screen.id);
+        s.setExtra('tenantId', tenantId);
+        s.setExtra('overrideId', overrideId);
+        Sentry.captureException(error);
       });
-    } catch { /* swallow */ }
+      this.logger.error(
+        `[ScreenEmergency] Trigger transaction failed for screen ${screen.id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw new HttpException(
+        'Failed to record per-screen emergency override (audit write failed). Trigger aborted.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
 
     // Pub/sub fanout. Same envelope shape the tenant-wide trigger uses,
     // just on the device channel. Player verifies signature before
@@ -358,22 +387,46 @@ export class ScreenEmergencyController {
       // hitting an error mid-incident.
       return { success: true, screenId, cleared: false };
     }
-    await (this.prisma.client as any).screenEmergencyOverride.delete({
-      where: { screenId: screen.id },
-    });
 
+    // 2026-05-03 BUG FIX (cycle 4 emergency-BUG-006) — previously the
+    // delete + audit write were independent calls with the audit
+    // catch-swallowed. Forensic record could go missing while the
+    // operator-visible result said "cleared". Wrap both in one
+    // transaction so they cannot drift apart; surface a 500 if the
+    // audit write fails so the operator knows to re-fire.
     try {
-      await this.prisma.client.auditLog.create({
-        data: {
-          action: 'CLEAR_SCREEN_EMERGENCY',
-          targetType: 'screen',
-          targetId: screen.id,
-          tenantId: screen.tenantId!,
-          userId: req.user.id,
-          details: JSON.stringify({ clearedOverrideId: existing.id, type: existing.type }),
-        },
+      await this.prisma.client.$transaction([
+        (this.prisma.client as any).screenEmergencyOverride.delete({
+          where: { screenId: screen.id },
+        }),
+        this.prisma.client.auditLog.create({
+          data: {
+            action: 'CLEAR_SCREEN_EMERGENCY',
+            targetType: 'screen',
+            targetId: screen.id,
+            tenantId: screen.tenantId!,
+            userId: req.user.id,
+            details: JSON.stringify({ clearedOverrideId: existing.id, type: existing.type }),
+          },
+        }),
+      ]);
+    } catch (error) {
+      Sentry.withScope((s) => {
+        s.setTag('emergency.action', 'screen-all-clear');
+        s.setUser({ id: req.user?.id });
+        s.setExtra('screenId', screen.id);
+        s.setExtra('tenantId', screen.tenantId);
+        s.setExtra('clearedOverrideId', existing.id);
+        Sentry.captureException(error);
       });
-    } catch { /* swallow */ }
+      this.logger.error(
+        `[ScreenEmergency] All-clear transaction failed for screen ${screen.id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw new HttpException(
+        'Failed to record per-screen all-clear (audit write failed). Override may still be active; please retry.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
 
     // Broadcast all-clear so the player exits override mode without
     // waiting for its next manifest poll.

@@ -162,6 +162,12 @@ export class SchedulesController {
     @Request() req: any,
     @Param('id') id: string,
     @Body() body: {
+      // CYCLE-4 auth-BUG-012: playlistId was missing from the body type,
+      // so callers trying to re-target a schedule to a different playlist
+      // saw a silent no-op (the property was dropped before reaching the
+      // update payload). Tenant-scoped findFirst validates the new id
+      // belongs to this tenant before writing — same pattern as create.
+      playlistId?: string;
       screenGroupId?: string;
       screenId?: string;
       daysOfWeek?: string | null;
@@ -179,6 +185,15 @@ export class SchedulesController {
     // PUT body re-targets the schedule at a different screen or group
     // we must confirm the new id belongs to this tenant. A bare string
     // (with no truthy id) clears the field and is fine.
+    if (body.playlistId) {
+      const playlistOwned = await this.prisma.client.playlist.findFirst({
+        where: { id: body.playlistId, tenantId: req.user.tenantId },
+        select: { id: true },
+      });
+      if (!playlistOwned) {
+        throw new HttpException('Playlist not found', HttpStatus.NOT_FOUND);
+      }
+    }
     if (body.screenId) {
       const screenOwned = await this.prisma.client.screen.findFirst({
         where: { id: body.screenId, tenantId: req.user.tenantId },
@@ -199,6 +214,7 @@ export class SchedulesController {
     }
 
     const data: any = {};
+    if (body.playlistId !== undefined && body.playlistId) data.playlistId = body.playlistId;
     if (body.screenGroupId !== undefined) { data.screenGroupId = body.screenGroupId || null; data.screenId = null; }
     if (body.screenId !== undefined) { data.screenId = body.screenId || null; data.screenGroupId = null; }
     if (body.daysOfWeek !== undefined) data.daysOfWeek = body.daysOfWeek || null;

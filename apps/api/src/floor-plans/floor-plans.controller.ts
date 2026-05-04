@@ -63,6 +63,116 @@ const ALLOWED_FLOOR_PLAN_MIMES = [
   'image/webp',
 ];
 
+/**
+ * 2026-05-03 BUG FIX (cycle 4 emergency-BUG-008) — server-side image
+ * dimension probe. Previously widthPx + heightPx came from the client's
+ * form data with zero verification. A malicious client could submit
+ * dimensions that didn't match the actual image, breaking the
+ * screen-position calibration math (Screen.floorX/floorY are clamped
+ * against plan.widthPx/heightPx — a lie there means a screen pin can
+ * be placed off-image or refused entry to a legitimate location).
+ *
+ * We don't have an image-size dependency in apps/api/package.json, so
+ * we parse the header bytes ourselves. ALLOWED_FLOOR_PLAN_MIMES is
+ * exactly { png, jpeg, webp } so we only need to handle those three.
+ *
+ * Returns null when we cannot confidently determine dimensions — the
+ * caller logs a warning rather than rejecting (we don't want to block
+ * a legitimate upload over an exotic-but-valid PNG variant).
+ */
+function probeImageDimensions(buf: Buffer): { width: number; height: number } | null {
+  if (!buf || buf.length < 24) return null;
+
+  // PNG: 8-byte signature, then IHDR chunk where bytes 16..19 = width,
+  // 20..23 = height (big-endian).
+  if (
+    buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
+    buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a
+  ) {
+    const width = buf.readUInt32BE(16);
+    const height = buf.readUInt32BE(20);
+    if (width > 0 && height > 0) return { width, height };
+    return null;
+  }
+
+  // JPEG: starts with FF D8. Walk the marker segments looking for an
+  // SOF marker (C0..CF except C4/C8/CC which aren't frame markers) —
+  // the next 5 bytes are precision (1) + height (2) + width (2), big-
+  // endian. Bound the walk so a malformed file can't loop forever.
+  if (buf[0] === 0xff && buf[1] === 0xd8) {
+    let offset = 2;
+    const max = Math.min(buf.length, 1024 * 1024); // 1MB header window is plenty
+    while (offset < max - 9) {
+      if (buf[offset] !== 0xff) return null; // misaligned
+      // Skip padding 0xFF bytes.
+      while (offset < max && buf[offset] === 0xff) offset++;
+      const marker = buf[offset];
+      offset++;
+      // SOI/EOI/RST markers have no length payload.
+      if (marker === 0xd8 || marker === 0xd9) continue;
+      if (marker >= 0xd0 && marker <= 0xd7) continue;
+      if (offset + 2 > max) return null;
+      const segLen = buf.readUInt16BE(offset);
+      // SOF markers (Start of Frame) carry the dimensions we want.
+      const isSof =
+        (marker >= 0xc0 && marker <= 0xcf) &&
+        marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+      if (isSof) {
+        if (offset + 2 + 5 > max) return null;
+        const height = buf.readUInt16BE(offset + 3);
+        const width = buf.readUInt16BE(offset + 5);
+        if (width > 0 && height > 0) return { width, height };
+        return null;
+      }
+      if (segLen < 2) return null;
+      offset += segLen;
+    }
+    return null;
+  }
+
+  // WEBP: 'RIFF' .... 'WEBP' then VP8/VP8L/VP8X chunk.
+  if (
+    buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+    buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50
+  ) {
+    // Chunk header at offset 12: 4-byte type, 4-byte size, then payload.
+    if (buf.length < 30) return null;
+    const chunk = buf.slice(12, 16).toString('ascii');
+    if (chunk === 'VP8 ') {
+      // Lossy: payload starts at 20. Spec: skip 6 bytes, then 2 bytes
+      // width LE (lower 14 bits), 2 bytes height LE (lower 14 bits).
+      if (buf.length < 30) return null;
+      const width = buf.readUInt16LE(26) & 0x3fff;
+      const height = buf.readUInt16LE(28) & 0x3fff;
+      if (width > 0 && height > 0) return { width, height };
+      return null;
+    }
+    if (chunk === 'VP8L') {
+      // Lossless: payload starts at 20. First byte is signature 0x2f,
+      // then 4 bytes carry (width-1) low 14 bits and (height-1) next
+      // 14 bits, little-endian.
+      if (buf[20] !== 0x2f || buf.length < 25) return null;
+      const b0 = buf[21], b1 = buf[22], b2 = buf[23], b3 = buf[24];
+      const width = 1 + (((b1 & 0x3f) << 8) | b0);
+      const height = 1 + (((b3 & 0x0f) << 10) | (b2 << 2) | ((b1 & 0xc0) >> 6));
+      if (width > 0 && height > 0) return { width, height };
+      return null;
+    }
+    if (chunk === 'VP8X') {
+      // Extended: at offset 24, 3 bytes (width-1) LE, 3 bytes
+      // (height-1) LE.
+      if (buf.length < 30) return null;
+      const width = 1 + (buf[24] | (buf[25] << 8) | (buf[26] << 16));
+      const height = 1 + (buf[27] | (buf[28] << 8) | (buf[29] << 16));
+      if (width > 0 && height > 0) return { width, height };
+      return null;
+    }
+    return null;
+  }
+
+  return null;
+}
+
 const SCREEN_ONLINE_STALE_MS = 35 * 1000;
 
 type FloorPlanScreenStatusRow = {
@@ -241,8 +351,8 @@ export class FloorPlansController {
     const tenantId = req.user.tenantId;
     const userId = req.user.id;
     const name = (body.name || 'Untitled floor').trim().slice(0, 200);
-    const widthPx = Number(body.widthPx);
-    const heightPx = Number(body.heightPx);
+    let widthPx = Number(body.widthPx);
+    let heightPx = Number(body.heightPx);
     if (!Number.isFinite(widthPx) || !Number.isFinite(heightPx) || widthPx <= 0 || heightPx <= 0) {
       throw new HttpException(
         'widthPx and heightPx are required and must be positive numbers (the image dimensions).',
@@ -251,9 +361,53 @@ export class FloorPlansController {
     }
     if (widthPx > 10000 || heightPx > 10000) {
       throw new HttpException(
-        'Floor plan image must be ≤ 10000px in each dimension.',
+        'Floor plan image must be 10000px or less in each dimension.',
         HttpStatus.BAD_REQUEST,
       );
+    }
+
+    // 2026-05-03 BUG FIX (cycle 4 emergency-BUG-008) — probe the actual
+    // image dimensions from the file header bytes and reject when the
+    // client-supplied numbers don't match. Without this, a malicious
+    // client could submit dimensions that don't match the real image,
+    // breaking the screen-position calibration math (Screen.floorX/Y
+    // are clamped against plan.widthPx/heightPx — a lie there means
+    // pins land off-image or get refused at legitimate locations).
+    //
+    // Tolerance: 5%. The client may legitimately downscale/upscale by
+    // a hair due to floating-point rounding when reading natural
+    // dimensions in JS. Anything past 5% is either a bug in the
+    // client or hostile.
+    const probed = probeImageDimensions(file.buffer);
+    if (probed) {
+      const wDiff = Math.abs(widthPx - probed.width) / probed.width;
+      const hDiff = Math.abs(heightPx - probed.height) / probed.height;
+      if (wDiff > 0.05 || hDiff > 0.05) {
+        this.logger.warn(
+          `[FloorPlan] Client widthPx/heightPx (${widthPx}x${heightPx}) ` +
+          `differ from probed dimensions (${probed.width}x${probed.height}) ` +
+          `by more than 5%. Overriding with probed values.`,
+        );
+        widthPx = probed.width;
+        heightPx = probed.height;
+      }
+    } else {
+      // Couldn't determine dimensions from header — log so we know if
+      // a customer hits an exotic-but-valid format the parser missed.
+      // We don't reject the upload; the client value is the best we
+      // have. Implausible client values (negative, zero, above the
+      // 10000 cap) were already rejected above.
+      if (widthPx < 16 || heightPx < 16 || widthPx > 16384 || heightPx > 16384) {
+        this.logger.warn(
+          `[FloorPlan] Could not probe image dimensions and client ` +
+          `widthPx/heightPx (${widthPx}x${heightPx}) look implausible.`,
+        );
+      } else {
+        this.logger.log(
+          `[FloorPlan] Could not probe image dimensions; trusting ` +
+          `client values (${widthPx}x${heightPx}).`,
+        );
+      }
     }
 
     // Upload to Supabase storage. Path is tenant-scoped so a stray URL

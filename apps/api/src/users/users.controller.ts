@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, BadRequestException, ForbiddenException, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
@@ -122,7 +122,23 @@ export class UsersController {
     const user = await this.prisma.client.user.findFirst({
       where: { id, tenantId },
     });
-    if (!user) return { error: 'User not found' };
+    if (!user) throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+
+    // CYCLE-4 auth-BUG-011: SUPER_ADMIN cannot strip another SUPER_ADMIN's
+    // privileges. A SUPER_ADMIN may demote themselves (self-demote is
+    // allowed — the caller is consenting to losing their own privileges).
+    // But one SUPER_ADMIN cannot unilaterally take another SUPER_ADMIN's
+    // role away — that would let a single compromised account knock out
+    // every peer admin in the tenant.
+    if (
+      user.role === AppRole.SUPER_ADMIN &&
+      user.id !== req.user.id &&
+      body.role !== AppRole.SUPER_ADMIN
+    ) {
+      throw new ForbiddenException(
+        'SUPER_ADMIN accounts cannot demote another SUPER_ADMIN. The target user must self-demote.',
+      );
+    }
 
     const updated = await this.prisma.client.user.update({
       where: { id },
@@ -138,15 +154,19 @@ export class UsersController {
   async remove(@Request() req: any, @Param('id') id: string) {
     const tenantId = req.user.tenantId;
 
+    // CYCLE-4 auth-BUG-013: error responses were returning 200 with
+    // `{ error: '...' }` bodies, which let callers' status-code-only
+    // checks swallow the failure. Standardize on HttpException so the
+    // HTTP status matches the outcome.
     // Prevent self-deletion
     if (id === req.user.id) {
-      return { error: 'Cannot delete your own account' };
+      throw new HttpException('Cannot delete your own account', HttpStatus.BAD_REQUEST);
     }
 
     const user = await this.prisma.client.user.findFirst({
       where: { id, tenantId },
     });
-    if (!user) return { error: 'User not found' };
+    if (!user) throw new HttpException('User not found', HttpStatus.NOT_FOUND);
 
     await this.prisma.client.user.delete({ where: { id } });
     return { deleted: true };

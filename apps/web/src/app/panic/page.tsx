@@ -239,7 +239,11 @@ export default function MobilePanicPage() {
 
       <div className="px-5 pb-2 text-center">
         <h1 className="text-xl font-black tracking-tight">EMERGENCY TRIGGER</h1>
-        <p className="text-slate-500 text-[11px] mt-1">Press and hold any button for 1.5 seconds to broadcast.</p>
+        {/* 2026-05-03 BUG FIX (cycle 4 emergency-BUG-013) — copy used to
+            say "1.5 seconds" but HOLD_DURATION_MS is 3000 (cycle-1 fix
+            restoring the CLAUDE.md "Key Safeguards #5" 3-second hold).
+            Updated to match actual timer so operators see truthful UX. */}
+        <p className="text-slate-500 text-[11px] mt-1">Press and hold any button for 3 seconds to broadcast.</p>
       </div>
 
       {/* 2x3 grid — generous spacing so adjacent buttons aren't easy to fat-finger */}

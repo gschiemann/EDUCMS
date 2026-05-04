@@ -94,6 +94,13 @@ export default function StreamingSettingsPage() {
   const [bridgeGuideProvider, setBridgeGuideProvider] = useState<Provider | null>(null);
   const [pickerConnection, setPickerConnection] = useState<Connection | null>(null);
   const [showWhyClosed, setShowWhyClosed] = useState(false);
+  // CYCLE-4 integrations-BUG-008 — Soundtrack uses provider.auth === 'oauth2'
+  // and the OAuth flow isn't implemented yet, so the Connect button in the
+  // ConnectModal is permanently disabled for it. The Quick Start "Background
+  // music" card was previously calling setConnectModalProvider(soundtrack)
+  // which dropped the operator into a dead-end modal. Replace with an
+  // explicit "coming soon — contact sales" info modal.
+  const [showSoundtrackComingSoon, setShowSoundtrackComingSoon] = useState(false);
   const [quickStartStatus, setQuickStartStatus] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null);
   const [quickStartRunning, setQuickStartRunning] = useState<string | null>(null);
 
@@ -200,18 +207,19 @@ export default function StreamingSettingsPage() {
               if (hls) setConnectModalProvider(hls);
             }}
           />
-          {/* 4. Music — Soundtrack Your Brand (real OAuth + commercial license) */}
+          {/* 4. Music — Soundtrack Your Brand (real OAuth + commercial license)
+              CYCLE-4 integrations-BUG-008 — OAuth flow is not yet implemented;
+              opening the regular Connect modal lands on a permanently-disabled
+              Connect button. Replaced with a Coming Soon info modal that
+              points at sales for activation. */}
           <QuickStartCard
             tone="violet"
             icon={<Music className="w-5 h-5" />}
-            badge="OAUTH · ~$35/MO"
+            badge="COMING SOON"
             title="Background music"
             blurb="Soundtrack Your Brand — millions of commercial-licensed songs. Spotify-backed. ~$35/mo per location."
-            cta="Connect Soundtrack"
-            onClick={() => {
-              const sb = providers.data?.find((p) => p.id === 'soundtrack');
-              if (sb) setConnectModalProvider(sb);
-            }}
+            cta="Coming soon — contact sales"
+            onClick={() => setShowSoundtrackComingSoon(true)}
           />
           {/* 5. Premium streaming — HONEST about why this is the hard one */}
           <QuickStartCard
@@ -353,6 +361,11 @@ export default function StreamingSettingsPage() {
             if (dtv) setBridgeGuideProvider(dtv);
           }}
         />
+      )}
+
+      {/* CYCLE-4 integrations-BUG-008 — Soundtrack Coming Soon modal */}
+      {showSoundtrackComingSoon && (
+        <SoundtrackComingSoonModal onClose={() => setShowSoundtrackComingSoon(false)} />
       )}
 
       {/* Bridge setup wizard */}
@@ -1127,6 +1140,61 @@ function WhyClosedModal({
           <button onClick={onClose} className="px-4 py-2 text-sm font-bold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200">
             Got it
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Soundtrack Coming Soon modal ──────────────────────────────────────
+//
+// CYCLE-4 integrations-BUG-008 — Soundtrack Your Brand is gated behind
+// OAuth approval that hasn't completed yet. The Quick Start "Background
+// music" card used to drop operators into the regular ConnectModal, where
+// the Connect button stayed permanently disabled (provider.auth ===
+// 'oauth2'). Honest, friendly stand-in until the OAuth flow ships.
+function SoundtrackComingSoonModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-violet-100 flex items-center justify-center text-violet-700">
+              <Music className="w-6 h-6" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-slate-800">Soundtrack — coming soon</h2>
+              <p className="text-xs text-slate-500 mt-0.5">OAuth flow pending partner approval.</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="rounded-lg bg-violet-50 border border-violet-200 p-4 text-sm text-slate-700 leading-relaxed">
+          <p>
+            We're finalizing our Soundtrack Your Brand OAuth integration. While the
+            partner approval clears, your account can be activated manually by our
+            sales team — typical turnaround is 1-2 business days.
+          </p>
+        </div>
+
+        <div className="rounded-lg bg-slate-50 border border-slate-200 p-4 text-xs text-slate-600 leading-relaxed">
+          <strong className="text-slate-800">Need music sooner?</strong> Email{' '}
+          <a href="mailto:sales@venueos.com" className="text-indigo-600 hover:underline">sales@venueos.com</a>{' '}
+          and we'll provision your Soundtrack account by hand. Once OAuth ships,
+          your existing connection migrates automatically — no re-pair required.
+        </div>
+
+        <div className="flex gap-2 justify-end pt-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-bold rounded-lg text-slate-600 hover:bg-slate-50">
+            Close
+          </button>
+          <a
+            href="mailto:sales@venueos.com?subject=Soundtrack%20activation%20request"
+            className="px-4 py-2 text-sm font-bold rounded-lg bg-violet-600 text-white hover:bg-violet-700 inline-flex items-center gap-2"
+          >
+            Contact sales
+          </a>
         </div>
       </div>
     </div>
