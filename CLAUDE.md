@@ -92,6 +92,8 @@ All required env vars for `.env` (gitignored):
 | `CSRF_ENFORCE` | `false` → warn-mode. Default (unset) = enforced (sec-fix wave1 #7). | `false` |
 | `CSRF_WARN` | `true` → warn-mode (alias for `CSRF_ENFORCE=false`). | `true` |
 | `DEV_WS_ALLOW` | Dev-only: `true` enables unsigned `dev_` WebSocket tokens. **Never set in production.** | `true` |
+| `ANTHROPIC_API_KEY` | Claude API key for the AI content-generator feature (sparkle button next to text fields in the template editor). When unset, the button surfaces "AI not configured for this deploy" — feature degrades gracefully, app keeps working. Cost-capped at 30 generations/hr/tenant via in-memory rate limit; claude-3-5-haiku at 300 max_tokens caps spend at ~$0.005/call. | `sk-ant-api03-...` |
+| `CANVA_CLIENT_ID` / `CANVA_CLIENT_SECRET` | OAuth client for Canva Connect (Stage-2 design imports). Pending partner approval at canva.dev/docs/connect — when set, the `/[schoolId]/settings/imports` page lights up the live "Sign in with Canva" flow. Stage-1 PDF/PPTX uploads work without these. | (from canva.dev developer portal) |
 
 Never commit `.env`. Use `.env.example` as a template.
 

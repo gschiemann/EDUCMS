@@ -156,10 +156,15 @@ export function FitnessAppLibraryWidget({
   const isSourceConnected = (sourceId: string): boolean => {
     const id = sourceId.toLowerCase();
     if (connectedSet.has(id)) return true;
+    // 2026-05-03 audit fix — provider ids in packages/api-types/streaming.ts
+    // STREAM_PROVIDERS are: youtube, twitch, vimeo-live, public-broadcasters,
+    // custom-hls, iptv-m3u, soundtrack, iheart-business, atmosphere,
+    // directv-business, dish-business, mood-media. (No 'youtube-live'
+    // or bare 'vimeo' — earlier draft had stale ids.)
     const aliases: Record<string, string[]> = {
-      'youtube':         ['youtube-live', 'youtube'],
+      'youtube':         ['youtube'],
       'twitch':          ['twitch'],
-      'vimeo':           ['vimeo-live', 'vimeo'],
+      'vimeo':           ['vimeo-live'],
       'public-tv':       ['public-broadcasters'],
       'custom-hls':      ['custom-hls'],
       'iptv':            ['iptv-m3u'],

@@ -21,7 +21,7 @@
  *     restaurant promo.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Sparkles, Loader2, X, RefreshCw, AlertCircle } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
@@ -115,6 +115,20 @@ function AiGenerateModal({
   const [options, setOptions] = useState<AiOption[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  // Escape-key close + AbortController on unmount. Both come out of the
+  // 2026-05-03 audit: operator typing context with a typo couldn't
+  // recover via keyboard, and an unmount mid-fetch logged a React
+  // setState-on-unmounted warning.
+  const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      abortRef.current?.abort();
+    };
+  }, [onClose]);
+
   // Auto-trigger first generation when the modal opens with a non-empty
   // default context (e.g. operator already typed something and hit ✨).
   useEffect(() => {
@@ -132,6 +146,8 @@ function AiGenerateModal({
     setError(null);
     setRunning(true);
     setOptions([]);
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
     try {
       const res = await apiFetch<{ options: AiOption[] }>('/ai/generate', {
         method: 'POST',
@@ -142,10 +158,23 @@ function AiGenerateModal({
           count: 3,
           vertical: tenantCopy.vertical,
         }),
+        signal: abortRef.current.signal,
       });
       setOptions(res.options || []);
     } catch (e: any) {
-      setError(e?.message || String(e));
+      // Aborted requests are expected on unmount/regenerate — silent.
+      if (e?.name === 'AbortError') return;
+      // Friendlier message for the most common configuration error: the
+      // backend returns 503 when ANTHROPIC_API_KEY is missing on the
+      // deploy. Operator-facing message instead of "Service Unavailable".
+      const msg = String(e?.message || e || '');
+      if (/AI is not configured|503|Service Unavailable/i.test(msg)) {
+        setError('AI is not configured for this deployment. Ask your admin to set ANTHROPIC_API_KEY in Railway env, then try again.');
+      } else if (/hourly AI cap|rate.?limit/i.test(msg)) {
+        setError('Hit the hourly AI cap for this tenant. Try again in a bit, or upgrade for a higher cap.');
+      } else {
+        setError(msg || 'AI request failed. Try rephrasing your context.');
+      }
     } finally {
       setRunning(false);
     }

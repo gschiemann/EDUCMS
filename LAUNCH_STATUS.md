@@ -237,6 +237,8 @@ card → ffmpeg → local HLS → our Custom HLS connector. Total parts
        (run `pnpm db:push` against prod DATABASE_URL)
 - [ ] Set `STRIPE_SECRET_KEY` (when ready — until then UI falls back to sales@)
 - [ ] Set `STRIPE_WEBHOOK_SECRET` (when ready)
+- [ ] Set `ANTHROPIC_API_KEY` (when ready — until then the AI generate button shows "AI not configured" gracefully). Get a key at console.anthropic.com.
+- [ ] Set `CANVA_CLIENT_ID` + `CANVA_CLIENT_SECRET` (pending Canva partner approval — stage-1 PDF imports work without these)
 - [ ] Verify `DEVICE_SECRET_KEY` = 64 hex chars (now used by streaming + POS + ads creds-cipher)
 - [ ] Verify `ALLOWED_ORIGINS` includes the Vercel prod URL
 - [ ] Smoke-test the new endpoints:

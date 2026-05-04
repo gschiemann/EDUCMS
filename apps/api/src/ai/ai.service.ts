@@ -93,6 +93,30 @@ export class AiService {
     if (!SYSTEM_PROMPTS[opts.intent]) {
       throw new BadRequestException(`Unknown intent: ${opts.intent}`);
     }
+    // 2026-05-03 SECURITY FIX — operator-controlled inputs flow into a
+    // paid Anthropic call. Without caps an attacker (or buggy widget)
+    // could ship a 100KB context to amplify cost. Hard caps below; the
+    // model also has max_tokens=300 on output as a separate guard.
+    if (opts.context.length > 2000) {
+      throw new BadRequestException('Context too long. Keep it under 2000 characters.');
+    }
+    // `vertical` is interpolated into the user prompt — whitelist it
+    // against the canonical VERTICALS so a malicious string can't
+    // change the system prompt or pollute logs.
+    const ALLOWED_VERTICALS = new Set([
+      'K12', 'GYM', 'RETAIL', 'CORPORATE', 'QSR', 'FASHION', 'BAR', 'venue',
+      // Lower-case variants the frontend might send via tenantCopy.vertical
+      'k12', 'gym', 'retail', 'corporate', 'qsr', 'fashion', 'bar',
+    ]);
+    if (opts.vertical && !ALLOWED_VERTICALS.has(opts.vertical)) {
+      throw new BadRequestException('Invalid vertical.');
+    }
+    // Tone whitelist — same idea, prevents prompt injection via the
+    // user-controlled tone field.
+    const ALLOWED_TONES = new Set(['energetic', 'elegant', 'playful', 'serious', 'casual']);
+    if (opts.tone && !ALLOWED_TONES.has(opts.tone)) {
+      throw new BadRequestException('Invalid tone.');
+    }
 
     // Rate-limit: 30/hour/tenant. Sliding window kept in-memory.
     const now = Date.now();

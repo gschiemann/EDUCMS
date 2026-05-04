@@ -39,9 +39,12 @@ export default function AnnouncementsPage() {
     }
   });
 
-  const onSubmit = (data: AnnouncementFormValues) => {
+  const onSubmit = (_data: AnnouncementFormValues) => {
+    // 2026-05-03 SECURITY FIX — was logging the full submission payload
+    // to the browser console on every submit, including any PII the
+    // operator typed. Removed; this page is still scaffolding awaiting
+    // the real /announcements POST handler.
     setIsSubmitting(true);
-    console.log("Sanitized submission data:", data);
     // Simulate API Mutation
     setTimeout(() => setIsSubmitting(false), 1500);
   };

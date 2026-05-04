@@ -38,9 +38,32 @@ const ARGON2_OPTIONS = {
 const TENANT_SLUG = 'agc-education';
 const TENANT_NAME = 'AGC Education';
 
+// 2026-05-03 SECURITY FIX — passwords MUST come from env now. The
+// previous version hardcoded "12345678" for the chuck@ / larry@
+// pilot accounts in this PUBLIC repo, which is account-takeover-
+// ready if those accounts exist on prod. Rotate the live passwords
+// immediately and pass new ones in via env.
+//
+// Run with:
+//   AGC_CHUCK_PASSWORD=<random> AGC_LARRY_PASSWORD=<random> \
+//     pnpm tsx packages/database/scripts/seed-agc-pilot.ts
+//
+// Generate strong values via:
+//   node -e "console.log(require('crypto').randomBytes(16).toString('base64url'))"
+function requirePilotPassword(envName: string): string {
+  const v = process.env[envName] || '';
+  if (!v || v.length < 12) {
+    throw new Error(
+      `Missing or weak ${envName}. Set a >= 12 char password via env before running this seed. ` +
+      `Generate: node -e "console.log(require('crypto').randomBytes(16).toString('base64url'))"`,
+    );
+  }
+  return v;
+}
+
 const PILOT_USERS: Array<{ email: string; password: string }> = [
-  { email: 'chuck@agceducation.com', password: '12345678' },
-  { email: 'larry@agceducation.com', password: '12345678' },
+  { email: 'chuck@agceducation.com', password: requirePilotPassword('AGC_CHUCK_PASSWORD') },
+  { email: 'larry@agceducation.com', password: requirePilotPassword('AGC_LARRY_PASSWORD') },
 ];
 
 async function main() {
