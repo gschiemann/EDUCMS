@@ -2,6 +2,14 @@
   "name": "web",
   "version": "0.1.0",
   "private": true,
+  "browserslist": [
+    "Chrome >= 60",
+    "Android >= 60",
+    "Edge >= 79",
+    "Firefox >= 60",
+    "Safari >= 12",
+    "iOS >= 12"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",

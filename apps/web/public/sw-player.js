@@ -52,7 +52,11 @@
 // PostCSS plugin (root cause of Chromium 95 invisible Tailwind
 // utilities). Forces every paired kiosk to re-fetch the new CSS
 // bundle that doesn't have @layer wrappers.
-const VERSION = 'v7';
+// v8 — 2026-05-04 — bump again with browserslist + cache-control
+// header changes. SW VERSION change isn't load-bearing for these
+// fixes (they're build-time + HTTP-header), but bumping lets us
+// detect via the deployed /sw-player.js whether v8 deploy landed.
+const VERSION = 'v8';
 const PLAYLIST_CACHE = `edu-player-playlist-${VERSION}`;
 const EMERGENCY_CACHE = `edu-player-emergency-${VERSION}`;
 const META_CACHE = `edu-player-meta-${VERSION}`; // stores sha hashes per URL
