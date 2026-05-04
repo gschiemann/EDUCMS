@@ -108,6 +108,18 @@ const RESOLUTION_PRESETS = [
   { label: 'LED Banner', sub: '5:1', w: 2500, h: 500 },
   { label: 'LED Tall', sub: '1:3', w: 480, h: 1440 },
   { label: 'Square', sub: '1:1', w: 1080, h: 1080 },
+  // 2026-05-04 — LED-poster panel-chain presets. Hardware: Nova Star
+  // TB40 driving 320×1080 LED panels daisy-chained 1-6 wide. Each
+  // chain length needs a template authored at the exact aspect ratio
+  // because the player renders zones as % of the actual viewport;
+  // a 16:9 layout authored at 1920×1080 will distort horribly on a
+  // 1-panel 320×1080 (1:3.375) install.
+  { label: 'LED Poster', sub: '1 panel · 320×1080', w: 320, h: 1080 },
+  { label: 'LED Poster', sub: '2 panels · 640×1080', w: 640, h: 1080 },
+  { label: 'LED Poster', sub: '3 panels · 960×1080', w: 960, h: 1080 },
+  { label: 'LED Poster', sub: '4 panels · 1280×1080', w: 1280, h: 1080 },
+  { label: 'LED Poster', sub: '5 panels · 1600×1080', w: 1600, h: 1080 },
+  { label: 'LED Poster', sub: '6 panels · 1920×1080', w: 1920, h: 1080 },
 ];
 
 const WIDGET_GROUPS = [

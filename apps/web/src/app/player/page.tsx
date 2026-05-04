@@ -2754,7 +2754,16 @@ function PlayerPage() {
           // Per-field rules get higher specificity (zone + data-field
           // attribute selector) so they win over zone-wide for that
           // specific field. SVG icons excluded.
-          const isTextZone = zone.widgetType === 'TEXT' || zone.widgetType === 'RICH_TEXT';
+          // 2026-05-04 — same TEXT/RICH_TEXT bug that BuilderZone had:
+          // pre-fix the player skipped the override block for TEXT
+          // widgets entirely ("they read from cfg directly") which is
+          // false for the ~30 v2 themed variants (NewsStudioPro,
+          // RainbowRibbon, etc.) that hardcode their own font / color
+          // / bg styles. Operator's edits in the builder never showed
+          // up on the LIVE PLAYER because the override CSS was missing
+          // there. Removing the early-return mirrors the BuilderZone
+          // fix so what operators see in the editor is what plays on
+          // screens — including the LED poster install in production.
           const _buildPlayerRules = (s: any): string[] => {
             const r: string[] = [];
             const fam = typeof s.fontFamily === 'string' && s.fontFamily.trim();
@@ -2771,19 +2780,31 @@ function PlayerPage() {
             if (decos.length) r.push(`text-decoration: ${decos.join(' ')} !important`);
             return r;
           };
+          // bg-color override cascades to the zone wrapper + every
+          // descendant so themed renderers' inline `style={{ background: ... }}`
+          // gets overridden (with !important). background-image:none kills
+          // gradients so a chosen solid color wins through every layer.
+          const _buildPlayerBgRule = (s: any): string | null => {
+            const bg = typeof s.bgColor === 'string' && s.bgColor.trim();
+            if (!bg || bg === 'transparent' || bg === 'inherit') return null;
+            return `background-color: ${bg} !important; background: ${bg} !important; background-image: none !important`;
+          };
           const _cssChunks: string[] = [];
-          if (!isTextZone) {
-            const zoneRules = _buildPlayerRules(cfg);
-            if (zoneRules.length) {
-              _cssChunks.push(`[data-zone-id="${zone.id}"] *:not(svg):not(svg *) { ${zoneRules.join('; ')} }`);
-            }
-            const stylesPerField = (cfg._styles && typeof cfg._styles === 'object') ? cfg._styles : {};
-            for (const [fieldKey, fieldStyle] of Object.entries(stylesPerField)) {
-              const r = _buildPlayerRules(fieldStyle);
-              if (!r.length) continue;
-              const sel = `[data-zone-id="${zone.id}"] [data-field="${(fieldKey as string).replace(/"/g, '\\"')}"]`;
-              _cssChunks.push(`${sel}, ${sel} *:not(svg):not(svg *) { ${r.join('; ')} }`);
-            }
+          const _zoneSel = `[data-zone-id="${zone.id}"]`;
+          const zoneRules = _buildPlayerRules(cfg);
+          if (zoneRules.length) {
+            _cssChunks.push(`${_zoneSel} *:not(svg):not(svg *) { ${zoneRules.join('; ')} }`);
+          }
+          const _zoneBg = _buildPlayerBgRule(cfg);
+          if (_zoneBg) {
+            _cssChunks.push(`${_zoneSel}, ${_zoneSel} *:not(svg):not(svg *) { ${_zoneBg} }`);
+          }
+          const stylesPerField = (cfg._styles && typeof cfg._styles === 'object') ? cfg._styles : {};
+          for (const [fieldKey, fieldStyle] of Object.entries(stylesPerField)) {
+            const r = _buildPlayerRules(fieldStyle);
+            if (!r.length) continue;
+            const sel = `${_zoneSel} [data-field="${(fieldKey as string).replace(/"/g, '\\"')}"]`;
+            _cssChunks.push(`${sel}, ${sel} *:not(svg):not(svg *) { ${r.join('; ')} }`);
           }
           return (
           <div
