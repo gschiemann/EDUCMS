@@ -5,10 +5,21 @@ operation between Claude sessions.** Read this first when a new session starts.
 
 ## Current cycle
 
-- **Cycle**: 1 ✅ DONE · 2 ✅ DONE · 3 ✅ DONE. Cycle 4 ready to start.
-- **Status**: `CYCLE_DONE` after cycle 3.
-- **Last commit**: `642c2b4` (Cycle 3 P0 regression fixes)
+- **Cycle**: 1 ✅ DONE · 2 ✅ DONE · 3 ✅ DONE · 4 IN-PROGRESS.
+- **Status**: `FIXING_DISPATCHED` for cycle 4
+- **Last commit**: `bab1e55` (Cycle 3 STATE close)
 - **Open after cycle 3**: ~15 P1 (mostly small UX + asymmetry) + 30+ P2
+
+## Cycle 4 dispatch — 3 fix agents running
+
+Covering 14 P1 bugs in parallel:
+- **auth+integrations batch** (5 bugs): users role-demote guard, schedule playlistId update, DELETE error shape, streaming oauth2 backend reject, Quick Start music card UX
+- **emergency+editor batch** (5 bugs): per-screen audit transaction, floor plan dimension probe, panic UI string fix, BAR_TAP_LIST + BAR_COCKTAIL_MENU full editors, imports dropzone keyboard a11y
+- **player batch** (4 bugs): SW signed-URL stable cache key, ALL_CLEAR removed from SENSITIVE_TYPES, dev_ token fallback warning, pairing-code 11th-miss
+
+If session ends mid-batch, agents have written fixes to disk before
+their completion notification fires — `git status` will show modified
+files; FIX_LOG/CYCLE-4-fixes.md captures progress.
 
 ## ✅ Cycle 1 — 13 P0 closed
 - `d1e8ff7` integrations + multipart + PPTX + panic 3s
