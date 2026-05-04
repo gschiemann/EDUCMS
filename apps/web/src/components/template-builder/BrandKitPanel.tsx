@@ -68,8 +68,191 @@ export function BrandKitPanel() {
   const [scrapeError, setScrapeError] = useState<string | null>(null);
 
   const updateZone = useBuilderStore((s) => s.updateZone);
+  const updateZones = useBuilderStore((s) => s.updateZones);
+  const setMeta = useBuilderStore((s) => s.setMeta);
   const selectedIds = useBuilderStore((s) => s.selectedIds);
   const zones = useBuilderStore((s) => s.zones);
+
+  const [applyingBrand, setApplyingBrand] = useState(false);
+  const [applyToast, setApplyToast] = useState<string | null>(null);
+
+  /**
+   * 2026-05-04 — operator feedback: "i added a braning to the template
+   * and the only thing i saw that got updated was the ability to pick
+   * a background...shouldnt we do more than that? shouldnt we update
+   * the widgets to fit their branding so its more drag and drop"
+   *
+   * Pre-fix: BrandKitPanel was a passive swatch picker — operator had
+   * to click each color/font and manually apply to selected zones.
+   * Post-fix: applyBrandToAllZones walks every zone and patches the
+   * fields each widget actually consumes:
+   *
+   *   - LOGO        → assetUrl + logoUrl get the brand logo
+   *   - TEXT/RICH   → fontFamily ← brand heading; color ← brand ink
+   *   - ANNOUNCE    → fontFamily ← brand body/heading; color/bgColor
+   *   - TICKER      → bgColor ← primary; color ← primary-ink
+   *   - CLOCK       → color ← brand primary; accentColor ← primary
+   *   - WEATHER     → color ← brand ink; accentColor ← primary
+   *   - COUNTDOWN   → color ← brand primary; bgColor ← surface
+   *   - BELL/LUNCH/CALENDAR/STAFF — header bgs ← primary; text ← ink
+   *   - Generic any-widget — color/bgColor where present in defaults
+   *
+   * Template-level meta also gets a brand-derived gradient bg.
+   *
+   * Runs automatically right after a successful /adopt and is exposed
+   * via a "Re-apply across template" button so operators can refresh
+   * after manual tweaks.
+   */
+  const applyBrandToAllZones = (kit: BrandKit) => {
+    const palette = kit.palette || {};
+    const fontHeading = kit.fontHeading || null;
+    const fontBody = kit.fontBody || fontHeading;
+    const logoUrl = kit.logoUrl || null;
+    const primary = palette.primary || null;
+    const accent = palette.accent || null;
+    const ink = palette.ink || null;
+    const surface = palette.surface || null;
+    const surfaceAlt = palette.surfaceAlt || null;
+    const primaryHover = palette.primaryHover || null;
+
+    // Helper: contrast-aware "ink on this bg" — returns white on dark,
+    // dark on light. Cheap luminance check; perfect-WCAG would need
+    // sRGB-linear math but for solid brand colors this is plenty.
+    const contrastOn = (hex?: string | null) => {
+      if (!hex || !/^#[0-9a-fA-F]{6}$/.test(hex)) return ink || '#1e293b';
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      return lum > 0.6 ? (ink || '#1e293b') : '#ffffff';
+    };
+
+    const allIds = zones.map((z) => z.id);
+    if (allIds.length === 0) {
+      // No zones yet — still set the bg meta so the empty canvas
+      // gets the brand's gradient ready for the first drop.
+      if (primary && accent) {
+        setMeta({ bgGradient: `linear-gradient(135deg, ${primary} 0%, ${accent} 100%)`, bgColor: surface || '' });
+      } else if (primary) {
+        setMeta({ bgGradient: '', bgColor: primary });
+      }
+      return;
+    }
+
+    updateZones(allIds, (z) => {
+      const cfg: Record<string, any> = { ...(z.defaultConfig || {}) };
+      const wt = z.widgetType;
+
+      switch (wt) {
+        case 'LOGO':
+          // Logo wins over the demo "SE" initials only if we actually
+          // got a brand logo. assetUrl + logoUrl are mirrored fields.
+          if (logoUrl) {
+            cfg.assetUrl = logoUrl;
+            cfg.logoUrl = logoUrl;
+          }
+          if (primary) cfg.accentColor = primary;
+          if (ink) cfg.color = ink;
+          break;
+
+        case 'TEXT':
+        case 'RICH_TEXT':
+          if (fontHeading) cfg.fontFamily = fontHeading;
+          if (ink) cfg.color = ink;
+          break;
+
+        case 'ANNOUNCEMENT':
+          if (fontBody) cfg.fontFamily = fontBody;
+          if (ink) cfg.color = ink;
+          if (surfaceAlt || surface) cfg.bgColor = surfaceAlt || surface;
+          if (primary) cfg.accentColor = primary;
+          break;
+
+        case 'TICKER':
+          // Tickers read best as bright stripe with high-contrast text.
+          if (primary) cfg.bgColor = primary;
+          if (primary) cfg.color = contrastOn(primary);
+          if (fontBody) cfg.fontFamily = fontBody;
+          break;
+
+        case 'CLOCK':
+          if (primary) cfg.accentColor = primary;
+          if (ink) cfg.color = ink;
+          break;
+
+        case 'WEATHER':
+          if (ink) cfg.color = ink;
+          if (primary) cfg.accentColor = primary;
+          if (surface) cfg.bgColor = surface;
+          break;
+
+        case 'COUNTDOWN':
+          if (primary) cfg.color = primary;
+          if (surface) cfg.bgColor = surface;
+          if (fontHeading) cfg.fontFamily = fontHeading;
+          break;
+
+        case 'BELL_SCHEDULE':
+        case 'LUNCH_MENU':
+        case 'CALENDAR':
+        case 'STAFF_SPOTLIGHT':
+          if (primary) cfg.headerBg = primary;
+          if (primary) cfg.headerColor = contrastOn(primary);
+          if (ink) cfg.color = ink;
+          if (surface) cfg.bgColor = surface;
+          if (fontBody) cfg.fontFamily = fontBody;
+          break;
+
+        default:
+          // For any other widget type, only patch keys the existing
+          // config already declares (no new keys added → no surprise
+          // visual changes for widgets the brand kit doesn't model).
+          if (ink && Object.prototype.hasOwnProperty.call(cfg, 'color')) cfg.color = ink;
+          if (surface && Object.prototype.hasOwnProperty.call(cfg, 'bgColor')) cfg.bgColor = surface;
+          if (fontBody && Object.prototype.hasOwnProperty.call(cfg, 'fontFamily')) cfg.fontFamily = fontBody;
+          if (primary && Object.prototype.hasOwnProperty.call(cfg, 'accentColor')) cfg.accentColor = primary;
+          break;
+      }
+
+      return { defaultConfig: cfg };
+    });
+
+    // Template-level bg — gradient from primary→accent if both exist,
+    // solid surface otherwise. Set bgGradient (which BackgroundPanel
+    // also writes), clear bgImage.
+    if (primary && accent) {
+      setMeta({
+        bgGradient: `linear-gradient(135deg, ${primary} 0%, ${accent} 100%)`,
+        bgColor: surface || '',
+        bgImage: '',
+      });
+    } else if (surface) {
+      setMeta({ bgGradient: '', bgColor: surface, bgImage: '' });
+    }
+
+    // Apply the brand's heading font to the template name itself if
+    // the operator hasn't customized it (cosmetic — name is shown in
+    // the toolbar).
+    void primaryHover; // reserved for future hover-state widgets
+  };
+
+  /** Re-apply after manual tweaks. Idempotent. */
+  const handleApplyAcrossTemplate = () => {
+    if (!brandKit || isSystem) return;
+    setApplyingBrand(true);
+    try {
+      applyBrandToAllZones(brandKit);
+      const widgetCount = zones.length;
+      setApplyToast(
+        widgetCount === 0
+          ? 'Brand applied to template background. Add widgets to see more.'
+          : `Brand applied to ${widgetCount} ${widgetCount === 1 ? 'widget' : 'widgets'}.`,
+      );
+      setTimeout(() => setApplyToast(null), 3500);
+    } finally {
+      setApplyingBrand(false);
+    }
+  };
 
   /**
    * One-click "detect brand from URL" — scrapes the URL preview, then
@@ -108,10 +291,32 @@ export function BrandKitPanel() {
       // /branding/adopt endpoint — the server uses the same logo
       // rehost + sanitize logic, just scoped to a per-template
       // Supabase prefix.
-      await adoptMutation.mutateAsync({
+      const result = await adoptMutation.mutateAsync({
         ...preview,
         palette: preview.palette,
       });
+
+      // 2026-05-04 — auto-apply across template right after adopt so
+      // the operator sees the brand take effect immediately on every
+      // widget, not just as a swatch palette they have to click.
+      // Uses the server-rehosted logo + sanitized SVG from `result`,
+      // not the raw scrape preview, so we get the proper Supabase
+      // URLs the player can render.
+      const adopted: BrandKit = (result as any)?.brandKit ?? {
+        ...preview,
+        palette: preview.palette,
+      };
+      try {
+        applyBrandToAllZones(adopted);
+        setApplyToast(
+          zones.length === 0
+            ? 'Brand applied to template background. Add widgets to see more.'
+            : `Brand applied to ${zones.length} ${zones.length === 1 ? 'widget' : 'widgets'}.`,
+        );
+        setTimeout(() => setApplyToast(null), 3500);
+      } catch {
+        // Non-fatal — operator can hit "Re-apply" manually.
+      }
 
       setScrapeUrl('');
     } catch (err) {
@@ -238,6 +443,41 @@ export function BrandKitPanel() {
         <div className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">
           Used as design tokens inside this template only. Doesn't change the dashboard theme.
         </div>
+      </div>
+
+      {/* 2026-05-04 — primary "make it match" call-to-action.
+          Re-applies the brand to every widget on the canvas (logo
+          slots, fonts, text colors, header chips, ticker stripes,
+          template bg). Idempotent — operator can re-run after manual
+          tweaks to reset to brand defaults. */}
+      <div className="border-b border-slate-200/50 p-3 space-y-2 bg-gradient-to-br from-indigo-50 to-violet-50">
+        <button
+          onClick={handleApplyAcrossTemplate}
+          disabled={applyingBrand || isSystem}
+          className="w-full px-3 py-2 rounded bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+          title="Re-applies the brand kit to every widget: logo, fonts, colors, ticker stripe, header chips, template background."
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 12.5V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1.5z" />
+            <path d="M5 7l2 2 4-4" />
+          </svg>
+          {applyingBrand ? 'Applying brand…' : 'Apply brand across template'}
+        </button>
+        <div className="text-[10px] text-slate-600 leading-relaxed">
+          Pushes logos to LOGO zones, brand fonts to text, primary
+          color to tickers + countdowns, and a brand gradient to the
+          template background.
+        </div>
+        {applyToast && (
+          <div className="text-[10px] text-emerald-700 font-medium leading-relaxed bg-emerald-50 border border-emerald-200 rounded px-2 py-1">
+            ✓ {applyToast}
+          </div>
+        )}
+        {isSystem && (
+          <div className="text-[10px] text-amber-600 leading-relaxed">
+            System presets can't be re-styled. Duplicate first.
+          </div>
+        )}
       </div>
 
       {/* Logo */}

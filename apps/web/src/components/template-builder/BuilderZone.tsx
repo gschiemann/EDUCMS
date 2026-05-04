@@ -527,7 +527,22 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
           lucide icons keep their intended colors. */}
       {(() => {
         const cfg = (zone.defaultConfig || {}) as any;
-        if (zone.widgetType === 'TEXT' || zone.widgetType === 'RICH_TEXT') return null;
+        // 2026-05-04 BUG FIX (operator screenshot AZX widget) — was
+        // skipping TEXT/RICH_TEXT entirely with the rationale "TEXT
+        // widgets read from cfg directly". That's true for the BARE
+        // TextWidget default renderer, but false for the ~30 v2
+        // themed variants (NeonMarquee, SlabHero, NewsStudioProText,
+        // JumbotronProText, etc.) — those each have hardcoded styles
+        // and ignore cfg.color / cfg.fontSize / cfg.bgColor. Operator
+        // dropped a TEXT block, set fontSize=2 + red text + dark bg
+        // and got big black text on white because a themed variant
+        // was rendering. Removing the early-return makes the universal
+        // !important override apply to themed TEXT renderers too — the
+        // bare renderer's inline styles still apply at lower
+        // specificity AND the CSS injection adds the !important fallback
+        // so both paths now honor operator edits.
+        // Background-color injection added below so themed renderers'
+        // hardcoded bg also gets overridden.
 
         const stylesPerField: Record<string, any> = (cfg._styles && typeof cfg._styles === 'object') ? cfg._styles : {};
 
@@ -548,6 +563,17 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
           return rules;
         };
 
+        // 2026-05-04 — separate bg-color override applied to the widget-
+        // content WRAPPER (not its descendants) so themed renderers'
+        // wrapper bg gets overridden without painting bg on every
+        // descendant span/div. Only fires when operator explicitly set
+        // bgColor (not 'transparent'/empty/undefined).
+        const buildBgRule = (s: any): string | null => {
+          const bg = typeof s.bgColor === 'string' && s.bgColor.trim();
+          if (!bg || bg === 'transparent' || bg === 'inherit') return null;
+          return `background-color: ${bg} !important; background: ${bg} !important`;
+        };
+
         const cssChunks: string[] = [];
         // 2026-05-03 — scope every font-style rule to the
         // `[data-widget-content]` wrapper instead of `[data-zone-id]`.
@@ -561,6 +587,24 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         const zoneRules = buildRules(cfg);
         if (zoneRules.length) {
           cssChunks.push(`${contentSel} *:not(svg):not(svg *) { ${zoneRules.join('; ')} }`);
+        }
+        // 2026-05-04 — bg-color override. When operator picks a solid
+        // bg in the properties panel it should override the themed
+        // renderer's full visual stack: outer wrapper, every nested
+        // panel (NewsStudioPro's glass-dark inner div, JumbotronPro's
+        // padded inner card, RainbowRibbon's polygon SVG fill, etc.),
+        // any gradients, any background-images. The operator picked a
+        // solid color → they want a flat widget. Cascade aggressively
+        // so the chosen color wins through every layer of decorative
+        // chrome. SVG excluded so brand glyphs and icon strokes still
+        // render correctly. background-image:none kills gradients;
+        // background-color overrides the inline panel bg; box-shadow
+        // is preserved (themed glows survive). The same rule applied
+        // to descendant `*` wins specificity over each themed panel's
+        // inline `style={{ background: ... }}` because of !important.
+        const bgRule = buildBgRule(cfg);
+        if (bgRule) {
+          cssChunks.push(`${contentSel}, ${contentSel} *:not(svg):not(svg *) { ${bgRule}; background-image: none !important }`);
         }
         // Per-field rules — higher specificity (zone + field), so they
         // win over zone-wide for the targeted field.

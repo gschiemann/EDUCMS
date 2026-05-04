@@ -3,9 +3,56 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { useBuilderStore } from './useBuilderStore';
+import { useTemplate } from '@/hooks/use-api';
 import { BuilderZone } from './BuilderZone';
 import { snapMove, snapResize } from './snap-engine';
 import type { ResizeHandle, SnapLine, Zone } from './types';
+
+/**
+ * 2026-05-04 — Build a `<style>` block that scopes the per-template
+ * brand kit's CSS custom properties (`--brand-primary`, fonts, etc.)
+ * to the canvas root. Widgets that reference `var(--brand-*)` then
+ * read FROM THIS TEMPLATE'S brand kit, not the global tenant theme.
+ *
+ * Why scope rather than write to :root? Because the dashboard chrome
+ * already paints the global tenant brand on :root via
+ * BrandStyleInjector. Writing per-template vars to :root would bleed
+ * into the chrome (sidebar, toolbar) — totally wrong. Scoping to
+ * `[data-template-canvas]` means only widgets inside the canvas
+ * pick up the per-template overrides.
+ */
+function buildCanvasBrandVarsCss(brandKit: any): string | null {
+  if (!brandKit || typeof brandKit !== 'object') return null;
+  const palette = (brandKit.palette || {}) as Record<string, string | undefined>;
+  const HEX_RE = /^#[0-9a-fA-F]{3,8}$/;
+  const FONT_RE = /^[a-zA-Z0-9 \-_,'"]{1,80}$/;
+  const decls: string[] = [];
+  const safeColor = (key: string, val?: string) => {
+    if (val && HEX_RE.test(val)) decls.push(`${key}: ${val}`);
+  };
+  safeColor('--brand-primary', palette.primary);
+  safeColor('--brand-primary-hover', palette.primaryHover);
+  safeColor('--brand-primary-active', palette.primaryActive);
+  safeColor('--brand-primary-soft', palette.primarySoft);
+  safeColor('--brand-primary-ink', palette.primaryInk);
+  safeColor('--brand-accent', palette.accent);
+  safeColor('--brand-accent-hover', palette.accentHover);
+  safeColor('--brand-accent-soft', palette.accentSoft);
+  safeColor('--brand-accent-ink', palette.accentInk);
+  safeColor('--brand-ink', palette.ink);
+  safeColor('--brand-ink-muted', palette.inkMuted);
+  safeColor('--brand-surface', palette.surface);
+  safeColor('--brand-surface-alt', palette.surfaceAlt);
+  safeColor('--brand-border', palette.border);
+  if (typeof brandKit.fontHeading === 'string' && FONT_RE.test(brandKit.fontHeading)) {
+    decls.push(`--brand-font-heading: "${brandKit.fontHeading}", ui-sans-serif, system-ui, sans-serif`);
+  }
+  if (typeof brandKit.fontBody === 'string' && FONT_RE.test(brandKit.fontBody)) {
+    decls.push(`--brand-font-body: "${brandKit.fontBody}", ui-sans-serif, system-ui, sans-serif`);
+  }
+  if (decls.length === 0) return null;
+  return `[data-template-canvas="true"] { ${decls.join('; ')} }`;
+}
 
 type BellPeriod = { label: string; start: string; end?: string };
 type CalendarEvent = { title: string; date: string; color?: string };
@@ -241,6 +288,14 @@ export function BuilderCanvas() {
   const updateZone = useBuilderStore((s) => s.updateZone);
   const updateZones = useBuilderStore((s) => s.updateZones);
   const beginTransaction = useBuilderStore((s) => s.beginTransaction);
+  // 2026-05-04 — per-template brand kit. Read here so the canvas can
+  // inject `--brand-*` CSS vars that override the global tenant theme
+  // FOR THIS TEMPLATE ONLY. Widgets read these vars and re-paint
+  // automatically when the operator adopts a brand kit.
+  const templateId = useBuilderStore((s) => s.templateId);
+  const { data: template } = useTemplate(templateId);
+  const brandKit = (template as any)?.brandKit ?? null;
+  const brandVarsCss = buildCanvasBrandVarsCss(brandKit);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const [dragState, setDragState] = useState<
@@ -422,6 +477,14 @@ export function BuilderCanvas() {
           maxWidth: '100%',
         }}
       >
+        {/* Per-template brand CSS vars. Widgets that use
+            `var(--brand-primary)` etc. inside the canvas read FROM
+            the per-template brand kit, not the global tenant theme.
+            Scoped to `[data-template-canvas]` so dashboard chrome
+            (sidebar, toolbar) keeps its tenant-global vars. Null
+            brandKit → no <style> rendered → widgets fall back to
+            the document-level :root vars from BrandStyleInjector. */}
+        {brandVarsCss && <style>{brandVarsCss}</style>}
         <div
           // Compose refs: BuilderCanvas needs the DOM node for its own
           // pointer-drag math (canvasRef), and dnd-kit needs it as the
@@ -432,6 +495,7 @@ export function BuilderCanvas() {
           }}
           className="absolute inset-0 rounded-lg overflow-hidden"
           style={{ ...background }}
+          data-template-canvas="true"
           onPointerDown={onCanvasPointerDown}
           onDragEnter={() => setHoverFromDrag(true)}
           onDragLeave={() => setHoverFromDrag(false)}
