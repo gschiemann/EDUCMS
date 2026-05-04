@@ -101,6 +101,25 @@ export default function MonetizeSettingsPage() {
         </div>
       </div>
 
+      {/* 2026-05-04 — pre-demo honesty banner. Operator pointed out
+          (correctly) that the connect flows are brochure-only — they
+          save credentials but the per-network creative-fetch loop
+          ships in v1.1. Surface that here so the demo conversation
+          is "we already partnered with 11 networks, here's the dial
+          for content controls, inventory delivery is coming next
+          quarter" — instead of an embarrassing silent gap. */}
+      <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-full bg-amber-200 text-amber-800 flex items-center justify-center flex-shrink-0 font-bold text-xs">v1.1</div>
+          <div className="text-sm text-amber-900">
+            <div className="font-bold">Beta — connections save your preferences. Inventory delivery rolls out v1.1.</div>
+            <div className="text-xs text-amber-800 mt-1 leading-relaxed">
+              You can connect a network and configure content controls (blocked categories, dayparts, emergency-pause) today. Per-network creative fetch + impression tracking on the player ships in v1.1, alongside the first revenue payout cycle. Talk to sales for early access if your venue is ready to start serving inventory now.
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Earnings summary */}
       <section>
         <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Earnings</h2>

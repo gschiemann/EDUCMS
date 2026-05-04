@@ -29,7 +29,7 @@
  * Every sample row gets a `[Sample]` prefix on its display name so
  * an admin can tell at a glance what's real vs. demo data.
  */
-import { Body, Controller, Delete, Post, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Logger, Post, Request, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
@@ -42,9 +42,65 @@ import { PUBLIC_BROADCASTER_CHANNELS, presetEmbedUrl } from '@cms/api-types';
 
 const SAMPLE_TAG = '[Sample]';
 
+/**
+ * 2026-05-04 — pre-demo emergency hardening.
+ * Surface infra problems as actionable UI messages instead of silent
+ * 500s. Operator was getting "internal server failure" on every test
+ * integration button because:
+ *   (a) the streaming/pos/ads tables didn't exist on the production
+ *       DB (migration written this commit), and/or
+ *   (b) DEVICE_SECRET_KEY was missing/short on Railway, which makes
+ *       sealCredentials throw before we get to the DB.
+ * The wrapper below catches both — Prisma P2021 = "table missing"
+ * and the explicit DEVICE_SECRET_KEY message — and returns a clear
+ * actionable message that the test-integrations page can display.
+ */
+function classifyIntegrationsError(err: any, label: string): { ok: false; message: string } {
+  const code = err?.code || err?.error?.code || '';
+  const msg = String(err?.message || '');
+
+  // Prisma P2021 — relation does not exist (migration not applied).
+  if (code === 'P2021' || /relation .* does not exist|table .* does not exist/i.test(msg)) {
+    return {
+      ok: false,
+      message:
+        `${label} failed because the integrations tables aren't on this database yet. ` +
+        `Pull the latest migration ("20260504_add_integrations_tables") and redeploy — ` +
+        `Railway will run prisma migrate deploy on boot and the tables get created.`,
+    };
+  }
+
+  // DEVICE_SECRET_KEY missing/short.
+  if (/DEVICE_SECRET_KEY/i.test(msg)) {
+    return {
+      ok: false,
+      message:
+        `${label} failed because DEVICE_SECRET_KEY is missing or under 64 hex chars on this deployment. ` +
+        `Generate one with "node -e \\"console.log(require('crypto').randomBytes(32).toString('hex'))\\"" ` +
+        `and set it in Railway → Variables, then redeploy.`,
+    };
+  }
+
+  // Auth / role gate hit before we got here.
+  if (err?.status === 401 || err?.status === 403) {
+    return {
+      ok: false,
+      message: `${label} blocked by authentication. Sign in as a SCHOOL_ADMIN, DISTRICT_ADMIN, or SUPER_ADMIN, then re-run.`,
+    };
+  }
+
+  // Fall-through — surface a sanitized message with no stack.
+  return {
+    ok: false,
+    message: `${label} failed: ${msg.slice(0, 200) || 'unknown error'}. Check Railway deploy logs for details.`,
+  };
+}
+
 @UseGuards(JwtAuthGuard, RbacGuard)
 @Controller('api/v1/sample-data')
 export class SampleDataController {
+  private readonly logger = new Logger(SampleDataController.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly streaming: StreamingService,
@@ -58,47 +114,51 @@ export class SampleDataController {
   async loadPublicBroadcasters(@Request() req: any) {
     const tenantId = req.user.tenantId;
     const userId = req.user.id;
-
-    // Connect (or reuse existing) public-broadcasters provider.
-    let conn = await (this.prisma.client as any).streamProviderConnection.findFirst({
-      where: { tenantId, providerId: 'public-broadcasters' },
-    });
-    if (!conn) {
-      conn = await this.streaming.createConnection({
-        tenantId,
-        userId,
-        providerId: 'public-broadcasters',
-        displayName: `${SAMPLE_TAG} Public Broadcasters`,
-        credentials: {},
+    try {
+      // Connect (or reuse existing) public-broadcasters provider.
+      let conn = await (this.prisma.client as any).streamProviderConnection.findFirst({
+        where: { tenantId, providerId: 'public-broadcasters' },
       });
-    }
-    // Pick all 9 preset channels.
-    let added = 0;
-    for (const ch of PUBLIC_BROADCASTER_CHANNELS) {
-      try {
-        await this.streaming.addChannel({
+      if (!conn) {
+        conn = await this.streaming.createConnection({
           tenantId,
-          connectionId: conn.id,
-          externalId: ch.id,
-          title: ch.title,
-          description: ch.description,
-          category: ch.category,
-          playbackUrl: ch.hlsUrl || presetEmbedUrl(ch, { muted: true, autoplay: true }),
-          playbackType: ch.hlsUrl ? 'hls' : 'iframe',
-          kind: 'LIVE',
-          allowAdOverlay: ch.allowAdOverlay,
+          userId,
+          providerId: 'public-broadcasters',
+          displayName: `${SAMPLE_TAG} Public Broadcasters`,
+          credentials: {},
         });
-        added += 1;
-      } catch (e) {
-        // Already added — skip.
       }
+      // Pick all 9 preset channels.
+      let added = 0;
+      for (const ch of PUBLIC_BROADCASTER_CHANNELS) {
+        try {
+          await this.streaming.addChannel({
+            tenantId,
+            connectionId: conn.id,
+            externalId: ch.id,
+            title: ch.title,
+            description: ch.description,
+            category: ch.category,
+            playbackUrl: ch.hlsUrl || presetEmbedUrl(ch, { muted: true, autoplay: true }),
+            playbackType: ch.hlsUrl ? 'hls' : 'iframe',
+            kind: 'LIVE',
+            allowAdOverlay: ch.allowAdOverlay,
+          });
+          added += 1;
+        } catch (e) {
+          // Already added — skip.
+        }
+      }
+      return {
+        ok: true,
+        connectionId: conn.id,
+        channelsAdded: added,
+        message: `Connected Public Broadcasters with ${added} channels. Drop the Live Stream widget on a template to see them.`,
+      };
+    } catch (err: any) {
+      this.logger.warn(`loadPublicBroadcasters failed: ${err?.message}`);
+      return classifyIntegrationsError(err, 'Loading Public Broadcasters');
     }
-    return {
-      ok: true,
-      connectionId: conn.id,
-      channelsAdded: added,
-      message: `Connected Public Broadcasters with ${added} channels. Drop the Live Stream widget on a template to see them.`,
-    };
   }
 
   @Post('streaming/custom-hls')
@@ -106,40 +166,45 @@ export class SampleDataController {
   async loadSampleHls(@Request() req: any) {
     const tenantId = req.user.tenantId;
     const userId = req.user.id;
-    let conn = await (this.prisma.client as any).streamProviderConnection.findFirst({
-      where: { tenantId, providerId: 'custom-hls' },
-    });
-    if (!conn) {
-      conn = await this.streaming.createConnection({
-        tenantId,
-        userId,
-        providerId: 'custom-hls',
-        displayName: `${SAMPLE_TAG} Custom HLS`,
-        credentials: { playbackUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8' },
+    try {
+      let conn = await (this.prisma.client as any).streamProviderConnection.findFirst({
+        where: { tenantId, providerId: 'custom-hls' },
       });
-    }
-    // Mux's open test HLS streams — free, public, work everywhere.
-    const samples = [
-      { id: 'mux-bipbop', title: '[Sample] BipBop test stream', url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8' },
-      { id: 'mux-test-pattern', title: '[Sample] Test pattern', url: 'https://test-streams.mux.dev/test_001/stream.m3u8' },
-    ];
-    let added = 0;
-    for (const s of samples) {
-      try {
-        await this.streaming.addChannel({
+      if (!conn) {
+        conn = await this.streaming.createConnection({
           tenantId,
-          connectionId: conn.id,
-          externalId: s.id,
-          title: s.title,
-          playbackUrl: s.url,
-          playbackType: 'hls',
-          kind: 'LIVE',
-          allowAdOverlay: true,
+          userId,
+          providerId: 'custom-hls',
+          displayName: `${SAMPLE_TAG} Custom HLS`,
+          credentials: { playbackUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8' },
         });
-        added += 1;
-      } catch { /* already added */ }
+      }
+      // Mux's open test HLS streams — free, public, work everywhere.
+      const samples = [
+        { id: 'mux-bipbop', title: '[Sample] BipBop test stream', url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8' },
+        { id: 'mux-test-pattern', title: '[Sample] Test pattern', url: 'https://test-streams.mux.dev/test_001/stream.m3u8' },
+      ];
+      let added = 0;
+      for (const s of samples) {
+        try {
+          await this.streaming.addChannel({
+            tenantId,
+            connectionId: conn.id,
+            externalId: s.id,
+            title: s.title,
+            playbackUrl: s.url,
+            playbackType: 'hls',
+            kind: 'LIVE',
+            allowAdOverlay: true,
+          });
+          added += 1;
+        } catch { /* already added */ }
+      }
+      return { ok: true, connectionId: conn.id, channelsAdded: added, message: `Connected Custom HLS with ${added} test streams.` };
+    } catch (err: any) {
+      this.logger.warn(`loadSampleHls failed: ${err?.message}`);
+      return classifyIntegrationsError(err, 'Loading Mux test streams');
     }
-    return { ok: true, connectionId: conn.id, channelsAdded: added };
   }
 
   // ─── POS sample data ─────────────────────────────────────────────
@@ -163,7 +228,7 @@ export class SampleDataController {
   async loadSampleRestaurantPos(@Request() req: any) {
     const tenantId = req.user.tenantId;
     const userId = req.user.id;
-
+    try {
     const restaurantDisplayName = `${SAMPLE_TAG} Restaurant Webhook`;
     let conn = await (this.prisma.client as any).posProviderConnection.findFirst({
       where: { tenantId, displayName: restaurantDisplayName },
@@ -258,6 +323,10 @@ export class SampleDataController {
       itemsAdded: added,
       message: `Loaded ${added} sample menu items. Drop the Restaurant Menu Board widget on a template to see them.`,
     };
+    } catch (err: any) {
+      this.logger.warn(`loadSampleRestaurantPos failed: ${err?.message}`);
+      return classifyIntegrationsError(err, 'Loading sample restaurant catalog');
+    }
   }
 
   @Post('pos/sample-retail')
@@ -265,7 +334,7 @@ export class SampleDataController {
   async loadSampleRetailPos(@Request() req: any) {
     const tenantId = req.user.tenantId;
     const userId = req.user.id;
-
+    try {
     // ai-imports-004 fix: see loadSampleRestaurantPos for context. Look
     // up by tagged displayName, not providerId, so retail does not
     // accidentally merge its catalog into the restaurant connection.
@@ -344,7 +413,11 @@ export class SampleDataController {
       data: { status: 'ACTIVE', lastSyncedAt: new Date(), lastSyncItemCount: added },
     });
 
-    return { ok: true, connectionId: conn.id, itemsAdded: added };
+    return { ok: true, connectionId: conn.id, itemsAdded: added, message: `Loaded ${added} sample retail SKUs.` };
+    } catch (err: any) {
+      this.logger.warn(`loadSampleRetailPos failed: ${err?.message}`);
+      return classifyIntegrationsError(err, 'Loading sample retail catalog');
+    }
   }
 
   // ─── Ads sample data ─────────────────────────────────────────────
@@ -353,28 +426,33 @@ export class SampleDataController {
   async loadHouseOnlyAds(@Request() req: any) {
     const tenantId = req.user.tenantId;
     const userId = req.user.id;
-    const tenant = await (this.prisma.client as any).tenant.findUnique({
-      where: { id: tenantId },
-      select: { vertical: true },
-    });
-    let conn = await (this.prisma.client as any).adNetworkConnection.findFirst({
-      where: { tenantId, networkId: 'house-only' },
-    });
-    if (!conn) {
-      conn = await this.ads.createConnection({
-        tenantId,
-        userId,
-        tenantVertical: tenant?.vertical || 'K12',
-        networkId: 'house-only',
-        credentials: {},
-        contentControls: { blockedCategories: [], dayparts: [], pauseDuringEmergency: true },
+    try {
+      const tenant = await (this.prisma.client as any).tenant.findUnique({
+        where: { id: tenantId },
+        select: { vertical: true },
       });
+      let conn = await (this.prisma.client as any).adNetworkConnection.findFirst({
+        where: { tenantId, networkId: 'house-only' },
+      });
+      if (!conn) {
+        conn = await this.ads.createConnection({
+          tenantId,
+          userId,
+          tenantVertical: tenant?.vertical || 'K12',
+          networkId: 'house-only',
+          credentials: {},
+          contentControls: { blockedCategories: [], dayparts: [], pauseDuringEmergency: true },
+        });
+      }
+      return {
+        ok: true,
+        connectionId: conn.id,
+        message: 'House-only ad network connected. Upload your own creatives in Assets → Ad Slots.',
+      };
+    } catch (err: any) {
+      this.logger.warn(`loadHouseOnlyAds failed: ${err?.message}`);
+      return classifyIntegrationsError(err, 'Connecting house-only ads');
     }
-    return {
-      ok: true,
-      connectionId: conn.id,
-      message: 'House-only ad network connected. Upload your own creatives in Assets → Ad Slots.',
-    };
   }
 
   // ─── Wipe ────────────────────────────────────────────────────────
@@ -382,6 +460,7 @@ export class SampleDataController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async wipeSampleData(@Request() req: any) {
     const tenantId = req.user.tenantId;
+    try {
     // Tag check: only delete connections whose displayName starts with SAMPLE_TAG.
     const streamConns = await (this.prisma.client as any).streamProviderConnection.findMany({
       where: { tenantId, displayName: { startsWith: SAMPLE_TAG } },
@@ -404,5 +483,9 @@ export class SampleDataController {
       posConnectionsRemoved: posConns.length,
       message: 'Sample data wiped. Production rows untouched.',
     };
+    } catch (err: any) {
+      this.logger.warn(`wipeSampleData failed: ${err?.message}`);
+      return classifyIntegrationsError(err, 'Wiping sample data');
+    }
   }
 }

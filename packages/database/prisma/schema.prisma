@@ -10,23 +10,23 @@ datasource db {
 }
 
 model Tenant {
-  id                      String        @id @default(uuid())
-  parentId                String?       @map("parent_id")
-  name                    String
-  slug                    String        @unique
-  emergencyStatus         String        @default("INACTIVE") @map("emergency_status")
-  createdAt               DateTime      @default(now()) @map("created_at")
-  emergencyPlaylistId     String?       @map("emergency_playlist_id")
-  panicEvacuatePlaylistId String?       @map("panic_evacuate_playlist_id")
-  panicLockdownPlaylistId String?       @map("panic_lockdown_playlist_id")
-  panicWeatherPlaylistId  String?       @map("panic_weather_playlist_id")
+  id                              String           @id @default(uuid())
+  parentId                        String?          @map("parent_id")
+  name                            String
+  slug                            String           @unique
+  emergencyStatus                 String           @default("INACTIVE") @map("emergency_status")
+  createdAt                       DateTime         @default(now()) @map("created_at")
+  emergencyPlaylistId             String?          @map("emergency_playlist_id")
+  panicEvacuatePlaylistId         String?          @map("panic_evacuate_playlist_id")
+  panicLockdownPlaylistId         String?          @map("panic_lockdown_playlist_id")
+  panicWeatherPlaylistId          String?          @map("panic_weather_playlist_id")
   // SRP (Standard Response Protocol) expansion — most US K-12 districts
   // train on these specific actions. Hold + Secure + Medical added so
   // operators don't have to over-trigger Lockdown for hallway clearing
   // (Hold), outside-only threats (Secure), or medical events (Medical).
-  panicHoldPlaylistId     String?       @map("panic_hold_playlist_id")
-  panicSecurePlaylistId   String?       @map("panic_secure_playlist_id")
-  panicMedicalPlaylistId  String?       @map("panic_medical_playlist_id")
+  panicHoldPlaylistId             String?          @map("panic_hold_playlist_id")
+  panicSecurePlaylistId           String?          @map("panic_secure_playlist_id")
+  panicMedicalPlaylistId          String?          @map("panic_medical_playlist_id")
   // Per-orientation portrait variants. When a portrait screen (Nova
   // 4K vertical wall, hallway pillar, etc.) fetches the manifest
   // during an emergency, the controller prefers the *_portrait_*
@@ -34,31 +34,31 @@ model Tenant {
   // above if not. Admin configures both once; each screen auto-picks.
   // `emergencyPortraitPlaylistId` is the currently-active portrait
   // playlist (set atomically at trigger time alongside emergencyPlaylistId).
-  emergencyPortraitPlaylistId      String? @map("emergency_portrait_playlist_id")
-  panicEvacuatePortraitPlaylistId  String? @map("panic_evacuate_portrait_playlist_id")
-  panicLockdownPortraitPlaylistId  String? @map("panic_lockdown_portrait_playlist_id")
-  panicWeatherPortraitPlaylistId   String? @map("panic_weather_portrait_playlist_id")
-  panicHoldPortraitPlaylistId      String? @map("panic_hold_portrait_playlist_id")
-  panicSecurePortraitPlaylistId    String? @map("panic_secure_portrait_playlist_id")
-  panicMedicalPortraitPlaylistId   String? @map("panic_medical_portrait_playlist_id")
-  assetFolders            AssetFolder[]
-  assets                  Asset[]
-  auditLogs               AuditLog[]
-  playlists               Playlist[]
-  schedules               Schedule[]
-  screenGroups            ScreenGroup[]
-  screens                 Screen[]
-  templates               Template[]
-  notifications           Notification[]
-  parent                  Tenant?       @relation("TenantHierarchy", fields: [parentId], references: [id])
-  children                Tenant[]      @relation("TenantHierarchy")
-  users                   User[]
-  ssoConfig               TenantSSOConfig?
-  cleverDistrictId        String?       @unique @map("clever_district_id")
-  cleverAccessToken       String?       @map("clever_access_token")
-  cleverConnectedAt       DateTime?     @map("clever_connected_at")
-  cleverSyncLogs          CleverSyncLog[]
-  userInvites             UserInvite[]
+  emergencyPortraitPlaylistId     String?          @map("emergency_portrait_playlist_id")
+  panicEvacuatePortraitPlaylistId String?          @map("panic_evacuate_portrait_playlist_id")
+  panicLockdownPortraitPlaylistId String?          @map("panic_lockdown_portrait_playlist_id")
+  panicWeatherPortraitPlaylistId  String?          @map("panic_weather_portrait_playlist_id")
+  panicHoldPortraitPlaylistId     String?          @map("panic_hold_portrait_playlist_id")
+  panicSecurePortraitPlaylistId   String?          @map("panic_secure_portrait_playlist_id")
+  panicMedicalPortraitPlaylistId  String?          @map("panic_medical_portrait_playlist_id")
+  assetFolders                    AssetFolder[]
+  assets                          Asset[]
+  auditLogs                       AuditLog[]
+  playlists                       Playlist[]
+  schedules                       Schedule[]
+  screenGroups                    ScreenGroup[]
+  screens                         Screen[]
+  templates                       Template[]
+  notifications                   Notification[]
+  parent                          Tenant?          @relation("TenantHierarchy", fields: [parentId], references: [id])
+  children                        Tenant[]         @relation("TenantHierarchy")
+  users                           User[]
+  ssoConfig                       TenantSSOConfig?
+  cleverDistrictId                String?          @unique @map("clever_district_id")
+  cleverAccessToken               String?          @map("clever_access_token")
+  cleverConnectedAt               DateTime?        @map("clever_connected_at")
+  cleverSyncLogs                  CleverSyncLog[]
+  userInvites                     UserInvite[]
   // USB sneakernet ingest (Sprint 7B). Off by default; admins opt in per
   // tenant. The HMAC key signs every USB bundle's manifest.json so a
   // random/stolen stick can't push content to a paired screen. Rotated
@@ -70,7 +70,7 @@ model Tenant {
   // flag is OFF the manifest endpoint ignores any per-screen override
   // columns even if they're populated, so flipping the toggle is a
   // reversible no-op for the player fleet.
-  locationBasedEmergencyEnabled Boolean @default(false) @map("location_based_emergency_enabled")
+  locationBasedEmergencyEnabled   Boolean          @default(false) @map("location_based_emergency_enabled")
   // Auto-update for paired Android players (2026-04-27). Operator:
   // "we shouldnt be auto updating screens unless we check a box or
   // something on that... i would hate to break a perfectly good
@@ -79,25 +79,25 @@ model Tenant {
   // the admin manually clicked Push for that specific screen (the
   // controller stores Screen.forceApkUpdatePendingAt and respects a
   // 30-min window). ON: kiosks pull updates on their own 6h cadence.
-  autoUpdatePlayerEnabled Boolean       @default(false) @map("auto_update_player_enabled")
-  usbIngestEnabled        Boolean       @default(false) @map("usb_ingest_enabled")
-  usbIngestKey            String?       @map("usb_ingest_key")             // 64-char hex (HMAC-SHA256 secret)
-  usbIngestKeyRotatedAt   DateTime?     @map("usb_ingest_key_rotated_at")
-  usbIngestEvents         UsbIngestEvent[]
+  autoUpdatePlayerEnabled         Boolean          @default(false) @map("auto_update_player_enabled")
+  usbIngestEnabled                Boolean          @default(false) @map("usb_ingest_enabled")
+  usbIngestKey                    String?          @map("usb_ingest_key") // 64-char hex (HMAC-SHA256 secret)
+  usbIngestKeyRotatedAt           DateTime?        @map("usb_ingest_key_rotated_at")
+  usbIngestEvents                 UsbIngestEvent[]
   // Industry vertical — drives default templates, widget palette, and
   // pricing tier. Tenants are isolated regardless; this is just metadata
   // + UI personalization.
-  vertical                String        @default("K12") // K12 | FITNESS | RESTAURANT | RETAIL | HEALTHCARE | CORPORATE | OTHER
+  vertical                        String           @default("K12") // K12 | FITNESS | RESTAURANT | RETAIL | HEALTHCARE | CORPORATE | OTHER
   // Per-screen billing meter. One License row per Tenant; absence means
   // "Pilot" (free tier with cap of 3 screens, no expiry). License flips
   // when an admin runs a Stripe checkout or the SUPER_ADMIN comps seats.
-  license                 License?
+  license                         License?
   // Auto-branding (Sprint 9). One-to-one; absence means "default theme."
-  branding                TenantBranding?
+  branding                        TenantBranding?
   // Submit-for-review workflow (Sprint 1.5).
-  submissions             Submission[]
+  submissions                     Submission[]
   // Floor plans (Sprint 8b indoor map).
-  floorPlans              FloorPlan[]
+  floorPlans                      FloorPlan[]
 
   @@map("tenants")
 }
@@ -110,113 +110,113 @@ model Tenant {
 // to allow partial adoption (e.g., adopt the logo only, keep default
 // colors).
 model TenantBranding {
-  id                  String   @id @default(uuid())
-  tenantId            String   @unique @map("tenant_id")
+  id               String    @id @default(uuid())
+  tenantId         String    @unique @map("tenant_id")
   // Human-readable product name for this tenant ("Lincoln HS Signage").
-  displayName         String?  @map("display_name")
-  tagline             String?
+  displayName      String?   @map("display_name")
+  tagline          String?
   // Logo assets — all re-hosted in Supabase so we never hotlink the
   // source. logoSvgInline holds inline SVG markup for pixel-perfect
   // rendering when the source is SVG.
-  logoUrl             String?  @map("logo_url")
-  logoSvgInline       String?  @map("logo_svg_inline")
-  faviconUrl          String?  @map("favicon_url")
-  ogImageUrl          String?  @map("og_image_url")
+  logoUrl          String?   @map("logo_url")
+  logoSvgInline    String?   @map("logo_svg_inline")
+  faviconUrl       String?   @map("favicon_url")
+  ogImageUrl       String?   @map("og_image_url")
   // Full palette with derived shades. Shape:
   // { primary, primaryHover, accent, accentHover, ink, surface,
   //   surfaceAlt, success, warn, danger, extras?: string[] }
-  palette             Json?
+  palette          Json?
   // Google-Fonts-matched names + CSS import URLs
-  fontHeading         String?  @map("font_heading")
-  fontBody            String?  @map("font_body")
-  fontHeadingUrl      String?  @map("font_heading_url")
-  fontBodyUrl         String?  @map("font_body_url")
+  fontHeading      String?   @map("font_heading")
+  fontBody         String?   @map("font_body")
+  fontHeadingUrl   String?   @map("font_heading_url")
+  fontBodyUrl      String?   @map("font_body_url")
   // Discovered hero photo candidates (up to 5, ranked)
-  heroImages          Json?    @map("hero_images")
+  heroImages       Json?     @map("hero_images")
   // Provenance
-  sourceUrl           String?  @map("source_url")
-  scrapedAt           DateTime? @map("scraped_at")
-  confidenceScores    Json?    @map("confidence_scores")
+  sourceUrl        String?   @map("source_url")
+  scrapedAt        DateTime? @map("scraped_at")
+  confidenceScores Json?     @map("confidence_scores")
   // Raw scrape result stored for re-derive without re-scraping
-  rawSnapshot         Json?    @map("raw_snapshot")
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at")
-  tenant              Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rawSnapshot      Json?     @map("raw_snapshot")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at")
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("tenant_branding")
 }
 
 model TenantSSOConfig {
-  id                String   @id @default(uuid())
-  tenantId          String   @unique @map("tenant_id")
-  provider          String   // 'SAML' | 'OIDC'
-  enabled           Boolean  @default(false)
-  metadataUrl       String?  @map("metadata_url")
-  entityId          String?  @map("entity_id")
-  acsUrl            String?  @map("acs_url")
-  x509Cert          String?  @map("x509_cert")           // encrypted at rest
-  oidcIssuer        String?  @map("oidc_issuer")
-  oidcClientId      String?  @map("oidc_client_id")
-  oidcClientSecret  String?  @map("oidc_client_secret")  // encrypted at rest
-  defaultRole       String   @default("RESTRICTED_VIEWER") @map("default_role")
-  allowedEmailDomain String? @map("allowed_email_domain")
-  autoProvision     Boolean  @default(false) @map("auto_provision")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at")
-  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                 String   @id @default(uuid())
+  tenantId           String   @unique @map("tenant_id")
+  provider           String // 'SAML' | 'OIDC'
+  enabled            Boolean  @default(false)
+  metadataUrl        String?  @map("metadata_url")
+  entityId           String?  @map("entity_id")
+  acsUrl             String?  @map("acs_url")
+  x509Cert           String?  @map("x509_cert") // encrypted at rest
+  oidcIssuer         String?  @map("oidc_issuer")
+  oidcClientId       String?  @map("oidc_client_id")
+  oidcClientSecret   String?  @map("oidc_client_secret") // encrypted at rest
+  defaultRole        String   @default("RESTRICTED_VIEWER") @map("default_role")
+  allowedEmailDomain String?  @map("allowed_email_domain")
+  autoProvision      Boolean  @default(false) @map("auto_provision")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at")
+  tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("tenant_sso_configs")
 }
 
 model User {
-  id               String               @id @default(uuid())
-  tenantId         String               @map("tenant_id")
-  email            String               @unique
-  passwordHash     String               @map("password_hash")
-  role             String
-  canTriggerPanic  Boolean              @default(false) @map("can_trigger_panic")
-  status           String               @default("ACTIVE")
-  createdAt        DateTime             @default(now()) @map("created_at")
-  assets           Asset[]
-  auditLogs        AuditLog[]
-  createdTemplates Template[]           @relation("TemplateCreator")
-  createdPlaylists Playlist[]           @relation("PlaylistCreator")
-  tenant           Tenant               @relation(fields: [tenantId], references: [id])
-  cleverId         String?              @unique @map("clever_id")
-  cleverRole       String?              @map("clever_role")
-  passwordResets   PasswordResetToken[]
-  invitesSent      UserInvite[]         @relation("InviteInviter")
-  invite           UserInvite?          @relation("InviteUser")
-  notifications    Notification[]
-  submissionsSubmitted Submission[]   @relation("SubmissionsSubmitted")
-  submissionsDecided   Submission[]   @relation("SubmissionsDecided")
+  id                   String               @id @default(uuid())
+  tenantId             String               @map("tenant_id")
+  email                String               @unique
+  passwordHash         String               @map("password_hash")
+  role                 String
+  canTriggerPanic      Boolean              @default(false) @map("can_trigger_panic")
+  status               String               @default("ACTIVE")
+  createdAt            DateTime             @default(now()) @map("created_at")
+  assets               Asset[]
+  auditLogs            AuditLog[]
+  createdTemplates     Template[]           @relation("TemplateCreator")
+  createdPlaylists     Playlist[]           @relation("PlaylistCreator")
+  tenant               Tenant               @relation(fields: [tenantId], references: [id])
+  cleverId             String?              @unique @map("clever_id")
+  cleverRole           String?              @map("clever_role")
+  passwordResets       PasswordResetToken[]
+  invitesSent          UserInvite[]         @relation("InviteInviter")
+  invite               UserInvite?          @relation("InviteUser")
+  notifications        Notification[]
+  submissionsSubmitted Submission[]         @relation("SubmissionsSubmitted")
+  submissionsDecided   Submission[]         @relation("SubmissionsDecided")
 
   @@map("users")
 }
 
 model CleverSyncLog {
-  id                String    @id @default(uuid())
-  tenantId          String    @map("tenant_id")
-  syncStartedAt     DateTime  @default(now()) @map("sync_started_at")
-  syncCompletedAt   DateTime? @map("sync_completed_at")
-  usersAdded        Int       @default(0) @map("users_added")
-  usersUpdated      Int       @default(0) @map("users_updated")
-  usersDisabled     Int       @default(0) @map("users_disabled")
-  errorMessage      String?   @map("error_message")
-  tenant            Tenant    @relation(fields: [tenantId], references: [id])
+  id              String    @id @default(uuid())
+  tenantId        String    @map("tenant_id")
+  syncStartedAt   DateTime  @default(now()) @map("sync_started_at")
+  syncCompletedAt DateTime? @map("sync_completed_at")
+  usersAdded      Int       @default(0) @map("users_added")
+  usersUpdated    Int       @default(0) @map("users_updated")
+  usersDisabled   Int       @default(0) @map("users_disabled")
+  errorMessage    String?   @map("error_message")
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId, syncStartedAt])
   @@map("clever_sync_logs")
 }
 
 model PasswordResetToken {
-  id         String   @id @default(uuid())
-  userId     String   @map("user_id")
-  tokenHash  String   @unique @map("token_hash")
-  expiresAt  DateTime @map("expires_at")
-  usedAt     DateTime? @map("used_at")
-  createdAt  DateTime @default(now()) @map("created_at")
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("password_reset_tokens")
@@ -247,27 +247,27 @@ model UserInvite {
 // register() would push currentSeats above seatLimit, we reject with a
 // LICENSE_EXHAUSTED error and instruct the admin to add seats.
 model License {
-  id            String    @id @default(uuid())
-  tenantId      String    @unique @map("tenant_id")
-  tier          String    // PILOT | STANDARD | ENTERPRISE | EDU_DISTRICT | RESTAURANT_CHAIN | (custom)
-  seatLimit     Int       @default(3) @map("seat_limit")
-  billingMode   String    @default("CARD") @map("billing_mode") // CARD | INVOICE | PURCHASE_ORDER | COMP
-  status        String    @default("ACTIVE")              // ACTIVE | PAST_DUE | SUSPENDED | CANCELLED
-  monthlyPriceCents Int?  @map("monthly_price_cents")    // null for COMP / EDU_DISTRICT custom
+  id                   String    @id @default(uuid())
+  tenantId             String    @unique @map("tenant_id")
+  tier                 String // PILOT | STANDARD | ENTERPRISE | EDU_DISTRICT | RESTAURANT_CHAIN | (custom)
+  seatLimit            Int       @default(3) @map("seat_limit")
+  billingMode          String    @default("CARD") @map("billing_mode") // CARD | INVOICE | PURCHASE_ORDER | COMP
+  status               String    @default("ACTIVE") // ACTIVE | PAST_DUE | SUSPENDED | CANCELLED
+  monthlyPriceCents    Int?      @map("monthly_price_cents") // null for COMP / EDU_DISTRICT custom
   // Stripe wire-up slots — populated when the customer runs in-app
   // checkout. Empty for COMP, INVOICE, PURCHASE_ORDER customers.
-  stripeCustomerId      String?   @map("stripe_customer_id")
-  stripeSubscriptionId  String?   @map("stripe_subscription_id")
+  stripeCustomerId     String?   @map("stripe_customer_id")
+  stripeSubscriptionId String?   @map("stripe_subscription_id")
   // Expiry / renewal. Null = perpetual (e.g. PILOT, COMP).
-  currentPeriodStart    DateTime? @map("current_period_start")
-  currentPeriodEnd      DateTime? @map("current_period_end")
-  expiresAt             DateTime? @map("expires_at")
+  currentPeriodStart   DateTime? @map("current_period_start")
+  currentPeriodEnd     DateTime? @map("current_period_end")
+  expiresAt            DateTime? @map("expires_at")
   // Free-form notes from the SUPER_ADMIN (e.g. "manually comp'd 5 seats
   // through 2026-09-01 — ARRA grant").
-  notes                 String?
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at")
-  tenant                Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  notes                String?
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at")
+  tenant               Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("licenses")
 }
@@ -281,7 +281,7 @@ model UsbIngestEvent {
   assetCount      Int      @default(0) @map("asset_count")
   totalBytes      BigInt   @default(0) @map("total_bytes")
   emergencyAssets Boolean  @default(false) @map("emergency_assets") // true if bundle contained any emergency assets
-  outcome         String   // 'ACCEPTED' | 'REJECTED_SIGNATURE' | 'REJECTED_HASH' | 'CANCELLED_BY_OPERATOR' | 'PARTIAL'
+  outcome         String // 'ACCEPTED' | 'REJECTED_SIGNATURE' | 'REJECTED_HASH' | 'CANCELLED_BY_OPERATOR' | 'PARTIAL'
   reason          String?
   operatorPin     String?  @map("operator_pin") // SHA-256 of pin used; never store the raw pin
   createdAt       DateTime @default(now()) @map("created_at")
@@ -295,14 +295,14 @@ model UsbIngestEvent {
 }
 
 model EmailLog {
-  id        String   @id @default(uuid())
-  toEmail   String   @map("to_email")
+  id        String    @id @default(uuid())
+  toEmail   String    @map("to_email")
   subject   String
   body      String
   kind      String
-  status    String   @default("QUEUED")
+  status    String    @default("QUEUED")
   error     String?
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime  @default(now()) @map("created_at")
   sentAt    DateTime? @map("sent_at")
 
   @@index([status])
@@ -324,83 +324,83 @@ model ScreenGroup {
 }
 
 model Screen {
-  id                String       @id @default(uuid())
-  tenantId          String?      @map("tenant_id")
-  screenGroupId     String?      @map("screen_group_id")
-  name              String
-  location          String?
-  deviceFingerprint String       @unique @map("device_fingerprint")
-  pairingCode       String?      @unique @map("pairing_code")
-  status            String       @default("PENDING")
-  lastPingAt        DateTime?    @map("last_ping_at")
-  pairedAt          DateTime?    @map("paired_at")
-  resolution        String?
-  osInfo            String?      @map("os_info")
-  browserInfo       String?      @map("browser_info")
-  ipAddress         String?      @map("ip_address")
-  userAgent         String?      @map("user_agent")
+  id                                  String       @id @default(uuid())
+  tenantId                            String?      @map("tenant_id")
+  screenGroupId                       String?      @map("screen_group_id")
+  name                                String
+  location                            String?
+  deviceFingerprint                   String       @unique @map("device_fingerprint")
+  pairingCode                         String?      @unique @map("pairing_code")
+  status                              String       @default("PENDING")
+  lastPingAt                          DateTime?    @map("last_ping_at")
+  pairedAt                            DateTime?    @map("paired_at")
+  resolution                          String?
+  osInfo                              String?      @map("os_info")
+  browserInfo                         String?      @map("browser_info")
+  ipAddress                           String?      @map("ip_address")
+  userAgent                           String?      @map("user_agent")
   // Sprint 8 — fleet map view. Optional geo + visual identification so
   // a 100-screen district can manage the fleet on a map instead of a
   // flat list. Address geocoded via Nominatim on save.
-  address           String?
-  latitude          Float?
-  longitude         Float?
-  photoUrl          String?      @map("photo_url")
+  address                             String?
+  latitude                            Float?
+  longitude                           Float?
+  photoUrl                            String?      @map("photo_url")
   // Sprint 8b — indoor positioning. Operator drops the screen pin on
   // a FloorPlan; floorX / floorY are px coords on the plan image.
   // All three nullable because most screens won't be placed on a plan
   // until the customer uploads one.
-  floorPlanId       String?      @map("floor_plan_id")
-  floorX            Float?       @map("floor_x")
-  floorY            Float?       @map("floor_y")
-  floorPlan         FloorPlan?   @relation("ScreensOnFloorPlan", fields: [floorPlanId], references: [id])
+  floorPlanId                         String?      @map("floor_plan_id")
+  floorX                              Float?       @map("floor_x")
+  floorY                              Float?       @map("floor_y")
+  floorPlan                           FloorPlan?   @relation("ScreensOnFloorPlan", fields: [floorPlanId], references: [id])
   // Last offline-cache status the player reported. JSON shape:
   //   { playlist: { count, bytes }, emergency: { count, bytes } }
   // Lets admins verify each screen actually has emergency assets on disk
   // without trusting the network at the moment of an emergency.
-  lastCacheReport   Json?        @map("last_cache_report")
-  lastCacheReportAt DateTime?    @map("last_cache_report_at")
+  lastCacheReport                     Json?        @map("last_cache_report")
+  lastCacheReportAt                   DateTime?    @map("last_cache_report_at")
   // Android APK self-reported version. The player OTA worker already
   // POSTs versionName + versionCode to /player/update-check every 6h
   // and on boot; we just persist the two strings so admins can see at
   // a glance on /screens which kiosks are still on the old build.
   // Both nullable — browser players (no APK) never set them.
-  playerVersion     String?      @map("player_version")      // "1.0.8"
-  playerVersionCode Int?         @map("player_version_code") // 8
-  playerVersionAt   DateTime?    @map("player_version_at")   // last poll that reported it
+  playerVersion                       String?      @map("player_version") // "1.0.8"
+  playerVersionCode                   Int?         @map("player_version_code") // 8
+  playerVersionAt                     DateTime?    @map("player_version_at") // last poll that reported it
   // Manual-push opt-in for OTA. When the admin clicks "Push update"
   // on a specific screen we set this to now(); the next call this
   // screen makes to /player/update-check returns the latest APK
   // (gating-window: 30 min). After that window the field is just
   // history. When tenant.autoUpdatePlayerEnabled = true this field
   // is irrelevant — auto-mode always returns the latest.
-  forceApkUpdatePendingAt DateTime? @map("force_apk_update_pending_at")
+  forceApkUpdatePendingAt             DateTime?    @map("force_apk_update_pending_at")
   // v1.0.12 — per-phase OTA progress reported by OtaUpdateWorker.
   // Lets the dashboard show a real progress bar grounded in device
   // truth instead of the time-based theater that was killing trust.
   // States: CHECKING | DOWNLOADING | VERIFYING | INSTALLING | INSTALLED | ERROR
   // Progress: 0-100 (only meaningful during DOWNLOADING).
-  lastOtaState     String?   @map("last_ota_state")
-  lastOtaProgress  Int?      @map("last_ota_progress")
-  lastOtaMessage   String?   @map("last_ota_message")
-  lastOtaAt        DateTime? @map("last_ota_at")
+  lastOtaState                        String?      @map("last_ota_state")
+  lastOtaProgress                     Int?         @map("last_ota_progress")
+  lastOtaMessage                      String?      @map("last_ota_message")
+  lastOtaAt                           DateTime?    @map("last_ota_at")
   // Phase 2 — last crash from Player or Manager. Captured by an
   // UncaughtExceptionHandler in each APK and POSTed to
   // /api/v1/screens/status/:fp/crash-report. Source = "player" |
   // "manager" so dashboards can attribute. Stack is truncated at
   // ~8KB on the API side (large enough for a full Kotlin stack
   // trace, small enough to not blow up our row size).
-  lastCrashAt      DateTime? @map("last_crash_at")
-  lastCrashVersion String?   @map("last_crash_version")
-  lastCrashSource  String?   @map("last_crash_source")
-  lastCrashMessage String?   @map("last_crash_message")
-  lastCrashStack   String?   @map("last_crash_stack")
+  lastCrashAt                         DateTime?    @map("last_crash_at")
+  lastCrashVersion                    String?      @map("last_crash_version")
+  lastCrashSource                     String?      @map("last_crash_source")
+  lastCrashMessage                    String?      @map("last_crash_message")
+  lastCrashStack                      String?      @map("last_crash_stack")
   // v1.0.13 — Manager APK version (companion to Player). Reported
   // by Player's heartbeat which queries Manager via PackageManager
   // (Manager itself doesn't heartbeat — keeps the Manager codebase
   // small and avoids two network connections per kiosk).
-  managerVersion   String?   @map("manager_version")
-  managerVersionAt DateTime? @map("manager_version_at")
+  managerVersion                      String?      @map("manager_version")
+  managerVersionAt                    DateTime?    @map("manager_version_at")
   // Sprint 8b operator-config layer for the 6 emergency types (LOCKDOWN /
   // EVACUATE / WEATHER / HOLD / SECURE / MEDICAL).
   // For each type the operator can:
@@ -412,12 +412,12 @@ model Screen {
   // without coupling per-screen overrides to a manual trigger event.
   // Schema is purely additive; existing screens default everything to
   // null = "use tenant settings."
-  emergencyLockdownPlaylistId String? @map("emergency_lockdown_playlist_id")
-  emergencyEvacuatePlaylistId String? @map("emergency_evacuate_playlist_id")
-  emergencyWeatherPlaylistId  String? @map("emergency_weather_playlist_id")
-  emergencyHoldPlaylistId     String? @map("emergency_hold_playlist_id")
-  emergencySecurePlaylistId   String? @map("emergency_secure_playlist_id")
-  emergencyMedicalPlaylistId  String? @map("emergency_medical_playlist_id")
+  emergencyLockdownPlaylistId         String?      @map("emergency_lockdown_playlist_id")
+  emergencyEvacuatePlaylistId         String?      @map("emergency_evacuate_playlist_id")
+  emergencyWeatherPlaylistId          String?      @map("emergency_weather_playlist_id")
+  emergencyHoldPlaylistId             String?      @map("emergency_hold_playlist_id")
+  emergencySecurePlaylistId           String?      @map("emergency_secure_playlist_id")
+  emergencyMedicalPlaylistId          String?      @map("emergency_medical_playlist_id")
   // Per-screen custom emergency asset URLs (image / video / PDF). When
   // set, the player renders this single asset full-screen during that
   // emergency type. Resolution priority in the manifest endpoint:
@@ -426,33 +426,33 @@ model Screen {
   //   3. Tenant.panic*PlaylistId (school-wide default)
   // Lets operators upload a "lockdown — hold position" image for the
   // gym wing without needing to first wrap it in a one-item playlist.
-  emergencyLockdownAssetUrl   String? @map("emergency_lockdown_asset_url")
-  emergencyEvacuateAssetUrl   String? @map("emergency_evacuate_asset_url")
-  emergencyWeatherAssetUrl    String? @map("emergency_weather_asset_url")
-  emergencyHoldAssetUrl       String? @map("emergency_hold_asset_url")
-  emergencySecureAssetUrl     String? @map("emergency_secure_asset_url")
-  emergencyMedicalAssetUrl    String? @map("emergency_medical_asset_url")
+  emergencyLockdownAssetUrl           String?      @map("emergency_lockdown_asset_url")
+  emergencyEvacuateAssetUrl           String?      @map("emergency_evacuate_asset_url")
+  emergencyWeatherAssetUrl            String?      @map("emergency_weather_asset_url")
+  emergencyHoldAssetUrl               String?      @map("emergency_hold_asset_url")
+  emergencySecureAssetUrl             String?      @map("emergency_secure_asset_url")
+  emergencyMedicalAssetUrl            String?      @map("emergency_medical_asset_url")
   // Portrait variants — same 6 types again. The screen's resolution
   // determines which set the manifest reads from. Operator can upload
   // a horizontal "lockdown — hold position" poster AND a vertical
   // poster designed for portrait kiosks; the player picks the right
   // one based on its physical orientation, same way the tenant-wide
   // panic*Portrait*PlaylistId already does.
-  emergencyLockdownPortraitPlaylistId String? @map("emergency_lockdown_portrait_playlist_id")
-  emergencyEvacuatePortraitPlaylistId String? @map("emergency_evacuate_portrait_playlist_id")
-  emergencyWeatherPortraitPlaylistId  String? @map("emergency_weather_portrait_playlist_id")
-  emergencyHoldPortraitPlaylistId     String? @map("emergency_hold_portrait_playlist_id")
-  emergencySecurePortraitPlaylistId   String? @map("emergency_secure_portrait_playlist_id")
-  emergencyMedicalPortraitPlaylistId  String? @map("emergency_medical_portrait_playlist_id")
-  emergencyLockdownPortraitAssetUrl   String? @map("emergency_lockdown_portrait_asset_url")
-  emergencyEvacuatePortraitAssetUrl   String? @map("emergency_evacuate_portrait_asset_url")
-  emergencyWeatherPortraitAssetUrl    String? @map("emergency_weather_portrait_asset_url")
-  emergencyHoldPortraitAssetUrl       String? @map("emergency_hold_portrait_asset_url")
-  emergencySecurePortraitAssetUrl     String? @map("emergency_secure_portrait_asset_url")
-  emergencyMedicalPortraitAssetUrl    String? @map("emergency_medical_portrait_asset_url")
-  schedules         Schedule[]
-  screenGroup       ScreenGroup? @relation(fields: [screenGroupId], references: [id])
-  tenant            Tenant?      @relation(fields: [tenantId], references: [id])
+  emergencyLockdownPortraitPlaylistId String?      @map("emergency_lockdown_portrait_playlist_id")
+  emergencyEvacuatePortraitPlaylistId String?      @map("emergency_evacuate_portrait_playlist_id")
+  emergencyWeatherPortraitPlaylistId  String?      @map("emergency_weather_portrait_playlist_id")
+  emergencyHoldPortraitPlaylistId     String?      @map("emergency_hold_portrait_playlist_id")
+  emergencySecurePortraitPlaylistId   String?      @map("emergency_secure_portrait_playlist_id")
+  emergencyMedicalPortraitPlaylistId  String?      @map("emergency_medical_portrait_playlist_id")
+  emergencyLockdownPortraitAssetUrl   String?      @map("emergency_lockdown_portrait_asset_url")
+  emergencyEvacuatePortraitAssetUrl   String?      @map("emergency_evacuate_portrait_asset_url")
+  emergencyWeatherPortraitAssetUrl    String?      @map("emergency_weather_portrait_asset_url")
+  emergencyHoldPortraitAssetUrl       String?      @map("emergency_hold_portrait_asset_url")
+  emergencySecurePortraitAssetUrl     String?      @map("emergency_secure_portrait_asset_url")
+  emergencyMedicalPortraitAssetUrl    String?      @map("emergency_medical_portrait_asset_url")
+  schedules                           Schedule[]
+  screenGroup                         ScreenGroup? @relation(fields: [screenGroupId], references: [id])
+  tenant                              Tenant?      @relation(fields: [tenantId], references: [id])
 
   // Hot-path queries driving these indexes (all added 2026-04-23 after
   // customer-readiness audit flagged sequential scans at scale):
@@ -522,12 +522,12 @@ model Playlist {
   // "I accidentally deleted the lockdown playlist mid-emergency" failure
   // mode. Created automatically by the panic-content endpoints and
   // managed only through that surface.
-  isProtected     Boolean       @default(false) @map("is_protected")
-  protectedKind   String?       @map("protected_kind") // 'lockdown' | 'weather' | 'evacuate' | null
+  isProtected     Boolean        @default(false) @map("is_protected")
+  protectedKind   String?        @map("protected_kind") // 'lockdown' | 'weather' | 'evacuate' | null
   items           PlaylistItem[]
-  tenant          Tenant        @relation(fields: [tenantId], references: [id])
-  template        Template?     @relation(fields: [templateId], references: [id])
-  createdBy       User?         @relation("PlaylistCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  tenant          Tenant         @relation(fields: [tenantId], references: [id])
+  template        Template?      @relation(fields: [templateId], references: [id])
+  createdBy       User?          @relation("PlaylistCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
   schedules       Schedule[]
 
   @@index([tenantId, isProtected])
@@ -538,17 +538,17 @@ model Playlist {
 }
 
 model PlaylistItem {
-  id            String   @id @default(uuid())
-  playlistId    String   @map("playlist_id")
-  assetId       String   @map("asset_id")
-  durationMs    Int      @map("duration_ms")
-  sequenceOrder Int      @map("sequence_order")
-  daysOfWeek    String?  @map("days_of_week")
-  timeStart     String?  @map("time_start")
-  timeEnd       String?  @map("time_end")
-  transitionType String? @default("FADE") @map("transition_type")
-  asset         Asset    @relation(fields: [assetId], references: [id])
-  playlist      Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  id             String   @id @default(uuid())
+  playlistId     String   @map("playlist_id")
+  assetId        String   @map("asset_id")
+  durationMs     Int      @map("duration_ms")
+  sequenceOrder  Int      @map("sequence_order")
+  daysOfWeek     String?  @map("days_of_week")
+  timeStart      String?  @map("time_start")
+  timeEnd        String?  @map("time_end")
+  transitionType String?  @default("FADE") @map("transition_type")
+  asset          Asset    @relation(fields: [assetId], references: [id])
+  playlist       Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
 
   // Manifest endpoint fetches playlist items by playlistId in sequence
   // order on every player poll — this is the most-read query in the app.
@@ -620,24 +620,24 @@ model Notification {
   tenant    Tenant   @relation(fields: [tenantId], references: [id])
   user      User?    @relation(fields: [userId], references: [id])
 
+  @@unique([tenantId, dedupeKey])
   @@index([tenantId, userId, isRead])
   @@index([tenantId, createdAt])
-  @@unique([tenantId, dedupeKey])
   @@map("notifications")
 }
 
 model Template {
-  id           String         @id @default(uuid())
-  tenantId     String?        @map("tenant_id")
-  name         String
-  description  String?
-  category     String         @default("CUSTOM")
-  orientation  String         @default("LANDSCAPE")
+  id             String         @id @default(uuid())
+  tenantId       String?        @map("tenant_id")
+  name           String
+  description    String?
+  category       String         @default("CUSTOM")
+  orientation    String         @default("LANDSCAPE")
   // Filter chip on /templates — 'ELEMENTARY' | 'MIDDLE' | 'HIGH' | 'UNIVERSAL'.
   // Stored as a free string so we don't need a DB enum migration each time
   // a new level (PRE_K, ADULT_ED, etc.) comes along. Defaults to UNIVERSAL
   // so existing templates stay visible under every filter.
-  schoolLevel  String         @default("UNIVERSAL") @map("school_level")
+  schoolLevel    String         @default("UNIVERSAL") @map("school_level")
   // Industry vertical — gates which templates appear in a tenant's
   // gallery. System templates are tagged with the vertical they were
   // designed for; the /templates list endpoint filters by the
@@ -645,15 +645,15 @@ model Template {
   // templates and vice versa. Custom tenant templates inherit the
   // tenant's own vertical. Defaults K12 because that's the original
   // product + the vast majority of pre-existing rows.
-  vertical     String         @default("K12") @map("vertical") // K12 | FITNESS | RESTAURANT | RETAIL | HEALTHCARE | CORPORATE | OTHER
-  screenWidth  Int            @default(1920) @map("screen_width")
-  screenHeight Int            @default(1080) @map("screen_height")
-  isSystem     Boolean        @default(false) @map("is_system")
-  status       String         @default("ACTIVE")
-  bgColor      String?        @map("bg_color")
-  bgImage      String?        @map("bg_image")
-  bgGradient   String?        @map("bg_gradient")
-  thumbnail    String?
+  vertical       String         @default("K12") @map("vertical") // K12 | FITNESS | RESTAURANT | RETAIL | HEALTHCARE | CORPORATE | OTHER
+  screenWidth    Int            @default(1920) @map("screen_width")
+  screenHeight   Int            @default(1080) @map("screen_height")
+  isSystem       Boolean        @default(false) @map("is_system")
+  status         String         @default("ACTIVE")
+  bgColor        String?        @map("bg_color")
+  bgImage        String?        @map("bg_image")
+  bgGradient     String?        @map("bg_gradient")
+  thumbnail      String?
   // Per-template Brand Kit. Distinct from the tenant-wide
   // `TenantBranding` row that themes the CMS dashboard chrome.
   // Operators paste a school URL in the template builder's Brand
@@ -676,16 +676,16 @@ model Template {
   //     sourceUrl: string | null,
   //     scrapedAt: ISO date string,
   //   }
-  brandKit     Json?          @map("brand_kit")
-  createdById  String?        @map("created_by_id")
-  isTouchEnabled Boolean      @default(false) @map("is_touch_enabled")
-  idleResetMs  Int            @default(60000) @map("idle_reset_ms")
-  createdAt    DateTime       @default(now()) @map("created_at")
-  updatedAt    DateTime       @default(now()) @updatedAt @map("updated_at")
-  zones        TemplateZone[]
-  playlists    Playlist[]
-  createdBy    User?          @relation("TemplateCreator", fields: [createdById], references: [id])
-  tenant       Tenant?        @relation(fields: [tenantId], references: [id])
+  brandKit       Json?          @map("brand_kit")
+  createdById    String?        @map("created_by_id")
+  isTouchEnabled Boolean        @default(false) @map("is_touch_enabled")
+  idleResetMs    Int            @default(60000) @map("idle_reset_ms")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @default(now()) @updatedAt @map("updated_at")
+  zones          TemplateZone[]
+  playlists      Playlist[]
+  createdBy      User?          @relation("TemplateCreator", fields: [createdById], references: [id])
+  tenant         Tenant?        @relation(fields: [tenantId], references: [id])
 
   // Gallery orders by (isSystem desc, updatedAt desc) filtered by
   // tenantId + status + vertical. Composite index covers the common
@@ -696,20 +696,20 @@ model Template {
 }
 
 model EmergencyMessage {
-  id                 String    @id @default(uuid())
-  tenantId           String    @map("tenant_id")
-  triggeredByUserId  String?   @map("triggered_by_user_id")
-  type               String
-  severity           String    @default("CRITICAL")
-  textBlob           String?   @map("text_blob")
-  mediaUrls          String?   @map("media_urls")
-  audioUrl           String?   @map("audio_url")
-  scopeType          String    @map("scope_type")
-  scopeId            String    @map("scope_id")
-  expiresAt          DateTime? @map("expires_at")
-  createdAt          DateTime  @default(now()) @map("created_at")
-  clearedAt          DateTime? @map("cleared_at")
-  clearedByUserId    String?   @map("cleared_by_user_id")
+  id                String    @id @default(uuid())
+  tenantId          String    @map("tenant_id")
+  triggeredByUserId String?   @map("triggered_by_user_id")
+  type              String
+  severity          String    @default("CRITICAL")
+  textBlob          String?   @map("text_blob")
+  mediaUrls         String?   @map("media_urls")
+  audioUrl          String?   @map("audio_url")
+  scopeType         String    @map("scope_type")
+  scopeId           String    @map("scope_id")
+  expiresAt         DateTime? @map("expires_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  clearedAt         DateTime? @map("cleared_at")
+  clearedByUserId   String?   @map("cleared_by_user_id")
 
   @@index([tenantId, createdAt(sort: Desc)], map: "emergency_messages_tenant_created_idx")
   @@map("emergency_messages")
@@ -745,23 +745,23 @@ model TemplateZone {
 // queryable even after their linked content is later edited or
 // removed, and the existing tables don't need new columns.
 model Submission {
-  id              String   @id @default(uuid())
-  tenantId        String   @map("tenant_id")
-  submittedById   String   @map("submitted_by_user_id")
-  status          String   @default("PENDING")
-  note            String?
-  reviewerNote    String?  @map("reviewer_note")
-  notifyUserIds   String   @default("") @map("notify_user_ids")
-  assetIds        String   @default("") @map("asset_ids")
-  playlistIds     String   @default("") @map("playlist_ids")
-  scheduleIds     String   @default("") @map("schedule_ids")
-  createdAt       DateTime @default(now()) @map("created_at")
-  decidedAt       DateTime? @map("decided_at")
-  decidedById     String?   @map("decided_by_user_id")
+  id            String    @id @default(uuid())
+  tenantId      String    @map("tenant_id")
+  submittedById String    @map("submitted_by_user_id")
+  status        String    @default("PENDING")
+  note          String?
+  reviewerNote  String?   @map("reviewer_note")
+  notifyUserIds String    @default("") @map("notify_user_ids")
+  assetIds      String    @default("") @map("asset_ids")
+  playlistIds   String    @default("") @map("playlist_ids")
+  scheduleIds   String    @default("") @map("schedule_ids")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  decidedAt     DateTime? @map("decided_at")
+  decidedById   String?   @map("decided_by_user_id")
 
-  tenant          Tenant   @relation(fields: [tenantId], references: [id])
-  submittedBy     User     @relation("SubmissionsSubmitted", fields: [submittedById], references: [id])
-  decidedBy       User?    @relation("SubmissionsDecided",   fields: [decidedById],   references: [id])
+  tenant      Tenant @relation(fields: [tenantId], references: [id])
+  submittedBy User   @relation("SubmissionsSubmitted", fields: [submittedById], references: [id])
+  decidedBy   User?  @relation("SubmissionsDecided", fields: [decidedById], references: [id])
 
   @@index([tenantId, status, createdAt])
   @@index([submittedById, createdAt])
@@ -791,39 +791,39 @@ model Submission {
 // query patterns change.
 
 model FloorPlan {
-  id              String   @id @default(uuid())
-  tenantId        String   @map("tenant_id")
-  name            String                                          // "Lincoln HS — Floor 1"
-  buildingLabel   String?  @map("building_label")                 // "Main Building"
-  floorLabel      String?  @map("floor_label")                    // "Floor 1"
-  imageUrl        String   @map("image_url")                      // Supabase-hosted PNG
-  widthPx         Int      @map("width_px")                       // Image dimensions for stable coords
-  heightPx        Int      @map("height_px")
+  id                    String   @id @default(uuid())
+  tenantId              String   @map("tenant_id")
+  name                  String // "Lincoln HS — Floor 1"
+  buildingLabel         String?  @map("building_label") // "Main Building"
+  floorLabel            String?  @map("floor_label") // "Floor 1"
+  imageUrl              String   @map("image_url") // Supabase-hosted PNG
+  widthPx               Int      @map("width_px") // Image dimensions for stable coords
+  heightPx              Int      @map("height_px")
   // Optional: which zones on this plan should default to which alert
   // type. Stored as JSON for flexibility. Not used in Phase 1; reserved
   // for the scenario-picker UI in Phase 2.
-  defaultScenarioConfig Json?  @map("default_scenario_config")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+  defaultScenarioConfig Json?    @map("default_scenario_config")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @default(now()) @updatedAt @map("updated_at")
 
-  tenant          Tenant     @relation(fields: [tenantId], references: [id])
-  zones           FloorZone[]
-  screens         Screen[]   @relation("ScreensOnFloorPlan")
+  tenant  Tenant      @relation(fields: [tenantId], references: [id])
+  zones   FloorZone[]
+  screens Screen[]    @relation("ScreensOnFloorPlan")
 
   @@index([tenantId])
   @@map("floor_plans")
 }
 
 model FloorZone {
-  id              String   @id @default(uuid())
-  floorPlanId     String   @map("floor_plan_id")
-  name            String                                          // "Wing A", "Gym", "Cafeteria"
-  color           String   @default("#6366f1")                   // Pin color when zone is selected
+  id          String   @id @default(uuid())
+  floorPlanId String   @map("floor_plan_id")
+  name        String // "Wing A", "Gym", "Cafeteria"
+  color       String   @default("#6366f1") // Pin color when zone is selected
   // Polygon shape — JSON array of { x, y } px coords on the plan image.
-  shape           Json
-  createdAt       DateTime @default(now()) @map("created_at")
+  shape       Json
+  createdAt   DateTime @default(now()) @map("created_at")
 
-  floorPlan       FloorPlan @relation(fields: [floorPlanId], references: [id], onDelete: Cascade)
+  floorPlan FloorPlan @relation(fields: [floorPlanId], references: [id], onDelete: Cascade)
 
   @@index([floorPlanId])
   @@map("floor_zones")
@@ -841,24 +841,24 @@ model FloorZone {
 // `triggeredByUserId` is the operator who fired this scoped alert
 // — surfaces in the audit log for forensics.
 model ScreenEmergencyOverride {
-  id                 String   @id @default(uuid())
-  screenId           String   @unique @map("screen_id")
-  tenantId           String   @map("tenant_id")                    // Denormalized for audit speed
-  type               String                                        // LOCKDOWN | EVACUATE | WEATHER | HOLD | SECURE | MEDICAL | ALL_CLEAR
-  severity           String   @default("HIGH")                    // LOW | MEDIUM | HIGH | CRITICAL
-  scopeNote          String?  @map("scope_note")                   // "Gym wing — hold position"
+  id                String    @id @default(uuid())
+  screenId          String    @unique @map("screen_id")
+  tenantId          String    @map("tenant_id") // Denormalized for audit speed
+  type              String // LOCKDOWN | EVACUATE | WEATHER | HOLD | SECURE | MEDICAL | ALL_CLEAR
+  severity          String    @default("HIGH") // LOW | MEDIUM | HIGH | CRITICAL
+  scopeNote         String?   @map("scope_note") // "Gym wing — hold position"
   // Optional content overrides — null falls back to tenant defaults.
-  playlistId         String?  @map("playlist_id")
-  textBlob           String?  @map("text_blob")
-  mediaUrl           String?  @map("media_url")
+  playlistId        String?   @map("playlist_id")
+  textBlob          String?   @map("text_blob")
+  mediaUrl          String?   @map("media_url")
   // Floor plan / zone / scenario the operator targeted (for forensics
   // and to show "this came from the Gym lockdown scenario" in audit).
-  floorPlanId        String?  @map("floor_plan_id")
-  floorZoneId        String?  @map("floor_zone_id")
-  scenarioId         String?  @map("scenario_id")
-  triggeredByUserId  String   @map("triggered_by_user_id")
-  triggeredAt        DateTime @default(now()) @map("triggered_at")
-  expiresAt          DateTime? @map("expires_at")
+  floorPlanId       String?   @map("floor_plan_id")
+  floorZoneId       String?   @map("floor_zone_id")
+  scenarioId        String?   @map("scenario_id")
+  triggeredByUserId String    @map("triggered_by_user_id")
+  triggeredAt       DateTime  @default(now()) @map("triggered_at")
+  expiresAt         DateTime? @map("expires_at")
 
   @@index([tenantId, triggeredAt])
   @@map("screen_emergency_overrides")
@@ -893,13 +893,13 @@ model ScreenEmergencyOverride {
 //   • Ad slots need an audit log (who scheduled what, when).
 //
 model StreamProviderConnection {
-  id              String   @id @default(uuid())
-  tenantId        String   @map("tenant_id")
+  id               String    @id @default(uuid())
+  tenantId         String    @map("tenant_id")
   // Canonical provider id from packages/api-types/src/streaming.ts
   // (e.g. "atmosphere" / "pluto-tv" / "youtube" / "twitch" / "hls").
-  providerId      String   @map("provider_id")
+  providerId       String    @map("provider_id")
   // Display name override (optional) — falls back to provider's default.
-  displayName     String?  @map("display_name")
+  displayName      String?   @map("display_name")
   // Envelope-encrypted credentials blob (JSON). Never stored
   // plaintext. Decryption requires DEVICE_SECRET_KEY at the API layer.
   // Shape varies per provider:
@@ -907,23 +907,23 @@ model StreamProviderConnection {
   //   { type: 'apiKey', apiKey, accountId? }
   //   { type: 'license', licenseNumber, accountId, region }
   //   { type: 'none' } — for free FAST channels (Pluto, Tubi)
-  encryptedCreds  String   @map("encrypted_creds")
+  encryptedCreds   String    @map("encrypted_creds")
   // KMS-style envelope: per-row data key wrapped by DEVICE_SECRET_KEY.
   // Rotation works by re-wrapping data keys without re-encrypting blobs.
-  encryptedDataKey String  @map("encrypted_data_key")
+  encryptedDataKey String    @map("encrypted_data_key")
   // Status — set during the OAuth handshake / API-key validation.
   // Player checks this before subscribing to streams; UI badge.
-  status          String   @default("PENDING")  // PENDING | ACTIVE | EXPIRED | REVOKED | ERROR
-  statusReason    String?  @map("status_reason")
-  lastVerifiedAt  DateTime? @map("last_verified_at")
+  status           String    @default("PENDING") // PENDING | ACTIVE | EXPIRED | REVOKED | ERROR
+  statusReason     String?   @map("status_reason")
+  lastVerifiedAt   DateTime? @map("last_verified_at")
   // OAuth refresh metadata (only for OAuth providers).
-  expiresAt       DateTime? @map("expires_at")
-  scope           String?
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-  createdByUserId String   @map("created_by_user_id")
+  expiresAt        DateTime? @map("expires_at")
+  scope            String?
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  createdByUserId  String    @map("created_by_user_id")
 
-  channels        StreamChannel[]
+  channels StreamChannel[]
 
   @@unique([tenantId, providerId])
   @@index([tenantId, status])
@@ -934,41 +934,41 @@ model StreamProviderConnection {
 // stream widget reads these by id. One Tenant can have many channels
 // per provider (e.g. ESPN + ESPN2 from Atmosphere).
 model StreamChannel {
-  id              String   @id @default(uuid())
-  tenantId        String   @map("tenant_id")
-  connectionId    String   @map("connection_id")
+  id             String    @id @default(uuid())
+  tenantId       String    @map("tenant_id")
+  connectionId   String    @map("connection_id")
   // Provider-specific channel identity. Atmosphere = channelId, YouTube
   // = videoId / channelId, Twitch = login, HLS = playbackUrl.
-  externalId      String   @map("external_id")
-  kind            String                                // LIVE | VOD | PLAYLIST | RADIO
+  externalId     String    @map("external_id")
+  kind           String // LIVE | VOD | PLAYLIST | RADIO
   // Cached display metadata so the picker UI doesn't roundtrip the
   // provider for every render. Refreshed when the channel last played.
-  title           String
-  description     String?
-  thumbnailUrl    String?  @map("thumbnail_url")
-  category        String?                              // SPORTS | NEWS | MUSIC | LIFESTYLE | …
+  title          String
+  description    String?
+  thumbnailUrl   String?   @map("thumbnail_url")
+  category       String? // SPORTS | NEWS | MUSIC | LIFESTYLE | …
   // Resolved playback URL. For DRM/iframe providers this is empty
   // until the player requests a signed URL via /streaming/play.
-  playbackUrl     String?  @map("playback_url")
+  playbackUrl    String?   @map("playback_url")
   // Playback type — drives which renderer the widget uses.
   //   "hls"      → <video> tag with hls.js polyfill
   //   "dash"     → <video> with shaka-player
   //   "iframe"   → <iframe> embed (YouTube, Twitch, Vimeo)
   //   "rtmp"     → flash-style (limited browser support; player only)
   //   "rtsp"     → server-side transcode required (future)
-  playbackType    String?  @map("playback_type")
+  playbackType   String?   @map("playback_type")
   // Whether this channel allows ad overlays per provider TOS. Some
   // forbid (DIRECTV, Atmosphere prohibits competing ads). Editor uses
   // this to disable the "Add ads" button.
-  allowAdOverlay  Boolean  @default(true) @map("allow_ad_overlay")
+  allowAdOverlay Boolean   @default(true) @map("allow_ad_overlay")
   // Provider-specific config blob (region, audio track, captions, etc.)
-  config          String?
-  status          String   @default("ACTIVE")          // ACTIVE | DISABLED | REMOVED_BY_PROVIDER
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-  lastPlayedAt    DateTime? @map("last_played_at")
+  config         String?
+  status         String    @default("ACTIVE") // ACTIVE | DISABLED | REMOVED_BY_PROVIDER
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  lastPlayedAt   DateTime? @map("last_played_at")
 
-  connection      StreamProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  connection StreamProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
   @@unique([connectionId, externalId])
   @@index([tenantId, status])
@@ -987,15 +987,15 @@ model StreamAdSlot {
   // Asset to display — use existing Asset model (image, video, html).
   assetId         String   @map("asset_id")
   // Optional scoping — null = all channels / all screens / all dayparts.
-  channelId       String?  @map("channel_id")          // limit to one channel
-  screenGroupId   String?  @map("screen_group_id")     // limit to one group
+  channelId       String?  @map("channel_id") // limit to one channel
+  screenGroupId   String?  @map("screen_group_id") // limit to one group
   // Targeting / cadence — flexible JSON.
   // { dayparts: [{daysOfWeek:[1..5], start:"6:00 AM", end:"9:00 AM"}],
   //   placement: "lower-third" | "side-rail" | "full-bleed",
   //   intervalMs: 300000,    // every 5 min
   //   durationMs: 8000,      // 8s per show
   //   startDate, endDate, weight }
-  config          String                              // JSON
+  config          String // JSON
   isActive        Boolean  @default(true) @map("is_active")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
@@ -1017,31 +1017,31 @@ model StreamAdSlot {
 // envelope-encrypted credentials, optional realtime webhook receiver.
 //
 model PosProviderConnection {
-  id                  String    @id @default(uuid())
-  tenantId            String    @map("tenant_id")
+  id                String    @id @default(uuid())
+  tenantId          String    @map("tenant_id")
   // Canonical provider id from packages/api-types/src/pos.ts
   // (e.g. "square" / "toast" / "clover" / "stripe-terminal").
-  providerId          String    @map("provider_id")
-  displayName         String?   @map("display_name")
+  providerId        String    @map("provider_id")
+  displayName       String?   @map("display_name")
   // Same envelope-encryption scheme as StreamProviderConnection.
-  encryptedCreds      String    @map("encrypted_creds")
-  encryptedDataKey    String    @map("encrypted_data_key")
-  status              String    @default("PENDING")  // PENDING | ACTIVE | EXPIRED | REVOKED | ERROR
-  statusReason        String?   @map("status_reason")
-  lastSyncedAt        DateTime? @map("last_synced_at")
-  lastSyncItemCount   Int?      @map("last_sync_item_count")
+  encryptedCreds    String    @map("encrypted_creds")
+  encryptedDataKey  String    @map("encrypted_data_key")
+  status            String    @default("PENDING") // PENDING | ACTIVE | EXPIRED | REVOKED | ERROR
+  statusReason      String?   @map("status_reason")
+  lastSyncedAt      DateTime? @map("last_synced_at")
+  lastSyncItemCount Int?      @map("last_sync_item_count")
   // OAuth refresh metadata.
-  expiresAt           DateTime? @map("expires_at")
-  scope               String?
+  expiresAt         DateTime? @map("expires_at")
+  scope             String?
   // Multi-location operators pick which provider-side location maps
   // to which of our screens. JSON: { 'screenId': 'externalLocationId' }
-  locationMap         String?   @map("location_map")
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime  @updatedAt @map("updated_at")
-  createdByUserId     String    @map("created_by_user_id")
+  locationMap       String?   @map("location_map")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  createdByUserId   String    @map("created_by_user_id")
 
-  items               PosMenuItem[]
-  categories          PosCategory[]
+  items      PosMenuItem[]
+  categories PosCategory[]
 
   @@unique([tenantId, providerId])
   @@index([tenantId, status])
@@ -1053,25 +1053,25 @@ model PosProviderConnection {
 // Widget renderers (RestaurantMenuBoard, RetailPriceCallout) read
 // from these rows directly — no per-render API call.
 model PosMenuItem {
-  id              String   @id @default(uuid())
-  tenantId        String   @map("tenant_id")
-  connectionId   String    @map("connection_id")
-  externalId     String    @map("external_id")
-  name           String
-  description    String?
-  priceCents     Int       @map("price_cents")
-  salePriceCents Int?      @map("sale_price_cents")
-  category       String?
-  imageUrl       String?   @map("image_url")
-  badges         String[]  @default([])
-  available      Boolean   @default(true)
+  id                String    @id @default(uuid())
+  tenantId          String    @map("tenant_id")
+  connectionId      String    @map("connection_id")
+  externalId        String    @map("external_id")
+  name              String
+  description       String?
+  priceCents        Int       @map("price_cents")
+  salePriceCents    Int?      @map("sale_price_cents")
+  category          String?
+  imageUrl          String?   @map("image_url")
+  badges            String[]  @default([])
+  available         Boolean   @default(true)
   // Optional location filter — for multi-location chains.
-  locationId     String?   @map("location_id")
+  locationId        String?   @map("location_id")
   // Provider-side last-modified for delta sync.
   externalUpdatedAt DateTime? @map("external_updated_at")
-  syncedAt       DateTime  @default(now()) @map("synced_at")
+  syncedAt          DateTime  @default(now()) @map("synced_at")
 
-  connection     PosProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  connection PosProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
   @@unique([connectionId, externalId])
   @@index([tenantId, available])
@@ -1080,15 +1080,15 @@ model PosMenuItem {
 }
 
 model PosCategory {
-  id            String   @id @default(uuid())
-  tenantId      String   @map("tenant_id")
-  connectionId  String   @map("connection_id")
-  externalId    String   @map("external_id")
-  name          String
-  sortOrder     Int      @default(0)
-  syncedAt      DateTime @default(now()) @map("synced_at")
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  connectionId String   @map("connection_id")
+  externalId   String   @map("external_id")
+  name         String
+  sortOrder    Int      @default(0)
+  syncedAt     DateTime @default(now()) @map("synced_at")
 
-  connection    PosProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  connection PosProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
   @@unique([connectionId, externalId])
   @@index([tenantId])
@@ -1111,31 +1111,31 @@ model PosCategory {
 //     for fast dashboard reads.
 //
 model AdNetworkConnection {
-  id                  String    @id @default(uuid())
-  tenantId            String    @map("tenant_id")
-  networkId           String    @map("network_id")  // canonical id from ad-network.ts
-  encryptedCreds      String    @map("encrypted_creds")
-  encryptedDataKey    String    @map("encrypted_data_key")
-  status              String    @default("PENDING") // PENDING | ACTIVE | PAUSED | EXPIRED | REVOKED | ERROR
-  statusReason        String?   @map("status_reason")
+  id                String   @id @default(uuid())
+  tenantId          String   @map("tenant_id")
+  networkId         String   @map("network_id") // canonical id from ad-network.ts
+  encryptedCreds    String   @map("encrypted_creds")
+  encryptedDataKey  String   @map("encrypted_data_key")
+  status            String   @default("PENDING") // PENDING | ACTIVE | PAUSED | EXPIRED | REVOKED | ERROR
+  statusReason      String?  @map("status_reason")
   // Operator's content-safety preferences. JSON.
   // { blockedCategories: ['IAB7', 'IAB8'], dayparts: [...],
   //   pauseDuringEmergency: true }
-  contentControls     String    @map("content_controls")
+  contentControls   String   @map("content_controls")
   // Optional rev-share override (basis points). Falls back to the
   // network's default takeRateBps.
-  takeRateBps         Int?      @map("take_rate_bps")
+  takeRateBps       Int?     @map("take_rate_bps")
   // Cached running totals for fast dashboard reads. Updated by the
   // nightly aggregator.
-  impressionsTotal    Int       @default(0) @map("impressions_total")
-  grossRevenueCents   Int       @default(0) @map("gross_revenue_cents")
-  feeCents            Int       @default(0) @map("fee_cents")
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime  @updatedAt @map("updated_at")
-  createdByUserId     String    @map("created_by_user_id")
+  impressionsTotal  Int      @default(0) @map("impressions_total")
+  grossRevenueCents Int      @default(0) @map("gross_revenue_cents")
+  feeCents          Int      @default(0) @map("fee_cents")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  createdByUserId   String   @map("created_by_user_id")
 
-  impressions         AdImpression[]
-  revenueDaily        AdRevenueDaily[]
+  impressions  AdImpression[]
+  revenueDaily AdRevenueDaily[]
 
   @@unique([tenantId, networkId])
   @@index([tenantId, status])
@@ -1143,19 +1143,19 @@ model AdNetworkConnection {
 }
 
 model AdImpression {
-  id              String   @id @default(uuid())
-  tenantId        String   @map("tenant_id")
-  connectionId    String   @map("connection_id")
-  screenId        String   @map("screen_id")
+  id                 String   @id @default(uuid())
+  tenantId           String   @map("tenant_id")
+  connectionId       String   @map("connection_id")
+  screenId           String   @map("screen_id")
   // Network-side creative + campaign identifiers (for audit + recon).
-  externalCreativeId String  @map("external_creative_id")
-  externalCampaignId String? @map("external_campaign_id")
-  cpmCents        Int       @map("cpm_cents")          // CPM at time of serve
+  externalCreativeId String   @map("external_creative_id")
+  externalCampaignId String?  @map("external_campaign_id")
+  cpmCents           Int      @map("cpm_cents") // CPM at time of serve
   // Computed on insert: cpmCents / 1000 (the per-impression rev).
-  revenueCents    Int       @map("revenue_cents")
-  servedAt        DateTime  @default(now()) @map("served_at")
+  revenueCents       Int      @map("revenue_cents")
+  servedAt           DateTime @default(now()) @map("served_at")
 
-  connection      AdNetworkConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  connection AdNetworkConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, servedAt])
   @@index([connectionId, servedAt])
@@ -1167,15 +1167,15 @@ model AdImpression {
 // by a nightly cron from ad_impressions. Dashboard queries hit this
 // instead of scanning the impression log.
 model AdRevenueDaily {
-  id                  String   @id @default(uuid())
-  tenantId            String   @map("tenant_id")
-  connectionId        String   @map("connection_id")
-  date                DateTime @db.Date
-  impressions         Int      @default(0)
-  grossRevenueCents   Int      @default(0) @map("gross_revenue_cents")
-  feeCents            Int      @default(0) @map("fee_cents")
+  id                String   @id @default(uuid())
+  tenantId          String   @map("tenant_id")
+  connectionId      String   @map("connection_id")
+  date              DateTime @db.Date
+  impressions       Int      @default(0)
+  grossRevenueCents Int      @default(0) @map("gross_revenue_cents")
+  feeCents          Int      @default(0) @map("fee_cents")
 
-  connection          AdNetworkConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  connection AdNetworkConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
   @@unique([connectionId, date])
   @@index([tenantId, date])

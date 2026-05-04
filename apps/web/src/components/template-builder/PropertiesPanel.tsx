@@ -867,6 +867,25 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
   switch (zone.widgetType) {
     case 'TEXT':
     case 'RICH_TEXT':
+      // 2026-05-04 — surface the AI sparkle directly on TEXT widgets.
+      // Operator: "you added AI templates i thought but i dont see that
+      // anywhere". The button was wired for ANNOUNCEMENT / TICKER /
+      // QUOTE, but TEXT is what operators drag most often. The intent
+      // for headline-style copy is "announcement" — Claude's system
+      // prompt covers short, scannable, punchy lines which is what TEXT
+      // widgets need anyway.
+      fields.push(
+        <div key="ai-text" className="rounded-lg bg-gradient-to-br from-violet-50 to-fuchsia-50 border border-violet-200 px-3 py-2 flex items-center justify-between gap-2">
+          <span className="text-[11px] text-slate-700 font-medium">Need copy? Let Claude write 3 options.</span>
+          <AiGenerateButton
+            intent="announcement"
+            defaultContext={cfg.content || cfg.title || ''}
+            onPick={(text) => setField({ content: text, title: text })}
+            buttonClassName="inline-flex items-center gap-1 text-[11px] font-bold text-white bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 px-2.5 py-1 rounded shadow-sm transition-all"
+            buttonLabel="✨ Generate"
+          />
+        </div>
+      );
       // 2026-05-03 — v2 HEADLINE_* variants (NeonMarquee, PaperPress,
       // CrayonBanner, SlabHero, BriefMemo) live under the TEXT widget
       // type and read `c.title` instead of `c.content`. Mirror BOTH so
