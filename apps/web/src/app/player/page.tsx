@@ -1088,13 +1088,64 @@ function PlayerPage() {
   // the operator can choose Resume / Exit / Unpair without a touch
   // screen. Cleanup on unmount keeps things tidy across phase
   // transitions.
+  //
+  // 2026-05-04 — operator: "i get stuck in, i cant hit back, i cant
+  // hit play". The kiosk is non-touch and the overlay buttons need
+  // remote control to work. Fix: TOGGLE behavior for Back —
+  //   - playing  + Back  = pause (show stop overlay)
+  //   - paused   + Back  = resume + close overlay
+  //   - info     + Back  = close info overlay
+  // Plus listen for global keyboard events (Enter / Space / OK) so
+  // the Resume / Sync / Exit buttons can be triggered from a remote
+  // even if the operator can't precisely click them.
   useEffect(() => {
     const onShowStop = () => {
+      // TOGGLE: if already in any overlay state, dismissing it is
+      // more useful than re-asserting it. Operator hits Back twice
+      // in a row → overlay gone, content resumes.
+      if (playbackStopped) {
+        setPlaybackStopped(false);
+        setExitUnavailable(false);
+        return;
+      }
+      if (showOverlay) {
+        setShowOverlay(false);
+        return;
+      }
       setPlaybackStopped(true);
     };
     window.addEventListener('edu-show-stop-overlay', onShowStop as EventListener);
-    return () => window.removeEventListener('edu-show-stop-overlay', onShowStop as EventListener);
-  }, []);
+
+    // Hardware key fallback — some Goodview/OEM remotes don't fire
+    // through the Android Back-press dispatcher (they generate raw
+    // keyboard events instead). Listen at the document level for
+    // Escape/Backspace/Back to also toggle the overlay, and Enter
+    // to trigger the focused button. This means the same code path
+    // that works for the APK Back button ALSO works for any plain
+    // remote that emits Escape via its return key.
+    const onKey = (e: KeyboardEvent) => {
+      const key = e.key;
+      // Universal "go back / dismiss" keys.
+      if (key === 'Escape' || key === 'Backspace' || key === 'GoBack' || key === 'Back') {
+        e.preventDefault();
+        onShowStop();
+        return;
+      }
+      // Home or remote OK from playback (no overlay) → bring up info
+      // overlay so the operator can reach Sync / Exit / Unpair.
+      if ((key === 'Home' || key === 'i' || key === 'I') && !showOverlay && !playbackStopped) {
+        e.preventDefault();
+        setShowOverlay(true);
+        return;
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+
+    return () => {
+      window.removeEventListener('edu-show-stop-overlay', onShowStop as EventListener);
+      window.removeEventListener('keydown', onKey, true);
+    };
+  }, [playbackStopped, showOverlay]);
 
   // Latest published APK version — fetched once at boot, used by the
   // post-pair splash to show "Update available" + Install button.
@@ -3093,12 +3144,32 @@ function PlayerPage() {
             const fileUrl = item.asset?.fileUrl || '';
             const resUrl = fileUrl.startsWith('http') ? fileUrl : `${getApiRoot()}${fileUrl}`;
 
-            // Render video ONLY when active to preserve memory
-            if (isVid && !isActive) return null;
-            // Render iframe ONLY when active. Hidden iframes still
-            // load + run JS / video / etc. on the embedded site,
-            // which is bandwidth + CPU we don't want for inactive
-            // slides.
+            // 2026-05-04 — Video transition smoothing.
+            // Operator: "when i push two videos and they loop, i get
+            // the default play icon in between the videos autoplaying,
+            // just for a second but its not a smooth transition."
+            //
+            // Old behavior: only mount the active video. On advance,
+            // unmount it and mount the next one. The next <video>
+            // boots with no buffered frames → browser renders the
+            // default play-icon placeholder for 1-2 frames before
+            // the first decoded frame arrives. Operator sees that as
+            // a "play icon flash" between videos.
+            //
+            // New: also mount the NEXT video at opacity 0 with
+            // preload=auto so it's already buffered when the index
+            // advances. The fade-in then has a real frame to fade
+            // TO instead of an empty <video> showing the default
+            // placeholder. preload=auto only fires when isVid &&
+            // (isActive || isNext) so we don't waste bandwidth
+            // pre-fetching every video in a long playlist.
+            const nextIndex = sorted.length > 0 ? (currentIndex + 1) % sorted.length : -1;
+            const isNext = sorted.length > 1 && index === nextIndex;
+            // Render video for active OR next-up so the next clip
+            // is already decoded by the time it becomes active.
+            if (isVid && !isActive && !isNext) return null;
+            // Iframes (web pages) keep "active only" — preloading
+            // an inactive iframe runs JS and burns CPU even invisible.
             if (isWeb && !isActive) return null;
 
             // Compute physics class limits
@@ -3136,25 +3207,37 @@ function PlayerPage() {
                 key={item.id}
                 src={resUrl}
                 className={classes}
-                autoPlay
+                // 2026-05-04 — preload=auto ensures the inactive next-up
+                // video is fully buffered before it becomes active.
+                // Old default of "metadata" only fetched the header,
+                // forcing the browser to download + decode the first
+                // frame at swap time which produced the play-icon
+                // placeholder flash.
+                preload="auto"
+                // Solid black background suppresses the default
+                // <video> placeholder (centered Play triangle on
+                // grey) during any unavoidable load gap. The play
+                // icon was the most visible artifact of the
+                // transition; black is invisible inside the FADE
+                // crossfade.
+                style={{ background: '#000' }}
+                autoPlay={isActive}
                 muted
                 playsInline
                 loop={isSoloPlaylist}
-                onEnded={isSoloPlaylist ? undefined : (e) => {
-                  // HIGH-6 fix: tear down THIS video's buffer BEFORE we
-                  // advance the index. If we advance first, the re-render
-                  // can briefly paint the old <video> with the old src
-                  // before React unmounts it (visible 1-frame flash on
-                  // slow devices). Releasing src first guarantees the
-                  // outgoing element is blank during the swap.
-                  try {
-                    e.currentTarget.pause();
-                    e.currentTarget.removeAttribute('src');
-                    e.currentTarget.load();
-                  } catch {}
+                onEnded={isSoloPlaylist ? undefined : () => {
+                  // 2026-05-04 — DO NOT teardown src on the outgoing
+                  // video. The previous fix (HIGH-6) explicitly
+                  // released src to "blank the outgoing element"
+                  // BUT that's exactly what made the empty default
+                  // placeholder visible during the transition.
+                  // The fade-out crossfade hides any final-frame
+                  // artifact for 1000ms; the next <video> is already
+                  // buffered (we render it pre-active with
+                  // preload=auto) so no swap gap. Just advance.
                   setCurrentIndex(prev => prev + 1);
                 }}
-                onError={(e) => {
+                onError={() => {
                   // Corrupted file or 404 → skip ahead instead of stalling forever.
                   console.warn('[Player] video error, skipping:', resUrl);
                   setCurrentIndex(prev => prev + 1);
@@ -3749,8 +3832,16 @@ function PlayerPage() {
               {playbackStopped ? (
                 <>
                   <button
+                    // 2026-05-04 — autoFocus on Resume so a kiosk
+                    // remote's OK / Enter key triggers it without
+                    // any tab navigation. Operator: "i cant hit
+                    // back, i cant hit play". Resume is now the
+                    // default action; press Enter on the remote to
+                    // resume, or press Back to also resume (toggle
+                    // behavior wired in the keydown listener above).
+                    autoFocus
                     onClick={(e) => { e.stopPropagation(); setPlaybackStopped(false); setExitUnavailable(false); }}
-                    className="px-7 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-2xl transition-all shadow-[0_8px_20px_rgb(16,185,129,0.3)] hover:shadow-[0_8px_25px_rgb(16,185,129,0.4)] hover:-translate-y-0.5 flex items-center gap-2 focus:scale-95 z-20 relative"
+                    className="px-7 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-2xl transition-all shadow-[0_8px_20px_rgb(16,185,129,0.3)] hover:shadow-[0_8px_25px_rgb(16,185,129,0.4)] hover:-translate-y-0.5 flex items-center gap-2 focus:scale-95 z-20 relative focus:ring-4 focus:ring-emerald-300 focus:outline-none"
                   >
                     <Play className="w-4 h-4 fill-current" /> Resume
                   </button>
