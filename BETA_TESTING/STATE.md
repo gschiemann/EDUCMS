@@ -5,10 +5,26 @@ operation between Claude sessions.** Read this first when a new session starts.
 
 ## Current cycle
 
-- **Cycle**: 1 ✅ DONE · 2 ✅ DONE. Cycle 3 ready to start.
-- **Status**: `CYCLE_DONE` after cycle 2.
-- **Last commit**: `7b30bb1` (Cycle 2 P1 fix wave)
+- **Cycle**: 1 ✅ DONE · 2 ✅ DONE · 3 IN-PROGRESS.
+- **Status**: `TESTING_DISPATCHED` for cycle 3
+- **Last commit**: `ff4df07` (Cycle 2 STATE update)
 - **Open after cycle 2**: ~11 P1 (mostly retail editors + a few small) + 24 P2
+
+## Cycle 3 dispatch — running NOW
+
+5 retest agents + 1 retail-editor cleanup agent in parallel:
+- `auth` retest (verify cycle 1+2 fixes hold + find new bugs)
+- `editor` retest
+- `integrations` retest
+- `emergency` retest (life-safety paranoia mode)
+- `player + ai-imports` combined retest
+- **retail-editors cleanup** — adding the 6 missing RETAIL widget editors
+  (LOOKBOOK_CAROUSEL, STOREFRONT_HOURS, PRICE_CALLOUT, SALE_COUNTDOWN,
+  LOYALTY_QR, WAYFINDING_MAP) deferred from cycle 2
+
+Reports persist to:
+- `BETA_TESTING/BUG_REPORTS/CYCLE-3-{auth,editor,integrations,emergency,player-ai}.md`
+- `BETA_TESTING/FIX_LOG/CYCLE-3-fixes.md` (cleanup agent)
 
 ## ✅ Cycle 1 — 13 P0 closed
 
