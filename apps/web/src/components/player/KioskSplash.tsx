@@ -322,7 +322,7 @@ export function KioskSplash({
               <div />
               <div />
             </div>
-            <p className="kiosk-phase-copy">Connecting to your district&rsquo;s CMS&hellip;</p>
+            <p className="kiosk-phase-copy">Connecting to your CMS&hellip;</p>
           </>
         )}
 
