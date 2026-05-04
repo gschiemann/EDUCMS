@@ -63,6 +63,28 @@ object InstallState {
             .apply()
     }
 
+    /**
+     * 2026-05-04 — Manager-v1.0.13 OTA-survival fix.
+     *
+     * Reset the grace-window clock without touching the pendingVc /
+     * pendingPrevVc. Called from WatchdogService.onCreate() when the
+     * Manager process restarts mid-install (e.g. when Manager itself
+     * was upgraded simultaneously with Player). The new Manager process
+     * needs the FULL grace window measured from NOW, not from when the
+     * dead old process committed the install — otherwise the watchdog
+     * fires rollback before the new Manager can even observe Player's
+     * first post-install heartbeat.
+     *
+     * Idempotent: if there's no pending install, this is a no-op.
+     */
+    fun resetPendingClock(ctx: Context) {
+        val cur = pendingVc(ctx)
+        if (cur == 0) return // no install in flight
+        prefs(ctx).edit()
+            .putLong(KEY_PENDING_AT_MS, System.currentTimeMillis())
+            .apply()
+    }
+
     fun pendingVc(ctx: Context): Int = prefs(ctx).getInt(KEY_PENDING_VC, 0)
     fun pendingAtMs(ctx: Context): Long = prefs(ctx).getLong(KEY_PENDING_AT_MS, 0L)
     fun pendingPrevVc(ctx: Context): Int = prefs(ctx).getInt(KEY_PENDING_PREV_VC, 0)

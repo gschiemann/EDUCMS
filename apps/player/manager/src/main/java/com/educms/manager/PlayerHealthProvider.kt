@@ -2,6 +2,7 @@ package com.educms.manager
 
 import android.content.ContentProvider
 import android.content.ContentValues
+import android.content.SharedPreferences
 import android.content.UriMatcher
 import android.database.Cursor
 import android.database.MatrixCursor
@@ -47,8 +48,54 @@ class PlayerHealthProvider : ContentProvider() {
     @Volatile
     private var heartbeat: Heartbeat? = null
 
+    /**
+     * 2026-05-04 — Manager-v1.0.13 OTA-survival fix.
+     *
+     * Operator (Goodview kiosk): "i have never once been able to upgrade
+     * from one version to another, forget about silent upgrade it just
+     * doesnt ever fucking work". Triage agent traced this to the
+     * @Volatile heartbeat being PROCESS-MEMORY-ONLY. When Manager dies
+     * during its OWN self-update, the heartbeat row is wiped. New
+     * Manager boots, reads heartbeat → null. WatchdogService sees
+     * sawNewBoot=false and rolls Player back even though Player kept
+     * heartbeating fine the whole time.
+     *
+     * Fix: persist heartbeats to SharedPreferences. onCreate seeds the
+     * @Volatile from prefs (so a fresh Manager process can answer
+     * queries about Player's last-known state immediately). Every
+     * insert() writes through to prefs (so the next Manager process
+     * boot survives even if it happens between heartbeats).
+     */
+    private val PREFS_NAME = "edu_player_health"
+    private val PREFS_KEY_TS = "hb_ts"
+    private val PREFS_KEY_VER = "hb_version"
+    private val PREFS_KEY_PID = "hb_pid"
+    private val PREFS_KEY_FP = "hb_fingerprint"
+
+    private fun prefs(): SharedPreferences? =
+        context?.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
+
     override fun onCreate(): Boolean {
         Log.i(TAG, "PlayerHealthProvider created")
+        // Seed the @Volatile from disk so a Manager-process restart
+        // doesn't wipe the heartbeat from WatchdogService's POV. Without
+        // this seed, the immediate post-boot tick would see ts==0 and
+        // mistakenly classify Player as dead.
+        try {
+            val p = prefs()
+            val ts = p?.getLong(PREFS_KEY_TS, 0L) ?: 0L
+            if (ts > 0L) {
+                heartbeat = Heartbeat(
+                    timestampMs = ts,
+                    versionName = p?.getString(PREFS_KEY_VER, "unknown") ?: "unknown",
+                    pid = p?.getInt(PREFS_KEY_PID, 0) ?: 0,
+                    fingerprint = p?.getString(PREFS_KEY_FP, null),
+                )
+                Log.i(TAG, "seeded heartbeat from prefs: ts=$ts version=${heartbeat?.versionName}")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "prefs seed failed: ${e.message}")
+        }
         return true
     }
 
@@ -106,6 +153,20 @@ class PlayerHealthProvider : ContentProvider() {
         val fp = v.getAsString(COL_FINGERPRINT)
         heartbeat = Heartbeat(timestampMs = ts, versionName = name, pid = pid, fingerprint = fp)
         Log.d(TAG, "heartbeat in: ts=$ts version=$name pid=$pid fp=${fp?.take(20)}")
+        // 2026-05-04 — Persist through to SharedPreferences so the
+        // next Manager process boot can re-read this heartbeat WITHOUT
+        // waiting for Player's next 30s tick. This is the load-bearing
+        // fix for the "every OTA gets quarantined" bug.
+        try {
+            prefs()?.edit()
+                ?.putLong(PREFS_KEY_TS, ts)
+                ?.putString(PREFS_KEY_VER, name)
+                ?.putInt(PREFS_KEY_PID, pid)
+                ?.putString(PREFS_KEY_FP, fp)
+                ?.apply()
+        } catch (e: Exception) {
+            Log.w(TAG, "prefs write failed: ${e.message}")
+        }
         return uri
     }
 

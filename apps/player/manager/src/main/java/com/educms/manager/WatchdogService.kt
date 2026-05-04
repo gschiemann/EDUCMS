@@ -64,6 +64,27 @@ class WatchdogService : Service() {
         super.onCreate()
         Log.i(TAG, "WatchdogService.onCreate")
         startForegroundWithNotification()
+        // 2026-05-04 — Operator: "i have never once been able to upgrade
+        // from one version to another." Triage agent traced this to
+        // Manager's grace window starting in the OLD process, then
+        // expiring before the NEW process can observe Player's
+        // heartbeat. Fix: on Manager boot, RESET InstallState.pendingAtMs
+        // to NOW. Grace window is now measured from when this Manager
+        // can actually observe heartbeats — not from when the dead old
+        // process committed the install. Combined with the
+        // PlayerHealthProvider SharedPreferences persistence (so we can
+        // immediately observe Player's last-known heartbeat from prefs),
+        // this lets v1.0.43+ OTAs survive simultaneous Manager+Player
+        // upgrades.
+        try {
+            val pendingVc = InstallState.pendingVc(applicationContext)
+            if (pendingVc > 0) {
+                InstallState.resetPendingClock(applicationContext)
+                Log.i(TAG, "Manager boot: reset grace-window clock for pendingVc=$pendingVc")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "grace-window reset failed: ${e.message}")
+        }
         // Kick the loop on the main looper. Heartbeat checks are
         // ContentProvider reads + occasional startActivity calls,
         // both fast — no need for a separate thread.
