@@ -2354,6 +2354,92 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<ToggleField key="showSaleBadges" label="Show sale badges" value={cfg.showSaleBadges !== false} onChange={(v) => setField({ showSaleBadges: v })} />);
       break;
     }
+    // editor-BUG-004 fix (cycle 3) — explicit cases for the 6 RETAIL
+    // widgets that fell through to JSON-only Advanced after editor-BUG-002.
+    // Same pattern as the RESTAURANT_/BAR_ cases — TextField / SelectField /
+    // ToggleField / ColorPickerField / AssetPickerField, plus TextAreaField
+    // with safe JSON parse for array editors (slides / hours / departments).
+    case 'RETAIL_LOOKBOOK_CAROUSEL': {
+      fields.push(<TextField key="rotationMs" label="Rotate every (ms)" value={String(cfg.rotationMs ?? 6000)} placeholder="6000" onChange={(v) => setField({ rotationMs: parseInt(v) || 6000 })} />);
+      fields.push(<TextField key="fadeMs" label="Crossfade duration (ms)" value={String(cfg.fadeMs ?? 800)} placeholder="800" onChange={(v) => setField({ fadeMs: parseInt(v) || 800 })} />);
+      fields.push(<ColorPickerField key="inkColor" label="Caption ink color" value={cfg.inkColor || '#ffffff'} onChange={(v) => setField({ inkColor: v })} />);
+      fields.push(<ColorPickerField key="accentColor" label="Eyebrow + price accent" value={cfg.accentColor || '#e8c87a'} onChange={(v) => setField({ accentColor: v })} />);
+      fields.push(<TextAreaField key="slidesJson" label="Slides (JSON array of { eyebrow, headline, subhead, price, imageUrl, swatchColor, emoji })" value={typeof cfg.slides === 'string' ? cfg.slides : JSON.stringify(cfg.slides || [], null, 2)} rows={8} onChange={(v) => {
+        try { setField({ slides: JSON.parse(v) }); } catch { /* keep previous valid value */ }
+      }} />);
+      break;
+    }
+    case 'RETAIL_STOREFRONT_HOURS': {
+      fields.push(<TextField key="eyebrow" label="Eyebrow line" value={cfg.eyebrow || ''} placeholder="EST. 1998 · MAIN STREET" onChange={(v) => setField({ eyebrow: v })} />);
+      fields.push(<TextField key="headline" label="Headline / store name" value={cfg.headline || ''} placeholder="Welcome." onChange={(v) => setField({ headline: v })} />);
+      fields.push(<TextField key="subhead" label="Subhead" value={cfg.subhead || ''} placeholder="Step inside · A new season is here." onChange={(v) => setField({ subhead: v })} />);
+      fields.push(<SelectField key="statusOverride" label="Open / closed pill" value={cfg.statusOverride || 'auto'} options={[['auto','Auto-detect from hours'],['open','Force OPEN NOW'],['closed','Force CLOSED']]} onChange={(v) => setField({ statusOverride: v })} />);
+      fields.push(<ColorPickerField key="bgColor" label="Background color" value={cfg.bgColor || '#faf6f1'} onChange={(v) => setField({ bgColor: v })} />);
+      fields.push(<ColorPickerField key="inkColor" label="Body ink color" value={cfg.inkColor || '#1a1411'} onChange={(v) => setField({ inkColor: v })} />);
+      fields.push(<ColorPickerField key="accentColor" label="Headline + open pill accent" value={cfg.accentColor || '#9a2d2d'} onChange={(v) => setField({ accentColor: v })} />);
+      fields.push(<TextAreaField key="openHoursJson" label="Open hours (JSON object — keys: sun mon tue wed thu fri sat; values: free-form like '10am – 9pm' or 'Closed')" value={typeof cfg.openHours === 'string' ? cfg.openHours : JSON.stringify(cfg.openHours || {}, null, 2)} rows={9} onChange={(v) => {
+        try { setField({ openHours: JSON.parse(v) }); } catch { /* keep previous valid value */ }
+      }} />);
+      break;
+    }
+    case 'RETAIL_PRICE_CALLOUT': {
+      fields.push(<TextField key="eyebrow" label="Eyebrow above headline" value={cfg.eyebrow || ''} placeholder="FEATURED · END-CAP DEAL" onChange={(v) => setField({ eyebrow: v })} />);
+      fields.push(<TextField key="headline" label="Headline / product name" value={cfg.headline || ''} placeholder="Cashmere Crewneck" onChange={(v) => setField({ headline: v })} />);
+      fields.push(<TextField key="subhead" label="Subhead" value={cfg.subhead || ''} placeholder="A wardrobe staple, retailored." onChange={(v) => setField({ subhead: v })} />);
+      fields.push(<TextField key="salePrice" label="Sale price (big)" value={cfg.salePrice || ''} placeholder="$49" onChange={(v) => setField({ salePrice: v })} />);
+      fields.push(<TextField key="originalPrice" label="Original price (struck)" value={cfg.originalPrice || ''} placeholder="$79" onChange={(v) => setField({ originalPrice: v })} />);
+      fields.push(<TextField key="discountLabel" label="Discount label override (auto if blank)" value={cfg.discountLabel || ''} placeholder="SAVE 38%" onChange={(v) => setField({ discountLabel: v })} />);
+      fields.push(<AssetPickerField key="imageUrl" label="Product image" value={cfg.imageUrl || ''} kind="image" onChange={(v) => setField({ imageUrl: v })} />);
+      fields.push(<TextField key="emoji" label="Emoji fallback when no image" value={cfg.emoji || ''} placeholder="coat" onChange={(v) => setField({ emoji: v })} />);
+      fields.push(<ColorPickerField key="swatchColor" label="Emoji panel swatch color" value={cfg.swatchColor || '#dccfb8'} onChange={(v) => setField({ swatchColor: v })} />);
+      fields.push(<ColorPickerField key="bgColor" label="Background color" value={cfg.bgColor || '#faf6f1'} onChange={(v) => setField({ bgColor: v })} />);
+      fields.push(<ColorPickerField key="inkColor" label="Body ink color" value={cfg.inkColor || '#1a1411'} onChange={(v) => setField({ inkColor: v })} />);
+      fields.push(<ColorPickerField key="accentColor" label="Price + starburst accent" value={cfg.accentColor || '#9a2d2d'} onChange={(v) => setField({ accentColor: v })} />);
+      fields.push(<TextAreaField key="sellingPointsJson" label="Selling points (JSON array of strings, max 3)" value={typeof cfg.sellingPoints === 'string' ? cfg.sellingPoints : JSON.stringify(cfg.sellingPoints || [], null, 2)} rows={5} onChange={(v) => {
+        try { setField({ sellingPoints: JSON.parse(v) }); } catch { /* keep previous valid value */ }
+      }} />);
+      break;
+    }
+    case 'RETAIL_SALE_COUNTDOWN': {
+      fields.push(<TextField key="eyebrow" label="Eyebrow above countdown" value={cfg.eyebrow || ''} placeholder="SALE ENDS IN" onChange={(v) => setField({ eyebrow: v })} />);
+      fields.push(<TextField key="headline" label="Headline" value={cfg.headline || ''} placeholder="Spring Sale · 30% Off Sitewide" onChange={(v) => setField({ headline: v })} />);
+      fields.push(<TextField key="endsAt" label="Sale ends at (ISO 8601 timestamp)" value={cfg.endsAt || ''} placeholder="2026-05-15T23:59:00-05:00" onChange={(v) => setField({ endsAt: v })} />);
+      fields.push(<TextField key="finishedMessage" label="Message when timer expires" value={cfg.finishedMessage || ''} placeholder="Sale now live · Step inside" onChange={(v) => setField({ finishedMessage: v })} />);
+      fields.push(<TextField key="fineprint" label="Fine print line (under digits)" value={cfg.fineprint || ''} placeholder="Online and in-store · while supplies last" onChange={(v) => setField({ fineprint: v })} />);
+      fields.push(<ColorPickerField key="bgColor" label="Background color" value={cfg.bgColor || '#1a1411'} onChange={(v) => setField({ bgColor: v })} />);
+      fields.push(<ColorPickerField key="inkColor" label="Body ink color" value={cfg.inkColor || '#faf6f1'} onChange={(v) => setField({ inkColor: v })} />);
+      fields.push(<ColorPickerField key="accentColor" label="Digit / eyebrow accent" value={cfg.accentColor || '#c9a66b'} onChange={(v) => setField({ accentColor: v })} />);
+      break;
+    }
+    case 'RETAIL_LOYALTY_QR': {
+      fields.push(<TextField key="eyebrow" label="Eyebrow line" value={cfg.eyebrow || ''} placeholder="MEMBERS CLUB" onChange={(v) => setField({ eyebrow: v })} />);
+      fields.push(<TextField key="headline" label="Headline" value={cfg.headline || ''} placeholder="Earn rewards every visit." onChange={(v) => setField({ headline: v })} />);
+      fields.push(<TextField key="subhead" label="Subhead" value={cfg.subhead || ''} placeholder="Free to join · Members-only events · Birthday gift" onChange={(v) => setField({ subhead: v })} />);
+      fields.push(<TextField key="ctaText" label="CTA above QR" value={cfg.ctaText || ''} placeholder="Scan to join" onChange={(v) => setField({ ctaText: v })} />);
+      fields.push(<TextField key="qrFootnote" label="Footnote below QR" value={cfg.qrFootnote || ''} placeholder="or visit yourstore.com/rewards" onChange={(v) => setField({ qrFootnote: v })} />);
+      fields.push(<AssetPickerField key="qrImageUrl" label="QR image (operator-generated, optional)" value={cfg.qrImageUrl || ''} kind="image" onChange={(v) => setField({ qrImageUrl: v })} />);
+      fields.push(<ColorPickerField key="bgColor" label="Background color" value={cfg.bgColor || '#faf6f1'} onChange={(v) => setField({ bgColor: v })} />);
+      fields.push(<ColorPickerField key="inkColor" label="Body ink color" value={cfg.inkColor || '#1a1411'} onChange={(v) => setField({ inkColor: v })} />);
+      fields.push(<ColorPickerField key="accentColor" label="Eyebrow + perks accent" value={cfg.accentColor || '#9a2d2d'} onChange={(v) => setField({ accentColor: v })} />);
+      fields.push(<TextAreaField key="perksJson" label="Perks (JSON array of strings, max 3)" value={typeof cfg.perks === 'string' ? cfg.perks : JSON.stringify(cfg.perks || [], null, 2)} rows={5} onChange={(v) => {
+        try { setField({ perks: JSON.parse(v) }); } catch { /* keep previous valid value */ }
+      }} />);
+      break;
+    }
+    case 'RETAIL_WAYFINDING_MAP': {
+      fields.push(<TextField key="heading" label="Heading" value={cfg.heading || ''} placeholder="Store Directory" onChange={(v) => setField({ heading: v })} />);
+      fields.push(<TextField key="subheading" label="Subheading" value={cfg.subheading || ''} placeholder="Find your aisle" onChange={(v) => setField({ subheading: v })} />);
+      fields.push(<ColorPickerField key="bgColor" label="Background color" value={cfg.bgColor || '#faf6f1'} onChange={(v) => setField({ bgColor: v })} />);
+      fields.push(<ColorPickerField key="inkColor" label="Outline + label ink" value={cfg.inkColor || '#1a1411'} onChange={(v) => setField({ inkColor: v })} />);
+      fields.push(<ColorPickerField key="accentColor" label="Highlight + pin accent" value={cfg.accentColor || '#9a2d2d'} onChange={(v) => setField({ accentColor: v })} />);
+      fields.push(<TextAreaField key="youAreHereJson" label="You are here position (JSON { x, y } 0-100, or null to hide)" value={cfg.youAreHere === null ? 'null' : (typeof cfg.youAreHere === 'string' ? cfg.youAreHere : JSON.stringify(cfg.youAreHere || { x: 50, y: 92 }, null, 2))} rows={4} onChange={(v) => {
+        try { setField({ youAreHere: JSON.parse(v) }); } catch { /* keep previous valid value */ }
+      }} />);
+      fields.push(<TextAreaField key="departmentsJson" label="Departments (JSON array of { name, x, y, width, height, color, emoji, highlight })" value={typeof cfg.departments === 'string' ? cfg.departments : JSON.stringify(cfg.departments || [], null, 2)} rows={10} onChange={(v) => {
+        try { setField({ departments: JSON.parse(v) }); } catch { /* keep previous valid value */ }
+      }} />);
+      break;
+    }
     // editor-BUG-002 fix — explicit cases for the 9 highest-priority
     // restaurant/bar widgets that previously fell through to JSON-only
     // Advanced. Surfaces title / theme / accent / array editors backed
