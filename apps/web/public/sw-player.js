@@ -48,7 +48,11 @@
 // "i didnt see any change" after v5 deploy — the WebView is likely
 // still serving the v5 SW from disk cache. Bumping again ensures
 // activate runs with the freshest skipWaiting().
-const VERSION = 'v6';
+// v7 — 2026-05-04 — third cache-bust to ship the @layer flattening
+// PostCSS plugin (root cause of Chromium 95 invisible Tailwind
+// utilities). Forces every paired kiosk to re-fetch the new CSS
+// bundle that doesn't have @layer wrappers.
+const VERSION = 'v7';
 const PLAYLIST_CACHE = `edu-player-playlist-${VERSION}`;
 const EMERGENCY_CACHE = `edu-player-emergency-${VERSION}`;
 const META_CACHE = `edu-player-meta-${VERSION}`; // stores sha hashes per URL

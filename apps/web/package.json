@@ -50,6 +50,7 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",
     "@axe-core/react": "^4.11.1",
+    "@csstools/postcss-cascade-layers": "^6.0.0",
     "@lhci/cli": "^0.15.0",
     "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4",

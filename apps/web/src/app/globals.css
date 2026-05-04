@@ -301,7 +301,7 @@
  * visible signal that the fix is live.
  * ────────────────────────────────────────────────────────────── */
 body::before {
-  content: "build-b7b0d98 · modern (color-mix OK)";
+  content: "build-LAYER-FLAT · modern (color-mix OK)";
   position: fixed;
   top: 4px;
   right: 4px;
@@ -317,7 +317,7 @@ body::before {
 }
 @supports not (color: color-mix(in oklab, red 50%, blue)) {
   body::before {
-    content: "build-b7b0d98 · CR95 FALLBACK ACTIVE";
+    content: "build-LAYER-FLAT · CR95 + LAYER-POLYFILL ACTIVE";
     background: #f59e0b !important;
   }
 }
