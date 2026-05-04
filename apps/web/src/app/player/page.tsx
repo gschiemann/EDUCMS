@@ -2159,11 +2159,38 @@ function PlayerPage() {
   }, [phase, screenId, fetchContent, activeEmergency]);
 
   // ─── Cycle through slides ───
+  // 2026-05-04 — Goodview / Chromium 95 hotfix.
+  // Operator (live install): "the content only loads one image from the
+  // 8 image carousel and gets stuck never moves on". Same class of bug
+  // the prior ee28970 fix tried to kill: any spurious re-render that
+  // changes the `playlist` REFERENCE (even with identical content) used
+  // to make this effect fire its cleanup → clearTimeout → the next
+  // tick's setTimeout never fires because immediately after another
+  // re-render fires the cleanup again. The signature gate inside
+  // applyManifest catches the common case but doesn't cover every
+  // reference-churn path on older WebViews (e.g. parent-state changes
+  // bumping the playlist object via spread, token refresh, async
+  // setPhase races on Chromium 95's stricter-but-buggier microtask
+  // queueing). Fix: dep on a STABLE STRING signature derived from
+  // items, not on the playlist object reference. Identical contents
+  // produce identical strings, so the effect re-fires only when the
+  // playlist's items actually change OR currentIndex advances.
+  // The body still reads `playlist?.items` from the latest closure;
+  // when the sig is unchanged the closure has identical-content items,
+  // so reading from a "stale" closure is functionally identical to
+  // reading from the current one.
+  const playlistItemsSig = useMemo(() => {
+    if (!playlist?.items?.length) return '';
+    return playlist.items
+      .map((i: any) => `${i.sequenceOrder}|${i.durationMs}|${i.manifestKey || i.id}`)
+      .join('||');
+  }, [playlist]);
+
   useEffect(() => {
     if (phase !== 'playing' || !playlist?.items?.length) return;
 
     const sorted = [...playlist.items].sort((a: any, b: any) => a.sequenceOrder - b.sequenceOrder);
-    
+
     // Core slide scheduler logic
     const isItemValid = (item: any) => {
       if (!item.daysOfWeek && !item.timeStart && !item.timeEnd) return true;
@@ -2195,9 +2222,13 @@ function PlayerPage() {
     }
 
     if (!found) {
-      // Entire playlist is locked right now! Fallback loop retry every 30s
+      // Entire playlist is locked right now! Fallback loop retry every 30s.
+      // Cleanup return added 2026-05-04 — was missing; the fallback timer
+      // could leak on re-fire and double-up. Symptoms on Chromium 95:
+      // multiple advances per tick when the daypart filter flapped near
+      // a window edge.
       timerRef.current = setTimeout(() => setCurrentIndex(prev => prev + 1), 30000);
-      return;
+      return () => { if (timerRef.current) clearTimeout(timerRef.current); };
     }
 
     // If we skipped invalid slides to arrive at nextIndex, update state immediately
@@ -2218,7 +2249,8 @@ function PlayerPage() {
     }, duration);
 
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  }, [phase, playlist, currentIndex]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, playlistItemsSig, currentIndex]);
 
   // ═══════════════════════════════════════════════════════════════
   // ALL HOOKS MUST BE CALLED BEFORE ANY EARLY RETURN (Rules of Hooks).
