@@ -3322,12 +3322,41 @@ function PlayerPage() {
           })}
         </div>
       ) : (
-        <div className="w-full h-full bg-slate-50 flex items-center justify-center p-8 overflow-hidden relative cursor-default" onClick={(e) => e.stopPropagation()} role="presentation">
+        <div className="w-full h-full bg-slate-50 flex items-stretch justify-center p-8 overflow-hidden relative cursor-default" onClick={(e) => e.stopPropagation()} role="presentation">
           {/* Decorative background blurs to match Pastel Pop */}
           <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-400/20 rounded-full blur-3xl pointer-events-none" />
           <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-400/20 rounded-full blur-3xl pointer-events-none" />
 
-          <div className="w-full max-w-5xl bg-white/80 backdrop-blur-3xl rounded-[3rem] shadow-[0_20px_60px_rgb(0,0,0,0.06)] border border-white p-12 flex flex-col items-center z-10 animate-in fade-in zoom-in-95 duration-700">
+          {/* 2026-05-04 — operator (Goodview portrait kiosk):
+              "you didnt resize the screen properly, i still cant see the
+              button at the bottom, you need to always fit all content
+              into the screens resolution without clipping anything... as
+              soon as the playlist started showing at the bottom that
+              pushed the buttons out of view".
+              Pre-fix: card had p-12 + flex-col with no max-height,
+              children stacked vertically and overflowed past the
+              viewport on tall portrait displays once the playlist list
+              joined the device cards.
+              Post-fix:
+                • Card constrained to max-h-full so it can't exceed
+                  the viewport.
+                • Inner layout split into 3 sections via flex-col:
+                    1. HEADER (hero icon + title + subtitle) — fixed.
+                    2. SCROLL-BODY (device card grid, playlist list) —
+                       overflow-y:auto when content exceeds available
+                       space. On a normal-height screen this never
+                       activates; on a tall portrait with many
+                       playlists, the middle scrolls instead of
+                       pushing the buttons off-screen.
+                    3. FOOTER (action buttons) — flex-shrink:0 so it
+                       NEVER gets squeezed out. Resume / Sync / Exit
+                       / Unpair are always visible no matter what's
+                       in the middle.
+                • Reduced padding p-12 → p-8 to recover ~8% of the
+                  screen height, giving the buttons more breathing
+                  room on partial-chain LED installs.
+              */}
+          <div className="w-full max-w-5xl max-h-full bg-white/80 backdrop-blur-3xl rounded-[3rem] shadow-[0_20px_60px_rgb(0,0,0,0.06)] border border-white p-8 flex flex-col items-center z-10 animate-in fade-in zoom-in-95 duration-700 overflow-hidden">
             {/* 2026-04-28 — operator: "removal of as many other splash
                 screens as possible...why cant this screen be the one
                 that says connecting to your cms and then just
@@ -3384,6 +3413,13 @@ function PlayerPage() {
                 <p className="text-lg font-medium text-slate-500 mt-2 mb-10 text-center">Waiting for a schedule to be assigned from the dashboard...</p>
               </>
             )}
+
+            {/* SCROLL-BODY — device grid + playlist list. flex-1 min-h-0
+                lets this shrink + scroll within the parent flex card.
+                On a normal-height screen it never scrolls; on a tall
+                portrait kiosk with many playlists, the middle scrolls
+                instead of pushing the action buttons off-screen. */}
+            <div className="flex-1 min-h-0 w-full overflow-y-auto flex flex-col items-center">
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl mb-10">
               {/* Device Card — operator (2026-04-27): "this is the
@@ -3823,12 +3859,19 @@ function PlayerPage() {
               </div>
             )}
 
-            {/* Action buttons — shape depends on state. When paused,
-                Resume is the primary action (emerald) and Unpair is
-                demoted to a small text link below. When idle (waiting
-                or just paired), Auto-Play is the primary action and
-                Unpair sits in the row. */}
-            <div className="flex flex-wrap items-center justify-center gap-3">
+            </div>
+            {/* /SCROLL-BODY end — anything below is the sticky footer
+                that NEVER moves regardless of how much content is in
+                the middle. */}
+
+            {/* STICKY FOOTER — Action buttons. flex-shrink-0 + mt-6
+                guarantees they're always visible at the bottom of the
+                splash card, no matter how tall the playlist list grows.
+                When paused, Resume is the primary action (emerald) and
+                Unpair is demoted to a small text link below. When idle
+                (waiting or just paired), Auto-Play is the primary
+                action and Unpair sits in the row. */}
+            <div className="flex flex-wrap items-center justify-center gap-3 flex-shrink-0 mt-6 w-full">
               {playbackStopped ? (
                 <>
                   <button
