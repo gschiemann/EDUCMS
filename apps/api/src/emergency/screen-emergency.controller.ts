@@ -54,6 +54,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpException,
   HttpStatus,
@@ -151,7 +152,31 @@ export class ScreenEmergencyController {
 
   // ─── Resolve the screen + tenant-check it ──────────────────────
 
+  /**
+   * emergency-004 fix: Prisma silently strips `undefined` filter values.
+   * If a JWT lands here without `tenantId` (e.g. a malformed token, a
+   * SUPER_ADMIN whose context never resolved, or a bug in the auth
+   * pipeline), `findFirst({ where: { id, tenantId: undefined } })`
+   * would match the first screen by id ACROSS ALL TENANTS — and a
+   * subsequent emergency trigger against that screen would write a
+   * cross-tenant override.  Reject with 403 before any DB call so the
+   * tenant-isolation invariant cannot leak.
+   */
+  private requireTenantId(req: any): string {
+    const tenantId = req?.user?.tenantId;
+    if (typeof tenantId !== 'string' || tenantId.trim().length === 0) {
+      throw new ForbiddenException('Token missing tenantId');
+    }
+    return tenantId;
+  }
+
   private async resolveScreen(screenId: string, callerTenantId: string) {
+    if (typeof callerTenantId !== 'string' || callerTenantId.trim().length === 0) {
+      // Defense-in-depth: callers should already have invoked
+      // requireTenantId, but if anyone forgets we still refuse rather
+      // than letting Prisma drop the filter.
+      throw new ForbiddenException('Token missing tenantId');
+    }
     const screen = await this.prisma.client.screen.findFirst({
       where: { id: screenId, tenantId: callerTenantId },
     });
@@ -265,7 +290,9 @@ export class ScreenEmergencyController {
     @Param('screenId') screenId: string,
     @Body() body: OverrideInput,
   ) {
-    const screen = await this.resolveScreen(screenId, req.user.tenantId);
+    // emergency-004 fix: refuse missing-tenantId tokens before any DB call.
+    const tenantId = this.requireTenantId(req);
+    const screen = await this.resolveScreen(screenId, tenantId);
     const override = this.validateOverride(body);
     const { overrideId } = await this.createOverrideAndBroadcast({
       screen,
@@ -280,7 +307,9 @@ export class ScreenEmergencyController {
   @Post(':screenId/all-clear')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async allClear(@Req() req: any, @Param('screenId') screenId: string) {
-    const screen = await this.resolveScreen(screenId, req.user.tenantId);
+    // emergency-004 fix: refuse missing-tenantId tokens before any DB call.
+    const tenantId = this.requireTenantId(req);
+    const screen = await this.resolveScreen(screenId, tenantId);
     const existing = await (this.prisma.client as any).screenEmergencyOverride.findUnique({
       where: { screenId: screen.id },
     });
@@ -329,7 +358,9 @@ export class ScreenEmergencyController {
     AppRole.RESTRICTED_VIEWER,
   )
   async getOverride(@Req() req: any, @Param('screenId') screenId: string) {
-    await this.resolveScreen(screenId, req.user.tenantId);
+    // emergency-004 fix: refuse missing-tenantId tokens before any DB call.
+    const tenantId = this.requireTenantId(req);
+    await this.resolveScreen(screenId, tenantId);
     const override = await (this.prisma.client as any).screenEmergencyOverride.findUnique({
       where: { screenId },
     });
@@ -345,6 +376,15 @@ export class ScreenEmergencyController {
     @Req() req: any,
     @Body() body: { screenIds: string[]; override: OverrideInput },
   ) {
+    // emergency-004 fix: previously this read `req.user.tenantId` blind.
+    // If the JWT was missing tenantId (malformed token, SUPER_ADMIN with
+    // unresolved context, or an upstream auth bug), the resulting Prisma
+    // findMany silently dropped the `tenantId: undefined` filter and
+    // matched screens ACROSS ALL TENANTS — letting the caller bulk-trigger
+    // emergencies on every screen in the fleet that happened to share an
+    // id with their input list. Refuse the request before any DB call so
+    // the tenant-isolation invariant cannot leak.
+    const callerTenantId = this.requireTenantId(req);
     if (!Array.isArray(body?.screenIds) || body.screenIds.length === 0) {
       throw new HttpException('screenIds required', HttpStatus.BAD_REQUEST);
     }
@@ -356,7 +396,6 @@ export class ScreenEmergencyController {
       throw new HttpException('Too many screens — use tenant scope for fleet-wide', HttpStatus.BAD_REQUEST);
     }
     const override = this.validateOverride(body.override);
-    const callerTenantId = req.user.tenantId;
     const screens = await this.prisma.client.screen.findMany({
       where: { id: { in: body.screenIds }, tenantId: callerTenantId },
     });

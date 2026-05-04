@@ -9,6 +9,7 @@ import {
   Res,
   UseGuards,
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
@@ -141,6 +142,7 @@ export class SsoController {
   @UseGuards(JwtAuthGuard, RbacGuard)
   @RequireRoles('SUPER_ADMIN', 'DISTRICT_ADMIN')
   async getConfig(@Param('tenantSlug') tenantSlug: string, @Req() req: Request) {
+    await this.assertTenantAccess(tenantSlug, req);
     const { tenant, config } = await this.sso.getConfigByTenantSlug(tenantSlug);
     const baseUrl = this.baseUrl(req);
     const spMeta = this.sso.buildServiceProviderMetadata(tenantSlug, baseUrl);
@@ -158,7 +160,9 @@ export class SsoController {
   async upsertConfig(
     @Param('tenantSlug') tenantSlug: string,
     @Body() dto: SsoConfigDto,
+    @Req() req: Request,
   ) {
+    await this.assertTenantAccess(tenantSlug, req);
     const { tenant } = await this.sso.getConfigByTenantSlug(tenantSlug);
     const cfg = await this.sso.upsertConfig(tenant.id, dto);
     return this.sso.toSafeConfig(cfg);
@@ -167,13 +171,70 @@ export class SsoController {
   @Post('api/v1/tenants/:tenantSlug/sso/test')
   @UseGuards(JwtAuthGuard, RbacGuard)
   @RequireRoles('SUPER_ADMIN', 'DISTRICT_ADMIN')
-  async testConfig(@Param('tenantSlug') tenantSlug: string) {
+  async testConfig(
+    @Param('tenantSlug') tenantSlug: string,
+    @Req() req: Request,
+  ) {
+    await this.assertTenantAccess(tenantSlug, req);
     return this.sso.testConnection(tenantSlug);
   }
 
   // -----------------------------------------------------------------
   // Helpers
   // -----------------------------------------------------------------
+
+  /**
+   * Tenant-scope gate for SSO admin routes.
+   *
+   * `RbacGuard` only validates the role and the `params.districtId` /
+   * `params.schoolId` style scope. The SSO admin routes are mounted as
+   * `/tenants/:tenantSlug/sso`, where `tenantSlug` is a free-form string
+   * the caller can substitute. Without this gate, a DISTRICT_ADMIN of
+   * tenant A could POST to tenant B's `/sso` endpoint and silently take
+   * over tenant B's login flow with their own SAML/OIDC IdP.
+   *
+   * Allowed:
+   *   - SUPER_ADMIN: any tenant
+   *   - target tenant === caller's tenant
+   *   - caller is DISTRICT_ADMIN AND target tenant is a direct child of
+   *     the caller's tenant (district -> school)
+   * Otherwise: 403.
+   */
+  private async assertTenantAccess(tenantSlug: string, req: Request) {
+    const target = await this.prisma.client.tenant.findUnique({
+      where: { slug: tenantSlug },
+      select: { id: true, parentId: true },
+    });
+    if (!target) {
+      throw new NotFoundException(`Tenant "${tenantSlug}" not found`);
+    }
+
+    const user = (req as any).user as
+      | { role?: string; tenantId?: string }
+      | undefined;
+    if (!user) {
+      throw new ForbiddenException('No user identity found in request');
+    }
+
+    if (user.role === 'SUPER_ADMIN') {
+      return target;
+    }
+    if (user.tenantId && target.id === user.tenantId) {
+      return target;
+    }
+    if (
+      user.role === 'DISTRICT_ADMIN' &&
+      user.tenantId &&
+      target.parentId === user.tenantId
+    ) {
+      return target;
+    }
+
+    throw new ForbiddenException(
+      'Access denied. Cannot manage SSO config for a tenant outside your scope.',
+    );
+  }
+
   private baseUrl(req: Request): string {
     const envUrl = process.env.PUBLIC_API_BASE_URL;
     if (envUrl) return envUrl.replace(/\/$/, '');

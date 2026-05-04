@@ -517,7 +517,31 @@ export class EmergencyController {
           },
         }),
       ]);
+    } else if (scopeType === 'device') {
+      // emergency-003 fix: previously the device-scope all-clear only
+      // wrote an AuditLog row and broadcast — it never deleted the
+      // ScreenEmergencyOverride. Result: the screen rebooted and re-read
+      // its override row from disk, getting stuck on lockdown after the
+      // operator thought they had cleared it. Delete the override row
+      // atomically with the audit write so they can't drift apart.
+      await this.prisma.client.$transaction([
+        (this.prisma.client as any).screenEmergencyOverride.deleteMany({
+          where: { screenId: scopeId, tenantId: ownedTenantId },
+        }),
+        this.prisma.client.auditLog.create({
+          data: {
+            action: 'CLEAR_EMERGENCY',
+            targetType: scopeType,
+            targetId: scopeId,
+            tenantId: ownedTenantId,
+            userId: req.user?.id,
+            details: JSON.stringify({ overrideId, triggeredByTenant: req.user?.tenantId }),
+          },
+        }),
+      ]);
     } else {
+      // group scope (or any future scope) — audit only, no per-screen
+      // override row to clean up at this layer.
       await this.prisma.client.auditLog.create({
         data: {
           action: 'CLEAR_EMERGENCY',

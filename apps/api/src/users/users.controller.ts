@@ -1,10 +1,54 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import * as argon2 from 'argon2';
+
+// CYCLE-1 auth-002 / BUG-005: role escalation hardening.
+// Mirrors the pattern in onboarding.service.ts (ALLOWED_INVITE_ROLES + isValidEmail
+// + validatePassword). Roles are validated against a per-caller allowlist so a
+// DISTRICT_ADMIN cannot post role: 'SUPER_ADMIN' into Prisma directly.
+const ASSIGNABLE_ROLES_BY_CALLER: Record<string, string[]> = {
+  [AppRole.SUPER_ADMIN]: [
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+    AppRole.RESTRICTED_VIEWER,
+  ],
+  [AppRole.DISTRICT_ADMIN]: [
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+    AppRole.RESTRICTED_VIEWER,
+  ],
+  [AppRole.SCHOOL_ADMIN]: [
+    AppRole.CONTRIBUTOR,
+    AppRole.RESTRICTED_VIEWER,
+  ],
+};
+
+function assertCallerCanAssignRole(callerRole: string, targetRole: string): void {
+  const allowed = ASSIGNABLE_ROLES_BY_CALLER[callerRole] || [];
+  if (!allowed.includes(targetRole)) {
+    throw new ForbiddenException(
+      `Your role (${callerRole}) cannot assign role '${targetRole}'. Allowed: ${allowed.join(', ') || 'none'}`,
+    );
+  }
+}
+
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function validatePassword(password: string): void {
+  if (!password || password.length < 8) {
+    throw new BadRequestException('Password must be at least 8 characters.');
+  }
+  if (password.length > 200) {
+    throw new BadRequestException('Password is too long.');
+  }
+}
 
 @Controller('api/v1/users')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -27,6 +71,19 @@ export class UsersController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN)
   async create(@Request() req: any, @Body() body: { email: string; password: string; role: string }) {
     const tenantId = req.user.tenantId;
+
+    // CYCLE-1 auth-002: validate inputs and gate the role assignment so a
+    // DISTRICT_ADMIN cannot escalate by posting role: 'SUPER_ADMIN'.
+    const email = (body?.email || '').trim().toLowerCase();
+    if (!isValidEmail(email)) {
+      throw new BadRequestException('A valid email is required.');
+    }
+    validatePassword(body?.password);
+    if (!body?.role || typeof body.role !== 'string') {
+      throw new BadRequestException('Role is required.');
+    }
+    assertCallerCanAssignRole(req.user.role, body.role);
+
     const passwordHash = await argon2.hash(body.password, {
       type: argon2.argon2id,
       memoryCost: 65536,
@@ -37,7 +94,7 @@ export class UsersController {
     const user = await this.prisma.client.user.create({
       data: {
         tenantId,
-        email: body.email,
+        email,
         passwordHash,
         role: body.role,
       },
@@ -51,6 +108,15 @@ export class UsersController {
   @RequireRoles(AppRole.SUPER_ADMIN)
   async updateRole(@Request() req: any, @Param('id') id: string, @Body() body: { role: string }) {
     const tenantId = req.user.tenantId;
+
+    // CYCLE-1 BUG-005: even though this endpoint is gated to SUPER_ADMIN, the
+    // role string was previously written into Prisma without enum validation.
+    // A typo or a malicious caller riding a stolen SUPER_ADMIN session could
+    // corrupt the role column. Validate against the assignable allowlist.
+    if (!body?.role || typeof body.role !== 'string') {
+      throw new BadRequestException('Role is required.');
+    }
+    assertCallerCanAssignRole(req.user.role, body.role);
 
     // Ensure user belongs to same tenant
     const user = await this.prisma.client.user.findFirst({

@@ -18,11 +18,22 @@
  *   { type: 'CLEAR_CACHE',        tier: 'playlist'|'emergency'|'all' }
  */
 
-const VERSION = 'v1';
+// Bump VERSION to force existing players to drop stale caches on activate.
+// v2 bundles two CYCLE-1 P0 fixes: emergency setHash now happens AFTER all
+// downloads succeed (player-001), and sumCacheBytes uses blob().size with a
+// per-URL size map instead of trusting the missing content-length header on
+// opaque/CORS responses (player-002).
+const VERSION = 'v2';
 const PLAYLIST_CACHE = `edu-player-playlist-${VERSION}`;
 const EMERGENCY_CACHE = `edu-player-emergency-${VERSION}`;
 const META_CACHE = `edu-player-meta-${VERSION}`; // stores sha hashes per URL
 const ALL_CACHES = [PLAYLIST_CACHE, EMERGENCY_CACHE, META_CACHE];
+
+// Per-URL byte sizes captured at fetch time. Survives SW restarts via the
+// META_CACHE (we mirror this map into Cache Storage on every write so a
+// cold-boot SW can rebuild it). Avoids re-cloning blobs on every status poll.
+const SIZE_BY_URL = new Map();
+const SIZE_META_PREFIX = '/__edu_meta_size__/';
 
 // Soft cap on the playlist cache (in bytes). When a precache push would
 // exceed this we drop oldest entries first. Default 5 GB; can be overridden
@@ -141,6 +152,8 @@ async function precachePlaylist(assets, softCapBytes) {
     if (!liveUrls.has(normalizeUrl(req.url))) {
       await cache.delete(req);
       await meta.delete(metaKey(req.url));
+      await meta.delete(sizeMetaKey(req.url));
+      SIZE_BY_URL.delete(normalizeUrl(req.url));
     }
   }
 
@@ -167,10 +180,11 @@ async function precachePlaylist(assets, softCapBytes) {
     const keys = await cache.keys();
     for (const req of keys) {
       if (total <= softCapBytes) break;
-      const res = await cache.match(req);
-      const sz = res ? Number(res.headers.get('content-length') || 0) : 0;
+      const sz = await getCachedEntrySize(req, cache, meta);
       await cache.delete(req);
       await meta.delete(metaKey(req.url));
+      await meta.delete(sizeMetaKey(req.url));
+      SIZE_BY_URL.delete(normalizeUrl(req.url));
       total -= sz;
     }
   }
@@ -183,11 +197,11 @@ async function precacheEmergency(assets, setHash) {
   const cache = await caches.open(EMERGENCY_CACHE);
   const meta = await caches.open(META_CACHE);
 
-  // Store the set hash so the page can short-circuit when nothing changed.
-  await meta.put(
-    new Request('/__edu_emergency_set_hash__'),
-    new Response(setHash || '', { headers: { 'content-type': 'text/plain' } })
-  );
+  // FIX (player-001): do NOT write the set-hash before downloads finish.
+  // If we did and a download was interrupted, the next sync would see the
+  // matching hash and skip re-pushing forever — emergency cache silently
+  // broken until the manifest URL changes. We defer the setHash write
+  // until every asset is confirmed in cache.
 
   // Evict assets no longer in the set (admin removed an emergency asset).
   const liveUrls = new Set(assets.map((a) => normalizeUrl(a.url)));
@@ -196,14 +210,18 @@ async function precacheEmergency(assets, setHash) {
     if (!liveUrls.has(normalizeUrl(req.url))) {
       await cache.delete(req);
       await meta.delete(metaKey(req.url));
+      await meta.delete(sizeMetaKey(req.url));
+      SIZE_BY_URL.delete(normalizeUrl(req.url));
     }
   }
 
-  // Fetch + store. Force re-download if our stored hash doesn't match the
-  // expected hash. Emit per-asset progress for the splash bar.
+  // Fetch + store. Track success per asset so we can decide whether to
+  // commit the set-hash. Emit per-asset progress for the splash bar.
   let loaded = 0;
+  let failures = 0;
   for (const asset of assets) {
-    await fetchAndStore(asset, cache, meta);
+    const ok = await fetchAndStore(asset, cache, meta);
+    if (!ok) failures += 1;
     loaded += 1;
     await broadcast({
       type: 'PRECACHE_PROGRESS',
@@ -214,34 +232,107 @@ async function precacheEmergency(assets, setHash) {
     });
   }
 
+  // Only commit the set-hash if every asset is verified in cache. Verifying
+  // by re-checking cache.match() catches the edge case where fetchAndStore
+  // returned true but the entry was evicted between then and now.
+  let allCached = failures === 0;
+  if (allCached) {
+    for (const asset of assets) {
+      if (!asset?.url) continue;
+      const present = await cache.match(new Request(asset.url, { mode: 'cors', credentials: 'omit' }));
+      if (!present) { allCached = false; break; }
+    }
+  }
+
+  if (allCached) {
+    await meta.put(
+      new Request('/__edu_emergency_set_hash__'),
+      new Response(setHash || '', { headers: { 'content-type': 'text/plain' } })
+    );
+  } else {
+    // Leave the stored hash unset (or as it was) so the next sync retries
+    // the full precache instead of short-circuiting on a hash match.
+    console.warn('[SW] emergency cache partial — will retry on next sync');
+  }
+
   const total = await sumCacheBytes(cache);
-  await broadcast({ type: 'PRECACHE_EMERGENCY_DONE', count: assets.length, totalBytes: total });
+  await broadcast({
+    type: 'PRECACHE_EMERGENCY_DONE',
+    count: assets.length,
+    totalBytes: total,
+    complete: allCached,
+    failures,
+  });
 }
 
 async function fetchAndStore(asset, cache, meta) {
-  if (!asset?.url) return;
+  if (!asset?.url) return false;
   const req = new Request(asset.url, { mode: 'cors', credentials: 'omit' });
+  const norm = normalizeUrl(asset.url);
 
-  // If we already have it AND the hash matches, skip.
+  // If we already have it AND the hash matches, skip — but ensure we have a
+  // size record (cold-boot SW may have lost the in-memory map).
   const storedHashRes = await meta.match(metaKey(asset.url));
   const storedHash = storedHashRes ? await storedHashRes.text() : '';
   const cached = await cache.match(req);
   if (cached && asset.sha256 && storedHash === asset.sha256) {
-    return; // up to date
+    if (!SIZE_BY_URL.has(norm)) {
+      const sz = await measureResponseSize(cached, asset);
+      if (sz > 0) {
+        SIZE_BY_URL.set(norm, sz);
+        await meta.put(
+          sizeMetaKey(asset.url),
+          new Response(String(sz), { headers: { 'content-type': 'text/plain' } })
+        );
+      }
+    }
+    return true; // up to date
   }
 
   try {
     const res = await fetch(req);
-    if (!res.ok) return;
+    if (!res.ok) return false;
     await cache.put(req, res.clone());
+    // FIX (player-002): measure size NOW from the body (or asset.size), not
+    // later from a missing content-length header. We clone the response to
+    // read the blob without disturbing the cached copy. Cost is one-time
+    // per fetch, then memoized in SIZE_BY_URL + META_CACHE.
+    const sz = await measureResponseSize(res, asset);
+    if (sz > 0) {
+      SIZE_BY_URL.set(norm, sz);
+      await meta.put(
+        sizeMetaKey(asset.url),
+        new Response(String(sz), { headers: { 'content-type': 'text/plain' } })
+      );
+    }
     if (asset.sha256) {
       await meta.put(
         metaKey(asset.url),
         new Response(asset.sha256, { headers: { 'content-type': 'text/plain' } })
       );
     }
+    return true;
   } catch (e) {
-    // Best-effort — leave any prior cached version in place.
+    // Best-effort — leave any prior cached version in place. Caller treats
+    // the false return as a partial-cache signal.
+    return false;
+  }
+}
+
+// Best-effort size measurement. Prefers the asset.size hint from the
+// manifest (free, no clone), then a legitimate content-length when present
+// (same-origin /_next assets), then a body clone as a last resort. Reading
+// .blob() on a cached entry is cheap (no network) — the cost matters only
+// for fresh fetches and we already have the response in hand there.
+async function measureResponseSize(res, asset) {
+  if (asset && typeof asset.size === 'number' && asset.size > 0) return asset.size;
+  const cl = Number(res.headers.get('content-length') || 0);
+  if (cl > 0) return cl;
+  try {
+    const blob = await res.clone().blob();
+    return blob.size || 0;
+  } catch (e) {
+    return 0;
   }
 }
 
@@ -264,17 +355,64 @@ async function clearCache(tier) {
   if (tier === 'all') await caches.delete(META_CACHE);
 }
 
+// FIX (player-002): content-length is missing on Supabase / opaque / CORS
+// responses, so summing it always returned 0 and the soft cap never fired.
+// We use SIZE_BY_URL (populated at fetch time from blob().size or the
+// manifest's size hint), then fall back to META_CACHE for cold-boot SWs,
+// then to a one-time blob clone if nothing else is recorded.
 async function sumCacheBytes(cache) {
   const keys = await cache.keys();
   let total = 0;
+  // Open META_CACHE once per call so we can hydrate SIZE_BY_URL after a
+  // cold boot without paying for it on every entry.
+  const meta = await caches.open(META_CACHE);
   for (const req of keys) {
-    const res = await cache.match(req);
-    if (res) {
-      const cl = Number(res.headers.get('content-length') || 0);
-      total += cl;
-    }
+    total += await getCachedEntrySize(req, cache, meta);
   }
   return total;
+}
+
+async function getCachedEntrySize(req, cache, meta) {
+  const norm = normalizeUrl(req.url);
+  const inMemory = SIZE_BY_URL.get(norm);
+  if (inMemory && inMemory > 0) return inMemory;
+
+  // Hydrate from META_CACHE if the SW restarted.
+  const sizeRes = await meta.match(sizeMetaKey(req.url));
+  if (sizeRes) {
+    const stored = Number((await sizeRes.text()) || 0);
+    if (stored > 0) {
+      SIZE_BY_URL.set(norm, stored);
+      return stored;
+    }
+  }
+
+  // Last resort: clone the cached body. One-time cost per URL; we memoize
+  // the result so the next sumCacheBytes() call is O(1) per entry.
+  const res = await cache.match(req);
+  if (!res) return 0;
+  const cl = Number(res.headers.get('content-length') || 0);
+  if (cl > 0) {
+    SIZE_BY_URL.set(norm, cl);
+    await meta.put(
+      sizeMetaKey(req.url),
+      new Response(String(cl), { headers: { 'content-type': 'text/plain' } })
+    );
+    return cl;
+  }
+  try {
+    const sz = (await res.clone().blob()).size || 0;
+    if (sz > 0) {
+      SIZE_BY_URL.set(norm, sz);
+      await meta.put(
+        sizeMetaKey(req.url),
+        new Response(String(sz), { headers: { 'content-type': 'text/plain' } })
+      );
+    }
+    return sz;
+  } catch (e) {
+    return 0;
+  }
 }
 
 async function broadcast(msg) {
@@ -284,6 +422,10 @@ async function broadcast(msg) {
 
 function metaKey(url) {
   return new Request(`/__edu_meta__/${encodeURIComponent(url)}`);
+}
+
+function sizeMetaKey(url) {
+  return new Request(`${SIZE_META_PREFIX}${encodeURIComponent(url)}`);
 }
 
 function normalizeUrl(u) {

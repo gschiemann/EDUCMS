@@ -162,27 +162,38 @@ export class UsbExportController {
     });
     if (!tenant) throw new HttpException('Tenant not found', HttpStatus.NOT_FOUND);
 
-    // Auto-provision on first use — the user asked for the USB flow to
-    // 'just work' from a single Download button on the playlist page
-    // with zero visits to a settings screen. Enable ingest + mint a
-    // signing key silently if either is missing. Both operations are
-    // RBAC-gated by the @RequireRoles decorator above, so only an
-    // admin can trigger the provisioning.
+    // FIX (player-003): refuse the export when usbIngestEnabled is false.
+    // The previous behavior silently flipped the flag AND minted an HMAC
+    // key on first call, contradicting CLAUDE.md Sprint 7's "default false;
+    // admins must opt in" stance. USB ingest is an attack surface (signed
+    // bundles can update emergency content) and must remain an explicit
+    // operator decision made in Settings -> USB. Once the flag is on, we
+    // still mint the signing key on demand if it's missing — that's an
+    // implementation detail of having USB enabled, not a separate consent.
+    if (!tenant.usbIngestEnabled) {
+      throw new HttpException(
+        {
+          error: 'USB_INGEST_DISABLED',
+          message:
+            'USB ingest is disabled for this tenant. An admin must enable it in Settings -> USB before bundles can be exported.',
+        },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
     let usbIngestKey = tenant.usbIngestKey;
-    if (!tenant.usbIngestEnabled || !usbIngestKey) {
+    if (!usbIngestKey) {
       const { randomBytes } = await import('crypto');
-      const newKey = usbIngestKey || randomBytes(32).toString('hex');
+      usbIngestKey = randomBytes(32).toString('hex');
       await this.prisma.client.tenant.update({
         where: { id: tenantId },
         data: {
-          usbIngestEnabled: true,
-          usbIngestKey: newKey,
-          usbIngestKeyRotatedAt: usbIngestKey ? undefined : new Date(),
+          usbIngestKey,
+          usbIngestKeyRotatedAt: new Date(),
         },
       });
-      usbIngestKey = newKey;
       this.logger.log(
-        `[usb-export] auto-provisioned tenant ${tenantId} (enabled=${!tenant.usbIngestEnabled}, keyMinted=${!tenant.usbIngestKey})`,
+        `[usb-export] minted signing key for tenant ${tenantId} (ingest already enabled)`,
       );
     }
 
