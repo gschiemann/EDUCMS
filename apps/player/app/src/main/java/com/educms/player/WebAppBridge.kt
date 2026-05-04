@@ -25,6 +25,7 @@ class WebAppBridge(
     private val onSetBootstrap: (apiRoot: String, fingerprint: String) -> Unit,
     private val onShowUrlOverlay: (url: String) -> Unit,
     private val onHideUrlOverlay: () -> Unit,
+    private val onOpenSettingsForManager: () -> Unit,
 ) {
     /**
      * Escape hatch — exits our kiosk task stack and returns the user to
@@ -146,6 +147,30 @@ class WebAppBridge(
             onHideUrlOverlay()
         } catch (ex: Exception) {
             PlayerLogger.w("WebAppBridge", "hideUrlOverlay failed: ${ex.message}")
+        }
+    }
+
+    /**
+     * 2026-05-04 — Manager-permission deep-link.
+     *
+     * Operator (post-OTA): "manager didnt get permissions because it
+     * never asks me to give those permissions when you side load the
+     * app, it asks for the player permissions but then just installs
+     * the manager and never asks for them".
+     *
+     * When Manager doesn't have "Install unknown apps" granted, every
+     * OTA install of Player is blocked. This bridge method opens the
+     * Settings page directly at the Manager package's install-unknown-
+     * apps toggle — operator hits the toggle, comes back, and the
+     * next OTA tick succeeds. Saves them from navigating six menus
+     * deep on a kiosk remote.
+     */
+    @JavascriptInterface
+    fun openSettingsForManager() {
+        try {
+            onOpenSettingsForManager()
+        } catch (ex: Exception) {
+            PlayerLogger.w("WebAppBridge", "openSettingsForManager failed: ${ex.message}")
         }
     }
 }

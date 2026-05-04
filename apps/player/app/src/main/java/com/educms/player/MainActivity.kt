@@ -408,6 +408,30 @@ class MainActivity : ComponentActivity() {
                 onHideUrlOverlay = {
                     runOnUiThread { hideUrlOverlay() }
                 },
+                // 2026-05-04 — Manager-permission deep-link bridge.
+                // See WebAppBridge.openSettingsForManager docstring.
+                onOpenSettingsForManager = {
+                    runOnUiThread {
+                        try {
+                            val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
+                                .setData(Uri.parse("package:com.educms.manager"))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(intent)
+                        } catch (e: Exception) {
+                            PlayerLogger.w("MainActivity", "openSettingsForManager failed", e)
+                            // Fall back to the package's general info
+                            // page if the install-sources screen
+                            // isn't available on this Android build.
+                            try {
+                                startActivity(
+                                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                        .setData(Uri.parse("package:com.educms.manager"))
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                )
+                            } catch (_: Exception) { /* swallow */ }
+                        }
+                    }
+                },
             ),
             "EduCmsNative"
         )

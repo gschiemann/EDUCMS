@@ -2744,13 +2744,17 @@ function PlayerPage() {
   //     popover does, so the on-kiosk and at-desk views stay in
   //     sync. Bridge-missing kiosks (v1.0.4) get different copy
   //     so the operator knows why the update can't proceed. */}
-  const otaOverlay = otaProgress ? (
-    <OtaProgressOverlay
-      startedAt={otaProgress.startedAt}
-      bridgeAvailable={otaProgress.bridgeAvailable}
-      onDismiss={() => setOtaProgress(null)}
-    />
-  ) : null;
+  // 2026-05-04 — operator: "dump the dumb purple menu and keep it
+  // all in the main screen". The floating bottom-center
+  // OtaProgressOverlay was redundant with the in-card "Update in
+  // progress" banner that already renders inside the SCROLL-BODY
+  // (at the position above the action-buttons row, see the IIFE
+  // around line ~3760). Killing the overlay; in-card banner alone
+  // is the OTA status surface. The OtaProgressOverlay component
+  // itself is kept in this file (further down) in case we want to
+  // restore it for browser-only kiosks where there's no in-card
+  // splash, but it's no longer wired into any render path.
+  const otaOverlay = null;
 
   // 2026-04-28 — Install Now handler shared by every splash mode.
   // Operator: "screen paired screen should be our main screen with
@@ -3878,14 +3882,26 @@ function PlayerPage() {
                       stage = { emoji: '📡', label: `Update in progress (${realState})…` };
                   }
                 } else {
-                  // Pre-server-state fallback: elapsed-time estimate.
+                  // 2026-05-04 — operator: "says downloading on the
+                  // main splash screen but stays at 0% and then flips
+                  // to installing". Cause: the elapsed-time fallback
+                  // here was making up stage labels based on stopwatch
+                  // alone, regardless of what the kiosk was actually
+                  // doing. Showed "Downloading" at t=15s even if the
+                  // download hadn't started yet.
+                  // Fixed: ONLY show stages when the kiosk has reported
+                  // a real state via the heartbeat. Until then, just
+                  // say "Waiting for kiosk to report status" with the
+                  // elapsed time. After 5 min with no real state,
+                  // surface a timeout label.
                   const elapsed = Date.now() - otaProgress.startedAt;
-                  stage =
-                    elapsed < 15_000  ? { emoji: '📡', label: 'Sending update signal…' } :
-                    elapsed < 60_000  ? { emoji: '⬇️', label: 'Downloading new player…' } :
-                    elapsed < 150_000 ? { emoji: '⚙️', label: 'Installing… (Android prompt may show)' } :
-                    elapsed < 300_000 ? { emoji: '🔄', label: 'Restarting + reporting back…' } :
-                                         { emoji: '⏱', label: 'No response after 5 minutes — retry on next reboot' };
+                  const elapsedSecs = Math.floor(elapsed / 1000);
+                  const elapsedHuman = elapsedSecs < 60
+                    ? `${elapsedSecs}s ago`
+                    : `${Math.floor(elapsedSecs / 60)}m ${elapsedSecs % 60}s ago`;
+                  stage = elapsed < 300_000
+                    ? { emoji: '⏳', label: `Update signal sent ${elapsedHuman} — waiting for kiosk to report progress…` }
+                    : { emoji: '⏱', label: 'No response after 5 minutes — retry on next reboot or sideload manually' };
                 }
                 const isError = realState === 'ERROR';
                 const isDone = realState === 'INSTALLED';
@@ -3898,6 +3914,18 @@ function PlayerPage() {
                 const subColor   = isError ? 'text-amber-700' :
                                    isDone  ? 'text-emerald-700' :
                                              'text-indigo-700';
+                // 2026-05-04 — operator: "Manager update blocked:
+                // Install unknown apps permission is missing".
+                // When the error message references the missing
+                // permission, surface a "Grant Manager permission"
+                // CTA that deep-links the operator to Android
+                // Settings → Apps → Manager → Install unknown apps.
+                // Bridge method `openSettingsForManager` lands in
+                // Manager v1.0.15 / Player v1.0.45 — until then the
+                // button graceful-fallbacks to a generic settings
+                // intent URI which most Android WebViews honor.
+                const errMsg = stage.label || '';
+                const isPermissionError = isError && /permission|install unknown apps|unknown apps/i.test(errMsg);
                 return (
                   <div className={`w-full max-w-3xl mb-8 rounded-2xl border p-5 ${bg}`}>
                     <div className="flex items-center gap-4">
@@ -3908,6 +3936,32 @@ function PlayerPage() {
                         </div>
                         <div className={`text-sm mt-0.5 ${subColor}`}>{stage.label}</div>
                       </div>
+                      {isPermissionError && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const bridge = (window as any).EduCmsNative;
+                            if (bridge && typeof bridge.openSettingsForManager === 'function') {
+                              try { bridge.openSettingsForManager(); return; } catch { /* fall through */ }
+                            }
+                            // Fallback: Android intent URI for
+                            // Settings → Apps → Manager → Install
+                            // unknown apps. Most Android WebViews
+                            // honor `intent:` URLs; if not, the
+                            // operator gets a no-op and they need
+                            // to navigate manually:
+                            //   Settings → Apps → VenueOS Manager →
+                            //   Install unknown apps → ON
+                            try {
+                              window.location.href =
+                                'intent:#Intent;action=android.settings.MANAGE_UNKNOWN_APP_SOURCES;launchFlags=0x10000000;data=package:com.educms.manager;end';
+                            } catch { /* no-op */ }
+                          }}
+                          className="shrink-0 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm"
+                        >
+                          Grant Manager permission
+                        </button>
+                      )}
                     </div>
                     {/* Progress bar — only shown when we have a real % */}
                     {typeof stage.pct === 'number' && (
@@ -3916,6 +3970,11 @@ function PlayerPage() {
                           className="h-full bg-indigo-500 rounded-full transition-all duration-300"
                           style={{ width: `${Math.min(100, Math.max(0, stage.pct))}%` }}
                         />
+                      </div>
+                    )}
+                    {isPermissionError && (
+                      <div className="mt-3 text-xs text-amber-700 leading-relaxed">
+                        Or grant manually: <strong>Settings → Apps → VenueOS Manager → Install unknown apps → ON</strong>, then come back and Resume.
                       </div>
                     )}
                   </div>

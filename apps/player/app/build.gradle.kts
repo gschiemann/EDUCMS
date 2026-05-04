@@ -17,8 +17,8 @@ android {
         // WatchdogService compares PackageManager.versionCode against
         // InstallState.pendingVc which the API returns as the derived value.
         // Keeping them in sync prevents a false rollback after a successful install.
-        versionCode = 10044 // 1*10000 + 0*100 + 44
-        versionName = "1.0.44"
+        versionCode = 10045 // 1*10000 + 0*100 + 45
+        versionName = "1.0.45"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)
