@@ -20,7 +20,17 @@ import { PrismaService } from '../prisma/prisma.service';
 export class LicenseService {
   constructor(private readonly prisma: PrismaService) {}
 
-  static readonly PILOT_SEAT_LIMIT = 3;
+  // 2026-05-04 — operator (testing fleet, no paying customers yet):
+  // "bro WTF, your keeping me from testing". Both prior tenant-scoped
+  // seat-bump migrations failed to take effect (slug mismatch?
+  // pgbouncer transaction-mode rejecting DDL? unclear). Until we
+  // have a real customer requiring strict metering, raise the default
+  // pilot ceiling to 1000 so internal testing isn't gated by a
+  // metering check that exists primarily for billing.
+  // When we onboard the first paying customer, drop this back to 3
+  // (or whatever the contracted seat count is) and verify the
+  // License upsert path works end-to-end.
+  static readonly PILOT_SEAT_LIMIT = 1000;
 
   /** Effective limit + tier for a tenant, falling back to PILOT defaults.
    *  Optionally takes a Prisma transaction client — callers inside a
