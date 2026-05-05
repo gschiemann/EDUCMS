@@ -143,6 +143,20 @@ class MainActivity : ComponentActivity() {
             systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
+        // 2026-05-05 (v1.0.50) — force the system bar areas to be
+        // TRANSPARENT, not opaque black. On some Goodview / NovaStar
+        // TaurusOS builds, the WindowInsetsControllerCompat.hide()
+        // call doesn't fully eliminate the bar; what remains is an
+        // opaque dark strip that overlaps our edge-to-edge content
+        // and is visually indistinguishable from a "black bar at the
+        // top". With transparent colors set, even if the OEM forces
+        // the bar to remain visible, the WebView content shows
+        // through and there's no visible bar.
+        @Suppress("DEPRECATION")
+        run {
+            window.statusBarColor = android.graphics.Color.TRANSPARENT
+            window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        }
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -185,56 +199,62 @@ class MainActivity : ComponentActivity() {
         // checking freshness.
         watchdogHandler.postDelayed(watchdogTicker, WATCHDOG_TICK_MS)
 
-        // 2026-05-05 — operator: "the fucking black bar is still
-        // there when i open the android keyboard, WTF".
+        // 2026-05-05 (v1.0.50) — operator: ".49 same fucking bug,
+        // search locations on e-arc.com and when i click in the
+        // search field i get the keyboard and the black bar at the
+        // top and then close the keyboard and it stays".
         //
-        // v1.0.48 fix only handled the IME-CLOSE transition (force
-        // a WebView repaint to clear stale scroll). But the user's
-        // reported black bar appears WHEN THE KEYBOARD OPENS.
+        // v1.0.48 (IME-close repaint) and v1.0.49 (re-hide system
+        // bars on transition) didn't fix it. Both were chasing
+        // wrong root causes. Real bug: under
+        // setDecorFitsSystemWindows(false) + adjustResize on
+        // Goodview/NovaStar TaurusOS, the IME inset gets applied
+        // somewhere in the layout chain and pushes the WebView DOWN
+        // — exposing the FrameLayout's black background at the top.
+        // Close doesn't reliably restore.
         //
-        // Root cause for ON-OPEN black bar: when the IME pops up,
-        // Android's immersive mode (BEHAVIOR_SHOW_TRANSIENT_BARS_BY_
-        // SWIPE) treats the IME interaction as a user gesture and
-        // transiently re-shows the status bar at the top. With
-        // setDecorFitsSystemWindows(false) the WebView is full-
-        // screen behind the system bar — so when the bar reappears
-        // OPAQUE BLACK, it overlaps the top of the WebView. Looks
-        // like a black bar; is actually the status bar.
+        // v1.0.50 strategy: PREVENT any layout change on IME
+        // transition entirely.
+        //   1. Manifest switched to adjustNothing — Android won't
+        //      try to resize the window.
+        //   2. This listener returns WindowInsetsCompat.CONSUMED on
+        //      every dispatch — child views (FrameLayout, both
+        //      WebViews) NEVER see the IME inset, so they never
+        //      apply it, even if a default ViewParent behavior
+        //      tried to.
+        //   3. System bars stay hidden + transparent (set above)
+        //      so even if the OEM tries to force the status bar
+        //      back, it's transparent and the WebView shows
+        //      through.
         //
-        // Fix: on EVERY IME visibility transition (open AND close),
-        // re-hide system bars. The existing onWindowFocusChanged
-        // re-hides on focus change, but IME pop-up doesn't trigger
-        // window focus change — focus stays on the WebView while
-        // the IME slides up.
+        // The IME just slides up as a transparent overlay over the
+        // bottom of the WebView. Nothing in our layout shifts. No
+        // black bar can ever appear.
         //
-        // The IME-close repaint logic (v1.0.48) is preserved below:
-        // even with system bars handled, some templates with
-        // position:fixed inset-0 capture the shrunk viewport at
-        // focus time and need a JS poke to re-evaluate.
+        // We still track open/close transitions to:
+        //   - reset the WebView scroll on close (covers any
+        //     in-page scroll the focus event might have caused)
+        //   - re-apply our hide on the system bars (defense in
+        //     depth — some OEM ROMs flash the bars on IME pop)
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { v, insets ->
             val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
             if (imeVisible != lastImeVisible) {
                 lastImeVisible = imeVisible
-                // Always re-hide system bars on transition. Cheap
-                // (one IPC) and idempotent — if bars were already
-                // hidden, this is a no-op. If the IME pop-up made
-                // them visible (the v1.0.48 bug), this hides them
-                // again before the operator notices.
+                // Defense-in-depth: re-hide system bars on every
+                // transition. v1.0.49 logic preserved.
                 runCatching {
                     WindowInsetsControllerCompat(window, window.decorView)
                         .hide(WindowInsetsCompat.Type.systemBars())
                 }.onFailure { Log.w("Player", "IME-transition system-bar hide failed", it) }
                 if (!imeVisible) {
-                    // IME just closed — kick the WebView to repaint.
+                    // IME just closed — reset BOTH WebViews. The user
+                    // could be on the main player OR the URL overlay
+                    // (e-arc.com etc); only one of them currently has
+                    // input focus, but resetting both is harmless.
                     runCatching {
                         webView.scrollTo(0, 0)
                         webView.clearFocus()
                         webView.requestLayout()
-                        // Belt + suspenders: tell the web side to
-                        // reset its scroll too. Some templates use
-                        // position:fixed inset-0 which captures the
-                        // shrunk viewport size at the moment of focus
-                        // and doesn't re-evaluate without a JS poke.
                         webView.evaluateJavascript(
                             "window.scrollTo(0,0);" +
                             "if(document.scrollingElement)document.scrollingElement.scrollTop=0;" +
@@ -242,10 +262,28 @@ class MainActivity : ComponentActivity() {
                             "window.dispatchEvent(new Event('resize'));",
                             null,
                         )
+                        if (::urlOverlayView.isInitialized && urlOverlayView.visibility == View.VISIBLE) {
+                            urlOverlayView.scrollTo(0, 0)
+                            urlOverlayView.clearFocus()
+                            urlOverlayView.requestLayout()
+                            urlOverlayView.evaluateJavascript(
+                                "window.scrollTo(0,0);" +
+                                "if(document.scrollingElement)document.scrollingElement.scrollTop=0;" +
+                                "if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();" +
+                                "window.dispatchEvent(new Event('resize'));",
+                                null,
+                            )
+                        }
                     }.onFailure { Log.w("Player", "IME-close repaint hook failed", it) }
                 }
             }
-            insets
+            // Critical: CONSUMED so the IME inset doesn't propagate to
+            // child views. Without this, default ViewGroup behavior
+            // (or some OEM-customized one) can apply the inset to the
+            // FrameLayout/WebView and push it down — that's the black
+            // bar. With CONSUMED, the WebView NEVER moves regardless
+            // of IME state.
+            WindowInsetsCompat.CONSUMED
         }
 
         configureWebView(webView)

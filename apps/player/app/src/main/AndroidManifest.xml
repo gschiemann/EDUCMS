@@ -89,24 +89,40 @@
             android:turnScreenOn="true"
             android:resizeableActivity="false"
             tools:ignore="LockedOrientationActivity"
-            android:windowSoftInputMode="adjustResize|stateAlwaysHidden"><!--
-              2026-05-04 — operator: "clicked on a field to type a location
-              search and as soon as the keyboard pulls up i get the black bar".
-              Default Android behavior is `adjustPan` — when the soft keyboard
-              appears, Android pans the entire WebView UPWARD so the focused
-              input stays visible above the keyboard. After dismissing the
-              keyboard, the content STAYS scrolled, leaving a black gap at
-              the top of the screen.
+            android:windowSoftInputMode="adjustNothing|stateAlwaysHidden"><!--
+              2026-05-05 (v1.0.50) — operator: ".49 same fucking bug,
+              search locations on e-arc.com and when i click in the
+              search field i get the keyboard and the black bar at the
+              top and then close the keyboard and it stays".
 
-              Fix: `adjustResize` instead. The viewport itself shrinks to
-              accommodate the keyboard, but the top stays anchored. CSS
-              `position: fixed` + `inset-0` re-layouts to the new viewport
-              size. After dismissing, viewport returns to full size with no
-              black gap.
+              v1.0.49 attempt was to re-hide system bars on every IME
+              transition (theory: status bar reappearing). That didn't
+              fix it. Real cause appears to be Android's adjustResize
+              behavior on this OEM ROM (Goodview / NovaStar TaurusOS):
+              with setDecorFitsSystemWindows(false) + adjustResize, the
+              decor view's resize can land in a state where the WebView
+              is pushed DOWN by the IME inset, exposing the
+              FrameLayout's black background at the TOP. Closing the
+              IME doesn't reliably restore the layout.
 
-              `stateAlwaysHidden` is belt + suspenders for kiosk mode — we
-              don't want the soft keyboard auto-popping on activity start
-              if a stale focus state lingers from the prior session.
+              Fix: `adjustNothing` + WindowInsets.CONSUMED listener (in
+              MainActivity.kt) so the WebView NEVER moves on IME open.
+              The keyboard slides up as a transparent overlay; it can
+              cover the bottom portion of the WebView, but no black bar
+              ever appears at the top because nothing in our layout
+              ever shifts.
+
+              Trade-off: an input field at the very bottom of the page
+              (e.g. y > 50% of screen) may be obscured by the keyboard.
+              Mitigation: e-arc.com's search field is at the top, and
+              for cases where the input is genuinely below the fold,
+              the page's CSS scroll-into-view (fired by focus events)
+              will scroll the input above the keyboard within the
+              WebView's own scroll. We're choosing "input maybe
+              obscured for one tap" over "permanent black bar".
+
+              `stateAlwaysHidden` preserved — never auto-pop the
+              keyboard on activity start.
         -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
