@@ -1928,6 +1928,16 @@ function PlayerPage() {
               durationMs: item.duration_ms,
               sequenceOrder: item.sequence ?? itemIndex,
               transitionType: item.transition_type ?? undefined,
+              // 2026-05-05 — operator: "your player isnt playing the
+              // fucking sound and the video has sound it plays when i
+              // preview it in the app with sound". This was the bug:
+              // the manifest emits `muted` on every item (resolved
+              // from schedule.mutedOverride > item.muted > true), but
+              // the transform that builds `combinedItems` from the
+              // manifest dropped the field. PlayerVideoSlide read
+              // undefined, defaulted to muted=true, video played
+              // silent. Carry it through.
+              muted: item.muted,
               asset: {
                 fileUrl: item.url,
                 // Use the manifest's mime_type when available (always set
