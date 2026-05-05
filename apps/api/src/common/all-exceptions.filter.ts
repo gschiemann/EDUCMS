@@ -45,10 +45,17 @@ export class AllExceptionsFilter implements ExceptionFilter {
       } else {
         message = exception.message;
       }
-      expose = true; // trust Nest-declared messages
-      if (status >= 500) {
-        expose = process.env.NODE_ENV !== 'production';
-      }
+      // 2026-05-04 — operator: AI generator showed "Internal server error"
+      // even when the actual cause was a 503 "AI is not configured on
+      // this deployment" thrown by AiService. Reason: the previous code
+      // masked ALL >=500 messages in production, including authored
+      // Service/GatewayException strings that are intentionally safe
+      // for client display. HttpException messages are author-vetted —
+      // they never include stack traces, secrets, or DB internals — so
+      // expose them at every status. The expose-only-in-dev rule still
+      // applies to non-HttpException errors below (Prisma fallback,
+      // bare Error) where messages CAN leak internals.
+      expose = true;
     }
     // ── Prisma known-request errors ──
     else if (this.isPrismaKnownError(exception)) {

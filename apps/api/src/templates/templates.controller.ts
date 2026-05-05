@@ -16,6 +16,91 @@ export class TemplatesController {
   constructor(private readonly prisma: PrismaService) {}
 
   // ───────────────────────────────────────────────────────
+  // BRAND INHERITANCE HELPER (2026-05-04)
+  // ───────────────────────────────────────────────────────
+  // Operator: "i have added the branding to the templates multiple
+  // times now but it doesnt seem to save that...should it or do you
+  // need to add that every new template you make?"
+  //
+  // Before this fix new templates ignored TenantBranding entirely —
+  // the operator had to open BrandKitPanel inside every template and
+  // re-detect the brand for each one. That's correct per-template
+  // override behavior, but the DEFAULT for a new template should be
+  // "inherits the tenant brand" not "blank slate."
+  //
+  // This helper reads TenantBranding once and returns the values to
+  // seed into Template.bgColor / Template.brandKit / per-zone
+  // defaultConfig.color + fontFamily. ONLY fills blanks — if the
+  // request body or source preset already supplied a color/font, we
+  // keep it. That preserves intent on duplicate-from-preset (which
+  // has its own carefully-chosen palette) while still branding bare
+  // new templates that have no opinion.
+  private async getBrandDefaults(tenantId: string): Promise<{
+    surface: string | null;
+    ink: string | null;
+    fontHeading: string | null;
+    fontBody: string | null;
+    brandKit: any | null;
+  }> {
+    const b = await this.prisma.client.tenantBranding.findUnique({
+      where: { tenantId },
+      select: {
+        palette: true,
+        fontHeading: true,
+        fontBody: true,
+        logoUrl: true,
+        logoSvgInline: true,
+        faviconUrl: true,
+        displayName: true,
+        sourceUrl: true,
+        scrapedAt: true,
+        fontHeadingUrl: true,
+        fontBodyUrl: true,
+      },
+    }).catch(() => null);
+    if (!b) return { surface: null, ink: null, fontHeading: null, fontBody: null, brandKit: null };
+    const palette = (b.palette as any) || {};
+    const surface = palette.surface || palette.surfaceAlt || null;
+    const ink = palette.ink || null;
+    // Compose a Template.brandKit JSON identical in shape to what
+    // BrandKitPanel writes via /branding/templates/:id/adopt, so the
+    // editor's "this template's brand" preview lights up immediately.
+    const brandKit = {
+      palette,
+      logoUrl: b.logoUrl,
+      logoSvgInline: b.logoSvgInline,
+      faviconUrl: b.faviconUrl,
+      fontHeading: b.fontHeading,
+      fontBody: b.fontBody,
+      fontHeadingUrl: b.fontHeadingUrl,
+      fontBodyUrl: b.fontBodyUrl,
+      displayName: b.displayName,
+      sourceUrl: b.sourceUrl,
+      scrapedAt: b.scrapedAt ? new Date(b.scrapedAt).toISOString() : null,
+      inheritedAt: new Date().toISOString(),
+      inheritedFrom: 'tenant-branding',
+    };
+    return { surface, ink, fontHeading: b.fontHeading, fontBody: b.fontBody, brandKit };
+  }
+
+  /** Merge brand defaults into a zone's defaultConfig only where blank. */
+  private applyBrandToZoneConfig(
+    raw: any,
+    brand: { ink: string | null; fontHeading: string | null },
+  ): any {
+    const cfg = (() => {
+      if (!raw) return {};
+      if (typeof raw === 'string') {
+        try { return JSON.parse(raw); } catch { return {}; }
+      }
+      return { ...raw };
+    })();
+    if (brand.ink && cfg.color === undefined) cfg.color = brand.ink;
+    if (brand.fontHeading && cfg.fontFamily === undefined) cfg.fontFamily = brand.fontHeading;
+    return cfg;
+  }
+
+  // ───────────────────────────────────────────────────────
   // LIST — tenant templates + system presets
   // ───────────────────────────────────────────────────────
 
@@ -253,6 +338,10 @@ export class TemplatesController {
     const screenHeight = body.screenHeight || 2160;
     const orientation = body.orientation || (screenHeight > screenWidth ? 'PORTRAIT' : 'LANDSCAPE');
 
+    // Auto-inherit tenant brand. Only fills blanks — caller's body
+    // values win. See getBrandDefaults() comment.
+    const brand = await this.getBrandDefaults(req.user.tenantId);
+
     const result = await this.prisma.client.template.create({
       data: {
         tenantId: req.user.tenantId,
@@ -262,23 +351,27 @@ export class TemplatesController {
         orientation,
         screenWidth,
         screenHeight,
-        bgColor: body.bgColor || null,
+        bgColor: body.bgColor || brand.surface || null,
         bgImage: body.bgImage || null,
         bgGradient: body.bgGradient || null,
+        brandKit: brand.brandKit ?? undefined,
         createdById: req.user.id,
         zones: body.zones
           ? {
-              create: body.zones.map((z, i) => ({
-                name: z.name,
-                widgetType: z.widgetType,
-                x: z.x,
-                y: z.y,
-                width: z.width,
-                height: z.height,
-                zIndex: z.zIndex ?? 0,
-                sortOrder: z.sortOrder ?? i,
-                defaultConfig: z.defaultConfig ? JSON.stringify(z.defaultConfig) : null,
-              })),
+              create: body.zones.map((z, i) => {
+                const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand);
+                return {
+                  name: z.name,
+                  widgetType: z.widgetType,
+                  x: z.x,
+                  y: z.y,
+                  width: z.width,
+                  height: z.height,
+                  zIndex: z.zIndex ?? 0,
+                  sortOrder: z.sortOrder ?? i,
+                  defaultConfig: Object.keys(cfg).length ? JSON.stringify(cfg) : null,
+                };
+              }),
             }
           : undefined,
       },
@@ -317,7 +410,15 @@ export class TemplatesController {
       if (!preset) {
         throw new HttpException('Preset not found', HttpStatus.NOT_FOUND);
       }
-      // Use preset data directly
+      // Auto-inherit tenant brand. Preset's own bgColor/zone configs
+      // win — most presets are themed by design (Sunny Meadow,
+      // Animated Rainbow) and we never want to wipe their look. We
+      // ONLY paint blanks: a preset that left bgColor null falls
+      // through to the tenant surface; a zone that didn't set
+      // color/fontFamily picks up the brand ink/heading. brandKit is
+      // attached on the new copy regardless so the editor's "this
+      // template's brand" panel shows it.
+      const brand = await this.getBrandDefaults(req.user.tenantId);
       const presetResult = await this.prisma.client.template.create({
         data: {
           tenantId: req.user.tenantId,
@@ -329,22 +430,26 @@ export class TemplatesController {
           screenWidth: preset.screenWidth || (preset.orientation === 'PORTRAIT' ? 2160 : 3840),
           screenHeight: preset.screenHeight || (preset.orientation === 'PORTRAIT' ? 3840 : 2160),
           // Carry themed background from preset (optional — most presets leave it null)
-          bgColor: preset.bgColor ?? null,
+          bgColor: preset.bgColor ?? brand.surface ?? null,
           bgGradient: preset.bgGradient ?? null,
           bgImage: preset.bgImage ?? null,
+          brandKit: brand.brandKit ?? undefined,
           createdById: req.user.id,
           zones: {
-            create: preset.zones.map((z, i) => ({
-              name: z.name,
-              widgetType: z.widgetType,
-              x: z.x,
-              y: z.y,
-              width: z.width,
-              height: z.height,
-              zIndex: z.zIndex ?? 0,
-              sortOrder: z.sortOrder ?? i,
-              defaultConfig: z.defaultConfig ? JSON.stringify(z.defaultConfig) : null,
-            })),
+            create: preset.zones.map((z, i) => {
+              const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand);
+              return {
+                name: z.name,
+                widgetType: z.widgetType,
+                x: z.x,
+                y: z.y,
+                width: z.width,
+                height: z.height,
+                zIndex: z.zIndex ?? 0,
+                sortOrder: z.sortOrder ?? i,
+                defaultConfig: Object.keys(cfg).length ? JSON.stringify(cfg) : null,
+              };
+            }),
           },
         },
         include: { zones: { orderBy: { sortOrder: 'asc' } } },
@@ -352,7 +457,8 @@ export class TemplatesController {
       return mapTemplate(presetResult);
     }
 
-    // Clone from database system template
+    // Clone from database system template — same fill-blanks rule.
+    const dbBrand = await this.getBrandDefaults(req.user.tenantId);
     return this.prisma.client.template.create({
       data: {
         tenantId: req.user.tenantId,
@@ -362,22 +468,26 @@ export class TemplatesController {
         orientation: source.orientation,
         screenWidth: source.screenWidth,
         screenHeight: source.screenHeight,
-        bgColor: source.bgColor,
+        bgColor: source.bgColor || dbBrand.surface || null,
         bgImage: source.bgImage,
         bgGradient: source.bgGradient,
+        brandKit: dbBrand.brandKit ?? undefined,
         createdById: req.user.id,
         zones: {
-          create: source.zones.map((z) => ({
-            name: z.name,
-            widgetType: z.widgetType,
-            x: z.x,
-            y: z.y,
-            width: z.width,
-            height: z.height,
-            zIndex: z.zIndex,
-            sortOrder: z.sortOrder,
-            defaultConfig: z.defaultConfig,
-          })),
+          create: source.zones.map((z) => {
+            const cfg = this.applyBrandToZoneConfig(z.defaultConfig, dbBrand);
+            return {
+              name: z.name,
+              widgetType: z.widgetType,
+              x: z.x,
+              y: z.y,
+              width: z.width,
+              height: z.height,
+              zIndex: z.zIndex,
+              sortOrder: z.sortOrder,
+              defaultConfig: Object.keys(cfg).length ? JSON.stringify(cfg) : null,
+            };
+          }),
         },
       },
       include: { zones: { orderBy: { sortOrder: 'asc' } } },
@@ -404,6 +514,13 @@ export class TemplatesController {
     });
     if (!source) return { error: 'Not found' };
 
+    // Auto-inherit tenant brand on duplicate (fill blanks only —
+    // don't repaint a deliberately-themed source). System presets
+    // duplicated this way pick up the operator's brand exactly like
+    // a from-preset clone does. User-template duplicates: if the
+    // source already had a brand-filled config, the helper sees
+    // existing keys and skips them; if blank, gets the tenant brand.
+    const brand = await this.getBrandDefaults(req.user.tenantId);
     return this.prisma.client.template.create({
       data: {
         tenantId: req.user.tenantId,
@@ -413,22 +530,26 @@ export class TemplatesController {
         orientation: source.orientation,
         screenWidth: source.screenWidth,
         screenHeight: source.screenHeight,
-        bgColor: source.bgColor,
+        bgColor: source.bgColor || brand.surface || null,
         bgImage: source.bgImage,
         bgGradient: source.bgGradient,
+        brandKit: (source as any).brandKit ?? brand.brandKit ?? undefined,
         createdById: req.user.id,
         zones: {
-          create: source.zones.map((z) => ({
-            name: z.name,
-            widgetType: z.widgetType,
-            x: z.x,
-            y: z.y,
-            width: z.width,
-            height: z.height,
-            zIndex: z.zIndex,
-            sortOrder: z.sortOrder,
-            defaultConfig: z.defaultConfig,
-          })),
+          create: source.zones.map((z) => {
+            const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand);
+            return {
+              name: z.name,
+              widgetType: z.widgetType,
+              x: z.x,
+              y: z.y,
+              width: z.width,
+              height: z.height,
+              zIndex: z.zIndex,
+              sortOrder: z.sortOrder,
+              defaultConfig: Object.keys(cfg).length ? JSON.stringify(cfg) : null,
+            };
+          }),
         },
       },
       include: { zones: { orderBy: { sortOrder: 'asc' } } },
