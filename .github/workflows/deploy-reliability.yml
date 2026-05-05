@@ -88,6 +88,21 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Generate Prisma client
         run: cd packages/database && npx prisma generate
+      # 2026-05-04 — Web build was failing on CI but passing locally.
+      # Cause: --ignore-scripts skips the postinstall hook + this job
+      # didn't build the workspace TS packages before the Next.js
+      # build. Web imports @cms/api-types and @cms/auth-core whose
+      # `main` points at dist/index.js — without those built, Next
+      # tries to parse raw .ts source at runtime and crashes
+      # (`Unexpected token 'export'`). Locally the dist folders
+      # already exist from prior dev runs which is why it worked.
+      # api-build job at lines 60-64 already runs these three builds;
+      # mirror them here.
+      - name: Build workspace packages
+        run: |
+          pnpm --filter @cms/api-types build
+          pnpm --filter @cms/auth-core build
+          pnpm --filter @cms/ws-events build
       - name: Build web
         env:
           NEXT_PUBLIC_API_URL: https://api-production-39a1.up.railway.app/api/v1
