@@ -1352,6 +1352,29 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="established" label="Established (optional)" value={cfg.established || ''} placeholder="EST. 1924" onChange={(v) => setField({ established: v })} />);
       fields.push(<TextField key="mascot" label="Mascot emoji (optional)" value={cfg.mascot || ''} placeholder="🦅" onChange={(v) => setField({ mascot: v })} />);
       break;
+    case 'PHOTO_NEON':
+    case 'PHOTO_PAPER':
+    case 'PHOTO_CRAYON':
+    case 'PHOTO_GLASS':
+    case 'PHOTO_OPS': {
+      // 2026-05-04 — operator: "under the imaghes tab, i picked an image
+      // and nothing loaded, the second one has a spot for two images
+      // but can only select one and nothing loads".
+      // These v2 PHOTO_* widgets read `config.photos: { url, caption }[]`
+      // (1, 3, 4, 5, or 6 slots depending on variant). The editor
+      // previously fell through to the default case which doesn't write
+      // to photos at all, so picking an image silently no-op'd.
+      fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Our Memories!" onChange={(v) => setField({ title: v })} />);
+      fields.push(<TextField key="rotateMs" label="Rotate every (ms — only used by Neon Glitch single-frame)" value={String(cfg.rotateMs || 4000)} placeholder="4000" onChange={(v) => setField({ rotateMs: parseInt(v) || 4000 })} />);
+      fields.push(
+        <PhotosArrayField
+          key="photos"
+          value={(cfg.photos || []) as Array<{ url?: string; caption?: string }>}
+          onChange={(photos) => setField({ photos })}
+        />,
+      );
+      break;
+    }
     case 'IMAGE_CAROUSEL':
       fields.push(<TextField key="title" label="Caption" value={cfg.title || ''} placeholder="Photo Gallery" onChange={(v) => setField({ title: v })} />);
       // 2026-05-03 — v2 PHOTO_* variants read `c.rotateMs` not `intervalMs`.
@@ -3863,6 +3886,100 @@ function AssetListPickerField({ label, value, onChange, kind }: { label: string;
       </div>
       {open && (
         <AssetLibraryModal kind={kind} onPick={(url) => { onChange([...value, url]); setOpen(false); }} onClose={() => setOpen(false)} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * PhotosArrayField — list editor for `config.photos: { url, caption }[]`.
+ *
+ * Used by every v2 PHOTO_* widget (NeonGlitch, PolaroidPin,
+ * CrayonScrapbook, GlassMosaic, OpsContactSheet). Each entry is a
+ * thumbnail + caption text + remove button + reorder controls.
+ * Picking an image opens the same shared AssetLibraryModal as the
+ * single AssetPickerField.
+ *
+ * 2026-05-04 — operator: "i picked an iage and nothing loaded, the
+ * second one has a spot for two images but can only select one".
+ * Pre-fix the editor only had the single-image AssetPickerField for
+ * IMAGE/HERO_IMAGE which writes config.assetUrl. v2 PHOTO widgets
+ * read config.photos[i].url so the assetUrl write was dead-code.
+ */
+function PhotosArrayField({ value, onChange }: { value: Array<{ url?: string; caption?: string }>; onChange: (v: Array<{ url?: string; caption?: string }>) => void }) {
+  const [pickerOpen, setPickerOpen] = useState<number | null>(null);
+  const remove = (i: number) => onChange(value.filter((_, idx) => idx !== i));
+  const moveUp = (i: number) => {
+    if (i === 0) return;
+    const next = value.slice();
+    [next[i - 1], next[i]] = [next[i], next[i - 1]];
+    onChange(next);
+  };
+  const setCaption = (i: number, caption: string) => {
+    const next = value.slice();
+    next[i] = { ...(next[i] || {}), caption };
+    onChange(next);
+  };
+  const setUrl = (i: number, url: string) => {
+    const next = value.slice();
+    next[i] = { ...(next[i] || {}), url };
+    onChange(next);
+  };
+  return (
+    <div>
+      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Photos</label>
+      <div className="space-y-2">
+        {value.length === 0 && (
+          <p className="text-[11px] text-slate-400 italic">No photos yet — click + below to add. Each photo can have an optional caption (e.g. &ldquo;Recess!&rdquo; / &ldquo;Reading Buddies&rdquo;).</p>
+        )}
+        {value.map((photo, idx) => (
+          <div key={idx} className="flex items-center gap-2 p-1.5 bg-white border border-slate-200 rounded">
+            <button
+              type="button"
+              onClick={() => setPickerOpen(idx)}
+              className="w-12 h-12 rounded shrink-0 bg-slate-100 border border-slate-200 hover:border-indigo-400 hover:ring-2 hover:ring-indigo-200 overflow-hidden flex items-center justify-center transition-all"
+              aria-label={photo.url ? 'Replace image' : 'Pick image'}
+            >
+              {photo.url ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img src={resolveAssetUrl(photo.url)} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-[18px] text-slate-400">+</span>
+              )}
+            </button>
+            <input
+              type="text"
+              value={photo.caption || ''}
+              onChange={(e) => setCaption(idx, e.target.value)}
+              placeholder={`Caption ${idx + 1}`}
+              className="flex-1 px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+            <button type="button" onClick={() => moveUp(idx)} disabled={idx === 0} className="text-[10px] text-slate-400 hover:text-indigo-600 disabled:opacity-30 px-1" aria-label="Move up">↑</button>
+            <button type="button" onClick={() => remove(idx)} className="text-[10px] text-rose-500 hover:text-rose-700 px-1" aria-label="Remove">×</button>
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={() => setPickerOpen(value.length)}
+          className="w-full py-1.5 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded border border-dashed border-indigo-200"
+        >
+          + Add photo from library
+        </button>
+      </div>
+      {pickerOpen !== null && (
+        <AssetLibraryModal
+          kind="image"
+          onPick={(url) => {
+            const idx = pickerOpen;
+            if (idx >= value.length) {
+              onChange([...value, { url, caption: '' }]);
+            } else {
+              setUrl(idx, url);
+            }
+            setPickerOpen(null);
+          }}
+          onClose={() => setPickerOpen(null)}
+        />
       )}
     </div>
   );
