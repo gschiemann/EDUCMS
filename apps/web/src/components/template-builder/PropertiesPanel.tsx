@@ -4097,13 +4097,13 @@ export function AssetLibraryModal({ kind, onPick, onClose }: { kind: 'image' | '
       const contentType = file.type || (kind === 'image' ? 'image/jpeg' : 'video/mp4');
       // Step 1: get a presigned upload URL.
       const presigned = await apiFetch<{
-        uploadUrl: string;
-        signedUrl: string;
-        token: string;
+        uploadUrl?: string;
+        signedUrl?: string;
+        token?: string;
         storagePath: string;
         fileUrl: string;
-        mimeType: string;
-        maxFileSize: number;
+        mimeType?: string;
+        maxFileSize?: number;
       }>('/assets/presign', {
         method: 'POST',
         body: JSON.stringify({
@@ -4118,15 +4118,30 @@ export function AssetLibraryModal({ kind, onPick, onClose }: { kind: 'image' | '
         throw new Error(`File too big (${Math.round(file.size / 1024 / 1024)}MB). Max ${Math.round(presigned.maxFileSize / 1024 / 1024)}MB.`);
       }
 
-      // Step 2: PUT the file bytes to the signed URL. Direct to
-      // Supabase storage, no payload through our API server.
-      const putRes = await fetch(presigned.uploadUrl, {
+      // Step 2: PUT bytes directly to Supabase storage. Match the
+      // working /assets page flow: prefer uploadUrl, fall back to
+      // signedUrl. Supabase signed URLs only accept PUT (POST returns
+      // a "headers must have required" error from the storage edge
+      // handler — a Supabase quirk we hit on every MP4 upload after
+      // the d29e6c5 direct-storage switch).
+      const targetUrl = presigned.uploadUrl || presigned.signedUrl;
+      if (!targetUrl) {
+        throw new Error('Server did not return a signed upload URL. Ask your admin to check Supabase Storage config.');
+      }
+      const putRes = await fetch(targetUrl, {
         method: 'PUT',
         headers: { 'content-type': presigned.mimeType || contentType },
         body: file,
       });
       if (!putRes.ok) {
-        throw new Error(`Storage upload failed (${putRes.status}).`);
+        // Pull a useful error out of Supabase's response body if it
+        // gave us one; surface the generic status code otherwise.
+        let detail = '';
+        try {
+          const txt = await putRes.text();
+          if (txt) detail = ` — ${txt.slice(0, 200)}`;
+        } catch { /* ignore */ }
+        throw new Error(`Storage upload failed (${putRes.status})${detail}`);
       }
 
       // Step 3: register the asset in our DB.
@@ -4148,7 +4163,11 @@ export function AssetLibraryModal({ kind, onPick, onClose }: { kind: 'image' | '
       await queryClient.invalidateQueries({ queryKey: ['assets'] });
       const finalUrl = completed.fileUrl || presigned.fileUrl;
       if (finalUrl) onPick(finalUrl);
+      else throw new Error('Upload completed but server did not return a file URL.');
     } catch (e: any) {
+      // Console too — Vercel/Sentry won't capture these errors otherwise.
+      // eslint-disable-next-line no-console
+      console.error('[asset-upload] failed', e);
       setUploadError(e?.message || 'Upload failed.');
     } finally {
       setUploading(false);
