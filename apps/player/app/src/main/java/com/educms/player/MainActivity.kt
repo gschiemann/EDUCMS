@@ -185,27 +185,45 @@ class MainActivity : ComponentActivity() {
         // checking freshness.
         watchdogHandler.postDelayed(watchdogTicker, WATCHDOG_TICK_MS)
 
-        // 2026-05-05 — operator: "the issue with the android keyboard
-        // is still there, i open the keyboard and now have a black
-        // bar at the top of the screen that doesnt go away even when
-        // i close the keyboard…im on .47 and .15 manager".
+        // 2026-05-05 — operator: "the fucking black bar is still
+        // there when i open the android keyboard, WTF".
         //
-        // The manifest's adjustResize already shrinks the viewport
-        // when the keyboard opens (no more pan). But on close, the
-        // WebView holds onto the resized scroll position — content
-        // doesn't redraw to fill the recovered area. Result: a black
-        // bar at the top equal to the height of where the keyboard
-        // had been.
+        // v1.0.48 fix only handled the IME-CLOSE transition (force
+        // a WebView repaint to clear stale scroll). But the user's
+        // reported black bar appears WHEN THE KEYBOARD OPENS.
         //
-        // Fix: subscribe to IME visibility changes via the modern
-        // WindowInsets API. When the IME hides, force the WebView to
-        // scroll to (0,0), drop input focus, and request a layout
-        // pass. The combination forces a paint over the previously-
-        // hidden top region, so the black bar disappears.
+        // Root cause for ON-OPEN black bar: when the IME pops up,
+        // Android's immersive mode (BEHAVIOR_SHOW_TRANSIENT_BARS_BY_
+        // SWIPE) treats the IME interaction as a user gesture and
+        // transiently re-shows the status bar at the top. With
+        // setDecorFitsSystemWindows(false) the WebView is full-
+        // screen behind the system bar — so when the bar reappears
+        // OPAQUE BLACK, it overlaps the top of the WebView. Looks
+        // like a black bar; is actually the status bar.
+        //
+        // Fix: on EVERY IME visibility transition (open AND close),
+        // re-hide system bars. The existing onWindowFocusChanged
+        // re-hides on focus change, but IME pop-up doesn't trigger
+        // window focus change — focus stays on the WebView while
+        // the IME slides up.
+        //
+        // The IME-close repaint logic (v1.0.48) is preserved below:
+        // even with system bars handled, some templates with
+        // position:fixed inset-0 capture the shrunk viewport at
+        // focus time and need a JS poke to re-evaluate.
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { v, insets ->
             val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
             if (imeVisible != lastImeVisible) {
                 lastImeVisible = imeVisible
+                // Always re-hide system bars on transition. Cheap
+                // (one IPC) and idempotent — if bars were already
+                // hidden, this is a no-op. If the IME pop-up made
+                // them visible (the v1.0.48 bug), this hides them
+                // again before the operator notices.
+                runCatching {
+                    WindowInsetsControllerCompat(window, window.decorView)
+                        .hide(WindowInsetsCompat.Type.systemBars())
+                }.onFailure { Log.w("Player", "IME-transition system-bar hide failed", it) }
                 if (!imeVisible) {
                     // IME just closed — kick the WebView to repaint.
                     runCatching {
