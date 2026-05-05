@@ -1,9 +1,21 @@
 /**
- * AiService — Claude-backed content generation for signage operators.
+ * AiService — multi-provider content generation for signage operators.
  *
- * Sprint top-tier (2026-05-03). Operator: "get us at the top level of
- * everyone". The single biggest gap vs OptiSigns / ScreenCloud — they
- * ship AI copywriting, we don't. This service closes it.
+ * 2026-05-04 BYOK pivot — operators can configure their OWN provider
+ * credentials in Settings → Integrations, and AI generations route
+ * through their account at their cost. Platform ANTHROPIC_API_KEY
+ * stays as a free-trial fallback for tenants who haven't configured.
+ *
+ * Resolution order at generate() time:
+ *   1) Tenant has a stored key (ai_key_encrypted) → decrypt + use
+ *      with their chosen provider (anthropic | openai)
+ *   2) Else fall back to process.env.ANTHROPIC_API_KEY (platform
+ *      free-trial) on Anthropic
+ *   3) Else throw 503 "AI is not configured" (current friendly error)
+ *
+ * Cost guardrails (apply regardless of who pays):
+ *   - Per-tenant rate limit: 30 generations / hour (in-memory, soft)
+ *   - max_tokens: 300 — caps spend at ~$0.005/call on either provider
  *
  * What it generates:
  *   - announcement   — eye-catching message for an ANNOUNCEMENT widget
@@ -12,21 +24,12 @@
  *   - promo          — daily-special promo for a SPECIALS_CALLOUT widget
  *   - daypart        — auto-suggest breakfast/lunch/dinner copy by hour
  *   - ticker         — short scrolling-ticker line
- *
- * Direct fetch to Anthropic's Claude API (no SDK install — keeps the
- * dependency surface small and Railway's docker layer lean). Streaming
- * deferred; we return the full completion in one shot — total tokens
- * are tiny (≤300 out) and the user is waiting on a modal anyway.
- *
- * Cost guardrails:
- *   - Per-tenant rate limit: 30 generations / hour (BillingService logs
- *     them as an `aiGenerationCount` so any tier can layer caps).
- *   - max_tokens: 300 — caps output cost at ~$0.005 per call on Sonnet.
- *   - Refuses when ANTHROPIC_API_KEY is missing — surfaces a friendly
- *     "AI not configured for this deploy" error rather than a vague 500.
  */
 
 import { Injectable, Logger, BadRequestException, ServiceUnavailableException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { dispatchAi, type AiProvider, coerceProvider } from './ai-providers';
+import { openAiKey } from './ai-key-cipher';
 
 export type AiIntent =
   | 'announcement'
@@ -74,17 +77,57 @@ const SYSTEM_PROMPTS: Record<AiIntent, string> = {
 export class AiService {
   private readonly logger = new Logger(AiService.name);
 
+  constructor(private readonly prisma: PrismaService) {}
+
   /** Lazy in-memory rate limiter. Tenant id → rolling-1h timestamps.
    *  Cleared on pod restart — the cap is "soft" by design. A real cap
    *  with persistence ships when we add a per-tenant License.aiQuota. */
   private readonly recentByTenant = new Map<string, number[]>();
   private readonly HOURLY_CAP = 30;
 
+  /**
+   * Resolve which provider key to use for this tenant. BYOK wins;
+   * platform key is the trial-mode fallback. Returns null if neither
+   * is configured — caller surfaces the friendly 503.
+   */
+  private async resolveProviderKey(tenantId: string): Promise<{
+    provider: AiProvider;
+    apiKey: string;
+    source: 'tenant' | 'platform';
+  } | null> {
+    // 1) Tenant BYOK
+    const tenant = await this.prisma.client.tenant.findUnique({
+      where: { id: tenantId },
+      select: { aiProvider: true, aiKeyEncrypted: true } as any,
+    }) as any;
+    if (tenant?.aiKeyEncrypted) {
+      const provider = coerceProvider(tenant.aiProvider);
+      if (provider) {
+        try {
+          const apiKey = openAiKey(tenant.aiKeyEncrypted);
+          return { provider, apiKey, source: 'tenant' };
+        } catch (e: any) {
+          // Decryption failed (master key rotation, corrupted blob).
+          // Don't crash the request — log + fall through to platform.
+          // Operator will see "AI is not configured" and re-enter the
+          // key from settings.
+          this.logger.error(`Failed to decrypt tenant AI key (${tenantId}): ${e?.message}`);
+        }
+      }
+    }
+    // 2) Platform fallback (current behavior — ANTHROPIC_API_KEY env).
+    const platformKey = process.env.ANTHROPIC_API_KEY;
+    if (platformKey) {
+      return { provider: 'anthropic', apiKey: platformKey, source: 'platform' };
+    }
+    return null;
+  }
+
   async generate(opts: AiGenerateRequest & { tenantId: string }): Promise<AiGenerateResponse> {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
+    const resolved = await this.resolveProviderKey(opts.tenantId);
+    if (!resolved) {
       throw new ServiceUnavailableException(
-        'AI is not configured on this deployment. Set ANTHROPIC_API_KEY in env to enable.',
+        'AI is not configured. Add your provider API key in Settings → Integrations, or contact your admin.',
       );
     }
     if (!opts.context || !opts.context.trim()) {
@@ -157,30 +200,39 @@ export class AiService {
 
     let raw: string;
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: 'claude-3-5-haiku-20241022', // Cheapest tier — content gen is short
-          max_tokens: 300,
-          system: SYSTEM_PROMPTS[opts.intent],
-          messages: [{ role: 'user', content: userPrompt }],
-        }),
+      const out = await dispatchAi(resolved.provider, {
+        apiKey: resolved.apiKey,
+        system: SYSTEM_PROMPTS[opts.intent],
+        userPrompt,
+        maxTokens: 300,
       });
-      if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        this.logger.warn(`Anthropic API non-2xx: ${res.status} ${body.slice(0, 200)}`);
-        throw new ServiceUnavailableException(`AI service responded ${res.status}.`);
+      if (out.errorStatus) {
+        this.logger.warn(
+          `${resolved.provider} non-2xx (${resolved.source}): ${out.errorStatus} ${(out.errorBody || '').slice(0, 200)}`,
+        );
+        // 401 from a tenant BYOK key → it's invalid. Tell the operator
+        // exactly that so they re-paste in Settings instead of bouncing
+        // around looking for a config issue. Other statuses get a
+        // generic message (provider-specific debugging is not the
+        // operator's job).
+        if (out.errorStatus === 401 && resolved.source === 'tenant') {
+          throw new ServiceUnavailableException(
+            `Your ${resolved.provider === 'anthropic' ? 'Anthropic' : 'OpenAI'} API key was rejected (401). Re-enter it in Settings → Integrations.`,
+          );
+        }
+        if (out.errorStatus === 429) {
+          throw new ServiceUnavailableException(
+            `${resolved.provider === 'anthropic' ? 'Anthropic' : 'OpenAI'} rate-limited the request. Try again in a moment.`,
+          );
+        }
+        throw new ServiceUnavailableException(
+          `AI service (${resolved.provider}) responded ${out.errorStatus}.`,
+        );
       }
-      const json = await res.json() as any;
-      raw = json?.content?.[0]?.text || '';
+      raw = out.raw;
     } catch (err: any) {
       if (err instanceof ServiceUnavailableException) throw err;
-      this.logger.error(`Anthropic fetch failed: ${err?.message}`);
+      this.logger.error(`AI dispatch failed: ${err?.message}`);
       throw new ServiceUnavailableException('AI service unreachable.');
     }
 

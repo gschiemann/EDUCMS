@@ -88,6 +88,14 @@ model Tenant {
   // pricing tier. Tenants are isolated regardless; this is just metadata
   // + UI personalization.
   vertical                        String           @default("K12") // K12 | FITNESS | RESTAURANT | RETAIL | HEALTHCARE | CORPORATE | OTHER
+  // BYOK AI integration (2026-05-04) — operator's own provider
+  // credentials, so cost shifts to them. ai_provider null means use
+  // platform default key (process.env.ANTHROPIC_API_KEY) — current
+  // free-trial behavior. Encrypted key never returned to clients.
+  aiProvider                      String?          @map("ai_provider") // 'anthropic' | 'openai'
+  aiKeyEncrypted                  String?          @map("ai_key_encrypted")
+  aiKeySetAt                      DateTime?        @map("ai_key_set_at")
+  aiKeySetByUserId                String?          @map("ai_key_set_by_user_id")
   // Per-screen billing meter. One License row per Tenant; absence means
   // "Pilot" (free tier with cap of 3 screens, no expiry). License flips
   // when an admin runs a Stripe checkout or the SUPER_ADMIN comps seats.

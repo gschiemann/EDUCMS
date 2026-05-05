@@ -16,6 +16,7 @@ import { LicenseCard } from '@/components/settings/LicenseCard';
 import { PanicContentEditor } from '@/components/settings/PanicContentEditor';
 import { EmbeddedFloorPlanView } from '@/components/floor-plans/EmbeddedFloorPlanView';
 import { BrandingSettingsCard } from '@/components/settings/BrandingSettingsCard';
+import { AiKeyCard } from '@/components/settings/AiKeyCard';
 import { DistrictSchoolsCard } from '@/components/settings/DistrictSchoolsCard';
 import { VerticalSwitcherCard } from '@/components/settings/VerticalSwitcherCard';
 import { appConfirm } from '@/components/ui/app-dialog';
@@ -169,6 +170,14 @@ export default function SettingsPage() {
         {/* Auto-branding — paste URL → CMS re-skins (Sprint 9) */}
         <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}>
           <BrandingSettingsCard />
+        </RoleGate>
+
+        {/* BYOK AI integration — operator pastes their own provider
+            key, generations route through their account, we stop
+            paying. Falls back to platform free-trial key if unset
+            and one is configured on the deployment. */}
+        <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}>
+          <AiKeyCard />
         </RoleGate>
 
         {/* District-level: list + create child schools (Sprint 12 — district hierarchy UI) */}
