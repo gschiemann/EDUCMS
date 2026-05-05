@@ -24,6 +24,7 @@
 
 import { useEffect, useState } from 'react';
 import { EditableText } from './EditableText';
+import { calendarDaysUntil } from '../countdown-utils';
 
 // ─── Palette pulled from the scene illustration ─────────────────────────
 export const BTS = {
@@ -380,12 +381,10 @@ export function BackToSchoolCountdown({ config }: { config: any } & { onConfigCh
   const target = config.targetDate ? new Date(config.targetDate) : new Date(Date.now() + 12 * 24 * 60 * 60 * 1000);
   const [now, setNow] = useState(new Date());
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(t); }, []);
-  // 2026-05-04 — single-number countdown: ceil partial days so
-  // "May 12 from May 4 evening" shows 8, not 7. See rainbow-animated
-  // for the long version. Multi-unit cluster countdowns elsewhere
-  // keep Math.floor for precise breakdown.
-  const diffMs = Math.max(0, target.getTime() - now.getTime());
-  const days = diffMs > 0 ? Math.ceil(diffMs / 86400000) : 0;
+  // 2026-05-04 — single-number countdown uses calendar-date math
+  // (target local-midnight - today local-midnight). May 4 → May 12 = 8
+  // regardless of current time. See countdown-utils.ts for rationale.
+  const days = calendarDaysUntil(target, now);
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center" style={{
       padding: '6%',

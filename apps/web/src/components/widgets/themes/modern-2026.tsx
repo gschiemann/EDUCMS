@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { calendarDaysUntil } from '../countdown-utils';
 
 const FONT_DISPLAY = "var(--font-fredoka), ui-rounded, 'Arial Rounded MT Bold', system-ui, sans-serif";
 const FONT_BODY    = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif";
@@ -561,18 +562,18 @@ export function StaffHero({ config }: { config: any }) {
 
 // 1) Big Number — minimalist huge number
 //
-// 2026-05-04 — single-number variant: ceil partial days so May 12
-// from a May 5 morning shows 7 (calendar days), not 6 (precise floor).
-// See rainbow-animated.tsx for the long version. Multi-unit
-// CountdownBlocks below keeps Math.floor for the precise d/h/m
-// breakdown.
+// 2026-05-04 — single-number variant uses calendar-date math: target
+// local-midnight minus today local-midnight, divided by 86400000.
+// May 4 → May 12 = 8 regardless of current time. The multi-unit
+// CountdownBlocks below keeps Math.floor for precise d/h/m.
 export function CountdownBigNumber({ config }: { config: any }) {
   const label = config.label || 'Countdown';
-  const target = config.targetDate ? new Date(config.targetDate) : new Date(Date.now() + 12 * 86400000);
+  const target = config.targetDate
+    ? new Date(config.targetDate.includes('T') ? config.targetDate : config.targetDate + 'T00:00:00')
+    : new Date(Date.now() + 12 * 86400000);
   const [now, setNow] = useState(new Date());
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(t); }, []);
-  const diffMs = Math.max(0, target.getTime() - now.getTime());
-  const days = diffMs > 0 ? Math.ceil(diffMs / 86400000) : 0;
+  const days = calendarDaysUntil(target, now);
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden" style={{
       background: C.paper, borderRadius: 24, fontFamily: FONT_DISPLAY,

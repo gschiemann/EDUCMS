@@ -1020,25 +1020,65 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       );
       if (mode === 'date') {
         fields.push(<TextField key="label" label="Label" value={cfg.label || ''} placeholder="Field Trip in" onChange={(v) => setField({ label: v })} />);
-        // 2026-05-04 — operator: "you removed the top tool bar date
-        // picker but didnt add it to the left side". Replace plain
-        // text input with a real <input type="date"> so operator gets
-        // a calendar picker. We strip any time portion on save so the
-        // value is always in YYYY-MM-DD shape (what every countdown
-        // renderer's date parser expects).
+        // 2026-05-04 — Date + Time picker (was just date earlier).
+        // Operator: "if we are going to give hour countdowns we
+        // should be able to set date and time for the countdown".
+        //
+        // Two side-by-side native pickers writing to a single
+        // cfg.targetDate string in ISO shape "YYYY-MM-DDTHH:MM:00".
+        // Time defaults to 00:00 (midnight) when blank. Splitting
+        // into two inputs (vs one datetime-local) keeps the date
+        // field tappable on mobile without forcing a time picker
+        // every time, and lets us label them clearly as "Date" /
+        // "Time (optional)" with a per-field help line.
+        const isoTarget = cfg.targetDate || '';
+        const datePart = (() => {
+          const m = isoTarget.match(/^(\d{4}-\d{2}-\d{2})/);
+          return m ? m[1] : '';
+        })();
+        const timePart = (() => {
+          const m = isoTarget.match(/T(\d{2}:\d{2})/);
+          return m ? m[1] : '';
+        })();
+        const setTarget = (date: string, time: string) => {
+          if (!date) {
+            setField({ targetDate: '' });
+            return;
+          }
+          // Default time to 00:00 when blank — countdown widgets
+          // already handle "YYYY-MM-DD" alone, but we save the full
+          // ISO so consumers that always parse as UTC don't drift.
+          const t = time || '00:00';
+          setField({ targetDate: `${date}T${t}:00` });
+        };
         fields.push(
           <div key="targetDate" className="space-y-1">
             <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              Target date
+              Target date &amp; time
             </label>
-            <input
-              type="date"
-              value={(cfg.targetDate || '').slice(0, 10)}
-              onChange={(e) => setField({ targetDate: e.target.value })}
-              className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-            />
-            <div className="text-[10px] text-slate-400 leading-relaxed">
-              Pick the date the countdown ends. The widget shows days/hours/minutes remaining from now.
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <input
+                  type="date"
+                  value={datePart}
+                  onChange={(e) => setTarget(e.target.value, timePart)}
+                  className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                />
+                <div className="text-[10px] text-slate-400 mt-1 leading-tight">Date</div>
+              </div>
+              <div>
+                <input
+                  type="time"
+                  value={timePart}
+                  onChange={(e) => setTarget(datePart, e.target.value)}
+                  disabled={!datePart}
+                  className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none disabled:bg-slate-50 disabled:text-slate-400"
+                />
+                <div className="text-[10px] text-slate-400 mt-1 leading-tight">Time (optional, defaults to midnight)</div>
+              </div>
+            </div>
+            <div className="text-[10px] text-slate-400 leading-relaxed pt-0.5">
+              Times are stored as wall-clock (no timezone offset) so the countdown ends when the SCREEN&apos;s local clock hits this date/time. If you set &quot;May 12, 3pm&quot; the screen counts down to 3pm in its own timezone ({(() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'detected from browser'; } catch { return 'detected from browser'; } })()}). Single-number countdowns show calendar days (May 4 → May 12 = 8); multi-unit countdowns (DAYS HRS MIN SEC) show precise time remaining.
             </div>
           </div>,
         );

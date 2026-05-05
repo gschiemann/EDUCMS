@@ -119,3 +119,51 @@ export function formatCountdownDiff(diffMs: number): { primary: string; secondar
 // Day-of-week label helpers (M T W Th F S Su)
 export const DOW_SHORT = ['Su', 'M', 'T', 'W', 'Th', 'F', 'Sa'];
 export const DOW_FULL  = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/**
+ * Calendar-day difference between target and now, in the user's LOCAL
+ * timezone. Used by single-number countdown variants where the
+ * operator's mental model is "May 4 → May 12 = 8 days" and not
+ * "from this exact moment to target midnight = 7.something days,
+ * floor to 7."
+ *
+ * 2026-05-04 — operator: "i set al of these to may 12th as the date,
+ * thats 8 days away, wtf bro" + "its still 8 days until midnight
+ * really" + "make sure it accounts for the users time zone".
+ *
+ * TIMEZONE BEHAVIOR (deliberate):
+ *   The editor's <input type="date"> returns a wall-clock date string
+ *   like "2026-05-12" with NO timezone info. We save it as
+ *   "2026-05-12T00:00:00" (also no TZ). When new Date(...) parses
+ *   that string it interprets it as midnight in whatever timezone
+ *   the running JavaScript engine is in (the browser's local TZ).
+ *
+ *   getFullYear() / getMonth() / getDate() on a Date return the
+ *   LOCAL year/month/day components. So when calendarDaysUntil runs:
+ *     - In the editor (admin's browser): "today" = admin's local
+ *       calendar date. target = May 12 in admin's local TZ.
+ *       diff = correctly counted in admin's TZ.
+ *     - On the player (kiosk at the school): "today" = school's
+ *       local calendar date. target parses as May 12 in school's
+ *       local TZ.
+ *
+ *   This is the right semantic for digital signage: "field trip on
+ *   May 12 at 3pm" means "when the school's wall clock says 3pm
+ *   May 12." The countdown ticks against the screen's own clock.
+ *   Cross-TZ multi-tenant edge case (admin in EST scheduling for a
+ *   PST screen) is intentionally interpreted as same-wall-clock.
+ *
+ * Multi-unit cluster widgets (DAYS HRS MIN SEC) use precise floor
+ * math because their breakdown has to add up exactly.
+ */
+export function calendarDaysUntil(target: Date, now: Date = new Date()): number {
+  // Zero out time component on both sides using LOCAL midnight.
+  // new Date(y,m,d) constructs a local-time date at 00:00:00.000.
+  // getFullYear/getMonth/getDate return components in the host's
+  // local timezone — this is the load-bearing piece that makes the
+  // function timezone-correct for both the editor and the player.
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const targetDay = new Date(target.getFullYear(), target.getMonth(), target.getDate());
+  const diff = Math.round((targetDay.getTime() - today.getTime()) / 86400000);
+  return Math.max(0, diff);
+}

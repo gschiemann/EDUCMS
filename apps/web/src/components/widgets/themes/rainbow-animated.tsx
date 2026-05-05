@@ -22,7 +22,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { resolveCountdownTarget } from '../countdown-utils';
+import { resolveCountdownTarget, calendarDaysUntil } from '../countdown-utils';
 
 // ─────────────────────────────────────────────────────────────────
 // Shared scale-to-fit hook — used by every component below
@@ -306,25 +306,14 @@ export function RainbowAnimatedCountdown({ config }: { config: any } & { onConfi
   // Compute live days; fall back to staticDays / countdownNumber /
   // daysLeft only if no real target was set or it's already in the
   // past.
-  // 2026-05-04 — operator: "i set al of these to may 12th as the
-  // date, thats 8 days away, wtf bro".
-  // Cause: Math.floor((target_midnight - now) / 86400000) gave 6
-  // when current time was May 5 morning and target was May 12 00:00
-  // (6.79 days). Operator naturally counts CALENDAR days: May 4 →
-  // May 12 = 8 days. Math.ceil fixes the partial-day undercounting
-  // for single-number countdowns: 6.79 → 7. If they're in a TZ
-  // where today is still May 4: 7.79 → 8. Either way matches the
-  // human "calendar days" expectation.
-  // Multi-unit widgets (CountdownBlocks digit cluster) keep using
-  // Math.floor because they decompose into d+h+m precisely; this
-  // ceil treatment is ONLY for single-number variants.
-  let num: number;
-  if (resolved?.target) {
-    const diffMs = Math.max(0, resolved.target.getTime() - now.getTime());
-    num = diffMs > 0 ? Math.ceil(diffMs / 86400000) : 0;
-  } else {
-    num = config.staticDays ?? config.countdownNumber ?? config.daysLeft ?? 3;
-  }
+  // 2026-05-04 — single-number countdown uses CALENDAR-day math
+  // (target_calendar_date - today_calendar_date in local TZ). This
+  // matches the human "8 days from May 4 to May 12" expectation
+  // regardless of what hour of the day it currently is. See
+  // countdown-utils.ts > calendarDaysUntil for the full rationale.
+  const num = resolved?.target
+    ? calendarDaysUntil(resolved.target, now)
+    : (config.staticDays ?? config.countdownNumber ?? config.daysLeft ?? 3);
   const unit = config.countdownUnit || config.unit || (num === 1 ? 'day' : 'days');
   return (
     <ScaleWrap naturalW={300} naturalH={300}>
