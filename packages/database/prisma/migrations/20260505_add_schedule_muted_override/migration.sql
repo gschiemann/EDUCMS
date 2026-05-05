@@ -1,0 +1,23 @@
+-- 2026-05-05 — Per-publish audio override on Schedule.
+--
+-- Operator: "there needs to be a section when publishing the
+-- content to the screen, put it in the same menu as overwrite or
+-- append, have mute playback option on or off".
+--
+-- Pre-fix: muted is a per-PlaylistItem column (shipped this morning).
+-- That works for "always-muted" or "always-unmuted" videos but
+-- can't express "publish this playlist to the lobby muted, and
+-- the same playlist to the cafeteria with sound" without
+-- duplicating the playlist. Operator wants the override at
+-- publish time.
+--
+-- Solution: nullable Boolean on Schedule. Manifest resolver
+-- prefers schedule.muted_override when set, otherwise falls back
+-- to playlist_items.muted. Null = honor per-item setting (current
+-- behavior preserved for every existing schedule).
+--
+-- Strict additive — no existing column touched, default NULL means
+-- no schedule changes its behavior on this migration. Safe to run
+-- on a live database with traffic.
+ALTER TABLE "schedules"
+  ADD COLUMN IF NOT EXISTS "muted_override" BOOLEAN;

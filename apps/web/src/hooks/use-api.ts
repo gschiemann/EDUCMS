@@ -357,6 +357,11 @@ export function useCreateSchedule() {
       timeEnd?: string;
       priority?: number;
       mode?: 'append' | 'replace';
+      // 2026-05-05 — schedule-level audio override (Publish modal
+      // "Mute Playback" toggle). Null/undef = honor each
+      // PlaylistItem.muted. true = force every video on this
+      // schedule muted. false = force every video unmuted.
+      mutedOverride?: boolean | null;
       // Pass `false` to save as a draft (not live). Default is true.
       // Used by the "Save" button in the Publish modal so operators can
       // stage a schedule without flipping any screens.
@@ -372,7 +377,7 @@ export function useCreateSchedule() {
 export function useUpdateSchedule() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; screenGroupId?: string; screenId?: string; daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null; priority?: number }) =>
+    mutationFn: ({ id, ...data }: { id: string; screenGroupId?: string; screenId?: string; daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null; priority?: number; mutedOverride?: boolean | null }) =>
       apiFetch(`/schedules/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['schedules'] });

@@ -1663,7 +1663,15 @@ export class ScreensController {
     // how much disk a playlist uses from the Stopped splash. Items with
     // no captured fileSize (e.g. URL-type assets, pre-hash uploads)
     // simply contribute 0.
-    const dynamicPlaylists = schedules.map(s => ({
+    const dynamicPlaylists = schedules.map(s => {
+    // 2026-05-05 — schedule-level audio override.
+    // Null = honor each PlaylistItem.muted (current behavior).
+    // True = force every video on this schedule muted.
+    // False = force every video unmuted.
+    // Lets one playlist publish to lobby muted + cafeteria with
+    // sound from the same source content.
+    const scheduleMute = (s as any).mutedOverride;
+    return ({
       id: s.playlistId,
       // Name + schedule metadata — lets the player surface "what's
       // loaded and when it plays" without a separate API round-trip.
@@ -1674,6 +1682,7 @@ export class ScreensController {
         daysOfWeek: s.daysOfWeek || null,  // "Mon,Tue,Wed,Thu,Fri" or null
         timeStart: s.timeStart || null,    // "08:00" or null
         timeEnd: s.timeEnd || null,        // "15:00" or null
+        mutedOverride: scheduleMute ?? null, // operator-facing
       },
       totalBytes: s.playlist.items.reduce(
         (sum, pi) => sum + (pi.asset.fileSize || 0),
@@ -1720,13 +1729,17 @@ export class ScreensController {
         // 'video/*' or 'image/*' for uploads.
         mime_type: pi.asset.mimeType ?? null,
         transition_type: pi.transitionType ?? null,
-        // 2026-05-05 — per-item video mute control. true = silent,
-        // false = play with sound. Player passes this straight to
-        // the <video muted> attribute. Default true preserves the
-        // previous always-muted behavior for older PlaylistItems.
-        muted: (pi as any).muted ?? true,
+        // 2026-05-05 — final muted resolution.
+        // Precedence: schedule.mutedOverride > item.muted > true.
+        // Operator can publish the SAME playlist to two screens with
+        // different audio settings by flipping mutedOverride at the
+        // schedule level — no per-item edits required.
+        muted: typeof scheduleMute === 'boolean'
+          ? scheduleMute
+          : ((pi as any).muted ?? true),
       }))
-    }));
+    });
+    });
 
     const manifestPayload: Record<string, any> = {
       version: "1.0",

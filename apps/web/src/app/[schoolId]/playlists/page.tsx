@@ -652,6 +652,14 @@ export default function PlaylistsPage() {
   const [schedTimeStart, setSchedTimeStart] = useState('08:00');
   const [schedTimeEnd, setSchedTimeEnd] = useState('15:00');
   const [schedMode, setSchedMode] = useState<'always' | 'scheduled'>('always');
+  // 2026-05-05 — schedule-level audio override picked at publish time.
+  // true  = force every video on this schedule muted
+  // false = force every video on this schedule unmuted
+  // Sent as schedule.mutedOverride to the API; manifest resolver
+  // applies this BEFORE per-item PlaylistItem.muted. Defaults true
+  // (mute) to match the prior always-muted behavior — operator flips
+  // off when they want sound on the targeted screens.
+  const [schedMuted, setSchedMuted] = useState<boolean>(true);
 
   const selectedPlaylist = playlists?.find((p: any) => p.id === selectedId);
   const playlistSchedules = (schedules || []).filter((s: any) => s.playlistId === selectedId);
@@ -955,6 +963,8 @@ export default function PlaylistsPage() {
           timeEnd: schedMode === 'scheduled' ? schedTimeEnd : undefined,
           priority: 0,
           mode: publishMode,
+          // 2026-05-05 — schedule-level audio override.
+          mutedOverride: schedMuted,
           isActive: activate,
         });
       }
@@ -974,6 +984,8 @@ export default function PlaylistsPage() {
           timeEnd: schedMode === 'scheduled' ? schedTimeEnd : undefined,
           priority: 0,
           mode: publishMode,
+          // 2026-05-05 — schedule-level audio override.
+          mutedOverride: schedMuted,
           isActive: activate,
         });
       }
@@ -1174,7 +1186,7 @@ export default function PlaylistsPage() {
                 <CheckSquare className="w-3.5 h-3.5" /> Submit for Review
               </button>
             ) : (
-              <button onClick={() => { setEditingScheduleId(null); setSchedTargets([]); setSchedMode('always'); setShowPublishModal(true); }} className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shadow-sm">
+              <button onClick={() => { setEditingScheduleId(null); setSchedTargets([]); setSchedMode('always'); setSchedMuted(true); setShowPublishModal(true); }} className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shadow-sm">
                 <CalendarDays className="w-3.5 h-3.5" /> Schedule to Screen
               </button>
             )}
@@ -1327,7 +1339,7 @@ export default function PlaylistsPage() {
                     <CalendarDays className="w-10 h-10 text-slate-200 mb-3" />
                     <p className="text-sm font-medium text-slate-400">No schedules yet</p>
                     <p className="text-xs text-slate-300 mt-1 mb-4">Publish this playlist to a screen with optional time scheduling</p>
-                    <button onClick={() => { setEditingScheduleId(null); setSchedTargets([]); setSchedMode('always'); setShowPublishModal(true); }} className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5">
+                    <button onClick={() => { setEditingScheduleId(null); setSchedTargets([]); setSchedMode('always'); setSchedMuted(true); setShowPublishModal(true); }} className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5">
                       <Plus className="w-3.5 h-3.5" /> Add Schedule
                     </button>
                   </div>
@@ -1370,6 +1382,10 @@ export default function PlaylistsPage() {
                                 setSchedDays(sched.daysOfWeek ? sched.daysOfWeek.split(',') : ['Mon','Tue','Wed','Thu','Fri']);
                                 setSchedTimeStart(sched.timeStart || '08:00');
                                 setSchedTimeEnd(sched.timeEnd || '15:00');
+                                // 2026-05-05 — load saved audio override.
+                                // Null in DB → default to true (mute) so the
+                                // toggle has a defined state in the UI.
+                                setSchedMuted(sched.mutedOverride === false ? false : true);
                                 setShowPublishModal(true);
                               }}
                               className="p-1.5 rounded-lg text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
@@ -1752,6 +1768,39 @@ export default function PlaylistsPage() {
                   )}
                 </div>
               )}
+
+              {/* 2026-05-05 — Operator: "there needs to be a section
+                  when publishing the content to the screen, put it in
+                  the same menu as overwrite or append, have mute
+                  playback option on or off". Schedule-level audio
+                  override — wins over per-PlaylistItem.muted at
+                  manifest-resolve time. Lets operator publish the
+                  same playlist muted in the lobby and unmuted in the
+                  cafeteria without re-editing the source playlist. */}
+              <div className="mb-4">
+                <p className="block text-xs font-semibold text-slate-600 mb-1.5">Mute Playback</p>
+                <div className="flex bg-slate-100 rounded-lg p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setSchedMuted(true)}
+                    className={`flex-1 px-3 py-2 text-xs font-semibold rounded-md transition-colors ${schedMuted ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400'}`}
+                  >
+                    On (Mute videos)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSchedMuted(false)}
+                    className={`flex-1 px-3 py-2 text-xs font-semibold rounded-md transition-colors ${!schedMuted ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400'}`}
+                  >
+                    Off (Play with sound)
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1.5 leading-tight">
+                  {schedMuted
+                    ? 'Every video on this schedule plays silent. Safe for hallways, classrooms during instruction, late-night signage.'
+                    : 'Every video on this schedule plays with audio. Use for announcements, anthems, pep rallies. Kiosk autoplays normally; web preview may need a click.'}
+                </p>
+              </div>
 
               {schedMode === 'scheduled' && (
                 <div className="space-y-4 mb-4 p-4 bg-slate-50 rounded-xl border border-slate-100">

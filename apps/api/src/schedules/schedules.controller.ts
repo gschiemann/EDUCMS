@@ -53,6 +53,13 @@ export class SchedulesController {
       timeEnd?: string;      // "15:00"
       priority?: number;
       mode?: 'append' | 'replace';
+      // 2026-05-05 — per-publish audio override. Null = honor each
+      // PlaylistItem.muted (default behavior). True = force every
+      // video on this schedule muted. False = force every video
+      // unmuted. Lets the operator publish the same playlist to
+      // the lobby muted and the cafeteria with sound without
+      // editing per-item flags.
+      mutedOverride?: boolean | null;
       // Save as a DRAFT (isActive = false). Lets operators stage
       // a schedule ahead of time — e.g. build a "Friday pep rally"
       // rotation on Monday — and flip it live with the on/off
@@ -139,6 +146,8 @@ export class SchedulesController {
         timeEnd: body.timeEnd || null,
         priority: body.priority ?? 0,
         mode: mode,
+        // 2026-05-05 — accept null/true/false; null = honor item-level.
+        mutedOverride: body.mutedOverride === undefined ? null : body.mutedOverride,
         isActive: willBeActive,
       },
       include: {
@@ -174,6 +183,9 @@ export class SchedulesController {
       timeStart?: string | null;
       timeEnd?: string | null;
       priority?: number;
+      // 2026-05-05 — see create() for shape. Null clears the override
+      // and falls back to per-item PlaylistItem.muted.
+      mutedOverride?: boolean | null;
     },
   ) {
     const schedule = await this.prisma.client.schedule.findFirst({
@@ -221,6 +233,11 @@ export class SchedulesController {
     if (body.timeStart !== undefined) data.timeStart = body.timeStart || null;
     if (body.timeEnd !== undefined) data.timeEnd = body.timeEnd || null;
     if (body.priority !== undefined) data.priority = body.priority;
+    // 2026-05-05 — explicit undefined check so a caller passing null
+    // can CLEAR the override (back to per-item behavior). Without the
+    // explicit check `body.mutedOverride || null` would coerce false
+    // to null and lose the "force unmuted" state.
+    if (body.mutedOverride !== undefined) data.mutedOverride = body.mutedOverride;
 
     const res = await this.prisma.client.schedule.update({
       where: { id },

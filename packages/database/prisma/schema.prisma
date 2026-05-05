@@ -592,6 +592,13 @@ model Schedule {
   timeEnd       String?      @map("time_end")
   priority      Int          @default(0)
   mode          String       @default("replace") @map("mode")
+  // 2026-05-05 — per-publish audio override. When non-null, the
+  // manifest resolver forces every video item under this schedule to
+  // (mutedOverride=true → muted) or (false → unmuted) regardless of
+  // the per-PlaylistItem.muted setting. Lets the operator publish the
+  // SAME playlist to the lobby muted and the cafeteria unmuted
+  // without rewriting per-item flags. Null = honor per-item setting.
+  mutedOverride Boolean?     @map("muted_override")
   isActive      Boolean      @default(true) @map("is_active")
   screen        Screen?      @relation(fields: [screenId], references: [id])
   screenGroup   ScreenGroup? @relation(fields: [screenGroupId], references: [id])
