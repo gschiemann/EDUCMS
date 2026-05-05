@@ -18,7 +18,8 @@
     ]
   },
   "deploy": {
-    "startCommand": "node apps/api/dist/main.js",
+    "//": "Auto-apply pending Prisma migrations BEFORE booting the API. 2026-05-04 — operator hit a string of 'tables don't exist on the DB yet' errors after every feature that added a migration (streaming integrations, BYOK AI, AI quota) because the prior startCommand was `node apps/api/dist/main.js` with no migrate step. `prisma migrate deploy` is idempotent (skips already-applied migrations) so running it on every boot is safe. If a migration is malformed the boot fails fast and the Railway restart policy below retries 10× — better than silently running with a stale schema.",
+    "startCommand": "pnpm --filter @cms/database run db:deploy && node apps/api/dist/main.js",
     "healthcheckPath": "/api/v1/health",
     "healthcheckTimeout": 60,
     "numReplicas": 1,
