@@ -47,9 +47,8 @@ export function TopContextToolbar() {
   const isBellSchedule = zone?.widgetType === 'BELL_SCHEDULE';
   const cfg = (zone?.defaultConfig || {}) as any;
   const weatherUnits = ['metric', 'celsius', 'c'].includes(String(cfg.units || '').toLowerCase()) ? 'metric' : 'imperial';
-  const tickerText = Array.isArray(cfg.messages) && cfg.messages.length
-    ? cfg.messages.join('\n')
-    : (typeof cfg.text === 'string' ? cfg.text : '');
+  // (Previously held tickerText — used by the now-removed isTicker
+  // block above. Ticker text content is edited in the left sidebar.)
 
   // ── Active-field + scope tracking ────────────────────────────────
   // activeFieldKey is the most-recent [data-field] the operator
@@ -422,41 +421,27 @@ export function TopContextToolbar() {
           </div>
         </div>
       )}
-      {isTicker && (
-        <div className="flex items-end gap-3 flex-wrap">
-          {/* Speed toggle: slow / normal / fast */}
-          <div className="min-w-[220px]">
-            <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Speed</span>
-            <div className="flex gap-1">
-              {(['slow', 'normal', 'fast'] as const).map((opt) => (
-                <button
-                  key={opt}
-                  type="button"
-                  onClick={() => setField({ speed: opt })}
-                  className={`flex-1 h-9 rounded-lg text-xs font-bold transition-colors border shadow-sm ${
-                    (cfg.speed || 'normal') === opt
-                      ? 'bg-indigo-600 border-indigo-600 text-white'
-                      : 'bg-white border-slate-200/60 text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  {opt}
-                </button>
-              ))}
-            </div>
-          </div>
-          {/* Ticker text textarea */}
-          <div className="min-w-[320px]">
-            <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Ticker Text</span>
-            <textarea
-              value={tickerText}
-              onChange={(e) => setField({ text: e.target.value, messages: e.target.value.split('\n') })}
-              rows={2}
-              placeholder="Enter scrolling ticker text..."
-              className="w-full px-2.5 py-1.5 rounded-lg text-sm border border-slate-200/60 shadow-sm focus:ring-2 focus:ring-indigo-600 focus:border-transparent resize-none"
-            />
-          </div>
-        </div>
-      )}
+      {/*
+        2026-05-04 — operator: "why do we have the option to change those
+        settings on the top toolbar, it should stay on the left side toolbar
+        we have toolbars surrounding the entire screen now... bottom floating
+        is for the text edits, sizing, color, fonts, the left side is
+        controlling the widget and what content goes in the widget"
+
+        Removed the isTicker block here (was Speed buttons + Ticker Text
+        textarea). Both controls now live ONLY on the left sidebar
+        PropertiesPanel where they belong by the operator's mental model.
+
+        Speed bug was also a key-name mismatch: this block wrote
+        cfg.speed, the v2 ticker renderer read cfg.style.animationSpeed.
+        TickerWidgets.tsx now coerces top-level cfg.speed → animationSpeed
+        in resolveTickerStyle(), so the left-sidebar dropdown actually
+        affects scroll speed for the first time.
+
+        DO NOT re-add a Speed control here — keep widget-specific props
+        on the left sidebar. The top toolbar is for cross-cutting
+        scope/text actions only.
+      */}
       {isBellSchedule && (
         <div className="flex items-end gap-3 flex-wrap">
           {/* Show current period toggle */}

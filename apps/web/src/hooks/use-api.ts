@@ -1181,9 +1181,13 @@ export function useUsbIngestEvents() {
 
 // ─── Brand Kit ──────────────────────────────────────────────────
 export function useTenantBranding() {
+  // 2026-05-04 — was hitting /tenants/me/branding which doesn't exist
+  // (silently 404'd, BrandingProvider received null forever, the whole
+  // brand context system was inert). Real endpoint is /branding/me —
+  // matches what BrandingSettingsCard and BrandStyleInjector use.
   return useQuery<any>({
     queryKey: ['tenant-branding'],
-    queryFn: () => apiFetch('/tenants/me/branding'),
+    queryFn: () => apiFetch('/branding/me'),
     retry: false,
   });
 }

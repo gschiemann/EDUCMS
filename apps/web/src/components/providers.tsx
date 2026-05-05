@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
+import { BrandingProvider } from '@/lib/branding-context';
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -30,7 +31,10 @@ export default function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      {/* BrandingProvider must be INSIDE QueryClientProvider — it uses
+          useTenantBranding() which is a useQuery hook. Outside, the
+          hook throws "No QueryClient set." */}
+      <BrandingProvider>{children}</BrandingProvider>
     </QueryClientProvider>
   );
 }

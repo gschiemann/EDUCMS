@@ -1133,6 +1133,14 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
         />,
       );
       fields.push(<ColorField key="color" label="Text color" value={cfg.color || '#fbbf24'} onChange={(v) => setField({ color: v })} />);
+      // 2026-05-04 — operator: "i tried a ticker and no way tpo change
+      // the background on a ticker". v2 ticker renderers read
+      // config.style.bgColor; resolveTickerStyle() in TickerWidgets.tsx
+      // feeds top-level cfg.bgColor into that path so the picker below
+      // works against any of the 5 ticker variants. Empty string clears
+      // the override and falls through to brand surface (if branded) /
+      // widget default.
+      fields.push(<ColorField key="bgColor" label="Background color" value={cfg.bgColor || ''} onChange={(v) => setField({ bgColor: v })} />);
       // 2026-05-03 — v2 TICKER_* variants (NeonLed, PaperPress, CrayonTrain,
       // GlassFlow, OpsFeed) read `c.stamp` for the eyebrow/category badge
       // ("LIVE", "EXTRA", "FEED") and `c.separator` for what divides
