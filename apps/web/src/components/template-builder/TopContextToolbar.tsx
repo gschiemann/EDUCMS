@@ -396,31 +396,14 @@ export function TopContextToolbar() {
           </div>
         </div>
       )}
-      {isCountdown && (
-        <div className="flex items-end gap-3 flex-wrap">
-          {/* Target date input */}
-          <div className="min-w-[180px]">
-            <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Target Date</span>
-            <input
-              type="date"
-              value={cfg.targetDate || ''}
-              onChange={(e) => setField({ targetDate: e.target.value })}
-              className="w-full h-9 px-2.5 rounded-lg text-sm border border-slate-200/60 shadow-sm focus:ring-2 focus:ring-indigo-600 focus:border-transparent"
-            />
-          </div>
-          {/* Label input */}
-          <div className="min-w-[180px]">
-            <span className="block text-[10px] font-semibold text-slate-500 mb-1.5">Label</span>
-            <input
-              type="text"
-              value={cfg.label || ''}
-              onChange={(e) => setField({ label: e.target.value })}
-              placeholder="e.g., Days Until..."
-              className="w-full h-9 px-2.5 rounded-lg text-sm border border-slate-200/60 shadow-sm focus:ring-2 focus:ring-indigo-600 focus:border-transparent"
-            />
-          </div>
-        </div>
-      )}
+      {/*
+        2026-05-04 — operator: "found the date picker at the top menu,
+        keep shit in the left menu". Removed the isCountdown block
+        (Target Date + Label inputs) — both already exist in the left
+        sidebar PropertiesPanel. Top toolbar stays scoped to
+        cross-cutting actions only, same rule we applied to the
+        ticker block.
+      */}
       {/*
         2026-05-04 — operator: "why do we have the option to change those
         settings on the top toolbar, it should stay on the left side toolbar

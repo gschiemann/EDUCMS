@@ -900,31 +900,82 @@ function CountdownWidget({ config, compact, onConfigChange }: { config: any; com
   const mins = Math.floor((diff % 3600000) / 60000);
   const secs = Math.floor((diff % 60000) / 1000);
   const label = config.label || resolved?.label || 'Days Remaining';
+  const eyebrow = (config.eyebrow as string | undefined) || '';
+
+  // 2026-05-04 — operator: "fix every countdown widget to work as
+  // expected ... can change background color, or font, or size, or
+  // anything." Pre-fix the legacy countdown hard-coded its bg + digit
+  // colors + label color, so all editor styling fields (cfg.color /
+  // cfg.bgColor / cfg.fontFamily / cfg.fontSize) were dead-end fields.
+  // Now: each one threads through the right place in the render so
+  // the operator sees an immediate visible change.
+  const accentColor = config.color || '#475569';
+  const digitBg = config.bgColor && config.bgColor !== '' ? null : 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)';
+  const digitTextColor = config.color || 'white';
+  const fontFamily = config.fontFamily || undefined;
+  const fontSizeOverride = typeof config.fontSize === 'number' ? `${config.fontSize}px` : undefined;
+  const containerBg = config.bgColor || 'linear-gradient(135deg, #f8fafc, #e2e8f0)';
 
   const digitBox = (val: number, lbl: string) => (
     <div className="flex flex-col items-center">
       <div style={{
-        background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
+        // Operator's bgColor pick wins on the digit boxes too — when
+        // they pick a brand color the dark default is replaced by a
+        // semi-transparent version of their pick so the white digits
+        // stay readable. When no override, keep the legacy dark slab.
+        background: config.bgColor ? `${config.bgColor}` : digitBg!,
         borderRadius: compact ? 4 : 8,
         padding: compact ? '0.2em 0.4em' : '0.3em 0.6em',
         minWidth: compact ? '1.8em' : '2.5em',
         textAlign: 'center' as const,
         boxShadow: '0 4px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1)',
       }}>
-        <span style={{ fontSize: compact ? '1.2em' : '2.2em', fontWeight: 800, color: 'white', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+        <span style={{
+          fontSize: fontSizeOverride ?? (compact ? '1.2em' : '2.2em'),
+          fontWeight: 800,
+          color: digitTextColor,
+          lineHeight: 1,
+          fontVariantNumeric: 'tabular-nums',
+          fontFamily,
+        }}>
           {val.toString().padStart(2, '0')}
         </span>
       </div>
-      <span style={{ fontSize: compact ? '0.35em' : '0.5em', fontWeight: 600, color: '#64748b', marginTop: '0.3em', textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>
+      <span style={{
+        fontSize: compact ? '0.35em' : '0.5em',
+        fontWeight: 600,
+        color: accentColor,
+        marginTop: '0.3em',
+        textTransform: 'uppercase' as const,
+        letterSpacing: '0.08em',
+        fontFamily,
+      }}>
         {lbl}
       </span>
     </div>
   );
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden" style={{ background: 'linear-gradient(135deg, #f8fafc, #e2e8f0)' }}>
+    <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden" style={{
+      background: containerBg,
+      fontFamily,
+    }}>
+      {!compact && eyebrow && (
+        <div style={{
+          fontSize: '0.45em', fontWeight: 700, color: accentColor, opacity: 0.8,
+          marginBottom: '0.3em', textTransform: 'uppercase' as const, letterSpacing: '0.2em',
+          fontFamily,
+        }}>
+          {eyebrow}
+        </div>
+      )}
       {!compact && (
-        <div data-field="label" style={{ fontSize: '0.6em', fontWeight: 700, color: '#475569', marginBottom: '0.6em', textTransform: 'uppercase' as const, letterSpacing: '0.1em', whiteSpace: 'pre-wrap' as const }}>
+        <div data-field="label" style={{
+          fontSize: '0.6em', fontWeight: 700, color: accentColor,
+          marginBottom: '0.6em', textTransform: 'uppercase' as const, letterSpacing: '0.1em',
+          whiteSpace: 'pre-wrap' as const,
+          fontFamily,
+        }}>
           {label}
         </div>
       )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { useTemplate } from '@/hooks/use-api';
@@ -17,6 +17,28 @@ export default function TemplateBuilderV2Page() {
   const flagOn = isFeatureEnabled(FLAGS.TEMPLATE_BUILDER_V2);
   const { data, isLoading, error } = useTemplate(templateId);
 
+  // 2026-05-04 — operator: "when you hit discard on a template it
+  // flashes to template not found screen for 1 second then back to
+  // the main template dashboard, it shouldnt show that not found
+  // screen". The flash happens because Discard navigates to the
+  // dashboard but for a few frames the builder is still mounted —
+  // useTemplate returns isLoading=false + data=null, fallthrough to
+  // the not-found UI, then Next finishes the route change and
+  // unmounts. Fix: gate the not-found UI behind a 600ms delay so
+  // any in-flight navigation lands first; show the loading spinner
+  // during the grace window. Only triggers ON ERROR — happy-path
+  // never sees this delay.
+  const [showNotFound, setShowNotFound] = useState(false);
+  const isErrorState = !!error || (!isLoading && (!data || (data as any).error));
+  useEffect(() => {
+    if (!isErrorState) {
+      setShowNotFound(false);
+      return;
+    }
+    const t = setTimeout(() => setShowNotFound(true), 600);
+    return () => clearTimeout(t);
+  }, [isErrorState]);
+
   useEffect(() => {
     if (!flagOn) {
       router.replace(`/${schoolId}/templates`);
@@ -31,7 +53,7 @@ export default function TemplateBuilderV2Page() {
     );
   }
 
-  if (isLoading) {
+  if (isLoading || (isErrorState && !showNotFound)) {
     return (
       <div className="fixed inset-0 bg-white flex items-center justify-center">
         <Loader2 className="w-5 h-5 animate-spin text-slate-400" aria-hidden />
@@ -39,7 +61,7 @@ export default function TemplateBuilderV2Page() {
     );
   }
 
-  if (error || !data || (data as any).error) {
+  if (isErrorState) {
     return (
       <div className="fixed inset-0 bg-white flex flex-col items-center justify-center gap-3 p-6 text-center">
         <AlertCircle className="w-8 h-8 text-rose-500" aria-hidden />
