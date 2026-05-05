@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { calendarDaysUntil } from '../countdown-utils';
+import { calendarDaysUntil, resolveCountdownTarget } from '../countdown-utils';
 
 const FONT_DISPLAY = "var(--font-fredoka), ui-rounded, 'Arial Rounded MT Bold', system-ui, sans-serif";
 const FONT_BODY    = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif";
@@ -562,17 +562,18 @@ export function StaffHero({ config }: { config: any }) {
 
 // 1) Big Number — minimalist huge number
 //
-// 2026-05-04 — single-number variant uses calendar-date math: target
-// local-midnight minus today local-midnight, divided by 86400000.
-// May 4 → May 12 = 8 regardless of current time. The multi-unit
-// CountdownBlocks below keeps Math.floor for precise d/h/m.
+// 2026-05-04 — supports BOTH modes via resolveCountdownTarget:
+//   - 'date' mode → calendar-day math (May 4 → May 12 = 8)
+//   - 'recurring' mode → days/hours/min until next lunch period etc.
+// Single-number widget so we render only the days component, but the
+// resolved label flips to "Next lunch" or whatever the recurring
+// helper picks.
 export function CountdownBigNumber({ config }: { config: any }) {
-  const label = config.label || 'Countdown';
-  const target = config.targetDate
-    ? new Date(config.targetDate.includes('T') ? config.targetDate : config.targetDate + 'T00:00:00')
-    : new Date(Date.now() + 12 * 86400000);
   const [now, setNow] = useState(new Date());
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(t); }, []);
+  const resolved = resolveCountdownTarget(config, now);
+  const target = resolved?.target ?? new Date(now.getTime() + 12 * 86400000);
+  const label = config.label || resolved?.label || 'Countdown';
   const days = calendarDaysUntil(target, now);
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden" style={{
@@ -590,12 +591,16 @@ export function CountdownBigNumber({ config }: { config: any }) {
   );
 }
 
-// 2) Day blocks — broken into d/h/m
+// 2) Day blocks — broken into d/h/m. Multi-unit cluster — keeps
+// precise floor math because the breakdown has to add up exactly.
+// Now supports recurring mode via resolveCountdownTarget so lunch-
+// period countdowns work.
 export function CountdownBlocks({ config }: { config: any }) {
-  const label = config.label || 'Countdown';
-  const target = config.targetDate ? new Date(config.targetDate) : new Date(Date.now() + 12 * 86400000);
   const [now, setNow] = useState(new Date());
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(t); }, []);
+  const resolved = resolveCountdownTarget(config, now);
+  const target = resolved?.target ?? new Date(now.getTime() + 12 * 86400000);
+  const label = config.label || resolved?.label || 'Countdown';
   const diff = Math.max(0, target.getTime() - now.getTime());
   const days = Math.floor(diff / 86400000);
   const hours = Math.floor((diff % 86400000) / 3600000);

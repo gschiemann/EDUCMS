@@ -24,7 +24,7 @@
 
 import { useEffect, useState } from 'react';
 import { EditableText } from './EditableText';
-import { calendarDaysUntil } from '../countdown-utils';
+import { calendarDaysUntil, resolveCountdownTarget } from '../countdown-utils';
 
 // ─── Palette pulled from the scene illustration ─────────────────────────
 export const BTS = {
@@ -377,13 +377,14 @@ export function BackToSchoolStaff({ config, onConfigChange }: { config: any; onC
 // CHALK COUNTDOWN — chalk numerals on the small chalkboard area
 // ═══════════════════════════════════════════════════════════════════════
 export function BackToSchoolCountdown({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
-  const label = config.label || 'Field Trip in';
-  const target = config.targetDate ? new Date(config.targetDate) : new Date(Date.now() + 12 * 24 * 60 * 60 * 1000);
   const [now, setNow] = useState(new Date());
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(t); }, []);
-  // 2026-05-04 — single-number countdown uses calendar-date math
-  // (target local-midnight - today local-midnight). May 4 → May 12 = 8
-  // regardless of current time. See countdown-utils.ts for rationale.
+  // 2026-05-04 — supports both date + recurring modes via shared
+  // resolveCountdownTarget. Single-number countdown so renders only
+  // calendar-day count of the resolved target.
+  const resolved = resolveCountdownTarget(config, now);
+  const target = resolved?.target ?? new Date(now.getTime() + 12 * 24 * 60 * 60 * 1000);
+  const label = config.label || resolved?.label || 'Field Trip in';
   const days = calendarDaysUntil(target, now);
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center" style={{
