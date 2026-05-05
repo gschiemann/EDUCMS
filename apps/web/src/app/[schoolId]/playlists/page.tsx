@@ -2076,33 +2076,64 @@ export default function PlaylistsPage() {
                 // different screens, it need to allow playing multiple
                 // playlists just not two on the same screen".
                 //
-                // Cause: playlistScreenMap aggregates screens from ALL
-                // schedules (active + inactive). A leftover inactive
-                // schedule on Screen S2 caused the conflict check to
-                // think URL was "occupying" S2, even though only its
-                // S1 schedule was actually active. Enabling Video on
-                // S2 then prompted to replace URL.
+                // Operator follow-up after my first attempt at this fix:
+                //   "you fucked up, look at this screen cap, i have two
+                //    playlists on the same 2 screens active, didnt get
+                //    any popup, it just let me activate it"
                 //
-                // Fix: compute conflict-check screen sets from the
-                // RAW schedules list filtered by isActive=true. Only
-                // screens currently being played on by an active
-                // schedule count as "occupied".
+                // The fix has TWO sides and they need DIFFERENT filters:
+                //
+                //   • pl (the one being switched ON) — PUT /playlists/:id/active
+                //     activates EVERY schedule that belongs to pl, regardless
+                //     of its current isActive flag. So pl's planned-active
+                //     target set = ALL of pl's schedule targets, which is
+                //     exactly what playlistScreenMap[pl.id] aggregates.
+                //
+                //   • other playlists — only count as "occupying" a screen
+                //     if they currently have an isActive=true schedule on
+                //     it. A stale inactive schedule on the same screen
+                //     should NOT trigger the prompt (that was the bug
+                //     before — partner saw "Replace URL?" prompt when URL
+                //     was actually OFF, just had a leftover schedule).
+                //
+                // First-attempt bug: I filtered BOTH sides to isActive=true.
+                // That made pl's "planned-active" set empty when pl was
+                // OFF (it has zero active schedules), so the overlap check
+                // could never fire. Operator activated two playlists onto
+                // the same screens with no prompt. Hence the asymmetric
+                // filter below.
+                // Expand both sides to screen-level so the overlap
+                // check works regardless of whether either side targets
+                // by direct screenId or by a screenGroupId that contains
+                // some of pl's screens. playlistScreenMap.screens is
+                // already group-expanded; for `other` we expand inline
+                // because we need to filter to its CURRENTLY active
+                // schedules first.
+                const groupLookup = new Map<string, any>(
+                  (screenGroups || []).map((g: any) => [g.id, g]),
+                );
+                const myMap = playlistScreenMap[pl.id];
+                const myScreenIds = new Set<string>((myMap?.screens || []).map((s: any) => s.id));
                 const liveSchedules = (schedules || []).filter((s: any) => s.isActive);
-                const myActiveScreens = new Set<string>(
-                  liveSchedules.filter((s: any) => s.playlistId === pl.id && s.screenId).map((s: any) => s.screenId),
-                );
-                const myActiveGroups = new Set<string>(
-                  liveSchedules.filter((s: any) => s.playlistId === pl.id && s.screenGroupId).map((s: any) => s.screenGroupId),
-                );
                 const conflicts: any[] = [];
                 for (const other of playlists || []) {
                   if (other.id === pl.id) continue;
                   const otherActive = liveSchedules.filter((s: any) => s.playlistId === other.id);
                   if (otherActive.length === 0) continue;
-                  const overlap = otherActive.some((s: any) =>
-                    (s.screenId && myActiveScreens.has(s.screenId)) ||
-                    (s.screenGroupId && myActiveGroups.has(s.screenGroupId)),
-                  );
+                  const otherActiveScreens = new Set<string>();
+                  for (const sched of otherActive) {
+                    if (sched.screenId) otherActiveScreens.add(sched.screenId);
+                    if (sched.screenGroupId) {
+                      const grp = groupLookup.get(sched.screenGroupId) || sched.screenGroup;
+                      if (grp?.screens) {
+                        for (const s of grp.screens) otherActiveScreens.add(s.id);
+                      }
+                    }
+                  }
+                  let overlap = false;
+                  for (const sid of myScreenIds) {
+                    if (otherActiveScreens.has(sid)) { overlap = true; break; }
+                  }
                   if (overlap) conflicts.push(other);
                 }
                 if (conflicts.length > 0) {
