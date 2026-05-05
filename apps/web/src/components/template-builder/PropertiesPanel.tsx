@@ -1020,7 +1020,28 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       );
       if (mode === 'date') {
         fields.push(<TextField key="label" label="Label" value={cfg.label || ''} placeholder="Field Trip in" onChange={(v) => setField({ label: v })} />);
-        fields.push(<TextField key="targetDate" label="Target date (YYYY-MM-DD or full ISO)" value={cfg.targetDate || ''} placeholder="2026-05-15" onChange={(v) => setField({ targetDate: v })} />);
+        // 2026-05-04 — operator: "you removed the top tool bar date
+        // picker but didnt add it to the left side". Replace plain
+        // text input with a real <input type="date"> so operator gets
+        // a calendar picker. We strip any time portion on save so the
+        // value is always in YYYY-MM-DD shape (what every countdown
+        // renderer's date parser expects).
+        fields.push(
+          <div key="targetDate" className="space-y-1">
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              Target date
+            </label>
+            <input
+              type="date"
+              value={(cfg.targetDate || '').slice(0, 10)}
+              onChange={(e) => setField({ targetDate: e.target.value })}
+              className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+            />
+            <div className="text-[10px] text-slate-400 leading-relaxed">
+              Pick the date the countdown ends. The widget shows days/hours/minutes remaining from now.
+            </div>
+          </div>,
+        );
         // 2026-05-03 — v2 widgets (CountdownNeonDigits, GlassRing, OpsTimer)
         // read `c.eyebrow` for the small line above the headline. Without
         // this field the legacy editor only writes `label`, leaving the

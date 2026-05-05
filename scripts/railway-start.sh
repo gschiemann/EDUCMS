@@ -34,16 +34,27 @@ if [ -z "$DATABASE_URL" ]; then
 fi
 
 echo "[railway-start] step 2/3 — applying pending Prisma migrations"
-# Use the binary directly (avoids pnpm-workspace path quirks). The
-# Dockerfile's runner stage copies node_modules from the builder, so
-# this path is guaranteed to exist.
-if [ -x "./node_modules/.bin/prisma" ]; then
-  ./node_modules/.bin/prisma migrate deploy --schema=packages/database/prisma/schema.prisma
-  echo "[railway-start] migrations applied successfully"
+
+# CI smoke test escape hatch. The deploy-reliability docker-build job
+# boots this image with a FAKE DATABASE_URL pointing at 127.0.0.1
+# (no postgres) just to verify the API binary loads + listens. We
+# don't want to fail that test on a migrate-can't-connect — it's
+# expected. Real Railway runs WITHOUT this var, so migrations apply
+# normally there.
+if [ "$SKIP_MIGRATE" = "true" ] || [ "$SKIP_MIGRATE" = "1" ]; then
+  echo "[railway-start] SKIP_MIGRATE=$SKIP_MIGRATE set — skipping prisma migrate deploy"
 else
-  echo "[railway-start] WARN: prisma binary not found at ./node_modules/.bin/prisma"
-  echo "  Falling back to npx (network roundtrip)"
-  npx --no prisma migrate deploy --schema=packages/database/prisma/schema.prisma
+  # Use the binary directly (avoids pnpm-workspace path quirks). The
+  # Dockerfile's runner stage copies node_modules from the builder,
+  # so this path is guaranteed to exist.
+  if [ -x "./node_modules/.bin/prisma" ]; then
+    ./node_modules/.bin/prisma migrate deploy --schema=packages/database/prisma/schema.prisma
+    echo "[railway-start] migrations applied successfully"
+  else
+    echo "[railway-start] WARN: prisma binary not found at ./node_modules/.bin/prisma"
+    echo "  Falling back to npx (network roundtrip)"
+    npx --no prisma migrate deploy --schema=packages/database/prisma/schema.prisma
+  fi
 fi
 
 echo "[railway-start] step 3/3 — booting the API"

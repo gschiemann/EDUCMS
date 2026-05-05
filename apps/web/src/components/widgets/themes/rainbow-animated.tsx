@@ -22,6 +22,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { resolveCountdownTarget } from '../countdown-utils';
 
 // ─────────────────────────────────────────────────────────────────
 // Shared scale-to-fit hook — used by every component below
@@ -285,11 +286,34 @@ export function RainbowAnimatedAnnouncement({ config }: { config: any } & { onCo
 
 // ─────────────────────────────────────────────────────────────────
 // COUNTDOWN — 12-point starburst with bouncing number
+//
+// 2026-05-04 — operator: "fix the date picker on every fucking
+// countdown widget now". This variant was reading dead config keys
+// (countdownNumber, daysLeft) instead of computing days from
+// config.targetDate via the shared resolveCountdownTarget helper.
+// Net effect: operator picked a date, the rendered widget showed
+// hard-coded "3" or whatever staticDays they manually typed —
+// looked broken because the date picker had no rendered effect.
+// Fixed to use the shared helper + a per-second tick so seconds
+// roll over visibly. Falls back to staticDays only when no
+// targetDate is set.
 // ─────────────────────────────────────────────────────────────────
 export function RainbowAnimatedCountdown({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
-  const label = config.label || config.countdownLabel || 'Field Trip in';
-  const num = config.countdownNumber ?? config.daysLeft ?? 3;
-  const unit = config.countdownUnit || config.unit || 'days';
+  const [now, setNow] = useState(new Date());
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
+  const resolved = resolveCountdownTarget(config, now);
+  const label = config.label || config.countdownLabel || resolved?.label || 'Field Trip in';
+  // Compute live days; fall back to staticDays / countdownNumber /
+  // daysLeft only if no real target was set or it's already in the
+  // past.
+  let num: number;
+  if (resolved?.target) {
+    const diffMs = Math.max(0, resolved.target.getTime() - now.getTime());
+    num = Math.floor(diffMs / 86400000);
+  } else {
+    num = config.staticDays ?? config.countdownNumber ?? config.daysLeft ?? 3;
+  }
+  const unit = config.countdownUnit || config.unit || (num === 1 ? 'day' : 'days');
   return (
     <ScaleWrap naturalW={300} naturalH={300}>
       <GlobalAnimations />
