@@ -72,9 +72,33 @@ export function BrandKitPanel() {
   const setMeta = useBuilderStore((s) => s.setMeta);
   const selectedIds = useBuilderStore((s) => s.selectedIds);
   const zones = useBuilderStore((s) => s.zones);
+  const addZone = useBuilderStore((s) => s.addZone);
+  const select = useBuilderStore((s) => s.select);
 
   const [applyingBrand, setApplyingBrand] = useState(false);
   const [applyToast, setApplyToast] = useState<string | null>(null);
+  // Always-visible per-action toast: "Applied teal to Ticker" /
+  // "Select a widget first" / "Hex copied". Lives separately from
+  // applyToast (which is the bigger "applied to N widgets" message
+  // tied to the Apply-across button) so we can fire one without
+  // clobbering the other.
+  const [actionToast, setActionToast] = useState<{ kind: 'ok' | 'info'; text: string } | null>(null);
+
+  /** Show a one-shot toast under the panel actions. */
+  const flash = (kind: 'ok' | 'info', text: string) => {
+    setActionToast({ kind, text });
+    setTimeout(() => setActionToast((t) => (t?.text === text ? null : t)), 3000);
+  };
+
+  /** Friendly name for a widget type so toasts read naturally. */
+  const widgetLabel = (wt?: string) => {
+    if (!wt) return 'widget';
+    return wt
+      .toLowerCase()
+      .split('_')
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+  };
 
   /**
    * 2026-05-04 — operator feedback: "i added a braning to the template
@@ -342,31 +366,101 @@ export function BrandKitPanel() {
     }
   };
 
-  const handleColorClick = (hex: string) => {
+  /**
+   * 2026-05-04 — operator: "i tried to drag the logo didnt work, i
+   * tried to select a color didnt work, make this a useful window
+   * here....i still can only apply a background, what else can i
+   * test?"
+   *
+   * Pre-fix: handleColorClick only applied if zone.defaultConfig.color
+   * was already defined (which is rare — most widgets render with
+   * inline-styled colors and never declare cfg.color). Falsely silent.
+   *
+   * Post-fix: applies cfg.color to ANY selected widget. Most widgets
+   * either consume cfg.color directly, or have a brand-fallback path
+   * that picks it up. If shift is held when clicking, applies as
+   * background instead (cfg.bgColor) — covers tickers, callouts,
+   * announcement zones where the user wants a colored stripe.
+   * Always shows a toast confirming what happened.
+   */
+  const handleColorClick = (hex: string, label: string, e?: React.MouseEvent) => {
+    const wantsBg = !!e?.shiftKey;
     if (selectedIds.length === 1) {
       const zoneId = selectedIds[0];
       const zone = zones.find((z) => z.id === zoneId);
-      if (zone && zone.defaultConfig?.color !== undefined) {
+      if (zone) {
+        const key = wantsBg ? 'bgColor' : 'color';
         updateZone(zoneId, {
-          defaultConfig: { ...zone.defaultConfig, color: hex },
+          defaultConfig: { ...(zone.defaultConfig || {}), [key]: hex },
         });
+        flash('ok', `Applied ${label.toLowerCase()} to ${widgetLabel(zone.widgetType)} ${wantsBg ? 'background' : 'text'}.`);
         return;
       }
     }
-    navigator.clipboard.writeText(hex);
+    // No selection → fall back to copying the hex so the operator can
+    // paste it into a custom field manually.
+    navigator.clipboard.writeText(hex).then(
+      () => flash('info', `${hex} copied. Select a widget on the canvas first to apply directly.`),
+      () => flash('info', `Select a widget on the canvas first to apply this color.`),
+    );
   };
 
-  const handleFontClick = (fontName: string, _fontType: 'heading' | 'body') => {
+  /**
+   * Pre-fix: handleFontClick only applied if widgetType === 'TEXT'.
+   * Skipped RICH_TEXT, ANNOUNCEMENT, TICKER, COUNTDOWN — every other
+   * text-bearing widget the operator might select.
+   *
+   * Post-fix: applies fontFamily to ANY selected widget. Widgets that
+   * don't honor fontFamily simply ignore it (no visible regression).
+   */
+  const handleFontClick = (fontName: string, fontType: 'heading' | 'body') => {
+    if (selectedIds.length !== 1) {
+      flash('info', `Select a widget on the canvas first, then click a font.`);
+      return;
+    }
+    const zoneId = selectedIds[0];
+    const zone = zones.find((z) => z.id === zoneId);
+    if (!zone) return;
+    updateZone(zoneId, {
+      defaultConfig: { ...(zone.defaultConfig || {}), fontFamily: fontName },
+    });
+    flash('ok', `Applied ${fontType} font (${fontName}) to ${widgetLabel(zone.widgetType)}.`);
+  };
+
+  /**
+   * 2026-05-04 — "i tried to drag the logo didnt work". HTML5 drag
+   * isn't wired to the canvas's drop handler so dragging a brand-kit
+   * logo into a zone is currently a no-op. Until that's plumbed
+   * through (separate change), the explicit button below is the
+   * working path:
+   *
+   *   - If the operator has a LOGO zone selected, replace its
+   *     assetUrl + logoUrl with the brand logo.
+   *   - Else create a new LOGO zone pre-filled with the brand logo,
+   *     select it (so the operator can immediately reposition).
+   */
+  const handleInsertLogoWidget = () => {
+    const url = brandKit?.logoUrl;
+    if (!url) return;
+    // Selected logo zone → fill it with the brand logo
     if (selectedIds.length === 1) {
       const zoneId = selectedIds[0];
       const zone = zones.find((z) => z.id === zoneId);
-      if (zone && zone.widgetType === 'TEXT') {
+      if (zone && zone.widgetType === 'LOGO') {
         updateZone(zoneId, {
-          defaultConfig: { ...zone.defaultConfig, fontFamily: fontName },
+          defaultConfig: { ...(zone.defaultConfig || {}), assetUrl: url, logoUrl: url },
         });
+        flash('ok', `Logo applied to existing LOGO widget.`);
         return;
       }
     }
+    // Else create a fresh LOGO zone pre-filled and select it.
+    const newId = addZone('LOGO');
+    updateZone(newId, {
+      defaultConfig: { assetUrl: url, logoUrl: url },
+    });
+    select([newId]);
+    flash('ok', `Logo widget added to canvas. Drag to reposition.`);
   };
 
   if (isLoading || !templateId) {
@@ -473,6 +567,15 @@ export function BrandKitPanel() {
             ✓ {applyToast}
           </div>
         )}
+        {actionToast && (
+          <div className={`text-[10px] font-medium leading-relaxed border rounded px-2 py-1 ${
+            actionToast.kind === 'ok'
+              ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+              : 'text-slate-700 bg-slate-50 border-slate-200'
+          }`}>
+            {actionToast.kind === 'ok' ? '✓ ' : 'ℹ '} {actionToast.text}
+          </div>
+        )}
         {isSystem && (
           <div className="text-[10px] text-amber-600 leading-relaxed">
             System presets can't be re-styled. Duplicate first.
@@ -486,12 +589,28 @@ export function BrandKitPanel() {
           <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
             Logo
           </div>
-          <div className="w-24 h-24 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden">
-            <img
-              src={brandKit.logoUrl}
-              alt="School logo"
-              className="max-w-full max-h-full object-contain"
-            />
+          <div className="flex items-start gap-3">
+            <div className="w-24 h-24 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden flex-shrink-0">
+              <img
+                src={brandKit.logoUrl}
+                alt="School logo"
+                className="max-w-full max-h-full object-contain"
+                draggable={false}
+              />
+            </div>
+            <div className="flex-1 space-y-2 min-w-0">
+              <button
+                onClick={handleInsertLogoWidget}
+                disabled={isSystem}
+                className="w-full px-2 py-1.5 rounded bg-indigo-600 text-white text-[11px] font-semibold hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
+                title="If a LOGO widget is selected, fills it with this logo. Otherwise adds a new LOGO widget to the canvas."
+              >
+                Insert as logo widget
+              </button>
+              <div className="text-[10px] text-slate-500 leading-relaxed">
+                Adds a LOGO widget pre-filled with this image. Or select an existing LOGO widget first to swap its image.
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -513,8 +632,8 @@ export function BrandKitPanel() {
             ].filter((c) => !!c.hex).map((item) => (
               <button
                 key={item.label}
-                onClick={() => handleColorClick(item.hex as string)}
-                title={`${item.label}: ${item.hex} (click to apply or copy)`}
+                onClick={(e) => handleColorClick(item.hex as string, item.label, e)}
+                title={`${item.label}: ${item.hex} — click to set selected widget's text color, Shift+click for background, or copy the hex.`}
                 className="group relative w-8 h-8 rounded cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-indigo-400 transition-all"
                 style={{ backgroundColor: item.hex }}
               >
@@ -524,8 +643,11 @@ export function BrandKitPanel() {
               </button>
             ))}
           </div>
-          <div className="text-[10px] text-slate-500 leading-relaxed">
-            Click a swatch to apply to the selected text zone, or copy the hex.
+          <div className="text-[10px] text-slate-500 leading-relaxed space-y-0.5">
+            <div>Select a widget on the canvas first, then:</div>
+            <div className="pl-2"><span className="font-mono bg-slate-100 px-1 rounded">click</span> a swatch → set text color</div>
+            <div className="pl-2"><span className="font-mono bg-slate-100 px-1 rounded">shift+click</span> a swatch → set background color</div>
+            <div className="pl-2">No selection? The hex copies to your clipboard.</div>
           </div>
         </div>
       )}
@@ -541,6 +663,7 @@ export function BrandKitPanel() {
               <button
                 onClick={() => handleFontClick(brandKit.fontHeading!, 'heading')}
                 className="w-full px-3 py-3 rounded border border-slate-200 hover:bg-slate-50 transition-colors text-left"
+                title="Click to apply this font to the selected widget."
               >
                 <div className="text-sm font-semibold" style={{ fontFamily: brandKit.fontHeading }}>
                   {brandKit.fontHeading}
@@ -552,6 +675,7 @@ export function BrandKitPanel() {
               <button
                 onClick={() => handleFontClick(brandKit.fontBody!, 'body')}
                 className="w-full px-3 py-3 rounded border border-slate-200 hover:bg-slate-50 transition-colors text-left"
+                title="Click to apply this font to the selected widget."
               >
                 <div className="text-sm" style={{ fontFamily: brandKit.fontBody }}>
                   {brandKit.fontBody}
@@ -559,6 +683,9 @@ export function BrandKitPanel() {
                 <div className="text-[10px] text-slate-500 mt-1">Body font</div>
               </button>
             )}
+          </div>
+          <div className="text-[10px] text-slate-500 leading-relaxed">
+            Select a widget on the canvas, then click a font to apply it.
           </div>
         </div>
       )}
