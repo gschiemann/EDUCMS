@@ -1249,34 +1249,113 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       break;
     case 'LUNCH_MENU':
       fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Lunch Menu" onChange={(v) => setField({ title: v })} />);
-      fields.push(<TextAreaField key="menu" label="Menu (Day: items — one per line)" value={cfg.menu || ''} placeholder="Monday: Pizza, Salad" onChange={(v) => {
-        // 2026-05-03 — mirror the string menu into v2's structured
-        // `days` shape so v2 LunchMenuWidgets render the typed
-        // content. v2 expects:
-        //   { day: 'MON', entree: 'Pizza', sides: ['Salad'], dessert: '' }
-        // Best-effort parse: first comma-separated item is the
-        // entree, rest are sides. Day name normalized to 3-letter
-        // upper. Empty parses fall through gracefully.
+      // 2026-05-04 — operator: "menus should keep the day of the week
+      // and allow we to easily update them and add emojis or images,
+      // anything that makes sense like the ones from our preset
+      // templates". The Animated Cafeteria preset already has a rich
+      // per-day editor (WeekMenuEditor — Mon/Tue/Wed/Thu/Fri tabs +
+      // emoji picker + dish name + allergens + price). Reuse it
+      // here and translate the CafeWeek shape into the v2
+      // LunchMenu's `days` shape on every write so:
+      //   • Operator gets the same friendly editor
+      //   • Existing templates that wrote `weekMenu` keep working
+      //   • v2 widgets that read `days` see the full week's content
+      // Plain "Menu" textarea kept below the rich editor as a power-
+      // user fallback / quick-paste path.
+      fields.push(
+        <WeekMenuEditor
+          key="weekMenu"
+          value={cfg.weekMenu}
+          onChange={(weekMenu) => {
+            // Translate CafeWeek (mon..fri arrays of {emoji,name,meta,price})
+            // into the v2 LunchMenu `days` shape ({ day, entree, sides[],
+            // dessert }). First item per day = entree; remaining items =
+            // sides. Emoji prefixed onto each name so v2 widgets that
+            // don't have a dedicated emoji slot still surface it visually.
+            const DAY_CODES: Array<[keyof typeof weekMenu, string]> = [
+              ['monday', 'MON'], ['tuesday', 'TUE'], ['wednesday', 'WED'],
+              ['thursday', 'THU'], ['friday', 'FRI'],
+            ];
+            const days = DAY_CODES
+              .filter(([k]) => (weekMenu[k] || []).length > 0)
+              .map(([k, code]) => {
+                const items = weekMenu[k] || [];
+                const labelOf = (it: { emoji?: string; name?: string; meta?: string }) => {
+                  const e = (it.emoji || '').trim();
+                  const n = (it.name || '').trim();
+                  return e && !/^https?:\/\/|^data:/i.test(e) ? `${e} ${n}` : n;
+                };
+                const entree = labelOf(items[0]);
+                const sides = items.slice(1, -1).map(labelOf).filter(Boolean);
+                const last = items.length >= 3 ? labelOf(items[items.length - 1]) : '';
+                const dessert = items.length >= 3 ? last : '';
+                const finalSides = items.length >= 3
+                  ? sides
+                  : items.slice(1).map(labelOf).filter(Boolean);
+                return { day: code, entree, sides: finalSides, dessert };
+              });
+            setField({ weekMenu, days });
+          }}
+        />,
+      );
+      fields.push(<TextAreaField key="menu" label='Power-user / paste shortcut — one item per line, OR "Day: items"' value={cfg.menu || ''} placeholder={'pizza\nsalad\napple slices\ncookie\n\n— or for the full week —\n\nMonday: Pizza, Salad, Apple\nTuesday: Tacos, Beans, Churro'} onChange={(v) => {
+        // 2026-05-04 — operator: "updated menu info and nothing shows
+        // on the menu". Pre-fix: parser ONLY accepted lines with a
+        // colon ("Day: items"). Operator typed "pizza\nsalad" with
+        // no day prefix, parser returned empty days array, v2 widget
+        // fell through to the hardcoded "Cheese Pizza / Garden Salad
+        // / Apple Slices / Cookie" placeholder.
+        //
+        // Fix: TWO accepted formats. If ANY line has a "Day:" prefix
+        // we parse the per-day shape (preserves the existing weekly
+        // menu workflow). Otherwise treat ALL lines as TODAY's menu
+        // — first non-empty line becomes the entree, rest become
+        // sides (last one auto-promotes to dessert if there are 3+
+        // items, matching the v2 widget's expected shape).
         const DAY_MAP: Record<string, string> = {
           monday: 'MON', tuesday: 'TUE', wednesday: 'WED', thursday: 'THU', friday: 'FRI',
           mon: 'MON', tue: 'TUE', wed: 'WED', thu: 'THU', fri: 'FRI',
         };
-        const days = v.split('\n').filter(Boolean).map((line) => {
-          const colonIdx = line.indexOf(':');
-          if (colonIdx === -1) return null;
-          const dayRaw = line.slice(0, colonIdx).trim().toLowerCase();
-          const itemsRaw = line.slice(colonIdx + 1).trim();
-          const items = itemsRaw.split(',').map((s) => s.trim()).filter(Boolean);
-          if (!items.length) return null;
-          return {
-            day: DAY_MAP[dayRaw] || dayRaw.slice(0, 3).toUpperCase(),
-            entree: items[0],
-            sides: items.slice(1),
-            dessert: '',
-          };
-        }).filter((d): d is NonNullable<typeof d> => d !== null);
+        const lines = v.split('\n').map((s) => s.trim()).filter(Boolean);
+        const hasDayPrefix = lines.some((line) => {
+          const i = line.indexOf(':');
+          if (i === -1) return false;
+          const dayRaw = line.slice(0, i).trim().toLowerCase();
+          return !!DAY_MAP[dayRaw];
+        });
+        let days: Array<{ day: string; entree: string; sides: string[]; dessert: string }> = [];
+        if (hasDayPrefix) {
+          days = lines.map((line) => {
+            const colonIdx = line.indexOf(':');
+            if (colonIdx === -1) return null;
+            const dayRaw = line.slice(0, colonIdx).trim().toLowerCase();
+            const itemsRaw = line.slice(colonIdx + 1).trim();
+            const items = itemsRaw.split(',').map((s) => s.trim()).filter(Boolean);
+            if (!items.length) return null;
+            return {
+              day: DAY_MAP[dayRaw] || dayRaw.slice(0, 3).toUpperCase(),
+              entree: items[0],
+              sides: items.slice(1),
+              dessert: '',
+            };
+          }).filter((d): d is NonNullable<typeof d> => d !== null);
+        } else if (lines.length > 0) {
+          // Plain item list → today's menu only. Pick TODAY's day code
+          // so v2 widgets that look up "today's day" find a match.
+          const TODAY_DOW = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][new Date().getDay()];
+          const entree = lines[0];
+          const rest = lines.slice(1);
+          // If 3+ items, promote the LAST one to dessert (e.g.
+          // "pizza / salad / apples / cookie" reads as entree=pizza,
+          // sides=[salad, apples], dessert=cookie). Better than a
+          // 4-item sides array for widgets that have a dedicated
+          // dessert slot.
+          const dessert = rest.length >= 3 ? rest[rest.length - 1] : '';
+          const sides = dessert ? rest.slice(0, -1) : rest;
+          days = [{ day: TODAY_DOW, entree, sides, dessert }];
+        }
         setField({ menu: v, meals: undefined, days });
-      }} rows={6} />);
+      }} rows={8} />);
       // 2026-05-02 — operator: "Lunch menu: can't edit font size
       // per-widget — properties panel doesn't expose a font-size
       // control for this widget type, OR exposes one that doesn't
