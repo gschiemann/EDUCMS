@@ -35,7 +35,8 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Check } from 'lucide-react';
+import { Check, Sparkles } from 'lucide-react';
+import { useBranding } from '@/lib/branding-context';
 
 // ─── Constants ───────────────────────────────────────────────────────
 
@@ -335,35 +336,105 @@ export function ColorPickerBody({ value, onChange }: { value: string; onChange: 
     el.addEventListener('pointercancel', up);
   };
 
+  // 2026-05-04 — surface tenant brand colors as the FIRST row of
+  // swatches. Operator: "the branding colors should show up everywhere,
+  // when i go to chnage the font color my brand should be an option
+  // somehere." useBranding() returns null when no provider is mounted
+  // OR no brand kit is configured — in either case the row is hidden
+  // and we fall back to the existing 24-color standard palette only.
+  const brand = useBranding();
+  const brandSwatches: { hex: string; label: string }[] = (() => {
+    const out: { hex: string; label: string }[] = [];
+    const p = brand?.palette || {};
+    // Order matters — primary first because that's the "the brand color".
+    const order: { key: string; label: string }[] = [
+      { key: 'primary', label: 'Brand primary' },
+      { key: 'accent', label: 'Brand accent' },
+      { key: 'ink', label: 'Brand text' },
+      { key: 'surface', label: 'Brand surface' },
+      { key: 'surfaceAlt', label: 'Brand surface alt' },
+      { key: 'primaryHover', label: 'Brand primary hover' },
+      { key: 'success', label: 'Brand success' },
+      { key: 'warn', label: 'Brand warn' },
+      { key: 'danger', label: 'Brand danger' },
+    ];
+    for (const { key, label } of order) {
+      const v = (p as any)[key];
+      if (typeof v === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(v)) {
+        out.push({ hex: v, label });
+      }
+    }
+    return out;
+  })();
+
   return (
     <>
+      {brandSwatches.length > 0 && (
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-violet-600">
+            <Sparkles className="w-3 h-3" />
+            <span>Brand colors</span>
+          </div>
+          <div className="grid grid-cols-12 gap-1">
+            {brandSwatches.map((s, i) => {
+              const selected = hexText.toLowerCase() === s.hex.toLowerCase();
+              return (
+                <button
+                  key={`brand-${i}-${s.hex}`}
+                  type="button"
+                  onClick={() => {
+                    const next = hexToHsv(s.hex);
+                    if (next) setHsv(next);
+                  }}
+                  className="w-full aspect-square rounded-md border border-violet-200 ring-1 ring-violet-100 hover:scale-110 transition-transform focus:outline-none focus:ring-2 focus:ring-violet-400 flex items-center justify-center"
+                  style={{ background: s.hex }}
+                  aria-label={`${s.label}: ${s.hex}`}
+                  title={`${s.label}: ${s.hex}`}
+                  aria-pressed={selected}
+                >
+                  {selected && (
+                    <Check className="w-3 h-3 text-white drop-shadow" aria-hidden />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       {/* Quick swatches — pick a standard color. The HSV jumps to that
           color exactly, so the SV cursor lands on the right point in
           the gradient (no more "I clicked red, cursor is in black corner"). */}
-      <div className="grid grid-cols-12 gap-1">
-        {STANDARD_COLORS.map(c => {
-          const selected = hexText.toLowerCase() === c.toLowerCase();
-          // Pick check-mark contrast based on swatch lightness
-          const lightish = c === '#ffffff' || c === '#cbd5e1' || c === '#94a3b8' || c === '#eab308' || c === '#f59e0b' || c === '#84cc16';
-          return (
-            <button
-              key={c}
-              type="button"
-              onClick={() => {
-                const next = hexToHsv(c);
-                if (next) setHsv(next);
-              }}
-              className="w-full aspect-square rounded-md border border-slate-200 hover:scale-110 transition-transform focus:outline-none focus:ring-2 focus:ring-indigo-400 flex items-center justify-center"
-              style={{ background: c }}
-              aria-label={`Set color to ${c}`}
-              aria-pressed={selected}
-            >
-              {selected && (
-                <Check className={`w-3 h-3 ${lightish ? 'text-slate-700' : 'text-white'}`} aria-hidden />
-              )}
-            </button>
-          );
-        })}
+      <div className="space-y-1">
+        {brandSwatches.length > 0 && (
+          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            Standard colors
+          </div>
+        )}
+        <div className="grid grid-cols-12 gap-1">
+          {STANDARD_COLORS.map(c => {
+            const selected = hexText.toLowerCase() === c.toLowerCase();
+            // Pick check-mark contrast based on swatch lightness
+            const lightish = c === '#ffffff' || c === '#cbd5e1' || c === '#94a3b8' || c === '#eab308' || c === '#f59e0b' || c === '#84cc16';
+            return (
+              <button
+                key={c}
+                type="button"
+                onClick={() => {
+                  const next = hexToHsv(c);
+                  if (next) setHsv(next);
+                }}
+                className="w-full aspect-square rounded-md border border-slate-200 hover:scale-110 transition-transform focus:outline-none focus:ring-2 focus:ring-indigo-400 flex items-center justify-center"
+                style={{ background: c }}
+                aria-label={`Set color to ${c}`}
+                aria-pressed={selected}
+              >
+                {selected && (
+                  <Check className={`w-3 h-3 ${lightish ? 'text-slate-700' : 'text-white'}`} aria-hidden />
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* SV plane — saturation horizontally, value vertically.

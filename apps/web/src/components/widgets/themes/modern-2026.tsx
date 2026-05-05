@@ -236,64 +236,177 @@ export function TextOutlined({ config }: { config: any }) {
 // ════════════════════════════════════════════════════════════════════════
 
 // 1) Modern Card — soft pastel gradient w/ accent bar
+//
+// 2026-05-04 — operator: "wtf are all these fields that i can type
+// text in but do nothing." Pre-fix this variant ignored icon, cta,
+// priority, color, bgColor, fontFamily — the editor exposed them all.
+// Now every editor field has a visible effect:
+//   • icon       → glyph next to badge
+//   • badge      → badge text (cfg.badgeLabel OR cfg.label, both
+//                  written by editor)
+//   • title      → big headline
+//   • message    → body
+//   • cta        → "→ <text>" footer row when set
+//   • priority   → accent bar + tinted background (low/normal/high/urgent)
+//   • color      → overrides accent (operator wins over priority)
+//   • bgColor    → overrides surface tint
+//   • fontFamily → overrides FONT_DISPLAY/BODY for the whole card
 export function AnnouncementModernCard({ config }: { config: any }) {
   const title = config.title || 'Big news today!';
   const body = config.message || config.body || 'Tap to edit.';
-  const badge = config.badgeLabel || '📣 Announcement';
+  const badge = config.badgeLabel || config.label || '📣 Announcement';
+  const icon = config.icon || '';
+  const cta = config.cta || '';
+  const priority = (config.priority || 'normal') as 'low' | 'normal' | 'high' | 'urgent';
+  const PRIORITY_THEME: Record<string, { accent1: string; accent2: string; tint: string }> = {
+    low:    { accent1: '#0ea5e9', accent2: '#06b6d4', tint: '#f0f9ff' },
+    normal: { accent1: C.indigo,  accent2: C.pink,    tint: C.paperSoft },
+    high:   { accent1: '#f59e0b', accent2: '#ef4444', tint: '#fffbeb' },
+    urgent: { accent1: '#ef4444', accent2: '#dc2626', tint: '#fef2f2' },
+  };
+  const t = PRIORITY_THEME[priority] || PRIORITY_THEME.normal;
+  const accent1 = config.color || t.accent1;
+  const accent2 = config.color || t.accent2;
+  const fontFamily = config.fontFamily || FONT_BODY;
+  const headingFamily = config.fontFamily || FONT_DISPLAY;
   return (
     <div className="absolute inset-0 overflow-hidden flex" style={{
-      background: `linear-gradient(135deg, #FFFFFF 0%, ${C.paperSoft} 100%)`,
+      background: config.bgColor
+        ? config.bgColor
+        : `linear-gradient(135deg, #FFFFFF 0%, ${t.tint} 100%)`,
       borderRadius: 24, boxShadow: `0 12px 32px rgba(15,23,42,0.10)`,
-      fontFamily: FONT_BODY,
+      fontFamily,
     }}>
-      <div style={{ width: 8, flexShrink: 0, background: `linear-gradient(180deg, ${C.indigo}, ${C.pink})` }} />
+      <div style={{ width: 8, flexShrink: 0, background: `linear-gradient(180deg, ${accent1}, ${accent2})` }} />
       <div className="flex-1 flex flex-col justify-center" style={{ padding: '5% 6%' }}>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85em', fontWeight: 700,
-          background: `${C.indigo}15`, color: C.indigo,
+          background: `${accent1}15`, color: accent1,
           padding: '0.4em 0.9em', borderRadius: 999, width: 'fit-content', marginBottom: '0.8em',
           letterSpacing: '0.05em', textTransform: 'uppercase',
-        }}>{badge}</div>
-        <div style={{ fontSize: '2.2em', fontWeight: 700, color: C.ink, lineHeight: 1.1, letterSpacing: '-0.02em', marginBottom: '0.4em', fontFamily: FONT_DISPLAY }}>{title}</div>
+        }}>
+          {icon && <span style={{ fontSize: '1.1em', lineHeight: 1 }}>{icon}</span>}
+          <span>{badge}</span>
+        </div>
+        <div style={{ fontSize: '2.2em', fontWeight: 700, color: C.ink, lineHeight: 1.1, letterSpacing: '-0.02em', marginBottom: '0.4em', fontFamily: headingFamily }}>{title}</div>
         <div style={{ fontSize: '1.15em', fontWeight: 500, color: C.inkSoft, lineHeight: 1.5 }}>{body}</div>
+        {cta && (
+          <div style={{
+            marginTop: '0.8em', fontSize: '0.95em', fontWeight: 700,
+            color: accent1, letterSpacing: '0.02em',
+            display: 'inline-flex', alignItems: 'center', gap: 6, width: 'fit-content',
+          }}>
+            <span style={{ display: 'inline-block', transform: 'translateY(-1px)' }}>→</span>
+            <span>{cta}</span>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 // 2) Spotlight — bold full-width with white-on-color
+//
+// 2026-05-04 — same field-honoring upgrade as AnnouncementModernCard
+// (icon, badge, cta, priority, color, bgColor, fontFamily). Color
+// override on Spotlight rotates the whole gradient since it IS the
+// background of the variant; if operator picks one solid color we
+// render flat instead of gradient.
 export function AnnouncementSpotlight({ config }: { config: any }) {
   const title = config.title || 'Important update';
   const body = config.message || config.body || 'Tap to edit.';
+  const badge = config.badgeLabel || config.label || '📣 Spotlight';
+  const icon = config.icon || '';
+  const cta = config.cta || '';
+  const priority = (config.priority || 'normal') as 'low' | 'normal' | 'high' | 'urgent';
+  const PRIORITY_GRADIENT: Record<string, [string, string]> = {
+    low:    ['#0ea5e9', '#06b6d4'],
+    normal: [C.indigo,  C.pink],
+    high:   ['#f59e0b', '#ef4444'],
+    urgent: ['#dc2626', '#7f1d1d'],
+  };
+  const [g1, g2] = PRIORITY_GRADIENT[priority] || PRIORITY_GRADIENT.normal;
+  const fontFamily = config.fontFamily || FONT_DISPLAY;
+  const bodyFamily = config.fontFamily || FONT_BODY;
   return (
     <div className="absolute inset-0 overflow-hidden flex flex-col justify-center" style={{
-      background: `linear-gradient(135deg, ${C.indigo} 0%, ${C.pink} 100%)`,
+      background: config.bgColor
+        ? config.bgColor
+        : config.color
+          ? `linear-gradient(135deg, ${config.color} 0%, ${config.color} 100%)`
+          : `linear-gradient(135deg, ${g1} 0%, ${g2} 100%)`,
       borderRadius: 24, padding: '6%',
-      fontFamily: FONT_DISPLAY, color: 'white',
-      boxShadow: `0 20px 50px ${C.indigo}40`,
+      fontFamily, color: 'white',
+      boxShadow: `0 20px 50px ${g1}40`,
     }}>
-      <div style={{ fontSize: '0.9em', fontWeight: 700, opacity: 0.9, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: '0.4em' }}>📣 Spotlight</div>
+      <div style={{ fontSize: '0.9em', fontWeight: 700, opacity: 0.9, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: '0.4em', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+        {icon && <span style={{ fontSize: '1.2em', lineHeight: 1 }}>{icon}</span>}
+        <span>{badge}</span>
+      </div>
       <div style={{ fontSize: '2.6em', fontWeight: 800, lineHeight: 1.05, letterSpacing: '-0.025em', marginBottom: '0.4em' }}>{title}</div>
-      <div style={{ fontSize: '1.25em', fontWeight: 500, opacity: 0.95, lineHeight: 1.45, fontFamily: FONT_BODY }}>{body}</div>
+      <div style={{ fontSize: '1.25em', fontWeight: 500, opacity: 0.95, lineHeight: 1.45, fontFamily: bodyFamily }}>{body}</div>
+      {cta && (
+        <div style={{
+          marginTop: '0.8em', fontSize: '1em', fontWeight: 700,
+          letterSpacing: '0.02em', color: 'white',
+          display: 'inline-flex', alignItems: 'center', gap: 6, width: 'fit-content',
+          opacity: 0.95,
+        }}>
+          <span style={{ display: 'inline-block', transform: 'translateY(-1px)' }}>→</span>
+          <span>{cta}</span>
+        </div>
+      )}
     </div>
   );
 }
 
-// 3) Glass Card
+// 3) Glass Card — frosted, accepts every editor field same as the
+// other Modern announcement variants.
 export function AnnouncementGlass({ config }: { config: any }) {
   const title = config.title || 'Welcome!';
   const body = config.message || config.body || 'Soft, modern, frosted.';
+  const badge = config.badgeLabel || config.label || '';
+  const icon = config.icon || '';
+  const cta = config.cta || '';
+  const priority = (config.priority || 'normal') as 'low' | 'normal' | 'high' | 'urgent';
+  const PRIORITY_ACCENT: Record<string, string> = {
+    low: '#0ea5e9', normal: C.indigo, high: '#f59e0b', urgent: '#ef4444',
+  };
+  const accent = config.color || PRIORITY_ACCENT[priority] || C.indigo;
+  const fontFamily = config.fontFamily || FONT_DISPLAY;
+  const bodyFamily = config.fontFamily || FONT_BODY;
   return (
     <div className="absolute inset-0 overflow-hidden flex flex-col justify-center" style={{
-      background: 'rgba(255,255,255,0.65)',
+      background: config.bgColor || 'rgba(255,255,255,0.65)',
       backdropFilter: 'blur(20px) saturate(180%)',
       WebkitBackdropFilter: 'blur(20px) saturate(180%)',
       border: '1px solid rgba(255,255,255,0.8)',
       borderRadius: 28, padding: '6%',
       boxShadow: `0 16px 50px rgba(15,23,42,0.10), inset 0 1px 0 rgba(255,255,255,0.5)`,
-      fontFamily: FONT_DISPLAY, color: C.ink,
+      fontFamily, color: C.ink,
     }}>
+      {(badge || icon) && (
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85em',
+          fontWeight: 700, color: accent, background: `${accent}15`,
+          padding: '0.4em 0.9em', borderRadius: 999, width: 'fit-content',
+          marginBottom: '0.6em', letterSpacing: '0.05em', textTransform: 'uppercase',
+        }}>
+          {icon && <span style={{ fontSize: '1.1em', lineHeight: 1 }}>{icon}</span>}
+          {badge && <span>{badge}</span>}
+        </div>
+      )}
       <div style={{ fontSize: '2.4em', fontWeight: 700, lineHeight: 1.05, letterSpacing: '-0.02em', marginBottom: '0.4em' }}>{title}</div>
-      <div style={{ fontSize: '1.2em', fontWeight: 500, color: C.inkSoft, lineHeight: 1.5, fontFamily: FONT_BODY }}>{body}</div>
+      <div style={{ fontSize: '1.2em', fontWeight: 500, color: C.inkSoft, lineHeight: 1.5, fontFamily: bodyFamily }}>{body}</div>
+      {cta && (
+        <div style={{
+          marginTop: '0.8em', fontSize: '0.95em', fontWeight: 700, color: accent,
+          letterSpacing: '0.02em',
+          display: 'inline-flex', alignItems: 'center', gap: 6, width: 'fit-content',
+        }}>
+          <span style={{ display: 'inline-block', transform: 'translateY(-1px)' }}>→</span>
+          <span>{cta}</span>
+        </div>
+      )}
     </div>
   );
 }

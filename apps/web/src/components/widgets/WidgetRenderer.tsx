@@ -1075,43 +1075,89 @@ function AnnouncementWidget({ config, compact, onConfigChange }: { config: any; 
   if (config.theme === 'high-school-athletics') return <AthleticsAnnouncement config={config} onConfigChange={onConfigChange} />;
   if (config.theme === 'middle-school-hall') return <MSHallAnnouncement config={config} onConfigChange={onConfigChange} />;
   if (config.theme === 'sunshine-academy') return <SunshineAcademyAnnouncement config={config} compact={compact} onConfigChange={onConfigChange} />;
-  const message = config.message || 'Important announcement will appear here';
+  // 2026-05-04 — operator: "wtf are all these fields that i can type
+  // text in but do nothing." Pre-fix the legacy "Default / Base"
+  // theme rendered ONLY message + priority badge. title, label, icon,
+  // cta were exposed in the editor but ignored on render. Fixed
+  // below: every field the editor surfaces now affects this fallback
+  // render. cfg.color / cfg.bgColor / cfg.fontFamily are ALSO
+  // honored for the Apply-brand-across-template flow.
+  const message = config.message || config.body || '';
+  const title = config.title || '';
   const priority = config.priority || 'normal';
+  const badgeLabel = (config.badgeLabel || config.label || priority) as string;
+  const icon = config.icon || '';
+  const cta = config.cta || '';
 
-  const themes: Record<string, { bg: string; accent: string; icon: string; text: string; badge: string }> = {
-    low:    { bg: 'linear-gradient(135deg, #f0f9ff, #e0f2fe)', accent: '#0ea5e9', icon: '#0284c7', text: '#0c4a6e', badge: '#bae6fd' },
-    normal: { bg: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', accent: '#22c55e', icon: '#16a34a', text: '#14532d', badge: '#bbf7d0' },
-    high:   { bg: 'linear-gradient(135deg, #fffbeb, #fef3c7)', accent: '#f59e0b', icon: '#d97706', text: '#78350f', badge: '#fde68a' },
-    urgent: { bg: 'linear-gradient(135deg, #fef2f2, #fecaca)', accent: '#ef4444', icon: '#dc2626', text: '#7f1d1d', badge: '#fca5a5' },
+  const themes: Record<string, { bg: string; accent: string; iconColor: string; text: string; badge: string }> = {
+    low:    { bg: 'linear-gradient(135deg, #f0f9ff, #e0f2fe)', accent: '#0ea5e9', iconColor: '#0284c7', text: '#0c4a6e', badge: '#bae6fd' },
+    normal: { bg: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', accent: '#22c55e', iconColor: '#16a34a', text: '#14532d', badge: '#bbf7d0' },
+    high:   { bg: 'linear-gradient(135deg, #fffbeb, #fef3c7)', accent: '#f59e0b', iconColor: '#d97706', text: '#78350f', badge: '#fde68a' },
+    urgent: { bg: 'linear-gradient(135deg, #fef2f2, #fecaca)', accent: '#ef4444', iconColor: '#dc2626', text: '#7f1d1d', badge: '#fca5a5' },
   };
   const t = themes[priority] || themes.normal;
+  const accentColor = config.color || t.accent;
+  const textColor = config.color || t.text;
+  const fontFamily = config.fontFamily || undefined;
 
   return (
-    <div className="absolute inset-0 flex overflow-hidden" style={{ background: t.bg }}>
+    <div className="absolute inset-0 flex overflow-hidden" style={{
+      background: config.bgColor || t.bg,
+      fontFamily,
+    }}>
       {/* Accent bar */}
-      <div style={{ width: '3%', minWidth: 3, background: t.accent, flexShrink: 0 }} />
+      <div style={{ width: '3%', minWidth: 3, background: accentColor, flexShrink: 0 }} />
       <div className="flex-1 flex flex-col justify-center px-[5%] py-[4%]">
         <div className="flex items-center gap-[3%] mb-[3%]">
-          <Megaphone style={{ width: compact ? '0.8em' : '1.1em', height: compact ? '0.8em' : '1.1em', color: t.icon }} />
+          {icon ? (
+            <span style={{ fontSize: compact ? '0.8em' : '1.1em', lineHeight: 1 }}>{icon}</span>
+          ) : (
+            <Megaphone style={{ width: compact ? '0.8em' : '1.1em', height: compact ? '0.8em' : '1.1em', color: accentColor }} />
+          )}
           <span style={{
             fontSize: compact ? '0.4em' : '0.55em', fontWeight: 800,
             textTransform: 'uppercase' as const, letterSpacing: '0.1em',
-            color: t.icon, background: t.badge, padding: '0.15em 0.5em', borderRadius: 99,
+            color: accentColor, background: t.badge, padding: '0.15em 0.5em', borderRadius: 99,
           }}>
-            {priority}
+            {badgeLabel}
           </span>
         </div>
-        <p
-          data-field="message"
-          style={{
-            fontSize: compact ? '0.65em' : '1em',
-            fontWeight: 600, color: t.text, lineHeight: 1.5,
-            display: '-webkit-box', WebkitLineClamp: compact ? 2 : 4, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden',
-            whiteSpace: 'pre-wrap' as const,
-          }}
-        >
-          {message}
-        </p>
+        {title && (
+          <h2
+            data-field="title"
+            style={{
+              margin: 0, fontSize: compact ? '0.85em' : '1.4em',
+              fontWeight: 800, color: textColor, lineHeight: 1.15,
+              letterSpacing: '-0.01em', marginBottom: '0.3em',
+            }}
+          >
+            {title}
+          </h2>
+        )}
+        {message && (
+          <p
+            data-field="message"
+            style={{
+              fontSize: compact ? '0.65em' : '1em',
+              fontWeight: 600, color: textColor, lineHeight: 1.5,
+              display: '-webkit-box', WebkitLineClamp: compact ? 2 : 4, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden',
+              whiteSpace: 'pre-wrap' as const,
+              margin: 0,
+            }}
+          >
+            {message}
+          </p>
+        )}
+        {cta && (
+          <div style={{
+            marginTop: '0.7em', fontSize: compact ? '0.55em' : '0.85em',
+            fontWeight: 700, color: accentColor, letterSpacing: '0.02em',
+            display: 'inline-flex', alignItems: 'center', gap: 6, width: 'fit-content',
+          }}>
+            <span style={{ display: 'inline-block', transform: 'translateY(-1px)' }}>→</span>
+            <span>{cta}</span>
+          </div>
+        )}
       </div>
     </div>
   );
