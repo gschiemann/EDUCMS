@@ -9,12 +9,23 @@
  * 2026-05-03. Every loaded row is tagged with `[Sample]` so
  * production data stays safe. The Wipe button removes only the
  * sample rows — anything the operator added manually is left alone.
+ *
+ * 2026-05-05. Operator: "where do they go to? do i have a template
+ * that they feed into?...if we cant show it we shouldnt have it".
+ * Each Run now also surfaces an "Open demo template" CTA after a
+ * successful load — one click finds-or-creates a preset template
+ * that uses the right widget for the integration, drops the
+ * operator into the builder, and they SEE the data render. Demo-
+ * ready end-to-end. The mapping below pairs each Run key with a
+ * system-preset id; null entries signal "no preset uses this widget
+ * yet" (gap on the audit list, fix in a follow-up commit).
  */
 import { useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
 import {
   Beaker, Loader2, CheckCircle2, ExternalLink, Trash2, AlertCircle, RefreshCw,
-  Tv, Utensils, ShoppingBag, DollarSign,
+  Tv, Utensils, ShoppingBag, DollarSign, Sparkles,
 } from 'lucide-react';
 
 interface ActionResult {
@@ -23,9 +34,31 @@ interface ActionResult {
   meta?: Record<string, any>;
 }
 
+/**
+ * Each Run key maps to a preset-id + a friendly demo-button label.
+ * The preset must already exist in apps/api/src/templates/*-presets.ts
+ * AND use the widget that consumes the freshly-loaded sample data.
+ *
+ * GAPS (no preset yet): public-broadcasters / mux-hls (Streaming),
+ * ads-house-only (Ads). These get a "View [Vertical] templates →"
+ * link that takes the operator to the templates gallery filtered
+ * to the right vertical, so they can pick a starting point.
+ */
+const DEMO_TARGETS: Record<string, { presetId?: string; label: string; verticalHint?: string }> = {
+  'public-broadcasters': { label: 'Open the Live News template', verticalHint: 'BAR', presetId: undefined },
+  'mux-hls':              { label: 'Open the Live News template', verticalHint: 'BAR', presetId: undefined },
+  'pos-restaurant':       { label: 'Open the QSR Drive-Thru Menu demo', presetId: 'qsr-drive-thru-menu' },
+  'pos-retail':           { label: 'Open the Retail Storefront demo',   presetId: 'retail-storefront-welcome' },
+  'ads-house-only':       { label: 'Open templates →', verticalHint: 'RETAIL' },
+};
+
 export default function TestIntegrationsPage() {
+  const params = useParams<{ schoolId: string }>();
+  const router = useRouter();
+  const schoolId = params?.schoolId ?? '';
   const [running, setRunning] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, ActionResult>>({});
+  const [opening, setOpening] = useState<string | null>(null);
 
   const run = async (key: string, path: string, method: 'POST' | 'DELETE' = 'POST') => {
     setRunning(key);
@@ -42,6 +75,45 @@ export default function TestIntegrationsPage() {
       }));
     } finally {
       setRunning(null);
+    }
+  };
+
+  /**
+   * One-click "Open demo template" handler. Calls the templates
+   * controller to clone the named preset into the operator's
+   * tenant, then navigates straight to the v2 builder for the
+   * fresh template — operator sees the integration data render
+   * with no other clicks.
+   *
+   * If the preset isn't set (gap in the catalog), we fall back to
+   * the templates gallery filtered by vertical — operator picks
+   * any matching template to drop the widget into.
+   */
+  const openDemo = async (key: string) => {
+    const target = DEMO_TARGETS[key];
+    if (!target) return;
+    setOpening(key);
+    try {
+      if (target.presetId) {
+        const tpl: any = await apiFetch(`/templates/from-preset/${encodeURIComponent(target.presetId)}`, {
+          method: 'POST',
+          body: JSON.stringify({}),
+        });
+        if (tpl?.id) {
+          router.push(`/${schoolId}/templates/builder/${tpl.id}`);
+          return;
+        }
+      }
+      // Fallback — gallery filtered by vertical hint (or unfiltered).
+      const qs = target.verticalHint ? `?vertical=${target.verticalHint}` : '';
+      router.push(`/${schoolId}/templates${qs}`);
+    } catch (e) {
+      setResults((prev) => ({
+        ...prev,
+        [key]: { ...(prev[key] || { ok: true, message: '' }), message: `Could not open demo template: ${e instanceof Error ? e.message : String(e)}` },
+      }));
+    } finally {
+      setOpening(null);
     }
   };
 
@@ -68,6 +140,9 @@ export default function TestIntegrationsPage() {
           running={running === 'public-broadcasters'}
           result={results['public-broadcasters']}
           docsUrl="https://www3.nhk.or.jp/nhkworld/en/live/"
+          demoKey="public-broadcasters"
+          onOpenDemo={openDemo}
+          opening={opening === 'public-broadcasters'}
         />
         <ActionRow
           label="Custom HLS — Mux test streams"
@@ -76,6 +151,9 @@ export default function TestIntegrationsPage() {
           running={running === 'mux-hls'}
           result={results['mux-hls']}
           docsUrl="https://test-streams.mux.dev/"
+          demoKey="mux-hls"
+          onOpenDemo={openDemo}
+          opening={opening === 'mux-hls'}
         />
       </Section>
 
@@ -90,6 +168,9 @@ export default function TestIntegrationsPage() {
           onClick={() => run('pos-restaurant', '/sample-data/pos/sample-restaurant')}
           running={running === 'pos-restaurant'}
           result={results['pos-restaurant']}
+          demoKey="pos-restaurant"
+          onOpenDemo={openDemo}
+          opening={opening === 'pos-restaurant'}
         />
       </Section>
 
@@ -104,6 +185,9 @@ export default function TestIntegrationsPage() {
           onClick={() => run('pos-retail', '/sample-data/pos/sample-retail')}
           running={running === 'pos-retail'}
           result={results['pos-retail']}
+          demoKey="pos-retail"
+          onOpenDemo={openDemo}
+          opening={opening === 'pos-retail'}
         />
       </Section>
 
@@ -118,6 +202,9 @@ export default function TestIntegrationsPage() {
           onClick={() => run('ads-house-only', '/sample-data/ads/house-only')}
           running={running === 'ads-house-only'}
           result={results['ads-house-only']}
+          demoKey="ads-house-only"
+          onOpenDemo={openDemo}
+          opening={opening === 'ads-house-only'}
         />
       </Section>
 
@@ -168,6 +255,7 @@ function Section({ icon, title, description, children }: { icon: React.ReactNode
 
 function ActionRow({
   label, subtitle, onClick, running, result, docsUrl,
+  demoKey, onOpenDemo, opening,
 }: {
   label: string;
   subtitle?: string;
@@ -175,7 +263,12 @@ function ActionRow({
   running: boolean;
   result?: ActionResult;
   docsUrl?: string;
+  /** When set, shows a "Open demo template" CTA after a successful run. */
+  demoKey?: string;
+  onOpenDemo?: (key: string) => void;
+  opening?: boolean;
 }) {
+  const demoTarget = demoKey ? DEMO_TARGETS[demoKey] : undefined;
   return (
     <div className="rounded-lg border border-slate-200 p-3 flex items-start justify-between gap-3 hover:border-indigo-200 transition-colors">
       <div className="flex-1 min-w-0">
@@ -191,6 +284,25 @@ function ActionRow({
             {result.ok ? <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" /> : <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />}
             {result.message}
           </div>
+        )}
+        {/*
+          Operator: "where do they go to? do i have a template that
+          they feed into?" — once Run succeeds, surface a one-click
+          path to a preset template that uses the right widget. If
+          the integration has no preset using its widget yet (gap on
+          the audit list), this falls back to the templates gallery
+          filtered by the relevant vertical.
+        */}
+        {result?.ok && demoTarget && demoKey && onOpenDemo && (
+          <button
+            type="button"
+            onClick={() => onOpenDemo(demoKey)}
+            disabled={!!opening}
+            className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white text-[11px] font-bold hover:from-violet-700 hover:to-fuchsia-700 disabled:opacity-60"
+          >
+            {opening ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+            {opening ? 'Opening…' : `${demoTarget.label} →`}
+          </button>
         )}
       </div>
       <button
