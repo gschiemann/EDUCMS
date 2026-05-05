@@ -2076,82 +2076,95 @@ export default function PlaylistsPage() {
                 // different screens, it need to allow playing multiple
                 // playlists just not two on the same screen".
                 //
-                // Operator follow-up after my first attempt at this fix:
-                //   "you fucked up, look at this screen cap, i have two
-                //    playlists on the same 2 screens active, didnt get
-                //    any popup, it just let me activate it"
+                // Take 3 (after take 1 produced false-positives and take 2
+                // produced false-negatives + replaced way too much):
                 //
-                // The fix has TWO sides and they need DIFFERENT filters:
+                //   "tell me what screens its playing that will be replaced,
+                //    also we are right back to where we were, it turned off
+                //    the new url playlist as well for a screen that isnt
+                //    included"
                 //
-                //   • pl (the one being switched ON) — PUT /playlists/:id/active
-                //     activates EVERY schedule that belongs to pl, regardless
-                //     of its current isActive flag. So pl's planned-active
-                //     target set = ALL of pl's schedule targets, which is
-                //     exactly what playlistScreenMap[pl.id] aggregates.
+                // The right level for this whole check is THE SCHEDULE,
+                // not the playlist. Each schedule binds (playlist, screen
+                // OR group). When pl turns on, every one of pl's schedules
+                // becomes active. If ANOTHER schedule is currently active
+                // on a screen pl is also targeting, THAT schedule needs
+                // to flip off. Other schedules of the same other-playlist
+                // (e.g. New URL on "The Den" while pl only targets G43+M43)
+                // are NOT touched — they stay active.
                 //
-                //   • other playlists — only count as "occupying" a screen
-                //     if they currently have an isActive=true schedule on
-                //     it. A stale inactive schedule on the same screen
-                //     should NOT trigger the prompt (that was the bug
-                //     before — partner saw "Replace URL?" prompt when URL
-                //     was actually OFF, just had a leftover schedule).
+                // That requires per-schedule deactivation, not the
+                // playlist-level PUT /playlists/:id/active false (which
+                // nukes every schedule). PUT /schedules/:id/toggle does
+                // the right thing — we already filtered to isActive=true,
+                // so toggling flips them to inactive deterministically.
                 //
-                // First-attempt bug: I filtered BOTH sides to isActive=true.
-                // That made pl's "planned-active" set empty when pl was
-                // OFF (it has zero active schedules), so the overlap check
-                // could never fire. Operator activated two playlists onto
-                // the same screens with no prompt. Hence the asymmetric
-                // filter below.
-                // Expand both sides to screen-level so the overlap
-                // check works regardless of whether either side targets
-                // by direct screenId or by a screenGroupId that contains
-                // some of pl's screens. playlistScreenMap.screens is
-                // already group-expanded; for `other` we expand inline
-                // because we need to filter to its CURRENTLY active
-                // schedules first.
+                // For the dialog we collect the overlapping screen names
+                // grouped per conflicting playlist so the operator sees
+                // exactly which screens get displaced — no surprises.
                 const groupLookup = new Map<string, any>(
                   (screenGroups || []).map((g: any) => [g.id, g]),
+                );
+                const screenLookup = new Map<string, any>(
+                  (screens || []).map((s: any) => [s.id, s]),
                 );
                 const myMap = playlistScreenMap[pl.id];
                 const myScreenIds = new Set<string>((myMap?.screens || []).map((s: any) => s.id));
                 const liveSchedules = (schedules || []).filter((s: any) => s.isActive);
-                const conflicts: any[] = [];
+                // For each other-playlist that conflicts: which schedule
+                // ids overlap pl, and which screen names should we display.
+                type Conflict = { playlist: any; scheduleIds: string[]; screenNames: Set<string> };
+                const conflicts: Conflict[] = [];
                 for (const other of playlists || []) {
                   if (other.id === pl.id) continue;
                   const otherActive = liveSchedules.filter((s: any) => s.playlistId === other.id);
                   if (otherActive.length === 0) continue;
-                  const otherActiveScreens = new Set<string>();
+                  const scheduleIds: string[] = [];
+                  const screenNames = new Set<string>();
                   for (const sched of otherActive) {
-                    if (sched.screenId) otherActiveScreens.add(sched.screenId);
+                    // Resolve this schedule's effective screen set.
+                    const schedScreens: { id: string; name: string }[] = [];
+                    if (sched.screenId) {
+                      const sc = screenLookup.get(sched.screenId) || sched.screen;
+                      if (sc) schedScreens.push({ id: sc.id, name: sc.name || sc.id });
+                    }
                     if (sched.screenGroupId) {
                       const grp = groupLookup.get(sched.screenGroupId) || sched.screenGroup;
-                      if (grp?.screens) {
-                        for (const s of grp.screens) otherActiveScreens.add(s.id);
-                      }
+                      if (grp?.screens) for (const s of grp.screens) schedScreens.push({ id: s.id, name: s.name || s.id });
                     }
+                    // Does any of this schedule's screens overlap pl?
+                    const hits = schedScreens.filter((s) => myScreenIds.has(s.id));
+                    if (hits.length === 0) continue;
+                    scheduleIds.push(sched.id);
+                    for (const h of hits) screenNames.add(h.name);
                   }
-                  let overlap = false;
-                  for (const sid of myScreenIds) {
-                    if (otherActiveScreens.has(sid)) { overlap = true; break; }
+                  if (scheduleIds.length > 0) {
+                    conflicts.push({ playlist: other, scheduleIds, screenNames });
                   }
-                  if (overlap) conflicts.push(other);
                 }
                 if (conflicts.length > 0) {
-                  const names = conflicts.map((c) => c.name).join(', ');
+                  const lines = conflicts.map((c) =>
+                    `• "${c.playlist.name}" on ${Array.from(c.screenNames).join(', ')}`,
+                  );
+                  const message = conflicts.length === 1
+                    ? `"${conflicts[0].playlist.name}" is currently playing on ${Array.from(conflicts[0].screenNames).join(', ')}. Switching "${pl.name}" on will replace it on ${conflicts[0].screenNames.size === 1 ? 'that screen' : 'those screens'} only — its other screens stay untouched.`
+                    : `These playlists overlap "${pl.name}" on the listed screens:\n\n${lines.join('\n')}\n\nSwitching "${pl.name}" on will replace them on those screens only.`;
                   const ok = await appConfirm({
-                    title: `Replace ${conflicts.length === 1 ? 'the active playlist' : 'active playlists'}?`,
-                    message: `"${names}" ${conflicts.length === 1 ? 'is' : 'are'} currently playing on the same target. Switching "${pl.name}" on will turn ${conflicts.length === 1 ? 'it' : 'them'} off.`,
+                    title: `Replace on ${conflicts.reduce((n, c) => n + c.screenNames.size, 0)} screen${conflicts.reduce((n, c) => n + c.screenNames.size, 0) === 1 ? '' : 's'}?`,
+                    message,
                     tone: 'warn',
                     confirmLabel: 'Replace',
                   });
                   if (!ok) return;
-                  // Deactivate every conflict in parallel, then turn
-                  // this one on. We don't await individual results —
-                  // setPlaylistActive's optimistic update flips the
-                  // UI immediately, and the server-side cascade is
-                  // tolerant of out-of-order requests.
+                  // Deactivate ONLY the overlapping schedules. Other
+                  // schedules belonging to the same other-playlist (on
+                  // non-overlapping screens) stay active. We use
+                  // PUT /schedules/:id/toggle which flips isActive — safe
+                  // here because we filtered to isActive=true above.
                   for (const c of conflicts) {
-                    setPlaylistActive.mutate({ id: c.id, active: false });
+                    for (const sid of c.scheduleIds) {
+                      toggleSchedule.mutate(sid);
+                    }
                   }
                 }
                 setPlaylistActive.mutate({ id: pl.id, active: true });
