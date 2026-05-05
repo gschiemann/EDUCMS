@@ -96,6 +96,11 @@ model Tenant {
   aiKeyEncrypted                  String?          @map("ai_key_encrypted")
   aiKeySetAt                      DateTime?        @map("ai_key_set_at")
   aiKeySetByUserId                String?          @map("ai_key_set_by_user_id")
+  // Platform free-tier monthly quota tracking. month = 'YYYY-MM'.
+  // Cap value lives in AI_FREE_TIER_CAP env var (default 200) so we
+  // can tune it globally without a migration. BYOK tenants bypass.
+  aiPlatformUsageMonth            String?          @map("ai_platform_usage_month")
+  aiPlatformUsageCount            Int              @default(0) @map("ai_platform_usage_count")
   // Per-screen billing meter. One License row per Tenant; absence means
   // "Pilot" (free tier with cap of 3 screens, no expiry). License flips
   // when an admin runs a Stripe checkout or the SUPER_ADMIN comps seats.

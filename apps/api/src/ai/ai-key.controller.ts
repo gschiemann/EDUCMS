@@ -33,13 +33,17 @@ import { AppRole } from '@cms/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { sealAiKey, openAiKey, maskAiKey } from './ai-key-cipher';
 import { coerceProvider, validateApiKeyShape, dispatchAi } from './ai-providers';
+import { AiService } from './ai.service';
 
 interface SetKeyBody { provider?: string; apiKey?: string; }
 
 @UseGuards(JwtAuthGuard, RbacGuard)
 @Controller('api/v1/ai/key')
 export class AiKeyController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly aiService: AiService,
+  ) {}
 
   /**
    * Read-only status. Anyone in the tenant who can reach the editor
@@ -66,6 +70,10 @@ export class AiKeyController {
       } as any,
     }) as any;
     const platformKeyAvailable = !!process.env.ANTHROPIC_API_KEY;
+    // Always include current usage snapshot — editor uses this to
+    // render "X of 200 free this month" badge + cap-reached upgrade
+    // modal.
+    const usage = await this.aiService.getUsage(req.user.tenantId);
     if (!tenant?.aiKeyEncrypted) {
       return {
         configured: false,
@@ -73,10 +81,8 @@ export class AiKeyController {
         keyMask: null,
         setAt: null,
         setByUserId: null,
-        // Tells the UI "even without your own key, AI works using our
-        // free trial." Prompts the operator to BYOK to remove the
-        // platform's per-tenant cap if they're hitting it.
         platformFallbackAvailable: platformKeyAvailable,
+        usage,
       };
     }
     // Decrypt only to mask — never log, never return the raw key.
@@ -95,6 +101,7 @@ export class AiKeyController {
       setAt: tenant.aiKeySetAt,
       setByUserId: tenant.aiKeySetByUserId,
       platformFallbackAvailable: platformKeyAvailable,
+      usage,
     };
   }
 

@@ -22,9 +22,20 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { Sparkles, Loader2, X, RefreshCw, AlertCircle } from 'lucide-react';
+import { Sparkles, Loader2, X, RefreshCw, AlertCircle, Zap } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
+
+// 2026-05-04 — usage snapshot returned by both /ai/key (status) and
+// /ai/generate (live update post-call). source 'platform' means we
+// pay; 'tenant' means BYOK admin set their own key (unlimited);
+// 'none' means AI is not available at all.
+interface AiUsage {
+  source: 'platform' | 'tenant' | 'none';
+  used: number;
+  cap: number | null;
+  resetAt: string | null;
+}
 
 export type AiIntent =
   | 'announcement'
@@ -114,6 +125,11 @@ function AiGenerateModal({
   const [running, setRunning] = useState(false);
   const [options, setOptions] = useState<AiOption[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Live usage badge + cap-reached upgrade prompt. Initialized null
+  // so we don't flash a stale "200/200" before the status fetch
+  // completes.
+  const [usage, setUsage] = useState<AiUsage | null>(null);
+  const [capHit, setCapHit] = useState(false);
 
   // ai-imports-006 fix: a11y + focus management.
   //  - role="dialog" + aria-modal="true" + aria-labelledby tells screen
@@ -183,6 +199,15 @@ function AiGenerateModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Fetch current usage snapshot when modal mounts so the badge ("X
+  // of 200 free this month") renders before the first click. Falls
+  // through silently on error — usage is decoration, never blocking.
+  useEffect(() => {
+    void apiFetch<{ usage?: AiUsage }>('/ai/key')
+      .then((s) => { if (s?.usage) setUsage(s.usage); })
+      .catch(() => { /* status endpoint unavailable, hide badge */ });
+  }, []);
+
   const run = async () => {
     if (!context.trim()) {
       setError('Type some context for the AI — what is this about?');
@@ -202,7 +227,7 @@ function AiGenerateModal({
       // finite number — NaN passes the ?? but breaks min/max.
       const rawCount = 3;
       const safeCount = Number.isFinite(rawCount) ? Math.max(1, Math.min(5, Math.trunc(rawCount))) : 3;
-      const res = await apiFetch<{ options: AiOption[] }>('/ai/generate', {
+      const res = await apiFetch<{ options: AiOption[]; usage?: AiUsage }>('/ai/generate', {
         method: 'POST',
         body: JSON.stringify({
           intent,
@@ -214,14 +239,20 @@ function AiGenerateModal({
         signal: abortRef.current.signal,
       });
       setOptions(res.options || []);
+      // Live usage update — server returns the post-bump count so
+      // the badge advances without a second fetch.
+      if (res.usage) setUsage(res.usage);
     } catch (e: any) {
       // Aborted requests are expected on unmount/regenerate — silent.
       if (e?.name === 'AbortError') return;
-      // Friendlier message for the most common configuration error: the
-      // backend returns 503 when ANTHROPIC_API_KEY is missing on the
-      // deploy. Operator-facing message instead of "Service Unavailable".
       const msg = String(e?.message || e || '');
-      if (/AI is not configured|503|Service Unavailable/i.test(msg)) {
+      // Cap-reached → switch to the upgrade-prompt view. AiService
+      // shapes the error string so it always contains "monthly free
+      // AI cap" — pattern-match on that phrase.
+      if (/monthly free AI cap/i.test(msg)) {
+        setCapHit(true);
+        setError(null);
+      } else if (/AI is not configured|503|Service Unavailable/i.test(msg)) {
         setError('AI is not configured for this deployment. Ask your admin to set ANTHROPIC_API_KEY in Railway env, then try again.');
       } else if (/hourly AI cap|rate.?limit/i.test(msg)) {
         setError('Hit the hourly AI cap for this tenant. Try again in a bit, or upgrade for a higher cap.');
@@ -233,6 +264,16 @@ function AiGenerateModal({
     }
   };
 
+  /** Format the usage badge: "187 of 200 free generations this month". */
+  const usageBadgeText = () => {
+    if (!usage) return null;
+    if (usage.source === 'tenant') return 'Unlimited (your provider)';
+    if (usage.source === 'none') return null;
+    if (usage.cap == null) return null;
+    const remaining = Math.max(0, usage.cap - usage.used);
+    return `${remaining} of ${usage.cap} free generations left this month`;
+  };
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
@@ -240,7 +281,7 @@ function AiGenerateModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto relative"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-6 border-b border-slate-100 flex items-start justify-between sticky top-0 bg-white rounded-t-2xl">
@@ -335,9 +376,52 @@ function AiGenerateModal({
           )}
 
           <p className="text-[10px] text-slate-400 text-center pt-2">
-            Powered by Claude · 30 generations/hour/tenant · cap raises with paid tiers
+            {usageBadgeText() || 'Powered by Claude · cap raises with paid tiers'}
           </p>
         </div>
+
+        {/*
+          Cap-reached overlay. Replaces the form area with a friendly
+          upgrade prompt. The "Connect provider key" link drops the
+          operator on Settings → Brand kit + AI provider; the BYOK
+          card there walks them through the Anthropic / OpenAI key
+          paste flow. RESTRICTED_VIEWER + CONTRIBUTOR can't reach
+          that page so they see only the wait-message.
+        */}
+        {capHit && (
+          <div className="absolute inset-0 bg-white/95 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center p-6 text-center">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white mb-4">
+              <Zap className="w-8 h-8" />
+            </div>
+            <h3 className="text-lg font-bold text-slate-900 mb-1">
+              You've used your free AI for this month
+            </h3>
+            <p className="text-sm text-slate-600 max-w-md leading-relaxed mb-5">
+              Your tenant has hit the {usage?.cap ?? 200}-generation monthly cap.
+              {usage?.resetAt
+                ? ` Resets ${new Date(usage.resetAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}.`
+                : ''}
+              {' '}Connect your school's own Anthropic or OpenAI key in Settings to continue without limits.
+            </p>
+            <div className="flex gap-2">
+              <a
+                href="/settings"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white text-sm font-bold hover:from-violet-700 hover:to-fuchsia-700"
+              >
+                Open Settings
+              </a>
+              <button
+                onClick={onClose}
+                type="button"
+                className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-bold hover:bg-slate-200"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -80,10 +80,101 @@ export class AiService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** Lazy in-memory rate limiter. Tenant id → rolling-1h timestamps.
-   *  Cleared on pod restart — the cap is "soft" by design. A real cap
-   *  with persistence ships when we add a per-tenant License.aiQuota. */
+   *  Cleared on pod restart — the cap is "soft" by design and exists
+   *  to prevent runaway loops, not for spend control. */
   private readonly recentByTenant = new Map<string, number[]>();
   private readonly HOURLY_CAP = 30;
+
+  /**
+   * Monthly platform-paid generation cap per tenant. The Canva /
+   * OptiSigns / Notion model — platform pays, capped per tenant per
+   * calendar month, BYOK admins bypass the cap entirely (their cost,
+   * their unlimited).
+   *
+   * Tunable via AI_FREE_TIER_CAP env var without a deploy migration.
+   * 200/mo at Haiku 300-token output ≈ $1/tenant/mo at full burn,
+   * which is the budget envelope we sized for.
+   */
+  private get freeTierCap(): number {
+    const fromEnv = parseInt(process.env.AI_FREE_TIER_CAP || '', 10);
+    return Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : 200;
+  }
+
+  /** Current UTC month as 'YYYY-MM' for usage bucket key. */
+  private currentMonthKey(): string {
+    const now = new Date();
+    const y = now.getUTCFullYear();
+    const m = String(now.getUTCMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  }
+
+  /**
+   * Read the tenant's current-month platform usage. Returns 0 if the
+   * stored bucket is from a previous month (auto-reset on rollover —
+   * no cron). BYOK tenants are not tracked; they pass null here and
+   * the caller skips the cap check.
+   */
+  private async readPlatformUsage(tenantId: string): Promise<{ used: number; cap: number; resetAt: string }> {
+    const tenant = await this.prisma.client.tenant.findUnique({
+      where: { id: tenantId },
+      select: { aiPlatformUsageMonth: true, aiPlatformUsageCount: true } as any,
+    }) as any;
+    const monthKey = this.currentMonthKey();
+    const used = tenant?.aiPlatformUsageMonth === monthKey
+      ? (tenant?.aiPlatformUsageCount ?? 0)
+      : 0;
+    // resetAt = first day of next month UTC. Editor uses this to render
+    // "resets in 12 days" without needing its own date math.
+    const now = new Date();
+    const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    return { used, cap: this.freeTierCap, resetAt: next.toISOString() };
+  }
+
+  /**
+   * Atomic-ish increment of the platform usage counter. Two-step:
+   *   1) If the stored month != current month, write a fresh bucket
+   *      with count=1 (rollover).
+   *   2) Else atomic increment the existing bucket.
+   *
+   * Race window: if two requests both observe a stale month, both
+   * write count=1 instead of one writing 1 and the other 2. Worst
+   * case is a 1-call undercount per rollover boundary per tenant.
+   * Never an over-count, so spend stays bounded.
+   */
+  private async bumpPlatformUsage(tenantId: string): Promise<void> {
+    const monthKey = this.currentMonthKey();
+    const tenant = await this.prisma.client.tenant.findUnique({
+      where: { id: tenantId },
+      select: { aiPlatformUsageMonth: true } as any,
+    }) as any;
+    if (tenant?.aiPlatformUsageMonth !== monthKey) {
+      await this.prisma.client.tenant.update({
+        where: { id: tenantId },
+        data: {
+          aiPlatformUsageMonth: monthKey,
+          aiPlatformUsageCount: 1,
+        } as any,
+      });
+    } else {
+      await this.prisma.client.tenant.update({
+        where: { id: tenantId },
+        data: { aiPlatformUsageCount: { increment: 1 } } as any,
+      });
+    }
+  }
+
+  /**
+   * Public read for the GET /ai/key status endpoint so the editor
+   * can render "X of 200 free this month" without a second round
+   * trip. BYOK tenants get used=0/cap=null.
+   */
+  async getUsage(tenantId: string): Promise<{ source: 'tenant' | 'platform' | 'none'; used: number; cap: number | null; resetAt: string | null }> {
+    const resolved = await this.resolveProviderKey(tenantId);
+    if (!resolved) return { source: 'none', used: 0, cap: null, resetAt: null };
+    if (resolved.source === 'tenant') return { source: 'tenant', used: 0, cap: null, resetAt: null };
+    const u = await this.readPlatformUsage(tenantId);
+    return { source: 'platform', used: u.used, cap: u.cap, resetAt: u.resetAt };
+  }
 
   /**
    * Resolve which provider key to use for this tenant. BYOK wins;
@@ -183,6 +274,24 @@ export class AiService {
       );
     }
 
+    // Monthly platform cap (Canva-style free tier). Only enforced for
+    // platform-paid generations — BYOK tenants bypass entirely. The
+    // editor surfaces this via the `usage` field on the success
+    // response so the next click already sees the new count without
+    // a second fetch. Cap-reached error message is intentionally
+    // shaped so the editor can pattern-match and pop the upgrade
+    // modal: it always contains "monthly free AI" and the resetAt
+    // ISO date.
+    if (resolved.source === 'platform') {
+      const u = await this.readPlatformUsage(opts.tenantId);
+      if (u.used >= u.cap) {
+        const resetAt = u.resetAt;
+        throw new BadRequestException(
+          `Hit the monthly free AI cap (${u.cap} generations). Connect your own provider key in Settings → AI provider for unlimited, or wait until the cap resets at ${resetAt}.`,
+        );
+      }
+    }
+
     const count = Math.min(Math.max(opts.count ?? 3, 1), 5);
     const tone = opts.tone || 'casual';
     const vertical = opts.vertical || 'venue';
@@ -266,6 +375,25 @@ export class AiService {
     recent.push(now);
     this.recentByTenant.set(opts.tenantId, recent);
 
-    return { options, intent: opts.intent };
+    // Bump platform monthly counter on success. BYOK calls bypass
+    // (their cost, untracked). Errors before this point don't bump.
+    if (resolved.source === 'platform') {
+      try {
+        await this.bumpPlatformUsage(opts.tenantId);
+      } catch (e: any) {
+        // Don't fail the user-facing response on a counter write
+        // error — log + accept the small over-spend risk.
+        this.logger.warn(`Platform usage bump failed (${opts.tenantId}): ${e?.message}`);
+      }
+    }
+
+    // Return live usage so the editor can update the badge without a
+    // second round trip. BYOK → null (unlimited).
+    let usage: { used: number; cap: number; resetAt: string } | null = null;
+    if (resolved.source === 'platform') {
+      const u = await this.readPlatformUsage(opts.tenantId);
+      usage = { used: u.used, cap: u.cap, resetAt: u.resetAt };
+    }
+    return { options, intent: opts.intent, source: resolved.source, usage } as any;
   }
 }
