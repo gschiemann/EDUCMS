@@ -689,14 +689,62 @@ export async function fetchWeather(location: string, isCelsius: boolean) {
   if (cached && Date.now() - cached.ts < CACHE_MS) return cached.data;
 
   try {
-    // Open-Meteo geocoder only handles city names — strip ", STATE" suffixes
-    const cityName = location.replace(/,\s*\w{2,}$/i, '').trim();
+    // 2026-05-04 — operator: "i should be able to type a location or
+    // zipcode". Pre-fix the geocoder only accepted city names — a US
+    // zip code like "44024" returned no results, widget fell back to
+    // operator-supplied free-text overrides which is what they were
+    // complaining about.
+    //
+    // Now we detect the location TYPE first:
+    //   - "lat,lng" pair (e.g. "41.5868,-81.4146" — what the
+    //     geolocation auto-detect button writes) → skip geocoding
+    //   - 5-digit US zip → Zippopotam.us (free, no auth)
+    //   - "City, ST" or other text → Open-Meteo geocoder (city name)
+    let latitude: number | null = null;
+    let longitude: number | null = null;
+    let name = '';
+    let admin1 = '';
+    const trimmed = location.trim();
 
-    // Step 1: Geocode location name → lat/lng
-    const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&count=1&language=en`);
-    const geoData = await geoRes.json();
-    if (!geoData.results?.length) return null;
-    const { latitude, longitude, name, admin1 } = geoData.results[0];
+    // Lat/lng pair — auto-detect button format. Two numbers separated
+    // by comma, optional whitespace.
+    const latLngMatch = trimmed.match(/^(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)$/);
+    if (latLngMatch) {
+      latitude = parseFloat(latLngMatch[1]);
+      longitude = parseFloat(latLngMatch[2]);
+      name = 'Current location';
+    }
+
+    // 5-digit US zip
+    if (latitude == null && /^\d{5}$/.test(trimmed)) {
+      try {
+        const zipRes = await fetch(`https://api.zippopotam.us/us/${trimmed}`);
+        if (zipRes.ok) {
+          const zipData = await zipRes.json();
+          const place = zipData?.places?.[0];
+          if (place) {
+            latitude = parseFloat(place.latitude);
+            longitude = parseFloat(place.longitude);
+            name = place['place name'] || trimmed;
+            admin1 = place['state abbreviation'] || '';
+          }
+        }
+      } catch { /* fall through to geocoder */ }
+    }
+
+    // Fallback: Open-Meteo city-name geocoder
+    if (latitude == null) {
+      const cityName = trimmed.replace(/,\s*\w{2,}$/i, '').trim();
+      const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&count=1&language=en`);
+      const geoData = await geoRes.json();
+      if (!geoData.results?.length) return null;
+      const r = geoData.results[0];
+      latitude = r.latitude;
+      longitude = r.longitude;
+      name = r.name;
+      admin1 = r.admin1 || '';
+    }
+    if (latitude == null || longitude == null) return null;
 
     // Step 2: Fetch current weather + daily high/low
     const tempUnit = isCelsius ? 'celsius' : 'fahrenheit';

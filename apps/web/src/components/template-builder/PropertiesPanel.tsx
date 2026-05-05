@@ -1126,21 +1126,39 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       break;
     case 'WEATHER': {
       const weatherUnits = ['metric', 'celsius', 'c'].includes(String(cfg.units || '').toLowerCase()) ? 'metric' : 'imperial';
-      fields.push(<TextField key="location" label="Location" value={cfg.location || cfg.zipCode || ''} placeholder="Springfield" onChange={(v) => setField({ location: v, zipCode: undefined })} />);
+      // 2026-05-04 — operator: "i should be able to type a location
+      // or zipcode or it should know where i am automatically and
+      // set it but its a bunch of free text fields i can type."
+      //
+      // The renderer ALREADY fetches live data via fetchWeather()
+      // (Open-Meteo / Zippopotam, no API key, no cost). The editor
+      // was presenting tempF/high/low/condition/icon as if they
+      // were required inputs — they're optional manual overrides,
+      // shown front-and-center which made the operator think they
+      // had to type fake data.
+      //
+      // New layout:
+      //   - Smart location input (zip OR city OR "Use my location")
+      //   - Units toggle (°F / °C)
+      //   - Live status: "Fetching from Open-Meteo / OK"
+      //   - Manual overrides collapsed under "Advanced (override
+      //     live data)" — only opens if operator wants to fake it
+      fields.push(
+        <SmartLocationField
+          key="location"
+          value={cfg.location || cfg.zipCode || ''}
+          onChange={(v) => setField({ location: v, zipCode: undefined })}
+        />,
+      );
       fields.push(<SelectField key="units" label="Units" value={weatherUnits} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ units: v })} />);
-      // 2026-05-03 — v2 WEATHER_* widgets (NeonStorm, PaperEdition,
-      // CrayonSky, GlassFront, OpsRadar) read:
-      //   c.staticTemp  — preview temperature override
-      //   c.staticDesc  — preview condition description
-      //   c.staticIcon  — preview emoji (☀️ / 🌧 / ⛅ / etc.)
-      // Legacy widget reads tempF / condition. Mirror BOTH on every
-      // write so picking a v2 weather variant renders the typed values
-      // immediately instead of flashing the live-feed default.
-      fields.push(<TextField key="tempF" label={`Current temp (${weatherUnits === 'metric' ? '°C' : '°F'})`} value={String(cfg.tempF ?? cfg.staticTemp ?? '')} placeholder="72" onChange={(v) => { const n = parseInt(v) || 0; setField({ tempF: n, staticTemp: n }); }} />);
-      fields.push(<TextField key="high" label="High" value={String(cfg.high ?? '')} placeholder="78" onChange={(v) => setField({ high: parseInt(v) || 0 })} />);
-      fields.push(<TextField key="low" label="Low" value={String(cfg.low ?? '')} placeholder="64" onChange={(v) => setField({ low: parseInt(v) || 0 })} />);
-      fields.push(<TextField key="condition" label="Condition" value={cfg.condition || cfg.staticDesc || ''} placeholder="Sunny" onChange={(v) => setField({ condition: v, staticDesc: v })} />);
-      fields.push(<TextField key="staticIcon" label="Icon (emoji, optional)" value={cfg.staticIcon || ''} placeholder="☀️" onChange={(v) => setField({ staticIcon: v })} />);
+      fields.push(
+        <WeatherOverrideAdvanced
+          key="overrides"
+          cfg={cfg}
+          weatherUnits={weatherUnits}
+          setField={setField}
+        />,
+      );
       break;
     }
     case 'TICKER': {
@@ -4119,6 +4137,136 @@ function PosCategoryPickerField({
 }
 
 // ─────────────────────────────────────────────────────────
+// SmartLocationField — single input for the WEATHER widget that
+// accepts a 5-digit US zip, a city name, OR "lat,lng" coordinates.
+// Includes a "Use my current location" button that calls the
+// browser's geolocation API and writes "lat,lng" into the config.
+// fetchWeather() in WidgetRenderer.tsx detects all three formats
+// and resolves to lat/lng + name automatically.
+//
+// 2026-05-04 — operator: "i should be able to type a location or
+// zipcode or it should know where i am automatically and set it
+// but its a bunch of free text fields".
+function SmartLocationField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  const [geolocating, setGeolocating] = useState(false);
+  const [geoError, setGeoError] = useState<string | null>(null);
+  useEffect(() => { setDraft(value); }, [value]);
+
+  const useCurrentLocation = () => {
+    setGeoError(null);
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setGeoError("Your browser doesn't support geolocation.");
+      return;
+    }
+    setGeolocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude.toFixed(4);
+        const lng = pos.coords.longitude.toFixed(4);
+        const next = `${lat},${lng}`;
+        setDraft(next);
+        onChange(next);
+        setGeolocating(false);
+      },
+      (err) => {
+        setGeolocating(false);
+        if (err.code === err.PERMISSION_DENIED) {
+          setGeoError('Location permission denied. Type a zip or city name instead.');
+        } else if (err.code === err.POSITION_UNAVAILABLE) {
+          setGeoError("Couldn't determine your location. Try typing a zip or city.");
+        } else {
+          setGeoError('Location lookup failed. Try typing a zip or city.');
+        }
+      },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 600_000 },
+    );
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+        Location
+      </label>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => { if (draft !== value) onChange(draft); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }}
+          placeholder="44024 or Cleveland, OH"
+          className="flex-1 px-3 py-2 rounded-md border border-slate-300 bg-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+        />
+        <button
+          type="button"
+          onClick={useCurrentLocation}
+          disabled={geolocating}
+          title="Use this device's current location (browser geolocation)"
+          className="flex-shrink-0 px-3 py-2 rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-bold hover:bg-indigo-100 disabled:opacity-60 inline-flex items-center gap-1"
+        >
+          {geolocating ? (
+            <>
+              <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="8" cy="8" r="6" strokeOpacity="0.25" /><path d="M14 8a6 6 0 0 0-6-6" /></svg>
+              Locating…
+            </>
+          ) : (
+            <>📍 Use my location</>
+          )}
+        </button>
+      </div>
+      <div className="text-[10px] text-slate-500 leading-relaxed">
+        Type a US zip (e.g. <span className="font-mono">44024</span>), a city name (e.g. <span className="font-mono">Cleveland, OH</span>), or click <strong>Use my location</strong>. Live weather pulls from Open-Meteo (free, no key) and refreshes every 15 minutes on each screen.
+      </div>
+      {geoError && (
+        <div className="text-[10px] text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1">
+          {geoError}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// WeatherOverrideAdvanced — collapsible section containing the
+// manual override fields (tempF / high / low / condition / icon).
+// Empty by default — operator never has to touch these. Opens to
+// reveal the inputs only if they want to fake a weather state for
+// a static demo / signage drill.
+function WeatherOverrideAdvanced({ cfg, weatherUnits, setField }: { cfg: any; weatherUnits: 'imperial' | 'metric'; setField: (patch: Record<string, any>) => void }) {
+  const hasOverride = (cfg.tempF != null && cfg.tempF !== '') ||
+    (cfg.high != null && cfg.high !== '') ||
+    (cfg.low != null && cfg.low !== '') ||
+    !!cfg.condition || !!cfg.staticDesc || !!cfg.staticIcon;
+  const [open, setOpen] = useState(hasOverride);
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50/60 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-slate-100/60"
+      >
+        <span className="text-[11px] font-semibold text-slate-700">
+          Advanced — override live data {hasOverride && <span className="text-amber-600 font-bold">(active)</span>}
+        </span>
+        <span className="text-[10px] text-slate-400">{open ? '▾ Hide' : '▸ Show'}</span>
+      </button>
+      {open && (
+        <div className="px-3 pb-3 space-y-2 border-t border-slate-200">
+          <div className="text-[10px] text-slate-500 leading-relaxed pt-2">
+            Leave these BLANK to use real-time weather from the location above. Filling any field forces that value to display instead of the live feed — useful for demos or signage drills.
+          </div>
+          <TextField label={`Override current temp (${weatherUnits === 'metric' ? '°C' : '°F'})`} value={cfg.tempF != null ? String(cfg.tempF) : ''} placeholder="(blank = live)" onChange={(v) => { if (!v) { setField({ tempF: undefined, staticTemp: undefined }); return; } const n = parseInt(v); if (Number.isFinite(n)) setField({ tempF: n, staticTemp: n }); }} />
+          <TextField label="Override high" value={cfg.high != null ? String(cfg.high) : ''} placeholder="(blank = live)" onChange={(v) => { if (!v) { setField({ high: undefined }); return; } const n = parseInt(v); if (Number.isFinite(n)) setField({ high: n }); }} />
+          <TextField label="Override low" value={cfg.low != null ? String(cfg.low) : ''} placeholder="(blank = live)" onChange={(v) => { if (!v) { setField({ low: undefined }); return; } const n = parseInt(v); if (Number.isFinite(n)) setField({ low: n }); }} />
+          <TextField label="Override condition" value={cfg.condition || cfg.staticDesc || ''} placeholder="(blank = live)" onChange={(v) => setField({ condition: v || undefined, staticDesc: v || undefined })} />
+          <TextField label="Override icon (emoji)" value={cfg.staticIcon || ''} placeholder="☀️ (blank = live)" onChange={(v) => setField({ staticIcon: v || undefined })} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // TickerSpeedField — shared across every animated widget that has
 // a bottom ticker (3 welcomes + cafeteria). Stores 'slow' | 'normal'
 // | 'fast' in config.tickerSpeed. The widget multiplies its own
