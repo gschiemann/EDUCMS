@@ -905,98 +905,133 @@ export default function PlaylistsPage() {
   const submitSchedule = async (activate: boolean) => {
     if (schedTargets.length === 0) return;
     if (publishSubmitting) return; // dedupe rapid clicks
+
+    // 2026-05-05 — operator: "hitting publish is painfully slow,
+    // find out why, i should hit the button and it should publish
+    // and not keep me there with the wheel spinning".
+    //
+    // Two bottlenecks fixed in this rewrite:
+    //
+    // (1) The for-loop over schedTargets called createSchedule
+    //     sequentially. For 2 targets that's 2 round-trips
+    //     end-to-end (probably 4-8s on a cold-start Railway pod).
+    //     Each createSchedule is independent (different target,
+    //     different DB rows) so they can run concurrently. Promise.all
+    //     cuts wall-time to ~max(roundtrip), not sum.
+    //
+    // (2) The modal stayed open with a spinner from the moment the
+    //     operator clicked Publish until the LAST mutation resolved.
+    //     UX pattern reads as "stuck", reported as "wheel spinning".
+    //     Fix: close the modal IMMEDIATELY after click, advance to
+    //     Schedules tab, and run the mutation pipeline in the
+    //     background. The publishSubmitting flag still prevents
+    //     concurrent re-clicks but the operator's screen is no
+    //     longer hostage to the round-trip.
+    //
+    // Failure handling: if anything in the background pipeline
+    // throws (saveItems hangs, createSchedule rejects), surface
+    // an appAlert pointing the operator at the Schedules tab to
+    // verify and retry. Partial success (1 of 2 schedules created)
+    // shows up in the schedule list immediately because each
+    // createSchedule's onSuccess refetches.
+
+    // Capture inputs before we clear the modal state — the optimistic
+    // close path resets schedTargets etc. for the next time the modal
+    // opens, but the in-flight pipeline still needs the snapshot.
+    const targets = [...schedTargets];
+    const playlistId = selectedId;
+    const editId = editingScheduleId;
+    const itemsSnapshot = localItems.map((item, i) => ({
+      assetId: item.assetId || item.asset?.id,
+      durationMs: item.durationMs || 10000,
+      sequenceOrder: i,
+      daysOfWeek: item.daysOfWeek || null,
+      timeStart: item.timeStart || null,
+      timeEnd: item.timeEnd || null,
+      transitionType: item.transitionType || null,
+      muted: item.asset?.mimeType?.startsWith('video/')
+        ? (item.muted === false ? false : true)
+        : true,
+    }));
+    const needsSave = hasChanges;
+    const scheduleParamsFor = (target: string) => {
+      const isGroup = target.startsWith('group-');
+      const targetId = target.replace(/^(group-|screen-)/, '');
+      return {
+        playlistId: playlistId!,
+        screenGroupId: isGroup ? targetId : undefined,
+        screenId: !isGroup ? targetId : undefined,
+        startTime: new Date().toISOString(),
+        daysOfWeek: schedMode === 'scheduled' ? schedDays.join(',') : undefined,
+        timeStart: schedMode === 'scheduled' ? schedTimeStart : undefined,
+        timeEnd: schedMode === 'scheduled' ? schedTimeEnd : undefined,
+        priority: 0,
+        mode: publishMode,
+        mutedOverride: schedMuted,
+        isActive: activate,
+      } as const;
+    };
+
+    // OPTIMISTIC CLOSE: operator's modal disappears within the React
+    // tick. publishSubmitting stays true so a second click anywhere
+    // is still a no-op until the pipeline drains.
     setPublishSubmitting(true);
-    try {
-
-    // CRITICAL: if the operator added items but didn't hit Save, the
-    // playlist is empty in the DB — scheduling it sends an empty
-    // playlist to the screen and the player drops to the splash. Save
-    // first, THEN schedule. Partner reported "added URL, hit publish,
-    // screen went to splash" — that's exactly this race. Items must
-    // persist before any Schedule rows reference the playlist.
-    if (hasChanges && selectedId) {
-      try {
-        await saveItems.mutateAsync({
-          playlistId: selectedId,
-          items: localItems.map((item, i) => ({
-            assetId: item.assetId || item.asset?.id,
-            durationMs: item.durationMs || 10000,
-            sequenceOrder: i,
-            daysOfWeek: item.daysOfWeek || null,
-            timeStart: item.timeStart || null,
-            timeEnd: item.timeEnd || null,
-            transitionType: item.transitionType || null,
-            // 2026-05-05 — preserve audio toggle through publish save.
-            muted: item.asset?.mimeType?.startsWith('video/') ? (item.muted === false ? false : true) : true,
-          })),
-        });
-        setHasChanges(false);
-      } catch (err) {
-        // Save failed — abort the publish. Better to leave the
-        // operator on the editor with their changes intact than
-        // schedule an empty playlist that drops the screen to splash.
-        console.error('[playlists] save-before-publish failed:', err);
-        await appAlert({
-          title: "Couldn't save before publishing",
-          message: 'Your playlist edits failed to save, so we stopped before publishing. Click Save and try Publish again.',
-          tone: 'danger',
-          confirmLabel: 'Got it',
-        });
-        return;
-      }
-    }
-
-    if (editingScheduleId) {
-      // In edit mode we process the multiple targets by clearing the original and recreating them
-      await deleteSchedule.mutateAsync(editingScheduleId);
-
-      for (const target of schedTargets) {
-        const isGroup = target.startsWith('group-');
-        const targetId = target.replace(/^(group-|screen-)/, '');
-        await createSchedule.mutateAsync({
-          playlistId: selectedId!,
-          screenGroupId: isGroup ? targetId : undefined,
-          screenId: !isGroup ? targetId : undefined,
-          startTime: new Date().toISOString(),
-          daysOfWeek: schedMode === 'scheduled' ? schedDays.join(',') : undefined,
-          timeStart: schedMode === 'scheduled' ? schedTimeStart : undefined,
-          timeEnd: schedMode === 'scheduled' ? schedTimeEnd : undefined,
-          priority: 0,
-          mode: publishMode,
-          // 2026-05-05 — schedule-level audio override.
-          mutedOverride: schedMuted,
-          isActive: activate,
-        });
-      }
-      setEditingScheduleId(null);
-    } else {
-      if (!selectedId) return;
-      for (const target of schedTargets) {
-        const isGroup = target.startsWith('group-');
-        const targetId = target.replace(/^(group-|screen-)/, '');
-        await createSchedule.mutateAsync({
-          playlistId: selectedId,
-          screenGroupId: isGroup ? targetId : undefined,
-          screenId: !isGroup ? targetId : undefined,
-          startTime: new Date().toISOString(),
-          daysOfWeek: schedMode === 'scheduled' ? schedDays.join(',') : undefined,
-          timeStart: schedMode === 'scheduled' ? schedTimeStart : undefined,
-          timeEnd: schedMode === 'scheduled' ? schedTimeEnd : undefined,
-          priority: 0,
-          mode: publishMode,
-          // 2026-05-05 — schedule-level audio override.
-          mutedOverride: schedMuted,
-          isActive: activate,
-        });
-      }
-    }
     setShowPublishModal(false);
     setSchedTargets([]);
     setTab('schedules');
-    } finally {
-      // Always release the dedupe flag, success or fail.
-      setPublishSubmitting(false);
-    }
+    if (editId) setEditingScheduleId(null);
+
+    // Run the actual work asynchronously.
+    (async () => {
+      try {
+        // CRITICAL: persist playlist items BEFORE creating schedules.
+        // Empty-playlist races put screens on the splash. If save
+        // fails we abort BEFORE scheduling so we never schedule an
+        // empty playlist.
+        if (needsSave && playlistId) {
+          try {
+            await saveItems.mutateAsync({
+              playlistId,
+              items: itemsSnapshot,
+            });
+            setHasChanges(false);
+          } catch (err) {
+            console.error('[playlists] save-before-publish failed:', err);
+            await appAlert({
+              title: "Couldn't save before publishing",
+              message: 'Your playlist edits failed to save, so we stopped before publishing. Reopen the editor, click Save, and try Publish again.',
+              tone: 'danger',
+              confirmLabel: 'Got it',
+            });
+            return;
+          }
+        }
+
+        if (editId) {
+          // Edit mode: drop the original, recreate per target. The
+          // delete is awaited first because the parallel creates
+          // would otherwise race with it on dedupeKey.
+          await deleteSchedule.mutateAsync(editId);
+          await Promise.all(
+            targets.map((t) => createSchedule.mutateAsync(scheduleParamsFor(t))),
+          );
+        } else {
+          if (!playlistId) return;
+          await Promise.all(
+            targets.map((t) => createSchedule.mutateAsync(scheduleParamsFor(t))),
+          );
+        }
+      } catch (err: any) {
+        console.error('[playlists] publish failed:', err);
+        await appAlert({
+          title: 'Publish encountered an error',
+          message: err?.message || 'Some schedules may not have been created. Check the Schedules tab and republish any that are missing.',
+          tone: 'danger',
+        });
+      } finally {
+        setPublishSubmitting(false);
+      }
+    })();
   };
 
   // Back-compat alias so older call-sites keep working while we migrate.
