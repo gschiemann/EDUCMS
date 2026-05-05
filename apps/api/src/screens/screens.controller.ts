@@ -1720,6 +1720,11 @@ export class ScreensController {
         // 'video/*' or 'image/*' for uploads.
         mime_type: pi.asset.mimeType ?? null,
         transition_type: pi.transitionType ?? null,
+        // 2026-05-05 — per-item video mute control. true = silent,
+        // false = play with sound. Player passes this straight to
+        // the <video muted> attribute. Default true preserves the
+        // previous always-muted behavior for older PlaylistItems.
+        muted: (pi as any).muted ?? true,
       }))
     }));
 

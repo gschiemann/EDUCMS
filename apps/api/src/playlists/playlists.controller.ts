@@ -132,7 +132,7 @@ export class PlaylistsController {
   async reorderItems(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { items: Array<{ assetId: string; durationMs: number; sequenceOrder: number; daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null; transitionType?: string | null }> },
+    @Body() body: { items: Array<{ assetId: string; durationMs: number; sequenceOrder: number; daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null; transitionType?: string | null; muted?: boolean }> },
   ) {
     await this.prisma.ensurePlaylistMetadataColumns();
     const playlist = await this.prisma.client.playlist.findFirst({
@@ -171,6 +171,9 @@ export class PlaylistsController {
             timeStart: item.timeStart || null,
             timeEnd: item.timeEnd || null,
             transitionType: item.transitionType || 'FADE',
+            // 2026-05-05 — default TRUE matches the previous always-
+            // muted behavior. Operator flips per-item via the editor.
+            muted: typeof item.muted === 'boolean' ? item.muted : true,
           },
         }),
       ),

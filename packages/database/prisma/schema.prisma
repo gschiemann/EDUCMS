@@ -560,6 +560,16 @@ model PlaylistItem {
   timeStart      String?  @map("time_start")
   timeEnd        String?  @map("time_end")
   transitionType String?  @default("FADE") @map("transition_type")
+  // 2026-05-05 — operator: "i noticed when i published videos the
+  // sound didnt play, that should be an option when i am adding the
+  // video to the playlist if i want to mute playback or not".
+  // Per-item override of the player's <video muted> attribute.
+  // Default true preserves the previous always-muted behavior; the
+  // editor exposes a "Play with sound" toggle on video items only.
+  // The Android Player's WebView already has
+  // mediaPlaybackRequiresUserGesture=false so unmuted autoplay does
+  // work on the kiosk.
+  muted          Boolean  @default(true)
   asset          Asset    @relation(fields: [assetId], references: [id])
   playlist       Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
 

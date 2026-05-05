@@ -1,0 +1,24 @@
+-- 2026-05-05 — Per-item video mute control on PlaylistItem.
+--
+-- Operator: "i noticed when i published videos the sound didnt
+-- play, that should be an option when i am adding the video to
+-- the playlist if i want to mute playback or not".
+--
+-- Pre-fix: the player hard-coded <video muted> for every clip
+-- because Chrome's autoplay policy requires muted-or-user-gesture
+-- to autoplay. Result: every video silent regardless of operator
+-- intent.
+--
+-- The Android Player's WebView already sets
+-- mediaPlaybackRequiresUserGesture=false so unmuted autoplay works
+-- on the kiosk. Only the web /player render needed the toggle.
+--
+-- This column adds the per-item override. Default TRUE preserves
+-- the previous always-muted behavior so existing playlists don't
+-- start blasting audio after this migration. Operator flips the
+-- toggle off per video they want to play with sound.
+--
+-- Strict additive — no existing column touched. Safe to run on a
+-- live database with traffic.
+ALTER TABLE "playlist_items"
+  ADD COLUMN IF NOT EXISTS "muted" BOOLEAN NOT NULL DEFAULT TRUE;

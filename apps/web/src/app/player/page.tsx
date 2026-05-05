@@ -227,6 +227,7 @@ function PlayerVideoSlide({
   onEnded,
   onError,
   videoKey,
+  muted,
 }: {
   src: string;
   isActive: boolean;
@@ -235,6 +236,16 @@ function PlayerVideoSlide({
   onEnded: () => void;
   onError: () => void;
   videoKey: string;
+  /**
+   * 2026-05-05 — per-item mute override. When false, the <video> element's
+   * muted attribute is omitted so the clip plays with sound. The Android
+   * Player WebView already has mediaPlaybackRequiresUserGesture=false,
+   * so unmuted autoplay works on the kiosk. On the web preview (regular
+   * Chrome without that flag) the play() promise will reject if the
+   * browser blocks autoplay-with-sound — caught silently below; operator
+   * sees a paused first frame, but kiosk plays normally.
+   */
+  muted?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   useEffect(() => {
@@ -255,6 +266,11 @@ function PlayerVideoSlide({
     }
   }, [isActive]);
 
+  // Default to muted=true if undefined (matches pre-2026-05-05 behavior
+  // for any manifest that doesn't include the field, e.g. cached
+  // service-worker payloads from before the column existed).
+  const isMuted = muted !== false;
+
   return (
     <video
       ref={videoRef}
@@ -263,7 +279,7 @@ function PlayerVideoSlide({
       className={classes}
       preload="auto"
       style={{ background: '#000' }}
-      muted
+      muted={isMuted}
       playsInline
       loop={isSoloPlaylist}
       onEnded={isSoloPlaylist ? undefined : onEnded}
@@ -3337,6 +3353,13 @@ function PlayerPage() {
                   isActive={isActive}
                   classes={classes}
                   isSoloPlaylist={isSoloPlaylist}
+                  // 2026-05-05 — manifest carries per-item muted (defaults
+                  // TRUE for legacy items missing the field). Operator
+                  // toggles this off in the playlist editor when they
+                  // want the video to play with sound. Android Player
+                  // WebView already has mediaPlaybackRequiresUserGesture
+                  // =false so unmuted autoplay is allowed on the kiosk.
+                  muted={(item as any).muted}
                   onEnded={() => setCurrentIndex(prev => prev + 1)}
                   onError={() => {
                     console.warn('[Player] video error, skipping:', resUrl);

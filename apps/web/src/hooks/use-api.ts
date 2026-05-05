@@ -250,7 +250,7 @@ export function useReorderPlaylistItems() {
   return useMutation({
     mutationFn: ({ playlistId, items }: {
       playlistId: string;
-      items: Array<{ assetId: string; durationMs: number; sequenceOrder: number; daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null; transitionType?: string | null }>;
+      items: Array<{ assetId: string; durationMs: number; sequenceOrder: number; daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null; transitionType?: string | null; muted?: boolean }>;
     }) =>
       apiFetch(`/playlists/${playlistId}/items`, {
         method: 'PUT',

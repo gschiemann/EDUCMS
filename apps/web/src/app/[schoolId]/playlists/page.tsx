@@ -190,6 +190,35 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
               <option value="SLIDE_DOWN">Slide Down</option>
             </select>
           </div>
+
+          {/* 2026-05-05 — per-video audio toggle. Only shown for video
+              items because images and webpages don't have an audio
+              track. Default behavior matches pre-fix: muted=true so
+              existing playlists don't unexpectedly start blasting
+              sound after the column ships. Operator flips off per
+              video they want to play with sound. The Android Player
+              kiosk has mediaPlaybackRequiresUserGesture=false so
+              unmuted autoplay works there; web preview may show a
+              paused first frame if Chrome blocks autoplay-with-sound. */}
+          {item.asset?.mimeType?.startsWith('video/') && (
+            <div className="mt-4 pt-4 border-t border-slate-200/60">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Audio</p>
+              <button
+                type="button"
+                onClick={() => onUpdate(item.id, { muted: !(item.muted === false ? false : true) })}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-semibold transition-colors ${item.muted === false ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                title={item.muted === false ? 'Sound on — video plays with audio' : 'Muted — video plays silently'}
+              >
+                <span className={`inline-flex items-center justify-center w-4 h-4 rounded ${item.muted === false ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                  {item.muted === false ? '♪' : '🔇'}
+                </span>
+                {item.muted === false ? 'Play with sound' : 'Muted (no audio)'}
+              </button>
+              <p className="text-[10px] text-slate-400 mt-1.5 leading-snug">
+                Default is muted so videos autoplay reliably. Turn on for clips where the audio is the point — announcements, anthems, etc. Kiosk plays normally; browser preview may need a click.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -548,6 +577,11 @@ export default function PlaylistsPage() {
             daysOfWeek: item.daysOfWeek || null,
             timeStart: item.timeStart || null,
             timeEnd: item.timeEnd || null,
+            transitionType: item.transitionType || null,
+            // 2026-05-05 — only persist `muted` for video items. For
+            // images/webpages the column is irrelevant; sending true
+            // would still be harmless but we keep it semantic.
+            muted: item.asset?.mimeType?.startsWith('video/') ? (item.muted === false ? false : true) : true,
           })),
         });
         setHasChanges(false);
@@ -826,6 +860,11 @@ export default function PlaylistsPage() {
         daysOfWeek: item.daysOfWeek || null,
         timeStart: item.timeStart || null,
         timeEnd: item.timeEnd || null,
+        transitionType: item.transitionType || null,
+        // 2026-05-05 — see submitForReview comment. Per-video audio
+        // toggle: video gets the operator's choice, non-video stays
+        // true (column harmless on images).
+        muted: item.asset?.mimeType?.startsWith('video/') ? (item.muted === false ? false : true) : true,
       })),
     });
     setHasChanges(false);
@@ -878,6 +917,9 @@ export default function PlaylistsPage() {
             daysOfWeek: item.daysOfWeek || null,
             timeStart: item.timeStart || null,
             timeEnd: item.timeEnd || null,
+            transitionType: item.transitionType || null,
+            // 2026-05-05 — preserve audio toggle through publish save.
+            muted: item.asset?.mimeType?.startsWith('video/') ? (item.muted === false ? false : true) : true,
           })),
         });
         setHasChanges(false);
