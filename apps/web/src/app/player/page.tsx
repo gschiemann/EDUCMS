@@ -248,6 +248,12 @@ function PlayerVideoSlide({
   muted?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Default to muted=true if undefined (matches pre-2026-05-05 behavior
+  // for any manifest that doesn't include the field, e.g. cached
+  // service-worker payloads from before the column existed).
+  const isMuted = muted !== false;
+
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
@@ -256,20 +262,73 @@ function PlayerVideoSlide({
       // ended at duration doesn't replay from the end. For initial
       // mount, currentTime is already 0 — this is a no-op.
       try { v.currentTime = 0; } catch { /* some browsers reject if not ready */ }
-      // Play() returns a promise on modern browsers; muted videos
-      // should always succeed. Catch swallows any "interrupted by
-      // pause" rejection that occurs when isActive flips fast.
+
+      // 2026-05-05 — explicitly set `muted` as a property (in addition
+      // to the JSX prop) so the autoplay-fallback below can flip it
+      // imperatively without React re-render lag. React updates the
+      // attribute but the video element's `muted` IDL property is
+      // what the play() permission check actually reads.
+      v.muted = isMuted;
+
+      // Play() returns a promise on modern browsers. For muted videos
+      // it always succeeds. For UNMUTED videos Chrome's autoplay
+      // policy will reject unless:
+      //   (a) the user has interacted with the page, OR
+      //   (b) the document has the
+      //       `mediaPlaybackRequiresUserGesture=false` flag set
+      //       (Android Player WebView does this — see MainActivity.kt).
+      //
+      // When the play() promise rejects on an unmuted video, fall
+      // back to muted-autoplay so the operator at least sees the
+      // video PLAYING (silent first frame is worse than nothing).
+      // The page-level user-gesture listener below will retry
+      // unmute on the first click/key/touch.
       const p = v.play();
-      if (p && typeof p.catch === 'function') p.catch(() => {});
+      if (p && typeof p.catch === 'function') {
+        p.catch((err: any) => {
+          if (!isMuted) {
+            // eslint-disable-next-line no-console
+            console.warn('[Player] autoplay-with-sound blocked, falling back to muted:', err?.name || err);
+            try {
+              v.muted = true;
+              v.play().catch(() => {});
+            } catch { /* noop */ }
+          }
+        });
+      }
     } else {
       try { v.pause(); } catch { /* noop */ }
     }
-  }, [isActive]);
+  }, [isActive, isMuted]);
 
-  // Default to muted=true if undefined (matches pre-2026-05-05 behavior
-  // for any manifest that doesn't include the field, e.g. cached
-  // service-worker payloads from before the column existed).
-  const isMuted = muted !== false;
+  // 2026-05-05 — recover from autoplay-with-sound block on first user
+  // gesture. Chrome's policy says any document-wide click / keydown /
+  // pointerdown counts as a gesture and unlocks audio playback for
+  // the rest of the page lifetime. Re-attempt the unmute as soon as
+  // we see one. Pure no-op on the Android kiosk because the gesture
+  // requirement is already disabled there.
+  useEffect(() => {
+    if (isMuted) return; // muted-by-design — no recovery needed
+    const tryUnmute = () => {
+      const v = videoRef.current;
+      if (!v) return;
+      if (v.muted) {
+        // eslint-disable-next-line no-console
+        console.log('[Player] user gesture — restoring sound');
+        v.muted = false;
+        const p = v.play();
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+      }
+    };
+    document.addEventListener('pointerdown', tryUnmute);
+    document.addEventListener('keydown', tryUnmute);
+    document.addEventListener('touchstart', tryUnmute);
+    return () => {
+      document.removeEventListener('pointerdown', tryUnmute);
+      document.removeEventListener('keydown', tryUnmute);
+      document.removeEventListener('touchstart', tryUnmute);
+    };
+  }, [isMuted]);
 
   return (
     <video
