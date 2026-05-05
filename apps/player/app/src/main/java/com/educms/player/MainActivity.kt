@@ -22,6 +22,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -47,6 +48,16 @@ class MainActivity : ComponentActivity() {
     private val deviceStore by lazy { DeviceStore(applicationContext) }
     private lateinit var recovery: NetworkRecoveryController
     private var urlOverlayCurrentUrl: String? = null
+
+    /**
+     * Last-seen IME (soft keyboard) visibility. Used by the
+     * onApplyWindowInsetsListener below to detect close-transitions
+     * and force a WebView repaint that clears the post-keyboard
+     * black bar. Initialized false (assumes keyboard not visible at
+     * activity start, which is enforced by stateAlwaysHidden in the
+     * manifest).
+     */
+    private var lastImeVisible: Boolean = false
 
     /**
      * Belt-and-suspenders kiosk-stuck watchdog (2026-05-05).
@@ -173,6 +184,51 @@ class MainActivity : ComponentActivity() {
         // loadPlayer() call time to actually load before we start
         // checking freshness.
         watchdogHandler.postDelayed(watchdogTicker, WATCHDOG_TICK_MS)
+
+        // 2026-05-05 — operator: "the issue with the android keyboard
+        // is still there, i open the keyboard and now have a black
+        // bar at the top of the screen that doesnt go away even when
+        // i close the keyboard…im on .47 and .15 manager".
+        //
+        // The manifest's adjustResize already shrinks the viewport
+        // when the keyboard opens (no more pan). But on close, the
+        // WebView holds onto the resized scroll position — content
+        // doesn't redraw to fill the recovered area. Result: a black
+        // bar at the top equal to the height of where the keyboard
+        // had been.
+        //
+        // Fix: subscribe to IME visibility changes via the modern
+        // WindowInsets API. When the IME hides, force the WebView to
+        // scroll to (0,0), drop input focus, and request a layout
+        // pass. The combination forces a paint over the previously-
+        // hidden top region, so the black bar disappears.
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { v, insets ->
+            val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
+            if (imeVisible != lastImeVisible) {
+                lastImeVisible = imeVisible
+                if (!imeVisible) {
+                    // IME just closed — kick the WebView to repaint.
+                    runCatching {
+                        webView.scrollTo(0, 0)
+                        webView.clearFocus()
+                        webView.requestLayout()
+                        // Belt + suspenders: tell the web side to
+                        // reset its scroll too. Some templates use
+                        // position:fixed inset-0 which captures the
+                        // shrunk viewport size at the moment of focus
+                        // and doesn't re-evaluate without a JS poke.
+                        webView.evaluateJavascript(
+                            "window.scrollTo(0,0);" +
+                            "if(document.scrollingElement)document.scrollingElement.scrollTop=0;" +
+                            "if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();" +
+                            "window.dispatchEvent(new Event('resize'));",
+                            null,
+                        )
+                    }.onFailure { Log.w("Player", "IME-close repaint hook failed", it) }
+                }
+            }
+            insets
+        }
 
         configureWebView(webView)
         configureUrlOverlay(urlOverlayView)

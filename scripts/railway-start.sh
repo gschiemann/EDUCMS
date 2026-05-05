@@ -44,17 +44,42 @@ echo "[railway-start] step 2/3 — applying pending Prisma migrations"
 if [ "$SKIP_MIGRATE" = "true" ] || [ "$SKIP_MIGRATE" = "1" ]; then
   echo "[railway-start] SKIP_MIGRATE=$SKIP_MIGRATE set — skipping prisma migrate deploy"
 else
-  # Use the binary directly (avoids pnpm-workspace path quirks). The
-  # Dockerfile's runner stage copies node_modules from the builder,
-  # so this path is guaranteed to exist.
-  if [ -x "./node_modules/.bin/prisma" ]; then
-    ./node_modules/.bin/prisma migrate deploy --schema=packages/database/prisma/schema.prisma
-    echo "[railway-start] migrations applied successfully"
-  else
-    echo "[railway-start] WARN: prisma binary not found at ./node_modules/.bin/prisma"
-    echo "  Falling back to npx (network roundtrip)"
-    npx --no prisma migrate deploy --schema=packages/database/prisma/schema.prisma
+  # 2026-05-05 — fixing crash loop on prod. Prior implementation
+  # checked ./node_modules/.bin/prisma which doesn't exist with
+  # pnpm's hoisted layout (binaries live under
+  # node_modules/.pnpm/prisma@*/node_modules/.bin/prisma and pnpm
+  # creates dispatcher shims at packages/database/node_modules/.bin/.
+  # Then the npx fallback used `--no` which is invalid syntax (real
+  # flag is `--no-install`), so it fell through to network resolution
+  # and failed with `sh: prisma: not found` because npm/npx isn't
+  # installed in the Alpine runner — corepack only sets up pnpm.
+  #
+  # New approach: try paths in order, then the pnpm workspace
+  # invocation which always works (matches what `pnpm db:deploy`
+  # does locally). Set -e fails fast if every path fails.
+  MIGRATED=""
+  for candidate in \
+    "./packages/database/node_modules/.bin/prisma" \
+    "./node_modules/.bin/prisma" \
+    "./node_modules/prisma/build/index.js"; do
+    if [ -x "$candidate" ] || [ -f "$candidate" ]; then
+      echo "[railway-start] running migrations via $candidate"
+      if [ "$candidate" = "./node_modules/prisma/build/index.js" ]; then
+        node "$candidate" migrate deploy --schema=packages/database/prisma/schema.prisma
+      else
+        "$candidate" migrate deploy --schema=packages/database/prisma/schema.prisma
+      fi
+      MIGRATED=1
+      break
+    fi
+  done
+  if [ -z "$MIGRATED" ]; then
+    echo "[railway-start] direct prisma binary not found — using pnpm workspace runner"
+    # corepack sets up pnpm in the runner stage; this is the same
+    # invocation `pnpm db:deploy` uses locally.
+    pnpm --filter @cms/database run db:deploy
   fi
+  echo "[railway-start] migrations applied successfully"
 fi
 
 echo "[railway-start] step 3/3 — booting the API"
