@@ -11,6 +11,7 @@
       "packages/ws-events/**",
       "Dockerfile",
       "railway.json",
+      "scripts/**",
       "package.json",
       "pnpm-lock.yaml",
       "pnpm-workspace.yaml",
@@ -18,8 +19,8 @@
     ]
   },
   "deploy": {
-    "//": "Auto-apply pending Prisma migrations BEFORE booting the API. 2026-05-04 — operator hit a string of 'tables don't exist on the DB yet' errors after every feature that added a migration (streaming integrations, BYOK AI, AI quota) because the prior startCommand was `node apps/api/dist/main.js` with no migrate step. `prisma migrate deploy` is idempotent (skips already-applied migrations) so running it on every boot is safe. If a migration is malformed the boot fails fast and the Railway restart policy below retries 10× — better than silently running with a stale schema.",
-    "startCommand": "pnpm --filter @cms/database run db:deploy && node apps/api/dist/main.js",
+    "//": "Auto-apply pending Prisma migrations BEFORE booting the API. 2026-05-04 — first attempt put `pnpm --filter @cms/database run db:deploy && node ...` directly here; that boot went in_progress → inactive in 17s with no useful Railway log surface (silent crash, possibly a startCommand parser quirk or pnpm path issue in the runner stage). Replaced with an explicit shell script (scripts/railway-start.sh) that prints step-by-step status, fails fast on missing DATABASE_URL, calls the prisma binary directly without going through pnpm, then execs node. If migrations fail the script's set -e propagates → Railway restartPolicy retries 10× and the failing step is visible in the deploy log instead of a generic 'inactive'.",
+    "startCommand": "./scripts/railway-start.sh",
     "healthcheckPath": "/api/v1/health",
     "healthcheckTimeout": 60,
     "numReplicas": 1,

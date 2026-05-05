@@ -94,10 +94,18 @@ COPY --from=builder /app/packages/ ./packages/
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
 
+# Boot wrapper that runs `prisma migrate deploy` before booting the
+# API. Kept in scripts/ so Railway's startCommand stays a one-liner
+# and so the boot logic is easy to test locally with
+# `docker run educms-api scripts/railway-start.sh`.
+COPY --chmod=0755 scripts/railway-start.sh ./scripts/railway-start.sh
+
 # Execute as unprivileged node user
 USER node
 
 EXPOSE 8080
 
-# Start NestJS server from the correct location
-CMD ["node", "apps/api/dist/main.js"]
+# Default CMD — Railway overrides this via railway.json's startCommand
+# (which calls scripts/railway-start.sh). Kept here as the safe
+# fallback for `docker run` without an override.
+CMD ["./scripts/railway-start.sh"]
