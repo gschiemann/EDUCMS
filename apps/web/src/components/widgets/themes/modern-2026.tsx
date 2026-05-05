@@ -560,12 +560,19 @@ export function StaffHero({ config }: { config: any }) {
 // ════════════════════════════════════════════════════════════════════════
 
 // 1) Big Number — minimalist huge number
+//
+// 2026-05-04 — single-number variant: ceil partial days so May 12
+// from a May 5 morning shows 7 (calendar days), not 6 (precise floor).
+// See rainbow-animated.tsx for the long version. Multi-unit
+// CountdownBlocks below keeps Math.floor for the precise d/h/m
+// breakdown.
 export function CountdownBigNumber({ config }: { config: any }) {
   const label = config.label || 'Countdown';
   const target = config.targetDate ? new Date(config.targetDate) : new Date(Date.now() + 12 * 86400000);
   const [now, setNow] = useState(new Date());
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(t); }, []);
-  const days = Math.max(0, Math.floor((target.getTime() - now.getTime()) / 86400000));
+  const diffMs = Math.max(0, target.getTime() - now.getTime());
+  const days = diffMs > 0 ? Math.ceil(diffMs / 86400000) : 0;
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden" style={{
       background: C.paper, borderRadius: 24, fontFamily: FONT_DISPLAY,
