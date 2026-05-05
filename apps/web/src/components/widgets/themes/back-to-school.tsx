@@ -25,6 +25,7 @@
 import { useEffect, useState } from 'react';
 import { EditableText } from './EditableText';
 import { calendarDaysUntil, resolveCountdownTarget } from '../countdown-utils';
+import { useLiveWeather } from '../use-live-weather';
 
 // ─── Palette pulled from the scene illustration ─────────────────────────
 export const BTS = {
@@ -453,9 +454,14 @@ export function BackToSchoolTicker({ config }: { config: any }) {
 // WALL SIGN WEATHER — small wood-framed sign
 // ═══════════════════════════════════════════════════════════════════════
 export function BackToSchoolWeather({ config }: { config: any }) {
-  const temp = config.tempF || 72;
-  const cond = (config.condition || 'Sunny');
-  const icon = cond.toLowerCase().includes('rain') ? '🌧️' : cond.toLowerCase().includes('cloud') ? '⛅' : cond.toLowerCase().includes('snow') ? '❄️' : '☀️';
+  // 2026-05-04 — was reading config.tempF || 72 / config.condition ||
+  // 'Sunny' which silently ignored the location operator typed. Now
+  // pulls live from Open-Meteo via useLiveWeather; override fields
+  // still win when explicitly set (demo / drill use case).
+  const live = useLiveWeather(config);
+  const temp = live.temp;
+  const cond = live.condition;
+  const icon = live.icon;
   return (
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '6%' }}>
       <div style={{

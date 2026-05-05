@@ -11,23 +11,49 @@ import type { WidgetProps } from './_shared/types';
 interface WCfg { style?: WidgetStyle; location?: string; units?: 'imperial' | 'metric'; staticTemp?: number; staticDesc?: string; staticIcon?: string; feedUrl?: string; }
 function emojiFor(code: number): string { if (code === 0) return '☀️'; if (code <= 3) return '⛅'; if (code <= 48) return '🌫️'; if (code <= 67) return '🌧️'; if (code <= 77) return '❄️'; if (code <= 82) return '🌦️'; if (code <= 86) return '🌨️'; if (code >= 95) return '⛈️'; return '🌤️'; }
 function descFor(code: number): string { if (code === 0) return 'Clear'; if (code <= 3) return 'Partly cloudy'; if (code <= 48) return 'Foggy'; if (code <= 67) return 'Rainy'; if (code <= 77) return 'Snowy'; if (code <= 82) return 'Showers'; if (code >= 95) return 'Storms'; return 'Fair'; }
-function useWeather(loc: string | undefined, units: 'imperial' | 'metric' = 'imperial', live?: boolean) {
+// 2026-05-04 — operator: weather widgets show static placeholder
+// values in editor because the v2 hook gated fetches behind a `live`
+// prop that's only true on the player. Now fetches in BOTH editor
+// and player so the operator sees the real weather they'll get.
+// Also handles 5-digit US zip codes via Zippopotam.us (mirrors the
+// legacy fetchWeather change).
+function useWeather(loc: string | undefined, units: 'imperial' | 'metric' = 'imperial', _live?: boolean) {
   const [data, setData] = useState<{ temp: number; code: number; hi: number; lo: number; loaded: boolean }>({ temp: units === 'imperial' ? 72 : 22, code: 1, hi: 78, lo: 60, loaded: false });
   useEffect(() => {
-    if (!live || !loc) return;
+    if (!loc) return;
+    const trimmed = loc.trim();
+    if (!trimmed) return;
     let cancel = false;
     (async () => {
       try {
-        const geo = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(loc)}&count=1`).then(r => r.json());
-        const g = geo?.results?.[0]; if (!g || cancel) return;
+        let lat: number | null = null;
+        let lng: number | null = null;
+        // lat,lng from the geolocation auto-detect button
+        const m = trimmed.match(/^(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)$/);
+        if (m) { lat = parseFloat(m[1]); lng = parseFloat(m[2]); }
+        // 5-digit US zip
+        if (lat == null && /^\d{5}$/.test(trimmed)) {
+          try {
+            const z = await fetch(`https://api.zippopotam.us/us/${trimmed}`).then(r => r.ok ? r.json() : null);
+            const p = z?.places?.[0];
+            if (p) { lat = parseFloat(p.latitude); lng = parseFloat(p.longitude); }
+          } catch { /* ignore */ }
+        }
+        // City name
+        if (lat == null) {
+          const geo = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(trimmed)}&count=1`).then(r => r.json());
+          const g = geo?.results?.[0]; if (!g) return;
+          lat = g.latitude; lng = g.longitude;
+        }
+        if (lat == null || lng == null || cancel) return;
         const u = units === 'imperial' ? '&temperature_unit=fahrenheit' : '';
-        const w = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${g.latitude}&longitude=${g.longitude}&current_weather=true&daily=temperature_2m_max,temperature_2m_min&timezone=auto${u}`).then(r => r.json());
+        const w = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&daily=temperature_2m_max,temperature_2m_min&timezone=auto${u}`).then(r => r.json());
         if (cancel) return;
         setData({ temp: Math.round(w?.current_weather?.temperature ?? 70), code: w?.current_weather?.weathercode ?? 1, hi: Math.round(w?.daily?.temperature_2m_max?.[0] ?? 78), lo: Math.round(w?.daily?.temperature_2m_min?.[0] ?? 60), loaded: true });
       } catch { /* ignore */ }
     })();
     return () => { cancel = true; };
-  }, [loc, units, live]);
+  }, [loc, units]);
   return data;
 }
 

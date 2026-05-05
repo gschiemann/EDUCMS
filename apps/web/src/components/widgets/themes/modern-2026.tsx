@@ -14,6 +14,7 @@
 
 import { useEffect, useState } from 'react';
 import { calendarDaysUntil, resolveCountdownTarget } from '../countdown-utils';
+import { useLiveWeather } from '../use-live-weather';
 
 const FONT_DISPLAY = "var(--font-fredoka), ui-rounded, 'Arial Rounded MT Bold', system-ui, sans-serif";
 const FONT_BODY    = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif";
@@ -667,10 +668,13 @@ export function CalendarModernList({ config }: { config: any }) {
 
 // 1) Hero Weather
 export function WeatherHero({ config }: { config: any }) {
-  const temp = config.tempF ?? 72;
-  const cond = config.condition || 'Sunny';
-  const loc = config.location || 'Springfield';
-  const icon = cond.toLowerCase().includes('rain') ? '🌧️' : cond.toLowerCase().includes('cloud') ? '⛅' : cond.toLowerCase().includes('snow') ? '❄️' : '☀️';
+  // 2026-05-04 — pulls live weather from Open-Meteo via useLiveWeather.
+  // Override fields still win for demo / drill use cases.
+  const live = useLiveWeather(config);
+  const temp = live.temp;
+  const cond = live.condition;
+  const loc = live.locationName || config.location || 'Springfield';
+  const icon = live.icon;
   return (
     <div className="absolute inset-0 overflow-hidden flex flex-col justify-center" style={{
       background: `linear-gradient(135deg, ${C.blue}, ${C.indigo})`,
@@ -694,10 +698,11 @@ export function WeatherHero({ config }: { config: any }) {
 
 // 2) Glass Weather
 export function WeatherGlass({ config }: { config: any }) {
-  const temp = config.tempF ?? 72;
-  const cond = config.condition || 'Sunny';
-  const loc = config.location || 'Springfield';
-  const icon = cond.toLowerCase().includes('rain') ? '🌧️' : cond.toLowerCase().includes('cloud') ? '⛅' : cond.toLowerCase().includes('snow') ? '❄️' : '☀️';
+  const live = useLiveWeather(config);
+  const temp = live.temp;
+  const cond = live.condition;
+  const loc = live.locationName || config.location || 'Springfield';
+  const icon = live.icon;
   return (
     <div className="absolute inset-0 overflow-hidden flex items-center" style={{
       background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(20px) saturate(180%)',
