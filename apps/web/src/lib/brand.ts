@@ -101,17 +101,21 @@ export function getServerBrand(): BrandConfig {
 
 /**
  * Client-side brand resolution. Prefers env (set at build time and
- * inlined into the bundle); falls back to host detection so a single
- * staging deployment can serve both brands by domain.
+ * inlined into the bundle).
+ *
+ * 2026-05-05 — operator: "lets change the default to Venue OS right?
+ * and the login screen still says K-12". Previously the host-based
+ * fallback flipped to EDU CMS branding whenever the URL contained
+ * 'educms' — which fired on the existing pilot deployment
+ * (educms-five.vercel.app), so refreshing the dashboard always reset
+ * to the K-12 chrome. Removed the host check: the deployment URL is
+ * an artifact, not a brand declaration. EDU CMS branding now requires
+ * an EXPLICIT `NEXT_PUBLIC_CMS_BRAND=educms` opt-in. Default = VenueOS
+ * everywhere else.
  */
 export function getClientBrand(): BrandConfig {
   if (typeof window === 'undefined') return getServerBrand();
   const envBrand = (process.env.NEXT_PUBLIC_CMS_BRAND || '').toLowerCase().trim();
-  if (envBrand === 'venueos') return BRANDS.venueos;
   if (envBrand === 'educms') return BRANDS.educms;
-  // Domain-based fallback — VenueOS is the default brand; only flip
-  // to EDU CMS when explicitly served from the educms domain.
-  const host = window.location.host.toLowerCase();
-  if (host.includes('educms')) return BRANDS.educms;
   return BRANDS.venueos;
 }

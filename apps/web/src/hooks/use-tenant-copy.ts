@@ -45,7 +45,7 @@ export interface TenantCopy {
   dashboardSublineNoun: string;
   /** Settings page section title — currently "School Settings" */
   settingsSectionTitle: string;
-  /** Default brand name — "EduSignage" for K12, "VenueOS" otherwise. Tenant.branding.displayName overrides. */
+  /** Default brand name — "VenueOS" for every vertical. Tenant.branding.displayName overrides. */
   defaultBrandName: string;
   /** Vertical-aware template gallery category tabs */
   templateCategories: ReadonlyArray<{ key: string; label: string }>;

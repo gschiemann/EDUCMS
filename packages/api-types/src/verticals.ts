@@ -201,12 +201,17 @@ export function getRoleLabel(role: string, vertical: Vertical = DEFAULT_VERTICAL
 }
 
 /**
- * Per-vertical default brand name. K12 tenants without custom branding
- * see "EduSignage" (existing pilot identity); everyone else sees
- * "VenueOS". Tenant.branding.displayName overrides this when set.
+ * Per-vertical default brand name. Every vertical defaults to "VenueOS"
+ * — operator decision 2026-05-05: "lets change the default to Venue OS
+ * right?" Customer-facing screens and the dashboard sidebar should never
+ * read as "EduSignage" once a tenant has set their own brand kit, AND
+ * the unbranded fallback should be the industry-agnostic VenueOS name
+ * (not the K12-specific EduSignage identity that confused customers
+ * mid-deploy). Tenant.branding.displayName overrides this when set —
+ * so a tenant who's adopted their own brand never sees VenueOS either.
  */
 export const VERTICAL_DEFAULT_BRAND: Record<Vertical, string> = {
-  K12:       'EduSignage',
+  K12:       'VenueOS',
   GYM:       'VenueOS',
   RETAIL:    'VenueOS',
   CORPORATE: 'VenueOS',

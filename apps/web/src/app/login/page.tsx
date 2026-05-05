@@ -9,6 +9,7 @@ import { useUIStore } from '@/store/ui-store';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { API_URL, warnIfMisconfigured, isLikelyMisconfigured } from '@/lib/api-url';
 import { clog } from '@/lib/client-logger';
+import { getClientBrand } from '@/lib/brand';
 
 export default function LoginPage() {
   return (
@@ -19,6 +20,13 @@ export default function LoginPage() {
 }
 
 function LoginContent() {
+  // 2026-05-05 — operator: "the login screen still says k-12 when
+  // entering your credentials" + "lets change the default to Venue
+  // OS right?". Pulls brand identity from getClientBrand() so the
+  // h1 + tagline match whatever brand the deploy is configured for
+  // (default VenueOS; EDU CMS only when NEXT_PUBLIC_CMS_BRAND=educms
+  // is explicitly set).
+  const brand = getClientBrand();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -166,9 +174,9 @@ function LoginContent() {
             <MonitorPlay className="w-7 h-7 text-white" />
           </div>
           <h1 className="text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700">
-            VenueOS
+            {brand.name}
           </h1>
-          <p className="text-sm font-medium text-slate-500 mt-1">K-12 digital signage, made simple.</p>
+          <p className="text-sm font-medium text-slate-500 mt-1">{brand.tagline}</p>
         </div>
 
         {/* Card */}
