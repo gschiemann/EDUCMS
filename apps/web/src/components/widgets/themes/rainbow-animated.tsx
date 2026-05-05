@@ -23,6 +23,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { resolveCountdownTarget, calendarDaysUntil } from '../countdown-utils';
+import { useLiveWeather } from '../use-live-weather';
 
 // ─────────────────────────────────────────────────────────────────
 // Shared scale-to-fit hook — used by every component below
@@ -213,8 +214,14 @@ export function RainbowAnimatedClock({ config }: { config: any }) {
 // WEATHER — sun with spinning rays + big temp face
 // ─────────────────────────────────────────────────────────────────
 export function RainbowAnimatedWeather({ config }: { config: any }) {
-  const temp = config.weatherTemp || config.temp || '68°';
-  const desc = config.weatherDesc || config.desc || '~ sunny + crisp ~';
+  // 2026-05-04 — pulls live weather. Falls back to legacy
+  // weatherTemp/temp/weatherDesc/desc keys ONLY when the operator
+  // explicitly typed something there; otherwise uses live data.
+  const live = useLiveWeather(config);
+  const overrideTemp = config.weatherTemp || config.temp;
+  const overrideDesc = config.weatherDesc || config.desc;
+  const temp = overrideTemp || `${live.temp}°`;
+  const desc = overrideDesc || `~ ${live.condition.toLowerCase()} ~`;
   return (
     <ScaleWrap naturalW={320} naturalH={340}>
       <GlobalAnimations />

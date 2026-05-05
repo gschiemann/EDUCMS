@@ -20,6 +20,7 @@ import { useEffect, useState } from 'react';
 // 2026-05-03 — operator: no military time anywhere. Format the time half
 // of "Period 1: 8:00 - 8:50" lines through the shared 12-hour helper.
 import { formatTime12 } from '@/lib/format-time';
+import { useLiveWeather } from '../use-live-weather';
 
 // ─── Palette ────────────────────────────────────────────
 export const MSH = {
@@ -326,8 +327,10 @@ export function MSHallImageCarousel({ config }: { config: any }) {
 // WEATHER — Smartphone screen stuck on locker
 // ═══════════════════════════════════════════════════════════
 export function MSHallWeather({ config }: { config: any }) {
-  const temp = config.tempF || 68;
-  const cond = config.condition || 'Clear';
+  // 2026-05-04 — pulls live weather; overrides still win when set.
+  const live = useLiveWeather(config);
+  const temp = live.temp;
+  const cond = live.condition;
   const icon = cond.toLowerCase().includes('rain') ? '🌧️' : cond.toLowerCase().includes('cloud') ? '⛅' : '☀️';
   
   return (

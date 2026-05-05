@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { useLiveWeather } from '../use-live-weather';
 
 // ─── Palette ────────────────────────────────────────────────────────────
 export const FC = {
@@ -206,8 +207,10 @@ export function FinalChanceClock({ config }: { config: any }) {
 // WEATHER
 // ═══════════════════════════════════════════════════════════════════════
 export function FinalChanceWeather({ config }: { config: any }) {
-  const temp = config.tempF || 72;
-  const cond = config.condition || 'Clear';
+  // 2026-05-04 — pulls live weather; overrides still win when set.
+  const live = useLiveWeather(config);
+  const temp = live.temp;
+  const cond = live.condition;
   const loc  = config.location || 'Springfield';
   const hi   = config.high || 78;
   const lo   = config.low || 64;

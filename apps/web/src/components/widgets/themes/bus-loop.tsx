@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Clock, Calendar, AlertTriangle, CloudRain, Sun, Cloud, Snowflake, Bus } from 'lucide-react';
+import { useLiveWeather } from '../use-live-weather';
 
 const BL = {
   bg: '#000000',
@@ -109,8 +110,11 @@ export function BusLoopTicker({ config, compact }: { config: any; compact?: bool
 }
 
 export function BusLoopWeather({ config, compact }: { config: any; compact?: boolean }) {
-  const t = config.tempF || 72;
-  const c = (config.condition || 'Sunny').toLowerCase();
+  // 2026-05-04 — pulls live weather. Override config.tempF /
+  // condition still wins for demo / drill use cases.
+  const live = useLiveWeather(config);
+  const t = live.temp;
+  const c = live.condition.toLowerCase();
   let Icon = Sun;
   let color = BL.yellow;
   if (c.includes('rain')) { Icon = CloudRain; color = '#60a5fa'; }

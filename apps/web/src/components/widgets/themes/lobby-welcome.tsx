@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Cloud, CloudRain, Sun, Wind, Calendar as CalendarIcon, Info } from 'lucide-react';
+import { useLiveWeather } from '../use-live-weather';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LOBBY WELCOME THEME - Modern Glassmorphism & Architectural Elegance
@@ -102,6 +103,18 @@ export function LobbyWelcomeClock({ config, compact }: { config: any; compact?: 
 }
 
 export function LobbyWelcomeWeather({ config, compact }: { config: any; compact?: boolean }) {
+  // 2026-05-04 — was rendering a hard-coded "72°" + "Sunny & Clear"
+  // string with no fetch path at all. Now reads live weather and
+  // picks the right Lucide icon by condition keyword.
+  const live = useLiveWeather(config);
+  const condLower = live.condition.toLowerCase();
+  const Icon = condLower.includes('rain') ? CloudRain
+    : condLower.includes('cloud') ? Cloud
+    : condLower.includes('wind') ? Wind
+    : Sun;
+  const iconColor = condLower.includes('rain') ? '#3b82f6'
+    : condLower.includes('cloud') ? '#94a3b8'
+    : '#f59e0b';
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center" style={{
       background: 'rgba(255, 255, 255, 0.2)',
@@ -112,18 +125,18 @@ export function LobbyWelcomeWeather({ config, compact }: { config: any; compact?
       containerType: 'size'
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '3cqi' }}>
-        <Sun color="#f59e0b" size="30cqh" />
-        <div style={{ 
-          fontSize: 'clamp(2rem, 25cqh, 6rem)', 
-          fontWeight: 300, 
+        <Icon color={iconColor} size="30cqh" />
+        <div style={{
+          fontSize: 'clamp(2rem, 25cqh, 6rem)',
+          fontWeight: 300,
           color: '#1e293b',
           fontFamily: '"Inter", sans-serif'
         }}>
-          72°
+          {live.temp}°
         </div>
       </div>
       <div style={{ fontSize: 'clamp(1rem, 6cqh, 2rem)', color: '#475569', marginTop: '2cqh', fontWeight: 500 }}>
-        Sunny & Clear
+        {live.condition}
       </div>
     </div>
   );

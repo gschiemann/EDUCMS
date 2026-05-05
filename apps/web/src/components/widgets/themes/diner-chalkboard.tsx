@@ -19,6 +19,7 @@
 
 import { useEffect, useState } from 'react';
 import { resolveCountdownTarget } from '../countdown-utils';
+import { useLiveWeather } from '../use-live-weather';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '') : 'http://localhost:8080';
 function resolveUrl(url: string | undefined | null): string {
@@ -416,8 +417,10 @@ export function DinerChalkboardLogo({ config }: { config: any }) {
 // WEATHER — small chalk sign
 // ═══════════════════════════════════════════════════════════
 export function DinerChalkboardWeather({ config }: { config: any }) {
-  const temp = config.tempF || 72;
-  const cond = config.condition || 'Sunny';
+  // 2026-05-04 — pulls live weather; overrides still win when set.
+  const live = useLiveWeather(config);
+  const temp = live.temp;
+  const cond = live.condition;
   const icon = cond.toLowerCase().includes('rain') ? '🌧️' : cond.toLowerCase().includes('cloud') ? '⛅' : cond.toLowerCase().includes('snow') ? '❄️' : '☀️';
   return (
     <div className="absolute inset-0 flex items-center justify-center" style={{ padding: '6%' }}>
