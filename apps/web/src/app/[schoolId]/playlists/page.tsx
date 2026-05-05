@@ -1367,6 +1367,26 @@ export default function PlaylistsPage() {
                               ) : (
                                 <span className="bg-sky-100 text-sky-700 px-2 py-0.5 rounded">All day</span>
                               )}
+                              {/* 2026-05-05 — audio override pill so the
+                                  operator can confirm at a glance whether
+                                  this schedule plays sound. Null in DB →
+                                  fall back to per-item PlaylistItem.muted
+                                  (the morning fix); we surface that as
+                                  "Per-video" so it's not mistaken for
+                                  forced mute. */}
+                              {sched.mutedOverride === false ? (
+                                <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded inline-flex items-center gap-1" title="Videos play with sound on this schedule">
+                                  ♪ Sound on
+                                </span>
+                              ) : sched.mutedOverride === true ? (
+                                <span className="bg-slate-200 text-slate-600 px-2 py-0.5 rounded inline-flex items-center gap-1" title="Videos play silently on this schedule">
+                                  🔇 Muted
+                                </span>
+                              ) : (
+                                <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded" title="Audio decided per video item (default = muted)">
+                                  Per-video audio
+                                </span>
+                              )}
                               <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded">
                                 Since {new Date(sched.startTime).toLocaleDateString()}
                               </span>

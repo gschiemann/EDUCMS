@@ -133,6 +133,40 @@ export class SchedulesController {
       throw new HttpException('Mode must be "append" or "replace"', HttpStatus.BAD_REQUEST);
     }
 
+    // 2026-05-05 — operator: "i only selected 2 displays and it
+    // created 4 different schedules for some reason".
+    //
+    // Each (playlistId, target) combination should resolve to at
+    // most ONE Schedule row. The previous deactivate-only logic
+    // soft-disabled OTHER playlists' schedules but appended a fresh
+    // row for THIS playlist on every republish — leaving stale
+    // inactive duplicates piling up in the schedule list every
+    // time the operator hit Publish.
+    //
+    // Hard-delete prior (playlist, target) rows so a republish
+    // becomes a true upsert. The Schedule row itself has no audit
+    // value — the AuditLog table records "operator scheduled
+    // playlist X on screen Y" separately and survives this delete.
+    //
+    // Applies to BOTH replace and append modes: today's UI has one
+    // time-window-per-schedule, so multi-window-on-same-target
+    // isn't a supported workflow; collapsing to a single row is
+    // strictly cleaner.
+    if (body.playlistId && (body.screenId || body.screenGroupId)) {
+      await this.prisma.client.schedule.deleteMany({
+        where: {
+          tenantId: req.user.tenantId,
+          playlistId: body.playlistId,
+          ...(body.screenId
+            ? { screenId: body.screenId }
+            : { screenId: null }),
+          ...(body.screenGroupId
+            ? { screenGroupId: body.screenGroupId }
+            : { screenGroupId: null }),
+        },
+      });
+    }
+
     const res = await this.prisma.client.schedule.create({
       data: {
         tenantId: req.user.tenantId,
