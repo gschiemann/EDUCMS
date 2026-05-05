@@ -3,7 +3,7 @@
 import { useId, useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon, Tv, ExternalLink, RefreshCw } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useBuilderStore } from './useBuilderStore';
 import { widgetLabel } from './constants';
 import { useAssets, usePlaylists, useTemplates, useTemplateBackdrops } from '@/hooks/use-api';
@@ -3987,10 +3987,104 @@ function PhotosArrayField({ value, onChange }: { value: Array<{ url?: string; ca
 
 export function AssetLibraryModal({ kind, onPick, onClose }: { kind: 'image' | 'video'; onPick: (url: string) => void; onClose: () => void }) {
   const { data: assets, isLoading } = useAssets();
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // 2026-05-04 — operator: "none of the photo or images tabs upload
+  // anything" + "dont make me only pick from assets i should be able
+  // to browse and upload a photo from my PC without adding it as an
+  // asset". The library modal previously was list-only ("Upload
+  // from Assets first"), forcing operators to leave the editor.
+  // Now: an Upload button at the top fires the same presign →
+  // signed-PUT → complete-upload flow the /assets page uses, then
+  // invalidates the assets query AND auto-picks the new file in
+  // one motion. Asset still ends up in the library (operator's ask:
+  // they don't want to MANAGE it as an asset, but the system needs
+  // SOME storage backing — the library being shared is the cheap
+  // way to deliver "upload anywhere, available everywhere").
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const filtered = (assets || []).filter((a: any) => {
     const mt = (a.mimeType || '').toLowerCase();
     return kind === 'image' ? mt.startsWith('image/') : mt.startsWith('video/');
   });
+  const acceptAttr = kind === 'image'
+    ? 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/avif'
+    : 'video/mp4,video/webm,video/quicktime';
+
+  const handleUpload = async (file: File) => {
+    setUploadError(null);
+    setUploading(true);
+    try {
+      const contentType = file.type || (kind === 'image' ? 'image/jpeg' : 'video/mp4');
+      // Step 1: get a presigned upload URL.
+      const presigned = await apiFetch<{
+        uploadUrl: string;
+        signedUrl: string;
+        token: string;
+        storagePath: string;
+        fileUrl: string;
+        mimeType: string;
+        maxFileSize: number;
+      }>('/assets/presign', {
+        method: 'POST',
+        body: JSON.stringify({
+          filename: file.name,
+          contentType,
+          size: file.size,
+          folderId: null,
+        }),
+      });
+
+      if (presigned.maxFileSize && file.size > presigned.maxFileSize) {
+        throw new Error(`File too big (${Math.round(file.size / 1024 / 1024)}MB). Max ${Math.round(presigned.maxFileSize / 1024 / 1024)}MB.`);
+      }
+
+      // Step 2: PUT the file bytes to the signed URL. Direct to
+      // Supabase storage, no payload through our API server.
+      const putRes = await fetch(presigned.uploadUrl, {
+        method: 'PUT',
+        headers: { 'content-type': presigned.mimeType || contentType },
+        body: file,
+      });
+      if (!putRes.ok) {
+        throw new Error(`Storage upload failed (${putRes.status}).`);
+      }
+
+      // Step 3: register the asset in our DB.
+      const completed = await apiFetch<{ id?: string; fileUrl: string }>('/assets/complete-upload', {
+        method: 'POST',
+        body: JSON.stringify({
+          storagePath: presigned.storagePath,
+          filename: file.name,
+          contentType: presigned.mimeType || contentType,
+          size: file.size,
+          folderId: null,
+        }),
+      });
+
+      // Refresh the list so the new asset appears, then auto-pick
+      // it so the operator's flow is "click Upload → file dialog →
+      // pick a JPG → ✓ done, modal closes, widget shows their
+      // photo." No second click required.
+      await queryClient.invalidateQueries({ queryKey: ['assets'] });
+      const finalUrl = completed.fileUrl || presigned.fileUrl;
+      if (finalUrl) onPick(finalUrl);
+    } catch (e: any) {
+      setUploadError(e?.message || 'Upload failed.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const onFilePicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      void handleUpload(file);
+    }
+    // Reset so picking the same file twice still fires onChange.
+    e.target.value = '';
+  };
+
   return (
     <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
@@ -4001,12 +4095,49 @@ export function AssetLibraryModal({ kind, onPick, onClose }: { kind: 'image' | '
             <XIcon className="w-4 h-4" aria-hidden />
           </button>
         </div>
+
+        {/* Upload section — operator's primary path now. Hidden file
+            input + a big visible button + drag-drop helper text. */}
+        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={acceptAttr}
+            onChange={onFilePicked}
+            className="hidden"
+            aria-label={`Upload a ${kind} from your computer`}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="w-full py-3 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-bold inline-flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-violet-700 disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
+          >
+            {uploading ? (
+              <>
+                <svg className="w-4 h-4 animate-spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="8" cy="8" r="6" strokeOpacity="0.25" /><path d="M14 8a6 6 0 0 0-6-6" /></svg>
+                Uploading…
+              </>
+            ) : (
+              <>📤 Upload {kind === 'image' ? 'image' : 'video'} from your computer</>
+            )}
+          </button>
+          {uploadError && (
+            <div className="mt-2 text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1.5">
+              {uploadError}
+            </div>
+          )}
+          <div className="mt-2 text-[10px] text-slate-500">
+            Or pick from {kind === 'image' ? 'images' : 'videos'} you&apos;ve already added below.
+          </div>
+        </div>
+
         <div className="flex-1 overflow-y-auto p-3">
           {isLoading ? (
             <div className="text-center text-xs text-slate-400 py-12">Loading library…</div>
           ) : filtered.length === 0 ? (
             <div className="text-center text-xs text-slate-400 py-12">
-              No {kind === 'image' ? 'images' : 'videos'} in your library yet. Upload from <strong>Assets</strong> first.
+              Library is empty — upload a {kind === 'image' ? 'photo' : 'video'} above to get started.
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-2">
