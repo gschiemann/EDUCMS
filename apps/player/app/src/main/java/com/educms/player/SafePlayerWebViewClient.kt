@@ -142,16 +142,28 @@ class SafePlayerWebViewClient(
     ) {
         if (!request.isForMainFrame) return
         val code = errorResponse.statusCode
-        // 5xx from origin (Railway down, Vercel returning 500) →
-        // self-heal. 4xx is intentional and shouldn't kick the loop
-        // (e.g. a paired screen hitting a deleted route shouldn't
-        // start retrying forever).
-        if (code in 500..599) {
+        // 2026-05-05 — operator: kiosk got stuck on Chromium's "Webpage
+        // not available / net::ERR_HTTP_RESPONSE_CODE_FAILURE" page
+        // after a Vercel redeploy. That error code maps to BOTH 4xx
+        // and 5xx depending on what Vercel served mid-deploy (briefly
+        // 404 while routes shuffle, or 502 while the rebuild propagates).
+        //
+        // Pre-fix: this method only triggered recovery on 5xx, so a 4xx
+        // mid-deploy left the screen wedged forever (operator had to
+        // power-cycle).
+        //
+        // Post-fix: trigger recovery on ANY non-2xx for the main frame.
+        // The recovery loop probes /api/v1/health on a backoff and only
+        // reloads when it sees status:ok — so we won't hammer a real
+        // 404 forever, we'll just re-check until the deploy finishes.
+        // For a paired screen hitting a genuinely-deleted URL, the
+        // operator sees the Reconnecting overlay (much friendlier than
+        // the OS error page) and pairing recovery / re-pair flow can
+        // still resolve it. Better to over-recover than wedge.
+        if (code !in 200..299) {
             val msg = "HTTP $code from ${request.url}"
             Log.w("PlayerWeb", "main-frame HTTP error: $msg")
             onMainFrameError?.invoke(msg)
-        } else {
-            Log.w("PlayerWeb", "main-frame HTTP $code on ${request.url} — not auto-recovering")
         }
     }
 

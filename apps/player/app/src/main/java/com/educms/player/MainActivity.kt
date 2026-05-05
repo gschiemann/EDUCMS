@@ -48,6 +48,61 @@ class MainActivity : ComponentActivity() {
     private lateinit var recovery: NetworkRecoveryController
     private var urlOverlayCurrentUrl: String? = null
 
+    /**
+     * Belt-and-suspenders kiosk-stuck watchdog (2026-05-05).
+     *
+     * Operator: "i have this on one of my screens, im sure its because
+     * we pushed updates and it disconnected while the site was down…
+     * how do we prevent this so the screen always stays alive… right
+     * now my only fix is to reboot the screen".
+     *
+     * NetworkRecoveryController already covers the visible-error path
+     * (4xx / 5xx / DNS / renderer crash) — but if the WebView lands in
+     * any OTHER stuck state (DNS cache poisoning, OEM Chromium bug,
+     * stale service worker holding a busted page, etc.), nothing
+     * rescues it. This watchdog is the safety net: every WATCHDOG_TICK
+     * minutes, if the WebView hasn't reported a fresh successful page
+     * load in WATCHDOG_TIMEOUT minutes, force-reload the player URL.
+     *
+     * Cheap (one Handler.postDelayed). Idempotent (a healthy page
+     * resets lastSuccessfulLoadAtMs every load). Doesn't interrupt a
+     * working screen — only kicks in when something is genuinely
+     * silently stuck.
+     */
+    private var lastSuccessfulLoadAtMs: Long = 0L
+    private val watchdogHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val watchdogTicker = object : Runnable {
+        override fun run() {
+            val ageMs = if (lastSuccessfulLoadAtMs == 0L) Long.MAX_VALUE
+                else android.os.SystemClock.elapsedRealtime() - lastSuccessfulLoadAtMs
+            // If we've been past the timeout AND the recovery overlay
+            // isn't already running its own loop, force-reload. The
+            // recovery controller will pick up the resulting load
+            // event (success or error) and resume normal flow.
+            if (ageMs > WATCHDOG_TIMEOUT_MS) {
+                PlayerLogger.w(
+                    "MainActivity",
+                    "Watchdog: no successful page load in ${ageMs / 1000}s — forcing reload",
+                )
+                runCatching { webView.stopLoading() }
+                lifecycleScope.launch {
+                    val token = deviceStore.deviceToken.first().orEmpty()
+                    loadPlayer(token)
+                }
+            }
+            // Re-arm. Always re-arm — even after a forced reload —
+            // so a chronic stuck-state is reloaded on every interval.
+            watchdogHandler.postDelayed(this, WATCHDOG_TICK_MS)
+        }
+    }
+
+    companion object {
+        /** How often to check freshness. 2 minutes. */
+        private const val WATCHDOG_TICK_MS = 2L * 60L * 1000L
+        /** How long the page can be stale before we force a reload. 10 minutes. */
+        private const val WATCHDOG_TIMEOUT_MS = 10L * 60L * 1000L
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -112,6 +167,12 @@ class MainActivity : ComponentActivity() {
                 }
             },
         )
+
+        // Start the safety-net watchdog after recovery is ready. First
+        // tick fires WATCHDOG_TICK_MS from now; gives the initial
+        // loadPlayer() call time to actually load before we start
+        // checking freshness.
+        watchdogHandler.postDelayed(watchdogTicker, WATCHDOG_TICK_MS)
 
         configureWebView(webView)
         configureUrlOverlay(urlOverlayView)
@@ -465,6 +526,7 @@ class MainActivity : ComponentActivity() {
                 if (::recovery.isInitialized) recovery.onError(label)
             },
             onPageFinishedOk = {
+                lastSuccessfulLoadAtMs = android.os.SystemClock.elapsedRealtime()
                 if (::recovery.isInitialized) recovery.onPageLoaded()
             },
         )
@@ -746,6 +808,7 @@ class MainActivity : ComponentActivity() {
             urlOverlayView.loadUrl("about:blank")
         }
         if (::recovery.isInitialized) recovery.shutdown()
+        watchdogHandler.removeCallbacks(watchdogTicker)
         try {
             if (managerInstallReceiverRegistered) {
                 unregisterReceiver(managerInstallReceiver)
