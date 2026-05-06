@@ -49,27 +49,23 @@ class ManagerSelfUpdateWorker(
         val isOwner = AdminReceiver.isDeviceOwner(applicationContext)
         Log.i(TAG, "Manager self-update worker starting (deviceOwner=$isOwner)")
 
-        // Non-device-owner beta hardware cannot install silently, but
-        // it can still self-update through Android's system Install
-        // prompt once Manager has Install unknown apps permission.
-        val canPromptInstall = Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
-            applicationContext.packageManager.canRequestPackageInstalls()
-        if (!isOwner && !canPromptInstall) {
-            Log.i(TAG, "skipping self-update — Manager is not DEVICE_OWNER and install permission is missing")
-            val fp = derivePlayerFingerprint() ?: deriveOwnFingerprint()
-            reportOtaState(
-                BuildConfig.API_ROOT,
-                fp,
-                "ERROR",
-                null,
-                "Manager update blocked: Install unknown apps permission is missing",
-            )
-            return@withContext Result.success()
-        }
-        if (!isOwner) {
-            Log.i(TAG, "Manager is not DEVICE_OWNER; self-update will use the system Install prompt")
-        }
-
+        // 2026-05-06 (v1.0.16) — operator: "i set the manager to that
+        // permission manually and it still doesnt work, and i still
+        // get the error".
+        //
+        // Pre-fix: this worker checked install-unknown-apps permission
+        // BEFORE the API update-check. If the permission was missing,
+        // it reported "Manager update blocked: ..." and exited — even
+        // when there was no actual update available. The dashboard
+        // banner stayed stuck on the stale ERROR until something else
+        // posted a fresh state. Granting the permission did nothing
+        // visible because the next worker tick still found "no update
+        // → no install attempt → no new state report → stale banner".
+        //
+        // Fix: check the API FIRST. If there's no update, exit clean
+        // (and explicitly clear any stale ERROR by reporting INSTALLED
+        // with the current version). Only complain about missing
+        // permission when there's actually an update we can't apply.
         try {
             val apiRoot = BuildConfig.API_ROOT
             val fp = derivePlayerFingerprint() ?: deriveOwnFingerprint()
@@ -115,13 +111,20 @@ class ManagerSelfUpdateWorker(
             }
             val latest = resp.optJSONObject("latest")
             if (latest == null) {
-                Log.i(TAG, "Manager up to date (no latest in response)")
+                Log.i(TAG, "Manager up to date (no latest in response) — clearing any stale ERROR banner")
+                // 2026-05-06 — explicitly post a non-error state so any
+                // stale "Manager update blocked" banner from a prior
+                // permission-missing run gets overwritten on the
+                // dashboard. Without this, the user sees the banner
+                // forever even after granting the permission.
+                reportOtaState(apiRoot, fp, "INSTALLED", null, "Manager v$currentVn (up to date)")
                 return@withContext Result.success()
             }
 
             val latestVc = latest.optInt("versionCode")
             if (latestVc <= currentVc) {
-                Log.i(TAG, "Manager up to date (current=$currentVc latest=$latestVc)")
+                Log.i(TAG, "Manager up to date (current=$currentVc latest=$latestVc) — clearing any stale ERROR banner")
+                reportOtaState(apiRoot, fp, "INSTALLED", null, "Manager v$currentVn (up to date)")
                 return@withContext Result.success()
             }
 
@@ -129,6 +132,27 @@ class ManagerSelfUpdateWorker(
             if (apkUrl.isEmpty()) {
                 Log.w(TAG, "no apkUrl in manager-update-check response — server config issue?")
                 return@withContext Result.success()
+            }
+
+            // 2026-05-06 — permission check moved here, AFTER we know
+            // there's an update we want to apply. Reporting "blocked"
+            // when there's no update was the cause of the banner
+            // sticking forever even after the permission was granted.
+            val canPromptInstall = Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+                applicationContext.packageManager.canRequestPackageInstalls()
+            if (!isOwner && !canPromptInstall) {
+                Log.i(TAG, "Update available (vc=$latestVc) but install permission missing — reporting blocked")
+                reportOtaState(
+                    apiRoot,
+                    fp,
+                    "ERROR",
+                    null,
+                    "Manager update blocked: Install unknown apps permission is missing",
+                )
+                return@withContext Result.success()
+            }
+            if (!isOwner) {
+                Log.i(TAG, "Manager is not DEVICE_OWNER; self-update will use the system Install prompt")
             }
             val expectedSha = latest.optString("sha256")
             val latestVn = latest.optString("versionName", "$latestVc")

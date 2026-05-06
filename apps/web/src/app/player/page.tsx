@@ -4006,16 +4006,34 @@ function PlayerPage() {
                 const subColor   = isError ? 'text-amber-700' :
                                    isDone  ? 'text-emerald-700' :
                                              'text-indigo-700';
-                // 2026-05-04 — operator: "Manager update blocked:
-                // Install unknown apps permission is missing".
-                // When the error message references the missing
-                // permission, surface a "Grant Manager permission"
-                // CTA that deep-links the operator to Android
-                // Settings → Apps → Manager → Install unknown apps.
-                // Bridge method `openSettingsForManager` lands in
-                // Manager v1.0.15 / Player v1.0.45 — until then the
-                // button graceful-fallbacks to a generic settings
-                // intent URI which most Android WebViews honor.
+                // 2026-05-06 — operator: "i set the manager to that
+                // permission manually and it still doesnt work".
+                //
+                // Tracing: this banner's "Manager update blocked"
+                // error comes from ManagerSelfUpdateWorker (Manager
+                // updating ITSELF). The permission-missing error is
+                // for MANAGER's REQUEST_INSTALL_PACKAGES — Manager
+                // can't prompt the user itself (no MainActivity), so
+                // it relies on this dashboard banner + the
+                // openSettingsForManager bridge to deep-link the
+                // operator to Settings → Apps → Manager.
+                //
+                // Why "i set it manually and it still doesnt work":
+                //   (a) The bridge previously hardcoded
+                //       com.educms.manager — the user has the .debug
+                //       variant installed (com.educms.manager.debug),
+                //       so the deep-link sent them to a phantom app
+                //       entry. Fix shipped in MainActivity.kt:
+                //       probe PackageManager and target whichever
+                //       Manager variant is actually installed.
+                //   (b) Worker reported "blocked" at start of every
+                //       run REGARDLESS of whether an update existed.
+                //       Granting the permission worked, but the next
+                //       worker run found no update available, exited
+                //       early, never posted a fresh state — the stale
+                //       ERROR banner stayed forever. Fix: worker now
+                //       posts INSTALLED on every up-to-date run, so
+                //       the banner clears on the next periodic tick.
                 const errMsg = stage.label || '';
                 const isPermissionError = isError && /permission|install unknown apps|unknown apps/i.test(errMsg);
                 return (
@@ -4038,15 +4056,17 @@ function PlayerPage() {
                             }
                             // Fallback: Android intent URI for
                             // Settings → Apps → Manager → Install
-                            // unknown apps. Most Android WebViews
-                            // honor `intent:` URLs; if not, the
-                            // operator gets a no-op and they need
-                            // to navigate manually:
-                            //   Settings → Apps → VenueOS Manager →
-                            //   Install unknown apps → ON
+                            // unknown apps. Tries production first,
+                            // then debug. Most Android WebViews honor
+                            // `intent:` URLs; if not, operator
+                            // follows the manual instructions below.
                             try {
-                              window.location.href =
-                                'intent:#Intent;action=android.settings.MANAGE_UNKNOWN_APP_SOURCES;launchFlags=0x10000000;data=package:com.educms.manager;end';
+                              const tryHref = (pkg: string) => {
+                                window.location.href =
+                                  `intent:#Intent;action=android.settings.MANAGE_UNKNOWN_APP_SOURCES;launchFlags=0x10000000;data=package:${pkg};end`;
+                              };
+                              tryHref('com.educms.manager');
+                              setTimeout(() => tryHref('com.educms.manager.debug'), 400);
                             } catch { /* no-op */ }
                           }}
                           className="shrink-0 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm"
@@ -4066,7 +4086,7 @@ function PlayerPage() {
                     )}
                     {isPermissionError && (
                       <div className="mt-3 text-xs text-amber-700 leading-relaxed">
-                        Or grant manually: <strong>Settings → Apps → VenueOS Manager → Install unknown apps → ON</strong>, then come back and Resume.
+                        <strong>If your kiosk shows v1.0.15-debug or earlier Manager:</strong> the "Grant Manager permission" button on Player v1.0.50 and earlier deep-links to the wrong package on debug builds. Fix manually: Settings → Apps → tap <strong>VenueOS Manager</strong> (the one with the “.debug” suffix if there are two) → <strong>Install unknown apps</strong> → <strong>Allow</strong> → tap <strong>Resume</strong> back on this screen. After Player v1.0.51 the button targets the right variant automatically.
                       </div>
                     )}
                   </div>
@@ -4137,7 +4157,26 @@ function PlayerPage() {
                     // resume, or press Back to also resume (toggle
                     // behavior wired in the keydown listener above).
                     autoFocus
-                    onClick={(e) => { e.stopPropagation(); setPlaybackStopped(false); setExitUnavailable(false); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // 2026-05-06 — operator: "i set the manager
+                      // to that permission manually and it still
+                      // doesnt work and i still get the error". The
+                      // pre-fix flow left the stale ERROR banner
+                      // forever even after permission was granted —
+                      // worker only re-ran on its 6h schedule. Fire
+                      // a one-shot OTA recheck on Resume so the
+                      // banner clears the moment the user comes back
+                      // from Settings.
+                      try {
+                        const bridge = (window as any).EduCmsNative;
+                        if (bridge && typeof bridge.checkForUpdates === 'function') {
+                          bridge.checkForUpdates();
+                        }
+                      } catch { /* no-op */ }
+                      setPlaybackStopped(false);
+                      setExitUnavailable(false);
+                    }}
                     className="px-7 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-2xl transition-all shadow-[0_8px_20px_rgb(16,185,129,0.3)] hover:shadow-[0_8px_25px_rgb(16,185,129,0.4)] hover:-translate-y-0.5 flex items-center gap-2 focus:scale-95 z-20 relative focus:ring-4 focus:ring-emerald-300 focus:outline-none"
                   >
                     <Play className="w-4 h-4 fill-current" /> Resume

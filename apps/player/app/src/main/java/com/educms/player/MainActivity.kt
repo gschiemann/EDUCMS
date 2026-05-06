@@ -581,28 +581,68 @@ class MainActivity : ComponentActivity() {
                 onHideUrlOverlay = {
                     runOnUiThread { hideUrlOverlay() }
                 },
-                // 2026-05-04 — Manager-permission deep-link bridge.
-                // See WebAppBridge.openSettingsForManager docstring.
+                // 2026-05-06 (v1.0.51) — operator: ".49 OTA upgrade
+                // still doesn't fucking work, i set the manager to
+                // that permission manually and it still doesnt work".
+                //
+                // The "Manager update blocked: Install unknown apps
+                // permission is missing" comes from
+                // ManagerSelfUpdateWorker — Manager updating ITSELF.
+                // Manager has no MainActivity / no UI to prompt for
+                // install permission, so it relies on this dashboard
+                // bridge to deep-link the operator to Settings.
+                //
+                // Original bug: hardcoded `package:com.educms.manager`
+                // sent users on debug builds (.debug applicationId
+                // suffix) to a non-existent app entry. They toggled
+                // a phantom; Manager.debug stayed without permission;
+                // worker kept reporting "blocked".
+                //
+                // Fix: probe PackageManager for whichever Manager
+                // variant is actually installed (production or debug)
+                // and target THAT. If neither is installed, fall back
+                // to production id so the Settings link still resolves
+                // to a useful page.
+                //
+                // ALSO trigger an immediate OTA re-check after the
+                // intent fires, so the operator doesn't have to wait
+                // 6 hours for the periodic worker to retry. By the
+                // time they finish toggling permission and Resume,
+                // the worker has already re-run and the stale "blocked"
+                // banner clears on its own.
                 onOpenSettingsForManager = {
                     runOnUiThread {
+                        val installedManagerPkg = listOf(
+                            "com.educms.manager",
+                            "com.educms.manager.debug",
+                        ).firstOrNull { pkg ->
+                            try { packageManager.getPackageInfo(pkg, 0); true }
+                            catch (_: Exception) { false }
+                        } ?: "com.educms.manager"
+                        PlayerLogger.i(
+                            "MainActivity",
+                            "openSettingsForManager: deep-linking to ACTUAL installed Manager ($installedManagerPkg)",
+                        )
                         try {
                             val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
-                                .setData(Uri.parse("package:com.educms.manager"))
+                                .setData(Uri.parse("package:$installedManagerPkg"))
                                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             startActivity(intent)
                         } catch (e: Exception) {
                             PlayerLogger.w("MainActivity", "openSettingsForManager failed", e)
-                            // Fall back to the package's general info
-                            // page if the install-sources screen
-                            // isn't available on this Android build.
                             try {
                                 startActivity(
                                     Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                                        .setData(Uri.parse("package:com.educms.manager"))
+                                        .setData(Uri.parse("package:$installedManagerPkg"))
                                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                                 )
                             } catch (_: Exception) { /* swallow */ }
                         }
+                        // Also schedule a one-shot OTA re-check so the
+                        // banner clears once the new permission state
+                        // takes effect — operator doesn't have to
+                        // hunt for "Sync now".
+                        runCatching { PlayerApp.fireOtaCheckNow(applicationContext) }
                     }
                 },
             ),

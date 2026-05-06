@@ -33,8 +33,8 @@ android {
         //   major*10000 + minor*100 + patch  (e.g. 1.0.9 → 10009)
         // ManagerSelfUpdateWorker compares installed versionCode against
         // the API-returned derivedVersionCode; they must share the same scheme.
-        versionCode = 10015 // 1*10000 + 0*100 + 15
-        versionName = "1.0.15"
+        versionCode = 10016 // 1*10000 + 0*100 + 16
+        versionName = "1.0.16"
 
         // Override at build time to point at a non-default API:
         //   -PmanagerApiRoot="https://staging.educms-five.vercel.app"

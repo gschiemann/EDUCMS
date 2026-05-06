@@ -55,17 +55,47 @@ object OtaInstaller {
         // to install something else.
         params.setAppPackageName(targetPackage)
 
-        // Silent install: on API 31+ (Android 12+) DEVICE_OWNER kiosks,
-        // suppress the "Install / Cancel" prompt entirely. The API-31
-        // symbol is isolated in Api31SilentInstall (a @RequiresApi(31)
-        // object) so Android 11 ART never resolves setRequireUserAction
-        // or USER_ACTION_NOT_REQUIRED at class-load time — this is the
-        // fix for the v1.0.4 VerifyError crash on Android 11. The check
-        // here is a runtime guard; the class isolation is the ART guard.
+        // Silent install (v1.0.16): try USER_ACTION_NOT_REQUIRED on
+        // every API 31+ install — not just DEVICE_OWNER. The system
+        // honors USER_ACTION_NOT_REQUIRED when:
+        //   (a) the caller is DEVICE_OWNER, OR
+        //   (b) the caller holds UPDATE_PACKAGES_WITHOUT_USER_ACTION
+        //       AND is the installer-of-record for the target package.
+        // Manager v1.0.7+ declares UPDATE_PACKAGES_WITHOUT_USER_ACTION.
+        // If Manager bootstrapped Player initially (or a future
+        // re-install routes through Manager), case (b) gives us
+        // silent install on plain Android 12+ kiosks WITHOUT the ADB
+        // DEVICE_OWNER provisioning step that's blocked operators
+        // from getting silent OTAs.
+        // If neither (a) nor (b) applies, the system FALLS BACK to
+        // STATUS_PENDING_USER_ACTION (notification path) — same
+        // behavior as the previous code, no regression.
+        // The API-31 symbol stays isolated in Api31SilentInstall
+        // (@RequiresApi(31) object) so Android 11 ART never resolves
+        // setRequireUserAction at class-load time — that was the
+        // v1.0.4 VerifyError crash.
         val isDeviceOwner = AdminReceiver.isDeviceOwner(ctx)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && isDeviceOwner) {
+        val installerOfRecord: String? = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                ctx.packageManager.getInstallSourceInfo(targetPackage).installingPackageName
+            } else {
+                @Suppress("DEPRECATION")
+                ctx.packageManager.getInstallerPackageName(targetPackage)
+            }
+        } catch (_: Exception) { null }
+        val weAreInstaller = installerOfRecord == ctx.packageName
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // Always try — no gate. If the system rejects the silent
+            // hint, it just falls back to user-confirmation. Net win:
+            // silent install when eligible, no regression when not.
             Api31SilentInstall.configure(params)
-            Log.i(TAG, "Silent install enabled (API ${Build.VERSION.SDK_INT}, DEVICE_OWNER)")
+            Log.i(
+                TAG,
+                "Silent install hint applied (API ${Build.VERSION.SDK_INT}, " +
+                "deviceOwner=$isDeviceOwner installerOfRecord=$installerOfRecord " +
+                "weAreInstaller=$weAreInstaller) — system will silent-install if " +
+                "eligible, fall back to user-action prompt otherwise"
+            )
         }
 
         val sessionId = try {
