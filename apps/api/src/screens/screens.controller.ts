@@ -111,14 +111,27 @@ export class ScreensController {
 
   // ─── PUBLIC: Device self-registration (no auth) ───
   // The player opens, sends its device info, gets back a pairing code
-  // sec-fix(P0 #7) Defense 1: 30 registrations per IP per hour (IP throttle)
-  // + per-fingerprint 15-minute cooldown (enforced below in handler — but
-  // ONLY for unpaired fingerprints; see hotfix note).
-  // 2026-04-28 hotfix: bumped from 5/hr to 30/hr after the original 5/hr
-  // bricked a pilot kiosk during an OTA-driven re-register loop. Per-FP
-  // cooldown remains the primary enumeration defense; IP throttle is a
-  // backstop, not the gate.
-  @Throttle({ default: { limit: 30, ttl: 3_600_000 } })
+  // sec-fix(P0 #7) Defense 1: per-IP throttle on the register endpoint
+  // + per-fingerprint 15-minute cooldown (enforced below in handler —
+  // ONLY for unpaired fingerprints; see hotfix history).
+  //
+  // Throttle history:
+  //   v1: 5/hr   — bricked a pilot kiosk during an OTA-driven
+  //                re-register loop (2026-04-28 hotfix → 30/hr).
+  //   v2: 30/hr  — bricked a school's NEW kiosk install on
+  //                2026-05-06: school NAT means all ~10-30 existing
+  //                kiosks + dashboard users share ONE public IP, and
+  //                normal OTA / reboot churn easily exceeds 30/hr per
+  //                IP. The new kiosk's register fired → 429 → web
+  //                player stuck on "Reconnecting Registration HTTP
+  //                429" with no path forward (operator has no way
+  //                to reset the per-IP counter).
+  //   v3: 300/hr — covers a 50-kiosk school where each device
+  //                re-registers 6×/hr (well above any real-world
+  //                churn). Per-FP 15-min cooldown is still the
+  //                primary enumeration defense; this is a backstop,
+  //                not the gate.
+  @Throttle({ default: { limit: 300, ttl: 3_600_000 } })
   @Post('register')
   async register(@Body() body: {
     deviceFingerprint: string;
