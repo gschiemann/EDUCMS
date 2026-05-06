@@ -91,7 +91,21 @@ function verifyDeviceForScreen(req: ExpressReq, screenId: string): { ok: true; s
 // throttle (5/hr) as the primary guard.
 // Exported for unit-test access only — do not use outside this module.
 export const _registerFpCooldown = new Map<string, number>(); // fingerprint → last-register ms
-export const REGISTER_FP_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes
+// 2026-05-06 — operator: "fresh TB40 install hot-on-hotspot still
+// 429s on attempt 3, says Registration HTTP 429 retrying now". The
+// pre-fix 15-minute cooldown was the gate: once a fresh kiosk's FP
+// hit register ONCE, EVERY subsequent attempt for 15 minutes 429'd
+// — including the React app's own retry chain (backoff caps at 30 s,
+// so attempts 2-30 are all inside the cooldown window). The kiosk
+// would NEVER successfully complete pairing within 15 minutes of
+// first boot.
+//
+// Drop to 60 seconds. Still defends against rapid FP-enumeration
+// (attacker can probe at most 1 FP per minute per IP, capped at
+// 300/hr by the per-IP throttle = effective max 5/min). Doesn't
+// brick legitimate kiosks whose React app retries every 2-30 s
+// during the pre-pairing phase.
+export const REGISTER_FP_COOLDOWN_MS = 60 * 1000; // 60 seconds (was 15 min)
 
 @Controller('api/v1/screens')
 export class ScreensController {
