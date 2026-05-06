@@ -89,9 +89,25 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     SampleDataModule,
     ImportsModule,
     AiModule,
+    // 2026-05-06 — operator: kiosk wedged on "429 trying to
+    // reconnect" right after fresh APK install. Cause: a fresh kiosk
+    // boot fires a flurry of API hits in the first 60 s — manifest
+    // poll (every 5 s × 12 = 12), screens/status heartbeat, ota-state
+    // phase reports (5+), branding fetch, register handshake, plus
+    // the WebView's /player page rehydrating playlists/templates.
+    // Easily 80-150 requests/min during cold-boot. The old 100/min
+    // global default 429'd the kiosk, the recovery probe ALSO 429'd,
+    // and the screen was wedged.
+    //
+    // Bumping default to 600/min covers a worst-case cold-boot burst
+    // by ~4× headroom. Per-endpoint @Throttle decorators (login,
+    // register, ota-state, etc.) still impose tighter limits where
+    // brute-force or abuse is the actual risk. Health endpoints are
+    // explicitly @SkipThrottle()'d so the recovery probe is never
+    // gated by ANY of these.
     ThrottlerModule.forRoot([{
       ttl: 60000,
-      limit: 100,
+      limit: 600,
     }]),
   ],
   controllers: [

@@ -1,4 +1,5 @@
 import { Controller, Get, HttpException, HttpStatus } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
@@ -34,6 +35,13 @@ async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 @Controller('api/v1/health')
+// 2026-05-06 — operator: "getting a 429 trying to reconnect screen".
+// Health endpoints MUST never be throttled. They're liveness/readiness
+// probes used by Railway, Vercel cron, and the kiosk's
+// NetworkRecoveryController. If a kiosk trips the global 100/min cap,
+// it then can't even verify the server is alive — recovery probe also
+// 429s — and the screen wedges on "Reconnecting…" forever.
+@SkipThrottle()
 export class HealthController {
   private readonly startedAt = Date.now();
   private readonly commit = process.env.GIT_COMMIT_SHA || process.env.RAILWAY_GIT_COMMIT_SHA || 'dev';
