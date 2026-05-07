@@ -599,7 +599,7 @@ const CSS = `
   display: flex; justify-content: space-between; align-items: center; gap: 18px;
 }
 .hs-cafm-chip-k {
-  font-family: 'DM Mono', monospace; font-weight: 700; font-size: 22px;
+  font-family: 'DM Mono', monospace; font-weight: 700; font-size: 30px;
   letter-spacing: .22em; color: #5a544a; text-transform: uppercase; line-height: 1;
 }
 .hs-cafm-chip-v {
@@ -665,7 +665,7 @@ const CSS = `
 }
 .hs-cafm-body { padding: 24px 28px 22px; display: flex; flex-direction: column; flex: 1; }
 .hs-cafm-eyebrow {
-  font-family: 'DM Mono', monospace; font-weight: 700; font-size: 22px;
+  font-family: 'DM Mono', monospace; font-weight: 700; font-size: 30px;
   letter-spacing: .24em; text-transform: uppercase; line-height: 1;
 }
 .hs-cafm-h2 {
@@ -763,7 +763,7 @@ const CSS = `
 }
 .hs-cafm-info-it { display: flex; flex-direction: column; }
 .hs-cafm-info-k {
-  font-family: 'DM Mono', monospace; font-weight: 700; font-size: 22px;
+  font-family: 'DM Mono', monospace; font-weight: 700; font-size: 30px;
   letter-spacing: .24em; text-transform: uppercase; color: #5a544a; line-height: 1;
 }
 .hs-cafm-info-v {

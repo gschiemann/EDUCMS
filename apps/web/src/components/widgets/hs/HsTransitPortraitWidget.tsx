@@ -613,7 +613,7 @@ const CSS = `
   padding-left: 32px; text-align: right;
 }
 .hs-trp-cd-lbl {
-  font-family: 'JetBrains Mono', monospace; font-size: 22px;
+  font-family: 'JetBrains Mono', monospace; font-size: 30px;
   color: #ffb020; letter-spacing: .2em; text-transform: uppercase;
 }
 .hs-trp-cd-v {
@@ -624,7 +624,7 @@ const CSS = `
 }
 .hs-trp-cd-until {
   font-family: 'Inter', sans-serif; font-weight: 500;
-  font-size: 22px; color: #6b7a93; letter-spacing: .06em;
+  font-size: 30px; color: #6b7a93; letter-spacing: .06em;
   margin-top: 4px; max-width: 280px;
 }
 

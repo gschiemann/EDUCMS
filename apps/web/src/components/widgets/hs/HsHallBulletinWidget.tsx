@@ -569,7 +569,7 @@ const CSS = `
 }
 .hs-bull-seal-est {
   display: block; font-family: 'JetBrains Mono', monospace; font-weight: 500;
-  font-size: 16px; color: #caa14a; letter-spacing: .22em; margin-top: 8px;
+  font-size: 28px; color: #caa14a; letter-spacing: .22em; margin-top: 8px;
 }
 .hs-bull-title {
   margin: 0;
@@ -689,7 +689,7 @@ const CSS = `
 }
 .hs-bull-meta { display: flex; gap: 48px; margin-top: 8px; border-top: 3px solid #161310; padding-top: 24px; }
 .hs-bull-meta-it { display: flex; flex-direction: column; gap: 4px; }
-.hs-bull-meta-k { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 22px; letter-spacing: .22em; text-transform: uppercase; color: #5a544a; }
+.hs-bull-meta-k { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 30px; letter-spacing: .22em; text-transform: uppercase; color: #5a544a; }
 .hs-bull-meta-v { font-family: 'Fraunces', serif; font-weight: 900; font-size: 48px; line-height: 1; color: #161310; letter-spacing: -.01em; }
 .hs-bull-meta-v-brand { color: #b8331f; }
 
@@ -733,7 +733,7 @@ const CSS = `
 .hs-bull-clubs { flex: 1; background: #fff; border: 3px solid #161310; padding: 28px 32px; display: flex; flex-direction: column; }
 .hs-bull-clubs-hdr { display: flex; align-items: baseline; justify-content: space-between; border-bottom: 3px solid #161310; padding-bottom: 14px; margin-bottom: 14px; }
 .hs-bull-clubs-h3 { margin: 0; font-family: 'Fraunces', serif; font-weight: 900; font-style: italic; font-size: 60px; line-height: 1; color: #161310; letter-spacing: -.02em; }
-.hs-bull-clubs-meta { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 22px; letter-spacing: .22em; text-transform: uppercase; color: #5a544a; }
+.hs-bull-clubs-meta { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 30px; letter-spacing: .22em; text-transform: uppercase; color: #5a544a; }
 .hs-bull-clubs-ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; flex: 1; }
 .hs-bull-clubs-li {
   display: grid; grid-template-columns: 88px 1fr auto; align-items: center;
@@ -742,8 +742,8 @@ const CSS = `
 .hs-bull-clubs-li:last-child { border-bottom: 0; }
 .hs-bull-clubs-n { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 24px; color: #b8331f; letter-spacing: .18em; }
 .hs-bull-clubs-nm { font-family: 'Fraunces', serif; font-weight: 900; font-size: 36px; line-height: 1.05; color: #161310; letter-spacing: -.01em; }
-.hs-bull-clubs-sub { display: block; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 22px; color: #5a544a; letter-spacing: 0; margin-top: 2px; }
-.hs-bull-clubs-when { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 22px; letter-spacing: .18em; color: #161310; text-transform: uppercase; text-align: right; white-space: nowrap; }
+.hs-bull-clubs-sub { display: block; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 30px; color: #5a544a; letter-spacing: 0; margin-top: 2px; }
+.hs-bull-clubs-when { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 30px; letter-spacing: .18em; color: #161310; text-transform: uppercase; text-align: right; white-space: nowrap; }
 .hs-bull-clubs-rm { display: block; color: #5a544a; font-weight: 500; margin-top: 2px; }
 
 .hs-bull-rail {
@@ -762,9 +762,9 @@ const CSS = `
 .hs-bull-rail-li:last-child { border-right: 0; }
 .hs-bull-rail-now { background: rgba(202,161,74,.15); }
 .hs-bull-rail-now::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 6px; background: #caa14a; }
-.hs-bull-rail-p { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 20px; letter-spacing: .22em; text-transform: uppercase; color: #caa14a; }
+.hs-bull-rail-p { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 30px; letter-spacing: .22em; text-transform: uppercase; color: #caa14a; }
 .hs-bull-rail-nm { font-family: 'Fraunces', serif; font-weight: 900; font-size: 36px; line-height: 1; color: #f4ede0; margin-top: 4px; letter-spacing: -.01em; }
-.hs-bull-rail-t { font-family: 'JetBrains Mono', monospace; font-weight: 500; font-size: 22px; color: rgba(244,237,224,.65); margin-top: 4px; letter-spacing: .06em; }
+.hs-bull-rail-t { font-family: 'JetBrains Mono', monospace; font-weight: 500; font-size: 30px; color: rgba(244,237,224,.65); margin-top: 4px; letter-spacing: .06em; }
 .hs-bull-rail-now .hs-bull-rail-nm { color: #fff; }
 .hs-bull-rail-now .hs-bull-rail-t { color: #caa14a; }
 

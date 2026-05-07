@@ -806,7 +806,7 @@ const CSS = `
   display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px;
 }
 .hs-csd-step-tags span {
-  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 18px;
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 28px;
   letter-spacing: .2em; text-transform: uppercase;
   background: #f4ead0; color: #9a4f12; padding: 6px 12px; line-height: 1;
 }
@@ -822,7 +822,7 @@ const CSS = `
 }
 .hs-csd-step-badge {
   padding: 8px 16px; font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 18px; letter-spacing: .2em; text-transform: uppercase;
+  font-size: 28px; letter-spacing: .2em; text-transform: uppercase;
   background: #f4ead0; color: #5e4f33; line-height: 1;
 }
 .hs-csd-done .hs-csd-step-badge { background: #1f7a4a; color: #fff; }
@@ -856,7 +856,7 @@ const CSS = `
   display: flex; justify-content: space-between; align-items: baseline;
 }
 .hs-csd-panel-meta {
-  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 20px;
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 30px;
   letter-spacing: .22em; color: #5e4f33; text-transform: uppercase;
 }
 .hs-csd-panel-dark .hs-csd-panel-h3 { color: #fff; border-color: #d97a2c; }
@@ -880,11 +880,11 @@ const CSS = `
   color: #1a1408; letter-spacing: -.01em; line-height: 1.2;
 }
 .hs-csd-rule-nm small {
-  display: block; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 22px;
+  display: block; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 30px;
   color: #5e4f33; margin-top: 2px; letter-spacing: 0;
 }
 .hs-csd-rule-v {
-  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 22px;
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 30px;
   color: #1f7a4a; letter-spacing: .2em; text-transform: uppercase;
   text-align: right; white-space: nowrap;
 }
@@ -913,11 +913,11 @@ const CSS = `
   color: #fff; letter-spacing: -.01em; line-height: 1.1;
 }
 .hs-csd-who-nm small {
-  display: block; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 22px;
+  display: block; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 30px;
   color: rgba(255,255,255,.7); margin-top: 2px;
 }
 .hs-csd-who-v {
-  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 22px;
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 30px;
   color: #d97a2c; letter-spacing: .18em; text-transform: uppercase;
   text-align: right; white-space: nowrap;
 }
@@ -933,7 +933,7 @@ const CSS = `
 }
 .hs-csd-note-sig {
   margin-top: 18px; font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 22px; letter-spacing: .22em; color: #d97a2c; text-transform: uppercase;
+  font-size: 30px; letter-spacing: .22em; color: #d97a2c; text-transform: uppercase;
 }
 
 /* FOOTER */
@@ -946,7 +946,7 @@ const CSS = `
 }
 .hs-csd-foot-cell { display: flex; flex-direction: column; gap: 6px; line-height: 1.05; }
 .hs-csd-foot-k {
-  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 22px;
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 30px;
   letter-spacing: .24em; color: #d97a2c; text-transform: uppercase;
 }
 .hs-csd-foot-v {
@@ -954,7 +954,7 @@ const CSS = `
   color: #fff; letter-spacing: -.01em; text-wrap: balance;
 }
 .hs-csd-foot-v small {
-  display: block; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 22px;
+  display: block; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 30px;
   color: rgba(255,255,255,.65); margin-top: 2px; letter-spacing: 0;
 }
 `;

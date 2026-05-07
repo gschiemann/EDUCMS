@@ -693,7 +693,11 @@ const CSS = `
   letter-spacing: .28em; color: #9aa3b8; text-transform: uppercase;
 }
 .hs-way-name-big {
-  font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 108px;
+  /* 2026-05-07 — operator: "text on the left is getting off". Was
+     108px which made "LIBRARY & COMMONS" overflow into the room
+     column. 84px keeps the marquee feel + fits both lines of the
+     longest destination ("CAFETERIA · MAIN", "PERFORMING ARTS"). */
+  font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 84px;
   line-height: .95; color: #f3f6fb; letter-spacing: -.025em; text-transform: uppercase;
 }
 .hs-way-meta {
@@ -701,7 +705,9 @@ const CSS = `
   color: #9aa3b8; letter-spacing: .16em; text-transform: uppercase; margin-top: 6px;
 }
 .hs-way-room {
-  font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 140px;
+  /* 2026-05-07 — was 140px which competed with the destination
+     name; 108px reads as the secondary metadata it is. */
+  font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 108px;
   line-height: 1; letter-spacing: -.03em; text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -745,7 +751,8 @@ const CSS = `
 }
 .hs-way-mroom {
   position: absolute; border: 2px solid rgba(255,255,255,.14); border-radius: 4px;
-  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 18px;
+  /* 2026-05-07 — bumped 18px → 28px so map labels read at lobby distance. */
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 28px;
   color: #9aa3b8; display: grid; place-items: center; letter-spacing: .12em;
 }
 .hs-way-r1 { left: 0; top: 0; width: 18%; height: 48%; background: rgba(58,161,255,.08); color: #3aa1ff; border-color: rgba(58,161,255,.4); }
@@ -786,24 +793,29 @@ const CSS = `
 }
 .hs-way-dir-table { width: 100%; border-collapse: collapse; font-family: 'Archivo Narrow', sans-serif; }
 .hs-way-dir-table th {
-  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 22px;
+  /* 2026-05-07 — directory column heads bumped 22px → 30px. */
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 30px;
   letter-spacing: .22em; color: #5b6478; text-transform: uppercase;
-  text-align: left; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,.14);
+  text-align: left; padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,.14);
 }
 .hs-way-th-r { text-align: right; }
 .hs-way-dir-table td {
-  padding: 13px 0; border-bottom: 1px dashed rgba(255,255,255,.07);
-  font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 32px;
+  /* 2026-05-07 — directory rows bumped 32px → 40px so room/dept
+     names read clean from across a hallway. */
+  padding: 16px 0; border-bottom: 1px dashed rgba(255,255,255,.07);
+  font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 40px;
   color: #f3f6fb; letter-spacing: -.005em; font-variant-numeric: tabular-nums;
 }
 .hs-way-td-code { color: #ffd83d; }
 .hs-way-td-t {
-  font-family: 'JetBrains Mono', monospace; font-weight: 500; font-size: 24px;
+  /* 2026-05-07 — location column 24px → 32px. */
+  font-family: 'JetBrains Mono', monospace; font-weight: 500; font-size: 32px;
   color: #9aa3b8; text-transform: uppercase; letter-spacing: .12em;
 }
 .hs-way-td-r {
+  /* 2026-05-07 — status column 22px → 30px. */
   text-align: right; color: #9aa3b8;
-  font-family: 'JetBrains Mono', monospace; font-weight: 500; font-size: 22px;
+  font-family: 'JetBrains Mono', monospace; font-weight: 500; font-size: 30px;
   letter-spacing: .18em; text-transform: uppercase;
 }
 .hs-way-dir-table tr:last-child td { border-bottom: 0; }
