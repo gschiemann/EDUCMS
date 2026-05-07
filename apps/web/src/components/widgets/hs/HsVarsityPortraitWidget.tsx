@@ -584,12 +584,12 @@ const CSS = `
   border-bottom: 6px solid #ffc42b;
 }
 .hs-vp-statbox-val {
-  font-family: 'Bungee', sans-serif; font-size: 64px; line-height: 1;
+  font-family: 'Bungee', sans-serif; font-size: 72px; line-height: 1;
   color: #ffc42b;
 }
 .hs-vp-statbox-lbl {
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 22px; letter-spacing: .22em; color: #cbd5e1;
+  font-size: 28px; letter-spacing: .22em; color: #cbd5e1;
   margin-top: 6px; text-transform: uppercase;
 }
 
@@ -637,7 +637,7 @@ const CSS = `
 .hs-vp-row-body { display: flex; flex-direction: column; gap: 4px; }
 .hs-vp-row-when {
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 28px; color: #ffc42b; letter-spacing: .18em;
+  font-size: 34px; color: #ffc42b; letter-spacing: .18em;
   text-transform: uppercase;
 }
 .hs-vp-row-name {
@@ -663,7 +663,7 @@ const CSS = `
 }
 .hs-vp-anno-tag {
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 32px; letter-spacing: .22em; color: #ffc42b; text-transform: uppercase;
+  font-size: 38px; letter-spacing: .22em; color: #ffc42b; text-transform: uppercase;
 }
 .hs-vp-anno-h3 {
   font-family: 'Bungee', sans-serif; font-size: 70px; line-height: .95;
@@ -671,11 +671,11 @@ const CSS = `
 }
 .hs-vp-anno-p {
   font-family: 'Inter', sans-serif; font-weight: 500;
-  font-size: 30px; color: #cbd5e1; margin: 10px 0 0;
+  font-size: 34px; color: #cbd5e1; margin: 10px 0 0;
 }
 .hs-vp-anno-when {
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 30px; color: #ffc42b; letter-spacing: .14em;
+  font-size: 34px; color: #ffc42b; letter-spacing: .14em;
   text-transform: uppercase; margin-top: auto;
 }
 

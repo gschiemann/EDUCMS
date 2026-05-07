@@ -446,7 +446,7 @@ const CSS = `
   letter-spacing: -.02em;
 }
 .hs-zp-banner-sub {
-  font-family: 'Special Elite', monospace; font-size: 36px;
+  font-family: 'Special Elite', monospace; font-size: 42px;
   color: #15120d; letter-spacing: .12em;
   margin-top: 24px; transform: rotate(-.6deg);
   background: rgba(255,255,255,.5); padding: 6px 16px;
@@ -455,7 +455,7 @@ const CSS = `
   display: flex; gap: 24px; margin-top: 18px;
 }
 .hs-zp-stamp {
-  font-family: 'Special Elite', monospace; font-size: 26px;
+  font-family: 'Special Elite', monospace; font-size: 32px;
   letter-spacing: .16em; color: #c1281a; padding: 8px 18px;
   border: 3px solid #c1281a; transform: rotate(3deg);
   text-transform: uppercase; background: rgba(255,255,255,.5);
@@ -493,7 +493,7 @@ const CSS = `
 .hs-zp-tape-tl { top: -22px; left: 140px; transform: rotate(-7deg); }
 .hs-zp-tape-tr { top: -18px; right: 160px; background: rgba(45,188,230,.78); transform: rotate(5deg); }
 .hs-zp-sheet-tag {
-  font-family: 'Permanent Marker', cursive; font-size: 38px;
+  font-family: 'Permanent Marker', cursive; font-size: 46px;
   color: #2dbce6; transform: rotate(-1.5deg); letter-spacing: .04em;
 }
 .hs-zp-eyebrow {
@@ -531,7 +531,7 @@ const CSS = `
 .hs-zp-stat-a { transform: rotate(-1deg); }
 .hs-zp-stat-b { transform: rotate(1.2deg); background: #ffd84d; }
 .hs-zp-lbl {
-  font-family: 'Special Elite', monospace; font-size: 24px;
+  font-family: 'Special Elite', monospace; font-size: 32px;
   letter-spacing: .18em; color: #c1281a; text-transform: uppercase;
 }
 .hs-zp-val {
@@ -540,7 +540,7 @@ const CSS = `
 }
 .hs-zp-cap {
   font-family: 'Courier Prime', monospace; font-weight: 700;
-  font-size: 22px; color: #15120d; margin-top: 4px;
+  font-size: 32px; color: #15120d; margin-top: 4px;
 }
 
 @keyframes hsZpWobble {
@@ -594,7 +594,7 @@ const CSS = `
   color: #c1281a; margin-top: 18px; line-height: 1;
 }
 .hs-zp-name {
-  font-family: 'Special Elite', monospace; font-size: 32px;
+  font-family: 'Special Elite', monospace; font-size: 42px;
   color: #15120d; margin-top: 8px; line-height: 1.2;
 }
 .hs-zp-num {
@@ -652,7 +652,7 @@ const CSS = `
 }
 .hs-zp-poster-sub {
   display: block; font-family: 'Special Elite', monospace;
-  font-size: 26px; color: #c1281a;
+  font-size: 32px; color: #c1281a;
   margin-top: 12px; letter-spacing: .12em;
   transform: rotate(0deg);
 }
@@ -694,7 +694,7 @@ const CSS = `
   box-shadow: 8px 8px 0 rgba(0,0,0,.15);
 }
 .hs-zp-fc-lbl {
-  font-family: 'Special Elite', monospace; font-size: 26px;
+  font-family: 'Special Elite', monospace; font-size: 32px;
   letter-spacing: .18em; color: #c1281a; text-transform: uppercase;
 }
 .hs-zp-fc-v {
@@ -703,7 +703,7 @@ const CSS = `
 }
 .hs-zp-fc-c {
   font-family: 'Courier Prime', monospace; font-weight: 700;
-  font-size: 28px; color: #15120d; margin-top: 6px;
+  font-size: 34px; color: #15120d; margin-top: 6px;
 }
 
 /* ----- REGION 5: ransom-letter announcement ~3340-3760 ----- */

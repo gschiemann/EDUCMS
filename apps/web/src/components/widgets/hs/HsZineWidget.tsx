@@ -230,7 +230,7 @@ const CSS = `
 .hs-zn-title::after { content: ''; position: absolute; top: 40%; left: -20px; right: -20px; height: 20px; background: #ffd84d; z-index: -1; transform: rotate(1.5deg); }
 .hs-zn-title-sub { display: block; font-family: 'Special Elite', monospace; font-size: 38px; line-height: 1; color: #15120d; margin-top: 18px; letter-spacing: .1em; transform: rotate(1deg); text-transform: none; font-weight: normal; }
 .hs-zn-stamps { display: flex; flex-direction: column; gap: 16px; align-items: flex-end; margin-top: 20px; }
-.hs-zn-stamp { font-family: 'Special Elite', monospace; font-size: 28px; letter-spacing: .16em; color: #c1281a; padding: 10px 20px; border: 3px solid #c1281a; transform: rotate(3deg); text-transform: uppercase; background: rgba(255,255,255,.3); }
+.hs-zn-stamp { font-family: 'Special Elite', monospace; font-size: 32px; letter-spacing: .16em; color: #c1281a; padding: 10px 20px; border: 3px solid #c1281a; transform: rotate(3deg); text-transform: uppercase; background: rgba(255,255,255,.3); }
 .hs-zn-stamp-ink2 { color: #15120d; border-color: #15120d; transform: rotate(-2deg); }
 .hs-zn-stamp-cyan { color: #2dbce6; border-color: #2dbce6; transform: rotate(1deg); }
 .hs-zn-hero { position: absolute; top: 360px; left: 80px; width: 2400px; }
@@ -247,13 +247,13 @@ const CSS = `
 .hs-zn-img { width: 100%; height: 560px; background: #444; background-image: radial-gradient(circle at 35% 35%, #888 0 60px, transparent 60px), radial-gradient(circle at 35% 35%, transparent 0 55px, #222 55px 140px, transparent 140px), linear-gradient(180deg, #666 0%, #333 100%); filter: contrast(1.6) grayscale(1); position: relative; overflow: hidden; }
 .hs-zn-img::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 3px, rgba(0,0,0,.15) 3px 5px); mix-blend-mode: multiply; }
 .hs-zn-caption { font-family: 'Permanent Marker', sans-serif; font-size: 52px; color: #15120d; transform: rotate(-1deg); margin-top: 18px; line-height: 1; }
-.hs-zn-caption-sub { display: block; font-family: 'Special Elite', monospace; font-size: 24px; color: #c1281a; margin-top: 10px; letter-spacing: .12em; }
+.hs-zn-caption-sub { display: block; font-family: 'Special Elite', monospace; font-size: 30px; color: #c1281a; margin-top: 10px; letter-spacing: .12em; }
 .hs-zn-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .hs-zn-stat { background: #fff; padding: 20px 24px; position: relative; border: 3px solid #15120d; transform: rotate(-.8deg); box-shadow: 3px 3px 0 rgba(0,0,0,.12); }
 .hs-zn-stat:nth-child(2) { transform: rotate(.8deg); background: #ffd84d; }
-.hs-zn-lbl { font-family: 'Special Elite', monospace; font-size: 22px; letter-spacing: .18em; color: #c1281a; text-transform: uppercase; }
+.hs-zn-lbl { font-family: 'Special Elite', monospace; font-size: 30px; letter-spacing: .18em; color: #c1281a; text-transform: uppercase; }
 .hs-zn-val { font-family: 'Archivo Black', sans-serif; font-size: 110px; line-height: .9; color: #15120d; margin-top: 4px; }
-.hs-zn-cap { font-family: 'Courier Prime', monospace; font-weight: 700; font-size: 20px; color: #15120d; margin-top: 4px; }
+.hs-zn-cap { font-family: 'Courier Prime', monospace; font-weight: 700; font-size: 32px; color: #15120d; margin-top: 4px; }
 .hs-zn-strip { position: absolute; top: 1480px; left: 80px; right: 80px; height: 500px; display: grid; grid-template-columns: repeat(3, 1fr) 1fr; gap: 40px; }
 .hs-zn-polaroid { background: #fff; padding: 20px 20px 50px; position: relative; box-shadow: 6px 6px 0 rgba(0,0,0,.15); }
 .hs-zn-p1 { transform: rotate(-2deg); }
@@ -265,7 +265,7 @@ const CSS = `
 .hs-zn-pic { width: 100%; height: 280px; background: linear-gradient(135deg, #999, #333); filter: contrast(1.5) grayscale(1); position: relative; overflow: hidden; }
 .hs-zn-pic::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(255,255,255,.06) 0 2px, rgba(0,0,0,.1) 2px 4px); mix-blend-mode: multiply; }
 .hs-zn-when { font-family: 'Permanent Marker', sans-serif; font-size: 40px; color: #c1281a; margin-top: 16px; line-height: 1; }
-.hs-zn-name { font-family: 'Special Elite', monospace; font-size: 28px; color: #15120d; margin-top: 8px; line-height: 1.2; }
+.hs-zn-name { font-family: 'Special Elite', monospace; font-size: 40px; color: #15120d; margin-top: 8px; line-height: 1.2; }
 .hs-zn-num { font-family: 'Archivo Black', sans-serif; font-size: 280px; line-height: .85; color: #fff; text-shadow: 4px 4px 0 rgba(0,0,0,.3); }
 .hs-zn-lb { font-family: 'Permanent Marker', sans-serif; font-size: 36px; color: #fff; line-height: 1.1; margin-top: 8px; }
 .hs-zn-alert { position: absolute; bottom: 120px; left: 80px; width: 1800px; padding: 36px 48px; background: #fff; transform: rotate(-.5deg); box-shadow: 6px 6px 0 rgba(0,0,0,.15); border: 4px solid #15120d; }
@@ -275,9 +275,9 @@ const CSS = `
 .hs-zn-alert-p { font-family: 'Special Elite', monospace; font-size: 32px; line-height: 1.3; color: #15120d; margin: 14px 0 0; }
 .hs-zn-alert-when { font-family: 'Permanent Marker', sans-serif; font-size: 34px; color: #c1281a; margin-top: 10px; }
 .hs-zn-fc { position: absolute; bottom: 140px; right: 80px; width: 900px; background: #ffd84d; padding: 28px 36px; border: 4px solid #15120d; transform: rotate(2deg); box-shadow: 6px 6px 0 rgba(0,0,0,.15); }
-.hs-zn-fc-lbl { font-family: 'Special Elite', monospace; font-size: 24px; letter-spacing: .18em; color: #c1281a; text-transform: uppercase; }
+.hs-zn-fc-lbl { font-family: 'Special Elite', monospace; font-size: 30px; letter-spacing: .18em; color: #c1281a; text-transform: uppercase; }
 .hs-zn-fc-v { font-family: 'Archivo Black', sans-serif; font-size: 160px; line-height: .9; color: #15120d; }
-.hs-zn-fc-c { font-family: 'Courier Prime', monospace; font-weight: 700; font-size: 26px; color: #15120d; margin-top: 4px; }
+.hs-zn-fc-c { font-family: 'Courier Prime', monospace; font-weight: 700; font-size: 32px; color: #15120d; margin-top: 4px; }
 .hs-zn-ticker { position: absolute; bottom: 0; left: 0; right: 0; height: 70px; background: #15120d; color: #f2ecd9; display: flex; align-items: center; overflow: hidden; }
 .hs-zn-tk-tag { background: #c1281a; color: #fff; height: 100%; display: flex; align-items: center; padding: 0 30px; font-family: 'Permanent Marker', sans-serif; font-size: 30px; letter-spacing: .14em; flex-shrink: 0; }
 .hs-zn-tk-msg { font-family: 'Special Elite', monospace; font-size: 30px; padding-left: 36px; white-space: nowrap; letter-spacing: .08em; animation: hsZnScroll 60s linear infinite; display: inline-flex; }

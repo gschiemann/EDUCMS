@@ -255,10 +255,10 @@ const CSS = `
 .hs-tr-code { background: #ffb020; color: #000; height: 100%; display: grid; place-items: center; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 120px; letter-spacing: .02em; }
 .hs-tr-name { padding: 0 40px; display: flex; flex-direction: column; gap: 4px; }
 .hs-tr-line1 { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 72px; letter-spacing: .04em; color: #fff; line-height: 1; }
-.hs-tr-line2 { font-family: 'JetBrains Mono', monospace; font-size: 28px; letter-spacing: .2em; color: #6b7a93; margin-top: 8px; text-transform: uppercase; }
+.hs-tr-line2 { font-family: 'JetBrains Mono', monospace; font-size: 30px; letter-spacing: .2em; color: #6b7a93; margin-top: 8px; text-transform: uppercase; }
 .hs-tr-clock { padding: 0 40px; display: flex; gap: 40px; align-items: center; }
 .hs-tr-clock-t { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 96px; line-height: 1; color: #ffb020; letter-spacing: .02em; text-shadow: 0 0 20px rgba(255,176,32,.35); }
-.hs-tr-clock-meta { font-family: 'JetBrains Mono', monospace; font-size: 24px; color: #6b7a93; letter-spacing: .14em; line-height: 1.3; text-transform: uppercase; }
+.hs-tr-clock-meta { font-family: 'JetBrains Mono', monospace; font-size: 28px; color: #6b7a93; letter-spacing: .14em; line-height: 1.3; text-transform: uppercase; }
 .hs-tr-boarding { position: absolute; top: 220px; left: 40px; right: 40px; height: 400px; background: linear-gradient(180deg, #141d36, #0b1223); border: 4px solid #ffb020; display: grid; grid-template-columns: 340px 1fr 420px; }
 .hs-tr-side { background: #ffb020; color: #000; display: flex; flex-direction: column; justify-content: center; align-items: center; font-family: 'Oswald', sans-serif; font-weight: 700; text-align: center; gap: 10px; }
 .hs-tr-side-tag { font-size: 36px; letter-spacing: .25em; text-transform: uppercase; }
@@ -268,7 +268,7 @@ const CSS = `
 .hs-tr-h1 { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 200px; line-height: .9; letter-spacing: .01em; color: #fff; margin: 6px 0 0; text-transform: uppercase; }
 .hs-tr-sub { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 36px; color: #c7d2e4; margin-top: 10px; line-height: 1.25; }
 .hs-tr-rightp { display: flex; flex-direction: column; justify-content: center; border-left: 2px dashed rgba(255,176,32,.3); padding: 28px 40px; gap: 10px; }
-.hs-tr-k { font-family: 'JetBrains Mono', monospace; font-size: 24px; letter-spacing: .2em; color: #6b7a93; text-transform: uppercase; }
+.hs-tr-k { font-family: 'JetBrains Mono', monospace; font-size: 28px; letter-spacing: .2em; color: #6b7a93; text-transform: uppercase; }
 .hs-tr-v { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 64px; color: #fff; line-height: 1; }
 .hs-tr-status { margin-top: 14px; display: inline-block; align-self: flex-start; padding: 10px 22px; background: #58e07a; color: #000; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 36px; letter-spacing: .18em; text-transform: uppercase; }
 .hs-tr-board { position: absolute; top: 660px; left: 40px; right: 40px; background: #000; border: 4px solid #ffb020; }
@@ -279,7 +279,7 @@ const CSS = `
 .hs-tr-t { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 70px; color: #fff; letter-spacing: .02em; }
 .hs-tr-rcode { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 46px; color: #ffb020; letter-spacing: .08em; }
 .hs-tr-dest { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 60px; color: #fff; letter-spacing: .02em; text-transform: uppercase; line-height: 1; }
-.hs-tr-dest-sub { display: block; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 28px; color: #6b7a93; text-transform: none; letter-spacing: .05em; margin-top: 6px; }
+.hs-tr-dest-sub { display: block; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 30px; color: #6b7a93; text-transform: none; letter-spacing: .05em; margin-top: 6px; }
 .hs-tr-gate { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 72px; color: #ffb020; letter-spacing: .04em; }
 .hs-tr-room { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 32px; color: #c7d2e4; }
 .hs-tr-st { display: inline-block; padding: 8px 20px; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 28px; letter-spacing: .16em; text-transform: uppercase; }
