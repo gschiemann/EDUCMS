@@ -43,7 +43,6 @@
  */
 
 import { HsStage } from './HsStage';
-import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 
 export interface HsGalleryConfig {
   schoolName?: string;
@@ -87,7 +86,7 @@ export interface HsGalleryConfig {
 
 type Cfg = HsGalleryConfig;
 
-export const DEFAULTS: Required<Cfg> = {
+const DEFAULTS: Required<Cfg> = {
   schoolName: 'The Westridge High School Review',
   clockDate: 'Tuesday, April 21',
   clockTime: '7:53 a.m.',
@@ -127,11 +126,8 @@ export const DEFAULTS: Required<Cfg> = {
   tickerMessage: 'Bus 14 delayed ten minutes · Lunch today: chicken bowl, salad bar, vegan option · AP Psychology study hall moved to the library · Lost: silver earbuds — inquire at the front office · Spring sports photos tomorrow; please wear your jerseys ·  ',
 };
 
-export function HsGalleryPortraitWidget({ config, live }: { config?: Cfg; live?: boolean }) {
+export function HsGalleryPortraitWidget({ config }: { config?: Cfg; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
-  // 2026-05-07 — live clock (see useHsLiveClock.ts).
-  const now = useHsLiveClock(live !== false);
-  const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
   const events = [
     { n: c.event0Num, name: c.event0Name, meta: c.event0Meta, time: c.event0Time, day: c.event0Day },
     { n: c.event1Num, name: c.event1Name, meta: c.event1Meta, time: c.event1Time, day: c.event1Day },
@@ -165,7 +161,7 @@ export function HsGalleryPortraitWidget({ config, live }: { config?: Cfg; live?:
         <div className="hs-glp-mast-meta">
           <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockDate}</span>
           <span className="hs-glp-mast-dot">·</span>
-          <span className="hs-glp-mast-on" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</span>
+          <span className="hs-glp-mast-on" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockTime}</span>
           <span className="hs-glp-mast-dot">·</span>
           <span data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherCondition}</span>
         </div>
@@ -223,15 +219,14 @@ export function HsGalleryPortraitWidget({ config, live }: { config?: Cfg; live?:
         <div className="hs-glp-acq-list">
           {events.map((e, i) => (
             <div key={i} className="hs-glp-card">
-              {/* 2026-05-07 — added data-field for click-to-edit. */}
-              <div className="hs-glp-n" data-field={`event${i}Num`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.n}</div>
+              <div className="hs-glp-n">{e.n}</div>
               <div className="hs-glp-card-body">
-                <div className="hs-glp-title" data-field={`event${i}Name`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.name}</div>
-                <div className="hs-glp-meta" data-field={`event${i}Meta`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.meta}</div>
+                <div className="hs-glp-title">{e.name}</div>
+                <div className="hs-glp-meta">{e.meta}</div>
               </div>
               <div className="hs-glp-time">
-                <span data-field={`event${i}Time`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.time}</span>
-                <span className="hs-glp-d" data-field={`event${i}Day`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.day}</span>
+                <span>{e.time}</span>
+                <span className="hs-glp-d">{e.day}</span>
               </div>
             </div>
           ))}
@@ -330,7 +325,7 @@ const CSS = `
   height: 1px; background: #2a2724; margin: 36px 0 26px;
 }
 .hs-glp-mast-meta {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 32px;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 28px;
   color: #8a8275; letter-spacing: .24em; text-transform: uppercase;
   display: flex; align-items: baseline; gap: 22px;
 }
@@ -343,7 +338,7 @@ const CSS = `
   position: absolute; top: 380px; left: 120px; right: 120px;
 }
 .hs-glp-num {
-  font-family: 'EB Garamond', serif; font-size: 46px; letter-spacing: .3em;
+  font-family: 'EB Garamond', serif; font-size: 36px; letter-spacing: .3em;
   color: #8a8275; text-transform: uppercase; margin-bottom: 22px;
 }
 .hs-glp-h1 {
@@ -390,7 +385,7 @@ const CSS = `
   position: absolute; bottom: 56px; left: 56px; right: 56px;
   background: #f5f1e8; color: #1a1814;
   padding: 14px 24px;
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 28px;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 22px;
   letter-spacing: .22em; text-transform: uppercase;
   border-left: 4px solid #a84630;
 }
@@ -402,7 +397,7 @@ const CSS = `
   box-sizing: border-box;
 }
 .hs-glp-acq-eyebrow {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 30px;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 24px;
   letter-spacing: .3em; color: #c8a96a; text-transform: uppercase;
 }
 .hs-glp-acq-no {
@@ -418,7 +413,7 @@ const CSS = `
   height: 1px; background: #444038; margin: 36px 0 28px;
 }
 .hs-glp-acq-tag {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 28px;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 20px;
   letter-spacing: .24em; color: #a84630; text-transform: uppercase;
   margin-bottom: 18px; line-height: 1.4;
 }
@@ -428,7 +423,7 @@ const CSS = `
   letter-spacing: -.01em;
 }
 .hs-glp-acq-meta {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 30px;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 22px;
   color: #c8a96a; letter-spacing: .2em; text-transform: uppercase;
   line-height: 1.5; margin-top: auto;
 }
@@ -441,7 +436,7 @@ const CSS = `
   height: 1px; background: #2a2724; margin-bottom: 28px;
 }
 .hs-glp-prog-eyebrow {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 32px;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 26px;
   letter-spacing: .3em; color: #8a8275; text-transform: uppercase;
 }
 .hs-glp-prog-h2 {
@@ -468,16 +463,16 @@ const CSS = `
   line-height: 1.05; color: #1a1814; margin: 0;
 }
 .hs-glp-meta {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 32px;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 24px;
   color: #8a8275; letter-spacing: .14em; text-transform: uppercase;
   line-height: 1.4;
 }
 .hs-glp-time {
-  font-family: 'EB Garamond', serif; font-style: italic; font-size: 60px;
+  font-family: 'EB Garamond', serif; font-style: italic; font-size: 50px;
   color: #1a1814; text-align: right; line-height: 1;
 }
 .hs-glp-d {
-  display: block; font-family: 'Inter', sans-serif; font-size: 28px;
+  display: block; font-family: 'Inter', sans-serif; font-size: 22px;
   color: #8a8275; letter-spacing: .2em; text-transform: uppercase;
   margin-top: 8px; font-style: normal;
 }
@@ -488,7 +483,7 @@ const CSS = `
   border-top: 1px solid #2a2724; padding-top: 32px;
 }
 .hs-glp-statement-eyebrow {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 32px;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 26px;
   letter-spacing: .3em; color: #8a8275; text-transform: uppercase;
   margin-bottom: 22px;
 }
@@ -499,7 +494,7 @@ const CSS = `
   max-width: 1820px;
 }
 .hs-glp-byline {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 28px;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 22px;
   color: #8a8275; letter-spacing: .2em; text-transform: uppercase;
   margin-top: 22px; padding-left: 39px;
 }
@@ -510,7 +505,7 @@ const CSS = `
 }
 .hs-glp-wall-cell {}
 .hs-glp-wall-label {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 26px;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 18px;
   letter-spacing: .22em; color: #8a8275; text-transform: uppercase;
   margin-bottom: 12px; line-height: 1.3;
   min-height: 44px;
@@ -521,7 +516,7 @@ const CSS = `
 }
 .hs-glp-wall-cap {
   font-family: 'EB Garamond', serif; font-style: italic; font-weight: 400;
-  font-size: 30px; color: #1a1814; margin-top: 10px; line-height: 1.3;
+  font-size: 22px; color: #1a1814; margin-top: 10px; line-height: 1.3;
   opacity: .7;
 }
 
@@ -535,7 +530,7 @@ const CSS = `
   display: flex; flex-direction: column;
 }
 .hs-glp-advisory-label {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 28px;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 20px;
   letter-spacing: .24em; color: #a84630; text-transform: uppercase;
   margin-bottom: 12px;
 }
@@ -544,11 +539,11 @@ const CSS = `
   line-height: 1; letter-spacing: -.01em; margin: 0 0 16px; color: #f5f1e8;
 }
 .hs-glp-adv-p {
-  font-family: 'EB Garamond', serif; font-size: 32px; line-height: 1.32;
+  font-family: 'EB Garamond', serif; font-size: 26px; line-height: 1.32;
   color: #d9d2c3; margin: 0; font-weight: 400;
 }
 .hs-glp-adv-when {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 28px;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 20px;
   color: #a84630; letter-spacing: .2em; text-transform: uppercase;
   border-top: 1px solid #444038; padding-top: 14px; margin-top: auto;
 }
@@ -560,14 +555,14 @@ const CSS = `
   display: flex; justify-content: space-between; align-items: center;
 }
 .hs-glp-h-line {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 28px;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 20px;
   color: #8a8275; letter-spacing: .22em; text-transform: uppercase;
   display: flex; gap: 18px; align-items: baseline;
 }
 .hs-glp-h-line strong { color: #1a1814; font-weight: 600; }
 .hs-glp-sep { color: #2a2724; }
 .hs-glp-coda {
-  font-family: 'EB Garamond', serif; font-style: italic; font-size: 36px;
+  font-family: 'EB Garamond', serif; font-style: italic; font-size: 28px;
   color: #a84630;
 }
 
@@ -581,11 +576,11 @@ const CSS = `
   background: #a84630; color: #f5f1e8;
   padding: 0 30px; height: 100%;
   display: flex; align-items: center;
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 26px;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 18px;
   letter-spacing: .3em; flex-shrink: 0;
 }
 .hs-glp-tk-msg {
-  font-family: 'EB Garamond', serif; font-style: italic; font-size: 36px;
+  font-family: 'EB Garamond', serif; font-style: italic; font-size: 28px;
   white-space: nowrap; padding-left: 36px;
   animation: hsGlpScroll 70s linear infinite; display: inline-flex;
 }

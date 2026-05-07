@@ -64,36 +64,6 @@ import { DEFAULTS as FITNESS_REFORMER_DEFAULTS } from '@/components/widgets/fitn
 import { DEFAULTS as FITNESS_TRAILHEAD_DEFAULTS } from '@/components/widgets/fitness/FitnessTrailheadWidget';
 import { DEFAULTS as FITNESS_VAULT_DEFAULTS } from '@/components/widgets/fitness/FitnessVaultWidget';
 import { DEFAULTS as FITNESS_LOBBY_DEFAULTS } from '@/components/widgets/fitness/FitnessLobbyWidget';
-// 2026-05-07 — HS portrait DEFAULTS for the auto-form generator.
-// Demo audit (docs/research/HS_TEMPLATES_AUDIT_2026_05_07.md) found
-// that all 8 HS portrait widgets had NO PropertiesPanel coverage —
-// operator selecting a portrait HS template saw an empty editor
-// because PropertiesPanel.tsx fell through every case to return
-// null. Fix: import each portrait's DEFAULTS and key them off the
-// HS_*_PORTRAIT widget type so the existing default-case
-// auto-form generator catches them. Mirrors MS pattern exactly.
-// Landscape variants ship hand-written cases below (HS_VARSITY,
-// HS_BROADCAST, etc.) and don't need this map entry — but adding
-// them for completeness so duplicate clones land cleanly.
-import { DEFAULTS as HS_VARSITY_PORTRAIT_DEFAULTS } from '@/components/widgets/hs/HsVarsityPortraitWidget';
-import { DEFAULTS as HS_BROADCAST_PORTRAIT_DEFAULTS } from '@/components/widgets/hs/HsBroadcastPortraitWidget';
-import { DEFAULTS as HS_YEARBOOK_PORTRAIT_DEFAULTS } from '@/components/widgets/hs/HsYearbookPortraitWidget';
-import { DEFAULTS as HS_TERMINAL_PORTRAIT_DEFAULTS } from '@/components/widgets/hs/HsTerminalPortraitWidget';
-import { DEFAULTS as HS_TRANSIT_PORTRAIT_DEFAULTS } from '@/components/widgets/hs/HsTransitPortraitWidget';
-import { DEFAULTS as HS_GALLERY_PORTRAIT_DEFAULTS } from '@/components/widgets/hs/HsGalleryPortraitWidget';
-import { DEFAULTS as HS_BLUEPRINT_PORTRAIT_DEFAULTS } from '@/components/widgets/hs/HsBlueprintPortraitWidget';
-import { DEFAULTS as HS_ZINE_PORTRAIT_DEFAULTS } from '@/components/widgets/hs/HsZinePortraitWidget';
-// HS District Pack — 8 new widgets (2026-05-07). All use the same
-// auto-form generator at the default-case below; map these DEFAULTS
-// into the lookup table.
-import { DEFAULTS as HS_ATH_GAMEDAY_DEFAULTS } from '@/components/widgets/hs/HsAthGamedayWidget';
-import { DEFAULTS as HS_ATH_STANDINGS_DEFAULTS } from '@/components/widgets/hs/HsAthStandingsWidget';
-import { DEFAULTS as HS_CAF_COUNTER_DEFAULTS } from '@/components/widgets/hs/HsCafCounterWidget';
-import { DEFAULTS as HS_CAF_MARKET_DEFAULTS } from '@/components/widgets/hs/HsCafMarketWidget';
-import { DEFAULTS as HS_CLASS_NOWNEXT_DEFAULTS } from '@/components/widgets/hs/HsClassNowNextWidget';
-import { DEFAULTS as HS_CLASS_SUBDAY_DEFAULTS } from '@/components/widgets/hs/HsClassSubDayWidget';
-import { DEFAULTS as HS_HALL_BULLETIN_DEFAULTS } from '@/components/widgets/hs/HsHallBulletinWidget';
-import { DEFAULTS as HS_HALL_WAYFINDER_DEFAULTS } from '@/components/widgets/hs/HsHallWayfinderWidget';
 
 const MS_DEFAULTS_BY_TYPE: Record<string, Record<string, string>> = {
   MS_ARCADE: MS_ARCADE_DEFAULTS as any,
@@ -130,30 +100,6 @@ const MS_DEFAULTS_BY_TYPE: Record<string, Record<string, string>> = {
   FITNESS_TRAILHEAD:      FITNESS_TRAILHEAD_DEFAULTS as any,
   FITNESS_VAULT:          FITNESS_VAULT_DEFAULTS as any,
   FITNESS_LOBBY:          FITNESS_LOBBY_DEFAULTS as any,
-  // 2026-05-07 — HS portrait pack. Each portrait widget renders
-  // through the existing dot-keyed auto-form generator at the
-  // default-case (~line 2860). No HS_*_PORTRAIT case exists below,
-  // so this map is the ONLY way the operator gets a sidebar editor
-  // for these 8 widgets. Without these entries, selecting an HS
-  // portrait template shows an empty right panel — the bug the
-  // pre-demo audit flagged as the #1 most-visible regression.
-  HS_VARSITY_PORTRAIT:    HS_VARSITY_PORTRAIT_DEFAULTS as any,
-  HS_BROADCAST_PORTRAIT:  HS_BROADCAST_PORTRAIT_DEFAULTS as any,
-  HS_YEARBOOK_PORTRAIT:   HS_YEARBOOK_PORTRAIT_DEFAULTS as any,
-  HS_TERMINAL_PORTRAIT:   HS_TERMINAL_PORTRAIT_DEFAULTS as any,
-  HS_TRANSIT_PORTRAIT:    HS_TRANSIT_PORTRAIT_DEFAULTS as any,
-  HS_GALLERY_PORTRAIT:    HS_GALLERY_PORTRAIT_DEFAULTS as any,
-  HS_BLUEPRINT_PORTRAIT:  HS_BLUEPRINT_PORTRAIT_DEFAULTS as any,
-  HS_ZINE_PORTRAIT:       HS_ZINE_PORTRAIT_DEFAULTS as any,
-  // HS District Pack (2026-05-07).
-  HS_ATH_GAMEDAY:         HS_ATH_GAMEDAY_DEFAULTS as any,
-  HS_ATH_STANDINGS:       HS_ATH_STANDINGS_DEFAULTS as any,
-  HS_CAF_COUNTER:         HS_CAF_COUNTER_DEFAULTS as any,
-  HS_CAF_MARKET:          HS_CAF_MARKET_DEFAULTS as any,
-  HS_CLASS_NOWNEXT:       HS_CLASS_NOWNEXT_DEFAULTS as any,
-  HS_CLASS_SUBDAY:        HS_CLASS_SUBDAY_DEFAULTS as any,
-  HS_HALL_BULLETIN:       HS_HALL_BULLETIN_DEFAULTS as any,
-  HS_HALL_WAYFINDER:      HS_HALL_WAYFINDER_DEFAULTS as any,
 };
 
 type BellPeriod = { label: string; start: string; end?: string };

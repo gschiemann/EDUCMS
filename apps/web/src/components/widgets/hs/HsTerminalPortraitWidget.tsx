@@ -32,7 +32,6 @@
  */
 
 import { HsStage } from './HsStage';
-import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 
 export interface HsTerminalConfig {
   schoolHost?: string;
@@ -85,7 +84,7 @@ export interface HsTerminalConfig {
 
 type Cfg = HsTerminalConfig;
 
-export const DEFAULTS: Required<Cfg> = {
+const DEFAULTS: Required<Cfg> = {
   schoolHost: 'westridge-hs',
   schoolPath: '~/lobby/morning',
   schoolSession: 'session #2 · term spring-26',
@@ -134,11 +133,8 @@ export const DEFAULTS: Required<Cfg> = {
   tickerMessage: '[INFO] bus-14 delayed 10m · [WARN] printer rm-210 out of toner · [INFO] lost-and-found: silver earbuds · [INFO] ap psych study hall moved to library · [INFO] sports photos tomorrow — bring jerseys · ',
 };
 
-export function HsTerminalPortraitWidget({ config, live }: { config?: Cfg; live?: boolean }) {
+export function HsTerminalPortraitWidget({ config }: { config?: Cfg; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
-  // 2026-05-07 — live clock (see useHsLiveClock.ts).
-  const now = useHsLiveClock(live !== false);
-  const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
   const events = [
     { when: c.event1When, where: c.event1Where, name: c.event1Name, who: c.event1Who },
     { when: c.event2When, where: c.event2Where, name: c.event2Name, who: c.event2Who },
@@ -207,7 +203,7 @@ export function HsTerminalPortraitWidget({ config, live }: { config?: Cfg; live?
             {c.schoolSession}
           </span>
           <span className="hs-tp-sep"> · </span>
-          <span data-field="clockTime">{clock.time}</span>
+          <span data-field="clockTime">{c.clockTime}</span>
           <span className="hs-tp-sep"> · </span>
           <span className="hs-tp-on" data-field="weatherTemp">{c.weatherTemp}</span>{' '}
           <span data-field="weatherCondition">{c.weatherCondition}</span>
@@ -554,7 +550,7 @@ const CSS = `
 .hs-tp-evheader {
   display: grid; grid-template-columns: 130px 220px 1fr;
   gap: 24px;
-  font-size: 30px; color: #4a7a4a;
+  font-size: 26px; color: #4a7a4a;
   letter-spacing: .18em; text-transform: uppercase;
   padding: 18px 0 14px;
   border-bottom: 2px dashed rgba(155,255,155,.35);
@@ -615,7 +611,7 @@ const CSS = `
   line-height: 1.15;
 }
 .hs-tp-cd-sub {
-  color: #4a7a4a; font-size: 30px;
+  color: #4a7a4a; font-size: 28px;
 }
 
 /* ----- REGION 4: announcements tail -f ----- */
@@ -668,7 +664,7 @@ const CSS = `
   display: flex; flex-direction: column; gap: 6px;
 }
 .hs-tp-fact-key {
-  font-size: 28px; color: #4a7a4a;
+  font-size: 24px; color: #4a7a4a;
   letter-spacing: .22em; text-transform: uppercase;
 }
 .hs-tp-fact-val {
@@ -681,7 +677,7 @@ const CSS = `
   font-size: 56px; line-height: 1; padding-top: 8px;
 }
 .hs-tp-fact-sub {
-  font-size: 28px; color: #4a7a4a; line-height: 1.3;
+  font-size: 22px; color: #4a7a4a; line-height: 1.3;
 }
 
 /* ----- REGION 6: bottom syslog ticker ----- */

@@ -521,12 +521,8 @@ const CSS_HS = `
   97%           { box-shadow: 0 0 0 4px #fff, 0 0 0 10px #ec4899, 0 0 60px rgba(236, 72, 153, .9), 0 16px 32px rgba(0,0,0,.2); }
 }
 .hs-neonSign h1 {
-  /* 2026-05-07 — operator: "tiny test as the main message and no
-     font editor, i couldnt make it larger looked ridiculaous".
-     Bumped from 96px → 180px so "CLASS OF 2026" reads from a
-     20-foot lobby distance the way a real HS marquee would. */
   margin: 0; line-height: .9;
-  font-family: 'Anton', sans-serif; font-size: 180px;
+  font-family: 'Anton', sans-serif; font-size: 96px;
   background: linear-gradient(135deg, #ec4899 0%, #f59e0b 50%, #06b6d4 100%);
   background-size: 200% 100%;
   -webkit-background-clip: text; background-clip: text; color: transparent;
@@ -534,9 +530,7 @@ const CSS_HS = `
   letter-spacing: -.01em; text-transform: uppercase;
 }
 @keyframes hs-titleShift { from { background-position: 0% 50%; } to { background-position: 200% 50%; } }
-/* 2026-05-07 — operator demo size bump. 36 → 64, big enough to read
-   alongside the marquee headline. */
-.hs-sub { font-family: 'Caveat', cursive; font-size: 64px; color: #ec4899; margin-top: 8px; }
+.hs-sub { font-family: 'Caveat', cursive; font-size: 36px; color: #ec4899; margin-top: 4px; }
 
 /* CLOCK — sunburst */
 .hs-clock { position: relative; width: 220px; height: 220px; display: flex; align-items: center; justify-content: center; }

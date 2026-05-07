@@ -29,11 +29,9 @@ import {
 import { useRecentActivity } from '@/hooks/use-dashboard-data';
 import {
   useScreens, useScreenGroups, usePlaylists, useAssets, useSchedules,
-  useTenantStatus, useApproveAsset, useSubmissions, useTenantBranding,
-  type SubmissionRow,
+  useTenantStatus, useApproveAsset, useSubmissions, type SubmissionRow,
 } from '@/hooks/use-api';
 import { useAppStore } from '@/lib/store';
-import { cn } from '@/lib/utils';
 import { useUIStore } from '@/store/ui-store';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -47,11 +45,6 @@ export default function DashboardPage() {
   const { data: assets } = useAssets();
   const { data: schedules } = useSchedules();
   const { data: tenant } = useTenantStatus();
-  // 2026-05-07 — pull tagline + displayName from tenant branding so the
-  // hero banner can render "Welcome back to {school} / {tagline}".
-  // Operator: "the main dashboard looks nothing like our real dashboard
-  // so you cant even tell its been rebranded".
-  const { data: branding } = useTenantBranding();
   const user = useAppStore((s) => s.user);
   const userRole = useUIStore((s) => s.user?.role);
   const isViewer = userRole === 'RESTRICTED_VIEWER';
@@ -236,87 +229,21 @@ export default function DashboardPage() {
         .group:hover .dash-arrow { color: var(--brand-primary, #6366f1); }
         .dash-quick-brand:hover { background: color-mix(in srgb, var(--brand-primary, #6366f1) 8%, white); }
       `}</style>
-      {/* ─── Branded hero banner ───────────────────────────────────
-          2026-05-07 — operator: "the main dashboard looks nothing like
-          our real dashboard so you cant even tell its been rebranded,
-          find a good way to cleanly incorporate more branding without
-          making the site looks crazy".
-          Banner uses the tenant's brand-primary color in a soft gradient
-          (10-25% saturation so it still feels light + the rest of the
-          dashboard isn't visually overwhelmed). Greeting + tagline +
-          time live inside it. Falls back to the indigo default when no
-          tenant brand has been adopted — same look as today, just with
-          the better name + tagline copy. */}
-      <header
-        className="relative overflow-hidden rounded-2xl border border-slate-100 shadow-sm"
-        style={{
-          background:
-            'linear-gradient(135deg, color-mix(in srgb, var(--brand-primary, #6366f1) 18%, white), color-mix(in srgb, var(--brand-primary, #6366f1) 8%, white))',
-        }}
-      >
-        {/* Soft branded glow in the top-right — matches the live
-            preview's mockup hero, helps the banner not feel flat. */}
-        <div
-          aria-hidden
-          className="absolute -top-20 -right-20 w-72 h-72 rounded-full opacity-40 blur-3xl pointer-events-none"
-          style={{ background: 'var(--brand-primary, #6366f1)' }}
-        />
-        <div className="relative flex items-start justify-between gap-6 flex-wrap p-6 md:p-7">
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'color-mix(in srgb, var(--brand-primary, #6366f1) 80%, black)' }}>
-              {greeting}, {firstName}
-            </p>
-            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-slate-900 mt-1">
-              Welcome back to {(branding as any)?.displayName || tenantName}
-            </h1>
-            {/* Tagline lives here. If the tenant set one (or the
-                scraper found a good one), surface it as the
-                hero subtitle — same role it plays in the live
-                preview mockup. Otherwise fall back to the date
-                so the banner doesn't collapse on null. */}
-            {(branding as any)?.tagline ? (
-              <p className="text-sm md:text-[15px] font-medium text-slate-600 mt-1.5 max-w-2xl">
-                {(branding as any).tagline}
-              </p>
-            ) : (
-              <p className="text-sm font-medium text-slate-500 mt-1.5">
-                {now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
-              </p>
-            )}
-            {/* When tagline is shown, surface a quiet secondary line
-                with date + a one-glance fleet status pill so the
-                operator gets the same "Active screens · Schedules"
-                rollup as the live-preview mockup. */}
-            {(branding as any)?.tagline && (
-              <div className="flex flex-wrap items-center gap-3 mt-3 text-[12px] text-slate-500">
-                <span>{now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</span>
-                {fleet.total > 0 && (
-                  <>
-                    <span className="text-slate-300">·</span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className={cn(
-                        "w-1.5 h-1.5 rounded-full",
-                        fleet.offline > 0 ? "bg-amber-500" : "bg-emerald-500",
-                      )} />
-                      {fleet.online} of {fleet.total} screens online
-                    </span>
-                  </>
-                )}
-                {todaysSchedules.length > 0 && (
-                  <>
-                    <span className="text-slate-300">·</span>
-                    <span>{todaysSchedules.length} scheduled today</span>
-                  </>
-                )}
-              </div>
-            )}
+      {/* ─── Header ─────────────────────────────────────────── */}
+      <header className="flex items-start justify-between gap-6 flex-wrap">
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">
+            {greeting}, {firstName}
+          </h1>
+          <p className="text-sm font-medium text-slate-500 mt-1">
+            {tenantName} · {now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+          </p>
+        </div>
+        <div className="text-right">
+          <div className="text-2xl font-bold text-slate-800 tabular-nums">
+            {now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
           </div>
-          <div className="text-right shrink-0">
-            <div className="text-2xl md:text-3xl font-bold text-slate-800 tabular-nums">
-              {now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-            </div>
-            <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">Local time</div>
-          </div>
+          <div className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">Local time</div>
         </div>
       </header>
 

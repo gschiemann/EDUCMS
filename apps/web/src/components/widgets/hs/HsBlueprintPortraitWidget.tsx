@@ -15,12 +15,11 @@
  */
 
 import { HsStage } from './HsStage';
-import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import type { HsBlueprintConfig } from './HsBlueprintWidget';
 
 type Cfg = HsBlueprintConfig;
 
-export const DEFAULTS: Required<Cfg> = {
+const DEFAULTS: Required<Cfg> = {
   schoolCode: 'WHS',
   schoolName: 'WESTRIDGE HIGH · EST 1956',
   brandLabel1: 'PROJECT · TITLE',
@@ -67,15 +66,11 @@ export const DEFAULTS: Required<Cfg> = {
 
 export function HsBlueprintPortraitWidget({
   config,
-  live,
 }: {
   config?: Cfg;
   live?: boolean;
 }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
-  // 2026-05-07 — live clock (see useHsLiveClock.ts).
-  const now = useHsLiveClock(live !== false);
-  const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
   const events = [
     { time: c.event0Time, code: c.event0Code, name: c.event0Name, room: c.event0Room, who: c.event0Who },
     { time: c.event1Time, code: c.event1Code, name: c.event1Name, room: c.event1Room, who: c.event1Who },
@@ -138,7 +133,7 @@ export function HsBlueprintPortraitWidget({
             <div className="hs-bpp-val hs-bpp-mono">
               <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockDate}</span>
               {' · '}
-              <span data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</span>
+              <span data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockTime}</span>
             </div>
           </div>
         </div>
@@ -366,7 +361,7 @@ const CSS = `
 }
 .hs-bpp-dim {
   position: absolute; font-family: 'IBM Plex Mono', monospace;
-  font-weight: 700; font-size: 28px; color: #ffd84d;
+  font-weight: 700; font-size: 22px; color: #ffd84d;
   letter-spacing: .18em; text-transform: uppercase; pointer-events: none;
 }
 .hs-bpp-dim-top {
@@ -421,7 +416,7 @@ const CSS = `
 .hs-bpp-callout {
   position: absolute;
   font-family: 'IBM Plex Mono', monospace; font-weight: 700;
-  font-size: 26px; letter-spacing: .2em; color: #ffd84d;
+  font-size: 22px; letter-spacing: .2em; color: #ffd84d;
   background: #0a2852; border: 1px solid #ffd84d;
   padding: 8px 14px; text-transform: uppercase;
 }
@@ -445,11 +440,11 @@ const CSS = `
   content: attr(data-sheet); position: absolute; top: -16px; left: 24px;
   background: #0f3a7a; padding: 0 12px;
   font-family: 'IBM Plex Mono', monospace; font-weight: 700;
-  font-size: 26px; color: #ffd84d; letter-spacing: .24em; text-transform: uppercase;
+  font-size: 20px; color: #ffd84d; letter-spacing: .24em; text-transform: uppercase;
 }
 .hs-bpp-kicker {
   font-family: 'IBM Plex Mono', monospace; font-weight: 700;
-  font-size: 28px; color: #6ab6ff; letter-spacing: .2em; text-transform: uppercase;
+  font-size: 22px; color: #6ab6ff; letter-spacing: .2em; text-transform: uppercase;
 }
 .hs-bpp-big {
   font-family: 'Archivo', sans-serif; font-weight: 900;
@@ -458,7 +453,7 @@ const CSS = `
 }
 .hs-bpp-cap {
   font-family: 'Archivo', sans-serif; font-weight: 500;
-  font-size: 28px; color: #6ab6ff; line-height: 1.25; margin-top: 6px;
+  font-size: 22px; color: #6ab6ff; line-height: 1.25; margin-top: 6px;
 }
 
 /* === SCHEDULE-AS-DRAWINGS (~1100px) ======================================== */
@@ -539,13 +534,13 @@ const CSS = `
   content: attr(data-sheet); position: absolute; top: -16px; left: 20px;
   background: #0f3a7a; padding: 0 12px;
   font-family: 'IBM Plex Mono', monospace; font-weight: 700;
-  font-size: 28px; color: #ffd84d; letter-spacing: .24em;
+  font-size: 22px; color: #ffd84d; letter-spacing: .24em;
 }
 .hs-bpp-anno-mini svg { width: 100%; height: 100%; }
 .hs-bpp-anno-tag {
   position: absolute; bottom: 14px; left: 20px; right: 20px;
   font-family: 'IBM Plex Mono', monospace; font-weight: 700;
-  font-size: 28px; color: #6ab6ff; letter-spacing: .22em;
+  font-size: 22px; color: #6ab6ff; letter-spacing: .22em;
   text-transform: uppercase; text-align: center;
 }
 

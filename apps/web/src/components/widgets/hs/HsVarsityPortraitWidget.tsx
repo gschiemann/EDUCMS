@@ -25,7 +25,6 @@
  */
 
 import { HsStage } from './HsStage';
-import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 
 export interface HsVarsityConfig {
   schoolInitials?: string;
@@ -84,7 +83,7 @@ export interface HsVarsityConfig {
 
 type Cfg = HsVarsityConfig;
 
-export const DEFAULTS: Required<Cfg> = {
+const DEFAULTS: Required<Cfg> = {
   schoolInitials: 'WHS',
   schoolEst: 'EST. 1956',
   schoolName: 'WILDCATS',
@@ -139,11 +138,8 @@ export const DEFAULTS: Required<Cfg> = {
   tickerMessage: '🏈 FOOTBALL W 21-14 vs LIONS  ●  🏀 BOYS HOOPS L 58-62 @ EAST  ●  ⚽ SOCCER W 3-1 vs ROOSEVELT  ●  🏐 VOLLEYBALL W 3-0 vs CENTRAL  ●  🏊 SWIM 2ND OF 6 @ INVITATIONAL  ●  🏃 TRACK MIRA SET 800m SCHOOL RECORD  ●  ',
 };
 
-export function HsVarsityPortraitWidget({ config, live }: { config?: Cfg; live?: boolean }) {
+export function HsVarsityPortraitWidget({ config }: { config?: Cfg; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
-  // 2026-05-07 — live clock (see useHsLiveClock.ts).
-  const now = useHsLiveClock(live !== false);
-  const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
   const games = [
     { mark: c.event1Mark, when: c.event1When, name: c.event1Name },
     { mark: c.event2Mark, when: c.event2When, name: c.event2Name },
@@ -295,7 +291,7 @@ export function HsVarsityPortraitWidget({ config, live }: { config?: Cfg; live?:
               </div>
               <div className="hs-vp-statbox">
                 <div className="hs-vp-statbox-val" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>
-                  {clock.time}
+                  {c.clockTime}
                 </div>
                 <div className="hs-vp-statbox-lbl">LOCAL</div>
               </div>
@@ -562,12 +558,12 @@ const CSS = `
   border-bottom: 6px solid #ffc42b;
 }
 .hs-vp-statbox-val {
-  font-family: 'Bungee', sans-serif; font-size: 72px; line-height: 1;
+  font-family: 'Bungee', sans-serif; font-size: 64px; line-height: 1;
   color: #ffc42b;
 }
 .hs-vp-statbox-lbl {
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 28px; letter-spacing: .22em; color: #cbd5e1;
+  font-size: 22px; letter-spacing: .22em; color: #cbd5e1;
   margin-top: 6px; text-transform: uppercase;
 }
 
@@ -615,7 +611,7 @@ const CSS = `
 .hs-vp-row-body { display: flex; flex-direction: column; gap: 4px; }
 .hs-vp-row-when {
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 34px; color: #ffc42b; letter-spacing: .18em;
+  font-size: 28px; color: #ffc42b; letter-spacing: .18em;
   text-transform: uppercase;
 }
 .hs-vp-row-name {
@@ -641,7 +637,7 @@ const CSS = `
 }
 .hs-vp-anno-tag {
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 38px; letter-spacing: .22em; color: #ffc42b; text-transform: uppercase;
+  font-size: 32px; letter-spacing: .22em; color: #ffc42b; text-transform: uppercase;
 }
 .hs-vp-anno-h3 {
   font-family: 'Bungee', sans-serif; font-size: 70px; line-height: .95;
@@ -649,11 +645,11 @@ const CSS = `
 }
 .hs-vp-anno-p {
   font-family: 'Inter', sans-serif; font-weight: 500;
-  font-size: 34px; color: #cbd5e1; margin: 10px 0 0;
+  font-size: 30px; color: #cbd5e1; margin: 10px 0 0;
 }
 .hs-vp-anno-when {
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 34px; color: #ffc42b; letter-spacing: .14em;
+  font-size: 30px; color: #ffc42b; letter-spacing: .14em;
   text-transform: uppercase; margin-top: auto;
 }
 

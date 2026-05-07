@@ -179,16 +179,8 @@ export function Sidebar() {
         aria-label="Primary navigation"
         aria-hidden={!mobileSidebarOpen && typeof window !== 'undefined' && window.innerWidth < 768 ? true : undefined}
       >
-        {/* 2026-05-07 — operator: "we cut off the text at the top and
-            it should flow across and not cut off". Sidebar header was
-            fixed h-[73px] with single-line truncate. Long school names
-            ("Buena Park High School") got "Buena Park High S..." cut.
-            Now: auto-height (min-h, not fixed h), 2-line wrap, with
-            font sizing that scales down for very long names. The
-            tagline (when set) renders below the name as a quiet
-            subtitle. */}
-        <div className="min-h-[73px] flex items-start px-5 pt-4 pb-3 justify-between gap-2">
-          <h1 className="font-extrabold tracking-tight text-slate-800 flex items-start gap-3 min-w-0 flex-1">
+        <div className="h-[73px] flex items-center px-5 justify-between gap-2">
+          <h1 className="text-xl font-extrabold tracking-tight text-slate-800 flex items-center gap-3 min-w-0">
             {brandLogoUrl && !logoImgBroken && !/\.(ico|icns)(\?|#|$)/i.test(brandLogoUrl) ? (
               // Wider box lets wide wordmarks (Chardon's tree + "CHARDON
               // LOCAL SCHOOLS") render at actual aspect ratio instead of
@@ -224,43 +216,12 @@ export function Sidebar() {
                 <MonitorPlay className="w-5 h-5" />
               </div>
             )}
-            <div className="flex flex-col min-w-0 flex-1 gap-0.5 pt-0.5">
-              <span
-                title={brandName}
-                className={cn(
-                  "font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700 leading-tight break-words",
-                  // Scale font down for longer names so they don't
-                  // bleed off-side. ~22 chars threshold matches
-                  // "Buena Park High School" — fits at sm/md, larger
-                  // for short names like "Lincoln HS". The break-words
-                  // + leading-tight + 2-line clamp lets verbose names
-                  // flow to a second line instead of truncating.
-                  brandName.length > 18 ? "text-[15px]" : "text-xl",
-                )}
-                style={{
-                  display: '-webkit-box',
-                  WebkitBoxOrient: 'vertical',
-                  WebkitLineClamp: 2,
-                  overflow: 'hidden',
-                }}
-              >
-                {brandName}
-              </span>
-              {/* 2026-05-07 — tagline subtitle. Operator: "i manually
-                  typed in the real tag line and when you apply it it
-                  never shows up anywhere in the app". Tagline now
-                  renders here, plus on the dashboard hero (separate
-                  commit). Single-line clamped so a runaway tagline
-                  doesn't bloat the sidebar header. */}
-              {mounted && branding?.tagline && (
-                <span
-                  className="text-[11px] font-medium text-slate-500 leading-snug truncate"
-                  title={branding.tagline}
-                >
-                  {branding.tagline}
-                </span>
-              )}
-            </div>
+            <span
+              title={brandName}
+              className="bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700 truncate"
+            >
+              {brandName}
+            </span>
           </h1>
           {/* Close button — only on mobile */}
           <button

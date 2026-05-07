@@ -27,7 +27,6 @@
  */
 
 import { HsStage } from './HsStage';
-import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 
 export interface HsVarsityConfig {
   schoolInitials?: string;
@@ -127,14 +126,8 @@ const DEFAULTS: Required<HsVarsityConfig> = {
   tickerMessage: 'SENIORS — CAP & GOWN PICKUP THIS WEEK IN THE COUNSELING OFFICE  ●  BUS 14 RUNNING 10 MIN LATE  ●  MATHLETES PRACTICE MOVED TO ROOM 102  ●  SPRING SPORTS PHOTOS TOMORROW — WEAR YOUR JERSEY  ●  ',
 };
 
-export function HsVarsityWidget({ config, live }: { config?: HsVarsityConfig; live?: boolean }) {
+export function HsVarsityWidget({ config }: { config?: HsVarsityConfig }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<HsVarsityConfig>;
-  // 2026-05-07 — live clock. Replaces the hardcoded "7:53" /
-  // "Tuesday · 1st period @ 8:05" placeholder so the demo wall
-  // shows real time on every screen. Operator can still override
-  // clockTime / clockCaption to freeze for marketing screenshots.
-  const now = useHsLiveClock(live !== false);
-  const clock = resolveHsClock(c, now, DEFAULTS.clockTime, DEFAULTS.clockCaption);
   return (
     <HsStage
       stageStyle={{
@@ -211,8 +204,8 @@ export function HsVarsityWidget({ config, live }: { config?: HsVarsityConfig; li
       <div className="hs-varsity-stats">
         <div className="hs-varsity-stat">
           <div className="hs-varsity-stat-lbl">LOCAL TIME</div>
-          <div className="hs-varsity-stat-val" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</div>
-          <div className="hs-varsity-stat-cap" data-field="clockCaption" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.caption}</div>
+          <div className="hs-varsity-stat-val" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockTime}</div>
+          <div className="hs-varsity-stat-cap" data-field="clockCaption" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockCaption}</div>
         </div>
         <div className="hs-varsity-stat">
           <div className="hs-varsity-stat-lbl">GAMETIME FORECAST</div>
@@ -308,7 +301,7 @@ const CSS = `
   clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
   box-shadow: 0 20px 40px rgba(0,0,0,.4);
 }
-.hs-varsity-seal-est { font-size: 24px; letter-spacing: .2em; margin-top: 10px; color: #6b5110; display: inline-block; }
+.hs-varsity-seal-est { font-size: 18px; letter-spacing: .2em; margin-top: 10px; color: #6b5110; display: inline-block; }
 
 .hs-varsity-pennants {
   position: absolute; top: 10px; right: 340px; width: 1200px; height: 80px; z-index: 4; pointer-events: none;
@@ -410,9 +403,9 @@ const CSS = `
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px;
 }
 .hs-varsity-stat { background: #0a0e1c; border: 6px solid rgba(255,196,43,.3); padding: 20px 28px; position: relative; }
-.hs-varsity-stat-lbl { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 36px; letter-spacing: .22em; color: #ffc42b; text-transform: uppercase; }
+.hs-varsity-stat-lbl { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 30px; letter-spacing: .22em; color: #ffc42b; text-transform: uppercase; }
 .hs-varsity-stat-val { font-family: 'Bungee', sans-serif; font-size: 120px; line-height: .9; color: #fff; margin-top: 8px; letter-spacing: -.01em; }
-.hs-varsity-stat-cap { font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 32px; color: #cbd5e1; margin-top: 4px; }
+.hs-varsity-stat-cap { font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 30px; color: #cbd5e1; margin-top: 4px; }
 
 .hs-varsity-coach {
   position: absolute; top: 1240px; left: 60px; width: 1720px; height: 620px;
@@ -433,10 +426,10 @@ const CSS = `
   position: absolute; top: 1240px; right: 60px; width: 1940px; display: grid; gap: 24px;
 }
 .hs-varsity-anno { background: #0a0e1c; border-left: 14px solid #ffc42b; padding: 24px 36px; }
-.hs-varsity-anno-tag { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 36px; letter-spacing: .22em; color: #ffc42b; text-transform: uppercase; }
+.hs-varsity-anno-tag { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 30px; letter-spacing: .22em; color: #ffc42b; text-transform: uppercase; }
 .hs-varsity-anno-h3 { font-family: 'Bungee', sans-serif; font-size: 68px; line-height: .95; margin: 8px 0 0; color: #fff; text-transform: uppercase; }
-.hs-varsity-anno-p { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 32px; color: #cbd5e1; margin: 10px 0 0; }
-.hs-varsity-anno-when { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 30px; color: #ffc42b; letter-spacing: .14em; text-transform: uppercase; margin-top: 10px; }
+.hs-varsity-anno-p { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 28px; color: #cbd5e1; margin: 10px 0 0; }
+.hs-varsity-anno-when { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 28px; color: #ffc42b; letter-spacing: .14em; text-transform: uppercase; margin-top: 10px; }
 .hs-varsity-countdown { background: #e03b1c; border-left: 14px solid #ffc42b; padding: 24px 36px; display: flex; align-items: center; gap: 40px; }
 .hs-varsity-cd-num { font-family: 'Bungee', sans-serif; font-size: 220px; line-height: .8; color: #fff; text-shadow: 8px 8px 0 #0d1b3d; }
 .hs-varsity-cd-lbl { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 48px; color: #fff; letter-spacing: .14em; text-transform: uppercase; line-height: 1.1; }
@@ -448,7 +441,7 @@ const CSS = `
 }
 .hs-varsity-sch { background: #0a0e1c; border: 4px solid #ffc42b; padding: 16px 28px; display: flex; align-items: center; gap: 24px; }
 .hs-varsity-sch-mark { font-family: 'Bungee', sans-serif; font-size: 80px; line-height: .85; color: #ffc42b; padding-right: 22px; border-right: 3px dashed rgba(255,255,255,.2); }
-.hs-varsity-sch-d { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 32px; color: #ffc42b; letter-spacing: .16em; text-transform: uppercase; }
+.hs-varsity-sch-d { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 28px; color: #ffc42b; letter-spacing: .16em; text-transform: uppercase; }
 .hs-varsity-sch-n { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 44px; color: #fff; text-transform: uppercase; line-height: 1.05; margin-top: 4px; }
 
 .hs-varsity-ticker {
