@@ -114,36 +114,30 @@ export function ScaledTemplateThumbnail({
     };
   }, [screenWidth]);
 
-  // Compute the card's on-screen dimensions directly so we don't depend
-  // on aspect-ratio + maxHeight resolving to the right width. We pick the
-  // LARGER rendering that still fits inside (maxWidth 100% of parent,
-  // maxHeight).  Parent gives us width via ResizeObserver; height derives
-  // from screen aspect.
-  const [parentWidth, setParentWidth] = useState<number>(0);
-  useEffect(() => {
-    const el = outerRef.current?.parentElement;
-    if (!el) return;
-    const measure = () => setParentWidth(el.getBoundingClientRect().width);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
+  // 2026-05-07 — DEMO HOTFIX #2.
+  // Old version measured parentElement.getBoundingClientRect().width via
+  // ResizeObserver and computed cardWidth = min(parentWidth, widthFromHeight).
+  // BUG: when scrolling triggered a layout reflow, RO sometimes reported a
+  // tiny non-zero width (e.g. 1px) during the reflow tick. The `||` fallback
+  // only triggered on 0/null, not small numbers — so cardWidth got stuck at
+  // 1px and every card collapsed to a thin grey bar. This is what the
+  // operator was seeing on scroll.
+  //
+  // Fix: use pure CSS — width 100% capped by max-width, height derived from
+  // aspect-ratio. No JS layout measurement, no ResizeObserver, no way to
+  // get stuck in a bad state.
   const aspect = screenWidth / screenHeight;
-  // Fit inside (parentWidth × maxHeight) preserving aspect ratio.
   const widthFromHeight = maxHeight * aspect;
-  const cardWidth = Math.max(1, Math.min(parentWidth || widthFromHeight, widthFromHeight));
-  const cardHeight = cardWidth / aspect;
-  const effectiveScale = scale > 0 ? scale : cardWidth / screenWidth;
+  const effectiveScale = scale > 0 ? scale : widthFromHeight / screenWidth;
 
   return (
     <div
       ref={outerRef}
       className="relative overflow-hidden rounded-lg border border-slate-200 shadow-sm mx-auto"
       style={{
-        width: cardWidth,
-        height: cardHeight,
+        width: '100%',
+        maxWidth: widthFromHeight,
+        aspectRatio: `${screenWidth} / ${screenHeight}`,
         ...bgStyle(bgImage, bgGradient, bgColor),
       }}
     >
