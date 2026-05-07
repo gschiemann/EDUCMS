@@ -82,35 +82,19 @@ export function ScaledTemplateThumbnail({
   const outerRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState<number>(0);
 
-  // IntersectionObserver gate — don't mount the widgets until the tile is
-  // actually near the viewport. Gallery pages render ~60 template cards at
-  // once; before this gate, every card mounted its full WidgetPreview tree
-  // (inline <style> blocks, keyframe animations, ResizeObservers) on initial
-  // paint even when it was 10 screens down. Now we render a cheap placeholder
-  // div until ~400px from the viewport, then hydrate the real widgets.
-  // Once mounted, stay mounted — remounting on scroll causes flicker.
-  const [isVisible, setIsVisible] = useState(false);
-  useEffect(() => {
-    const el = outerRef.current;
-    if (!el) return;
-    if (isVisible) return;
-    // SSR / old browsers: just show it.
-    if (typeof IntersectionObserver === 'undefined') { setIsVisible(true); return; }
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          if (e.isIntersecting) {
-            setIsVisible(true);
-            io.disconnect();
-            break;
-          }
-        }
-      },
-      { rootMargin: '400px 0px', threshold: 0 },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [isVisible]);
+  // 2026-05-07 — operator: "if i scroll down on the templates page i
+  // get this... every template collapses and i cant see shit". Right
+  // before a live HS-district demo. The IntersectionObserver gate
+  // below was previously a perf optimization (don't mount widgets
+  // until 400px from viewport). In practice, with 60+ HS templates
+  // stacked, the observer either failed to fire on scroll, or the
+  // mount happened too late and the operator saw empty placeholders
+  // while scrolling. Killing the gate — every card mounts on first
+  // paint. Yes, the gallery page costs more on first load, but every
+  // template is visible immediately. We can re-introduce a smarter
+  // virtualization (e.g. react-window) post-demo if perf becomes an
+  // issue at 100+ templates.
+  const [isVisible] = useState(true);
 
   useEffect(() => {
     const el = outerRef.current;
