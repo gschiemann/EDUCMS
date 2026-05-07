@@ -520,6 +520,77 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
     screenWidth: 3840, screenHeight: 2160, bgColor: '#f2ecd9',
     zones: [{ name: 'Scene', widgetType: 'HS_ZINE', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
   },
+
+  // ─── HS District Pack — 8 lobby/cafeteria/classroom/athletics templates (2026-05-07) ───
+  // Approved 2026-05-07. Each ports a 3840×2160 HTML mockup from
+  // scratch/design/hs-district/hs-district-pack/. Operators use these
+  // for athletics game-day boards, cafeteria menu screens, classroom
+  // now/next agendas, substitute self-running plans, hallway corkboard
+  // bulletins, and airport-style transition-period wayfinders.
+  {
+    id: 'preset-hs-ath-gameday',
+    name: '🏟️ Athletics — Game Day Hub',
+    description: 'Stadium board for game day: matchup helmets + records, kickoff countdown, all-team contests, fan info (tickets/theme/gates/concessions/stream), PA-system ticker. Bebas Neue + Oswald + Archivo. 4K landscape.',
+    category: 'EVENTS', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0a0e1a',
+    zones: [{ name: 'Scene', widgetType: 'HS_ATH_GAMEDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-hs-ath-standings',
+    name: '🏆 Athletics — Standings & AOTW',
+    description: 'Always-on athletics board: league table, athlete-of-the-week spotlight, school records ladder. Bold numerals, sportsbook-style typography. 4K landscape.',
+    category: 'EVENTS', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0a0e1a',
+    zones: [{ name: 'Scene', widgetType: 'HS_ATH_STANDINGS', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-hs-caf-counter',
+    name: '🍽️ Cafeteria — Counter Plate',
+    description: 'Single-line cafeteria counter: today\'s plate hero photo card, 5-day rotation strip, allergen badges. Restaurant-menu polish. 4K landscape.',
+    category: 'CAFETERIA_MENU', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#fef9f2',
+    zones: [{ name: 'Scene', widgetType: 'HS_CAF_COUNTER', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-hs-caf-market',
+    name: '🥗 Cafeteria — Food-Hall Market',
+    description: '5-station food-hall directory: per-station chef + plate + price + allergen badges, week outlook strip, allergen ticker. Modern food-hall aesthetic. 4K landscape.',
+    category: 'CAFETERIA_MENU', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#faf6f0',
+    zones: [{ name: 'Scene', widgetType: 'HS_CAF_MARKET', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-hs-class-nownext',
+    name: '📚 Classroom — Now / Next Agenda',
+    description: 'In-room display for HS classrooms: current activity hero, period agenda timeline, do-now/exit-ticket cards. Editorial classroom aesthetic. 4K landscape.',
+    category: 'CLASSROOM', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#fafaf7',
+    zones: [{ name: 'Scene', widgetType: 'HS_CLASS_NOWNEXT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-hs-class-subday',
+    name: '🧑‍🏫 Classroom — Substitute Self-Running Plan',
+    description: 'Substitute teacher self-running display: sub intro + photo, 5-step timed plan, 6 classroom rules, 4 ask-the-class prompts. Reads like a worksheet. 4K landscape.',
+    category: 'CLASSROOM', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#fffaf0',
+    zones: [{ name: 'Scene', widgetType: 'HS_CLASS_SUBDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-hs-hall-bulletin',
+    name: '📌 Hallway — Corkboard Bulletin',
+    description: 'Hallway feature wall: 4 pinned flyers (sports, theatre, club, college rep) with cork-board texture, spotlight panel with editable meta rows, "right now" period chip. 4K landscape.',
+    category: 'HALLWAY_DISPLAY', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#f3ead8',
+    zones: [{ name: 'Scene', widgetType: 'HS_HALL_BULLETIN', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
+  {
+    id: 'preset-hs-hall-wayfinder',
+    name: '🛫 Hallway — Wayfinder Departures',
+    description: 'Airport-style departure directory for transition periods: origin → destination rows, "now boarding" status pills, terminal/gate codes for room numbers. 4K landscape.',
+    category: 'HALLWAY_DISPLAY', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0c1220',
+    zones: [{ name: 'Scene', widgetType: 'HS_HALL_WAYFINDER', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+  },
   // ─── MS Pack — Arcade + Atlas (more in pipeline) ───────────────
   // Approved 2026-04-25 — matches scratch/design/arcade-ms-v2.html.
   // React widget at apps/web/src/components/widgets/ms/MsArcadeWidget.tsx.

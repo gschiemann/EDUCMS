@@ -127,6 +127,18 @@ import { HsTransitWidget } from './hs/HsTransitWidget';
 import { HsGalleryWidget } from './hs/HsGalleryWidget';
 import { HsBlueprintWidget } from './hs/HsBlueprintWidget';
 import { HsZineWidget } from './hs/HsZineWidget';
+// HS District Pack — 8 new lobby/cafeteria/classroom/athletics widgets
+// (2026-05-07). Each ports a 3840×2160 HTML mockup from
+// scratch/design/hs-district/hs-district-pack/. All use HsStage scale,
+// dotted-key data-field hotspots, and useHsLiveClock for header times.
+import { HsAthGamedayWidget } from './hs/HsAthGamedayWidget';
+import { HsAthStandingsWidget } from './hs/HsAthStandingsWidget';
+import { HsCafCounterWidget } from './hs/HsCafCounterWidget';
+import { HsCafMarketWidget } from './hs/HsCafMarketWidget';
+import { HsClassNowNextWidget } from './hs/HsClassNowNextWidget';
+import { HsClassSubDayWidget } from './hs/HsClassSubDayWidget';
+import { HsHallBulletinWidget } from './hs/HsHallBulletinWidget';
+import { HsHallWayfinderWidget } from './hs/HsHallWayfinderWidget';
 // MS Pack — first port (Arcade), pattern matches HS templates.
 import { MsArcadeWidget } from './ms/MsArcadeWidget';
 import { MsAtlasWidget } from './ms/MsAtlasWidget';
@@ -447,6 +459,15 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'HS_BLUEPRINT_PORTRAIT':         return <HsBlueprintPortraitWidget config={cfg} live={live} />;
     case 'HS_ZINE':                       return <HsZineWidget config={cfg} />;
     case 'HS_ZINE_PORTRAIT':              return <HsZinePortraitWidget config={cfg} live={live} />;
+    // HS District Pack — 8 new templates (2026-05-07):
+    case 'HS_ATH_GAMEDAY':                return <HsAthGamedayWidget config={cfg} live={live} />;
+    case 'HS_ATH_STANDINGS':              return <HsAthStandingsWidget config={cfg} live={live} />;
+    case 'HS_CAF_COUNTER':                return <HsCafCounterWidget config={cfg} live={live} />;
+    case 'HS_CAF_MARKET':                 return <HsCafMarketWidget config={cfg} live={live} />;
+    case 'HS_CLASS_NOWNEXT':              return <HsClassNowNextWidget config={cfg} live={live} />;
+    case 'HS_CLASS_SUBDAY':               return <HsClassSubDayWidget config={cfg} live={live} />;
+    case 'HS_HALL_BULLETIN':              return <HsHallBulletinWidget config={cfg} live={live} />;
+    case 'HS_HALL_WAYFINDER':             return <HsHallWayfinderWidget config={cfg} live={live} />;
     // MS pack:
     case 'MS_ARCADE':                     return <MsArcadeWidget config={cfg} live={live} />;
     case 'MS_ATLAS':                      return <MsAtlasWidget config={cfg} live={live} />;
