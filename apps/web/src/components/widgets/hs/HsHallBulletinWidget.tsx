@@ -543,7 +543,7 @@ export function HsHallBulletinWidget({ config, live }: { config?: HsHallBulletin
 
 /** Inlined CSS — keeps every pixel value identical to scratch/design/hs-district/hs-district-pack/hall-bulletin.html. */
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,700;9..144,900&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;9..144,900&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
 
 .hs-bull-grain {
   position: absolute; inset: 0; pointer-events: none;

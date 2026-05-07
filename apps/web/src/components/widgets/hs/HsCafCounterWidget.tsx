@@ -484,7 +484,7 @@ export function HsCafCounterWidget({ config, live }: { config?: HsCafCounterConf
 
 /** Inlined CSS — pixel-perfect against scratch/design/hs-district/hs-district-pack/caf-counter.html. */
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,400;9..144,700;9..144,900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,700;9..144,900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
 
 .hs-cafc-bg {
   position: absolute; inset: 0; pointer-events: none;
