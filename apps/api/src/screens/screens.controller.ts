@@ -1,5 +1,5 @@
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
+import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import type { Request as ExpressReq, Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -143,18 +143,24 @@ export class ScreensController {
   //                429" with no path forward (operator has no way
   //                to reset the per-IP counter).
   //   v3: 300/hr — bricks a single hot kiosk in retry-storm mode.
-  //                The React backoff (caps at 30 s) makes a single
-  //                device fire ~120 register attempts/hr, plus the
-  //                rest of a school fleet on the same NAT IP.
-  //                Empirically it's the IP-level cap that wedged
-  //                the TB40 even after the FP cooldown was shortened.
-  //   v4: 1500/hr — accommodates a single device hammering at
-  //                30-s backoff (120/hr) + a 30-kiosk fleet
-  //                churning + dashboard test traffic, all from one
-  //                NAT IP. Per-FP 5 s cooldown still provides
-  //                rapid-fire enumeration defense; this is just
-  //                the per-IP backstop.
-  @Throttle({ default: { limit: 1500, ttl: 3_600_000 } })
+  //   v4: 1500/hr — operator's IP STILL hit it after a multi-hour
+  //                retry storm on a fresh TB40 sideload (cumulative
+  //                count over the rolling window).
+  //   v5: REMOVED — per-IP throttle on this endpoint dropped
+  //                entirely. Defense in depth comes from:
+  //                (a) per-FP 5 s cooldown (prevents rapid-fire
+  //                same-FP enumeration);
+  //                (b) global 600/min throttle on the controller
+  //                (catches bulk bursts);
+  //                (c) the natural cost of creating a Screen row
+  //                (DB write, no useful info disclosed without
+  //                pairing).
+  //                Even an unauthenticated attacker spamming
+  //                fingerprints can only create orphan Screen
+  //                rows that admins never claim — cleanup script
+  //                is a separate problem. Better than bricking
+  //                legitimate kiosks.
+  @SkipThrottle()
   @Post('register')
   async register(@Body() body: {
     deviceFingerprint: string;
