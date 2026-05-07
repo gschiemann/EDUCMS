@@ -11,6 +11,7 @@
  */
 
 import { HsStage } from './HsStage';
+import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 
 export interface HsBlueprintConfig {
   schoolCode?: string;
@@ -94,8 +95,11 @@ const DEFAULTS: Required<HsBlueprintConfig> = {
   tickerMessage: 'RFI-2261 · BUS 14 DELAY 10M · RFI-2262 · RM-210 TONER · RFI-2263 · AP PSYCH STUDY HALL → LIBRARY · RFI-2264 · LOST PROPERTY — SILVER EARBUDS · RFI-2265 · SPRING SPORTS PHOTOS TOMORROW · ',
 };
 
-export function HsBlueprintWidget({ config }: { config?: HsBlueprintConfig }) {
+export function HsBlueprintWidget({ config, live }: { config?: HsBlueprintConfig; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<HsBlueprintConfig>;
+  // 2026-05-07 — live clock (see useHsLiveClock.ts).
+  const now = useHsLiveClock(live !== false);
+  const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
   const events = [
     { time: c.event0Time, code: c.event0Code, name: c.event0Name, room: c.event0Room, who: c.event0Who },
     { time: c.event1Time, code: c.event1Code, name: c.event1Name, room: c.event1Room, who: c.event1Who },
@@ -128,7 +132,7 @@ export function HsBlueprintWidget({ config }: { config?: HsBlueprintConfig }) {
         <div className="hs-bp-cell">
           <div className="hs-bp-lbl" data-field="clockLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockLabel}</div>
           <div className="hs-bp-val" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-            <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockDate}</span> · <span data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockTime}</span>
+            <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockDate}</span> · <span data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</span>
           </div>
         </div>
         <div className="hs-bp-cell hs-bp-rev">
@@ -176,11 +180,12 @@ export function HsBlueprintWidget({ config }: { config?: HsBlueprintConfig }) {
         </div>
         {events.map((e, i) => (
           <div key={i} className="hs-bp-sched-row">
-            <span className="hs-bp-t">{e.time}</span>
-            <span className="hs-bp-c">{e.code}</span>
-            <span className="hs-bp-n">{e.name}</span>
-            <span className="hs-bp-r">{e.room}</span>
-            <span className="hs-bp-w">{e.who}</span>
+            {/* 2026-05-07 — added data-field for click-to-edit on every cell. */}
+            <span className="hs-bp-t" data-field={`event${i}Time`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.time}</span>
+            <span className="hs-bp-c" data-field={`event${i}Code`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.code}</span>
+            <span className="hs-bp-n" data-field={`event${i}Name`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.name}</span>
+            <span className="hs-bp-r" data-field={`event${i}Room`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.room}</span>
+            <span className="hs-bp-w" data-field={`event${i}Who`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.who}</span>
           </div>
         ))}
       </div>

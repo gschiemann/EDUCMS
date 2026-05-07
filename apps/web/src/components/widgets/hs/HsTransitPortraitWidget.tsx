@@ -27,6 +27,7 @@
  */
 
 import { HsStage } from './HsStage';
+import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 
 export interface HsTransitConfig {
   schoolCode?: string;
@@ -67,7 +68,7 @@ export interface HsTransitConfig {
 
 type Cfg = HsTransitConfig;
 
-const DEFAULTS: Required<Cfg> = {
+export const DEFAULTS: Required<Cfg> = {
   schoolCode: 'WHS',
   brandStation: 'WESTRIDGE INTERNATIONAL',
   brandMeta: 'GRADES 9–12 · TERM SPRING 2026 · ON TIME 94%',
@@ -113,8 +114,11 @@ function statusClass(s: string): string {
   return 'hs-trp-st-sched';
 }
 
-export function HsTransitPortraitWidget({ config }: { config?: Cfg; live?: boolean }) {
+export function HsTransitPortraitWidget({ config, live }: { config?: Cfg; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
+  // 2026-05-07 — live clock (see useHsLiveClock.ts).
+  const now = useHsLiveClock(live !== false);
+  const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
   const deps = [
     { time: c.dep0Time, code: c.dep0Code, dest: c.dep0Dest, note: c.dep0Note, room: c.dep0Room, teacher: c.dep0Teacher, status: c.dep0Status },
     { time: c.dep1Time, code: c.dep1Code, dest: c.dep1Dest, note: c.dep1Note, room: c.dep1Room, teacher: c.dep1Teacher, status: c.dep1Status },
@@ -175,7 +179,7 @@ export function HsTransitPortraitWidget({ config }: { config?: Cfg; live?: boole
         </div>
         <div className="hs-trp-clock">
           <div className="hs-trp-clock-t" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>
-            {c.clockTime}
+            {clock.time}
           </div>
           <div className="hs-trp-clock-meta">
             <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockDate}</span>
@@ -226,15 +230,16 @@ export function HsTransitPortraitWidget({ config }: { config?: Cfg; live?: boole
         </div>
         {deps.map((d, i) => (
           <div key={i} className="hs-trp-row">
-            <span className="hs-trp-t">{d.time}</span>
-            <span className="hs-trp-rcode">{d.code}</span>
+            {/* 2026-05-07 — added data-field for click-to-edit. */}
+            <span className="hs-trp-t" data-field={`dep${i}Time`} style={{ whiteSpace: 'pre-wrap' as const }}>{d.time}</span>
+            <span className="hs-trp-rcode" data-field={`dep${i}Code`} style={{ whiteSpace: 'pre-wrap' as const }}>{d.code}</span>
             <span className="hs-trp-dest">
-              {d.dest}
-              <span className="hs-trp-dest-sub">{d.note}</span>
+              <span data-field={`dep${i}Dest`} style={{ whiteSpace: 'pre-wrap' as const }}>{d.dest}</span>
+              <span className="hs-trp-dest-sub" data-field={`dep${i}Note`} style={{ whiteSpace: 'pre-wrap' as const }}>{d.note}</span>
             </span>
-            <span className="hs-trp-gate">{d.room}</span>
-            <span className="hs-trp-room">{d.teacher}</span>
-            <span><span className={'hs-trp-st ' + statusClass(d.status)}>{d.status}</span></span>
+            <span className="hs-trp-gate" data-field={`dep${i}Room`} style={{ whiteSpace: 'pre-wrap' as const }}>{d.room}</span>
+            <span className="hs-trp-room" data-field={`dep${i}Teacher`} style={{ whiteSpace: 'pre-wrap' as const }}>{d.teacher}</span>
+            <span><span className={'hs-trp-st ' + statusClass(d.status)} data-field={`dep${i}Status`} style={{ whiteSpace: 'pre-wrap' as const }}>{d.status}</span></span>
           </div>
         ))}
       </div>

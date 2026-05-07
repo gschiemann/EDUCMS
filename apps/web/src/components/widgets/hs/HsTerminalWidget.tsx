@@ -27,6 +27,7 @@
  */
 
 import { HsStage } from './HsStage';
+import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 
 export interface HsTerminalConfig {
   schoolHost?: string;
@@ -126,8 +127,11 @@ const DEFAULTS: Required<HsTerminalConfig> = {
   tickerMessage: '[info] bus-14 delayed 10m · [warn] printer rm-210 out of toner · [info] lost-and-found: silver earbuds · [info] ap psych study hall moved to library · [info] sports photos tomorrow — bring jerseys · ',
 };
 
-export function HsTerminalWidget({ config }: { config?: HsTerminalConfig }) {
+export function HsTerminalWidget({ config, live }: { config?: HsTerminalConfig; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<HsTerminalConfig>;
+  // 2026-05-07 — live clock (see useHsLiveClock.ts).
+  const now = useHsLiveClock(live !== false);
+  const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
   return (
     <HsStage
       stageStyle={{
@@ -152,7 +156,7 @@ export function HsTerminalWidget({ config }: { config?: HsTerminalConfig }) {
           <span style={{ color: '#7adfff' }}>{c.schoolSession}</span>
         </div>
         <div className="hs-tm-right">
-          <span data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockTime}</span>
+          <span data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</span>
           <span>
             <span className="hs-tm-on" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherTemp}</span> {c.weatherCondition}
           </span>

@@ -43,6 +43,7 @@
  */
 
 import { HsStage } from './HsStage';
+import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 
 export interface HsGalleryConfig {
   schoolName?: string;
@@ -86,7 +87,7 @@ export interface HsGalleryConfig {
 
 type Cfg = HsGalleryConfig;
 
-const DEFAULTS: Required<Cfg> = {
+export const DEFAULTS: Required<Cfg> = {
   schoolName: 'The Westridge High School Review',
   clockDate: 'Tuesday, April 21',
   clockTime: '7:53 a.m.',
@@ -126,8 +127,11 @@ const DEFAULTS: Required<Cfg> = {
   tickerMessage: 'Bus 14 delayed ten minutes · Lunch today: chicken bowl, salad bar, vegan option · AP Psychology study hall moved to the library · Lost: silver earbuds — inquire at the front office · Spring sports photos tomorrow; please wear your jerseys ·  ',
 };
 
-export function HsGalleryPortraitWidget({ config }: { config?: Cfg; live?: boolean }) {
+export function HsGalleryPortraitWidget({ config, live }: { config?: Cfg; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
+  // 2026-05-07 — live clock (see useHsLiveClock.ts).
+  const now = useHsLiveClock(live !== false);
+  const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
   const events = [
     { n: c.event0Num, name: c.event0Name, meta: c.event0Meta, time: c.event0Time, day: c.event0Day },
     { n: c.event1Num, name: c.event1Name, meta: c.event1Meta, time: c.event1Time, day: c.event1Day },
@@ -161,7 +165,7 @@ export function HsGalleryPortraitWidget({ config }: { config?: Cfg; live?: boole
         <div className="hs-glp-mast-meta">
           <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockDate}</span>
           <span className="hs-glp-mast-dot">·</span>
-          <span className="hs-glp-mast-on" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockTime}</span>
+          <span className="hs-glp-mast-on" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</span>
           <span className="hs-glp-mast-dot">·</span>
           <span data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherCondition}</span>
         </div>
@@ -219,14 +223,15 @@ export function HsGalleryPortraitWidget({ config }: { config?: Cfg; live?: boole
         <div className="hs-glp-acq-list">
           {events.map((e, i) => (
             <div key={i} className="hs-glp-card">
-              <div className="hs-glp-n">{e.n}</div>
+              {/* 2026-05-07 — added data-field for click-to-edit. */}
+              <div className="hs-glp-n" data-field={`event${i}Num`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.n}</div>
               <div className="hs-glp-card-body">
-                <div className="hs-glp-title">{e.name}</div>
-                <div className="hs-glp-meta">{e.meta}</div>
+                <div className="hs-glp-title" data-field={`event${i}Name`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.name}</div>
+                <div className="hs-glp-meta" data-field={`event${i}Meta`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.meta}</div>
               </div>
               <div className="hs-glp-time">
-                <span>{e.time}</span>
-                <span className="hs-glp-d">{e.day}</span>
+                <span data-field={`event${i}Time`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.time}</span>
+                <span className="hs-glp-d" data-field={`event${i}Day`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.day}</span>
               </div>
             </div>
           ))}

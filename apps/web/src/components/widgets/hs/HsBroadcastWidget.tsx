@@ -20,6 +20,7 @@
  */
 
 import { HsStage } from './HsStage';
+import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 
 export interface HsBroadcastConfig {
   schoolChip?: string;
@@ -89,8 +90,11 @@ const DEFAULTS: Required<HsBroadcastConfig> = {
   tickerMessage: 'LUNCH TODAY · CHICKEN BOWL · SALAD BAR · VEGAN OPTION AVAILABLE  ●  SAT PRACTICE SIGN-UPS CLOSE FRIDAY  ●  LOST: SILVER EARBUDS IN LIBRARY — SEE FRONT OFFICE  ●  DRAMA CLUB AUDITIONS MONDAY 3:30 IN THE AUDITORIUM  ●  ',
 };
 
-export function HsBroadcastWidget({ config }: { config?: HsBroadcastConfig }) {
+export function HsBroadcastWidget({ config, live }: { config?: HsBroadcastConfig; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<HsBroadcastConfig>;
+  // 2026-05-07 — live clock (see useHsLiveClock.ts).
+  const now = useHsLiveClock(live !== false);
+  const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
   return (
     <HsStage
       stageStyle={{
@@ -131,8 +135,8 @@ export function HsBroadcastWidget({ config }: { config?: HsBroadcastConfig }) {
         <div className="hs-bc-panel-col">
           <div className="hs-bc-panel hs-bc-clock">
             <h3>LOCAL TIME</h3>
-            <div className="hs-bc-big" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockTime}</div>
-            <div className="hs-bc-cap" data-field="clockCaption" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockCaption}</div>
+            <div className="hs-bc-big" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</div>
+            <div className="hs-bc-cap" data-field="clockCaption" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.caption}</div>
           </div>
           <div className="hs-bc-panel hs-bc-weather">
             <h3>FORECAST</h3>

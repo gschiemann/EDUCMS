@@ -28,6 +28,7 @@
  */
 
 import { HsStage } from './HsStage';
+import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 
 export interface HsYearbookConfig {
   schoolName?: string;
@@ -70,7 +71,7 @@ export interface HsYearbookConfig {
 
 type Cfg = HsYearbookConfig;
 
-const DEFAULTS: Required<Cfg> = {
+export const DEFAULTS: Required<Cfg> = {
   schoolName: 'Westridge Weekly',
   schoolIssue: 'VOL. LXIX · NO. 142 · TUESDAY, APRIL 21, 2026',
   schoolSection: 'CALENDAR · SECTION B',
@@ -109,8 +110,11 @@ const DEFAULTS: Required<Cfg> = {
   tickerMessage: 'NEWS DESK ANNOUNCEMENT — BUS 14 RUNNING LATE, NEW DEPARTURE 7:58 AM · LUNCH TODAY: CHICKEN BOWL, SALAD BAR, VEGAN OPT · AP PSYCH STUDY HALL MOVED TO LIBRARY · LOST: SILVER EARBUDS — FRONT OFFICE · ',
 };
 
-export function HsYearbookPortraitWidget({ config }: { config?: Cfg; live?: boolean }) {
+export function HsYearbookPortraitWidget({ config, live }: { config?: Cfg; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
+  // 2026-05-07 — live clock (see useHsLiveClock.ts).
+  const now = useHsLiveClock(live !== false);
+  const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
 
   // Lede split into two columns. We hand-split on a sentence boundary so
   // the right column starts cleanly — kept here so the layout is stable
@@ -165,7 +169,7 @@ export function HsYearbookPortraitWidget({ config }: { config?: Cfg; live?: bool
             {c.schoolIssue}
           </span>
           <span className="hs-ybp-mast-time" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>
-            {c.clockTime}
+            {clock.time}
           </span>
         </div>
       </div>
