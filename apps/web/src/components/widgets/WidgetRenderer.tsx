@@ -443,21 +443,21 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'ANIMATED_WELCOME_HS_PORTRAIT':  return <AnimatedWelcomeHighPortraitWidget config={cfg} live={live} />;
     case 'ANIMATED_WELCOME_MS_PORTRAIT':  return <AnimatedWelcomeMiddlePortraitWidget config={cfg} live={live} />;
     // Claude-designed HS pack:
-    case 'HS_VARSITY':                    return <HsVarsityWidget config={cfg} />;
+    case 'HS_VARSITY':                    return <HsVarsityWidget config={cfg} live={live} />;
     case 'HS_VARSITY_PORTRAIT':           return <HsVarsityPortraitWidget config={cfg} live={live} />;
-    case 'HS_BROADCAST':                  return <HsBroadcastWidget config={cfg} />;
+    case 'HS_BROADCAST':                  return <HsBroadcastWidget config={cfg} live={live} />;
     case 'HS_BROADCAST_PORTRAIT':         return <HsBroadcastPortraitWidget config={cfg} live={live} />;
-    case 'HS_YEARBOOK':                   return <HsYearbookWidget config={cfg} />;
+    case 'HS_YEARBOOK':                   return <HsYearbookWidget config={cfg} live={live} />;
     case 'HS_YEARBOOK_PORTRAIT':          return <HsYearbookPortraitWidget config={cfg} live={live} />;
-    case 'HS_TERMINAL':                   return <HsTerminalWidget config={cfg} />;
+    case 'HS_TERMINAL':                   return <HsTerminalWidget config={cfg} live={live} />;
     case 'HS_TERMINAL_PORTRAIT':          return <HsTerminalPortraitWidget config={cfg} live={live} />;
-    case 'HS_TRANSIT':                    return <HsTransitWidget config={cfg} />;
+    case 'HS_TRANSIT':                    return <HsTransitWidget config={cfg} live={live} />;
     case 'HS_TRANSIT_PORTRAIT':           return <HsTransitPortraitWidget config={cfg} live={live} />;
-    case 'HS_GALLERY':                    return <HsGalleryWidget config={cfg} />;
+    case 'HS_GALLERY':                    return <HsGalleryWidget config={cfg} live={live} />;
     case 'HS_GALLERY_PORTRAIT':           return <HsGalleryPortraitWidget config={cfg} live={live} />;
-    case 'HS_BLUEPRINT':                  return <HsBlueprintWidget config={cfg} />;
+    case 'HS_BLUEPRINT':                  return <HsBlueprintWidget config={cfg} live={live} />;
     case 'HS_BLUEPRINT_PORTRAIT':         return <HsBlueprintPortraitWidget config={cfg} live={live} />;
-    case 'HS_ZINE':                       return <HsZineWidget config={cfg} />;
+    case 'HS_ZINE':                       return <HsZineWidget config={cfg} live={live} />;
     case 'HS_ZINE_PORTRAIT':              return <HsZinePortraitWidget config={cfg} live={live} />;
     // HS District Pack — 8 new templates (2026-05-07):
     case 'HS_ATH_GAMEDAY':                return <HsAthGamedayWidget config={cfg} live={live} />;
