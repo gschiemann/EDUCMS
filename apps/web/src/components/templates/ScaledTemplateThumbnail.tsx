@@ -82,43 +82,14 @@ export function ScaledTemplateThumbnail({
   const outerRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState<number>(0);
 
-  // IntersectionObserver gate — don't mount the widgets until the tile is
-  // actually near the viewport. Gallery pages render ~60 template cards at
-  // once; before this gate, every card mounted its full WidgetPreview tree
-  // (inline <style> blocks, keyframe animations, ResizeObservers) on initial
-  // paint even when it was 10 screens down. Now we render a cheap placeholder
-  // div until ~400px from the viewport, then hydrate the real widgets.
-  // Once mounted, stay mounted — remounting on scroll causes flicker.
-  //
-  // 2026-05-07 — operator: "if i scroll down on the templates page i
-  // get this... every template collapses". Real root cause was 16 HS
-  // widgets running setInterval every 30s in thumbnails because
-  // WidgetRenderer.tsx forgot to forward `live={live}` after the
-  // last-night signature change to ({ config, live }). Fixed in the
-  // same commit. Restoring the IntersectionObserver — it works fine
-  // once thumbnails stop re-rendering every 30s.
-  const [isVisible, setIsVisible] = useState(false);
-  useEffect(() => {
-    const el = outerRef.current;
-    if (!el) return;
-    if (isVisible) return;
-    // SSR / old browsers: just show it.
-    if (typeof IntersectionObserver === 'undefined') { setIsVisible(true); return; }
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          if (e.isIntersecting) {
-            setIsVisible(true);
-            io.disconnect();
-            break;
-          }
-        }
-      },
-      { rootMargin: '400px 0px', threshold: 0 },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [isVisible]);
+  // 2026-05-07 — DEMO HOTFIX: IntersectionObserver gate was causing
+  // template cards to collapse on scroll. Even after fixing the
+  // live-prop forwarding bug in WidgetRenderer (16 HS widgets were
+  // running setInterval every 30s in thumbnails because the parent
+  // forgot to pass `live={live}` after a signature change), the IO
+  // gate is still mis-firing in production. Force always-visible
+  // for the demo. Re-litigate the perf optimization post-demo.
+  const [isVisible] = useState(true);
 
   useEffect(() => {
     const el = outerRef.current;
