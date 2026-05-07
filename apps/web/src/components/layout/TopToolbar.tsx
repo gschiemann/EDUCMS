@@ -35,7 +35,7 @@ export function TopToolbar() {
           <button
             type="button"
             onClick={toggleMobileSidebar}
-            className="md:hidden inline-flex items-center justify-center w-10 h-10 rounded-xl text-slate-600 hover:text-indigo-600 hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            className="md:hidden inline-flex items-center justify-center w-10 h-10 rounded-xl text-slate-600 hover:text-[color:var(--brand-primary,#4f46e5)] hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-primary,#a5b4fc)]"
             aria-label="Open navigation menu"
           >
             <Menu className="w-5 h-5" aria-hidden="true" />
@@ -66,7 +66,11 @@ export function TopToolbar() {
           <div className="relative">
             <button
               onClick={() => setShowUserMenu(!showUserMenu)}
-              className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white text-xs font-bold shadow-md shadow-indigo-500/20 hover:scale-105 transition-transform"
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-xs font-bold shadow-md hover:scale-105 transition-transform"
+              style={{
+                background: 'linear-gradient(to top right, var(--brand-primary, #4f46e5), color-mix(in srgb, var(--brand-primary, #4f46e5) 60%, #8b5cf6))',
+                boxShadow: '0 4px 12px color-mix(in srgb, var(--brand-primary, #4f46e5) 20%, transparent)',
+              }}
               title={mounted ? user?.email : undefined}
             >
               {initials}

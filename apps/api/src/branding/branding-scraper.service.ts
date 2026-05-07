@@ -239,10 +239,76 @@ export class BrandingScraperService {
     })();
     const displayName = ogSiteName || ogTitle || twitterTitle || cleanedTitle || hostDerivedName || null;
 
+    // 2026-05-07 — operator: "you ask for the name and tagline, and
+    // it always just picks up the name twice".
+    //
+    // Old logic: tagline = ogDesc || metaDesc || firstH2.
+    // Problem: many school sites set og:description to the school
+    // NAME (e.g. "Buena Park High School") — same string as
+    // displayName. Tagline came back identical to the name.
+    //
+    // New heuristics, tried in order:
+    //   1. og:description, IF different from displayName
+    //   2. meta name=description, IF different from displayName and
+    //      not just "Welcome to <name>" or "<name> Home Page" boilerplate
+    //   3. Hero subtitle/motto: first <p> or <h2> inside header/banner
+    //   4. "Home of the X" pattern anywhere in the page
+    //   5. Schema.org slogan property if present
+    //   6. null (don't fake one)
     const metaDesc = $('meta[name="description"]').attr('content')?.trim();
     const ogDesc = $('meta[property="og:description"]').attr('content')?.trim();
+    const twitterDesc = $('meta[name="twitter:description"]').attr('content')?.trim();
     const firstH2 = $('h2').first().text().trim();
-    const tagline = ogDesc || metaDesc || firstH2 || null;
+    // Schema.org JSON-LD slogan field — many school sites have it
+    const schemaSlogan = (() => {
+      try {
+        const ld = $('script[type="application/ld+json"]').first().html();
+        if (!ld) return null;
+        const parsed = JSON.parse(ld);
+        return parsed?.slogan || parsed?.description || null;
+      } catch { return null; }
+    })();
+    // Hero header text — common pattern: school motto in the masthead
+    const headerHeroText = $('header p, .hero p, .banner p, [class*="motto"], [class*="tagline"], [class*="slogan"]')
+      .first().text().trim();
+    // Look for "Home of the X" pattern anywhere visible
+    const homeOfMatch = $('body').text().match(/\b(Home of (?:the )?[A-Z][\w\s]{2,40}?)(?:[.!]|\s*$|\s*\n)/);
+    const homeOf = homeOfMatch?.[1]?.trim() || null;
+
+    const taglineCandidates: Array<string | null | undefined> = [
+      ogDesc,
+      twitterDesc,
+      metaDesc,
+      schemaSlogan,
+      headerHeroText,
+      homeOf,
+      firstH2,
+    ];
+
+    // Filter out anything that's:
+    //   - empty / whitespace
+    //   - identical (case-insensitive, trimmed) to displayName
+    //   - just "Welcome to <name>" / "<name> Home Page" boilerplate
+    //   - shorter than 5 chars or longer than 160 chars
+    const normalize = (s: string) => s.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+    const dnNorm = displayName ? normalize(displayName) : '';
+    const isBoilerplate = (s: string) => {
+      const lower = s.toLowerCase();
+      return (
+        /^welcome to /i.test(lower) ||
+        /^home of (?:the )?[a-z]+ (?:home|website|site)$/i.test(lower) ||
+        /^home page$/i.test(lower) ||
+        /^official (?:site|website)$/i.test(lower) ||
+        /^the official (?:site|website|page) of/i.test(lower)
+      );
+    };
+    const tagline = taglineCandidates
+      .map((s) => s?.trim())
+      .filter((s): s is string => !!s && s.length >= 5 && s.length <= 160)
+      .filter((s) => !dnNorm || normalize(s) !== dnNorm)
+      .filter((s) => !isBoilerplate(s))
+      .filter((s) => !dnNorm || !normalize(s).startsWith(dnNorm)) // "BPHS - Home of..." → strip "BPHS" prefix elsewhere; here just reject equal-prefix cases
+      [0] || null;
 
     const ogImage = absolutize($('meta[property="og:image"]').attr('content'));
     const twitterImage = absolutize($('meta[name="twitter:image"]').attr('content'));
