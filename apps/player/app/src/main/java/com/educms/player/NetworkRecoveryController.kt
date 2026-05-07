@@ -160,6 +160,19 @@ class NetworkRecoveryController(
             while (isActive) {
                 attempt += 1
                 pushOverlayStateMain()
+                // 2026-05-07 (v1.0.52) — additive captive-portal check.
+                // Runs alongside the health probe on EVERY attempt so
+                // the operator sees "School WiFi requires login" instead
+                // of "HTTP 429 from server" if the school IT department
+                // has a captive portal in front of the kiosk.
+                val portalLabel = probeCaptivePortal()
+                if (portalLabel != null) {
+                    PlayerLogger.w(TAG, "Captive portal detected on attempt $attempt: $portalLabel")
+                    // Enrich lastError so pushOverlayState picks it up.
+                    // Health probe is still allowed to overwrite this
+                    // if it gets a more specific error code below.
+                    lastError = portalLabel
+                }
                 val healthy = probeHealth()
                 if (healthy) {
                     PlayerLogger.i(TAG, "Health probe succeeded on attempt $attempt — reloading player")
@@ -226,6 +239,68 @@ class NetworkRecoveryController(
             else -> "Attempt $attempt · checking now…"
         }
         onShowOverlay(OverlayState(title, sub, lastError, attempt))
+    }
+
+    /**
+     * 2026-05-07 (v1.0.52) — captive portal detection.
+     *
+     * On every recovery attempt, alongside the health probe we also
+     * check Google's connectivity-check endpoint
+     * (`generate_204` returns 204 with empty body when there's clean
+     * internet, otherwise something else — usually a captive portal
+     * HTML page with status 200 and a Location-redirect, or a school
+     * firewall returning a custom error page).
+     *
+     * If we see captive portal indicators, we update lastError so
+     * the overlay says "School/guest WiFi requires login" instead of
+     * the misleading "HTTP 429 / can't reach server" the operator
+     * sees today on a TaurusOS box that has no captive-portal UI.
+     *
+     * Result is logged either way for support diagnostics. This is
+     * additive — never blocks recovery, just enriches the error label.
+     *
+     * Cite: NovaStar Taurus boxes ship a stripped TaurusOS without a
+     * captive-portal UI (TaurusOS lacks the AOSP CaptivePortalLogin
+     * activity). This produces "white screen with retry button" that
+     * looks identical to a real network failure but isn't. See
+     * docs/research/NOVA_STAR_DEEP_DIVE.md.
+     */
+    private suspend fun probeCaptivePortal(): String? = withContext(Dispatchers.IO) {
+        var conn: HttpURLConnection? = null
+        try {
+            // Use HTTP not HTTPS — captive portals typically intercept
+            // unencrypted traffic. The 204-no-body contract is what
+            // Android's own connectivity detector uses.
+            val url = URL("http://connectivitycheck.gstatic.com/generate_204")
+            conn = (url.openConnection() as HttpURLConnection).apply {
+                connectTimeout = 4_000
+                readTimeout = 4_000
+                instanceFollowRedirects = false
+                requestMethod = "GET"
+                setRequestProperty("User-Agent", "EduCmsPlayer-CaptivePortalCheck")
+            }
+            val code = conn.responseCode
+            return@withContext when {
+                // Clean internet — generate_204 contract honored.
+                code == 204 -> null
+                // Captive portal redirect — page wants us to login.
+                code in 300..399 -> {
+                    val loc = conn.getHeaderField("Location") ?: "(no Location header)"
+                    "Captive portal: $loc"
+                }
+                // Captive portal returning HTML at 200 — common pattern.
+                code == 200 -> "Captive portal (intercepted 200 with body)"
+                // Other status — could be a school firewall page.
+                else -> "Network filter (HTTP $code from generate_204)"
+            }
+        } catch (e: Exception) {
+            // No internet at all — DNS failed, TCP refused, timeout.
+            // This is "real" disconnect, not captive portal. Return null
+            // so the existing health-probe logic owns the messaging.
+            return@withContext null
+        } finally {
+            try { conn?.disconnect() } catch (_: Exception) {}
+        }
     }
 
     /**

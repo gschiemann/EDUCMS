@@ -98,6 +98,35 @@ object OtaInstaller {
             )
         }
 
+        // 2026-05-07 (v1.0.52) — request update ownership lock on
+        // Android 14+ (API 34). Same isolation pattern as
+        // Api31SilentInstall — the API-34 symbol lives in its own
+        // @RequiresApi(34) object so older Android ART verifiers
+        // never try to resolve it at class-load time.
+        //
+        // Why: without ownership, ANY app holding INSTALL_PACKAGES
+        // (Play Store, vendor app stores, OEM "system update" paths)
+        // can silently update Player out from under us. With
+        // ownership locked to Manager, only Manager (or the user
+        // via system Install dialog) can update Player. Prevents:
+        //   - Vendor app store regressing Player to a stale build
+        //   - Goodview/NovaStar OEM "update" pushing a stripped APK
+        //
+        // No regression on pre-34 devices: the entire branch is
+        // gated behind Build.VERSION.SDK_INT check.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            try {
+                Api34UpdateOwnership.configure(params)
+                Log.i(TAG, "Update ownership lock requested (API ${Build.VERSION.SDK_INT})")
+            } catch (e: Exception) {
+                // Belt + suspenders. setRequestUpdateOwnership shouldn't
+                // throw on any device that satisfies API 34, but if a
+                // weird OEM ROM has stripped the symbol, we still want
+                // the install to succeed without it.
+                Log.w(TAG, "Update ownership lock failed (continuing without): ${e.message}")
+            }
+        }
+
         val sessionId = try {
             installer.createSession(params)
         } catch (e: Exception) {

@@ -118,6 +118,61 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         PlayerLogger.i("MainActivity", "onCreate — ${Build.MANUFACTURER} ${Build.MODEL} SDK ${Build.VERSION.SDK_INT}")
+        // 2026-05-07 (v1.0.52) — device beacon. Diagnostic-only logging
+        // expanded so support can answer "what's the kiosk's actual
+        // hardware / WebView / ABI / network state?" from a single
+        // log line set without ADB. No behavior change. NovaStar Taurus
+        // research dump (docs/research/NOVA_STAR_DEEP_DIVE.md) flagged
+        // that we'd been guessing at TB30/TB40 internals — this fixes
+        // that for every kiosk, every boot.
+        runCatching {
+            PlayerLogger.i(
+                "DeviceBeacon",
+                "abi=${Build.SUPPORTED_ABIS.joinToString(",")}" +
+                    " arch=${if (Build.SUPPORTED_64_BIT_ABIS.isNotEmpty()) "64-bit" else "32-bit"}" +
+                    " brand=${Build.BRAND}" +
+                    " device=${Build.DEVICE}" +
+                    " hardware=${Build.HARDWARE}" +
+                    " release=${Build.VERSION.RELEASE}" +
+                    " fingerprint=${Build.FINGERPRINT.take(80)}",
+            )
+            // WebView is the runtime that matters most for our app.
+            // Old Chromium (e.g. <90 on RK3288 boards) kills modern TLS
+            // and breaks our SSR-rendered Vercel-served React.
+            val wvPkg = android.webkit.WebView.getCurrentWebViewPackage()
+            PlayerLogger.i(
+                "DeviceBeacon",
+                "webview pkg=${wvPkg?.packageName ?: "unknown"}" +
+                    " version=${wvPkg?.versionName ?: "unknown"}" +
+                    " versionCode=${wvPkg?.longVersionCode ?: -1}",
+            )
+            val (w, h) = getRealDisplaySize()
+            val density = resources.displayMetrics.density
+            PlayerLogger.i(
+                "DeviceBeacon",
+                "display=${w}x${h} density=${density} scaledDensity=${resources.displayMetrics.scaledDensity}",
+            )
+            // Network identity is a first-call diagnostic. We don't
+            // probe captivity here (that's NetworkRecoveryController's
+            // job); we just log what NetworkInfo says is present.
+            val cm = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+            val active = cm?.activeNetwork
+            val caps = active?.let { cm.getNetworkCapabilities(it) }
+            val transports = mutableListOf<String>()
+            caps?.let {
+                if (it.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)) transports += "wifi"
+                if (it.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET)) transports += "ethernet"
+                if (it.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR)) transports += "cellular"
+                if (it.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)) transports += "vpn"
+            }
+            val internet = caps?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) ?: false
+            val validated = caps?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) ?: false
+            PlayerLogger.i(
+                "DeviceBeacon",
+                "network transport=${transports.joinToString(",").ifEmpty { "none" }}" +
+                    " internet=$internet validated=$validated",
+            )
+        }.onFailure { PlayerLogger.w("DeviceBeacon", "beacon log emit failed: ${it.message}") }
 
         // 2026-04-28 (v1.0.22) — handle install-prompt trampoline.
         // OtaInstallReceiver routes STATUS_PENDING_USER_ACTION through
