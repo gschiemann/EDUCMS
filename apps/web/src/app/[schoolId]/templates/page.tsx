@@ -96,7 +96,25 @@ const SCHOOL_LEVEL_CHIPS = [
 // 2160×3840 native widget. The denylist is empty. Future-proof: leave
 // the Set in place so we can hide a preset without ripping out the
 // filtering logic if we add a new letterboxed variant later.
-const LETTERBOXED_PORTRAIT_PRESETS: ReadonlySet<string> = new Set([]);
+//
+// 2026-05-07 — added the 8 HS District Pack presets here. The presets
+// were seeded into the DB last night (system-presets.ts on Railway is
+// at 63cf751) but the corresponding *Widget components were reverted
+// out of apps/web during the Vercel SSR-500 emergency. Hiding them
+// from the gallery so they don't render as blank cards. Re-shipping
+// these requires re-adding the widget component files (and their
+// dispatch cases in WidgetRenderer) — once that's done, delete the
+// matching id from this Set.
+const LETTERBOXED_PORTRAIT_PRESETS: ReadonlySet<string> = new Set([
+  'preset-hs-ath-gameday',
+  'preset-hs-ath-standings',
+  'preset-hs-caf-counter',
+  'preset-hs-caf-market',
+  'preset-hs-class-nownext',
+  'preset-hs-class-subday',
+  'preset-hs-hall-bulletin',
+  'preset-hs-hall-wayfinder',
+]);
 
 const RESOLUTION_PRESETS = [
   { label: '4K UHD', sub: 'Landscape', w: 3840, h: 2160 },
