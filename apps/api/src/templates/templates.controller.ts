@@ -41,6 +41,12 @@ export class TemplatesController {
     fontHeading: string | null;
     fontBody: string | null;
     brandKit: any | null;
+    // 2026-05-07 — surface displayName for HS preset auto-fill so a
+    // freshly-cloned varsity / broadcast / yearbook template reads as
+    // the tenant's actual school instead of the placeholder
+    // "WESTRIDGE WILDCATS" defaults.
+    displayName: string | null;
+    palette: any | null;
   }> {
     const b = await this.prisma.client.tenantBranding.findUnique({
       where: { tenantId },
@@ -58,7 +64,7 @@ export class TemplatesController {
         fontBodyUrl: true,
       },
     }).catch(() => null);
-    if (!b) return { surface: null, ink: null, fontHeading: null, fontBody: null, brandKit: null };
+    if (!b) return { surface: null, ink: null, fontHeading: null, fontBody: null, brandKit: null, displayName: null, palette: null };
     const palette = (b.palette as any) || {};
     const surface = palette.surface || palette.surfaceAlt || null;
     const ink = palette.ink || null;
@@ -80,13 +86,34 @@ export class TemplatesController {
       inheritedAt: new Date().toISOString(),
       inheritedFrom: 'tenant-branding',
     };
-    return { surface, ink, fontHeading: b.fontHeading, fontBody: b.fontBody, brandKit };
+    return { surface, ink, fontHeading: b.fontHeading, fontBody: b.fontBody, brandKit, displayName: b.displayName, palette };
   }
 
-  /** Merge brand defaults into a zone's defaultConfig only where blank. */
+  /**
+   * Merge brand defaults into a zone's defaultConfig only where blank.
+   *
+   * 2026-05-07 — operator: "our HS templates are not great looking
+   * and they are all broken, no hotspots editable data".
+   *
+   * For HS_* widget types specifically, also fill in the school
+   * identity placeholders (schoolName, schoolInitials, mascot
+   * greeting) from the tenant's branding so a fresh template clone
+   * reads as the tenant's actual school instead of the placeholder
+   * "WESTRIDGE WILDCATS" defaults baked into the widget.
+   *
+   * Strict fill-blanks rule preserved — only writes a field when the
+   * preset's defaultConfig didn't already specify one. Operator can
+   * still override anything via the PropertiesPanel.
+   */
   private applyBrandToZoneConfig(
     raw: any,
-    brand: { ink: string | null; fontHeading: string | null },
+    brand: {
+      ink: string | null;
+      fontHeading: string | null;
+      displayName?: string | null;
+      palette?: any | null;
+    },
+    widgetType?: string,
   ): any {
     const cfg = (() => {
       if (!raw) return {};
@@ -97,6 +124,42 @@ export class TemplatesController {
     })();
     if (brand.ink && cfg.color === undefined) cfg.color = brand.ink;
     if (brand.fontHeading && cfg.fontFamily === undefined) cfg.fontFamily = brand.fontHeading;
+
+    // HS-specific identity fill: every HS widget shares the same
+    // school-identity field names (schoolName, schoolInitials,
+    // schoolEst, department, greetingEyebrow). Pre-populate with the
+    // tenant's brand so the demo doesn't open with placeholder text.
+    if (widgetType?.startsWith('HS_') && brand.displayName) {
+      const upper = brand.displayName.toUpperCase();
+      const initials = brand.displayName
+        .split(/[\s\-_/]+/)
+        .filter(Boolean)
+        .filter((w) => !/^(the|of|at|and|for|in|a|an)$/i.test(w))
+        .slice(0, 3)
+        .map((w) => w[0])
+        .join('')
+        .toUpperCase();
+      if (cfg.schoolName === undefined) cfg.schoolName = upper;
+      if (cfg.schoolInitials === undefined && initials.length > 0) cfg.schoolInitials = initials;
+      // Mascot/team-name greeting eyebrow — best-guess from the
+      // displayName. "Buena Park High School Bulldogs" → "BULLDOGS".
+      // "Lincoln HS" → falls through (no extractable mascot).
+      const mascotMatch = brand.displayName.match(/\b(eagles?|tigers?|lions?|bulldogs?|wildcats?|panthers?|knights?|spartans?|trojans?|warriors?|raiders?|cougars?|huskies|hawks?|falcons?|bears?|wolves|patriots?|chargers?|broncos?|mustangs?|cavaliers?|cardinals?|jaguars?|rams?|titans?|vikings?|pirates?|crusaders?|saints?|angels?|owls?|sharks?|dragons?|phoenix|colts?|hornets?|stallions?|rebels?|generals?|royals?|comets?|jets?|stars?|sun\s*devils?|gators?|terriers?|gophers?|gauchos?|aggies)\b/i);
+      const mascot = mascotMatch?.[1]?.toUpperCase();
+      if (cfg.greetingEyebrow === undefined && mascot) {
+        cfg.greetingEyebrow = `GOOD MORNING, ${mascot}`;
+      }
+      // Department label — leave blank unless the widget has a way to
+      // derive it (most don't).
+
+      // Optional brand-color tints for HS widgets that read primary/
+      // accent from config. Strict fill-blanks; preset's own theme
+      // wins.
+      const palette = brand.palette || {};
+      if (palette.primary && cfg.brandPrimary === undefined) cfg.brandPrimary = palette.primary;
+      if (palette.accent && cfg.brandAccent === undefined) cfg.brandAccent = palette.accent;
+    }
+
     return cfg;
   }
 
@@ -359,7 +422,7 @@ export class TemplatesController {
         zones: body.zones
           ? {
               create: body.zones.map((z, i) => {
-                const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand);
+                const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand, z.widgetType);
                 return {
                   name: z.name,
                   widgetType: z.widgetType,
@@ -437,7 +500,7 @@ export class TemplatesController {
           createdById: req.user.id,
           zones: {
             create: preset.zones.map((z, i) => {
-              const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand);
+              const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand, z.widgetType);
               return {
                 name: z.name,
                 widgetType: z.widgetType,
@@ -475,7 +538,7 @@ export class TemplatesController {
         createdById: req.user.id,
         zones: {
           create: source.zones.map((z) => {
-            const cfg = this.applyBrandToZoneConfig(z.defaultConfig, dbBrand);
+            const cfg = this.applyBrandToZoneConfig(z.defaultConfig, dbBrand, z.widgetType);
             return {
               name: z.name,
               widgetType: z.widgetType,
@@ -537,7 +600,7 @@ export class TemplatesController {
         createdById: req.user.id,
         zones: {
           create: source.zones.map((z) => {
-            const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand);
+            const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand, z.widgetType);
             return {
               name: z.name,
               widgetType: z.widgetType,
