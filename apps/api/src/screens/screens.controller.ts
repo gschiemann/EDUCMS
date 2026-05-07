@@ -91,21 +91,23 @@ function verifyDeviceForScreen(req: ExpressReq, screenId: string): { ok: true; s
 // throttle (5/hr) as the primary guard.
 // Exported for unit-test access only — do not use outside this module.
 export const _registerFpCooldown = new Map<string, number>(); // fingerprint → last-register ms
-// 2026-05-06 — operator: "fresh TB40 install hot-on-hotspot still
-// 429s on attempt 3, says Registration HTTP 429 retrying now". The
-// pre-fix 15-minute cooldown was the gate: once a fresh kiosk's FP
-// hit register ONCE, EVERY subsequent attempt for 15 minutes 429'd
-// — including the React app's own retry chain (backoff caps at 30 s,
-// so attempts 2-30 are all inside the cooldown window). The kiosk
-// would NEVER successfully complete pairing within 15 minutes of
-// first boot.
+// 2026-05-06 (third attempt) — operator: STILL 429 even with 60 s
+// cooldown. Root cause: the React app's exponential backoff caps
+// at 30 s, so attempts 2/3/4 ALL fire inside the 60-s cooldown
+// window from attempt 1. Once a fingerprint enters cooldown, the
+// retry chain can't escape it without a 60+ s gap which the
+// backoff never produces.
 //
-// Drop to 60 seconds. Still defends against rapid FP-enumeration
-// (attacker can probe at most 1 FP per minute per IP, capped at
-// 300/hr by the per-IP throttle = effective max 5/min). Doesn't
-// brick legitimate kiosks whose React app retries every 2-30 s
-// during the pre-pairing phase.
-export const REGISTER_FP_COOLDOWN_MS = 60 * 1000; // 60 seconds (was 15 min)
+// FINAL fix: drop cooldown to 5 SECONDS. That's enough to slow
+// a malicious enumeration cycle (max 1 FP attempt every 5 s = 720
+// /hr per FP, well below the per-IP register cap of 300/hr) but
+// short enough that ANY natural kiosk retry chain (2-30 s
+// backoffs) escapes the cooldown on its very next tick.
+//
+// Per-FP cooldown is now a "rapid-fire same-FP" defense, not a
+// "first-time bring-up gate". Aligned with how rate-limits should
+// actually work for legitimate kiosks.
+export const REGISTER_FP_COOLDOWN_MS = 5 * 1000; // 5 seconds (was 60 s, was 15 min)
 
 @Controller('api/v1/screens')
 export class ScreensController {
@@ -140,12 +142,19 @@ export class ScreensController {
   //                player stuck on "Reconnecting Registration HTTP
   //                429" with no path forward (operator has no way
   //                to reset the per-IP counter).
-  //   v3: 300/hr — covers a 50-kiosk school where each device
-  //                re-registers 6×/hr (well above any real-world
-  //                churn). Per-FP 15-min cooldown is still the
-  //                primary enumeration defense; this is a backstop,
-  //                not the gate.
-  @Throttle({ default: { limit: 300, ttl: 3_600_000 } })
+  //   v3: 300/hr — bricks a single hot kiosk in retry-storm mode.
+  //                The React backoff (caps at 30 s) makes a single
+  //                device fire ~120 register attempts/hr, plus the
+  //                rest of a school fleet on the same NAT IP.
+  //                Empirically it's the IP-level cap that wedged
+  //                the TB40 even after the FP cooldown was shortened.
+  //   v4: 1500/hr — accommodates a single device hammering at
+  //                30-s backoff (120/hr) + a 30-kiosk fleet
+  //                churning + dashboard test traffic, all from one
+  //                NAT IP. Per-FP 5 s cooldown still provides
+  //                rapid-fire enumeration defense; this is just
+  //                the per-IP backstop.
+  @Throttle({ default: { limit: 1500, ttl: 3_600_000 } })
   @Post('register')
   async register(@Body() body: {
     deviceFingerprint: string;
