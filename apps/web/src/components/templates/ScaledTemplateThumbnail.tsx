@@ -82,14 +82,35 @@ export function ScaledTemplateThumbnail({
   const outerRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState<number>(0);
 
-  // 2026-05-07 — DEMO HOTFIX: IntersectionObserver gate was causing
-  // template cards to collapse on scroll. Even after fixing the
-  // live-prop forwarding bug in WidgetRenderer (16 HS widgets were
-  // running setInterval every 30s in thumbnails because the parent
-  // forgot to pass `live={live}` after a signature change), the IO
-  // gate is still mis-firing in production. Force always-visible
-  // for the demo. Re-litigate the perf optimization post-demo.
-  const [isVisible] = useState(true);
+  // IntersectionObserver gate — don't mount the widgets until the tile is
+  // actually near the viewport. Gallery pages render ~60 template cards at
+  // once; before this gate, every card mounted its full WidgetPreview tree
+  // (inline <style> blocks, keyframe animations, ResizeObservers) on initial
+  // paint even when it was 10 screens down. Now we render a cheap placeholder
+  // div until ~400px from the viewport, then hydrate the real widgets.
+  // Once mounted, stay mounted — remounting on scroll causes flicker.
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => {
+    const el = outerRef.current;
+    if (!el) return;
+    if (isVisible) return;
+    // SSR / old browsers: just show it.
+    if (typeof IntersectionObserver === 'undefined') { setIsVisible(true); return; }
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            setIsVisible(true);
+            io.disconnect();
+            break;
+          }
+        }
+      },
+      { rootMargin: '400px 0px', threshold: 0 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [isVisible]);
 
   useEffect(() => {
     const el = outerRef.current;
@@ -114,30 +135,36 @@ export function ScaledTemplateThumbnail({
     };
   }, [screenWidth]);
 
-  // 2026-05-07 — DEMO HOTFIX #2.
-  // Old version measured parentElement.getBoundingClientRect().width via
-  // ResizeObserver and computed cardWidth = min(parentWidth, widthFromHeight).
-  // BUG: when scrolling triggered a layout reflow, RO sometimes reported a
-  // tiny non-zero width (e.g. 1px) during the reflow tick. The `||` fallback
-  // only triggered on 0/null, not small numbers — so cardWidth got stuck at
-  // 1px and every card collapsed to a thin grey bar. This is what the
-  // operator was seeing on scroll.
-  //
-  // Fix: use pure CSS — width 100% capped by max-width, height derived from
-  // aspect-ratio. No JS layout measurement, no ResizeObserver, no way to
-  // get stuck in a bad state.
+  // Compute the card's on-screen dimensions directly so we don't depend
+  // on aspect-ratio + maxHeight resolving to the right width. We pick the
+  // LARGER rendering that still fits inside (maxWidth 100% of parent,
+  // maxHeight).  Parent gives us width via ResizeObserver; height derives
+  // from screen aspect.
+  const [parentWidth, setParentWidth] = useState<number>(0);
+  useEffect(() => {
+    const el = outerRef.current?.parentElement;
+    if (!el) return;
+    const measure = () => setParentWidth(el.getBoundingClientRect().width);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const aspect = screenWidth / screenHeight;
+  // Fit inside (parentWidth × maxHeight) preserving aspect ratio.
   const widthFromHeight = maxHeight * aspect;
-  const effectiveScale = scale > 0 ? scale : widthFromHeight / screenWidth;
+  const cardWidth = Math.max(1, Math.min(parentWidth || widthFromHeight, widthFromHeight));
+  const cardHeight = cardWidth / aspect;
+  const effectiveScale = scale > 0 ? scale : cardWidth / screenWidth;
 
   return (
     <div
       ref={outerRef}
       className="relative overflow-hidden rounded-lg border border-slate-200 shadow-sm mx-auto"
       style={{
-        width: '100%',
-        maxWidth: widthFromHeight,
-        aspectRatio: `${screenWidth} / ${screenHeight}`,
+        width: cardWidth,
+        height: cardHeight,
         ...bgStyle(bgImage, bgGradient, bgColor),
       }}
     >
