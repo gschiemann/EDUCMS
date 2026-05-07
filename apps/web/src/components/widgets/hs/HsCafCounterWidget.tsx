@@ -512,7 +512,7 @@ const CSS = `
 }
 .hs-cafc-est {
   display: block; font-family: 'JetBrains Mono', monospace; font-style: normal;
-  font-weight: 500; font-size: 14px; color: #caa14a; letter-spacing: .22em; margin-top: 8px;
+  font-weight: 500; font-size: 24px; color: #caa14a; letter-spacing: .22em; margin-top: 8px;
 }
 .hs-cafc-title {
   font-family: 'Fraunces', serif; font-weight: 900; font-size: 200px;
@@ -611,7 +611,7 @@ const CSS = `
   font-size: 140px; line-height: .95; letter-spacing: -.04em; color: #1c1814; margin: 6px 0;
 }
 .hs-cafc-pt-sub {
-  font-family: 'JetBrains Mono', monospace; font-weight: 500; font-size: 18px;
+  font-family: 'JetBrains Mono', monospace; font-weight: 500; font-size: 26px;
   letter-spacing: .18em; color: #5b5347; text-transform: uppercase;
 }
 .hs-cafc-corner {
@@ -686,7 +686,7 @@ const CSS = `
   color: #fff; letter-spacing: -.01em; font-style: italic;
 }
 .hs-cafc-line-sub {
-  display: block; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 22px;
+  display: block; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 28px;
   color: rgba(255,255,255,.7); letter-spacing: 0; font-style: normal; margin-top: 2px;
 }
 .hs-cafc-line-st {
@@ -723,7 +723,7 @@ const CSS = `
   color: #1c1814; letter-spacing: -.01em;
 }
 .hs-cafc-side-sub {
-  display: block; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 22px;
+  display: block; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 28px;
   color: #5b5347; letter-spacing: 0; margin-top: 2px;
 }
 .hs-cafc-side-pr {
@@ -765,7 +765,7 @@ const CSS = `
   letter-spacing: .18em; color: #1c1814; text-transform: uppercase; line-height: 1;
 }
 .hs-cafc-a-sub {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 18px;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 26px;
   color: #5b5347; line-height: 1.1;
 }
 .hs-cafc-ask {
@@ -773,7 +773,7 @@ const CSS = `
   display: flex; flex-direction: column; justify-content: center; min-width: 300px;
 }
 .hs-cafc-ask-k {
-  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 20px;
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 28px;
   letter-spacing: .22em; color: #caa14a; text-transform: uppercase; line-height: 1;
 }
 .hs-cafc-ask-v {

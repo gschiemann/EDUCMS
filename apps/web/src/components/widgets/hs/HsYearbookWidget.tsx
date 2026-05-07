@@ -224,12 +224,12 @@ const CSS = `
 .hs-yb-divider { position: absolute; top: 80px; bottom: 80px; left: 50%; width: 1px; background: #d6cfbe; pointer-events: none; }
 .hs-yb-masthead { position: absolute; top: 60px; left: 80px; right: 80px; display: flex; justify-content: space-between; align-items: baseline; border-bottom: 3px solid #1a1a17; padding-bottom: 20px; }
 .hs-yb-title { font-family: 'Playfair Display', serif; font-weight: 900; font-size: 100px; line-height: .9; letter-spacing: -.01em; color: #1a1a17; font-style: italic; }
-.hs-yb-issue { font-family: 'JetBrains Mono', monospace; font-size: 30px; color: #666; letter-spacing: .18em; text-transform: uppercase; }
+.hs-yb-issue { font-family: 'JetBrains Mono', monospace; font-size: 36px; color: #666; letter-spacing: .18em; text-transform: uppercase; }
 .hs-yb-clock { position: absolute; top: 60px; right: 80px; text-align: right; }
 .hs-yb-clock-t { font-family: 'Playfair Display', serif; font-weight: 900; font-style: italic; font-size: 92px; line-height: .9; }
-.hs-yb-clock-c { font-family: 'JetBrains Mono', monospace; font-size: 22px; color: #666; letter-spacing: .18em; text-transform: uppercase; margin-top: 4px; }
+.hs-yb-clock-c { font-family: 'JetBrains Mono', monospace; font-size: 28px; color: #666; letter-spacing: .18em; text-transform: uppercase; margin-top: 4px; }
 .hs-yb-hero { position: absolute; top: 200px; left: 80px; width: 1780px; }
-.hs-yb-eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 30px; color: #b23b20; letter-spacing: .22em; text-transform: uppercase; }
+.hs-yb-eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 36px; color: #b23b20; letter-spacing: .22em; text-transform: uppercase; }
 .hs-yb-h1 { font-family: 'Playfair Display', serif; font-weight: 900; font-size: 290px; line-height: .9; margin: 16px 0 0; letter-spacing: -.02em; color: #1a1a17; }
 .hs-yb-lede { font-family: 'Playfair Display', serif; font-weight: 700; font-style: italic; font-size: 62px; color: #333; margin-top: 40px; line-height: 1.2; max-width: 1640px; }
 .hs-yb-right { position: absolute; top: 200px; right: 80px; width: 1740px; display: grid; gap: 28px; }

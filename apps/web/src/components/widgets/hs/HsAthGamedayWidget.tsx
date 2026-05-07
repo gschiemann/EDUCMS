@@ -474,7 +474,7 @@ const CSS = `
   display: grid; place-items: center; font-family: 'Bebas Neue', sans-serif; font-size: 60px; color: #fff; line-height: 1; border: 4px solid #fff; }
 .head .school { display: flex; flex-direction: column; line-height: .95; }
 .head .school .nm { font-family: 'Bebas Neue', sans-serif; font-size: 64px; letter-spacing: .04em; color: #fff; }
-.head .school .sub { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 20px; letter-spacing: .28em; color: #f5b324; text-transform: uppercase; margin-top: 4px; }
+.head .school .sub { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 28px; letter-spacing: .28em; color: #f5b324; text-transform: uppercase; margin-top: 4px; }
 .head h1 { margin: 0; font-family: 'Bebas Neue', sans-serif; font-size: 120px; letter-spacing: .06em; color: #fff; text-align: center; line-height: 1; }
 .head h1 .acc { color: #d92231; text-shadow: 0 0 30px rgba(217,34,49,.5); }
 .head .right { display: flex; align-items: center; gap: 18px; }
@@ -496,14 +496,14 @@ const CSS = `
   box-shadow: 0 0 0 8px rgba(0,0,0,.5), 0 30px 80px rgba(0,0,0,.6); }
 .hero .team.us .helmet { background: radial-gradient(circle at 30% 30%, #d92231, #7a0e18); }
 .hero .team.them .helmet { background: radial-gradient(circle at 30% 30%, #1a4ed8, #0f2f8a); }
-.hero .team .label { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 24px; letter-spacing: .32em; text-transform: uppercase; line-height: 1; }
+.hero .team .label { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 32px; letter-spacing: .32em; text-transform: uppercase; line-height: 1; }
 .hero .team.us .label { color: #d92231; }
 .hero .team.them .label { color: #1a4ed8; }
 .hero .team .name { font-family: 'Bebas Neue', sans-serif; font-size: 160px; color: #fff; letter-spacing: .03em; line-height: .9; text-align: center; }
 .hero .team .mascot { font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 36px; color: #9ba6c2; letter-spacing: .04em; line-height: 1; }
 .hero .team .stats { display: flex; gap: 32px; margin-top: 8px; }
 .hero .team .stats .s { display: flex; flex-direction: column; align-items: center; line-height: 1; }
-.hero .team .stats .s .k { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 18px; letter-spacing: .22em; color: #5d6a89; text-transform: uppercase; }
+.hero .team .stats .s .k { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 26px; letter-spacing: .22em; color: #5d6a89; text-transform: uppercase; }
 .hero .team .stats .s .v { font-family: 'Bebas Neue', sans-serif; font-size: 80px; color: #fff; letter-spacing: .02em; margin-top: 6px; font-variant-numeric: tabular-nums; }
 .hero .team .stats .s .v.win { color: #1fc16b; }
 .hero .team .stats .s .v.loss { color: #ff5274; }
@@ -522,31 +522,31 @@ const CSS = `
 .hero .vs .countdown { display: flex; gap: 14px; margin-top: 18px; }
 .hero .vs .countdown .seg { background: #000; border: 3px solid #f5b324; padding: 18px 22px; display: flex; flex-direction: column; align-items: center; line-height: 1; min-width: 130px; }
 .hero .vs .countdown .seg .n { font-family: 'Bebas Neue', sans-serif; font-size: 96px; color: #f5b324; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
-.hero .vs .countdown .seg .l { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 18px; letter-spacing: .22em; color: #fff; text-transform: uppercase; margin-top: 4px; }
+.hero .vs .countdown .seg .l { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 26px; letter-spacing: .22em; color: #fff; text-transform: uppercase; margin-top: 4px; }
 .hero .vs .when { padding: 20px 36px; background: #f5b324; color: #000; font-family: 'Bebas Neue', sans-serif; font-size: 48px; letter-spacing: .06em; line-height: 1; text-transform: uppercase; }
 .hero .vs .where { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 32px; color: #fff; letter-spacing: .04em; line-height: 1.2; text-align: center; text-wrap: balance; }
-.hero .vs .where small { display: block; font-family: 'JetBrains Mono', monospace; font-weight: 500; font-size: 22px; color: #9ba6c2; margin-top: 8px; letter-spacing: .18em; text-transform: uppercase; }
+.hero .vs .where small { display: block; font-family: 'JetBrains Mono', monospace; font-weight: 500; font-size: 30px; color: #9ba6c2; margin-top: 8px; letter-spacing: .18em; text-transform: uppercase; }
 
 .hero .spread { position: absolute; left: 50%; bottom: -30px; transform: translateX(-50%); display: flex; align-items: center; gap: 18px;
   background: #000; border: 3px solid rgba(255,255,255,.12); padding: 14px 28px;
-  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 24px; color: #f5b324; letter-spacing: .22em; text-transform: uppercase; z-index: 4; }
-.hero .spread .v { color: #fff; font-size: 32px; }
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 30px; color: #f5b324; letter-spacing: .22em; text-transform: uppercase; z-index: 4; }
+.hero .spread .v { color: #fff; font-size: 36px; }
 
 /* MIDDLE STRIP */
 .strip { position: absolute; left: 80px; right: 80px; top: 1300px; height: 140px;
   display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; z-index: 3; }
 .strip .stat { background: #16203a; border: 2px solid rgba(255,255,255,.12); border-left: 8px solid #f5b324;
   padding: 18px 24px; display: flex; flex-direction: column; justify-content: center; line-height: 1; gap: 8px; }
-.strip .stat .k { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 20px; letter-spacing: .24em; color: #9ba6c2; text-transform: uppercase; }
+.strip .stat .k { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 28px; letter-spacing: .24em; color: #9ba6c2; text-transform: uppercase; }
 .strip .stat .v { font-family: 'Bebas Neue', sans-serif; font-size: 64px; color: #fff; letter-spacing: .02em; font-variant-numeric: tabular-nums; display: flex; align-items: baseline; gap: 14px; }
-.strip .stat .v small { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 22px; color: #5d6a89; letter-spacing: .18em; text-transform: uppercase; }
+.strip .stat .v small { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 28px; color: #5d6a89; letter-spacing: .18em; text-transform: uppercase; }
 .strip .stat.us { border-left-color: #d92231; }
 .strip .stat.win { border-left-color: #1fc16b; }
 .strip .stat.win .v { color: #1fc16b; }
 .strip .stat.last5 { flex-direction: column; gap: 8px; }
 .strip .stat .pills { display: flex; gap: 6px; margin-top: 4px; }
-.strip .stat .pills span { width: 32px; height: 32px; display: grid; place-items: center;
-  font-family: 'Bebas Neue', sans-serif; font-size: 24px; color: #fff; line-height: 1; }
+.strip .stat .pills span { width: 38px; height: 38px; display: grid; place-items: center;
+  font-family: 'Bebas Neue', sans-serif; font-size: 28px; color: #fff; line-height: 1; }
 .strip .stat .pills span.w { background: #1fc16b; }
 .strip .stat .pills span.l { background: #ff5274; }
 .strip .stat .pills span.t { background: #5d6a89; }
@@ -557,18 +557,18 @@ const CSS = `
 .teams .head { position: static; height: 80px; background: #000; border-bottom: 3px solid #f5b324;
   display: flex; justify-content: space-between; align-items: center; padding: 0 32px; }
 .teams .head h2 { margin: 0; font-family: 'Bebas Neue', sans-serif; font-size: 54px; color: #fff; letter-spacing: .06em; line-height: 1; }
-.teams .head .meta { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 20px; color: #f5b324; letter-spacing: .24em; text-transform: uppercase; }
+.teams .head .meta { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 28px; color: #f5b324; letter-spacing: .24em; text-transform: uppercase; }
 .teams .grid { flex: 1; display: grid; grid-template-columns: repeat(6, 1fr); gap: 0; }
 .teams .row { padding: 18px 22px; border-right: 1px solid rgba(255,255,255,.12);
   display: flex; flex-direction: column; justify-content: space-between; line-height: 1.1; gap: 8px; }
 .teams .row:last-child { border-right: 0; }
 .teams .row .top { display: flex; justify-content: space-between; align-items: flex-start; }
-.teams .row .sport { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 18px; letter-spacing: .22em; color: #5d6a89; text-transform: uppercase; }
-.teams .row .badge { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 14px; letter-spacing: .2em; text-transform: uppercase; padding: 4px 8px; color: #000; line-height: 1; }
+.teams .row .sport { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 26px; letter-spacing: .22em; color: #5d6a89; text-transform: uppercase; }
+.teams .row .badge { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 24px; letter-spacing: .2em; text-transform: uppercase; padding: 6px 12px; color: #000; line-height: 1; }
 .teams .row .badge.h { background: #d92231; color: #fff; }
 .teams .row .badge.a { background: #1a4ed8; color: #fff; }
 .teams .row .opp { font-family: 'Bebas Neue', sans-serif; font-size: 42px; color: #fff; letter-spacing: .02em; line-height: .95; text-wrap: balance; }
-.teams .row .when { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 20px; color: #f5b324; letter-spacing: .18em; text-transform: uppercase; font-variant-numeric: tabular-nums; }
+.teams .row .when { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 28px; color: #f5b324; letter-spacing: .18em; text-transform: uppercase; font-variant-numeric: tabular-nums; }
 .teams .row.live { background: rgba(31,193,107,.08); border-right-color: #1fc16b; }
 .teams .row.live .when { color: #1fc16b; display: flex; align-items: center; gap: 8px; }
 .teams .row.live .when::before { content: ''; width: 10px; height: 10px; border-radius: 50%; background: #1fc16b; animation: hsAthGdBlink 1.2s steps(2) infinite; }
@@ -582,10 +582,10 @@ const CSS = `
   display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; z-index: 3; }
 .fan .it { background: #1c2848; border: 2px solid rgba(255,255,255,.12); padding: 18px 24px;
   display: flex; flex-direction: column; justify-content: center; line-height: 1; gap: 8px; }
-.fan .it .k { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 18px; letter-spacing: .24em; color: #f5b324; text-transform: uppercase; display: flex; align-items: center; gap: 10px; }
+.fan .it .k { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 26px; letter-spacing: .24em; color: #f5b324; text-transform: uppercase; display: flex; align-items: center; gap: 10px; }
 .fan .it .k::before { content: ''; width: 24px; height: 4px; background: currentColor; }
 .fan .it .v { font-family: 'Bebas Neue', sans-serif; font-size: 42px; color: #fff; letter-spacing: .02em; line-height: 1; text-wrap: balance; }
-.fan .it .v small { display: block; font-family: 'Archivo', sans-serif; font-weight: 500; font-size: 18px; color: #9ba6c2; margin-top: 4px; letter-spacing: 0; text-transform: none; }
+.fan .it .v small { display: block; font-family: 'Archivo', sans-serif; font-weight: 500; font-size: 26px; color: #9ba6c2; margin-top: 4px; letter-spacing: 0; text-transform: none; }
 
 /* TICKER */
 .ticker { position: absolute; left: 0; right: 0; bottom: 0; height: 96px; background: #000; color: #fff;

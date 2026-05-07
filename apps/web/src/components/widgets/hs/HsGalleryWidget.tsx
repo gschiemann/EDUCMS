@@ -217,10 +217,10 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,700;1,400&family=Inter:wght@400;500;600&display=swap');
 .hs-gl-mast { position: absolute; top: 80px; left: 120px; right: 120px; display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #2a2724; padding-bottom: 30px; }
 .hs-gl-logo { font-family: 'EB Garamond', serif; font-weight: 400; font-style: italic; font-size: 80px; letter-spacing: -.01em; color: #1a1814; }
-.hs-gl-nav { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 24px; color: #8a8275; letter-spacing: .24em; text-transform: uppercase; display: flex; gap: 60px; }
+.hs-gl-nav { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 30px; color: #8a8275; letter-spacing: .24em; text-transform: uppercase; display: flex; gap: 60px; }
 .hs-gl-nav-on { color: #1a1814; border-bottom: 1px solid #a84630; padding-bottom: 4px; }
 .hs-gl-plaque { position: absolute; top: 230px; left: 120px; width: 1820px; }
-.hs-gl-num { font-family: 'EB Garamond', serif; font-size: 36px; letter-spacing: .3em; color: #8a8275; text-transform: uppercase; margin-bottom: 30px; }
+.hs-gl-num { font-family: 'EB Garamond', serif; font-size: 44px; letter-spacing: .3em; color: #8a8275; text-transform: uppercase; margin-bottom: 30px; }
 .hs-gl-h1 { font-family: 'EB Garamond', serif; font-weight: 400; font-size: 280px; line-height: .95; letter-spacing: -.02em; color: #1a1814; margin: 0; }
 .hs-gl-h1 em { font-style: italic; color: #a84630; }
 .hs-gl-sub { font-family: 'EB Garamond', serif; font-size: 56px; line-height: 1.35; color: #1a1814; margin-top: 40px; max-width: 1600px; font-weight: 400; }
@@ -228,35 +228,35 @@ const CSS = `
 .hs-gl-card { border-top: 1px solid #2a2724; padding-top: 28px; display: grid; grid-template-columns: 180px 1fr 240px; gap: 40px; align-items: start; }
 .hs-gl-n { font-family: 'EB Garamond', serif; font-style: italic; font-weight: 400; font-size: 100px; line-height: .85; color: #a84630; letter-spacing: -.02em; }
 .hs-gl-title { font-family: 'EB Garamond', serif; font-weight: 500; font-size: 56px; line-height: 1.1; color: #1a1814; margin: 0 0 10px; }
-.hs-gl-meta { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 24px; color: #8a8275; letter-spacing: .14em; text-transform: uppercase; line-height: 1.4; }
-.hs-gl-time { font-family: 'EB Garamond', serif; font-style: italic; font-size: 44px; color: #1a1814; text-align: right; line-height: 1; }
-.hs-gl-d { display: block; font-family: 'Inter', sans-serif; font-size: 22px; color: #8a8275; letter-spacing: .2em; text-transform: uppercase; margin-top: 6px; font-style: normal; }
+.hs-gl-meta { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 30px; color: #8a8275; letter-spacing: .14em; text-transform: uppercase; line-height: 1.4; }
+.hs-gl-time { font-family: 'EB Garamond', serif; font-style: italic; font-size: 56px; color: #1a1814; text-align: right; line-height: 1; }
+.hs-gl-d { display: block; font-family: 'Inter', sans-serif; font-size: 28px; color: #8a8275; letter-spacing: .2em; text-transform: uppercase; margin-top: 6px; font-style: normal; }
 .hs-gl-wall { position: absolute; top: 1280px; left: 120px; right: 120px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 60px; border-top: 1px solid #2a2724; padding-top: 36px; }
-.hs-gl-label { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 22px; letter-spacing: .24em; color: #8a8275; text-transform: uppercase; margin-bottom: 14px; }
+.hs-gl-label { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 28px; letter-spacing: .24em; color: #8a8275; text-transform: uppercase; margin-bottom: 14px; }
 .hs-gl-val { font-family: 'EB Garamond', serif; font-weight: 400; font-size: 150px; line-height: .9; color: #1a1814; letter-spacing: -.01em; }
 .hs-gl-val em { font-style: italic; color: #a84630; }
-.hs-gl-cap { font-family: 'EB Garamond', serif; font-style: italic; font-weight: 400; font-size: 32px; color: #1a1814; margin-top: 12px; line-height: 1.3; opacity: .7; }
+.hs-gl-cap { font-family: 'EB Garamond', serif; font-style: italic; font-weight: 400; font-size: 36px; color: #1a1814; margin-top: 12px; line-height: 1.3; opacity: .7; }
 .hs-gl-feature { position: absolute; bottom: 200px; left: 120px; width: 2100px; height: 620px; display: grid; grid-template-columns: 520px 1fr; gap: 60px; border-top: 1px solid #2a2724; padding-top: 40px; }
 .hs-gl-portrait { width: 520px; height: 580px; background: linear-gradient(160deg, #d8cfba, #b5a88d); position: relative; overflow: hidden; }
 .hs-gl-portrait::after { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 35% 35%, rgba(0,0,0,.1), transparent 40%), repeating-linear-gradient(35deg, rgba(0,0,0,.03) 0 10px, transparent 10px 20px); }
-.hs-gl-tag { position: absolute; bottom: 24px; left: 24px; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 20px; color: #1a1814; background: #f5f1e8; padding: 8px 16px; letter-spacing: .2em; text-transform: uppercase; z-index: 1; }
+.hs-gl-tag { position: absolute; bottom: 24px; left: 24px; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 26px; color: #1a1814; background: #f5f1e8; padding: 8px 16px; letter-spacing: .2em; text-transform: uppercase; z-index: 1; }
 .hs-gl-text .hs-gl-label { margin-bottom: 22px; }
 .hs-gl-h2 { font-family: 'EB Garamond', serif; font-weight: 400; font-style: italic; font-size: 160px; line-height: .92; margin: 0 0 14px; color: #1a1814; letter-spacing: -.02em; }
-.hs-gl-teacher-meta { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 26px; color: #8a8275; letter-spacing: .22em; text-transform: uppercase; line-height: 1.4; margin-bottom: 28px; }
+.hs-gl-teacher-meta { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 32px; color: #8a8275; letter-spacing: .22em; text-transform: uppercase; line-height: 1.4; margin-bottom: 28px; }
 .hs-gl-statement { font-family: 'EB Garamond', serif; font-size: 44px; font-style: italic; color: #1a1814; line-height: 1.3; max-width: 1400px; border-left: 2px solid #a84630; padding-left: 32px; }
-.hs-gl-byline { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 22px; color: #8a8275; letter-spacing: .2em; text-transform: uppercase; margin-top: 22px; }
+.hs-gl-byline { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 28px; color: #8a8275; letter-spacing: .2em; text-transform: uppercase; margin-top: 22px; }
 .hs-gl-advisory { position: absolute; bottom: 200px; right: 120px; width: 1220px; height: 620px; background: #1a1814; color: #f5f1e8; box-sizing: border-box; padding: 48px 56px; border-top: 1px solid #2a2724; }
-.hs-gl-advisory-label { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 22px; letter-spacing: .24em; color: #a84630; text-transform: uppercase; margin-bottom: 18px; }
+.hs-gl-advisory-label { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 28px; letter-spacing: .24em; color: #a84630; text-transform: uppercase; margin-bottom: 18px; }
 .hs-gl-adv-h3 { font-family: 'EB Garamond', serif; font-weight: 500; font-size: 92px; line-height: 1; letter-spacing: -.01em; margin: 0 0 24px; color: #f5f1e8; }
 .hs-gl-adv-p { font-family: 'EB Garamond', serif; font-size: 36px; line-height: 1.35; color: #d9d2c3; margin: 0 0 24px; font-weight: 400; }
-.hs-gl-adv-when { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 24px; color: #a84630; letter-spacing: .2em; text-transform: uppercase; border-top: 1px solid #444038; padding-top: 20px; }
+.hs-gl-adv-when { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 30px; color: #a84630; letter-spacing: .2em; text-transform: uppercase; border-top: 1px solid #444038; padding-top: 20px; }
 .hs-gl-hours { position: absolute; bottom: 80px; left: 120px; right: 120px; height: 80px; border-top: 1px solid #2a2724; padding-top: 24px; display: flex; justify-content: space-between; align-items: center; }
-.hs-gl-h { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 22px; color: #8a8275; letter-spacing: .22em; text-transform: uppercase; }
+.hs-gl-h { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 28px; color: #8a8275; letter-spacing: .22em; text-transform: uppercase; }
 .hs-gl-h strong { color: #1a1814; font-weight: 600; }
 .hs-gl-sep { color: #2a2724; }
-.hs-gl-coda { font-family: 'EB Garamond', serif; font-style: italic; font-size: 32px; color: #a84630; }
+.hs-gl-coda { font-family: 'EB Garamond', serif; font-style: italic; font-size: 38px; color: #a84630; }
 .hs-gl-ticker { position: absolute; bottom: 0; left: 0; right: 0; height: 60px; background: #1a1814; color: #f5f1e8; display: flex; align-items: center; overflow: hidden; }
-.hs-gl-tk-tag { background: #a84630; color: #f5f1e8; padding: 0 30px; height: 100%; display: flex; align-items: center; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 20px; letter-spacing: .3em; flex-shrink: 0; }
-.hs-gl-tk-msg { font-family: 'EB Garamond', serif; font-style: italic; font-size: 30px; white-space: nowrap; padding-left: 36px; animation: hsGlScroll 70s linear infinite; display: inline-flex; }
+.hs-gl-tk-tag { background: #a84630; color: #f5f1e8; padding: 0 30px; height: 100%; display: flex; align-items: center; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 26px; letter-spacing: .3em; flex-shrink: 0; }
+.hs-gl-tk-msg { font-family: 'EB Garamond', serif; font-style: italic; font-size: 36px; white-space: nowrap; padding-left: 36px; animation: hsGlScroll 70s linear infinite; display: inline-flex; }
 @keyframes hsGlScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 `;

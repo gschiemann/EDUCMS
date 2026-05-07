@@ -554,7 +554,7 @@ const CSS = `
 .hs-tp-evheader {
   display: grid; grid-template-columns: 130px 220px 1fr;
   gap: 24px;
-  font-size: 26px; color: #4a7a4a;
+  font-size: 30px; color: #4a7a4a;
   letter-spacing: .18em; text-transform: uppercase;
   padding: 18px 0 14px;
   border-bottom: 2px dashed rgba(155,255,155,.35);
@@ -615,7 +615,7 @@ const CSS = `
   line-height: 1.15;
 }
 .hs-tp-cd-sub {
-  color: #4a7a4a; font-size: 28px;
+  color: #4a7a4a; font-size: 30px;
 }
 
 /* ----- REGION 4: announcements tail -f ----- */
@@ -668,7 +668,7 @@ const CSS = `
   display: flex; flex-direction: column; gap: 6px;
 }
 .hs-tp-fact-key {
-  font-size: 24px; color: #4a7a4a;
+  font-size: 28px; color: #4a7a4a;
   letter-spacing: .22em; text-transform: uppercase;
 }
 .hs-tp-fact-val {
@@ -681,7 +681,7 @@ const CSS = `
   font-size: 56px; line-height: 1; padding-top: 8px;
 }
 .hs-tp-fact-sub {
-  font-size: 22px; color: #4a7a4a; line-height: 1.3;
+  font-size: 28px; color: #4a7a4a; line-height: 1.3;
 }
 
 /* ----- REGION 6: bottom syslog ticker ----- */

@@ -386,7 +386,7 @@ const CSS = `
 }
 .hs-bcp-clockpill-lbl {
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 28px; letter-spacing: .26em; color: #8a93a6;
+  font-size: 34px; letter-spacing: .26em; color: #8a93a6;
   text-transform: uppercase;
 }
 .hs-bcp-clockpill-val {
@@ -403,7 +403,7 @@ const CSS = `
 @keyframes hsBcpBlink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
 .hs-bcp-clockpill-cap {
   font-family: 'Inter', sans-serif; font-weight: 600;
-  font-size: 32px; color: #cbd5e1; text-align: right;
+  font-size: 36px; color: #cbd5e1; text-align: right;
 }
 
 .hs-bcp-sat {
@@ -493,13 +493,13 @@ const CSS = `
 .hs-bcp-mono {
   position: absolute; top: 24px; left: 24px; z-index: 3;
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 26px; color: #0a0f1a; background: #ffd83d;
+  font-size: 30px; color: #0a0f1a; background: #ffd83d;
   padding: 6px 14px; letter-spacing: .1em;
 }
 .hs-bcp-portrait-cam {
   position: absolute; bottom: 24px; right: 24px; z-index: 3;
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 28px; color: #fff; background: rgba(239,43,43,.9);
+  font-size: 32px; color: #fff; background: rgba(239,43,43,.9);
   padding: 6px 14px; letter-spacing: .14em;
 }
 
@@ -527,7 +527,7 @@ const CSS = `
 }
 .hs-bcp-meta {
   font-family: 'JetBrains Mono', monospace; font-weight: 500;
-  font-size: 26px; color: #ffd83d; letter-spacing: .14em;
+  font-size: 32px; color: #ffd83d; letter-spacing: .14em;
   text-transform: uppercase; margin-top: 4px;
 }
 .hs-bcp-quote {
@@ -541,7 +541,7 @@ const CSS = `
   font-family: 'Barlow Condensed', sans-serif; font-weight: 900;
   background: #0a0f1a; color: #ffd83d;
   padding: 8px 20px 10px;
-  font-size: 30px; letter-spacing: .16em; text-transform: uppercase;
+  font-size: 36px; letter-spacing: .16em; text-transform: uppercase;
 }
 .hs-bcp-h1 {
   font-family: 'Barlow Condensed', sans-serif; font-weight: 900;
@@ -550,7 +550,7 @@ const CSS = `
 }
 .hs-bcp-subtitle {
   font-family: 'Inter', sans-serif; font-weight: 600;
-  font-size: 30px; color: #334155; line-height: 1.25;
+  font-size: 34px; color: #334155; line-height: 1.25;
 }
 
 /* ============================ REGION 3: BREAKING STORY CARD ~1800-2700 ============================ */
@@ -580,7 +580,7 @@ const CSS = `
 }
 .hs-bcp-newsdesk {
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 32px; color: #8a93a6; letter-spacing: .26em;
+  font-size: 36px; color: #8a93a6; letter-spacing: .26em;
   text-transform: uppercase;
 }
 .hs-bcp-brk-h2 {
@@ -600,7 +600,7 @@ const CSS = `
 }
 .hs-bcp-date {
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 32px; color: #ffd83d; letter-spacing: .16em;
+  font-size: 36px; color: #ffd83d; letter-spacing: .16em;
   text-transform: uppercase;
 }
 .hs-bcp-countdown {
@@ -615,12 +615,12 @@ const CSS = `
 .hs-bcp-cd-stack { display: flex; flex-direction: column; gap: 4px; }
 .hs-bcp-cd-lbl {
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 24px; letter-spacing: .2em; text-transform: uppercase;
+  font-size: 28px; letter-spacing: .2em; text-transform: uppercase;
   opacity: .9;
 }
 .hs-bcp-cd-unit {
   font-family: 'Barlow Condensed', sans-serif; font-weight: 900;
-  font-size: 28px; letter-spacing: .1em; text-transform: uppercase;
+  font-size: 32px; letter-spacing: .1em; text-transform: uppercase;
 }
 
 /* ============================ REGION 4: 2-UP — FORECAST + COMING UP ~2700-3400 ============================ */
@@ -632,7 +632,7 @@ const CSS = `
 }
 .hs-bcp-panel-h3 {
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 30px; letter-spacing: .24em; text-transform: uppercase;
+  font-size: 36px; letter-spacing: .24em; text-transform: uppercase;
   color: #8a93a6; margin: 0 0 20px;
 }
 
@@ -657,7 +657,7 @@ const CSS = `
 .hs-bcp-fc-day:nth-child(3) { border-left-color: #4ade80; }
 .hs-bcp-fc-dlabel {
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 26px; letter-spacing: .2em; color: #cbd5e1;
+  font-size: 32px; letter-spacing: .2em; color: #cbd5e1;
   text-transform: uppercase;
 }
 .hs-bcp-fc-icon {
@@ -671,7 +671,7 @@ const CSS = `
 }
 .hs-bcp-fc-cond {
   font-family: 'Barlow Condensed', sans-serif; font-weight: 700;
-  font-size: 22px; color: #ffd83d; letter-spacing: .08em;
+  font-size: 28px; color: #ffd83d; letter-spacing: .08em;
   text-transform: uppercase;
 }
 
@@ -696,7 +696,7 @@ const CSS = `
 }
 .hs-bcp-cu-chip {
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 28px; color: #0a0f1a;
+  font-size: 32px; color: #0a0f1a;
   padding: 14px 18px; text-align: center;
   letter-spacing: .12em; text-transform: uppercase;
 }
@@ -734,7 +734,7 @@ const CSS = `
 }
 .hs-bcp-stamp-eyebrow {
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 28px; letter-spacing: .26em; color: #0a0f1a;
+  font-size: 32px; letter-spacing: .26em; color: #0a0f1a;
   text-transform: uppercase; opacity: .85;
 }
 .hs-bcp-stamp-headline {
@@ -746,7 +746,7 @@ const CSS = `
 }
 .hs-bcp-stamp-sub {
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 26px; letter-spacing: .24em; color: #0a0f1a;
+  font-size: 30px; letter-spacing: .24em; color: #0a0f1a;
   text-transform: uppercase; opacity: .8;
 }
 

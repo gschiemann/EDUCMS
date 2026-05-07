@@ -556,7 +556,7 @@ const CSS = `
   letter-spacing: -.02em;
 }
 .hs-cafm-est {
-  display: block; font-family: 'DM Mono', monospace; font-weight: 500; font-size: 18px;
+  display: block; font-family: 'DM Mono', monospace; font-weight: 500; font-size: 26px;
   color: #caa14a; letter-spacing: .22em; margin-top: 10px;
 }
 .hs-cafm-title { display: flex; flex-direction: column; line-height: .9; }
@@ -637,7 +637,7 @@ const CSS = `
   letter-spacing: -.02em; text-transform: uppercase;
 }
 .hs-cafm-num {
-  font-family: 'DM Mono', monospace; font-weight: 500; font-size: 24px;
+  font-family: 'DM Mono', monospace; font-weight: 500; font-size: 32px;
   letter-spacing: .22em; opacity: .7; text-transform: uppercase;
 }
 .hs-cafm-photo {
@@ -660,7 +660,7 @@ const CSS = `
 }
 .hs-cafm-stamp {
   position: absolute; bottom: 24px; left: 24px; background: rgba(0,0,0,.55); color: #fff;
-  padding: 10px 18px; font-family: 'DM Mono', monospace; font-weight: 700; font-size: 20px;
+  padding: 10px 18px; font-family: 'DM Mono', monospace; font-weight: 700; font-size: 28px;
   letter-spacing: .22em; text-transform: uppercase; backdrop-filter: blur(4px); z-index: 2;
 }
 .hs-cafm-body { padding: 24px 28px 22px; display: flex; flex-direction: column; flex: 1; }
@@ -674,16 +674,16 @@ const CSS = `
 }
 .hs-cafm-desc {
   margin: 0; font-family: 'Archivo Narrow', sans-serif; font-weight: 500;
-  font-size: 24px; line-height: 1.3; color: #5a544a; flex: 1;
+  font-size: 30px; line-height: 1.3; color: #5a544a; flex: 1;
 }
 .hs-cafm-tags {
   display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px;
   border-top: 2px solid #d8cdb6; padding-top: 14px;
 }
 .hs-cafm-t {
-  font-family: 'DM Mono', monospace; font-weight: 700; font-size: 18px;
+  font-family: 'DM Mono', monospace; font-weight: 700; font-size: 24px;
   letter-spacing: .18em; text-transform: uppercase;
-  background: #f2eadc; color: #181613; padding: 6px 12px; line-height: 1;
+  background: #f2eadc; color: #181613; padding: 8px 14px; line-height: 1;
 }
 .hs-cafm-t-warn { background: #ffe2dc; color: #a82414; }
 .hs-cafm-t-ok { background: #dcefe1; color: #1a5c33; }
@@ -692,7 +692,7 @@ const CSS = `
   border-top: 2px solid #d8cdb6; margin-top: 14px; padding-top: 12px;
 }
 .hs-cafm-meta-open {
-  font-family: 'DM Mono', monospace; font-weight: 700; font-size: 20px;
+  font-family: 'DM Mono', monospace; font-weight: 700; font-size: 26px;
   letter-spacing: .22em; text-transform: uppercase; color: #1a5c33;
   display: flex; align-items: center; gap: 10px;
 }
@@ -736,7 +736,7 @@ const CSS = `
   color: #fff; letter-spacing: -.01em; text-transform: uppercase;
 }
 .hs-cafm-week-meta {
-  font-family: 'DM Mono', monospace; font-weight: 500; font-size: 20px;
+  font-family: 'DM Mono', monospace; font-weight: 500; font-size: 28px;
   color: #caa14a; letter-spacing: .22em; text-transform: uppercase;
 }
 .hs-cafm-week ul {
@@ -749,7 +749,7 @@ const CSS = `
 }
 .hs-cafm-week-today { background: #e84a3a; border-color: #a82414; }
 .hs-cafm-week-d {
-  font-family: 'DM Mono', monospace; font-weight: 700; font-size: 20px;
+  font-family: 'DM Mono', monospace; font-weight: 700; font-size: 26px;
   letter-spacing: .22em; color: #caa14a; text-transform: uppercase; line-height: 1;
 }
 .hs-cafm-week-today .hs-cafm-week-d { color: #fff; }
@@ -771,7 +771,7 @@ const CSS = `
   color: #181613; letter-spacing: -.02em; margin-top: 6px;
 }
 .hs-cafm-info-sub {
-  font-family: 'Archivo Narrow', sans-serif; font-weight: 500; font-size: 22px;
+  font-family: 'Archivo Narrow', sans-serif; font-weight: 500; font-size: 28px;
   color: #5a544a; margin-top: 4px;
 }
 .hs-cafm-info-v-s2 { color: #1a5c33; }

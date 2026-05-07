@@ -483,7 +483,7 @@ const CSS = `
 .hs-cnn-head-right { display: flex; align-items: center; gap: 24px; }
 .hs-cnn-stat { display: flex; flex-direction: column; align-items: flex-end; line-height: 1; }
 .hs-cnn-stat-k {
-  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 20px;
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 28px;
   letter-spacing: .24em; color: #54585f; text-transform: uppercase;
 }
 .hs-cnn-stat-v {
@@ -589,7 +589,7 @@ const CSS = `
 }
 .hs-cnn-now-meta-it { display: flex; flex-direction: column; line-height: 1; }
 .hs-cnn-now-meta-k {
-  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 22px;
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 28px;
   letter-spacing: .22em; text-transform: uppercase; color: #54585f;
 }
 .hs-cnn-now-meta-v {
@@ -618,7 +618,7 @@ const CSS = `
   display: flex; justify-content: space-between; align-items: baseline;
 }
 .hs-cnn-agenda-meta {
-  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 22px;
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 28px;
   letter-spacing: .22em; color: #54585f; text-transform: uppercase;
 }
 .hs-cnn-agenda-ul {
@@ -655,11 +655,11 @@ const CSS = `
 }
 .hs-cnn-now-li .hs-cnn-agenda-nm { color: #1a4ed8; }
 .hs-cnn-agenda-sub {
-  display: block; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 22px;
+  display: block; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 28px;
   color: #54585f; margin-top: 2px; letter-spacing: 0; text-decoration: none;
 }
 .hs-cnn-agenda-t {
-  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 22px;
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 30px;
   letter-spacing: .18em; color: #0e0f12; text-transform: uppercase;
   text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums;
 }
@@ -675,7 +675,7 @@ const CSS = `
   padding: 24px 28px; display: flex; flex-direction: column; position: relative;
 }
 .hs-cnn-card-tag {
-  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 22px;
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 28px;
   letter-spacing: .28em; text-transform: uppercase; color: #f1853a;
   display: inline-flex; align-items: center; gap: 14px;
 }
@@ -692,7 +692,7 @@ const CSS = `
 .hs-cnn-card-when {
   margin-top: auto; padding-top: 14px; border-top: 2px dashed #dcdde2;
   display: flex; justify-content: space-between; align-items: baseline;
-  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 22px;
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 28px;
   letter-spacing: .18em; color: #54585f; text-transform: uppercase;
 }
 .hs-cnn-card-when-k { color: #0e0f12; }
@@ -731,12 +731,12 @@ const CSS = `
   color: #0e0f12; line-height: 1.2;
 }
 .hs-cnn-b-due {
-  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 22px;
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 26px;
   letter-spacing: .18em; color: #d1456b; text-transform: uppercase; white-space: nowrap;
 }
 .hs-cnn-b-ic {
-  width: 28px; height: 28px; border-radius: 50%; background: #f0f0ee;
-  display: grid; place-items: center; font-size: 18px;
+  width: 36px; height: 36px; border-radius: 50%; background: #f0f0ee;
+  display: grid; place-items: center; font-size: 24px;
   font-family: 'JetBrains Mono'; font-weight: 700; color: #54585f;
 }
 .hs-cnn-urgent .hs-cnn-b-due { color: #f1853a; }
@@ -751,7 +751,7 @@ const CSS = `
 .hs-cnn-b-when {
   margin-top: auto; display: flex; justify-content: space-between;
   align-items: baseline; font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 22px; letter-spacing: .22em; color: #fff48a;
+  font-size: 28px; letter-spacing: .22em; color: #fff48a;
   text-transform: uppercase; border-top: 2px dashed rgba(255,255,255,.18); padding-top: 14px;
 }
 .hs-cnn-b-where { color: rgba(255,255,255,.65); }
@@ -762,7 +762,7 @@ const CSS = `
 .hs-cnn-green .hs-cnn-b-p { color: rgba(255,255,255,.85); }
 .hs-cnn-b-cap {
   display: grid; grid-template-columns: auto 1fr;
-  color: rgba(255,255,255,.85); font-size: 24px; font-weight: 600;
+  color: rgba(255,255,255,.85); font-size: 28px; font-weight: 600;
   align-items: center; gap: 14px;
 }
 .hs-cnn-b-ic-light { background: rgba(255,255,255,.15); color: #fff; }
@@ -782,7 +782,7 @@ const CSS = `
 .hs-cnn-foot-k { color: #fff48a; }
 .hs-cnn-foot-right {
   display: flex; align-items: center; gap: 24px;
-  font-family: 'JetBrains Mono', monospace; font-weight: 500; font-size: 22px;
+  font-family: 'JetBrains Mono', monospace; font-weight: 500; font-size: 28px;
   color: rgba(255,255,255,.7); letter-spacing: .18em; text-transform: uppercase;
 }
 `;
