@@ -295,7 +295,15 @@ export default function TemplatesPage() {
   const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  // 2026-05-07 — operator: "imagine it auto creates a canvas with the
+  // school logo, the name, uses the font from the webpage, makes the
+  // template really represent the school". When tenant branding is
+  // adopted, the create modal defaults to "Use my school brand" =
+  // ON, which seeds the new template with logo / name / tagline /
+  // colors / font instead of a single empty zone.
+  const [useBrandedStarter, setUseBrandedStarter] = useState(true);
   const [autoEditHandled, setAutoEditHandled] = useState(false);
+  const tenantBranding = useTenantBranding();
   const router = useRouter();
   const params = useParams<{ schoolId: string }>();
   const useV2Builder = isFeatureEnabled(FLAGS.TEMPLATE_BUILDER_V2);
@@ -409,12 +417,120 @@ export default function TemplatesPage() {
 
   async function handleCreate() {
     if (!newName.trim()) return;
+
+    // 2026-05-07 — auto-branded starter canvas.
+    //
+    // When the tenant has adopted branding AND the operator left the
+    // "Use my school brand" toggle on, seed the new template with a
+    // multi-zone layout that immediately reads as "their school":
+    //   - LOGO zone in the top-left (tenant logoUrl pre-loaded)
+    //   - TEXT heading centered at the top (tenant displayName, brand
+    //     primary color, brand heading font)
+    //   - TEXT subhead under the heading (tenant tagline if set; else
+    //     omitted)
+    //   - EMPTY body zone covering the middle-bottom for the operator
+    //     to drop content widgets into
+    //
+    // Background uses brand-primary at low saturation so the canvas
+    // feels branded without overwhelming whatever content the
+    // operator adds. Falls back gracefully when any field is null.
+    const brand = tenantBranding.data;
+    const hasBrand = useBrandedStarter && !!brand && !!(brand.displayName || brand.logoUrl || brand.palette);
+    const palette = (brand as any)?.palette || {};
+    const primary = palette.primary || '#4f46e5';
+    const accent = palette.accent || palette.primary || '#ec4899';
+    const headingFont = (brand as any)?.fontHeading || 'Inter, sans-serif';
+    const bodyFont = (brand as any)?.fontBody || 'Inter, sans-serif';
+    const displayName = (brand as any)?.displayName || '';
+    const tagline = (brand as any)?.tagline || '';
+    const logoUrl = (brand as any)?.logoUrl || null;
+
+    const zones = hasBrand
+      ? [
+          // Logo, top-left, ~12% × 16% of canvas. LogoWidget falls
+          // back to a mascot emoji if logoUrl is null, so this is
+          // safe even on tenants who haven't fully scraped a logo.
+          {
+            name: 'School Logo',
+            widgetType: 'LOGO',
+            x: 3, y: 4, width: 12, height: 16,
+            zIndex: 5, sortOrder: 0,
+            defaultConfig: {
+              logoUrl,
+              mascot: '🏫',
+              style: { bgColor: 'transparent' },
+            },
+          },
+          // School name heading, top-center, in brand primary on the
+          // brand heading font. Sits at the top, leaves space for the
+          // logo on the left.
+          {
+            name: 'School Name',
+            widgetType: 'TEXT',
+            x: 17, y: 5, width: 65, height: 14,
+            zIndex: 4, sortOrder: 1,
+            defaultConfig: {
+              text: displayName || 'Your School',
+              style: {
+                fontFamily: headingFont,
+                fontSize: 96,
+                fontWeight: 800,
+                textColor: primary,
+                textAlign: 'center',
+                bgColor: 'transparent',
+              },
+            },
+          },
+          // Tagline under the heading — only when set. Body font,
+          // muted slate so it doesn't compete with the heading.
+          ...(tagline ? [{
+            name: 'Tagline',
+            widgetType: 'TEXT',
+            x: 17, y: 19, width: 65, height: 6,
+            zIndex: 3, sortOrder: 2,
+            defaultConfig: {
+              text: tagline,
+              style: {
+                fontFamily: bodyFont,
+                fontSize: 32,
+                fontWeight: 400,
+                textColor: '#64748b',
+                textAlign: 'center',
+                bgColor: 'transparent',
+              },
+            },
+          }] : []),
+          // Body — large empty area for content widgets. Operator
+          // drops calendar / announcements / images here.
+          {
+            name: 'Content',
+            widgetType: 'EMPTY',
+            x: 5, y: tagline ? 28 : 24, width: 90, height: tagline ? 67 : 71,
+            zIndex: 1, sortOrder: 3,
+            defaultConfig: {},
+          },
+        ]
+      : [
+          { name: 'Full Screen', widgetType: 'EMPTY', x: 0, y: 0, width: 100, height: 100 },
+        ];
+
+    // Background: when branded, mix a soft 12% tint of brand-primary
+    // into white so the canvas reads as the school's color without
+    // screaming. Otherwise leave bgColor undefined → default white.
+    const bgColor = hasBrand
+      ? `color-mix(in srgb, ${primary} 12%, white)`
+      : undefined;
+
     const result = await createTemplate.mutateAsync({
-      name: newName.trim(), description: newDesc.trim() || undefined,
-      category: newCategory, orientation: newH > newW ? 'PORTRAIT' : 'LANDSCAPE',
-      screenWidth: newW, screenHeight: newH,
-      zones: [{ name: 'Full Screen', widgetType: 'EMPTY', x: 0, y: 0, width: 100, height: 100 }],
-    });
+      name: newName.trim(),
+      description: newDesc.trim() || undefined,
+      category: newCategory,
+      orientation: newH > newW ? 'PORTRAIT' : 'LANDSCAPE',
+      screenWidth: newW,
+      screenHeight: newH,
+      ...(bgColor ? { bgColor } : {}),
+      zones,
+    } as any);
     setShowCreate(false); setNewName(''); setNewDesc('');
     setNewW(3840); setNewH(2160); setCustomRes(false);
     openInBuilder(result);
@@ -534,10 +650,57 @@ export default function TemplatesPage() {
               )}
             </div>
 
+            {/* 2026-05-07 — Branded-starter toggle. Only shown when the
+                tenant has adopted branding (otherwise there's nothing
+                to seed with). Default ON because that's the user's
+                stated intent: "make the template really represent the
+                school". */}
+            {!!tenantBranding.data && !!((tenantBranding.data as any).displayName || (tenantBranding.data as any).logoUrl) && (
+              <label
+                className="flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition-colors"
+                style={{
+                  background: useBrandedStarter
+                    ? 'color-mix(in srgb, var(--brand-primary, #4f46e5) 8%, white)'
+                    : 'white',
+                  borderColor: useBrandedStarter
+                    ? 'color-mix(in srgb, var(--brand-primary, #4f46e5) 50%, transparent)'
+                    : 'rgb(226, 232, 240)',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={useBrandedStarter}
+                  onChange={(e) => setUseBrandedStarter(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded border-slate-300"
+                  style={{ accentColor: 'var(--brand-primary, #4f46e5)' }}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5" style={{ color: 'var(--brand-primary, #4f46e5)' }} />
+                    Use my school brand
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                    Pre-fills the canvas with{' '}
+                    {[
+                      (tenantBranding.data as any).logoUrl && 'logo',
+                      (tenantBranding.data as any).displayName && 'name',
+                      (tenantBranding.data as any).tagline && 'tagline',
+                      ((tenantBranding.data as any).palette?.primary || (tenantBranding.data as any).fontHeading) && 'colors + fonts',
+                    ].filter(Boolean).join(', ')}.
+                    Uncheck for a blank canvas.
+                  </p>
+                </div>
+              </label>
+            )}
+
             <button onClick={handleCreate} disabled={!newName.trim() || createTemplate.isPending}
-              className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 transition-colors">
+              className="w-full py-3 text-white font-bold text-sm rounded-xl shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
+              style={{ background: 'var(--brand-primary, #4f46e5)' }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.filter = 'brightness(0.9)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.filter = 'none'; }}
+            >
               {createTemplate.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              Create & Open Editor
+              Create &amp; Open Editor
             </button>
           </div>
         </div>
