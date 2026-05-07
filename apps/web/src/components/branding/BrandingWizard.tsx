@@ -332,14 +332,34 @@ export function BrandingWizard({ mode, initial, onAdopted }: BrandingWizardProps
                     aria-label={`Choose logo ${i+1}`}
                   >
                     {l.svgInline ? (
-                      // Many SVG wordmarks fill="currentColor" — set a dark
-                      // text color on the wrapper so the mark actually shows
-                      // against the light tile background.
-                      // XSS defense: sanitize before render; the SVG was
-                      // scraped from an untrusted URL.
-                      <div
-                        className="max-h-full max-w-full text-slate-800 [&_svg]:max-h-full [&_svg]:max-w-full [&_svg]:h-full [&_svg]:w-full"
-                        dangerouslySetInnerHTML={{ __html: sanitizeSvg(l.svgInline) }}
+                      // 2026-05-07 — operator: "the svg logos dont display
+                      // in the preview window".
+                      //
+                      // Old approach was dangerouslySetInnerHTML. Two
+                      // problems:
+                      //  (1) DOMPurify with USE_PROFILES.svg strips
+                      //      <style> tags. Many SVG logos define their
+                      //      fill colors INSIDE a <style> block (CSS
+                      //      classes). Stripping the style left every
+                      //      <path class="cls-1"/> with no resolved
+                      //      color, so the mark rendered as faint text
+                      //      / not at all.
+                      //  (2) [&_svg]:h-full [&_svg]:w-full forced the
+                      //      SVG to fill the tile exactly; wide
+                      //      wordmarks letterboxed weird.
+                      //
+                      // New: render the sanitized SVG as a data-URI
+                      // <img>. Browsers handle the FULL SVG spec inside
+                      // a data URI (including <style>), AND the <img>
+                      // sandbox is stricter than dangerouslySetInnerHTML
+                      // (img tags can't execute embedded scripts even
+                      // if a hostile SVG snuck them past sanitization).
+                      // object-contain handles aspect ratio cleanly.
+                      <img
+                        src={`data:image/svg+xml;utf8,${encodeURIComponent(sanitizeSvg(l.svgInline))}`}
+                        alt="logo option"
+                        className="max-h-full max-w-full object-contain"
+                        loading="lazy"
                       />
                     ) : l.url ? (
                       <img src={l.url} alt="logo option" className="max-h-full max-w-full object-contain" loading="lazy" />

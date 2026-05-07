@@ -374,6 +374,33 @@ export class BrandingScraperService {
       const iconHints = /(\b|-)(star|rating|phone|tel|search|cart|menu|hamburger|chevron|arrow|caret|close|facebook|twitter|instagram|youtube|linkedin|tiktok|social|share|toggle|spinner|loading|chat)\b/;
       if (iconHints.test(combined)) return;
 
+      // 2026-05-07 — operator: "the svg logos dont display in the
+      // preview window" + screenshot showed Smart Sites / Google
+      // Play / App Store badges polluting the candidate list.
+      //
+      // Reject obvious THIRD-PARTY badges that aren't the school's
+      // logo. We detect via:
+      //   - Text content of the SVG (e.g. "Google Play", "App Store")
+      //   - Parent <a> href pointing at known badge hosts
+      //   - aria-label / class hints
+      //
+      // These badges are valid SVGs with shapes + viewBox that pass
+      // every other check, so they need their own filter.
+      const svgText = $el.text().toLowerCase();
+      const parentHref = ($el.parents('a').first().attr('href') || '').toLowerCase();
+      const thirdPartyBadgeText = /\b(google play|app store|microsoft store|amazon appstore|huawei appgallery|samsung galaxy store|smart\s*sites|powered by|made by|hosted by|finalsite|blackboard|schoolwires|schoolmessenger|edlio|apptegy|e\s*chalk)\b/i;
+      const thirdPartyBadgeHost = /(play\.google\.com|apps\.apple\.com|itunes\.apple\.com|microsoft\.com\/store|finalsite\.com|blackboard\.com|schoolwires\.com|schoolmessenger\.com|edlio\.com|apptegy\.com|smart-?sites\.com|echalk\.com)/i;
+      const badgeClasses = /(badge|app-?store|play-?store|store-?icon|download-?app|powered-?by|partner-?logo|vendor-?logo)/i;
+      if (
+        thirdPartyBadgeText.test(svgText) ||
+        thirdPartyBadgeText.test(combined) ||
+        thirdPartyBadgeText.test(ariaLabel) ||
+        thirdPartyBadgeHost.test(parentHref) ||
+        badgeClasses.test(combined)
+      ) {
+        return;
+      }
+
       // Reject tiny icons by viewBox (e.g. 24x24 social glyphs).
       const viewBox = ($el.attr('viewBox') || '').split(/[ ,]+/).map(Number);
       if (viewBox.length === 4) {
@@ -415,6 +442,21 @@ export class BrandingScraperService {
       const combined = `${alt} ${cls} ${id} ${src.toLowerCase()}`;
       const logoRe = /(logo|wordmark|brand|mark|crest|shield|seal)/;
       if (!logoRe.test(combined)) return;
+      // 2026-05-07 — same third-party-badge filter as inline-SVG branch.
+      // Google Play / App Store / Smart Sites / Finalsite vendor
+      // wordmarks frequently include "logo" in their alt text (e.g.
+      // alt="Google Play store logo") so they slip past the logoRe
+      // filter. Reject by content text + URL host + class hints.
+      const thirdPartyBadgeText = /\b(google\s*play|app\s*store|microsoft\s*store|amazon\s*appstore|huawei|samsung|smart\s*sites|powered\s*by|made\s*by|hosted\s*by|finalsite|blackboard|schoolwires|schoolmessenger|edlio|apptegy|e\s*chalk)\b/i;
+      const thirdPartyBadgeHost = /(play\.google\.com|apps\.apple\.com|itunes\.apple\.com|microsoft\.com\/store|finalsite\.com|blackboard\.com|schoolwires\.com|schoolmessenger\.com|edlio\.com|apptegy\.com|smart-?sites\.com|echalk\.com)/i;
+      const badgeClasses = /(badge|app-?store|play-?store|store-?icon|download-?app|powered-?by|partner-?logo|vendor-?logo)/i;
+      if (
+        thirdPartyBadgeText.test(alt) ||
+        thirdPartyBadgeText.test(cls) ||
+        thirdPartyBadgeText.test(id) ||
+        thirdPartyBadgeHost.test(src.toLowerCase()) ||
+        badgeClasses.test(combined)
+      ) return;
       const w = parseInt(($el.attr('width') || '0') as string, 10) || undefined;
       const h = parseInt(($el.attr('height') || '0') as string, 10) || undefined;
       const area = (w || 0) * (h || 0);
