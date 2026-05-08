@@ -33,6 +33,7 @@
 
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
+import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 
 export interface HsTerminalConfig {
   schoolHost?: string;
@@ -145,6 +146,18 @@ export function HsTerminalPortraitWidget({ config, live }: { config?: Cfg; live?
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
+  // 2026-05-07 — live weather (matches Terminal landscape sibling).
+  const w = useHsLiveWeather({
+    live,
+    location: c.weatherLocation,
+    unitsCelsius: c.weatherUnits === 'metric',
+    tempOverride: c.weatherTemp,
+    conditionOverride: c.weatherCondition,
+    defaultTemp: DEFAULTS.weatherTemp,
+    defaultCondition: DEFAULTS.weatherCondition,
+    formatTemp: (t) => `${t}°${c.weatherUnits === 'metric' ? 'C' : 'F'}`,
+    formatCondition: (wmo) => describeWmo(wmo).toLowerCase(),
+  });
   const events = [
     { when: c.event1When, where: c.event1Where, name: c.event1Name, who: c.event1Who },
     { when: c.event2When, where: c.event2Where, name: c.event2Name, who: c.event2Who },
@@ -215,8 +228,8 @@ export function HsTerminalPortraitWidget({ config, live }: { config?: Cfg; live?
           <span className="hs-tp-sep"> · </span>
           <span data-field="clockTime">{clock.time}</span>
           <span className="hs-tp-sep"> · </span>
-          <span className="hs-tp-on" data-field="weatherTemp">{c.weatherTemp}</span>{' '}
-          <span data-field="weatherCondition">{c.weatherCondition}</span>
+          <span className="hs-tp-on" data-field="weatherTemp">{w.tempLabel}</span>{' '}
+          <span data-field="weatherCondition">{w.conditionLabel}</span>
         </div>
       </div>
 
@@ -348,10 +361,10 @@ export function HsTerminalPortraitWidget({ config, live }: { config?: Cfg; live?
           <div className="hs-tp-fact">
             <div className="hs-tp-fact-key">WEATHERD</div>
             <div className="hs-tp-fact-val" data-field="weatherdVal" style={{ whiteSpace: 'pre-wrap' as const }}>
-              {c.weatherdVal}
+              {(!c.weatherdVal || c.weatherdVal === DEFAULTS.weatherdVal) ? w.tempLabel : c.weatherdVal}
             </div>
             <div className="hs-tp-fact-sub" data-field="weatherdCap" style={{ whiteSpace: 'pre-wrap' as const }}>
-              {c.weatherdCap}
+              {(!c.weatherdCap || c.weatherdCap === DEFAULTS.weatherdCap) ? w.conditionLabel : c.weatherdCap}
             </div>
           </div>
           <div className="hs-tp-fact">
