@@ -78,7 +78,7 @@ export interface HsVarsityConfig {
   tickerMessage?: string;
 }
 
-const DEFAULTS: Required<HsVarsityConfig> = {
+export const DEFAULTS: Required<HsVarsityConfig> = {
   schoolInitials: 'WHS',
   schoolEst: 'EST. 1956',
   schoolName: 'WESTRIDGE WILDCATS',
