@@ -28,6 +28,7 @@
 
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
+import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 
 export interface HsVarsityConfig {
   schoolInitials?: string;
@@ -141,6 +142,20 @@ export function HsVarsityWidget({ config, live }: { config?: HsVarsityConfig; li
   // clockTime / clockCaption to freeze for marketing screenshots.
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c, now, DEFAULTS.clockTime, DEFAULTS.clockCaption);
+  // 2026-05-07 — live weather. Format: '46°' + 'Clear skies · hi 62°'
+  // sentence-case (Varsity's friendly stadium aesthetic). Live API
+  // doesn't include high/low so condition collapses to just 'Clear skies'.
+  const w = useHsLiveWeather({
+    live,
+    location: c.weatherLocation,
+    unitsCelsius: c.weatherUnits === 'metric',
+    tempOverride: c.weatherTemp,
+    conditionOverride: c.weatherCondition,
+    defaultTemp: DEFAULTS.weatherTemp,
+    defaultCondition: DEFAULTS.weatherCondition,
+    formatTemp: (t) => `${t}°`,
+    formatCondition: (wmo) => `${describeWmo(wmo)} skies`,
+  });
   return (
     <HsStage
       stageStyle={{
@@ -222,8 +237,8 @@ export function HsVarsityWidget({ config, live }: { config?: HsVarsityConfig; li
         </div>
         <div className="hs-varsity-stat">
           <div className="hs-varsity-stat-lbl">GAMETIME FORECAST</div>
-          <div className="hs-varsity-stat-val" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherTemp}</div>
-          <div className="hs-varsity-stat-cap" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherCondition}</div>
+          <div className="hs-varsity-stat-val" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>{w.tempLabel}</div>
+          <div className="hs-varsity-stat-cap" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{w.conditionLabel}</div>
         </div>
         <div className="hs-varsity-stat">
           <div className="hs-varsity-stat-lbl">SEASON RECORD</div>
