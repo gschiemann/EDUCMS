@@ -36,6 +36,10 @@ export interface HsTerminalConfig {
   clockTime?: string;
   weatherTemp?: string;
   weatherCondition?: string;
+  /** ZIP/postal code for weather lookup. Empty → IP geolocation. */
+  weatherLocation?: string;
+  /** 'imperial' (°F) or 'metric' (°C). Default: imperial. */
+  weatherUnits?: 'imperial' | 'metric';
   greetingCmd?: string;
   greetingArg?: string;
   greetingHeadline?: string;
@@ -85,6 +89,8 @@ export const DEFAULTS: Required<HsTerminalConfig> = {
   clockTime: '07:53:21',
   weatherTemp: '46°F',
   weatherCondition: 'clear',
+  weatherLocation: '',
+  weatherUnits: 'imperial',
   greetingCmd: './say-morning',
   greetingArg: '--to=everyone --loud',
   greetingHeadline: 'HELLO, WESTRIDGE.',

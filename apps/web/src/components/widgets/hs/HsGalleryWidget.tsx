@@ -27,6 +27,10 @@ export interface HsGalleryConfig {
   clockDate?: string;
   clockTime?: string;
   weatherCondition?: string;
+  /** ZIP/postal code for weather lookup. Empty → IP geolocation. */
+  weatherLocation?: string;
+  /** 'imperial' (°F) or 'metric' (°C). Default: imperial. */
+  weatherUnits?: 'imperial' | 'metric';
   greetingEyebrow?: string;
   greetingHeadline1?: string;
   greetingHeadline2?: string;
@@ -67,6 +71,8 @@ export const DEFAULTS: Required<HsGalleryConfig> = {
   clockDate: 'Tuesday, April 21',
   clockTime: '7:53 a.m.',
   weatherCondition: 'Clear, 46°',
+  weatherLocation: '',
+  weatherUnits: 'imperial',
   greetingEyebrow: 'Exhibition No. 142 · Spring 2026',
   greetingHeadline1: 'Today,',
   greetingHeadline2: 'as ever,',

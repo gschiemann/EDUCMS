@@ -33,6 +33,10 @@ export interface HsBlueprintConfig {
   clockbigCap?: string;
   weatherTemp?: string;
   weatherCondition?: string;
+  /** ZIP/postal code for weather lookup. Empty → IP geolocation. */
+  weatherLocation?: string;
+  /** 'imperial' (°F) or 'metric' (°C). Default: imperial. */
+  weatherUnits?: 'imperial' | 'metric';
   attendanceValue?: string;
   attendanceCap?: string;
   countdownLabel?: string;
@@ -74,6 +78,8 @@ export const DEFAULTS: Required<HsBlueprintConfig> = {
   clockbigCap: 'TUE · APR 21 · PERIOD 1 START T-12M',
   weatherTemp: '46°',
   weatherCondition: 'CLEAR · HI 62 · LO 38 · WIND 6MPH SW',
+  weatherLocation: '',
+  weatherUnits: 'imperial',
   attendanceValue: '1,217',
   attendanceCap: '98.2% · CAPACITY 1,240',
   countdownLabel: 'DAYS TO COMMENCEMENT',

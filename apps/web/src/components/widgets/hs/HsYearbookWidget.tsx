@@ -37,6 +37,10 @@ export interface HsYearbookConfig {
   announcementDate?: string;
   weatherTemp?: string;
   weatherCondition?: string;
+  /** ZIP/postal code for weather lookup. Empty → IP geolocation. */
+  weatherLocation?: string;
+  /** 'imperial' (°F) or 'metric' (°C). Default: imperial. */
+  weatherUnits?: 'imperial' | 'metric';
   countdownLabel?: string;
   countdownValue?: string | number;
   countdownUnit?: string;
@@ -76,6 +80,8 @@ export const DEFAULTS: Required<HsYearbookConfig> = {
   announcementDate: 'DEADLINE · FRI APR 28 · 3:30 PM',
   weatherTemp: '46°',
   weatherCondition: 'Clear skies · HI 62° · LO 38°',
+  weatherLocation: '',
+  weatherUnits: 'imperial',
   countdownLabel: 'DAYS TO GRADUATION',
   countdownValue: 41,
   countdownUnit: 'Seniors — caps ordered by Friday',

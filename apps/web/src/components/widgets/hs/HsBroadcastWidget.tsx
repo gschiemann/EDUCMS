@@ -34,6 +34,10 @@ export interface HsBroadcastConfig {
   clockCaption?: string;
   weatherTemp?: string;
   weatherCondition?: string;
+  /** ZIP/postal code for weather lookup. Empty → IP geolocation. */
+  weatherLocation?: string;
+  /** 'imperial' (°F) or 'metric' (°C). Default: imperial. */
+  weatherUnits?: 'imperial' | 'metric';
   teacherPortraitTag?: string;
   teacherLabel?: string;
   teacherName?: string;
@@ -68,6 +72,8 @@ export const DEFAULTS: Required<HsBroadcastConfig> = {
   clockCaption: 'Tuesday, April 21 · AM Broadcast',
   weatherTemp: '46°',
   weatherCondition: '☀ CLEAR · HI 62°',
+  weatherLocation: '',
+  weatherUnits: 'imperial',
   teacherPortraitTag: '[ portrait ]',
   teacherLabel: 'FEATURED GUEST · TEACHER OF THE WEEK',
   teacherName: 'MS. KOWALSKI',

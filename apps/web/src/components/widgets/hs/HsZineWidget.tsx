@@ -46,6 +46,10 @@ export interface HsZineConfig {
   clockLabel?: string;
   clockTime?: string;
   weatherCondition?: string;
+  /** ZIP/postal code for weather lookup. Empty → IP geolocation. */
+  weatherLocation?: string;
+  /** 'imperial' (°F) or 'metric' (°C). Default: imperial. */
+  weatherUnits?: 'imperial' | 'metric';
   tickerTag?: string;
   tickerMessage?: string;
 }
@@ -83,6 +87,8 @@ export const DEFAULTS: Required<HsZineConfig> = {
   clockLabel: '// right now',
   clockTime: '7:53',
   weatherCondition: 'tue · apr 21 · 46° · clear · high 62°',
+  weatherLocation: '',
+  weatherUnits: 'imperial',
   tickerTag: 'xeroxwire',
   tickerMessage: 'bus 14 running late !! · lunch: chicken bowl, salad bar, vegan opt · ap psych → library · LOST: silver earbuds — front desk · sports photos tmrw bring your jersey · submit to the zine rm 217 · ',
 };

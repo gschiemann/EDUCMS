@@ -41,6 +41,8 @@ export const DEFAULTS: Required<Cfg> = {
   clockbigCap: 'TUE · APR 21 · PERIOD 1 START T-12M',
   weatherTemp: '46°',
   weatherCondition: 'CLEAR · HI 62 · LO 38 · WIND 6MPH SW',
+  weatherLocation: '',
+  weatherUnits: 'imperial',
   attendanceValue: '1,217',
   attendanceCap: '98.2% · CAPACITY 1,240',
   countdownLabel: 'DAYS TO COMMENCEMENT',

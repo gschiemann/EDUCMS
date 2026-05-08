@@ -40,6 +40,10 @@ export interface HsTransitConfig {
   weatherTemp?: string;
   weatherCondition?: string;
   weatherStatus?: string;
+  /** ZIP/postal code for weather lookup. Empty → IP geolocation. */
+  weatherLocation?: string;
+  /** 'imperial' (°F) or 'metric' (°C). Default: imperial. */
+  weatherUnits?: 'imperial' | 'metric';
   dep0Time?: string; dep0Code?: string; dep0Dest?: string; dep0Note?: string; dep0Room?: string; dep0Teacher?: string; dep0Status?: string;
   dep1Time?: string; dep1Code?: string; dep1Dest?: string; dep1Note?: string; dep1Room?: string; dep1Teacher?: string; dep1Status?: string;
   dep2Time?: string; dep2Code?: string; dep2Dest?: string; dep2Note?: string; dep2Room?: string; dep2Teacher?: string; dep2Status?: string;
@@ -75,6 +79,8 @@ export const DEFAULTS: Required<HsTransitConfig> = {
   weatherTemp: '46°F',
   weatherCondition: 'CLEAR · HI 62°',
   weatherStatus: 'ON TIME',
+  weatherLocation: '',
+  weatherUnits: 'imperial',
   dep0Time: '08:05', dep0Code: 'APE-301', dep0Dest: 'AP ENGLISH LIT', dep0Note: 'essay drafts due · bring laptop', dep0Room: '214', dep0Teacher: 'Ms. Park', dep0Status: 'BOARDING',
   dep1Time: '09:00', dep1Code: 'PHY-242', dep1Dest: 'AP PHYSICS C', dep1Note: 'lab 3 — frictionless carts', dep1Room: '107', dep1Teacher: 'Ms. Kowalski', dep1Status: 'ON TIME',
   dep2Time: '10:15', dep2Code: 'HIST-210', dep2Dest: 'U.S. HISTORY', dep2Note: 'chapter 12 quiz · 25 min', dep2Room: 'CAFÉ', dep2Teacher: 'Mr. Rivera', dep2Status: 'RM CHANGE',

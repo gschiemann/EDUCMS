@@ -49,6 +49,10 @@ export interface HsVarsityConfig {
   clockCaption?: string;
   weatherTemp?: string;
   weatherCondition?: string;
+  /** ZIP/postal code for weather lookup. Empty → IP geolocation. */
+  weatherLocation?: string;
+  /** 'imperial' (°F) or 'metric' (°C). Default: imperial. */
+  weatherUnits?: 'imperial' | 'metric';
   recordValue?: string;
   recordCaption?: string;
   attendanceValue?: string;
@@ -98,6 +102,8 @@ export const DEFAULTS: Required<HsVarsityConfig> = {
   clockCaption: 'Tuesday · 1st period @ 8:05',
   weatherTemp: '46°',
   weatherCondition: 'Clear skies · hi 62°',
+  weatherLocation: '',
+  weatherUnits: 'imperial',
   recordValue: '14–2',
   recordCaption: 'League leaders · 8-game streak',
   attendanceValue: '1,217',

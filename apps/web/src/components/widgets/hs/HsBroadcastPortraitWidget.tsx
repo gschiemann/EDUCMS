@@ -41,6 +41,8 @@ export const DEFAULTS: Required<Cfg> = {
   clockCaption: 'Tuesday, April 21 · AM Broadcast',
   weatherTemp: '46°',
   weatherCondition: '☀ CLEAR · HI 62°',
+  weatherLocation: '',
+  weatherUnits: 'imperial',
   teacherPortraitTag: '[ portrait ]',
   teacherLabel: 'FEATURED GUEST · TEACHER OF THE WEEK',
   teacherName: 'MS. KOWALSKI',
