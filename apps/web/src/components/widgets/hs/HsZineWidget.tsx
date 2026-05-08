@@ -12,6 +12,7 @@
 
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
+import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 
 export interface HsZineConfig {
   schoolName?: string;
@@ -98,6 +99,23 @@ export function HsZineWidget({ config, live }: { config?: HsZineConfig; live?: b
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
+  // 2026-05-07 — live weather. Zine renders a single combined
+  // 'tue · apr 21 · 46° · clear' lowercase string (no separate temp).
+  const w = useHsLiveWeather({
+    live,
+    location: c.weatherLocation,
+    unitsCelsius: c.weatherUnits === 'metric',
+    tempOverride: '',
+    conditionOverride: c.weatherCondition,
+    defaultTemp: '',
+    defaultCondition: DEFAULTS.weatherCondition,
+    formatTemp: (t) => `${t}°`,
+    formatCondition: (wmo, t) => {
+      const wk = now.toLocaleDateString('en-US', { weekday: 'short' }).toLowerCase();
+      const mo = now.toLocaleDateString('en-US', { month: 'short' }).toLowerCase();
+      return `${wk} · ${mo} ${now.getDate()} · ${t}° · ${describeWmo(wmo).toLowerCase()}`;
+    },
+  });
   return (
     <HsStage
       stageStyle={{
@@ -187,7 +205,7 @@ export function HsZineWidget({ config, live }: { config?: HsZineConfig; live?: b
       <div className="hs-zn-fc">
         <div className="hs-zn-fc-lbl" data-field="clockLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockLabel}</div>
         <div className="hs-zn-fc-v" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</div>
-        <div className="hs-zn-fc-c" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherCondition}</div>
+        <div className="hs-zn-fc-c" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{w.conditionLabel}</div>
       </div>
 
       <div className="hs-zn-ticker">
