@@ -11,7 +11,7 @@
  */
 
 import { HsStage } from './HsStage';
-import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
+import { useHsLiveClock, resolveHsClock, resolveHsDate } from './useHsLiveClock';
 
 export interface HsBlueprintConfig {
   schoolCode?: string;
@@ -100,6 +100,14 @@ export function HsBlueprintWidget({ config, live }: { config?: HsBlueprintConfig
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
+  // 2026-05-07 — live date in Blueprint's "YYYY-MM-DD" technical-drawing
+  // format ("2026-04-21"). Operator override wins; empty/default → live.
+  const liveDate = resolveHsDate(c, now, DEFAULTS.clockDate, (d) => {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  });
   const events = [
     { time: c.event0Time, code: c.event0Code, name: c.event0Name, room: c.event0Room, who: c.event0Who },
     { time: c.event1Time, code: c.event1Code, name: c.event1Name, room: c.event1Room, who: c.event1Who },
@@ -132,7 +140,7 @@ export function HsBlueprintWidget({ config, live }: { config?: HsBlueprintConfig
         <div className="hs-bp-cell">
           <div className="hs-bp-lbl" data-field="clockLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockLabel}</div>
           <div className="hs-bp-val" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-            <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockDate}</span> · <span data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</span>
+            <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{liveDate}</span> · <span data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</span>
           </div>
         </div>
         <div className="hs-bp-cell hs-bp-rev">
