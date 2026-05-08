@@ -647,7 +647,7 @@ export function PropertiesPanel() {
   const configString = zone.defaultConfig ? JSON.stringify(zone.defaultConfig, null, 2) : '';
 
   return (
-    <div className="p-5 space-y-6 text-xs">
+    <div className="p-5 space-y-6 text-xs" data-properties-panel="true">
       <section className="space-y-3">
         <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Zone</h3>
         
@@ -3319,7 +3319,16 @@ function StyleDisclosure({
   );
 }
 
-/** Single-line TextField + Style disclosure. */
+/** Single-line TextField that lights up the BuilderBottomBar's per-field
+ *  format toolbar on focus. The actual font / size / B-I-U-S / color
+ *  controls live in the bottom bar (BuilderShell.tsx#BuilderBottomBar)
+ *  so the property panel stays clean and the formatting UX is the same
+ *  pattern operators already know from the TEXT widget.
+ *
+ *  `styles` / `onStylesChange` are still threaded through (the bottom
+ *  bar reads them via the selected zone's defaultConfig), and the
+ *  per-field active marker is the indigo ring you see when this field
+ *  is the live target. */
 function StyleableField({
   label,
   value,
@@ -3327,7 +3336,6 @@ function StyleableField({
   onChange,
   fieldName,
   styles,
-  onStylesChange,
 }: {
   label: string;
   value: string;
@@ -3335,17 +3343,35 @@ function StyleableField({
   onChange: (v: string) => void;
   fieldName: string;
   styles: FieldStyleMap | undefined;
-  onStylesChange: (next: FieldStyleMap) => void;
+  // onStylesChange kept on the call-site signature (not used here now —
+  // bottom bar mutates __styles directly via updateZone). Accepts the
+  // prop to avoid touching all 200+ call sites.
+  onStylesChange?: (next: FieldStyleMap) => void;
 }) {
+  const setActiveFieldName = useBuilderStore((s) => s.setActiveFieldName);
+  const activeFieldName = useBuilderStore((s) => s.activeFieldName);
+  const isActive = activeFieldName === fieldName;
+  const hasOverride = !!(styles && styles[fieldName] && Object.keys(styles[fieldName]).length > 0);
   return (
-    <div>
-      <TextField label={label} value={value} placeholder={placeholder} onChange={onChange} />
-      <StyleDisclosure fieldName={fieldName} styles={styles} onStylesChange={onStylesChange} />
+    <div className={`relative rounded-lg transition-all ${isActive ? 'ring-2 ring-indigo-400 ring-offset-1' : ''}`}>
+      {hasOverride && !isActive && (
+        <span
+          className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-indigo-500 z-10"
+          title="This field has custom text styling"
+        />
+      )}
+      <TextField
+        label={label}
+        value={value}
+        placeholder={placeholder}
+        onChange={onChange}
+        onFocus={() => setActiveFieldName(fieldName)}
+      />
     </div>
   );
 }
 
-/** Multi-line TextAreaField + Style disclosure. */
+/** Multi-line TextAreaField — same focus-driven model as StyleableField. */
 function StyleableAreaField({
   label,
   value,
@@ -3354,7 +3380,6 @@ function StyleableAreaField({
   rows,
   fieldName,
   styles,
-  onStylesChange,
 }: {
   label: string;
   value: string;
@@ -3363,17 +3388,33 @@ function StyleableAreaField({
   rows?: number;
   fieldName: string;
   styles: FieldStyleMap | undefined;
-  onStylesChange: (next: FieldStyleMap) => void;
+  onStylesChange?: (next: FieldStyleMap) => void;
 }) {
+  const setActiveFieldName = useBuilderStore((s) => s.setActiveFieldName);
+  const activeFieldName = useBuilderStore((s) => s.activeFieldName);
+  const isActive = activeFieldName === fieldName;
+  const hasOverride = !!(styles && styles[fieldName] && Object.keys(styles[fieldName]).length > 0);
   return (
-    <div>
-      <TextAreaField label={label} value={value} placeholder={placeholder} onChange={onChange} rows={rows} />
-      <StyleDisclosure fieldName={fieldName} styles={styles} onStylesChange={onStylesChange} />
+    <div className={`relative rounded-lg transition-all ${isActive ? 'ring-2 ring-indigo-400 ring-offset-1' : ''}`}>
+      {hasOverride && !isActive && (
+        <span
+          className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-indigo-500 z-10"
+          title="This field has custom text styling"
+        />
+      )}
+      <TextAreaField
+        label={label}
+        value={value}
+        placeholder={placeholder}
+        onChange={onChange}
+        rows={rows}
+        onFocus={() => setActiveFieldName(fieldName)}
+      />
     </div>
   );
 }
 
-function TextField({ label, value, placeholder, onChange }: { label: string; value: string; placeholder?: string; onChange: (v: string) => void }) {
+function TextField({ label, value, placeholder, onChange, onFocus }: { label: string; value: string; placeholder?: string; onChange: (v: string) => void; onFocus?: () => void }) {
   const [local, setLocal] = useState(value);
   useEffect(() => { setLocal(value); }, [value]);
   return (
@@ -3383,13 +3424,14 @@ function TextField({ label, value, placeholder, onChange }: { label: string; val
         type="text"
         value={local}
         placeholder={placeholder}
+        onFocus={onFocus}
         onChange={(e) => { setLocal(e.target.value); onChange(e.target.value); }}
         className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm" />
     </div>
   );
 }
 
-function TextAreaField({ label, value, placeholder, onChange, rows = 3 }: { label: string; value: string; placeholder?: string; onChange: (v: string) => void; rows?: number }) {
+function TextAreaField({ label, value, placeholder, onChange, rows = 3, onFocus }: { label: string; value: string; placeholder?: string; onChange: (v: string) => void; rows?: number; onFocus?: () => void }) {
   // Controlled textarea — local state mirrors the incoming value so we
   // can honor external updates (undo/redo, zone switch, preset load)
   // while saving on every keystroke. Previous `defaultValue` +
@@ -3406,6 +3448,7 @@ function TextAreaField({ label, value, placeholder, onChange, rows = 3 }: { labe
         value={local}
         placeholder={placeholder}
         rows={rows}
+        onFocus={onFocus}
         onChange={(e) => { setLocal(e.target.value); onChange(e.target.value); }}
         className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm resize-y"
       />

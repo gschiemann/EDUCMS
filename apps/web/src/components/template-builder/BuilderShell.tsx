@@ -685,8 +685,65 @@ function BuilderBottomBar() {
   // controls for those widgets.
   const isTextStyle = isText || isTicker;
 
+  // 2026-05-08 — per-field text styling for HS widgets (and any other
+  // widget whose config carries a `__styles` map). When the operator
+  // focuses a sub-text in the panel, the property panel sets
+  // `activeFieldName` in the store. The bottom bar surfaces the same
+  // font / size / B-I-U-S / color controls — but they read & write the
+  // override in `cfg.__styles[activeFieldName]` instead of the top-
+  // level cfg. This is what lets the same toolbar style 30+ different
+  // text fields inside one HS template without per-field clutter in
+  // the right panel.
+  const activeFieldName = useBuilderStore((s) => s.activeFieldName);
+  const supportsPerFieldStyles = wt.startsWith('HS_');
+  const isPerFieldText = supportsPerFieldStyles && !!activeFieldName;
+  const fieldStyles = (cfg.__styles && typeof cfg.__styles === 'object' ? cfg.__styles : {}) as Record<string, any>;
+  const curFieldStyle = (activeFieldName && fieldStyles[activeFieldName]) || {};
+  const setFieldStyleProp = (prop: string, value: number | string | undefined) => {
+    if (!selectedZone || !activeFieldName) return;
+    const existing = { ...(fieldStyles[activeFieldName] || {}) };
+    if (value === undefined || value === '' || (typeof value === 'number' && !Number.isFinite(value))) {
+      delete existing[prop];
+    } else {
+      existing[prop] = value;
+    }
+    const nextStyles = { ...fieldStyles };
+    if (Object.keys(existing).length === 0) {
+      delete nextStyles[activeFieldName];
+    } else {
+      nextStyles[activeFieldName] = existing;
+    }
+    setCfg({ __styles: nextStyles });
+  };
+  // Read the rendered px on the focused field so the size stepper
+  // anchors on the design value (280, 180, etc.) instead of falling
+  // back to the global 16.
+  const measureFieldFontSize = (): number | null => {
+    if (!activeFieldName || typeof document === 'undefined') return null;
+    const els = document.querySelectorAll<HTMLElement>(`[data-field="${activeFieldName}"]`);
+    for (const el of Array.from(els)) {
+      if (el.closest('[data-properties-panel]')) continue;
+      const fs = parseFloat(getComputedStyle(el).fontSize);
+      if (Number.isFinite(fs)) return Math.round(fs);
+    }
+    return null;
+  };
+
   const measured = selectedZone ? measureZoneFontSize(selectedZone.id, null) : null;
   const sizeDisplay = cfg.fontSize ?? measured ?? '';
+  // Per-field path: the size override (or the measured rendered size).
+  const fieldMeasured = measureFieldFontSize();
+  const fieldSizeDisplay =
+    typeof curFieldStyle.fontSize === 'number' ? curFieldStyle.fontSize : (fieldMeasured ?? '');
+  const fieldDecoration = (curFieldStyle.textDecoration || '') as string;
+  const fieldUnderline = fieldDecoration.includes('underline');
+  const fieldStrike = fieldDecoration.includes('line-through');
+  const updateFieldDecoration = (nextU: boolean, nextS: boolean) => {
+    const parts: string[] = [];
+    if (nextU) parts.push('underline');
+    if (nextS) parts.push('line-through');
+    setFieldStyleProp('textDecoration', parts.length ? parts.join(' ') : undefined);
+  };
 
   // ── Small btn (32px) for zone-context controls ───────────────────
   const smallBtn = (label: string, onClick: () => void, icon: React.ReactNode, danger = false, active = false) => (
@@ -750,6 +807,123 @@ function BuilderBottomBar() {
       {/* ══ LEFT: zone-context section ══════════════════════════════ */}
       {selectedZone ? (
         <>
+          {/* HS per-field text styling — operator focused a sub-text on
+              the panel, route font / size / B-I-U-S / color through the
+              `__styles[fieldName]` override map. Identical control set
+              to the TEXT branch below; different read/write target. */}
+          {isPerFieldText && (
+            <>
+              <span className="px-2 text-[10px] font-semibold uppercase tracking-widest text-indigo-500 max-w-[140px] truncate" title={`Editing field: ${activeFieldName}`}>
+                {activeFieldName}
+              </span>
+
+              <select
+                aria-label="Font family"
+                title="Font family"
+                value={curFieldStyle.fontFamily || ''}
+                onChange={(e) => setFieldStyleProp('fontFamily', e.target.value || undefined)}
+                style={{ fontFamily: curFieldStyle.fontFamily || 'inherit' }}
+                className="h-8 px-2 text-xs rounded-md bg-white border border-slate-200 hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-400 cursor-pointer min-w-[110px]"
+              >
+                <option value="">Default</option>
+                {BOTTOM_BAR_FONTS.map((f) => (
+                  <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>
+                ))}
+              </select>
+
+              <div className="flex items-center ml-0.5">
+                {smallBtn('Decrease size', () => {
+                  const cur = (typeof curFieldStyle.fontSize === 'number' ? curFieldStyle.fontSize : fieldMeasured) || 16;
+                  setFieldStyleProp('fontSize', Math.max(8, cur - 2));
+                }, <span className="text-base leading-none font-semibold">−</span>)}
+                <input
+                  type="number"
+                  aria-label="Font size"
+                  title="Font size in pixels"
+                  value={fieldSizeDisplay}
+                  placeholder={fieldMeasured ? String(fieldMeasured) : ''}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    setFieldStyleProp('fontSize', Number.isFinite(v) && v > 0 ? v : undefined);
+                  }}
+                  className="h-8 w-12 px-1 text-xs text-center rounded-md bg-white border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+                {smallBtn('Increase size', () => {
+                  const cur = (typeof curFieldStyle.fontSize === 'number' ? curFieldStyle.fontSize : fieldMeasured) || 16;
+                  setFieldStyleProp('fontSize', cur + 2);
+                }, <span className="text-base leading-none font-semibold">+</span>)}
+              </div>
+
+              <div className="w-px h-5 bg-slate-200 mx-0.5" />
+
+              {smallBtn(
+                'Bold (Ctrl/⌘+B)',
+                () => setFieldStyleProp('fontWeight', (curFieldStyle.fontWeight ?? 0) >= 700 ? undefined : 800),
+                <Bold className="w-3.5 h-3.5" />,
+                false,
+                (curFieldStyle.fontWeight ?? 0) >= 700,
+              )}
+              {smallBtn(
+                'Italic (Ctrl/⌘+I)',
+                () => setFieldStyleProp('fontStyle', curFieldStyle.fontStyle === 'italic' ? undefined : 'italic'),
+                <Italic className="w-3.5 h-3.5" />,
+                false,
+                curFieldStyle.fontStyle === 'italic',
+              )}
+              {smallBtn(
+                'Underline (Ctrl/⌘+U)',
+                () => updateFieldDecoration(!fieldUnderline, fieldStrike),
+                <Underline className="w-3.5 h-3.5" />,
+                false,
+                fieldUnderline,
+              )}
+              {smallBtn(
+                'Strikethrough',
+                () => updateFieldDecoration(fieldUnderline, !fieldStrike),
+                <Strikethrough className="w-3.5 h-3.5" />,
+                false,
+                fieldStrike,
+              )}
+
+              <div className="w-px h-5 bg-slate-200 mx-0.5" />
+
+              <label className="relative w-8 h-8 rounded-md flex items-center justify-center cursor-pointer hover:bg-slate-100" title="Text color" aria-label="Text color">
+                <Palette className="w-3.5 h-3.5 text-slate-600" />
+                <span
+                  className="absolute bottom-1 left-1.5 right-1.5 h-1 rounded-sm border border-slate-300"
+                  style={{ background: curFieldStyle.color || '#1e293b' }}
+                />
+                <input
+                  type="color"
+                  value={curFieldStyle.color || '#1e293b'}
+                  onChange={(e) => setFieldStyleProp('color', e.target.value)}
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                />
+              </label>
+
+              {Object.keys(curFieldStyle).length > 0 && smallBtn(
+                'Reset field overrides',
+                () => {
+                  if (!activeFieldName) return;
+                  const next = { ...fieldStyles };
+                  delete next[activeFieldName];
+                  setCfg({ __styles: next });
+                },
+                <span className="text-[10px] font-bold">↺</span>,
+                true,
+              )}
+
+              <div className="w-px h-5 bg-slate-300 mx-1" />
+            </>
+          )}
+
+          {/* HS widget but no field focused yet — placeholder hint */}
+          {supportsPerFieldStyles && !activeFieldName && (
+            <span className="px-3 text-[11px] italic text-slate-400 select-none whitespace-nowrap">
+              Click a text field on the right →
+            </span>
+          )}
+
           {/* TEXT / RICH_TEXT / TICKER ─── font, size, B/I/U/S, color, align */}
           {isTextStyle && (
             <>

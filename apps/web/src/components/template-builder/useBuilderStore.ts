@@ -21,6 +21,11 @@ interface BuilderState {
   isTouchEnabled: boolean;
   idleResetMs: number;
   selectedIds: string[];
+  /** Per-field text editing — set when operator focuses a sub-text on
+   *  an HS widget (or any widget whose config carries a `__styles` map).
+   *  Drives the BuilderBottomBar's per-field format toolbar. Cleared
+   *  when selection changes or panel input blurs. 2026-05-08. */
+  activeFieldName: string | null;
   gridSize: number;
   snapEnabled: boolean;
   showGrid: boolean;
@@ -43,6 +48,7 @@ interface BuilderState {
   updateZones(ids: string[], patcher: (z: Zone) => Partial<Zone>, commit?: boolean): void;
   setMeta(patch: Partial<BuilderState['meta']>): void;
   select(ids: string[] | string | null, additive?: boolean): void;
+  setActiveFieldName(name: string | null): void;
   toggleLock(id: string): void;
   moveLayer(id: string, dir: 'up' | 'down' | 'top' | 'bottom'): void;
   flipCanvas(): void;
@@ -89,6 +95,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   isTouchEnabled: false,
   idleResetMs: 60000,
   selectedIds: [],
+  activeFieldName: null,
   gridSize: DEFAULT_GRID_SIZE,
   snapEnabled: true,
   showGrid: true,
@@ -107,6 +114,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     isTouchEnabled: isTouchEnabled ?? false,
     idleResetMs: idleResetMs ?? 60000,
     selectedIds: [],
+    activeFieldName: null,
     past: [],
     future: [],
     isDirty: false,
@@ -288,7 +296,9 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
 
   select: (ids, additive = false) => {
     if (ids === null) {
-      set({ selectedIds: [] });
+      // Clear field focus too — bottom bar's per-field toolbar should
+      // disappear when nothing is selected.
+      set({ selectedIds: [], activeFieldName: null });
       return;
     }
     const arr = Array.isArray(ids) ? ids : [ids];
@@ -297,9 +307,18 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
       arr.forEach(id => curr.has(id) ? curr.delete(id) : curr.add(id));
       set({ selectedIds: Array.from(curr) });
     } else {
-      set({ selectedIds: arr });
+      // Switching zones invalidates the focused field — different
+      // widget, different fields.
+      const prev = get().selectedIds;
+      const sameSelection = prev.length === arr.length && prev.every((id) => arr.includes(id));
+      set({
+        selectedIds: arr,
+        activeFieldName: sameSelection ? get().activeFieldName : null,
+      });
     }
   },
+
+  setActiveFieldName: (name) => set({ activeFieldName: name }),
 
   toggleLock: (id) => {
     const prev = get();
