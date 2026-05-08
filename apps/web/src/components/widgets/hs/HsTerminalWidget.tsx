@@ -28,6 +28,7 @@
 
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
+import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 
 export interface HsTerminalConfig {
   schoolHost?: string;
@@ -138,6 +139,19 @@ export function HsTerminalWidget({ config, live }: { config?: HsTerminalConfig; 
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
+  // 2026-05-07 — live weather. Terminal aesthetic = lowercase
+  // shell-prompt look ('46°F' + 'clear').
+  const w = useHsLiveWeather({
+    live,
+    location: c.weatherLocation,
+    unitsCelsius: c.weatherUnits === 'metric',
+    tempOverride: c.weatherTemp,
+    conditionOverride: c.weatherCondition,
+    defaultTemp: DEFAULTS.weatherTemp,
+    defaultCondition: DEFAULTS.weatherCondition,
+    formatTemp: (t) => `${t}°${c.weatherUnits === 'metric' ? 'C' : 'F'}`,
+    formatCondition: (wmo) => describeWmo(wmo).toLowerCase(),
+  });
   return (
     <HsStage
       stageStyle={{
@@ -164,7 +178,7 @@ export function HsTerminalWidget({ config, live }: { config?: HsTerminalConfig; 
         <div className="hs-tm-right">
           <span data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</span>
           <span>
-            <span className="hs-tm-on" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherTemp}</span> {c.weatherCondition}
+            <span className="hs-tm-on" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>{w.tempLabel}</span> <span data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{w.conditionLabel}</span>
           </span>
           <span className="hs-tm-on">UP 184d</span>
         </div>
@@ -189,8 +203,8 @@ export function HsTerminalWidget({ config, live }: { config?: HsTerminalConfig; 
           <div className="hs-tm-cap" data-field="clockbigCap" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockbigCap}</div>
         </div>
         <div className="hs-tm-stat" data-box="[ weatherd ]">
-          <div className="hs-tm-big" data-field="weatherdVal" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherdVal}</div>
-          <div className="hs-tm-cap" data-field="weatherdCap" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherdCap}</div>
+          <div className="hs-tm-big" data-field="weatherdVal" style={{ whiteSpace: 'pre-wrap' as const }}>{(!c.weatherdVal || c.weatherdVal === DEFAULTS.weatherdVal) ? w.tempLabel : c.weatherdVal}</div>
+          <div className="hs-tm-cap" data-field="weatherdCap" style={{ whiteSpace: 'pre-wrap' as const }}>{(!c.weatherdCap || c.weatherdCap === DEFAULTS.weatherdCap) ? w.conditionLabel : c.weatherdCap}</div>
         </div>
         <div className="hs-tm-stat" data-box="[ attendance ]">
           <div className="hs-tm-big" data-field="attendanceVal" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceVal}</div>
