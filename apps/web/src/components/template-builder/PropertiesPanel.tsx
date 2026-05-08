@@ -99,6 +99,10 @@ import { DEFAULTS as HS_TERMINAL_DEFAULTS } from '@/components/widgets/hs/HsTerm
 import { DEFAULTS as HS_TRANSIT_DEFAULTS } from '@/components/widgets/hs/HsTransitWidget';
 import { DEFAULTS as HS_GALLERY_DEFAULTS } from '@/components/widgets/hs/HsGalleryWidget';
 import { DEFAULTS as HS_ZINE_DEFAULTS } from '@/components/widgets/hs/HsZineWidget';
+// 2026-05-07 — US timezone options for the clock-timezone SelectField.
+// Replaces the plain text 'Time' / 'Date' inputs in HS landscape
+// editors so operators get a dropdown instead of a free-text field.
+import { US_TIMEZONE_OPTIONS } from '@/components/widgets/hs/useHsLiveClock';
 
 const MS_DEFAULTS_BY_TYPE: Record<string, Record<string, string>> = {
   MS_ARCADE: MS_ARCADE_DEFAULTS as any,
@@ -1973,8 +1977,9 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="scoreboardWhere" label="Where" value={cfg.scoreboardWhere || ''} placeholder={D.scoreboardWhere} onChange={(v) => setField({ scoreboardWhere: v })} />);
 
       fields.push(SH('stats', 'Stat row (clock / weather / record / attendance)'));
-      fields.push(<TextField key="clockTime" label="Clock time" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
-      fields.push(<TextField key="clockCaption" label="Clock caption" value={cfg.clockCaption || ''} placeholder={D.clockCaption} onChange={(v) => setField({ clockCaption: v })} />);
+      fields.push(<SelectField key="clockTimezone" label="Clock timezone" value={cfg.clockTimezone || ''} options={US_TIMEZONE_OPTIONS as unknown as Array<[string, string]>} onChange={(v) => setField({ clockTimezone: v })} />);
+      fields.push(<TextField key="clockTime" label="Clock time (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
+      fields.push(<TextField key="clockCaption" label="Clock caption (manual override)" value={cfg.clockCaption || ''} placeholder={D.clockCaption} onChange={(v) => setField({ clockCaption: v })} />);
       // 2026-05-07 — live weather (Open-Meteo). Manual overrides below.
       fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
       fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
@@ -2037,9 +2042,10 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="greetingHeadline" label="Big headline" value={cfg.greetingHeadline || ''} placeholder={D.greetingHeadline} onChange={(v) => setField({ greetingHeadline: v })} />);
       fields.push(<TextAreaField key="greetingSubtitle" label="Subtitle" value={cfg.greetingSubtitle || ''} placeholder={D.greetingSubtitle} rows={2} onChange={(v) => setField({ greetingSubtitle: v })} />);
 
-      fields.push(SH('clock', 'Clock panel'));
-      fields.push(<TextField key="clockTime" label="Time" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
-      fields.push(<TextField key="clockCaption" label="Caption" value={cfg.clockCaption || ''} placeholder={D.clockCaption} onChange={(v) => setField({ clockCaption: v })} />);
+      fields.push(SH('clock', 'Clock panel — live data'));
+      fields.push(<SelectField key="clockTimezone" label="Timezone" value={cfg.clockTimezone || ''} options={US_TIMEZONE_OPTIONS as unknown as Array<[string, string]>} onChange={(v) => setField({ clockTimezone: v })} />);
+      fields.push(<TextField key="clockTime" label="Time (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
+      fields.push(<TextField key="clockCaption" label="Caption (manual override)" value={cfg.clockCaption || ''} placeholder={D.clockCaption} onChange={(v) => setField({ clockCaption: v })} />);
 
       fields.push(SH('weather', 'Forecast panel — live data'));
       fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
@@ -2087,9 +2093,10 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="schoolName" label="Publication name" value={cfg.schoolName || ''} placeholder={D.schoolName} onChange={(v) => setField({ schoolName: v })} />);
       fields.push(<TextField key="schoolIssue" label="Issue line" value={cfg.schoolIssue || ''} placeholder={D.schoolIssue} onChange={(v) => setField({ schoolIssue: v })} />);
 
-      fields.push(SH('clock', 'Folio clock (top right)'));
-      fields.push(<TextField key="clockTime" label="Time" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
-      fields.push(<TextField key="clockCaption" label="Caption" value={cfg.clockCaption || ''} placeholder={D.clockCaption} onChange={(v) => setField({ clockCaption: v })} />);
+      fields.push(SH('clock', 'Folio clock (top right) — live data'));
+      fields.push(<SelectField key="clockTimezone" label="Timezone" value={cfg.clockTimezone || ''} options={US_TIMEZONE_OPTIONS as unknown as Array<[string, string]>} onChange={(v) => setField({ clockTimezone: v })} />);
+      fields.push(<TextField key="clockTime" label="Time (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
+      fields.push(<TextField key="clockCaption" label="Caption (manual override)" value={cfg.clockCaption || ''} placeholder={D.clockCaption} onChange={(v) => setField({ clockCaption: v })} />);
 
       fields.push(SH('greeting', 'Hero lede'));
       fields.push(<TextField key="greetingEyebrow" label="Eyebrow" value={cfg.greetingEyebrow || ''} placeholder={D.greetingEyebrow} onChange={(v) => setField({ greetingEyebrow: v })} />);
@@ -2151,7 +2158,8 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="schoolHost" label="Host" value={cfg.schoolHost || ''} placeholder={D.schoolHost} onChange={(v) => setField({ schoolHost: v })} />);
       fields.push(<TextField key="schoolPath" label="Path" value={cfg.schoolPath || ''} placeholder={D.schoolPath} onChange={(v) => setField({ schoolPath: v })} />);
       fields.push(<TextField key="schoolSession" label="Session line" value={cfg.schoolSession || ''} placeholder={D.schoolSession} onChange={(v) => setField({ schoolSession: v })} />);
-      fields.push(<TextField key="clockTime" label="Topbar clock" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
+      fields.push(<SelectField key="clockTimezone" label="Clock timezone" value={cfg.clockTimezone || ''} options={US_TIMEZONE_OPTIONS as unknown as Array<[string, string]>} onChange={(v) => setField({ clockTimezone: v })} />);
+      fields.push(<TextField key="clockTime" label="Topbar clock (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
       // Live weather — feeds both the topbar pair and the [weatherd] stat box.
       fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
       fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
@@ -2218,9 +2226,10 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="schoolCode" label="Code chip" value={cfg.schoolCode || ''} placeholder={D.schoolCode} onChange={(v) => setField({ schoolCode: v })} />);
       fields.push(<TextField key="brandStation" label="Station name" value={cfg.brandStation || ''} placeholder={D.brandStation} onChange={(v) => setField({ brandStation: v })} />);
       fields.push(<TextField key="brandMeta" label="Meta line" value={cfg.brandMeta || ''} placeholder={D.brandMeta} onChange={(v) => setField({ brandMeta: v })} />);
-      fields.push(<TextField key="clockTime" label="Clock time" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
-      fields.push(<TextField key="clockDate" label="Date" value={cfg.clockDate || ''} placeholder={D.clockDate} onChange={(v) => setField({ clockDate: v })} />);
-      fields.push(<TextField key="clockTz" label="Timezone" value={cfg.clockTz || ''} placeholder={D.clockTz} onChange={(v) => setField({ clockTz: v })} />);
+      fields.push(<SelectField key="clockTimezone" label="Clock timezone" value={cfg.clockTimezone || ''} options={US_TIMEZONE_OPTIONS as unknown as Array<[string, string]>} onChange={(v) => setField({ clockTimezone: v })} />);
+      fields.push(<TextField key="clockTime" label="Clock time (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
+      fields.push(<TextField key="clockDate" label="Date (manual override)" value={cfg.clockDate || ''} placeholder={D.clockDate} onChange={(v) => setField({ clockDate: v })} />);
+      fields.push(<TextField key="clockTz" label="Display label (e.g. LOCAL · UTC-05:00)" value={cfg.clockTz || ''} placeholder={D.clockTz} onChange={(v) => setField({ clockTz: v })} />);
 
       fields.push(SH('greeting', 'Now boarding hero'));
       fields.push(<TextField key="greetingGate" label="Room / gate" value={cfg.greetingGate || ''} placeholder={D.greetingGate} onChange={(v) => setField({ greetingGate: v })} />);
@@ -2277,8 +2286,9 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       );
       fields.push(SH('school', 'Masthead'));
       fields.push(<TextField key="schoolName" label="Publication name" value={cfg.schoolName || ''} placeholder={D.schoolName} onChange={(v) => setField({ schoolName: v })} />);
-      fields.push(<TextField key="clockDate" label="Date (nav)" value={cfg.clockDate || ''} placeholder={D.clockDate} onChange={(v) => setField({ clockDate: v })} />);
-      fields.push(<TextField key="clockTime" label="Time (nav)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
+      fields.push(<SelectField key="clockTimezone" label="Clock timezone" value={cfg.clockTimezone || ''} options={US_TIMEZONE_OPTIONS as unknown as Array<[string, string]>} onChange={(v) => setField({ clockTimezone: v })} />);
+      fields.push(<TextField key="clockDate" label="Date nav (manual override)" value={cfg.clockDate || ''} placeholder={D.clockDate} onChange={(v) => setField({ clockDate: v })} />);
+      fields.push(<TextField key="clockTime" label="Time nav (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
       // Live weather — Gallery renders a single "Clear, 46°" string.
       fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
       fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
@@ -2353,8 +2363,9 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="brandLabel1" label="Project label" value={cfg.brandLabel1 || ''} placeholder={D.brandLabel1} onChange={(v) => setField({ brandLabel1: v })} />);
       fields.push(<TextField key="brandProject" label="Project value" value={cfg.brandProject || ''} placeholder={D.brandProject} onChange={(v) => setField({ brandProject: v })} />);
       fields.push(<TextField key="clockLabel" label="Date/time label" value={cfg.clockLabel || ''} placeholder={D.clockLabel} onChange={(v) => setField({ clockLabel: v })} />);
-      fields.push(<TextField key="clockDate" label="Date" value={cfg.clockDate || ''} placeholder={D.clockDate} onChange={(v) => setField({ clockDate: v })} />);
-      fields.push(<TextField key="clockTime" label="Time" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
+      fields.push(<SelectField key="clockTimezone" label="Clock timezone" value={cfg.clockTimezone || ''} options={US_TIMEZONE_OPTIONS as unknown as Array<[string, string]>} onChange={(v) => setField({ clockTimezone: v })} />);
+      fields.push(<TextField key="clockDate" label="Date (manual override)" value={cfg.clockDate || ''} placeholder={D.clockDate} onChange={(v) => setField({ clockDate: v })} />);
+      fields.push(<TextField key="clockTime" label="Time (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
       fields.push(<TextField key="brandSheet" label="Sheet" value={cfg.brandSheet || ''} placeholder={D.brandSheet} onChange={(v) => setField({ brandSheet: v })} />);
       fields.push(<TextField key="brandRev" label="Rev" value={cfg.brandRev || ''} placeholder={D.brandRev} onChange={(v) => setField({ brandRev: v })} />);
 
@@ -2456,9 +2467,10 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextAreaField key="announcementBody" label="Body" value={cfg.announcementBody || ''} placeholder={D.announcementBody} rows={3} onChange={(v) => setField({ announcementBody: v })} />);
       fields.push(<TextField key="announcementDate" label="When" value={cfg.announcementDate || ''} placeholder={D.announcementDate} onChange={(v) => setField({ announcementDate: v })} />);
 
-      fields.push(SH('clock', 'Floating clock'));
+      fields.push(SH('clock', 'Floating clock — live data'));
       fields.push(<TextField key="clockLabel" label="Label" value={cfg.clockLabel || ''} placeholder={D.clockLabel} onChange={(v) => setField({ clockLabel: v })} />);
-      fields.push(<TextField key="clockTime" label="Time" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
+      fields.push(<SelectField key="clockTimezone" label="Timezone" value={cfg.clockTimezone || ''} options={US_TIMEZONE_OPTIONS as unknown as Array<[string, string]>} onChange={(v) => setField({ clockTimezone: v })} />);
+      fields.push(<TextField key="clockTime" label="Time (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
       // Live weather — Zine renders the full 'tue · apr 21 · 46° · clear' lowercase string.
       fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
       fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
