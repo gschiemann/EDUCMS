@@ -44,6 +44,7 @@
 
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock, resolveHsDate } from './useHsLiveClock';
+import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 
 export interface HsGalleryConfig {
   schoolName?: string;
@@ -142,6 +143,18 @@ export function HsGalleryPortraitWidget({ config, live }: { config?: Cfg; live?:
   const liveDate = resolveHsDate(c, now, DEFAULTS.clockDate, (d) =>
     d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }),
   );
+  // 2026-05-07 — live weather as combined 'Clear, 46°' string (matches landscape).
+  const w = useHsLiveWeather({
+    live,
+    location: c.weatherLocation,
+    unitsCelsius: c.weatherUnits === 'metric',
+    tempOverride: '',
+    conditionOverride: c.weatherCondition,
+    defaultTemp: '',
+    defaultCondition: DEFAULTS.weatherCondition,
+    formatTemp: (t) => `${t}°`,
+    formatCondition: (wmo, t) => `${describeWmo(wmo)}, ${t}°`,
+  });
   const events = [
     { n: c.event0Num, name: c.event0Name, meta: c.event0Meta, time: c.event0Time, day: c.event0Day },
     { n: c.event1Num, name: c.event1Name, meta: c.event1Meta, time: c.event1Time, day: c.event1Day },
@@ -177,7 +190,7 @@ export function HsGalleryPortraitWidget({ config, live }: { config?: Cfg; live?:
           <span className="hs-glp-mast-dot">·</span>
           <span className="hs-glp-mast-on" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</span>
           <span className="hs-glp-mast-dot">·</span>
-          <span data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherCondition}</span>
+          <span data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{w.conditionLabel}</span>
         </div>
       </div>
 
