@@ -28,6 +28,7 @@
 
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock, resolveHsDate } from './useHsLiveClock';
+import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 
 export interface HsTransitConfig {
   schoolCode?: string;
@@ -131,6 +132,18 @@ export function HsTransitPortraitWidget({ config, live }: { config?: Cfg; live?:
     const mo = d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
     return `${wk} · ${mo} ${d.getDate()}`;
   });
+  // 2026-05-07 — live weather (matches landscape sibling).
+  const w = useHsLiveWeather({
+    live,
+    location: c.weatherLocation,
+    unitsCelsius: c.weatherUnits === 'metric',
+    tempOverride: c.weatherTemp,
+    conditionOverride: c.weatherCondition,
+    defaultTemp: DEFAULTS.weatherTemp,
+    defaultCondition: DEFAULTS.weatherCondition,
+    formatTemp: (t) => `${t}°${c.weatherUnits === 'metric' ? 'C' : 'F'}`,
+    formatCondition: (wmo) => describeWmo(wmo).toUpperCase(),
+  });
   const deps = [
     { time: c.dep0Time, code: c.dep0Code, dest: c.dep0Dest, note: c.dep0Note, room: c.dep0Room, teacher: c.dep0Teacher, status: c.dep0Status },
     { time: c.dep1Time, code: c.dep1Code, dest: c.dep1Dest, note: c.dep1Note, room: c.dep1Room, teacher: c.dep1Teacher, status: c.dep1Status },
@@ -181,11 +194,11 @@ export function HsTransitPortraitWidget({ config, live }: { config?: Cfg; live?:
             </span>
             <span className="hs-trp-sep">·</span>
             <span className="hs-trp-cond" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>
-              {c.weatherCondition}
+              {w.conditionLabel}
             </span>
             <span className="hs-trp-sep">·</span>
             <span className="hs-trp-temp" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>
-              {c.weatherTemp}
+              {w.tempLabel}
             </span>
           </div>
         </div>
