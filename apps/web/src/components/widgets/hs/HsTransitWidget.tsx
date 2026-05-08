@@ -61,7 +61,7 @@ export interface HsTransitConfig {
   tickerMessage?: string;
 }
 
-const DEFAULTS: Required<HsTransitConfig> = {
+export const DEFAULTS: Required<HsTransitConfig> = {
   schoolCode: 'WHS',
   brandStation: 'WESTRIDGE HIGH · MAIN TERMINAL',
   brandMeta: 'GRADES 9–12 · TERM SPRING 2026 · ON TIME 94%',
