@@ -2353,8 +2353,13 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="clockbigLabel" label="Clock label" value={cfg.clockbigLabel || ''} placeholder={D.clockbigLabel} onChange={(v) => setField({ clockbigLabel: v })} />);
       fields.push(<TextField key="clockbigVal" label="Clock value" value={cfg.clockbigVal || ''} placeholder={D.clockbigVal} onChange={(v) => setField({ clockbigVal: v })} />);
       fields.push(<TextField key="clockbigCap" label="Clock caption" value={cfg.clockbigCap || ''} placeholder={D.clockbigCap} onChange={(v) => setField({ clockbigCap: v })} />);
-      fields.push(<TextField key="weatherTemp" label="Weather temp" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
-      fields.push(<TextField key="weatherCondition" label="Weather condition" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
+      // 2026-05-07 — live weather. Operator picks location (zip/auto)
+      // and units; renderer fetches from Open-Meteo every 15 min.
+      // Manual overrides below win if operator types into them.
+      fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
+      fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
+      fields.push(<TextField key="weatherTemp" label="Weather temp (manual override)" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
+      fields.push(<TextField key="weatherCondition" label="Weather condition (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
       fields.push(<TextField key="attendanceValue" label="Attendance" value={cfg.attendanceValue || ''} placeholder={D.attendanceValue} onChange={(v) => setField({ attendanceValue: v })} />);
       fields.push(<TextField key="attendanceCap" label="Attendance caption" value={cfg.attendanceCap || ''} placeholder={D.attendanceCap} onChange={(v) => setField({ attendanceCap: v })} />);
       fields.push(<TextField key="countdownLabel" label="Countdown label" value={cfg.countdownLabel || ''} placeholder={D.countdownLabel} onChange={(v) => setField({ countdownLabel: v })} />);
