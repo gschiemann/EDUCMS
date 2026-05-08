@@ -460,10 +460,10 @@ const CSS = `
 
 /* ----- REGION 1: top bar + ASCII banner ----- */
 .hs-tp-topbar {
-  position: absolute; top: 40px; left: 50px; right: 50px; height: 110px;
+  position: absolute; top: 40px; left: 50px; right: 50px; height: 130px;
   border: 4px solid #9bff9b; padding: 0 36px;
   display: flex; align-items: center; justify-content: space-between;
-  font-size: 46px; letter-spacing: .08em;
+  font-size: 54px; letter-spacing: .08em;
   background: rgba(0,20,0,.4);
   z-index: 2;
 }
@@ -480,14 +480,14 @@ const CSS = `
 }
 
 .hs-tp-banner-wrap {
-  position: absolute; top: 190px; left: 50px; right: 50px; height: 380px;
+  position: absolute; top: 200px; left: 50px; right: 50px; height: 400px;
   border: 4px solid #9bff9b;
   background: rgba(0,20,0,.4);
   padding: 32px 44px;
   z-index: 2;
 }
 .hs-tp-prompt-line {
-  font-size: 42px; color: #4a7a4a; letter-spacing: .06em;
+  font-size: 50px; color: #4a7a4a; letter-spacing: .06em;
 }
 .hs-tp-banner {
   font-family: 'VT323', monospace;
@@ -512,15 +512,15 @@ const CSS = `
 }
 @keyframes hsTpBlink { 50% { opacity: 0; } }
 .hs-tp-session {
-  margin-top: 6px;
-  font-size: 32px;
+  margin-top: 10px;
+  font-size: 40px;
   color: #9bff9b; opacity: .85;
   letter-spacing: .08em;
 }
 
 /* ----- REGION 2: whoami teacher card ----- */
 .hs-tp-whoami {
-  position: absolute; top: 620px; left: 50px; right: 50px; height: 620px;
+  position: absolute; top: 620px; left: 50px; right: 50px; height: 700px;
   border: 4px solid #9bff9b;
   background: rgba(0,20,0,.4);
   padding: 36px 48px;
@@ -531,14 +531,14 @@ const CSS = `
 .hs-tp-anno::before,
 .hs-tp-uname::before {
   content: attr(data-box);
-  position: absolute; top: -22px; left: 36px;
-  background: #081a08; padding: 0 18px;
-  font-size: 28px; color: #ffe37a;
+  position: absolute; top: -28px; left: 36px;
+  background: #081a08; padding: 0 22px;
+  font-size: 36px; color: #ffe37a;
   letter-spacing: .2em; text-transform: uppercase;
   text-shadow: 0 0 12px rgba(255,227,122,.4);
 }
 .hs-tp-cmdline {
-  font-size: 38px; color: #4a7a4a;
+  font-size: 46px; color: #4a7a4a;
   letter-spacing: .05em;
 }
 .hs-tp-name {
@@ -551,32 +551,32 @@ const CSS = `
   margin: 14px 0 18px;
 }
 .hs-tp-kv {
-  display: grid; grid-template-columns: 280px 1fr;
-  gap: 8px 28px; margin: 0;
-  font-size: 36px;
+  display: grid; grid-template-columns: 320px 1fr;
+  gap: 10px 32px; margin: 0;
+  font-size: 44px;
 }
 .hs-tp-kv dt { color: #4a7a4a; }
 .hs-tp-kv dd { margin: 0; color: #9bff9b; text-shadow: 0 0 10px rgba(155,255,155,.4); }
 .hs-tp-quote {
   border-left: 6px solid #ffe37a;
-  padding-left: 26px;
-  margin-top: 24px;
-  font-size: 36px;
-  color: #cfe9cf; font-style: italic; line-height: 1.32;
+  padding-left: 30px;
+  margin-top: 28px;
+  font-size: 44px;
+  color: #cfe9cf; font-style: italic; line-height: 1.3;
 }
 
 /* ----- REGION 3: crontab -l events ----- */
 .hs-tp-events {
-  position: absolute; top: 1300px; left: 50px; right: 50px; height: 1180px;
+  position: absolute; top: 1360px; left: 50px; right: 50px; height: 1140px;
   border: 4px solid #9bff9b;
   background: rgba(0,20,0,.4);
   padding: 36px 48px;
   z-index: 2;
 }
 .hs-tp-evheader {
-  display: grid; grid-template-columns: 130px 220px 1fr;
+  display: grid; grid-template-columns: 160px 240px 1fr;
   gap: 24px;
-  font-size: 30px; color: #4a7a4a;
+  font-size: 38px; color: #4a7a4a;
   letter-spacing: .18em; text-transform: uppercase;
   padding: 18px 0 14px;
   border-bottom: 2px dashed rgba(155,255,155,.35);
@@ -588,9 +588,9 @@ const CSS = `
   border-bottom: 1px dashed rgba(155,255,155,.22);
 }
 .hs-tp-evrow-line1 {
-  display: grid; grid-template-columns: 130px 220px 1fr 280px;
+  display: grid; grid-template-columns: 160px 240px 1fr 320px;
   gap: 18px;
-  font-size: 36px; color: #9bff9b;
+  font-size: 44px; color: #9bff9b;
   align-items: baseline;
 }
 .hs-tp-evpre { color: #ffe37a; font-weight: 700; letter-spacing: .1em; }
@@ -603,46 +603,46 @@ const CSS = `
 .hs-tp-evwho { color: #7adfff; text-align: right; letter-spacing: .04em; }
 .hs-tp-evrow-line2 {
   display: grid; grid-template-columns: 1fr auto;
-  gap: 24px; padding: 8px 0 0 130px;
-  font-size: 40px;
+  gap: 24px; padding: 10px 0 0 160px;
+  font-size: 50px;
   align-items: baseline;
 }
 .hs-tp-evname { color: #cfe9cf; line-height: 1.15; }
 .hs-tp-evpath {
   color: #ffe37a;
-  font-size: 30px;
+  font-size: 38px;
   letter-spacing: .08em;
   text-transform: lowercase;
 }
 
 .hs-tp-countdown-row {
-  display: grid; grid-template-columns: 320px auto 1fr;
-  gap: 28px; align-items: center;
+  display: grid; grid-template-columns: 360px auto 1fr;
+  gap: 32px; align-items: center;
   margin-top: 28px; padding-top: 22px;
   border-top: 2px solid rgba(155,255,155,.35);
 }
 .hs-tp-cd-pre {
   color: #ffe37a; font-weight: 700; letter-spacing: .12em;
-  font-size: 30px;
+  font-size: 38px;
 }
 .hs-tp-cd-val {
   font-family: 'VT323', monospace;
-  font-size: 220px; line-height: .8;
+  font-size: 240px; line-height: .8;
   color: #ffe37a;
   text-shadow: 0 0 40px rgba(255,227,122,.6);
 }
 .hs-tp-cd-lbl {
-  font-size: 38px; color: #9bff9b;
-  display: flex; flex-direction: column; gap: 6px;
+  font-size: 50px; color: #9bff9b;
+  display: flex; flex-direction: column; gap: 8px;
   line-height: 1.15;
 }
 .hs-tp-cd-sub {
-  color: #4a7a4a; font-size: 30px;
+  color: #4a7a4a; font-size: 38px;
 }
 
 /* ----- REGION 4: announcements tail -f ----- */
 .hs-tp-anno {
-  position: absolute; top: 2540px; left: 50px; right: 50px; height: 560px;
+  position: absolute; top: 2540px; left: 50px; right: 50px; height: 600px;
   border: 4px solid #ff7a7a;
   background: rgba(40,8,8,.4);
   padding: 36px 48px;
@@ -651,29 +651,29 @@ const CSS = `
 .hs-tp-anno::before { color: #ff7a7a; }
 .hs-tp-anno-tag {
   margin-top: 14px;
-  font-size: 32px; letter-spacing: .12em;
+  font-size: 40px; letter-spacing: .12em;
   color: #ff7a7a;
 }
 .hs-tp-anno-h3 {
   font-family: 'VT323', monospace;
-  font-size: 110px; line-height: .98;
-  margin: 12px 0 0;
+  font-size: 130px; line-height: .98;
+  margin: 14px 0 0;
   color: #ffe37a;
   text-shadow: 0 0 32px rgba(255,227,122,.5);
   text-transform: uppercase;
 }
 .hs-tp-anno-p {
-  font-size: 32px; color: #cfe9cf;
-  margin: 14px 0 0; line-height: 1.35;
+  font-size: 42px; color: #cfe9cf;
+  margin: 16px 0 0; line-height: 1.3;
 }
 .hs-tp-anno-when {
-  font-size: 30px; color: #ff7a7a;
-  margin-top: 18px; letter-spacing: .12em;
+  font-size: 38px; color: #ff7a7a;
+  margin-top: 20px; letter-spacing: .12em;
 }
 
 /* ----- REGION 5: uname -a facts strip ----- */
 .hs-tp-uname {
-  position: absolute; top: 3160px; left: 50px; right: 50px; height: 380px;
+  position: absolute; top: 3180px; left: 50px; right: 50px; height: 480px;
   border: 4px solid #9bff9b;
   background: rgba(0,20,0,.4);
   padding: 30px 44px;
@@ -686,24 +686,24 @@ const CSS = `
 }
 .hs-tp-fact {
   border-left: 4px solid #9bff9b;
-  padding: 4px 0 4px 20px;
-  display: flex; flex-direction: column; gap: 6px;
+  padding: 4px 0 4px 22px;
+  display: flex; flex-direction: column; gap: 8px;
 }
 .hs-tp-fact-key {
-  font-size: 28px; color: #4a7a4a;
+  font-size: 38px; color: #4a7a4a;
   letter-spacing: .22em; text-transform: uppercase;
 }
 .hs-tp-fact-val {
   font-family: 'VT323', monospace;
-  font-size: 90px; line-height: .9;
+  font-size: 110px; line-height: .9;
   color: #9bff9b;
   text-shadow: 0 0 22px rgba(155,255,155,.55);
 }
 .hs-tp-fact-val-sm {
-  font-size: 56px; line-height: 1; padding-top: 8px;
+  font-size: 70px; line-height: 1; padding-top: 8px;
 }
 .hs-tp-fact-sub {
-  font-size: 28px; color: #4a7a4a; line-height: 1.3;
+  font-size: 36px; color: #4a7a4a; line-height: 1.3;
 }
 
 /* ----- REGION 6: bottom syslog ticker ----- */
@@ -717,14 +717,14 @@ const CSS = `
 .hs-tp-tk-tag {
   background: #061506; color: #9bff9b;
   height: 100%; display: flex; align-items: center;
-  padding: 0 38px;
-  font-weight: 700; font-size: 36px;
+  padding: 0 44px;
+  font-weight: 700; font-size: 44px;
   letter-spacing: .16em;
   flex-shrink: 0;
 }
 .hs-tp-tk-msg {
-  font-weight: 700; font-size: 36px;
-  padding-left: 44px; white-space: nowrap;
+  font-weight: 700; font-size: 44px;
+  padding-left: 50px; white-space: nowrap;
   letter-spacing: .08em;
   text-transform: uppercase;
   animation: hsTpScroll 50s linear infinite;
