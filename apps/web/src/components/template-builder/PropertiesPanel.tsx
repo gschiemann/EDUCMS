@@ -103,6 +103,18 @@ import { DEFAULTS as HS_ZINE_DEFAULTS } from '@/components/widgets/hs/HsZineWidg
 // Replaces the plain text 'Time' / 'Date' inputs in HS landscape
 // editors so operators get a dropdown instead of a free-text field.
 import { US_TIMEZONE_OPTIONS } from '@/components/widgets/hs/useHsLiveClock';
+// 2026-05-07 — Holiday lobby pack static field schema. Each variant +
+// grade combo (18 total) has a hand-extracted [data-field] schema so
+// PropertiesPanel can render editable TextFields synchronously when an
+// operator selects a HOLIDAY zone — no race with the iframe-bridge
+// holiday:ready postMessage. Iframe schema event still fires (kept for
+// click-to-scroll behavior) but is no longer load-bearing for
+// rendering. See feat(holiday) commit for extraction.
+import {
+  holidayFieldSchemaFor,
+  type HolidayVariant,
+  type HolidayGradeLevel,
+} from '@/components/widgets/HolidayWidget';
 
 const MS_DEFAULTS_BY_TYPE: Record<string, Record<string, string>> = {
   MS_ARCADE: MS_ARCADE_DEFAULTS as any,
@@ -1614,15 +1626,20 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
           onChange={(v) => setField({ gradeLevel: v })}
         />,
       );
-      // The HolidayPanelExtras component listens for the
-      // holiday:fields-loaded CustomEvent emitted by HolidayWidget on
-      // iframe load and renders one Text/TextArea per editable field.
+      // HolidayPanelExtras pulls the field schema from the static
+      // HOLIDAY_FIELD_SCHEMA map exported by HolidayWidget — synchronous
+      // render so operators see editable fields the moment they click
+      // the zone (no race with iframe-bridge holiday:ready postMessage,
+      // which had been dropping the schema for newly-mounted panels and
+      // showing "Loading editable fields…" forever — user reported as
+      // "this has no hot spot at all" on HS Thanksgiving 2026-05-07).
       // setField writes to cfg.fields[key] which HolidayWidget then
       // posts to the iframe — the iframe's bridge updates textContent.
       fields.push(
         <HolidayPanelExtras
           key="holiday-extras"
-          zoneId={zone.id}
+          variant={(cfg.variant || 'christmas') as HolidayVariant}
+          gradeLevel={(cfg.gradeLevel || 'es') as HolidayGradeLevel}
           values={(cfg.fields || {}) as Record<string, string>}
           onFieldChange={(key, value) => {
             const next = { ...(cfg.fields || {}), [key]: value };
@@ -3130,54 +3147,42 @@ function TextAreaField({ label, value, placeholder, onChange, rows = 3 }: { labe
 
 /**
  * HolidayPanelExtras — renders the editable text fields for a HOLIDAY
- * widget. Schema is delivered via the `holiday:fields-loaded` window
- * event by HolidayWidget (which gets it from the iframe bridge on
- * load). Until the schema arrives, shows a "loading" placeholder.
+ * widget. Schema is the static map exported by HolidayWidget
+ * (HOLIDAY_FIELD_SCHEMA), keyed by `${gradeLevel}-${variant}`.
  *
- * Why this lives in PropertiesPanel: the holiday HTML files have ~45
- * editable hotspots each. We don't want a hand-maintained registry
- * for ~800 entries. The bridge delivers the schema dynamically; this
- * component just renders form fields from it.
+ * Why static and not iframe-bridge-driven: the iframe-bridge approach
+ * had a race — when the iframe loaded BEFORE the panel mounted (the
+ * common case the moment an operator clicks a HOLIDAY zone for the
+ * first time), the holiday:ready postMessage already fired and the
+ * panel's listener missed it, leaving "Loading editable fields…"
+ * stuck forever. The user reported this as "this has no hot spot at
+ * all" on the HS Thanksgiving template (2026-05-07).
+ *
+ * Sections are grouped by the dotted-key prefix (e.g. all keys
+ * starting with `headline.` form the "Headline" section). Each
+ * section carries `data-field-section="<sectionKey>"` AND each
+ * TextField wrapper carries `data-field-section="<fullKey>"` so the
+ * generic template-edit-field listener up top of this file can scroll
+ * to whichever the bridge reports the operator clicked in the iframe.
+ *
+ * The iframe bridge still fires holiday:fieldClicked → translated to
+ * template-edit-field by HolidayWidget — but it's no longer
+ * load-bearing for rendering. Click-to-scroll-to-panel-section
+ * continues to work via that path.
  */
 function HolidayPanelExtras({
-  zoneId,
+  variant,
+  gradeLevel,
   values,
   onFieldChange,
 }: {
-  zoneId: string;
+  variant: HolidayVariant;
+  gradeLevel: HolidayGradeLevel;
   values: Record<string, string>;
   onFieldChange: (key: string, value: string) => void;
 }) {
-  const [schema, setSchema] = useState<Array<{ key: string; defaultText: string; multiline: boolean }>>([]);
-  const [loading, setLoading] = useState(true);
+  const schema = holidayFieldSchemaFor(variant, gradeLevel);
 
-  useEffect(() => {
-    setLoading(true);
-    setSchema([]);
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { zoneId: string | null; fields: Array<{ key: string; defaultText: string; multiline: boolean }> } | undefined;
-      if (!detail || detail.zoneId !== zoneId) return;
-      setSchema(detail.fields || []);
-      setLoading(false);
-    };
-    window.addEventListener('holiday:fields-loaded', handler);
-    // Failsafe: if the iframe is slow or already loaded before this
-    // mount happened, we'd never get the event. After 4s give up the
-    // loading state — operator can still edit via the holiday picker.
-    const t = setTimeout(() => setLoading(false), 4000);
-    return () => {
-      window.removeEventListener('holiday:fields-loaded', handler);
-      clearTimeout(t);
-    };
-  }, [zoneId]);
-
-  if (loading && schema.length === 0) {
-    return (
-      <div className="text-[10px] text-slate-400 italic px-1">
-        Loading editable fields from the scene…
-      </div>
-    );
-  }
   if (schema.length === 0) {
     return (
       <div className="text-[10px] text-slate-400 italic px-1">
@@ -3186,7 +3191,8 @@ function HolidayPanelExtras({
     );
   }
 
-  // Pretty-format keys: dot notation → "Section › Field"
+  // Pretty-format keys: 'headline.kicker' → 'Headline › Kicker'.
+  // 'sked.0.d' → 'Sked › 0 › D'.
   const labelFor = (key: string) => {
     if (!key.includes('.')) return key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
     const parts = key.split('.');
@@ -3195,24 +3201,66 @@ function HolidayPanelExtras({
       .join(' › ');
   };
 
+  // Pretty-format section header: 'headline' → 'Headline'.
+  const sectionLabelFor = (sectionKey: string) =>
+    sectionKey.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
+
+  // Group fields by their first-segment prefix so the panel reads as
+  // "Masthead", "Headline", "Drive", etc. — same SH(...) pattern the
+  // ANIMATED_WELCOME case uses up above.
+  type Group = { sectionKey: string; fields: typeof schema };
+  const groups: Group[] = [];
+  const groupIndex: Record<string, number> = {};
+  for (const f of schema) {
+    const sectionKey = f.key.includes('.') ? f.key.split('.')[0] : '_root';
+    if (groupIndex[sectionKey] === undefined) {
+      groupIndex[sectionKey] = groups.length;
+      groups.push({ sectionKey, fields: [] });
+    }
+    groups[groupIndex[sectionKey]].fields.push(f);
+  }
+
   return (
     <>
       <div className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1 pt-2">
         Editable text <span className="font-normal lowercase">({schema.length})</span>
       </div>
-      {schema.map((f) => {
-        const current = values[f.key] ?? '';
-        const Field = f.multiline ? TextAreaField : TextField;
-        return (
-          <Field
-            key={f.key}
-            label={labelFor(f.key)}
-            value={current}
-            placeholder={f.defaultText}
-            onChange={(v) => onFieldChange(f.key, v)}
-          />
-        );
-      })}
+      {groups.map((group) => (
+        <div
+          key={group.sectionKey}
+          // data-field-section here so a click on any hotspot whose
+          // dotted key starts with this section scrolls the whole
+          // group into view (template-edit-field handler tries
+          // sectionKey first, then fieldKey).
+          data-field-section={group.sectionKey}
+          className="space-y-2 pt-2 border-t border-slate-100 first:border-t-0"
+        >
+          {group.sectionKey !== '_root' && (
+            <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest px-1">
+              {sectionLabelFor(group.sectionKey)}
+            </div>
+          )}
+          {group.fields.map((f) => {
+            const current = values[f.key] ?? '';
+            const Field = f.multiline ? TextAreaField : TextField;
+            return (
+              // Wrapping div carries data-field-section="<fullKey>"
+              // so the generic template-edit-field listener can scroll
+              // straight to this exact field (more precise than
+              // section-only). The handler tries fieldKey first, then
+              // sectionKey, so both work.
+              <div key={f.key} data-field-section={f.key}>
+                <Field
+                  label={labelFor(f.key)}
+                  value={current}
+                  placeholder={f.defaultText}
+                  onChange={(v) => onFieldChange(f.key, v)}
+                />
+              </div>
+            );
+          })}
+        </div>
+      ))}
     </>
   );
 }
