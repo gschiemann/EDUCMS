@@ -277,8 +277,8 @@ export function HsGalleryPortraitWidget({ config, live }: { config?: Cfg; live?:
         <div className="hs-glp-wall">
           <div className="hs-glp-wall-cell">
             <div className="hs-glp-wall-label">Local Time</div>
-            <div className="hs-glp-wall-val" data-field="clockbigVal" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockbigVal}</div>
-            <div className="hs-glp-wall-cap" data-field="clockbigCap" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockbigCap}</div>
+            <div className="hs-glp-wall-val" data-field="clockbigVal" style={{ whiteSpace: 'pre-wrap' as const }}>{(!c.clockbigVal || c.clockbigVal === DEFAULTS.clockbigVal) ? clock.time : c.clockbigVal}</div>
+            <div className="hs-glp-wall-cap" data-field="clockbigCap" style={{ whiteSpace: 'pre-wrap' as const }}>{(!c.clockbigCap || c.clockbigCap === DEFAULTS.clockbigCap) ? clock.caption : c.clockbigCap}</div>
           </div>
           <div className="hs-glp-wall-cell">
             <div className="hs-glp-wall-label">Today&apos;s Weather</div>

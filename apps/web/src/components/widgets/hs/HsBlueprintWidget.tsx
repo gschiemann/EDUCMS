@@ -185,8 +185,8 @@ export function HsBlueprintWidget({ config, live }: { config?: HsBlueprintConfig
       <div className="hs-bp-data">
         <div className="hs-bp-panel" data-sheet="A-01.1">
           <div className="hs-bp-kicker" data-field="clockbigLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockbigLabel}</div>
-          <div className="hs-bp-big" data-field="clockbigVal" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockbigVal}</div>
-          <div className="hs-bp-cap" data-field="clockbigCap" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockbigCap}</div>
+          <div className="hs-bp-big" data-field="clockbigVal" style={{ whiteSpace: 'pre-wrap' as const }}>{(!c.clockbigVal || c.clockbigVal === DEFAULTS.clockbigVal) ? clock.time : c.clockbigVal}</div>
+          <div className="hs-bp-cap" data-field="clockbigCap" style={{ whiteSpace: 'pre-wrap' as const }}>{(!c.clockbigCap || c.clockbigCap === DEFAULTS.clockbigCap) ? clock.caption : c.clockbigCap}</div>
         </div>
         <div className="hs-bp-panel" data-sheet="A-01.2">
           <div className="hs-bp-kicker">EXT. CONDITIONS</div>

@@ -183,8 +183,8 @@ export function HsGalleryWidget({ config, live }: { config?: HsGalleryConfig; li
       <div className="hs-gl-wall">
         <div>
           <div className="hs-gl-label">Local Time</div>
-          <div className="hs-gl-val" data-field="clockbigVal" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockbigVal}</div>
-          <div className="hs-gl-cap" data-field="clockbigCap" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockbigCap}</div>
+          <div className="hs-gl-val" data-field="clockbigVal" style={{ whiteSpace: 'pre-wrap' as const }}>{(!c.clockbigVal || c.clockbigVal === DEFAULTS.clockbigVal) ? clock.time : c.clockbigVal}</div>
+          <div className="hs-gl-cap" data-field="clockbigCap" style={{ whiteSpace: 'pre-wrap' as const }}>{(!c.clockbigCap || c.clockbigCap === DEFAULTS.clockbigCap) ? clock.caption : c.clockbigCap}</div>
         </div>
         <div>
           <div className="hs-gl-label">Today&apos;s Weather</div>

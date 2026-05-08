@@ -355,10 +355,10 @@ export function HsTerminalPortraitWidget({ config, live }: { config?: Cfg; live?
           <div className="hs-tp-fact">
             <div className="hs-tp-fact-key">CLOCK</div>
             <div className="hs-tp-fact-val" data-field="clockbigVal" style={{ whiteSpace: 'pre-wrap' as const }}>
-              {c.clockbigVal}
+              {(!c.clockbigVal || c.clockbigVal === DEFAULTS.clockbigVal) ? clock.time : c.clockbigVal}
             </div>
             <div className="hs-tp-fact-sub" data-field="clockbigCap" style={{ whiteSpace: 'pre-wrap' as const }}>
-              {c.clockbigCap}
+              {(!c.clockbigCap || c.clockbigCap === DEFAULTS.clockbigCap) ? clock.caption : c.clockbigCap}
             </div>
           </div>
           <div className="hs-tp-fact">

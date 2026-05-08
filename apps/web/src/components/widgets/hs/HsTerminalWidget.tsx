@@ -202,8 +202,8 @@ export function HsTerminalWidget({ config, live }: { config?: HsTerminalConfig; 
 
       <div className="hs-tm-stats">
         <div className="hs-tm-stat" data-box="[ clock ]">
-          <div className="hs-tm-big" data-field="clockbigVal" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockbigVal}</div>
-          <div className="hs-tm-cap" data-field="clockbigCap" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockbigCap}</div>
+          <div className="hs-tm-big" data-field="clockbigVal" style={{ whiteSpace: 'pre-wrap' as const }}>{(!c.clockbigVal || c.clockbigVal === DEFAULTS.clockbigVal) ? clock.time : c.clockbigVal}</div>
+          <div className="hs-tm-cap" data-field="clockbigCap" style={{ whiteSpace: 'pre-wrap' as const }}>{(!c.clockbigCap || c.clockbigCap === DEFAULTS.clockbigCap) ? clock.caption : c.clockbigCap}</div>
         </div>
         <div className="hs-tm-stat" data-box="[ weatherd ]">
           <div className="hs-tm-big" data-field="weatherdVal" style={{ whiteSpace: 'pre-wrap' as const }}>{(!c.weatherdVal || c.weatherdVal === DEFAULTS.weatherdVal) ? w.tempLabel : c.weatherdVal}</div>

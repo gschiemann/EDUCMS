@@ -213,8 +213,8 @@ export function HsBlueprintPortraitWidget({
         <div className="hs-bpp-data">
           <div className="hs-bpp-panel" data-sheet="A-01.1">
             <div className="hs-bpp-kicker" data-field="clockbigLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockbigLabel}</div>
-            <div className="hs-bpp-big" data-field="clockbigVal" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockbigVal}</div>
-            <div className="hs-bpp-cap" data-field="clockbigCap" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockbigCap}</div>
+            <div className="hs-bpp-big" data-field="clockbigVal" style={{ whiteSpace: 'pre-wrap' as const }}>{(!c.clockbigVal || c.clockbigVal === DEFAULTS.clockbigVal) ? clock.time : c.clockbigVal}</div>
+            <div className="hs-bpp-cap" data-field="clockbigCap" style={{ whiteSpace: 'pre-wrap' as const }}>{(!c.clockbigCap || c.clockbigCap === DEFAULTS.clockbigCap) ? clock.caption : c.clockbigCap}</div>
           </div>
           <div className="hs-bpp-panel" data-sheet="A-01.2">
             <div className="hs-bpp-kicker">EXT. CONDITIONS</div>
