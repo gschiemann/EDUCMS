@@ -337,12 +337,12 @@ const CSS = `
 }
 .hs-bpp-logo-sub {
   display: block; font-family: 'IBM Plex Mono', monospace;
-  font-size: 36px; letter-spacing: .25em; color: #eaf3ff;
+  font-size: 44px; letter-spacing: .25em; color: #eaf3ff;
   margin-top: 14px; opacity: .85; font-weight: 500;
 }
 .hs-bpp-lbl {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 38px; letter-spacing: .22em; color: #6ab6ff;
+  font-size: 48px; letter-spacing: .22em; color: #6ab6ff;
   text-transform: uppercase; opacity: .9;
 }
 .hs-bpp-val {
@@ -369,12 +369,12 @@ const CSS = `
   position: absolute; top: -28px; left: 60px;
   background: #0f3a7a; padding: 0 24px;
   font-family: 'IBM Plex Mono', monospace; font-weight: 700;
-  font-size: 40px; letter-spacing: .26em; color: #ffd84d;
+  font-size: 50px; letter-spacing: .26em; color: #ffd84d;
   text-transform: uppercase;
 }
 .hs-bpp-eyebrow {
   font-family: 'IBM Plex Mono', monospace; font-weight: 700;
-  font-size: 44px; letter-spacing: .26em; color: #ffd84d;
+  font-size: 60px; letter-spacing: .26em; color: #ffd84d;
   text-transform: uppercase; margin-bottom: 22px;
 }
 .hs-bpp-h1 {
@@ -384,12 +384,12 @@ const CSS = `
 }
 .hs-bpp-sub {
   font-family: 'Archivo', sans-serif; font-weight: 500;
-  font-size: 50px; color: #6ab6ff; line-height: 1.3;
+  font-size: 78px; color: #6ab6ff; line-height: 1.2;
   margin-top: 28px; max-width: 1900px;
 }
 .hs-bpp-dim {
   position: absolute; font-family: 'IBM Plex Mono', monospace;
-  font-weight: 700; font-size: 38px; color: #ffd84d;
+  font-weight: 700; font-size: 48px; color: #ffd84d;
   letter-spacing: .18em; text-transform: uppercase; pointer-events: none;
 }
 .hs-bpp-dim-top {
@@ -434,7 +434,7 @@ const CSS = `
 .hs-bpp-plan-room-gym { background: rgba(255,216,77,.10); border-color: #ffd84d; }
 .hs-bpp-plan-tag {
   font-family: 'IBM Plex Mono', monospace; font-weight: 700;
-  font-size: 44px; letter-spacing: .22em; color: #ffd84d;
+  font-size: 56px; letter-spacing: .22em; color: #ffd84d;
   text-transform: uppercase;
 }
 .hs-bpp-plan-area {
@@ -444,7 +444,7 @@ const CSS = `
 .hs-bpp-callout {
   position: absolute;
   font-family: 'IBM Plex Mono', monospace; font-weight: 700;
-  font-size: 38px; letter-spacing: .2em; color: #ffd84d;
+  font-size: 48px; letter-spacing: .2em; color: #ffd84d;
   background: #0a2852; border: 1px solid #ffd84d;
   padding: 12px 20px; text-transform: uppercase;
 }
@@ -468,11 +468,11 @@ const CSS = `
   content: attr(data-sheet); position: absolute; top: -18px; left: 24px;
   background: #0f3a7a; padding: 0 12px;
   font-family: 'IBM Plex Mono', monospace; font-weight: 700;
-  font-size: 32px; color: #ffd84d; letter-spacing: .24em; text-transform: uppercase;
+  font-size: 44px; color: #ffd84d; letter-spacing: .24em; text-transform: uppercase;
 }
 .hs-bpp-kicker {
   font-family: 'IBM Plex Mono', monospace; font-weight: 700;
-  font-size: 38px; color: #6ab6ff; letter-spacing: .2em; text-transform: uppercase;
+  font-size: 52px; color: #6ab6ff; letter-spacing: .2em; text-transform: uppercase;
 }
 .hs-bpp-big {
   font-family: 'Archivo', sans-serif; font-weight: 900;
@@ -481,7 +481,7 @@ const CSS = `
 }
 .hs-bpp-cap {
   font-family: 'Archivo', sans-serif; font-weight: 500;
-  font-size: 36px; color: #6ab6ff; line-height: 1.25; margin-top: 8px;
+  font-size: 52px; color: #6ab6ff; line-height: 1.2; margin-top: 8px;
 }
 
 /* === SCHEDULE-AS-DRAWINGS (~1100px) ======================================== */
@@ -494,20 +494,20 @@ const CSS = `
   position: absolute; top: -28px; left: 60px;
   background: #0f3a7a; padding: 0 24px;
   font-family: 'IBM Plex Mono', monospace; font-weight: 700;
-  font-size: 40px; letter-spacing: .26em; color: #ffd84d;
+  font-size: 50px; letter-spacing: .26em; color: #ffd84d;
   text-transform: uppercase;
 }
 .hs-bpp-sched-head {
   display: grid;
-  grid-template-columns: 130px 200px 260px 1fr 260px 320px;
+  grid-template-columns: 150px 220px 280px 1fr 260px 320px;
   font-family: 'IBM Plex Mono', monospace; font-weight: 700;
-  font-size: 38px; color: #ffd84d; letter-spacing: .22em;
+  font-size: 50px; color: #ffd84d; letter-spacing: .22em;
   text-transform: uppercase; border-bottom: 3px solid #6ab6ff;
   padding-bottom: 18px; margin-bottom: 12px;
 }
 .hs-bpp-sched-row {
   display: grid;
-  grid-template-columns: 130px 200px 260px 1fr 260px 320px;
+  grid-template-columns: 150px 220px 280px 1fr 260px 320px;
   padding: 22px 0;
   border-bottom: 1px dashed rgba(106,182,255,.35);
   align-items: center;
@@ -516,19 +516,19 @@ const CSS = `
 .hs-bpp-sched-row:last-child { border-bottom: 0; }
 .hs-bpp-p {
   font-family: 'IBM Plex Mono', monospace; font-weight: 700;
-  font-size: 50px; color: #6ab6ff; letter-spacing: .12em;
+  font-size: 64px; color: #6ab6ff; letter-spacing: .12em;
 }
 .hs-bpp-t {
   font-family: 'IBM Plex Mono', monospace; font-weight: 700;
-  font-size: 52px; color: #ffd84d;
+  font-size: 70px; color: #ffd84d;
 }
 .hs-bpp-c {
   font-family: 'IBM Plex Mono', monospace; font-weight: 500;
-  font-size: 40px; color: #6ab6ff; letter-spacing: .06em;
+  font-size: 58px; color: #6ab6ff; letter-spacing: .06em;
 }
 .hs-bpp-n {
   font-family: 'Archivo', sans-serif; font-weight: 700;
-  font-size: 48px; color: #eaf3ff; letter-spacing: .02em;
+  font-size: 70px; color: #eaf3ff; letter-spacing: .02em;
   line-height: 1.05;
 }
 .hs-bpp-r-wrap { display: flex; align-items: center; gap: 12px; }
@@ -539,14 +539,14 @@ const CSS = `
 }
 .hs-bpp-r {
   font-family: 'IBM Plex Mono', monospace; font-weight: 700;
-  font-size: 44px; color: #ffd84d;
+  font-size: 60px; color: #ffd84d;
   border: 2px solid #ffd84d; padding: 6px 18px;
   background: rgba(255,216,77,.08);
   white-space: nowrap;
 }
 .hs-bpp-w {
   font-family: 'Archivo', sans-serif; font-weight: 500;
-  font-size: 40px; color: #6ab6ff;
+  font-size: 58px; color: #6ab6ff;
   line-height: 1.1;
 }
 
@@ -565,13 +565,13 @@ const CSS = `
   content: attr(data-sheet); position: absolute; top: -22px; left: 20px;
   background: #0f3a7a; padding: 0 12px;
   font-family: 'IBM Plex Mono', monospace; font-weight: 700;
-  font-size: 36px; color: #ffd84d; letter-spacing: .24em;
+  font-size: 44px; color: #ffd84d; letter-spacing: .24em;
 }
 .hs-bpp-anno-mini svg { width: 100%; height: 100%; }
 .hs-bpp-anno-tag {
   position: absolute; bottom: 14px; left: 20px; right: 20px;
   font-family: 'IBM Plex Mono', monospace; font-weight: 700;
-  font-size: 38px; color: #6ab6ff; letter-spacing: .22em;
+  font-size: 48px; color: #6ab6ff; letter-spacing: .22em;
   text-transform: uppercase; text-align: center;
 }
 
@@ -586,11 +586,11 @@ const CSS = `
   background: #0a2852; color: #ffd84d; height: 100%;
   display: flex; align-items: center; padding: 0 48px;
   font-family: 'IBM Plex Mono', monospace; font-weight: 700;
-  font-size: 44px; letter-spacing: .26em; flex-shrink: 0;
+  font-size: 60px; letter-spacing: .26em; flex-shrink: 0;
 }
 .hs-bpp-tk-msg {
   font-family: 'IBM Plex Mono', monospace; font-weight: 700;
-  font-size: 44px; white-space: nowrap; padding-left: 48px;
+  font-size: 60px; white-space: nowrap; padding-left: 48px;
   letter-spacing: .14em; text-transform: uppercase;
   animation: hsBppScroll 65s linear infinite; display: inline-flex;
 }
