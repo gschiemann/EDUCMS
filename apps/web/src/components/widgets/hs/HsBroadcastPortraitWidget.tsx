@@ -512,14 +512,14 @@ const CSS = `
 .hs-bcp-mono {
   position: absolute; top: 24px; left: 24px; z-index: 3;
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 30px; color: #0a0f1a; background: #ffd83d;
-  padding: 6px 14px; letter-spacing: .1em;
+  font-size: 38px; color: #0a0f1a; background: #ffd83d;
+  padding: 8px 16px; letter-spacing: .1em;
 }
 .hs-bcp-portrait-cam {
   position: absolute; bottom: 24px; right: 24px; z-index: 3;
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 32px; color: #fff; background: rgba(239,43,43,.9);
-  padding: 6px 14px; letter-spacing: .14em;
+  font-size: 40px; color: #fff; background: rgba(239,43,43,.9);
+  padding: 8px 16px; letter-spacing: .14em;
 }
 
 /* Right column — lower-third + quote + greeting */
@@ -546,30 +546,30 @@ const CSS = `
 }
 .hs-bcp-meta {
   font-family: 'JetBrains Mono', monospace; font-weight: 500;
-  font-size: 32px; color: #ffd83d; letter-spacing: .14em;
-  text-transform: uppercase; margin-top: 4px;
+  font-size: 40px; color: #ffd83d; letter-spacing: .14em;
+  text-transform: uppercase; margin-top: 6px;
 }
 .hs-bcp-quote {
   font-family: 'Inter', sans-serif; font-weight: 500;
-  font-size: 38px; color: #334155; font-style: italic; line-height: 1.25;
-  border-left: 6px solid #ef2b2b; padding: 8px 0 8px 24px;
+  font-size: 48px; color: #334155; font-style: italic; line-height: 1.25;
+  border-left: 6px solid #ef2b2b; padding: 8px 0 8px 28px;
 }
-.hs-bcp-greeting { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+.hs-bcp-greeting { display: flex; flex-direction: column; gap: 14px; margin-top: 8px; }
 .hs-bcp-eyebrow {
   display: inline-block; align-self: flex-start;
   font-family: 'Barlow Condensed', sans-serif; font-weight: 900;
   background: #0a0f1a; color: #ffd83d;
-  padding: 8px 20px 10px;
-  font-size: 36px; letter-spacing: .16em; text-transform: uppercase;
+  padding: 10px 22px 12px;
+  font-size: 44px; letter-spacing: .16em; text-transform: uppercase;
 }
 .hs-bcp-h1 {
   font-family: 'Barlow Condensed', sans-serif; font-weight: 900;
-  font-size: 110px; line-height: .9; margin: 0;
+  font-size: 130px; line-height: .9; margin: 0;
   color: #0a0f1a; text-transform: uppercase; letter-spacing: -.01em;
 }
 .hs-bcp-subtitle {
   font-family: 'Inter', sans-serif; font-weight: 600;
-  font-size: 34px; color: #334155; line-height: 1.25;
+  font-size: 44px; color: #334155; line-height: 1.25;
 }
 
 /* ============================ REGION 3: BREAKING STORY CARD ~1800-2700 ============================ */
@@ -631,15 +631,15 @@ const CSS = `
   font-family: 'Barlow Condensed', sans-serif; font-weight: 900;
   font-size: 130px; line-height: .85; letter-spacing: -.03em;
 }
-.hs-bcp-cd-stack { display: flex; flex-direction: column; gap: 4px; }
+.hs-bcp-cd-stack { display: flex; flex-direction: column; gap: 6px; }
 .hs-bcp-cd-lbl {
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 28px; letter-spacing: .2em; text-transform: uppercase;
+  font-size: 38px; letter-spacing: .2em; text-transform: uppercase;
   opacity: .9;
 }
 .hs-bcp-cd-unit {
   font-family: 'Barlow Condensed', sans-serif; font-weight: 900;
-  font-size: 32px; letter-spacing: .1em; text-transform: uppercase;
+  font-size: 44px; letter-spacing: .1em; text-transform: uppercase;
 }
 
 /* ============================ REGION 4: 2-UP — FORECAST + COMING UP ~2700-3400 ============================ */
@@ -690,7 +690,7 @@ const CSS = `
 }
 .hs-bcp-fc-cond {
   font-family: 'Barlow Condensed', sans-serif; font-weight: 700;
-  font-size: 28px; color: #ffd83d; letter-spacing: .08em;
+  font-size: 38px; color: #ffd83d; letter-spacing: .08em;
   text-transform: uppercase;
 }
 
@@ -753,19 +753,19 @@ const CSS = `
 }
 .hs-bcp-stamp-eyebrow {
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 32px; letter-spacing: .26em; color: #0a0f1a;
+  font-size: 40px; letter-spacing: .26em; color: #0a0f1a;
   text-transform: uppercase; opacity: .85;
 }
 .hs-bcp-stamp-headline {
   font-family: 'Barlow Condensed', sans-serif; font-weight: 900;
-  font-size: 120px; line-height: .9;
+  font-size: 140px; line-height: .9;
   color: #0a0f1a; text-transform: uppercase; letter-spacing: -.01em;
   margin: 4px 0;
   text-shadow: 4px 4px 0 rgba(239,43,43,.35);
 }
 .hs-bcp-stamp-sub {
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 30px; letter-spacing: .24em; color: #0a0f1a;
+  font-size: 40px; letter-spacing: .24em; color: #0a0f1a;
   text-transform: uppercase; opacity: .8;
 }
 
