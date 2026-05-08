@@ -26,9 +26,11 @@
  * misrender if you do.
  */
 
+import { useRef } from 'react';
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock, resolveHsDate } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
+import { useTextStyleOverrides, type TextStyleMap } from './useTextStyleOverrides';
 
 export interface HsTransitConfig {
   schoolCode?: string;
@@ -71,6 +73,8 @@ export interface HsTransitConfig {
   countdownSub?: string;
   tickerTag?: string;
   tickerMessage?: string;
+  /** Per-field style overrides keyed by data-field attr. */
+  __styles?: TextStyleMap;
 }
 
 type Cfg = HsTransitConfig;
@@ -113,6 +117,7 @@ export const DEFAULTS: Required<Cfg> = {
   countdownSub: 'Seniors — cap & gown pickup by Fri 17:00',
   tickerTag: 'PA · ALL TERMINALS',
   tickerMessage: 'BUS 14 DELAYED 10 MIN — NEW ARRIVAL 07:58  ●  LUNCH TODAY: CHICKEN BOWL, SALAD BAR, VEGAN OPT  ●  AP PSYCH STUDY HALL MOVED TO LIBRARY  ●  LOST: SILVER EARBUDS — FRONT OFFICE  ●  ',
+  __styles: {},
 };
 
 function statusClass(s: string): string {
@@ -126,6 +131,9 @@ function statusClass(s: string): string {
 
 export function HsTransitPortraitWidget({ config, live }: { config?: Cfg; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
+  // 2026-05-08 — per-field style overrides (font-size + color).
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  useTextStyleOverrides(stageRef, c.__styles);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
@@ -161,6 +169,7 @@ export function HsTransitPortraitWidget({ config, live }: { config?: Cfg; live?:
     <HsStage
       width={2160}
       height={3840}
+      stageRef={stageRef}
       stageStyle={{
         background: 'radial-gradient(ellipse at 50% 0%, #1c2744 0%, #0a0f1c 60%)',
         fontFamily: "'Inter', sans-serif",
