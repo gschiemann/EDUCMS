@@ -360,8 +360,8 @@ const CSS = `
 }
 .hs-ybp-mast-top {
   display: flex; justify-content: space-between; align-items: baseline;
-  font-family: 'JetBrains Mono', monospace; font-size: 36px;
-  letter-spacing: .22em; color: #6b5d4d; text-transform: uppercase;
+  font-family: 'JetBrains Mono', monospace; font-size: 48px;
+  letter-spacing: .2em; color: #6b5d4d; text-transform: uppercase;
   border-bottom: 1px solid #c9beac; padding-bottom: 16px;
 }
 .hs-ybp-mast-side-r { color: #b23b20; }
@@ -381,8 +381,8 @@ const CSS = `
 }
 .hs-ybp-mast-bottom {
   display: flex; justify-content: space-between; align-items: baseline;
-  font-family: 'JetBrains Mono', monospace; font-size: 34px;
-  letter-spacing: .2em; color: #6b5d4d; text-transform: uppercase;
+  font-family: 'JetBrains Mono', monospace; font-size: 48px;
+  letter-spacing: .18em; color: #6b5d4d; text-transform: uppercase;
 }
 .hs-ybp-mast-time {
   font-family: 'Playfair Display', serif; font-weight: 700; font-style: italic;
@@ -419,8 +419,8 @@ const CSS = `
   position: absolute; bottom: 22px; left: 22px;
   background: #f7f3ea; border: 2px solid #1a1614;
   padding: 12px 26px;
-  font-family: 'JetBrains Mono', monospace; font-size: 36px;
-  letter-spacing: .14em; text-transform: uppercase; color: #1a1614;
+  font-family: 'JetBrains Mono', monospace; font-size: 52px;
+  letter-spacing: .12em; text-transform: uppercase; color: #1a1614;
   z-index: 2;
 }
 .hs-ybp-feat-cap {
@@ -438,11 +438,11 @@ const CSS = `
 }
 .hs-ybp-feat-body {
   font-family: 'Lora', serif; font-weight: 400;
-  font-size: 42px; line-height: 1.35; color: #3b342c;
+  font-size: 64px; line-height: 1.2; color: #3b342c;
 }
 .hs-ybp-feat-byline {
-  font-family: 'JetBrains Mono', monospace; font-size: 38px;
-  letter-spacing: .2em; color: #b23b20; text-transform: uppercase;
+  font-family: 'JetBrains Mono', monospace; font-size: 52px;
+  letter-spacing: .18em; color: #b23b20; text-transform: uppercase;
   margin-top: 6px;
 }
 
@@ -452,8 +452,8 @@ const CSS = `
   height: 1060px; z-index: 3;
 }
 .hs-ybp-eyebrow {
-  font-family: 'JetBrains Mono', monospace; font-size: 40px;
-  color: #b23b20; letter-spacing: .22em; text-transform: uppercase;
+  font-family: 'JetBrains Mono', monospace; font-size: 58px;
+  color: #b23b20; letter-spacing: .2em; text-transform: uppercase;
 }
 .hs-ybp-h1 {
   font-family: 'Playfair Display', serif; font-weight: 900;
@@ -471,7 +471,7 @@ const CSS = `
 .hs-ybp-lede-cols {
   display: grid; grid-template-columns: 1fr 1fr; gap: 54px;
   font-family: 'Lora', serif; font-style: italic; font-weight: 400;
-  font-size: 46px; line-height: 1.4; color: #2a241f;
+  font-size: 72px; line-height: 1.25; color: #2a241f;
 }
 .hs-ybp-lede-col { position: relative; }
 .hs-ybp-dropcap {
@@ -519,8 +519,8 @@ const CSS = `
   position: absolute; bottom: 18px; left: 18px;
   background: #f7f3ea; border: 2px solid #1a1614;
   padding: 10px 18px;
-  font-family: 'JetBrains Mono', monospace; font-size: 38px;
-  letter-spacing: .12em; text-transform: uppercase; color: #1a1614;
+  font-family: 'JetBrains Mono', monospace; font-size: 48px;
+  letter-spacing: .1em; text-transform: uppercase; color: #1a1614;
   z-index: 2;
 }
 .hs-ybp-pull-body {
@@ -528,8 +528,8 @@ const CSS = `
   padding-top: 6px;
 }
 .hs-ybp-pull-tag {
-  font-family: 'JetBrains Mono', monospace; font-size: 36px;
-  letter-spacing: .22em; color: #b23b20; text-transform: uppercase;
+  font-family: 'JetBrains Mono', monospace; font-size: 52px;
+  letter-spacing: .2em; color: #b23b20; text-transform: uppercase;
 }
 .hs-ybp-pull-name {
   font-family: 'Playfair Display', serif; font-weight: 900; font-style: italic;
@@ -537,19 +537,19 @@ const CSS = `
   color: #1a1614; letter-spacing: -.01em;
 }
 .hs-ybp-pull-meta {
-  font-family: 'JetBrains Mono', monospace; font-size: 36px;
-  letter-spacing: .14em; color: #6b5d4d; text-transform: uppercase;
+  font-family: 'JetBrains Mono', monospace; font-size: 58px;
+  letter-spacing: .12em; color: #6b5d4d; text-transform: uppercase;
   margin-top: 14px;
 }
 .hs-ybp-pull-quote {
   margin: 24px 0 0;
   font-family: 'Playfair Display', serif; font-weight: 700; font-style: italic;
-  font-size: 54px; line-height: 1.22; color: #2a241f;
+  font-size: 78px; line-height: 1.18; color: #2a241f;
   border-left: 6px solid #b23b20; padding-left: 30px;
 }
 .hs-ybp-pull-byline {
-  font-family: 'JetBrains Mono', monospace; font-size: 36px;
-  letter-spacing: .14em; color: #999088; text-transform: uppercase;
+  font-family: 'JetBrains Mono', monospace; font-size: 52px;
+  letter-spacing: .12em; color: #999088; text-transform: uppercase;
   margin-top: auto; padding-top: 18px;
 }
 
@@ -566,8 +566,8 @@ const CSS = `
   font-size: 80px; line-height: 1; color: #1a1614; letter-spacing: -.01em;
 }
 .hs-ybp-cal-meta {
-  font-family: 'JetBrains Mono', monospace; font-size: 38px;
-  letter-spacing: .2em; color: #6b5d4d; text-transform: uppercase;
+  font-family: 'JetBrains Mono', monospace; font-size: 52px;
+  letter-spacing: .18em; color: #6b5d4d; text-transform: uppercase;
   display: flex; align-items: baseline; gap: 18px;
 }
 .hs-ybp-cal-meta > :first-child {
@@ -593,17 +593,17 @@ const CSS = `
 .hs-ybp-cal-badge {
   background: #1a1614; color: #f7f3ea;
   padding: 16px 22px;
-  font-family: 'JetBrains Mono', monospace; font-size: 36px;
-  letter-spacing: .18em; text-transform: uppercase;
+  font-family: 'JetBrains Mono', monospace; font-size: 48px;
+  letter-spacing: .16em; text-transform: uppercase;
   text-align: center;
 }
 .hs-ybp-cal-badge-cd {
   background: #b23b20;
-  font-size: 36px; line-height: 1.1;
+  font-size: 48px; line-height: 1.1;
 }
 .hs-ybp-cal-name {
   font-family: 'Playfair Display', serif; font-weight: 700; font-style: italic;
-  font-size: 56px; line-height: 1.1; color: #1a1614;
+  font-size: 72px; line-height: 1.05; color: #1a1614;
 }
 .hs-ybp-cal-folio {
   font-family: 'Playfair Display', serif; font-weight: 900; font-style: italic;
@@ -630,12 +630,12 @@ const CSS = `
   background: #b23b20; color: #f7f3ea;
   padding: 0 40px; height: 100%;
   display: flex; align-items: center; flex-shrink: 0;
-  font-family: 'JetBrains Mono', monospace; font-size: 36px;
-  letter-spacing: .22em; text-transform: uppercase;
+  font-family: 'JetBrains Mono', monospace; font-size: 52px;
+  letter-spacing: .2em; text-transform: uppercase;
 }
 .hs-ybp-tk-msg {
   font-family: 'Playfair Display', serif; font-weight: 700; font-style: italic;
-  font-size: 42px; padding-left: 44px; white-space: nowrap;
+  font-size: 62px; padding-left: 44px; white-space: nowrap;
   letter-spacing: .04em; text-transform: uppercase;
   animation: hsYbpScroll 60s linear infinite;
   display: inline-flex;
