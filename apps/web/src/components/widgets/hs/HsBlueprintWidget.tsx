@@ -10,9 +10,11 @@
  * revision-log ticker.
  */
 
+import { useRef } from 'react';
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock, resolveHsDate } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
+import { useTextStyleOverrides, type TextStyleMap } from './useTextStyleOverrides';
 
 export interface HsBlueprintConfig {
   schoolCode?: string;
@@ -59,6 +61,14 @@ export interface HsBlueprintConfig {
   announcementDate?: string;
   tickerTag?: string;
   tickerMessage?: string;
+  /**
+   * Per-field style overrides — keys match `data-field` attrs on the
+   * rendered HTML. Example:
+   *   __styles: { greetingHeadline: { fontSize: 240, color: '#ff0000' } }
+   * Set via the editor's per-field "Style" disclosure. Empty / missing
+   * keys fall back to the CSS class defaults.
+   */
+  __styles?: TextStyleMap;
 }
 
 export const DEFAULTS: Required<HsBlueprintConfig> = {
@@ -103,10 +113,16 @@ export const DEFAULTS: Required<HsBlueprintConfig> = {
   announcementDate: 'SCHED · 14:15 — 15:00 · TODAY',
   tickerTag: 'REVISION LOG',
   tickerMessage: 'RFI-2261 · BUS 14 DELAY 10M · RFI-2262 · RM-210 TONER · RFI-2263 · AP PSYCH STUDY HALL → LIBRARY · RFI-2264 · LOST PROPERTY — SILVER EARBUDS · RFI-2265 · SPRING SPORTS PHOTOS TOMORROW · ',
+  __styles: {},
 };
 
 export function HsBlueprintWidget({ config, live }: { config?: HsBlueprintConfig; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<HsBlueprintConfig>;
+  // 2026-05-08 — per-field style overrides (font-size + color). Hook
+  // walks every [data-field] inside the stage and applies inline styles
+  // on top of the CSS class defaults.
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  useTextStyleOverrides(stageRef, c.__styles);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
@@ -138,6 +154,7 @@ export function HsBlueprintWidget({ config, live }: { config?: HsBlueprintConfig
   ];
   return (
     <HsStage
+      stageRef={stageRef}
       stageStyle={{
         background: '#0f3a7a',
         backgroundImage:
