@@ -21,6 +21,7 @@
 
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
+import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 
 export interface HsYearbookConfig {
   schoolName?: string;
@@ -111,6 +112,19 @@ export function HsYearbookWidget({ config, live }: { config?: HsYearbookConfig; 
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
+  // 2026-05-07 — live weather. Yearbook uses sentence-case 'Clear skies'
+  // matching its newspaper editorial voice.
+  const w = useHsLiveWeather({
+    live,
+    location: c.weatherLocation,
+    unitsCelsius: c.weatherUnits === 'metric',
+    tempOverride: c.weatherTemp,
+    conditionOverride: c.weatherCondition,
+    defaultTemp: DEFAULTS.weatherTemp,
+    defaultCondition: DEFAULTS.weatherCondition,
+    formatTemp: (t) => `${t}°`,
+    formatCondition: (wmo) => `${describeWmo(wmo)} skies`,
+  });
   return (
     <HsStage
       stageStyle={{
@@ -149,8 +163,8 @@ export function HsYearbookWidget({ config, live }: { config?: HsYearbookConfig; 
         <div className="hs-yb-twin">
           <div className="hs-yb-card">
             <div className="hs-yb-kicker">TODAY</div>
-            <div className="hs-yb-big" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherTemp}</div>
-            <div className="hs-yb-cap" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherCondition}</div>
+            <div className="hs-yb-big" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>{w.tempLabel}</div>
+            <div className="hs-yb-cap" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{w.conditionLabel}</div>
           </div>
           <div className="hs-yb-card">
             <div className="hs-yb-kicker" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownLabel}</div>
