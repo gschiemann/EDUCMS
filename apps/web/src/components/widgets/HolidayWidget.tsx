@@ -227,18 +227,6 @@ export interface HolidayFieldDef {
   multiline: boolean;
 }
 
-/**
- * Look up the static schema for a `${gradeLevel}-${variant}` combo.
- * Returns [] if the combo isn't in the map (defensive — should never
- * happen since the unions are constrained).
- */
-export function holidayFieldSchemaFor(
-  variant: HolidayVariant,
-  gradeLevel: HolidayGradeLevel,
-): HolidayFieldDef[] {
-  return HOLIDAY_FIELD_SCHEMA[`${gradeLevel}-${variant}`] || [];
-}
-
 export const HOLIDAY_FIELD_SCHEMA: Record<string, HolidayFieldDef[]> = {
   "es-halloween": [
     { key: "school.name", defaultText: "Maple Tree", multiline: false },
@@ -1095,3 +1083,15 @@ export const HOLIDAY_FIELD_SCHEMA: Record<string, HolidayFieldDef[]> = {
     { key: "sked.3.w", defaultText: "break begins · drive safe", multiline: false },
   ],
 };
+
+/**
+ * Look up the static schema for a `${gradeLevel}-${variant}` combo.
+ * Returns [] if the combo isn't in the map (defensive — should never
+ * happen since the unions are constrained).
+ */
+export function holidayFieldSchemaFor(
+  variant: HolidayVariant,
+  gradeLevel: HolidayGradeLevel,
+): HolidayFieldDef[] {
+  return HOLIDAY_FIELD_SCHEMA[`${gradeLevel}-${variant}`] || [];
+}
