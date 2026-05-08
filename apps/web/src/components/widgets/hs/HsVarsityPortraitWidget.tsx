@@ -26,6 +26,7 @@
 
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
+import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 
 export interface HsVarsityConfig {
   schoolInitials?: string;
@@ -150,6 +151,18 @@ export function HsVarsityPortraitWidget({ config, live }: { config?: Cfg; live?:
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
+  // 2026-05-07 — live weather (matches landscape).
+  const w = useHsLiveWeather({
+    live,
+    location: c.weatherLocation,
+    unitsCelsius: c.weatherUnits === 'metric',
+    tempOverride: c.weatherTemp,
+    conditionOverride: c.weatherCondition,
+    defaultTemp: DEFAULTS.weatherTemp,
+    defaultCondition: DEFAULTS.weatherCondition,
+    formatTemp: (t) => `${t}°`,
+    formatCondition: (wmo) => `${describeWmo(wmo)} skies`,
+  });
   const games = [
     { mark: c.event1Mark, when: c.event1When, name: c.event1Name },
     { mark: c.event2Mark, when: c.event2When, name: c.event2Name },
@@ -295,7 +308,7 @@ export function HsVarsityPortraitWidget({ config, live }: { config?: Cfg; live?:
               </div>
               <div className="hs-vp-statbox">
                 <div className="hs-vp-statbox-val" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>
-                  {c.weatherTemp}
+                  {w.tempLabel}
                 </div>
                 <div className="hs-vp-statbox-lbl">GAMETIME</div>
               </div>
