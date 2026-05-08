@@ -16,6 +16,7 @@
 
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock, resolveHsDate } from './useHsLiveClock';
+import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 import type { HsBlueprintConfig } from './HsBlueprintWidget';
 
 type Cfg = HsBlueprintConfig;
@@ -84,6 +85,18 @@ export function HsBlueprintPortraitWidget({
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
     return `${yyyy}-${mm}-${dd}`;
+  });
+  // 2026-05-07 — live weather (matches landscape sibling).
+  const w = useHsLiveWeather({
+    live,
+    location: c.weatherLocation,
+    unitsCelsius: c.weatherUnits === 'metric',
+    tempOverride: c.weatherTemp,
+    conditionOverride: c.weatherCondition,
+    defaultTemp: DEFAULTS.weatherTemp,
+    defaultCondition: DEFAULTS.weatherCondition,
+    formatTemp: (t) => `${t}°`,
+    formatCondition: (wmo) => describeWmo(wmo).toUpperCase(),
   });
   const events = [
     { time: c.event0Time, code: c.event0Code, name: c.event0Name, room: c.event0Room, who: c.event0Who },
@@ -204,8 +217,8 @@ export function HsBlueprintPortraitWidget({
           </div>
           <div className="hs-bpp-panel" data-sheet="A-01.2">
             <div className="hs-bpp-kicker">EXT. CONDITIONS</div>
-            <div className="hs-bpp-big" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherTemp}</div>
-            <div className="hs-bpp-cap" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherCondition}</div>
+            <div className="hs-bpp-big" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>{w.tempLabel}</div>
+            <div className="hs-bpp-cap" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{w.conditionLabel}</div>
           </div>
           <div className="hs-bpp-panel" data-sheet="A-01.3">
             <div className="hs-bpp-kicker">PRESENT</div>
