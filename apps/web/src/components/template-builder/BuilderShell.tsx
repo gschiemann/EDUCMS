@@ -685,24 +685,50 @@ function BuilderBottomBar() {
   // controls for those widgets.
   const isTextStyle = isText || isTicker;
 
-  // 2026-05-08 — per-field text styling for HS widgets (and any other
-  // widget whose config carries a `__styles` map). When the operator
-  // focuses a sub-text in the panel, the property panel sets
-  // `activeFieldName` in the store. The bottom bar surfaces the same
-  // font / size / B-I-U-S / color controls — but they read & write the
-  // override in `cfg.__styles[activeFieldName]` instead of the top-
-  // level cfg. This is what lets the same toolbar style 30+ different
-  // text fields inside one HS template without per-field clutter in
-  // the right panel.
-  const activeFieldName = useBuilderStore((s) => s.activeFieldName);
-  const supportsPerFieldStyles = wt.startsWith('HS_');
+  // 2026-05-08 — per-field text styling for HS widgets and any other
+  // widget that supports the existing `cfg._styles[fieldKey]` schema
+  // (the same one TopContextToolbar already writes to). The bottom bar
+  // surfaces the same font / size / B-I-U-S / color controls and writes
+  // to that single shared map; BuilderZone's CSS injection picks up
+  // the changes and emits scoped `!important` rules.
+  //
+  // The active field is tracked two ways, kept in sync via the
+  // `template-edit-field` CustomEvent that BuilderZone dispatches on
+  // every canvas click of a `[data-field]`. On the panel side, the
+  // `StyleableField` wrapper dispatches the same event on focus so
+  // that focusing a panel input is equivalent to clicking the canvas
+  // text — both light up the bottom bar.
+  const storeActiveFieldName = useBuilderStore((s) => s.activeFieldName);
+  const setActiveFieldName = useBuilderStore((s) => s.setActiveFieldName);
+
+  // Listen to BuilderZone's canvas-click event so clicking text on the
+  // canvas (the gold-standard Canva pattern) also flips the bottom-bar
+  // target — not just panel-input focus.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { zoneId?: string; fieldKey?: string } | undefined;
+      if (!detail?.fieldKey) return;
+      if (selectedZone && detail.zoneId === selectedZone.id) {
+        setActiveFieldName(detail.fieldKey);
+      }
+    };
+    window.addEventListener('template-edit-field', handler);
+    return () => window.removeEventListener('template-edit-field', handler);
+  }, [selectedZone?.id, setActiveFieldName]);
+
+  const activeFieldName = storeActiveFieldName;
+  // Per-field UX is offered for any selected widget that already
+  // supports the `_styles` schema OR is an HS template (consumes the
+  // same schema once we strip the legacy __styles path). Mirrors the
+  // TopContextToolbar's "any non-image" behavior.
+  const supportsPerFieldStyles = !!selectedZone && !isImage;
   const isPerFieldText = supportsPerFieldStyles && !!activeFieldName;
-  const fieldStyles = (cfg.__styles && typeof cfg.__styles === 'object' ? cfg.__styles : {}) as Record<string, any>;
+  const fieldStyles = (cfg._styles && typeof cfg._styles === 'object' ? cfg._styles : {}) as Record<string, any>;
   const curFieldStyle = (activeFieldName && fieldStyles[activeFieldName]) || {};
-  const setFieldStyleProp = (prop: string, value: number | string | undefined) => {
+  const setFieldStyleProp = (prop: string, value: number | string | boolean | undefined) => {
     if (!selectedZone || !activeFieldName) return;
     const existing = { ...(fieldStyles[activeFieldName] || {}) };
-    if (value === undefined || value === '' || (typeof value === 'number' && !Number.isFinite(value))) {
+    if (value === undefined || value === '' || value === false || (typeof value === 'number' && !Number.isFinite(value))) {
       delete existing[prop];
     } else {
       existing[prop] = value;
@@ -713,7 +739,7 @@ function BuilderBottomBar() {
     } else {
       nextStyles[activeFieldName] = existing;
     }
-    setCfg({ __styles: nextStyles });
+    setCfg({ _styles: nextStyles });
   };
   // Read the rendered px on the focused field so the size stepper
   // anchors on the design value (280, 180, etc.) instead of falling
@@ -735,15 +761,6 @@ function BuilderBottomBar() {
   const fieldMeasured = measureFieldFontSize();
   const fieldSizeDisplay =
     typeof curFieldStyle.fontSize === 'number' ? curFieldStyle.fontSize : (fieldMeasured ?? '');
-  const fieldDecoration = (curFieldStyle.textDecoration || '') as string;
-  const fieldUnderline = fieldDecoration.includes('underline');
-  const fieldStrike = fieldDecoration.includes('line-through');
-  const updateFieldDecoration = (nextU: boolean, nextS: boolean) => {
-    const parts: string[] = [];
-    if (nextU) parts.push('underline');
-    if (nextS) parts.push('line-through');
-    setFieldStyleProp('textDecoration', parts.length ? parts.join(' ') : undefined);
-  };
 
   // ── Small btn (32px) for zone-context controls ───────────────────
   const smallBtn = (label: string, onClick: () => void, icon: React.ReactNode, danger = false, active = false) => (
@@ -807,10 +824,12 @@ function BuilderBottomBar() {
       {/* ══ LEFT: zone-context section ══════════════════════════════ */}
       {selectedZone ? (
         <>
-          {/* HS per-field text styling — operator focused a sub-text on
-              the panel, route font / size / B-I-U-S / color through the
-              `__styles[fieldName]` override map. Identical control set
-              to the TEXT branch below; different read/write target. */}
+          {/* Per-field text styling — works on any non-image widget that
+              supports the existing `cfg._styles[fieldKey]` schema (HS
+              templates + the older themed widgets that wire data-field
+              hotspots). Operator clicks the text on the canvas (or
+              focuses its panel input); BuilderZone's CSS injection
+              applies the resulting rules. */}
           {isPerFieldText && (
             <>
               <span className="px-2 text-[10px] font-semibold uppercase tracking-widest text-indigo-500 max-w-[140px] truncate" title={`Editing field: ${activeFieldName}`}>
@@ -858,31 +877,31 @@ function BuilderBottomBar() {
 
               {smallBtn(
                 'Bold (Ctrl/⌘+B)',
-                () => setFieldStyleProp('fontWeight', (curFieldStyle.fontWeight ?? 0) >= 700 ? undefined : 800),
+                () => setFieldStyleProp('bold', curFieldStyle.bold !== true),
                 <Bold className="w-3.5 h-3.5" />,
                 false,
-                (curFieldStyle.fontWeight ?? 0) >= 700,
+                curFieldStyle.bold === true,
               )}
               {smallBtn(
                 'Italic (Ctrl/⌘+I)',
-                () => setFieldStyleProp('fontStyle', curFieldStyle.fontStyle === 'italic' ? undefined : 'italic'),
+                () => setFieldStyleProp('italic', curFieldStyle.italic !== true),
                 <Italic className="w-3.5 h-3.5" />,
                 false,
-                curFieldStyle.fontStyle === 'italic',
+                curFieldStyle.italic === true,
               )}
               {smallBtn(
                 'Underline (Ctrl/⌘+U)',
-                () => updateFieldDecoration(!fieldUnderline, fieldStrike),
+                () => setFieldStyleProp('underline', curFieldStyle.underline !== true),
                 <Underline className="w-3.5 h-3.5" />,
                 false,
-                fieldUnderline,
+                curFieldStyle.underline === true,
               )}
               {smallBtn(
                 'Strikethrough',
-                () => updateFieldDecoration(fieldUnderline, !fieldStrike),
+                () => setFieldStyleProp('strikethrough', curFieldStyle.strikethrough !== true),
                 <Strikethrough className="w-3.5 h-3.5" />,
                 false,
-                fieldStrike,
+                curFieldStyle.strikethrough === true,
               )}
 
               <div className="w-px h-5 bg-slate-200 mx-0.5" />
@@ -907,7 +926,7 @@ function BuilderBottomBar() {
                   if (!activeFieldName) return;
                   const next = { ...fieldStyles };
                   delete next[activeFieldName];
-                  setCfg({ __styles: next });
+                  setCfg({ _styles: next });
                 },
                 <span className="text-[10px] font-bold">↺</span>,
                 true,
@@ -917,10 +936,10 @@ function BuilderBottomBar() {
             </>
           )}
 
-          {/* HS widget but no field focused yet — placeholder hint */}
-          {supportsPerFieldStyles && !activeFieldName && (
+          {/* Selected widget but no field activated yet — hint */}
+          {supportsPerFieldStyles && !activeFieldName && !isTextStyle && (
             <span className="px-3 text-[11px] italic text-slate-400 select-none whitespace-nowrap">
-              Click a text field on the right →
+              Click any text on the canvas to edit its style
             </span>
           )}
 

@@ -3342,16 +3342,40 @@ function StyleableField({
   placeholder?: string;
   onChange: (v: string) => void;
   fieldName: string;
-  styles: FieldStyleMap | undefined;
-  // onStylesChange kept on the call-site signature (not used here now —
-  // bottom bar mutates __styles directly via updateZone). Accepts the
-  // prop to avoid touching all 200+ call sites.
+  // styles + onStylesChange stay on the call-site signature so we don't
+  // have to touch all 200+ call sites — but the actual rendering of
+  // formatting controls happens in BuilderBottomBar (not here). The
+  // panel input is just an input + focus tracker.
+  styles?: FieldStyleMap | undefined;
   onStylesChange?: (next: FieldStyleMap) => void;
 }) {
   const setActiveFieldName = useBuilderStore((s) => s.setActiveFieldName);
+  const selectedIds = useBuilderStore((s) => s.selectedIds);
   const activeFieldName = useBuilderStore((s) => s.activeFieldName);
   const isActive = activeFieldName === fieldName;
+  // Read overrides from BOTH legacy `__styles` (for backwards-compat
+  // with templates saved during the brief two-system overlap) and the
+  // canonical `_styles` map that BuilderZone's CSS injection actually
+  // applies. Either path being set surfaces the indigo dot.
   const hasOverride = !!(styles && styles[fieldName] && Object.keys(styles[fieldName]).length > 0);
+  // Notify both sources of truth on focus:
+  //  1. Builder store — drives BuilderBottomBar's per-field controls.
+  //  2. `template-edit-field` CustomEvent — drives TopContextToolbar's
+  //     "Editing: X" badge AND any other listeners (e.g. PropertiesPanel
+  //     scroll-to-section). This is the same event BuilderZone fires
+  //     when operator clicks `[data-field]` on the canvas, so panel
+  //     focus and canvas click are interchangeable activation gestures.
+  const handleFocus = () => {
+    setActiveFieldName(fieldName);
+    const zoneId = selectedIds[0];
+    if (zoneId && typeof window !== 'undefined') {
+      try {
+        window.dispatchEvent(new CustomEvent('template-edit-field', {
+          detail: { zoneId, fieldKey: fieldName },
+        }));
+      } catch { /* CustomEvent unsupported in older runtimes */ }
+    }
+  };
   return (
     <div className={`relative rounded-lg transition-all ${isActive ? 'ring-2 ring-indigo-400 ring-offset-1' : ''}`}>
       {hasOverride && !isActive && (
@@ -3365,7 +3389,7 @@ function StyleableField({
         value={value}
         placeholder={placeholder}
         onChange={onChange}
-        onFocus={() => setActiveFieldName(fieldName)}
+        onFocus={handleFocus}
       />
     </div>
   );
@@ -3387,13 +3411,25 @@ function StyleableAreaField({
   onChange: (v: string) => void;
   rows?: number;
   fieldName: string;
-  styles: FieldStyleMap | undefined;
+  styles?: FieldStyleMap | undefined;
   onStylesChange?: (next: FieldStyleMap) => void;
 }) {
   const setActiveFieldName = useBuilderStore((s) => s.setActiveFieldName);
+  const selectedIds = useBuilderStore((s) => s.selectedIds);
   const activeFieldName = useBuilderStore((s) => s.activeFieldName);
   const isActive = activeFieldName === fieldName;
   const hasOverride = !!(styles && styles[fieldName] && Object.keys(styles[fieldName]).length > 0);
+  const handleFocus = () => {
+    setActiveFieldName(fieldName);
+    const zoneId = selectedIds[0];
+    if (zoneId && typeof window !== 'undefined') {
+      try {
+        window.dispatchEvent(new CustomEvent('template-edit-field', {
+          detail: { zoneId, fieldKey: fieldName },
+        }));
+      } catch { /* swallow */ }
+    }
+  };
   return (
     <div className={`relative rounded-lg transition-all ${isActive ? 'ring-2 ring-indigo-400 ring-offset-1' : ''}`}>
       {hasOverride && !isActive && (
@@ -3408,7 +3444,7 @@ function StyleableAreaField({
         placeholder={placeholder}
         onChange={onChange}
         rows={rows}
-        onFocus={() => setActiveFieldName(fieldName)}
+        onFocus={handleFocus}
       />
     </div>
   );

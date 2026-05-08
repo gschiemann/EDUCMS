@@ -35,7 +35,12 @@
  */
 
 import { useEffect, type RefObject } from 'react';
-import type { TextStyleMap } from './useTextStyleOverrides';
+
+/** Per-field style map shape matching the editor's `_styles` schema —
+ *  the same one BuilderZone reads to emit scoped `!important` CSS
+ *  rules. We only consume `fontSize` here (manual size override
+ *  short-circuits the auto-fit). Other props ride along untouched. */
+type TextStyleMap = Record<string, { fontSize?: number; [k: string]: unknown }>;
 
 export interface AutoFitOptions {
   /** Min font-size in CSS px. Default: 16. */
