@@ -25,6 +25,7 @@
 
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock, resolveHsDate } from './useHsLiveClock';
+import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 
 export interface HsTransitConfig {
   schoolCode?: string;
@@ -122,6 +123,20 @@ export function HsTransitWidget({ config, live }: { config?: HsTransitConfig; li
     const mo = d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
     return `${wk} · ${mo} ${d.getDate()}`;
   });
+  // 2026-05-07 — live weather. Format: '46°F' + 'CLEAR · HI 62°' (uppercase
+  // departure-board aesthetic). Live API doesn't give high/low so condition
+  // collapses to just the WMO description in uppercase.
+  const w = useHsLiveWeather({
+    live,
+    location: c.weatherLocation,
+    unitsCelsius: c.weatherUnits === 'metric',
+    tempOverride: c.weatherTemp,
+    conditionOverride: c.weatherCondition,
+    defaultTemp: DEFAULTS.weatherTemp,
+    defaultCondition: DEFAULTS.weatherCondition,
+    formatTemp: (t) => `${t}°${c.weatherUnits === 'metric' ? 'C' : 'F'}`,
+    formatCondition: (wmo) => describeWmo(wmo).toUpperCase(),
+  });
   const deps = [
     { time: c.dep0Time, code: c.dep0Code, dest: c.dep0Dest, note: c.dep0Note, room: c.dep0Room, teacher: c.dep0Teacher, status: c.dep0Status },
     { time: c.dep1Time, code: c.dep1Code, dest: c.dep1Dest, note: c.dep1Note, room: c.dep1Room, teacher: c.dep1Teacher, status: c.dep1Status },
@@ -166,8 +181,8 @@ export function HsTransitWidget({ config, live }: { config?: HsTransitConfig; li
           <div className="hs-tr-sub" data-field="greetingSubtitle" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingSubtitle}</div>
         </div>
         <div className="hs-tr-rightp">
-          <div><span className="hs-tr-k">OUTSIDE</span><br /><span className="hs-tr-v" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherTemp}</span></div>
-          <div><span className="hs-tr-k">CONDITIONS</span><br /><span className="hs-tr-v" style={{ fontSize: 36 }}>{c.weatherCondition}</span></div>
+          <div><span className="hs-tr-k">OUTSIDE</span><br /><span className="hs-tr-v" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>{w.tempLabel}</span></div>
+          <div><span className="hs-tr-k">CONDITIONS</span><br /><span className="hs-tr-v" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const, fontSize: 36 }}>{w.conditionLabel}</span></div>
           <div className="hs-tr-status" data-field="weatherStatus" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherStatus}</div>
         </div>
       </div>
