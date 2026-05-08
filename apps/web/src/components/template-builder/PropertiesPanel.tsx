@@ -1645,6 +1645,8 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
             const next = { ...(cfg.fields || {}), [key]: value };
             setField({ fields: next });
           }}
+          styles={cfg.__styles as FieldStyleMap | undefined}
+          onStylesChange={(s) => setField({ __styles: s })}
         />,
       );
       break;
@@ -3393,11 +3395,18 @@ function HolidayPanelExtras({
   gradeLevel,
   values,
   onFieldChange,
+  styles,
+  onStylesChange,
 }: {
   variant: HolidayVariant;
   gradeLevel: HolidayGradeLevel;
   values: Record<string, string>;
   onFieldChange: (key: string, value: string) => void;
+  /** Per-data-field style overrides (font size + color + weight),
+   *  mirrored into the iframe by HolidayWidget on every commit. Same
+   *  shape FieldStyleMap that the HS landscape cases use. */
+  styles?: FieldStyleMap;
+  onStylesChange: (next: FieldStyleMap) => void;
 }) {
   const schema = holidayFieldSchemaFor(variant, gradeLevel);
 
@@ -3460,7 +3469,14 @@ function HolidayPanelExtras({
           )}
           {group.fields.map((f) => {
             const current = values[f.key] ?? '';
-            const Field = f.multiline ? TextAreaField : TextField;
+            // 2026-05-08 — swap plain TextField/TextAreaField for the
+            // Styleable* wrappers so each field gets a 🎨 Style
+            // disclosure (font-size + color) just like the HS widgets.
+            // Operator's typed style values are forwarded by
+            // HolidayWidget into the iframe via postMessage and applied
+            // by _style-bridge.js as inline styles on the matching
+            // [data-field] element. fieldName is the data-field key
+            // (the same dotted-string the iframe-side bridge looks up).
             return (
               // Wrapping div carries data-field-section="<fullKey>"
               // so the generic template-edit-field listener can scroll
@@ -3468,12 +3484,27 @@ function HolidayPanelExtras({
               // section-only). The handler tries fieldKey first, then
               // sectionKey, so both work.
               <div key={f.key} data-field-section={f.key}>
-                <Field
-                  label={labelFor(f.key)}
-                  value={current}
-                  placeholder={f.defaultText}
-                  onChange={(v) => onFieldChange(f.key, v)}
-                />
+                {f.multiline ? (
+                  <StyleableAreaField
+                    label={labelFor(f.key)}
+                    value={current}
+                    placeholder={f.defaultText}
+                    onChange={(v) => onFieldChange(f.key, v)}
+                    fieldName={f.key}
+                    styles={styles}
+                    onStylesChange={onStylesChange}
+                  />
+                ) : (
+                  <StyleableField
+                    label={labelFor(f.key)}
+                    value={current}
+                    placeholder={f.defaultText}
+                    onChange={(v) => onFieldChange(f.key, v)}
+                    fieldName={f.key}
+                    styles={styles}
+                    onStylesChange={onStylesChange}
+                  />
+                )}
               </div>
             );
           })}
