@@ -29,6 +29,7 @@
 
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
+import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 
 export interface HsYearbookConfig {
   schoolName?: string;
@@ -121,6 +122,18 @@ export function HsYearbookPortraitWidget({ config, live }: { config?: Cfg; live?
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
+  // 2026-05-07 — live weather (matches landscape).
+  const w = useHsLiveWeather({
+    live,
+    location: c.weatherLocation,
+    unitsCelsius: c.weatherUnits === 'metric',
+    tempOverride: c.weatherTemp,
+    conditionOverride: c.weatherCondition,
+    defaultTemp: DEFAULTS.weatherTemp,
+    defaultCondition: DEFAULTS.weatherCondition,
+    formatTemp: (t) => `${t}°`,
+    formatCondition: (wmo) => `${describeWmo(wmo)} skies`,
+  });
 
   // Lede split into two columns. We hand-split on a sentence boundary so
   // the right column starts cleanly — kept here so the layout is stable
@@ -231,11 +244,11 @@ export function HsYearbookPortraitWidget({ config, live }: { config?: Cfg; live?
           </span>
           <span className="hs-ybp-lede-folio-sep">·</span>
           <span data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>
-            {c.weatherTemp}
+            {w.tempLabel}
           </span>
           <span className="hs-ybp-lede-folio-sep">·</span>
           <span data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>
-            {c.weatherCondition}
+            {w.conditionLabel}
           </span>
         </div>
       </div>
