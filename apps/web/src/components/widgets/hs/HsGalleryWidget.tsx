@@ -19,9 +19,11 @@
  *   - ticker (Docent's Note — italic crawl)
  */
 
+import { useRef } from 'react';
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock, resolveHsDate } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
+import { useTextStyleOverrides, type TextStyleMap } from './useTextStyleOverrides';
 
 export interface HsGalleryConfig {
   schoolName?: string;
@@ -67,6 +69,8 @@ export interface HsGalleryConfig {
   brandCoda?: string;
   tickerTag?: string;
   tickerMessage?: string;
+  /** Per-field style overrides keyed by data-field attr. */
+  __styles?: TextStyleMap;
 }
 
 export const DEFAULTS: Required<HsGalleryConfig> = {
@@ -110,10 +114,14 @@ export const DEFAULTS: Required<HsGalleryConfig> = {
   brandCoda: '— Admission is free & always has been.',
   tickerTag: "Docent's Note",
   tickerMessage: 'Bus 14 delayed ten minutes · Lunch today: chicken bowl, salad bar, vegan option · AP Psychology study hall moved to the library · Lost: silver earbuds — inquire at the front office · Spring sports photos tomorrow; please wear your jerseys ·  ',
+  __styles: {},
 };
 
 export function HsGalleryWidget({ config, live }: { config?: HsGalleryConfig; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<HsGalleryConfig>;
+  // 2026-05-08 — per-field style overrides (font-size + color).
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  useTextStyleOverrides(stageRef, c.__styles);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
@@ -137,6 +145,7 @@ export function HsGalleryWidget({ config, live }: { config?: HsGalleryConfig; li
   });
   return (
     <HsStage
+      stageRef={stageRef}
       stageStyle={{
         background: '#f5f1e8',
         fontFamily: "'Inter', sans-serif",
