@@ -27,7 +27,7 @@
  */
 
 import { HsStage } from './HsStage';
-import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
+import { useHsLiveClock, resolveHsClock, resolveHsDate } from './useHsLiveClock';
 
 export interface HsTransitConfig {
   schoolCode?: string;
@@ -119,6 +119,12 @@ export function HsTransitPortraitWidget({ config, live }: { config?: Cfg; live?:
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
+  // 2026-05-07 — live date in 'TUE · APR 21' format (matches landscape).
+  const liveDate = resolveHsDate(c, now, DEFAULTS.clockDate, (d) => {
+    const wk = d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
+    const mo = d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+    return `${wk} · ${mo} ${d.getDate()}`;
+  });
   const deps = [
     { time: c.dep0Time, code: c.dep0Code, dest: c.dep0Dest, note: c.dep0Note, room: c.dep0Room, teacher: c.dep0Teacher, status: c.dep0Status },
     { time: c.dep1Time, code: c.dep1Code, dest: c.dep1Dest, note: c.dep1Note, room: c.dep1Room, teacher: c.dep1Teacher, status: c.dep1Status },
@@ -182,7 +188,7 @@ export function HsTransitPortraitWidget({ config, live }: { config?: Cfg; live?:
             {clock.time}
           </div>
           <div className="hs-trp-clock-meta">
-            <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockDate}</span>
+            <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{liveDate}</span>
             <br />
             <span data-field="clockTz" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockTz}</span>
           </div>
