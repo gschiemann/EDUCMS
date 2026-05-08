@@ -61,7 +61,7 @@ export interface HsYearbookConfig {
   tickerMessage?: string;
 }
 
-const DEFAULTS: Required<HsYearbookConfig> = {
+export const DEFAULTS: Required<HsYearbookConfig> = {
   schoolName: 'The Westridge Review',
   schoolIssue: 'VOL. LXIX · NO. 142 · APRIL 2026',
   schoolSection: 'CALENDAR · SECTION B',
