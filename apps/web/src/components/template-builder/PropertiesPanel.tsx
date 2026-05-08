@@ -3161,9 +3161,29 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
 // done via the StyleableField component below; both single-line and
 // multi-line variants exist.
 
-type FieldStyleMap = Record<string, { fontSize?: number; color?: string; fontWeight?: number }>;
+// Schema parity with `apps/web/src/components/widgets/hs/useTextStyleOverrides.ts#TextStyleOverride`.
+type FieldStyleProp =
+  | 'fontSize'
+  | 'color'
+  | 'fontWeight'
+  | 'fontStyle'
+  | 'textDecoration'
+  | 'fontFamily'
+  | 'lineHeight'
+  | 'backgroundColor';
+type FieldStyle = {
+  fontSize?: number;
+  color?: string;
+  fontWeight?: number;
+  fontStyle?: 'italic' | 'normal';
+  textDecoration?: 'underline' | 'line-through' | 'underline line-through' | 'none';
+  fontFamily?: string;
+  lineHeight?: number;
+  backgroundColor?: string;
+};
+type FieldStyleMap = Record<string, FieldStyle>;
 
-function readFieldStyle(styles: FieldStyleMap | undefined, fieldName: string) {
+function readFieldStyle(styles: FieldStyleMap | undefined, fieldName: string): FieldStyle {
   return (styles && styles[fieldName]) || {};
 }
 
@@ -3172,7 +3192,7 @@ function readFieldStyle(styles: FieldStyleMap | undefined, fieldName: string) {
 function updateFieldStyleMap(
   styles: FieldStyleMap | undefined,
   fieldName: string,
-  prop: 'fontSize' | 'color' | 'fontWeight',
+  prop: FieldStyleProp,
   value: number | string | undefined,
 ): FieldStyleMap {
   const existing = styles || {};
@@ -3192,14 +3212,14 @@ function updateFieldStyleMap(
   return next;
 }
 
-/** Always-visible per-field font-size + color controls.
- *  Renders directly below the TextField/TextAreaField — no disclosure,
- *  no hidden details. The user complained ("i still cant adjust the
- *  font size or color") because the previous <details>-based UI was
- *  invisible until clicked. Now: a compact inline row with [size px]
- *  [color swatch] [reset] always shown.
+/** Per-field text formatting toolbar — same component set the custom
+ *  TEXT widget uses (FontFamilyField + FontSizeField + FormatToggles +
+ *  LineHeightField + ColorField). Every dimension is scoped to ONE
+ *  data-field on an HS widget via the `__styles` map; an empty value
+ *  removes the override and lets the CSS class default surface again.
  *
- *  Empty inputs clear the override; the CSS class default takes over. */
+ *  Always visible — no disclosure. Operator complained the previous
+ *  hidden <details> made them think the feature didn't exist. */
 function StyleDisclosure({
   fieldName,
   styles,
@@ -3210,76 +3230,91 @@ function StyleDisclosure({
   onStylesChange: (next: FieldStyleMap) => void;
 }) {
   const cur = readFieldStyle(styles, fieldName);
-  const hasAny = cur.fontSize != null || cur.color != null || cur.fontWeight != null;
-  const setProp = (prop: 'fontSize' | 'color' | 'fontWeight', value: number | string | undefined) => {
+  const hasAny = Object.keys(cur).length > 0;
+  const setProp = (prop: FieldStyleProp, value: number | string | undefined) => {
     onStylesChange(updateFieldStyleMap(styles, fieldName, prop, value));
   };
-  // Local controlled input so typing isn't laggy when parent re-renders.
-  const [sizeDraft, setSizeDraft] = useState(cur.fontSize != null ? String(cur.fontSize) : '');
-  useEffect(() => {
-    setSizeDraft(cur.fontSize != null ? String(cur.fontSize) : '');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cur.fontSize]);
+  // Resolve the current state of B/I/U/S from the style override.
+  const isBold = (cur.fontWeight ?? 0) >= 700;
+  const isItalic = cur.fontStyle === 'italic';
+  const td = cur.textDecoration || '';
+  const isUnderline = td.includes('underline');
+  const isStrike = td.includes('line-through');
+  // Recompute the textDecoration string when a toggle flips.
+  const updateDecoration = (nextU: boolean, nextS: boolean) => {
+    const parts: string[] = [];
+    if (nextU) parts.push('underline');
+    if (nextS) parts.push('line-through');
+    setProp('textDecoration', parts.length ? (parts.join(' ') as any) : undefined);
+  };
   return (
-    <div className="mt-1.5 flex items-center gap-1.5 pl-0.5">
-      <div className="flex items-center gap-1 flex-1 min-w-0">
-        <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Size</span>
-        <input
-          type="number"
-          min={12}
-          max={600}
-          step={2}
-          value={sizeDraft}
-          placeholder="auto"
-          title="Manual font size (leave blank to auto-fit)"
-          onChange={(e) => {
-            const v = e.target.value;
-            setSizeDraft(v);
-            if (v === '') {
-              setProp('fontSize', undefined);
-            } else {
-              const n = parseInt(v, 10);
-              if (Number.isFinite(n)) setProp('fontSize', n);
-            }
-          }}
-          className="w-16 px-1.5 py-1 rounded-md bg-white border border-slate-200/70 text-[11px] font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 shadow-sm"
-        />
-        <span className="text-[10px] text-slate-400">px</span>
-      </div>
-      <div className="flex items-center gap-1 flex-shrink-0">
-        <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Color</span>
-        <input
-          type="color"
-          value={cur.color || '#000000'}
-          onChange={(e) => setProp('color', e.target.value)}
-          className="w-6 h-6 p-0 border border-slate-200/70 rounded cursor-pointer"
-          title={cur.color ? `Override: ${cur.color}` : 'Set custom color'}
-        />
-        {cur.color && (
+    <div className="mt-1.5 mb-1.5 rounded-lg border border-slate-200/60 bg-slate-50/60 p-2 space-y-2">
+      <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400 flex items-center justify-between">
+        <span>Text style</span>
+        {hasAny && (
           <button
             type="button"
-            onClick={() => setProp('color', undefined)}
-            className="text-[10px] text-slate-400 hover:text-rose-500 px-1"
-            title="Clear color override"
+            onClick={() => {
+              const next = { ...(styles || {}) };
+              delete next[fieldName];
+              onStylesChange(next);
+            }}
+            className="text-[9px] font-bold text-indigo-500 hover:text-rose-500 transition-colors px-1 py-0.5 rounded hover:bg-rose-50"
+            title="Reset all overrides on this field"
           >
-            ✕
+            ↺ Reset
           </button>
         )}
       </div>
-      {hasAny && (
-        <button
-          type="button"
-          onClick={() => {
-            const next = { ...(styles || {}) };
-            delete next[fieldName];
-            onStylesChange(next);
-          }}
-          className="text-[10px] font-medium text-indigo-500 hover:text-rose-500 transition-colors px-1.5 py-0.5 rounded hover:bg-rose-50 flex-shrink-0"
-          title="Reset both size and color to template default"
-        >
-          Reset
-        </button>
-      )}
+      <FontFamilyField
+        label="Font"
+        value={cur.fontFamily || ''}
+        onChange={(v) => setProp('fontFamily', v || undefined)}
+      />
+      <FontSizeField
+        label="Size"
+        value={cur.fontSize ?? null}
+        onChange={(v) => setProp('fontSize', v)}
+        getMeasuredSize={() => {
+          if (typeof document === 'undefined') return null;
+          // Find the rendered text element in the preview by its
+          // data-field attribute. Excludes the property panel itself.
+          const els = document.querySelectorAll<HTMLElement>(`[data-field="${fieldName}"]`);
+          for (const el of Array.from(els)) {
+            if (el.closest('[data-properties-panel]')) continue;
+            const fs = parseFloat(getComputedStyle(el).fontSize);
+            if (Number.isFinite(fs)) return fs;
+          }
+          return null;
+        }}
+      />
+      <FormatToggles
+        bold={isBold}
+        italic={isItalic}
+        underline={isUnderline}
+        strikethrough={isStrike}
+        onChange={(patch) => {
+          if ('bold' in patch) setProp('fontWeight', patch.bold ? 800 : undefined);
+          if ('italic' in patch) setProp('fontStyle', patch.italic ? 'italic' : undefined);
+          if ('underline' in patch) updateDecoration(!!patch.underline, isStrike);
+          if ('strikethrough' in patch) updateDecoration(isUnderline, !!patch.strikethrough);
+        }}
+      />
+      <LineHeightField
+        value={typeof cur.lineHeight === 'number' ? cur.lineHeight : 1.4}
+        onChange={(v) => setProp('lineHeight', v)}
+      />
+      <ColorField
+        label="Text color"
+        value={cur.color || ''}
+        onChange={(v) => setProp('color', v || undefined)}
+      />
+      <ColorField
+        label="Highlight"
+        value={cur.backgroundColor || 'transparent'}
+        onChange={(v) => setProp('backgroundColor', v && v !== 'transparent' ? v : undefined)}
+        allowTransparent
+      />
     </div>
   );
 }

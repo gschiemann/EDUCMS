@@ -38,13 +38,32 @@ export type TextStyleOverride = {
   fontSize?: number;
   /** CSS color string (e.g. `#ff0000`, `rgb(0,0,0)`). */
   color?: string;
-  /** Numeric font-weight (100..900). */
+  /** Numeric font-weight (100..900). 700+ renders as Bold. */
   fontWeight?: number;
+  /** Italic toggle. */
+  fontStyle?: 'italic' | 'normal';
+  /** Underline / strikethrough — joined with space when both set. */
+  textDecoration?: 'underline' | 'line-through' | 'underline line-through' | 'none';
+  /** CSS font-family stack (matches Google Fonts picker output). */
+  fontFamily?: string;
+  /** Line-height multiplier (1.0..2.5). */
+  lineHeight?: number;
+  /** Highlighter — background color on the text run. */
+  backgroundColor?: string;
 };
 
 export type TextStyleMap = Record<string, TextStyleOverride>;
 
-const STYLE_KEYS = ['fontSize', 'color', 'fontWeight'] as const;
+const STYLE_KEYS = [
+  'fontSize',
+  'color',
+  'fontWeight',
+  'fontStyle',
+  'textDecoration',
+  'fontFamily',
+  'lineHeight',
+  'backgroundColor',
+] as const;
 
 /** Apply / clear overrides on every `[data-field]` element under `root`. */
 function applyStyles(root: HTMLElement, styles: TextStyleMap | undefined) {
@@ -70,6 +89,36 @@ function applyStyles(root: HTMLElement, styles: TextStyleMap | undefined) {
       el.style.fontWeight = String(override.fontWeight);
     } else if (el.style.fontWeight) {
       el.style.fontWeight = '';
+    }
+    // fontStyle ─ italic / normal.
+    if (override?.fontStyle) {
+      el.style.fontStyle = override.fontStyle;
+    } else if (el.style.fontStyle) {
+      el.style.fontStyle = '';
+    }
+    // textDecoration ─ underline / line-through.
+    if (override?.textDecoration) {
+      el.style.textDecoration = override.textDecoration;
+    } else if (el.style.textDecoration) {
+      el.style.textDecoration = '';
+    }
+    // fontFamily ─ inline stack.
+    if (override?.fontFamily) {
+      el.style.fontFamily = override.fontFamily;
+    } else if (el.style.fontFamily) {
+      el.style.fontFamily = '';
+    }
+    // lineHeight ─ unitless multiplier.
+    if (override?.lineHeight != null && Number.isFinite(override.lineHeight)) {
+      el.style.lineHeight = String(override.lineHeight);
+    } else if (el.style.lineHeight) {
+      el.style.lineHeight = '';
+    }
+    // backgroundColor ─ highlighter.
+    if (override?.backgroundColor) {
+      el.style.backgroundColor = override.backgroundColor;
+    } else if (el.style.backgroundColor) {
+      el.style.backgroundColor = '';
     }
   });
 }
