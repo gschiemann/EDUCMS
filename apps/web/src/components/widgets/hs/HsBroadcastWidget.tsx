@@ -56,7 +56,7 @@ export interface HsBroadcastConfig {
   tickerMessage?: string;
 }
 
-const DEFAULTS: Required<HsBroadcastConfig> = {
+export const DEFAULTS: Required<HsBroadcastConfig> = {
   schoolChip: 'WHS',
   schoolName: 'WESTRIDGE HIGH',
   schoolSub: 'CAMPUS NEWS NETWORK',
