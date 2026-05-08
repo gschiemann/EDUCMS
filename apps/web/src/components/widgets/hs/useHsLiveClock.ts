@@ -118,3 +118,30 @@ export function resolveHsClock(
     caption: isPlaceholderClock(cfg.clockCaption, defaultClockCap) ? liveCaption : (cfg.clockCaption || liveCaption),
   };
 }
+
+/**
+ * Resolve the visible date string from a config + the current Date.
+ *
+ * Each HS template formats its date region differently — Blueprint
+ * uses "2026-04-21", Gallery uses "Tuesday, April 21", Transit uses
+ * "TUE · APR 21". Pass the widget's own `formatLive(now)` so the live
+ * date matches the template's typography exactly.
+ *
+ * Operator override wins when their value differs from the widget's
+ * default placeholder string. Empty / matches-default → live date.
+ *
+ * @param cfg                Widget config (must include clockDate)
+ * @param now                Current Date from useHsLiveClock()
+ * @param defaultClockDate   Widget's DEFAULT clockDate constant (placeholder detection)
+ * @param formatLive         (now) => string — formats `now` to match the template's style
+ */
+export function resolveHsDate(
+  cfg: { clockDate?: string },
+  now: Date,
+  defaultClockDate: string,
+  formatLive: (d: Date) => string,
+): string {
+  const liveDate = formatLive(now);
+  if (!cfg.clockDate || cfg.clockDate.trim() === defaultClockDate.trim()) return liveDate;
+  return cfg.clockDate;
+}
