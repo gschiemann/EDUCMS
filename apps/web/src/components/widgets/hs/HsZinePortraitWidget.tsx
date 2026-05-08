@@ -446,8 +446,8 @@ const CSS = `
   letter-spacing: -.02em;
 }
 .hs-zp-banner-sub {
-  font-family: 'Special Elite', monospace; font-size: 50px;
-  color: #15120d; letter-spacing: .12em;
+  font-family: 'Special Elite', monospace; font-size: 64px;
+  color: #15120d; letter-spacing: .1em;
   margin-top: 28px; transform: rotate(-.6deg);
   background: rgba(255,255,255,.5); padding: 8px 20px;
 }
@@ -456,8 +456,8 @@ const CSS = `
   flex-wrap: wrap; justify-content: center;
 }
 .hs-zp-stamp {
-  font-family: 'Special Elite', monospace; font-size: 40px;
-  letter-spacing: .16em; color: #c1281a; padding: 10px 22px;
+  font-family: 'Special Elite', monospace; font-size: 52px;
+  letter-spacing: .14em; color: #c1281a; padding: 10px 22px;
   border: 3px solid #c1281a; transform: rotate(3deg);
   text-transform: uppercase; background: rgba(255,255,255,.5);
 }
@@ -517,7 +517,7 @@ const CSS = `
 }
 .hs-zp-sub {
   font-family: 'Caveat', cursive; font-weight: 700;
-  font-size: 56px; line-height: 1.15; color: #15120d;
+  font-size: 78px; line-height: 1.1; color: #15120d;
   margin-top: 28px; max-width: 1900px;
 }
 .hs-zp-stats {
@@ -532,8 +532,8 @@ const CSS = `
 .hs-zp-stat-a { transform: rotate(-1deg); }
 .hs-zp-stat-b { transform: rotate(1.2deg); background: #ffd84d; }
 .hs-zp-lbl {
-  font-family: 'Special Elite', monospace; font-size: 40px;
-  letter-spacing: .18em; color: #c1281a; text-transform: uppercase;
+  font-family: 'Special Elite', monospace; font-size: 52px;
+  letter-spacing: .16em; color: #c1281a; text-transform: uppercase;
 }
 .hs-zp-val {
   font-family: 'Archivo Black', sans-serif; font-size: 150px;
@@ -541,7 +541,7 @@ const CSS = `
 }
 .hs-zp-cap {
   font-family: 'Courier Prime', monospace; font-weight: 700;
-  font-size: 40px; color: #15120d; margin-top: 6px;
+  font-size: 58px; color: #15120d; margin-top: 6px; line-height: 1.15;
 }
 
 @keyframes hsZpWobble {
@@ -595,8 +595,8 @@ const CSS = `
   color: #c1281a; margin-top: 20px; line-height: 1;
 }
 .hs-zp-name {
-  font-family: 'Special Elite', monospace; font-size: 50px;
-  color: #15120d; margin-top: 10px; line-height: 1.2;
+  font-family: 'Special Elite', monospace; font-size: 64px;
+  color: #15120d; margin-top: 10px; line-height: 1.15;
 }
 .hs-zp-num {
   font-family: 'Archivo Black', sans-serif; font-size: 320px;
@@ -604,8 +604,8 @@ const CSS = `
   text-shadow: 6px 6px 0 rgba(0,0,0,.32);
 }
 .hs-zp-lb {
-  font-family: 'Permanent Marker', cursive; font-size: 44px;
-  color: #fff; line-height: 1.1; margin-top: 14px;
+  font-family: 'Permanent Marker', cursive; font-size: 58px;
+  color: #fff; line-height: 1.05; margin-top: 14px;
 }
 
 /* ----- REGION 4: who's who featured polaroid ~2580-3340 ----- */
@@ -653,8 +653,8 @@ const CSS = `
 }
 .hs-zp-poster-sub {
   display: block; font-family: 'Special Elite', monospace;
-  font-size: 40px; color: #c1281a;
-  margin-top: 14px; letter-spacing: .12em;
+  font-size: 58px; color: #c1281a;
+  margin-top: 14px; letter-spacing: .1em;
   transform: rotate(0deg);
 }
 
@@ -695,8 +695,8 @@ const CSS = `
   box-shadow: 8px 8px 0 rgba(0,0,0,.15);
 }
 .hs-zp-fc-lbl {
-  font-family: 'Special Elite', monospace; font-size: 40px;
-  letter-spacing: .18em; color: #c1281a; text-transform: uppercase;
+  font-family: 'Special Elite', monospace; font-size: 52px;
+  letter-spacing: .16em; color: #c1281a; text-transform: uppercase;
 }
 .hs-zp-fc-v {
   font-family: 'Archivo Black', sans-serif; font-size: 220px;
@@ -704,7 +704,7 @@ const CSS = `
 }
 .hs-zp-fc-c {
   font-family: 'Courier Prime', monospace; font-weight: 700;
-  font-size: 42px; color: #15120d; margin-top: 8px; line-height: 1.2;
+  font-size: 58px; color: #15120d; margin-top: 8px; line-height: 1.15;
 }
 
 /* ----- REGION 5: ransom-letter announcement ~3340-3760 ----- */
@@ -741,12 +741,12 @@ const CSS = `
   color: #15120d; margin: 0; text-transform: uppercase;
 }
 .hs-zp-alert-p {
-  font-family: 'Special Elite', monospace; font-size: 42px;
-  line-height: 1.3; color: #15120d;
+  font-family: 'Special Elite', monospace; font-size: 64px;
+  line-height: 1.2; color: #15120d;
   margin: 18px 0 0;
 }
 .hs-zp-alert-when {
-  font-family: 'Permanent Marker', cursive; font-size: 46px;
+  font-family: 'Permanent Marker', cursive; font-size: 58px;
   color: #c1281a; margin-top: 12px;
 }
 
@@ -763,14 +763,14 @@ const CSS = `
   height: 100%;
   display: flex; align-items: center;
   padding: 0 44px;
-  font-family: 'Permanent Marker', cursive; font-size: 50px;
-  letter-spacing: .14em; text-transform: lowercase;
+  font-family: 'Permanent Marker', cursive; font-size: 62px;
+  letter-spacing: .12em; text-transform: lowercase;
   flex-shrink: 0;
   box-shadow: inset 0 -6px 0 #ffd84d;
 }
 .hs-zp-tk-msg {
-  font-family: 'Special Elite', monospace; font-size: 44px;
-  padding-left: 46px; white-space: nowrap; letter-spacing: .08em;
+  font-family: 'Special Elite', monospace; font-size: 62px;
+  padding-left: 46px; white-space: nowrap; letter-spacing: .06em;
   animation: hsZpScroll 60s linear infinite;
   display: inline-flex;
   text-decoration: underline; text-decoration-color: #ffd84d;
