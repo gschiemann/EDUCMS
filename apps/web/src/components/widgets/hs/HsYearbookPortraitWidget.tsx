@@ -360,9 +360,9 @@ const CSS = `
 }
 .hs-ybp-mast-top {
   display: flex; justify-content: space-between; align-items: baseline;
-  font-family: 'JetBrains Mono', monospace; font-size: 28px;
+  font-family: 'JetBrains Mono', monospace; font-size: 36px;
   letter-spacing: .22em; color: #6b5d4d; text-transform: uppercase;
-  border-bottom: 1px solid #c9beac; padding-bottom: 14px;
+  border-bottom: 1px solid #c9beac; padding-bottom: 16px;
 }
 .hs-ybp-mast-side-r { color: #b23b20; }
 .hs-ybp-title {
@@ -381,12 +381,12 @@ const CSS = `
 }
 .hs-ybp-mast-bottom {
   display: flex; justify-content: space-between; align-items: baseline;
-  font-family: 'JetBrains Mono', monospace; font-size: 26px;
+  font-family: 'JetBrains Mono', monospace; font-size: 34px;
   letter-spacing: .2em; color: #6b5d4d; text-transform: uppercase;
 }
 .hs-ybp-mast-time {
   font-family: 'Playfair Display', serif; font-weight: 700; font-style: italic;
-  font-size: 56px; color: #1a1614; letter-spacing: -.005em;
+  font-size: 64px; color: #1a1614; letter-spacing: -.005em;
   text-transform: none;
 }
 
@@ -395,9 +395,10 @@ const CSS = `
   position: absolute; top: 720px; left: 80px; right: 80px;
   height: 660px; z-index: 3;
   display: flex; flex-direction: column; gap: 22px;
+  overflow: hidden;
 }
 .hs-ybp-feat-photo {
-  width: 100%; height: 460px;
+  width: 100%; height: 320px; flex-shrink: 0;
   background: linear-gradient(135deg, #d6cfbe 0%, #b0a897 60%, #8a8170 100%);
   border: 3px solid #1a1614;
   position: relative; overflow: hidden;
@@ -417,8 +418,8 @@ const CSS = `
 .hs-ybp-feat-photo-tag {
   position: absolute; bottom: 22px; left: 22px;
   background: #f7f3ea; border: 2px solid #1a1614;
-  padding: 10px 22px;
-  font-family: 'JetBrains Mono', monospace; font-size: 26px;
+  padding: 12px 26px;
+  font-family: 'JetBrains Mono', monospace; font-size: 36px;
   letter-spacing: .14em; text-transform: uppercase; color: #1a1614;
   z-index: 2;
 }
@@ -428,21 +429,21 @@ const CSS = `
 }
 .hs-ybp-feat-num {
   font-family: 'Playfair Display', serif; font-style: italic; font-weight: 900;
-  font-size: 124px; line-height: .8; color: #b23b20; flex-shrink: 0;
+  font-size: 144px; line-height: .8; color: #b23b20; flex-shrink: 0;
 }
-.hs-ybp-feat-cap-body { display: flex; flex-direction: column; gap: 10px; }
+.hs-ybp-feat-cap-body { display: flex; flex-direction: column; gap: 14px; }
 .hs-ybp-feat-title {
   font-family: 'Playfair Display', serif; font-weight: 900;
-  font-size: 64px; line-height: 1.02; letter-spacing: -.01em; color: #1a1614;
+  font-size: 78px; line-height: 1.02; letter-spacing: -.01em; color: #1a1614;
 }
 .hs-ybp-feat-body {
   font-family: 'Lora', serif; font-weight: 400;
-  font-size: 32px; line-height: 1.4; color: #3b342c;
+  font-size: 42px; line-height: 1.35; color: #3b342c;
 }
 .hs-ybp-feat-byline {
-  font-family: 'JetBrains Mono', monospace; font-size: 30px;
+  font-family: 'JetBrains Mono', monospace; font-size: 38px;
   letter-spacing: .2em; color: #b23b20; text-transform: uppercase;
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
 /* ================== REGION 3: LEDE WITH DROP CAP ================== */
@@ -451,7 +452,7 @@ const CSS = `
   height: 1060px; z-index: 3;
 }
 .hs-ybp-eyebrow {
-  font-family: 'JetBrains Mono', monospace; font-size: 30px;
+  font-family: 'JetBrains Mono', monospace; font-size: 40px;
   color: #b23b20; letter-spacing: .22em; text-transform: uppercase;
 }
 .hs-ybp-h1 {
@@ -470,7 +471,7 @@ const CSS = `
 .hs-ybp-lede-cols {
   display: grid; grid-template-columns: 1fr 1fr; gap: 54px;
   font-family: 'Lora', serif; font-style: italic; font-weight: 400;
-  font-size: 38px; line-height: 1.5; color: #2a241f;
+  font-size: 46px; line-height: 1.4; color: #2a241f;
 }
 .hs-ybp-lede-col { position: relative; }
 .hs-ybp-dropcap {
@@ -481,10 +482,10 @@ const CSS = `
 }
 .hs-ybp-lede-folio {
   position: absolute; bottom: 0; left: 0; right: 0;
-  display: flex; justify-content: center; gap: 18px; align-items: baseline;
-  font-family: 'JetBrains Mono', monospace; font-size: 24px;
+  display: flex; justify-content: center; gap: 22px; align-items: baseline;
+  font-family: 'JetBrains Mono', monospace; font-size: 32px;
   letter-spacing: .22em; color: #6b5d4d; text-transform: uppercase;
-  border-top: 1px solid #c9beac; padding-top: 16px;
+  border-top: 1px solid #c9beac; padding-top: 18px;
 }
 .hs-ybp-lede-folio-sep { color: #b23b20; }
 
@@ -517,8 +518,8 @@ const CSS = `
 .hs-ybp-pull-frame {
   position: absolute; bottom: 18px; left: 18px;
   background: #f7f3ea; border: 2px solid #1a1614;
-  padding: 8px 16px;
-  font-family: 'JetBrains Mono', monospace; font-size: 30px;
+  padding: 10px 18px;
+  font-family: 'JetBrains Mono', monospace; font-size: 38px;
   letter-spacing: .12em; text-transform: uppercase; color: #1a1614;
   z-index: 2;
 }
@@ -527,29 +528,29 @@ const CSS = `
   padding-top: 6px;
 }
 .hs-ybp-pull-tag {
-  font-family: 'JetBrains Mono', monospace; font-size: 26px;
+  font-family: 'JetBrains Mono', monospace; font-size: 36px;
   letter-spacing: .22em; color: #b23b20; text-transform: uppercase;
 }
 .hs-ybp-pull-name {
   font-family: 'Playfair Display', serif; font-weight: 900; font-style: italic;
-  font-size: 132px; line-height: .9; margin-top: 10px;
+  font-size: 140px; line-height: .9; margin-top: 12px;
   color: #1a1614; letter-spacing: -.01em;
 }
 .hs-ybp-pull-meta {
-  font-family: 'JetBrains Mono', monospace; font-size: 24px;
+  font-family: 'JetBrains Mono', monospace; font-size: 36px;
   letter-spacing: .14em; color: #6b5d4d; text-transform: uppercase;
-  margin-top: 12px;
+  margin-top: 14px;
 }
 .hs-ybp-pull-quote {
-  margin: 22px 0 0;
+  margin: 24px 0 0;
   font-family: 'Playfair Display', serif; font-weight: 700; font-style: italic;
-  font-size: 44px; line-height: 1.25; color: #2a241f;
-  border-left: 6px solid #b23b20; padding-left: 26px;
+  font-size: 54px; line-height: 1.22; color: #2a241f;
+  border-left: 6px solid #b23b20; padding-left: 30px;
 }
 .hs-ybp-pull-byline {
-  font-family: 'JetBrains Mono', monospace; font-size: 30px;
+  font-family: 'JetBrains Mono', monospace; font-size: 36px;
   letter-spacing: .14em; color: #999088; text-transform: uppercase;
-  margin-top: auto; padding-top: 16px;
+  margin-top: auto; padding-top: 18px;
 }
 
 /* ================== REGION 5: CALENDAR FOLIO ================== */
@@ -565,13 +566,13 @@ const CSS = `
   font-size: 80px; line-height: 1; color: #1a1614; letter-spacing: -.01em;
 }
 .hs-ybp-cal-meta {
-  font-family: 'JetBrains Mono', monospace; font-size: 30px;
+  font-family: 'JetBrains Mono', monospace; font-size: 38px;
   letter-spacing: .2em; color: #6b5d4d; text-transform: uppercase;
-  display: flex; align-items: baseline; gap: 14px;
+  display: flex; align-items: baseline; gap: 18px;
 }
 .hs-ybp-cal-meta > :first-child {
   font-family: 'Playfair Display', serif; font-weight: 900; font-style: italic;
-  font-size: 76px; line-height: .9; color: #b23b20;
+  font-size: 92px; line-height: .9; color: #b23b20;
   letter-spacing: -.02em; text-transform: none;
 }
 .hs-ybp-cal-meta-lbl { max-width: 240px; text-align: right; line-height: 1.2; }
@@ -591,28 +592,28 @@ const CSS = `
 }
 .hs-ybp-cal-badge {
   background: #1a1614; color: #f7f3ea;
-  padding: 14px 20px;
-  font-family: 'JetBrains Mono', monospace; font-size: 26px;
+  padding: 16px 22px;
+  font-family: 'JetBrains Mono', monospace; font-size: 36px;
   letter-spacing: .18em; text-transform: uppercase;
   text-align: center;
 }
 .hs-ybp-cal-badge-cd {
   background: #b23b20;
-  font-size: 28px; line-height: 1.1;
+  font-size: 36px; line-height: 1.1;
 }
 .hs-ybp-cal-name {
   font-family: 'Playfair Display', serif; font-weight: 700; font-style: italic;
-  font-size: 44px; line-height: 1.1; color: #1a1614;
+  font-size: 56px; line-height: 1.1; color: #1a1614;
 }
 .hs-ybp-cal-folio {
   font-family: 'Playfair Display', serif; font-weight: 900; font-style: italic;
-  font-size: 56px; color: #b23b20; text-align: right; line-height: 1;
+  font-size: 68px; color: #b23b20; text-align: right; line-height: 1;
 }
 .hs-ybp-cal-row-cd .hs-ybp-cal-name { color: #2a241f; font-style: italic; }
 
 /* ================== REGION 6: WIRE TICKER ================== */
 .hs-ybp-wire-rule {
-  position: absolute; left: 0; right: 0; bottom: 80px;
+  position: absolute; left: 0; right: 0; bottom: 100px;
   height: 4px; background: #b23b20; z-index: 4;
 }
 .hs-ybp-wire-rule::before {
@@ -620,21 +621,21 @@ const CSS = `
   height: 1px; background: #b23b20;
 }
 .hs-ybp-ticker {
-  position: absolute; bottom: 0; left: 0; right: 0; height: 80px;
+  position: absolute; bottom: 0; left: 0; right: 0; height: 100px;
   background: #1a1614; color: #f7f3ea;
   display: flex; align-items: center; overflow: hidden; z-index: 5;
   border-top: 2px solid #b23b20;
 }
 .hs-ybp-tk-tag {
   background: #b23b20; color: #f7f3ea;
-  padding: 0 32px; height: 100%;
+  padding: 0 40px; height: 100%;
   display: flex; align-items: center; flex-shrink: 0;
-  font-family: 'JetBrains Mono', monospace; font-size: 26px;
+  font-family: 'JetBrains Mono', monospace; font-size: 36px;
   letter-spacing: .22em; text-transform: uppercase;
 }
 .hs-ybp-tk-msg {
   font-family: 'Playfair Display', serif; font-weight: 700; font-style: italic;
-  font-size: 30px; padding-left: 36px; white-space: nowrap;
+  font-size: 42px; padding-left: 44px; white-space: nowrap;
   letter-spacing: .04em; text-transform: uppercase;
   animation: hsYbpScroll 60s linear infinite;
   display: inline-flex;
