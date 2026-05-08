@@ -356,8 +356,8 @@ const CSS = `
   height: 1px; background: #2a2724; margin: 36px 0 26px;
 }
 .hs-glp-mast-meta {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 42px;
-  color: #8a8275; letter-spacing: .24em; text-transform: uppercase;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 52px;
+  color: #8a8275; letter-spacing: .22em; text-transform: uppercase;
   display: flex; align-items: baseline; gap: 28px; flex-wrap: wrap;
 }
 .hs-glp-mast-on {
@@ -378,8 +378,8 @@ const CSS = `
 }
 .hs-glp-h1 em { font-style: italic; color: #a84630; }
 .hs-glp-sub {
-  font-family: 'EB Garamond', serif; font-size: 44px; line-height: 1.32;
-  color: #1a1814; margin: 28px 0 0; max-width: 1820px; font-weight: 400;
+  font-family: 'EB Garamond', serif; font-size: 78px; line-height: 1.22;
+  color: #1a1814; margin: 28px 0 0; max-width: 1900px; font-weight: 400;
   font-style: italic; opacity: .82;
 }
 
@@ -416,8 +416,8 @@ const CSS = `
   position: absolute; bottom: 56px; left: 56px; right: 56px;
   background: #f5f1e8; color: #1a1814;
   padding: 18px 28px;
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 38px;
-  letter-spacing: .22em; text-transform: uppercase;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 52px;
+  letter-spacing: .2em; text-transform: uppercase;
   border-left: 4px solid #a84630;
 }
 
@@ -428,7 +428,7 @@ const CSS = `
   box-sizing: border-box;
 }
 .hs-glp-acq-eyebrow {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 40px;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 52px;
   letter-spacing: .3em; color: #c8a96a; text-transform: uppercase;
 }
 .hs-glp-acq-no {
@@ -444,9 +444,9 @@ const CSS = `
   height: 1px; background: #444038; margin: 36px 0 28px;
 }
 .hs-glp-acq-tag {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 38px;
-  letter-spacing: .24em; color: #a84630; text-transform: uppercase;
-  margin-bottom: 22px; line-height: 1.4;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 52px;
+  letter-spacing: .22em; color: #a84630; text-transform: uppercase;
+  margin-bottom: 22px; line-height: 1.3;
 }
 .hs-glp-acq-name {
   font-family: 'EB Garamond', serif; font-style: italic; font-weight: 400;
@@ -454,9 +454,9 @@ const CSS = `
   letter-spacing: -.01em;
 }
 .hs-glp-acq-meta {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 40px;
-  color: #c8a96a; letter-spacing: .2em; text-transform: uppercase;
-  line-height: 1.5; margin-top: auto;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 58px;
+  color: #c8a96a; letter-spacing: .18em; text-transform: uppercase;
+  line-height: 1.3; margin-top: auto;
 }
 
 /* ----- REGION 3: Today's Programme 1740-2780 ----- */
@@ -467,7 +467,7 @@ const CSS = `
   height: 1px; background: #2a2724; margin-bottom: 28px;
 }
 .hs-glp-prog-eyebrow {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 42px;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 58px;
   letter-spacing: .3em; color: #8a8275; text-transform: uppercase;
 }
 .hs-glp-prog-h2 {
@@ -494,16 +494,16 @@ const CSS = `
   line-height: 1.05; color: #1a1814; margin: 0;
 }
 .hs-glp-meta {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 40px;
-  color: #8a8275; letter-spacing: .14em; text-transform: uppercase;
-  line-height: 1.4;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 58px;
+  color: #8a8275; letter-spacing: .12em; text-transform: uppercase;
+  line-height: 1.25;
 }
 .hs-glp-time {
   font-family: 'EB Garamond', serif; font-style: italic; font-size: 76px;
   color: #1a1814; text-align: right; line-height: 1;
 }
 .hs-glp-d {
-  display: block; font-family: 'Inter', sans-serif; font-size: 36px;
+  display: block; font-family: 'Inter', sans-serif; font-size: 52px;
   color: #8a8275; letter-spacing: .2em; text-transform: uppercase;
   margin-top: 10px; font-style: normal;
 }
@@ -514,31 +514,31 @@ const CSS = `
   border-top: 1px solid #2a2724; padding-top: 32px;
 }
 .hs-glp-statement-eyebrow {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 42px;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 58px;
   letter-spacing: .3em; color: #8a8275; text-transform: uppercase;
   margin-bottom: 26px;
 }
 .hs-glp-quote {
-  font-family: 'EB Garamond', serif; font-size: 60px; font-style: italic;
-  color: #1a1814; line-height: 1.22;
+  font-family: 'EB Garamond', serif; font-size: 82px; font-style: italic;
+  color: #1a1814; line-height: 1.18;
   border-left: 3px solid #a84630; padding-left: 40px;
-  max-width: 1820px;
+  max-width: 1900px;
 }
 .hs-glp-byline {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 38px;
-  color: #8a8275; letter-spacing: .2em; text-transform: uppercase;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 58px;
+  color: #8a8275; letter-spacing: .18em; text-transform: uppercase;
   margin-top: 26px; padding-left: 43px;
 }
 .hs-glp-wall {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px;
-  margin-top: 44px;
-  border-top: 1px solid #2a2724; padding-top: 30px;
+  margin-top: 28px;
+  border-top: 1px solid #2a2724; padding-top: 22px;
 }
 .hs-glp-wall-cell {}
 .hs-glp-wall-label {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 36px;
-  letter-spacing: .22em; color: #8a8275; text-transform: uppercase;
-  margin-bottom: 14px; line-height: 1.3;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 52px;
+  letter-spacing: .2em; color: #8a8275; text-transform: uppercase;
+  margin-bottom: 14px; line-height: 1.2;
   min-height: 60px;
 }
 .hs-glp-wall-val {
@@ -547,22 +547,22 @@ const CSS = `
 }
 .hs-glp-wall-cap {
   font-family: 'EB Garamond', serif; font-style: italic; font-weight: 400;
-  font-size: 38px; color: #1a1814; margin-top: 12px; line-height: 1.3;
+  font-size: 58px; color: #1a1814; margin-top: 12px; line-height: 1.25;
   opacity: .75;
 }
 
 /* ----- REGION 5: Curator's Note advisory 3380-3700 ----- */
 .hs-glp-advisory {
-  position: absolute; top: 3380px; left: 120px; right: 120px;
-  height: 320px;
+  position: absolute; top: 3320px; left: 120px; right: 120px;
+  height: 360px;
   background: #1a1814; color: #f5f1e8;
   box-sizing: border-box;
-  padding: 32px 44px;
+  padding: 28px 44px;
   display: flex; flex-direction: column;
 }
 .hs-glp-advisory-label {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 38px;
-  letter-spacing: .24em; color: #a84630; text-transform: uppercase;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 52px;
+  letter-spacing: .22em; color: #a84630; text-transform: uppercase;
   margin-bottom: 14px;
 }
 .hs-glp-adv-h3 {
@@ -570,37 +570,37 @@ const CSS = `
   line-height: 1; letter-spacing: -.01em; margin: 0 0 18px; color: #f5f1e8;
 }
 .hs-glp-adv-p {
-  font-family: 'EB Garamond', serif; font-size: 42px; line-height: 1.32;
-  color: #d9d2c3; margin: 0; font-weight: 400;
+  font-family: 'EB Garamond', serif; font-size: 56px; line-height: 1.22;
+  color: #d9d2c3; margin: 0; font-weight: 400; flex: 1;
 }
 .hs-glp-adv-when {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 36px;
-  color: #a84630; letter-spacing: .2em; text-transform: uppercase;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 52px;
+  color: #a84630; letter-spacing: .18em; text-transform: uppercase;
   border-top: 1px solid #444038; padding-top: 16px; margin-top: auto;
 }
 
-/* ----- REGION 6: hours strip 3720-3760 (above ticker) ----- */
+/* ----- REGION 6: hours strip (above ticker) ----- */
 .hs-glp-hours {
-  position: absolute; top: 3720px; left: 120px; right: 120px; height: 50px;
-  border-top: 1px solid #2a2724; padding-top: 10px;
+  position: absolute; bottom: 100px; left: 120px; right: 120px; height: 60px;
+  border-top: 1px solid #2a2724; padding-top: 12px;
   display: flex; justify-content: space-between; align-items: center;
   overflow: hidden;
 }
 .hs-glp-h-line {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 36px;
-  color: #8a8275; letter-spacing: .22em; text-transform: uppercase;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 48px;
+  color: #8a8275; letter-spacing: .2em; text-transform: uppercase;
   display: flex; gap: 22px; align-items: baseline;
 }
 .hs-glp-h-line strong { color: #1a1814; font-weight: 600; }
 .hs-glp-sep { color: #2a2724; }
 .hs-glp-coda {
-  font-family: 'EB Garamond', serif; font-style: italic; font-size: 44px;
+  font-family: 'EB Garamond', serif; font-style: italic; font-size: 58px;
   color: #a84630;
 }
 
 /* ----- ticker pinned to absolute bottom ----- */
 .hs-glp-ticker {
-  position: absolute; bottom: 0; left: 0; right: 0; height: 80px;
+  position: absolute; bottom: 0; left: 0; right: 0; height: 100px;
   background: #1a1814; color: #f5f1e8;
   display: flex; align-items: center; overflow: hidden;
 }
@@ -608,11 +608,11 @@ const CSS = `
   background: #a84630; color: #f5f1e8;
   padding: 0 36px; height: 100%;
   display: flex; align-items: center;
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 36px;
-  letter-spacing: .3em; flex-shrink: 0;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 52px;
+  letter-spacing: .26em; flex-shrink: 0;
 }
 .hs-glp-tk-msg {
-  font-family: 'EB Garamond', serif; font-style: italic; font-size: 46px;
+  font-family: 'EB Garamond', serif; font-style: italic; font-size: 62px;
   white-space: nowrap; padding-left: 40px;
   animation: hsGlpScroll 70s linear infinite; display: inline-flex;
 }
