@@ -27,7 +27,6 @@ import { useRef } from 'react';
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock, resolveHsDate } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
-import { useTextStyleOverrides, type TextStyleMap } from './useTextStyleOverrides';
 
 export interface HsTransitConfig {
   schoolCode?: string;
@@ -68,8 +67,27 @@ export interface HsTransitConfig {
   countdownSub?: string;
   tickerTag?: string;
   tickerMessage?: string;
-  /** Per-field style overrides keyed by data-field attr. */
-  __styles?: TextStyleMap;
+  /**
+   * Per-field style overrides — keys match `data-field` attrs on the
+   * rendered HTML. Operator-edited via the BuilderBottomBar's per-field
+   * controls. BuilderZone applies them via scoped `!important` CSS
+   * rules (apps/web/src/components/template-builder/BuilderZone.tsx
+   * ~line 547). Empty / missing keys fall back to the CSS class
+   * defaults baked into this widget.
+   *
+   * Schema: { fontSize, fontFamily, color, bold, italic, underline,
+   *   strikethrough, bgColor }
+   */
+  _styles?: Record<string, {
+    fontSize?: number;
+    fontFamily?: string;
+    color?: string;
+    bold?: boolean;
+    italic?: boolean;
+    underline?: boolean;
+    strikethrough?: boolean;
+    bgColor?: string;
+  }>;
 }
 
 export const DEFAULTS: Required<HsTransitConfig> = {
@@ -108,7 +126,7 @@ export const DEFAULTS: Required<HsTransitConfig> = {
   countdownSub: 'Seniors — cap & gown pickup by Fri 17:00',
   tickerTag: 'PA · ALL TERMINALS',
   tickerMessage: 'BUS 14 DELAYED 10 MIN — NEW ARRIVAL 07:58  ●  LUNCH TODAY: CHICKEN BOWL, SALAD BAR, VEGAN OPT  ●  AP PSYCH STUDY HALL MOVED TO LIBRARY  ●  LOST: SILVER EARBUDS — FRONT OFFICE  ●  ',
-  __styles: {},
+  _styles: {},
 };
 
 function statusClass(s: string): string {
@@ -122,9 +140,7 @@ function statusClass(s: string): string {
 
 export function HsTransitWidget({ config, live }: { config?: HsTransitConfig; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<HsTransitConfig>;
-  // 2026-05-08 — per-field style overrides (font-size + color).
   const stageRef = useRef<HTMLDivElement | null>(null);
-  useTextStyleOverrides(stageRef, c.__styles);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');

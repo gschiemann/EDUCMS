@@ -721,7 +721,12 @@ function BuilderBottomBar() {
   // supports the `_styles` schema OR is an HS template (consumes the
   // same schema once we strip the legacy __styles path). Mirrors the
   // TopContextToolbar's "any non-image" behavior.
-  const supportsPerFieldStyles = !!selectedZone && !isImage;
+  // TEXT / RICH_TEXT / TICKER widgets keep their existing widget-level
+  // toolbar (operator's mental model: those widgets' fontSize / color
+  // are top-level cfg props, not per-field overrides). Every OTHER
+  // text-bearing widget (HS templates, MS templates, themed widgets,
+  // animated widgets, etc.) gets the per-field path.
+  const supportsPerFieldStyles = !!selectedZone && !isImage && !isTextStyle;
   const isPerFieldText = supportsPerFieldStyles && !!activeFieldName;
   const fieldStyles = (cfg._styles && typeof cfg._styles === 'object' ? cfg._styles : {}) as Record<string, any>;
   const curFieldStyle = (activeFieldName && fieldStyles[activeFieldName]) || {};
@@ -937,7 +942,7 @@ function BuilderBottomBar() {
           )}
 
           {/* Selected widget but no field activated yet — hint */}
-          {supportsPerFieldStyles && !activeFieldName && !isTextStyle && (
+          {supportsPerFieldStyles && !activeFieldName && (
             <span className="px-3 text-[11px] italic text-slate-400 select-none whitespace-nowrap">
               Click any text on the canvas to edit its style
             </span>

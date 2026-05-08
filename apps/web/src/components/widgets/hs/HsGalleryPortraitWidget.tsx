@@ -46,7 +46,6 @@ import { useRef } from 'react';
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock, resolveHsDate } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
-import { useTextStyleOverrides, type TextStyleMap } from './useTextStyleOverrides';
 
 export interface HsGalleryConfig {
   schoolName?: string;
@@ -92,8 +91,27 @@ export interface HsGalleryConfig {
   brandCoda?: string;
   tickerTag?: string;
   tickerMessage?: string;
-  /** Per-field style overrides keyed by data-field attr. */
-  __styles?: TextStyleMap;
+  /**
+   * Per-field style overrides — keys match `data-field` attrs on the
+   * rendered HTML. Operator-edited via the BuilderBottomBar's per-field
+   * controls. BuilderZone applies them via scoped `!important` CSS
+   * rules (apps/web/src/components/template-builder/BuilderZone.tsx
+   * ~line 547). Empty / missing keys fall back to the CSS class
+   * defaults baked into this widget.
+   *
+   * Schema: { fontSize, fontFamily, color, bold, italic, underline,
+   *   strikethrough, bgColor }
+   */
+  _styles?: Record<string, {
+    fontSize?: number;
+    fontFamily?: string;
+    color?: string;
+    bold?: boolean;
+    italic?: boolean;
+    underline?: boolean;
+    strikethrough?: boolean;
+    bgColor?: string;
+  }>;
 }
 
 type Cfg = HsGalleryConfig;
@@ -139,14 +157,12 @@ export const DEFAULTS: Required<Cfg> = {
   brandCoda: '— Admission is free & always has been.',
   tickerTag: "Docent's Note",
   tickerMessage: 'Bus 14 delayed ten minutes · Lunch today: chicken bowl, salad bar, vegan option · AP Psychology study hall moved to the library · Lost: silver earbuds — inquire at the front office · Spring sports photos tomorrow; please wear your jerseys ·  ',
-  __styles: {},
+  _styles: {},
 };
 
 export function HsGalleryPortraitWidget({ config, live }: { config?: Cfg; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
-  // 2026-05-08 — per-field style overrides (font-size + color).
   const stageRef = useRef<HTMLDivElement | null>(null);
-  useTextStyleOverrides(stageRef, c.__styles);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');

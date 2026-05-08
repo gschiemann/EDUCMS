@@ -30,7 +30,6 @@ import { useRef } from 'react';
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
-import { useTextStyleOverrides, type TextStyleMap } from './useTextStyleOverrides';
 
 export interface HsTerminalConfig {
   schoolHost?: string;
@@ -85,8 +84,27 @@ export interface HsTerminalConfig {
   event3Who?: string;
   tickerTag?: string;
   tickerMessage?: string;
-  /** Per-field style overrides keyed by data-field attr. */
-  __styles?: TextStyleMap;
+  /**
+   * Per-field style overrides — keys match `data-field` attrs on the
+   * rendered HTML. Operator-edited via the BuilderBottomBar's per-field
+   * controls. BuilderZone applies them via scoped `!important` CSS
+   * rules (apps/web/src/components/template-builder/BuilderZone.tsx
+   * ~line 547). Empty / missing keys fall back to the CSS class
+   * defaults baked into this widget.
+   *
+   * Schema: { fontSize, fontFamily, color, bold, italic, underline,
+   *   strikethrough, bgColor }
+   */
+  _styles?: Record<string, {
+    fontSize?: number;
+    fontFamily?: string;
+    color?: string;
+    bold?: boolean;
+    italic?: boolean;
+    underline?: boolean;
+    strikethrough?: boolean;
+    bgColor?: string;
+  }>;
 }
 
 export const DEFAULTS: Required<HsTerminalConfig> = {
@@ -139,14 +157,12 @@ export const DEFAULTS: Required<HsTerminalConfig> = {
   event3Who: '@ms.park',
   tickerTag: '/var/log/syslog',
   tickerMessage: '[info] bus-14 delayed 10m · [warn] printer rm-210 out of toner · [info] lost-and-found: silver earbuds · [info] ap psych study hall moved to library · [info] sports photos tomorrow — bring jerseys · ',
-  __styles: {},
+  _styles: {},
 };
 
 export function HsTerminalWidget({ config, live }: { config?: HsTerminalConfig; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<HsTerminalConfig>;
-  // 2026-05-08 — per-field style overrides (font-size + color).
   const stageRef = useRef<HTMLDivElement | null>(null);
-  useTextStyleOverrides(stageRef, c.__styles);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
