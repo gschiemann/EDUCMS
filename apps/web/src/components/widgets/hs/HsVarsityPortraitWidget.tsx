@@ -24,9 +24,11 @@
  * misrender if you do.
  */
 
+import { useRef } from 'react';
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
+import { useTextStyleOverrides, type TextStyleMap } from './useTextStyleOverrides';
 
 export interface HsVarsityConfig {
   schoolInitials?: string;
@@ -87,6 +89,8 @@ export interface HsVarsityConfig {
   event5Name?: string;
   tickerTag?: string;
   tickerMessage?: string;
+  /** Per-field style overrides keyed by data-field attr. */
+  __styles?: TextStyleMap;
 }
 
 type Cfg = HsVarsityConfig;
@@ -147,10 +151,14 @@ export const DEFAULTS: Required<Cfg> = {
   event5Name: 'Senior Night — Varsity BB',
   tickerTag: 'HIGHLIGHT REEL',
   tickerMessage: '🏈 FOOTBALL W 21-14 vs LIONS  ●  🏀 BOYS HOOPS L 58-62 @ EAST  ●  ⚽ SOCCER W 3-1 vs ROOSEVELT  ●  🏐 VOLLEYBALL W 3-0 vs CENTRAL  ●  🏊 SWIM 2ND OF 6 @ INVITATIONAL  ●  🏃 TRACK MIRA SET 800m SCHOOL RECORD  ●  ',
+  __styles: {},
 };
 
 export function HsVarsityPortraitWidget({ config, live }: { config?: Cfg; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
+  // 2026-05-08 — per-field style overrides (font-size + color).
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  useTextStyleOverrides(stageRef, c.__styles);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
@@ -178,6 +186,7 @@ export function HsVarsityPortraitWidget({ config, live }: { config?: Cfg; live?:
     <HsStage
       width={2160}
       height={3840}
+      stageRef={stageRef}
       stageStyle={{
         background: 'linear-gradient(180deg, #0d1b3d 0%, #18306b 55%, #0a1432 100%)',
         fontFamily: "'Inter', sans-serif",

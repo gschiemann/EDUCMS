@@ -27,9 +27,11 @@
  * misrender if you do.
  */
 
+import { useRef } from 'react';
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
+import { useTextStyleOverrides, type TextStyleMap } from './useTextStyleOverrides';
 
 export interface HsYearbookConfig {
   schoolName?: string;
@@ -74,6 +76,8 @@ export interface HsYearbookConfig {
   event3Name?: string;
   tickerTag?: string;
   tickerMessage?: string;
+  /** Per-field style overrides keyed by data-field attr. */
+  __styles?: TextStyleMap;
 }
 
 type Cfg = HsYearbookConfig;
@@ -118,10 +122,14 @@ export const DEFAULTS: Required<Cfg> = {
   event3Name: '"Into the Woods" opening night.',
   tickerTag: 'WIRE · LATE',
   tickerMessage: 'NEWS DESK ANNOUNCEMENT — BUS 14 RUNNING LATE, NEW DEPARTURE 7:58 AM · LUNCH TODAY: CHICKEN BOWL, SALAD BAR, VEGAN OPT · AP PSYCH STUDY HALL MOVED TO LIBRARY · LOST: SILVER EARBUDS — FRONT OFFICE · ',
+  __styles: {},
 };
 
 export function HsYearbookPortraitWidget({ config, live }: { config?: Cfg; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
+  // 2026-05-08 — per-field style overrides (font-size + color).
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  useTextStyleOverrides(stageRef, c.__styles);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
@@ -157,6 +165,7 @@ export function HsYearbookPortraitWidget({ config, live }: { config?: Cfg; live?
     <HsStage
       width={2160}
       height={3840}
+      stageRef={stageRef}
       stageStyle={{
         background: '#f7f3ea',
         fontFamily: "'Inter', sans-serif",

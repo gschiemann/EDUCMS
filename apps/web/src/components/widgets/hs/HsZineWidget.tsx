@@ -10,9 +10,11 @@
  * announcement with yellow highlight, polaroid event photos.
  */
 
+import { useRef } from 'react';
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
+import { useTextStyleOverrides, type TextStyleMap } from './useTextStyleOverrides';
 
 export interface HsZineConfig {
   schoolName?: string;
@@ -55,6 +57,8 @@ export interface HsZineConfig {
   clockTimezone?: string;
   tickerTag?: string;
   tickerMessage?: string;
+  /** Per-field style overrides keyed by data-field attr. */
+  __styles?: TextStyleMap;
 }
 
 export const DEFAULTS: Required<HsZineConfig> = {
@@ -95,10 +99,14 @@ export const DEFAULTS: Required<HsZineConfig> = {
   clockTimezone: '',
   tickerTag: 'xeroxwire',
   tickerMessage: 'bus 14 running late !! · lunch: chicken bowl, salad bar, vegan opt · ap psych → library · LOST: silver earbuds — front desk · sports photos tmrw bring your jersey · submit to the zine rm 217 · ',
+  __styles: {},
 };
 
 export function HsZineWidget({ config, live }: { config?: HsZineConfig; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<HsZineConfig>;
+  // 2026-05-08 — per-field style overrides (font-size + color).
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  useTextStyleOverrides(stageRef, c.__styles);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
@@ -121,6 +129,7 @@ export function HsZineWidget({ config, live }: { config?: HsZineConfig; live?: b
   });
   return (
     <HsStage
+      stageRef={stageRef}
       stageStyle={{
         background: '#f2ecd9',
         backgroundImage:

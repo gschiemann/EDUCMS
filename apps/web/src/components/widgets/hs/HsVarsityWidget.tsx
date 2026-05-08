@@ -26,9 +26,11 @@
  * looks flat, something is wrong with the port, not the design.
  */
 
+import { useRef } from 'react';
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
+import { useTextStyleOverrides, type TextStyleMap } from './useTextStyleOverrides';
 
 export interface HsVarsityConfig {
   schoolInitials?: string;
@@ -83,6 +85,8 @@ export interface HsVarsityConfig {
   event3Name?: string;
   tickerTag?: string;
   tickerMessage?: string;
+  /** Per-field style overrides keyed by data-field attr. */
+  __styles?: TextStyleMap;
 }
 
 export const DEFAULTS: Required<HsVarsityConfig> = {
@@ -135,10 +139,14 @@ export const DEFAULTS: Required<HsVarsityConfig> = {
   event3Name: 'Senior Night — Volleyball',
   tickerTag: 'PA SYSTEM',
   tickerMessage: 'SENIORS — CAP & GOWN PICKUP THIS WEEK IN THE COUNSELING OFFICE  ●  BUS 14 RUNNING 10 MIN LATE  ●  MATHLETES PRACTICE MOVED TO ROOM 102  ●  SPRING SPORTS PHOTOS TOMORROW — WEAR YOUR JERSEY  ●  ',
+  __styles: {},
 };
 
 export function HsVarsityWidget({ config, live }: { config?: HsVarsityConfig; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<HsVarsityConfig>;
+  // 2026-05-08 — per-field style overrides (font-size + color).
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  useTextStyleOverrides(stageRef, c.__styles);
   // 2026-05-07 — live clock. Replaces the hardcoded "7:53" /
   // "Tuesday · 1st period @ 8:05" placeholder so the demo wall
   // shows real time on every screen. Operator can still override
@@ -161,6 +169,7 @@ export function HsVarsityWidget({ config, live }: { config?: HsVarsityConfig; li
   });
   return (
     <HsStage
+      stageRef={stageRef}
       stageStyle={{
         background: 'linear-gradient(135deg, #0d1b3d 0%, #18306b 60%, #0a1432 100%)',
         fontFamily: "'Inter', sans-serif",
