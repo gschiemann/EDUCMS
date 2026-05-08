@@ -91,25 +91,35 @@ function isPlaceholderClock(value: string | undefined, defaultValue: string): bo
  * @param defaultClockCap    Same for clockCaption
  */
 export function resolveHsClock(
-  cfg: { clockTime?: string; clockCaption?: string },
+  cfg: { clockTime?: string; clockCaption?: string; clockTimezone?: string },
   now: Date,
   defaultClockTime: string,
   defaultClockCap: string,
 ): { time: string; caption: string } {
-  // Time: HH:MM (24h) — most HS widgets render this in a stat-row
-  // tile where the colon is the dominant typography. Localized
-  // formatting respects the operator's browser locale.
-  const liveTime = now.toLocaleTimeString(undefined, {
+  // 2026-05-07 — operator-selected timezone (US zones — see the
+  // SelectField in PropertiesPanel). Empty / undefined → browser tz.
+  // Both time AND caption use the same timezone so the day-of-week
+  // matches the displayed clock.
+  const tz = cfg.clockTimezone || undefined;
+  // Time: HH:MM in the selected (or browser) timezone.
+  const liveTime = now.toLocaleTimeString('en-US', {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
+    timeZone: tz,
   });
-  // Caption: weekday + period hint. Period hint is intentionally
-  // generic ("Morning" / "Afternoon") because we don't have a bell
-  // schedule wired in this hook. If/when bell schedule lands as live
-  // data, replace this fallback with the actual period name.
-  const dayName = now.toLocaleDateString(undefined, { weekday: 'long' });
-  const hour = now.getHours();
+  // Caption: weekday + period hint, also in the selected tz so a
+  // California-set California display reads "Morning" until 12 PT,
+  // not "Afternoon" because the server happens to be Eastern.
+  const dayName = now.toLocaleDateString('en-US', { weekday: 'long', timeZone: tz });
+  // Get the HOUR in the selected timezone for the period hint.
+  // toLocaleString with hour12:false gives 0-23.
+  const hourStr = now.toLocaleString('en-US', {
+    hour: 'numeric',
+    hour12: false,
+    timeZone: tz,
+  });
+  const hour = parseInt(hourStr, 10) || 0;
   const period = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
   const liveCaption = `${dayName} · ${period}`;
 
@@ -117,6 +127,41 @@ export function resolveHsClock(
     time: isPlaceholderClock(cfg.clockTime, defaultClockTime) ? liveTime : (cfg.clockTime || liveTime),
     caption: isPlaceholderClock(cfg.clockCaption, defaultClockCap) ? liveCaption : (cfg.clockCaption || liveCaption),
   };
+}
+
+/**
+ * Pick a `now` Date in a specific timezone for caller-provided
+ * formatters. Use this when a widget's date format is hand-built
+ * (e.g. `${weekday} · ${month} ${day}`) rather than via toLocaleDateString.
+ *
+ * Returns a Date whose UTC fields read out the selected timezone's
+ * local wall-clock — handy for `.getDate()` / `.getMonth()` etc.
+ * Empty tz → returns the original Date (browser local time).
+ */
+export function nowInTimezone(now: Date, tz: string | undefined): Date {
+  if (!tz) return now;
+  // Trick: format the date into the target tz, then re-parse as if
+  // those numbers were UTC. Result: get*() methods give the local
+  // wall-clock in the selected timezone.
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(now).reduce<Record<string, string>>((acc, p) => {
+    if (p.type !== 'literal') acc[p.type] = p.value;
+    return acc;
+  }, {});
+  const y = parseInt(parts.year, 10);
+  const m = parseInt(parts.month, 10) - 1;
+  const d = parseInt(parts.day, 10);
+  let h = parseInt(parts.hour, 10);
+  const mn = parseInt(parts.minute, 10);
+  const s = parseInt(parts.second, 10);
+  // 'en-US' with hour12:false uses 0-23 except midnight reads as '24' — normalize.
+  if (h === 24) h = 0;
+  return new Date(Date.UTC(y, m, d, h, mn, s));
 }
 
 /**
@@ -136,12 +181,38 @@ export function resolveHsClock(
  * @param formatLive         (now) => string — formats `now` to match the template's style
  */
 export function resolveHsDate(
-  cfg: { clockDate?: string },
+  cfg: { clockDate?: string; clockTimezone?: string },
   now: Date,
   defaultClockDate: string,
   formatLive: (d: Date) => string,
 ): string {
-  const liveDate = formatLive(now);
+  // Use the wall-clock Date in the operator-selected timezone so
+  // formatLive's `.getDate()` / `.toLocaleDateString()` calls all
+  // produce the right local date.
+  const tzDate = nowInTimezone(now, cfg.clockTimezone);
+  const liveDate = formatLive(tzDate);
   if (!cfg.clockDate || cfg.clockDate.trim() === defaultClockDate.trim()) return liveDate;
   return cfg.clockDate;
 }
+
+/**
+ * Common US-timezone options for the editor SelectField. The empty
+ * string at the top means "(use browser default)" and is the default
+ * value — most operators in the US are running their browser in
+ * their own timezone already, so this Just Works without a setting.
+ *
+ * Why hardcoded rather than dynamic: lobby displays mostly serve
+ * one school in one timezone. A dropdown of the 6 common US zones
+ * is faster than typing "America/Los_Angeles" by hand. Add more
+ * zones here when international deployments come online.
+ */
+export const US_TIMEZONE_OPTIONS: ReadonlyArray<[string, string]> = [
+  ['', '(Auto — use browser timezone)'],
+  ['America/New_York', 'Eastern (ET)'],
+  ['America/Chicago', 'Central (CT)'],
+  ['America/Denver', 'Mountain (MT)'],
+  ['America/Phoenix', 'Mountain – Arizona (no DST)'],
+  ['America/Los_Angeles', 'Pacific (PT)'],
+  ['America/Anchorage', 'Alaska (AKT)'],
+  ['Pacific/Honolulu', 'Hawaii (HT)'],
+];
