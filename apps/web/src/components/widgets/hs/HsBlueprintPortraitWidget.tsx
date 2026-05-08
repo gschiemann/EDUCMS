@@ -15,7 +15,7 @@
  */
 
 import { HsStage } from './HsStage';
-import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
+import { useHsLiveClock, resolveHsClock, resolveHsDate } from './useHsLiveClock';
 import type { HsBlueprintConfig } from './HsBlueprintWidget';
 
 type Cfg = HsBlueprintConfig;
@@ -76,6 +76,13 @@ export function HsBlueprintPortraitWidget({
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
+  // 2026-05-07 — live date in YYYY-MM-DD (matches landscape sibling).
+  const liveDate = resolveHsDate(c, now, DEFAULTS.clockDate, (d) => {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  });
   const events = [
     { time: c.event0Time, code: c.event0Code, name: c.event0Name, room: c.event0Room, who: c.event0Who },
     { time: c.event1Time, code: c.event1Code, name: c.event1Name, room: c.event1Room, who: c.event1Who },
@@ -136,7 +143,7 @@ export function HsBlueprintPortraitWidget({
           <div className="hs-bpp-tb-cell">
             <div className="hs-bpp-lbl" data-field="clockLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockLabel}</div>
             <div className="hs-bpp-val hs-bpp-mono">
-              <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockDate}</span>
+              <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{liveDate}</span>
               {' · '}
               <span data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</span>
             </div>
