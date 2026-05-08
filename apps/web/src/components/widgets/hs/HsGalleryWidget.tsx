@@ -21,6 +21,7 @@
 
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock, resolveHsDate } from './useHsLiveClock';
+import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 
 export interface HsGalleryConfig {
   schoolName?: string;
@@ -117,6 +118,20 @@ export function HsGalleryWidget({ config, live }: { config?: HsGalleryConfig; li
   const liveDate = resolveHsDate(c, now, DEFAULTS.clockDate, (d) =>
     d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }),
   );
+  // 2026-05-07 — live weather. Gallery renders a single combined
+  // "Clear, 46°" string (no separate temp/condition tiles), so we
+  // build that in formatCondition. tempLabel goes unused.
+  const w = useHsLiveWeather({
+    live,
+    location: c.weatherLocation,
+    unitsCelsius: c.weatherUnits === 'metric',
+    tempOverride: '',
+    conditionOverride: c.weatherCondition,
+    defaultTemp: '',
+    defaultCondition: DEFAULTS.weatherCondition,
+    formatTemp: (t) => `${t}°`,
+    formatCondition: (wmo, t) => `${describeWmo(wmo)}, ${t}°`,
+  });
   return (
     <HsStage
       stageStyle={{
@@ -132,7 +147,7 @@ export function HsGalleryWidget({ config, live }: { config?: HsGalleryConfig; li
         <div className="hs-gl-nav">
           <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{liveDate}</span>
           <span className="hs-gl-nav-on" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</span>
-          <span data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherCondition}</span>
+          <span data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{w.conditionLabel}</span>
         </div>
       </div>
 
