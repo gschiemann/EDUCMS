@@ -17,40 +17,40 @@ html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#
 .orn.tl{top:80px;left:80px}.orn.tr{top:80px;right:80px}.orn.bl{bottom:120px;left:80px}.orn.br{bottom:120px;right:80px}
 /* masthead */
 .mast{position:absolute;top:120px;left:280px;right:280px;height:160px;display:flex;align-items:center;justify-content:space-between;border-bottom:4px solid var(--gold);padding-bottom:16px;z-index:5}
-.mast .est{font-family:'JetBrains Mono';font-weight:800;font-size:24px;letter-spacing:.4em;color:var(--gold);text-transform:uppercase}
-.mast .school{font-family:'Bebas Neue';font-size:120px;color:var(--cream);letter-spacing:.04em;line-height:1}
+.mast .est{font-family:'JetBrains Mono';font-weight:800;font-size:34px;letter-spacing:.4em;color:var(--gold);text-transform:uppercase}
+.mast .school{font-family:'Bebas Neue';font-size:140px;color:var(--cream);letter-spacing:.04em;line-height:1}
 .mast .school em{color:var(--gold)}
-.mast .vol{font-family:'JetBrains Mono';font-weight:800;font-size:24px;letter-spacing:.32em;color:var(--gold);text-align:right;text-transform:uppercase}
+.mast .vol{font-family:'JetBrains Mono';font-weight:800;font-size:34px;letter-spacing:.32em;color:var(--gold);text-align:right;text-transform:uppercase}
 /* main */
 .head{position:absolute;top:340px;left:280px;right:280px;text-align:center;z-index:4}
-.head .ribbon{display:inline-block;background:var(--red);color:var(--cream);font-family:'JetBrains Mono';font-weight:800;font-size:30px;letter-spacing:.4em;padding:16px 80px;text-transform:uppercase;box-shadow:0 0 0 4px var(--gold),0 0 0 8px var(--red)}
+.head .ribbon{display:inline-block;background:var(--red);color:var(--cream);font-family:'JetBrains Mono';font-weight:800;font-size:42px;letter-spacing:.4em;padding:18px 80px;text-transform:uppercase;box-shadow:0 0 0 4px var(--gold),0 0 0 8px var(--red)}
 .head h1{font-family:'Bebas Neue';font-size:560px;line-height:.85;color:var(--cream);margin:30px 0 0;letter-spacing:.02em;text-shadow:0 14px 0 var(--ink),0 -6px 0 var(--gold)}
 .head h1 em{color:var(--gold);font-style:italic;display:inline-block;transform:rotate(-3deg)}
-.head .sub{font-family:'Fraunces',serif;font-weight:700;font-style:italic;font-size:62px;color:var(--cream);margin:30px auto 0;max-width:2400px;line-height:1.18}
+.head .sub{font-family:'Fraunces',serif;font-weight:700;font-style:italic;font-size:72px;color:var(--cream);margin:34px auto 0;max-width:2400px;line-height:1.22}
 /* cards */
 .grid{position:absolute;top:1280px;left:200px;right:200px;height:520px;display:grid;grid-template-columns:1fr 1.5fr 1fr;gap:36px;z-index:3}
 .cd{background:var(--cream);color:var(--ink);padding:32px 36px;border:5px solid var(--ink);position:relative;display:flex;flex-direction:column;box-shadow:14px 14px 0 var(--gold)}
 .cd::before{content:'';position:absolute;top:-22px;left:50%;transform:translateX(-50%);width:80px;height:44px;background:var(--gold);border:4px solid var(--ink);border-radius:0 0 40px 40px}
-.cd .k{font-family:'JetBrains Mono';font-weight:800;font-size:22px;color:var(--red);text-transform:uppercase;letter-spacing:.32em}
-.cd h2{font-family:'Bebas Neue';font-size:130px;line-height:.85;margin:8px 0 0;color:var(--ink);letter-spacing:.01em}
+.cd .k{font-family:'JetBrains Mono';font-weight:800;font-size:34px;color:var(--red);text-transform:uppercase;letter-spacing:.32em}
+.cd h2{font-family:'Bebas Neue';font-size:148px;line-height:.85;margin:10px 0 0;color:var(--ink);letter-spacing:.01em}
 .cd h2 em{font-style:italic;color:var(--red);transform:rotate(-2deg);display:inline-block}
 .cd.feat{background:var(--red);color:var(--cream);box-shadow:14px 14px 0 var(--ink)}
 .cd.feat .k{color:var(--gold)}
-.cd.feat h2{color:var(--cream);font-size:160px}.cd.feat h2 em{color:var(--gold)}
-.cd p{font-family:'Fraunces',serif;font-weight:500;font-style:italic;font-size:30px;margin:18px 0 0;line-height:1.22}
-.cd .meta{margin-top:auto;padding-top:18px;font-family:'JetBrains Mono';font-weight:800;font-size:22px;text-transform:uppercase;letter-spacing:.22em;color:var(--red);display:flex;gap:20px;flex-wrap:wrap}
+.cd.feat h2{color:var(--cream);font-size:180px}.cd.feat h2 em{color:var(--gold)}
+.cd p{font-family:'Fraunces',serif;font-weight:500;font-style:italic;font-size:42px;margin:18px 0 0;line-height:1.22}
+.cd .meta{margin-top:auto;padding-top:18px;font-family:'JetBrains Mono';font-weight:800;font-size:30px;text-transform:uppercase;letter-spacing:.22em;color:var(--red);display:flex;gap:20px;flex-wrap:wrap}
 .cd.feat .meta{color:var(--gold)}
 /* schedule */
 .sked{position:absolute;top:1830px;left:200px;right:200px;height:230px;background:var(--ink);color:var(--cream);padding:20px 32px;border:4px solid var(--gold);z-index:3;display:flex;flex-direction:column}
 .sked .hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px solid var(--gold);padding-bottom:8px}
-.sked .hdr h3{font-family:'Bebas Neue';font-size:62px;color:var(--gold);margin:0;letter-spacing:.04em}
-.sked .hdr .d{font-family:'JetBrains Mono';font-weight:800;font-size:22px;color:var(--cream);letter-spacing:.22em;text-transform:uppercase}
+.sked .hdr h3{font-family:'Bebas Neue';font-size:80px;color:var(--gold);margin:0;letter-spacing:.04em}
+.sked .hdr .d{font-family:'JetBrains Mono';font-weight:800;font-size:32px;color:var(--cream);letter-spacing:.22em;text-transform:uppercase}
 .sked ul{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:24px;flex:1}
 .sked li{display:flex;flex-direction:column;justify-content:center;border-left:4px solid var(--red);padding-left:18px}
-.sked li .d{font-family:'JetBrains Mono';font-weight:800;font-size:20px;color:var(--gold);letter-spacing:.26em;text-transform:uppercase}
-.sked li .e{font-family:'Bebas Neue';font-size:46px;color:var(--cream);line-height:1;margin-top:4px;letter-spacing:.02em}
+.sked li .d{font-family:'JetBrains Mono';font-weight:800;font-size:32px;color:var(--gold);letter-spacing:.26em;text-transform:uppercase}
+.sked li .e{font-family:'Bebas Neue';font-size:64px;color:var(--cream);line-height:1;margin-top:6px;letter-spacing:.02em}
 .sked li .e em{font-style:italic;color:var(--gold)}
-.sked li .w{font-family:'JetBrains Mono';font-weight:600;font-size:18px;color:var(--cream);margin-top:4px;text-transform:uppercase;letter-spacing:.18em;opacity:.8}</style></head><body>
+.sked li .w{font-family:'JetBrains Mono';font-weight:600;font-size:28px;color:var(--cream);margin-top:6px;text-transform:uppercase;letter-spacing:.18em;opacity:.85}</style></head><body>
 <script>const __TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{"schema":"edu-cms-hs-christmas-v1"}/*EDITMODE-END*/;</script>
 <div class="viewport"><div class="stage-outer"><div class="stage" id="stage">
 <div class="frame"></div>
