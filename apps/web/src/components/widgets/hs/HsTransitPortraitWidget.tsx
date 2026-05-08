@@ -379,13 +379,13 @@ const CSS = `
   text-transform: uppercase;
 }
 .hs-trp-line2 {
-  font-family: 'JetBrains Mono', monospace; font-size: 40px;
-  letter-spacing: .2em; color: #6b7a93; text-transform: uppercase;
+  font-family: 'JetBrains Mono', monospace; font-size: 52px;
+  letter-spacing: .18em; color: #6b7a93; text-transform: uppercase;
 }
 .hs-trp-status-row {
   display: flex; align-items: center; gap: 18px;
-  font-family: 'JetBrains Mono', monospace; font-size: 36px;
-  color: #c7d2e4; letter-spacing: .12em; text-transform: uppercase;
+  font-family: 'JetBrains Mono', monospace; font-size: 48px;
+  color: #c7d2e4; letter-spacing: .1em; text-transform: uppercase;
   flex-wrap: wrap;
 }
 .hs-trp-status-pip {
@@ -409,8 +409,8 @@ const CSS = `
   text-shadow: 0 0 36px rgba(255,176,32,.45);
 }
 .hs-trp-clock-meta {
-  font-family: 'JetBrains Mono', monospace; font-size: 40px;
-  color: #6b7a93; letter-spacing: .16em; line-height: 1.4;
+  font-family: 'JetBrains Mono', monospace; font-size: 52px;
+  color: #6b7a93; letter-spacing: .14em; line-height: 1.3;
   text-transform: uppercase; text-align: right;
 }
 
@@ -427,7 +427,7 @@ const CSS = `
   background: #ffb020; color: #000;
   padding: 8px 28px;
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 40px; letter-spacing: .26em; text-transform: uppercase;
+  font-size: 52px; letter-spacing: .22em; text-transform: uppercase;
 }
 .hs-trp-board-grid {
   display: grid; grid-template-columns: 460px 1fr;
@@ -452,7 +452,7 @@ const CSS = `
   display: flex; flex-direction: column; justify-content: center; gap: 14px;
 }
 .hs-trp-eyebrow {
-  font-family: 'JetBrains Mono', monospace; font-size: 46px;
+  font-family: 'JetBrains Mono', monospace; font-size: 58px;
   letter-spacing: .2em; color: #ffb020; text-transform: uppercase;
 }
 .hs-trp-h1 {
@@ -462,12 +462,12 @@ const CSS = `
 }
 .hs-trp-sub {
   font-family: 'Inter', sans-serif; font-weight: 500;
-  font-size: 44px; color: #c7d2e4; margin-top: 16px; line-height: 1.25;
+  font-size: 72px; color: #c7d2e4; margin-top: 16px; line-height: 1.2;
 }
 .hs-trp-board-foot {
   display: flex; align-items: center; gap: 28px; margin-top: 24px;
-  font-family: 'JetBrains Mono', monospace; font-size: 38px;
-  color: #6b7a93; letter-spacing: .14em; text-transform: uppercase;
+  font-family: 'JetBrains Mono', monospace; font-size: 52px;
+  color: #6b7a93; letter-spacing: .12em; text-transform: uppercase;
   flex-wrap: wrap;
 }
 .hs-trp-board-depart { color: #ffb020; font-weight: 700; }
@@ -481,16 +481,16 @@ const CSS = `
 }
 .hs-trp-head {
   display: grid;
-  grid-template-columns: 220px 300px 1fr 180px 320px 280px;
+  grid-template-columns: 240px 320px 1fr 200px 320px 280px;
   background: #ffb020; color: #000;
   padding: 22px 32px; gap: 18px;
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 42px; letter-spacing: .2em; text-transform: uppercase;
+  font-size: 58px; letter-spacing: .18em; text-transform: uppercase;
   align-items: center;
 }
 .hs-trp-row {
   display: grid;
-  grid-template-columns: 220px 300px 1fr 180px 320px 280px;
+  grid-template-columns: 240px 320px 1fr 200px 320px 280px;
   padding: 30px 32px; gap: 18px;
   border-bottom: 2px solid #141d36;
   align-items: center;
@@ -516,18 +516,18 @@ const CSS = `
 }
 .hs-trp-rcode {
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 40px; color: #ffb020; letter-spacing: .08em;
+  font-size: 56px; color: #ffb020; letter-spacing: .08em;
 }
 .hs-trp-dest {
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 50px; color: #fff; letter-spacing: .02em;
+  font-size: 58px; color: #fff; letter-spacing: .02em;
   text-transform: uppercase; line-height: 1;
 }
 .hs-trp-dest-sub {
   display: block;
   font-family: 'Inter', sans-serif; font-weight: 500;
-  font-size: 32px; color: #8b9aab; text-transform: none;
-  letter-spacing: .05em; margin-top: 8px; line-height: 1.2;
+  font-size: 50px; color: #8b9aab; text-transform: none;
+  letter-spacing: .04em; margin-top: 8px; line-height: 1.15;
 }
 .hs-trp-gate {
   font-family: 'Oswald', sans-serif; font-weight: 700;
@@ -535,12 +535,12 @@ const CSS = `
 }
 .hs-trp-room {
   font-family: 'Inter', sans-serif; font-weight: 500;
-  font-size: 38px; color: #c7d2e4; line-height: 1.1;
+  font-size: 56px; color: #c7d2e4; line-height: 1.05;
 }
 .hs-trp-st {
   display: inline-block; padding: 10px 22px;
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 36px; letter-spacing: .14em; text-transform: uppercase;
+  font-size: 50px; letter-spacing: .12em; text-transform: uppercase;
 }
 .hs-trp-st-now { background: #58e07a; color: #000; }
 .hs-trp-st-soon { background: #ffb020; color: #000; }
@@ -562,7 +562,7 @@ const CSS = `
   background: #ffb020; color: #000;
   padding: 8px 28px;
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 40px; letter-spacing: .26em; text-transform: uppercase;
+  font-size: 52px; letter-spacing: .22em; text-transform: uppercase;
 }
 
 /* ----- REGION 4: flight crew spotlight ----- */
@@ -587,7 +587,7 @@ const CSS = `
   display: flex; flex-direction: column; justify-content: center; gap: 6px;
 }
 .hs-trp-teacher-eb {
-  font-family: 'JetBrains Mono', monospace; font-size: 38px;
+  font-family: 'JetBrains Mono', monospace; font-size: 52px;
   color: #ffb020; letter-spacing: .2em; text-transform: uppercase;
 }
 .hs-trp-h2 {
@@ -596,14 +596,14 @@ const CSS = `
   line-height: .95; margin: 6px 0 0; text-transform: uppercase;
 }
 .hs-trp-teacher-meta {
-  font-family: 'JetBrains Mono', monospace; font-size: 38px;
-  color: #6b7a93; letter-spacing: .12em; margin-top: 14px;
+  font-family: 'JetBrains Mono', monospace; font-size: 56px;
+  color: #6b7a93; letter-spacing: .1em; margin-top: 14px;
   text-transform: uppercase;
 }
 .hs-trp-quote {
   font-family: 'Inter', sans-serif; font-weight: 500;
-  font-size: 42px; color: #c7d2e4; font-style: italic;
-  line-height: 1.3; margin-top: 18px;
+  font-size: 70px; color: #c7d2e4; font-style: italic;
+  line-height: 1.2; margin-top: 18px;
   border-left: 6px solid #ffb020; padding-left: 26px;
 }
 
@@ -618,8 +618,8 @@ const CSS = `
 }
 .hs-trp-alert-body { display: flex; flex-direction: column; gap: 6px; }
 .hs-trp-alert-tag {
-  font-family: 'JetBrains Mono', monospace; font-size: 36px;
-  letter-spacing: .2em; color: #ff5b5b; text-transform: uppercase;
+  font-family: 'JetBrains Mono', monospace; font-size: 52px;
+  letter-spacing: .18em; color: #ff5b5b; text-transform: uppercase;
 }
 .hs-trp-alert-h3 {
   font-family: 'Oswald', sans-serif; font-weight: 700;
@@ -628,11 +628,11 @@ const CSS = `
 }
 .hs-trp-alert-p {
   font-family: 'Inter', sans-serif; font-weight: 500;
-  font-size: 38px; color: #c7d2e4; margin: 12px 0 0; line-height: 1.3;
+  font-size: 64px; color: #c7d2e4; margin: 12px 0 0; line-height: 1.2;
 }
 .hs-trp-alert-when {
-  font-family: 'JetBrains Mono', monospace; font-size: 36px;
-  color: #ffb020; letter-spacing: .14em; margin-top: auto;
+  font-family: 'JetBrains Mono', monospace; font-size: 52px;
+  color: #ffb020; letter-spacing: .12em; margin-top: auto;
   text-transform: uppercase;
 }
 .hs-trp-cd {
@@ -642,7 +642,7 @@ const CSS = `
   padding-left: 32px; text-align: right;
 }
 .hs-trp-cd-lbl {
-  font-family: 'JetBrains Mono', monospace; font-size: 38px;
+  font-family: 'JetBrains Mono', monospace; font-size: 52px;
   color: #ffb020; letter-spacing: .2em; text-transform: uppercase;
 }
 .hs-trp-cd-v {
@@ -653,8 +653,8 @@ const CSS = `
 }
 .hs-trp-cd-until {
   font-family: 'Inter', sans-serif; font-weight: 500;
-  font-size: 36px; color: #8b9aab; letter-spacing: .06em;
-  margin-top: 8px; max-width: 320px; line-height: 1.2;
+  font-size: 52px; color: #8b9aab; letter-spacing: .06em;
+  margin-top: 8px; max-width: 320px; line-height: 1.15;
 }
 
 /* ----- REGION 6: PA ticker ----- */
@@ -671,14 +671,14 @@ const CSS = `
   display: flex; align-items: center;
   padding: 0 44px;
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 46px; letter-spacing: .2em;
+  font-size: 58px; letter-spacing: .18em;
   flex-shrink: 0;
 }
 .hs-trp-tk-msg {
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 48px;
+  font-size: 62px;
   padding-left: 50px; white-space: nowrap;
-  letter-spacing: .14em; text-transform: uppercase;
+  letter-spacing: .12em; text-transform: uppercase;
   animation: hsTrpScroll 60s linear infinite;
   display: inline-flex;
 }
