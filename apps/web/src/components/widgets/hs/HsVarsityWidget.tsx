@@ -332,7 +332,7 @@ const CSS = `
   clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
   box-shadow: 0 20px 40px rgba(0,0,0,.4);
 }
-.hs-varsity-seal-est { font-size: 24px; letter-spacing: .2em; margin-top: 10px; color: #6b5110; display: inline-block; }
+.hs-varsity-seal-est { font-size: 32px; letter-spacing: .2em; margin-top: 10px; color: #6b5110; display: inline-block; }
 
 .hs-varsity-pennants {
   position: absolute; top: 10px; right: 340px; width: 1200px; height: 80px; z-index: 4; pointer-events: none;
@@ -392,7 +392,7 @@ const CSS = `
 .hs-varsity-score-hdr {
   display: flex; justify-content: space-between; align-items: center;
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 36px; letter-spacing: .22em; text-transform: uppercase; color: #ffc42b;
+  font-size: 44px; letter-spacing: .22em; text-transform: uppercase; color: #ffc42b;
 }
 .hs-varsity-score-dot {
   width: 20px; height: 20px; border-radius: 50%; background: #e03b1c;
@@ -408,8 +408,8 @@ const CSS = `
 .hs-varsity-team-home { justify-content: flex-start; }
 .hs-varsity-team-away { justify-content: flex-end; }
 .hs-varsity-crest {
-  width: 130px; height: 130px; background: #ffc42b; display: grid; place-items: center;
-  font-family: 'Bungee', sans-serif; font-size: 48px; color: #0d1b3d;
+  width: 140px; height: 140px; background: #ffc42b; display: grid; place-items: center;
+  font-family: 'Bungee', sans-serif; font-size: 54px; color: #0d1b3d;
   clip-path: polygon(50% 0, 100% 30%, 100% 100%, 0 100%, 0 30%);
 }
 .hs-varsity-crest-away { background: #e03b1c; color: #fff; }
@@ -430,13 +430,13 @@ const CSS = `
 .hs-varsity-where { color: #ffc42b; }
 
 .hs-varsity-stats {
-  position: absolute; top: 970px; left: 60px; right: 60px; height: 240px;
+  position: absolute; top: 970px; left: 60px; right: 60px; height: 260px;
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px;
 }
 .hs-varsity-stat { background: #0a0e1c; border: 6px solid rgba(255,196,43,.3); padding: 20px 28px; position: relative; }
 .hs-varsity-stat-lbl { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 36px; letter-spacing: .22em; color: #ffc42b; text-transform: uppercase; }
-.hs-varsity-stat-val { font-family: 'Bungee', sans-serif; font-size: 120px; line-height: .9; color: #fff; margin-top: 8px; letter-spacing: -.01em; }
-.hs-varsity-stat-cap { font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 32px; color: #cbd5e1; margin-top: 4px; }
+.hs-varsity-stat-val { font-family: 'Bungee', sans-serif; font-size: 140px; line-height: .9; color: #fff; margin-top: 8px; letter-spacing: -.01em; }
+.hs-varsity-stat-cap { font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 40px; color: #cbd5e1; margin-top: 8px; line-height: 1.2; }
 
 .hs-varsity-coach {
   position: absolute; top: 1240px; left: 60px; width: 1720px; height: 620px;
@@ -448,45 +448,45 @@ const CSS = `
 .hs-varsity-portrait { width: 420px; height: 520px; background: #cbd5e1; display: grid; place-items: center; overflow: hidden; position: relative; }
 .hs-varsity-portrait::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(45deg, rgba(13,27,61,.08) 0 8px, transparent 8px 16px); }
 .hs-varsity-jersey-num { font-family: 'Bungee', sans-serif; font-size: 320px; color: #0d1b3d; line-height: .85; opacity: .25; }
-.hs-varsity-coach-eyebrow { color: #e03b1c; margin-top: 0; font-size: 36px; }
-.hs-varsity-h2 { font-family: 'Bungee', sans-serif; font-size: 150px; line-height: .9; margin: 10px 0 6px; color: #0d1b3d; text-transform: uppercase; }
-.hs-varsity-meta { font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 36px; color: #475569; letter-spacing: .1em; text-transform: uppercase; }
-.hs-varsity-quote { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 34px; color: #334155; margin-top: 20px; font-style: italic; line-height: 1.3; max-width: 1100px; }
+.hs-varsity-coach-eyebrow { color: #e03b1c; margin-top: 0; font-size: 44px; }
+.hs-varsity-h2 { font-family: 'Bungee', sans-serif; font-size: 160px; line-height: .9; margin: 12px 0 8px; color: #0d1b3d; text-transform: uppercase; }
+.hs-varsity-meta { font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 44px; color: #475569; letter-spacing: .1em; text-transform: uppercase; }
+.hs-varsity-quote { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 44px; color: #334155; margin-top: 22px; font-style: italic; line-height: 1.25; max-width: 1100px; }
 
 .hs-varsity-colright {
   position: absolute; top: 1240px; right: 60px; width: 1940px; display: grid; gap: 24px;
 }
 .hs-varsity-anno { background: #0a0e1c; border-left: 14px solid #ffc42b; padding: 24px 36px; }
-.hs-varsity-anno-tag { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 36px; letter-spacing: .22em; color: #ffc42b; text-transform: uppercase; }
-.hs-varsity-anno-h3 { font-family: 'Bungee', sans-serif; font-size: 68px; line-height: .95; margin: 8px 0 0; color: #fff; text-transform: uppercase; }
-.hs-varsity-anno-p { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 32px; color: #cbd5e1; margin: 10px 0 0; }
-.hs-varsity-anno-when { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 30px; color: #ffc42b; letter-spacing: .14em; text-transform: uppercase; margin-top: 10px; }
+.hs-varsity-anno-tag { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 44px; letter-spacing: .22em; color: #ffc42b; text-transform: uppercase; }
+.hs-varsity-anno-h3 { font-family: 'Bungee', sans-serif; font-size: 88px; line-height: .95; margin: 10px 0 0; color: #fff; text-transform: uppercase; }
+.hs-varsity-anno-p { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 42px; color: #cbd5e1; margin: 12px 0 0; line-height: 1.25; }
+.hs-varsity-anno-when { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 38px; color: #ffc42b; letter-spacing: .14em; text-transform: uppercase; margin-top: 14px; }
 .hs-varsity-countdown { background: #e03b1c; border-left: 14px solid #ffc42b; padding: 24px 36px; display: flex; align-items: center; gap: 40px; }
 .hs-varsity-cd-num { font-family: 'Bungee', sans-serif; font-size: 220px; line-height: .8; color: #fff; text-shadow: 8px 8px 0 #0d1b3d; }
-.hs-varsity-cd-lbl { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 48px; color: #fff; letter-spacing: .14em; text-transform: uppercase; line-height: 1.1; }
-.hs-varsity-cd-sub { font-size: 28px; opacity: .85; }
+.hs-varsity-cd-lbl { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 56px; color: #fff; letter-spacing: .14em; text-transform: uppercase; line-height: 1.1; }
+.hs-varsity-cd-sub { font-size: 36px; opacity: .85; }
 
 .hs-varsity-sched {
-  position: absolute; bottom: 80px; left: 60px; right: 60px; height: 160px;
+  position: absolute; bottom: 100px; left: 60px; right: 60px; height: 180px;
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
 }
 .hs-varsity-sch { background: #0a0e1c; border: 4px solid #ffc42b; padding: 16px 28px; display: flex; align-items: center; gap: 24px; }
-.hs-varsity-sch-mark { font-family: 'Bungee', sans-serif; font-size: 80px; line-height: .85; color: #ffc42b; padding-right: 22px; border-right: 3px dashed rgba(255,255,255,.2); }
-.hs-varsity-sch-d { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 32px; color: #ffc42b; letter-spacing: .16em; text-transform: uppercase; }
-.hs-varsity-sch-n { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 44px; color: #fff; text-transform: uppercase; line-height: 1.05; margin-top: 4px; }
+.hs-varsity-sch-mark { font-family: 'Bungee', sans-serif; font-size: 96px; line-height: .85; color: #ffc42b; padding-right: 22px; border-right: 3px dashed rgba(255,255,255,.2); }
+.hs-varsity-sch-d { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 38px; color: #ffc42b; letter-spacing: .16em; text-transform: uppercase; }
+.hs-varsity-sch-n { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 50px; color: #fff; text-transform: uppercase; line-height: 1.05; margin-top: 6px; }
 
 .hs-varsity-ticker {
-  position: absolute; bottom: 0; left: 0; right: 0; height: 60px;
+  position: absolute; bottom: 0; left: 0; right: 0; height: 80px;
   background: #ffc42b; color: #0d1b3d;
   display: flex; align-items: center; overflow: hidden;
 }
 .hs-varsity-ticker-tag {
   background: #0d1b3d; color: #ffc42b;
-  font-family: 'Bungee', sans-serif; font-size: 28px; padding: 0 30px; height: 100%;
+  font-family: 'Bungee', sans-serif; font-size: 38px; padding: 0 36px; height: 100%;
   display: flex; align-items: center; flex-shrink: 0; letter-spacing: .18em;
 }
 .hs-varsity-ticker-msg {
-  font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 28px;
+  font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 40px;
   padding-left: 30px; white-space: nowrap; letter-spacing: .12em; text-transform: uppercase;
   animation: hsVarScroll 45s linear infinite; display: inline-flex; gap: 0;
 }
