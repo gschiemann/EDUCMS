@@ -438,7 +438,7 @@ const CSS = `
 .hs-vp-letter-est {
   margin-top: 22px;
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 42px; letter-spacing: .3em; color: #ffc42b;
+  font-size: 52px; letter-spacing: .26em; color: #ffc42b;
 }
 
 .hs-vp-name {
@@ -462,7 +462,7 @@ const CSS = `
 .hs-vp-score-hdr {
   display: flex; justify-content: space-between; align-items: center;
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 40px; letter-spacing: .22em; text-transform: uppercase; color: #ffc42b;
+  font-size: 52px; letter-spacing: .2em; text-transform: uppercase; color: #ffc42b;
 }
 .hs-vp-score-sport { color: #ffc42b; opacity: .9; }
 .hs-vp-score-bulb {
@@ -477,7 +477,7 @@ const CSS = `
 
 .hs-vp-eyebrow {
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 44px; letter-spacing: .22em; text-transform: uppercase;
+  font-size: 58px; letter-spacing: .2em; text-transform: uppercase;
   color: #e03b1c; margin-top: 28px;
 }
 .hs-vp-h1 {
@@ -539,7 +539,7 @@ const CSS = `
 }
 .hs-vp-card-tag {
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 38px; letter-spacing: .26em; text-transform: uppercase;
+  font-size: 52px; letter-spacing: .22em; text-transform: uppercase;
   color: #e03b1c; margin-top: 20px;
 }
 .hs-vp-card-row {
@@ -568,12 +568,12 @@ const CSS = `
   margin: 0; color: #0d1b3d; text-transform: uppercase; letter-spacing: -.01em;
 }
 .hs-vp-meta {
-  font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 38px;
-  color: #475569; letter-spacing: .12em; text-transform: uppercase;
+  font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 58px;
+  color: #475569; letter-spacing: .1em; text-transform: uppercase;
 }
 .hs-vp-quote {
-  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 36px;
-  color: #334155; font-style: italic; line-height: 1.3;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 70px;
+  color: #334155; font-style: italic; line-height: 1.2;
   border-left: 8px solid #e03b1c; padding-left: 24px;
 }
 .hs-vp-statline {
@@ -589,7 +589,7 @@ const CSS = `
 }
 .hs-vp-statbox-lbl {
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 36px; letter-spacing: .22em; color: #cbd5e1;
+  font-size: 48px; letter-spacing: .2em; color: #cbd5e1;
   margin-top: 8px; text-transform: uppercase;
 }
 
@@ -609,8 +609,8 @@ const CSS = `
 }
 .hs-vp-sched-sub {
   font-family: 'Oswald', sans-serif; font-weight: 500;
-  font-size: 40px; color: #cbd5e1; letter-spacing: .08em;
-  text-transform: uppercase; max-width: 1100px; text-align: right;
+  font-size: 58px; color: #cbd5e1; letter-spacing: .06em;
+  text-transform: uppercase; max-width: 1200px; text-align: right;
 }
 .hs-vp-sched-list {
   display: flex; flex-direction: column; gap: 10px;
@@ -637,12 +637,12 @@ const CSS = `
 .hs-vp-row-body { display: flex; flex-direction: column; gap: 6px; }
 .hs-vp-row-when {
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 40px; color: #ffc42b; letter-spacing: .18em;
+  font-size: 52px; color: #ffc42b; letter-spacing: .14em;
   text-transform: uppercase;
 }
 .hs-vp-row-name {
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 52px; color: #fff;
+  font-size: 64px; color: #fff;
   text-transform: uppercase; line-height: 1.02;
 }
 .hs-vp-row-num {
@@ -663,7 +663,7 @@ const CSS = `
 }
 .hs-vp-anno-tag {
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 44px; letter-spacing: .22em; color: #ffc42b; text-transform: uppercase;
+  font-size: 58px; letter-spacing: .2em; color: #ffc42b; text-transform: uppercase;
 }
 .hs-vp-anno-h3 {
   font-family: 'Bungee', sans-serif; font-size: 84px; line-height: .95;
@@ -671,11 +671,11 @@ const CSS = `
 }
 .hs-vp-anno-p {
   font-family: 'Inter', sans-serif; font-weight: 500;
-  font-size: 42px; color: #cbd5e1; margin: 12px 0 0; line-height: 1.25;
+  font-size: 64px; color: #cbd5e1; margin: 12px 0 0; line-height: 1.2;
 }
 .hs-vp-anno-when {
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 40px; color: #ffc42b; letter-spacing: .14em;
+  font-size: 52px; color: #ffc42b; letter-spacing: .12em;
   text-transform: uppercase; margin-top: auto;
 }
 
@@ -687,13 +687,13 @@ const CSS = `
 }
 .hs-vp-ticker-tag {
   background: #0d1b3d; color: #ffc42b;
-  font-family: 'Bungee', sans-serif; font-size: 44px;
+  font-family: 'Bungee', sans-serif; font-size: 58px;
   padding: 0 44px; height: 100%;
-  display: flex; align-items: center; flex-shrink: 0; letter-spacing: .18em;
+  display: flex; align-items: center; flex-shrink: 0; letter-spacing: .16em;
 }
 .hs-vp-ticker-msg {
-  font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 44px;
-  padding-left: 44px; white-space: nowrap; letter-spacing: .12em;
+  font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 62px;
+  padding-left: 44px; white-space: nowrap; letter-spacing: .1em;
   text-transform: uppercase;
   animation: hsVpScroll 60s linear infinite;
   display: inline-flex; gap: 0;
