@@ -43,7 +43,7 @@
  */
 
 import { HsStage } from './HsStage';
-import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
+import { useHsLiveClock, resolveHsClock, resolveHsDate } from './useHsLiveClock';
 
 export interface HsGalleryConfig {
   schoolName?: string;
@@ -132,6 +132,10 @@ export function HsGalleryPortraitWidget({ config, live }: { config?: Cfg; live?:
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
+  // 2026-05-07 — live date in long format ("Tuesday, April 21").
+  const liveDate = resolveHsDate(c, now, DEFAULTS.clockDate, (d) =>
+    d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }),
+  );
   const events = [
     { n: c.event0Num, name: c.event0Name, meta: c.event0Meta, time: c.event0Time, day: c.event0Day },
     { n: c.event1Num, name: c.event1Name, meta: c.event1Meta, time: c.event1Time, day: c.event1Day },
@@ -163,7 +167,7 @@ export function HsGalleryPortraitWidget({ config, live }: { config?: Cfg; live?:
         </div>
         <div className="hs-glp-mast-rule" />
         <div className="hs-glp-mast-meta">
-          <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockDate}</span>
+          <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{liveDate}</span>
           <span className="hs-glp-mast-dot">·</span>
           <span className="hs-glp-mast-on" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</span>
           <span className="hs-glp-mast-dot">·</span>
