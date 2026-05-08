@@ -32,7 +32,7 @@
  * layer is what makes the layout box shrink.
  */
 
-import { ReactNode, useEffect, useRef, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState, type RefObject } from 'react';
 
 const STAGE_W = 3840;
 const STAGE_H = 2160;
@@ -54,6 +54,16 @@ interface Props {
    * (landscape). Portrait MS templates pass 3840 here.
    */
   height?: number;
+  /**
+   * Optional ref forwarded to the inner 3840×2160 (or width×height) stage
+   * div — the same one that receives the transform:scale. The HS
+   * useTextStyleOverrides hook uses this to walk every [data-field]
+   * descendant and apply per-field font-size / color overrides.
+   *
+   * Prefer a stable ref (useRef) — we wire it imperatively in a layout
+   * effect inside HsStage so the hook can read the live DOM.
+   */
+  stageRef?: RefObject<HTMLDivElement | null>;
 }
 
 export function HsStage({
@@ -62,9 +72,22 @@ export function HsStage({
   stageClassName,
   width = STAGE_W,
   height = STAGE_H,
+  stageRef,
 }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(0);
+
+  // Mirror the inner stage element into the caller's optional ref. We
+  // assign on render rather than via a layout effect so the
+  // useTextStyleOverrides hook (which runs in the SAME effect queue)
+  // sees a populated ref on first mount.
+  const setInnerRef = (el: HTMLDivElement | null) => {
+    innerRef.current = el;
+    if (stageRef) {
+      stageRef.current = el;
+    }
+  };
 
   useEffect(() => {
     const el = viewportRef.current;
@@ -111,6 +134,7 @@ export function HsStage({
         }}
       >
         <div
+          ref={setInnerRef}
           className={stageClassName}
           style={{
             width,
