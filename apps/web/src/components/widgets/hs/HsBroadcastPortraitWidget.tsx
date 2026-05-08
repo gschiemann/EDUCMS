@@ -44,6 +44,7 @@ export const DEFAULTS: Required<Cfg> = {
   weatherCondition: '☀ CLEAR · HI 62°',
   weatherLocation: '',
   weatherUnits: 'imperial',
+  clockTimezone: '',
   teacherPortraitTag: '[ portrait ]',
   teacherLabel: 'FEATURED GUEST · TEACHER OF THE WEEK',
   teacherName: 'MS. KOWALSKI',

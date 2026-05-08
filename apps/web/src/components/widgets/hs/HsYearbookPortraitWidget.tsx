@@ -50,6 +50,8 @@ export interface HsYearbookConfig {
   weatherLocation?: string;
   /** 'imperial' (°F) or 'metric' (°C). Default: imperial. */
   weatherUnits?: 'imperial' | 'metric';
+  /** IANA timezone (e.g. 'America/Los_Angeles'). Empty → browser tz. */
+  clockTimezone?: string;
   countdownLabel?: string;
   countdownValue?: string | number;
   countdownUnit?: string;
@@ -93,6 +95,7 @@ export const DEFAULTS: Required<Cfg> = {
   weatherCondition: 'Clear skies · HI 62° · LO 38°',
   weatherLocation: '',
   weatherUnits: 'imperial',
+  clockTimezone: '',
   countdownLabel: 'DAYS TO GRADUATION',
   countdownValue: 41,
   countdownUnit: 'Seniors — caps ordered by Friday',

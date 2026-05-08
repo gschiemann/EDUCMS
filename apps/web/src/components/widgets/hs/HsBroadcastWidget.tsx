@@ -39,6 +39,8 @@ export interface HsBroadcastConfig {
   weatherLocation?: string;
   /** 'imperial' (°F) or 'metric' (°C). Default: imperial. */
   weatherUnits?: 'imperial' | 'metric';
+  /** IANA timezone (e.g. 'America/Los_Angeles'). Empty → browser tz. */
+  clockTimezone?: string;
   teacherPortraitTag?: string;
   teacherLabel?: string;
   teacherName?: string;
@@ -75,6 +77,7 @@ export const DEFAULTS: Required<HsBroadcastConfig> = {
   weatherCondition: '☀ CLEAR · HI 62°',
   weatherLocation: '',
   weatherUnits: 'imperial',
+  clockTimezone: '',
   teacherPortraitTag: '[ portrait ]',
   teacherLabel: 'FEATURED GUEST · TEACHER OF THE WEEK',
   teacherName: 'MS. KOWALSKI',

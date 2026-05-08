@@ -38,6 +38,8 @@ export interface HsBlueprintConfig {
   weatherLocation?: string;
   /** 'imperial' (°F) or 'metric' (°C). Default: imperial. */
   weatherUnits?: 'imperial' | 'metric';
+  /** IANA timezone (e.g. 'America/Los_Angeles'). Empty → browser tz. */
+  clockTimezone?: string;
   attendanceValue?: string;
   attendanceCap?: string;
   countdownLabel?: string;
@@ -81,6 +83,7 @@ export const DEFAULTS: Required<HsBlueprintConfig> = {
   weatherCondition: 'CLEAR · HI 62 · LO 38 · WIND 6MPH SW',
   weatherLocation: '',
   weatherUnits: 'imperial',
+  clockTimezone: '',
   attendanceValue: '1,217',
   attendanceCap: '98.2% · CAPACITY 1,240',
   countdownLabel: 'DAYS TO COMMENCEMENT',

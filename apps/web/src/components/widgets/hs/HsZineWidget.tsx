@@ -51,6 +51,8 @@ export interface HsZineConfig {
   weatherLocation?: string;
   /** 'imperial' (°F) or 'metric' (°C). Default: imperial. */
   weatherUnits?: 'imperial' | 'metric';
+  /** IANA timezone (e.g. 'America/Los_Angeles'). Empty → browser tz. */
+  clockTimezone?: string;
   tickerTag?: string;
   tickerMessage?: string;
 }
@@ -90,6 +92,7 @@ export const DEFAULTS: Required<HsZineConfig> = {
   weatherCondition: 'tue · apr 21 · 46° · clear · high 62°',
   weatherLocation: '',
   weatherUnits: 'imperial',
+  clockTimezone: '',
   tickerTag: 'xeroxwire',
   tickerMessage: 'bus 14 running late !! · lunch: chicken bowl, salad bar, vegan opt · ap psych → library · LOST: silver earbuds — front desk · sports photos tmrw bring your jersey · submit to the zine rm 217 · ',
 };

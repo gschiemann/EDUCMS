@@ -44,6 +44,7 @@ export const DEFAULTS: Required<Cfg> = {
   weatherCondition: 'CLEAR · HI 62 · LO 38 · WIND 6MPH SW',
   weatherLocation: '',
   weatherUnits: 'imperial',
+  clockTimezone: '',
   attendanceValue: '1,217',
   attendanceCap: '98.2% · CAPACITY 1,240',
   countdownLabel: 'DAYS TO COMMENCEMENT',

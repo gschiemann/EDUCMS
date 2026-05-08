@@ -52,6 +52,8 @@ export interface HsVarsityConfig {
   weatherLocation?: string;
   /** 'imperial' (°F) or 'metric' (°C). Default: imperial. */
   weatherUnits?: 'imperial' | 'metric';
+  /** IANA timezone (e.g. 'America/Los_Angeles'). Empty → browser tz. */
+  clockTimezone?: string;
   recordValue?: string;
   recordCaption?: string;
   attendanceValue?: string;
@@ -111,6 +113,7 @@ export const DEFAULTS: Required<Cfg> = {
   weatherCondition: 'Clear skies · hi 62°',
   weatherLocation: '',
   weatherUnits: 'imperial',
+  clockTimezone: '',
   recordValue: '14–2',
   recordCaption: 'League leaders · 8-game streak',
   attendanceValue: '1,217',

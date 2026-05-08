@@ -46,6 +46,8 @@ export interface HsTerminalConfig {
   weatherLocation?: string;
   /** 'imperial' (°F) or 'metric' (°C). Default: imperial. */
   weatherUnits?: 'imperial' | 'metric';
+  /** IANA timezone (e.g. 'America/Los_Angeles'). Empty → browser tz. */
+  clockTimezone?: string;
   greetingCmd?: string;
   greetingArg?: string;
   greetingHeadline?: string;
@@ -99,6 +101,7 @@ export const DEFAULTS: Required<Cfg> = {
   weatherCondition: 'clear',
   weatherLocation: '',
   weatherUnits: 'imperial',
+  clockTimezone: '',
   greetingCmd: './say-morning',
   greetingArg: '--to=everyone --loud',
   greetingHeadline: 'WESTRIDGE',

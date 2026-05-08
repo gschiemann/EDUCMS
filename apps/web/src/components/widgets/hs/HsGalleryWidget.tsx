@@ -32,6 +32,8 @@ export interface HsGalleryConfig {
   weatherLocation?: string;
   /** 'imperial' (°F) or 'metric' (°C). Default: imperial. */
   weatherUnits?: 'imperial' | 'metric';
+  /** IANA timezone (e.g. 'America/Los_Angeles'). Empty → browser tz. */
+  clockTimezone?: string;
   greetingEyebrow?: string;
   greetingHeadline1?: string;
   greetingHeadline2?: string;
@@ -74,6 +76,7 @@ export const DEFAULTS: Required<HsGalleryConfig> = {
   weatherCondition: 'Clear, 46°',
   weatherLocation: '',
   weatherUnits: 'imperial',
+  clockTimezone: '',
   greetingEyebrow: 'Exhibition No. 142 · Spring 2026',
   greetingHeadline1: 'Today,',
   greetingHeadline2: 'as ever,',
