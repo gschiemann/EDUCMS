@@ -54,7 +54,7 @@ export interface HsBlueprintConfig {
   tickerMessage?: string;
 }
 
-const DEFAULTS: Required<HsBlueprintConfig> = {
+export const DEFAULTS: Required<HsBlueprintConfig> = {
   schoolCode: 'WHS',
   schoolName: 'WESTRIDGE HIGH · EST 1956',
   brandLabel1: 'PROJECT · TITLE',
