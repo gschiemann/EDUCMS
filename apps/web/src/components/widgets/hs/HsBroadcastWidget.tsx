@@ -21,6 +21,7 @@
 
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
+import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 
 export interface HsBroadcastConfig {
   schoolChip?: string;
@@ -101,6 +102,22 @@ export function HsBroadcastWidget({ config, live }: { config?: HsBroadcastConfig
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
+  // 2026-05-07 — live weather. Broadcast's condition uses sun/cloud
+  // emoji prefix + uppercase WMO description.
+  const w = useHsLiveWeather({
+    live,
+    location: c.weatherLocation,
+    unitsCelsius: c.weatherUnits === 'metric',
+    tempOverride: c.weatherTemp,
+    conditionOverride: c.weatherCondition,
+    defaultTemp: DEFAULTS.weatherTemp,
+    defaultCondition: DEFAULTS.weatherCondition,
+    formatTemp: (t) => `${t}°`,
+    formatCondition: (wmo) => {
+      const emoji = wmo === 0 ? '☀' : wmo <= 3 ? '⛅' : wmo <= 48 ? '🌫' : wmo <= 67 ? '🌧' : wmo <= 77 ? '❄' : wmo <= 82 ? '🌧' : '⛈';
+      return `${emoji} ${describeWmo(wmo).toUpperCase()}`;
+    },
+  });
   return (
     <HsStage
       stageStyle={{
@@ -147,8 +164,8 @@ export function HsBroadcastWidget({ config, live }: { config?: HsBroadcastConfig
           <div className="hs-bc-panel hs-bc-weather">
             <h3>FORECAST</h3>
             <div className="hs-bc-row">
-              <div className="hs-bc-big" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherTemp}</div>
-              <div className="hs-bc-ico" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherCondition}</div>
+              <div className="hs-bc-big" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>{w.tempLabel}</div>
+              <div className="hs-bc-ico" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{w.conditionLabel}</div>
             </div>
           </div>
         </div>
