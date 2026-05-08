@@ -78,7 +78,7 @@ export interface HsTerminalConfig {
   tickerMessage?: string;
 }
 
-const DEFAULTS: Required<HsTerminalConfig> = {
+export const DEFAULTS: Required<HsTerminalConfig> = {
   schoolHost: 'westridge-hs',
   schoolPath: '~/lobby/morning',
   schoolSession: 'session #2 · term spring-26',
