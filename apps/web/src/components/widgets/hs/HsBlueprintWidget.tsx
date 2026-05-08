@@ -12,6 +12,7 @@
 
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock, resolveHsDate } from './useHsLiveClock';
+import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 
 export interface HsBlueprintConfig {
   schoolCode?: string;
@@ -114,6 +115,19 @@ export function HsBlueprintWidget({ config, live }: { config?: HsBlueprintConfig
     const dd = String(d.getDate()).padStart(2, '0');
     return `${yyyy}-${mm}-${dd}`;
   });
+  // 2026-05-07 — live weather (Open-Meteo via useLiveTemplateData).
+  // Format matches Blueprint's all-caps technical-drawing aesthetic.
+  const w = useHsLiveWeather({
+    live,
+    location: c.weatherLocation,
+    unitsCelsius: c.weatherUnits === 'metric',
+    tempOverride: c.weatherTemp,
+    conditionOverride: c.weatherCondition,
+    defaultTemp: DEFAULTS.weatherTemp,
+    defaultCondition: DEFAULTS.weatherCondition,
+    formatTemp: (t) => `${t}°`,
+    formatCondition: (wmo) => describeWmo(wmo).toUpperCase(),
+  });
   const events = [
     { time: c.event0Time, code: c.event0Code, name: c.event0Name, room: c.event0Room, who: c.event0Who },
     { time: c.event1Time, code: c.event1Code, name: c.event1Name, room: c.event1Room, who: c.event1Who },
@@ -173,8 +187,8 @@ export function HsBlueprintWidget({ config, live }: { config?: HsBlueprintConfig
         </div>
         <div className="hs-bp-panel" data-sheet="A-01.2">
           <div className="hs-bp-kicker">EXT. CONDITIONS</div>
-          <div className="hs-bp-big" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherTemp}</div>
-          <div className="hs-bp-cap" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherCondition}</div>
+          <div className="hs-bp-big" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>{w.tempLabel}</div>
+          <div className="hs-bp-cap" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{w.conditionLabel}</div>
         </div>
         <div className="hs-bp-panel" data-sheet="A-01.3">
           <div className="hs-bp-kicker">PRESENT</div>
