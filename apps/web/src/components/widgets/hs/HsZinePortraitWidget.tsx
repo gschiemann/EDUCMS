@@ -29,6 +29,7 @@
  */
 
 import { HsStage } from './HsStage';
+import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 
 export interface HsZineConfig {
   schoolName?: string;
@@ -69,7 +70,7 @@ export interface HsZineConfig {
 
 type Cfg = HsZineConfig;
 
-const DEFAULTS: Required<Cfg> = {
+export const DEFAULTS: Required<Cfg> = {
   schoolName: 'WESTRIDGE!',
   schoolSub: 'vol. 142 · morning edition · photocopied by hand · free',
   brandStamp1: '★ WILDCATS FOREVER',
@@ -129,8 +130,11 @@ const RANSOM_FONTS = [
 const RANSOM_ROTS = [-6, 4, -3, 7, -2, 5, -4, 6, -3, 4, -5, 3];
 const RANSOM_BG = ['#fff', '#ffd84d', '#fff', '#2dbce6', '#fff', '#ffd84d', '#fff', '#fff', '#ffd84d', '#fff', '#2dbce6', '#fff'];
 
-export function HsZinePortraitWidget({ config }: { config?: Cfg; live?: boolean }) {
+export function HsZinePortraitWidget({ config, live }: { config?: Cfg; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
+  // 2026-05-07 — live clock (see useHsLiveClock.ts).
+  const now = useHsLiveClock(live !== false);
+  const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
   const ransomChars = String(c.schoolName).split('');
 
   return (
@@ -335,7 +339,7 @@ export function HsZinePortraitWidget({ config }: { config?: Cfg; live?: boolean 
             {c.clockLabel}
           </div>
           <div className="hs-zp-fc-v" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>
-            {c.clockTime}
+            {clock.time}
           </div>
           <div className="hs-zp-fc-c" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.weatherCondition}

@@ -24,11 +24,12 @@
  */
 
 import { HsStage } from './HsStage';
+import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import type { HsBroadcastConfig } from './HsBroadcastWidget';
 
 type Cfg = HsBroadcastConfig;
 
-const DEFAULTS: Required<Cfg> = {
+export const DEFAULTS: Required<Cfg> = {
   schoolChip: 'WHS',
   schoolName: 'WESTRIDGE HIGH',
   schoolSub: 'CAMPUS NEWS NETWORK',
@@ -62,8 +63,11 @@ const DEFAULTS: Required<Cfg> = {
   tickerMessage: 'LUNCH TODAY · CHICKEN BOWL · SALAD BAR · VEGAN OPTION AVAILABLE  ●  SAT PRACTICE SIGN-UPS CLOSE FRIDAY  ●  LOST: SILVER EARBUDS IN LIBRARY — SEE FRONT OFFICE  ●  DRAMA CLUB AUDITIONS MONDAY 3:30 IN THE AUDITORIUM  ●  ',
 };
 
-export function HsBroadcastPortraitWidget({ config }: { config?: Cfg; live?: boolean }) {
+export function HsBroadcastPortraitWidget({ config, live }: { config?: Cfg; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
+  // 2026-05-07 — live clock (see useHsLiveClock.ts).
+  const now = useHsLiveClock(live !== false);
+  const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
 
   const upcoming = [
     { when: c.event1When, name: c.event1Name, accent: '#ef2b2b' },
@@ -120,10 +124,10 @@ export function HsBroadcastPortraitWidget({ config }: { config?: Cfg; live?: boo
         <div className="hs-bcp-clockpill">
           <div className="hs-bcp-clockpill-lbl">LOCAL</div>
           <div className="hs-bcp-clockpill-val" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>
-            {c.clockTime}
+            {clock.time}
           </div>
           <div className="hs-bcp-clockpill-cap" data-field="clockCaption" style={{ whiteSpace: 'pre-wrap' as const }}>
-            {c.clockCaption}
+            {clock.caption}
           </div>
         </div>
 

@@ -24,6 +24,7 @@
  */
 
 import { HsStage } from './HsStage';
+import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 
 export interface HsTransitConfig {
   schoolCode?: string;
@@ -104,8 +105,11 @@ function statusClass(s: string): string {
   return 'hs-tr-st-sched';
 }
 
-export function HsTransitWidget({ config }: { config?: HsTransitConfig }) {
+export function HsTransitWidget({ config, live }: { config?: HsTransitConfig; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<HsTransitConfig>;
+  // 2026-05-07 — live clock (see useHsLiveClock.ts).
+  const now = useHsLiveClock(live !== false);
+  const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
   const deps = [
     { time: c.dep0Time, code: c.dep0Code, dest: c.dep0Dest, note: c.dep0Note, room: c.dep0Room, teacher: c.dep0Teacher, status: c.dep0Status },
     { time: c.dep1Time, code: c.dep1Code, dest: c.dep1Dest, note: c.dep1Note, room: c.dep1Room, teacher: c.dep1Teacher, status: c.dep1Status },
@@ -130,7 +134,7 @@ export function HsTransitWidget({ config }: { config?: HsTransitConfig }) {
           <div className="hs-tr-line2" data-field="brandMeta" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandMeta}</div>
         </div>
         <div className="hs-tr-clock">
-          <div className="hs-tr-clock-t" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockTime}</div>
+          <div className="hs-tr-clock-t" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</div>
           <div className="hs-tr-clock-meta">
             <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockDate}</span>
             <br />
@@ -162,15 +166,19 @@ export function HsTransitWidget({ config }: { config?: HsTransitConfig }) {
         </div>
         {deps.map((d, i) => (
           <div key={i} className="hs-tr-row">
-            <span className="hs-tr-t">{d.time}</span>
-            <span className="hs-tr-rcode">{d.code}</span>
+            {/* 2026-05-07 — added data-field attributes so each cell
+                is click-to-edit via BuilderZone's hotspot mechanism.
+                Pre-fix the operator could only edit STATUS inline;
+                everything else required the side panel. */}
+            <span className="hs-tr-t" data-field={`dep${i}Time`} style={{ whiteSpace: 'pre-wrap' as const }}>{d.time}</span>
+            <span className="hs-tr-rcode" data-field={`dep${i}Code`} style={{ whiteSpace: 'pre-wrap' as const }}>{d.code}</span>
             <span className="hs-tr-dest">
-              {d.dest}
-              <span className="hs-tr-dest-sub">{d.note}</span>
+              <span data-field={`dep${i}Dest`} style={{ whiteSpace: 'pre-wrap' as const }}>{d.dest}</span>
+              <span className="hs-tr-dest-sub" data-field={`dep${i}Note`} style={{ whiteSpace: 'pre-wrap' as const }}>{d.note}</span>
             </span>
-            <span className="hs-tr-gate">{d.room}</span>
-            <span className="hs-tr-room">{d.teacher}</span>
-            <span><span className={'hs-tr-st ' + statusClass(d.status)}>{d.status}</span></span>
+            <span className="hs-tr-gate" data-field={`dep${i}Room`} style={{ whiteSpace: 'pre-wrap' as const }}>{d.room}</span>
+            <span className="hs-tr-room" data-field={`dep${i}Teacher`} style={{ whiteSpace: 'pre-wrap' as const }}>{d.teacher}</span>
+            <span><span className={'hs-tr-st ' + statusClass(d.status)} data-field={`dep${i}Status`} style={{ whiteSpace: 'pre-wrap' as const }}>{d.status}</span></span>
           </div>
         ))}
       </div>

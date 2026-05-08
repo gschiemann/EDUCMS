@@ -11,6 +11,7 @@
  */
 
 import { HsStage } from './HsStage';
+import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 
 export interface HsZineConfig {
   schoolName?: string;
@@ -86,8 +87,11 @@ const DEFAULTS: Required<HsZineConfig> = {
   tickerMessage: 'bus 14 running late !! · lunch: chicken bowl, salad bar, vegan opt · ap psych → library · LOST: silver earbuds — front desk · sports photos tmrw bring your jersey · submit to the zine rm 217 · ',
 };
 
-export function HsZineWidget({ config }: { config?: HsZineConfig }) {
+export function HsZineWidget({ config, live }: { config?: HsZineConfig; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<HsZineConfig>;
+  // 2026-05-07 — live clock (see useHsLiveClock.ts).
+  const now = useHsLiveClock(live !== false);
+  const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
   return (
     <HsStage
       stageStyle={{
@@ -176,7 +180,7 @@ export function HsZineWidget({ config }: { config?: HsZineConfig }) {
 
       <div className="hs-zn-fc">
         <div className="hs-zn-fc-lbl" data-field="clockLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockLabel}</div>
-        <div className="hs-zn-fc-v" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockTime}</div>
+        <div className="hs-zn-fc-v" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</div>
         <div className="hs-zn-fc-c" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherCondition}</div>
       </div>
 

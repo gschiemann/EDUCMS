@@ -25,6 +25,7 @@
  */
 
 import { HsStage } from './HsStage';
+import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 
 export interface HsVarsityConfig {
   schoolInitials?: string;
@@ -83,7 +84,7 @@ export interface HsVarsityConfig {
 
 type Cfg = HsVarsityConfig;
 
-const DEFAULTS: Required<Cfg> = {
+export const DEFAULTS: Required<Cfg> = {
   schoolInitials: 'WHS',
   schoolEst: 'EST. 1956',
   schoolName: 'WILDCATS',
@@ -138,8 +139,11 @@ const DEFAULTS: Required<Cfg> = {
   tickerMessage: '🏈 FOOTBALL W 21-14 vs LIONS  ●  🏀 BOYS HOOPS L 58-62 @ EAST  ●  ⚽ SOCCER W 3-1 vs ROOSEVELT  ●  🏐 VOLLEYBALL W 3-0 vs CENTRAL  ●  🏊 SWIM 2ND OF 6 @ INVITATIONAL  ●  🏃 TRACK MIRA SET 800m SCHOOL RECORD  ●  ',
 };
 
-export function HsVarsityPortraitWidget({ config }: { config?: Cfg; live?: boolean }) {
+export function HsVarsityPortraitWidget({ config, live }: { config?: Cfg; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
+  // 2026-05-07 — live clock (see useHsLiveClock.ts).
+  const now = useHsLiveClock(live !== false);
+  const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
   const games = [
     { mark: c.event1Mark, when: c.event1When, name: c.event1Name },
     { mark: c.event2Mark, when: c.event2When, name: c.event2Name },
@@ -291,7 +295,7 @@ export function HsVarsityPortraitWidget({ config }: { config?: Cfg; live?: boole
               </div>
               <div className="hs-vp-statbox">
                 <div className="hs-vp-statbox-val" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>
-                  {c.clockTime}
+                  {clock.time}
                 </div>
                 <div className="hs-vp-statbox-lbl">LOCAL</div>
               </div>

@@ -20,6 +20,7 @@
  */
 
 import { HsStage } from './HsStage';
+import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 
 export interface HsYearbookConfig {
   schoolName?: string;
@@ -99,8 +100,11 @@ const DEFAULTS: Required<HsYearbookConfig> = {
   tickerMessage: 'NEWS DESK ANNOUNCEMENT — BUS 14 RUNNING LATE, NEW DEPARTURE 7:58 AM · LUNCH TODAY: CHICKEN BOWL, SALAD BAR, VEGAN OPT · AP PSYCH STUDY HALL MOVED TO LIBRARY · LOST: SILVER EARBUDS — FRONT OFFICE · ',
 };
 
-export function HsYearbookWidget({ config }: { config?: HsYearbookConfig }) {
+export function HsYearbookWidget({ config, live }: { config?: HsYearbookConfig; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<HsYearbookConfig>;
+  // 2026-05-07 — live clock (see useHsLiveClock.ts).
+  const now = useHsLiveClock(live !== false);
+  const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
   return (
     <HsStage
       stageStyle={{
@@ -119,8 +123,8 @@ export function HsYearbookWidget({ config }: { config?: HsYearbookConfig }) {
       </div>
 
       <div className="hs-yb-clock">
-        <div className="hs-yb-clock-t" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockTime}</div>
-        <div className="hs-yb-clock-c" data-field="clockCaption" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockCaption}</div>
+        <div className="hs-yb-clock-t" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</div>
+        <div className="hs-yb-clock-c" data-field="clockCaption" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.caption}</div>
       </div>
 
       <div className="hs-yb-hero">

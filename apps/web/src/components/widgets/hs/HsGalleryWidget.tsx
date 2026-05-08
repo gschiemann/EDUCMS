@@ -20,6 +20,7 @@
  */
 
 import { HsStage } from './HsStage';
+import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 
 export interface HsGalleryConfig {
   schoolName?: string;
@@ -101,8 +102,11 @@ const DEFAULTS: Required<HsGalleryConfig> = {
   tickerMessage: 'Bus 14 delayed ten minutes · Lunch today: chicken bowl, salad bar, vegan option · AP Psychology study hall moved to the library · Lost: silver earbuds — inquire at the front office · Spring sports photos tomorrow; please wear your jerseys ·  ',
 };
 
-export function HsGalleryWidget({ config }: { config?: HsGalleryConfig }) {
+export function HsGalleryWidget({ config, live }: { config?: HsGalleryConfig; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<HsGalleryConfig>;
+  // 2026-05-07 — live clock (see useHsLiveClock.ts).
+  const now = useHsLiveClock(live !== false);
+  const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
   return (
     <HsStage
       stageStyle={{
@@ -117,7 +121,7 @@ export function HsGalleryWidget({ config }: { config?: HsGalleryConfig }) {
         <div className="hs-gl-logo" data-field="schoolName" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolName}</div>
         <div className="hs-gl-nav">
           <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockDate}</span>
-          <span className="hs-gl-nav-on" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockTime}</span>
+          <span className="hs-gl-nav-on" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</span>
           <span data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherCondition}</span>
         </div>
       </div>
@@ -137,12 +141,13 @@ export function HsGalleryWidget({ config }: { config?: HsGalleryConfig }) {
           { n: c.event2Num, name: c.event2Name, meta: c.event2Meta, time: c.event2Time, day: c.event2Day },
         ].map((e, i) => (
           <div key={i} className="hs-gl-card">
-            <div className="hs-gl-n">{e.n}</div>
+            {/* 2026-05-07 — added data-field for click-to-edit on every cell. */}
+            <div className="hs-gl-n" data-field={`event${i}Num`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.n}</div>
             <div>
-              <div className="hs-gl-title">{e.name}</div>
-              <div className="hs-gl-meta">{e.meta}</div>
+              <div className="hs-gl-title" data-field={`event${i}Name`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.name}</div>
+              <div className="hs-gl-meta" data-field={`event${i}Meta`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.meta}</div>
             </div>
-            <div className="hs-gl-time"><span>{e.time}</span><span className="hs-gl-d">{e.day}</span></div>
+            <div className="hs-gl-time"><span data-field={`event${i}Time`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.time}</span><span className="hs-gl-d" data-field={`event${i}Day`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.day}</span></div>
           </div>
         ))}
       </div>

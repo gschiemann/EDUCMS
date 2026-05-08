@@ -32,6 +32,7 @@
  */
 
 import { HsStage } from './HsStage';
+import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 
 export interface HsTerminalConfig {
   schoolHost?: string;
@@ -84,7 +85,7 @@ export interface HsTerminalConfig {
 
 type Cfg = HsTerminalConfig;
 
-const DEFAULTS: Required<Cfg> = {
+export const DEFAULTS: Required<Cfg> = {
   schoolHost: 'westridge-hs',
   schoolPath: '~/lobby/morning',
   schoolSession: 'session #2 · term spring-26',
@@ -133,8 +134,11 @@ const DEFAULTS: Required<Cfg> = {
   tickerMessage: '[INFO] bus-14 delayed 10m · [WARN] printer rm-210 out of toner · [INFO] lost-and-found: silver earbuds · [INFO] ap psych study hall moved to library · [INFO] sports photos tomorrow — bring jerseys · ',
 };
 
-export function HsTerminalPortraitWidget({ config }: { config?: Cfg; live?: boolean }) {
+export function HsTerminalPortraitWidget({ config, live }: { config?: Cfg; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
+  // 2026-05-07 — live clock (see useHsLiveClock.ts).
+  const now = useHsLiveClock(live !== false);
+  const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
   const events = [
     { when: c.event1When, where: c.event1Where, name: c.event1Name, who: c.event1Who },
     { when: c.event2When, where: c.event2Where, name: c.event2Name, who: c.event2Who },
@@ -203,7 +207,7 @@ export function HsTerminalPortraitWidget({ config }: { config?: Cfg; live?: bool
             {c.schoolSession}
           </span>
           <span className="hs-tp-sep"> · </span>
-          <span data-field="clockTime">{c.clockTime}</span>
+          <span data-field="clockTime">{clock.time}</span>
           <span className="hs-tp-sep"> · </span>
           <span className="hs-tp-on" data-field="weatherTemp">{c.weatherTemp}</span>{' '}
           <span data-field="weatherCondition">{c.weatherCondition}</span>

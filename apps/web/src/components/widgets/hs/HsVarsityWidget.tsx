@@ -27,6 +27,7 @@
  */
 
 import { HsStage } from './HsStage';
+import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 
 export interface HsVarsityConfig {
   schoolInitials?: string;
@@ -126,8 +127,14 @@ const DEFAULTS: Required<HsVarsityConfig> = {
   tickerMessage: 'SENIORS — CAP & GOWN PICKUP THIS WEEK IN THE COUNSELING OFFICE  ●  BUS 14 RUNNING 10 MIN LATE  ●  MATHLETES PRACTICE MOVED TO ROOM 102  ●  SPRING SPORTS PHOTOS TOMORROW — WEAR YOUR JERSEY  ●  ',
 };
 
-export function HsVarsityWidget({ config }: { config?: HsVarsityConfig }) {
+export function HsVarsityWidget({ config, live }: { config?: HsVarsityConfig; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<HsVarsityConfig>;
+  // 2026-05-07 — live clock. Replaces the hardcoded "7:53" /
+  // "Tuesday · 1st period @ 8:05" placeholder so the demo wall
+  // shows real time on every screen. Operator can still override
+  // clockTime / clockCaption to freeze for marketing screenshots.
+  const now = useHsLiveClock(live !== false);
+  const clock = resolveHsClock(c, now, DEFAULTS.clockTime, DEFAULTS.clockCaption);
   return (
     <HsStage
       stageStyle={{
@@ -204,8 +211,8 @@ export function HsVarsityWidget({ config }: { config?: HsVarsityConfig }) {
       <div className="hs-varsity-stats">
         <div className="hs-varsity-stat">
           <div className="hs-varsity-stat-lbl">LOCAL TIME</div>
-          <div className="hs-varsity-stat-val" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockTime}</div>
-          <div className="hs-varsity-stat-cap" data-field="clockCaption" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockCaption}</div>
+          <div className="hs-varsity-stat-val" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</div>
+          <div className="hs-varsity-stat-cap" data-field="clockCaption" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.caption}</div>
         </div>
         <div className="hs-varsity-stat">
           <div className="hs-varsity-stat-lbl">GAMETIME FORECAST</div>

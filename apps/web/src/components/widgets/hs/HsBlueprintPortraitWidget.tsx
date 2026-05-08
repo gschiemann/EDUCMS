@@ -15,11 +15,12 @@
  */
 
 import { HsStage } from './HsStage';
+import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import type { HsBlueprintConfig } from './HsBlueprintWidget';
 
 type Cfg = HsBlueprintConfig;
 
-const DEFAULTS: Required<Cfg> = {
+export const DEFAULTS: Required<Cfg> = {
   schoolCode: 'WHS',
   schoolName: 'WESTRIDGE HIGH · EST 1956',
   brandLabel1: 'PROJECT · TITLE',
@@ -66,11 +67,15 @@ const DEFAULTS: Required<Cfg> = {
 
 export function HsBlueprintPortraitWidget({
   config,
+  live,
 }: {
   config?: Cfg;
   live?: boolean;
 }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
+  // 2026-05-07 — live clock (see useHsLiveClock.ts).
+  const now = useHsLiveClock(live !== false);
+  const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
   const events = [
     { time: c.event0Time, code: c.event0Code, name: c.event0Name, room: c.event0Room, who: c.event0Who },
     { time: c.event1Time, code: c.event1Code, name: c.event1Name, room: c.event1Room, who: c.event1Who },
@@ -133,7 +138,7 @@ export function HsBlueprintPortraitWidget({
             <div className="hs-bpp-val hs-bpp-mono">
               <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockDate}</span>
               {' · '}
-              <span data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockTime}</span>
+              <span data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</span>
             </div>
           </div>
         </div>
