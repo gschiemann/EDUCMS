@@ -25,6 +25,7 @@
 
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
+import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 import type { HsBroadcastConfig } from './HsBroadcastWidget';
 
 type Cfg = HsBroadcastConfig;
@@ -70,6 +71,21 @@ export function HsBroadcastPortraitWidget({ config, live }: { config?: Cfg; live
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
+  // 2026-05-07 — live weather (matches landscape sibling format).
+  const w = useHsLiveWeather({
+    live,
+    location: c.weatherLocation,
+    unitsCelsius: c.weatherUnits === 'metric',
+    tempOverride: c.weatherTemp,
+    conditionOverride: c.weatherCondition,
+    defaultTemp: DEFAULTS.weatherTemp,
+    defaultCondition: DEFAULTS.weatherCondition,
+    formatTemp: (t) => `${t}°`,
+    formatCondition: (wmo) => {
+      const emoji = wmo === 0 ? '☀' : wmo <= 3 ? '⛅' : wmo <= 48 ? '🌫' : wmo <= 67 ? '🌧' : wmo <= 77 ? '❄' : wmo <= 82 ? '🌧' : '⛈';
+      return `${emoji} ${describeWmo(wmo).toUpperCase()}`;
+    },
+  });
 
   const upcoming = [
     { when: c.event1When, name: c.event1Name, accent: '#ef2b2b' },
@@ -240,10 +256,10 @@ export function HsBroadcastPortraitWidget({ config, live }: { config?: Cfg; live
               <div className="hs-bcp-fc-dlabel">TODAY</div>
               <div className="hs-bcp-fc-icon">☀</div>
               <div className="hs-bcp-fc-temp" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>
-                {c.weatherTemp}
+                {w.tempLabel}
               </div>
               <div className="hs-bcp-fc-cond" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>
-                {c.weatherCondition}
+                {w.conditionLabel}
               </div>
             </div>
             <div className="hs-bcp-fc-day">
