@@ -26,9 +26,11 @@
  *   - ticker           → /var/log/syslog bottom crawl
  */
 
+import { useRef } from 'react';
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
+import { useTextStyleOverrides, type TextStyleMap } from './useTextStyleOverrides';
 
 export interface HsTerminalConfig {
   schoolHost?: string;
@@ -83,6 +85,8 @@ export interface HsTerminalConfig {
   event3Who?: string;
   tickerTag?: string;
   tickerMessage?: string;
+  /** Per-field style overrides keyed by data-field attr. */
+  __styles?: TextStyleMap;
 }
 
 export const DEFAULTS: Required<HsTerminalConfig> = {
@@ -135,10 +139,14 @@ export const DEFAULTS: Required<HsTerminalConfig> = {
   event3Who: '@ms.park',
   tickerTag: '/var/log/syslog',
   tickerMessage: '[info] bus-14 delayed 10m · [warn] printer rm-210 out of toner · [info] lost-and-found: silver earbuds · [info] ap psych study hall moved to library · [info] sports photos tomorrow — bring jerseys · ',
+  __styles: {},
 };
 
 export function HsTerminalWidget({ config, live }: { config?: HsTerminalConfig; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<HsTerminalConfig>;
+  // 2026-05-08 — per-field style overrides (font-size + color).
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  useTextStyleOverrides(stageRef, c.__styles);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
@@ -157,6 +165,7 @@ export function HsTerminalWidget({ config, live }: { config?: HsTerminalConfig; 
   });
   return (
     <HsStage
+      stageRef={stageRef}
       stageStyle={{
         background: 'radial-gradient(ellipse at center, #0e2410 0%, #060f06 80%, #000 100%)',
         fontFamily: "'JetBrains Mono', monospace",
