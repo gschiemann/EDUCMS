@@ -3192,10 +3192,14 @@ function updateFieldStyleMap(
   return next;
 }
 
-/** Disclosure that exposes per-field font-size / color / weight inputs.
- *  Renders below a TextField / TextAreaField. Only mounts the inputs
- *  when expanded to keep the editor DOM lean for templates with 80+
- *  text fields. */
+/** Always-visible per-field font-size + color controls.
+ *  Renders directly below the TextField/TextAreaField — no disclosure,
+ *  no hidden details. The user complained ("i still cant adjust the
+ *  font size or color") because the previous <details>-based UI was
+ *  invisible until clicked. Now: a compact inline row with [size px]
+ *  [color swatch] [reset] always shown.
+ *
+ *  Empty inputs clear the override; the CSS class default takes over. */
 function StyleDisclosure({
   fieldName,
   styles,
@@ -3210,49 +3214,57 @@ function StyleDisclosure({
   const setProp = (prop: 'fontSize' | 'color' | 'fontWeight', value: number | string | undefined) => {
     onStylesChange(updateFieldStyleMap(styles, fieldName, prop, value));
   };
-  // 2026-05-08 — local controlled inputs so typing isn't laggy when
-  // the parent re-renders.
+  // Local controlled input so typing isn't laggy when parent re-renders.
   const [sizeDraft, setSizeDraft] = useState(cur.fontSize != null ? String(cur.fontSize) : '');
   useEffect(() => {
     setSizeDraft(cur.fontSize != null ? String(cur.fontSize) : '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cur.fontSize]);
   return (
-    <details className="mt-1 -mt-0.5 pl-1 pb-1 group">
-      <summary className="cursor-pointer text-[10px] font-semibold text-slate-400 hover:text-indigo-500 select-none flex items-center gap-1.5">
-        <span>Style</span>
-        {hasAny && <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-400" title="Custom style applied" />}
-      </summary>
-      <div className="mt-2 grid grid-cols-2 gap-2">
-        <div>
-          <label className="block text-[10px] font-semibold text-slate-500 mb-1">Font size (px)</label>
-          <input
-            type="number"
-            min={20}
-            max={500}
-            step={2}
-            value={sizeDraft}
-            placeholder="default"
-            onChange={(e) => {
-              const v = e.target.value;
-              setSizeDraft(v);
-              if (v === '') {
-                setProp('fontSize', undefined);
-              } else {
-                const n = parseInt(v, 10);
-                if (Number.isFinite(n)) setProp('fontSize', n);
-              }
-            }}
-            className="w-full px-2 py-1.5 rounded-md bg-white border border-slate-200/70 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 shadow-sm"
-          />
-        </div>
-        <div>
-          <ColorPickerField
-            label="Color"
-            value={cur.color || ''}
-            onChange={(v) => setProp('color', v || undefined)}
-          />
-        </div>
+    <div className="mt-1.5 flex items-center gap-1.5 pl-0.5">
+      <div className="flex items-center gap-1 flex-1 min-w-0">
+        <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Size</span>
+        <input
+          type="number"
+          min={12}
+          max={600}
+          step={2}
+          value={sizeDraft}
+          placeholder="auto"
+          title="Manual font size (leave blank to auto-fit)"
+          onChange={(e) => {
+            const v = e.target.value;
+            setSizeDraft(v);
+            if (v === '') {
+              setProp('fontSize', undefined);
+            } else {
+              const n = parseInt(v, 10);
+              if (Number.isFinite(n)) setProp('fontSize', n);
+            }
+          }}
+          className="w-16 px-1.5 py-1 rounded-md bg-white border border-slate-200/70 text-[11px] font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 shadow-sm"
+        />
+        <span className="text-[10px] text-slate-400">px</span>
+      </div>
+      <div className="flex items-center gap-1 flex-shrink-0">
+        <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Color</span>
+        <input
+          type="color"
+          value={cur.color || '#000000'}
+          onChange={(e) => setProp('color', e.target.value)}
+          className="w-6 h-6 p-0 border border-slate-200/70 rounded cursor-pointer"
+          title={cur.color ? `Override: ${cur.color}` : 'Set custom color'}
+        />
+        {cur.color && (
+          <button
+            type="button"
+            onClick={() => setProp('color', undefined)}
+            className="text-[10px] text-slate-400 hover:text-rose-500 px-1"
+            title="Clear color override"
+          >
+            ✕
+          </button>
+        )}
       </div>
       {hasAny && (
         <button
@@ -3262,12 +3274,13 @@ function StyleDisclosure({
             delete next[fieldName];
             onStylesChange(next);
           }}
-          className="mt-1.5 text-[10px] font-medium text-slate-400 hover:text-rose-500 transition-colors underline-offset-2 hover:underline"
+          className="text-[10px] font-medium text-indigo-500 hover:text-rose-500 transition-colors px-1.5 py-0.5 rounded hover:bg-rose-50 flex-shrink-0"
+          title="Reset both size and color to template default"
         >
-          Reset to default
+          Reset
         </button>
       )}
-    </details>
+    </div>
   );
 }
 
