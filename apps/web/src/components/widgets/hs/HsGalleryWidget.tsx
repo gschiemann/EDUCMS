@@ -62,7 +62,7 @@ export interface HsGalleryConfig {
   tickerMessage?: string;
 }
 
-const DEFAULTS: Required<HsGalleryConfig> = {
+export const DEFAULTS: Required<HsGalleryConfig> = {
   schoolName: 'The Westridge High School Review',
   clockDate: 'Tuesday, April 21',
   clockTime: '7:53 a.m.',
