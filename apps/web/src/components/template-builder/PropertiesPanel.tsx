@@ -1973,69 +1973,69 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
         </div>
       );
       fields.push(SH('school', 'School identity'));
-      fields.push(<TextField key="schoolInitials" label="Seal initials (3 letters)" value={cfg.schoolInitials || ''} placeholder={D.schoolInitials} onChange={(v) => setField({ schoolInitials: v })} />);
-      fields.push(<TextField key="schoolEst" label="Seal year" value={cfg.schoolEst || ''} placeholder={D.schoolEst} onChange={(v) => setField({ schoolEst: v })} />);
-      fields.push(<TextField key="schoolName" label="School name (all caps)" value={cfg.schoolName || ''} placeholder={D.schoolName} onChange={(v) => setField({ schoolName: v })} />);
-      fields.push(<TextField key="department" label="Department label" value={cfg.department || ''} placeholder={D.department} onChange={(v) => setField({ department: v })} />);
+      fields.push(<StyleableField key="schoolInitials" fieldName="schoolInitials" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Seal initials (3 letters)" value={cfg.schoolInitials || ''} placeholder={D.schoolInitials} onChange={(v) => setField({ schoolInitials: v })} />);
+      fields.push(<StyleableField key="schoolEst" fieldName="schoolEst" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Seal year" value={cfg.schoolEst || ''} placeholder={D.schoolEst} onChange={(v) => setField({ schoolEst: v })} />);
+      fields.push(<StyleableField key="schoolName" fieldName="schoolName" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="School name (all caps)" value={cfg.schoolName || ''} placeholder={D.schoolName} onChange={(v) => setField({ schoolName: v })} />);
+      fields.push(<StyleableField key="department" fieldName="department" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Department label" value={cfg.department || ''} placeholder={D.department} onChange={(v) => setField({ department: v })} />);
 
       fields.push(SH('greeting', 'Jersey chest greeting'));
-      fields.push(<TextField key="greetingEyebrow" label="Eyebrow" value={cfg.greetingEyebrow || ''} placeholder={D.greetingEyebrow} onChange={(v) => setField({ greetingEyebrow: v })} />);
-      fields.push(<TextField key="greetingHeadline" label="Big headline" value={cfg.greetingHeadline || ''} placeholder={D.greetingHeadline} onChange={(v) => setField({ greetingHeadline: v })} />);
-      fields.push(<TextField key="greetingSubtitle" label="Subtitle" value={cfg.greetingSubtitle || ''} placeholder={D.greetingSubtitle} onChange={(v) => setField({ greetingSubtitle: v })} />);
+      fields.push(<StyleableField key="greetingEyebrow" fieldName="greetingEyebrow" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Eyebrow" value={cfg.greetingEyebrow || ''} placeholder={D.greetingEyebrow} onChange={(v) => setField({ greetingEyebrow: v })} />);
+      fields.push(<StyleableField key="greetingHeadline" fieldName="greetingHeadline" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Big headline" value={cfg.greetingHeadline || ''} placeholder={D.greetingHeadline} onChange={(v) => setField({ greetingHeadline: v })} />);
+      fields.push(<StyleableField key="greetingSubtitle" fieldName="greetingSubtitle" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Subtitle" value={cfg.greetingSubtitle || ''} placeholder={D.greetingSubtitle} onChange={(v) => setField({ greetingSubtitle: v })} />);
 
       fields.push(SH('scoreboard', 'Game of the week'));
-      fields.push(<TextField key="scoreboardTag" label="Label" value={cfg.scoreboardTag || ''} placeholder={D.scoreboardTag} onChange={(v) => setField({ scoreboardTag: v })} />);
-      fields.push(<TextField key="scoreboardSport" label="Sport / division" value={cfg.scoreboardSport || ''} placeholder={D.scoreboardSport} onChange={(v) => setField({ scoreboardSport: v })} />);
-      fields.push(<TextField key="homeTeam" label="Home team" value={cfg.homeTeam || ''} placeholder={D.homeTeam} onChange={(v) => setField({ homeTeam: v })} />);
-      fields.push(<TextField key="homeAbbr" label="Home crest (3 letters)" value={cfg.homeAbbr || ''} placeholder={D.homeAbbr} onChange={(v) => setField({ homeAbbr: v })} />);
-      fields.push(<TextField key="awayTeam" label="Away team" value={cfg.awayTeam || ''} placeholder={D.awayTeam} onChange={(v) => setField({ awayTeam: v })} />);
-      fields.push(<TextField key="awayAbbr" label="Away crest (3 letters)" value={cfg.awayAbbr || ''} placeholder={D.awayAbbr} onChange={(v) => setField({ awayAbbr: v })} />);
-      fields.push(<TextField key="scoreboardTime" label="When" value={cfg.scoreboardTime || ''} placeholder={D.scoreboardTime} onChange={(v) => setField({ scoreboardTime: v })} />);
-      fields.push(<TextField key="scoreboardWhere" label="Where" value={cfg.scoreboardWhere || ''} placeholder={D.scoreboardWhere} onChange={(v) => setField({ scoreboardWhere: v })} />);
+      fields.push(<StyleableField key="scoreboardTag" fieldName="scoreboardTag" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Label" value={cfg.scoreboardTag || ''} placeholder={D.scoreboardTag} onChange={(v) => setField({ scoreboardTag: v })} />);
+      fields.push(<StyleableField key="scoreboardSport" fieldName="scoreboardSport" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Sport / division" value={cfg.scoreboardSport || ''} placeholder={D.scoreboardSport} onChange={(v) => setField({ scoreboardSport: v })} />);
+      fields.push(<StyleableField key="homeTeam" fieldName="homeTeam" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Home team" value={cfg.homeTeam || ''} placeholder={D.homeTeam} onChange={(v) => setField({ homeTeam: v })} />);
+      fields.push(<StyleableField key="homeAbbr" fieldName="homeAbbr" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Home crest (3 letters)" value={cfg.homeAbbr || ''} placeholder={D.homeAbbr} onChange={(v) => setField({ homeAbbr: v })} />);
+      fields.push(<StyleableField key="awayTeam" fieldName="awayTeam" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Away team" value={cfg.awayTeam || ''} placeholder={D.awayTeam} onChange={(v) => setField({ awayTeam: v })} />);
+      fields.push(<StyleableField key="awayAbbr" fieldName="awayAbbr" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Away crest (3 letters)" value={cfg.awayAbbr || ''} placeholder={D.awayAbbr} onChange={(v) => setField({ awayAbbr: v })} />);
+      fields.push(<StyleableField key="scoreboardTime" fieldName="scoreboardTime" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="When" value={cfg.scoreboardTime || ''} placeholder={D.scoreboardTime} onChange={(v) => setField({ scoreboardTime: v })} />);
+      fields.push(<StyleableField key="scoreboardWhere" fieldName="scoreboardWhere" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Where" value={cfg.scoreboardWhere || ''} placeholder={D.scoreboardWhere} onChange={(v) => setField({ scoreboardWhere: v })} />);
 
       fields.push(SH('stats', 'Stat row (clock / weather / record / attendance)'));
       fields.push(<SelectField key="clockTimezone" label="Clock timezone" value={cfg.clockTimezone || ''} options={US_TIMEZONE_OPTIONS as unknown as Array<[string, string]>} onChange={(v) => setField({ clockTimezone: v })} />);
-      fields.push(<TextField key="clockTime" label="Clock time (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
-      fields.push(<TextField key="clockCaption" label="Clock caption (manual override)" value={cfg.clockCaption || ''} placeholder={D.clockCaption} onChange={(v) => setField({ clockCaption: v })} />);
+      fields.push(<StyleableField key="clockTime" fieldName="clockTime" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Clock time (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
+      fields.push(<StyleableField key="clockCaption" fieldName="clockCaption" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Clock caption (manual override)" value={cfg.clockCaption || ''} placeholder={D.clockCaption} onChange={(v) => setField({ clockCaption: v })} />);
       // 2026-05-07 — live weather (Open-Meteo). Manual overrides below.
       fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
       fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
-      fields.push(<TextField key="weatherTemp" label="Weather temp (manual override)" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
-      fields.push(<TextField key="weatherCondition" label="Weather condition (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
-      fields.push(<TextField key="recordValue" label="Season record" value={cfg.recordValue || ''} placeholder={D.recordValue} onChange={(v) => setField({ recordValue: v })} />);
-      fields.push(<TextField key="recordCaption" label="Record caption" value={cfg.recordCaption || ''} placeholder={D.recordCaption} onChange={(v) => setField({ recordCaption: v })} />);
-      fields.push(<TextField key="attendanceValue" label="Attendance" value={cfg.attendanceValue || ''} placeholder={D.attendanceValue} onChange={(v) => setField({ attendanceValue: v })} />);
-      fields.push(<TextField key="attendanceCaption" label="Attendance caption" value={cfg.attendanceCaption || ''} placeholder={D.attendanceCaption} onChange={(v) => setField({ attendanceCaption: v })} />);
+      fields.push(<StyleableField key="weatherTemp" fieldName="weatherTemp" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Weather temp (manual override)" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
+      fields.push(<StyleableField key="weatherCondition" fieldName="weatherCondition" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Weather condition (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
+      fields.push(<StyleableField key="recordValue" fieldName="recordValue" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Season record" value={cfg.recordValue || ''} placeholder={D.recordValue} onChange={(v) => setField({ recordValue: v })} />);
+      fields.push(<StyleableField key="recordCaption" fieldName="recordCaption" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Record caption" value={cfg.recordCaption || ''} placeholder={D.recordCaption} onChange={(v) => setField({ recordCaption: v })} />);
+      fields.push(<StyleableField key="attendanceValue" fieldName="attendanceValue" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Attendance" value={cfg.attendanceValue || ''} placeholder={D.attendanceValue} onChange={(v) => setField({ attendanceValue: v })} />);
+      fields.push(<StyleableField key="attendanceCaption" fieldName="attendanceCaption" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Attendance caption" value={cfg.attendanceCaption || ''} placeholder={D.attendanceCaption} onChange={(v) => setField({ attendanceCaption: v })} />);
 
       fields.push(SH('teacher', 'Coach / Teacher of the week'));
-      fields.push(<TextField key="teacherLabel" label="Label" value={cfg.teacherLabel || ''} placeholder={D.teacherLabel} onChange={(v) => setField({ teacherLabel: v })} />);
-      fields.push(<TextField key="teacherName" label="Name" value={cfg.teacherName || ''} placeholder={D.teacherName} onChange={(v) => setField({ teacherName: v })} />);
-      fields.push(<TextField key="teacherGrade" label="Role / subject" value={cfg.teacherGrade || ''} placeholder={D.teacherGrade} onChange={(v) => setField({ teacherGrade: v })} />);
-      fields.push(<TextAreaField key="teacherQuote" label="Quote" value={cfg.teacherQuote || ''} placeholder={D.teacherQuote} rows={3} onChange={(v) => setField({ teacherQuote: v })} />);
-      fields.push(<TextField key="teacherNumber" label="Jersey number" value={String(cfg.teacherNumber ?? '')} placeholder={String(D.teacherNumber)} onChange={(v) => setField({ teacherNumber: v })} />);
+      fields.push(<StyleableField key="teacherLabel" fieldName="teacherLabel" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Label" value={cfg.teacherLabel || ''} placeholder={D.teacherLabel} onChange={(v) => setField({ teacherLabel: v })} />);
+      fields.push(<StyleableField key="teacherName" fieldName="teacherName" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Name" value={cfg.teacherName || ''} placeholder={D.teacherName} onChange={(v) => setField({ teacherName: v })} />);
+      fields.push(<StyleableField key="teacherGrade" fieldName="teacherGrade" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Role / subject" value={cfg.teacherGrade || ''} placeholder={D.teacherGrade} onChange={(v) => setField({ teacherGrade: v })} />);
+      fields.push(<StyleableAreaField key="teacherQuote" fieldName="teacherQuote" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Quote" value={cfg.teacherQuote || ''} placeholder={D.teacherQuote} rows={3} onChange={(v) => setField({ teacherQuote: v })} />);
+      fields.push(<StyleableField key="teacherNumber" fieldName="teacherNumber" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Jersey number" value={String(cfg.teacherNumber ?? '')} placeholder={String(D.teacherNumber)} onChange={(v) => setField({ teacherNumber: v })} />);
 
       fields.push(SH('announcement', 'Top announcement'));
-      fields.push(<TextField key="announcementTag" label="Tag" value={cfg.announcementTag || ''} placeholder={D.announcementTag} onChange={(v) => setField({ announcementTag: v })} />);
-      fields.push(<TextField key="announcementHeadline" label="Headline" value={cfg.announcementHeadline || ''} placeholder={D.announcementHeadline} onChange={(v) => setField({ announcementHeadline: v })} />);
-      fields.push(<TextAreaField key="announcementBody" label="Body" value={cfg.announcementBody || ''} placeholder={D.announcementBody} rows={3} onChange={(v) => setField({ announcementBody: v })} />);
-      fields.push(<TextField key="announcementDate" label="When" value={cfg.announcementDate || ''} placeholder={D.announcementDate} onChange={(v) => setField({ announcementDate: v })} />);
+      fields.push(<StyleableField key="announcementTag" fieldName="announcementTag" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Tag" value={cfg.announcementTag || ''} placeholder={D.announcementTag} onChange={(v) => setField({ announcementTag: v })} />);
+      fields.push(<StyleableField key="announcementHeadline" fieldName="announcementHeadline" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Headline" value={cfg.announcementHeadline || ''} placeholder={D.announcementHeadline} onChange={(v) => setField({ announcementHeadline: v })} />);
+      fields.push(<StyleableAreaField key="announcementBody" fieldName="announcementBody" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Body" value={cfg.announcementBody || ''} placeholder={D.announcementBody} rows={3} onChange={(v) => setField({ announcementBody: v })} />);
+      fields.push(<StyleableField key="announcementDate" fieldName="announcementDate" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="When" value={cfg.announcementDate || ''} placeholder={D.announcementDate} onChange={(v) => setField({ announcementDate: v })} />);
 
       fields.push(SH('countdown', 'Countdown card'));
-      fields.push(<TextField key="countdownValue" label="Days number" value={String(cfg.countdownValue ?? '')} placeholder={String(D.countdownValue)} onChange={(v) => setField({ countdownValue: v })} />);
-      fields.push(<TextField key="countdownLabel" label="Label" value={cfg.countdownLabel || ''} placeholder={D.countdownLabel} onChange={(v) => setField({ countdownLabel: v })} />);
-      fields.push(<TextField key="countdownSub" label="Subtext" value={cfg.countdownSub || ''} placeholder={D.countdownSub} onChange={(v) => setField({ countdownSub: v })} />);
+      fields.push(<StyleableField key="countdownValue" fieldName="countdownValue" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Days number" value={String(cfg.countdownValue ?? '')} placeholder={String(D.countdownValue)} onChange={(v) => setField({ countdownValue: v })} />);
+      fields.push(<StyleableField key="countdownLabel" fieldName="countdownLabel" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Label" value={cfg.countdownLabel || ''} placeholder={D.countdownLabel} onChange={(v) => setField({ countdownLabel: v })} />);
+      fields.push(<StyleableField key="countdownSub" fieldName="countdownSub" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Subtext" value={cfg.countdownSub || ''} placeholder={D.countdownSub} onChange={(v) => setField({ countdownSub: v })} />);
 
       fields.push(SH('events', 'Bottom schedule strip'));
       for (const n of [1, 2, 3]) {
         const k = `event${n}` as 'event1' | 'event2' | 'event3';
-        fields.push(<TextField key={`${k}Mark`} label={`Event ${n} · Day`} value={cfg[`${k}Mark`] || ''} placeholder={D[`${k}Mark`]} onChange={(v) => setField({ [`${k}Mark`]: v })} />);
-        fields.push(<TextField key={`${k}When`} label={`Event ${n} · When/where`} value={cfg[`${k}When`] || ''} placeholder={D[`${k}When`]} onChange={(v) => setField({ [`${k}When`]: v })} />);
-        fields.push(<TextField key={`${k}Name`} label={`Event ${n} · Title`} value={cfg[`${k}Name`] || ''} placeholder={D[`${k}Name`]} onChange={(v) => setField({ [`${k}Name`]: v })} />);
+        fields.push(<StyleableField key={`${k}Mark`} fieldName={`${k}Mark`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`Event ${n} · Day`} value={cfg[`${k}Mark`] || ''} placeholder={D[`${k}Mark`]} onChange={(v) => setField({ [`${k}Mark`]: v })} />);
+        fields.push(<StyleableField key={`${k}When`} fieldName={`${k}When`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`Event ${n} · When/where`} value={cfg[`${k}When`] || ''} placeholder={D[`${k}When`]} onChange={(v) => setField({ [`${k}When`]: v })} />);
+        fields.push(<StyleableField key={`${k}Name`} fieldName={`${k}Name`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`Event ${n} · Title`} value={cfg[`${k}Name`] || ''} placeholder={D[`${k}Name`]} onChange={(v) => setField({ [`${k}Name`]: v })} />);
       }
 
       fields.push(SH('ticker', 'PA-system ticker'));
-      fields.push(<TextField key="tickerTag" label="Stamp text" value={cfg.tickerTag || ''} placeholder={D.tickerTag} onChange={(v) => setField({ tickerTag: v })} />);
-      fields.push(<TextAreaField key="tickerMessage" label="Scrolling message" value={cfg.tickerMessage || ''} placeholder={D.tickerMessage} rows={3} onChange={(v) => setField({ tickerMessage: v })} />);
+      fields.push(<StyleableField key="tickerTag" fieldName="tickerTag" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Stamp text" value={cfg.tickerTag || ''} placeholder={D.tickerTag} onChange={(v) => setField({ tickerTag: v })} />);
+      fields.push(<StyleableAreaField key="tickerMessage" fieldName="tickerMessage" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Scrolling message" value={cfg.tickerMessage || ''} placeholder={D.tickerMessage} rows={3} onChange={(v) => setField({ tickerMessage: v })} />);
       break;
     }
     case 'HS_BROADCAST': {
@@ -2047,57 +2047,57 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
         <div key={`sh-${key}`} className="pt-3 pb-1 px-1 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200">{label}</div>
       );
       fields.push(SH('school', 'School brandmark'));
-      fields.push(<TextField key="schoolChip" label="Chip letters" value={cfg.schoolChip || ''} placeholder={D.schoolChip} onChange={(v) => setField({ schoolChip: v })} />);
-      fields.push(<TextField key="schoolName" label="School name" value={cfg.schoolName || ''} placeholder={D.schoolName} onChange={(v) => setField({ schoolName: v })} />);
-      fields.push(<TextField key="schoolSub" label="Network sub" value={cfg.schoolSub || ''} placeholder={D.schoolSub} onChange={(v) => setField({ schoolSub: v })} />);
+      fields.push(<StyleableField key="schoolChip" fieldName="schoolChip" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Chip letters" value={cfg.schoolChip || ''} placeholder={D.schoolChip} onChange={(v) => setField({ schoolChip: v })} />);
+      fields.push(<StyleableField key="schoolName" fieldName="schoolName" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="School name" value={cfg.schoolName || ''} placeholder={D.schoolName} onChange={(v) => setField({ schoolName: v })} />);
+      fields.push(<StyleableField key="schoolSub" fieldName="schoolSub" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Network sub" value={cfg.schoolSub || ''} placeholder={D.schoolSub} onChange={(v) => setField({ schoolSub: v })} />);
 
       fields.push(SH('status', 'ON AIR indicator'));
-      fields.push(<TextField key="statusLabel" label="Status label" value={cfg.statusLabel || ''} placeholder={D.statusLabel} onChange={(v) => setField({ statusLabel: v })} />);
+      fields.push(<StyleableField key="statusLabel" fieldName="statusLabel" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Status label" value={cfg.statusLabel || ''} placeholder={D.statusLabel} onChange={(v) => setField({ statusLabel: v })} />);
 
       fields.push(SH('greeting', 'Top-story greeting'));
-      fields.push(<TextField key="greetingEyebrow" label="Eyebrow" value={cfg.greetingEyebrow || ''} placeholder={D.greetingEyebrow} onChange={(v) => setField({ greetingEyebrow: v })} />);
-      fields.push(<TextField key="greetingHeadline" label="Big headline" value={cfg.greetingHeadline || ''} placeholder={D.greetingHeadline} onChange={(v) => setField({ greetingHeadline: v })} />);
-      fields.push(<TextAreaField key="greetingSubtitle" label="Subtitle" value={cfg.greetingSubtitle || ''} placeholder={D.greetingSubtitle} rows={2} onChange={(v) => setField({ greetingSubtitle: v })} />);
+      fields.push(<StyleableField key="greetingEyebrow" fieldName="greetingEyebrow" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Eyebrow" value={cfg.greetingEyebrow || ''} placeholder={D.greetingEyebrow} onChange={(v) => setField({ greetingEyebrow: v })} />);
+      fields.push(<StyleableField key="greetingHeadline" fieldName="greetingHeadline" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Big headline" value={cfg.greetingHeadline || ''} placeholder={D.greetingHeadline} onChange={(v) => setField({ greetingHeadline: v })} />);
+      fields.push(<StyleableAreaField key="greetingSubtitle" fieldName="greetingSubtitle" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Subtitle" value={cfg.greetingSubtitle || ''} placeholder={D.greetingSubtitle} rows={2} onChange={(v) => setField({ greetingSubtitle: v })} />);
 
       fields.push(SH('clock', 'Clock panel — live data'));
       fields.push(<SelectField key="clockTimezone" label="Timezone" value={cfg.clockTimezone || ''} options={US_TIMEZONE_OPTIONS as unknown as Array<[string, string]>} onChange={(v) => setField({ clockTimezone: v })} />);
-      fields.push(<TextField key="clockTime" label="Time (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
-      fields.push(<TextField key="clockCaption" label="Caption (manual override)" value={cfg.clockCaption || ''} placeholder={D.clockCaption} onChange={(v) => setField({ clockCaption: v })} />);
+      fields.push(<StyleableField key="clockTime" fieldName="clockTime" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Time (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
+      fields.push(<StyleableField key="clockCaption" fieldName="clockCaption" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Caption (manual override)" value={cfg.clockCaption || ''} placeholder={D.clockCaption} onChange={(v) => setField({ clockCaption: v })} />);
 
       fields.push(SH('weather', 'Forecast panel — live data'));
       fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
       fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
-      fields.push(<TextField key="weatherTemp" label="Temperature (manual override)" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
-      fields.push(<TextField key="weatherCondition" label="Condition (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
+      fields.push(<StyleableField key="weatherTemp" fieldName="weatherTemp" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Temperature (manual override)" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
+      fields.push(<StyleableField key="weatherCondition" fieldName="weatherCondition" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Condition (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
 
       fields.push(SH('teacher', 'Featured guest / Teacher of the week'));
-      fields.push(<TextField key="teacherPortraitTag" label="Portrait caption" value={cfg.teacherPortraitTag || ''} placeholder={D.teacherPortraitTag} onChange={(v) => setField({ teacherPortraitTag: v })} />);
-      fields.push(<TextField key="teacherLabel" label="Label" value={cfg.teacherLabel || ''} placeholder={D.teacherLabel} onChange={(v) => setField({ teacherLabel: v })} />);
-      fields.push(<TextField key="teacherName" label="Name" value={cfg.teacherName || ''} placeholder={D.teacherName} onChange={(v) => setField({ teacherName: v })} />);
-      fields.push(<TextField key="teacherGrade" label="Role / subject" value={cfg.teacherGrade || ''} placeholder={D.teacherGrade} onChange={(v) => setField({ teacherGrade: v })} />);
-      fields.push(<TextAreaField key="teacherQuote" label="Quote" value={cfg.teacherQuote || ''} placeholder={D.teacherQuote} rows={3} onChange={(v) => setField({ teacherQuote: v })} />);
+      fields.push(<StyleableField key="teacherPortraitTag" fieldName="teacherPortraitTag" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Portrait caption" value={cfg.teacherPortraitTag || ''} placeholder={D.teacherPortraitTag} onChange={(v) => setField({ teacherPortraitTag: v })} />);
+      fields.push(<StyleableField key="teacherLabel" fieldName="teacherLabel" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Label" value={cfg.teacherLabel || ''} placeholder={D.teacherLabel} onChange={(v) => setField({ teacherLabel: v })} />);
+      fields.push(<StyleableField key="teacherName" fieldName="teacherName" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Name" value={cfg.teacherName || ''} placeholder={D.teacherName} onChange={(v) => setField({ teacherName: v })} />);
+      fields.push(<StyleableField key="teacherGrade" fieldName="teacherGrade" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Role / subject" value={cfg.teacherGrade || ''} placeholder={D.teacherGrade} onChange={(v) => setField({ teacherGrade: v })} />);
+      fields.push(<StyleableAreaField key="teacherQuote" fieldName="teacherQuote" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Quote" value={cfg.teacherQuote || ''} placeholder={D.teacherQuote} rows={3} onChange={(v) => setField({ teacherQuote: v })} />);
 
       fields.push(SH('announcement', 'Breaking story card'));
-      fields.push(<TextField key="announcementTitle" label="Tag" value={cfg.announcementTitle || ''} placeholder={D.announcementTitle} onChange={(v) => setField({ announcementTitle: v })} />);
-      fields.push(<TextField key="announcementHeadline" label="Headline" value={cfg.announcementHeadline || ''} placeholder={D.announcementHeadline} onChange={(v) => setField({ announcementHeadline: v })} />);
-      fields.push(<TextAreaField key="announcementBody" label="Body" value={cfg.announcementBody || ''} placeholder={D.announcementBody} rows={3} onChange={(v) => setField({ announcementBody: v })} />);
-      fields.push(<TextField key="announcementDate" label="When · where" value={cfg.announcementDate || ''} placeholder={D.announcementDate} onChange={(v) => setField({ announcementDate: v })} />);
+      fields.push(<StyleableField key="announcementTitle" fieldName="announcementTitle" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Tag" value={cfg.announcementTitle || ''} placeholder={D.announcementTitle} onChange={(v) => setField({ announcementTitle: v })} />);
+      fields.push(<StyleableField key="announcementHeadline" fieldName="announcementHeadline" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Headline" value={cfg.announcementHeadline || ''} placeholder={D.announcementHeadline} onChange={(v) => setField({ announcementHeadline: v })} />);
+      fields.push(<StyleableAreaField key="announcementBody" fieldName="announcementBody" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Body" value={cfg.announcementBody || ''} placeholder={D.announcementBody} rows={3} onChange={(v) => setField({ announcementBody: v })} />);
+      fields.push(<StyleableField key="announcementDate" fieldName="announcementDate" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="When · where" value={cfg.announcementDate || ''} placeholder={D.announcementDate} onChange={(v) => setField({ announcementDate: v })} />);
 
       fields.push(SH('events', 'Schedule grid (3 events)'));
       for (const n of [1, 2, 3]) {
         const k = `event${n}` as 'event1' | 'event2' | 'event3';
-        fields.push(<TextField key={`${k}When`} label={`Event ${n} · When`} value={cfg[`${k}When`] || ''} placeholder={D[`${k}When`]} onChange={(v) => setField({ [`${k}When`]: v })} />);
-        fields.push(<TextField key={`${k}Name`} label={`Event ${n} · Title`} value={cfg[`${k}Name`] || ''} placeholder={D[`${k}Name`]} onChange={(v) => setField({ [`${k}Name`]: v })} />);
+        fields.push(<StyleableField key={`${k}When`} fieldName={`${k}When`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`Event ${n} · When`} value={cfg[`${k}When`] || ''} placeholder={D[`${k}When`]} onChange={(v) => setField({ [`${k}When`]: v })} />);
+        fields.push(<StyleableField key={`${k}Name`} fieldName={`${k}Name`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`Event ${n} · Title`} value={cfg[`${k}Name`] || ''} placeholder={D[`${k}Name`]} onChange={(v) => setField({ [`${k}Name`]: v })} />);
       }
 
       fields.push(SH('countdown', 'Countdown'));
-      fields.push(<TextField key="countdownLabel" label="Label" value={cfg.countdownLabel || ''} placeholder={D.countdownLabel} onChange={(v) => setField({ countdownLabel: v })} />);
-      fields.push(<TextField key="countdownValue" label="Number" value={String(cfg.countdownValue ?? '')} placeholder={String(D.countdownValue)} onChange={(v) => setField({ countdownValue: v })} />);
-      fields.push(<TextField key="countdownUnit" label="Unit" value={cfg.countdownUnit || ''} placeholder={D.countdownUnit} onChange={(v) => setField({ countdownUnit: v })} />);
+      fields.push(<StyleableField key="countdownLabel" fieldName="countdownLabel" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Label" value={cfg.countdownLabel || ''} placeholder={D.countdownLabel} onChange={(v) => setField({ countdownLabel: v })} />);
+      fields.push(<StyleableField key="countdownValue" fieldName="countdownValue" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Number" value={String(cfg.countdownValue ?? '')} placeholder={String(D.countdownValue)} onChange={(v) => setField({ countdownValue: v })} />);
+      fields.push(<StyleableField key="countdownUnit" fieldName="countdownUnit" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Unit" value={cfg.countdownUnit || ''} placeholder={D.countdownUnit} onChange={(v) => setField({ countdownUnit: v })} />);
 
       fields.push(SH('ticker', 'Bottom crawl'));
-      fields.push(<TextField key="tickerTag" label="Stamp" value={cfg.tickerTag || ''} placeholder={D.tickerTag} onChange={(v) => setField({ tickerTag: v })} />);
-      fields.push(<TextAreaField key="tickerMessage" label="Scrolling message" value={cfg.tickerMessage || ''} placeholder={D.tickerMessage} rows={3} onChange={(v) => setField({ tickerMessage: v })} />);
+      fields.push(<StyleableField key="tickerTag" fieldName="tickerTag" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Stamp" value={cfg.tickerTag || ''} placeholder={D.tickerTag} onChange={(v) => setField({ tickerTag: v })} />);
+      fields.push(<StyleableAreaField key="tickerMessage" fieldName="tickerMessage" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Scrolling message" value={cfg.tickerMessage || ''} placeholder={D.tickerMessage} rows={3} onChange={(v) => setField({ tickerMessage: v })} />);
       break;
     }
     case 'HS_YEARBOOK': {
@@ -2107,62 +2107,62 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
         <div key={`sh-${key}`} className="pt-3 pb-1 px-1 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200">{label}</div>
       );
       fields.push(SH('school', 'Masthead'));
-      fields.push(<TextField key="schoolName" label="Publication name" value={cfg.schoolName || ''} placeholder={D.schoolName} onChange={(v) => setField({ schoolName: v })} />);
-      fields.push(<TextField key="schoolIssue" label="Issue line" value={cfg.schoolIssue || ''} placeholder={D.schoolIssue} onChange={(v) => setField({ schoolIssue: v })} />);
+      fields.push(<StyleableField key="schoolName" fieldName="schoolName" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Publication name" value={cfg.schoolName || ''} placeholder={D.schoolName} onChange={(v) => setField({ schoolName: v })} />);
+      fields.push(<StyleableField key="schoolIssue" fieldName="schoolIssue" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Issue line" value={cfg.schoolIssue || ''} placeholder={D.schoolIssue} onChange={(v) => setField({ schoolIssue: v })} />);
 
       fields.push(SH('clock', 'Folio clock (top right) — live data'));
       fields.push(<SelectField key="clockTimezone" label="Timezone" value={cfg.clockTimezone || ''} options={US_TIMEZONE_OPTIONS as unknown as Array<[string, string]>} onChange={(v) => setField({ clockTimezone: v })} />);
-      fields.push(<TextField key="clockTime" label="Time (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
-      fields.push(<TextField key="clockCaption" label="Caption (manual override)" value={cfg.clockCaption || ''} placeholder={D.clockCaption} onChange={(v) => setField({ clockCaption: v })} />);
+      fields.push(<StyleableField key="clockTime" fieldName="clockTime" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Time (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
+      fields.push(<StyleableField key="clockCaption" fieldName="clockCaption" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Caption (manual override)" value={cfg.clockCaption || ''} placeholder={D.clockCaption} onChange={(v) => setField({ clockCaption: v })} />);
 
       fields.push(SH('greeting', 'Hero lede'));
-      fields.push(<TextField key="greetingEyebrow" label="Eyebrow" value={cfg.greetingEyebrow || ''} placeholder={D.greetingEyebrow} onChange={(v) => setField({ greetingEyebrow: v })} />);
-      fields.push(<TextField key="greetingHeadline" label="Big headline" value={cfg.greetingHeadline || ''} placeholder={D.greetingHeadline} onChange={(v) => setField({ greetingHeadline: v })} />);
-      fields.push(<TextAreaField key="greetingSubtitle" label="Italic lede" value={cfg.greetingSubtitle || ''} placeholder={D.greetingSubtitle} rows={3} onChange={(v) => setField({ greetingSubtitle: v })} />);
+      fields.push(<StyleableField key="greetingEyebrow" fieldName="greetingEyebrow" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Eyebrow" value={cfg.greetingEyebrow || ''} placeholder={D.greetingEyebrow} onChange={(v) => setField({ greetingEyebrow: v })} />);
+      fields.push(<StyleableField key="greetingHeadline" fieldName="greetingHeadline" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Big headline" value={cfg.greetingHeadline || ''} placeholder={D.greetingHeadline} onChange={(v) => setField({ greetingHeadline: v })} />);
+      fields.push(<StyleableAreaField key="greetingSubtitle" fieldName="greetingSubtitle" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Italic lede" value={cfg.greetingSubtitle || ''} placeholder={D.greetingSubtitle} rows={3} onChange={(v) => setField({ greetingSubtitle: v })} />);
 
       fields.push(SH('announcement', "Editor's note card"));
-      fields.push(<TextField key="announcementTag" label="Kicker" value={cfg.announcementTag || ''} placeholder={D.announcementTag} onChange={(v) => setField({ announcementTag: v })} />);
-      fields.push(<TextField key="announcementHeadline" label="Headline" value={cfg.announcementHeadline || ''} placeholder={D.announcementHeadline} onChange={(v) => setField({ announcementHeadline: v })} />);
-      fields.push(<TextAreaField key="announcementBody" label="Body" value={cfg.announcementBody || ''} placeholder={D.announcementBody} rows={3} onChange={(v) => setField({ announcementBody: v })} />);
-      fields.push(<TextField key="announcementDate" label="Deadline line" value={cfg.announcementDate || ''} placeholder={D.announcementDate} onChange={(v) => setField({ announcementDate: v })} />);
+      fields.push(<StyleableField key="announcementTag" fieldName="announcementTag" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Kicker" value={cfg.announcementTag || ''} placeholder={D.announcementTag} onChange={(v) => setField({ announcementTag: v })} />);
+      fields.push(<StyleableField key="announcementHeadline" fieldName="announcementHeadline" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Headline" value={cfg.announcementHeadline || ''} placeholder={D.announcementHeadline} onChange={(v) => setField({ announcementHeadline: v })} />);
+      fields.push(<StyleableAreaField key="announcementBody" fieldName="announcementBody" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Body" value={cfg.announcementBody || ''} placeholder={D.announcementBody} rows={3} onChange={(v) => setField({ announcementBody: v })} />);
+      fields.push(<StyleableField key="announcementDate" fieldName="announcementDate" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Deadline line" value={cfg.announcementDate || ''} placeholder={D.announcementDate} onChange={(v) => setField({ announcementDate: v })} />);
 
       fields.push(SH('weather', 'TODAY card — live data'));
       fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
       fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
-      fields.push(<TextField key="weatherTemp" label="Temp (manual override)" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
-      fields.push(<TextField key="weatherCondition" label="Condition (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
+      fields.push(<StyleableField key="weatherTemp" fieldName="weatherTemp" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Temp (manual override)" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
+      fields.push(<StyleableField key="weatherCondition" fieldName="weatherCondition" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Condition (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
 
       fields.push(SH('countdown', 'Graduation countdown'));
-      fields.push(<TextField key="countdownLabel" label="Label" value={cfg.countdownLabel || ''} placeholder={D.countdownLabel} onChange={(v) => setField({ countdownLabel: v })} />);
-      fields.push(<TextField key="countdownValue" label="Number" value={String(cfg.countdownValue ?? '')} placeholder={String(D.countdownValue)} onChange={(v) => setField({ countdownValue: v })} />);
-      fields.push(<TextField key="countdownUnit" label="Unit / sub" value={cfg.countdownUnit || ''} placeholder={D.countdownUnit} onChange={(v) => setField({ countdownUnit: v })} />);
+      fields.push(<StyleableField key="countdownLabel" fieldName="countdownLabel" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Label" value={cfg.countdownLabel || ''} placeholder={D.countdownLabel} onChange={(v) => setField({ countdownLabel: v })} />);
+      fields.push(<StyleableField key="countdownValue" fieldName="countdownValue" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Number" value={String(cfg.countdownValue ?? '')} placeholder={String(D.countdownValue)} onChange={(v) => setField({ countdownValue: v })} />);
+      fields.push(<StyleableField key="countdownUnit" fieldName="countdownUnit" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Unit / sub" value={cfg.countdownUnit || ''} placeholder={D.countdownUnit} onChange={(v) => setField({ countdownUnit: v })} />);
 
       fields.push(SH('feature', 'Feature photo block'));
-      fields.push(<TextField key="featurePhotoTag" label="Photo slug" value={cfg.featurePhotoTag || ''} placeholder={D.featurePhotoTag} onChange={(v) => setField({ featurePhotoTag: v })} />);
-      fields.push(<TextField key="featureNum" label="Story number" value={cfg.featureNum || ''} placeholder={D.featureNum} onChange={(v) => setField({ featureNum: v })} />);
-      fields.push(<TextField key="featureTitle" label="Story title" value={cfg.featureTitle || ''} placeholder={D.featureTitle} onChange={(v) => setField({ featureTitle: v })} />);
-      fields.push(<TextAreaField key="featureBody" label="Story body" value={cfg.featureBody || ''} placeholder={D.featureBody} rows={3} onChange={(v) => setField({ featureBody: v })} />);
+      fields.push(<StyleableField key="featurePhotoTag" fieldName="featurePhotoTag" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Photo slug" value={cfg.featurePhotoTag || ''} placeholder={D.featurePhotoTag} onChange={(v) => setField({ featurePhotoTag: v })} />);
+      fields.push(<StyleableField key="featureNum" fieldName="featureNum" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Story number" value={cfg.featureNum || ''} placeholder={D.featureNum} onChange={(v) => setField({ featureNum: v })} />);
+      fields.push(<StyleableField key="featureTitle" fieldName="featureTitle" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Story title" value={cfg.featureTitle || ''} placeholder={D.featureTitle} onChange={(v) => setField({ featureTitle: v })} />);
+      fields.push(<StyleableAreaField key="featureBody" fieldName="featureBody" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Story body" value={cfg.featureBody || ''} placeholder={D.featureBody} rows={3} onChange={(v) => setField({ featureBody: v })} />);
 
       fields.push(SH('teacher', 'Featured portrait'));
-      fields.push(<TextField key="teacherPhotoTag" label="Portrait slug" value={cfg.teacherPhotoTag || ''} placeholder={D.teacherPhotoTag} onChange={(v) => setField({ teacherPhotoTag: v })} />);
-      fields.push(<TextField key="teacherLabel" label="Kicker" value={cfg.teacherLabel || ''} placeholder={D.teacherLabel} onChange={(v) => setField({ teacherLabel: v })} />);
-      fields.push(<TextField key="teacherName" label="Name" value={cfg.teacherName || ''} placeholder={D.teacherName} onChange={(v) => setField({ teacherName: v })} />);
-      fields.push(<TextField key="teacherGrade" label="Role / subject" value={cfg.teacherGrade || ''} placeholder={D.teacherGrade} onChange={(v) => setField({ teacherGrade: v })} />);
-      fields.push(<TextAreaField key="teacherQuote" label="Pull quote" value={cfg.teacherQuote || ''} placeholder={D.teacherQuote} rows={3} onChange={(v) => setField({ teacherQuote: v })} />);
-      fields.push(<TextField key="teacherByline" label="Byline" value={cfg.teacherByline || ''} placeholder={D.teacherByline} onChange={(v) => setField({ teacherByline: v })} />);
-      fields.push(<TextField key="folioPage" label="Folio page number" value={cfg.folioPage || ''} placeholder={D.folioPage} onChange={(v) => setField({ folioPage: v })} />);
+      fields.push(<StyleableField key="teacherPhotoTag" fieldName="teacherPhotoTag" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Portrait slug" value={cfg.teacherPhotoTag || ''} placeholder={D.teacherPhotoTag} onChange={(v) => setField({ teacherPhotoTag: v })} />);
+      fields.push(<StyleableField key="teacherLabel" fieldName="teacherLabel" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Kicker" value={cfg.teacherLabel || ''} placeholder={D.teacherLabel} onChange={(v) => setField({ teacherLabel: v })} />);
+      fields.push(<StyleableField key="teacherName" fieldName="teacherName" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Name" value={cfg.teacherName || ''} placeholder={D.teacherName} onChange={(v) => setField({ teacherName: v })} />);
+      fields.push(<StyleableField key="teacherGrade" fieldName="teacherGrade" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Role / subject" value={cfg.teacherGrade || ''} placeholder={D.teacherGrade} onChange={(v) => setField({ teacherGrade: v })} />);
+      fields.push(<StyleableAreaField key="teacherQuote" fieldName="teacherQuote" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Pull quote" value={cfg.teacherQuote || ''} placeholder={D.teacherQuote} rows={3} onChange={(v) => setField({ teacherQuote: v })} />);
+      fields.push(<StyleableField key="teacherByline" fieldName="teacherByline" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Byline" value={cfg.teacherByline || ''} placeholder={D.teacherByline} onChange={(v) => setField({ teacherByline: v })} />);
+      fields.push(<StyleableField key="folioPage" fieldName="folioPage" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Folio page number" value={cfg.folioPage || ''} placeholder={D.folioPage} onChange={(v) => setField({ folioPage: v })} />);
 
       fields.push(SH('events', 'Calendar footer (3 events)'));
-      fields.push(<TextField key="schoolSection" label="Section name" value={cfg.schoolSection || ''} placeholder={D.schoolSection} onChange={(v) => setField({ schoolSection: v })} />);
+      fields.push(<StyleableField key="schoolSection" fieldName="schoolSection" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Section name" value={cfg.schoolSection || ''} placeholder={D.schoolSection} onChange={(v) => setField({ schoolSection: v })} />);
       for (const n of [1, 2, 3]) {
         const k = `event${n}` as 'event1' | 'event2' | 'event3';
-        fields.push(<TextField key={`${k}When`} label={`Event ${n} · When`} value={cfg[`${k}When`] || ''} placeholder={D[`${k}When`]} onChange={(v) => setField({ [`${k}When`]: v })} />);
-        fields.push(<TextField key={`${k}Name`} label={`Event ${n} · Title`} value={cfg[`${k}Name`] || ''} placeholder={D[`${k}Name`]} onChange={(v) => setField({ [`${k}Name`]: v })} />);
+        fields.push(<StyleableField key={`${k}When`} fieldName={`${k}When`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`Event ${n} · When`} value={cfg[`${k}When`] || ''} placeholder={D[`${k}When`]} onChange={(v) => setField({ [`${k}When`]: v })} />);
+        fields.push(<StyleableField key={`${k}Name`} fieldName={`${k}Name`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`Event ${n} · Title`} value={cfg[`${k}Name`] || ''} placeholder={D[`${k}Name`]} onChange={(v) => setField({ [`${k}Name`]: v })} />);
       }
 
       fields.push(SH('ticker', 'Wire ticker'));
-      fields.push(<TextField key="tickerTag" label="Stamp" value={cfg.tickerTag || ''} placeholder={D.tickerTag} onChange={(v) => setField({ tickerTag: v })} />);
-      fields.push(<TextAreaField key="tickerMessage" label="Scrolling message" value={cfg.tickerMessage || ''} placeholder={D.tickerMessage} rows={3} onChange={(v) => setField({ tickerMessage: v })} />);
+      fields.push(<StyleableField key="tickerTag" fieldName="tickerTag" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Stamp" value={cfg.tickerTag || ''} placeholder={D.tickerTag} onChange={(v) => setField({ tickerTag: v })} />);
+      fields.push(<StyleableAreaField key="tickerMessage" fieldName="tickerMessage" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Scrolling message" value={cfg.tickerMessage || ''} placeholder={D.tickerMessage} rows={3} onChange={(v) => setField({ tickerMessage: v })} />);
       break;
     }
     case 'HS_TERMINAL': {
@@ -2172,65 +2172,65 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
         <div key={`sh-${key}`} className="pt-3 pb-1 px-1 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200">{label}</div>
       );
       fields.push(SH('school', 'Shell top bar'));
-      fields.push(<TextField key="schoolHost" label="Host" value={cfg.schoolHost || ''} placeholder={D.schoolHost} onChange={(v) => setField({ schoolHost: v })} />);
-      fields.push(<TextField key="schoolPath" label="Path" value={cfg.schoolPath || ''} placeholder={D.schoolPath} onChange={(v) => setField({ schoolPath: v })} />);
-      fields.push(<TextField key="schoolSession" label="Session line" value={cfg.schoolSession || ''} placeholder={D.schoolSession} onChange={(v) => setField({ schoolSession: v })} />);
+      fields.push(<StyleableField key="schoolHost" fieldName="schoolHost" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Host" value={cfg.schoolHost || ''} placeholder={D.schoolHost} onChange={(v) => setField({ schoolHost: v })} />);
+      fields.push(<StyleableField key="schoolPath" fieldName="schoolPath" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Path" value={cfg.schoolPath || ''} placeholder={D.schoolPath} onChange={(v) => setField({ schoolPath: v })} />);
+      fields.push(<StyleableField key="schoolSession" fieldName="schoolSession" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Session line" value={cfg.schoolSession || ''} placeholder={D.schoolSession} onChange={(v) => setField({ schoolSession: v })} />);
       fields.push(<SelectField key="clockTimezone" label="Clock timezone" value={cfg.clockTimezone || ''} options={US_TIMEZONE_OPTIONS as unknown as Array<[string, string]>} onChange={(v) => setField({ clockTimezone: v })} />);
-      fields.push(<TextField key="clockTime" label="Topbar clock (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
+      fields.push(<StyleableField key="clockTime" fieldName="clockTime" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Topbar clock (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
       // Live weather — feeds both the topbar pair and the [weatherd] stat box.
       fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
       fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
-      fields.push(<TextField key="weatherTemp" label="Topbar temp (manual override)" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
-      fields.push(<TextField key="weatherCondition" label="Topbar condition (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
+      fields.push(<StyleableField key="weatherTemp" fieldName="weatherTemp" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Topbar temp (manual override)" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
+      fields.push(<StyleableField key="weatherCondition" fieldName="weatherCondition" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Topbar condition (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
 
       fields.push(SH('greeting', 'Shell prompt / greeting'));
-      fields.push(<TextField key="greetingCmd" label="Command" value={cfg.greetingCmd || ''} placeholder={D.greetingCmd} onChange={(v) => setField({ greetingCmd: v })} />);
-      fields.push(<TextField key="greetingArg" label="Args" value={cfg.greetingArg || ''} placeholder={D.greetingArg} onChange={(v) => setField({ greetingArg: v })} />);
-      fields.push(<TextField key="greetingHeadline" label="Banner headline" value={cfg.greetingHeadline || ''} placeholder={D.greetingHeadline} onChange={(v) => setField({ greetingHeadline: v })} />);
-      fields.push(<TextAreaField key="greetingSubtitle" label="Subtitle (// comment)" value={cfg.greetingSubtitle || ''} placeholder={D.greetingSubtitle} rows={2} onChange={(v) => setField({ greetingSubtitle: v })} />);
+      fields.push(<StyleableField key="greetingCmd" fieldName="greetingCmd" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Command" value={cfg.greetingCmd || ''} placeholder={D.greetingCmd} onChange={(v) => setField({ greetingCmd: v })} />);
+      fields.push(<StyleableField key="greetingArg" fieldName="greetingArg" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Args" value={cfg.greetingArg || ''} placeholder={D.greetingArg} onChange={(v) => setField({ greetingArg: v })} />);
+      fields.push(<StyleableField key="greetingHeadline" fieldName="greetingHeadline" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Banner headline" value={cfg.greetingHeadline || ''} placeholder={D.greetingHeadline} onChange={(v) => setField({ greetingHeadline: v })} />);
+      fields.push(<StyleableAreaField key="greetingSubtitle" fieldName="greetingSubtitle" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Subtitle (// comment)" value={cfg.greetingSubtitle || ''} placeholder={D.greetingSubtitle} rows={2} onChange={(v) => setField({ greetingSubtitle: v })} />);
 
       fields.push(SH('stats', 'Stat boxes (clock / weatherd / attendance / lunch)'));
-      fields.push(<TextField key="clockbigVal" label="Clock value" value={cfg.clockbigVal || ''} placeholder={D.clockbigVal} onChange={(v) => setField({ clockbigVal: v })} />);
-      fields.push(<TextField key="clockbigCap" label="Clock caption" value={cfg.clockbigCap || ''} placeholder={D.clockbigCap} onChange={(v) => setField({ clockbigCap: v })} />);
-      fields.push(<TextField key="weatherdVal" label="Weather value" value={cfg.weatherdVal || ''} placeholder={D.weatherdVal} onChange={(v) => setField({ weatherdVal: v })} />);
-      fields.push(<TextField key="weatherdCap" label="Weather caption" value={cfg.weatherdCap || ''} placeholder={D.weatherdCap} onChange={(v) => setField({ weatherdCap: v })} />);
-      fields.push(<TextField key="attendanceVal" label="Attendance value" value={cfg.attendanceVal || ''} placeholder={D.attendanceVal} onChange={(v) => setField({ attendanceVal: v })} />);
-      fields.push(<TextField key="attendanceCap" label="Attendance caption" value={cfg.attendanceCap || ''} placeholder={D.attendanceCap} onChange={(v) => setField({ attendanceCap: v })} />);
-      fields.push(<TextField key="lunchVal" label="Lunch value" value={cfg.lunchVal || ''} placeholder={D.lunchVal} onChange={(v) => setField({ lunchVal: v })} />);
-      fields.push(<TextField key="lunchCap" label="Lunch caption" value={cfg.lunchCap || ''} placeholder={D.lunchCap} onChange={(v) => setField({ lunchCap: v })} />);
+      fields.push(<StyleableField key="clockbigVal" fieldName="clockbigVal" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Clock value" value={cfg.clockbigVal || ''} placeholder={D.clockbigVal} onChange={(v) => setField({ clockbigVal: v })} />);
+      fields.push(<StyleableField key="clockbigCap" fieldName="clockbigCap" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Clock caption" value={cfg.clockbigCap || ''} placeholder={D.clockbigCap} onChange={(v) => setField({ clockbigCap: v })} />);
+      fields.push(<StyleableField key="weatherdVal" fieldName="weatherdVal" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Weather value" value={cfg.weatherdVal || ''} placeholder={D.weatherdVal} onChange={(v) => setField({ weatherdVal: v })} />);
+      fields.push(<StyleableField key="weatherdCap" fieldName="weatherdCap" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Weather caption" value={cfg.weatherdCap || ''} placeholder={D.weatherdCap} onChange={(v) => setField({ weatherdCap: v })} />);
+      fields.push(<StyleableField key="attendanceVal" fieldName="attendanceVal" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Attendance value" value={cfg.attendanceVal || ''} placeholder={D.attendanceVal} onChange={(v) => setField({ attendanceVal: v })} />);
+      fields.push(<StyleableField key="attendanceCap" fieldName="attendanceCap" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Attendance caption" value={cfg.attendanceCap || ''} placeholder={D.attendanceCap} onChange={(v) => setField({ attendanceCap: v })} />);
+      fields.push(<StyleableField key="lunchVal" fieldName="lunchVal" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Lunch value" value={cfg.lunchVal || ''} placeholder={D.lunchVal} onChange={(v) => setField({ lunchVal: v })} />);
+      fields.push(<StyleableField key="lunchCap" fieldName="lunchCap" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Lunch caption" value={cfg.lunchCap || ''} placeholder={D.lunchCap} onChange={(v) => setField({ lunchCap: v })} />);
 
       fields.push(SH('teacher', 'whoami --featured teacher card'));
-      fields.push(<TextField key="teacherCmd" label="Command" value={cfg.teacherCmd || ''} placeholder={D.teacherCmd} onChange={(v) => setField({ teacherCmd: v })} />);
-      fields.push(<TextField key="teacherName" label="Name" value={cfg.teacherName || ''} placeholder={D.teacherName} onChange={(v) => setField({ teacherName: v })} />);
-      fields.push(<TextField key="teacherRole" label="Role" value={cfg.teacherRole || ''} placeholder={D.teacherRole} onChange={(v) => setField({ teacherRole: v })} />);
-      fields.push(<TextField key="teacherRoom" label="Room" value={cfg.teacherRoom || ''} placeholder={D.teacherRoom} onChange={(v) => setField({ teacherRoom: v })} />);
-      fields.push(<TextField key="teacherYears" label="Years" value={cfg.teacherYears || ''} placeholder={D.teacherYears} onChange={(v) => setField({ teacherYears: v })} />);
-      fields.push(<TextField key="teacherGroups" label="Groups" value={cfg.teacherGroups || ''} placeholder={D.teacherGroups} onChange={(v) => setField({ teacherGroups: v })} />);
-      fields.push(<TextAreaField key="teacherQuote" label="Quote" value={cfg.teacherQuote || ''} placeholder={D.teacherQuote} rows={3} onChange={(v) => setField({ teacherQuote: v })} />);
+      fields.push(<StyleableField key="teacherCmd" fieldName="teacherCmd" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Command" value={cfg.teacherCmd || ''} placeholder={D.teacherCmd} onChange={(v) => setField({ teacherCmd: v })} />);
+      fields.push(<StyleableField key="teacherName" fieldName="teacherName" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Name" value={cfg.teacherName || ''} placeholder={D.teacherName} onChange={(v) => setField({ teacherName: v })} />);
+      fields.push(<StyleableField key="teacherRole" fieldName="teacherRole" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Role" value={cfg.teacherRole || ''} placeholder={D.teacherRole} onChange={(v) => setField({ teacherRole: v })} />);
+      fields.push(<StyleableField key="teacherRoom" fieldName="teacherRoom" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Room" value={cfg.teacherRoom || ''} placeholder={D.teacherRoom} onChange={(v) => setField({ teacherRoom: v })} />);
+      fields.push(<StyleableField key="teacherYears" fieldName="teacherYears" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Years" value={cfg.teacherYears || ''} placeholder={D.teacherYears} onChange={(v) => setField({ teacherYears: v })} />);
+      fields.push(<StyleableField key="teacherGroups" fieldName="teacherGroups" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Groups" value={cfg.teacherGroups || ''} placeholder={D.teacherGroups} onChange={(v) => setField({ teacherGroups: v })} />);
+      fields.push(<StyleableAreaField key="teacherQuote" fieldName="teacherQuote" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Quote" value={cfg.teacherQuote || ''} placeholder={D.teacherQuote} rows={3} onChange={(v) => setField({ teacherQuote: v })} />);
 
       fields.push(SH('announcement', '[ ! priority ] WARN box'));
-      fields.push(<TextField key="announcementTag" label="Tag" value={cfg.announcementTag || ''} placeholder={D.announcementTag} onChange={(v) => setField({ announcementTag: v })} />);
-      fields.push(<TextField key="announcementHeadline" label="Headline" value={cfg.announcementHeadline || ''} placeholder={D.announcementHeadline} onChange={(v) => setField({ announcementHeadline: v })} />);
-      fields.push(<TextAreaField key="announcementBody" label="Body" value={cfg.announcementBody || ''} placeholder={D.announcementBody} rows={3} onChange={(v) => setField({ announcementBody: v })} />);
-      fields.push(<TextField key="announcementDate" label="When/where" value={cfg.announcementDate || ''} placeholder={D.announcementDate} onChange={(v) => setField({ announcementDate: v })} />);
+      fields.push(<StyleableField key="announcementTag" fieldName="announcementTag" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Tag" value={cfg.announcementTag || ''} placeholder={D.announcementTag} onChange={(v) => setField({ announcementTag: v })} />);
+      fields.push(<StyleableField key="announcementHeadline" fieldName="announcementHeadline" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Headline" value={cfg.announcementHeadline || ''} placeholder={D.announcementHeadline} onChange={(v) => setField({ announcementHeadline: v })} />);
+      fields.push(<StyleableAreaField key="announcementBody" fieldName="announcementBody" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Body" value={cfg.announcementBody || ''} placeholder={D.announcementBody} rows={3} onChange={(v) => setField({ announcementBody: v })} />);
+      fields.push(<StyleableField key="announcementDate" fieldName="announcementDate" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="When/where" value={cfg.announcementDate || ''} placeholder={D.announcementDate} onChange={(v) => setField({ announcementDate: v })} />);
 
       fields.push(SH('countdown', '[ countdown ] box'));
-      fields.push(<TextField key="countdownValue" label="Number" value={String(cfg.countdownValue ?? '')} placeholder={String(D.countdownValue)} onChange={(v) => setField({ countdownValue: v })} />);
-      fields.push(<TextField key="countdownLabel" label="Label" value={cfg.countdownLabel || ''} placeholder={D.countdownLabel} onChange={(v) => setField({ countdownLabel: v })} />);
-      fields.push(<TextField key="countdownSub" label="Sub" value={cfg.countdownSub || ''} placeholder={D.countdownSub} onChange={(v) => setField({ countdownSub: v })} />);
+      fields.push(<StyleableField key="countdownValue" fieldName="countdownValue" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Number" value={String(cfg.countdownValue ?? '')} placeholder={String(D.countdownValue)} onChange={(v) => setField({ countdownValue: v })} />);
+      fields.push(<StyleableField key="countdownLabel" fieldName="countdownLabel" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Label" value={cfg.countdownLabel || ''} placeholder={D.countdownLabel} onChange={(v) => setField({ countdownLabel: v })} />);
+      fields.push(<StyleableField key="countdownSub" fieldName="countdownSub" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Sub" value={cfg.countdownSub || ''} placeholder={D.countdownSub} onChange={(v) => setField({ countdownSub: v })} />);
 
       fields.push(SH('events', 'cron -l /var/school/events (3 rows)'));
       for (const n of [1, 2, 3]) {
         const k = `event${n}` as 'event1' | 'event2' | 'event3';
-        fields.push(<TextField key={`${k}When`} label={`Event ${n} · when`} value={cfg[`${k}When`] || ''} placeholder={D[`${k}When`]} onChange={(v) => setField({ [`${k}When`]: v })} />);
-        fields.push(<TextField key={`${k}Where`} label={`Event ${n} · where`} value={cfg[`${k}Where`] || ''} placeholder={D[`${k}Where`]} onChange={(v) => setField({ [`${k}Where`]: v })} />);
-        fields.push(<TextField key={`${k}Name`} label={`Event ${n} · what`} value={cfg[`${k}Name`] || ''} placeholder={D[`${k}Name`]} onChange={(v) => setField({ [`${k}Name`]: v })} />);
-        fields.push(<TextField key={`${k}Who`} label={`Event ${n} · who`} value={cfg[`${k}Who`] || ''} placeholder={D[`${k}Who`]} onChange={(v) => setField({ [`${k}Who`]: v })} />);
+        fields.push(<StyleableField key={`${k}When`} fieldName={`${k}When`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`Event ${n} · when`} value={cfg[`${k}When`] || ''} placeholder={D[`${k}When`]} onChange={(v) => setField({ [`${k}When`]: v })} />);
+        fields.push(<StyleableField key={`${k}Where`} fieldName={`${k}Where`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`Event ${n} · where`} value={cfg[`${k}Where`] || ''} placeholder={D[`${k}Where`]} onChange={(v) => setField({ [`${k}Where`]: v })} />);
+        fields.push(<StyleableField key={`${k}Name`} fieldName={`${k}Name`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`Event ${n} · what`} value={cfg[`${k}Name`] || ''} placeholder={D[`${k}Name`]} onChange={(v) => setField({ [`${k}Name`]: v })} />);
+        fields.push(<StyleableField key={`${k}Who`} fieldName={`${k}Who`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`Event ${n} · who`} value={cfg[`${k}Who`] || ''} placeholder={D[`${k}Who`]} onChange={(v) => setField({ [`${k}Who`]: v })} />);
       }
 
       fields.push(SH('ticker', '/var/log/syslog ticker'));
-      fields.push(<TextField key="tickerTag" label="Tag" value={cfg.tickerTag || ''} placeholder={D.tickerTag} onChange={(v) => setField({ tickerTag: v })} />);
-      fields.push(<TextAreaField key="tickerMessage" label="Syslog messages" value={cfg.tickerMessage || ''} placeholder={D.tickerMessage} rows={3} onChange={(v) => setField({ tickerMessage: v })} />);
+      fields.push(<StyleableField key="tickerTag" fieldName="tickerTag" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Tag" value={cfg.tickerTag || ''} placeholder={D.tickerTag} onChange={(v) => setField({ tickerTag: v })} />);
+      fields.push(<StyleableAreaField key="tickerMessage" fieldName="tickerMessage" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Syslog messages" value={cfg.tickerMessage || ''} placeholder={D.tickerMessage} rows={3} onChange={(v) => setField({ tickerMessage: v })} />);
       break;
     }
     case 'HS_TRANSIT': {
@@ -2240,59 +2240,59 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
         <div key={`sh-${key}`} className="pt-3 pb-1 px-1 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200">{label}</div>
       );
       fields.push(SH('school', 'Station mast'));
-      fields.push(<TextField key="schoolCode" label="Code chip" value={cfg.schoolCode || ''} placeholder={D.schoolCode} onChange={(v) => setField({ schoolCode: v })} />);
-      fields.push(<TextField key="brandStation" label="Station name" value={cfg.brandStation || ''} placeholder={D.brandStation} onChange={(v) => setField({ brandStation: v })} />);
-      fields.push(<TextField key="brandMeta" label="Meta line" value={cfg.brandMeta || ''} placeholder={D.brandMeta} onChange={(v) => setField({ brandMeta: v })} />);
+      fields.push(<StyleableField key="schoolCode" fieldName="schoolCode" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Code chip" value={cfg.schoolCode || ''} placeholder={D.schoolCode} onChange={(v) => setField({ schoolCode: v })} />);
+      fields.push(<StyleableField key="brandStation" fieldName="brandStation" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Station name" value={cfg.brandStation || ''} placeholder={D.brandStation} onChange={(v) => setField({ brandStation: v })} />);
+      fields.push(<StyleableField key="brandMeta" fieldName="brandMeta" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Meta line" value={cfg.brandMeta || ''} placeholder={D.brandMeta} onChange={(v) => setField({ brandMeta: v })} />);
       fields.push(<SelectField key="clockTimezone" label="Clock timezone" value={cfg.clockTimezone || ''} options={US_TIMEZONE_OPTIONS as unknown as Array<[string, string]>} onChange={(v) => setField({ clockTimezone: v })} />);
-      fields.push(<TextField key="clockTime" label="Clock time (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
-      fields.push(<TextField key="clockDate" label="Date (manual override)" value={cfg.clockDate || ''} placeholder={D.clockDate} onChange={(v) => setField({ clockDate: v })} />);
-      fields.push(<TextField key="clockTz" label="Display label (e.g. LOCAL · UTC-05:00)" value={cfg.clockTz || ''} placeholder={D.clockTz} onChange={(v) => setField({ clockTz: v })} />);
+      fields.push(<StyleableField key="clockTime" fieldName="clockTime" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Clock time (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
+      fields.push(<StyleableField key="clockDate" fieldName="clockDate" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Date (manual override)" value={cfg.clockDate || ''} placeholder={D.clockDate} onChange={(v) => setField({ clockDate: v })} />);
+      fields.push(<StyleableField key="clockTz" fieldName="clockTz" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Display label (e.g. LOCAL · UTC-05:00)" value={cfg.clockTz || ''} placeholder={D.clockTz} onChange={(v) => setField({ clockTz: v })} />);
 
       fields.push(SH('greeting', 'Now boarding hero'));
-      fields.push(<TextField key="greetingGate" label="Room / gate" value={cfg.greetingGate || ''} placeholder={D.greetingGate} onChange={(v) => setField({ greetingGate: v })} />);
-      fields.push(<TextField key="greetingEyebrow" label="Eyebrow" value={cfg.greetingEyebrow || ''} placeholder={D.greetingEyebrow} onChange={(v) => setField({ greetingEyebrow: v })} />);
-      fields.push(<TextField key="greetingHeadline" label="Headline" value={cfg.greetingHeadline || ''} placeholder={D.greetingHeadline} onChange={(v) => setField({ greetingHeadline: v })} />);
-      fields.push(<TextAreaField key="greetingSubtitle" label="Subtitle" value={cfg.greetingSubtitle || ''} placeholder={D.greetingSubtitle} rows={2} onChange={(v) => setField({ greetingSubtitle: v })} />);
+      fields.push(<StyleableField key="greetingGate" fieldName="greetingGate" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Room / gate" value={cfg.greetingGate || ''} placeholder={D.greetingGate} onChange={(v) => setField({ greetingGate: v })} />);
+      fields.push(<StyleableField key="greetingEyebrow" fieldName="greetingEyebrow" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Eyebrow" value={cfg.greetingEyebrow || ''} placeholder={D.greetingEyebrow} onChange={(v) => setField({ greetingEyebrow: v })} />);
+      fields.push(<StyleableField key="greetingHeadline" fieldName="greetingHeadline" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Headline" value={cfg.greetingHeadline || ''} placeholder={D.greetingHeadline} onChange={(v) => setField({ greetingHeadline: v })} />);
+      fields.push(<StyleableAreaField key="greetingSubtitle" fieldName="greetingSubtitle" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Subtitle" value={cfg.greetingSubtitle || ''} placeholder={D.greetingSubtitle} rows={2} onChange={(v) => setField({ greetingSubtitle: v })} />);
       // Live weather (Open-Meteo). Manual overrides below.
       fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
       fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
-      fields.push(<TextField key="weatherTemp" label="Outside temp (manual override)" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
-      fields.push(<TextField key="weatherCondition" label="Conditions (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
-      fields.push(<TextField key="weatherStatus" label="Status badge" value={cfg.weatherStatus || ''} placeholder={D.weatherStatus} onChange={(v) => setField({ weatherStatus: v })} />);
+      fields.push(<StyleableField key="weatherTemp" fieldName="weatherTemp" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Outside temp (manual override)" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
+      fields.push(<StyleableField key="weatherCondition" fieldName="weatherCondition" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Conditions (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
+      fields.push(<StyleableField key="weatherStatus" fieldName="weatherStatus" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Status badge" value={cfg.weatherStatus || ''} placeholder={D.weatherStatus} onChange={(v) => setField({ weatherStatus: v })} />);
 
       fields.push(SH('departures', 'Departure rows (5 classes)'));
       for (const n of [0, 1, 2, 3, 4]) {
         const k = `dep${n}` as 'dep0' | 'dep1' | 'dep2' | 'dep3' | 'dep4';
-        fields.push(<TextField key={`${k}Time`} label={`#${n + 1} · Time`} value={cfg[`${k}Time`] || ''} placeholder={D[`${k}Time`]} onChange={(v) => setField({ [`${k}Time`]: v })} />);
-        fields.push(<TextField key={`${k}Code`} label={`#${n + 1} · Course code`} value={cfg[`${k}Code`] || ''} placeholder={D[`${k}Code`]} onChange={(v) => setField({ [`${k}Code`]: v })} />);
-        fields.push(<TextField key={`${k}Dest`} label={`#${n + 1} · Subject`} value={cfg[`${k}Dest`] || ''} placeholder={D[`${k}Dest`]} onChange={(v) => setField({ [`${k}Dest`]: v })} />);
-        fields.push(<TextField key={`${k}Note`} label={`#${n + 1} · Note`} value={cfg[`${k}Note`] || ''} placeholder={D[`${k}Note`]} onChange={(v) => setField({ [`${k}Note`]: v })} />);
-        fields.push(<TextField key={`${k}Room`} label={`#${n + 1} · Room/gate`} value={cfg[`${k}Room`] || ''} placeholder={D[`${k}Room`]} onChange={(v) => setField({ [`${k}Room`]: v })} />);
-        fields.push(<TextField key={`${k}Teacher`} label={`#${n + 1} · Teacher`} value={cfg[`${k}Teacher`] || ''} placeholder={D[`${k}Teacher`]} onChange={(v) => setField({ [`${k}Teacher`]: v })} />);
-        fields.push(<TextField key={`${k}Status`} label={`#${n + 1} · Status (BOARDING/ON TIME/DELAY/OPEN/SCHED)`} value={cfg[`${k}Status`] || ''} placeholder={D[`${k}Status`]} onChange={(v) => setField({ [`${k}Status`]: v })} />);
+        fields.push(<StyleableField key={`${k}Time`} fieldName={`${k}Time`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`#${n + 1} · Time`} value={cfg[`${k}Time`] || ''} placeholder={D[`${k}Time`]} onChange={(v) => setField({ [`${k}Time`]: v })} />);
+        fields.push(<StyleableField key={`${k}Code`} fieldName={`${k}Code`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`#${n + 1} · Course code`} value={cfg[`${k}Code`] || ''} placeholder={D[`${k}Code`]} onChange={(v) => setField({ [`${k}Code`]: v })} />);
+        fields.push(<StyleableField key={`${k}Dest`} fieldName={`${k}Dest`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`#${n + 1} · Subject`} value={cfg[`${k}Dest`] || ''} placeholder={D[`${k}Dest`]} onChange={(v) => setField({ [`${k}Dest`]: v })} />);
+        fields.push(<StyleableField key={`${k}Note`} fieldName={`${k}Note`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`#${n + 1} · Note`} value={cfg[`${k}Note`] || ''} placeholder={D[`${k}Note`]} onChange={(v) => setField({ [`${k}Note`]: v })} />);
+        fields.push(<StyleableField key={`${k}Room`} fieldName={`${k}Room`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`#${n + 1} · Room/gate`} value={cfg[`${k}Room`] || ''} placeholder={D[`${k}Room`]} onChange={(v) => setField({ [`${k}Room`]: v })} />);
+        fields.push(<StyleableField key={`${k}Teacher`} fieldName={`${k}Teacher`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`#${n + 1} · Teacher`} value={cfg[`${k}Teacher`] || ''} placeholder={D[`${k}Teacher`]} onChange={(v) => setField({ [`${k}Teacher`]: v })} />);
+        fields.push(<StyleableField key={`${k}Status`} fieldName={`${k}Status`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`#${n + 1} · Status (BOARDING/ON TIME/DELAY/OPEN/SCHED)`} value={cfg[`${k}Status`] || ''} placeholder={D[`${k}Status`]} onChange={(v) => setField({ [`${k}Status`]: v })} />);
       }
 
       fields.push(SH('teacher', 'Flight crew spotlight'));
-      fields.push(<TextField key="teacherLabel" label="Label" value={cfg.teacherLabel || ''} placeholder={D.teacherLabel} onChange={(v) => setField({ teacherLabel: v })} />);
-      fields.push(<TextField key="teacherName" label="Name" value={cfg.teacherName || ''} placeholder={D.teacherName} onChange={(v) => setField({ teacherName: v })} />);
-      fields.push(<TextField key="teacherMeta" label="Meta" value={cfg.teacherMeta || ''} placeholder={D.teacherMeta} onChange={(v) => setField({ teacherMeta: v })} />);
-      fields.push(<TextAreaField key="teacherQuote" label="Quote" value={cfg.teacherQuote || ''} placeholder={D.teacherQuote} rows={3} onChange={(v) => setField({ teacherQuote: v })} />);
-      fields.push(<TextField key="teacherNum" label="Portrait big number" value={cfg.teacherNum || ''} placeholder={D.teacherNum} onChange={(v) => setField({ teacherNum: v })} />);
+      fields.push(<StyleableField key="teacherLabel" fieldName="teacherLabel" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Label" value={cfg.teacherLabel || ''} placeholder={D.teacherLabel} onChange={(v) => setField({ teacherLabel: v })} />);
+      fields.push(<StyleableField key="teacherName" fieldName="teacherName" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Name" value={cfg.teacherName || ''} placeholder={D.teacherName} onChange={(v) => setField({ teacherName: v })} />);
+      fields.push(<StyleableField key="teacherMeta" fieldName="teacherMeta" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Meta" value={cfg.teacherMeta || ''} placeholder={D.teacherMeta} onChange={(v) => setField({ teacherMeta: v })} />);
+      fields.push(<StyleableAreaField key="teacherQuote" fieldName="teacherQuote" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Quote" value={cfg.teacherQuote || ''} placeholder={D.teacherQuote} rows={3} onChange={(v) => setField({ teacherQuote: v })} />);
+      fields.push(<StyleableField key="teacherNum" fieldName="teacherNum" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Portrait big number" value={cfg.teacherNum || ''} placeholder={D.teacherNum} onChange={(v) => setField({ teacherNum: v })} />);
 
       fields.push(SH('announcement', 'Advisory panel'));
-      fields.push(<TextField key="announcementTag" label="Tag" value={cfg.announcementTag || ''} placeholder={D.announcementTag} onChange={(v) => setField({ announcementTag: v })} />);
-      fields.push(<TextField key="announcementHeadline" label="Headline" value={cfg.announcementHeadline || ''} placeholder={D.announcementHeadline} onChange={(v) => setField({ announcementHeadline: v })} />);
-      fields.push(<TextAreaField key="announcementBody" label="Body" value={cfg.announcementBody || ''} placeholder={D.announcementBody} rows={3} onChange={(v) => setField({ announcementBody: v })} />);
-      fields.push(<TextField key="announcementDate" label="When" value={cfg.announcementDate || ''} placeholder={D.announcementDate} onChange={(v) => setField({ announcementDate: v })} />);
+      fields.push(<StyleableField key="announcementTag" fieldName="announcementTag" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Tag" value={cfg.announcementTag || ''} placeholder={D.announcementTag} onChange={(v) => setField({ announcementTag: v })} />);
+      fields.push(<StyleableField key="announcementHeadline" fieldName="announcementHeadline" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Headline" value={cfg.announcementHeadline || ''} placeholder={D.announcementHeadline} onChange={(v) => setField({ announcementHeadline: v })} />);
+      fields.push(<StyleableAreaField key="announcementBody" fieldName="announcementBody" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Body" value={cfg.announcementBody || ''} placeholder={D.announcementBody} rows={3} onChange={(v) => setField({ announcementBody: v })} />);
+      fields.push(<StyleableField key="announcementDate" fieldName="announcementDate" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="When" value={cfg.announcementDate || ''} placeholder={D.announcementDate} onChange={(v) => setField({ announcementDate: v })} />);
 
       fields.push(SH('countdown', 'Next-leg countdown'));
-      fields.push(<TextField key="countdownLabel" label="Label" value={cfg.countdownLabel || ''} placeholder={D.countdownLabel} onChange={(v) => setField({ countdownLabel: v })} />);
-      fields.push(<TextField key="countdownValue" label="Value" value={String(cfg.countdownValue ?? '')} placeholder={String(D.countdownValue)} onChange={(v) => setField({ countdownValue: v })} />);
-      fields.push(<TextField key="countdownSub" label="Sub" value={cfg.countdownSub || ''} placeholder={D.countdownSub} onChange={(v) => setField({ countdownSub: v })} />);
+      fields.push(<StyleableField key="countdownLabel" fieldName="countdownLabel" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Label" value={cfg.countdownLabel || ''} placeholder={D.countdownLabel} onChange={(v) => setField({ countdownLabel: v })} />);
+      fields.push(<StyleableField key="countdownValue" fieldName="countdownValue" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Value" value={String(cfg.countdownValue ?? '')} placeholder={String(D.countdownValue)} onChange={(v) => setField({ countdownValue: v })} />);
+      fields.push(<StyleableField key="countdownSub" fieldName="countdownSub" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Sub" value={cfg.countdownSub || ''} placeholder={D.countdownSub} onChange={(v) => setField({ countdownSub: v })} />);
 
       fields.push(SH('ticker', 'PA ticker'));
-      fields.push(<TextField key="tickerTag" label="Tag" value={cfg.tickerTag || ''} placeholder={D.tickerTag} onChange={(v) => setField({ tickerTag: v })} />);
-      fields.push(<TextAreaField key="tickerMessage" label="Scrolling message" value={cfg.tickerMessage || ''} placeholder={D.tickerMessage} rows={3} onChange={(v) => setField({ tickerMessage: v })} />);
+      fields.push(<StyleableField key="tickerTag" fieldName="tickerTag" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Tag" value={cfg.tickerTag || ''} placeholder={D.tickerTag} onChange={(v) => setField({ tickerTag: v })} />);
+      fields.push(<StyleableAreaField key="tickerMessage" fieldName="tickerMessage" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Scrolling message" value={cfg.tickerMessage || ''} placeholder={D.tickerMessage} rows={3} onChange={(v) => setField({ tickerMessage: v })} />);
       break;
     }
     case 'HS_GALLERY': {
@@ -2302,66 +2302,66 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
         <div key={`sh-${key}`} className="pt-3 pb-1 px-1 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200">{label}</div>
       );
       fields.push(SH('school', 'Masthead'));
-      fields.push(<TextField key="schoolName" label="Publication name" value={cfg.schoolName || ''} placeholder={D.schoolName} onChange={(v) => setField({ schoolName: v })} />);
+      fields.push(<StyleableField key="schoolName" fieldName="schoolName" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Publication name" value={cfg.schoolName || ''} placeholder={D.schoolName} onChange={(v) => setField({ schoolName: v })} />);
       fields.push(<SelectField key="clockTimezone" label="Clock timezone" value={cfg.clockTimezone || ''} options={US_TIMEZONE_OPTIONS as unknown as Array<[string, string]>} onChange={(v) => setField({ clockTimezone: v })} />);
-      fields.push(<TextField key="clockDate" label="Date nav (manual override)" value={cfg.clockDate || ''} placeholder={D.clockDate} onChange={(v) => setField({ clockDate: v })} />);
-      fields.push(<TextField key="clockTime" label="Time nav (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
+      fields.push(<StyleableField key="clockDate" fieldName="clockDate" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Date nav (manual override)" value={cfg.clockDate || ''} placeholder={D.clockDate} onChange={(v) => setField({ clockDate: v })} />);
+      fields.push(<StyleableField key="clockTime" fieldName="clockTime" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Time nav (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
       // Live weather — Gallery renders a single "Clear, 46°" string.
       fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
       fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
-      fields.push(<TextField key="weatherCondition" label="Weather nav (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
+      fields.push(<StyleableField key="weatherCondition" fieldName="weatherCondition" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Weather nav (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
 
       fields.push(SH('greeting', 'Plaque (italic accent word)'));
-      fields.push(<TextField key="greetingEyebrow" label="Exhibition number" value={cfg.greetingEyebrow || ''} placeholder={D.greetingEyebrow} onChange={(v) => setField({ greetingEyebrow: v })} />);
-      fields.push(<TextField key="greetingHeadline1" label="Headline pt1" value={cfg.greetingHeadline1 || ''} placeholder={D.greetingHeadline1} onChange={(v) => setField({ greetingHeadline1: v })} />);
-      fields.push(<TextField key="greetingHeadline2" label="Headline pt2 (italic/accent)" value={cfg.greetingHeadline2 || ''} placeholder={D.greetingHeadline2} onChange={(v) => setField({ greetingHeadline2: v })} />);
-      fields.push(<TextField key="greetingHeadline3" label="Headline pt3" value={cfg.greetingHeadline3 || ''} placeholder={D.greetingHeadline3} onChange={(v) => setField({ greetingHeadline3: v })} />);
-      fields.push(<TextAreaField key="greetingSubtitle" label="Subtitle" value={cfg.greetingSubtitle || ''} placeholder={D.greetingSubtitle} rows={3} onChange={(v) => setField({ greetingSubtitle: v })} />);
+      fields.push(<StyleableField key="greetingEyebrow" fieldName="greetingEyebrow" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Exhibition number" value={cfg.greetingEyebrow || ''} placeholder={D.greetingEyebrow} onChange={(v) => setField({ greetingEyebrow: v })} />);
+      fields.push(<StyleableField key="greetingHeadline1" fieldName="greetingHeadline1" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Headline pt1" value={cfg.greetingHeadline1 || ''} placeholder={D.greetingHeadline1} onChange={(v) => setField({ greetingHeadline1: v })} />);
+      fields.push(<StyleableField key="greetingHeadline2" fieldName="greetingHeadline2" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Headline pt2 (italic/accent)" value={cfg.greetingHeadline2 || ''} placeholder={D.greetingHeadline2} onChange={(v) => setField({ greetingHeadline2: v })} />);
+      fields.push(<StyleableField key="greetingHeadline3" fieldName="greetingHeadline3" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Headline pt3" value={cfg.greetingHeadline3 || ''} placeholder={D.greetingHeadline3} onChange={(v) => setField({ greetingHeadline3: v })} />);
+      fields.push(<StyleableAreaField key="greetingSubtitle" fieldName="greetingSubtitle" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Subtitle" value={cfg.greetingSubtitle || ''} placeholder={D.greetingSubtitle} rows={3} onChange={(v) => setField({ greetingSubtitle: v })} />);
 
       fields.push(SH('events', 'Acquisitions (3 Roman-numeral cards)'));
       for (const n of [0, 1, 2]) {
         const k = `event${n}` as 'event0' | 'event1' | 'event2';
-        fields.push(<TextField key={`${k}Num`} label={`#${n + 1} · Roman numeral`} value={cfg[`${k}Num`] || ''} placeholder={D[`${k}Num`]} onChange={(v) => setField({ [`${k}Num`]: v })} />);
-        fields.push(<TextField key={`${k}Name`} label={`#${n + 1} · Title`} value={cfg[`${k}Name`] || ''} placeholder={D[`${k}Name`]} onChange={(v) => setField({ [`${k}Name`]: v })} />);
-        fields.push(<TextField key={`${k}Meta`} label={`#${n + 1} · Meta`} value={cfg[`${k}Meta`] || ''} placeholder={D[`${k}Meta`]} onChange={(v) => setField({ [`${k}Meta`]: v })} />);
-        fields.push(<TextField key={`${k}Time`} label={`#${n + 1} · Time`} value={cfg[`${k}Time`] || ''} placeholder={D[`${k}Time`]} onChange={(v) => setField({ [`${k}Time`]: v })} />);
-        fields.push(<TextField key={`${k}Day`} label={`#${n + 1} · Day`} value={cfg[`${k}Day`] || ''} placeholder={D[`${k}Day`]} onChange={(v) => setField({ [`${k}Day`]: v })} />);
+        fields.push(<StyleableField key={`${k}Num`} fieldName={`${k}Num`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`#${n + 1} · Roman numeral`} value={cfg[`${k}Num`] || ''} placeholder={D[`${k}Num`]} onChange={(v) => setField({ [`${k}Num`]: v })} />);
+        fields.push(<StyleableField key={`${k}Name`} fieldName={`${k}Name`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`#${n + 1} · Title`} value={cfg[`${k}Name`] || ''} placeholder={D[`${k}Name`]} onChange={(v) => setField({ [`${k}Name`]: v })} />);
+        fields.push(<StyleableField key={`${k}Meta`} fieldName={`${k}Meta`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`#${n + 1} · Meta`} value={cfg[`${k}Meta`] || ''} placeholder={D[`${k}Meta`]} onChange={(v) => setField({ [`${k}Meta`]: v })} />);
+        fields.push(<StyleableField key={`${k}Time`} fieldName={`${k}Time`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`#${n + 1} · Time`} value={cfg[`${k}Time`] || ''} placeholder={D[`${k}Time`]} onChange={(v) => setField({ [`${k}Time`]: v })} />);
+        fields.push(<StyleableField key={`${k}Day`} fieldName={`${k}Day`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`#${n + 1} · Day`} value={cfg[`${k}Day`] || ''} placeholder={D[`${k}Day`]} onChange={(v) => setField({ [`${k}Day`]: v })} />);
       }
 
       fields.push(SH('wall', 'Wall-label stat row'));
-      fields.push(<TextField key="clockbigVal" label="Clock value" value={cfg.clockbigVal || ''} placeholder={D.clockbigVal} onChange={(v) => setField({ clockbigVal: v })} />);
-      fields.push(<TextField key="clockbigCap" label="Clock caption" value={cfg.clockbigCap || ''} placeholder={D.clockbigCap} onChange={(v) => setField({ clockbigCap: v })} />);
-      fields.push(<TextField key="weatherbigVal" label="Weather value" value={cfg.weatherbigVal || ''} placeholder={D.weatherbigVal} onChange={(v) => setField({ weatherbigVal: v })} />);
-      fields.push(<TextField key="weatherbigCap" label="Weather caption" value={cfg.weatherbigCap || ''} placeholder={D.weatherbigCap} onChange={(v) => setField({ weatherbigCap: v })} />);
-      fields.push(<TextField key="attendanceVal" label="Attendance" value={cfg.attendanceVal || ''} placeholder={D.attendanceVal} onChange={(v) => setField({ attendanceVal: v })} />);
-      fields.push(<TextField key="attendanceCap" label="Attendance caption" value={cfg.attendanceCap || ''} placeholder={D.attendanceCap} onChange={(v) => setField({ attendanceCap: v })} />);
-      fields.push(<TextField key="countdownLabel" label="Countdown label" value={cfg.countdownLabel || ''} placeholder={D.countdownLabel} onChange={(v) => setField({ countdownLabel: v })} />);
-      fields.push(<TextField key="countdownValue" label="Countdown value" value={String(cfg.countdownValue ?? '')} placeholder={String(D.countdownValue)} onChange={(v) => setField({ countdownValue: v })} />);
-      fields.push(<TextField key="countdownSub" label="Countdown sub" value={cfg.countdownSub || ''} placeholder={D.countdownSub} onChange={(v) => setField({ countdownSub: v })} />);
+      fields.push(<StyleableField key="clockbigVal" fieldName="clockbigVal" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Clock value" value={cfg.clockbigVal || ''} placeholder={D.clockbigVal} onChange={(v) => setField({ clockbigVal: v })} />);
+      fields.push(<StyleableField key="clockbigCap" fieldName="clockbigCap" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Clock caption" value={cfg.clockbigCap || ''} placeholder={D.clockbigCap} onChange={(v) => setField({ clockbigCap: v })} />);
+      fields.push(<StyleableField key="weatherbigVal" fieldName="weatherbigVal" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Weather value" value={cfg.weatherbigVal || ''} placeholder={D.weatherbigVal} onChange={(v) => setField({ weatherbigVal: v })} />);
+      fields.push(<StyleableField key="weatherbigCap" fieldName="weatherbigCap" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Weather caption" value={cfg.weatherbigCap || ''} placeholder={D.weatherbigCap} onChange={(v) => setField({ weatherbigCap: v })} />);
+      fields.push(<StyleableField key="attendanceVal" fieldName="attendanceVal" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Attendance" value={cfg.attendanceVal || ''} placeholder={D.attendanceVal} onChange={(v) => setField({ attendanceVal: v })} />);
+      fields.push(<StyleableField key="attendanceCap" fieldName="attendanceCap" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Attendance caption" value={cfg.attendanceCap || ''} placeholder={D.attendanceCap} onChange={(v) => setField({ attendanceCap: v })} />);
+      fields.push(<StyleableField key="countdownLabel" fieldName="countdownLabel" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Countdown label" value={cfg.countdownLabel || ''} placeholder={D.countdownLabel} onChange={(v) => setField({ countdownLabel: v })} />);
+      fields.push(<StyleableField key="countdownValue" fieldName="countdownValue" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Countdown value" value={String(cfg.countdownValue ?? '')} placeholder={String(D.countdownValue)} onChange={(v) => setField({ countdownValue: v })} />);
+      fields.push(<StyleableField key="countdownSub" fieldName="countdownSub" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Countdown sub" value={cfg.countdownSub || ''} placeholder={D.countdownSub} onChange={(v) => setField({ countdownSub: v })} />);
 
       fields.push(SH('teacher', 'Artist statement / teacher feature'));
-      fields.push(<TextField key="teacherTag" label="Plate tag" value={cfg.teacherTag || ''} placeholder={D.teacherTag} onChange={(v) => setField({ teacherTag: v })} />);
-      fields.push(<TextField key="teacherLabel" label="Label" value={cfg.teacherLabel || ''} placeholder={D.teacherLabel} onChange={(v) => setField({ teacherLabel: v })} />);
-      fields.push(<TextField key="teacherName" label="Name" value={cfg.teacherName || ''} placeholder={D.teacherName} onChange={(v) => setField({ teacherName: v })} />);
-      fields.push(<TextField key="teacherMeta" label="Meta" value={cfg.teacherMeta || ''} placeholder={D.teacherMeta} onChange={(v) => setField({ teacherMeta: v })} />);
-      fields.push(<TextAreaField key="teacherQuote" label="Statement" value={cfg.teacherQuote || ''} placeholder={D.teacherQuote} rows={3} onChange={(v) => setField({ teacherQuote: v })} />);
-      fields.push(<TextField key="teacherByline" label="Byline" value={cfg.teacherByline || ''} placeholder={D.teacherByline} onChange={(v) => setField({ teacherByline: v })} />);
+      fields.push(<StyleableField key="teacherTag" fieldName="teacherTag" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Plate tag" value={cfg.teacherTag || ''} placeholder={D.teacherTag} onChange={(v) => setField({ teacherTag: v })} />);
+      fields.push(<StyleableField key="teacherLabel" fieldName="teacherLabel" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Label" value={cfg.teacherLabel || ''} placeholder={D.teacherLabel} onChange={(v) => setField({ teacherLabel: v })} />);
+      fields.push(<StyleableField key="teacherName" fieldName="teacherName" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Name" value={cfg.teacherName || ''} placeholder={D.teacherName} onChange={(v) => setField({ teacherName: v })} />);
+      fields.push(<StyleableField key="teacherMeta" fieldName="teacherMeta" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Meta" value={cfg.teacherMeta || ''} placeholder={D.teacherMeta} onChange={(v) => setField({ teacherMeta: v })} />);
+      fields.push(<StyleableAreaField key="teacherQuote" fieldName="teacherQuote" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Statement" value={cfg.teacherQuote || ''} placeholder={D.teacherQuote} rows={3} onChange={(v) => setField({ teacherQuote: v })} />);
+      fields.push(<StyleableField key="teacherByline" fieldName="teacherByline" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Byline" value={cfg.teacherByline || ''} placeholder={D.teacherByline} onChange={(v) => setField({ teacherByline: v })} />);
 
       fields.push(SH('announcement', "Curator's Note advisory"));
-      fields.push(<TextField key="announcementTag" label="Tag" value={cfg.announcementTag || ''} placeholder={D.announcementTag} onChange={(v) => setField({ announcementTag: v })} />);
-      fields.push(<TextField key="announcementHeadline" label="Headline" value={cfg.announcementHeadline || ''} placeholder={D.announcementHeadline} onChange={(v) => setField({ announcementHeadline: v })} />);
-      fields.push(<TextAreaField key="announcementBody" label="Body" value={cfg.announcementBody || ''} placeholder={D.announcementBody} rows={3} onChange={(v) => setField({ announcementBody: v })} />);
-      fields.push(<TextField key="announcementDate" label="When" value={cfg.announcementDate || ''} placeholder={D.announcementDate} onChange={(v) => setField({ announcementDate: v })} />);
+      fields.push(<StyleableField key="announcementTag" fieldName="announcementTag" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Tag" value={cfg.announcementTag || ''} placeholder={D.announcementTag} onChange={(v) => setField({ announcementTag: v })} />);
+      fields.push(<StyleableField key="announcementHeadline" fieldName="announcementHeadline" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Headline" value={cfg.announcementHeadline || ''} placeholder={D.announcementHeadline} onChange={(v) => setField({ announcementHeadline: v })} />);
+      fields.push(<StyleableAreaField key="announcementBody" fieldName="announcementBody" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Body" value={cfg.announcementBody || ''} placeholder={D.announcementBody} rows={3} onChange={(v) => setField({ announcementBody: v })} />);
+      fields.push(<StyleableField key="announcementDate" fieldName="announcementDate" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="When" value={cfg.announcementDate || ''} placeholder={D.announcementDate} onChange={(v) => setField({ announcementDate: v })} />);
 
       fields.push(SH('brand', 'Gallery hours footer'));
-      fields.push(<TextField key="brandHours" label="Hours title" value={cfg.brandHours || ''} placeholder={D.brandHours} onChange={(v) => setField({ brandHours: v })} />);
-      fields.push(<TextField key="brandSpan" label="Hours span" value={cfg.brandSpan || ''} placeholder={D.brandSpan} onChange={(v) => setField({ brandSpan: v })} />);
-      fields.push(<TextField key="brandClosed" label="Closed line" value={cfg.brandClosed || ''} placeholder={D.brandClosed} onChange={(v) => setField({ brandClosed: v })} />);
-      fields.push(<TextField key="brandCoda" label="Italic coda" value={cfg.brandCoda || ''} placeholder={D.brandCoda} onChange={(v) => setField({ brandCoda: v })} />);
+      fields.push(<StyleableField key="brandHours" fieldName="brandHours" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Hours title" value={cfg.brandHours || ''} placeholder={D.brandHours} onChange={(v) => setField({ brandHours: v })} />);
+      fields.push(<StyleableField key="brandSpan" fieldName="brandSpan" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Hours span" value={cfg.brandSpan || ''} placeholder={D.brandSpan} onChange={(v) => setField({ brandSpan: v })} />);
+      fields.push(<StyleableField key="brandClosed" fieldName="brandClosed" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Closed line" value={cfg.brandClosed || ''} placeholder={D.brandClosed} onChange={(v) => setField({ brandClosed: v })} />);
+      fields.push(<StyleableField key="brandCoda" fieldName="brandCoda" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Italic coda" value={cfg.brandCoda || ''} placeholder={D.brandCoda} onChange={(v) => setField({ brandCoda: v })} />);
 
       fields.push(SH('ticker', "Docent's Note ticker"));
-      fields.push(<TextField key="tickerTag" label="Tag" value={cfg.tickerTag || ''} placeholder={D.tickerTag} onChange={(v) => setField({ tickerTag: v })} />);
-      fields.push(<TextAreaField key="tickerMessage" label="Italic crawl" value={cfg.tickerMessage || ''} placeholder={D.tickerMessage} rows={3} onChange={(v) => setField({ tickerMessage: v })} />);
+      fields.push(<StyleableField key="tickerTag" fieldName="tickerTag" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Tag" value={cfg.tickerTag || ''} placeholder={D.tickerTag} onChange={(v) => setField({ tickerTag: v })} />);
+      fields.push(<StyleableAreaField key="tickerMessage" fieldName="tickerMessage" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Italic crawl" value={cfg.tickerMessage || ''} placeholder={D.tickerMessage} rows={3} onChange={(v) => setField({ tickerMessage: v })} />);
       break;
     }
     case 'HS_BLUEPRINT': {
@@ -2375,67 +2375,67 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
         <div key={`sh-${key}`} className="pt-3 pb-1 px-1 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200">{label}</div>
       );
       fields.push(SH('titleblock', 'Title block header'));
-      fields.push(<TextField key="schoolCode" label="Code" value={cfg.schoolCode || ''} placeholder={D.schoolCode} onChange={(v) => setField({ schoolCode: v })} />);
-      fields.push(<TextField key="schoolName" label="School sub" value={cfg.schoolName || ''} placeholder={D.schoolName} onChange={(v) => setField({ schoolName: v })} />);
-      fields.push(<TextField key="brandLabel1" label="Project label" value={cfg.brandLabel1 || ''} placeholder={D.brandLabel1} onChange={(v) => setField({ brandLabel1: v })} />);
-      fields.push(<TextField key="brandProject" label="Project value" value={cfg.brandProject || ''} placeholder={D.brandProject} onChange={(v) => setField({ brandProject: v })} />);
-      fields.push(<TextField key="clockLabel" label="Date/time label" value={cfg.clockLabel || ''} placeholder={D.clockLabel} onChange={(v) => setField({ clockLabel: v })} />);
+      fields.push(<StyleableField key="schoolCode" fieldName="schoolCode" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Code" value={cfg.schoolCode || ''} placeholder={D.schoolCode} onChange={(v) => setField({ schoolCode: v })} />);
+      fields.push(<StyleableField key="schoolName" fieldName="schoolName" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="School sub" value={cfg.schoolName || ''} placeholder={D.schoolName} onChange={(v) => setField({ schoolName: v })} />);
+      fields.push(<StyleableField key="brandLabel1" fieldName="brandLabel1" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Project label" value={cfg.brandLabel1 || ''} placeholder={D.brandLabel1} onChange={(v) => setField({ brandLabel1: v })} />);
+      fields.push(<StyleableField key="brandProject" fieldName="brandProject" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Project value" value={cfg.brandProject || ''} placeholder={D.brandProject} onChange={(v) => setField({ brandProject: v })} />);
+      fields.push(<StyleableField key="clockLabel" fieldName="clockLabel" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Date/time label" value={cfg.clockLabel || ''} placeholder={D.clockLabel} onChange={(v) => setField({ clockLabel: v })} />);
       fields.push(<SelectField key="clockTimezone" label="Clock timezone" value={cfg.clockTimezone || ''} options={US_TIMEZONE_OPTIONS as unknown as Array<[string, string]>} onChange={(v) => setField({ clockTimezone: v })} />);
-      fields.push(<TextField key="clockDate" label="Date (manual override)" value={cfg.clockDate || ''} placeholder={D.clockDate} onChange={(v) => setField({ clockDate: v })} />);
-      fields.push(<TextField key="clockTime" label="Time (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
-      fields.push(<TextField key="brandSheet" label="Sheet" value={cfg.brandSheet || ''} placeholder={D.brandSheet} onChange={(v) => setField({ brandSheet: v })} />);
-      fields.push(<TextField key="brandRev" label="Rev" value={cfg.brandRev || ''} placeholder={D.brandRev} onChange={(v) => setField({ brandRev: v })} />);
+      fields.push(<StyleableField key="clockDate" fieldName="clockDate" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Date (manual override)" value={cfg.clockDate || ''} placeholder={D.clockDate} onChange={(v) => setField({ clockDate: v })} />);
+      fields.push(<StyleableField key="clockTime" fieldName="clockTime" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Time (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
+      fields.push(<StyleableField key="brandSheet" fieldName="brandSheet" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Sheet" value={cfg.brandSheet || ''} placeholder={D.brandSheet} onChange={(v) => setField({ brandSheet: v })} />);
+      fields.push(<StyleableField key="brandRev" fieldName="brandRev" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Rev" value={cfg.brandRev || ''} placeholder={D.brandRev} onChange={(v) => setField({ brandRev: v })} />);
 
       fields.push(SH('greeting', 'Hero sheet A-01'));
-      fields.push(<TextField key="greetingDimTop" label="Top dimension" value={cfg.greetingDimTop || ''} placeholder={D.greetingDimTop} onChange={(v) => setField({ greetingDimTop: v })} />);
-      fields.push(<TextField key="greetingDimLeft" label="Left dimension" value={cfg.greetingDimLeft || ''} placeholder={D.greetingDimLeft} onChange={(v) => setField({ greetingDimLeft: v })} />);
-      fields.push(<TextField key="greetingEyebrow" label="Eyebrow" value={cfg.greetingEyebrow || ''} placeholder={D.greetingEyebrow} onChange={(v) => setField({ greetingEyebrow: v })} />);
-      fields.push(<TextField key="greetingHeadline" label="Headline" value={cfg.greetingHeadline || ''} placeholder={D.greetingHeadline} onChange={(v) => setField({ greetingHeadline: v })} />);
-      fields.push(<TextAreaField key="greetingSubtitle" label="Subtitle" value={cfg.greetingSubtitle || ''} placeholder={D.greetingSubtitle} rows={3} onChange={(v) => setField({ greetingSubtitle: v })} />);
+      fields.push(<StyleableField key="greetingDimTop" fieldName="greetingDimTop" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Top dimension" value={cfg.greetingDimTop || ''} placeholder={D.greetingDimTop} onChange={(v) => setField({ greetingDimTop: v })} />);
+      fields.push(<StyleableField key="greetingDimLeft" fieldName="greetingDimLeft" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Left dimension" value={cfg.greetingDimLeft || ''} placeholder={D.greetingDimLeft} onChange={(v) => setField({ greetingDimLeft: v })} />);
+      fields.push(<StyleableField key="greetingEyebrow" fieldName="greetingEyebrow" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Eyebrow" value={cfg.greetingEyebrow || ''} placeholder={D.greetingEyebrow} onChange={(v) => setField({ greetingEyebrow: v })} />);
+      fields.push(<StyleableField key="greetingHeadline" fieldName="greetingHeadline" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Headline" value={cfg.greetingHeadline || ''} placeholder={D.greetingHeadline} onChange={(v) => setField({ greetingHeadline: v })} />);
+      fields.push(<StyleableAreaField key="greetingSubtitle" fieldName="greetingSubtitle" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Subtitle" value={cfg.greetingSubtitle || ''} placeholder={D.greetingSubtitle} rows={3} onChange={(v) => setField({ greetingSubtitle: v })} />);
 
       fields.push(SH('data', 'Data panels (A-01.1 through .4)'));
-      fields.push(<TextField key="clockbigLabel" label="Clock label" value={cfg.clockbigLabel || ''} placeholder={D.clockbigLabel} onChange={(v) => setField({ clockbigLabel: v })} />);
-      fields.push(<TextField key="clockbigVal" label="Clock value" value={cfg.clockbigVal || ''} placeholder={D.clockbigVal} onChange={(v) => setField({ clockbigVal: v })} />);
-      fields.push(<TextField key="clockbigCap" label="Clock caption" value={cfg.clockbigCap || ''} placeholder={D.clockbigCap} onChange={(v) => setField({ clockbigCap: v })} />);
+      fields.push(<StyleableField key="clockbigLabel" fieldName="clockbigLabel" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Clock label" value={cfg.clockbigLabel || ''} placeholder={D.clockbigLabel} onChange={(v) => setField({ clockbigLabel: v })} />);
+      fields.push(<StyleableField key="clockbigVal" fieldName="clockbigVal" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Clock value" value={cfg.clockbigVal || ''} placeholder={D.clockbigVal} onChange={(v) => setField({ clockbigVal: v })} />);
+      fields.push(<StyleableField key="clockbigCap" fieldName="clockbigCap" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Clock caption" value={cfg.clockbigCap || ''} placeholder={D.clockbigCap} onChange={(v) => setField({ clockbigCap: v })} />);
       // 2026-05-07 — live weather. Operator picks location (zip/auto)
       // and units; renderer fetches from Open-Meteo every 15 min.
       // Manual overrides below win if operator types into them.
       fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
       fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
-      fields.push(<TextField key="weatherTemp" label="Weather temp (manual override)" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
-      fields.push(<TextField key="weatherCondition" label="Weather condition (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
-      fields.push(<TextField key="attendanceValue" label="Attendance" value={cfg.attendanceValue || ''} placeholder={D.attendanceValue} onChange={(v) => setField({ attendanceValue: v })} />);
-      fields.push(<TextField key="attendanceCap" label="Attendance caption" value={cfg.attendanceCap || ''} placeholder={D.attendanceCap} onChange={(v) => setField({ attendanceCap: v })} />);
-      fields.push(<TextField key="countdownLabel" label="Countdown label" value={cfg.countdownLabel || ''} placeholder={D.countdownLabel} onChange={(v) => setField({ countdownLabel: v })} />);
-      fields.push(<TextField key="countdownValue" label="Countdown value" value={String(cfg.countdownValue ?? '')} placeholder={String(D.countdownValue)} onChange={(v) => setField({ countdownValue: v })} />);
-      fields.push(<TextField key="countdownSub" label="Countdown sub" value={cfg.countdownSub || ''} placeholder={D.countdownSub} onChange={(v) => setField({ countdownSub: v })} />);
+      fields.push(<StyleableField key="weatherTemp" fieldName="weatherTemp" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Weather temp (manual override)" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
+      fields.push(<StyleableField key="weatherCondition" fieldName="weatherCondition" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Weather condition (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
+      fields.push(<StyleableField key="attendanceValue" fieldName="attendanceValue" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Attendance" value={cfg.attendanceValue || ''} placeholder={D.attendanceValue} onChange={(v) => setField({ attendanceValue: v })} />);
+      fields.push(<StyleableField key="attendanceCap" fieldName="attendanceCap" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Attendance caption" value={cfg.attendanceCap || ''} placeholder={D.attendanceCap} onChange={(v) => setField({ attendanceCap: v })} />);
+      fields.push(<StyleableField key="countdownLabel" fieldName="countdownLabel" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Countdown label" value={cfg.countdownLabel || ''} placeholder={D.countdownLabel} onChange={(v) => setField({ countdownLabel: v })} />);
+      fields.push(<StyleableField key="countdownValue" fieldName="countdownValue" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Countdown value" value={String(cfg.countdownValue ?? '')} placeholder={String(D.countdownValue)} onChange={(v) => setField({ countdownValue: v })} />);
+      fields.push(<StyleableField key="countdownSub" fieldName="countdownSub" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Countdown sub" value={cfg.countdownSub || ''} placeholder={D.countdownSub} onChange={(v) => setField({ countdownSub: v })} />);
 
       fields.push(SH('schedule', 'Sheet A-02 schedule (3 events)'));
       for (const n of [0, 1, 2]) {
         const k = `event${n}` as 'event0' | 'event1' | 'event2';
-        fields.push(<TextField key={`${k}Time`} label={`#${n + 1} · Time`} value={cfg[`${k}Time`] || ''} placeholder={D[`${k}Time`]} onChange={(v) => setField({ [`${k}Time`]: v })} />);
-        fields.push(<TextField key={`${k}Code`} label={`#${n + 1} · Course`} value={cfg[`${k}Code`] || ''} placeholder={D[`${k}Code`]} onChange={(v) => setField({ [`${k}Code`]: v })} />);
-        fields.push(<TextField key={`${k}Name`} label={`#${n + 1} · Section`} value={cfg[`${k}Name`] || ''} placeholder={D[`${k}Name`]} onChange={(v) => setField({ [`${k}Name`]: v })} />);
-        fields.push(<TextField key={`${k}Room`} label={`#${n + 1} · Room`} value={cfg[`${k}Room`] || ''} placeholder={D[`${k}Room`]} onChange={(v) => setField({ [`${k}Room`]: v })} />);
-        fields.push(<TextField key={`${k}Who`} label={`#${n + 1} · Instructor`} value={cfg[`${k}Who`] || ''} placeholder={D[`${k}Who`]} onChange={(v) => setField({ [`${k}Who`]: v })} />);
+        fields.push(<StyleableField key={`${k}Time`} fieldName={`${k}Time`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`#${n + 1} · Time`} value={cfg[`${k}Time`] || ''} placeholder={D[`${k}Time`]} onChange={(v) => setField({ [`${k}Time`]: v })} />);
+        fields.push(<StyleableField key={`${k}Code`} fieldName={`${k}Code`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`#${n + 1} · Course`} value={cfg[`${k}Code`] || ''} placeholder={D[`${k}Code`]} onChange={(v) => setField({ [`${k}Code`]: v })} />);
+        fields.push(<StyleableField key={`${k}Name`} fieldName={`${k}Name`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`#${n + 1} · Section`} value={cfg[`${k}Name`] || ''} placeholder={D[`${k}Name`]} onChange={(v) => setField({ [`${k}Name`]: v })} />);
+        fields.push(<StyleableField key={`${k}Room`} fieldName={`${k}Room`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`#${n + 1} · Room`} value={cfg[`${k}Room`] || ''} placeholder={D[`${k}Room`]} onChange={(v) => setField({ [`${k}Room`]: v })} />);
+        fields.push(<StyleableField key={`${k}Who`} fieldName={`${k}Who`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`#${n + 1} · Instructor`} value={cfg[`${k}Who`] || ''} placeholder={D[`${k}Who`]} onChange={(v) => setField({ [`${k}Who`]: v })} />);
       }
 
       fields.push(SH('teacher', 'Sheet A-03 faculty profile'));
-      fields.push(<TextField key="teacherNum" label="Number" value={cfg.teacherNum || ''} placeholder={D.teacherNum} onChange={(v) => setField({ teacherNum: v })} />);
-      fields.push(<TextField key="teacherLabel" label="Label" value={cfg.teacherLabel || ''} placeholder={D.teacherLabel} onChange={(v) => setField({ teacherLabel: v })} />);
-      fields.push(<TextField key="teacherName" label="Name" value={cfg.teacherName || ''} placeholder={D.teacherName} onChange={(v) => setField({ teacherName: v })} />);
-      fields.push(<TextField key="teacherMeta" label="Meta" value={cfg.teacherMeta || ''} placeholder={D.teacherMeta} onChange={(v) => setField({ teacherMeta: v })} />);
-      fields.push(<TextAreaField key="teacherQuote" label="Quote" value={cfg.teacherQuote || ''} placeholder={D.teacherQuote} rows={3} onChange={(v) => setField({ teacherQuote: v })} />);
+      fields.push(<StyleableField key="teacherNum" fieldName="teacherNum" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Number" value={cfg.teacherNum || ''} placeholder={D.teacherNum} onChange={(v) => setField({ teacherNum: v })} />);
+      fields.push(<StyleableField key="teacherLabel" fieldName="teacherLabel" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Label" value={cfg.teacherLabel || ''} placeholder={D.teacherLabel} onChange={(v) => setField({ teacherLabel: v })} />);
+      fields.push(<StyleableField key="teacherName" fieldName="teacherName" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Name" value={cfg.teacherName || ''} placeholder={D.teacherName} onChange={(v) => setField({ teacherName: v })} />);
+      fields.push(<StyleableField key="teacherMeta" fieldName="teacherMeta" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Meta" value={cfg.teacherMeta || ''} placeholder={D.teacherMeta} onChange={(v) => setField({ teacherMeta: v })} />);
+      fields.push(<StyleableAreaField key="teacherQuote" fieldName="teacherQuote" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Quote" value={cfg.teacherQuote || ''} placeholder={D.teacherQuote} rows={3} onChange={(v) => setField({ teacherQuote: v })} />);
 
       fields.push(SH('announcement', 'Sheet A-04 advisory'));
-      fields.push(<TextField key="announcementTag" label="Tag" value={cfg.announcementTag || ''} placeholder={D.announcementTag} onChange={(v) => setField({ announcementTag: v })} />);
-      fields.push(<TextField key="announcementHeadline" label="Headline" value={cfg.announcementHeadline || ''} placeholder={D.announcementHeadline} onChange={(v) => setField({ announcementHeadline: v })} />);
-      fields.push(<TextAreaField key="announcementBody" label="Body" value={cfg.announcementBody || ''} placeholder={D.announcementBody} rows={3} onChange={(v) => setField({ announcementBody: v })} />);
-      fields.push(<TextField key="announcementDate" label="When" value={cfg.announcementDate || ''} placeholder={D.announcementDate} onChange={(v) => setField({ announcementDate: v })} />);
+      fields.push(<StyleableField key="announcementTag" fieldName="announcementTag" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Tag" value={cfg.announcementTag || ''} placeholder={D.announcementTag} onChange={(v) => setField({ announcementTag: v })} />);
+      fields.push(<StyleableField key="announcementHeadline" fieldName="announcementHeadline" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Headline" value={cfg.announcementHeadline || ''} placeholder={D.announcementHeadline} onChange={(v) => setField({ announcementHeadline: v })} />);
+      fields.push(<StyleableAreaField key="announcementBody" fieldName="announcementBody" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Body" value={cfg.announcementBody || ''} placeholder={D.announcementBody} rows={3} onChange={(v) => setField({ announcementBody: v })} />);
+      fields.push(<StyleableField key="announcementDate" fieldName="announcementDate" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="When" value={cfg.announcementDate || ''} placeholder={D.announcementDate} onChange={(v) => setField({ announcementDate: v })} />);
 
       fields.push(SH('ticker', 'Revision log ticker'));
-      fields.push(<TextField key="tickerTag" label="Tag" value={cfg.tickerTag || ''} placeholder={D.tickerTag} onChange={(v) => setField({ tickerTag: v })} />);
-      fields.push(<TextAreaField key="tickerMessage" label="RFI log messages" value={cfg.tickerMessage || ''} placeholder={D.tickerMessage} rows={3} onChange={(v) => setField({ tickerMessage: v })} />);
+      fields.push(<StyleableField key="tickerTag" fieldName="tickerTag" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Tag" value={cfg.tickerTag || ''} placeholder={D.tickerTag} onChange={(v) => setField({ tickerTag: v })} />);
+      fields.push(<StyleableAreaField key="tickerMessage" fieldName="tickerMessage" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="RFI log messages" value={cfg.tickerMessage || ''} placeholder={D.tickerMessage} rows={3} onChange={(v) => setField({ tickerMessage: v })} />);
       break;
     }
     case 'HS_ZINE': {
@@ -2445,57 +2445,57 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
         <div key={`sh-${key}`} className="pt-3 pb-1 px-1 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200">{label}</div>
       );
       fields.push(SH('school', 'Masthead'));
-      fields.push(<TextField key="schoolName" label="Big title" value={cfg.schoolName || ''} placeholder={D.schoolName} onChange={(v) => setField({ schoolName: v })} />);
-      fields.push(<TextField key="schoolSub" label="Sub line" value={cfg.schoolSub || ''} placeholder={D.schoolSub} onChange={(v) => setField({ schoolSub: v })} />);
-      fields.push(<TextField key="brandStamp1" label="Stamp 1 (red)" value={cfg.brandStamp1 || ''} placeholder={D.brandStamp1} onChange={(v) => setField({ brandStamp1: v })} />);
-      fields.push(<TextField key="brandStamp2" label="Stamp 2 (ink)" value={cfg.brandStamp2 || ''} placeholder={D.brandStamp2} onChange={(v) => setField({ brandStamp2: v })} />);
-      fields.push(<TextField key="brandStamp3" label="Stamp 3 (cyan)" value={cfg.brandStamp3 || ''} placeholder={D.brandStamp3} onChange={(v) => setField({ brandStamp3: v })} />);
+      fields.push(<StyleableField key="schoolName" fieldName="schoolName" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Big title" value={cfg.schoolName || ''} placeholder={D.schoolName} onChange={(v) => setField({ schoolName: v })} />);
+      fields.push(<StyleableField key="schoolSub" fieldName="schoolSub" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Sub line" value={cfg.schoolSub || ''} placeholder={D.schoolSub} onChange={(v) => setField({ schoolSub: v })} />);
+      fields.push(<StyleableField key="brandStamp1" fieldName="brandStamp1" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Stamp 1 (red)" value={cfg.brandStamp1 || ''} placeholder={D.brandStamp1} onChange={(v) => setField({ brandStamp1: v })} />);
+      fields.push(<StyleableField key="brandStamp2" fieldName="brandStamp2" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Stamp 2 (ink)" value={cfg.brandStamp2 || ''} placeholder={D.brandStamp2} onChange={(v) => setField({ brandStamp2: v })} />);
+      fields.push(<StyleableField key="brandStamp3" fieldName="brandStamp3" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Stamp 3 (cyan)" value={cfg.brandStamp3 || ''} placeholder={D.brandStamp3} onChange={(v) => setField({ brandStamp3: v })} />);
 
       fields.push(SH('greeting', 'Hero sheet'));
-      fields.push(<TextField key="greetingEyebrow" label="Eyebrow" value={cfg.greetingEyebrow || ''} placeholder={D.greetingEyebrow} onChange={(v) => setField({ greetingEyebrow: v })} />);
-      fields.push(<TextField key="greetingHeadline1" label="Headline pt1" value={cfg.greetingHeadline1 || ''} placeholder={D.greetingHeadline1} onChange={(v) => setField({ greetingHeadline1: v })} />);
-      fields.push(<TextField key="greetingHeadline2" label="Headline pt2 (yellow highlight)" value={cfg.greetingHeadline2 || ''} placeholder={D.greetingHeadline2} onChange={(v) => setField({ greetingHeadline2: v })} />);
-      fields.push(<TextField key="greetingHeadline3" label="Headline pt3" value={cfg.greetingHeadline3 || ''} placeholder={D.greetingHeadline3} onChange={(v) => setField({ greetingHeadline3: v })} />);
-      fields.push(<TextAreaField key="greetingSubtitle" label="Subtitle" value={cfg.greetingSubtitle || ''} placeholder={D.greetingSubtitle} rows={3} onChange={(v) => setField({ greetingSubtitle: v })} />);
+      fields.push(<StyleableField key="greetingEyebrow" fieldName="greetingEyebrow" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Eyebrow" value={cfg.greetingEyebrow || ''} placeholder={D.greetingEyebrow} onChange={(v) => setField({ greetingEyebrow: v })} />);
+      fields.push(<StyleableField key="greetingHeadline1" fieldName="greetingHeadline1" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Headline pt1" value={cfg.greetingHeadline1 || ''} placeholder={D.greetingHeadline1} onChange={(v) => setField({ greetingHeadline1: v })} />);
+      fields.push(<StyleableField key="greetingHeadline2" fieldName="greetingHeadline2" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Headline pt2 (yellow highlight)" value={cfg.greetingHeadline2 || ''} placeholder={D.greetingHeadline2} onChange={(v) => setField({ greetingHeadline2: v })} />);
+      fields.push(<StyleableField key="greetingHeadline3" fieldName="greetingHeadline3" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Headline pt3" value={cfg.greetingHeadline3 || ''} placeholder={D.greetingHeadline3} onChange={(v) => setField({ greetingHeadline3: v })} />);
+      fields.push(<StyleableAreaField key="greetingSubtitle" fieldName="greetingSubtitle" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Subtitle" value={cfg.greetingSubtitle || ''} placeholder={D.greetingSubtitle} rows={3} onChange={(v) => setField({ greetingSubtitle: v })} />);
 
       fields.push(SH('teacher', 'Teacher poster'));
-      fields.push(<TextField key="teacherCaption" label="Big name caption" value={cfg.teacherCaption || ''} placeholder={D.teacherCaption} onChange={(v) => setField({ teacherCaption: v })} />);
-      fields.push(<TextField key="teacherSub" label="Sub caption" value={cfg.teacherSub || ''} placeholder={D.teacherSub} onChange={(v) => setField({ teacherSub: v })} />);
+      fields.push(<StyleableField key="teacherCaption" fieldName="teacherCaption" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Big name caption" value={cfg.teacherCaption || ''} placeholder={D.teacherCaption} onChange={(v) => setField({ teacherCaption: v })} />);
+      fields.push(<StyleableField key="teacherSub" fieldName="teacherSub" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Sub caption" value={cfg.teacherSub || ''} placeholder={D.teacherSub} onChange={(v) => setField({ teacherSub: v })} />);
 
       fields.push(SH('stats', 'Side stats'));
-      fields.push(<TextField key="attendanceValue" label="Attendance value" value={cfg.attendanceValue || ''} placeholder={D.attendanceValue} onChange={(v) => setField({ attendanceValue: v })} />);
-      fields.push(<TextField key="attendanceCap" label="Attendance caption" value={cfg.attendanceCap || ''} placeholder={D.attendanceCap} onChange={(v) => setField({ attendanceCap: v })} />);
-      fields.push(<TextField key="countdownLabel" label="Countdown label" value={cfg.countdownLabel || ''} placeholder={D.countdownLabel} onChange={(v) => setField({ countdownLabel: v })} />);
-      fields.push(<TextField key="countdownValue" label="Countdown value" value={String(cfg.countdownValue ?? '')} placeholder={String(D.countdownValue)} onChange={(v) => setField({ countdownValue: v })} />);
-      fields.push(<TextField key="countdownSub" label="Countdown sub" value={cfg.countdownSub || ''} placeholder={D.countdownSub} onChange={(v) => setField({ countdownSub: v })} />);
+      fields.push(<StyleableField key="attendanceValue" fieldName="attendanceValue" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Attendance value" value={cfg.attendanceValue || ''} placeholder={D.attendanceValue} onChange={(v) => setField({ attendanceValue: v })} />);
+      fields.push(<StyleableField key="attendanceCap" fieldName="attendanceCap" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Attendance caption" value={cfg.attendanceCap || ''} placeholder={D.attendanceCap} onChange={(v) => setField({ attendanceCap: v })} />);
+      fields.push(<StyleableField key="countdownLabel" fieldName="countdownLabel" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Countdown label" value={cfg.countdownLabel || ''} placeholder={D.countdownLabel} onChange={(v) => setField({ countdownLabel: v })} />);
+      fields.push(<StyleableField key="countdownValue" fieldName="countdownValue" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Countdown value" value={String(cfg.countdownValue ?? '')} placeholder={String(D.countdownValue)} onChange={(v) => setField({ countdownValue: v })} />);
+      fields.push(<StyleableField key="countdownSub" fieldName="countdownSub" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Countdown sub" value={cfg.countdownSub || ''} placeholder={D.countdownSub} onChange={(v) => setField({ countdownSub: v })} />);
 
       fields.push(SH('events', 'Polaroid events (3)'));
       for (const n of [0, 1, 2]) {
         const k = `event${n}` as 'event0' | 'event1' | 'event2';
-        fields.push(<TextField key={`${k}When`} label={`#${n + 1} · When`} value={cfg[`${k}When`] || ''} placeholder={D[`${k}When`]} onChange={(v) => setField({ [`${k}When`]: v })} />);
-        fields.push(<TextField key={`${k}Name`} label={`#${n + 1} · Title`} value={cfg[`${k}Name`] || ''} placeholder={D[`${k}Name`]} onChange={(v) => setField({ [`${k}Name`]: v })} />);
+        fields.push(<StyleableField key={`${k}When`} fieldName={`${k}When`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`#${n + 1} · When`} value={cfg[`${k}When`] || ''} placeholder={D[`${k}When`]} onChange={(v) => setField({ [`${k}When`]: v })} />);
+        fields.push(<StyleableField key={`${k}Name`} fieldName={`${k}Name`} styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label={`#${n + 1} · Title`} value={cfg[`${k}Name`] || ''} placeholder={D[`${k}Name`]} onChange={(v) => setField({ [`${k}Name`]: v })} />);
       }
-      fields.push(<TextField key="countdownBigValue" label="Big red countdown value" value={String(cfg.countdownBigValue ?? '')} placeholder={String(D.countdownBigValue)} onChange={(v) => setField({ countdownBigValue: v })} />);
-      fields.push(<TextField key="countdownBigLabel" label="Big red countdown label" value={cfg.countdownBigLabel || ''} placeholder={D.countdownBigLabel} onChange={(v) => setField({ countdownBigLabel: v })} />);
+      fields.push(<StyleableField key="countdownBigValue" fieldName="countdownBigValue" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Big red countdown value" value={String(cfg.countdownBigValue ?? '')} placeholder={String(D.countdownBigValue)} onChange={(v) => setField({ countdownBigValue: v })} />);
+      fields.push(<StyleableField key="countdownBigLabel" fieldName="countdownBigLabel" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Big red countdown label" value={cfg.countdownBigLabel || ''} placeholder={D.countdownBigLabel} onChange={(v) => setField({ countdownBigLabel: v })} />);
 
       fields.push(SH('announcement', 'Ransom-letter announcement'));
-      fields.push(<TextField key="announcementTag" label="Tag" value={cfg.announcementTag || ''} placeholder={D.announcementTag} onChange={(v) => setField({ announcementTag: v })} />);
-      fields.push(<TextField key="announcementHeadline" label="Headline" value={cfg.announcementHeadline || ''} placeholder={D.announcementHeadline} onChange={(v) => setField({ announcementHeadline: v })} />);
-      fields.push(<TextAreaField key="announcementBody" label="Body" value={cfg.announcementBody || ''} placeholder={D.announcementBody} rows={3} onChange={(v) => setField({ announcementBody: v })} />);
-      fields.push(<TextField key="announcementDate" label="When" value={cfg.announcementDate || ''} placeholder={D.announcementDate} onChange={(v) => setField({ announcementDate: v })} />);
+      fields.push(<StyleableField key="announcementTag" fieldName="announcementTag" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Tag" value={cfg.announcementTag || ''} placeholder={D.announcementTag} onChange={(v) => setField({ announcementTag: v })} />);
+      fields.push(<StyleableField key="announcementHeadline" fieldName="announcementHeadline" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Headline" value={cfg.announcementHeadline || ''} placeholder={D.announcementHeadline} onChange={(v) => setField({ announcementHeadline: v })} />);
+      fields.push(<StyleableAreaField key="announcementBody" fieldName="announcementBody" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Body" value={cfg.announcementBody || ''} placeholder={D.announcementBody} rows={3} onChange={(v) => setField({ announcementBody: v })} />);
+      fields.push(<StyleableField key="announcementDate" fieldName="announcementDate" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="When" value={cfg.announcementDate || ''} placeholder={D.announcementDate} onChange={(v) => setField({ announcementDate: v })} />);
 
       fields.push(SH('clock', 'Floating clock — live data'));
-      fields.push(<TextField key="clockLabel" label="Label" value={cfg.clockLabel || ''} placeholder={D.clockLabel} onChange={(v) => setField({ clockLabel: v })} />);
+      fields.push(<StyleableField key="clockLabel" fieldName="clockLabel" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Label" value={cfg.clockLabel || ''} placeholder={D.clockLabel} onChange={(v) => setField({ clockLabel: v })} />);
       fields.push(<SelectField key="clockTimezone" label="Timezone" value={cfg.clockTimezone || ''} options={US_TIMEZONE_OPTIONS as unknown as Array<[string, string]>} onChange={(v) => setField({ clockTimezone: v })} />);
-      fields.push(<TextField key="clockTime" label="Time (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
+      fields.push(<StyleableField key="clockTime" fieldName="clockTime" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Time (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
       // Live weather — Zine renders the full 'tue · apr 21 · 46° · clear' lowercase string.
       fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
       fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
-      fields.push(<TextField key="weatherCondition" label="Date/weather line (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
+      fields.push(<StyleableField key="weatherCondition" fieldName="weatherCondition" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Date/weather line (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
 
       fields.push(SH('ticker', 'xeroxwire ticker'));
-      fields.push(<TextField key="tickerTag" label="Tag" value={cfg.tickerTag || ''} placeholder={D.tickerTag} onChange={(v) => setField({ tickerTag: v })} />);
-      fields.push(<TextAreaField key="tickerMessage" label="Typewriter crawl" value={cfg.tickerMessage || ''} placeholder={D.tickerMessage} rows={3} onChange={(v) => setField({ tickerMessage: v })} />);
+      fields.push(<StyleableField key="tickerTag" fieldName="tickerTag" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Tag" value={cfg.tickerTag || ''} placeholder={D.tickerTag} onChange={(v) => setField({ tickerTag: v })} />);
+      fields.push(<StyleableAreaField key="tickerMessage" fieldName="tickerMessage" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Typewriter crawl" value={cfg.tickerMessage || ''} placeholder={D.tickerMessage} rows={3} onChange={(v) => setField({ tickerMessage: v })} />);
       break;
     }
     // ─── Sprint 8c follow-up — STREAMING widget editor ─────────────
@@ -3000,6 +3000,14 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
           list.push(k);
           groups.set(prefix, list);
         }
+        // 2026-05-08 — HS portrait widgets get the per-field style
+        // disclosure (font-size + color) wired in via StyleableField.
+        // MS / Fitness widgets stick with plain TextField for now —
+        // they don't have the runtime useTextStyleOverrides hook on
+        // their widget side, so showing the disclosure would lie about
+        // what works.
+        const isHsWidget = typeof zone.widgetType === 'string' && zone.widgetType.startsWith('HS_');
+        const styleSetter = (s: FieldStyleMap) => setField({ __styles: s });
         for (const [prefix, keys] of groups) {
           fields.push(SH(prefix, prettySectionLabel(prefix === '_root' ? 'general' : prefix)));
           for (const key of keys) {
@@ -3011,24 +3019,51 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
             const looksLong = defaultValue.length > 80 || /\n/.test(defaultValue);
             if (looksLong) {
               fields.push(
-                <TextAreaField
-                  key={key}
-                  label={prettyFieldLabel(key)}
-                  value={currentValue}
-                  placeholder={defaultValue}
-                  rows={3}
-                  onChange={(v) => setField({ [key]: v })}
-                />,
+                isHsWidget ? (
+                  <StyleableAreaField
+                    key={key}
+                    fieldName={key}
+                    styles={cfg.__styles}
+                    onStylesChange={styleSetter}
+                    label={prettyFieldLabel(key)}
+                    value={currentValue}
+                    placeholder={defaultValue}
+                    rows={3}
+                    onChange={(v) => setField({ [key]: v })}
+                  />
+                ) : (
+                  <TextAreaField
+                    key={key}
+                    label={prettyFieldLabel(key)}
+                    value={currentValue}
+                    placeholder={defaultValue}
+                    rows={3}
+                    onChange={(v) => setField({ [key]: v })}
+                  />
+                ),
               );
             } else {
               fields.push(
-                <TextField
-                  key={key}
-                  label={prettyFieldLabel(key)}
-                  value={currentValue}
-                  placeholder={defaultValue}
-                  onChange={(v) => setField({ [key]: v })}
-                />,
+                isHsWidget ? (
+                  <StyleableField
+                    key={key}
+                    fieldName={key}
+                    styles={cfg.__styles}
+                    onStylesChange={styleSetter}
+                    label={prettyFieldLabel(key)}
+                    value={currentValue}
+                    placeholder={defaultValue}
+                    onChange={(v) => setField({ [key]: v })}
+                  />
+                ) : (
+                  <TextField
+                    key={key}
+                    label={prettyFieldLabel(key)}
+                    value={currentValue}
+                    placeholder={defaultValue}
+                    onChange={(v) => setField({ [key]: v })}
+                  />
+                ),
               );
             }
           }
