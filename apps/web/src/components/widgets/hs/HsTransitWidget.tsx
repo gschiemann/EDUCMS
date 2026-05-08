@@ -255,34 +255,34 @@ const CSS = `
 .hs-tr-code { background: #ffb020; color: #000; height: 100%; display: grid; place-items: center; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 120px; letter-spacing: .02em; }
 .hs-tr-name { padding: 0 40px; display: flex; flex-direction: column; gap: 4px; }
 .hs-tr-line1 { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 84px; letter-spacing: .04em; color: #fff; line-height: 1; }
-.hs-tr-line2 { font-family: 'JetBrains Mono', monospace; font-size: 38px; letter-spacing: .2em; color: #6b7a93; margin-top: 10px; text-transform: uppercase; }
+.hs-tr-line2 { font-family: 'JetBrains Mono', monospace; font-size: 58px; letter-spacing: .18em; color: #6b7a93; margin-top: 10px; text-transform: uppercase; }
 .hs-tr-clock { padding: 0 40px; display: flex; gap: 40px; align-items: center; }
 .hs-tr-clock-t { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 110px; line-height: 1; color: #ffb020; letter-spacing: .02em; text-shadow: 0 0 20px rgba(255,176,32,.35); }
-.hs-tr-clock-meta { font-family: 'JetBrains Mono', monospace; font-size: 36px; color: #6b7a93; letter-spacing: .14em; line-height: 1.25; text-transform: uppercase; }
+.hs-tr-clock-meta { font-family: 'JetBrains Mono', monospace; font-size: 52px; color: #6b7a93; letter-spacing: .14em; line-height: 1.2; text-transform: uppercase; }
 .hs-tr-boarding { position: absolute; top: 220px; left: 40px; right: 40px; height: 400px; background: linear-gradient(180deg, #141d36, #0b1223); border: 4px solid #ffb020; display: grid; grid-template-columns: 340px 1fr 420px; }
 .hs-tr-side { background: #ffb020; color: #000; display: flex; flex-direction: column; justify-content: center; align-items: center; font-family: 'Oswald', sans-serif; font-weight: 700; text-align: center; gap: 10px; }
-.hs-tr-side-tag { font-size: 36px; letter-spacing: .25em; text-transform: uppercase; }
+.hs-tr-side-tag { font-size: 52px; letter-spacing: .22em; text-transform: uppercase; }
 .hs-tr-side-gate { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 160px; line-height: .9; letter-spacing: .02em; }
 .hs-tr-mid { padding: 28px 48px; display: flex; flex-direction: column; justify-content: center; gap: 6px; }
-.hs-tr-eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 42px; letter-spacing: .2em; color: #ffb020; text-transform: uppercase; }
+.hs-tr-eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 60px; letter-spacing: .2em; color: #ffb020; text-transform: uppercase; }
 .hs-tr-h1 { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 200px; line-height: .9; letter-spacing: .01em; color: #fff; margin: 6px 0 0; text-transform: uppercase; }
-.hs-tr-sub { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 46px; color: #c7d2e4; margin-top: 14px; line-height: 1.25; }
+.hs-tr-sub { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 78px; color: #c7d2e4; margin-top: 14px; line-height: 1.2; }
 .hs-tr-rightp { display: flex; flex-direction: column; justify-content: center; border-left: 2px dashed rgba(255,176,32,.3); padding: 28px 40px; gap: 10px; }
-.hs-tr-k { font-family: 'JetBrains Mono', monospace; font-size: 36px; letter-spacing: .2em; color: #6b7a93; text-transform: uppercase; }
+.hs-tr-k { font-family: 'JetBrains Mono', monospace; font-size: 52px; letter-spacing: .2em; color: #6b7a93; text-transform: uppercase; }
 .hs-tr-v { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 76px; color: #fff; line-height: 1; }
-.hs-tr-status { margin-top: 14px; display: inline-block; align-self: flex-start; padding: 12px 26px; background: #58e07a; color: #000; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 44px; letter-spacing: .18em; text-transform: uppercase; }
+.hs-tr-status { margin-top: 14px; display: inline-block; align-self: flex-start; padding: 12px 26px; background: #58e07a; color: #000; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 60px; letter-spacing: .18em; text-transform: uppercase; }
 .hs-tr-board { position: absolute; top: 660px; left: 40px; right: 40px; background: #000; border: 4px solid #ffb020; }
-.hs-tr-head { display: grid; grid-template-columns: 220px 360px 1fr 220px 260px 280px; background: #ffb020; color: #000; padding: 18px 30px; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 44px; letter-spacing: .2em; text-transform: uppercase; }
-.hs-tr-row { display: grid; grid-template-columns: 220px 360px 1fr 220px 260px 280px; padding: 22px 30px; border-bottom: 2px solid #141d36; align-items: center; }
+.hs-tr-head { display: grid; grid-template-columns: 240px 380px 1fr 240px 320px 320px; background: #ffb020; color: #000; padding: 18px 30px; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 58px; letter-spacing: .18em; text-transform: uppercase; }
+.hs-tr-row { display: grid; grid-template-columns: 240px 380px 1fr 240px 320px 320px; padding: 22px 30px; border-bottom: 2px solid #141d36; align-items: center; }
 .hs-tr-row:nth-child(odd) { background: #080e1c; }
 .hs-tr-row:last-child { border-bottom: 0; }
 .hs-tr-t { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 72px; color: #fff; letter-spacing: .02em; }
-.hs-tr-rcode { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 54px; color: #ffb020; letter-spacing: .08em; }
-.hs-tr-dest { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 64px; color: #fff; letter-spacing: .02em; text-transform: uppercase; line-height: 1; }
-.hs-tr-dest-sub { display: block; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 38px; color: #6b7a93; text-transform: none; letter-spacing: .05em; margin-top: 8px; }
+.hs-tr-rcode { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 70px; color: #ffb020; letter-spacing: .08em; }
+.hs-tr-dest { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 70px; color: #fff; letter-spacing: .02em; text-transform: uppercase; line-height: 1; }
+.hs-tr-dest-sub { display: block; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 56px; color: #6b7a93; text-transform: none; letter-spacing: .04em; margin-top: 8px; }
 .hs-tr-gate { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 80px; color: #ffb020; letter-spacing: .04em; }
-.hs-tr-room { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 40px; color: #c7d2e4; }
-.hs-tr-st { display: inline-block; padding: 10px 22px; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 36px; letter-spacing: .16em; text-transform: uppercase; }
+.hs-tr-room { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 60px; color: #c7d2e4; }
+.hs-tr-st { display: inline-block; padding: 10px 22px; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 52px; letter-spacing: .14em; text-transform: uppercase; }
 .hs-tr-st-now { background: #58e07a; color: #000; }
 .hs-tr-st-soon { background: #ffb020; color: #000; }
 .hs-tr-st-delay { background: #ff5b5b; color: #000; animation: hsTrPulse 1.6s infinite; }
@@ -291,23 +291,23 @@ const CSS = `
 @keyframes hsTrPulse { 0%,100% { opacity: 1; } 50% { opacity: .5; } }
 .hs-tr-lower { position: absolute; bottom: 160px; left: 40px; right: 40px; height: 440px; display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 28px; }
 .hs-tr-panel { background: #0b1223; border: 4px solid #ffb020; padding: 28px 36px; position: relative; display: flex; flex-direction: column; gap: 10px; }
-.hs-tr-panel::before { content: attr(data-label); position: absolute; top: -22px; left: 24px; background: #ffb020; color: #000; padding: 6px 20px; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 34px; letter-spacing: .22em; text-transform: uppercase; }
+.hs-tr-panel::before { content: attr(data-label); position: absolute; top: -22px; left: 24px; background: #ffb020; color: #000; padding: 6px 20px; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 52px; letter-spacing: .2em; text-transform: uppercase; }
 .hs-tr-teacher { display: grid; grid-template-columns: 280px 1fr; gap: 32px; }
 .hs-tr-photo { width: 280px; height: 340px; background: linear-gradient(135deg, #1e2a48, #0b1223); border: 3px solid #ffb020; position: relative; overflow: hidden; display: grid; place-items: center; }
 .hs-tr-num { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 220px; color: #ffb020; opacity: .35; line-height: .8; }
-.hs-tr-teacher-eb { font-family: 'JetBrains Mono', monospace; font-size: 36px; color: #ffb020; letter-spacing: .2em; text-transform: uppercase; }
+.hs-tr-teacher-eb { font-family: 'JetBrains Mono', monospace; font-size: 52px; color: #ffb020; letter-spacing: .2em; text-transform: uppercase; }
 .hs-tr-h2 { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 110px; color: #fff; letter-spacing: .02em; line-height: .95; margin: 6px 0 0; text-transform: uppercase; }
-.hs-tr-teacher-meta { font-family: 'JetBrains Mono', monospace; font-size: 32px; color: #6b7a93; letter-spacing: .12em; margin-top: 12px; text-transform: uppercase; }
-.hs-tr-quote { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 38px; color: #c7d2e4; font-style: italic; line-height: 1.3; margin-top: 18px; }
-.hs-tr-alert-tag { font-family: 'JetBrains Mono', monospace; font-size: 32px; letter-spacing: .2em; color: #ff5b5b; text-transform: uppercase; }
+.hs-tr-teacher-meta { font-family: 'JetBrains Mono', monospace; font-size: 56px; color: #6b7a93; letter-spacing: .1em; margin-top: 12px; text-transform: uppercase; }
+.hs-tr-quote { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 70px; color: #c7d2e4; font-style: italic; line-height: 1.2; margin-top: 18px; }
+.hs-tr-alert-tag { font-family: 'JetBrains Mono', monospace; font-size: 56px; letter-spacing: .18em; color: #ff5b5b; text-transform: uppercase; }
 .hs-tr-alert-h3 { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 84px; color: #fff; line-height: .95; margin: 8px 0 0; text-transform: uppercase; }
-.hs-tr-alert-p { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 38px; color: #c7d2e4; margin: 12px 0 0; line-height: 1.3; }
-.hs-tr-alert-when { font-family: 'JetBrains Mono', monospace; font-size: 32px; color: #ffb020; letter-spacing: .14em; margin-top: 14px; text-transform: uppercase; }
-.hs-tr-cd-lbl { font-family: 'JetBrains Mono', monospace; font-size: 36px; color: #ffb020; letter-spacing: .2em; text-transform: uppercase; }
+.hs-tr-alert-p { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 70px; color: #c7d2e4; margin: 12px 0 0; line-height: 1.2; }
+.hs-tr-alert-when { font-family: 'JetBrains Mono', monospace; font-size: 52px; color: #ffb020; letter-spacing: .14em; margin-top: 14px; text-transform: uppercase; }
+.hs-tr-cd-lbl { font-family: 'JetBrains Mono', monospace; font-size: 56px; color: #ffb020; letter-spacing: .2em; text-transform: uppercase; }
 .hs-tr-cd-v { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 280px; line-height: .85; color: #fff; letter-spacing: -.01em; text-shadow: 0 0 40px rgba(255,176,32,.25); }
-.hs-tr-cd-until { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 38px; color: #6b7a93; letter-spacing: .06em; margin-top: 6px; }
+.hs-tr-cd-until { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 56px; color: #6b7a93; letter-spacing: .06em; margin-top: 6px; }
 .hs-tr-ticker { position: absolute; bottom: 0; left: 0; right: 0; height: 100px; background: #ffb020; color: #000; display: flex; align-items: center; overflow: hidden; border-top: 4px solid #000; }
-.hs-tr-tk-tag { background: #000; color: #ffb020; height: 100%; display: flex; align-items: center; padding: 0 38px; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 42px; letter-spacing: .2em; flex-shrink: 0; }
-.hs-tr-tk-msg { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 44px; padding-left: 40px; white-space: nowrap; letter-spacing: .14em; text-transform: uppercase; animation: hsTrScroll 55s linear infinite; display: inline-flex; }
+.hs-tr-tk-tag { background: #000; color: #ffb020; height: 100%; display: flex; align-items: center; padding: 0 38px; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 62px; letter-spacing: .18em; flex-shrink: 0; }
+.hs-tr-tk-msg { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 64px; padding-left: 40px; white-space: nowrap; letter-spacing: .12em; text-transform: uppercase; animation: hsTrScroll 55s linear infinite; display: inline-flex; }
 @keyframes hsTrScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 `;
