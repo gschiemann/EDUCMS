@@ -50,6 +50,15 @@ export interface HolidayConfig {
    * the iframe via postMessage on every change.
    */
   fields?: Record<string, string>;
+  /**
+   * Per-field style overrides (fontSize / color / fontWeight) keyed
+   * by the iframe's data-field attribute. Forwarded to the iframe
+   * via postMessage; applied as inline styles by _style-bridge.js
+   * inside each holiday HTML. Cleared values fall back to the CSS
+   * class default. Mirrors the HS widget per-element style override
+   * mechanism (useTextStyleOverrides) on the iframe side.
+   */
+  __styles?: Record<string, { fontSize?: number; color?: string; fontWeight?: number }>;
 }
 
 /**
@@ -100,6 +109,7 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
   const gradeLevel: HolidayGradeLevel = config.gradeLevel || 'es';
   const portrait: boolean = !!config.portrait;
   const fields = config.fields || {};
+  const styleOverrides = config.__styles;
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
@@ -152,6 +162,14 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
             );
           } catch { /* swallow */ }
         });
+        // Also re-flush per-field style overrides (font-size + color +
+        // weight). Posted to _style-bridge.js inside each holiday HTML.
+        try {
+          iframeRef.current?.contentWindow?.postMessage(
+            { type: 'template-apply-styles', styles: config.__styles || {} },
+            window.location.origin,
+          );
+        } catch { /* swallow */ }
       } else if (d.type === 'holiday:fieldClicked' && typeof d.key === 'string') {
         // Same event the themed widgets dispatch — so the canvas
         // click-to-edit flow lands here uniformly. PropertiesPanel
@@ -169,7 +187,7 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [config.fields]);
+  }, [config.fields, config.__styles]);
 
   // ── Push field updates DOWN to the iframe whenever they change.
   // We do this in an effect (not on the iframe element) so even the
@@ -187,6 +205,22 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
       } catch { /* swallow */ }
     });
   }, [fields]);
+
+  // ── Push per-field style overrides DOWN to the iframe whenever they
+  // change. Same shape as fields: post on every commit; the iframe-side
+  // _style-bridge.js diffs against its last-applied map and writes
+  // inline styles. An empty / missing entry clears the inline style on
+  // that data-field so the CSS class default returns.
+  useEffect(() => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    try {
+      win.postMessage(
+        { type: 'template-apply-styles', styles: styleOverrides || {} },
+        window.location.origin,
+      );
+    } catch { /* swallow */ }
+  }, [styleOverrides]);
 
   return (
     <div ref={wrapperRef} className="w-full h-full overflow-hidden bg-black">
