@@ -368,7 +368,7 @@ const CSS = `
 }
 .hs-bcp-sub {
   font-family: 'JetBrains Mono', monospace; font-weight: 500;
-  font-size: 38px; letter-spacing: .26em; color: #8a93a6;
+  font-size: 48px; letter-spacing: .26em; color: #8a93a6;
   text-transform: uppercase; flex-basis: 100%;
   margin-top: -8px;
 }
@@ -405,7 +405,7 @@ const CSS = `
 }
 .hs-bcp-clockpill-lbl {
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 34px; letter-spacing: .26em; color: #8a93a6;
+  font-size: 48px; letter-spacing: .26em; color: #8a93a6;
   text-transform: uppercase;
 }
 .hs-bcp-clockpill-val {
@@ -422,7 +422,7 @@ const CSS = `
 @keyframes hsBcpBlink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
 .hs-bcp-clockpill-cap {
   font-family: 'Inter', sans-serif; font-weight: 600;
-  font-size: 36px; color: #cbd5e1; text-align: right;
+  font-size: 48px; color: #cbd5e1; text-align: right;
 }
 
 .hs-bcp-sat {
@@ -459,7 +459,7 @@ const CSS = `
   display: inline-block;
   font-family: 'Barlow Condensed', sans-serif; font-weight: 900;
   background: #0a0f1a; color: #fff; padding: 8px 24px 12px;
-  font-size: 44px; letter-spacing: .18em; text-transform: uppercase;
+  font-size: 58px; letter-spacing: .18em; text-transform: uppercase;
 }
 .hs-bcp-guest-row {
   display: grid; grid-template-columns: 720px 1fr; gap: 56px;
@@ -512,13 +512,13 @@ const CSS = `
 .hs-bcp-mono {
   position: absolute; top: 24px; left: 24px; z-index: 3;
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 38px; color: #0a0f1a; background: #ffd83d;
+  font-size: 48px; color: #0a0f1a; background: #ffd83d;
   padding: 8px 16px; letter-spacing: .1em;
 }
 .hs-bcp-portrait-cam {
   position: absolute; bottom: 24px; right: 24px; z-index: 3;
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 40px; color: #fff; background: rgba(239,43,43,.9);
+  font-size: 48px; color: #fff; background: rgba(239,43,43,.9);
   padding: 8px 16px; letter-spacing: .14em;
 }
 
@@ -546,12 +546,12 @@ const CSS = `
 }
 .hs-bcp-meta {
   font-family: 'JetBrains Mono', monospace; font-weight: 500;
-  font-size: 40px; color: #ffd83d; letter-spacing: .14em;
+  font-size: 58px; color: #ffd83d; letter-spacing: .12em;
   text-transform: uppercase; margin-top: 6px;
 }
 .hs-bcp-quote {
   font-family: 'Inter', sans-serif; font-weight: 500;
-  font-size: 48px; color: #334155; font-style: italic; line-height: 1.25;
+  font-size: 78px; color: #334155; font-style: italic; line-height: 1.2;
   border-left: 6px solid #ef2b2b; padding: 8px 0 8px 28px;
 }
 .hs-bcp-greeting { display: flex; flex-direction: column; gap: 14px; margin-top: 8px; }
@@ -560,7 +560,7 @@ const CSS = `
   font-family: 'Barlow Condensed', sans-serif; font-weight: 900;
   background: #0a0f1a; color: #ffd83d;
   padding: 10px 22px 12px;
-  font-size: 44px; letter-spacing: .16em; text-transform: uppercase;
+  font-size: 58px; letter-spacing: .16em; text-transform: uppercase;
 }
 .hs-bcp-h1 {
   font-family: 'Barlow Condensed', sans-serif; font-weight: 900;
@@ -569,7 +569,7 @@ const CSS = `
 }
 .hs-bcp-subtitle {
   font-family: 'Inter', sans-serif; font-weight: 600;
-  font-size: 44px; color: #334155; line-height: 1.25;
+  font-size: 78px; color: #334155; line-height: 1.2;
 }
 
 /* ============================ REGION 3: BREAKING STORY CARD ~1800-2700 ============================ */
@@ -595,11 +595,11 @@ const CSS = `
   display: inline-block;
   font-family: 'Barlow Condensed', sans-serif; font-weight: 900;
   background: #ffd83d; color: #0a0f1a; padding: 10px 24px 14px;
-  font-size: 48px; letter-spacing: .14em; text-transform: uppercase;
+  font-size: 64px; letter-spacing: .14em; text-transform: uppercase;
 }
 .hs-bcp-newsdesk {
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 36px; color: #8a93a6; letter-spacing: .26em;
+  font-size: 52px; color: #8a93a6; letter-spacing: .26em;
   text-transform: uppercase;
 }
 .hs-bcp-brk-h2 {
@@ -609,7 +609,7 @@ const CSS = `
 }
 .hs-bcp-brk-p {
   font-family: 'Inter', sans-serif; font-weight: 500;
-  font-size: 42px; color: #cbd5e1; margin: 0; line-height: 1.3;
+  font-size: 72px; color: #cbd5e1; margin: 0; line-height: 1.2;
   flex: 1;
 }
 .hs-bcp-brk-foot {
@@ -619,7 +619,7 @@ const CSS = `
 }
 .hs-bcp-date {
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 36px; color: #ffd83d; letter-spacing: .16em;
+  font-size: 56px; color: #ffd83d; letter-spacing: .16em;
   text-transform: uppercase;
 }
 .hs-bcp-countdown {
@@ -634,12 +634,12 @@ const CSS = `
 .hs-bcp-cd-stack { display: flex; flex-direction: column; gap: 6px; }
 .hs-bcp-cd-lbl {
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 38px; letter-spacing: .2em; text-transform: uppercase;
+  font-size: 52px; letter-spacing: .2em; text-transform: uppercase;
   opacity: .9;
 }
 .hs-bcp-cd-unit {
   font-family: 'Barlow Condensed', sans-serif; font-weight: 900;
-  font-size: 44px; letter-spacing: .1em; text-transform: uppercase;
+  font-size: 58px; letter-spacing: .1em; text-transform: uppercase;
 }
 
 /* ============================ REGION 4: 2-UP — FORECAST + COMING UP ~2700-3400 ============================ */
@@ -651,7 +651,7 @@ const CSS = `
 }
 .hs-bcp-panel-h3 {
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 36px; letter-spacing: .24em; text-transform: uppercase;
+  font-size: 52px; letter-spacing: .24em; text-transform: uppercase;
   color: #8a93a6; margin: 0 0 20px;
 }
 
@@ -676,7 +676,7 @@ const CSS = `
 .hs-bcp-fc-day:nth-child(3) { border-left-color: #4ade80; }
 .hs-bcp-fc-dlabel {
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 32px; letter-spacing: .2em; color: #cbd5e1;
+  font-size: 48px; letter-spacing: .2em; color: #cbd5e1;
   text-transform: uppercase;
 }
 .hs-bcp-fc-icon {
@@ -690,7 +690,7 @@ const CSS = `
 }
 .hs-bcp-fc-cond {
   font-family: 'Barlow Condensed', sans-serif; font-weight: 700;
-  font-size: 38px; color: #ffd83d; letter-spacing: .08em;
+  font-size: 52px; color: #ffd83d; letter-spacing: .08em;
   text-transform: uppercase;
 }
 
@@ -715,13 +715,13 @@ const CSS = `
 }
 .hs-bcp-cu-chip {
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 32px; color: #0a0f1a;
+  font-size: 44px; color: #0a0f1a;
   padding: 14px 18px; text-align: center;
   letter-spacing: .12em; text-transform: uppercase;
 }
 .hs-bcp-cu-name {
   font-family: 'Barlow Condensed', sans-serif; font-weight: 900;
-  font-size: 50px; line-height: .98; color: #fff;
+  font-size: 64px; line-height: .98; color: #fff;
   text-transform: uppercase; letter-spacing: -.005em;
 }
 
@@ -753,7 +753,7 @@ const CSS = `
 }
 .hs-bcp-stamp-eyebrow {
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 40px; letter-spacing: .26em; color: #0a0f1a;
+  font-size: 52px; letter-spacing: .26em; color: #0a0f1a;
   text-transform: uppercase; opacity: .85;
 }
 .hs-bcp-stamp-headline {
@@ -765,7 +765,7 @@ const CSS = `
 }
 .hs-bcp-stamp-sub {
   font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  font-size: 40px; letter-spacing: .24em; color: #0a0f1a;
+  font-size: 52px; letter-spacing: .24em; color: #0a0f1a;
   text-transform: uppercase; opacity: .8;
 }
 
