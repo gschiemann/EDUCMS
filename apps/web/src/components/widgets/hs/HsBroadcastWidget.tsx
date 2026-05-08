@@ -19,9 +19,11 @@
  *   - ticker        → LATEST crawl at the bottom
  */
 
+import { useRef } from 'react';
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
+import { useTextStyleOverrides, type TextStyleMap } from './useTextStyleOverrides';
 
 export interface HsBroadcastConfig {
   schoolChip?: string;
@@ -61,6 +63,8 @@ export interface HsBroadcastConfig {
   countdownUnit?: string;
   tickerTag?: string;
   tickerMessage?: string;
+  /** Per-field style overrides keyed by data-field attr. */
+  __styles?: TextStyleMap;
 }
 
 export const DEFAULTS: Required<HsBroadcastConfig> = {
@@ -98,10 +102,14 @@ export const DEFAULTS: Required<HsBroadcastConfig> = {
   countdownUnit: 'DAYS · SAVE THE DATE',
   tickerTag: 'LATEST',
   tickerMessage: 'LUNCH TODAY · CHICKEN BOWL · SALAD BAR · VEGAN OPTION AVAILABLE  ●  SAT PRACTICE SIGN-UPS CLOSE FRIDAY  ●  LOST: SILVER EARBUDS IN LIBRARY — SEE FRONT OFFICE  ●  DRAMA CLUB AUDITIONS MONDAY 3:30 IN THE AUDITORIUM  ●  ',
+  __styles: {},
 };
 
 export function HsBroadcastWidget({ config, live }: { config?: HsBroadcastConfig; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<HsBroadcastConfig>;
+  // 2026-05-08 — per-field style overrides (font-size + color).
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  useTextStyleOverrides(stageRef, c.__styles);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
@@ -123,6 +131,7 @@ export function HsBroadcastWidget({ config, live }: { config?: HsBroadcastConfig
   });
   return (
     <HsStage
+      stageRef={stageRef}
       stageStyle={{
         background: 'radial-gradient(ellipse at 50% -10%, #1a2545 0%, #0b1025 55%, #05070f 100%)',
         fontFamily: "'Inter', sans-serif",
