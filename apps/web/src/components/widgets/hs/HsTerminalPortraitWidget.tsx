@@ -35,6 +35,7 @@ import { useRef } from 'react';
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
+import { useAutoFitText } from './useAutoFitText';
 
 export interface HsTerminalConfig {
   schoolHost?: string;
@@ -170,6 +171,11 @@ export const DEFAULTS: Required<Cfg> = {
 export function HsTerminalPortraitWidget({ config, live }: { config?: Cfg; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
   const stageRef = useRef<HTMLDivElement | null>(null);
+  // 2026-05-08 — auto-fit: shrinks fontSize on data-fit text elements
+  // when their parent container would overflow. Manual `_styles[field].fontSize`
+  // override always wins. BuilderZone's CSS injection paints the override
+  // with !important so the auto-fit's inline fontSize loses cleanly.
+  useAutoFitText(stageRef, c._styles as any);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
@@ -219,11 +225,11 @@ export function HsTerminalPortraitWidget({ config, live }: { config?: Cfg; live?
       <div className="hs-tp-topbar">
         <div className="hs-tp-topbar-left">
           <span className="hs-tp-dot" />
-          <span className="hs-tp-host" data-field="schoolHost" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <span className="hs-tp-host" data-field="schoolHost" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.schoolHost}
           </span>
           <span className="hs-tp-sep">:</span>
-          <span data-field="schoolPath" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <span data-field="schoolPath" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.schoolPath}
           </span>
           <span className="hs-tp-sep">$</span>
@@ -236,28 +242,28 @@ export function HsTerminalPortraitWidget({ config, live }: { config?: Cfg; live?
       <div className="hs-tp-banner-wrap">
         <div className="hs-tp-prompt-line">
           <span className="hs-tp-p">&gt; </span>
-          <span data-field="greetingCmd" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <span data-field="greetingCmd" data-fit data-fit-min="20" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.greetingCmd}
           </span>{' '}
-          <span className="hs-tp-arg" data-field="greetingArg" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <span className="hs-tp-arg" data-field="greetingArg" data-fit data-fit-min="20" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.greetingArg}
           </span>
         </div>
         <div className="hs-tp-banner">
-          <span data-field="greetingHeadline" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <span data-field="greetingHeadline" data-fit data-fit-min="80" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.greetingHeadline}
           </span>
           <span className="hs-tp-cursor" />
         </div>
         <div className="hs-tp-session">
-          <span style={{ color: '#7adfff' }} data-field="schoolSession">
+          <span style={{ color: '#7adfff' }} data-field="schoolSession" data-fit data-fit-min="22">
             {c.schoolSession}
           </span>
           <span className="hs-tp-sep"> · </span>
           <span data-field="clockTime">{clock.time}</span>
           <span className="hs-tp-sep"> · </span>
           <span className="hs-tp-on" data-field="weatherTemp">{w.tempLabel}</span>{' '}
-          <span data-field="weatherCondition">{w.conditionLabel}</span>
+          <span data-field="weatherCondition" data-fit data-fit-min="22">{w.conditionLabel}</span>
         </div>
       </div>
 
@@ -265,32 +271,32 @@ export function HsTerminalPortraitWidget({ config, live }: { config?: Cfg; live?
       <div className="hs-tp-whoami" data-box="[ whoami --featured ]">
         <div className="hs-tp-cmdline">
           <span className="hs-tp-p">$ </span>
-          <span data-field="teacherCmd" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <span data-field="teacherCmd" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.teacherCmd}
           </span>
         </div>
-        <div className="hs-tp-name" data-field="teacherName" style={{ whiteSpace: 'pre-wrap' as const }}>
+        <div className="hs-tp-name" data-field="teacherName" data-fit data-fit-min="40" style={{ whiteSpace: 'pre-wrap' as const }}>
           {c.teacherName}
         </div>
         <dl className="hs-tp-kv">
           <dt>role</dt>
-          <dd data-field="teacherRole" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <dd data-field="teacherRole" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.teacherRole}
           </dd>
           <dt>room</dt>
-          <dd data-field="teacherRoom" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <dd data-field="teacherRoom" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.teacherRoom}
           </dd>
           <dt>years</dt>
-          <dd data-field="teacherYears" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <dd data-field="teacherYears" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.teacherYears}
           </dd>
           <dt>groups</dt>
-          <dd data-field="teacherGroups" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <dd data-field="teacherGroups" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.teacherGroups}
           </dd>
         </dl>
-        <div className="hs-tp-quote" data-field="teacherQuote" style={{ whiteSpace: 'pre-wrap' as const }}>
+        <div className="hs-tp-quote" data-field="teacherQuote" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
           {c.teacherQuote}
         </div>
       </div>
@@ -328,14 +334,14 @@ export function HsTerminalPortraitWidget({ config, live }: { config?: Cfg; live?
 
         <div className="hs-tp-countdown-row">
           <span className="hs-tp-cd-pre">[CRON] 0 0 * * *</span>
-          <span className="hs-tp-cd-val" data-field="countdownValue" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <span className="hs-tp-cd-val" data-field="countdownValue" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.countdownValue}
           </span>
           <span className="hs-tp-cd-lbl">
-            <span data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <span data-field="countdownLabel" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
               {c.countdownLabel}
             </span>
-            <span className="hs-tp-cd-sub" data-field="countdownSub" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <span className="hs-tp-cd-sub" data-field="countdownSub" data-fit data-fit-min="18" style={{ whiteSpace: 'pre-wrap' as const }}>
               {c.countdownSub}
             </span>
           </span>
@@ -351,21 +357,23 @@ export function HsTerminalPortraitWidget({ config, live }: { config?: Cfg; live?
 
         <div className="hs-tp-anno-tag">
           <span className="hs-tp-warn">[WARN]</span>{' '}
-          <span data-field="announcementTag" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <span data-field="announcementTag" data-fit data-fit-min="20" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.announcementTag}
           </span>
         </div>
         <h3
           className="hs-tp-anno-h3"
           data-field="announcementHeadline"
+          data-fit
+          data-fit-min="36"
           style={{ whiteSpace: 'pre-wrap' as const }}
         >
           {c.announcementHeadline}
         </h3>
-        <p className="hs-tp-anno-p" data-field="announcementBody" style={{ whiteSpace: 'pre-wrap' as const }}>
+        <p className="hs-tp-anno-p" data-field="announcementBody" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
           {c.announcementBody}
         </p>
-        <div className="hs-tp-anno-when" data-field="announcementDate" style={{ whiteSpace: 'pre-wrap' as const }}>
+        <div className="hs-tp-anno-when" data-field="announcementDate" data-fit data-fit-min="18" style={{ whiteSpace: 'pre-wrap' as const }}>
           &gt; {c.announcementDate}
         </div>
       </div>
@@ -379,37 +387,37 @@ export function HsTerminalPortraitWidget({ config, live }: { config?: Cfg; live?
         <div className="hs-tp-uname-grid">
           <div className="hs-tp-fact">
             <div className="hs-tp-fact-key">CLOCK</div>
-            <div className="hs-tp-fact-val" data-field="clockbigVal" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <div className="hs-tp-fact-val" data-field="clockbigVal" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>
               {(!c.clockbigVal || c.clockbigVal === DEFAULTS.clockbigVal) ? clock.time : c.clockbigVal}
             </div>
-            <div className="hs-tp-fact-sub" data-field="clockbigCap" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <div className="hs-tp-fact-sub" data-field="clockbigCap" data-fit data-fit-min="18" style={{ whiteSpace: 'pre-wrap' as const }}>
               {(!c.clockbigCap || c.clockbigCap === DEFAULTS.clockbigCap) ? clock.caption : c.clockbigCap}
             </div>
           </div>
           <div className="hs-tp-fact">
             <div className="hs-tp-fact-key">WEATHERD</div>
-            <div className="hs-tp-fact-val" data-field="weatherdVal" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <div className="hs-tp-fact-val" data-field="weatherdVal" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>
               {(!c.weatherdVal || c.weatherdVal === DEFAULTS.weatherdVal) ? w.tempLabel : c.weatherdVal}
             </div>
-            <div className="hs-tp-fact-sub" data-field="weatherdCap" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <div className="hs-tp-fact-sub" data-field="weatherdCap" data-fit data-fit-min="18" style={{ whiteSpace: 'pre-wrap' as const }}>
               {(!c.weatherdCap || c.weatherdCap === DEFAULTS.weatherdCap) ? w.conditionLabel : c.weatherdCap}
             </div>
           </div>
           <div className="hs-tp-fact">
             <div className="hs-tp-fact-key">ROLLCALL</div>
-            <div className="hs-tp-fact-val" data-field="attendanceVal" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <div className="hs-tp-fact-val" data-field="attendanceVal" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>
               {c.attendanceVal}
             </div>
-            <div className="hs-tp-fact-sub" data-field="attendanceCap" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <div className="hs-tp-fact-sub" data-field="attendanceCap" data-fit data-fit-min="18" style={{ whiteSpace: 'pre-wrap' as const }}>
               {c.attendanceCap}
             </div>
           </div>
           <div className="hs-tp-fact">
             <div className="hs-tp-fact-key">CHOW</div>
-            <div className="hs-tp-fact-val hs-tp-fact-val-sm" data-field="lunchVal" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <div className="hs-tp-fact-val hs-tp-fact-val-sm" data-field="lunchVal" data-fit data-fit-min="36" style={{ whiteSpace: 'pre-wrap' as const }}>
               {c.lunchVal}
             </div>
-            <div className="hs-tp-fact-sub" data-field="lunchCap" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <div className="hs-tp-fact-sub" data-field="lunchCap" data-fit data-fit-min="18" style={{ whiteSpace: 'pre-wrap' as const }}>
               {c.lunchCap}
             </div>
           </div>

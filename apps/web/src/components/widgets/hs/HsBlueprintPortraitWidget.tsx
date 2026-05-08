@@ -18,6 +18,7 @@ import { useRef } from 'react';
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock, resolveHsDate } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
+import { useAutoFitText } from './useAutoFitText';
 import type { HsBlueprintConfig } from './HsBlueprintWidget';
 
 type Cfg = HsBlueprintConfig;
@@ -80,9 +81,11 @@ export function HsBlueprintPortraitWidget({
 }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
   const stageRef = useRef<HTMLDivElement | null>(null);
-  // 2026-05-08 — per-field style overrides now ride through
-  // BuilderZone's CSS injection (cfg._styles → scoped !important rules).
-  // No widget-side hook needed.
+  // 2026-05-08 — auto-fit: shrinks fontSize on data-fit text elements
+  // when their parent container would overflow. Manual `_styles[field].fontSize`
+  // override always wins. BuilderZone's CSS injection paints the override
+  // with !important so the auto-fit's inline fontSize loses cleanly.
+  useAutoFitText(stageRef, c._styles as any);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
@@ -146,7 +149,7 @@ export function HsBlueprintPortraitWidget({
           <div className="hs-bpp-tb-cell hs-bpp-tb-logo-cell">
             <div className="hs-bpp-logo">
               {c.schoolCode}
-              <span className="hs-bpp-logo-sub" data-field="schoolName" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolName}</span>
+              <span className="hs-bpp-logo-sub" data-field="schoolName" data-fit data-fit-min="20" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolName}</span>
             </div>
           </div>
           <div className="hs-bpp-tb-cell hs-bpp-tb-rev">
@@ -160,11 +163,11 @@ export function HsBlueprintPortraitWidget({
         </div>
         <div className="hs-bpp-tb-row hs-bpp-tb-row-bottom">
           <div className="hs-bpp-tb-cell">
-            <div className="hs-bpp-lbl" data-field="brandLabel1" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandLabel1}</div>
-            <div className="hs-bpp-val" data-field="brandProject" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandProject}</div>
+            <div className="hs-bpp-lbl" data-field="brandLabel1" data-fit data-fit-min="20" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandLabel1}</div>
+            <div className="hs-bpp-val" data-field="brandProject" data-fit data-fit-min="36" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandProject}</div>
           </div>
           <div className="hs-bpp-tb-cell">
-            <div className="hs-bpp-lbl" data-field="clockLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockLabel}</div>
+            <div className="hs-bpp-lbl" data-field="clockLabel" data-fit data-fit-min="20" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockLabel}</div>
             <div className="hs-bpp-val hs-bpp-mono">
               <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{liveDate}</span>
               {' · '}
@@ -185,9 +188,9 @@ export function HsBlueprintPortraitWidget({
           <span data-field="greetingDimLeft" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingDimLeft}</span>
         </div>
 
-        <div className="hs-bpp-eyebrow" data-field="greetingEyebrow" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingEyebrow}</div>
-        <h1 className="hs-bpp-h1" data-field="greetingHeadline" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingHeadline}</h1>
-        <div className="hs-bpp-sub" data-field="greetingSubtitle" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingSubtitle}</div>
+        <div className="hs-bpp-eyebrow" data-field="greetingEyebrow" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingEyebrow}</div>
+        <h1 className="hs-bpp-h1" data-field="greetingHeadline" data-fit data-fit-min="80" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingHeadline}</h1>
+        <div className="hs-bpp-sub" data-field="greetingSubtitle" data-fit data-fit-min="32" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingSubtitle}</div>
 
         {/* Floor-plan elevation rectangle w/ dimensioned callouts pointing to lobby/cafeteria/library/gym */}
         <div className="hs-bpp-plan">
@@ -219,24 +222,24 @@ export function HsBlueprintPortraitWidget({
         {/* 4-up data panels at the bottom of the hero — clock, weather, attendance, countdown */}
         <div className="hs-bpp-data">
           <div className="hs-bpp-panel" data-sheet="A-01.1">
-            <div className="hs-bpp-kicker" data-field="clockbigLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockbigLabel}</div>
-            <div className="hs-bpp-big" data-field="clockbigVal" style={{ whiteSpace: 'pre-wrap' as const }}>{(!c.clockbigVal || c.clockbigVal === DEFAULTS.clockbigVal) ? clock.time : c.clockbigVal}</div>
-            <div className="hs-bpp-cap" data-field="clockbigCap" style={{ whiteSpace: 'pre-wrap' as const }}>{(!c.clockbigCap || c.clockbigCap === DEFAULTS.clockbigCap) ? clock.caption : c.clockbigCap}</div>
+            <div className="hs-bpp-kicker" data-field="clockbigLabel" data-fit data-fit-min="24" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockbigLabel}</div>
+            <div className="hs-bpp-big" data-field="clockbigVal" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>{(!c.clockbigVal || c.clockbigVal === DEFAULTS.clockbigVal) ? clock.time : c.clockbigVal}</div>
+            <div className="hs-bpp-cap" data-field="clockbigCap" data-fit data-fit-min="24" style={{ whiteSpace: 'pre-wrap' as const }}>{(!c.clockbigCap || c.clockbigCap === DEFAULTS.clockbigCap) ? clock.caption : c.clockbigCap}</div>
           </div>
           <div className="hs-bpp-panel" data-sheet="A-01.2">
             <div className="hs-bpp-kicker">EXT. CONDITIONS</div>
-            <div className="hs-bpp-big" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>{w.tempLabel}</div>
-            <div className="hs-bpp-cap" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{w.conditionLabel}</div>
+            <div className="hs-bpp-big" data-field="weatherTemp" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>{w.tempLabel}</div>
+            <div className="hs-bpp-cap" data-field="weatherCondition" data-fit data-fit-min="24" style={{ whiteSpace: 'pre-wrap' as const }}>{w.conditionLabel}</div>
           </div>
           <div className="hs-bpp-panel" data-sheet="A-01.3">
             <div className="hs-bpp-kicker">PRESENT</div>
-            <div className="hs-bpp-big" data-field="attendanceValue" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceValue}</div>
-            <div className="hs-bpp-cap" data-field="attendanceCap" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceCap}</div>
+            <div className="hs-bpp-big" data-field="attendanceValue" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceValue}</div>
+            <div className="hs-bpp-cap" data-field="attendanceCap" data-fit data-fit-min="24" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceCap}</div>
           </div>
           <div className="hs-bpp-panel" data-sheet="A-01.4">
-            <div className="hs-bpp-kicker" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownLabel}</div>
-            <div className="hs-bpp-big" data-field="countdownValue" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownValue}</div>
-            <div className="hs-bpp-cap" data-field="countdownSub" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownSub}</div>
+            <div className="hs-bpp-kicker" data-field="countdownLabel" data-fit data-fit-min="24" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownLabel}</div>
+            <div className="hs-bpp-big" data-field="countdownValue" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownValue}</div>
+            <div className="hs-bpp-cap" data-field="countdownSub" data-fit data-fit-min="24" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownSub}</div>
           </div>
         </div>
       </div>

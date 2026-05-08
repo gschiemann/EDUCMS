@@ -32,6 +32,7 @@ import { useRef } from 'react';
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
+import { useAutoFitText } from './useAutoFitText';
 
 export interface HsZineConfig {
   schoolName?: string;
@@ -166,6 +167,11 @@ const RANSOM_BG = ['#fff', '#ffd84d', '#fff', '#2dbce6', '#fff', '#ffd84d', '#ff
 export function HsZinePortraitWidget({ config, live }: { config?: Cfg; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
   const stageRef = useRef<HTMLDivElement | null>(null);
+  // 2026-05-08 — auto-fit: shrinks fontSize on data-fit text elements
+  // when their parent container would overflow. Manual `_styles[field].fontSize`
+  // override always wins. BuilderZone's CSS injection paints the override
+  // with !important so the auto-fit's inline fontSize loses cleanly.
+  useAutoFitText(stageRef, c._styles as any);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
@@ -229,17 +235,17 @@ export function HsZinePortraitWidget({ config, live }: { config?: Cfg; live?: bo
             </span>
           ))}
         </div>
-        <div className="hs-zp-banner-sub" data-field="schoolSub" style={{ whiteSpace: 'pre-wrap' as const }}>
+        <div className="hs-zp-banner-sub" data-field="schoolSub" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>
           {c.schoolSub}
         </div>
         <div className="hs-zp-stamps">
-          <span className="hs-zp-stamp" data-field="brandStamp1" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <span className="hs-zp-stamp" data-field="brandStamp1" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.brandStamp1}
           </span>
-          <span className="hs-zp-stamp hs-zp-stamp-ink2" data-field="brandStamp2" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <span className="hs-zp-stamp hs-zp-stamp-ink2" data-field="brandStamp2" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.brandStamp2}
           </span>
-          <span className="hs-zp-stamp hs-zp-stamp-cyan" data-field="brandStamp3" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <span className="hs-zp-stamp hs-zp-stamp-cyan" data-field="brandStamp3" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.brandStamp3}
           </span>
         </div>
@@ -252,21 +258,21 @@ export function HsZinePortraitWidget({ config, live }: { config?: Cfg; live?: bo
         <div className="hs-zp-tape hs-zp-tape-tr" />
 
         <div className="hs-zp-sheet-tag">// ABOUT THIS WEEK</div>
-        <div className="hs-zp-eyebrow" data-field="greetingEyebrow" style={{ whiteSpace: 'pre-wrap' as const }}>
+        <div className="hs-zp-eyebrow" data-field="greetingEyebrow" data-fit data-fit-min="24" style={{ whiteSpace: 'pre-wrap' as const }}>
           {c.greetingEyebrow}
         </div>
         <h1 className="hs-zp-h1">
-          <span data-field="greetingHeadline1" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <span data-field="greetingHeadline1" data-fit data-fit-min="80" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.greetingHeadline1}
           </span>{' '}
-          <em data-field="greetingHeadline2" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <em data-field="greetingHeadline2" data-fit data-fit-min="80" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.greetingHeadline2}
           </em>{' '}
-          <span data-field="greetingHeadline3" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <span data-field="greetingHeadline3" data-fit data-fit-min="80" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.greetingHeadline3}
           </span>
         </h1>
-        <p className="hs-zp-sub" data-field="greetingSubtitle" style={{ whiteSpace: 'pre-wrap' as const }}>
+        <p className="hs-zp-sub" data-field="greetingSubtitle" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>
           {c.greetingSubtitle}
         </p>
 
@@ -274,21 +280,21 @@ export function HsZinePortraitWidget({ config, live }: { config?: Cfg; live?: bo
         <div className="hs-zp-stats">
           <div className="hs-zp-stat hs-zp-stat-a">
             <div className="hs-zp-lbl">// here today</div>
-            <div className="hs-zp-val" data-field="attendanceValue" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <div className="hs-zp-val" data-field="attendanceValue" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>
               {c.attendanceValue}
             </div>
-            <div className="hs-zp-cap" data-field="attendanceCap" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <div className="hs-zp-cap" data-field="attendanceCap" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
               {c.attendanceCap}
             </div>
           </div>
           <div className="hs-zp-stat hs-zp-stat-b">
-            <div className="hs-zp-lbl" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <div className="hs-zp-lbl" data-field="countdownLabel" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
               {c.countdownLabel}
             </div>
-            <div className="hs-zp-val" data-field="countdownValue" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <div className="hs-zp-val" data-field="countdownValue" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>
               {c.countdownValue}
             </div>
-            <div className="hs-zp-cap" data-field="countdownSub" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <div className="hs-zp-cap" data-field="countdownSub" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
               {c.countdownSub}
             </div>
           </div>
@@ -300,39 +306,39 @@ export function HsZinePortraitWidget({ config, live }: { config?: Cfg; live?: bo
         <div className="hs-zp-pol hs-zp-pol-a">
           <div className="hs-zp-pol-tape" />
           <div className="hs-zp-pic" />
-          <div className="hs-zp-when" data-field="event0When" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <div className="hs-zp-when" data-field="event0When" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.event0When}
           </div>
-          <div className="hs-zp-name" data-field="event0Name" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <div className="hs-zp-name" data-field="event0Name" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.event0Name}
           </div>
         </div>
         <div className="hs-zp-pol hs-zp-pol-b">
           <div className="hs-zp-pol-tape" />
           <div className="hs-zp-pic" />
-          <div className="hs-zp-when" data-field="event1When" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <div className="hs-zp-when" data-field="event1When" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.event1When}
           </div>
-          <div className="hs-zp-name" data-field="event1Name" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <div className="hs-zp-name" data-field="event1Name" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.event1Name}
           </div>
         </div>
         <div className="hs-zp-pol hs-zp-pol-c">
           <div className="hs-zp-pol-tape" />
           <div className="hs-zp-pic" />
-          <div className="hs-zp-when" data-field="event2When" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <div className="hs-zp-when" data-field="event2When" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.event2When}
           </div>
-          <div className="hs-zp-name" data-field="event2Name" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <div className="hs-zp-name" data-field="event2Name" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.event2Name}
           </div>
         </div>
         <div className="hs-zp-pol hs-zp-pol-count">
           <div className="hs-zp-pol-tape" />
-          <div className="hs-zp-num" data-field="countdownBigValue" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <div className="hs-zp-num" data-field="countdownBigValue" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.countdownBigValue}
           </div>
-          <div className="hs-zp-lb" data-field="countdownBigLabel" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <div className="hs-zp-lb" data-field="countdownBigLabel" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.countdownBigLabel}
           </div>
         </div>
@@ -346,10 +352,10 @@ export function HsZinePortraitWidget({ config, live }: { config?: Cfg; live?: bo
           <div className="hs-zp-poster-tape" />
           <div className="hs-zp-poster-img" />
           <div className="hs-zp-poster-caption">
-            <span data-field="teacherCaption" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <span data-field="teacherCaption" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>
               {c.teacherCaption}
             </span>
-            <span className="hs-zp-poster-sub" data-field="teacherSub" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <span className="hs-zp-poster-sub" data-field="teacherSub" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
               {c.teacherSub}
             </span>
           </div>
@@ -386,13 +392,13 @@ export function HsZinePortraitWidget({ config, live }: { config?: Cfg; live?: bo
 
         {/* clock card to the right of the poster sub-block */}
         <div className="hs-zp-fc">
-          <div className="hs-zp-fc-lbl" data-field="clockLabel" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <div className="hs-zp-fc-lbl" data-field="clockLabel" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.clockLabel}
           </div>
-          <div className="hs-zp-fc-v" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <div className="hs-zp-fc-v" data-field="clockTime" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>
             {clock.time}
           </div>
-          <div className="hs-zp-fc-c" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <div className="hs-zp-fc-c" data-field="weatherCondition" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
             {w.conditionLabel}
           </div>
         </div>
@@ -400,23 +406,23 @@ export function HsZinePortraitWidget({ config, live }: { config?: Cfg; live?: bo
 
       {/* ============ REGION 5: RANSOM-LETTER ANNOUNCEMENT ~3340-3760 ============ */}
       <div className="hs-zp-alert">
-        <div className="hs-zp-alert-tag" data-field="announcementTag" style={{ whiteSpace: 'pre-wrap' as const }}>
+        <div className="hs-zp-alert-tag" data-field="announcementTag" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
           {c.announcementTag}
         </div>
-        <h3 className="hs-zp-alert-h3" data-field="announcementHeadline" style={{ whiteSpace: 'pre-wrap' as const }}>
+        <h3 className="hs-zp-alert-h3" data-field="announcementHeadline" data-fit data-fit-min="36" style={{ whiteSpace: 'pre-wrap' as const }}>
           {c.announcementHeadline}
         </h3>
-        <p className="hs-zp-alert-p" data-field="announcementBody" style={{ whiteSpace: 'pre-wrap' as const }}>
+        <p className="hs-zp-alert-p" data-field="announcementBody" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>
           {c.announcementBody}
         </p>
-        <div className="hs-zp-alert-when" data-field="announcementDate" style={{ whiteSpace: 'pre-wrap' as const }}>
+        <div className="hs-zp-alert-when" data-field="announcementDate" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
           {c.announcementDate}
         </div>
       </div>
 
       {/* ============ REGION 6: XEROXWIRE TICKER ~3760-3840 ============ */}
       <div className="hs-zp-ticker">
-        <div className="hs-zp-tk-tag" data-field="tickerTag" style={{ whiteSpace: 'pre-wrap' as const }}>
+        <div className="hs-zp-tk-tag" data-field="tickerTag" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>
           {c.tickerTag}
         </div>
         <div className="hs-zp-tk-msg">

@@ -27,6 +27,7 @@ import { useRef } from 'react';
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
+import { useAutoFitText } from './useAutoFitText';
 import type { HsBroadcastConfig } from './HsBroadcastWidget';
 
 type Cfg = HsBroadcastConfig;
@@ -72,6 +73,11 @@ export const DEFAULTS: Required<Cfg> = {
 export function HsBroadcastPortraitWidget({ config, live }: { config?: Cfg; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
   const stageRef = useRef<HTMLDivElement | null>(null);
+  // 2026-05-08 — auto-fit: shrinks fontSize on data-fit text elements
+  // when their parent container would overflow. Manual `_styles[field].fontSize`
+  // override always wins. BuilderZone's CSS injection paints the override
+  // with !important so the auto-fit's inline fontSize loses cleanly.
+  useAutoFitText(stageRef, c._styles as any);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
@@ -126,10 +132,10 @@ export function HsBroadcastPortraitWidget({ config, live }: { config?: Cfg; live
           <span className="hs-bcp-chip" data-field="schoolChip" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.schoolChip}
           </span>
-          <span className="hs-bcp-school" data-field="schoolName" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <span className="hs-bcp-school" data-field="schoolName" data-fit data-fit-min="48" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.schoolName}
           </span>
-          <span className="hs-bcp-sub" data-field="schoolSub" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <span className="hs-bcp-sub" data-field="schoolSub" data-fit data-fit-min="24" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.schoolSub}
           </span>
         </div>
@@ -139,17 +145,17 @@ export function HsBroadcastPortraitWidget({ config, live }: { config?: Cfg; live
             <span className="hs-bcp-lamp" />
             <span className="hs-bcp-onair-text">ON AIR</span>
           </div>
-          <div className="hs-bcp-status" data-field="statusLabel" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <div className="hs-bcp-status" data-field="statusLabel" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.statusLabel}
           </div>
         </div>
 
         <div className="hs-bcp-clockpill">
           <div className="hs-bcp-clockpill-lbl">LOCAL</div>
-          <div className="hs-bcp-clockpill-val" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <div className="hs-bcp-clockpill-val" data-field="clockTime" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>
             {clock.time}
           </div>
-          <div className="hs-bcp-clockpill-cap" data-field="clockCaption" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <div className="hs-bcp-clockpill-cap" data-field="clockCaption" data-fit data-fit-min="24" style={{ whiteSpace: 'pre-wrap' as const }}>
             {clock.caption}
           </div>
         </div>
@@ -165,7 +171,7 @@ export function HsBroadcastPortraitWidget({ config, live }: { config?: Cfg; live
 
       {/* ============================ REGION 2: FEATURED GUEST HERO ~600-1800 ============================ */}
       <div className="hs-bcp-guest">
-        <div className="hs-bcp-guest-tag" data-field="teacherLabel" style={{ whiteSpace: 'pre-wrap' as const }}>
+        <div className="hs-bcp-guest-tag" data-field="teacherLabel" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>
           {c.teacherLabel}
         </div>
 
@@ -179,7 +185,7 @@ export function HsBroadcastPortraitWidget({ config, live }: { config?: Cfg; live
               <div className="hs-bcp-anchor-collar" />
             </div>
             <div className="hs-bcp-portrait-stripes" />
-            <div className="hs-bcp-mono" data-field="teacherPortraitTag" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <div className="hs-bcp-mono" data-field="teacherPortraitTag" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
               {c.teacherPortraitTag}
             </div>
             <div className="hs-bcp-portrait-cam">CAM 1</div>
@@ -190,27 +196,27 @@ export function HsBroadcastPortraitWidget({ config, live }: { config?: Cfg; live
             <div className="hs-bcp-lowerthird">
               <div className="hs-bcp-lt-bar" />
               <div className="hs-bcp-lt-content">
-                <h2 className="hs-bcp-h2" data-field="teacherName" style={{ whiteSpace: 'pre-wrap' as const }}>
+                <h2 className="hs-bcp-h2" data-field="teacherName" data-fit data-fit-min="48" style={{ whiteSpace: 'pre-wrap' as const }}>
                   {c.teacherName}
                 </h2>
-                <div className="hs-bcp-meta" data-field="teacherGrade" style={{ whiteSpace: 'pre-wrap' as const }}>
+                <div className="hs-bcp-meta" data-field="teacherGrade" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>
                   {c.teacherGrade}
                 </div>
               </div>
             </div>
 
-            <div className="hs-bcp-quote" data-field="teacherQuote" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <div className="hs-bcp-quote" data-field="teacherQuote" data-fit data-fit-min="32" style={{ whiteSpace: 'pre-wrap' as const }}>
               {c.teacherQuote}
             </div>
 
             <div className="hs-bcp-greeting">
-              <span className="hs-bcp-eyebrow" data-field="greetingEyebrow" style={{ whiteSpace: 'pre-wrap' as const }}>
+              <span className="hs-bcp-eyebrow" data-field="greetingEyebrow" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>
                 {c.greetingEyebrow}
               </span>
-              <h1 className="hs-bcp-h1" data-field="greetingHeadline" style={{ whiteSpace: 'pre-wrap' as const }}>
+              <h1 className="hs-bcp-h1" data-field="greetingHeadline" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>
                 {c.greetingHeadline}
               </h1>
-              <div className="hs-bcp-subtitle" data-field="greetingSubtitle" style={{ whiteSpace: 'pre-wrap' as const }}>
+              <div className="hs-bcp-subtitle" data-field="greetingSubtitle" data-fit data-fit-min="32" style={{ whiteSpace: 'pre-wrap' as const }}>
                 {c.greetingSubtitle}
               </div>
             </div>
@@ -221,30 +227,30 @@ export function HsBroadcastPortraitWidget({ config, live }: { config?: Cfg; live
       {/* ============================ REGION 3: BREAKING STORY CARD ~1800-2700 ============================ */}
       <div className="hs-bcp-breaking">
         <div className="hs-bcp-breaking-eyebrow">
-          <span className="hs-bcp-tag" data-field="announcementTitle" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <span className="hs-bcp-tag" data-field="announcementTitle" data-fit data-fit-min="32" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.announcementTitle}
           </span>
           <span className="hs-bcp-newsdesk">NEWS DESK</span>
         </div>
-        <h2 className="hs-bcp-brk-h2" data-field="announcementHeadline" style={{ whiteSpace: 'pre-wrap' as const }}>
+        <h2 className="hs-bcp-brk-h2" data-field="announcementHeadline" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>
           {c.announcementHeadline}
         </h2>
-        <p className="hs-bcp-brk-p" data-field="announcementBody" style={{ whiteSpace: 'pre-wrap' as const }}>
+        <p className="hs-bcp-brk-p" data-field="announcementBody" data-fit data-fit-min="32" style={{ whiteSpace: 'pre-wrap' as const }}>
           {c.announcementBody}
         </p>
         <div className="hs-bcp-brk-foot">
-          <div className="hs-bcp-date" data-field="announcementDate" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <div className="hs-bcp-date" data-field="announcementDate" data-fit data-fit-min="24" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.announcementDate}
           </div>
           <div className="hs-bcp-countdown">
-            <span className="hs-bcp-cd-val" data-field="countdownValue" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <span className="hs-bcp-cd-val" data-field="countdownValue" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>
               {c.countdownValue}
             </span>
             <span className="hs-bcp-cd-stack">
-              <span className="hs-bcp-cd-lbl" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' as const }}>
+              <span className="hs-bcp-cd-lbl" data-field="countdownLabel" data-fit data-fit-min="24" style={{ whiteSpace: 'pre-wrap' as const }}>
                 {c.countdownLabel}
               </span>
-              <span className="hs-bcp-cd-unit" data-field="countdownUnit" style={{ whiteSpace: 'pre-wrap' as const }}>
+              <span className="hs-bcp-cd-unit" data-field="countdownUnit" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>
                 {c.countdownUnit}
               </span>
             </span>
@@ -260,10 +266,10 @@ export function HsBroadcastPortraitWidget({ config, live }: { config?: Cfg; live
             <div className="hs-bcp-fc-day">
               <div className="hs-bcp-fc-dlabel">TODAY</div>
               <div className="hs-bcp-fc-icon">☀</div>
-              <div className="hs-bcp-fc-temp" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>
+              <div className="hs-bcp-fc-temp" data-field="weatherTemp" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>
                 {w.tempLabel}
               </div>
-              <div className="hs-bcp-fc-cond" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>
+              <div className="hs-bcp-fc-cond" data-field="weatherCondition" data-fit data-fit-min="24" style={{ whiteSpace: 'pre-wrap' as const }}>
                 {w.conditionLabel}
               </div>
             </div>
@@ -288,11 +294,11 @@ export function HsBroadcastPortraitWidget({ config, live }: { config?: Cfg; live
             {upcoming.map((ev, i) => (
               <div key={i} className="hs-bcp-cu-row">
                 <div className="hs-bcp-cu-chip" style={{ background: ev.accent }}>
-                  <span data-field={`event${i + 1}When`} style={{ whiteSpace: 'pre-wrap' as const }}>
+                  <span data-field={`event${i + 1}When`} data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
                     {ev.when}
                   </span>
                 </div>
-                <div className="hs-bcp-cu-name" data-field={`event${i + 1}Name`} style={{ whiteSpace: 'pre-wrap' as const }}>
+                <div className="hs-bcp-cu-name" data-field={`event${i + 1}Name`} data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>
                   {ev.name}
                 </div>
               </div>

@@ -23,6 +23,7 @@ import { useRef } from 'react';
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
+import { useAutoFitText } from './useAutoFitText';
 
 export interface HsYearbookConfig {
   schoolName?: string;
@@ -136,6 +137,11 @@ export const DEFAULTS: Required<HsYearbookConfig> = {
 export function HsYearbookWidget({ config, live }: { config?: HsYearbookConfig; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<HsYearbookConfig>;
   const stageRef = useRef<HTMLDivElement | null>(null);
+  // 2026-05-08 — auto-fit: shrinks fontSize on data-fit text elements
+  // when their parent container would overflow. Manual `_styles[field].fontSize`
+  // override always wins. BuilderZone's CSS injection paints the override
+  // with !important so the auto-fit's inline fontSize loses cleanly.
+  useAutoFitText(stageRef, c._styles as any);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
@@ -166,65 +172,65 @@ export function HsYearbookWidget({ config, live }: { config?: HsYearbookConfig; 
       <div className="hs-yb-divider" />
 
       <div className="hs-yb-masthead">
-        <div className="hs-yb-title" data-field="schoolName" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolName}</div>
-        <div className="hs-yb-issue" data-field="schoolIssue" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolIssue}</div>
+        <div className="hs-yb-title" data-field="schoolName" data-fit data-fit-min="40" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolName}</div>
+        <div className="hs-yb-issue" data-field="schoolIssue" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolIssue}</div>
       </div>
 
       <div className="hs-yb-clock">
-        <div className="hs-yb-clock-t" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</div>
-        <div className="hs-yb-clock-c" data-field="clockCaption" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.caption}</div>
+        <div className="hs-yb-clock-t" data-field="clockTime" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</div>
+        <div className="hs-yb-clock-c" data-field="clockCaption" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.caption}</div>
       </div>
 
       <div className="hs-yb-hero">
-        <div className="hs-yb-eyebrow" data-field="greetingEyebrow" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingEyebrow}</div>
-        <h1 className="hs-yb-h1" data-field="greetingHeadline" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingHeadline}</h1>
-        <p className="hs-yb-lede" data-field="greetingSubtitle" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingSubtitle}</p>
+        <div className="hs-yb-eyebrow" data-field="greetingEyebrow" data-fit data-fit-min="24" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingEyebrow}</div>
+        <h1 className="hs-yb-h1" data-field="greetingHeadline" data-fit data-fit-min="80" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingHeadline}</h1>
+        <p className="hs-yb-lede" data-field="greetingSubtitle" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingSubtitle}</p>
       </div>
 
       <div className="hs-yb-right">
         <div className="hs-yb-card">
-          <div className="hs-yb-kicker" data-field="announcementTag" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementTag}</div>
-          <h3 className="hs-yb-card-h3" data-field="announcementHeadline" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementHeadline}</h3>
-          <p className="hs-yb-cap" data-field="announcementBody" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementBody}</p>
+          <div className="hs-yb-kicker" data-field="announcementTag" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementTag}</div>
+          <h3 className="hs-yb-card-h3" data-field="announcementHeadline" data-fit data-fit-min="36" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementHeadline}</h3>
+          <p className="hs-yb-cap" data-field="announcementBody" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementBody}</p>
           <div className="hs-yb-kicker" style={{ marginTop: 14, color: '#b23b20' }}>{c.announcementDate}</div>
         </div>
         <div className="hs-yb-twin">
           <div className="hs-yb-card">
             <div className="hs-yb-kicker">TODAY</div>
-            <div className="hs-yb-big" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>{w.tempLabel}</div>
-            <div className="hs-yb-cap" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{w.conditionLabel}</div>
+            <div className="hs-yb-big" data-field="weatherTemp" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>{w.tempLabel}</div>
+            <div className="hs-yb-cap" data-field="weatherCondition" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{w.conditionLabel}</div>
           </div>
           <div className="hs-yb-card">
-            <div className="hs-yb-kicker" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownLabel}</div>
-            <div className="hs-yb-big" data-field="countdownValue" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownValue}</div>
-            <div className="hs-yb-cap" data-field="countdownUnit" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownUnit}</div>
+            <div className="hs-yb-kicker" data-field="countdownLabel" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownLabel}</div>
+            <div className="hs-yb-big" data-field="countdownValue" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownValue}</div>
+            <div className="hs-yb-cap" data-field="countdownUnit" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownUnit}</div>
           </div>
         </div>
       </div>
 
       <div className="hs-yb-feature">
         <div className="hs-yb-photo">
-          <div className="hs-yb-photo-tag" data-field="featurePhotoTag" style={{ whiteSpace: 'pre-wrap' as const }}>{c.featurePhotoTag}</div>
+          <div className="hs-yb-photo-tag" data-field="featurePhotoTag" data-fit data-fit-min="18" style={{ whiteSpace: 'pre-wrap' as const }}>{c.featurePhotoTag}</div>
         </div>
         <div className="hs-yb-caption">
-          <div className="hs-yb-num" data-field="featureNum" style={{ whiteSpace: 'pre-wrap' as const }}>{c.featureNum}</div>
+          <div className="hs-yb-num" data-field="featureNum" data-fit data-fit-min="40" style={{ whiteSpace: 'pre-wrap' as const }}>{c.featureNum}</div>
           <div className="hs-yb-txt">
-            <div className="hs-yb-ctitle" data-field="featureTitle" style={{ whiteSpace: 'pre-wrap' as const }}>{c.featureTitle}</div>
-            <div className="hs-yb-cbody" data-field="featureBody" style={{ whiteSpace: 'pre-wrap' as const }}>{c.featureBody}</div>
+            <div className="hs-yb-ctitle" data-field="featureTitle" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>{c.featureTitle}</div>
+            <div className="hs-yb-cbody" data-field="featureBody" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.featureBody}</div>
           </div>
         </div>
       </div>
 
       <div className="hs-yb-featured">
         <div className="hs-yb-portrait">
-          <div className="hs-yb-frame" data-field="teacherPhotoTag" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherPhotoTag}</div>
+          <div className="hs-yb-frame" data-field="teacherPhotoTag" data-fit data-fit-min="18" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherPhotoTag}</div>
         </div>
         <div>
-          <div className="hs-yb-kicker-red" data-field="teacherLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherLabel}</div>
-          <h2 className="hs-yb-feat-h2" data-field="teacherName" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherName}</h2>
-          <div className="hs-yb-meta" data-field="teacherGrade" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherGrade}</div>
-          <blockquote className="hs-yb-blockquote" data-field="teacherQuote" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherQuote}</blockquote>
-          <div className="hs-yb-byline" data-field="teacherByline" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherByline}</div>
+          <div className="hs-yb-kicker-red" data-field="teacherLabel" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherLabel}</div>
+          <h2 className="hs-yb-feat-h2" data-field="teacherName" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherName}</h2>
+          <div className="hs-yb-meta" data-field="teacherGrade" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherGrade}</div>
+          <blockquote className="hs-yb-blockquote" data-field="teacherQuote" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherQuote}</blockquote>
+          <div className="hs-yb-byline" data-field="teacherByline" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherByline}</div>
         </div>
       </div>
 
@@ -233,30 +239,30 @@ export function HsYearbookWidget({ config, live }: { config?: HsYearbookConfig; 
       <div className="hs-yb-footstrip">
         <div className="hs-yb-foothdr">
           <div className="hs-yb-foothdr-h">Upcoming, this week &amp; next.</div>
-          <div className="hs-yb-foothdr-meta" data-field="schoolSection" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolSection}</div>
+          <div className="hs-yb-foothdr-meta" data-field="schoolSection" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolSection}</div>
         </div>
         <div className="hs-yb-cols">
           <div className="hs-yb-col">
-            <div className="hs-yb-col-d" data-field="event1When" style={{ whiteSpace: 'pre-wrap' as const }}>{c.event1When}</div>
-            <div className="hs-yb-col-n" data-field="event1Name" style={{ whiteSpace: 'pre-wrap' as const }}>{c.event1Name}</div>
+            <div className="hs-yb-col-d" data-field="event1When" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.event1When}</div>
+            <div className="hs-yb-col-n" data-field="event1Name" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>{c.event1Name}</div>
           </div>
           <div className="hs-yb-col">
-            <div className="hs-yb-col-d" data-field="event2When" style={{ whiteSpace: 'pre-wrap' as const }}>{c.event2When}</div>
-            <div className="hs-yb-col-n" data-field="event2Name" style={{ whiteSpace: 'pre-wrap' as const }}>{c.event2Name}</div>
+            <div className="hs-yb-col-d" data-field="event2When" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.event2When}</div>
+            <div className="hs-yb-col-n" data-field="event2Name" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>{c.event2Name}</div>
           </div>
           <div className="hs-yb-col">
-            <div className="hs-yb-col-d" data-field="event3When" style={{ whiteSpace: 'pre-wrap' as const }}>{c.event3When}</div>
-            <div className="hs-yb-col-n" data-field="event3Name" style={{ whiteSpace: 'pre-wrap' as const }}>{c.event3Name}</div>
+            <div className="hs-yb-col-d" data-field="event3When" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.event3When}</div>
+            <div className="hs-yb-col-n" data-field="event3Name" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>{c.event3Name}</div>
           </div>
           <div className="hs-yb-count">
-            <div className="hs-yb-count-val" data-field="countdownValue" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownValue}</div>
-            <div className="hs-yb-count-lbl" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownLabel}</div>
+            <div className="hs-yb-count-val" data-field="countdownValue" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownValue}</div>
+            <div className="hs-yb-count-lbl" data-field="countdownLabel" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownLabel}</div>
           </div>
         </div>
       </div>
 
       <div className="hs-yb-ticker">
-        <div className="hs-yb-tk-tag" data-field="tickerTag" style={{ whiteSpace: 'pre-wrap' as const }}>{c.tickerTag}</div>
+        <div className="hs-yb-tk-tag" data-field="tickerTag" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>{c.tickerTag}</div>
         <div className="hs-yb-tk-msg">
           <span data-field="tickerMessage" style={{ whiteSpace: 'pre-wrap' as const }}>{c.tickerMessage}</span>
           <span data-field="tickerMessage" style={{ whiteSpace: 'pre-wrap' as const }}>{c.tickerMessage}</span>

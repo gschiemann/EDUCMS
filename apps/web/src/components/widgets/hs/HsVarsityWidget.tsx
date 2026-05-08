@@ -30,6 +30,7 @@ import { useRef } from 'react';
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
+import { useAutoFitText } from './useAutoFitText';
 
 export interface HsVarsityConfig {
   schoolInitials?: string;
@@ -163,6 +164,11 @@ export const DEFAULTS: Required<HsVarsityConfig> = {
 export function HsVarsityWidget({ config, live }: { config?: HsVarsityConfig; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<HsVarsityConfig>;
   const stageRef = useRef<HTMLDivElement | null>(null);
+  // 2026-05-08 — auto-fit: shrinks fontSize on data-fit text elements
+  // when their parent container would overflow. Manual `_styles[field].fontSize`
+  // override always wins. BuilderZone's CSS injection paints the override
+  // with !important so the auto-fit's inline fontSize loses cleanly.
+  useAutoFitText(stageRef, c._styles as any);
   // 2026-05-07 — live clock. Replaces the hardcoded "7:53" /
   // "Tuesday · 1st period @ 8:05" placeholder so the demo wall
   // shows real time on every screen. Operator can still override
@@ -201,7 +207,7 @@ export function HsVarsityWidget({ config, live }: { config?: HsVarsityConfig; li
         <div>
           <span data-field="schoolInitials" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolInitials}</span>
           <br />
-          <span className="hs-varsity-seal-est" data-field="schoolEst" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolEst}</span>
+          <span className="hs-varsity-seal-est" data-field="schoolEst" data-fit data-fit-min="18" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolEst}</span>
         </div>
       </div>
 
@@ -218,40 +224,40 @@ export function HsVarsityWidget({ config, live }: { config?: HsVarsityConfig; li
 
       {/* Department bar */}
       <div className="hs-varsity-deptbar">
-        <div className="hs-varsity-dept" data-field="department" style={{ whiteSpace: 'pre-wrap' as const }}>{c.department}</div>
-        <div className="hs-varsity-name" data-field="schoolName" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolName}</div>
+        <div className="hs-varsity-dept" data-field="department" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.department}</div>
+        <div className="hs-varsity-name" data-field="schoolName" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolName}</div>
       </div>
 
       {/* Jersey row: greeting + scoreboard */}
       <div className="hs-varsity-jersey">
         <div className="hs-varsity-chest">
           <div>
-            <div className="hs-varsity-eyebrow" data-field="greetingEyebrow" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingEyebrow}</div>
-            <h1 className="hs-varsity-h1" data-field="greetingHeadline" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingHeadline}</h1>
-            <div className="hs-varsity-sub" data-field="greetingSubtitle" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingSubtitle}</div>
+            <div className="hs-varsity-eyebrow" data-field="greetingEyebrow" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingEyebrow}</div>
+            <h1 className="hs-varsity-h1" data-field="greetingHeadline" data-fit data-fit-min="80" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingHeadline}</h1>
+            <div className="hs-varsity-sub" data-field="greetingSubtitle" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingSubtitle}</div>
           </div>
         </div>
         <div className="hs-varsity-score">
           <div className="hs-varsity-score-hdr">
             <div>
               <span className="hs-varsity-score-dot" />
-              <span data-field="scoreboardTag" style={{ whiteSpace: 'pre-wrap' as const }}>{c.scoreboardTag}</span>
+              <span data-field="scoreboardTag" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.scoreboardTag}</span>
             </div>
-            <div data-field="scoreboardSport" style={{ whiteSpace: 'pre-wrap' as const }}>{c.scoreboardSport}</div>
+            <div data-field="scoreboardSport" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.scoreboardSport}</div>
           </div>
           <div className="hs-varsity-matchup">
             <div className="hs-varsity-team hs-varsity-team-home">
               <div className="hs-varsity-crest" data-field="homeAbbr" style={{ whiteSpace: 'pre-wrap' as const }}>{c.homeAbbr}</div>
-              <div className="hs-varsity-tname" data-field="homeTeam" style={{ whiteSpace: 'pre-wrap' as const }}>{c.homeTeam}</div>
+              <div className="hs-varsity-tname" data-field="homeTeam" data-fit data-fit-min="36" style={{ whiteSpace: 'pre-wrap' as const }}>{c.homeTeam}</div>
             </div>
             <div className="hs-varsity-vs">VS</div>
             <div className="hs-varsity-team hs-varsity-team-away">
-              <div className="hs-varsity-tname" data-field="awayTeam" style={{ whiteSpace: 'pre-wrap' as const }}>{c.awayTeam}</div>
+              <div className="hs-varsity-tname" data-field="awayTeam" data-fit data-fit-min="36" style={{ whiteSpace: 'pre-wrap' as const }}>{c.awayTeam}</div>
               <div className="hs-varsity-crest hs-varsity-crest-away" data-field="awayAbbr" style={{ whiteSpace: 'pre-wrap' as const }}>{c.awayAbbr}</div>
             </div>
           </div>
           <div className="hs-varsity-time">
-            <span data-field="scoreboardTime" style={{ whiteSpace: 'pre-wrap' as const }}>{c.scoreboardTime}</span> · <span className="hs-varsity-where" data-field="scoreboardWhere" style={{ whiteSpace: 'pre-wrap' as const }}>{c.scoreboardWhere}</span>
+            <span data-field="scoreboardTime" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>{c.scoreboardTime}</span> · <span className="hs-varsity-where" data-field="scoreboardWhere" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>{c.scoreboardWhere}</span>
           </div>
         </div>
       </div>
@@ -260,23 +266,23 @@ export function HsVarsityWidget({ config, live }: { config?: HsVarsityConfig; li
       <div className="hs-varsity-stats">
         <div className="hs-varsity-stat">
           <div className="hs-varsity-stat-lbl">LOCAL TIME</div>
-          <div className="hs-varsity-stat-val" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</div>
-          <div className="hs-varsity-stat-cap" data-field="clockCaption" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.caption}</div>
+          <div className="hs-varsity-stat-val" data-field="clockTime" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</div>
+          <div className="hs-varsity-stat-cap" data-field="clockCaption" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.caption}</div>
         </div>
         <div className="hs-varsity-stat">
           <div className="hs-varsity-stat-lbl">GAMETIME FORECAST</div>
-          <div className="hs-varsity-stat-val" data-field="weatherTemp" style={{ whiteSpace: 'pre-wrap' as const }}>{w.tempLabel}</div>
-          <div className="hs-varsity-stat-cap" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{w.conditionLabel}</div>
+          <div className="hs-varsity-stat-val" data-field="weatherTemp" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>{w.tempLabel}</div>
+          <div className="hs-varsity-stat-cap" data-field="weatherCondition" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{w.conditionLabel}</div>
         </div>
         <div className="hs-varsity-stat">
           <div className="hs-varsity-stat-lbl">SEASON RECORD</div>
-          <div className="hs-varsity-stat-val" data-field="recordValue" style={{ whiteSpace: 'pre-wrap' as const }}>{c.recordValue}</div>
-          <div className="hs-varsity-stat-cap" data-field="recordCaption" style={{ whiteSpace: 'pre-wrap' as const }}>{c.recordCaption}</div>
+          <div className="hs-varsity-stat-val" data-field="recordValue" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>{c.recordValue}</div>
+          <div className="hs-varsity-stat-cap" data-field="recordCaption" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.recordCaption}</div>
         </div>
         <div className="hs-varsity-stat">
           <div className="hs-varsity-stat-lbl">TODAY&apos;S ATTENDANCE</div>
-          <div className="hs-varsity-stat-val" data-field="attendanceValue" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceValue}</div>
-          <div className="hs-varsity-stat-cap" data-field="attendanceCaption" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceCaption}</div>
+          <div className="hs-varsity-stat-val" data-field="attendanceValue" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceValue}</div>
+          <div className="hs-varsity-stat-cap" data-field="attendanceCaption" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceCaption}</div>
         </div>
       </div>
 
@@ -286,27 +292,27 @@ export function HsVarsityWidget({ config, live }: { config?: HsVarsityConfig; li
           <div className="hs-varsity-jersey-num" data-field="teacherNumber" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherNumber}</div>
         </div>
         <div>
-          <div className="hs-varsity-eyebrow hs-varsity-coach-eyebrow" data-field="teacherLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherLabel}</div>
-          <h2 className="hs-varsity-h2" data-field="teacherName" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherName}</h2>
-          <div className="hs-varsity-meta" data-field="teacherGrade" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherGrade}</div>
-          <div className="hs-varsity-quote" data-field="teacherQuote" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherQuote}</div>
+          <div className="hs-varsity-eyebrow hs-varsity-coach-eyebrow" data-field="teacherLabel" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherLabel}</div>
+          <h2 className="hs-varsity-h2" data-field="teacherName" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherName}</h2>
+          <div className="hs-varsity-meta" data-field="teacherGrade" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherGrade}</div>
+          <div className="hs-varsity-quote" data-field="teacherQuote" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherQuote}</div>
         </div>
       </div>
 
       {/* Announcement + countdown column */}
       <div className="hs-varsity-colright">
         <div className="hs-varsity-anno">
-          <div className="hs-varsity-anno-tag" data-field="announcementTag" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementTag}</div>
-          <h3 className="hs-varsity-anno-h3" data-field="announcementHeadline" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementHeadline}</h3>
-          <p className="hs-varsity-anno-p" data-field="announcementBody" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementBody}</p>
-          <div className="hs-varsity-anno-when" data-field="announcementDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementDate}</div>
+          <div className="hs-varsity-anno-tag" data-field="announcementTag" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementTag}</div>
+          <h3 className="hs-varsity-anno-h3" data-field="announcementHeadline" data-fit data-fit-min="36" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementHeadline}</h3>
+          <p className="hs-varsity-anno-p" data-field="announcementBody" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementBody}</p>
+          <div className="hs-varsity-anno-when" data-field="announcementDate" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementDate}</div>
         </div>
         <div className="hs-varsity-countdown">
-          <div className="hs-varsity-cd-num" data-field="countdownValue" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownValue}</div>
+          <div className="hs-varsity-cd-num" data-field="countdownValue" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownValue}</div>
           <div className="hs-varsity-cd-lbl">
-            <span data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownLabel}</span>
+            <span data-field="countdownLabel" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownLabel}</span>
             <br />
-            <span className="hs-varsity-cd-sub" data-field="countdownSub" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownSub}</span>
+            <span className="hs-varsity-cd-sub" data-field="countdownSub" data-fit data-fit-min="20" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownSub}</span>
           </div>
         </div>
       </div>

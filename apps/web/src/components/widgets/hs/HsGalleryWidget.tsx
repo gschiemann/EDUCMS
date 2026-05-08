@@ -23,6 +23,7 @@ import { useRef } from 'react';
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock, resolveHsDate } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
+import { useAutoFitText } from './useAutoFitText';
 
 export interface HsGalleryConfig {
   schoolName?: string;
@@ -138,6 +139,11 @@ export const DEFAULTS: Required<HsGalleryConfig> = {
 export function HsGalleryWidget({ config, live }: { config?: HsGalleryConfig; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<HsGalleryConfig>;
   const stageRef = useRef<HTMLDivElement | null>(null);
+  // 2026-05-08 — auto-fit: shrinks fontSize on data-fit text elements
+  // when their parent container would overflow. Manual `_styles[field].fontSize`
+  // override always wins. BuilderZone's CSS injection paints the override
+  // with !important so the auto-fit's inline fontSize loses cleanly.
+  useAutoFitText(stageRef, c._styles as any);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
@@ -171,20 +177,20 @@ export function HsGalleryWidget({ config, live }: { config?: HsGalleryConfig; li
       <style>{CSS}</style>
 
       <div className="hs-gl-mast">
-        <div className="hs-gl-logo" data-field="schoolName" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolName}</div>
+        <div className="hs-gl-logo" data-field="schoolName" data-fit data-fit-min="40" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolName}</div>
         <div className="hs-gl-nav">
-          <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{liveDate}</span>
+          <span data-field="clockDate" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>{liveDate}</span>
           <span className="hs-gl-nav-on" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</span>
-          <span data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{w.conditionLabel}</span>
+          <span data-field="weatherCondition" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>{w.conditionLabel}</span>
         </div>
       </div>
 
       <div className="hs-gl-plaque">
-        <div className="hs-gl-num" data-field="greetingEyebrow" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingEyebrow}</div>
+        <div className="hs-gl-num" data-field="greetingEyebrow" data-fit data-fit-min="20" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingEyebrow}</div>
         <h1 className="hs-gl-h1">
-          <span data-field="greetingHeadline1" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingHeadline1}</span> <em data-field="greetingHeadline2" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingHeadline2}</em> <span data-field="greetingHeadline3" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingHeadline3}</span>
+          <span data-field="greetingHeadline1" data-fit data-fit-min="80" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingHeadline1}</span> <em data-field="greetingHeadline2" data-fit data-fit-min="80" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingHeadline2}</em> <span data-field="greetingHeadline3" data-fit data-fit-min="80" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingHeadline3}</span>
         </h1>
-        <p className="hs-gl-sub" data-field="greetingSubtitle" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingSubtitle}</p>
+        <p className="hs-gl-sub" data-field="greetingSubtitle" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>{c.greetingSubtitle}</p>
       </div>
 
       <div className="hs-gl-acq">
@@ -197,10 +203,10 @@ export function HsGalleryWidget({ config, live }: { config?: HsGalleryConfig; li
             {/* 2026-05-07 — added data-field for click-to-edit on every cell. */}
             <div className="hs-gl-n" data-field={`event${i}Num`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.n}</div>
             <div>
-              <div className="hs-gl-title" data-field={`event${i}Name`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.name}</div>
-              <div className="hs-gl-meta" data-field={`event${i}Meta`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.meta}</div>
+              <div className="hs-gl-title" data-field={`event${i}Name`} data-fit data-fit-min="36" style={{ whiteSpace: 'pre-wrap' as const }}>{e.name}</div>
+              <div className="hs-gl-meta" data-field={`event${i}Meta`} data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{e.meta}</div>
             </div>
-            <div className="hs-gl-time"><span data-field={`event${i}Time`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.time}</span><span className="hs-gl-d" data-field={`event${i}Day`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.day}</span></div>
+            <div className="hs-gl-time"><span data-field={`event${i}Time`} style={{ whiteSpace: 'pre-wrap' as const }}>{e.time}</span><span className="hs-gl-d" data-field={`event${i}Day`} data-fit data-fit-min="20" style={{ whiteSpace: 'pre-wrap' as const }}>{e.day}</span></div>
           </div>
         ))}
       </div>
@@ -208,51 +214,51 @@ export function HsGalleryWidget({ config, live }: { config?: HsGalleryConfig; li
       <div className="hs-gl-wall">
         <div>
           <div className="hs-gl-label">Local Time</div>
-          <div className="hs-gl-val" data-field="clockbigVal" style={{ whiteSpace: 'pre-wrap' as const }}>{(!c.clockbigVal || c.clockbigVal === DEFAULTS.clockbigVal) ? clock.time : c.clockbigVal}</div>
-          <div className="hs-gl-cap" data-field="clockbigCap" style={{ whiteSpace: 'pre-wrap' as const }}>{(!c.clockbigCap || c.clockbigCap === DEFAULTS.clockbigCap) ? clock.caption : c.clockbigCap}</div>
+          <div className="hs-gl-val" data-field="clockbigVal" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>{(!c.clockbigVal || c.clockbigVal === DEFAULTS.clockbigVal) ? clock.time : c.clockbigVal}</div>
+          <div className="hs-gl-cap" data-field="clockbigCap" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{(!c.clockbigCap || c.clockbigCap === DEFAULTS.clockbigCap) ? clock.caption : c.clockbigCap}</div>
         </div>
         <div>
           <div className="hs-gl-label">Today&apos;s Weather</div>
-          <div className="hs-gl-val" data-field="weatherbigVal" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherbigVal}</div>
-          <div className="hs-gl-cap" data-field="weatherbigCap" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherbigCap}</div>
+          <div className="hs-gl-val" data-field="weatherbigVal" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherbigVal}</div>
+          <div className="hs-gl-cap" data-field="weatherbigCap" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherbigCap}</div>
         </div>
         <div>
           <div className="hs-gl-label">Present &amp; Accounted For</div>
-          <div className="hs-gl-val" data-field="attendanceVal" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceVal}</div>
-          <div className="hs-gl-cap" data-field="attendanceCap" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceCap}</div>
+          <div className="hs-gl-val" data-field="attendanceVal" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceVal}</div>
+          <div className="hs-gl-cap" data-field="attendanceCap" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.attendanceCap}</div>
         </div>
         <div>
-          <div className="hs-gl-label" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownLabel}</div>
-          <div className="hs-gl-val" data-field="countdownValue" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownValue}</div>
-          <div className="hs-gl-cap" data-field="countdownSub" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownSub}</div>
+          <div className="hs-gl-label" data-field="countdownLabel" data-fit data-fit-min="20" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownLabel}</div>
+          <div className="hs-gl-val" data-field="countdownValue" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownValue}</div>
+          <div className="hs-gl-cap" data-field="countdownSub" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.countdownSub}</div>
         </div>
       </div>
 
       <div className="hs-gl-feature">
         <div className="hs-gl-portrait">
-          <div className="hs-gl-tag" data-field="teacherTag" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherTag}</div>
+          <div className="hs-gl-tag" data-field="teacherTag" data-fit data-fit-min="20" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherTag}</div>
         </div>
         <div className="hs-gl-text">
-          <div className="hs-gl-label" data-field="teacherLabel" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherLabel}</div>
-          <h2 className="hs-gl-h2" data-field="teacherName" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherName}</h2>
-          <div className="hs-gl-teacher-meta" data-field="teacherMeta" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherMeta}</div>
-          <div className="hs-gl-statement" data-field="teacherQuote" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherQuote}</div>
-          <div className="hs-gl-byline" data-field="teacherByline" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherByline}</div>
+          <div className="hs-gl-label" data-field="teacherLabel" data-fit data-fit-min="20" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherLabel}</div>
+          <h2 className="hs-gl-h2" data-field="teacherName" data-fit data-fit-min="40" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherName}</h2>
+          <div className="hs-gl-teacher-meta" data-field="teacherMeta" data-fit data-fit-min="18" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherMeta}</div>
+          <div className="hs-gl-statement" data-field="teacherQuote" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherQuote}</div>
+          <div className="hs-gl-byline" data-field="teacherByline" data-fit data-fit-min="20" style={{ whiteSpace: 'pre-wrap' as const }}>{c.teacherByline}</div>
         </div>
       </div>
 
       <div className="hs-gl-advisory">
-        <div className="hs-gl-advisory-label" data-field="announcementTag" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementTag}</div>
-        <h3 className="hs-gl-adv-h3" data-field="announcementHeadline" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementHeadline}</h3>
-        <p className="hs-gl-adv-p" data-field="announcementBody" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementBody}</p>
-        <div className="hs-gl-adv-when" data-field="announcementDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementDate}</div>
+        <div className="hs-gl-advisory-label" data-field="announcementTag" data-fit data-fit-min="20" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementTag}</div>
+        <h3 className="hs-gl-adv-h3" data-field="announcementHeadline" data-fit data-fit-min="36" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementHeadline}</h3>
+        <p className="hs-gl-adv-p" data-field="announcementBody" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementBody}</p>
+        <div className="hs-gl-adv-when" data-field="announcementDate" data-fit data-fit-min="18" style={{ whiteSpace: 'pre-wrap' as const }}>{c.announcementDate}</div>
       </div>
 
       <div className="hs-gl-hours">
         <div className="hs-gl-h">
-          <strong data-field="brandHours" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandHours}</strong> <span className="hs-gl-sep">·</span> <span data-field="brandSpan" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandSpan}</span> <span className="hs-gl-sep">·</span> <span data-field="brandClosed" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandClosed}</span>
+          <strong data-field="brandHours" data-fit data-fit-min="20" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandHours}</strong> <span className="hs-gl-sep">·</span> <span data-field="brandSpan" data-fit data-fit-min="18" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandSpan}</span> <span className="hs-gl-sep">·</span> <span data-field="brandClosed" data-fit data-fit-min="18" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandClosed}</span>
         </div>
-        <div className="hs-gl-coda" data-field="brandCoda" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandCoda}</div>
+        <div className="hs-gl-coda" data-field="brandCoda" data-fit data-fit-min="20" style={{ whiteSpace: 'pre-wrap' as const }}>{c.brandCoda}</div>
       </div>
 
       <div className="hs-gl-ticker">

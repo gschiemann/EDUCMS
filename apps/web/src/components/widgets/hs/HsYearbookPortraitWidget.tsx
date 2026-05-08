@@ -31,6 +31,7 @@ import { useRef } from 'react';
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
+import { useAutoFitText } from './useAutoFitText';
 
 export interface HsYearbookConfig {
   schoolName?: string;
@@ -146,6 +147,11 @@ export const DEFAULTS: Required<Cfg> = {
 export function HsYearbookPortraitWidget({ config, live }: { config?: Cfg; live?: boolean }) {
   const c = { ...DEFAULTS, ...(config || {}) } as Required<Cfg>;
   const stageRef = useRef<HTMLDivElement | null>(null);
+  // 2026-05-08 — auto-fit: shrinks fontSize on data-fit text elements
+  // when their parent container would overflow. Manual `_styles[field].fontSize`
+  // override always wins. BuilderZone's CSS injection paints the override
+  // with !important so the auto-fit's inline fontSize loses cleanly.
+  useAutoFitText(stageRef, c._styles as any);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
@@ -203,19 +209,19 @@ export function HsYearbookPortraitWidget({ config, live }: { config?: Cfg; live?
       <div className="hs-ybp-mast">
         <div className="hs-ybp-mast-top">
           <span className="hs-ybp-mast-side">EST. 1957</span>
-          <span className="hs-ybp-mast-side hs-ybp-mast-side-r" data-field="schoolSection" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <span className="hs-ybp-mast-side hs-ybp-mast-side-r" data-field="schoolSection" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.schoolSection}
           </span>
         </div>
-        <div className="hs-ybp-title" data-field="schoolName" style={{ whiteSpace: 'pre-wrap' as const }}>
+        <div className="hs-ybp-title" data-field="schoolName" data-fit data-fit-min="80" style={{ whiteSpace: 'pre-wrap' as const }}>
           {c.schoolName}
         </div>
         <div className="hs-ybp-mast-rule" />
         <div className="hs-ybp-mast-bottom">
-          <span data-field="schoolIssue" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <span data-field="schoolIssue" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.schoolIssue}
           </span>
-          <span className="hs-ybp-mast-time" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <span className="hs-ybp-mast-time" data-field="clockTime" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>
             {clock.time}
           </span>
         </div>
@@ -224,19 +230,19 @@ export function HsYearbookPortraitWidget({ config, live }: { config?: Cfg; live?
       {/* ============================ REGION 2: FEATURED PHOTO ~700-1400 ============================ */}
       <div className="hs-ybp-feat">
         <div className="hs-ybp-feat-photo">
-          <div className="hs-ybp-feat-photo-tag" data-field="featurePhotoTag" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <div className="hs-ybp-feat-photo-tag" data-field="featurePhotoTag" data-fit data-fit-min="18" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.featurePhotoTag}
           </div>
         </div>
         <div className="hs-ybp-feat-cap">
-          <div className="hs-ybp-feat-num" data-field="featureNum" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <div className="hs-ybp-feat-num" data-field="featureNum" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.featureNum}
           </div>
           <div className="hs-ybp-feat-cap-body">
-            <div className="hs-ybp-feat-title" data-field="featureTitle" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <div className="hs-ybp-feat-title" data-field="featureTitle" data-fit data-fit-min="36" style={{ whiteSpace: 'pre-wrap' as const }}>
               {c.featureTitle}
             </div>
-            <div className="hs-ybp-feat-body" data-field="featureBody" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <div className="hs-ybp-feat-body" data-field="featureBody" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>
               {c.featureBody}
             </div>
             <div className="hs-ybp-feat-byline">{c.announcementTag} · {c.announcementDate}</div>
@@ -246,22 +252,22 @@ export function HsYearbookPortraitWidget({ config, live }: { config?: Cfg; live?
 
       {/* ============================ REGION 3: LEDE WITH DROP CAP ~1400-2500 ============================ */}
       <div className="hs-ybp-lede">
-        <div className="hs-ybp-eyebrow" data-field="greetingEyebrow" style={{ whiteSpace: 'pre-wrap' as const }}>
+        <div className="hs-ybp-eyebrow" data-field="greetingEyebrow" data-fit data-fit-min="24" style={{ whiteSpace: 'pre-wrap' as const }}>
           {c.greetingEyebrow}
         </div>
-        <h1 className="hs-ybp-h1" data-field="greetingHeadline" style={{ whiteSpace: 'pre-wrap' as const }}>
+        <h1 className="hs-ybp-h1" data-field="greetingHeadline" data-fit data-fit-min="80" style={{ whiteSpace: 'pre-wrap' as const }}>
           {c.greetingHeadline}
         </h1>
         <div className="hs-ybp-lede-rule" />
         <div className="hs-ybp-lede-cols">
           <div className="hs-ybp-lede-col">
             <span className="hs-ybp-dropcap">{(ledeText.trim()[0] || 'A')}</span>
-            <span data-field="greetingSubtitle" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <span data-field="greetingSubtitle" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>
               {ledeLeft.trim().slice(1)}
             </span>
           </div>
           <div className="hs-ybp-lede-col">
-            <span data-field="greetingSubtitle" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <span data-field="greetingSubtitle" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>
               {ledeRight}
             </span>
           </div>
@@ -275,7 +281,7 @@ export function HsYearbookPortraitWidget({ config, live }: { config?: Cfg; live?
             {w.tempLabel}
           </span>
           <span className="hs-ybp-lede-folio-sep">·</span>
-          <span data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <span data-field="weatherCondition" data-fit data-fit-min="16" style={{ whiteSpace: 'pre-wrap' as const }}>
             {w.conditionLabel}
           </span>
         </div>
@@ -284,24 +290,24 @@ export function HsYearbookPortraitWidget({ config, live }: { config?: Cfg; live?
       {/* ============================ REGION 4: PULL-QUOTE PORTRAIT ~2500-3100 ============================ */}
       <div className="hs-ybp-pull">
         <div className="hs-ybp-pull-portrait">
-          <div className="hs-ybp-pull-frame" data-field="teacherPhotoTag" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <div className="hs-ybp-pull-frame" data-field="teacherPhotoTag" data-fit data-fit-min="18" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.teacherPhotoTag}
           </div>
         </div>
         <div className="hs-ybp-pull-body">
-          <div className="hs-ybp-pull-tag" data-field="teacherLabel" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <div className="hs-ybp-pull-tag" data-field="teacherLabel" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.teacherLabel}
           </div>
-          <div className="hs-ybp-pull-name" data-field="teacherName" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <div className="hs-ybp-pull-name" data-field="teacherName" data-fit data-fit-min="60" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.teacherName}
           </div>
-          <div className="hs-ybp-pull-meta" data-field="teacherGrade" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <div className="hs-ybp-pull-meta" data-field="teacherGrade" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.teacherGrade}
           </div>
-          <blockquote className="hs-ybp-pull-quote" data-field="teacherQuote" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <blockquote className="hs-ybp-pull-quote" data-field="teacherQuote" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.teacherQuote}
           </blockquote>
-          <div className="hs-ybp-pull-byline" data-field="teacherByline" style={{ whiteSpace: 'pre-wrap' as const }}>
+          <div className="hs-ybp-pull-byline" data-field="teacherByline" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
             {c.teacherByline}
           </div>
         </div>
@@ -312,10 +318,10 @@ export function HsYearbookPortraitWidget({ config, live }: { config?: Cfg; live?
         <div className="hs-ybp-cal-hdr">
           <div className="hs-ybp-cal-h">This week, in italic.</div>
           <div className="hs-ybp-cal-meta">
-            <span data-field="countdownValue" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <span data-field="countdownValue" data-fit data-fit-min="40" style={{ whiteSpace: 'pre-wrap' as const }}>
               {c.countdownValue}
             </span>
-            <span className="hs-ybp-cal-meta-lbl" data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <span className="hs-ybp-cal-meta-lbl" data-field="countdownLabel" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
               {c.countdownLabel}
             </span>
           </div>
@@ -325,11 +331,11 @@ export function HsYearbookPortraitWidget({ config, live }: { config?: Cfg; live?
           {events.map((ev, i) => (
             <div key={i} className="hs-ybp-cal-row">
               <div className="hs-ybp-cal-badge">
-                <span data-field={`event${i + 1}When`} style={{ whiteSpace: 'pre-wrap' as const }}>
+                <span data-field={`event${i + 1}When`} data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
                   {ev.when}
                 </span>
               </div>
-              <div className="hs-ybp-cal-name" data-field={`event${i + 1}Name`} style={{ whiteSpace: 'pre-wrap' as const }}>
+              <div className="hs-ybp-cal-name" data-field={`event${i + 1}Name`} data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>
                 {ev.name}
               </div>
               <div className="hs-ybp-cal-folio">{String(i + 1).padStart(2, '0')}</div>
@@ -337,11 +343,11 @@ export function HsYearbookPortraitWidget({ config, live }: { config?: Cfg; live?
           ))}
           <div className="hs-ybp-cal-row hs-ybp-cal-row-cd">
             <div className="hs-ybp-cal-badge hs-ybp-cal-badge-cd">
-              <span data-field="countdownLabel" style={{ whiteSpace: 'pre-wrap' as const }}>
+              <span data-field="countdownLabel" data-fit data-fit-min="22" style={{ whiteSpace: 'pre-wrap' as const }}>
                 {c.countdownLabel}
               </span>
             </div>
-            <div className="hs-ybp-cal-name" data-field="countdownUnit" style={{ whiteSpace: 'pre-wrap' as const }}>
+            <div className="hs-ybp-cal-name" data-field="countdownUnit" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>
               {c.countdownUnit}
             </div>
             <div className="hs-ybp-cal-folio">04</div>
@@ -352,7 +358,7 @@ export function HsYearbookPortraitWidget({ config, live }: { config?: Cfg; live?
       {/* ============================ REGION 6: WIRE TICKER ~3600-3840 ============================ */}
       <div className="hs-ybp-wire-rule" />
       <div className="hs-ybp-ticker">
-        <div className="hs-ybp-tk-tag" data-field="tickerTag" style={{ whiteSpace: 'pre-wrap' as const }}>
+        <div className="hs-ybp-tk-tag" data-field="tickerTag" data-fit data-fit-min="28" style={{ whiteSpace: 'pre-wrap' as const }}>
           {c.tickerTag}
         </div>
         <div className="hs-ybp-tk-msg">
