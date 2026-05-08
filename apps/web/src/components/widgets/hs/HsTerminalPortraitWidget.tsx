@@ -513,7 +513,7 @@ const CSS = `
 @keyframes hsTpBlink { 50% { opacity: 0; } }
 .hs-tp-session {
   margin-top: 10px;
-  font-size: 40px;
+  font-size: 52px;
   color: #9bff9b; opacity: .85;
   letter-spacing: .08em;
 }
@@ -533,12 +533,12 @@ const CSS = `
   content: attr(data-box);
   position: absolute; top: -28px; left: 36px;
   background: #081a08; padding: 0 22px;
-  font-size: 36px; color: #ffe37a;
+  font-size: 48px; color: #ffe37a;
   letter-spacing: .2em; text-transform: uppercase;
   text-shadow: 0 0 12px rgba(255,227,122,.4);
 }
 .hs-tp-cmdline {
-  font-size: 46px; color: #4a7a4a;
+  font-size: 58px; color: #4a7a4a;
   letter-spacing: .05em;
 }
 .hs-tp-name {
@@ -551,9 +551,9 @@ const CSS = `
   margin: 14px 0 18px;
 }
 .hs-tp-kv {
-  display: grid; grid-template-columns: 320px 1fr;
+  display: grid; grid-template-columns: 360px 1fr;
   gap: 10px 32px; margin: 0;
-  font-size: 44px;
+  font-size: 58px; line-height: 1.2;
 }
 .hs-tp-kv dt { color: #4a7a4a; }
 .hs-tp-kv dd { margin: 0; color: #9bff9b; text-shadow: 0 0 10px rgba(155,255,155,.4); }
@@ -561,8 +561,8 @@ const CSS = `
   border-left: 6px solid #ffe37a;
   padding-left: 30px;
   margin-top: 28px;
-  font-size: 44px;
-  color: #cfe9cf; font-style: italic; line-height: 1.3;
+  font-size: 72px;
+  color: #cfe9cf; font-style: italic; line-height: 1.2;
 }
 
 /* ----- REGION 3: crontab -l events ----- */
@@ -574,9 +574,9 @@ const CSS = `
   z-index: 2;
 }
 .hs-tp-evheader {
-  display: grid; grid-template-columns: 160px 240px 1fr;
+  display: grid; grid-template-columns: 200px 280px 1fr;
   gap: 24px;
-  font-size: 38px; color: #4a7a4a;
+  font-size: 52px; color: #4a7a4a;
   letter-spacing: .18em; text-transform: uppercase;
   padding: 18px 0 14px;
   border-bottom: 2px dashed rgba(155,255,155,.35);
@@ -588,9 +588,9 @@ const CSS = `
   border-bottom: 1px dashed rgba(155,255,155,.22);
 }
 .hs-tp-evrow-line1 {
-  display: grid; grid-template-columns: 160px 240px 1fr 320px;
+  display: grid; grid-template-columns: 200px 280px 1fr 360px;
   gap: 18px;
-  font-size: 44px; color: #9bff9b;
+  font-size: 62px; color: #9bff9b;
   align-items: baseline;
 }
 .hs-tp-evpre { color: #ffe37a; font-weight: 700; letter-spacing: .1em; }
@@ -603,14 +603,14 @@ const CSS = `
 .hs-tp-evwho { color: #7adfff; text-align: right; letter-spacing: .04em; }
 .hs-tp-evrow-line2 {
   display: grid; grid-template-columns: 1fr auto;
-  gap: 24px; padding: 10px 0 0 160px;
-  font-size: 50px;
+  gap: 24px; padding: 10px 0 0 200px;
+  font-size: 64px;
   align-items: baseline;
 }
 .hs-tp-evname { color: #cfe9cf; line-height: 1.15; }
 .hs-tp-evpath {
   color: #ffe37a;
-  font-size: 38px;
+  font-size: 52px;
   letter-spacing: .08em;
   text-transform: lowercase;
 }
@@ -623,7 +623,7 @@ const CSS = `
 }
 .hs-tp-cd-pre {
   color: #ffe37a; font-weight: 700; letter-spacing: .12em;
-  font-size: 38px;
+  font-size: 48px;
 }
 .hs-tp-cd-val {
   font-family: 'VT323', monospace;
@@ -632,12 +632,12 @@ const CSS = `
   text-shadow: 0 0 40px rgba(255,227,122,.6);
 }
 .hs-tp-cd-lbl {
-  font-size: 50px; color: #9bff9b;
+  font-size: 64px; color: #9bff9b;
   display: flex; flex-direction: column; gap: 8px;
   line-height: 1.15;
 }
 .hs-tp-cd-sub {
-  color: #4a7a4a; font-size: 38px;
+  color: #4a7a4a; font-size: 52px;
 }
 
 /* ----- REGION 4: announcements tail -f ----- */
@@ -651,7 +651,7 @@ const CSS = `
 .hs-tp-anno::before { color: #ff7a7a; }
 .hs-tp-anno-tag {
   margin-top: 14px;
-  font-size: 40px; letter-spacing: .12em;
+  font-size: 58px; letter-spacing: .12em;
   color: #ff7a7a;
 }
 .hs-tp-anno-h3 {
@@ -663,11 +663,11 @@ const CSS = `
   text-transform: uppercase;
 }
 .hs-tp-anno-p {
-  font-size: 42px; color: #cfe9cf;
-  margin: 16px 0 0; line-height: 1.3;
+  font-size: 64px; color: #cfe9cf;
+  margin: 16px 0 0; line-height: 1.22;
 }
 .hs-tp-anno-when {
-  font-size: 38px; color: #ff7a7a;
+  font-size: 52px; color: #ff7a7a;
   margin-top: 20px; letter-spacing: .12em;
 }
 
@@ -690,8 +690,8 @@ const CSS = `
   display: flex; flex-direction: column; gap: 8px;
 }
 .hs-tp-fact-key {
-  font-size: 38px; color: #4a7a4a;
-  letter-spacing: .22em; text-transform: uppercase;
+  font-size: 52px; color: #4a7a4a;
+  letter-spacing: .2em; text-transform: uppercase;
 }
 .hs-tp-fact-val {
   font-family: 'VT323', monospace;
@@ -703,7 +703,7 @@ const CSS = `
   font-size: 70px; line-height: 1; padding-top: 8px;
 }
 .hs-tp-fact-sub {
-  font-size: 36px; color: #4a7a4a; line-height: 1.3;
+  font-size: 52px; color: #4a7a4a; line-height: 1.2;
 }
 
 /* ----- REGION 6: bottom syslog ticker ----- */
@@ -718,12 +718,12 @@ const CSS = `
   background: #061506; color: #9bff9b;
   height: 100%; display: flex; align-items: center;
   padding: 0 44px;
-  font-weight: 700; font-size: 44px;
+  font-weight: 700; font-size: 58px;
   letter-spacing: .16em;
   flex-shrink: 0;
 }
 .hs-tp-tk-msg {
-  font-weight: 700; font-size: 44px;
+  font-weight: 700; font-size: 62px;
   padding-left: 50px; white-space: nowrap;
   letter-spacing: .08em;
   text-transform: uppercase;
