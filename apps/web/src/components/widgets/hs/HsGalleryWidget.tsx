@@ -20,7 +20,7 @@
  */
 
 import { HsStage } from './HsStage';
-import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
+import { useHsLiveClock, resolveHsClock, resolveHsDate } from './useHsLiveClock';
 
 export interface HsGalleryConfig {
   schoolName?: string;
@@ -107,6 +107,10 @@ export function HsGalleryWidget({ config, live }: { config?: HsGalleryConfig; li
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
+  // 2026-05-07 — live date in Gallery's "Tuesday, April 21" long format.
+  const liveDate = resolveHsDate(c, now, DEFAULTS.clockDate, (d) =>
+    d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }),
+  );
   return (
     <HsStage
       stageStyle={{
@@ -120,7 +124,7 @@ export function HsGalleryWidget({ config, live }: { config?: HsGalleryConfig; li
       <div className="hs-gl-mast">
         <div className="hs-gl-logo" data-field="schoolName" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolName}</div>
         <div className="hs-gl-nav">
-          <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{c.clockDate}</span>
+          <span data-field="clockDate" style={{ whiteSpace: 'pre-wrap' as const }}>{liveDate}</span>
           <span className="hs-gl-nav-on" data-field="clockTime" style={{ whiteSpace: 'pre-wrap' as const }}>{clock.time}</span>
           <span data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>{c.weatherCondition}</span>
         </div>
