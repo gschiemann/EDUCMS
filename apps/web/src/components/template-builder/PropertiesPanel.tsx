@@ -1975,8 +1975,11 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(SH('stats', 'Stat row (clock / weather / record / attendance)'));
       fields.push(<TextField key="clockTime" label="Clock time" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
       fields.push(<TextField key="clockCaption" label="Clock caption" value={cfg.clockCaption || ''} placeholder={D.clockCaption} onChange={(v) => setField({ clockCaption: v })} />);
-      fields.push(<TextField key="weatherTemp" label="Weather temp" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
-      fields.push(<TextField key="weatherCondition" label="Weather condition" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
+      // 2026-05-07 — live weather (Open-Meteo). Manual overrides below.
+      fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
+      fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
+      fields.push(<TextField key="weatherTemp" label="Weather temp (manual override)" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
+      fields.push(<TextField key="weatherCondition" label="Weather condition (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
       fields.push(<TextField key="recordValue" label="Season record" value={cfg.recordValue || ''} placeholder={D.recordValue} onChange={(v) => setField({ recordValue: v })} />);
       fields.push(<TextField key="recordCaption" label="Record caption" value={cfg.recordCaption || ''} placeholder={D.recordCaption} onChange={(v) => setField({ recordCaption: v })} />);
       fields.push(<TextField key="attendanceValue" label="Attendance" value={cfg.attendanceValue || ''} placeholder={D.attendanceValue} onChange={(v) => setField({ attendanceValue: v })} />);
@@ -2038,9 +2041,11 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="clockTime" label="Time" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
       fields.push(<TextField key="clockCaption" label="Caption" value={cfg.clockCaption || ''} placeholder={D.clockCaption} onChange={(v) => setField({ clockCaption: v })} />);
 
-      fields.push(SH('weather', 'Forecast panel'));
-      fields.push(<TextField key="weatherTemp" label="Temperature" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
-      fields.push(<TextField key="weatherCondition" label="Condition" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
+      fields.push(SH('weather', 'Forecast panel — live data'));
+      fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
+      fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
+      fields.push(<TextField key="weatherTemp" label="Temperature (manual override)" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
+      fields.push(<TextField key="weatherCondition" label="Condition (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
 
       fields.push(SH('teacher', 'Featured guest / Teacher of the week'));
       fields.push(<TextField key="teacherPortraitTag" label="Portrait caption" value={cfg.teacherPortraitTag || ''} placeholder={D.teacherPortraitTag} onChange={(v) => setField({ teacherPortraitTag: v })} />);
@@ -2097,9 +2102,11 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextAreaField key="announcementBody" label="Body" value={cfg.announcementBody || ''} placeholder={D.announcementBody} rows={3} onChange={(v) => setField({ announcementBody: v })} />);
       fields.push(<TextField key="announcementDate" label="Deadline line" value={cfg.announcementDate || ''} placeholder={D.announcementDate} onChange={(v) => setField({ announcementDate: v })} />);
 
-      fields.push(SH('weather', 'TODAY card'));
-      fields.push(<TextField key="weatherTemp" label="Temp" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
-      fields.push(<TextField key="weatherCondition" label="Condition" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
+      fields.push(SH('weather', 'TODAY card — live data'));
+      fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
+      fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
+      fields.push(<TextField key="weatherTemp" label="Temp (manual override)" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
+      fields.push(<TextField key="weatherCondition" label="Condition (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
 
       fields.push(SH('countdown', 'Graduation countdown'));
       fields.push(<TextField key="countdownLabel" label="Label" value={cfg.countdownLabel || ''} placeholder={D.countdownLabel} onChange={(v) => setField({ countdownLabel: v })} />);
@@ -2145,8 +2152,11 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="schoolPath" label="Path" value={cfg.schoolPath || ''} placeholder={D.schoolPath} onChange={(v) => setField({ schoolPath: v })} />);
       fields.push(<TextField key="schoolSession" label="Session line" value={cfg.schoolSession || ''} placeholder={D.schoolSession} onChange={(v) => setField({ schoolSession: v })} />);
       fields.push(<TextField key="clockTime" label="Topbar clock" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
-      fields.push(<TextField key="weatherTemp" label="Topbar temp" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
-      fields.push(<TextField key="weatherCondition" label="Topbar condition" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
+      // Live weather — feeds both the topbar pair and the [weatherd] stat box.
+      fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
+      fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
+      fields.push(<TextField key="weatherTemp" label="Topbar temp (manual override)" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
+      fields.push(<TextField key="weatherCondition" label="Topbar condition (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
 
       fields.push(SH('greeting', 'Shell prompt / greeting'));
       fields.push(<TextField key="greetingCmd" label="Command" value={cfg.greetingCmd || ''} placeholder={D.greetingCmd} onChange={(v) => setField({ greetingCmd: v })} />);
@@ -2217,8 +2227,11 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="greetingEyebrow" label="Eyebrow" value={cfg.greetingEyebrow || ''} placeholder={D.greetingEyebrow} onChange={(v) => setField({ greetingEyebrow: v })} />);
       fields.push(<TextField key="greetingHeadline" label="Headline" value={cfg.greetingHeadline || ''} placeholder={D.greetingHeadline} onChange={(v) => setField({ greetingHeadline: v })} />);
       fields.push(<TextAreaField key="greetingSubtitle" label="Subtitle" value={cfg.greetingSubtitle || ''} placeholder={D.greetingSubtitle} rows={2} onChange={(v) => setField({ greetingSubtitle: v })} />);
-      fields.push(<TextField key="weatherTemp" label="Outside temp" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
-      fields.push(<TextField key="weatherCondition" label="Conditions" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
+      // Live weather (Open-Meteo). Manual overrides below.
+      fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
+      fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
+      fields.push(<TextField key="weatherTemp" label="Outside temp (manual override)" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
+      fields.push(<TextField key="weatherCondition" label="Conditions (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
       fields.push(<TextField key="weatherStatus" label="Status badge" value={cfg.weatherStatus || ''} placeholder={D.weatherStatus} onChange={(v) => setField({ weatherStatus: v })} />);
 
       fields.push(SH('departures', 'Departure rows (5 classes)'));
@@ -2266,7 +2279,10 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="schoolName" label="Publication name" value={cfg.schoolName || ''} placeholder={D.schoolName} onChange={(v) => setField({ schoolName: v })} />);
       fields.push(<TextField key="clockDate" label="Date (nav)" value={cfg.clockDate || ''} placeholder={D.clockDate} onChange={(v) => setField({ clockDate: v })} />);
       fields.push(<TextField key="clockTime" label="Time (nav)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
-      fields.push(<TextField key="weatherCondition" label="Weather (nav)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
+      // Live weather — Gallery renders a single "Clear, 46°" string.
+      fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
+      fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
+      fields.push(<TextField key="weatherCondition" label="Weather nav (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
 
       fields.push(SH('greeting', 'Plaque (italic accent word)'));
       fields.push(<TextField key="greetingEyebrow" label="Exhibition number" value={cfg.greetingEyebrow || ''} placeholder={D.greetingEyebrow} onChange={(v) => setField({ greetingEyebrow: v })} />);
@@ -2443,7 +2459,10 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(SH('clock', 'Floating clock'));
       fields.push(<TextField key="clockLabel" label="Label" value={cfg.clockLabel || ''} placeholder={D.clockLabel} onChange={(v) => setField({ clockLabel: v })} />);
       fields.push(<TextField key="clockTime" label="Time" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
-      fields.push(<TextField key="weatherCondition" label="Date/weather line" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
+      // Live weather — Zine renders the full 'tue · apr 21 · 46° · clear' lowercase string.
+      fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
+      fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
+      fields.push(<TextField key="weatherCondition" label="Date/weather line (manual override)" value={cfg.weatherCondition || ''} placeholder={D.weatherCondition} onChange={(v) => setField({ weatherCondition: v })} />);
 
       fields.push(SH('ticker', 'xeroxwire ticker'));
       fields.push(<TextField key="tickerTag" label="Tag" value={cfg.tickerTag || ''} placeholder={D.tickerTag} onChange={(v) => setField({ tickerTag: v })} />);
