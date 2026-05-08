@@ -3105,6 +3105,189 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────
+// Per-field text-style overrides (font-size + color + weight)
+// ─────────────────────────────────────────────────────────
+//
+// Every HS widget renders text into elements that carry a `data-field`
+// attribute. The widget's CSS classes set the default look; an
+// optional `__styles` map on the widget config can override fontSize,
+// color, and fontWeight per data-field. The hook
+// `useTextStyleOverrides` (apps/web/src/components/widgets/hs/) walks
+// the stage's DOM and applies inline styles on top of the class
+// defaults at runtime.
+//
+// On the editor side, each text field grows a small "Style" disclosure
+// directly under the input — operator clicks it to reveal the size /
+// color / weight controls. Empty / cleared inputs delete the matching
+// override key so the CSS class default returns. Wrapping all sites is
+// done via the StyleableField component below; both single-line and
+// multi-line variants exist.
+
+type FieldStyleMap = Record<string, { fontSize?: number; color?: string; fontWeight?: number }>;
+
+function readFieldStyle(styles: FieldStyleMap | undefined, fieldName: string) {
+  return (styles && styles[fieldName]) || {};
+}
+
+/** Pure-function update: returns a NEW __styles map with one prop on
+ *  one field changed — or removed when value is undefined / blank. */
+function updateFieldStyleMap(
+  styles: FieldStyleMap | undefined,
+  fieldName: string,
+  prop: 'fontSize' | 'color' | 'fontWeight',
+  value: number | string | undefined,
+): FieldStyleMap {
+  const existing = styles || {};
+  const current = { ...(existing[fieldName] || {}) };
+  if (value === undefined || value === '' || (typeof value === 'number' && !Number.isFinite(value))) {
+    delete current[prop];
+  } else {
+    (current as any)[prop] = value;
+  }
+  const isEmpty = Object.keys(current).length === 0;
+  const next = { ...existing };
+  if (isEmpty) {
+    delete next[fieldName];
+  } else {
+    next[fieldName] = current;
+  }
+  return next;
+}
+
+/** Disclosure that exposes per-field font-size / color / weight inputs.
+ *  Renders below a TextField / TextAreaField. Only mounts the inputs
+ *  when expanded to keep the editor DOM lean for templates with 80+
+ *  text fields. */
+function StyleDisclosure({
+  fieldName,
+  styles,
+  onStylesChange,
+}: {
+  fieldName: string;
+  styles: FieldStyleMap | undefined;
+  onStylesChange: (next: FieldStyleMap) => void;
+}) {
+  const cur = readFieldStyle(styles, fieldName);
+  const hasAny = cur.fontSize != null || cur.color != null || cur.fontWeight != null;
+  const setProp = (prop: 'fontSize' | 'color' | 'fontWeight', value: number | string | undefined) => {
+    onStylesChange(updateFieldStyleMap(styles, fieldName, prop, value));
+  };
+  // 2026-05-08 — local controlled inputs so typing isn't laggy when
+  // the parent re-renders.
+  const [sizeDraft, setSizeDraft] = useState(cur.fontSize != null ? String(cur.fontSize) : '');
+  useEffect(() => {
+    setSizeDraft(cur.fontSize != null ? String(cur.fontSize) : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cur.fontSize]);
+  return (
+    <details className="mt-1 -mt-0.5 pl-1 pb-1 group">
+      <summary className="cursor-pointer text-[10px] font-semibold text-slate-400 hover:text-indigo-500 select-none flex items-center gap-1.5">
+        <span>Style</span>
+        {hasAny && <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-400" title="Custom style applied" />}
+      </summary>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-[10px] font-semibold text-slate-500 mb-1">Font size (px)</label>
+          <input
+            type="number"
+            min={20}
+            max={500}
+            step={2}
+            value={sizeDraft}
+            placeholder="default"
+            onChange={(e) => {
+              const v = e.target.value;
+              setSizeDraft(v);
+              if (v === '') {
+                setProp('fontSize', undefined);
+              } else {
+                const n = parseInt(v, 10);
+                if (Number.isFinite(n)) setProp('fontSize', n);
+              }
+            }}
+            className="w-full px-2 py-1.5 rounded-md bg-white border border-slate-200/70 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 shadow-sm"
+          />
+        </div>
+        <div>
+          <ColorPickerField
+            label="Color"
+            value={cur.color || ''}
+            onChange={(v) => setProp('color', v || undefined)}
+          />
+        </div>
+      </div>
+      {hasAny && (
+        <button
+          type="button"
+          onClick={() => {
+            const next = { ...(styles || {}) };
+            delete next[fieldName];
+            onStylesChange(next);
+          }}
+          className="mt-1.5 text-[10px] font-medium text-slate-400 hover:text-rose-500 transition-colors underline-offset-2 hover:underline"
+        >
+          Reset to default
+        </button>
+      )}
+    </details>
+  );
+}
+
+/** Single-line TextField + Style disclosure. */
+function StyleableField({
+  label,
+  value,
+  placeholder,
+  onChange,
+  fieldName,
+  styles,
+  onStylesChange,
+}: {
+  label: string;
+  value: string;
+  placeholder?: string;
+  onChange: (v: string) => void;
+  fieldName: string;
+  styles: FieldStyleMap | undefined;
+  onStylesChange: (next: FieldStyleMap) => void;
+}) {
+  return (
+    <div>
+      <TextField label={label} value={value} placeholder={placeholder} onChange={onChange} />
+      <StyleDisclosure fieldName={fieldName} styles={styles} onStylesChange={onStylesChange} />
+    </div>
+  );
+}
+
+/** Multi-line TextAreaField + Style disclosure. */
+function StyleableAreaField({
+  label,
+  value,
+  placeholder,
+  onChange,
+  rows,
+  fieldName,
+  styles,
+  onStylesChange,
+}: {
+  label: string;
+  value: string;
+  placeholder?: string;
+  onChange: (v: string) => void;
+  rows?: number;
+  fieldName: string;
+  styles: FieldStyleMap | undefined;
+  onStylesChange: (next: FieldStyleMap) => void;
+}) {
+  return (
+    <div>
+      <TextAreaField label={label} value={value} placeholder={placeholder} onChange={onChange} rows={rows} />
+      <StyleDisclosure fieldName={fieldName} styles={styles} onStylesChange={onStylesChange} />
+    </div>
+  );
+}
+
 function TextField({ label, value, placeholder, onChange }: { label: string; value: string; placeholder?: string; onChange: (v: string) => void }) {
   const [local, setLocal] = useState(value);
   useEffect(() => { setLocal(value); }, [value]);
