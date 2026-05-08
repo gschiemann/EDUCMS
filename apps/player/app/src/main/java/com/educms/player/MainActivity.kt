@@ -788,6 +788,18 @@ class MainActivity : ComponentActivity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 PlayerLogger.i("MainActivity", "URL overlay page finished: ${url ?: "(unknown)"}")
                 super.onPageFinished(view, url)
+                // 2026-05-07 — D-pad spatial navigation. Operator: "Goodview's
+                // player tabs around websites with the remote, ours doesn't."
+                // Android System WebView ignores the chromium
+                // --enable-spatial-navigation flag, so we inject a JS shim
+                // here that listens for arrow / Enter / Back keys and moves
+                // focus geometrically among visible focusable elements.
+                //
+                // Targeted ONLY at this URL overlay (third-party customer
+                // content). The main `webView` runs the trusted EduCMS
+                // dashboard which already has its own keyboard nav and
+                // visible focus rings managed by the React app.
+                view?.let { SpatialNavigation.inject(it) }
             }
         }
     }

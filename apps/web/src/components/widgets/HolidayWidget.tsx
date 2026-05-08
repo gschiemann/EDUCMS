@@ -154,9 +154,16 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
         });
       } else if (d.type === 'holiday:fieldClicked' && typeof d.key === 'string') {
         // Same event the themed widgets dispatch — so the canvas
-        // click-to-edit flow lands here uniformly.
+        // click-to-edit flow lands here uniformly. PropertiesPanel
+        // tries fieldKey first then sectionKey, so we send both: the
+        // section is the prefix before the first dot ('headline' for
+        // `headline.kicker`). This way clicking a hotspot whose exact
+        // key isn't in the DOM (rare, e.g. legacy data) still scrolls
+        // to the section heading.
+        const dotIdx = d.key.indexOf('.');
+        const sectionKey = dotIdx > 0 ? d.key.slice(0, dotIdx) : d.key;
         window.dispatchEvent(new CustomEvent('template-edit-field', {
-          detail: { zoneId: getZoneId(), fieldKey: d.key },
+          detail: { zoneId: getZoneId(), fieldKey: d.key, sectionKey },
         }));
       }
     };
