@@ -436,9 +436,9 @@ const CSS = `
   margin: 0 auto;
 }
 .hs-vp-letter-est {
-  margin-top: 20px;
+  margin-top: 22px;
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 32px; letter-spacing: .3em; color: #ffc42b;
+  font-size: 42px; letter-spacing: .3em; color: #ffc42b;
 }
 
 .hs-vp-name {
@@ -584,13 +584,13 @@ const CSS = `
   border-bottom: 6px solid #ffc42b;
 }
 .hs-vp-statbox-val {
-  font-family: 'Bungee', sans-serif; font-size: 72px; line-height: 1;
+  font-family: 'Bungee', sans-serif; font-size: 84px; line-height: 1;
   color: #ffc42b;
 }
 .hs-vp-statbox-lbl {
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 28px; letter-spacing: .22em; color: #cbd5e1;
-  margin-top: 6px; text-transform: uppercase;
+  font-size: 36px; letter-spacing: .22em; color: #cbd5e1;
+  margin-top: 8px; text-transform: uppercase;
 }
 
 /* ----- REGION 4: schedule list ----- */
@@ -609,17 +609,17 @@ const CSS = `
 }
 .hs-vp-sched-sub {
   font-family: 'Oswald', sans-serif; font-weight: 500;
-  font-size: 32px; color: #cbd5e1; letter-spacing: .08em;
+  font-size: 40px; color: #cbd5e1; letter-spacing: .08em;
   text-transform: uppercase; max-width: 1100px; text-align: right;
 }
 .hs-vp-sched-list {
-  display: flex; flex-direction: column; gap: 14px;
+  display: flex; flex-direction: column; gap: 10px;
 }
 .hs-vp-row {
-  display: grid; grid-template-columns: 220px 1fr 120px;
-  align-items: center; gap: 28px;
+  display: grid; grid-template-columns: 240px 1fr 140px;
+  align-items: center; gap: 32px;
   background: #0a0e1c; border: 4px solid #ffc42b;
-  padding: 18px 32px; height: 110px;
+  padding: 18px 36px; height: 118px;
   position: relative;
 }
 .hs-vp-row::before {
@@ -628,25 +628,25 @@ const CSS = `
 }
 .hs-vp-row-mark {
   background: #ffc42b; color: #0d1b3d;
-  display: grid; place-items: center; height: 90px;
+  display: grid; place-items: center; height: 100px;
   clip-path: polygon(0 0, 100% 0, 90% 100%, 0 100%);
 }
 .hs-vp-row-day {
-  font-family: 'Bungee', sans-serif; font-size: 64px; line-height: 1;
+  font-family: 'Bungee', sans-serif; font-size: 72px; line-height: 1;
 }
-.hs-vp-row-body { display: flex; flex-direction: column; gap: 4px; }
+.hs-vp-row-body { display: flex; flex-direction: column; gap: 6px; }
 .hs-vp-row-when {
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 34px; color: #ffc42b; letter-spacing: .18em;
+  font-size: 40px; color: #ffc42b; letter-spacing: .18em;
   text-transform: uppercase;
 }
 .hs-vp-row-name {
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 44px; color: #fff;
+  font-size: 52px; color: #fff;
   text-transform: uppercase; line-height: 1.02;
 }
 .hs-vp-row-num {
-  font-family: 'Bungee', sans-serif; font-size: 78px; color: #e03b1c;
+  font-family: 'Bungee', sans-serif; font-size: 88px; color: #e03b1c;
   text-align: right; line-height: 1;
   text-shadow: 4px 4px 0 rgba(0,0,0,.35);
 }
@@ -654,7 +654,7 @@ const CSS = `
 /* ----- REGION 5: footer (announcement strip + ticker) ----- */
 .hs-vp-foot {
   position: absolute; left: 60px; right: 60px;
-  bottom: 80px; height: 280px; z-index: 3;
+  bottom: 110px; height: 320px; z-index: 3;
 }
 .hs-vp-anno {
   background: #0a0e1c; border-left: 18px solid #ffc42b;
@@ -663,37 +663,37 @@ const CSS = `
 }
 .hs-vp-anno-tag {
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 38px; letter-spacing: .22em; color: #ffc42b; text-transform: uppercase;
+  font-size: 44px; letter-spacing: .22em; color: #ffc42b; text-transform: uppercase;
 }
 .hs-vp-anno-h3 {
-  font-family: 'Bungee', sans-serif; font-size: 70px; line-height: .95;
-  margin: 8px 0 0; color: #fff; text-transform: uppercase;
+  font-family: 'Bungee', sans-serif; font-size: 84px; line-height: .95;
+  margin: 10px 0 0; color: #fff; text-transform: uppercase;
 }
 .hs-vp-anno-p {
   font-family: 'Inter', sans-serif; font-weight: 500;
-  font-size: 34px; color: #cbd5e1; margin: 10px 0 0;
+  font-size: 42px; color: #cbd5e1; margin: 12px 0 0; line-height: 1.25;
 }
 .hs-vp-anno-when {
   font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 34px; color: #ffc42b; letter-spacing: .14em;
+  font-size: 40px; color: #ffc42b; letter-spacing: .14em;
   text-transform: uppercase; margin-top: auto;
 }
 
 /* ----- ticker pinned to absolute bottom ----- */
 .hs-vp-ticker {
-  position: absolute; bottom: 0; left: 0; right: 0; height: 80px;
+  position: absolute; bottom: 0; left: 0; right: 0; height: 100px;
   background: #ffc42b; color: #0d1b3d;
   display: flex; align-items: center; overflow: hidden; z-index: 5;
 }
 .hs-vp-ticker-tag {
   background: #0d1b3d; color: #ffc42b;
-  font-family: 'Bungee', sans-serif; font-size: 32px;
-  padding: 0 36px; height: 100%;
+  font-family: 'Bungee', sans-serif; font-size: 44px;
+  padding: 0 44px; height: 100%;
   display: flex; align-items: center; flex-shrink: 0; letter-spacing: .18em;
 }
 .hs-vp-ticker-msg {
-  font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 32px;
-  padding-left: 36px; white-space: nowrap; letter-spacing: .12em;
+  font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 44px;
+  padding-left: 44px; white-space: nowrap; letter-spacing: .12em;
   text-transform: uppercase;
   animation: hsVpScroll 60s linear infinite;
   display: inline-flex; gap: 0;
