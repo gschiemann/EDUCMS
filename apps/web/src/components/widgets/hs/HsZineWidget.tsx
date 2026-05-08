@@ -50,7 +50,7 @@ export interface HsZineConfig {
   tickerMessage?: string;
 }
 
-const DEFAULTS: Required<HsZineConfig> = {
+export const DEFAULTS: Required<HsZineConfig> = {
   schoolName: 'WESTRIDGE!',
   schoolSub: 'vol. 142 · morning edition · photocopied by hand · free',
   brandStamp1: '★ WILDCATS FOREVER',
