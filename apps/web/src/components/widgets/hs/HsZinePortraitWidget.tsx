@@ -30,6 +30,7 @@
 
 import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
+import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 
 export interface HsZineConfig {
   schoolName?: string;
@@ -141,6 +142,22 @@ export function HsZinePortraitWidget({ config, live }: { config?: Cfg; live?: bo
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
+  // 2026-05-07 — live weather (matches landscape — combined lowercase string).
+  const w = useHsLiveWeather({
+    live,
+    location: c.weatherLocation,
+    unitsCelsius: c.weatherUnits === 'metric',
+    tempOverride: '',
+    conditionOverride: c.weatherCondition,
+    defaultTemp: '',
+    defaultCondition: DEFAULTS.weatherCondition,
+    formatTemp: (t) => `${t}°`,
+    formatCondition: (wmo, t) => {
+      const wk = now.toLocaleDateString('en-US', { weekday: 'short' }).toLowerCase();
+      const mo = now.toLocaleDateString('en-US', { month: 'short' }).toLowerCase();
+      return `${wk} · ${mo} ${now.getDate()} · ${t}° · ${describeWmo(wmo).toLowerCase()}`;
+    },
+  });
   const ransomChars = String(c.schoolName).split('');
 
   return (
@@ -348,7 +365,7 @@ export function HsZinePortraitWidget({ config, live }: { config?: Cfg; live?: bo
             {clock.time}
           </div>
           <div className="hs-zp-fc-c" data-field="weatherCondition" style={{ whiteSpace: 'pre-wrap' as const }}>
-            {c.weatherCondition}
+            {w.conditionLabel}
           </div>
         </div>
       </div>
