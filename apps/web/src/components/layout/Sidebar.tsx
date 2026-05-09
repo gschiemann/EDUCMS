@@ -284,19 +284,56 @@ export function Sidebar() {
           <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-4 px-4">
             Main Menu
           </div>
-          {(navItems.map(i => ({ ...i, badge: null as number | null })).concat(isAdmin ? adminNavItems : [])).map((item) => {
+          {/*
+            BULLETPROOF HYDRATION GATE
+            ──────────────────────────
+            Two prior attempts at fixing the SSR/CSR mismatch failed:
+
+              v1 (35a504e): gated navItems hrefs on `mounted` via
+                hrefFor() returning "#" until client hydration. This
+                fixed the /null/templates SSR mismatch BUT made all 6
+                Link children share the same key="#" during the SSR →
+                first-paint window, which React's reconciler can't
+                match 1:1 to the post-mount unique-keyed list. Result:
+                operator saw 2 of every nav entry, and only one of
+                each set actually navigated.
+
+              v2 (5d57339): switched key={item.href} to key={item.name}
+                so keys stay unique. Still landed double DOM in some
+                hydration paths because the value transition on `href`
+                between SSR and client triggers Next.js's Link to
+                remount in a way that interacts badly with the rest
+                of the tree.
+
+            v3 (this commit): pre-mount render a SKELETON list — 6+
+            placeholder rows with stable unique keys (`placeholder-N`)
+            and no Link / no href at all. Server-side and first
+            client-side paint render IDENTICAL DOM. After `mounted`
+            flips to true, the placeholder set unmounts and the real
+            Link list mounts in one clean transition. Zero key
+            collision, zero href mismatch, zero double-DOM window.
+          */}
+          {!mounted ? (
+            // 6 main + 2 admin = 8 placeholder rows. Render the 8
+            // even when not admin so the layout-shift on tenant
+            // hydration is consistent for everyone (admin/contributor/
+            // viewer) — the right column gets its content first; this
+            // sidebar size stays steady.
+            Array.from({ length: 8 }, (_, i) => (
+              <div
+                key={`sidebar-placeholder-${i}`}
+                aria-hidden="true"
+                className="flex items-center gap-3.5 px-4 py-3.5 rounded-2xl"
+              >
+                <div className="w-5 h-5 rounded bg-slate-100" />
+                <div className="h-4 w-28 rounded bg-slate-100" />
+              </div>
+            ))
+          ) : (
+          (navItems.map(i => ({ ...i, badge: null as number | null })).concat(isAdmin ? adminNavItems : [])).map((item) => {
             const isActive = pathname.startsWith(item.href);
             return (
               <Link
-                // Stable key: item.name. Pre-2026-05-09 the key was
-                // item.href, which became "#" for ALL six navItems
-                // during the SSR → first-paint window (the hrefFor
-                // hydration gate returns "#" until `mounted` flips
-                // true). Six children with identical keys made React's
-                // reconciliation produce duplicate DOM nodes — operator
-                // saw "2 Dashboards, 2 Templates, 2 Assets…" in the
-                // sidebar. Using item.name keeps the key stable across
-                // both SSR and client paint while still being unique.
                 key={item.name}
                 href={item.href}
                 onClick={() => setMobileSidebarOpen(false)}
@@ -327,7 +364,8 @@ export function Sidebar() {
                 )}
               </Link>
             );
-          })}
+          })
+          )}
 
           {/* Emergency trigger — sits right under the last nav item
               (Audit Log for admins, Settings otherwise), matching the
