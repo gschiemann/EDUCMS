@@ -11,6 +11,7 @@ import { RoleGate } from '../RoleGate';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
 import { usePendingAssets } from '@/hooks/use-api';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
+import { apiFetch } from '@/lib/api-client';
 import type { TenantBranding } from '@/lib/branding';
 
 // Must match the PER-TENANT key format BrandStyleInjector writes to.
@@ -48,20 +49,54 @@ export function Sidebar() {
   const userTenantId = user?.tenantId || null;
   const [branding, setBranding] = useState<TenantBranding | null>(null);
   useEffect(() => {
+    let cacheHadBranding = false;
     const read = () => {
       try {
         if (userTenantId) {
           const raw = localStorage.getItem(BRAND_LS_PREFIX + userTenantId);
-          if (raw) { setBranding(JSON.parse(raw)); return; }
+          if (raw) {
+            setBranding(JSON.parse(raw));
+            cacheHadBranding = true;
+            return;
+          }
         }
         // Legacy single-key fallback (mobile-Claude's migration wipes
         // this on BrandStyleInjector mount; read in case the injector
         // hasn't run yet on a fresh tab).
         const legacy = localStorage.getItem(BRAND_LS_LEGACY);
-        setBranding(legacy ? JSON.parse(legacy) : null);
+        if (legacy) {
+          setBranding(JSON.parse(legacy));
+          cacheHadBranding = true;
+        } else {
+          setBranding(null);
+        }
       } catch { setBranding(null); }
     };
     read();
+
+    // SELF-HEAL: when localStorage was empty (new device, cleared
+    // browser data, incognito), fetch /branding/me ourselves instead
+    // of waiting for BrandStyleInjector's event. Defense in depth —
+    // this guarantees sidebar branding shows up on first login of
+    // every fresh session, regardless of mount order, race
+    // conditions, or event-listener bugs. Without this, the bug we
+    // saw on the Mac migration (Sidebar stuck on default "VenueOS"
+    // because LS was empty and BrandStyleInjector's dispatch was
+    // missed) could re-occur any time the cache is cold.
+    let cancelled = false;
+    if (userTenantId && !cacheHadBranding) {
+      apiFetch<TenantBranding | null>('/branding/me')
+        .then((b) => {
+          if (cancelled || !b) return;
+          setBranding(b);
+          // Also seed the LS cache so the next mount paints instantly.
+          try {
+            localStorage.setItem(BRAND_LS_PREFIX + userTenantId, JSON.stringify(b));
+          } catch {}
+        })
+        .catch(() => {});
+    }
+
     const onUpdate = (e: Event) => {
       const detail = (e as CustomEvent<TenantBranding>).detail;
       if (detail) setBranding(detail);
@@ -69,6 +104,7 @@ export function Sidebar() {
     window.addEventListener('branding:update', onUpdate as EventListener);
     window.addEventListener('storage', read);
     return () => {
+      cancelled = true;
       window.removeEventListener('branding:update', onUpdate as EventListener);
       window.removeEventListener('storage', read);
     };

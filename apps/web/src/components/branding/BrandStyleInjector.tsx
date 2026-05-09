@@ -65,6 +65,16 @@ export function BrandStyleInjector() {
         if (branding) {
           localStorage.setItem(key, JSON.stringify(branding));
           applyBranding(branding);
+          // Notify other components (Sidebar logo/name, header) that
+          // depend on the LS cache. Without this dispatch, components
+          // that read the cache only on mount stay on their default
+          // brand for the entire session on a fresh device — the LS
+          // cache was empty when they mounted, and `applyBranding`
+          // only sets CSS vars on `:root`, which Sidebar doesn't read.
+          // First seen on a clean Mac migration where colors painted
+          // correctly via CSS vars but logo + displayName stayed at
+          // defaults until the user reloaded. (gh #branding-mac-bug)
+          window.dispatchEvent(new CustomEvent('branding:update', { detail: branding }));
         } else {
           localStorage.removeItem(key);
           resetBranding();
