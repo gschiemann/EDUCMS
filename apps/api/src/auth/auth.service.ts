@@ -116,7 +116,15 @@ export class AuthService {
       canTriggerPanic: user.canTriggerPanic
     };
     return {
-      access_token: this.jwtService.sign(payload, rememberMe ? { expiresIn: '365d' } : undefined),
+      // rememberMe was 365d — too long. A token leaked from a stolen
+      // laptop or compromised browser session was good for a full year
+      // with no rotation/refresh path. 30d is the reasonable upper
+      // bound for "stay signed in" UX (shorter than typical password
+      // policy, longer than a normal work session). After this expires,
+      // the user is asked to log in again — same flow as no-rememberMe
+      // hitting the default JWT TTL. Pair with refresh-token rotation
+      // in a follow-up sprint to extend without re-prompting.
+      access_token: this.jwtService.sign(payload, rememberMe ? { expiresIn: '30d' } : undefined),
       user: {
         id: user.id, email: user.email, role: user.role,
         tenantId: user.tenantId, tenantSlug: tenant?.slug || user.tenantId,

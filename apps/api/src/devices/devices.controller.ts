@@ -1,4 +1,5 @@
 import { Controller, Post, Body, HttpException, HttpStatus } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '../prisma/prisma.service';
 import { requireSecret } from '../security/required-secret';
@@ -21,6 +22,12 @@ export class DevicesController {
    * verify USB bundles offline without a separate fetch.
    */
   @Post('pair')
+  // Per-IP rate limit: 10 attempts per minute. The pairing code is a
+  // short shared secret over a 32-char alphabet; without per-IP throttle
+  // an attacker can brute-force the active code space. The global
+  // 600/min throttle defaults to "everyone shares one bucket" — this
+  // makes it actually per-IP for the pair endpoint specifically.
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   async pair(
     @Body() body: {
       code?: string;
