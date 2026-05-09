@@ -1291,7 +1291,7 @@ No commercial vendors until we have funding. All free/open-source or self-hosted
 
 5. **Repo is PUBLIC on GitHub** (`https://github.com/gschiemann/EDUCMS`). Treat all commits, PRs, and issues as visible to the world. No hardcoded credentials, API keys, or PII.
 
-6. **Check the memory system** at `C:\Users\gschi\.claude\projects\C--Users-gschi-OneDrive-Desktop-EDU-CMS\memory\MEMORY.md` for Integration Lead preferences and prior session context.
+6. **Check the memory system** at `~/.claude/projects/-Users-gschiemann-Desktop-EDU-CMS/memory/MEMORY.md` for Integration Lead preferences and prior session context.
 
 7. **Feature flags & observability** — Sprint 1 goal is GrowthBook + Sentry. Wrap new features with feature flags where reasonable.
 
