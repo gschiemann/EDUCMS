@@ -44,6 +44,8 @@ function AuditViewer() {
   const [actorId, setActorId] = useState('');
   const [action, setAction] = useState('');
   const [page, setPage] = useState(0);
+  const userRole = useUIStore((s) => s.user?.role);
+  const isViewer = userRole === 'RESTRICTED_VIEWER';
 
   const { data: users } = useUsers();
   const params = useMemo(
@@ -109,7 +111,9 @@ function AuditViewer() {
         </div>
         <button
           onClick={downloadCsv}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-semibold shadow-sm"
+          disabled={isViewer}
+          title={isViewer ? 'Read-only — viewer role' : undefined}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-semibold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Download className="w-4 h-4" /> Export CSV
         </button>

@@ -88,6 +88,8 @@ function useImageDimensions(url: string | null) {
 }
 
 export default function AssetsPage() {
+  const userRole = useUIStore((s) => s.user?.role);
+  const isViewer = userRole === 'RESTRICTED_VIEWER';
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [filter, setFilter] = useState<FilterType>('all');
@@ -486,16 +488,28 @@ export default function AssetsPage() {
               <button
                 type="button"
                 onClick={() => setShowFolderPicker('bulk-move')}
-                className="px-4 py-2 bg-white border border-indigo-300 hover:bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5"
+                disabled={isViewer}
+                title={isViewer ? 'Read-only — viewer role' : undefined}
+                className="px-4 py-2 bg-white border border-indigo-300 hover:bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <FolderInput className="w-4 h-4" /> Move to folder ({selectedIds.length})
               </button>
-              <button onClick={handleBulkDelete} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5">
+              <button
+                onClick={handleBulkDelete}
+                disabled={isViewer}
+                title={isViewer ? 'Read-only — viewer role' : undefined}
+                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 <Trash2 className="w-4 h-4" /> Delete ({selectedIds.length})
               </button>
             </>
           )}
-          <button onClick={() => setShowUrlForm(!showUrlForm)} className="px-3 py-2 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-sm">
+          <button
+            onClick={() => setShowUrlForm(!showUrlForm)}
+            disabled={isViewer}
+            title={isViewer ? 'Read-only — viewer role' : undefined}
+            className="px-3 py-2 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             <Link2 className="w-3.5 h-3.5 text-indigo-500" /> Add URL
           </button>
           {/* Single Upload button — opens the searchable FolderPicker
@@ -505,8 +519,9 @@ export default function AssetsPage() {
               the picker but retains the dragged files. */}
           <button
             onClick={() => { setPendingFiles([]); setShowFolderPicker('upload'); }}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5"
-            title="Pick a destination folder (root is an option), then select files"
+            disabled={isViewer}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            title={isViewer ? 'Read-only — viewer role' : 'Pick a destination folder (root is an option), then select files'}
           >
             <UploadCloud className="w-4 h-4" />
             Upload
@@ -543,7 +558,12 @@ export default function AssetsPage() {
       {showUrlForm && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex gap-3">
           <input ref={urlInputRef} value={webUrl} onChange={e => setWebUrl(e.target.value)} placeholder="https://docs.google.com/presentation/d/..." className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500" onKeyDown={e => e.key === 'Enter' && handleAddUrl()} />
-          <button onClick={handleAddUrl} disabled={addWebUrl.isPending} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg">{addWebUrl.isPending ? 'Adding...' : 'Add'}</button>
+          <button
+            onClick={handleAddUrl}
+            disabled={addWebUrl.isPending || isViewer}
+            title={isViewer ? 'Read-only — viewer role' : undefined}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg"
+          >{addWebUrl.isPending ? 'Adding...' : 'Add'}</button>
           <button onClick={() => setShowUrlForm(false)} className="px-2 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
         </div>
       )}
@@ -555,11 +575,14 @@ export default function AssetsPage() {
           twice. */}
       <div
         role="button"
-        tabIndex={0}
-        aria-label="Upload files — drag and drop or press Enter to browse"
-        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-        onDragLeave={() => setDragOver(false)}
+        tabIndex={isViewer ? -1 : 0}
+        aria-disabled={isViewer || undefined}
+        aria-label={isViewer ? 'Upload disabled — viewer role' : 'Upload files — drag and drop or press Enter to browse'}
+        title={isViewer ? 'Read-only — viewer role' : undefined}
+        onDragOver={e => { if (isViewer) return; e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => { if (isViewer) return; setDragOver(false); }}
         onDrop={e => {
+          if (isViewer) return;
           e.preventDefault();
           setDragOver(false);
           const files = Array.from(e.dataTransfer.files || []);
@@ -567,9 +590,9 @@ export default function AssetsPage() {
           setPendingFiles(files);
           setShowFolderPicker('upload');
         }}
-        onClick={() => { setPendingFiles([]); setShowFolderPicker('upload'); }}
-        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPendingFiles([]); setShowFolderPicker('upload'); } }}
-        className={`border-2 border-dashed rounded-3xl p-8 flex items-center justify-center cursor-pointer transition-all group ${dragOver ? 'border-indigo-400 bg-indigo-50/50 scale-[1.01]' : 'border-slate-200 hover:border-indigo-300 bg-slate-50/30'}`}
+        onClick={() => { if (isViewer) return; setPendingFiles([]); setShowFolderPicker('upload'); }}
+        onKeyDown={e => { if (isViewer) return; if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPendingFiles([]); setShowFolderPicker('upload'); } }}
+        className={`border-2 border-dashed rounded-3xl p-8 flex items-center justify-center transition-all group ${isViewer ? 'opacity-50 cursor-not-allowed border-slate-200 bg-slate-50/30' : `cursor-pointer ${dragOver ? 'border-indigo-400 bg-indigo-50/50 scale-[1.01]' : 'border-slate-200 hover:border-indigo-300 bg-slate-50/30'}`}`}
       >
         <div className="flex items-center gap-4">
           <div className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${dragOver ? 'bg-indigo-100 scale-110' : 'bg-indigo-50 group-hover:scale-105'}`}>
@@ -644,7 +667,9 @@ export default function AssetsPage() {
         </div>
         <button
           onClick={() => setShowNewFolder(true)}
-          className="px-3 py-1.5 bg-white border border-slate-200 hover:border-indigo-300 text-slate-600 text-[11px] font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-sm"
+          disabled={isViewer}
+          title={isViewer ? 'Read-only — viewer role' : undefined}
+          className="px-3 py-1.5 bg-white border border-slate-200 hover:border-indigo-300 text-slate-600 text-[11px] font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <FolderPlus className="w-3.5 h-3.5 text-indigo-500" /> New Folder
         </button>
@@ -662,7 +687,12 @@ export default function AssetsPage() {
             className="flex-1 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-400"
             onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') { setShowNewFolder(false); setNewFolderName(''); } }}
           />
-          <button onClick={handleCreateFolder} disabled={createFolder.isPending} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold rounded-lg disabled:opacity-50">
+          <button
+            onClick={handleCreateFolder}
+            disabled={createFolder.isPending || isViewer}
+            title={isViewer ? 'Read-only — viewer role' : undefined}
+            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             {createFolder.isPending ? 'Creating...' : 'Create'}
           </button>
           <button onClick={() => { setShowNewFolder(false); setNewFolderName(''); }} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
@@ -721,10 +751,20 @@ export default function AssetsPage() {
                   </button>
                   {folderMenuOpen === f.id && (
                     <div role="none" className="absolute right-0 top-7 z-20 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[120px]" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
-                      <button onClick={() => { setRenamingFolder(f.id); setRenameValue(f.name); setFolderMenuOpen(null); }} className="w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                      <button
+                        onClick={() => { setRenamingFolder(f.id); setRenameValue(f.name); setFolderMenuOpen(null); }}
+                        disabled={isViewer}
+                        title={isViewer ? 'Read-only — viewer role' : undefined}
+                        className="w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
                         <Pencil className="w-3 h-3" /> Rename
                       </button>
-                      <button onClick={() => { handleDeleteFolder(f.id); setFolderMenuOpen(null); }} className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-2">
+                      <button
+                        onClick={() => { handleDeleteFolder(f.id); setFolderMenuOpen(null); }}
+                        disabled={isViewer}
+                        title={isViewer ? 'Read-only — viewer role' : undefined}
+                        className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
                         <Trash2 className="w-3 h-3" /> Delete
                       </button>
                     </div>
@@ -752,7 +792,7 @@ export default function AssetsPage() {
             const isSelected = selectedIds.includes(a.id);
             return (
               // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
-              <li key={a.id} draggable onDragStart={e => { e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className={`bg-white rounded-3xl overflow-hidden group transition-all duration-300 relative border-2 ${isSelected ? 'border-indigo-500 shadow-[0_8px_30px_rgb(99,102,241,0.2)]' : 'border-transparent hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]'}`}>
+              <li key={a.id} draggable={!isViewer} onDragStart={e => { if (isViewer) { e.preventDefault(); return; } e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className={`bg-white rounded-3xl overflow-hidden group transition-all duration-300 relative border-2 ${isSelected ? 'border-indigo-500 shadow-[0_8px_30px_rgb(99,102,241,0.2)]' : 'border-transparent hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]'}`}>
                 {/* Selection Checkbox Trigger */}
                 <button
                   onClick={(e) => { e.stopPropagation(); setSelectedIds(p => p.includes(a.id) ? p.filter(id => id !== a.id) : [...p, a.id]); }}
@@ -764,7 +804,12 @@ export default function AssetsPage() {
                 </button>
 
                 {/* Quick Delete Trash Trigger */}
-                <button onClick={(e) => { e.stopPropagation(); appConfirm({ title: 'Delete asset?', message: `"${name}" will be permanently deleted.`, tone: 'danger', confirmLabel: 'Delete' }).then(ok => { if (ok) deleteAsset.mutate(a.id); }); }} className="absolute top-2.5 right-2.5 z-20 w-6 h-6 rounded bg-red-500 hover:bg-red-600 flex items-center justify-center transition-all opacity-0 scale-90 group-hover:opacity-100 group-hover:scale-100 shadow-sm">
+                <button
+                  onClick={(e) => { e.stopPropagation(); appConfirm({ title: 'Delete asset?', message: `"${name}" will be permanently deleted.`, tone: 'danger', confirmLabel: 'Delete' }).then(ok => { if (ok) deleteAsset.mutate(a.id); }); }}
+                  disabled={isViewer}
+                  title={isViewer ? 'Read-only — viewer role' : undefined}
+                  className="absolute top-2.5 right-2.5 z-20 w-6 h-6 rounded bg-red-500 hover:bg-red-600 flex items-center justify-center transition-all opacity-0 scale-90 group-hover:opacity-100 group-hover:scale-100 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   <Trash className="w-3 h-3 text-white" />
                 </button>
 
@@ -841,7 +886,7 @@ export default function AssetsPage() {
             const isSelected = selectedIds.includes(a.id);
             return (
               // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
-              <li key={a.id} draggable onDragStart={e => { e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className={`flex items-center gap-4 px-4 py-3 transition-colors group ${isSelected ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}`}>
+              <li key={a.id} draggable={!isViewer} onDragStart={e => { if (isViewer) { e.preventDefault(); return; } e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className={`flex items-center gap-4 px-4 py-3 transition-colors group ${isSelected ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}`}>
                 <button
                   onClick={(e) => { e.stopPropagation(); setSelectedIds(p => p.includes(a.id) ? p.filter(id => id !== a.id) : [...p, a.id]); }}
                   aria-label={isSelected ? `Deselect ${name}` : `Select ${name}`}
@@ -880,7 +925,12 @@ export default function AssetsPage() {
                   </div>
                 </button>
                 <div className="flex items-center gap-3">
-                  <button onClick={(e) => { e.stopPropagation(); appConfirm({ title: 'Delete asset?', message: `"${name}" will be permanently deleted.`, tone: 'danger', confirmLabel: 'Delete' }).then(ok => { if (ok) deleteAsset.mutate(a.id); }); }} className="w-6 h-6 rounded bg-slate-200 hover:bg-red-500 text-slate-500 hover:text-white flex items-center justify-center transition-all opacity-0 group-hover:opacity-100">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); appConfirm({ title: 'Delete asset?', message: `"${name}" will be permanently deleted.`, tone: 'danger', confirmLabel: 'Delete' }).then(ok => { if (ok) deleteAsset.mutate(a.id); }); }}
+                    disabled={isViewer}
+                    title={isViewer ? 'Read-only — viewer role' : undefined}
+                    className="w-6 h-6 rounded bg-slate-200 hover:bg-red-500 text-slate-500 hover:text-white flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
                     <Trash className="w-3 h-3" />
                   </button>
                   {typeBadge(a.mimeType)}
@@ -987,8 +1037,12 @@ export default function AssetsPage() {
                     {selectedAsset.folder?.name || 'Root'}
                   </span>
                   {selectedAsset.folderId && (
-                    <button onClick={() => { handleMoveAssetToFolder(selectedAsset.id, null); setSelectedAsset({ ...selectedAsset, folderId: null, folder: null }); }}
-                      className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold">
+                    <button
+                      onClick={() => { handleMoveAssetToFolder(selectedAsset.id, null); setSelectedAsset({ ...selectedAsset, folderId: null, folder: null }); }}
+                      disabled={isViewer}
+                      title={isViewer ? 'Read-only — viewer role' : undefined}
+                      className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
                       Move to root
                     </button>
                   )}
@@ -1002,7 +1056,9 @@ export default function AssetsPage() {
                 </a>
                 <button
                   onClick={async () => { if (await appConfirm({ title: 'Delete asset?', message: `"${assetName(selectedAsset)}" will be permanently deleted.`, tone: 'danger', confirmLabel: 'Delete' })) { deleteAsset.mutate(selectedAsset.id); setSelectedAsset(null); }}}
-                  className="px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-lg flex items-center gap-1.5 transition-colors"
+                  disabled={isViewer}
+                  title={isViewer ? 'Read-only — viewer role' : undefined}
+                  className="px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Trash2 className="w-3.5 h-3.5" /> Delete
                 </button>

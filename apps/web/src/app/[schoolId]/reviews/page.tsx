@@ -136,6 +136,8 @@ function ReviewDetail({ id, onBack, statusFilter }: { id: string; onBack: () => 
   const { data: submission, isLoading } = useSubmission(id);
   const decide = useDecideSubmission();
   const [note, setNote] = useState('');
+  const userRole = useUIStore((s) => s.user?.role);
+  const isViewer = userRole === 'RESTRICTED_VIEWER';
 
   if (isLoading || !submission) {
     return <div className="p-12 text-center text-slate-400"><Loader2 className="w-6 h-6 animate-spin inline-block" /></div>;
@@ -247,22 +249,26 @@ function ReviewDetail({ id, onBack, statusFilter }: { id: string; onBack: () => 
             onChange={(e) => setNote(e.target.value)}
             placeholder="Looks good!  /  Please retake the photo…  /  Move to staff folder first…"
             rows={3}
-            className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            disabled={isViewer}
+            title={isViewer ? 'Read-only — viewer role' : undefined}
+            className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed"
           />
           <div className="flex gap-2 mt-3">
             <button
               type="button"
               onClick={() => handleDecide('approve')}
-              disabled={decide.isPending}
-              className="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
+              disabled={decide.isPending || isViewer}
+              title={isViewer ? 'Read-only — viewer role' : undefined}
+              className="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
             >
               <Check className="w-4 h-4" /> Approve & publish
             </button>
             <button
               type="button"
               onClick={() => handleDecide('reject')}
-              disabled={decide.isPending}
-              className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
+              disabled={decide.isPending || isViewer}
+              title={isViewer ? 'Read-only — viewer role' : undefined}
+              className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
             >
               <X className="w-4 h-4" /> Reject
             </button>

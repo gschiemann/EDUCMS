@@ -7,6 +7,7 @@ import DOMPurify from 'isomorphic-dompurify';
 import { Megaphone, AlertCircle, CalendarClock, ShieldCheck, Construction } from 'lucide-react';
 import { useState } from 'react';
 import { appAlert } from '@/components/ui/app-dialog';
+import { useUIStore } from '@/store/ui-store';
 
 const AnnouncementSchema = z.object({
   title: z.string().min(5, "Title must be at least 5 characters").max(100),
@@ -26,6 +27,8 @@ type AnnouncementFormValues = z.infer<typeof AnnouncementSchema>;
 export default function AnnouncementsPage() {
   const [isPreview, setIsPreview] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const userRole = useUIStore((s) => s.user?.role);
+  const isViewer = userRole === 'RESTRICTED_VIEWER';
 
   const {
     register,
@@ -131,7 +134,9 @@ export default function AnnouncementsPage() {
                   <input
                     id="ann-title"
                     {...register("title")}
-                    className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow"
+                    disabled={isViewer}
+                    title={isViewer ? 'Read-only — viewer role' : undefined}
+                    className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
                     placeholder="e.g. Winter Break Schedule"
                   />
                   {errors.title && <p className="text-red-500 text-xs mt-1">{errors.title.message}</p>}
@@ -142,7 +147,9 @@ export default function AnnouncementsPage() {
                   <select
                     id="ann-priority"
                     {...register("priority")}
-                    className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow"
+                    disabled={isViewer}
+                    title={isViewer ? 'Read-only — viewer role' : undefined}
+                    className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <option value="low">Low (Sidebar Queue)</option>
                     <option value="normal">Normal (Standard Rotation)</option>
@@ -157,7 +164,9 @@ export default function AnnouncementsPage() {
                   id="ann-body"
                   {...register("bodyText")}
                   rows={8}
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow font-mono resize-y"
+                  disabled={isViewer}
+                  title={isViewer ? 'Read-only — viewer role' : undefined}
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow font-mono resize-y disabled:opacity-50 disabled:cursor-not-allowed"
                   placeholder="Paste HTML or text here. <script> tags will be stripped."
                 />
                 {errors.bodyText && <p className="text-red-500 text-xs mt-1">{errors.bodyText.message}</p>}
@@ -171,17 +180,20 @@ export default function AnnouncementsPage() {
                     id="ann-expires"
                     type="datetime-local"
                     {...register("expiresAt")}
-                    className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow"
+                    disabled={isViewer}
+                    title={isViewer ? 'Read-only — viewer role' : undefined}
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
                 {errors.expiresAt && <p className="text-red-500 text-xs mt-1">{errors.expiresAt.message}</p>}
               </div>
 
               <div className="flex justify-end pt-4 border-t border-slate-100 dark:border-slate-800">
-                <button 
+                <button
                   type="submit"
-                  disabled={!isValid || isSubmitting}
-                  className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold rounded-md shadow-sm transition-all flex justify-center items-center gap-2 min-w-[160px]"
+                  disabled={!isValid || isSubmitting || isViewer}
+                  title={isViewer ? 'Read-only — viewer role' : undefined}
+                  className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-md shadow-sm transition-all flex justify-center items-center gap-2 min-w-[160px]"
                 >
                   {isSubmitting ? 'Publishing...' : <><ShieldCheck className="w-4 h-4" /> Publish Announcement</>}
                 </button>
