@@ -28,6 +28,7 @@
  */
 
 import { useEffect, useMemo, useRef } from 'react';
+import { useBuilderStore } from '@/components/template-builder/useBuilderStore';
 
 export type HolidayVariant =
   | 'christmas'
@@ -170,6 +171,18 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
             window.location.origin,
           );
         } catch { /* swallow */ }
+        // Re-flush hotspot state — iframe (re)load resets the bridge to
+        // hotspots-off; without this, selecting a zone before the iframe
+        // is ready then settling means the overlays never appear.
+        try {
+          const zoneId = getZoneId();
+          const selected = useBuilderStore.getState().selectedIds;
+          const enabled = !!(zoneId && selected.includes(zoneId));
+          iframeRef.current?.contentWindow?.postMessage(
+            { type: 'template-set-hotspots', enabled },
+            window.location.origin,
+          );
+        } catch { /* swallow */ }
       } else if (d.type === 'holiday:fieldClicked' && typeof d.key === 'string') {
         // Same event the themed widgets dispatch — so the canvas
         // click-to-edit flow lands here uniformly. PropertiesPanel
@@ -221,6 +234,38 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
       );
     } catch { /* swallow */ }
   }, [styleOverrides]);
+
+  // ── HOTSPOT TOGGLE ──────────────────────────────────────────────
+  // Mirror BuilderZone's "show editable affordances on selected zones"
+  // pattern across the iframe boundary. The iframe-side _style-bridge.js
+  // injects the dotted-indigo CSS once and toggles it via a
+  // `data-hotspots-on` attribute on <html>; we drive that attribute by
+  // posting `template-set-hotspots` whenever this widget's host zone
+  // moves into / out of the builder store's selection.
+  //
+  // Why the builder store and not a prop: HolidayWidget is shared
+  // between the builder and the player (production rendering). The
+  // builder store has empty default state in player contexts — selectedIds
+  // stays `[]`, so this never enables hotspots in production. Inside the
+  // builder, the same selection that drives BuilderZone's CSS for
+  // non-iframe widgets also drives this. Single source of truth.
+  //
+  // We re-fire the post when the iframe (re)loads — variant change
+  // remounts the iframe, and a freshly-loaded bridge starts with
+  // hotspots off until told otherwise.
+  const selectedIds = useBuilderStore((s) => s.selectedIds);
+  useEffect(() => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    const zoneId = getZoneId();
+    const enabled = !!(zoneId && selectedIds.includes(zoneId));
+    try {
+      win.postMessage(
+        { type: 'template-set-hotspots', enabled },
+        window.location.origin,
+      );
+    } catch { /* swallow */ }
+  }, [selectedIds, src]);
 
   return (
     <div ref={wrapperRef} className="w-full h-full overflow-hidden bg-black">
