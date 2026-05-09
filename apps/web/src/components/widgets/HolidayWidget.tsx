@@ -184,17 +184,29 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
           );
         } catch { /* swallow */ }
       } else if (d.type === 'holiday:fieldClicked' && typeof d.key === 'string') {
-        // Same event the themed widgets dispatch — so the canvas
-        // click-to-edit flow lands here uniformly. PropertiesPanel
-        // tries fieldKey first then sectionKey, so we send both: the
-        // section is the prefix before the first dot ('headline' for
-        // `headline.kicker`). This way clicking a hotspot whose exact
-        // key isn't in the DOM (rare, e.g. legacy data) still scrolls
-        // to the section heading.
+        // 2026-05-09 — operator: "first holiday template I tried can't
+        // be updated at all… no hotspot, no editable fields nothing".
+        // Root cause: clicks inside the iframe never propagated to the
+        // parent canvas, so the zone never got selected. The hotspot-
+        // toggle effect (above) gates on `selectedIds.includes(zoneId)`
+        // — without selection it stays off, and the operator sees a
+        // dead canvas. Fix: when the iframe reports a field click, ALSO
+        // select the zone in the builder store. After selection lands,
+        // the existing useEffect posts `template-set-hotspots: true` to
+        // the iframe, the dotted outlines appear, and the Properties
+        // Panel scrolls to the clicked field. One click = both
+        // selection + edit-target, matching the UX of every non-iframe
+        // widget.
+        const zoneId = getZoneId();
+        if (zoneId) {
+          try { useBuilderStore.getState().select(zoneId); } catch { /* swallow */ }
+        }
+        // Same event the themed widgets dispatch — PropertiesPanel
+        // tries fieldKey first then sectionKey.
         const dotIdx = d.key.indexOf('.');
         const sectionKey = dotIdx > 0 ? d.key.slice(0, dotIdx) : d.key;
         window.dispatchEvent(new CustomEvent('template-edit-field', {
-          detail: { zoneId: getZoneId(), fieldKey: d.key, sectionKey },
+          detail: { zoneId, fieldKey: d.key, sectionKey },
         }));
       }
     };
