@@ -17,7 +17,8 @@
     "lint": "eslint",
     "lhci": "lhci autorun",
     "a11y:ci": "tsx scripts/a11y-audit.ts",
-    "test:cross-browser": "node tests/cross-browser/holiday-bridge.cjs"
+    "test:cross-browser": "node tests/cross-browser/holiday-bridge.cjs",
+    "test:prod-smoke": "node tests/cross-browser/prod-smoke.cjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.0",

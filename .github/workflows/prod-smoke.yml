@@ -1,0 +1,81 @@
+name: Prod Smoke
+
+# Hits https://educms-five.vercel.app with a real Playwright browser,
+# logs in as the seed admin, walks every tenant + opens 12 templates
+# in the builder. Fails CI on regressions like:
+#   - login flow broken (form / API contract drift)
+#   - a tenant slug stops resolving (route / RBAC change)
+#   - templates gallery returns no tiles (API or render regression)
+#   - builder canvas doesn't mount (Tailwind, layout, route change)
+#
+# Three triggers, each catches a different failure window:
+#   - on push to master:   catches "I just shipped a regression"
+#   - on PR (manual flag): opt-in via PR label `run-prod-smoke`
+#   - nightly 06:00 UTC:   catches drift between deploys (Railway env
+#                           change, Supabase row drift, CDN cache state)
+#
+# Test account is the seed SUPER_ADMIN (admin@springfield.edu /
+# admin123) which only operates on Springfield Elementary, so we never
+# touch real customer data on Chardon HS, AGC, etc.
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+  schedule:
+    # 06:00 UTC = 23:00 PT = midnight ET — fires while the customer's
+    # building is empty so a transient red doesn't sit visible all day.
+    - cron: '0 6 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  prod-smoke:
+    name: Prod smoke (Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with: { version: 9.0.0 }
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        # Chromium only — same engine as Chrome, the dominant customer
+        # browser. holiday-bridge.cjs already covers WebKit; this guards
+        # the broader app flow.
+        run: pnpm --filter web exec playwright install --with-deps chromium
+
+      - name: Run prod smoke
+        # Test account credentials live in the workflow as plain values
+        # — the account is a SEED test user (Springfield Elementary
+        # tenant, isolated from all customer data) and the password is
+        # already in packages/database/prisma/seed.ts as a public
+        # constant. Not a secret. Override via repo Vars/Secrets if
+        # the seed account is ever rotated.
+        env:
+          PROD_SMOKE_BASE: https://educms-five.vercel.app
+          PROD_SMOKE_API: https://api-production-39a1.up.railway.app/api/v1
+          PROD_SMOKE_EMAIL: admin@springfield.edu
+          PROD_SMOKE_PASSWORD: admin123
+        run: pnpm --filter web run test:prod-smoke
+
+      - name: Upload screenshots + report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-smoke-artifacts
+          path: |
+            apps/web/tests/cross-browser/prod-smoke-shots/
+            apps/web/tests/cross-browser/prod-smoke-report.json
+          if-no-files-found: ignore
+          retention-days: 14

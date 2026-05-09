@@ -42,3 +42,5 @@ next-env.d.ts
 
 .vercel
 tests/cross-browser/report.json
+tests/cross-browser/prod-smoke-report.json
+tests/cross-browser/prod-smoke-shots/
