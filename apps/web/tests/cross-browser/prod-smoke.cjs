@@ -59,30 +59,49 @@ async function shot(page, name) {
 }
 
 async function loginAndCapture(browser) {
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-  const page = await ctx.newPage();
-  let token = null, user = null;
-  page.on('response', async (r) => {
-    if (/\/auth\/login$/.test(r.url()) && r.status() === 200) {
-      try { const b = await r.json(); token = b.access_token; user = b.user; } catch {}
+  // Retry-with-backoff. The /auth/login endpoint has a 10/min per-IP
+  // throttle (added 2026-05-08); when multiple CI runs land in quick
+  // succession all sharing GitHub Actions' shared runner pool, the
+  // window can be saturated by the time this job's login fires —
+  // resulting in a 429 the page surfaces as "wait, no redirect" →
+  // waitForURL timeout. Wait a bit + retry up to 3 times. Total
+  // ceiling: 2 min, well under the 5-min job timeout.
+  let lastErr;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const page = await ctx.newPage();
+    let token = null, user = null;
+    page.on('response', async (r) => {
+      if (/\/auth\/login$/.test(r.url()) && r.status() === 200) {
+        try { const b = await r.json(); token = b.access_token; user = b.user; } catch {}
+      }
+    });
+    try {
+      await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
+      await page.locator('#login-email').fill(EMAIL);
+      await page.locator('#login-password').fill(PASSWORD);
+      await page.locator('input[type="checkbox"][aria-describedby="eula-text"]').check();
+      await delay(300);
+      const submit = page.locator('button[type="submit"]:has-text("Sign in")');
+      for (let i = 0; i < 30; i++) { if (await submit.isEnabled()) break; await delay(100); }
+      await submit.click();
+      await page.waitForURL((u) => !/\/login\b/.test(u.pathname), { timeout: 15_000 });
+      await delay(800);
+      if (!token) throw new Error('login response missing access_token');
+      return { token, user, state: await ctx.storageState() };
+    } catch (e) {
+      lastErr = e;
+      console.log(`Login attempt ${attempt}/3 failed: ${e.message}`);
+      await ctx.close();
+      if (attempt < 3) {
+        // 30s, then 60s — gives the per-IP throttle window time to roll over
+        const backoffMs = attempt === 1 ? 30_000 : 60_000;
+        console.log(`  backing off ${backoffMs / 1000}s before retry…`);
+        await delay(backoffMs);
+      }
     }
-  });
-  try {
-    await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
-    await page.locator('#login-email').fill(EMAIL);
-    await page.locator('#login-password').fill(PASSWORD);
-    await page.locator('input[type="checkbox"][aria-describedby="eula-text"]').check();
-    await delay(300);
-    const submit = page.locator('button[type="submit"]:has-text("Sign in")');
-    for (let i = 0; i < 30; i++) { if (await submit.isEnabled()) break; await delay(100); }
-    await submit.click();
-    await page.waitForURL((u) => !/\/login\b/.test(u.pathname), { timeout: 15_000 });
-    await delay(800);
-    if (!token) throw new Error('login response missing access_token');
-    return { token, user, state: await ctx.storageState() };
-  } finally {
-    await ctx.close();
   }
+  throw lastErr;
 }
 
 async function authedContext(browser, auth) {
