@@ -71,7 +71,7 @@ function assetName(asset: any) {
 }
 
 // --- Sortable item ---
-function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSelected, onToggle }: any) {
+function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSelected, onToggle, isViewer }: any) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   const [showSettings, setShowSettings] = useState(false);
   const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : undefined, opacity: isDragging ? 0.5 : 1 };
@@ -88,7 +88,12 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
           activationConstraint:{distance:8} keeps clicks on the duration
           input, checkbox, and settings button working: they only
           trigger a drag after the pointer has moved 8px. */}
-      <div {...attributes} {...listeners} className="playlist-item-card flex items-center gap-3 p-3.5 cursor-grab active:cursor-grabbing">
+      <div
+        {...(isViewer ? {} : attributes)}
+        {...(isViewer ? {} : listeners)}
+        title={isViewer ? 'Read-only — viewer role' : undefined}
+        className={`playlist-item-card flex items-center gap-3 p-3.5 ${isViewer ? 'cursor-not-allowed opacity-90' : 'cursor-grab active:cursor-grabbing'}`}
+      >
         <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-indigo-400 shrink-0" aria-hidden="true" />
         <div className="flex items-center">
           <input type="checkbox" checked={isSelected} onChange={() => onToggle(item.id)} className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer" />
@@ -113,7 +118,9 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
                 type="number" min={1} max={300}
                 value={Math.round((item.durationMs || 10000) / 1000)}
                 onChange={(e) => onDurationChange(item.id, parseInt(e.target.value) || 10)}
-                className="w-14 px-2 py-1 text-xs bg-slate-50 border border-slate-200 rounded-md text-center font-medium outline-none focus:ring-2 focus:ring-indigo-500"
+                disabled={isViewer}
+                title={isViewer ? 'Read-only — viewer role' : undefined}
+                className="w-14 px-2 py-1 text-xs bg-slate-50 border border-slate-200 rounded-md text-center font-medium outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <span className="text-[10px] text-slate-400 font-medium w-4">sec</span>
             </>
@@ -122,7 +129,12 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
         <button onClick={() => setShowSettings(!showSettings)} className={`p-1 transition-all ${showSettings || isScheduled ? 'text-indigo-500 hover:text-indigo-600' : 'text-slate-300 hover:text-indigo-500 opacity-0 group-hover:opacity-100'}`}>
           <Settings className="w-4 h-4" />
         </button>
-        <button onClick={() => onRemove(item.id)} className="p-1 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+        <button
+          onClick={() => onRemove(item.id)}
+          disabled={isViewer}
+          title={isViewer ? 'Read-only — viewer role' : undefined}
+          className="p-1 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
           <Trash2 className="w-4 h-4" />
         </button>
       </div>
@@ -236,7 +248,7 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
 // PUT /playlists/:id/active. When a playlist has zero schedules we
 // deep-link into the editor (onOpen) instead — we can't guess a target
 // to schedule to.
-function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, togglePending, layout = 'grid' }: {
+function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, togglePending, layout = 'grid', isViewer = false }: {
   playlist: any;
   screenMap: { screens: any[]; groups: any[]; scheduleCount: number; activeCount: number };
   onOpen: () => void;
@@ -244,6 +256,7 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
   onToggleActive: (active: boolean) => void;
   togglePending: boolean;
   layout?: 'grid' | 'list';
+  isViewer?: boolean;
 }) {
   const isTemplate = !!playlist.template;
   const slideCount = playlist.items?.length || 0;
@@ -319,17 +332,19 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
           {/* On/off toggle */}
           <button
             onClick={handleToggleClick}
-            disabled={togglePending}
-            title={hasSchedules ? (isLive ? 'Turn playlist off — pauses all schedules' : 'Turn playlist on — activates all schedules') : 'Set a schedule first'}
+            disabled={togglePending || isViewer}
+            title={isViewer ? 'Read-only — viewer role' : (hasSchedules ? (isLive ? 'Turn playlist off — pauses all schedules' : 'Turn playlist on — activates all schedules') : 'Set a schedule first')}
             aria-label={isLive ? 'Turn off' : 'Turn on'}
-            className={`relative z-10 shrink-0 inline-flex items-center h-6 w-11 rounded-full transition-colors pointer-events-auto ${isLive ? 'bg-emerald-500' : 'bg-slate-300'} ${togglePending ? 'opacity-50' : ''}`}
+            className={`relative z-10 shrink-0 inline-flex items-center h-6 w-11 rounded-full transition-colors pointer-events-auto ${isLive ? 'bg-emerald-500' : 'bg-slate-300'} ${togglePending ? 'opacity-50' : ''} disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             <span className={`inline-block w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform ${isLive ? 'translate-x-6' : 'translate-x-1'}`} />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            disabled={isViewer}
+            title={isViewer ? 'Read-only — viewer role' : undefined}
             aria-label={`Delete playlist ${playlist.name}`}
-            className="relative z-10 shrink-0 p-1.5 rounded-lg text-slate-200 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all pointer-events-auto"
+            className="relative z-10 shrink-0 p-1.5 rounded-lg text-slate-200 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all pointer-events-auto disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
@@ -388,17 +403,19 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
                 operator doesn't have to drill in to flip state. */}
             <button
               onClick={handleToggleClick}
-              disabled={togglePending}
-              title={hasSchedules ? (isLive ? 'Turn playlist off — pauses all schedules' : 'Turn playlist on — activates all schedules') : 'Set a schedule first — opens editor'}
+              disabled={togglePending || isViewer}
+              title={isViewer ? 'Read-only — viewer role' : (hasSchedules ? (isLive ? 'Turn playlist off — pauses all schedules' : 'Turn playlist on — activates all schedules') : 'Set a schedule first — opens editor')}
               aria-label={isLive ? 'Turn off' : 'Turn on'}
-              className={`relative z-10 shrink-0 inline-flex items-center h-6 w-11 rounded-full transition-colors ${isLive ? 'bg-emerald-500' : hasSchedules ? 'bg-slate-300' : 'bg-amber-200'} ${togglePending ? 'opacity-50' : ''}`}
+              className={`relative z-10 shrink-0 inline-flex items-center h-6 w-11 rounded-full transition-colors ${isLive ? 'bg-emerald-500' : hasSchedules ? 'bg-slate-300' : 'bg-amber-200'} ${togglePending ? 'opacity-50' : ''} disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               <span className={`inline-block w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform ${isLive ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              disabled={isViewer}
+              title={isViewer ? 'Read-only — viewer role' : undefined}
               aria-label={`Delete playlist ${playlist.name}`}
-              className="relative z-10 p-1.5 rounded-lg text-slate-200 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
+              className="relative z-10 p-1.5 rounded-lg text-slate-200 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
@@ -559,6 +576,7 @@ export default function PlaylistsPage() {
   const [submitReviewerIds, setSubmitReviewerIds] = useState<string[]>([]);
   const currentUser = useUIStore((s) => s.user);
   const isContributor = currentUser?.role === 'CONTRIBUTOR';
+  const isViewer = currentUser?.role === 'RESTRICTED_VIEWER';
   const { data: tenantUsers } = useUsers();
   const tenantAdmins = (tenantUsers as any[] | undefined)?.filter((u) => u.role === 'SUPER_ADMIN' || u.role === 'DISTRICT_ADMIN' || u.role === 'SCHOOL_ADMIN') || [];
   const createSubmission = useCreateSubmission();
@@ -1203,11 +1221,21 @@ export default function PlaylistsPage() {
           <div className="flex gap-2">
             {tab === 'editor' && !selectedPlaylist.template && (
               <>
-                <button onClick={() => setShowPicker(true)} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1">
+                <button
+                  onClick={() => setShowPicker(true)}
+                  disabled={isViewer}
+                  title={isViewer ? 'Read-only — viewer role' : undefined}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   <Plus className="w-3.5 h-3.5" /> Add Media
                 </button>
                 {hasChanges && (
-                  <button onClick={handleSave} disabled={saveItems.isPending} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg flex items-center gap-1">
+                  <button
+                    onClick={handleSave}
+                    disabled={saveItems.isPending || isViewer}
+                    title={isViewer ? 'Read-only — viewer role' : undefined}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg flex items-center gap-1"
+                  >
                     <Save className="w-3.5 h-3.5" /> {saveItems.isPending ? 'Saving...' : 'Save'}
                   </button>
                 )}
@@ -1217,11 +1245,21 @@ export default function PlaylistsPage() {
             {isContributor ? (
               // CONTRIBUTOR sends to admin queue instead of scheduling
               // directly. Sprint 1.5 workflow.
-              <button onClick={() => setShowSubmitModal(true)} className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shadow-sm">
+              <button
+                onClick={() => setShowSubmitModal(true)}
+                disabled={isViewer}
+                title={isViewer ? 'Read-only — viewer role' : undefined}
+                className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 <CheckSquare className="w-3.5 h-3.5" /> Submit for Review
               </button>
             ) : (
-              <button onClick={() => { setEditingScheduleId(null); setSchedTargets([]); setSchedMode('always'); setSchedMuted(true); setShowPublishModal(true); }} className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shadow-sm">
+              <button
+                onClick={() => { setEditingScheduleId(null); setSchedTargets([]); setSchedMode('always'); setSchedMuted(true); setShowPublishModal(true); }}
+                disabled={isViewer}
+                title={isViewer ? 'Read-only — viewer role' : undefined}
+                className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 <CalendarDays className="w-3.5 h-3.5" /> Schedule to Screen
               </button>
             )}
@@ -1291,7 +1329,7 @@ export default function PlaylistsPage() {
                             <option value="08:00|11:59">Breakfast (8a - 12p)</option>
                             <option value="12:00|15:00">Lunch (12p - 3p)</option>
                           </select>
-                          <button 
+                          <button
                             onClick={() => {
                               const val = (document.getElementById('bulk-block-select') as HTMLSelectElement).value;
                               let updates: any = { timeStart: null, timeEnd: null, daysOfWeek: null };
@@ -1306,7 +1344,9 @@ export default function PlaylistsPage() {
                                 setTimeout(() => i.classList.remove('ring-2', 'ring-emerald-400', 'bg-emerald-50'), 400);
                               });
                             }}
-                            className="px-3 py-1 bg-emerald-50 hover:bg-emerald-600 text-emerald-600 hover:text-white text-[10px] font-bold rounded flex items-center transition-all"
+                            disabled={isViewer}
+                            title={isViewer ? 'Read-only — viewer role' : undefined}
+                            className="px-3 py-1 bg-emerald-50 hover:bg-emerald-600 text-emerald-600 hover:text-white text-[10px] font-bold rounded flex items-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             Apply
                           </button>
@@ -1325,13 +1365,13 @@ export default function PlaylistsPage() {
                         className="w-14 px-2 py-1 text-xs bg-slate-50 border border-slate-100 rounded-md text-center font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition-all" 
                       />
                       <span className="text-[10px] text-slate-400 font-semibold mr-1">sec</span>
-                      <button 
+                      <button
                         onClick={() => {
                           const el = document.getElementById('bulk-time-input') as HTMLInputElement;
                           const val = parseInt(el?.value) || 10;
                           setLocalItems(prev => prev.map(item => ({ ...item, durationMs: val * 1000 })));
                           setHasChanges(true);
-                          
+
                           // Optional: Little flash animation on the items to show they updated
                           const items = document.querySelectorAll('.playlist-item-card');
                           items.forEach(item => {
@@ -1339,7 +1379,9 @@ export default function PlaylistsPage() {
                             setTimeout(() => item.classList.remove('ring-2', 'ring-indigo-400', 'bg-indigo-50'), 400);
                           });
                         }}
-                        className="px-3 py-1 bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white text-[10px] font-bold rounded-md transition-all duration-200"
+                        disabled={isViewer}
+                        title={isViewer ? 'Read-only — viewer role' : undefined}
+                        className="px-3 py-1 bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white text-[10px] font-bold rounded-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Apply
                       </button>
@@ -1351,7 +1393,7 @@ export default function PlaylistsPage() {
                     <SortableContext items={localItems.map((s: any) => s.id)} strategy={verticalListSortingStrategy}>
                       <div className="space-y-2">
                         {localItems.map((item: any, i: number) => (
-                          <SortableItem key={item.id} item={item} index={i} onRemove={handleRemove} onDurationChange={handleDuration} onUpdate={handleUpdateItem} isSelected={selectedItemIds.has(item.id)} onToggle={handleToggleSelect} />
+                          <SortableItem key={item.id} item={item} index={i} onRemove={handleRemove} onDurationChange={handleDuration} onUpdate={handleUpdateItem} isSelected={selectedItemIds.has(item.id)} onToggle={handleToggleSelect} isViewer={isViewer} />
                         ))}
                       </div>
                     </SortableContext>
@@ -1362,7 +1404,12 @@ export default function PlaylistsPage() {
                   <Play className="w-10 h-10 text-slate-200 mb-3" />
                   <p className="text-sm font-medium text-slate-400">Empty playlist</p>
                   <p className="text-xs text-slate-300 mt-1 mb-4">Click &quot;Add Media&quot; to add content from your library</p>
-                  <button onClick={() => setShowPicker(true)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5">
+                  <button
+                    onClick={() => setShowPicker(true)}
+                    disabled={isViewer}
+                    title={isViewer ? 'Read-only — viewer role' : undefined}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
                     <Plus className="w-3.5 h-3.5" /> Add Media
                   </button>
                 </div>
@@ -1374,7 +1421,12 @@ export default function PlaylistsPage() {
                     <CalendarDays className="w-10 h-10 text-slate-200 mb-3" />
                     <p className="text-sm font-medium text-slate-400">No schedules yet</p>
                     <p className="text-xs text-slate-300 mt-1 mb-4">Publish this playlist to a screen with optional time scheduling</p>
-                    <button onClick={() => { setEditingScheduleId(null); setSchedTargets([]); setSchedMode('always'); setSchedMuted(true); setShowPublishModal(true); }} className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5">
+                    <button
+                      onClick={() => { setEditingScheduleId(null); setSchedTargets([]); setSchedMode('always'); setSchedMuted(true); setShowPublishModal(true); }}
+                      disabled={isViewer}
+                      title={isViewer ? 'Read-only — viewer role' : undefined}
+                      className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
                       <Plus className="w-3.5 h-3.5" /> Add Schedule
                     </button>
                   </div>
@@ -1443,21 +1495,25 @@ export default function PlaylistsPage() {
                                 setSchedMuted(sched.mutedOverride === false ? false : true);
                                 setShowPublishModal(true);
                               }}
-                              className="p-1.5 rounded-lg text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
-                              title="Edit schedule"
+                              disabled={isViewer}
+                              className="p-1.5 rounded-lg text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title={isViewer ? 'Read-only — viewer role' : 'Edit schedule'}
                             >
                               <Pencil className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => toggleSchedule.mutate(sched.id)}
-                              className={`p-1.5 rounded-lg transition-colors ${sched.isActive ? 'text-emerald-600 hover:bg-emerald-100' : 'text-slate-400 hover:bg-slate-100'}`}
-                              title={sched.isActive ? 'Pause schedule' : 'Resume schedule'}
+                              disabled={isViewer}
+                              className={`p-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${sched.isActive ? 'text-emerald-600 hover:bg-emerald-100' : 'text-slate-400 hover:bg-slate-100'}`}
+                              title={isViewer ? 'Read-only — viewer role' : (sched.isActive ? 'Pause schedule' : 'Resume schedule')}
                             >
                               <Power className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => deleteSchedule.mutate(sched.id)}
-                              className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                              disabled={isViewer}
+                              title={isViewer ? 'Read-only — viewer role' : undefined}
+                              className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -1494,8 +1550,9 @@ export default function PlaylistsPage() {
                   />
                   <button
                     onClick={() => pickerFileInputRef.current?.click()}
-                    className="px-3 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg flex items-center gap-1.5 transition-colors"
-                    title="Upload files into this folder without leaving the playlist"
+                    disabled={isViewer}
+                    className="px-3 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={isViewer ? 'Read-only — viewer role' : 'Upload files into this folder without leaving the playlist'}
                   >
                     <Upload className="w-3.5 h-3.5" /> Upload
                   </button>
@@ -1720,8 +1777,9 @@ export default function PlaylistsPage() {
                 </button>
                 <button
                   onClick={handleSubmitForReview}
-                  disabled={createSubmission.isPending || submitReviewerIds.length === 0}
-                  className="flex-1 px-4 py-2.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-bold rounded-lg shadow-sm"
+                  disabled={createSubmission.isPending || submitReviewerIds.length === 0 || isViewer}
+                  title={isViewer ? 'Read-only — viewer role' : undefined}
+                  className="flex-1 px-4 py-2.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-lg shadow-sm"
                 >
                   {createSubmission.isPending ? 'Submitting…' : 'Submit'}
                 </button>
@@ -1914,10 +1972,10 @@ export default function PlaylistsPage() {
                     running playlist on its target(s) until it's
                     activated. */}
                 <button
-                  disabled={schedTargets.length === 0 || publishSubmitting}
+                  disabled={schedTargets.length === 0 || publishSubmitting || isViewer}
                   onClick={handleSaveDraft}
                   className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-slate-700 text-sm font-bold rounded-lg shadow-sm flex items-center gap-2"
-                  title="Save this schedule as a draft — won't go live until you turn the playlist on"
+                  title={isViewer ? 'Read-only — viewer role' : "Save this schedule as a draft — won't go live until you turn the playlist on"}
                 >
                   {publishSubmitting ? (
                     <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
@@ -1926,8 +1984,9 @@ export default function PlaylistsPage() {
                   )}
                 </button>
                 <button
-                  disabled={schedTargets.length === 0 || publishSubmitting}
+                  disabled={schedTargets.length === 0 || publishSubmitting || isViewer}
                   onClick={handlePublish}
+                  title={isViewer ? 'Read-only — viewer role' : undefined}
                   className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-lg shadow-sm flex items-center gap-2"
                 >
                   {publishSubmitting ? (
@@ -1976,7 +2035,12 @@ export default function PlaylistsPage() {
               Line
             </button>
           </div>
-          <button onClick={() => { setShowCreate(true); setCreateMode('choose'); setNewName(''); setSelectedTemplateId(null); }} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-1.5">
+          <button
+            onClick={() => { setShowCreate(true); setCreateMode('choose'); setNewName(''); setSelectedTemplateId(null); }}
+            disabled={isViewer}
+            title={isViewer ? 'Read-only — viewer role' : undefined}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             <Plus className="w-4 h-4" /> New Playlist
           </button>
         </div>
@@ -2125,7 +2189,12 @@ export default function PlaylistsPage() {
                 <input ref={createNameInputRef} value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Playlist name..."
                   className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                   onKeyDown={(e) => e.key === 'Enter' && handleCreate()} />
-                <button onClick={handleCreate} disabled={createPlaylist.isPending || !newName.trim()} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold rounded-lg">
+                <button
+                  onClick={handleCreate}
+                  disabled={createPlaylist.isPending || !newName.trim() || isViewer}
+                  title={isViewer ? 'Read-only — viewer role' : undefined}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg"
+                >
                   {createPlaylist.isPending ? 'Creating...' : 'Create'}
                 </button>
                 <button onClick={() => setCreateMode('choose')} className="px-3 py-2 text-slate-400 hover:text-slate-600 text-sm">Back</button>
@@ -2174,7 +2243,12 @@ export default function PlaylistsPage() {
                   <input ref={createNameInputRef} value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Playlist name..."
                     className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-violet-500"
                     onKeyDown={(e) => e.key === 'Enter' && handleCreate()} />
-                  <button onClick={handleCreate} disabled={createPlaylist.isPending || !newName.trim()} className="px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-semibold rounded-lg">
+                  <button
+                    onClick={handleCreate}
+                    disabled={createPlaylist.isPending || !newName.trim() || isViewer}
+                    title={isViewer ? 'Read-only — viewer role' : undefined}
+                    className="px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg"
+                  >
                     {createPlaylist.isPending ? 'Creating...' : 'Create'}
                   </button>
                   <button onClick={() => { setSelectedTemplateId(null); setNewName(''); }} className="px-3 py-2 text-slate-400 hover:text-slate-600 text-sm">Back</button>
@@ -2317,6 +2391,7 @@ export default function PlaylistsPage() {
               }}
               togglePending={setPlaylistActive.isPending}
               layout={playlistView}
+              isViewer={isViewer}
             />
           ))}
         </div>
@@ -2349,7 +2424,12 @@ export default function PlaylistsPage() {
           </div>
           <h3 className="text-base font-bold text-slate-600 mb-1">No playlists yet</h3>
           <p className="text-sm text-slate-400 mb-5 max-w-sm">Create your first playlist to start scheduling content to your screens.</p>
-          <button onClick={() => { setShowCreate(true); setCreateMode('choose'); }} className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-1.5">
+          <button
+            onClick={() => { setShowCreate(true); setCreateMode('choose'); }}
+            disabled={isViewer}
+            title={isViewer ? 'Read-only — viewer role' : undefined}
+            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             <Plus className="w-4 h-4" /> Create First Playlist
           </button>
         </div>
