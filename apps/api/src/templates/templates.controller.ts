@@ -169,6 +169,16 @@ export class TemplatesController {
 
   @Get()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  // Gallery cache — `private` because the list is tenant-scoped (each
+  // tenant sees their own templates + system presets matching their
+  // vertical). 30s fresh window covers the common "click into a
+  // template, hit back, see the gallery again" flow without an extra
+  // round trip; SWR window keeps the gallery instant for ~2 minutes
+  // after that while a background refresh fires. Verified: this
+  // endpoint was 17-22s end-to-end on a 97-template tenant before the
+  // payload trim that landed alongside this header (2026-05-09 perf
+  // fix), the cache turns the second visit into a 0-RTT load.
+  @Header('Cache-Control', 'private, max-age=30, stale-while-revalidate=120')
   async list(
     @Request() req: any,
     @Query('category') category?: string,
@@ -231,13 +241,59 @@ export class TemplatesController {
       where.AND.push({ status: { not: 'ARCHIVED' as any } });
     }
 
-    // Zones ARE included — the gallery needs them to render thumbnails.
-    // What we don't need is re-parsing `defaultConfig` for rows the UI
-    // never opens; that JSON parse is deferred to mapTemplate.
+    // Payload trim (2026-05-09 — perf fix). Production smoke test had
+    // /api/v1/templates returning 1-3 MB across 97 templates and the
+    // gallery time-to-tiles was 17-22s. The thumbnails NEED zones +
+    // defaultConfig (ScaledTemplateThumbnail renders the actual widget
+    // tree at scale), but the gallery does NOT need:
+    //   • Template.brandKit (JSON, sometimes 5-20 KB per row — only the
+    //     builder reads this)
+    //   • Template.thumbnail (legacy data URL, never used in v1 — the
+    //     scaled live preview replaced it)
+    //   • Template.isTouchEnabled / idleResetMs (builder-only)
+    //   • TemplateZone.touchAction (builder-only Json blob)
+    //   • TemplateZone.name (gallery shows widget names from registry,
+    //     not zone display names)
+    //   • Tenant / createdBy joins (never accessed in the gallery)
+    // Switch from `include` to explicit `select` to enforce the trim
+    // at the SQL layer — Prisma generates a SELECT with just these
+    // columns, the JSON serializer never touches the rest. The
+    // single-template `:id` endpoint below stays untouched (the
+    // builder still needs everything).
     const templates = await this.prisma.client.template.findMany({
       where,
-      include: {
-        zones: { orderBy: { sortOrder: 'asc' } },
+      select: {
+        id: true,
+        tenantId: true,
+        name: true,
+        description: true,
+        category: true,
+        orientation: true,
+        schoolLevel: true,
+        vertical: true,
+        screenWidth: true,
+        screenHeight: true,
+        isSystem: true,
+        status: true,
+        bgColor: true,
+        bgImage: true,
+        bgGradient: true,
+        createdAt: true,
+        updatedAt: true,
+        zones: {
+          orderBy: { sortOrder: 'asc' },
+          select: {
+            id: true,
+            widgetType: true,
+            x: true,
+            y: true,
+            width: true,
+            height: true,
+            zIndex: true,
+            sortOrder: true,
+            defaultConfig: true,
+          },
+        },
         _count: { select: { zones: true } },
       },
       orderBy: [{ isSystem: 'desc' }, { updatedAt: 'desc' }],
