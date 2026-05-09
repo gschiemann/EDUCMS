@@ -36,6 +36,7 @@ import { HsStage } from './HsStage';
 import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 import { useAutoFitText } from './useAutoFitText';
+import { useTextStyleOverrides } from './useTextStyleOverrides';
 
 export interface HsTerminalConfig {
   schoolHost?: string;
@@ -176,6 +177,7 @@ export function HsTerminalPortraitWidget({ config, live }: { config?: Cfg; live?
   // override always wins. BuilderZone's CSS injection paints the override
   // with !important so the auto-fit's inline fontSize loses cleanly.
   useAutoFitText(stageRef, c._styles as any);
+  useTextStyleOverrides(stageRef, c._styles as any);
   // 2026-05-07 — live clock (see useHsLiveClock.ts).
   const now = useHsLiveClock(live !== false);
   const clock = resolveHsClock(c as any, now, (DEFAULTS as any).clockTime || '', (DEFAULTS as any).clockCaption || '');
