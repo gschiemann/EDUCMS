@@ -36,18 +36,25 @@ function diffMs(target: Date | null, fallbackDays: number) {
   if (t <= 0) return { d: 0, h: 0, m: 0, s: 0 };
   return { d: Math.floor(t / 86400000), h: Math.floor((t / 3600000) % 24), m: Math.floor((t / 60000) % 60), s: Math.floor((t / 1000) % 60) };
 }
-function useCountdown(cfg: CdCfg | undefined, fallback = 12) {
+function useCountdown(cfg: CdCfg | undefined, fallback = 12, live: boolean = true) {
   const [v, setV] = useState(() => {
     const r = resolveCountdownTarget(cfg || {}, new Date());
     return diffMs(r?.target ?? null, cfg?.staticDays ?? fallback);
   });
   useEffect(() => {
+    // Thumbnail / gallery (live === false): single snapshot, no tick.
+    // Each countdown variant ticks every 1s; in the gallery 5 variants
+    // × N tiles wakes the React scheduler 5N times/s for nothing.
+    // Snapshot is sufficient because the gallery never updates either
+    // way — operator clicks a variant to drop it, then it gets a real
+    // live render in the canvas / on the player.
+    if (!live) return;
     const id = setInterval(() => {
       const r = resolveCountdownTarget(cfg || {}, new Date());
       setV(diffMs(r?.target ?? null, cfg?.staticDays ?? fallback));
     }, 1000);
     return () => clearInterval(id);
-  }, [cfg, fallback]);
+  }, [cfg, fallback, live]);
   return v;
 }
 /** Resolve the active label/prefix for a countdown — recurring mode
@@ -60,8 +67,8 @@ function useCountdownLabel(cfg: CdCfg | undefined): { primary: string; eyebrow: 
 }
 
 // 1. NEON
-export function CountdownNeonDigitsWidget({ config }: WidgetProps<CdCfg>) {
-  const c = config || {}; const v = useCountdown(c); const labelInfo = useCountdownLabel(c); const r = resolveStyle({ fontFamily: "'Audiowide', sans-serif", fontSize: 140, textColor: '#fff', bgColor: '#0a0014', bgGradient: 'radial-gradient(ellipse at center, #1a0033, #0a0014)', padding: 32, borderRadius: 20, accentColor: '#ff2bd6', accentColor2: '#00f0ff', ...(c.style || {}) });
+export function CountdownNeonDigitsWidget({ config, live = true }: WidgetProps<CdCfg>) {
+  const c = config || {}; const v = useCountdown(c, undefined, live); const labelInfo = useCountdownLabel(c); const r = resolveStyle({ fontFamily: "'Audiowide', sans-serif", fontSize: 140, textColor: '#fff', bgColor: '#0a0014', bgGradient: 'radial-gradient(ellipse at center, #1a0033, #0a0014)', padding: 32, borderRadius: 20, accentColor: '#ff2bd6', accentColor2: '#00f0ff', ...(c.style || {}) });
   const Cell = ({ n, l }: { n: number; l: string }) => (<div style={{ textAlign: 'center' }}><div style={{ fontSize: r.font.size, color: r.accent.primary, lineHeight: 1, textShadow: `0 0 16px ${r.accent.primary}, 0 0 32px ${r.accent.primary}88`, fontWeight: 700 }}>{String(n).padStart(2, '0')}</div><div style={{ fontSize: '0.18em', color: r.accent.secondary, letterSpacing: '0.3em', textShadow: `0 0 8px ${r.accent.secondary}`, marginTop: 8 }}>{l}</div></div>);
   return (
     <div style={frameStyle(r)}>
@@ -77,8 +84,8 @@ export function CountdownNeonDigitsWidget({ config }: WidgetProps<CdCfg>) {
 }
 
 // 2. PAPER FLIP — middle school
-export function CountdownPaperFlipWidget({ config }: WidgetProps<CdCfg>) {
-  const c = config || {}; const v = useCountdown(c); const labelInfo = useCountdownLabel(c); const r = resolveStyle({ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 28, textColor: '#1c1917', bgColor: '#f5f1e8', padding: 40, accentColor: '#7c1d1d', ...(c.style || {}) });
+export function CountdownPaperFlipWidget({ config, live = true }: WidgetProps<CdCfg>) {
+  const c = config || {}; const v = useCountdown(c, undefined, live); const labelInfo = useCountdownLabel(c); const r = resolveStyle({ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 28, textColor: '#1c1917', bgColor: '#f5f1e8', padding: 40, accentColor: '#7c1d1d', ...(c.style || {}) });
   return (
     <div style={frameStyle(r)}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 16, alignItems: 'center', justifyContent: 'center' }}>
@@ -98,8 +105,8 @@ export function CountdownPaperFlipWidget({ config }: WidgetProps<CdCfg>) {
 }
 
 // 3. CRAYON
-export function CountdownCrayonBlocksWidget({ config }: WidgetProps<CdCfg>) {
-  const c = config || {}; const v = useCountdown(c); const labelInfo = useCountdownLabel(c); const r = resolveStyle({ fontFamily: "'Fredoka', sans-serif", fontSize: 24, textColor: '#1c1917', bgColor: '#fff8e7', padding: 32, borderRadius: 32, accentColor: '#ff6b9d', accentColor2: '#4ecdc4', highlightColor: '#ffd93d', ...(c.style || {}) });
+export function CountdownCrayonBlocksWidget({ config, live = true }: WidgetProps<CdCfg>) {
+  const c = config || {}; const v = useCountdown(c, undefined, live); const labelInfo = useCountdownLabel(c); const r = resolveStyle({ fontFamily: "'Fredoka', sans-serif", fontSize: 24, textColor: '#1c1917', bgColor: '#fff8e7', padding: 32, borderRadius: 32, accentColor: '#ff6b9d', accentColor2: '#4ecdc4', highlightColor: '#ffd93d', ...(c.style || {}) });
   const dur = animDurationSec(r.anim.speed, 3); const colors = [r.accent.primary, r.accent.secondary, r.accent.highlight, '#a78bfa'];
   return (
     <div style={frameStyle(r)}>
@@ -120,8 +127,8 @@ export function CountdownCrayonBlocksWidget({ config }: WidgetProps<CdCfg>) {
 }
 
 // 4. GLASS RING — universal
-export function CountdownGlassRingWidget({ config }: WidgetProps<CdCfg>) {
-  const c = config || {}; const v = useCountdown(c); const labelInfo = useCountdownLabel(c); const r = resolveStyle({ fontFamily: "'Inter', sans-serif", fontSize: 22, textColor: '#0f172a', bgColor: 'rgba(255,255,255,0.7)', bgGradient: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(168,85,247,0.08))', padding: 32, borderRadius: 24, accentColor: '#6366f1', accentColor2: '#a855f7', ...(c.style || {}) });
+export function CountdownGlassRingWidget({ config, live = true }: WidgetProps<CdCfg>) {
+  const c = config || {}; const v = useCountdown(c, undefined, live); const labelInfo = useCountdownLabel(c); const r = resolveStyle({ fontFamily: "'Inter', sans-serif", fontSize: 22, textColor: '#0f172a', bgColor: 'rgba(255,255,255,0.7)', bgGradient: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(168,85,247,0.08))', padding: 32, borderRadius: 24, accentColor: '#6366f1', accentColor2: '#a855f7', ...(c.style || {}) });
   const total = (c.staticDays || 30); const pct = Math.max(0, Math.min(1, (total - v.d) / total));
   return (
     <div style={{ ...frameStyle(r), backdropFilter: 'blur(20px)' }}>
@@ -151,8 +158,8 @@ export function CountdownGlassRingWidget({ config }: WidgetProps<CdCfg>) {
 }
 
 // 5. OPS — admin/staff
-export function CountdownOpsTimerWidget({ config }: WidgetProps<CdCfg>) {
-  const c = config || {}; const v = useCountdown(c); const labelInfo = useCountdownLabel(c); const r = resolveStyle({ fontFamily: "'JetBrains Mono', monospace", fontSize: 80, textColor: '#fafafa', bgColor: '#0a0e14', padding: 24, borderRadius: 8, borderWidth: 1, borderColor: '#1e293b', accentColor: '#fbbf24', accentColor2: '#22d3ee', ...(c.style || {}) });
+export function CountdownOpsTimerWidget({ config, live = true }: WidgetProps<CdCfg>) {
+  const c = config || {}; const v = useCountdown(c, undefined, live); const labelInfo = useCountdownLabel(c); const r = resolveStyle({ fontFamily: "'JetBrains Mono', monospace", fontSize: 80, textColor: '#fafafa', bgColor: '#0a0e14', padding: 24, borderRadius: 8, borderWidth: 1, borderColor: '#1e293b', accentColor: '#fbbf24', accentColor2: '#22d3ee', ...(c.style || {}) });
   return (
     <div style={frameStyle(r)}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8 }}>

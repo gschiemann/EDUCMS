@@ -27,12 +27,19 @@ import type { WidgetProps } from './_shared/types';
 // ─────────────────────────────────────────────────────────────────────
 // Shared time hook
 // ─────────────────────────────────────────────────────────────────────
-function useNow(everyMs: number = 1000) {
+function useNow(everyMs: number = 1000, live: boolean = true) {
+  // Thumbnail / gallery mode (live === false): return a snapshot once
+  // and skip the per-second tick. Without this, every clock variant
+  // tile in the template gallery runs a 1Hz setInterval — at 5
+  // variants × N tiles on screen the gallery wakes up the React
+  // scheduler 5N times/s rendering content nobody is reading. Player
+  // + canvas-builder paths pass live=true (default).
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
+    if (!live) return;
     const id = setInterval(() => setNow(new Date()), everyMs);
     return () => clearInterval(id);
-  }, [everyMs]);
+  }, [everyMs, live]);
   return now;
 }
 
@@ -68,7 +75,7 @@ interface ClockCfg {
   format24?: boolean;
 }
 
-export function ClockNeonPulseWidget({ config }: WidgetProps<ClockCfg>) {
+export function ClockNeonPulseWidget({ config, live = true }: WidgetProps<ClockCfg>) {
   const c = config || {};
   const r = resolveStyle({
     fontFamily: "'Audiowide', 'Orbitron', 'Bebas Neue', system-ui, sans-serif",
@@ -83,7 +90,7 @@ export function ClockNeonPulseWidget({ config }: WidgetProps<ClockCfg>) {
     accentColor2: '#00f0ff',
     ...(c.style || {}),
   });
-  const now = useNow(1000);
+  const now = useNow(1000, live);
   const t = formatClock(now, c.timeZone, !!c.format24);
   const dur = animDurationSec(r.anim.speed, 2);
   const pulseId = 'neon-pulse-' + (r.accent.primary.replace(/[^a-z0-9]/gi, '') || 'x');
@@ -119,7 +126,7 @@ export function ClockNeonPulseWidget({ config }: WidgetProps<ClockCfg>) {
 // ─────────────────────────────────────────────────────────────────────
 // 2. CLOCK_RECESS_BLOCKS — elementary
 // ─────────────────────────────────────────────────────────────────────
-export function ClockRecessBlocksWidget({ config }: WidgetProps<ClockCfg>) {
+export function ClockRecessBlocksWidget({ config, live = true }: WidgetProps<ClockCfg>) {
   const c = config || {};
   const r = resolveStyle({
     fontFamily: "'Fredoka', 'Nunito', system-ui, sans-serif",
@@ -134,7 +141,7 @@ export function ClockRecessBlocksWidget({ config }: WidgetProps<ClockCfg>) {
     highlightColor: '#ffd93d',
     ...(c.style || {}),
   });
-  const now = useNow(1000);
+  const now = useNow(1000, live);
   const t = formatClock(now, c.timeZone, !!c.format24);
   const blocks: Array<[string, string]> = [
     [t.h[0], r.accent.primary],
@@ -176,7 +183,7 @@ export function ClockRecessBlocksWidget({ config }: WidgetProps<ClockCfg>) {
 // ─────────────────────────────────────────────────────────────────────
 // 3. CLOCK_LOCKER_FLIP — middle school
 // ─────────────────────────────────────────────────────────────────────
-export function ClockLockerFlipWidget({ config }: WidgetProps<ClockCfg>) {
+export function ClockLockerFlipWidget({ config, live = true }: WidgetProps<ClockCfg>) {
   const c = config || {};
   const r = resolveStyle({
     fontFamily: "'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace",
@@ -191,7 +198,7 @@ export function ClockLockerFlipWidget({ config }: WidgetProps<ClockCfg>) {
     accentColor2: '#71717a',
     ...(c.style || {}),
   });
-  const now = useNow(1000);
+  const now = useNow(1000, live);
   const t = formatClock(now, c.timeZone, !!c.format24);
 
   function FlipCell({ digit }: { digit: string }) {
@@ -238,7 +245,7 @@ export function ClockLockerFlipWidget({ config }: WidgetProps<ClockCfg>) {
 // ─────────────────────────────────────────────────────────────────────
 // 4. CLOCK_GLASS_MINIMAL — universal
 // ─────────────────────────────────────────────────────────────────────
-export function ClockGlassMinimalWidget({ config }: WidgetProps<ClockCfg>) {
+export function ClockGlassMinimalWidget({ config, live = true }: WidgetProps<ClockCfg>) {
   const c = config || {};
   const r = resolveStyle({
     fontFamily: "'Inter', 'Helvetica Neue', system-ui, sans-serif",
@@ -255,7 +262,7 @@ export function ClockGlassMinimalWidget({ config }: WidgetProps<ClockCfg>) {
     accentColor: '#6366f1',
     ...(c.style || {}),
   });
-  const now = useNow(1000);
+  const now = useNow(1000, live);
   const t = formatClock(now, c.timeZone, !!c.format24);
 
   return (
@@ -280,7 +287,7 @@ export function ClockGlassMinimalWidget({ config }: WidgetProps<ClockCfg>) {
 // ─────────────────────────────────────────────────────────────────────
 // 5. CLOCK_OPS_TERMINAL — admin/staff
 // ─────────────────────────────────────────────────────────────────────
-export function ClockOpsTerminalWidget({ config }: WidgetProps<ClockCfg>) {
+export function ClockOpsTerminalWidget({ config, live = true }: WidgetProps<ClockCfg>) {
   const c = config || {};
   const r = resolveStyle({
     fontFamily: "'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace",
@@ -296,7 +303,7 @@ export function ClockOpsTerminalWidget({ config }: WidgetProps<ClockCfg>) {
     accentColor2: '#10b981',
     ...(c.style || {}),
   });
-  const now = useNow(1000);
+  const now = useNow(1000, live);
   const t = formatClock(now, c.timeZone, true);
   const iso = now.toISOString().slice(0, 10);
 
