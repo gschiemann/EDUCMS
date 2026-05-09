@@ -219,6 +219,37 @@ export const MediaAlertInputSchema = z
   .strict();
 export type MediaAlertInput = z.infer<typeof MediaAlertInputSchema>;
 
+// ─────────────────────────────────────────────────────────────
+// Auth — credential endpoints (login first; signup/reset to follow)
+//
+// Bounds the input shape that flows into argon2.verify and Prisma
+// findUnique. Without these, a 10MB email or password can DoS the
+// hash check, and non-string inputs reach the DB layer with cryptic
+// errors. Email format is RFC-compliant but lenient (allows
+// `admin@school.local` for on-prem deployments). Passwords are
+// NOT trimmed: leading/trailing whitespace can be part of the secret.
+// ─────────────────────────────────────────────────────────────
+
+const EmailString = z
+  .string()
+  .min(3)
+  .max(254) // RFC 5321 envelope max
+  .email({ message: 'Invalid email address' });
+
+const PasswordString = z
+  .string()
+  .min(1)
+  .max(256); // ≫ any real password; below the argon2 DoS threshold
+
+export const LoginInputSchema = z
+  .object({
+    email: EmailString,
+    password: PasswordString,
+    rememberMe: z.boolean().optional(),
+  })
+  .strict();
+export type LoginInput = z.infer<typeof LoginInputSchema>;
+
 
 // VenueOS — multi-industry vertical taxonomy (2026-05-02).
 // Drives Tenant.vertical, Template.vertical, terminology, defaults.
