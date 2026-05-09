@@ -204,6 +204,16 @@ model User {
   submissionsSubmitted Submission[]         @relation("SubmissionsSubmitted")
   submissionsDecided   Submission[]         @relation("SubmissionsDecided")
 
+  // 2026-05-09 — perf audit found every admin-broadcast feature
+  // (asset upload notify, submission notify, user list, SUPER_ADMIN
+  // cross-tenant reads) does findMany({ where: { tenantId, ... } })
+  // on this table with no supporting index. At low scale that's a
+  // Seq Scan over a tiny table — fine. At 10k+ users it's the
+  // BLOCKER for every fan-out. Composite on (tenantId, role, status)
+  // covers the common variant: "active admins of this tenant" which
+  // notify-loops use directly.
+  @@index([tenantId])
+  @@index([tenantId, role, status])
   @@map("users")
 }
 

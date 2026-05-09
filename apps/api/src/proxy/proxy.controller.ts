@@ -1,6 +1,6 @@
 import { Controller, Get, Query, Res, HttpException, HttpStatus } from '@nestjs/common';
 import type { Response } from 'express';
-import { SkipThrottle } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
 import { safeFetch, SsrfError, FetchTooLargeError } from '../branding/safe-fetch';
 import { RendererService } from './renderer.service';
 
@@ -25,7 +25,17 @@ export class ProxyController {
   constructor(private readonly renderer?: RendererService) {}
 
   @Get('web')
-  @SkipThrottle()
+  // 2026-05-09 — replaced @SkipThrottle() with a per-IP throttle.
+  // The endpoint can't require JWT auth because it's loaded via iframe
+  // src (player kiosk + WEBPAGE widget), and iframes can't pass an
+  // Authorization header. So the proxy stays publicly reachable —
+  // necessary for the actual product flow — but with a per-IP rate
+  // limit so it can't be used as a free DoS amplifier or scraping
+  // service. 60/min is generous for a real customer (a single screen
+  // doesn't iframe-refresh more than once a minute) but kills the
+  // amplification window. Coupled with safeFetch's SSRF guard +
+  // 5 MB byte cap, that closes the audit-flagged attack surface.
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
   async proxyWeb(
     @Query('url') url: string,
     @Query('interactive') interactiveParam: string | undefined,
