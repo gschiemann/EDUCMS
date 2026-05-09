@@ -250,6 +250,42 @@ export const LoginInputSchema = z
   .strict();
 export type LoginInput = z.infer<typeof LoginInputSchema>;
 
+// New-credential flows (signup, password reset, invite accept,
+// admin-direct-create) accept passwords being SET for the first time.
+// Enforce a min-length now — only future credentials need to clear
+// the bar; existing accounts are unaffected because login validates
+// against the OLD looser PasswordString shape (min 1).
+//
+// 8 chars is the OWASP soft minimum and matches what most school
+// districts already require. We deliberately don't enforce
+// complexity rules (digits/symbols/case) — research consistently
+// shows length beats complexity, and complexity rules push users
+// toward predictable patterns ("Password1!").
+const NewPasswordString = z
+  .string()
+  .min(8, { message: 'Password must be at least 8 characters' })
+  .max(256);
+
+const ResetTokenString = z
+  .string()
+  .min(16) // tokens are sha256 → 64 hex chars; min 16 catches truncation
+  .max(256);
+
+export const PasswordResetRequestSchema = z
+  .object({
+    email: EmailString,
+  })
+  .strict();
+export type PasswordResetRequest = z.infer<typeof PasswordResetRequestSchema>;
+
+export const PasswordResetCompleteSchema = z
+  .object({
+    token: ResetTokenString,
+    newPassword: NewPasswordString,
+  })
+  .strict();
+export type PasswordResetComplete = z.infer<typeof PasswordResetCompleteSchema>;
+
 
 // VenueOS — multi-industry vertical taxonomy (2026-05-02).
 // Drives Tenant.vertical, Template.vertical, terminology, defaults.

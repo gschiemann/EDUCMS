@@ -1,9 +1,14 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Request, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import {
+  PasswordResetRequestSchema, type PasswordResetRequest,
+  PasswordResetCompleteSchema, type PasswordResetComplete,
+} from '@cms/api-types';
 import { OnboardingService } from './onboarding.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
+import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { AppRole } from '@cms/database';
 
 @Controller('api/v1')
@@ -26,14 +31,21 @@ export class OnboardingController {
   @Post('password-reset/request')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60 * 60 * 1000, limit: 3 } })
-  async requestReset(@Body() body: { email: string }) {
-    return this.onboarding.requestPasswordReset(body?.email);
+  async requestReset(
+    @Body(new ZodValidationPipe(PasswordResetRequestSchema)) body: PasswordResetRequest,
+  ) {
+    return this.onboarding.requestPasswordReset(body.email);
   }
 
   @Post('password-reset/complete')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
-  async completeReset(@Body() body: { token: string; newPassword: string }) {
+  async completeReset(
+    // Token: bounded length 16..256 (sha256 tokens are 64 hex). New
+    // password: enforced 8-char minimum (NewPasswordString) — first
+    // server-side enforcement of password length on this endpoint.
+    @Body(new ZodValidationPipe(PasswordResetCompleteSchema)) body: PasswordResetComplete,
+  ) {
     return this.onboarding.completePasswordReset(body);
   }
 
