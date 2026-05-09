@@ -17,6 +17,7 @@ import { useState } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { CreditCard, CheckCircle2, Loader2, Star, Lock, X, AlertCircle } from 'lucide-react';
+import { appAlert } from '@/components/ui/app-dialog';
 
 interface CurrentLicense {
   id: string;
@@ -102,9 +103,19 @@ export default function BillingPage() {
                 onSelect={() => {
                   if (tier.id === 'FREE_TRIAL') {
                     // Free trial activation goes through a different path — no card.
+                    // 2026-05-08 — replaced native alert() (most unprofessional
+                    // failure mode in the audit; OS dialog with the URL prefix
+                    // shown to billing buyers) with the styled appAlert modal.
                     apiFetch('/billing/activate-trial', { method: 'POST' })
                       .then(() => window.location.reload())
-                      .catch((e) => alert(e instanceof Error ? e.message : String(e)));
+                      .catch((e) => {
+                        appAlert({
+                          title: "Couldn't activate trial",
+                          message: e instanceof Error ? e.message : String(e),
+                          tone: 'danger',
+                          confirmLabel: 'OK',
+                        });
+                      });
                   } else {
                     setCheckoutTier(tier);
                   }

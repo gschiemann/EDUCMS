@@ -4,8 +4,9 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import DOMPurify from 'isomorphic-dompurify';
-import { Megaphone, AlertCircle, CalendarClock, ShieldCheck } from 'lucide-react';
+import { Megaphone, AlertCircle, CalendarClock, ShieldCheck, Construction } from 'lucide-react';
 import { useState } from 'react';
+import { appAlert } from '@/components/ui/app-dialog';
 
 const AnnouncementSchema = z.object({
   title: z.string().min(5, "Title must be at least 5 characters").max(100),
@@ -39,14 +40,28 @@ export default function AnnouncementsPage() {
     }
   });
 
-  const onSubmit = (_data: AnnouncementFormValues) => {
-    // 2026-05-03 SECURITY FIX — was logging the full submission payload
-    // to the browser console on every submit, including any PII the
-    // operator typed. Removed; this page is still scaffolding awaiting
-    // the real /announcements POST handler.
+  const onSubmit = async (_data: AnnouncementFormValues) => {
+    // 2026-05-08 — UX honesty pass. Previously this faked a 1.5s spinner
+    // on submit and resolved with no API call, no toast, no error —
+    // operators thought their announcement had been published. Until
+    // the backend POST /announcements lands, surface that explicitly so
+    // nobody publishes-into-the-void during a demo. Use appAlert (not
+    // native alert()) for design-system consistency. The form data is
+    // discarded intentionally — better than silently saving locally
+    // and giving false confidence.
     setIsSubmitting(true);
-    // Simulate API Mutation
-    setTimeout(() => setIsSubmitting(false), 1500);
+    try {
+      await appAlert({
+        title: 'Coming soon',
+        message:
+          "The Announcements feature is in development — the backend handler isn't wired up yet. " +
+          'For now, use the Announcement widget inside a template playlist to post timed messages to screens.',
+        tone: 'info',
+        confirmLabel: 'Got it',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const activeBodyText = watch("bodyText");
@@ -63,6 +78,28 @@ export default function AnnouncementsPage() {
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
           Create rich-text announcements. Content is automatically sanitized to protect screens from malicious scripts.
         </p>
+      </div>
+
+      {/*
+        Honest "in development" banner. The form below validates and
+        sanitizes content correctly, but the submit handler currently
+        only surfaces an info dialog — no API exists yet for persisting
+        ad-hoc announcements outside of a template playlist. Removing
+        the banner and the dialog requires shipping POST /announcements
+        on the API side first.
+      */}
+      <div className="rounded-2xl border border-amber-300/60 dark:border-amber-700/60 bg-amber-50/80 dark:bg-amber-900/20 p-4 flex items-start gap-3">
+        <Construction className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+        <div className="text-sm">
+          <div className="font-semibold text-amber-900 dark:text-amber-100">
+            Feature in development
+          </div>
+          <div className="mt-1 text-amber-800 dark:text-amber-200">
+            This page is scaffolding for an upcoming API. For now, use the{' '}
+            <span className="font-medium">Announcement widget</span> inside a
+            template playlist — that path posts to screens immediately.
+          </div>
+        </div>
       </div>
 
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
