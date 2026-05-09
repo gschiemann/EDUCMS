@@ -288,7 +288,16 @@ export function Sidebar() {
             const isActive = pathname.startsWith(item.href);
             return (
               <Link
-                key={item.href}
+                // Stable key: item.name. Pre-2026-05-09 the key was
+                // item.href, which became "#" for ALL six navItems
+                // during the SSR → first-paint window (the hrefFor
+                // hydration gate returns "#" until `mounted` flips
+                // true). Six children with identical keys made React's
+                // reconciliation produce duplicate DOM nodes — operator
+                // saw "2 Dashboards, 2 Templates, 2 Assets…" in the
+                // sidebar. Using item.name keeps the key stable across
+                // both SSR and client paint while still being unique.
+                key={item.name}
                 href={item.href}
                 onClick={() => setMobileSidebarOpen(false)}
                 className={cn(
