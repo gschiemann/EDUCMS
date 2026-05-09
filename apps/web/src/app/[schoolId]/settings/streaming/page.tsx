@@ -17,6 +17,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
+import { appConfirm } from '@/components/ui/app-dialog';
 import { Loader2, Tv, ExternalLink, Trash2, Plus, X, AlertCircle, CheckCircle2, ShieldAlert, Wrench, Cable, ArrowRight, Globe, Music, Radio, Lock, Zap, Sparkles } from 'lucide-react';
 
 interface Provider {
@@ -268,7 +269,12 @@ export default function StreamingSettingsPage() {
                 channelCount={(channels.data || []).filter((ch) => ch.connectionId === c.id).length}
                 onPickChannels={() => setPickerConnection(c)}
                 onDisconnect={async () => {
-                  if (!confirm(`Disconnect ${c.providerName}? Channels picked from this provider will stop playing.`)) return;
+                  if (!(await appConfirm({
+                    title: 'Disconnect streaming provider?',
+                    message: `${c.providerName} will be disconnected and channels picked from this provider will stop playing.`,
+                    confirmLabel: 'Disconnect',
+                    tone: 'danger',
+                  }))) return;
                   await apiFetch(`/streaming/connections/${c.id}`, { method: 'DELETE' });
                   qc.invalidateQueries({ queryKey: ['streaming-connections'] });
                   qc.invalidateQueries({ queryKey: ['streaming-channels'] });

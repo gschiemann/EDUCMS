@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { apiFetch } from '@/lib/api-client';
+import { appConfirm } from '@/components/ui/app-dialog';
 import { useBuilderStore } from './useBuilderStore';
 import { useTemplate, useAdoptTemplateBrandKit, useClearTemplateBrandKit } from '@/hooks/use-api';
 
@@ -356,7 +357,12 @@ export function BrandKitPanel() {
   /** Wipe this template's brand kit. Doesn't touch the tenant theme. */
   const handleClear = async () => {
     if (!templateId) return;
-    if (!confirm('Clear this template\'s brand kit? Your global CMS theme is not affected.')) return;
+    if (!(await appConfirm({
+      title: 'Clear template brand kit?',
+      message: 'This template will revert to the system defaults. Your global CMS theme is not affected.',
+      confirmLabel: 'Clear',
+      tone: 'danger',
+    }))) return;
     try {
       await clearMutation.mutateAsync();
     } catch (err) {

@@ -23,6 +23,7 @@
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
+import { appConfirm } from '@/components/ui/app-dialog';
 import {
   Beaker, Loader2, CheckCircle2, ExternalLink, Trash2, AlertCircle, RefreshCw,
   Tv, Utensils, ShoppingBag, DollarSign, Sparkles,
@@ -215,8 +216,13 @@ export default function TestIntegrationsPage() {
         description="Wipes every connection tagged [Sample]. Production data is left alone."
       >
         <button
-          onClick={() => {
-            if (!confirm('Wipe all [Sample] rows across streaming + POS? Production data is left alone.')) return;
+          onClick={async () => {
+            if (!(await appConfirm({
+              title: 'Wipe sample rows?',
+              message: 'This deletes every [Sample] row across streaming + POS. Production data is left alone.',
+              confirmLabel: 'Wipe samples',
+              tone: 'danger',
+            }))) return;
             run('wipe-all', '/sample-data/all', 'DELETE');
           }}
           disabled={running !== null}

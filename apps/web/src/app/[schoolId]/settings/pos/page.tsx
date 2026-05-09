@@ -17,6 +17,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
+import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 import { Loader2, ExternalLink, Trash2, X, AlertCircle, CheckCircle2, ShieldAlert, RefreshCw, Utensils } from 'lucide-react';
 
 interface PosProvider {
@@ -99,11 +100,16 @@ export default function PosSettingsPage() {
                 connection={c}
                 onSync={async () => {
                   const r: any = await apiFetch(`/pos/connections/${c.id}/sync`, { method: 'POST' });
-                  if (r?.message) alert(r.message);
+                  if (r?.message) await appAlert({ title: 'POS sync', message: r.message, tone: 'info' });
                   qc.invalidateQueries({ queryKey: ['pos-connections'] });
                 }}
                 onDisconnect={async () => {
-                  if (!confirm(`Disconnect ${c.providerName}? Synced menu items will be removed from your screens.`)) return;
+                  if (!(await appConfirm({
+                    title: 'Disconnect POS provider?',
+                    message: `${c.providerName} will be disconnected and synced menu items removed from your screens.`,
+                    confirmLabel: 'Disconnect',
+                    tone: 'danger',
+                  }))) return;
                   await apiFetch(`/pos/connections/${c.id}`, { method: 'DELETE' });
                   qc.invalidateQueries({ queryKey: ['pos-connections'] });
                 }}

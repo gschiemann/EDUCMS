@@ -16,6 +16,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
+import { appConfirm } from '@/components/ui/app-dialog';
 import { Loader2, ExternalLink, Trash2, X, AlertCircle, CheckCircle2, ShieldAlert, Pause, Play, DollarSign, TrendingUp } from 'lucide-react';
 
 interface AdNetwork {
@@ -160,7 +161,12 @@ export default function MonetizeSettingsPage() {
                   qc.invalidateQueries({ queryKey: ['ads-connections'] });
                 }}
                 onDisconnect={async () => {
-                  if (!confirm(`Disconnect ${c.networkName}? Future impressions stop earning.`)) return;
+                  if (!(await appConfirm({
+                    title: 'Disconnect ad network?',
+                    message: `${c.networkName} will be disconnected. Future impressions stop earning revenue.`,
+                    confirmLabel: 'Disconnect',
+                    tone: 'danger',
+                  }))) return;
                   await apiFetch(`/ads/connections/${c.id}`, { method: 'DELETE' });
                   qc.invalidateQueries({ queryKey: ['ads-connections'] });
                 }}

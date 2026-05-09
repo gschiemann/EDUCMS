@@ -24,6 +24,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api-client';
+import { appConfirm } from '@/components/ui/app-dialog';
 import { Sparkles, Key, Loader2, Check, AlertCircle, Trash2, Eye, EyeOff } from 'lucide-react';
 
 interface AiKeyStatus {
@@ -86,7 +87,12 @@ export function AiKeyCard() {
   };
 
   const handleDisconnect = async () => {
-    if (!confirm('Disconnect AI? Generations will fall back to the platform free trial (if available) or stop working until you reconnect.')) return;
+    if (!(await appConfirm({
+      title: 'Disconnect AI?',
+      message: 'Generations will fall back to the platform free trial (if available) or stop working until you reconnect.',
+      confirmLabel: 'Disconnect',
+      tone: 'danger',
+    }))) return;
     setSaving(true);
     setMsg(null);
     try {
