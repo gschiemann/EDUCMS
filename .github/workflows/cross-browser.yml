@@ -1,0 +1,65 @@
+name: Cross-Browser
+
+# Policy: the dashboard + holiday templates must work on every Mac and
+# Windows browser the customer might use (Safari/WebKit, Chrome/Chromium,
+# Firefox, Edge). Local dev was Chrome-only and missed a Safari-fatal
+# regex bug for months — this workflow is the canary that prevents that
+# class of regression.
+#
+# Today: WebKit-only on the holiday-template iframe bridge protocol,
+# because Safari is the historical blind spot (Chromium was always green).
+# Add chromium / firefox passes here as we surface other engine-specific
+# fragility.
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  # Manual trigger for debugging
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  webkit-holiday-bridge:
+    name: WebKit · Holiday template bridge protocol
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      # python3 is preinstalled on ubuntu-latest; the test uses
+      # `python3 -m http.server` to serve apps/web/public statically
+      # so the holiday HTMLs load same-origin (postMessage origin
+      # checks need a real http:// scheme, not file://).
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright WebKit
+        # Only the WebKit browser; skip Chromium/Firefox to keep CI fast.
+        run: pnpm --filter web exec playwright install --with-deps webkit
+
+      - name: Run cross-browser test
+        run: pnpm --filter web run test:cross-browser
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-browser-report
+          path: apps/web/tests/cross-browser/report.json
+          if-no-files-found: ignore

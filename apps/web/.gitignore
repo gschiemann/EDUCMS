@@ -41,3 +41,4 @@ yarn-error.log*
 next-env.d.ts
 
 .vercel
+tests/cross-browser/report.json

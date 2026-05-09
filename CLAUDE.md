@@ -215,6 +215,50 @@ Each widget can have a `theme` variant in config (e.g., Sunny Meadow theme for c
 - **Async Patterns:** RxJS in NestJS, async/await in Next.js
 - **Secrets:** Use env vars, never hardcode. .env is gitignored.
 
+## Cross-browser support — non-negotiable
+
+**The dashboard, the player, the holiday templates, every customer-facing
+surface MUST work on every Mac and Windows browser the customer might use.**
+That means:
+
+- macOS: Safari (WebKit), Chrome (Chromium), Firefox (Gecko)
+- Windows: Edge (Chromium), Chrome (Chromium), Firefox (Gecko)
+- Player kiosks: Android System WebView (WebKit/Blink fork)
+
+**Why this matters here.** On 2026-05-09 we shipped a 2-month-old "works
+in Chrome, crashes in Safari" bug — every holiday template's inline
+minified bridge had a literal `\n` byte (real LF) inside a regex literal.
+V8/Chromium tolerated it; WebKit threw `SyntaxError: Unterminated regular
+expression literal` and killed the entire bridge script. Result: holiday
+hotspots, click-to-edit, and styling overrides ALL non-functional in
+Safari for months. Local dev was Chrome-only so we never saw it.
+
+**Rules going forward:**
+
+1. **Test in WebKit before considering anything `done`.** `pnpm --filter
+   web run test:cross-browser` runs the holiday-bridge protocol checks
+   (18 templates × 5 protocol assertions = 90 in WebKit). It runs in
+   under a minute. CI runs it on every push + PR via
+   `.github/workflows/cross-browser.yml` and blocks merge on red.
+2. **No "minified" inline JS unless you've verified it parses in WebKit.**
+   Tools that emit JS (minifiers, bundlers, hand-rolled scripts) are
+   the usual culprit class. Run the script through Safari Develop →
+   Show JavaScript Console at least once.
+3. **Avoid Chrome-specific APIs without a fallback.** Chrome ships
+   things ahead of spec; Safari rarely does. Examples that have bitten
+   us elsewhere: `request.body.tee()` (Streams API behavior diff),
+   `document.startViewTransition` (Chromium-only at time of writing),
+   structured-clone of complex objects.
+4. **When adding a new test surface that touches DOM/postMessage, port
+   the WebKit check pattern** in `apps/web/tests/cross-browser/
+   holiday-bridge.cjs` to that surface. Keep CI fast — under 2 minutes
+   per browser. Add Chromium / Firefox passes alongside WebKit when
+   you find a NEW Chromium-/Firefox-specific issue (don't add them
+   speculatively; the WebKit canary is the high-leverage check).
+5. **CLAUDE.md is the source of truth.** When you fix a Safari bug,
+   add a paragraph to `reference_recurring_failure_patterns.md` (in
+   memory) so the next agent doesn't rediscover it.
+
 ## Deploy reliability (Railway + Vercel)
 
 Every Railway redeploy must come up without hand-holding. Below is how to verify and recover.
