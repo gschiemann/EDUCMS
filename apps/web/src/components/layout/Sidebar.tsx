@@ -147,16 +147,26 @@ export function Sidebar() {
   // operator's day-to-day flow is "check my screens, upload content,
   // then build/tweak templates" — not the reverse. (Integration Lead
   // asked for the swap.)
+  //
+  // Hydration safety: `activeTenant` is a Zustand value backed by
+  // sessionStorage and is unavailable during SSR. Building hrefs from it
+  // unconditionally produced server markup like `/null/templates` that
+  // mismatched the post-hydration `/springfield-elementary/templates`,
+  // throwing a hydration warning in every console. Gate the tenant slug
+  // on `mounted` so the server + first client paint render the same
+  // stable href ("#"), then re-render with the real path after hydration.
+  const tenantSlug = mounted && activeTenant ? activeTenant : null;
+  const hrefFor = (path: string) => (tenantSlug ? `/${tenantSlug}${path}` : '#');
   const navItems = [
-    { name: 'Dashboard', href: `/${activeTenant}/dashboard`, icon: LayoutDashboard },
+    { name: 'Dashboard', href: hrefFor('/dashboard'), icon: LayoutDashboard },
     // Floor-plans is now a tab inside Screens (List | Floor Plans toggle),
     // not a standalone sidebar entry — operator pointed out the duplicate
     // "this is just another way to look at screens" was sidebar bloat.
-    { name: 'Screens', href: `/${activeTenant}/screens`, icon: MonitorPlay },
-    { name: 'Assets', href: `/${activeTenant}/assets`, icon: Upload },
-    { name: 'Templates', href: `/${activeTenant}/templates`, icon: LayoutTemplate },
-    { name: 'Playlists', href: `/${activeTenant}/playlists`, icon: Folders },
-    { name: 'Settings', href: `/${activeTenant}/settings`, icon: Settings },
+    { name: 'Screens', href: hrefFor('/screens'), icon: MonitorPlay },
+    { name: 'Assets', href: hrefFor('/assets'), icon: Upload },
+    { name: 'Templates', href: hrefFor('/templates'), icon: LayoutTemplate },
+    { name: 'Playlists', href: hrefFor('/playlists'), icon: Folders },
+    { name: 'Settings', href: hrefFor('/settings'), icon: Settings },
   ];
 
   // Hydration safety: `user` is loaded from localStorage on the client
@@ -182,8 +192,8 @@ export function Sidebar() {
   // Badge counts BOTH pending sources so operators see a unified
   // "stuff awaiting your review" number.
   const adminNavItems = [
-    { name: 'Reviews', href: `/${activeTenant}/reviews`, icon: ClipboardCheck, badge: pendingCount > 0 ? pendingCount : null },
-    { name: 'Audit Log', href: `/${activeTenant}/audit`, icon: FileClock, badge: null as number | null },
+    { name: 'Reviews', href: hrefFor('/reviews'), icon: ClipboardCheck, badge: pendingCount > 0 ? pendingCount : null },
+    { name: 'Audit Log', href: hrefFor('/audit'), icon: FileClock, badge: null as number | null },
   ];
 
   return (
