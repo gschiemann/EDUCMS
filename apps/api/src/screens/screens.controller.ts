@@ -777,7 +777,21 @@ export class ScreensController {
         if (isAlive && s.tenantId) liveStatus = 'ONLINE';
         else if (s.status === 'ONLINE' || s.tenantId) liveStatus = 'OFFLINE';
       }
-      return { ...s, status: liveStatus };
+      // Strip heavyweight columns from the LIST response. The dashboard
+      // polls /screens every 10s; at fleet scale these fields dominate
+      // egress without ever being read by the list view:
+      //   - lastCrashStack: up to 8KB Kotlin/JS stack from the player
+      //     APK's last crash. Surfaced only on the per-screen detail
+      //     drill-in, which fetches the screen by id directly.
+      //   - lastSelfTestReport / userAgent: similar — drill-in only.
+      //
+      // 1k screens × 8KB stack = 8 MB per poll. With 100 admins online
+      // that's 80 MB/s of pure egress on a field nobody reads from the
+      // list. We deliberately KEEP lastCacheReport (used by the Map
+      // view's per-pin emergency-cache badge in apps/web/src/components/
+      // screens/ScreenMap.tsx).
+      const { lastCrashStack: _stack, lastSelfTestReport: _self, ...rest } = s as any;
+      return { ...rest, status: liveStatus };
     });
   }
 
