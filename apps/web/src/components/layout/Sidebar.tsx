@@ -83,19 +83,44 @@ export function Sidebar() {
     // saw on the Mac migration (Sidebar stuck on default "VenueOS"
     // because LS was empty and BrandStyleInjector's dispatch was
     // missed) could re-occur any time the cache is cold.
+    // 2026-05-09 — operator: "it went back to VenueOS." Real-world
+    // /branding/me requests fail transiently (Supabase pool blips,
+    // Redis-unavailable warnings, brief deploy windows). Pre-fix the
+    // self-fetch had no retry: one 500 / 502 / network drop during
+    // the post-login window left the sidebar stuck on the VenueOS
+    // default until the user manually refreshed. With short
+    // exponential backoff (0.6s, 1.5s, 4s) we ride out the typical
+    // 30s Supabase blip without the operator ever noticing.
+    //
+    // Also retries when /branding/me returns null but the cache had
+    // a value (rare race where API momentarily can't see the row).
     let cancelled = false;
-    if (userTenantId && !cacheHadBranding) {
+    let attempt = 0;
+    const tryFetch = () => {
+      if (cancelled || !userTenantId) return;
       apiFetch<TenantBranding | null>('/branding/me')
         .then((b) => {
-          if (cancelled || !b) return;
+          if (cancelled) return;
+          if (!b) {
+            // Empty body = tenant has no branding row. Don't retry
+            // (legitimate state). The default VenueOS brand is correct.
+            return;
+          }
           setBranding(b);
-          // Also seed the LS cache so the next mount paints instantly.
           try {
             localStorage.setItem(BRAND_LS_PREFIX + userTenantId, JSON.stringify(b));
           } catch {}
         })
-        .catch(() => {});
-    }
+        .catch(() => {
+          // Retry on transient failure — fixed backoffs, max 3 attempts.
+          if (cancelled || attempt >= 3) return;
+          const delays = [600, 1500, 4000];
+          const wait = delays[attempt] ?? 4000;
+          attempt += 1;
+          setTimeout(tryFetch, wait);
+        });
+    };
+    if (userTenantId && !cacheHadBranding) tryFetch();
 
     const onUpdate = (e: Event) => {
       const detail = (e as CustomEvent<TenantBranding>).detail;
