@@ -52,14 +52,21 @@ export const WIDGET_GROUPS: ReadonlyArray<{
   {
     label: 'Media',
     types: [
-      { type: 'VIDEO', label: 'Video Player', desc: 'Play a video file or stream', icon: Play },
+      { type: 'VIDEO', label: 'Video Player', desc: 'Play a single video file', icon: Play },
+      // 2026-05-09 — VIDEO_CAROUSEL parity with IMAGE_CAROUSEL.
+      // Operator: "i need to add multiple [videos]…do the research and
+      // add it like everyone else does." Every signage CMS (Yodeck,
+      // Rise Vision, OptiSigns, ScreenCloud) ships a multi-video
+      // rotator. Same data shape as IMAGE_CAROUSEL: assetUrls + per-
+      // slide intervalMs.
+      { type: 'VIDEO_CAROUSEL', label: 'Video Carousel', desc: 'Rotate through multiple videos with per-slide timing', icon: Play },
       // 2026-05-03 — Sprint 8c streaming integrations. Universal across
       // every vertical: gyms show ESPN, bars stream sports, restaurants
       // run NHK World on the bar TV. Backed by StreamProviderConnection
       // rows so the channel pick + ad rotation persist server-side.
       { type: 'STREAMING', label: 'Live Stream', desc: 'HLS / YouTube / Twitch / public broadcasters with ad overlay', icon: Tv },
       { type: 'IMAGE', label: 'Single Image', desc: 'Display a photo or graphic', icon: ImageIcon },
-      { type: 'IMAGE_CAROUSEL', label: 'Photo Slideshow', desc: 'Rotate through photos', icon: ImageIcon },
+      { type: 'IMAGE_CAROUSEL', label: 'Photo Slideshow', desc: 'Rotate through multiple photos with per-slide timing', icon: ImageIcon },
       { type: 'PLAYLIST', label: 'Content Playlist', desc: 'Play mixed content from a playlist', icon: ListVideo },
     ],
   },

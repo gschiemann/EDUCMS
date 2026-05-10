@@ -1543,6 +1543,23 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<ToggleField key="loop" label="Loop" value={cfg.loop !== false} onChange={(v) => setField({ loop: v })} />);
       fields.push(<ToggleField key="muted" label="Muted" value={cfg.muted !== false} onChange={(v) => setField({ muted: v })} />);
       break;
+    case 'VIDEO_CAROUSEL':
+      // 2026-05-09 — Multi-video rotator. Same control surface as
+      // IMAGE_CAROUSEL (multi-pick library + per-slide timing), plus
+      // the autoplay/loop/muted toggles VIDEO has. Rotates ON TIMER —
+      // intervalMs is the per-slide window. Default 8000ms (8s) since
+      // most product/promo clips are 5-10s. AssetListPickerField with
+      // kind="video" reuses the same library picker the photo
+      // carousel uses; passes through the multi-pick + reorder + remove
+      // controls without duplication.
+      fields.push(<TextField key="title" label="Caption (editor only)" value={cfg.title || ''} placeholder="Promo Reel" onChange={(v) => setField({ title: v })} />);
+      fields.push(<TextField key="intervalMs" label="Rotate every (ms)" value={String(cfg.intervalMs || cfg.rotateMs || 8000)} placeholder="8000" onChange={(v) => { const n = parseInt(v) || 8000; setField({ intervalMs: n, rotateMs: n }); }} />);
+      fields.push(<SelectField key="fitMode" label="Video fit" value={cfg.fitMode || 'contain'} options={[['contain','Fit (no crop)'],['cover','Fill (crop)']]} onChange={(v) => setField({ fitMode: v })} />);
+      fields.push(<AssetListPickerField key="urls" label="Videos" value={(cfg.assetUrls || cfg.urls || []) as string[]} kind="video" onChange={(v) => setField({ assetUrls: v, urls: v })} />);
+      fields.push(<ToggleField key="autoplay" label="Autoplay each clip" value={cfg.autoplay !== false} onChange={(v) => setField({ autoplay: v })} />);
+      fields.push(<ToggleField key="loop" label="Loop short clips" value={cfg.loop !== false} onChange={(v) => setField({ loop: v })} />);
+      fields.push(<ToggleField key="muted" label="Muted (required for autoplay)" value={cfg.muted !== false} onChange={(v) => setField({ muted: v })} />);
+      break;
     case 'WEBPAGE':
       fields.push(<TextField key="url" label="Web page URL" value={cfg.url || cfg.embedUrl || ''} placeholder="https://example.com" onChange={(v) => setField({ url: v, embedUrl: undefined })} />);
       fields.push(<TextField key="refreshIntervalMs" label="Auto-refresh every (ms, 0 = never)" value={String(cfg.refreshIntervalMs ?? 0)} placeholder="0" onChange={(v) => setField({ refreshIntervalMs: parseInt(v) || 0 })} />);

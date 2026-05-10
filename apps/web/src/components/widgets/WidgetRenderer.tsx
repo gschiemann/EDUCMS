@@ -389,6 +389,11 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     case 'IMAGE':        return <ImageWidget config={cfg} />;
     case 'IMAGE_CAROUSEL': return <ImageCarouselWidget config={cfg} />;
     case 'VIDEO':        return <VideoWidget config={cfg} live={live} />;
+    // 2026-05-09 — multi-video rotator. Operator-asked parity with
+    // IMAGE_CAROUSEL. Reads cfg.assetUrls + intervalMs identical to
+    // the photo carousel; transition ON the timer, NOT on video-end,
+    // so users get predictable timing the same as every other CMS.
+    case 'VIDEO_CAROUSEL': return <VideoCarouselWidget config={cfg} live={live} />;
     // 2026-05-03 — Sprint 8c streaming integrations. Widget wraps
     // HLS / DASH / iframe playback + scheduled ad overlay. Channel
     // metadata + signed playback URL are pre-resolved by the API
@@ -1759,6 +1764,114 @@ function VideoWidget({ config, live }: { config: any; live?: boolean }) {
         <Play style={{ width: '1em', height: '1em', color: 'white', marginLeft: '0.15em' }} />
       </div>
       <span style={{ fontSize: '0.5em', color: '#a78bfa', fontWeight: 600, marginTop: '0.3em' }}>Add Video</span>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// VideoCarouselWidget — multi-video rotator. Mirrors ImageCarouselWidget
+// shape (assetUrls + intervalMs) so the PropertiesPanel's existing
+// AssetListPickerField + interval input can drive it without code
+// duplication.
+//
+// Transition rule: the carousel rotates ON TIMER, not on video-end.
+// This matches every signage CMS we benchmarked (Yodeck, Rise Vision,
+// OptiSigns, ScreenCloud) and gives operators predictable timing
+// regardless of clip duration. If a video is shorter than the
+// interval, it loops in place; if longer, it gets cut. To play full
+// videos sequentially without timer cut-off, set intervalMs >= the
+// longest clip's duration.
+//
+// Autoplay/mute follow the single VideoWidget rules: muted is
+// required for browser autoplay policies; `live` mode opt-in.
+// ─────────────────────────────────────────────────────────────────────
+function VideoCarouselWidget({ config, live }: { config: any; live?: boolean }) {
+  const urls: string[] = config.assetUrls || config.urls || [];
+  const interval: number = config.intervalMs || config.rotateMs || 8000;
+  const shouldAutoplay = live && (config.autoplay !== false);
+  const shouldLoop = config.loop !== false;
+  const shouldMute = config.muted !== false;
+  const fitMode: 'contain' | 'cover' | 'fill' = config.fitMode || 'contain';
+
+  const [idx, setIdx] = useState(0);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Rotate on timer only when there are 2+ clips.
+  useEffect(() => {
+    if (urls.length < 2) return;
+    const t = setInterval(() => setIdx((i) => (i + 1) % urls.length), interval);
+    return () => clearInterval(t);
+  }, [urls.length, interval]);
+
+  // When the active clip changes, force a fresh play attempt. Browsers
+  // require muted for autoplay; we already default to muted=true.
+  useEffect(() => {
+    if (!shouldAutoplay) return;
+    const v = videoRef.current;
+    if (!v) return;
+    v.play().catch(() => {
+      v.muted = true;
+      v.play().catch(() => {});
+    });
+  }, [idx, shouldAutoplay]);
+
+  if (urls.length === 0) {
+    return (
+      <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ background: 'linear-gradient(135deg, #faf5ff, #f3e8ff)' }}>
+        <div style={{ width: '2.5em', height: '2.5em', borderRadius: 999, background: 'linear-gradient(135deg, #8b5cf6, #a78bfa)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 15px rgba(139,92,246,0.3)' }}>
+          <Play style={{ width: '1em', height: '1em', color: 'white', marginLeft: '0.15em' }} />
+        </div>
+        <span style={{ fontSize: '0.5em', color: '#a78bfa', fontWeight: 600, marginTop: '0.3em' }}>Add Videos</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="absolute inset-0 overflow-hidden bg-black">
+      <video
+        ref={videoRef}
+        // `key` keyed off the active URL forces React to UNMOUNT the old
+        // <video> element when the carousel rotates and MOUNT a new one.
+        // Without this, simply changing `src` on a still-playing element
+        // sometimes leaves the previous frame painted for ~200ms.
+        key={urls[idx]}
+        src={resolveUrl(urls[idx])}
+        className="w-full h-full"
+        style={{ objectFit: fitMode }}
+        autoPlay={shouldAutoplay}
+        muted={shouldMute}
+        loop={shouldLoop}
+        preload={live ? 'auto' : 'metadata'}
+        playsInline
+      />
+      {/* Pip indicator (matches IMAGE_CAROUSEL pattern) */}
+      {urls.length > 1 && (
+        <div className="absolute bottom-[5%] left-1/2 -translate-x-1/2 flex gap-1">
+          {urls.map((_, i) => (
+            <div
+              key={i}
+              style={{
+                width: 6, height: 6, borderRadius: 99,
+                background: i === idx ? 'white' : 'rgba(255,255,255,0.4)',
+                transition: 'background 0.3s',
+              }}
+            />
+          ))}
+        </div>
+      )}
+      {/* Name badge — editor preview only */}
+      {!live && config.assetName && (
+        <div className="absolute bottom-[5%] left-[5%] right-[5%]">
+          <div style={{
+            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+            borderRadius: 6, padding: '0.2em 0.4em',
+            fontSize: '0.4em', color: 'rgba(255,255,255,0.8)', fontWeight: 500,
+            whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            {config.assetName} ({idx + 1}/{urls.length})
+          </div>
+        </div>
+      )}
     </div>
   );
 }
