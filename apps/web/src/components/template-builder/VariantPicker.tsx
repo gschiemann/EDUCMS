@@ -45,19 +45,23 @@ const WIDGET_TYPE_LABELS: Record<string, string> = {
   LUNCH_MENU:      'Lunch Menus',
 };
 
-// 2026-05-09 — operator: "we have too many damn filter pills, its
-// getting hard to even find what we need".
+// 2026-05-09 — operator iteration 2: "i dont like the new filter
+// names, ... images and image carousel should just have their own
+// filter pill and not be grouped into all of the other ones".
 //
-// Pre-fix: one chip per widget type → 17+ chips wrapping into multiple
-// rows, with widely varying visual weight (CLOCK had 30+ tiles, BELL
-// SCHEDULE had 1). The "find a video" task became a wall-scanning
-// chore.
+// Two fixes vs the first attempt:
+//   1. Images / Videos / Web split out of the catch-all "Content"
+//      group into their own first-class chips — operator's primary
+//      job is "drop a photo or a video onto the screen" so those
+//      should be one click, not two.
+//   2. Generic group labels ("Info", "People") replaced with
+//      concrete words an operator wouldn't have to translate:
+//      "Daily Info" (weather + calendar + menus that change every
+//      day), "Branding" (logos + staff cards = the school's
+//      identity), "Interactive" (touch surfaces).
 //
-// Now: 7 broad GROUP chips at the top, plus a "More widgets" overflow
-// for the long tail (Bell Schedules, Lunch Menus, etc.). Selecting a
-// group filters the tile list to every widget type the group covers.
-// The legacy per-type chip is still reachable via the overflow chip
-// for power users who know exactly what they want.
+// Long-tail individual widget types (BELL_SCHEDULE, LUNCH_MENU,
+// COUNTDOWN, etc.) still reachable via the "More ▾" overflow.
 type WidgetGroup = {
   id: string;
   label: string;
@@ -65,12 +69,14 @@ type WidgetGroup = {
   types: string[];
 };
 const WIDGET_GROUPS: WidgetGroup[] = [
-  { id: 'content',  label: 'Content',  emoji: '🎬', types: ['IMAGE', 'IMAGE_CAROUSEL', 'VIDEO', 'VIDEO_CAROUSEL', 'WEBPAGE'] },
-  { id: 'text',     label: 'Text',     emoji: '📝', types: ['TEXT', 'RICH_TEXT', 'ANNOUNCEMENT', 'TICKER'] },
-  { id: 'time',     label: 'Time',     emoji: '⏰', types: ['CLOCK', 'COUNTDOWN', 'BELL_SCHEDULE'] },
-  { id: 'info',     label: 'Info',     emoji: '🌤', types: ['WEATHER', 'CALENDAR', 'LUNCH_MENU'] },
-  { id: 'people',   label: 'People',   emoji: '👤', types: ['STAFF_SPOTLIGHT', 'LOGO'] },
-  { id: 'touch',    label: 'Touch',    emoji: '👆', types: ['TOUCH_BUTTON', 'TOUCH_MENU', 'ROOM_FINDER', 'ON_SCREEN_KEYBOARD', 'WAYFINDING_MAP', 'QUICK_POLL'] },
+  { id: 'images',   label: 'Images',      emoji: '🖼',  types: ['IMAGE', 'IMAGE_CAROUSEL'] },
+  { id: 'videos',   label: 'Videos',      emoji: '🎥',  types: ['VIDEO', 'VIDEO_CAROUSEL'] },
+  { id: 'web',      label: 'Web Pages',   emoji: '🌐',  types: ['WEBPAGE'] },
+  { id: 'text',     label: 'Text',        emoji: '📝',  types: ['TEXT', 'RICH_TEXT', 'ANNOUNCEMENT', 'TICKER'] },
+  { id: 'time',     label: 'Time',        emoji: '⏰',  types: ['CLOCK', 'COUNTDOWN', 'BELL_SCHEDULE'] },
+  { id: 'daily',    label: 'Daily Info',  emoji: '🌤',  types: ['WEATHER', 'CALENDAR', 'LUNCH_MENU'] },
+  { id: 'branding', label: 'Branding',    emoji: '🏫',  types: ['STAFF_SPOTLIGHT', 'LOGO'] },
+  { id: 'touch',    label: 'Interactive', emoji: '👆',  types: ['TOUCH_BUTTON', 'TOUCH_MENU', 'ROOM_FINDER', 'ON_SCREEN_KEYBOARD', 'WAYFINDING_MAP', 'QUICK_POLL'] },
 ];
 
 // Map a variant's category (the scene name) to school grade levels.
@@ -307,31 +313,26 @@ export function VariantPicker() {
         </div>
       </div>
 
-      {/* 2026-05-09 — operator: "the school should be at the top level
-          of the filters not below them". School / grade-level filter
-          now sits ABOVE the type filters so it's the FIRST narrowing
-          decision (the "who's this template for?" question), not the
-          last. K-12 only — non-K12 tenants don't see this row at all. */}
+      {/* School / grade-level filter row.
+          2026-05-09 — operator: "the school should be at the top level
+          of the filters not below them" — moved above the type row.
+          2026-05-10 — operator: "why do we have 'all' at the widget
+          level and the school level?" — disambiguated: this row's
+          chip says "All grades", widget row's says "All widgets". */}
       {isK12 && (
         <div className="px-3 py-2 border-b border-slate-100 flex flex-wrap gap-1 shrink-0 bg-slate-50/40">
           <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 self-center mr-1">School level:</span>
-          <FilterChip label="All" active={levelFilter === 'ALL'} onClick={() => setLevelFilter('ALL')} />
+          <FilterChip label="All grades" active={levelFilter === 'ALL'} onClick={() => setLevelFilter('ALL')} />
           <FilterChip label="Elementary" active={levelFilter === 'Elementary'} onClick={() => setLevelFilter('Elementary')} />
           <FilterChip label="Middle" active={levelFilter === 'Middle'} onClick={() => setLevelFilter('Middle')} />
           <FilterChip label="High" active={levelFilter === 'High'} onClick={() => setLevelFilter('High')} />
         </div>
       )}
 
-      {/* 2026-05-09 — operator: "we have too many damn filter pills,
-          its getting hard to even find what we need". Replaced the
-          flat row of 17+ widget-type chips with 6 GROUP chips +
-          "More widgets" overflow. The overflow drawer holds the
-          long-tail (Bell Schedules, Lunch Menus, etc.) and is also
-          where the per-widget-type chip lives for power users who
-          want exact filtering. */}
+      {/* Widget category filter row. */}
       <div className="px-3 py-2 border-b border-slate-100 flex flex-wrap gap-1 shrink-0">
         <FilterChip
-          label="All"
+          label="All widgets"
           active={typeFilter === 'ALL'}
           onClick={() => { setTypeFilter('ALL'); setBrowseAll(true); setMoreOpen(false); }}
         />
