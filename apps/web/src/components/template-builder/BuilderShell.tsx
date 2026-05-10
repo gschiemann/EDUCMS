@@ -24,6 +24,7 @@ import { PropertiesPanel, CanvasBackdropSection } from './PropertiesPanel';
 import { BrandKitPanel } from './BrandKitPanel';
 import { BackgroundPanel } from './BackgroundPanel';
 import { TopContextToolbar } from './TopContextToolbar';
+import { TemplatePreviewModal } from './TemplatePreviewModal';
 import { useUpdateTemplate, useUpdateTemplateZones, useCreateTemplate, useDeleteTemplate } from '@/hooks/use-api';
 import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
 import type { Template, Zone } from './types';
@@ -49,6 +50,8 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
   const selectedIds = useBuilderStore((s) => s.selectedIds);
   const isDirty = useBuilderStore((s) => s.isDirty);
   const previewMode = useBuilderStore((s) => s.previewMode);
+  const meta = useBuilderStore((s) => s.meta);
+  const zones = useBuilderStore((s) => s.zones);
   const updateZones = useBuilderStore((s) => s.updateZones);
   const removeSelected = useBuilderStore((s) => s.removeSelected);
   const duplicateZone = useBuilderStore((s) => s.duplicateZone);
@@ -62,6 +65,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
   const [saveError, setSaveError] = useState<string>();
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [clipboard, setClipboard] = useState<Zone[] | null>(null);
   const [activeDragType, setActiveDragType] = useState<string | null>(null);
 
@@ -485,6 +489,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         onSave={handleSave}
         onSaveAs={handleSaveAs}
         onDiscard={template.isSystem ? undefined : handleDiscard}
+        onPreview={() => setPreviewOpen(true)}
         saveStatus={saveStatus}
         saveError={saveError}
         lastSavedAt={lastSavedAt}
@@ -586,6 +591,23 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         </button>
       )}
       {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
+
+      {/* Fullscreen template preview — operator: "we need a preview
+          button to see the template before we post it". Renders the
+          template at native resolution (e.g. 1920×1080) scaled to fit
+          the viewport, with widgets running in live=true mode so
+          videos play and carousels rotate. */}
+      <TemplatePreviewModal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        zones={zones as any}
+        screenWidth={meta.screenWidth}
+        screenHeight={meta.screenHeight}
+        bgColor={meta.bgColor || undefined}
+        bgGradient={meta.bgGradient || undefined}
+        bgImage={meta.bgImage || undefined}
+        templateName={meta.name}
+      />
     </div>
     </DndContext>
   );

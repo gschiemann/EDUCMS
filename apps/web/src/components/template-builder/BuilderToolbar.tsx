@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  ArrowLeft, Save, Copy, Eye, EyeOff,
+  ArrowLeft, Save, Copy, Eye, EyeOff, Tv,
   RotateCw, Loader2, CheckCircle2, AlertCircle, Hand, Trash2, X,
 } from 'lucide-react';
 import { useMemo } from 'react';
@@ -16,12 +16,15 @@ interface Props {
    *  passes this only for non-system templates; a missing handler hides
    *  the button. Clicking prompts for confirmation in BuilderShell. */
   onDiscard?: () => void;
+  /** Open the fullscreen TemplatePreviewModal. Owned by BuilderShell so
+   *  the modal can render OVER the entire builder, not just the toolbar. */
+  onPreview?: () => void;
   saveStatus: 'idle' | 'saving' | 'saved' | 'error';
   saveError?: string;
   lastSavedAt?: number | null;
 }
 
-export function BuilderToolbar({ onBack, onSave, onSaveAs, onDiscard, saveStatus, saveError, lastSavedAt }: Props) {
+export function BuilderToolbar({ onBack, onSave, onSaveAs, onDiscard, onPreview, saveStatus, saveError, lastSavedAt }: Props) {
   // Atomic selectors — one subscription per key lets Zustand skip this
   // toolbar's re-render when only zone geometry (BuilderCanvas concern)
   // or property fields (PropertiesPanel concern) changed.
@@ -65,6 +68,25 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, onDiscard, saveStatus
             (BuilderBottomBar in BuilderShell.tsx) — single source of truth
             for canvas-state controls. Top toolbar keeps only the things
             unique to it: preview/touch toggles + save/discard cluster. */}
+
+        {/* 2026-05-10 — operator: "we need a preview button to see the
+            template before we post it". Distinct from the "Live preview"
+            toggle (which only hides side panels — canvas stays at builder
+            zoom, widgets render with live=false so videos don't autoplay).
+            "Preview" opens TemplatePreviewModal: fullscreen, native
+            resolution, live widgets. The two buttons live side-by-side
+            so the operator can pick: subtle inline preview vs. full
+            "what does this look like on the TV" preview. */}
+        {onPreview && (
+          <ToolbarBtn
+            label="Preview template (fullscreen)"
+            onClick={onPreview}
+          >
+            <Tv className="w-3.5 h-3.5" aria-hidden />
+            <span className="ml-1 text-[10px] font-bold uppercase tracking-wider hidden md:inline">Preview</span>
+          </ToolbarBtn>
+        )}
+
         <ToolbarBtn
           label={previewMode ? 'Exit preview' : 'Live preview'}
           onClick={() => setPreviewMode(!previewMode)}
