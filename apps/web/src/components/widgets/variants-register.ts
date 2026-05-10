@@ -29,6 +29,16 @@ import {
 // text/holiday variant before hitting Image. Moving them up to the
 // top of registration order pushes them to slot #1 in the picker.
 // ════════════════════════════════════════════════════════════════════════
+// 2026-05-10 — operator: "show the images in the widget once we add
+// them". The previous registration had these variants render the
+// thumbnail tile component as the CANVAS widget too, which froze the
+// canvas at the placeholder forever no matter what URLs/photos the
+// operator picked. Adding previewOnly:true on each variant makes the
+// canvas fall through to the standard WidgetRenderer dispatch
+// (ImageCarouselWidget / VideoCarouselWidget / etc.) which actually
+// reads config.urls + config.assetUrl and renders real <img> / <video>
+// elements. The tile components stay as the picker thumbnails — that's
+// what they were always meant for.
 registerVariant({
   id: 'image-basic',
   widgetType: 'IMAGE',
@@ -36,6 +46,7 @@ registerVariant({
   description: 'Single photo. Pick a file in Properties after dropping.',
   category: 'MODERN',
   render: ImageBasicTile,
+  previewOnly: true,
 });
 registerVariant({
   id: 'image-carousel-basic',
@@ -44,6 +55,7 @@ registerVariant({
   description: 'Multiple images with timing + transitions. Pick images in Properties.',
   category: 'MODERN',
   render: ImageCarouselBasicTile,
+  previewOnly: true,
 });
 registerVariant({
   id: 'video-basic',
@@ -52,6 +64,7 @@ registerVariant({
   description: 'Single video playback. Pick a video file in Properties after dropping.',
   category: 'MODERN',
   render: VideoBasicTile,
+  previewOnly: true,
 });
 registerVariant({
   id: 'video-carousel-basic',
@@ -60,6 +73,7 @@ registerVariant({
   description: 'Multiple videos auto-playing one after another. Pick videos in Properties.',
   category: 'MODERN',
   render: VideoCarouselTile,
+  previewOnly: true,
 });
 registerVariant({
   id: 'webpage-basic',
@@ -68,6 +82,7 @@ registerVariant({
   description: 'Embed any URL. Set the URL + auto-refresh in Properties.',
   category: 'MODERN',
   render: WebpageTile,
+  previewOnly: true,
 });
 import {
   ClockGradientDigital, ClockDarkPill, ClockMinimalAnalog, ClockStackedCard,

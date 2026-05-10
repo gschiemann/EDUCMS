@@ -353,7 +353,15 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { getVariant } = require('./variants') as typeof import('./variants');
     const v = getVariant(cfg.variant);
-    if (v && v.render) {
+    // 2026-05-10 — `previewOnly` variants use their `render` ONLY for
+    // the picker tile thumbnail; the canvas renders via the normal
+    // WidgetRenderer switch dispatch below so the operator's actual
+    // config (urls, assetUrl, transition, intervalSec) applies. Without
+    // this gate, the basic content variants (image-basic, image-
+    // carousel-basic, video-basic, video-carousel-basic, webpage-basic)
+    // froze the canvas at their thumbnail tile no matter what asset
+    // the operator picked.
+    if (v && v.render && !v.previewOnly) {
       const Render = v.render;
       // Pass the merged config + onConfigChange so the variant renderer
       // sees both the operator's edits AND can write back via inline

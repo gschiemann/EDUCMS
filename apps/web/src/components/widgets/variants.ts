@@ -37,12 +37,31 @@ export interface WidgetVariant {
   description?: string;
   /** Style category for the secondary filter (e.g. 'CLASSROOM', 'MODERN', 'PLAYFUL', 'MINIMAL') */
   category?: string;
-  /** Renderer — same shape as theme widget renderers */
+  /** Renderer — used as the picker thumbnail AND, by default, as the
+   *  canvas render when this variant is selected. For variants whose
+   *  `render` is a thumbnail-only preview (no real widget logic, no
+   *  asset URLs honored, etc.), set `previewOnly: true` so the canvas
+   *  falls through to the standard WidgetRenderer dispatch. */
   render: ComponentType<ThemeWidgetProps>;
   /** Default config to merge in when this variant is picked */
   defaultConfig?: Record<string, any>;
   /** Optional inline thumbnail SVG (renders inside the picker tile) */
   thumbnailSvg?: string;
+  /**
+   * When true: `render` is ONLY used for the picker tile thumbnail.
+   * The canvas renders the widget via the standard WidgetRenderer
+   * dispatch (e.g. IMAGE_CAROUSEL → ImageCarouselWidget) so config
+   * like `urls`, `transition`, `intervalSec` actually applies.
+   *
+   * 2026-05-10 — added because the basic content variants
+   * (image-basic, image-carousel-basic, video-basic, video-carousel-basic,
+   * webpage-basic) used their tile components as canvas renders, which
+   * showed the picker thumbnail forever (operator: "show the images
+   * in the widget once we add them"). Marking them previewOnly: true
+   * routes the canvas to the actual ImageCarouselWidget / ImageWidget /
+   * VideoWidget / VideoCarouselWidget / WebpageWidget renderers.
+   */
+  previewOnly?: boolean;
 }
 
 const variants = new Map<string, WidgetVariant>();
