@@ -31,6 +31,13 @@ const WIDGET_TYPE_LABELS: Record<string, string> = {
   TEXT:            'Headlines',
   RICH_TEXT:       'Rich Text',
   ANNOUNCEMENT:    'Announcements',
+  // Content widgets — labels for the filter chips. After the basic
+  // variants for these are registered (variants-register.ts at the
+  // bottom), they show up alongside CLOCKS / HEADLINES / etc. so
+  // operators can filter directly to "Videos" or "Web pages."
+  VIDEO:           'Videos',
+  VIDEO_CAROUSEL:  'Video Carousels',
+  WEBPAGE:         'Web Pages',
   TICKER:          'Tickers',
   CALENDAR:        'Calendars',
   COUNTDOWN:       'Countdowns',
@@ -38,7 +45,6 @@ const WIDGET_TYPE_LABELS: Record<string, string> = {
   LOGO:            'Logos',
   IMAGE_CAROUSEL:  'Photos',
   IMAGE:           'Images',
-  VIDEO:           'Videos',
   BELL_SCHEDULE:   'Bell Schedules',
   LUNCH_MENU:      'Lunch Menus',
 };

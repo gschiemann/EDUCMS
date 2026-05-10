@@ -21,7 +21,7 @@ import type { ComponentType } from 'react';
 export type WidgetType =
   | 'CLOCK' | 'WEATHER' | 'COUNTDOWN' | 'TEXT' | 'RICH_TEXT'
   | 'ANNOUNCEMENT' | 'TICKER' | 'BELL_SCHEDULE' | 'LUNCH_MENU' | 'CALENDAR'
-  | 'STAFF_SPOTLIGHT' | 'IMAGE' | 'IMAGE_CAROUSEL' | 'VIDEO' | 'LOGO'
+  | 'STAFF_SPOTLIGHT' | 'IMAGE' | 'IMAGE_CAROUSEL' | 'VIDEO' | 'VIDEO_CAROUSEL' | 'LOGO'
   | 'WEBPAGE' | 'RSS_FEED' | 'SOCIAL_FEED' | 'PLAYLIST'
   // Touch (Sprint 4)
   | 'TOUCH_BUTTON' | 'TOUCH_MENU' | 'ROOM_FINDER' | 'ON_SCREEN_KEYBOARD'
