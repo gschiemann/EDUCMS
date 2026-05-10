@@ -211,6 +211,12 @@ export function VariantPicker() {
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
+      {/* Quick Layouts — only when no zone is locked-filter selected.
+          Operator-asked: "splits the screen into multiple areas." Drops
+          N pre-positioned zones the operator then fills with content
+          (image / video / webpage). Mirrors the layout-picker every
+          enterprise signage CMS ships. */}
+      {!showingLockedFilter && <QuickLayoutsSection />}
       {/* Header */}
       <div className="px-4 py-3 border-b border-slate-100 shrink-0">
         <div className="flex items-center justify-between mb-2 gap-2">
@@ -355,6 +361,163 @@ function VariantTile({ variant, active, onPick }: { variant: WidgetVariant; acti
       {active && (
         <div className="absolute top-1.5 right-1.5 bg-indigo-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow pointer-events-none">
           ACTIVE
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// QuickLayoutsSection — six pre-defined zone splits.
+// Click → wipes existing zones and lays out new ones at preset rects.
+// Operator then fills each zone with content (image / video / URL /
+// carousel) by clicking the zone + picking a widget OR dragging a
+// widget from the library below into the zone.
+//
+// Why wipe existing zones: this is meant to be a starting point —
+// "give me a 4-quadrant layout to fill in." If the operator already
+// has content they'd lose, the Confirm dialog catches it.
+// ─────────────────────────────────────────────────────────────────────
+import { appConfirm } from '@/components/ui/app-dialog';
+
+type LayoutRect = { x: number; y: number; width: number; height: number };
+type LayoutPreset = {
+  id: string;
+  label: string;
+  desc: string;
+  rects: LayoutRect[];
+};
+
+// Rects are 0-100 percentage-space, top-left origin. Margins kept at 0
+// so the layout fills the canvas; operator can resize per-zone after.
+const LAYOUT_PRESETS: LayoutPreset[] = [
+  {
+    id: 'one',
+    label: '1 zone',
+    desc: 'Full screen — one big area for a single piece of content.',
+    rects: [{ x: 0, y: 0, width: 100, height: 100 }],
+  },
+  {
+    id: 'two-cols',
+    label: 'Two columns',
+    desc: 'Side-by-side. Great for image carousel + webpage.',
+    rects: [
+      { x: 0, y: 0, width: 50, height: 100 },
+      { x: 50, y: 0, width: 50, height: 100 },
+    ],
+  },
+  {
+    id: 'two-rows',
+    label: 'Two rows',
+    desc: 'Top + bottom. Great for video on top, ticker below.',
+    rects: [
+      { x: 0, y: 0, width: 100, height: 50 },
+      { x: 0, y: 50, width: 100, height: 50 },
+    ],
+  },
+  {
+    id: 'big-plus-stack',
+    label: 'Hero + 2 stack',
+    desc: 'Big left zone, two stacked on the right.',
+    rects: [
+      { x: 0, y: 0, width: 65, height: 100 },
+      { x: 65, y: 0, width: 35, height: 50 },
+      { x: 65, y: 50, width: 35, height: 50 },
+    ],
+  },
+  {
+    id: 'quad',
+    label: '4 quadrants',
+    desc: 'Equal 2×2 grid. Mix images, videos, URLs.',
+    rects: [
+      { x: 0, y: 0, width: 50, height: 50 },
+      { x: 50, y: 0, width: 50, height: 50 },
+      { x: 0, y: 50, width: 50, height: 50 },
+      { x: 50, y: 50, width: 50, height: 50 },
+    ],
+  },
+  {
+    id: 'header-three',
+    label: 'Header + 3',
+    desc: 'Banner up top, three columns below.',
+    rects: [
+      { x: 0, y: 0, width: 100, height: 30 },
+      { x: 0, y: 30, width: 33.33, height: 70 },
+      { x: 33.33, y: 30, width: 33.34, height: 70 },
+      { x: 66.67, y: 30, width: 33.33, height: 70 },
+    ],
+  },
+];
+
+function QuickLayoutsSection() {
+  const applyLayout = useBuilderStore((s) => s.applyLayout);
+  const zones = useBuilderStore((s) => s.zones);
+  const [open, setOpen] = useState(false);
+
+  const onPick = async (preset: LayoutPreset) => {
+    if (zones.length > 0) {
+      const ok = await appConfirm({
+        title: `Apply "${preset.label}" layout?`,
+        message: `This will replace your current ${zones.length} zone${zones.length === 1 ? '' : 's'} with ${preset.rects.length} new one${preset.rects.length === 1 ? '' : 's'} — your existing content will be removed. You can undo with Cmd/Ctrl+Z.`,
+        confirmLabel: 'Apply layout',
+        tone: 'warn',
+      });
+      if (!ok) return;
+    }
+    applyLayout(preset.rects, 'IMAGE');
+    setOpen(false);
+  };
+
+  return (
+    <div className="px-4 pt-3 pb-2 border-b border-slate-100 shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-600 hover:text-indigo-600"
+        aria-expanded={open}
+      >
+        <span className="flex items-center gap-1.5">
+          <span aria-hidden>▦</span> Quick layouts
+        </span>
+        <span className="text-slate-400 text-[10px]">{open ? '−' : '+'}</span>
+      </button>
+      {open && (
+        <div className="mt-2 grid grid-cols-3 gap-1.5">
+          {LAYOUT_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => onPick(preset)}
+              title={preset.desc}
+              className="group p-2 rounded-md border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 transition-colors text-left"
+            >
+              {/* SVG diagram — visual preview of the rect arrangement */}
+              <svg
+                viewBox="0 0 100 60"
+                className="w-full h-auto block"
+                aria-hidden="true"
+              >
+                <rect x="0" y="0" width="100" height="60" fill="#f1f5f9" rx="3" />
+                {preset.rects.map((r, i) => (
+                  <rect
+                    key={i}
+                    x={r.x + 1}
+                    // diagram is 100x60 (5:3) so we squash heights to 60% to roughly preview
+                    y={(r.y * 0.6) + 1}
+                    width={r.width - 2}
+                    height={(r.height * 0.6) - 2}
+                    fill="#fff"
+                    stroke="#94a3b8"
+                    strokeWidth="0.5"
+                    rx="1"
+                  />
+                ))}
+              </svg>
+              <div className="mt-1 text-[10px] font-semibold text-slate-700 group-hover:text-indigo-700 truncate">
+                {preset.label}
+              </div>
+            </button>
+          ))}
         </div>
       )}
     </div>

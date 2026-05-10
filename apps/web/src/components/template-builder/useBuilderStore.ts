@@ -42,6 +42,14 @@ interface BuilderState {
   setIdleResetMs(n: number): void;
   markClean(): void;
   addZone(widgetType: string, dropAt?: { x: number; y: number }): string;
+  /**
+   * Quick Layouts: replace all existing zones with N pre-positioned
+   * zones (rects in 0-100 percentage space). Each zone defaults to
+   * `defaultWidgetType` (IMAGE if not specified). The operator then
+   * swaps widget type per-zone via the Properties panel or by
+   * dropping a different widget into the zone.
+   */
+  applyLayout(rects: Array<{ x: number; y: number; width: number; height: number }>, defaultWidgetType?: string): void;
   duplicateZone(id: string): string | null;
   removeSelected(): void;
   updateZone(id: string, patch: Partial<Zone>, commit?: boolean): void;
@@ -241,6 +249,31 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     });
     set({ zones: [...zones, next], past, future: [], selectedIds: [id], isDirty: true });
     return id;
+  },
+
+  // 2026-05-09 — Quick Layouts. Operator: "i need to add multiple
+  // items to the same screen, add images, video, url, splits the
+  // screen into multiple areas." The builder already supports
+  // multi-zone (drop N widgets, position each) but doing 4 quadrants
+  // by hand is fiddly. This action wipes existing zones and lays
+  // out N zones at preset positions. Each zone defaults to IMAGE
+  // (operator can swap widget type via Properties panel or by
+  // dragging a different widget into the zone). Mirrors the "split
+  // screen" wizard pattern in Yodeck / Rise Vision / OptiSigns.
+  //
+  // rects are in template-percentage space (0-100, top-left origin).
+  applyLayout: (rects, defaultWidgetType = 'IMAGE') => {
+    const past = [...get().past, snapshot(get())].slice(-HISTORY_LIMIT);
+    const next: Zone[] = rects.map((r, i) => clampZone({
+      id: crypto.randomUUID(),
+      name: `Zone ${i + 1}`,
+      widgetType: defaultWidgetType,
+      x: r.x, y: r.y, width: r.width, height: r.height,
+      zIndex: i + 1,
+      sortOrder: i,
+      defaultConfig: {},
+    }));
+    set({ zones: next, past, future: [], selectedIds: next.length ? [next[0].id] : [], isDirty: true });
   },
 
   duplicateZone: (id) => {
