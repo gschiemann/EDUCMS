@@ -45,23 +45,25 @@ const WIDGET_TYPE_LABELS: Record<string, string> = {
   LUNCH_MENU:      'Lunch Menus',
 };
 
-// 2026-05-09 — operator iteration 2: "i dont like the new filter
-// names, ... images and image carousel should just have their own
-// filter pill and not be grouped into all of the other ones".
+// 2026-05-10 — operator iteration 3: "leave the image, videos,
+// webpage pills and revert the rest back to the original names we
+// had, they make more sense when there were a lot of them".
 //
-// Two fixes vs the first attempt:
-//   1. Images / Videos / Web split out of the catch-all "Content"
-//      group into their own first-class chips — operator's primary
-//      job is "drop a photo or a video onto the screen" so those
-//      should be one click, not two.
-//   2. Generic group labels ("Info", "People") replaced with
-//      concrete words an operator wouldn't have to translate:
-//      "Daily Info" (weather + calendar + menus that change every
-//      day), "Branding" (logos + staff cards = the school's
-//      identity), "Interactive" (touch surfaces).
+// Final shape:
+//   1. Images / Videos / Web Pages stay as COMBINED chips at the top
+//      (Images = IMAGE + IMAGE_CAROUSEL, Videos = VIDEO + VIDEO_CAROUSEL,
+//      Web Pages = WEBPAGE). These are the operator's most common drops
+//      so consolidating two-of-each into one chip saves a click.
+//   2. Every OTHER widget type goes back to being its own individual
+//      chip — Clocks, Headlines, Rich Text, Announcements, Tickers,
+//      Weather, Calendars, Countdowns, Staff, Logos, Bell Schedules,
+//      Lunch Menus. With 12 individual chips + 3 combined media chips,
+//      a flat row reads better than the abstract group labels.
+//   3. The "More ▾" overflow is gone — all chips are visible.
 //
-// Long-tail individual widget types (BELL_SCHEDULE, LUNCH_MENU,
-// COUNTDOWN, etc.) still reachable via the "More ▾" overflow.
+// WIDGET_GROUPS now ONLY holds the 3 combined media chips. The rest
+// are rendered straight from listVariantTypes() filtered against the
+// 5 widget types that the combined chips already cover.
 type WidgetGroup = {
   id: string;
   label: string;
@@ -69,14 +71,9 @@ type WidgetGroup = {
   types: string[];
 };
 const WIDGET_GROUPS: WidgetGroup[] = [
-  { id: 'images',   label: 'Images',      emoji: '🖼',  types: ['IMAGE', 'IMAGE_CAROUSEL'] },
-  { id: 'videos',   label: 'Videos',      emoji: '🎥',  types: ['VIDEO', 'VIDEO_CAROUSEL'] },
-  { id: 'web',      label: 'Web Pages',   emoji: '🌐',  types: ['WEBPAGE'] },
-  { id: 'text',     label: 'Text',        emoji: '📝',  types: ['TEXT', 'RICH_TEXT', 'ANNOUNCEMENT', 'TICKER'] },
-  { id: 'time',     label: 'Time',        emoji: '⏰',  types: ['CLOCK', 'COUNTDOWN', 'BELL_SCHEDULE'] },
-  { id: 'daily',    label: 'Daily Info',  emoji: '🌤',  types: ['WEATHER', 'CALENDAR', 'LUNCH_MENU'] },
-  { id: 'branding', label: 'Branding',    emoji: '🏫',  types: ['STAFF_SPOTLIGHT', 'LOGO'] },
-  { id: 'touch',    label: 'Interactive', emoji: '👆',  types: ['TOUCH_BUTTON', 'TOUCH_MENU', 'ROOM_FINDER', 'ON_SCREEN_KEYBOARD', 'WAYFINDING_MAP', 'QUICK_POLL'] },
+  { id: 'images', label: 'Images',    emoji: '🖼', types: ['IMAGE', 'IMAGE_CAROUSEL'] },
+  { id: 'videos', label: 'Videos',    emoji: '🎥', types: ['VIDEO', 'VIDEO_CAROUSEL'] },
+  { id: 'web',    label: 'Web Pages', emoji: '🌐', types: ['WEBPAGE'] },
 ];
 
 // Map a variant's category (the scene name) to school grade levels.
@@ -193,7 +190,6 @@ export function VariantPicker() {
   const [typeFilter, setTypeFilter] = useState<string>('ALL');
   const [levelFilter, setLevelFilter] = useState<string>('ALL'); // 'ALL' | 'Elementary' | 'Middle' | 'High'
   const [search, setSearch] = useState('');
-  const [moreOpen, setMoreOpen] = useState(false);
   // When user clicks a zone we auto-filter to its widgetType — but only ONCE per
   // selection. The user can still un-lock and browse other widget types via the
   // "Browse all widgets" button or the type chips.
@@ -329,48 +325,36 @@ export function VariantPicker() {
         </div>
       )}
 
-      {/* Widget category filter row. */}
+      {/* Widget category filter row.
+          Layout: All widgets · Images · Videos · Web Pages · then every
+          other individual widget type chip. The 3 media chips at the
+          front are combined (Images = IMAGE+IMAGE_CAROUSEL etc.) since
+          those are the most frequent drops; the rest stay individual
+          per operator's "they make more sense when there were a lot of
+          them" feedback. */}
       <div className="px-3 py-2 border-b border-slate-100 flex flex-wrap gap-1 shrink-0">
         <FilterChip
           label="All widgets"
           active={typeFilter === 'ALL'}
-          onClick={() => { setTypeFilter('ALL'); setBrowseAll(true); setMoreOpen(false); }}
+          onClick={() => { setTypeFilter('ALL'); setBrowseAll(true); }}
         />
         {WIDGET_GROUPS.map(g => (
           <FilterChip
             key={g.id}
             label={`${g.emoji} ${g.label}`}
             active={typeFilter === `GROUP:${g.id}`}
-            onClick={() => { setTypeFilter(`GROUP:${g.id}`); setBrowseAll(true); setMoreOpen(false); }}
+            onClick={() => { setTypeFilter(`GROUP:${g.id}`); setBrowseAll(true); }}
           />
         ))}
-        {otherTypes.length > 0 && (
+        {otherTypes.map(t => (
           <FilterChip
-            label={`More ▾`}
-            active={moreOpen || (allTypes as string[]).includes(typeFilter)}
-            onClick={() => setMoreOpen(v => !v)}
+            key={t}
+            label={WIDGET_TYPE_LABELS[t] || t}
+            active={typeFilter === t}
+            onClick={() => { setTypeFilter(t); setBrowseAll(true); }}
           />
-        )}
+        ))}
       </div>
-
-      {/* "More widgets" overflow — only visible when toggled. Holds:
-          - the long-tail widget types not in any group
-          - every grouped widget type as an exact-match chip for
-            operators who want surgical filtering. */}
-      {moreOpen && (
-        <div className="px-3 py-2 border-b border-slate-100 flex flex-wrap gap-1 shrink-0 bg-slate-50/60">
-          <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 self-center mr-1 w-full mb-1">All individual widgets:</span>
-          {allTypes.map(t => (
-            <FilterChip
-              key={t}
-              label={WIDGET_TYPE_LABELS[t] || t}
-              active={typeFilter === t}
-              onClick={() => { setTypeFilter(t); setBrowseAll(true); }}
-              small
-            />
-          ))}
-        </div>
-      )}
       {/* Tiles — 2-up wide tiles like Canva, real visible previews */}
       <div className="flex-1 overflow-auto p-3 bg-slate-50/40">
         {variants.length === 0 ? (
