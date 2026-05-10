@@ -264,7 +264,21 @@ export function Sidebar() {
             )}
             <span
               title={brandName}
-              className="bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700 truncate"
+              // 2026-05-09 — operator's "Los Medanos College" was
+              // truncating to "Los Medanos Col..." in the sidebar
+              // header. Real-world school names commonly run 18-30
+              // chars ("Springfield School District", "Chardon High
+              // School", etc.) which never fit on one line at xl
+              // size in a ~210px sidebar. Allow wrapping to 2 lines
+              // with leading-tight so the row stays compact, then
+              // ellipsis on the rare 3-word-plus name. Font size
+              // scales down slightly when the name is long enough
+              // to wrap so it doesn't visually crowd the logo.
+              className={cn(
+                'bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700',
+                'line-clamp-2 leading-[1.1] break-words',
+                brandName.length > 18 ? 'text-[15px]' : 'text-xl',
+              )}
             >
               {brandName}
             </span>
