@@ -2,8 +2,11 @@
 
 import { useId, useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
-import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon, Tv, ExternalLink, RefreshCw } from 'lucide-react';
+import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon, Tv, ExternalLink, RefreshCw, GripVertical } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { DndContext, PointerSensor, KeyboardSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinates, useSortable, arrayMove } from '@dnd-kit/sortable';
+import { CSS as DndCSS } from '@dnd-kit/utilities';
 import { useBuilderStore } from './useBuilderStore';
 import { widgetLabel } from './constants';
 import { useAssets, usePlaylists, useTemplates, useTemplateBackdrops } from '@/hooks/use-api';
@@ -650,15 +653,21 @@ export function PropertiesPanel() {
     <div className="p-5 space-y-6 text-xs" data-properties-panel="true">
       <section className="space-y-3">
         <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Zone</h3>
-        
+
         <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-100 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-semibold text-slate-500">Type</span>
             <span className="px-2 py-1 bg-white rounded-md shadow-sm border border-slate-100 text-[10px] font-bold text-indigo-600">{widgetLabel(zone.widgetType)}</span>
           </div>
-          
+
+          {/* 2026-05-09 — operator: "what is the layer name for?" Renamed
+              to "Name" with explainer so it's obvious it's a label for
+              the Layers panel, not anything functional. */}
           <div>
-            <label htmlFor={nameId} className="block text-[10px] font-semibold text-slate-500 mb-1.5">Layer Name</label>
+            <label htmlFor={nameId} className="block text-[10px] font-semibold text-slate-500 mb-1.5">
+              Name
+              <span className="ml-1.5 font-normal text-slate-400">— shown in the Layers panel</span>
+            </label>
             <input
               id={nameId}
               type="text"
@@ -669,72 +678,24 @@ export function PropertiesPanel() {
             />
           </div>
 
-          <div>
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Widget Theme</label>
-            <select
-              value={(zone.defaultConfig?.theme as string) || 'default'}
-              onChange={(e) => {
-                const val = e.target.value;
-                const newConfig = { ...(zone.defaultConfig || {}) };
-                if (val === 'default') delete newConfig.theme;
-                else newConfig.theme = val;
-                updateZone(zone.id, { defaultConfig: newConfig }, true);
-              }}
-              className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm inset-shadow-sm cursor-pointer"
-            >
-              <option value="default">Default / Base</option>
-              <option value="seamless">Seamless (No Background)</option>
-              <optgroup label="Elementary">
-                <option value="rainbow-ribbon">🌈 Rainbow Ribbon</option>
-                <option value="bulletin-board">📌 Bulletin Board</option>
-                <option value="field-day">🏆 Field Day</option>
-                <option value="storybook">📖 Storybook</option>
-                <option value="scrapbook">📎 Scrapbook</option>
-                <option value="track-day">🏃 Track Day</option>
-              </optgroup>
-              <optgroup label="Middle School">
-                <option value="locker-hallway">🔐 Locker Hallway</option>
-                <option value="spirit-rally">📣 Spirit Rally</option>
-                <option value="stem-lab">🔬 STEM Lab</option>
-                <option value="morning-news">📺 Morning News</option>
-                <option value="art-studio">🎨 Art Studio</option>
-                <option value="scorebug">📊 Scorebug Dashboard</option>
-              </optgroup>
-              <optgroup label="High School">
-                <option value="varsity-athletic">🥇 Varsity Athletic</option>
-                <option value="senior-countdown">🎓 Senior Countdown</option>
-                <option value="news-studio-pro">🎬 News Studio Pro</option>
-                <option value="campus-quad">🏛️ Campus Quad</option>
-                <option value="achievement-hall">🏅 Achievement Hall</option>
-                <option value="jumbotron-pro">🏟️ Jumbotron Pro</option>
-              </optgroup>
-              <optgroup label="Legacy">
-                <option value="sunny-meadow">☀️ Sunny Meadow</option>
-                <option value="back-to-school">🍎 Back to School</option>
-                <option value="diner-chalkboard">🍽️ Diner Chalkboard</option>
-                <option value="middle-school-hall">🏫 Middle School Hallway</option>
-                <option value="bus-loop">🚌 Bus Loop</option>
-                <option value="high-school-athletics">🏆 Athletics Jumbotron</option>
-                <option value="library-quiet">📚 Library Quiet Zone</option>
-                <option value="sunshine-academy">🌞 Sunshine Academy</option>
-                <option value="final-chance">✨ Final Chance</option>
-                <option value="principals-office">🎓 Principal's Office</option>
-                <option value="office-dashboard">📊 Office Dashboard</option>
-                <option value="gym-pe">💪 Gym / PE</option>
-                <option value="music-arts">🎵 Music & Arts</option>
-                <option value="stem-science">🔬 STEM & Science</option>
-              </optgroup>
-            </select>
-            <p className="mt-1 text-[10px] text-slate-400">Tip: use the <strong>Widgets</strong> tab to swap themes visually with thumbnails.</p>
-          </div>
+          {/* 2026-05-09 — operator: "whats the widget theme for, it does
+              nothing". Removed the Widget Theme dropdown — it duplicated
+              the Widget Library tile picker (which is visual + previews
+              the theme live). The dropdown set defaultConfig.theme blind
+              and looked broken on widget types that don't honor a theme
+              (VIDEO, IMAGE, WEBPAGE). One way to swap themes now: open
+              the Widgets tab and pick a tile. */}
         </div>
       </section>
 
       <ContentFields zone={zone} updateZone={updateZone} />
 
-      <section className="space-y-3">
-        <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Geometry</h3>
-        
+      {/* Geometry — collapsed by default. Operator can drag-resize on
+          the canvas for 99% of cases; this section is for the rare
+          "I need this exactly 50% wide" case + the Align buttons.
+          Operator: "why do we need the geometry section?" → hidden
+          unless they explicitly expand it. */}
+      <CollapsibleSection title="Position & size (advanced)" defaultOpen={false}>
         <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-100 shadow-sm space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <NumField id={xId} label="X (%)" value={zone.x} onChange={(v) => set({ x: v })} min={0} max={100} />
@@ -742,7 +703,7 @@ export function PropertiesPanel() {
             <NumField id={wId} label="Width (%)" value={zone.width} onChange={(v) => set({ width: v })} min={3} max={100} />
             <NumField id={hId} label="Height (%)" value={zone.height} onChange={(v) => set({ height: v })} min={3} max={100} />
           </div>
-          
+
           <div className="text-[10px] text-slate-400/80 font-medium text-center bg-white py-1.5 rounded-md border border-slate-100/50">
             Rendered: ~{pixelW}&times;{pixelH}px at {meta.screenWidth}&times;{meta.screenHeight}
           </div>
@@ -772,7 +733,7 @@ export function PropertiesPanel() {
             </button>
           </div>
         </div>
-      </section>
+      </CollapsibleSection>
 
       <AdvancedJson zone={zone} configString={configString} configId={configId} updateZone={updateZone} />
     </div>
@@ -833,6 +794,42 @@ function TemplateProperties() {
         onChange={(patch) => setMeta(patch)}
       />
     </div>
+  );
+}
+
+/**
+ * CollapsibleSection — disclosure wrapper used to hide advanced-only
+ * config behind a click. The Geometry section uses this so operators
+ * who never touch x/y/w/h numbers (most of them — drag-resize on canvas
+ * handles it) don't see the noise.
+ *
+ * 2026-05-09 — operator: "why do we need the geometry section?".
+ * Answer: power users still want it for "exactly 50% wide" cases and
+ * the Align buttons. Compromise: hidden by default, one click to open.
+ */
+function CollapsibleSection({
+  title,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className="space-y-3">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-1.5 text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1 hover:text-slate-600 transition-colors"
+        aria-expanded={open}
+      >
+        {open ? <ChevronDown className="w-3 h-3" aria-hidden /> : <ChevronRight className="w-3 h-3" aria-hidden />}
+        {title}
+      </button>
+      {open && children}
+    </section>
   );
 }
 
@@ -4492,35 +4489,65 @@ function AssetPickerField({ label, value, onChange, kind }: { label: string; val
 // multiple videos or images at once". Modal now opens in multi-pick
 // mode; selecting N tiles + "Add N selected" appends them all in one
 // call instead of one-at-a-time picks.
+// 2026-05-09 (later) — operator: "the tiny little up arrows are too
+// hard to see and use, let me drag and drop the content in different
+// orders". Replaced ↑ buttons with full dnd-kit sortable rows. Each
+// row has a visible grip handle on the left; the row body and the
+// remove button stay clickable. Dnd uses PointerSensor with a 4px
+// activation distance so a normal click doesn't accidentally start a
+// drag.
 function AssetListPickerField({ label, value, onChange, kind }: { label: string; value: string[]; onChange: (v: string[]) => void; kind: 'image' | 'video' }) {
   const [open, setOpen] = useState(false);
   const remove = (idx: number) => onChange(value.filter((_, i) => i !== idx));
-  const moveUp = (idx: number) => {
-    if (idx === 0) return;
-    const next = value.slice();
-    [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
-    onChange(next);
-  };
   const noun = kind === 'image' ? 'photo' : 'video';
   const nounPlural = kind === 'image' ? 'photos' : 'videos';
+
+  // Use idx-based ids — duplicate URLs in the playlist would otherwise
+  // collide with each other (dnd-kit requires unique ids). We append
+  // the url so the same idx position with a different file remounts.
+  const items = value.map((url, idx) => ({ id: `${idx}:${url}`, url, idx }));
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const oldIdx = items.findIndex(it => it.id === active.id);
+    const newIdx = items.findIndex(it => it.id === over.id);
+    if (oldIdx < 0 || newIdx < 0) return;
+    onChange(arrayMove(value, oldIdx, newIdx));
+  };
+
   return (
     <div>
-      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
+      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">
+        {label}
+        {value.length > 1 && (
+          <span className="ml-1.5 font-normal text-slate-400">— drag to reorder</span>
+        )}
+      </label>
       <div className="space-y-1.5">
         {value.length === 0 && <p className="text-[11px] text-slate-400 italic">No {nounPlural} yet — add some below.</p>}
-        {value.map((url, idx) => (
-          <div key={idx} className="flex items-center gap-2 p-1.5 bg-white border border-slate-200 rounded">
-            {kind === 'image' ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={resolveAssetUrl(url)} alt="" className="w-10 h-10 object-cover rounded shrink-0 bg-slate-100" />
-            ) : (
-              <video src={resolveAssetUrl(url)} className="w-10 h-10 object-cover rounded shrink-0 bg-slate-100" muted />
-            )}
-            <span className="flex-1 text-[10px] text-slate-500 truncate font-mono">{url.split('/').pop()}</span>
-            <button type="button" onClick={() => moveUp(idx)} disabled={idx === 0} className="text-[10px] text-slate-400 hover:text-indigo-600 disabled:opacity-30" aria-label="Move up">↑</button>
-            <button type="button" onClick={() => remove(idx)} className="text-[10px] text-rose-500 hover:text-rose-700" aria-label="Remove">×</button>
-          </div>
-        ))}
+        {value.length > 0 && (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={items.map(it => it.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-1.5">
+                {items.map((it) => (
+                  <SortableAssetRow
+                    key={it.id}
+                    id={it.id}
+                    url={it.url}
+                    kind={kind}
+                    onRemove={() => remove(it.idx)}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        )}
         <button
           type="button"
           onClick={() => setOpen(true)}
@@ -4538,6 +4565,49 @@ function AssetListPickerField({ label, value, onChange, kind }: { label: string;
           onClose={() => setOpen(false)}
         />
       )}
+    </div>
+  );
+}
+
+function SortableAssetRow({
+  id,
+  url,
+  kind,
+  onRemove,
+}: {
+  id: string;
+  url: string;
+  kind: 'image' | 'video';
+  onRemove: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    transform: DndCSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+    zIndex: isDragging ? 10 : 'auto',
+  };
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-center gap-2 p-1.5 bg-white border border-slate-200 rounded shadow-sm">
+      {/* Drag handle — only this element starts the drag, so clicking the
+          remove button or the row body doesn't accidentally pick it up. */}
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label="Drag to reorder"
+        className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-700 p-1 -ml-1 touch-none"
+      >
+        <GripVertical className="w-4 h-4" aria-hidden />
+      </button>
+      {kind === 'image' ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={resolveAssetUrl(url)} alt="" className="w-10 h-10 object-cover rounded shrink-0 bg-slate-100" />
+      ) : (
+        <video src={resolveAssetUrl(url)} className="w-10 h-10 object-cover rounded shrink-0 bg-slate-100" muted />
+      )}
+      <span className="flex-1 text-[10px] text-slate-500 truncate font-mono">{url.split('/').pop()}</span>
+      <button type="button" onClick={onRemove} className="text-[12px] text-rose-500 hover:text-rose-700 px-1.5" aria-label="Remove">×</button>
     </div>
   );
 }

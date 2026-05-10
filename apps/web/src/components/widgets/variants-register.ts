@@ -40,8 +40,8 @@ registerVariant({
 registerVariant({
   id: 'image-carousel-basic',
   widgetType: 'IMAGE_CAROUSEL',
-  name: 'Photo Slideshow',
-  description: 'Multiple photos with timing + transitions. Pick photos in Properties.',
+  name: 'Image Carousel',
+  description: 'Multiple images with timing + transitions. Pick images in Properties.',
   category: 'MODERN',
   render: ImageCarouselBasicTile,
 });

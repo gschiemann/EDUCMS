@@ -103,7 +103,7 @@ export function ImageCarouselBasicTile() {
         <div style={{ width: '1.4em', height: '1em', borderRadius: 4, background: 'rgba(180,83,9,0.20)' }} />
       </div>
       <div style={{ fontSize: '0.45em', color: '#92400e', fontWeight: 600, letterSpacing: '0.05em' }}>
-        Photo Slideshow
+        Image Carousel
       </div>
     </div>
   );
