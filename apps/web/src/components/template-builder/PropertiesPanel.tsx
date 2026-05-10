@@ -1520,11 +1520,18 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       );
       break;
     }
-    case 'IMAGE_CAROUSEL':
+    case 'IMAGE_CAROUSEL': {
+      // 2026-05-09 — operator: "rotate ... not be in milliseconds"
+      // + "i should be able to control the transitions for everything".
+      // Switched the rotation field to seconds (more human-friendly,
+      // 5s default), and added a transition picker. We persist BOTH
+      // ms shapes (intervalMs + rotateMs) for backward compat with
+      // every legacy/themed carousel that already reads them.
+      const currentMs = cfg.intervalMs || cfg.rotateMs || (cfg.intervalSec ? cfg.intervalSec * 1000 : 5000);
+      const currentSec = Math.max(1, Math.round(currentMs / 1000));
       fields.push(<TextField key="title" label="Caption" value={cfg.title || ''} placeholder="Photo Gallery" onChange={(v) => setField({ title: v })} />);
-      // 2026-05-03 — v2 PHOTO_* variants read `c.rotateMs` not `intervalMs`.
-      // Mirror BOTH so legacy + v2 see the same rotation cadence.
-      fields.push(<TextField key="intervalMs" label="Rotate every (ms)" value={String(cfg.intervalMs || cfg.rotateMs || 5000)} placeholder="5000" onChange={(v) => { const n = parseInt(v) || 5000; setField({ intervalMs: n, rotateMs: n }); }} />);
+      fields.push(<TextField key="intervalSec" label="Show each photo for (seconds)" value={String(currentSec)} placeholder="5" onChange={(v) => { const s = Math.max(1, parseInt(v) || 5); const ms = s * 1000; setField({ intervalSec: s, intervalMs: ms, rotateMs: ms }); }} />);
+      fields.push(<SelectField key="transition" label="Transition between photos" value={cfg.transition || 'fade'} options={[['fade','Fade'],['slide-left','Slide left'],['slide-right','Slide right'],['slide-up','Slide up'],['zoom','Zoom in'],['cut','Cut (no animation)']]} onChange={(v) => setField({ transition: v })} />);
       fields.push(<SelectField key="fitMode" label="Image fit" value={cfg.fitMode || 'cover'} options={[['cover','Fill (crop)'],['contain','Fit (no crop)']]} onChange={(v) => setField({ fitMode: v })} />);
       // v2 PHOTO_* widgets read `c.photos: { url, caption }[]` — mirror
       // the asset url list into the structured shape so v2 carousel
@@ -1532,6 +1539,7 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       // legacy carousel variants never showed anyway).
       fields.push(<AssetListPickerField key="urls" label="Photos" value={(cfg.urls || cfg.assetUrls || []) as string[]} kind="image" onChange={(v) => setField({ urls: v, assetUrls: undefined, photos: v.map((url) => ({ url, caption: '' })) })} />);
       break;
+    }
     case 'IMAGE':
       fields.push(<AssetPickerField key="assetUrl" label="Image" value={cfg.assetUrl || cfg.imageUrl || ''} kind="image" onChange={(v) => setField({ assetUrl: v, imageUrl: undefined })} />);
       fields.push(<SelectField key="fitMode" label="Fit" value={cfg.fitMode || 'cover'} options={[['cover','Fill (crop)'],['contain','Fit (no crop)']]} onChange={(v) => setField({ fitMode: v })} />);
@@ -1544,20 +1552,21 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<ToggleField key="muted" label="Muted" value={cfg.muted !== false} onChange={(v) => setField({ muted: v })} />);
       break;
     case 'VIDEO_CAROUSEL':
-      // 2026-05-09 — Multi-video rotator. Same control surface as
-      // IMAGE_CAROUSEL (multi-pick library + per-slide timing), plus
-      // the autoplay/loop/muted toggles VIDEO has. Rotates ON TIMER —
-      // intervalMs is the per-slide window. Default 8000ms (8s) since
-      // most product/promo clips are 5-10s. AssetListPickerField with
-      // kind="video" reuses the same library picker the photo
-      // carousel uses; passes through the multi-pick + reorder + remove
-      // controls without duplication.
+      // 2026-05-09 — operator: "rotate should only be for pictures
+      // not videos ... those should auto rotate". Reworked: the
+      // carousel advances when a clip ENDS (onEnded), not on a fixed
+      // timer. No rotate-every-N-seconds field — videos play through
+      // and naturally advance. Added a transition picker per
+      // operator's "control the transitions for everything". The
+      // single-clip "loop" toggle is gone too — looping a single
+      // video would never let it end → carousel would never rotate.
+      // Multi-clip is the carousel's whole purpose; loop the WHOLE
+      // PLAYLIST (last clip → first clip) is the only meaningful
+      // loop and it's on by default.
       fields.push(<TextField key="title" label="Caption (editor only)" value={cfg.title || ''} placeholder="Promo Reel" onChange={(v) => setField({ title: v })} />);
-      fields.push(<TextField key="intervalMs" label="Rotate every (ms)" value={String(cfg.intervalMs || cfg.rotateMs || 8000)} placeholder="8000" onChange={(v) => { const n = parseInt(v) || 8000; setField({ intervalMs: n, rotateMs: n }); }} />);
+      fields.push(<SelectField key="transition" label="Transition between clips" value={cfg.transition || 'fade'} options={[['fade','Fade'],['slide-left','Slide left'],['slide-right','Slide right'],['slide-up','Slide up'],['cut','Cut (no animation)']]} onChange={(v) => setField({ transition: v })} />);
       fields.push(<SelectField key="fitMode" label="Video fit" value={cfg.fitMode || 'contain'} options={[['contain','Fit (no crop)'],['cover','Fill (crop)']]} onChange={(v) => setField({ fitMode: v })} />);
       fields.push(<AssetListPickerField key="urls" label="Videos" value={(cfg.assetUrls || cfg.urls || []) as string[]} kind="video" onChange={(v) => setField({ assetUrls: v, urls: v })} />);
-      fields.push(<ToggleField key="autoplay" label="Autoplay each clip" value={cfg.autoplay !== false} onChange={(v) => setField({ autoplay: v })} />);
-      fields.push(<ToggleField key="loop" label="Loop short clips" value={cfg.loop !== false} onChange={(v) => setField({ loop: v })} />);
       fields.push(<ToggleField key="muted" label="Muted (required for autoplay)" value={cfg.muted !== false} onChange={(v) => setField({ muted: v })} />);
       break;
     case 'WEBPAGE':
@@ -4478,7 +4487,11 @@ function AssetPickerField({ label, value, onChange, kind }: { label: string; val
   );
 }
 
-// Multi-asset list — used by IMAGE_CAROUSEL
+// Multi-asset list — used by IMAGE_CAROUSEL and VIDEO_CAROUSEL.
+// 2026-05-09 — operator: "for the carousel, i should be able to select
+// multiple videos or images at once". Modal now opens in multi-pick
+// mode; selecting N tiles + "Add N selected" appends them all in one
+// call instead of one-at-a-time picks.
 function AssetListPickerField({ label, value, onChange, kind }: { label: string; value: string[]; onChange: (v: string[]) => void; kind: 'image' | 'video' }) {
   const [open, setOpen] = useState(false);
   const remove = (idx: number) => onChange(value.filter((_, i) => i !== idx));
@@ -4488,15 +4501,21 @@ function AssetListPickerField({ label, value, onChange, kind }: { label: string;
     [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
     onChange(next);
   };
+  const noun = kind === 'image' ? 'photo' : 'video';
+  const nounPlural = kind === 'image' ? 'photos' : 'videos';
   return (
     <div>
       <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
       <div className="space-y-1.5">
-        {value.length === 0 && <p className="text-[11px] text-slate-400 italic">No photos yet — add some below.</p>}
+        {value.length === 0 && <p className="text-[11px] text-slate-400 italic">No {nounPlural} yet — add some below.</p>}
         {value.map((url, idx) => (
           <div key={idx} className="flex items-center gap-2 p-1.5 bg-white border border-slate-200 rounded">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={resolveAssetUrl(url)} alt="" className="w-10 h-10 object-cover rounded shrink-0 bg-slate-100" />
+            {kind === 'image' ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={resolveAssetUrl(url)} alt="" className="w-10 h-10 object-cover rounded shrink-0 bg-slate-100" />
+            ) : (
+              <video src={resolveAssetUrl(url)} className="w-10 h-10 object-cover rounded shrink-0 bg-slate-100" muted />
+            )}
             <span className="flex-1 text-[10px] text-slate-500 truncate font-mono">{url.split('/').pop()}</span>
             <button type="button" onClick={() => moveUp(idx)} disabled={idx === 0} className="text-[10px] text-slate-400 hover:text-indigo-600 disabled:opacity-30" aria-label="Move up">↑</button>
             <button type="button" onClick={() => remove(idx)} className="text-[10px] text-rose-500 hover:text-rose-700" aria-label="Remove">×</button>
@@ -4507,11 +4526,17 @@ function AssetListPickerField({ label, value, onChange, kind }: { label: string;
           onClick={() => setOpen(true)}
           className="w-full py-1.5 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded border border-dashed border-indigo-200"
         >
-          + Add photo from library
+          + Add {nounPlural} from library
         </button>
       </div>
       {open && (
-        <AssetLibraryModal kind={kind} onPick={(url) => { onChange([...value, url]); setOpen(false); }} onClose={() => setOpen(false)} />
+        <AssetLibraryModal
+          kind={kind}
+          multi
+          onPick={(url) => { onChange([...value, url]); setOpen(false); }}
+          onPickMulti={(urls) => { onChange([...value, ...urls]); setOpen(false); }}
+          onClose={() => setOpen(false)}
+        />
       )}
     </div>
   );
@@ -4611,10 +4636,30 @@ function PhotosArrayField({ value, onChange }: { value: Array<{ url?: string; ca
   );
 }
 
-export function AssetLibraryModal({ kind, onPick, onClose }: { kind: 'image' | 'video'; onPick: (url: string) => void; onClose: () => void }) {
+export function AssetLibraryModal({
+  kind,
+  onPick,
+  onClose,
+  multi = false,
+  onPickMulti,
+}: {
+  kind: 'image' | 'video';
+  onPick: (url: string) => void;
+  onClose: () => void;
+  /** When true, library tiles become checkboxes instead of single-pick.
+   *  Operator selects N, hits "Add N selected", and the parent receives
+   *  the array via onPickMulti. Falls back to onPick(first) if onPickMulti
+   *  is not supplied so existing single-pick callers don't break. */
+  multi?: boolean;
+  onPickMulti?: (urls: string[]) => void;
+}) {
   const { data: assets, isLoading } = useAssets();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // 2026-05-09 — operator: "for the carousel, i should be able to select
+  // multiple videos or images at once". In multi mode tiles toggle into
+  // a Set of picked URLs; the footer button confirms the batch.
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   // 2026-05-04 — operator: "none of the photo or images tabs upload
   // anything" + "dont make me only pick from assets i should be able
   // to browse and upload a photo from my PC without adding it as an
@@ -4703,14 +4748,19 @@ export function AssetLibraryModal({ kind, onPick, onClose }: { kind: 'image' | '
         }),
       });
 
-      // Refresh the list so the new asset appears, then auto-pick
-      // it so the operator's flow is "click Upload → file dialog →
-      // pick a JPG → ✓ done, modal closes, widget shows their
-      // photo." No second click required.
+      // Refresh the list so the new asset appears. In single-pick mode
+      // we auto-confirm (operator's flow: "click Upload → file dialog
+      // → done, widget shows their photo"). In multi mode we just add
+      // the new URL to the selected set so the operator can keep
+      // picking more before hitting "Add N selected".
       await queryClient.invalidateQueries({ queryKey: ['assets'] });
       const finalUrl = completed.fileUrl || presigned.fileUrl;
-      if (finalUrl) onPick(finalUrl);
-      else throw new Error('Upload completed but server did not return a file URL.');
+      if (!finalUrl) throw new Error('Upload completed but server did not return a file URL.');
+      if (multi) {
+        setPicked((prev) => new Set(prev).add(finalUrl));
+      } else {
+        onPick(finalUrl);
+      }
     } catch (e: any) {
       // Console too — Vercel/Sentry won't capture these errors otherwise.
       // eslint-disable-next-line no-console
@@ -4735,7 +4785,16 @@ export function AssetLibraryModal({ kind, onPick, onClose }: { kind: 'image' | '
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl ring-1 ring-slate-200 max-w-2xl w-full max-h-[80vh] flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-          <h2 className="text-sm font-bold text-slate-800">Pick {kind === 'image' ? 'an image' : 'a video'}</h2>
+          <h2 className="text-sm font-bold text-slate-800">
+            {multi
+              ? (kind === 'image' ? 'Pick photos' : 'Pick videos')
+              : (kind === 'image' ? 'Pick an image' : 'Pick a video')}
+            {multi && picked.size > 0 && (
+              <span className="ml-2 text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+                {picked.size} selected
+              </span>
+            )}
+          </h2>
           <button onClick={onClose} aria-label="Close" className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100">
             <XIcon className="w-4 h-4" aria-hidden />
           </button>
@@ -4786,27 +4845,74 @@ export function AssetLibraryModal({ kind, onPick, onClose }: { kind: 'image' | '
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-2">
-              {filtered.map((a: any) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  onClick={() => onPick(a.fileUrl || a.url)}
-                  className="group relative aspect-square rounded-lg overflow-hidden bg-slate-100 border border-slate-200 hover:border-indigo-400 hover:ring-2 hover:ring-indigo-200 transition-all"
-                >
-                  {kind === 'image' ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={resolveAssetUrl(a.fileUrl || a.url)} alt={a.originalName || ''} className="w-full h-full object-cover" />
-                  ) : (
-                    <video src={resolveAssetUrl(a.fileUrl || a.url)} className="w-full h-full object-cover" muted />
-                  )}
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent text-white text-[9px] font-bold px-1.5 py-1 truncate">
-                    {a.originalName || a.fileUrl}
-                  </div>
-                </button>
-              ))}
+              {filtered.map((a: any) => {
+                const url = a.fileUrl || a.url;
+                const isPicked = picked.has(url);
+                const handleClick = () => {
+                  if (multi) {
+                    setPicked((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(url)) next.delete(url);
+                      else next.add(url);
+                      return next;
+                    });
+                  } else {
+                    onPick(url);
+                  }
+                };
+                return (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={handleClick}
+                    aria-pressed={multi ? isPicked : undefined}
+                    className={`group relative aspect-square rounded-lg overflow-hidden bg-slate-100 border transition-all ${isPicked ? 'border-indigo-500 ring-2 ring-indigo-400' : 'border-slate-200 hover:border-indigo-400 hover:ring-2 hover:ring-indigo-200'}`}
+                  >
+                    {kind === 'image' ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={resolveAssetUrl(url)} alt={a.originalName || ''} className="w-full h-full object-cover" />
+                    ) : (
+                      <video src={resolveAssetUrl(url)} className="w-full h-full object-cover" muted />
+                    )}
+                    {multi && (
+                      <div className={`absolute top-1.5 left-1.5 w-5 h-5 rounded-md border-2 flex items-center justify-center text-[12px] font-bold ${isPicked ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white/80 border-white text-transparent'}`}>
+                        ✓
+                      </div>
+                    )}
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent text-white text-[9px] font-bold px-1.5 py-1 truncate">
+                      {a.originalName || url}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
+
+        {multi && (
+          <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-[11px] text-slate-500 hover:text-slate-700 px-3 py-1.5"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (picked.size === 0) return;
+                const arr = Array.from(picked);
+                if (onPickMulti) onPickMulti(arr);
+                else onPick(arr[0]);
+              }}
+              disabled={picked.size === 0}
+              className="px-4 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Add {picked.size > 0 ? picked.size : ''} {kind === 'image' ? 'photo' : 'video'}{picked.size === 1 ? '' : 's'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

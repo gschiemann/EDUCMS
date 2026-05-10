@@ -1639,6 +1639,91 @@ function ImageWidget({ config }: { config: any }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// CarouselSlide — shared transition wrapper for IMAGE_CAROUSEL and
+// VIDEO_CAROUSEL. The parent re-mounts this with `key={idx}` on every
+// rotation; the chosen CSS animation runs once on mount, settling at
+// `transform: none / opacity: 1`.
+//
+// 2026-05-09 — operator: "i should be able to control the transitions
+// for everything". Five transitions:
+//   - fade        opacity 0 → 1
+//   - slide-left  enters from right, slides left into view
+//   - slide-right enters from left,  slides right into view
+//   - slide-up    enters from bottom,  slides up into view
+//   - zoom        scales 0.92 → 1 with a fade
+//   - cut         no animation (immediate swap)
+// All animations run for 600ms — long enough to feel intentional,
+// short enough not to overlap with a 5-second photo cadence.
+// ─────────────────────────────────────────────────────────────────────
+type TransitionKind = 'fade' | 'slide-left' | 'slide-right' | 'slide-up' | 'zoom' | 'cut';
+
+function transitionStyle(kind: TransitionKind): React.CSSProperties {
+  if (kind === 'cut') return {};
+  // animationName matches keyframes injected via the global <style>
+  // in the same component so we don't depend on a CSS module setup.
+  return {
+    animationName: `cms-carousel-${kind}`,
+    animationDuration: '600ms',
+    animationTimingFunction: 'cubic-bezier(0.22, 1, 0.36, 1)',
+    animationFillMode: 'both',
+  };
+}
+
+function CarouselSlide({
+  mediaKind,
+  url,
+  fitMode,
+  transition,
+  videoProps,
+}: {
+  mediaKind: 'image' | 'video';
+  url: string;
+  fitMode: string;
+  transition: TransitionKind;
+  videoProps?: React.VideoHTMLAttributes<HTMLVideoElement> & { ref?: React.Ref<HTMLVideoElement> };
+}) {
+  return (
+    <>
+      {/* Inject keyframes once per slide mount. CSS-in-JS via inline
+          <style> is fine here — the browser de-duplicates by content.
+          We keep the keyframes in the renderer so a CMS deploy never
+          ships HTML carousels with broken transitions if a Tailwind
+          config drift drops the custom keyframes. */}
+      <style>{`
+        @keyframes cms-carousel-fade {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        @keyframes cms-carousel-slide-left {
+          from { transform: translateX(100%); opacity: 0; }
+          to   { transform: translateX(0);    opacity: 1; }
+        }
+        @keyframes cms-carousel-slide-right {
+          from { transform: translateX(-100%); opacity: 0; }
+          to   { transform: translateX(0);     opacity: 1; }
+        }
+        @keyframes cms-carousel-slide-up {
+          from { transform: translateY(100%); opacity: 0; }
+          to   { transform: translateY(0);    opacity: 1; }
+        }
+        @keyframes cms-carousel-zoom {
+          from { transform: scale(0.92); opacity: 0; }
+          to   { transform: scale(1);    opacity: 1; }
+        }
+      `}</style>
+      <div className="absolute inset-0" style={transitionStyle(transition)}>
+        {mediaKind === 'image' ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={url} alt="" className="w-full h-full" style={{ objectFit: fitMode as any }} />
+        ) : (
+          <video src={url} className="w-full h-full" style={{ objectFit: fitMode as any }} {...videoProps} />
+        )}
+      </div>
+    </>
+  );
+}
+
 function ImageCarouselWidget({ config }: { config: any }) {
   if (config.theme === 'back-to-school') return <BackToSchoolImageCarousel config={config} />;
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardImageCarousel config={config} />;
@@ -1664,9 +1749,16 @@ function ImageCarouselWidget({ config }: { config: any }) {
   if (config.theme === 'middle-school-hall') return <MSHallImageCarousel config={config} />;
   if (config.theme === 'stem-science') return <StemScienceImageCarousel config={config} />;
   if (config.theme === 'sunshine-academy') return <SunshineAcademyImageCarousel config={config} />;
-  const urls = config.assetUrls || [];
+  // 2026-05-09 — accept seconds (`intervalSec`) AND legacy ms shapes
+  // so configs created before today still rotate at their old cadence.
+  // The new PropertiesPanel writes intervalSec + intervalMs + rotateMs
+  // simultaneously; old configs only have ms.
+  const urls = (config.urls || config.assetUrls || []) as string[];
   const [idx, setIdx] = useState(0);
-  const interval = config.intervalMs || 5000;
+  const interval = config.intervalSec
+    ? config.intervalSec * 1000
+    : (config.intervalMs || config.rotateMs || 5000);
+  const transition: TransitionKind = config.transition || 'fade';
 
   useEffect(() => {
     if (urls.length < 2) return;
@@ -1677,9 +1769,15 @@ function ImageCarouselWidget({ config }: { config: any }) {
   if (urls.length > 0) {
     return (
       <div className="absolute inset-0 overflow-hidden">
-        <img src={resolveUrl(urls[idx % urls.length])} alt="" className="w-full h-full transition-opacity duration-500" style={{ objectFit: config.fitMode || 'contain' }} />
+        <CarouselSlide
+          key={idx}
+          mediaKind="image"
+          url={resolveUrl(urls[idx % urls.length])}
+          fitMode={config.fitMode || 'contain'}
+          transition={transition}
+        />
         {urls.length > 1 && (
-          <div className="absolute bottom-[5%] left-1/2 -translate-x-1/2 flex gap-1">
+          <div className="absolute bottom-[5%] left-1/2 -translate-x-1/2 flex gap-1 z-10">
             {urls.map((_: string, i: number) => (
               <div key={i} style={{ width: 6, height: 6, borderRadius: 99, background: i === idx % urls.length ? 'white' : 'rgba(255,255,255,0.4)', transition: 'background 0.3s' }} />
             ))}
@@ -1769,39 +1867,38 @@ function VideoWidget({ config, live }: { config: any; live?: boolean }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// VideoCarouselWidget — multi-video rotator. Mirrors ImageCarouselWidget
-// shape (assetUrls + intervalMs) so the PropertiesPanel's existing
-// AssetListPickerField + interval input can drive it without code
-// duplication.
+// VideoCarouselWidget — multi-video rotator.
 //
-// Transition rule: the carousel rotates ON TIMER, not on video-end.
-// This matches every signage CMS we benchmarked (Yodeck, Rise Vision,
-// OptiSigns, ScreenCloud) and gives operators predictable timing
-// regardless of clip duration. If a video is shorter than the
-// interval, it loops in place; if longer, it gets cut. To play full
-// videos sequentially without timer cut-off, set intervalMs >= the
-// longest clip's duration.
+// 2026-05-09 — operator: "rotate should only be for pictures not
+// videos ... those should auto rotate". Removed the fixed-interval
+// timer. The carousel now advances when each clip's `onEnded` fires
+// — every video plays in full, then the next plays. The video
+// element's `loop` attribute is forced FALSE in multi-clip mode (a
+// looping video never ends → the carousel would freeze on slide 1).
 //
-// Autoplay/mute follow the single VideoWidget rules: muted is
-// required for browser autoplay policies; `live` mode opt-in.
+// Transitions: configurable via `config.transition` (fade /
+// slide-left / slide-right / slide-up / cut). Implemented in
+// CarouselSlide so IMAGE_CAROUSEL and VIDEO_CAROUSEL share the
+// animation code path.
+//
+// Autoplay/mute: muted is required for browser autoplay policies;
+// `live` mode opts in to autoplay.
 // ─────────────────────────────────────────────────────────────────────
 function VideoCarouselWidget({ config, live }: { config: any; live?: boolean }) {
   const urls: string[] = config.assetUrls || config.urls || [];
-  const interval: number = config.intervalMs || config.rotateMs || 8000;
   const shouldAutoplay = live && (config.autoplay !== false);
-  const shouldLoop = config.loop !== false;
   const shouldMute = config.muted !== false;
   const fitMode: 'contain' | 'cover' | 'fill' = config.fitMode || 'contain';
+  const transition: TransitionKind = config.transition || 'fade';
 
   const [idx, setIdx] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // Rotate on timer only when there are 2+ clips.
+  // Reset to first clip if the URL list shortens such that the
+  // current idx no longer exists.
   useEffect(() => {
-    if (urls.length < 2) return;
-    const t = setInterval(() => setIdx((i) => (i + 1) % urls.length), interval);
-    return () => clearInterval(t);
-  }, [urls.length, interval]);
+    if (idx >= urls.length && urls.length > 0) setIdx(0);
+  }, [urls.length, idx]);
 
   // When the active clip changes, force a fresh play attempt. Browsers
   // require muted for autoplay; we already default to muted=true.
@@ -1815,6 +1912,17 @@ function VideoCarouselWidget({ config, live }: { config: any; live?: boolean }) 
     });
   }, [idx, shouldAutoplay]);
 
+  // Editor-preview safety net: when not in `live` mode autoplay is
+  // OFF, so onEnded never fires and a multi-clip carousel would
+  // appear frozen. Use a slow fallback timer so editors at least
+  // see the rotation behavior. 8s is the historical default.
+  useEffect(() => {
+    if (live) return;
+    if (urls.length < 2) return;
+    const t = setInterval(() => setIdx((i) => (i + 1) % urls.length), 8000);
+    return () => clearInterval(t);
+  }, [live, urls.length]);
+
   if (urls.length === 0) {
     return (
       <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ background: 'linear-gradient(135deg, #faf5ff, #f3e8ff)' }}>
@@ -1826,23 +1934,39 @@ function VideoCarouselWidget({ config, live }: { config: any; live?: boolean }) 
     );
   }
 
+  const handleEnded = () => {
+    // Single clip + ended → restart it. Multi-clip → next.
+    if (urls.length === 1) {
+      const v = videoRef.current;
+      if (v) { try { v.currentTime = 0; v.play().catch(() => {}); } catch { /* noop */ } }
+      return;
+    }
+    setIdx((i) => (i + 1) % urls.length);
+  };
+
   return (
     <div className="absolute inset-0 overflow-hidden bg-black">
-      <video
-        ref={videoRef}
-        // `key` keyed off the active URL forces React to UNMOUNT the old
-        // <video> element when the carousel rotates and MOUNT a new one.
-        // Without this, simply changing `src` on a still-playing element
-        // sometimes leaves the previous frame painted for ~200ms.
-        key={urls[idx]}
-        src={resolveUrl(urls[idx])}
-        className="w-full h-full"
-        style={{ objectFit: fitMode }}
-        autoPlay={shouldAutoplay}
-        muted={shouldMute}
-        loop={shouldLoop}
-        preload={live ? 'auto' : 'metadata'}
-        playsInline
+      <CarouselSlide
+        // `key` forces React to UNMOUNT the old element on rotate so
+        // the transition animation re-runs and stale frames don't
+        // linger. Index keyed (not URL) so duplicate URLs in the
+        // playlist still trigger a remount.
+        key={idx}
+        mediaKind="video"
+        url={resolveUrl(urls[idx])}
+        fitMode={fitMode}
+        transition={transition}
+        videoProps={{
+          ref: videoRef as any,
+          autoPlay: shouldAutoplay,
+          muted: shouldMute,
+          // FORCE loop=false in multi-clip mode so onEnded fires.
+          // Single-clip carousels can loop in-place via handleEnded.
+          loop: false,
+          preload: live ? 'auto' : 'metadata',
+          playsInline: true,
+          onEnded: handleEnded,
+        }}
       />
       {/* Pip indicator (matches IMAGE_CAROUSEL pattern) */}
       {urls.length > 1 && (

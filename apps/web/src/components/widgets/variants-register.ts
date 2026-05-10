@@ -7,11 +7,68 @@
  */
 import { registerVariant } from './variants';
 import {
+  VideoBasicTile,
+  VideoCarouselTile,
+  WebpageTile,
+  ImageBasicTile,
+  ImageCarouselBasicTile,
+} from './variant-tiles/basic-content-tiles';
+import {
   BackToSchoolClock, BackToSchoolText, BackToSchoolAnnouncement,
   BackToSchoolCalendar, BackToSchoolStaff, BackToSchoolCountdown,
   BackToSchoolLogo, BackToSchoolTicker, BackToSchoolWeather,
   BackToSchoolImageCarousel,
 } from './themes/back-to-school';
+
+// ════════════════════════════════════════════════════════════════════════
+// Basic content widgets — registered FIRST so they appear at the top
+// of the Widget Library, not buried under 500+ themed variants.
+// 2026-05-09 — operator: "i don't see an image or image carousel
+// option". Pre-fix these were appended to the BOTTOM of the file
+// which meant a user filtering "ALL" had to scroll past every clock/
+// text/holiday variant before hitting Image. Moving them up to the
+// top of registration order pushes them to slot #1 in the picker.
+// ════════════════════════════════════════════════════════════════════════
+registerVariant({
+  id: 'image-basic',
+  widgetType: 'IMAGE',
+  name: 'Image',
+  description: 'Single photo. Pick a file in Properties after dropping.',
+  category: 'MODERN',
+  render: ImageBasicTile,
+});
+registerVariant({
+  id: 'image-carousel-basic',
+  widgetType: 'IMAGE_CAROUSEL',
+  name: 'Photo Slideshow',
+  description: 'Multiple photos with timing + transitions. Pick photos in Properties.',
+  category: 'MODERN',
+  render: ImageCarouselBasicTile,
+});
+registerVariant({
+  id: 'video-basic',
+  widgetType: 'VIDEO',
+  name: 'Video',
+  description: 'Single video playback. Pick a video file in Properties after dropping.',
+  category: 'MODERN',
+  render: VideoBasicTile,
+});
+registerVariant({
+  id: 'video-carousel-basic',
+  widgetType: 'VIDEO_CAROUSEL',
+  name: 'Video Carousel',
+  description: 'Multiple videos auto-playing one after another. Pick videos in Properties.',
+  category: 'MODERN',
+  render: VideoCarouselTile,
+});
+registerVariant({
+  id: 'webpage-basic',
+  widgetType: 'WEBPAGE',
+  name: 'Web Page',
+  description: 'Embed any URL. Set the URL + auto-refresh in Properties.',
+  category: 'MODERN',
+  render: WebpageTile,
+});
 import {
   ClockGradientDigital, ClockDarkPill, ClockMinimalAnalog, ClockStackedCard,
   TextBigBold, TextGradient, TextHighlight, TextOutlined,
@@ -697,65 +754,4 @@ for (const w of ALL_V2_WIDGETS) {
   });
 }
 
-// ════════════════════════════════════════════════════════════════════════
-// 2026-05-09 — Basic content widgets registered as variants so they show
-// up in the picker. Operator: "where is my asset picker for video,
-// pictures, url?" The Widget Library only displays widget types that
-// have at least one registered variant. VIDEO / VIDEO_CAROUSEL /
-// WEBPAGE had zero variants → invisible in the palette.
-//
-// Each tile component lives in ./variant-tiles/basic-content-tiles.tsx
-// (a .tsx file because variants-register.ts is .ts and can't host JSX).
-// When dropped, the canvas renders via WidgetRenderer's case for the
-// matching widgetType (e.g. VIDEO → VideoWidget) — no theme set, so
-// the existing "no asset yet" placeholder shows until the operator
-// picks an asset URL in the Properties panel.
-// ════════════════════════════════════════════════════════════════════════
-import {
-  VideoBasicTile,
-  VideoCarouselTile,
-  WebpageTile,
-  ImageBasicTile,
-  ImageCarouselBasicTile,
-} from './variant-tiles/basic-content-tiles';
-
-registerVariant({
-  id: 'video-basic',
-  widgetType: 'VIDEO',
-  name: 'Video',
-  description: 'Single video playback. Pick a video file in Properties after dropping.',
-  category: 'MODERN',
-  render: VideoBasicTile,
-});
-registerVariant({
-  id: 'video-carousel-basic',
-  widgetType: 'VIDEO_CAROUSEL',
-  name: 'Video Carousel',
-  description: 'Multiple videos rotating with timing. Pick videos + interval in Properties.',
-  category: 'MODERN',
-  render: VideoCarouselTile,
-});
-registerVariant({
-  id: 'webpage-basic',
-  widgetType: 'WEBPAGE',
-  name: 'Web Page',
-  description: 'Embed any URL. Set the URL + auto-refresh in Properties.',
-  category: 'MODERN',
-  render: WebpageTile,
-});
-registerVariant({
-  id: 'image-basic',
-  widgetType: 'IMAGE',
-  name: 'Image',
-  description: 'Single image. Pick a file in Properties after dropping.',
-  category: 'MODERN',
-  render: ImageBasicTile,
-});
-registerVariant({
-  id: 'image-carousel-basic',
-  widgetType: 'IMAGE_CAROUSEL',
-  name: 'Photo Slideshow',
-  description: 'Multiple photos rotating with timing. Pick photos + interval in Properties.',
-  category: 'MODERN',
-  render: ImageCarouselBasicTile,
-});
+// (basic content variants registered at top of file — see header block)
