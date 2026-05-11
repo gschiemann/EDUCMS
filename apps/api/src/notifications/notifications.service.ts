@@ -6,7 +6,15 @@ export type NotificationKind =
   | 'SYNC_FAILED'
   | 'EMERGENCY_TRIGGERED'
   | 'INVITE_ACCEPTED'
-  | 'INFO';
+  | 'INFO'
+  // Sprint 11 Phase B — cohort outage detection. Fires ONCE per
+  // tenant per 5-min bucket when >50% of paired screens drop in
+  // <90 s — almost always a WAN cut, ISP issue, or building power
+  // event rather than a per-screen problem. We deliberately
+  // SUPPRESS the per-screen SCREEN_OFFLINE notifications for the
+  // affected tenant during the window so the operator sees one
+  // signal, not fifty.
+  | 'INFRA_EVENT';
 
 export interface NotifyInput {
   tenantId: string;
@@ -135,24 +143,104 @@ export class NotificationsService {
    * Scan screens whose lastPingAt is older than `thresholdMinutes` and create
    * ONE offline notification per screen (deduped via key).
    *
-   * Returns the number of notifications created or already-present.
+   * Sprint 11 Phase B — cohort outage detection. Before firing per-
+   * screen notifications, classify each affected tenant:
+   *
+   *   - If >= COHORT_PCT of the tenant's paired fleet crossed the
+   *     offline threshold within the last COHORT_WINDOW_S seconds
+   *     (default 50% and 90 s), treat it as an "infrastructure
+   *     event" (WAN cut, ISP outage, building power) and emit ONE
+   *     INFRA_EVENT notification per tenant per 5-min bucket.
+   *     Per-screen SCREEN_OFFLINE notifications are SUPPRESSED for
+   *     screens belonging to that tenant during the scan.
+   *
+   *   - Otherwise: per-screen notifications fire as before.
+   *
+   * The COHORT_MIN_FLEET threshold (default 3) prevents 2-screen
+   * tenants from accidentally triggering infra-event mode every
+   * time one screen reboots.
+   *
+   * Returns counts so the wrapping scanner can log scan health.
    */
-  async scanOfflineScreens(thresholdMinutes = 5): Promise<{ found: number; notified: number }> {
-    const cutoff = new Date(Date.now() - thresholdMinutes * 60 * 1000);
-    const screens = await this.prisma.client.screen.findMany({
+  async scanOfflineScreens(
+    thresholdMinutes = 5,
+  ): Promise<{ found: number; notified: number; infraEvents: number }> {
+    const COHORT_WINDOW_S = Number(process.env.COHORT_OUTAGE_WINDOW_S) || 90;
+    const COHORT_PCT = Number(process.env.COHORT_OUTAGE_PCT) || 0.5;
+    const COHORT_MIN_FLEET = Number(process.env.COHORT_OUTAGE_MIN_FLEET) || 3;
+
+    const now = Date.now();
+    const offlineCutoff = new Date(now - thresholdMinutes * 60_000);
+    // A "recently dropped" screen is one whose lastPingAt is within
+    // the cohort window BEFORE the offline cutoff — i.e. it just
+    // crossed into offline territory in the last COHORT_WINDOW_S
+    // seconds. (A screen offline for hours doesn't count toward an
+    // infra event; only sudden drops do.)
+    const recentDropCutoff = new Date(now - thresholdMinutes * 60_000 - COHORT_WINDOW_S * 1000);
+
+    const offlineScreens = await this.prisma.client.screen.findMany({
       where: {
         tenantId: { not: null },
         status: { not: 'REVOKED' },
-        lastPingAt: { lt: cutoff },
+        lastPingAt: { lt: offlineCutoff },
       },
       select: { id: true, name: true, tenantId: true, lastPingAt: true },
     });
 
+    // Affected tenants — only ones with at least one offline screen
+    // matter for the size lookup.
+    const affectedTenantIds = Array.from(
+      new Set(offlineScreens.map((s) => s.tenantId).filter((t): t is string => !!t)),
+    );
+
+    // Tenant-fleet sizes (paired, non-revoked) for the affected set.
+    // groupBy returns one row per tenant; flatten to a Map for O(1)
+    // lookup below.
+    const fleetSizeRows = affectedTenantIds.length
+      ? await this.prisma.client.screen.groupBy({
+          by: ['tenantId'],
+          where: {
+            tenantId: { in: affectedTenantIds as any },
+            status: { not: 'REVOKED' },
+          },
+          _count: { _all: true },
+        })
+      : [];
+    const fleetSize = new Map<string, number>();
+    for (const row of fleetSizeRows as any[]) {
+      if (row.tenantId) fleetSize.set(row.tenantId, row._count?._all ?? 0);
+    }
+
+    // Per-tenant: how many of the offline screens crossed the
+    // threshold inside the cohort window?
+    const recentlyDroppedByTenant = new Map<string, typeof offlineScreens>();
+    for (const s of offlineScreens) {
+      if (!s.tenantId || !s.lastPingAt) continue;
+      if (s.lastPingAt >= recentDropCutoff) {
+        const arr = recentlyDroppedByTenant.get(s.tenantId) ?? [];
+        arr.push(s);
+        recentlyDroppedByTenant.set(s.tenantId, arr);
+      }
+    }
+
+    // Classify each tenant.
+    const infraEventTenants = new Set<string>();
+    for (const [tenantId, dropped] of recentlyDroppedByTenant.entries()) {
+      const total = fleetSize.get(tenantId) ?? 0;
+      if (total < COHORT_MIN_FLEET) continue;
+      if (dropped.length / total >= COHORT_PCT) {
+        infraEventTenants.add(tenantId);
+      }
+    }
+
+    // Emit per-screen notifications for tenants NOT flagged as infra
+    // events. Same dedupe key as before so existing scan cadence
+    // doesn't double-fire.
     let notified = 0;
-    for (const screen of screens) {
+    for (const screen of offlineScreens) {
       if (!screen.tenantId) continue;
-      // One notification per (screen, offline-hour-bucket) so admins eventually re-see stale ones.
-      const bucket = Math.floor((screen.lastPingAt?.getTime() ?? Date.now()) / (60 * 60 * 1000));
+      if (infraEventTenants.has(screen.tenantId)) continue; // suppressed
+      const bucket = Math.floor((screen.lastPingAt?.getTime() ?? now) / (60 * 60 * 1000));
       const dedupeKey = `screen-offline:${screen.id}:${bucket}`;
       const result = await this.notify({
         tenantId: screen.tenantId,
@@ -164,6 +252,36 @@ export class NotificationsService {
       });
       if (result) notified++;
     }
-    return { found: screens.length, notified };
+
+    // One aggregated notification per infra-event tenant per 5-min
+    // bucket so a sustained outage doesn't re-page every minute.
+    let infraEvents = 0;
+    const fiveMinBucket = Math.floor(now / (5 * 60_000));
+    for (const tenantId of infraEventTenants) {
+      const dropped = recentlyDroppedByTenant.get(tenantId)!;
+      const total = fleetSize.get(tenantId) ?? 0;
+      const dedupeKey = `infra-event:${tenantId}:${fiveMinBucket}`;
+      const result = await this.notify({
+        tenantId,
+        kind: 'INFRA_EVENT',
+        title: `Possible infrastructure event — ${dropped.length}/${total} screens dropped`,
+        body:
+          `${dropped.length} screens went offline within ${COHORT_WINDOW_S} s ` +
+          `(>${Math.round(COHORT_PCT * 100)}% of fleet). ` +
+          `Likely WAN, ISP, or local power event — per-screen alerts suppressed. ` +
+          `Affected: ${dropped.slice(0, 5).map((s) => s.name).join(', ')}${dropped.length > 5 ? '…' : ''}.`,
+        link: `/screens`,
+        dedupeKey,
+      });
+      if (result) infraEvents++;
+    }
+
+    if (infraEventTenants.size > 0) {
+      this.logger.log(
+        `[cohort-outage] tenants=${infraEventTenants.size} ` +
+        `suppressed-per-screen=${offlineScreens.filter((s) => s.tenantId && infraEventTenants.has(s.tenantId)).length}`,
+      );
+    }
+    return { found: offlineScreens.length, notified, infraEvents };
   }
 }

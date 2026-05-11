@@ -47,8 +47,11 @@ export class OfflineScreenScanner implements OnModuleInit, OnModuleDestroy {
     this.running = true;
     try {
       const result = await this.notifications.scanOfflineScreens(thresholdMin);
-      if (result.found > 0) {
-        this.logger.log(`Offline scan: found=${result.found} notified=${result.notified}`);
+      if (result.found > 0 || result.infraEvents > 0) {
+        this.logger.log(
+          `Offline scan: found=${result.found} notified=${result.notified} ` +
+          `infraEvents=${result.infraEvents}`,
+        );
       }
     } catch (e: any) {
       this.logger.warn(`Offline scan failed: ${e?.message ?? e}`);

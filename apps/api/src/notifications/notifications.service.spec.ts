@@ -18,7 +18,7 @@ describe('NotificationsService', () => {
       update: jest.fn(),
       updateMany: jest.fn(),
     };
-    screen = { findMany: jest.fn() };
+    screen = { findMany: jest.fn(), groupBy: jest.fn().mockResolvedValue([]) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -106,9 +106,14 @@ describe('NotificationsService', () => {
 
   it('scanOfflineScreens creates one dedup-keyed notification per screen', async () => {
     const now = Date.now();
+    // Both screens offline for >5min AND >90s before that — i.e. NOT
+    // recently dropped. Per-screen path, no infra event.
     screen.findMany.mockResolvedValue([
       { id: 's1', name: 'Lobby', tenantId: 't1', lastPingAt: new Date(now - 10 * 60 * 1000) },
       { id: 's2', name: 'Hall', tenantId: 't1', lastPingAt: new Date(now - 20 * 60 * 1000) },
+    ]);
+    screen.groupBy.mockResolvedValue([
+      { tenantId: 't1', _count: { _all: 10 } },
     ]);
     // dedupe path now goes through upsert (audit fix #11)
     notification.upsert.mockImplementation(async (args: any) => ({ id: args.create.dedupeKey }));
@@ -116,8 +121,61 @@ describe('NotificationsService', () => {
     const res = await service.scanOfflineScreens(5);
     expect(res.found).toBe(2);
     expect(res.notified).toBe(2);
+    expect(res.infraEvents).toBe(0);
     expect(notification.upsert).toHaveBeenCalledTimes(2);
     const createdKinds = notification.upsert.mock.calls.map((c: any[]) => c[0].create.kind);
     expect(createdKinds).toEqual(['SCREEN_OFFLINE', 'SCREEN_OFFLINE']);
+  });
+
+  it('scanOfflineScreens emits INFRA_EVENT and suppresses per-screen when >50% drop in 90s', async () => {
+    const now = Date.now();
+    // 5-min threshold = 300s. Screens dropped 320-340s ago (i.e.
+    // 20-40s past the threshold, well within the 90s cohort window).
+    const recent = (s: number) => new Date(now - (300 + s) * 1000);
+    screen.findMany.mockResolvedValue([
+      { id: 's1', name: 'Lobby',   tenantId: 't1', lastPingAt: recent(20) },
+      { id: 's2', name: 'Hall',    tenantId: 't1', lastPingAt: recent(25) },
+      { id: 's3', name: 'Caf',     tenantId: 't1', lastPingAt: recent(30) },
+      { id: 's4', name: 'Gym',     tenantId: 't1', lastPingAt: recent(40) },
+    ]);
+    // Tenant fleet is 5 paired screens; 4 just dropped (80% > 50% threshold).
+    screen.groupBy.mockResolvedValue([
+      { tenantId: 't1', _count: { _all: 5 } },
+    ]);
+    notification.upsert.mockImplementation(async (args: any) => ({ id: args.create.dedupeKey }));
+
+    const res = await service.scanOfflineScreens(5);
+    expect(res.found).toBe(4);
+    expect(res.notified).toBe(0);          // per-screen suppressed
+    expect(res.infraEvents).toBe(1);       // one aggregated notification
+
+    // Confirm we wrote INFRA_EVENT, not SCREEN_OFFLINE
+    expect(notification.upsert).toHaveBeenCalledTimes(1);
+    const created = notification.upsert.mock.calls[0][0].create;
+    expect(created.kind).toBe('INFRA_EVENT');
+    expect(created.tenantId).toBe('t1');
+    expect(created.dedupeKey).toMatch(/^infra-event:t1:/);
+  });
+
+  it('scanOfflineScreens does NOT trigger INFRA_EVENT for tiny fleets', async () => {
+    const now = Date.now();
+    const recent = (s: number) => new Date(now - (300 + s) * 1000);
+    screen.findMany.mockResolvedValue([
+      { id: 's1', name: 'Lobby', tenantId: 't1', lastPingAt: recent(20) },
+      { id: 's2', name: 'Hall',  tenantId: 't1', lastPingAt: recent(40) },
+    ]);
+    // Fleet of 2 — below COHORT_MIN_FLEET (default 3). Even though
+    // 100% of the fleet just dropped, this should fall through to
+    // per-screen notifications (the dropping rate isn't statistically
+    // meaningful at this scale).
+    screen.groupBy.mockResolvedValue([
+      { tenantId: 't1', _count: { _all: 2 } },
+    ]);
+    notification.upsert.mockImplementation(async (args: any) => ({ id: args.create.dedupeKey }));
+
+    const res = await service.scanOfflineScreens(5);
+    expect(res.found).toBe(2);
+    expect(res.notified).toBe(2);
+    expect(res.infraEvents).toBe(0);
   });
 });
