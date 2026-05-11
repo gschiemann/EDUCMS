@@ -124,11 +124,16 @@ export const WEBPAGE_SPATIAL_NAV_SHIM = String.raw`
     function move(dir) {
       var active = document.activeElement;
       var list = candidates();
-      if (!list.length) return false;
+      if (!list.length) {
+        // No focusable elements visible — scroll the page instead
+        // so the user can find content. Goodview's remote does this
+        // when the focus ring has nowhere to go.
+        return scrollInDir(dir);
+      }
       if (!active || active === document.body || list.indexOf(active) === -1) {
         var first = pickInitial();
         if (first) { first.focus(); first.scrollIntoView({block:'nearest', inline:'nearest'}); return true; }
-        return false;
+        return scrollInDir(dir);
       }
       var curR = active.getBoundingClientRect();
       var best = null, bestScore = Infinity;
@@ -142,7 +147,33 @@ export const WEBPAGE_SPATIAL_NAV_SHIM = String.raw`
         best.scrollIntoView({block:'nearest', inline:'nearest'});
         return true;
       }
-      return false;
+      // No focusable target in this direction — operator hit the edge
+      // of the focusable chain. Goodview-style fallback: scroll the
+      // page in that direction so they can see what's below. After
+      // scroll, new focusable elements may come into view and the
+      // next press will pick them up.
+      return scrollInDir(dir);
+    }
+
+    // Scroll the page (or focused scrollable container) in the given
+    // direction by a viewport-relative amount. Matches the
+    // "long-press scrolls the page" UX Goodview's player has.
+    function scrollInDir(dir) {
+      var amt = Math.round((dir === 'up' || dir === 'down'
+        ? (window.innerHeight || 600)
+        : (window.innerWidth || 800)) * 0.6);
+      var dx = 0, dy = 0;
+      if (dir === 'up') dy = -amt;
+      else if (dir === 'down') dy = amt;
+      else if (dir === 'left') dx = -amt;
+      else if (dir === 'right') dx = amt;
+      try {
+        window.scrollBy({ top: dy, left: dx, behavior: 'smooth' });
+        return true;
+      } catch (e) {
+        window.scrollBy(dx, dy);
+        return true;
+      }
     }
 
     function activate() {

@@ -2662,6 +2662,25 @@ function PlayerPage() {
       // tick them — the heartbeat would race the natural completion.
       if (item.asset?.mimeType?.startsWith('video/')) return;
 
+      // Sprint 11 Phase A.5 — single-item playlist guard.
+      // Operator (2026-05-12): "my Den screen keeps cycling and
+      // refreshing the playlist url".
+      //
+      // The Den's active playlist had ONE web-page item with
+      // duration_ms=10000 (10 seconds). Every 10s the heartbeat
+      // called setCurrentIndex(prev => prev + 1), bumping the
+      // underlying counter (0 → 1 → 2 → ...) even though
+      // (idx % 1) is always 0. That triggered a state change → React
+      // re-rendered the player tree → the WebpageWidget iframe
+      // didn't strictly remount but the entire tree re-evaluating
+      // every 10s was visible to the operator as a flash/refresh.
+      //
+      // Fix: when there's only one distinct item, the slide IS the
+      // playlist — never advance. Same logic the video path uses
+      // for solo-video playlists (isSoloPlaylist below).
+      const distinctIds = new Set(sorted.map((s: any) => s.id || s.assetId));
+      if (distinctIds.size <= 1) return;
+
       const duration = item.durationMs || 10000;
       const elapsed = Date.now() - slideStartedAtRef.current;
       if (elapsed >= duration) {
@@ -3563,6 +3582,23 @@ function PlayerPage() {
                 // section broken too) so reverted to the script-strip
                 // baseline. See proxy.controller.ts comments.
                 title={item.id}
+                onLoad={(e) => {
+                  // Sprint 11 — operator: "didnt you apply a fix that
+                  // should let me remote control browse the website
+                  // and scroll and select the main selectable
+                  // buttons?". The fix was wired into WidgetRenderer's
+                  // WebpageWidget (template-zone widgets) but NOT this
+                  // playback-time iframe (playlist items rendering a
+                  // text/html asset). Inject the same spatial-nav
+                  // shim here too — same Api boundary, same proxy
+                  // origin makes contentWindow.eval legal.
+                  const frame = e.currentTarget as HTMLIFrameElement;
+                  import('@/components/widgets/webpage-spatial-nav').then(({ injectSpatialNav }) => {
+                    if (injectSpatialNav(frame)) {
+                      try { frame.contentWindow?.focus(); } catch { /* noop */ }
+                    }
+                  }).catch(() => { /* never block playback on injection */ });
+                }}
                 onError={() => {
                   console.warn('[Player] iframe error, skipping:', iframeSrc);
                   setCurrentIndex(prev => prev + 1);
