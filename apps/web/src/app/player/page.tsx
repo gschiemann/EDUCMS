@@ -2424,6 +2424,58 @@ function PlayerPage() {
             if (msg.type === 'SYNC' || msg.type === 'OVERRIDE' || msg.type === 'ALL_CLEAR') {
               fetchContent();
             }
+            // Sprint 11 Phase B — REFRESH_WEB: admin pushed a "reload
+            // kiosks" command from the dashboard. Solves the chicken-
+            // and-egg problem of "we shipped a web bundle fix but the
+            // kiosks won't pick it up until they reload, and we have
+            // no way to tell them to reload from afar."
+            //
+            // Payload shape:
+            //   { scope: 'tenant'|'screen', scopeId: string,
+            //     jitterMs?: number, corrId?: string }
+            //
+            // Per-screen pushes target one device. Per-tenant pushes
+            // fan out to every kiosk — we apply a random delay
+            // (0..jitterMs, default 8s) so a 1000-device fleet doesn't
+            // all hit Vercel + the API simultaneously after the reload.
+            if (msg.type === 'REFRESH_WEB') {
+              const pl = msg.payload || msg;
+              const scope = pl?.scope;
+              const scopeId = pl?.scopeId;
+              const jitterMs = Math.max(0, Math.min(60_000, Number(pl?.jitterMs ?? 8000)));
+              const corrId = pl?.corrId || '(no-corrid)';
+              const targetsUs =
+                scope === 'tenant' ||
+                (scope === 'screen' && screenId && scopeId === screenId);
+              if (!targetsUs) {
+                console.log(`[REFRESH_WEB ${corrId}] ignored — not our scope (got ${scope}/${scopeId})`);
+              } else {
+                const delay = jitterMs > 0 ? Math.floor(Math.random() * jitterMs) : 0;
+                console.log(`[REFRESH_WEB ${corrId}] reloading in ${delay}ms (jitter=${jitterMs}ms scope=${scope})`);
+                // Brief connectivity toast so the operator-at-kiosk
+                // (and anyone reviewing the screen) sees that the
+                // refresh was intentional, not a crash.
+                setConnectivity({
+                  kind: 'reconnecting',
+                  reason: 'Refreshing player…',
+                  nextRetryAt: Date.now() + delay,
+                  attempt: 0,
+                });
+                setTimeout(() => {
+                  try {
+                    const bridge = (window as any).EduCmsNative;
+                    if (bridge && typeof bridge.reload === 'function') {
+                      bridge.reload();
+                    } else if (typeof window !== 'undefined') {
+                      window.location.reload();
+                    }
+                  } catch (e) {
+                    console.warn(`[REFRESH_WEB ${corrId}] reload threw:`, (e as Error)?.message);
+                  }
+                }, delay);
+              }
+              return;
+            }
             // Admin hit "Push APK update" in the dashboard. Messages are
             // fanned out to the whole tenant channel; we only act if
             // this device is actually targeted.

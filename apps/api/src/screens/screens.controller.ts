@@ -1314,6 +1314,95 @@ export class ScreensController {
     return { ok: true, scope: 'screen', screenId: id, corrId };
   }
 
+  // ─── ADMIN: Force web-bundle reload (Sprint 11 Phase B) ───
+  // The kiosk's WebView keeps running whatever JS bundle it loaded at boot.
+  // When we ship a fix to apps/web and Vercel deploys it, running kiosks
+  // stay on the OLD bundle forever — there's no mechanism to push new JS to
+  // an already-loaded page. Operators previously had to walk up to each
+  // kiosk, tap the in-player "Sync Now" splash button (which force-reloads
+  // the WebView), or wait for a power-cycle.
+  //
+  // These endpoints publish a signed REFRESH_WEB message on the tenant
+  // channel. The web player's WS handler picks it up, optionally jitters
+  // a few seconds, then calls EduCmsNative.reload() (Android shell) or
+  // window.location.reload() (browser fallback). Result: fleet-wide
+  // bundle refresh from one dashboard click.
+  //
+  // Per-screen variant for surgical reloads during pilots.
+  // Tenant variant for fleet refreshes after a hotfix deploy.
+  //
+  // Jitter window of 8s spreads N kiosks across that window so a 1000-
+  // device fleet doesn't all hit Vercel + the API simultaneously and
+  // re-trigger the DATABASE_ERROR storm we just fixed.
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @Post('refresh-web')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async refreshWebAll(@Request() req: any) {
+    const tenantId = req.user.tenantId;
+    if (!tenantId) throw new HttpException('No tenant context', HttpStatus.BAD_REQUEST);
+    const corrId = `rw-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const signed = this.signer.signMessage('REFRESH_WEB', {
+      scope: 'tenant',
+      scopeId: tenantId,
+      requestedBy: req.user.userId || req.user.id || null,
+      jitterMs: 8000,
+      corrId,
+    });
+    try {
+      await this.redisService.publish(`tenant:${tenantId}`, signed);
+    } catch (e) {
+      console.warn(`[refresh-web ${corrId}] redis publish failed:`, (e as Error).message);
+    }
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'REFRESH_WEB',
+        targetType: 'tenant',
+        targetId: tenantId,
+        tenantId,
+        userId: req.user.id,
+        details: JSON.stringify({ scope: 'tenant', corrId }),
+      },
+    }).catch(() => { /* audit best-effort */ });
+    return { ok: true, scope: 'tenant', corrId };
+  }
+
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @Post(':id/refresh-web')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async refreshWebOne(@Request() req: any, @Param('id') id: string) {
+    const screen = await this.prisma.client.screen.findFirst({
+      where: { id, tenantId: req.user.tenantId },
+    });
+    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    const corrId = `rw-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const signed = this.signer.signMessage('REFRESH_WEB', {
+      scope: 'screen',
+      scopeId: id,
+      tenantId: screen.tenantId,
+      requestedBy: req.user.userId || req.user.id || null,
+      // Single-screen refreshes don't need jitter — they're already
+      // a fleet-of-one. Snappy reload feedback for the operator.
+      jitterMs: 0,
+      corrId,
+    });
+    try {
+      await this.redisService.publish(`tenant:${screen.tenantId}`, signed);
+    } catch (e) {
+      console.warn(`[refresh-web ${corrId}] redis publish failed:`, (e as Error).message);
+    }
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'REFRESH_WEB',
+        targetType: 'screen',
+        targetId: id,
+        tenantId: screen.tenantId!,
+        userId: req.user.id,
+        details: JSON.stringify({ scope: 'screen', screenName: screen.name, corrId }),
+      },
+    }).catch(() => { /* audit best-effort */ });
+    return { ok: true, scope: 'screen', screenId: id, corrId };
+  }
+
   // ─── ADMIN: Delete a screen ───
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Delete(':id')

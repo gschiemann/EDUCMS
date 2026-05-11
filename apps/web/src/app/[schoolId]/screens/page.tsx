@@ -2,7 +2,7 @@
 
 import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion } from '@/hooks/use-api';
+import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
@@ -314,12 +314,16 @@ function ScreenSettingsMenu({
   pushState,
   pending,
   onPushApk,
+  onRefreshWeb,
+  refreshWebPending,
   previewHref,
 }: {
   screen: any;
   pushState: { at: number; priorVersion: string | null } | undefined;
   pending: boolean;
   onPushApk: () => void;
+  onRefreshWeb: () => void;
+  refreshWebPending: boolean;
   previewHref: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -623,6 +627,28 @@ function ScreenSettingsMenu({
             );
           })()}
 
+          {/* Refresh page — Sprint 11 Phase B. Reloads the kiosk's
+              WebView without a sideload or operator-at-kiosk button
+              tap. Use after a web/player bundle hotfix lands on
+              Vercel so the kiosk picks it up. NOT an APK update —
+              that's the row above; this just re-fetches the JS
+              bundle. Fleet-wide refresh is on the group footer.) */}
+          <button
+            type="button"
+            onClick={() => { setOpen(false); onRefreshWeb(); }}
+            disabled={refreshWebPending}
+            className="w-full flex items-center gap-3 px-3.5 py-3 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed"
+            title="Reloads the kiosk's player page (picks up any deployed JS fix). No APK install."
+          >
+            <RefreshCw className={`w-4 h-4 shrink-0 ${refreshWebPending ? 'animate-spin text-indigo-500' : 'text-slate-400'}`} />
+            <span className="flex-1 min-w-0">
+              <span className="block">{refreshWebPending ? 'Refreshing…' : 'Refresh kiosk page'}</span>
+              <span className="block text-[10px] font-normal text-slate-400 mt-0.5">
+                Reload JS bundle (not an APK update)
+              </span>
+            </span>
+          </button>
+
           {/* Preview in browser — moved out of the row, into the menu. */}
           <a
             href={previewHref}
@@ -702,6 +728,7 @@ export default function ScreensPage() {
   const deleteScreen = useDeleteScreen();
   const updateScreen = useUpdateScreen();
   const forceApkUpdate = useForceApkUpdate();
+  const refreshWeb = useRefreshWeb();
   const [apkUpdateToast, setApkUpdateToast] = useState<string | null>(null);
   // When a push was sent per-screen, timestamp + last-known version at
   // push-time. The ScreenSettingsMenu below uses these to give the
@@ -728,6 +755,25 @@ export default function ScreensPage() {
       setTimeout(() => setApkUpdateToast(null), 6000);
     } catch (e: any) {
       setApkUpdateToast(`Push failed: ${e?.message || 'unknown error'}`);
+      setTimeout(() => setApkUpdateToast(null), 8000);
+    }
+  };
+
+  // Phase B — REFRESH_WEB push handler. Sends a signed WS message
+  // that tells the targeted kiosk(s) to reload their JS bundle so a
+  // freshly-deployed web fix actually reaches them. Reuses the apk-
+  // update toast lane so we don't double-stack overlays.
+  const handleRefreshWeb = async (screenId?: string, screenName?: string) => {
+    try {
+      await refreshWeb.mutateAsync({ screenId });
+      setApkUpdateToast(
+        screenId
+          ? `Refresh request sent to "${screenName}". Player page reloads in a few seconds.`
+          : 'Refresh request sent to every paired kiosk. Pages reload over the next ~10 s (jittered).',
+      );
+      setTimeout(() => setApkUpdateToast(null), 6000);
+    } catch (e: any) {
+      setApkUpdateToast(`Refresh failed: ${e?.message || 'unknown error'}`);
       setTimeout(() => setApkUpdateToast(null), 8000);
     }
   };
@@ -1158,6 +1204,8 @@ export default function ScreensPage() {
                           pushState={apkPushState[screen.id]}
                           pending={forceApkUpdate.isPending}
                           onPushApk={() => handlePushApkUpdate(screen.id, screen.name, (screen as any).playerVersion ?? null)}
+                          onRefreshWeb={() => handleRefreshWeb(screen.id, screen.name)}
+                          refreshWebPending={refreshWeb.isPending}
                           previewHref={buildPreviewUrl(screen)}
                         />
                       </div>
@@ -1302,6 +1350,8 @@ export default function ScreensPage() {
                       pushState={apkPushState[screen.id]}
                       pending={forceApkUpdate.isPending}
                       onPushApk={() => handlePushApkUpdate(screen.id, screen.name, (screen as any).playerVersion ?? null)}
+                      onRefreshWeb={() => handleRefreshWeb(screen.id, screen.name)}
+                      refreshWebPending={refreshWeb.isPending}
                       previewHref={buildPreviewUrl(screen)}
                     />
                   </div>

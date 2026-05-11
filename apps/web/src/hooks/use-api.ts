@@ -1024,6 +1024,26 @@ export function useForceApkUpdate() {
   });
 }
 
+// ─── Refresh kiosk web bundle (Sprint 11 Phase B) ───
+// Pushes a signed REFRESH_WEB message that the web player's WS handler
+// turns into EduCmsNative.reload() (Android) or window.location.reload()
+// (browser). Lets admins push a Vercel-deployed JS fix to running
+// kiosks without sideload, power-cycle, or kiosk-side button presses.
+//
+// Per-screen reload is snappy (no jitter). Tenant-wide reload jitters
+// over an 8-second window server-side so a fleet refresh doesn't
+// stampede the API or Vercel CDN.
+export function useRefreshWeb() {
+  return useMutation({
+    mutationFn: async (args: { screenId?: string | null } = {}) => {
+      const path = args.screenId
+        ? `/screens/${args.screenId}/refresh-web`
+        : `/screens/refresh-web`;
+      return apiFetch(path, { method: 'POST' });
+    },
+  });
+}
+
 // ─── License + billing (Sprint 7E) ───
 export type LicenseSummary = {
   tier: string;
