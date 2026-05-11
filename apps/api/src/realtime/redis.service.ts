@@ -98,14 +98,25 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     } catch { /* ignore cleanup errors */ }
   }
 
+  // Phase B SSE — secondary realtime fan-out. RedisService stays the
+  // single subscriber, but each pmessage is broadcast to BOTH the WS
+  // gateway AND any SSE clients. Optional — code paths that haven't
+  // wired SseService through DI just skip the SSE fan.
+  private sse: { broadcastToScope: (type: string, id: string, payload: any) => void } | null = null;
+  setSseService(sse: { broadcastToScope: (type: string, id: string, payload: any) => void }) {
+    this.sse = sse;
+  }
+
   private handleRedisMessage(channel: string, message: string) {
-    if (!this.gateway) return;
     try {
       const parsed = JSON.parse(message);
       const channelParts = channel.split(':');
       if (channelParts.length < 2) return;
       const [type, id] = channelParts;
-      this.gateway.broadcastToScope(type, id, parsed);
+      // Fan to BOTH transports. Either may be unset (e.g. WS gateway
+      // not yet wired, or SSE service not present in test env).
+      if (this.gateway) this.gateway.broadcastToScope(type, id, parsed);
+      if (this.sse) this.sse.broadcastToScope(type, id, parsed);
     } catch (e) {
       this.logger.error(`Failed to parse redis message on channel ${channel}:`, e);
     }

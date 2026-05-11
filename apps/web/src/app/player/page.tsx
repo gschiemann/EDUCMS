@@ -1446,6 +1446,13 @@ function PlayerPage() {
   const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
   const wsReconnectRef = useRef<NodeJS.Timeout | null>(null);
   const httpFallbackRef = useRef<NodeJS.Timeout | null>(null);
+  // Sprint 11 Phase B — SSE middle-tier realtime. When WS fails to
+  // connect (corporate firewall blocking ws:// upgrade is the common
+  // case — Squid/ZScaler/iboss/GoGuardian), we try SSE over plain
+  // HTTPS keep-alive before falling all the way to HTTP polling.
+  // SSE works through ~95% of proxies that block WS.
+  const sseRef = useRef<EventSource | null>(null);
+  const sseFailCountRef = useRef(0);
   const emergencyPollRef = useRef<NodeJS.Timeout | null>(null);
   const cachedAuthTokenRef = useRef<string | null>(null);
   const [activeEmergency, setActiveEmergency] = useState<any | null>(null);
@@ -2423,6 +2430,95 @@ function PlayerPage() {
       if (wsReconnectRef.current) { clearTimeout(wsReconnectRef.current); wsReconnectRef.current = null; }
     };
 
+    // Sprint 11 Phase B — SSE realtime fallback (middle tier).
+    // Engaged when WS has failed >=3 times. Listens for the same
+    // signed Redis-channel messages the WS does; on receive, runs
+    // the same client actions (fetchContent, reload, etc.).
+    const tryOpenSse = () => {
+      if (sseRef.current) return; // already open
+      const token = getDeviceToken();
+      if (!token) {
+        // Without a signed device JWT we can't auth the SSE endpoint
+        // — fall through to HTTP poll immediately.
+        engageHttpPollFallback('no-signed-token');
+        return;
+      }
+      const url = `${getApiRoot()}/api/v1/realtime/sse?token=${encodeURIComponent(token)}`;
+      console.log('[Player SSE] opening', url.replace(/token=[^&]+/, 'token=…'));
+      let es: EventSource;
+      try {
+        es = new EventSource(url, { withCredentials: false });
+      } catch (e) {
+        console.warn('[Player SSE] EventSource construction failed:', (e as Error)?.message);
+        engageHttpPollFallback('eventsource-ctor-failed');
+        return;
+      }
+      sseRef.current = es;
+
+      es.onopen = () => {
+        sseFailCountRef.current = 0;
+        console.log('[Player SSE] open');
+        // If HTTP poll fallback was running, kill it — SSE is cheaper.
+        if (httpFallbackRef.current) {
+          clearInterval(httpFallbackRef.current);
+          httpFallbackRef.current = null;
+        }
+      };
+
+      // Each Redis event type comes through as a named SSE event.
+      // SSE doesn't have the signed-replay protection the WS path
+      // uses — we trust the server-side signer for these. Auth was
+      // already enforced when EventSource opened.
+      const handle = (name: string, fn: (data: any) => void) => {
+        es.addEventListener(name, (ev) => {
+          try {
+            const data = JSON.parse((ev as MessageEvent).data);
+            console.log(`[Player SSE] ${name}`);
+            fn(data?.payload || data);
+          } catch (e) {
+            console.warn(`[Player SSE] parse failed for ${name}:`, (e as Error)?.message);
+          }
+        });
+      };
+      handle('SYNC', () => fetchContent());
+      handle('OVERRIDE', () => fetchContent());
+      handle('ALL_CLEAR', () => fetchContent());
+      handle('CHECK_FOR_UPDATES', () => {
+        try {
+          const bridge = (window as any).EduCmsNative;
+          if (bridge && typeof bridge.checkForUpdates === 'function') {
+            bridge.checkForUpdates();
+          }
+        } catch { /* swallow */ }
+      });
+      handle('REFRESH_WEB', () => {
+        try {
+          const bridge = (window as any).EduCmsNative;
+          if (bridge && typeof bridge.reload === 'function') bridge.reload();
+          else window.location.reload();
+        } catch { /* swallow */ }
+      });
+
+      es.onerror = () => {
+        sseFailCountRef.current += 1;
+        console.warn(`[Player SSE] error (#${sseFailCountRef.current})`);
+        // EventSource attempts its own reconnect by default. After 2
+        // failures with no successful onopen in between, give up on
+        // SSE entirely and drop to HTTP poll.
+        if (sseFailCountRef.current >= 2) {
+          try { es.close(); } catch { /* swallow */ }
+          sseRef.current = null;
+          engageHttpPollFallback('sse-failed-twice');
+        }
+      };
+    };
+
+    const engageHttpPollFallback = (why: string) => {
+      if (httpFallbackRef.current) return;
+      console.warn(`[Player WS] engaging 5s HTTP fallback poll (reason: ${why})`);
+      httpFallbackRef.current = setInterval(() => fetchContent(), 5_000);
+    };
+
     const connect = () => {
       // Always clear timers from prior attempt before opening a new socket.
       clearTimers();
@@ -2437,6 +2533,12 @@ function PlayerPage() {
           lastWsMessageAtRef.current = Date.now();
           // Stop the HTTP fallback poll if we now have a working socket.
           if (httpFallbackRef.current) { clearInterval(httpFallbackRef.current); httpFallbackRef.current = null; }
+          // Close the SSE fallback too — WS is the preferred transport.
+          if (sseRef.current) {
+            try { sseRef.current.close(); } catch { /* swallow */ }
+            sseRef.current = null;
+            sseFailCountRef.current = 0;
+          }
           // FIX (player-007): detect signed-token absence and warn the
           // operator instead of silently degrading to HTTP polling. In
           // production with DEV_WS_ALLOW unset/false the server will
@@ -2696,12 +2798,18 @@ function PlayerPage() {
           console.log(`[Player WS] Reconnect in ~${Math.round(delay)}ms`);
           wsReconnectRef.current = setTimeout(connect, delay);
 
-          // After 3 consecutive failures, START a 5s HTTP fallback poll so emergency
-          // alerts still arrive even with WS completely down. Stops itself when
-          // ws.onopen fires.
-          if (wsFailCountRef.current >= 3 && !httpFallbackRef.current) {
-            console.warn('[Player WS] 3 failures — engaging 5s HTTP fallback poll');
-            httpFallbackRef.current = setInterval(() => fetchContent(), 5_000);
+          // After 3 consecutive failures, escalate the realtime fallback
+          // ladder. Phase B Sprint 11 added SSE between WS and HTTP poll.
+          //
+          //   WS failed 3+ times → open SSE (works through 95% of corp
+          //                                    firewalls that block ws://)
+          //   SSE also fails 2+ times → fall through to 5 s HTTP poll
+          //
+          // SSE delivers the same Redis-channel messages as WS so the
+          // player code doesn't need duplicate handlers — it just dispatches
+          // the same actions (SYNC → fetchContent, REFRESH_WEB → reload, ...).
+          if (wsFailCountRef.current >= 3 && !sseRef.current && !httpFallbackRef.current) {
+            tryOpenSse();
           }
         };
       } catch (e) {
@@ -2717,6 +2825,10 @@ function PlayerPage() {
       clearTimers();
       clearInterval(httpHeartbeat);
       if (httpFallbackRef.current) { clearInterval(httpFallbackRef.current); httpFallbackRef.current = null; }
+      if (sseRef.current) {
+        try { sseRef.current.close(); } catch {}
+        sseRef.current = null;
+      }
       if (wsRef.current) {
         wsRef.current.onclose = null;
         try { wsRef.current.close(); } catch {}
