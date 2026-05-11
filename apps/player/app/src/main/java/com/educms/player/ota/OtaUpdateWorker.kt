@@ -368,6 +368,32 @@ class OtaUpdateWorker(
      */
     private fun triggerInstall(apk: File, forced: Boolean) {
         val ctx = applicationContext
+
+        // v1.0.55 — Schedule a post-install relaunch safety net BEFORE
+        // we commit the install. WorkManager persists the work request
+        // to disk, so it survives the package replace; the new Player's
+        // WorkManager picks it up and runs it. If Manager's
+        // PackageReplacedReceiver succeeds at relaunching first, this
+        // worker's launch is a no-op (singleTask MainActivity).
+        //
+        // Operator (2026-05-12): "wasnt silent, didnt relaunch the app
+        // after i clicked install... i launched the app manually".
+        // Manager's primary relaunch path was BAL-blocked. This is the
+        // safety net so the kiosk wakes up by itself.
+        try {
+            val req = androidx.work.OneTimeWorkRequestBuilder<PostInstallRelaunchWorker>()
+                .setInitialDelay(60, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+            androidx.work.WorkManager.getInstance(ctx).enqueueUniqueWork(
+                "edu-post-install-relaunch",
+                androidx.work.ExistingWorkPolicy.REPLACE,
+                req,
+            )
+            PlayerLogger.i(TAG, "post-install relaunch safety-net enqueued (+60s)")
+        } catch (e: Exception) {
+            PlayerLogger.w(TAG, "could not enqueue post-install relaunch safety-net: ${e.message}")
+        }
+
         // Primary path: PackageInstaller.Session.
         try {
             val installer = ctx.packageManager.packageInstaller
