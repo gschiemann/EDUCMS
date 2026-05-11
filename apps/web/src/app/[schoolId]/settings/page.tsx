@@ -1,6 +1,6 @@
 "use client";
 
-import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon, Usb, MapPin, Plus, Building2, ShieldCheck, ShieldOff, ChevronDown, Clock } from 'lucide-react';
+import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon, Usb, MapPin, Plus, Building2, ShieldCheck, ShieldOff, ChevronDown, Clock, RefreshCw } from 'lucide-react';
 import { usePathname, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { RoleGate } from '@/components/RoleGate';
@@ -10,6 +10,7 @@ import {
   useLocationBasedEmergencyConfig, useToggleLocationBasedEmergency, useFloorPlans,
   useAutoUpdatePlayerConfig, useToggleAutoUpdatePlayer, useLatestPlayerVersion,
   useOtaWindowConfig, useUpdateOtaWindow,
+  useCanaryRollout, useUpdateCanaryRollout,
 } from '@/hooks/use-api';
 import { useState, useRef, useEffect } from 'react';
 import { UsbIngestCard } from '@/components/settings/UsbIngestCard';
@@ -344,6 +345,8 @@ export default function SettingsPage() {
                 works but only APPLIES the install during the window.
                 Outside, the kiosk downloads quietly and waits. */}
             <OtaMaintenanceWindowCard />
+            <div className="border-t border-slate-100" />
+            <CanaryRolloutCard />
           </div>
 
           {/* USB Sneakernet Ingest (Sprint 7B) — collapsed by default.
@@ -1131,6 +1134,147 @@ function OtaMaintenanceWindowCard() {
               className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200"
             >
               Clear
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Sprint 11 Phase B — staged canary rollout card.
+// Sets the % of fleet eligible for the latest APK + the soak window
+// before auto-promote fires. Default 100 = full rollout (preserves
+// existing behavior). Operators dial down for risky pushes.
+function CanaryRolloutCard() {
+  const { data: cfg, isLoading } = useCanaryRollout();
+  const update = useUpdateCanaryRollout();
+  const [percent, setPercent] = useState<number>(100);
+  const [autoPromote, setAutoPromote] = useState(true);
+  const [soakHours, setSoakHours] = useState<number>(24);
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    if (!cfg) return;
+    setPercent(cfg.percent ?? 100);
+    setAutoPromote(cfg.autoPromote ?? true);
+    setSoakHours(cfg.soakHours ?? 24);
+    setDirty(false);
+  }, [cfg]);
+
+  const active = (cfg?.percent ?? 100) < 100;
+  const setAt = cfg?.setAt ? new Date(cfg.setAt) : null;
+  const elapsedMs = setAt ? Date.now() - setAt.getTime() : 0;
+  const remainingMs = setAt && cfg?.soakHours
+    ? Math.max(0, cfg.soakHours * 3600_000 - elapsedMs)
+    : 0;
+  const remainingLabel = active && remainingMs > 0
+    ? `${Math.ceil(remainingMs / 3600_000)}h soak remaining`
+    : active && remainingMs === 0
+      ? 'Soak elapsed — auto-promote on next tick'
+      : null;
+
+  const save = () => {
+    update.mutate({ percent, autoPromote, soakHours });
+  };
+  const promoteNow = () => {
+    update.mutate({ percent: 100 });
+  };
+
+  return (
+    <div className="px-6 py-4">
+      <div className="flex items-start gap-3 min-w-0 mb-3">
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+          active ? 'bg-amber-50' : 'bg-slate-100'
+        }`}>
+          <RefreshCw className={`w-4 h-4 ${active ? 'text-amber-600' : 'text-slate-500'}`} />
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm font-bold text-slate-800 flex items-center gap-2 flex-wrap">
+            Staged canary rollout
+            {active ? (
+              <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                {cfg!.percent}% cohort
+              </span>
+            ) : (
+              <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                100% — full rollout
+              </span>
+            )}
+            {remainingLabel && (
+              <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                {remainingLabel}
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+            Lower the percentage to stage a release. Only the hashed cohort of screens
+            (deterministic from screen ID, never re-rolled) receives the new APK; the
+            rest stay on their current version. After the soak window elapses without
+            any install errors in the cohort, auto-promote bumps back to 100%.
+          </p>
+          <p className="text-[10px] text-slate-400 mt-1">
+            Use 5–10% for a risky release; 25–50% for routine updates. Set to 0 to
+            pause OTA entirely (e.g. during finals week).
+          </p>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="text-[11px] text-slate-400">Loading…</div>
+      ) : (
+        <div className="flex flex-wrap items-end gap-3 pl-12">
+          <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+            Cohort %
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step={1}
+              value={percent}
+              onChange={(e) => { setPercent(Math.max(0, Math.min(100, Number(e.target.value) || 0))); setDirty(true); }}
+              className="block mt-1 w-20 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono"
+            />
+          </label>
+          <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+            Soak (hours)
+            <input
+              type="number"
+              min={1}
+              max={720}
+              step={1}
+              value={soakHours}
+              onChange={(e) => { setSoakHours(Math.max(1, Math.min(720, Number(e.target.value) || 24))); setDirty(true); }}
+              className="block mt-1 w-20 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-700 mb-1.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={autoPromote}
+              onChange={(e) => { setAutoPromote(e.target.checked); setDirty(true); }}
+              className="w-3.5 h-3.5 accent-indigo-500"
+            />
+            Auto-promote after soak
+          </label>
+          <button
+            type="button"
+            onClick={save}
+            disabled={!dirty || update.isPending}
+            className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide rounded-lg text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ background: 'var(--brand-primary, #4f46e5)' }}
+          >
+            {update.isPending ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Save'}
+          </button>
+          {active && (
+            <button
+              type="button"
+              onClick={promoteNow}
+              disabled={update.isPending}
+              className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200"
+              title="Skip the soak window and promote to 100% now"
+            >
+              Promote to 100%
             </button>
           )}
         </div>

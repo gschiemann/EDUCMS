@@ -565,6 +565,117 @@ export class TenantsController {
     };
   }
 
+  // ─── Sprint 11 Phase B — staged canary rollout ──────────────
+  // Get / set the tenant's canary fleet percentage.
+  //
+  // canaryFleetPercent < 100 means only the hash-deterministic cohort
+  // of screens is eligible for the latest APK. Combined with the
+  // canarySoakHours timer + canaryAutoPromote flag, a cron will
+  // auto-bump back to 100 once the soak elapses without install
+  // errors — at which point the full fleet picks up the update.
+  //
+  // Setting percent to a lower value (e.g. dropping 100 → 10) stamps
+  // canarySetAt so the soak timer starts. Setting percent back to
+  // 100 manually clears canarySetAt.
+  @Get('me/canary-rollout')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async getCanaryRollout(@Request() req: any) {
+    const t = await this.prisma.client.tenant.findUnique({
+      where: { id: req.user.tenantId },
+      select: {
+        canaryFleetPercent: true,
+        canarySetAt: true,
+        canaryAutoPromote: true,
+        canarySoakHours: true,
+      } as any,
+    }) as any;
+    if (!t) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    return {
+      percent: t.canaryFleetPercent ?? 100,
+      setAt: t.canarySetAt ?? null,
+      autoPromote: t.canaryAutoPromote ?? true,
+      soakHours: t.canarySoakHours ?? 24,
+    };
+  }
+
+  @Put('me/canary-rollout')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async setCanaryRollout(
+    @Request() req: any,
+    @Body() body: {
+      percent?: number;
+      autoPromote?: boolean;
+      soakHours?: number;
+    },
+  ) {
+    const data: any = {};
+
+    if (body.percent !== undefined) {
+      const pct = Math.floor(Number(body.percent));
+      if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+        throw new HttpException(
+          `Invalid percent "${body.percent}" — expected 0..100`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      data.canaryFleetPercent = pct;
+      // Stamp the soak-window start whenever percent moves BELOW 100.
+      // 100 (full rollout) clears the timer.
+      data.canarySetAt = pct < 100 ? new Date() : null;
+    }
+    if (body.autoPromote !== undefined) {
+      data.canaryAutoPromote = !!body.autoPromote;
+    }
+    if (body.soakHours !== undefined) {
+      const hours = Math.floor(Number(body.soakHours));
+      if (!Number.isFinite(hours) || hours < 1 || hours > 720) {
+        throw new HttpException(
+          `Invalid soakHours "${body.soakHours}" — expected 1..720`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      data.canarySoakHours = hours;
+    }
+
+    if (Object.keys(data).length === 0) {
+      throw new HttpException('No fields to update', HttpStatus.BAD_REQUEST);
+    }
+
+    const updated = await this.prisma.client.tenant.update({
+      where: { id: req.user.tenantId },
+      data,
+      select: {
+        canaryFleetPercent: true,
+        canarySetAt: true,
+        canaryAutoPromote: true,
+        canarySoakHours: true,
+      } as any,
+    }) as any;
+
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'CANARY_ROLLOUT_UPDATED',
+        targetType: 'tenant',
+        targetId: req.user.tenantId,
+        tenantId: req.user.tenantId,
+        userId: req.user.id,
+        details: JSON.stringify({
+          percent: updated.canaryFleetPercent,
+          autoPromote: updated.canaryAutoPromote,
+          soakHours: updated.canarySoakHours,
+          changedBy: req.user.email || req.user.id,
+        }),
+      },
+    }).catch(() => { /* audit best-effort */ });
+
+    return {
+      percent: updated.canaryFleetPercent ?? 100,
+      setAt: updated.canarySetAt ?? null,
+      autoPromote: updated.canaryAutoPromote ?? true,
+      soakHours: updated.canarySoakHours ?? 24,
+    };
+  }
+
   @Get('me/usb-ingest')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async getUsbIngestConfig(@Request() req: any) {

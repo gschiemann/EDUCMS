@@ -102,6 +102,24 @@ model Tenant {
   otaWindowStart                  String?          @map("ota_window_start") // "HH:MM"
   otaWindowEnd                    String?          @map("ota_window_end")   // "HH:MM"
   otaWindowTimezone               String?          @map("ota_window_timezone") // IANA tz
+  // Sprint 11 Phase B — canary rollout. canaryFleetPercent < 100 means
+  // only the deterministic hash bucket of screens (0..pct-1 mod 100)
+  // is eligible for the latest APK; the rest get `uptoDate:true` even
+  // if force flag is set. After `canarySoakHours` (default 24) with no
+  // INSTALL ERROR in the canary cohort, a cron auto-promotes the
+  // percent to 100 — guarantees a bad version can't blast the whole
+  // fleet without a human-detectable soak window first.
+  //
+  // canaryFleetPercent  100 = full rollout (default), 0 = OTA disabled,
+  //                     anything else = canary cohort %
+  // canarySetAt         when canaryFleetPercent was last lowered;
+  //                     starts the soak timer
+  // canaryAutoPromote   if true, cron promotes to 100 after soak;
+  //                     if false, operator must promote manually
+  canaryFleetPercent              Int              @default(100) @map("canary_fleet_percent")
+  canarySetAt                     DateTime?        @map("canary_set_at")
+  canaryAutoPromote               Boolean          @default(true) @map("canary_auto_promote")
+  canarySoakHours                 Int              @default(24) @map("canary_soak_hours")
   usbIngestEnabled                Boolean          @default(false) @map("usb_ingest_enabled")
   usbIngestKey                    String?          @map("usb_ingest_key") // 64-char hex (HMAC-SHA256 secret)
   usbIngestKeyRotatedAt           DateTime?        @map("usb_ingest_key_rotated_at")

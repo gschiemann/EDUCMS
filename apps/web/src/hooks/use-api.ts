@@ -1167,6 +1167,32 @@ export function useUpdateOtaWindow() {
   });
 }
 
+// Sprint 11 Phase B — canary rollout config + mutation.
+// percent < 100 means only the hash-deterministic cohort of screens
+// receives the latest APK; everyone else gets uptoDate. Combined
+// with the soak timer + auto-promote flag, a bad release is bounded
+// to at most `percent`% of the fleet during the soak window.
+export type CanaryRolloutConfig = {
+  percent: number;        // 0..100, default 100 = full rollout
+  setAt: string | null;   // ISO datetime when percent last lowered
+  autoPromote: boolean;   // auto-bump to 100 after soak elapsed
+  soakHours: number;      // 1..720
+};
+export function useCanaryRollout() {
+  return useQuery<CanaryRolloutConfig>({
+    queryKey: ['canary-rollout'],
+    queryFn: () => apiFetch('/tenants/me/canary-rollout'),
+  });
+}
+export function useUpdateCanaryRollout() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (cfg: Partial<Omit<CanaryRolloutConfig, 'setAt'>>) =>
+      apiFetch('/tenants/me/canary-rollout', { method: 'PUT', body: JSON.stringify(cfg) }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['canary-rollout'] }),
+  });
+}
+
 // Latest published player APK version. Powers the dashboard's
 // "Current vX · Latest vY" comparison on each screen card. Cached
 // for 10 min — release tags don't move that fast.

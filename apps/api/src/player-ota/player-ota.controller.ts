@@ -39,6 +39,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
+import { isInCanaryCohort } from './canary-cohort';
 
 interface UpdateCheckBody {
   fingerprint?: string;
@@ -195,6 +196,9 @@ export class PlayerOtaController {
     let forcedPendingScreenId: string | null = null;
     let lookupScreenId: string | null = null;
     let lookupTenantId: string | null = null;
+    // Phase B canary — captured at screen-lookup time, defaults to
+    // full-rollout (100) when no screen row exists.
+    let tenantCanaryPct = 100;
     try {
       if (fp) {
         const screen = await this.prisma.client.screen.findFirst({
@@ -212,6 +216,7 @@ export class PlayerOtaController {
                 otaWindowStart: true,
                 otaWindowEnd: true,
                 otaWindowTimezone: true,
+                canaryFleetPercent: true,
               },
             },
           } as any,
@@ -219,6 +224,13 @@ export class PlayerOtaController {
         if (screen) {
           lookupScreenId = screen.id;
           lookupTenantId = screen.tenantId;
+          // Phase B canary — pull the tenant's current rollout %.
+          // Missing/null defaults to 100 (full rollout, no change in
+          // behavior for tenants that haven't opted into canary).
+          const pct = screen.tenant?.canaryFleetPercent;
+          if (typeof pct === 'number' && Number.isFinite(pct)) {
+            tenantCanaryPct = Math.max(0, Math.min(100, pct));
+          }
         }
         if (screen?.tenant?.autoUpdatePlayerEnabled) {
           allowUpdate = true;
@@ -331,6 +343,32 @@ export class PlayerOtaController {
         `source=${callerSource}`,
       );
     }
+
+    // ── Sprint 11 Phase B canary gate ──
+    // Even if the screen-level checks above said allowUpdate=true, the
+    // tenant's canary rollout policy can still hold this screen back.
+    // canary_fleet_percent < 100 means only the deterministic hash
+    // cohort of screens is allowed to install the new build. Everyone
+    // else gets uptoDate so a bad release can't fan out to >N% of the
+    // fleet in any 30-min window.
+    //
+    // Bootstrap bypass screens skip the gate (Manager's fresh-install
+    // path needs to ALWAYS get a Player APK — it's an empty kiosk
+    // by definition and there's nothing to break).
+    if (allowUpdate && !isBootstrapCall && lookupScreenId && tenantCanaryPct < 100) {
+      const inCohort = isInCanaryCohort(lookupScreenId, tenantCanaryPct);
+      if (!inCohort) {
+        allowUpdate = false;
+        allowReason = `${allowReason}-canary-blocked-pct${tenantCanaryPct}`;
+        this.logger.log(
+          `[ota] canary-gate-blocked screen=${lookupScreenId} ` +
+          `tenant=${lookupTenantId} pct=${tenantCanaryPct}`,
+        );
+      } else {
+        allowReason = `${allowReason}-canary-cohort-pct${tenantCanaryPct}`;
+      }
+    }
+
     if (!allowUpdate) {
       this.logger.log(
         `[ota] decision=uptoDate caller=${callerVn} screen=${lookupScreenId || '-'} ` +
