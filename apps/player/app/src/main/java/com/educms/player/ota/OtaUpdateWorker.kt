@@ -58,15 +58,44 @@ class OtaUpdateWorker(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         PlayerLogger.i(TAG, "OTA check starting (versionCode=${BuildConfig.VERSION_CODE}, versionName=${BuildConfig.VERSION_NAME})")
-        if (isManagerInstalled(applicationContext)) {
-            PlayerLogger.i(TAG, "Manager installed; yielding OTA to Manager to avoid dual-worker install races")
-            return@withContext Result.success()
+
+        // v1.0.53 — OPERATOR-REPORTED REGRESSION: "remote upgrade has
+        // never worked. I had to manually go enable install unknown
+        // app permission to manager even on .52."
+        //
+        // Root cause of OTA never-working: this worker used to bail
+        // out IMMEDIATELY when Manager was installed (early `return
+        // Result.success()`), deferring all OTA work to Manager's
+        // silent-install path. But Manager's silent install needs
+        // EITHER DEVICE_OWNER status OR installer-of-record for
+        // Player — neither of which holds on a freshly-sideloaded
+        // kiosk. So Manager committed sessions that came back as
+        // STATUS_PENDING_USER_ACTION and posted notifications that
+        // the OEM's battery-saver layer ate. Net result: no install
+        // ever happened, and Player's OTA worker (which COULD have
+        // installed via its own foregrounded MainActivity) had
+        // already bailed.
+        //
+        // Fix: Player ALWAYS runs the full OTA flow. If Manager is
+        // installed, Player gives it a 90-second head start (Manager
+        // may succeed silently on properly-provisioned kiosks). If
+        // Player still sees its own old versionCode after that head
+        // start, Player installs via its own PackageInstaller — which
+        // is far more reliable because Player is the foregrounded
+        // kiosk app, has install-unknown-apps already granted (the
+        // user sideloaded Player initially), and PackageInstaller
+        // dialogs from a foregrounded Activity context Just Work
+        // across every signage OEM we've tested.
+        //
+        // Concurrent install protection: PackageInstaller serializes
+        // commits on the same target package; the second commit sees
+        // the version already installed and exits cleanly. No race.
+        val managerInstalled = isManagerInstalled(applicationContext)
+        if (managerInstalled) {
+            PlayerLogger.i(TAG, "Manager installed — will give Manager 90s head start then fall back to Player install if needed")
+        } else {
+            PlayerLogger.i(TAG, "Manager not installed — Player handles OTA solo")
         }
-        // Manager absent: this standalone Player worker is the fallback
-        // OTA path for sideload/dev installs. When Manager is installed,
-        // the early return above avoids dual downloads and conflicting
-        // PackageInstaller sessions.
-        PlayerLogger.i(TAG, "Player OTA worker firing (no Manager installed; Player handles OTA solo)")
         try {
             val apiRoot = applicationContext.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
                 .getString("api_root", null) ?: run {
@@ -199,8 +228,40 @@ class OtaUpdateWorker(
                 }
             }
 
-            PlayerLogger.i(TAG, "APK download complete and verified — firing install intent")
-            reportOtaState(apiRoot, deviceFingerprint, "INSTALLING", null, "v$latestVn")
+            PlayerLogger.i(TAG, "APK download complete and verified")
+
+            // v1.0.53 — When Manager is installed, give it a 90-second
+            // head start to silent-install before we fire Player's own
+            // install dialog. This avoids two install dialogs racing
+            // on operator-attended kiosks while still guaranteeing
+            // Player as a fallback if Manager fails (the historically-
+            // broken case the operator reported).
+            //
+            // Poll PackageManager for our own (Player's) versionCode
+            // every 5 seconds. If we observe it flip to latestVc, that
+            // means Manager already installed silently and we can exit
+            // cleanly — Player's process will be replaced moments later
+            // when Android applies the install.
+            if (managerInstalled) {
+                reportOtaState(apiRoot, deviceFingerprint, "INSTALLING", null, "v$latestVn (Manager attempt)")
+                PlayerLogger.i(TAG, "Yielding 90s to Manager silent-install path before Player fallback fires")
+                val deadlineMs = System.currentTimeMillis() + 90_000L
+                while (System.currentTimeMillis() < deadlineMs) {
+                    kotlinx.coroutines.delay(5_000L)
+                    val currentVc = try {
+                        applicationContext.packageManager
+                            .getPackageInfo(applicationContext.packageName, 0).longVersionCode.toInt()
+                    } catch (_: Exception) { BuildConfig.VERSION_CODE }
+                    if (currentVc >= latestVc) {
+                        PlayerLogger.i(TAG, "Manager already installed vc=$currentVc — exiting Player OTA worker cleanly")
+                        return@withContext Result.success()
+                    }
+                }
+                PlayerLogger.i(TAG, "Manager head-start expired (still on vc=${BuildConfig.VERSION_CODE}) — Player install fallback firing")
+                reportOtaState(apiRoot, deviceFingerprint, "INSTALLING", null, "v$latestVn (Player fallback)")
+            } else {
+                reportOtaState(apiRoot, deviceFingerprint, "INSTALLING", null, "v$latestVn")
+            }
             triggerInstall(outFile, forced)
             // Success state is reported on next boot via the heartbeat
             // (new versionName lands in playerVersion, dashboard infers
