@@ -1,0 +1,58 @@
+# Sprint 11 Phase B — Cloudflare Workers edge for the EDU CMS API.
+#
+# Purpose:
+#   1. Atomic, zero-downtime deploys (Workers ship globally in <5 s,
+#      no in-flight request loss — Railway redeploys still take 30-90 s
+#      with brief 502s during the swap).
+#   2. Sub-100 ms latency from any Cloudflare PoP. Schools in remote
+#      US districts hit a local edge instead of round-tripping to
+#      Railway us-west2.
+#   3. Edge cache for safe-to-cache GETs (build-info, latest-version,
+#      health) — reduces Railway origin traffic by ~70%.
+#   4. DDoS / abuse shield in front of the origin. Cloudflare's free
+#      tier already mitigates most volumetric attacks.
+#
+# Cutover plan:
+#   1. Deploy this worker to a *.workers.dev subdomain first.
+#   2. Smoke-test from local kiosk: change NEXT_PUBLIC_API_URL to the
+#      worker URL, verify pairing + manifest + heartbeat still work.
+#   3. Add the prod hostname (api.educms.app or whatever) as a Worker
+#      route binding so Cloudflare routes prod traffic through the
+#      worker without changing any other config.
+#   4. Repoint the Vercel + APK NEXT_PUBLIC_API_URL env vars from
+#      Railway → worker. Old kiosks still talk to Railway directly
+#      until they pick up the new URL.
+
+name = "edu-cms-edge"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+# Origin URL — Railway API. Worker proxies everything that isn't
+# explicitly cached/served-at-edge straight through.
+[vars]
+ORIGIN_URL = "https://api-production-39a1.up.railway.app"
+
+# Production environment — bound to the prod hostname once cut over.
+# [env.production]
+# routes = [{ pattern = "api.educms.app/*", zone_name = "educms.app" }]
+
+# Staging environment — separate Workers.dev subdomain for testing.
+[env.staging]
+name = "edu-cms-edge-staging"
+workers_dev = true
+
+[env.staging.vars]
+ORIGIN_URL = "https://api-production-39a1.up.railway.app"
+
+# Cloudflare Cache API binding (built in, no config needed).
+# Each route in src/index.ts decides its own cache key + TTL.
+#
+# Routes that MUST bypass cache (no TTL acceptable):
+#   /api/v1/player/update-check       (OTA decisions are per-screen)
+#   /api/v1/player/apk/v/*            (binary stream, Railway already caches)
+#   /api/v1/realtime/*                (WS + SSE — long-lived, no cache)
+#   /api/v1/screens/status/*          (heartbeats write DB state)
+#   /api/v1/screens/*/manifest        (per-device manifest)
+#   /api/v1/emergency/*               (life-safety; never serve stale)
+#   POST / PUT / DELETE on anything

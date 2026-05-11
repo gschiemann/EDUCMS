@@ -1,0 +1,19 @@
+{
+  "name": "edge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloudflare Worker — sub-100 ms global edge for the EDU CMS API. Proxies most routes to Railway with atomic deploys; OTA-critical paths bypass the cache and stream straight through.",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:staging": "wrangler deploy --env staging",
+    "tail": "wrangler tail",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240620.0",
+    "typescript": "^5.7.3",
+    "wrangler": "^3.78.0"
+  }
+}
