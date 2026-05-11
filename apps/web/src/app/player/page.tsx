@@ -1070,7 +1070,28 @@ function PlayerPage() {
   // banner shows on EVERY 30s heartbeat tick because data.ota.state is
   // INSTALLED on every response. Track the last-seen ota.at and only
   // re-fire the banner when a NEW install event arrives.
+  //
+  // 2026-05-11 — operator: "i now get an update complete text that pops
+  // up every time i exit the program back to the main splash screen,
+  // even though i didnt push an update, its says update complete and
+  // player will restart". Root cause: this ref was wiped on every mount
+  // of the player page. When the operator navigated AWAY (closed kiosk
+  // browser, opened a different page, etc.) and back, the ref reset to
+  // null. Next heartbeat with the sticky INSTALLED state had `null !==
+  // installedAt` → banner fired AGAIN, every time, for an install that
+  // happened weeks ago.
+  //
+  // Fix: persist the dedup key in localStorage so it survives navigations
+  // and tab close/reopen. Only fire the banner when we genuinely see a
+  // NEW install event timestamp we've never recorded before.
   const otaInstalledKeyRef = useRef<string | null>(null);
+  // Hydrate from localStorage on first mount (SSR-safe — guard for window).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      otaInstalledKeyRef.current = window.localStorage.getItem('edu.ota.lastInstalledAt');
+    } catch { /* localStorage may be blocked — fall back to in-memory dedup only */ }
+  }, []);
   // Split refs: interval runs at steady cadence, timeout is the one-
   // shot backoff retry. Previously both shared `pollRef` which caused
   // races when a failing tick reassigned the same handle.
@@ -1197,6 +1218,15 @@ function PlayerPage() {
         const installedAt = String(data.ota.at || '').trim();
         if (installedAt && otaInstalledKeyRef.current !== installedAt) {
           otaInstalledKeyRef.current = installedAt;
+          // Persist so navigating back to splash doesn't re-fire the
+          // banner on the same sticky-INSTALLED state (operator bug
+          // 2026-05-11). Best-effort — if localStorage is blocked the
+          // in-memory ref still dedupes within this page lifetime.
+          try {
+            if (typeof window !== 'undefined') {
+              window.localStorage.setItem('edu.ota.lastInstalledAt', installedAt);
+            }
+          } catch { /* ignore */ }
           setOtaProgress((prev) => prev ?? { startedAt: Date.now(), bridgeAvailable: true });
           setTimeout(() => setOtaProgress(null), 3000);
         }
