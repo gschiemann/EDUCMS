@@ -30,8 +30,9 @@
  * keeps it current; operators never have to re-sideload.
  */
 
-import { Controller, Post, Get, Body, Res, Logger, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, Res, Logger, UseGuards, Param, NotFoundException } from '@nestjs/common';
 import type { Response } from 'express';
+import { Readable } from 'node:stream';
 import { Throttle } from '@nestjs/throttler';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -694,6 +695,137 @@ export class PlayerOtaController {
         'No player APK is published yet. Tag a GitHub Release on gschiemann/EDUCMS with the built APK attached, or set PLAYER_APK_URL on Railway, or set GH_TOKEN so we can proxy the latest CI artifact.',
     });
   }
+
+  // ─── Versioned APK proxy — fast fiber-egress alternative to GitHub Releases ───
+  //
+  // Operator (2026-05-12): "the download is crawling, that's a bug somewhere
+  // in your workflow, this is a tiny file i download in 2 seconds"
+  //
+  // Diagnosis: GitHub Releases' object-storage CDN
+  // (objects.githubusercontent.com) rate-limits sustained unauthenticated
+  // downloads. On The Den's last upgrade we measured a fast burst then a
+  // 1.7 KB/s sustained throttle — a 12 MB APK took 13 minutes when the
+  // kiosk's fiber could have done it in <1s.
+  //
+  // Fix: kiosks now download the APK FROM RAILWAY at /api/v1/player/apk/v/:vc.
+  // Railway's egress is uncapped on its standard plan. The first fetch
+  // for a given versionCode pulls the asset from GitHub (using the
+  // GH_TOKEN env so it's an *authenticated* download — those don't
+  // throttle) into an in-memory cache, then every subsequent kiosk
+  // request streams from cache at full speed.
+  //
+  // Set PLAYER_APK_URL on Railway to point at this endpoint instead of
+  // the GitHub Releases URL: e.g.
+  //   PLAYER_APK_URL=https://api-production-39a1.up.railway.app/api/v1/player/apk/v/10054
+  // Kiosks will get the bytes through Railway from the moment that env
+  // var changes; no APK reissue needed.
+  @Get('apk/v/:vc')
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  async streamApkByVersionCode(
+    @Param('vc') vcParam: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const vc = parseInt(vcParam, 10);
+    if (!Number.isFinite(vc) || vc <= 0) {
+      throw new NotFoundException(`Invalid versionCode: ${vcParam}`);
+    }
+    try {
+      const buf = await ensureApkInCache(vc);
+      if (!buf) {
+        throw new NotFoundException(
+          `Player APK v${vc} not found. Either no GitHub release exists with that ` +
+          `versionCode-derived tag, or GH_TOKEN is missing on Railway.`,
+        );
+      }
+      res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+      res.setHeader('Content-Length', String(buf.length));
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="edu-cms-player-vc${vc}.apk"`,
+      );
+      // 24h cache is fine — content is immutable per versionCode.
+      res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+      res.end(buf);
+    } catch (e: any) {
+      if (e instanceof NotFoundException) throw e;
+      this.logger.error(`APK proxy v${vc} failed: ${e?.message}`, e?.stack);
+      throw new NotFoundException(`APK proxy failed: ${e?.message}`);
+    }
+  }
+}
+
+// ─── APK byte cache (process-local, in-memory) ───
+// Keyed by versionCode. First fetch authenticates against GitHub API
+// (no rate limit when authed) and pulls the bytes; future requests
+// serve from cache. APKs are immutable per versionCode so the cache
+// never goes stale.
+//
+// Memory ceiling: 5 entries max (LRU eviction). Each APK is ~12 MB,
+// so worst case ~60 MB resident — well within Railway's container.
+interface VersionedApkCache {
+  vc: number;
+  buf: Buffer;
+  fetchedAt: number;
+}
+const versionedApkCache = new Map<number, VersionedApkCache>();
+const VERSIONED_APK_CACHE_LIMIT = 5;
+
+async function ensureApkInCache(vc: number): Promise<Buffer | null> {
+  const hit = versionedApkCache.get(vc);
+  if (hit) {
+    // LRU bump — re-insert so it's most-recently-used.
+    versionedApkCache.delete(vc);
+    versionedApkCache.set(vc, hit);
+    return hit.buf;
+  }
+  const repo = process.env.PLAYER_APK_GITHUB_REPO || 'gschiemann/EDUCMS';
+  // Convert versionCode → vname per the repo's encoding formula
+  // major*10000 + minor*100 + patch (e.g. 10054 → 1.0.54).
+  const major = Math.floor(vc / 10000);
+  const minor = Math.floor((vc % 10000) / 100);
+  const patch = vc % 100;
+  const versionName = `${major}.${minor}.${patch}`;
+  const tag = `player-v${versionName}`;
+  const expectedAssetName = `edu-cms-player-v${versionName}.apk`;
+  const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+  const ghHeaders: Record<string, string> = {
+    'User-Agent': 'edu-cms-player-ota-proxy',
+    'Accept': 'application/vnd.github+json',
+  };
+  if (token) ghHeaders['Authorization'] = `Bearer ${token}`;
+
+  // 1) Resolve tag → release → asset id.
+  const relResp = await fetch(
+    `https://api.github.com/repos/${repo}/releases/tags/${tag}`,
+    { headers: ghHeaders },
+  );
+  if (!relResp.ok) return null;
+  const release = (await relResp.json()) as {
+    assets?: Array<{ id: number; name: string; size: number; url: string }>;
+  };
+  const asset = (release.assets || []).find((a) => a.name === expectedAssetName);
+  if (!asset) return null;
+
+  // 2) Fetch asset bytes. The `url` field on the asset returns metadata
+  // by default; setting Accept: application/octet-stream gets the
+  // binary. With token, this is the AUTHENTICATED path — no throttle.
+  const dlResp = await fetch(asset.url, {
+    headers: { ...ghHeaders, 'Accept': 'application/octet-stream' },
+    redirect: 'follow',
+  });
+  if (!dlResp.ok) return null;
+  const buf = Buffer.from(await dlResp.arrayBuffer());
+
+  // LRU eviction.
+  while (versionedApkCache.size >= VERSIONED_APK_CACHE_LIMIT) {
+    const oldestKey = versionedApkCache.keys().next().value as number | undefined;
+    if (oldestKey == null) break;
+    versionedApkCache.delete(oldestKey);
+  }
+  versionedApkCache.set(vc, { vc, buf, fetchedAt: Date.now() });
+  // Silence the unused Readable warning if streaming isn't used.
+  void Readable;
+  return buf;
 }
 
 interface ArtifactCache { buf: Buffer | null; etag: string; ts: number }
