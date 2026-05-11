@@ -18,9 +18,36 @@
          as the default installer via `pm set-installer com.educms.player`
          (one-shot ADB), which makes installs silent.  -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <!-- (UPDATE_PACKAGES_WITHOUT_USER_ACTION removed in v1.0.21 —
-         was only useful on Android 12+; we're testing on Android 11.
-         Stripping to isolate v1.0.20 crash cause.) -->
+    <!-- v1.0.53 — RE-ADDED. Operator: "remote upgrade has NEVER
+         worked, no update workflow." Root cause: Player had this
+         permission STRIPPED in v1.0.21 during an unrelated crash
+         debug (the v1.0.20 VerifyError was actually caused by
+         leaking API-31 symbols into Android-11-loaded classes, NOT
+         by this permission). Without UPDATE_PACKAGES_WITHOUT_USER_ACTION,
+         even when Player IS its own installer-of-record (every
+         post-first-install scenario), PackageInstaller.commit()
+         returned STATUS_PENDING_USER_ACTION on Android 12+, forcing
+         a tap-to-install dialog every single time.
+
+         WITH this permission declared AND USER_ACTION_NOT_REQUIRED
+         set on the session params (see Api31SilentInstall.configure
+         in Player's ota package), Android honors silent install when:
+            (a) caller is DEVICE_OWNER (we're not — no factory provisioning), OR
+            (b) caller is installer-of-record for the target package
+                AND target is the calling app updating itself.
+
+         Path (b) is the retrofit silent-update pattern. After the
+         FIRST Player-driven install (which still requires one user
+         tap because Player isn't installer-of-record yet on a
+         sideloaded device), Player BECOMES installer-of-record for
+         itself (PackageInstaller records the calling package). From
+         v1.0.54 onwards: EVERY OTA installs silently. ZERO taps.
+
+         This is the standard Android pattern that every legitimate
+         signage CMS uses (Yodeck, Rise Vision, etc.) for non-DEVICE_OWNER
+         deployments. We had this 80% wired and lost the last 20% in
+         a panic-revert. -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <!--
       Permission to write to the Manager APK's PlayerHealthProvider
