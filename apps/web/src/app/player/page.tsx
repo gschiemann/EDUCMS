@@ -1100,6 +1100,22 @@ function PlayerPage() {
   const wsRef = useRef<WebSocket | null>(null);
   // Bullet-proof refs (Phase 1)
   const fetchFailCountRef = useRef(0);
+  // Sprint 11 Phase B3 — self-heal de-escalation.
+  // Without these refs the "5 consecutive failures → nativeReload"
+  // path was firing on routine Vercel/Railway deploy blips (~30s of
+  // 502s while the new container comes up). Result: kiosks visibly
+  // hard-reload during every deploy.
+  //
+  // fetchFailStreakStartedAtRef: timestamp of the FIRST failure in
+  //   the current streak. Resets on success. Used to require
+  //   >=60s of SUSTAINED failure before reload — a short blip
+  //   never crosses that floor.
+  // lastNativeReloadAtRef: when we last asked the WebView shell to
+  //   reload. Enforces a 5-minute cooldown so even a 30-minute
+  //   outage can only produce one reload (the WebView restart
+  //   itself takes ~5-15s; back-to-back reloads burn that window).
+  const fetchFailStreakStartedAtRef = useRef<number | null>(null);
+  const lastNativeReloadAtRef = useRef<number>(0);
   // Registration retry counter — NEVER GIVES UP. Increments on every
   // failed /screens/register call so backoffMs climbs toward its cap.
   // When Railway is deploying the player could hit a few 502s in a row;
@@ -2126,6 +2142,7 @@ function PlayerPage() {
         const manifest = await manifestRes.json();
         cacheManifest(manifest); // survive cold reboot
         fetchFailCountRef.current = 0; // reset on success
+        fetchFailStreakStartedAtRef.current = null;
         // Clear connectivity toast — we're back online.
         setConnectivity({ kind: 'connected' });
         if (tickToastRef.current) {
@@ -2142,6 +2159,9 @@ function PlayerPage() {
       throw new Error(`Manifest fetch failed: HTTP ${manifestRes.status}`);
     } catch (e: any) {
       fetchFailCountRef.current += 1;
+      if (fetchFailStreakStartedAtRef.current === null) {
+        fetchFailStreakStartedAtRef.current = Date.now();
+      }
       console.warn(`[Player] fetchContent failed (#${fetchFailCountRef.current}):`, e?.message || e);
 
       // Try cached manifest so we keep playing during outages.
@@ -2186,13 +2206,45 @@ function PlayerPage() {
         }, 1000);
       }
 
-      // Self-heal escalation — capped retry, never gives up:
-      //   3 failures → quick retry (3s + jitter)
-      //   5 failures → ask the Android shell to hard-reload the WebView
-      //   10+ failures → keep retrying at 30s cadence forever
+      // Self-heal escalation — capped retry, never gives up.
+      // Sprint 11 Phase B3 — loosened the nativeReload trigger.
+      //
+      // Previously: any 5+ consecutive failures fired nativeReload(),
+      // then re-fired every 5 thereafter. Every Vercel + Railway
+      // deploy easily produces 5 failed manifest fetches in 30s (the
+      // new container takes a few seconds to come up and serve
+      // healthy responses). Result: kiosks visibly hard-reloaded
+      // during every deploy, which the operator saw as random
+      // refresh storms.
+      //
+      // New gate (ALL must be true):
+      //   1. fail count >= 10 (was 5) — needs sustained failure,
+      //      not a brief blip
+      //   2. >= 60 s elapsed since the FIRST failure in this streak
+      //      — proves the failure is real, not a deploy-window hiccup
+      //   3. >= 5 min since the LAST nativeReload — prevents
+      //      back-to-back reload loops when the WebView restart
+      //      hasn't even finished
+      //   4. running inside Android WebView (the bridge needs to
+      //      exist; plain browser players don't have a native
+      //      reload mechanism worth invoking)
       const retryDelay = backoffMs(fetchFailCountRef.current, 1500, 30_000);
-      if (fetchFailCountRef.current >= 5 && fetchFailCountRef.current % 5 === 0 && isAndroidWebView()) {
-        console.warn(`[Player] ${fetchFailCountRef.current} consecutive fetch failures — asking native shell to reload`);
+      const streakAgeMs = fetchFailStreakStartedAtRef.current
+        ? Date.now() - fetchFailStreakStartedAtRef.current
+        : 0;
+      const sinceLastReloadMs = Date.now() - lastNativeReloadAtRef.current;
+      const SUSTAINED_MS = 60_000;
+      const RELOAD_COOLDOWN_MS = 5 * 60_000;
+      if (
+        fetchFailCountRef.current >= 10 &&
+        streakAgeMs >= SUSTAINED_MS &&
+        sinceLastReloadMs >= RELOAD_COOLDOWN_MS &&
+        isAndroidWebView()
+      ) {
+        console.warn(
+          `[Player] ${fetchFailCountRef.current} sustained failures over ${Math.round(streakAgeMs / 1000)}s — asking native shell to reload`,
+        );
+        lastNativeReloadAtRef.current = Date.now();
         nativeReload();
       }
       // ALWAYS schedule another connecting transition. Even the native
@@ -3041,6 +3093,7 @@ function PlayerPage() {
               setError(null);
               registerFailCountRef.current = 0;
               fetchFailCountRef.current = 0;
+              fetchFailStreakStartedAtRef.current = null;
               if (registerRetryTimerRef.current) clearTimeout(registerRetryTimerRef.current);
               if (tickToastRef.current) clearInterval(tickToastRef.current);
               // For unpaired devices, re-fire registration; for paired, re-fire fetchContent.
