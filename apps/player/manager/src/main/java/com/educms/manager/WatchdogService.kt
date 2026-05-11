@@ -238,7 +238,26 @@ class WatchdogService : Service() {
             Intent.FLAG_ACTIVITY_CLEAR_TOP or
             Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
         try {
-            startActivity(launchIntent)
+            // v1.0.18 — Android 14+ BAL fix.
+            // Reproduced on emulator: WatchdogService fires every 30s,
+            // detects stale Player heartbeat (3 missed = 90s), calls
+            // forceRestartPlayer → startActivity → BAL-blocked because
+            // FGS no longer auto-grants activity-launch privilege on
+            // Android 14+. Logcat:
+            //
+            //   ActivityTaskManager: Background activity launch blocked
+            //     callingPackage: com.educms.manager.debug
+            //     callingUidProcState: FOREGROUND_SERVICE
+            //     allowsBackgroundActivityStarts=false
+            //
+            // Fix: route through PendingIntent + ActivityOptions with
+            // MODE_BACKGROUND_ACTIVITY_START_ALLOWED. Same isolation
+            // pattern as Api31SilentInstall / Api34UpdateOwnership.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                Api34BalLauncher.launchAllowingBackgroundStart(this, launchIntent)
+            } else {
+                startActivity(launchIntent)
+            }
             Log.i(TAG, "launched $pkg (recovery)")
         } catch (e: Exception) {
             Log.e(TAG, "startActivity threw: ${e.message}", e)

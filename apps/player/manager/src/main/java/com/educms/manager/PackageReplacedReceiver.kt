@@ -130,9 +130,25 @@ class PackageReplacedReceiver : BroadcastReceiver() {
      * with up to 6 attempts / 1s backoff (≤7s) to allow PackageManager
      * registration to complete on slow Goodview SoCs.
      *
-     * Copied from OtaInstallReceiver.relaunchPackage() so both paths
-     * (STATUS_SUCCESS in-process vs PACKAGE_REPLACED out-of-process)
-     * share identical retry semantics.
+     * 2026-05-12 (Manager v1.0.18) — Android 14+ BAL fix.
+     *
+     * Operator on stock Android 14 emulator (which matches the OS
+     * version on The Den): post-install relaunch failed because
+     * Android 14 tightened Background Activity Launch rules — FGS no
+     * longer auto-grants BAL. The system logged:
+     *
+     *   ActivityTaskManager: Background activity launch blocked
+     *     callingPackage: com.educms.manager.debug
+     *     callingUidProcState: FOREGROUND_SERVICE
+     *     backgroundStartPrivileges:
+     *       allowsBackgroundActivityStarts=false
+     *
+     * Fix: route the activity start through a PendingIntent with
+     * ActivityOptions.setPendingIntentBackgroundActivityStartMode
+     * (MODE_BACKGROUND_ACTIVITY_START_ALLOWED). On API 34+ this is
+     * the documented way for a non-foregrounded caller to start an
+     * activity. On older APIs the legacy direct startActivity is
+     * the right pattern; we keep that path for API < 34.
      */
     private fun relaunchPackage(ctx: Context, pkg: String) {
         val candidates = listOf(pkg, if (pkg.endsWith(".debug")) pkg.removeSuffix(".debug") else "$pkg.debug")
@@ -142,7 +158,14 @@ class PackageReplacedReceiver : BroadcastReceiver() {
                     val launch = ctx.packageManager.getLaunchIntentForPackage(candidate)
                     if (launch != null) {
                         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                        ctx.startActivity(launch)
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                            // API 34+: PendingIntent + ActivityOptions with
+                            // BAL grant. Required as of Android 14 because
+                            // FGS no longer auto-grants BAL.
+                            Api34BalLauncher.launchAllowingBackgroundStart(ctx, launch)
+                        } else {
+                            ctx.startActivity(launch)
+                        }
                         Log.i(TAG, "relaunched $candidate after Player install (attempt=$attempt)")
                         return
                     }

@@ -73,12 +73,21 @@ class PostInstallRelaunchWorker(
                 Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED,
         )
         try {
-            ctx.startActivity(launch)
+            // 2026-05-12 (Player v1.0.56) — Android 14+ BAL fix.
+            // CoroutineWorkers run in a cold-started process by
+            // JobScheduler. That process has no foregrounded activity
+            // and no recent BAL grant, so a direct startActivity is
+            // blocked by ActivityTaskManager. Use PendingIntent +
+            // setPendingIntentBackgroundActivityStartMode(MODE_ALLOWED)
+            // to explicitly request the BAL grant per Android 14+
+            // documented pattern.
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                Api34BalLauncher.launchAllowingBackgroundStart(ctx, launch)
+            } else {
+                ctx.startActivity(launch)
+            }
             PlayerLogger.i(TAG, "relaunched ${ctx.packageName} via PostInstallRelaunchWorker")
         } catch (e: Exception) {
-            // BAL or no-foreground gate hit — log and move on. Manager's
-            // PackageReplacedReceiver + WatchdogService are the other
-            // recovery paths.
             PlayerLogger.w(TAG, "post-install relaunch startActivity failed: ${e.message}")
         }
         Result.success()
