@@ -80,6 +80,28 @@ model Tenant {
   // controller stores Screen.forceApkUpdatePendingAt and respects a
   // 30-min window). ON: kiosks pull updates on their own 6h cadence.
   autoUpdatePlayerEnabled         Boolean          @default(false) @map("auto_update_player_enabled")
+  // OTA maintenance window (Sprint 11, Phase A).
+  // Operator: "we cant have screens flashing all the time" + "find the
+  // bigger picture solution for uninterrupted service across all
+  // screens, all customer, all playlists".
+  //
+  // When set: even if force_apk_update_pending_at is set, the
+  // /update-check endpoint only returns the download URL during
+  // [otaWindowStart, otaWindowEnd] in `otaWindowTimezone` local time.
+  // Outside that window it returns uptoDate=true; the force flag
+  // stays set until the next window opens. The dashboard's "Push
+  // update" dialog has an "Apply now (override window)" checkbox
+  // that flips a per-screen override flag for one-shot emergency
+  // pushes.
+  //
+  // Storage format: HH:MM (24-hour, zero-padded). Wraparound is
+  // supported — start=22:00, end=04:00 means "10 PM to 4 AM next day."
+  // Timezone is an IANA name (America/Chicago, etc.). Null fields
+  // mean "no window configured" → updates fire immediately (current
+  // behavior, backward-compatible).
+  otaWindowStart                  String?          @map("ota_window_start") // "HH:MM"
+  otaWindowEnd                    String?          @map("ota_window_end")   // "HH:MM"
+  otaWindowTimezone               String?          @map("ota_window_timezone") // IANA tz
   usbIngestEnabled                Boolean          @default(false) @map("usb_ingest_enabled")
   usbIngestKey                    String?          @map("usb_ingest_key") // 64-char hex (HMAC-SHA256 secret)
   usbIngestKeyRotatedAt           DateTime?        @map("usb_ingest_key_rotated_at")
@@ -398,6 +420,12 @@ model Screen {
   // history. When tenant.autoUpdatePlayerEnabled = true this field
   // is irrelevant — auto-mode always returns the latest.
   forceApkUpdatePendingAt             DateTime?    @map("force_apk_update_pending_at")
+  // Bypass the tenant's OTA maintenance window for this specific push.
+  // Admin checks "Apply now (override window)" on the dashboard's Push
+  // Update dialog — emergency hotfixes that can't wait for 2 AM.
+  // Cleared automatically alongside forceApkUpdatePendingAt when the
+  // install completes (versionCode bump observed in heartbeat).
+  forceApkUpdateOverrideWindow        Boolean      @default(false) @map("force_apk_update_override_window")
   // v1.0.12 — per-phase OTA progress reported by OtaUpdateWorker.
   // Lets the dashboard show a real progress bar grounded in device
   // truth instead of the time-based theater that was killing trust.

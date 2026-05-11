@@ -1113,6 +1113,40 @@ export function useToggleAutoUpdatePlayer() {
   });
 }
 
+// Sprint 11 Phase A — OTA maintenance window.
+// Operator: "we cant have screens flashing all the time".
+// Tenant configures the daily window when APK installs are allowed
+// to APPLY (downloads happen anytime — no disruption). Per-push
+// override checkbox bypasses the window for emergency hotfixes.
+export type OtaWindowConfig = {
+  start: string | null;   // "HH:MM" 24-hour, or null = unconfigured
+  end: string | null;     // "HH:MM" 24-hour, or null = unconfigured
+  timezone: string | null; // IANA tz name, or null = unconfigured
+};
+export function useOtaWindowConfig() {
+  return useQuery<OtaWindowConfig>({
+    queryKey: ['ota-window-config'],
+    queryFn: () => apiFetch('/tenants/me/ota-window'),
+  });
+}
+export function useUpdateOtaWindow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (cfg: OtaWindowConfig) =>
+      apiFetch('/tenants/me/ota-window', { method: 'PUT', body: JSON.stringify(cfg) }),
+    onMutate: async (cfg) => {
+      await qc.cancelQueries({ queryKey: ['ota-window-config'] });
+      const prev = qc.getQueryData<any>(['ota-window-config']);
+      qc.setQueryData(['ota-window-config'], cfg);
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev !== undefined) qc.setQueryData(['ota-window-config'], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['ota-window-config'] }),
+  });
+}
+
 // Latest published player APK version. Powers the dashboard's
 // "Current vX · Latest vY" comparison on each screen card. Cached
 // for 10 min — release tags don't move that fast.

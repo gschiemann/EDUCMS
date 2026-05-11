@@ -476,6 +476,95 @@ export class TenantsController {
     return { ok: true, enabled: !!body.enabled };
   }
 
+  // Sprint 11 Phase A — OTA maintenance window.
+  // Tenant configures the daily window when APK installs are allowed
+  // to APPLY. Outside the window the kiosk still downloads in the
+  // background but defers the install until the window opens.
+  @Get('me/ota-window')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async getOtaWindow(@Request() req: any) {
+    const t = await this.prisma.client.tenant.findUnique({
+      where: { id: req.user.tenantId },
+      select: {
+        otaWindowStart: true,
+        otaWindowEnd: true,
+        otaWindowTimezone: true,
+      } as any,
+    }) as any;
+    if (!t) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    return {
+      start: t.otaWindowStart ?? null,
+      end: t.otaWindowEnd ?? null,
+      timezone: t.otaWindowTimezone ?? null,
+    };
+  }
+
+  @Put('me/ota-window')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async setOtaWindow(
+    @Request() req: any,
+    @Body() body: { start?: string | null; end?: string | null; timezone?: string | null },
+  ) {
+    // Allow clearing the window by sending {start:null,end:null,timezone:null}
+    // (or omitting fields). Allow setting all three.
+    const start = body.start === undefined ? undefined : (body.start || null);
+    const end = body.end === undefined ? undefined : (body.end || null);
+    const timezone = body.timezone === undefined ? undefined : (body.timezone || null);
+
+    // Validate HH:MM format when set
+    const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;
+    if (start && !hhmm.test(start)) {
+      throw new HttpException(`Invalid start "${start}" — expected HH:MM`, HttpStatus.BAD_REQUEST);
+    }
+    if (end && !hhmm.test(end)) {
+      throw new HttpException(`Invalid end "${end}" — expected HH:MM`, HttpStatus.BAD_REQUEST);
+    }
+    // Validate timezone via Intl
+    if (timezone) {
+      try {
+        new Intl.DateTimeFormat('en-US', { timeZone: timezone });
+      } catch {
+        throw new HttpException(`Invalid timezone "${timezone}"`, HttpStatus.BAD_REQUEST);
+      }
+    }
+
+    const data: any = {};
+    if (start !== undefined) data.otaWindowStart = start;
+    if (end !== undefined) data.otaWindowEnd = end;
+    if (timezone !== undefined) data.otaWindowTimezone = timezone;
+
+    const updated = await this.prisma.client.tenant.update({
+      where: { id: req.user.tenantId },
+      data,
+      select: {
+        otaWindowStart: true,
+        otaWindowEnd: true,
+        otaWindowTimezone: true,
+      } as any,
+    }) as any;
+
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'OTA_WINDOW_UPDATED',
+        targetType: 'tenant',
+        targetId: req.user.tenantId,
+        tenantId: req.user.tenantId,
+        userId: req.user.id,
+        details: JSON.stringify({
+          start: updated.otaWindowStart,
+          end: updated.otaWindowEnd,
+          timezone: updated.otaWindowTimezone,
+        }),
+      },
+    }).catch(() => { /* audit best-effort */ });
+
+    return {
+      start: updated.otaWindowStart ?? null,
+      end: updated.otaWindowEnd ?? null,
+      timezone: updated.otaWindowTimezone ?? null,
+    };
+  }
+
   @Get('me/usb-ingest')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async getUsbIngestConfig(@Request() req: any) {

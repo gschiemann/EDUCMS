@@ -107,8 +107,15 @@ export class PlayerOtaController {
           playerVersionCode: vc,
           playerVersionAt: new Date(),
           // Clear the flag iff this report shows the install actually
-          // landed (versionCode bumped).
-          ...(installed ? { forceApkUpdatePendingAt: null as any } : {}),
+          // landed (versionCode bumped). Also clear the maintenance-
+          // window override so it doesn't linger past the install it
+          // was set for.
+          ...(installed
+            ? {
+                forceApkUpdatePendingAt: null as any,
+                forceApkUpdateOverrideWindow: false as any,
+              }
+            : {}),
         } as any,
       });
       if (installed) {
@@ -196,9 +203,17 @@ export class PlayerOtaController {
             id: true,
             tenantId: true,
             forceApkUpdatePendingAt: true,
+            forceApkUpdateOverrideWindow: true,
             lastOtaState: true,
             lastOtaAt: true,
-            tenant: { select: { autoUpdatePlayerEnabled: true } },
+            tenant: {
+              select: {
+                autoUpdatePlayerEnabled: true,
+                otaWindowStart: true,
+                otaWindowEnd: true,
+                otaWindowTimezone: true,
+              },
+            },
           } as any,
         }) as any;
         if (screen) {
@@ -246,9 +261,44 @@ export class PlayerOtaController {
               .catch(() => { /* swallow */ });
             allowReason = `force-pending-but-stalled-${screen.lastOtaState}`;
           } else if (ageMs < FORCE_WINDOW_MS) {
-            allowUpdate = true;
-            allowReason = `force-pending-${Math.round(ageMs / 1000)}s-ago`;
-            forcedPendingScreenId = screen.id;
+            // OTA maintenance-window gate (Sprint 11 Phase A).
+            // If tenant has configured a window AND the screen-level
+            // override is OFF, only allow the install during the window.
+            // Outside it, return uptoDate so the kiosk's worker exits
+            // cleanly. Flag stays set; next /update-check call inside
+            // the window will see allowUpdate=true.
+            //
+            // Operator (2026-05-12): "we cant have screens flashing all
+            // the time" + "find the bigger picture solution for
+            // uninterrupted service across all screens, all customer,
+            // all playlists".
+            const t = screen.tenant;
+            const overrideWindow = !!screen.forceApkUpdateOverrideWindow;
+            const windowConfigured = !!(t?.otaWindowStart && t?.otaWindowEnd && t?.otaWindowTimezone);
+            const insideWindow = windowConfigured
+              ? isInsideMaintenanceWindow(
+                  t.otaWindowStart!,
+                  t.otaWindowEnd!,
+                  t.otaWindowTimezone!,
+                )
+              : true; // No window configured → always "inside"
+
+            if (overrideWindow || insideWindow) {
+              allowUpdate = true;
+              allowReason = overrideWindow
+                ? `force-pending-${Math.round(ageMs / 1000)}s-ago-override-window`
+                : windowConfigured
+                  ? `force-pending-${Math.round(ageMs / 1000)}s-ago-inside-window`
+                  : `force-pending-${Math.round(ageMs / 1000)}s-ago`;
+              forcedPendingScreenId = screen.id;
+            } else {
+              allowReason = `force-pending-but-outside-window-${t!.otaWindowStart}-${t!.otaWindowEnd}-${t!.otaWindowTimezone}`;
+              this.logger.log(
+                `[ota] gated by maintenance window — screen=${screen.id} ` +
+                `tenant=${screen.tenantId} window=${t!.otaWindowStart}-${t!.otaWindowEnd} ` +
+                `${t!.otaWindowTimezone}; flag stays set, will re-evaluate next poll`,
+              );
+            }
           } else {
             allowReason = `force-pending-stale-${Math.round(ageMs / 60000)}min`;
             // 2026-04-28 (Server audit P0-3) — clean up stale flag.
@@ -1283,4 +1333,55 @@ function semverGte(a: string, b: string): boolean {
     if (diff !== 0) return diff > 0;
   }
   return true; // equal counts as gte
+}
+
+/**
+ * Sprint 11 Phase A — OTA maintenance-window check.
+ *
+ * Returns true if the current time (in `timezone`) is inside the
+ * [start, end] window. Wraparound supported: start=22:00, end=04:00
+ * means "10 PM to 4 AM next day."
+ *
+ * Inputs:
+ *   start, end — "HH:MM" zero-padded 24-hour strings.
+ *   timezone   — IANA name (America/Chicago, America/Los_Angeles, ...).
+ *
+ * Safety: if any input is malformed we default to TRUE (inside window)
+ * so a bad config doesn't accidentally lock the operator out of pushing
+ * updates. The schema migration default for these fields is NULL anyway,
+ * which the caller treats as "no window configured" — this safety net
+ * is for corrupted config rather than first-time setup.
+ */
+export function isInsideMaintenanceWindow(
+  start: string,
+  end: string,
+  timezone: string,
+  now: Date = new Date(),
+): boolean {
+  try {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(now);
+    const hh = parseInt(parts.find((p) => p.type === 'hour')?.value || '0', 10);
+    const mm = parseInt(parts.find((p) => p.type === 'minute')?.value || '0', 10);
+    const nowMinutes = hh * 60 + mm;
+    const [sh, sm] = start.split(':').map((n) => parseInt(n, 10));
+    const [eh, em] = end.split(':').map((n) => parseInt(n, 10));
+    if (![sh, sm, eh, em].every(Number.isFinite)) return true; // malformed → safe default
+    const startMin = sh * 60 + sm;
+    const endMin = eh * 60 + em;
+    if (startMin === endMin) return false; // zero-length window = never
+    if (startMin < endMin) {
+      // Same-day window (e.g. 02:00 → 04:00).
+      return nowMinutes >= startMin && nowMinutes < endMin;
+    }
+    // Wraparound window (e.g. 22:00 → 04:00). Inside = after start OR before end.
+    return nowMinutes >= startMin || nowMinutes < endMin;
+  } catch {
+    return true; // bad timezone → safe default
+  }
 }

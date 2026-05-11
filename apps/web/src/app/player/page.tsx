@@ -1201,11 +1201,34 @@ function PlayerPage() {
     if (!data) return;
 
     if (data.ota && data.ota.state) {
-      setServerOtaState({
-        state: data.ota.state,
-        progress: typeof data.ota.progress === 'number' ? data.ota.progress : null,
-        message: data.ota.message || null,
-        at: data.ota.at || null,
+      // Sprint 11 Phase A — heartbeat-diff guard.
+      // Operator (2026-05-12): WebSocket reconnects after Railway
+      // redeploys caused visible UI flashes because EVERY heartbeat
+      // unconditionally called setServerOtaState, even when the
+      // payload hadn't changed. React re-rendered subtree, iframe
+      // remounted, customer saw a blink.
+      //
+      // Fix: only call setServerOtaState when something MEANINGFUL
+      // changed. The equality check uses React's setter callback form
+      // so we compare against the latest committed state, not a stale
+      // closure capture.
+      setServerOtaState((prev) => {
+        const next = {
+          state: data.ota.state,
+          progress: typeof data.ota.progress === 'number' ? data.ota.progress : null,
+          message: data.ota.message || null,
+          at: data.ota.at || null,
+        };
+        if (
+          prev &&
+          prev.state === next.state &&
+          prev.progress === next.progress &&
+          prev.message === next.message &&
+          prev.at === next.at
+        ) {
+          return prev; // identity unchanged — no re-render
+        }
+        return next;
       });
       // INSTALLED is a "sticky" state on the server — it gets written on
       // the version-bump clear and never auto-clears. So data.ota.state

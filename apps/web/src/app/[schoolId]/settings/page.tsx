@@ -1,6 +1,6 @@
 "use client";
 
-import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon, Usb, MapPin, Plus, Building2, ShieldCheck, ShieldOff, ChevronDown } from 'lucide-react';
+import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon, Usb, MapPin, Plus, Building2, ShieldCheck, ShieldOff, ChevronDown, Clock } from 'lucide-react';
 import { usePathname, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { RoleGate } from '@/components/RoleGate';
@@ -9,6 +9,7 @@ import {
   useUpdateTenantPanicSettings, usePlaylists,
   useLocationBasedEmergencyConfig, useToggleLocationBasedEmergency, useFloorPlans,
   useAutoUpdatePlayerConfig, useToggleAutoUpdatePlayer, useLatestPlayerVersion,
+  useOtaWindowConfig, useUpdateOtaWindow,
 } from '@/hooks/use-api';
 import { useState, useRef, useEffect } from 'react';
 import { UsbIngestCard } from '@/components/settings/UsbIngestCard';
@@ -334,6 +335,15 @@ export default function SettingsPage() {
                 or something on that... i would hate to break a perfectly
                 good working screen with an update." Default OFF. */}
             <AutoUpdatePlayerToggle />
+
+            {/* Row 3 — OTA maintenance window. Sprint 11 Phase A.
+                Operator (2026-05-12): "we cant have screens flashing
+                all the time" + "find the bigger picture solution for
+                uninterrupted service across all screens, all customer,
+                all playlists". When set, dashboard "Push update" still
+                works but only APPLIES the install during the window.
+                Outside, the kiosk downloads quietly and waits. */}
+            <OtaMaintenanceWindowCard />
           </div>
 
           {/* USB Sneakernet Ingest (Sprint 7B) — collapsed by default.
@@ -998,6 +1008,133 @@ function AutoUpdatePlayerToggle() {
         {toggle.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : enabled ? <ShieldCheck className="w-4 h-4" /> : <ShieldOff className="w-4 h-4" />}
         <span>Auto-update {enabled ? 'On' : 'Off'}</span>
       </button>
+    </div>
+  );
+}
+
+// Sprint 11 Phase A — OTA maintenance window.
+// Three small inputs: start (HH:MM), end (HH:MM), timezone (IANA).
+// Save button writes to /tenants/me/ota-window. Clear button wipes
+// all three (window unconfigured = updates apply immediately, current
+// behavior).
+function OtaMaintenanceWindowCard() {
+  const { data: cfg, isLoading } = useOtaWindowConfig();
+  const update = useUpdateOtaWindow();
+  // Local edit state so the user can tweak before saving
+  const [start, setStart] = useState('');
+  const [end, setEnd] = useState('');
+  const [timezone, setTimezone] = useState('');
+  const [dirty, setDirty] = useState(false);
+
+  // Hydrate from server config on first load + after save
+  useEffect(() => {
+    if (!cfg) return;
+    setStart(cfg.start || '');
+    setEnd(cfg.end || '');
+    setTimezone(cfg.timezone || (typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'America/Chicago'));
+    setDirty(false);
+  }, [cfg]);
+
+  const configured = !!(cfg?.start && cfg?.end && cfg?.timezone);
+  const canSave = dirty && (
+    (start && end && timezone) || (!start && !end && !timezone) // either all set or all cleared
+  );
+
+  const save = () => {
+    update.mutate({
+      start: start || null,
+      end: end || null,
+      timezone: timezone || null,
+    });
+  };
+  const clear = () => {
+    setStart('');
+    setEnd('');
+    setTimezone('');
+    setDirty(true);
+  };
+
+  return (
+    <div className="px-6 py-4">
+      <div className="flex items-start gap-3 min-w-0 mb-3">
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+          configured ? 'bg-emerald-50' : 'bg-slate-100'
+        }`}>
+          <Clock className={`w-4 h-4 ${configured ? 'text-emerald-600' : 'text-slate-500'}`} />
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm font-bold text-slate-800 flex items-center gap-2">
+            Update install window
+            {configured ? (
+              <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                {cfg!.start}–{cfg!.end} {cfg!.timezone}
+              </span>
+            ) : (
+              <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">Not set — installs immediately</span>
+            )}
+          </div>
+          <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+            When set, dashboard &quot;Push update&quot; still works — but the install only APPLIES during this daily window in the configured timezone. Downloads happen anytime in the background (no disruption). Use this to keep customer-facing screens uninterrupted during business hours.
+          </p>
+          <p className="text-[10px] text-slate-400 mt-1">
+            Wraparound supported (e.g. <span className="font-mono">22:00 → 04:00</span> means &quot;10 PM to 4 AM next day&quot;). Per-push override available on the screen Push dialog.
+          </p>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="text-[11px] text-slate-400">Loading…</div>
+      ) : (
+        <div className="flex flex-wrap items-end gap-2 pl-12">
+          <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+            Start
+            <input
+              type="time"
+              value={start}
+              onChange={(e) => { setStart(e.target.value); setDirty(true); }}
+              className="block mt-1 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono"
+            />
+          </label>
+          <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+            End
+            <input
+              type="time"
+              value={end}
+              onChange={(e) => { setEnd(e.target.value); setDirty(true); }}
+              className="block mt-1 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono"
+            />
+          </label>
+          <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide flex-1 min-w-[180px]">
+            Timezone (IANA)
+            <input
+              type="text"
+              value={timezone}
+              onChange={(e) => { setTimezone(e.target.value); setDirty(true); }}
+              placeholder="America/Chicago"
+              className="block mt-1 w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={save}
+            disabled={!canSave || update.isPending}
+            className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide rounded-lg text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ background: 'var(--brand-primary, #4f46e5)' }}
+          >
+            {update.isPending ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Save'}
+          </button>
+          {configured && (
+            <button
+              type="button"
+              onClick={clear}
+              disabled={update.isPending}
+              className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

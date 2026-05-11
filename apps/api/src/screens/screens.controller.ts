@@ -1242,11 +1242,16 @@ export class ScreensController {
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Post(':id/force-update')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async forceUpdateOne(@Request() req: any, @Param('id') id: string) {
+  async forceUpdateOne(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body?: { overrideWindow?: boolean },
+  ) {
     const screen = await this.prisma.client.screen.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
     if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    const overrideWindow = !!body?.overrideWindow;
 
     // 2026-04-29 — Correlation ID for end-to-end OTA tracing.
     // Operator: "how did everyone miss these issues on the last 4
@@ -1265,13 +1270,18 @@ export class ScreensController {
 
     // Set the per-screen force flag — the next update-check from
     // this kiosk returns the latest APK (gated 30 min).
+    // Sprint 11 Phase A: overrideWindow=true bypasses the tenant's
+    // maintenance window for this one-shot push (emergency hotfix).
     await this.prisma.client.screen.update({
       where: { id },
-      data: { forceApkUpdatePendingAt: new Date() } as any,
+      data: {
+        forceApkUpdatePendingAt: new Date(),
+        forceApkUpdateOverrideWindow: overrideWindow,
+      } as any,
     }).catch((e) => {
       console.warn(`[OTA ${corrId}] forceApkUpdatePendingAt write FAILED: ${(e as Error).message}`);
     });
-    console.log(`[OTA ${corrId}] forceApkUpdatePendingAt SET`);
+    console.log(`[OTA ${corrId}] forceApkUpdatePendingAt SET (overrideWindow=${overrideWindow})`);
 
     const signed = this.signer.signMessage('CHECK_FOR_UPDATES', {
       scope: 'screen',
