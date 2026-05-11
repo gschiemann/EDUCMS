@@ -2129,6 +2129,39 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
           allow="autoplay; encrypted-media; clipboard-write; accelerometer; gyroscope; fullscreen"
           loading="eager"
           title="Web content"
+          // 2026-05-11 — operator: "i tried to use the remote control
+          // with the player so I could browse through the Internet or
+          // through the web URL I pushed, but the remote does not
+          // move it through the different areas of the web page like
+          // it does with the GoodView app. I thought we added that in
+          // one of these builds already."
+          //
+          // The Android-side shim (apps/player/.../SpatialNavigation.kt)
+          // was added 2026-05-07 but ONLY covers the fullscreen "URL
+          // overlay" path on the native player. WEBPAGE widgets render
+          // through this iframe instead — never touched by the native
+          // shim. Inject the same shim from the React side every time
+          // the iframe loads. Same-origin via /api/v1/proxy/web, so
+          // contentWindow.eval is legal.
+          onLoad={(e) => {
+            // Lazy import keeps the shim string out of the SSR bundle.
+            // The shim itself is ~3KB minified — runs entirely inside
+            // the iframe, no parent dependency.
+            const frame = e.currentTarget as HTMLIFrameElement;
+            import('./webpage-spatial-nav').then(({ injectSpatialNav }) => {
+              if (injectSpatialNav(frame)) {
+                // Hand focus to the iframe so the next remote-control
+                // key press lands inside it (where the shim's keydown
+                // handler is bound). Without this the iframe is loaded
+                // but parked unfocused — arrow keys go to <body> of
+                // the React player which doesn't do spatial nav, so
+                // the user sees "remote does nothing."
+                try {
+                  if (live && frame.contentWindow) frame.contentWindow.focus();
+                } catch { /* cross-origin guard — shouldn't happen via proxy */ }
+              }
+            }).catch(() => { /* never block the iframe on injection */ });
+          }}
         />
       </div>
     );
