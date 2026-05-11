@@ -2294,6 +2294,93 @@ function PlayerPage() {
     return () => { cancelled = true; clearInterval(iv); };
   }, [handleHeartbeatOta]);
 
+  // ─── Sprint 11 Phase B4 — stale-bundle auto-detection ───
+  // Companion to B1 (REFRESH_WEB push from dashboard). This is the
+  // kiosk-driven half: every ~5 min the kiosk fetches /api/build-info,
+  // compares the server's deployed SHA to its own baked-in SHA. On
+  // mismatch the kiosk schedules a soft reload during an idle window
+  // so a freshly-deployed fix reaches the fleet without any operator
+  // action.
+  //
+  // Idle = not currently rendering an emergency override AND not
+  // currently in the middle of an OTA install. The 60-300s random
+  // delay spreads a thousand-device fleet across 4 minutes so we
+  // don't all hit Vercel + Railway at the same instant after deploy.
+  //
+  // Preview tabs skip — only real kiosks self-reload.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (isPreviewMode()) return;
+
+    // Bake-time SHA — read once at load. Whatever was in the bundle
+    // when this WebView started serves as our reference.
+    const myShaRaw =
+      (process.env as any).NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ||
+      (process.env as any).NEXT_PUBLIC_BUILD_SHA ||
+      null;
+    const myShaShort = myShaRaw ? String(myShaRaw).slice(0, 12) : null;
+    // If we don't know our own SHA there's nothing to compare against —
+    // skip the whole check. (Local dev, custom hosting, etc.)
+    if (!myShaShort) return;
+
+    let cancelled = false;
+    let scheduledReloadTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const sameOriginBuildInfoUrl = '/api/build-info';
+    const check = async () => {
+      if (cancelled || scheduledReloadTimer) return;
+      try {
+        const res = await fetch(sameOriginBuildInfoUrl, { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        const serverShaShort = typeof data?.sha === 'string' ? data.sha : null;
+        if (!serverShaShort || serverShaShort === myShaShort) return;
+        // Mismatch — server has a different deployed SHA than us.
+        // Schedule a soft reload in 60-300s. The delay both spreads
+        // fleet load and gives the operator a chance to dismiss
+        // (future: a "Refresh queued in N s" toast with cancel).
+        const delay = 60_000 + Math.floor(Math.random() * 240_000);
+        console.log(
+          `[bundle-drift] mine=${myShaShort} server=${serverShaShort} — reloading in ${Math.round(delay / 1000)}s`,
+        );
+        scheduledReloadTimer = setTimeout(() => {
+          // Don't reload if there's an active emergency on screen —
+          // that override is more important than picking up a JS fix.
+          // The reloader will catch this on the next poll cycle.
+          const cachedEm = readCachedEmergency();
+          if (cachedEm) {
+            console.log('[bundle-drift] emergency active — deferring reload');
+            scheduledReloadTimer = null;
+            return;
+          }
+          try {
+            const bridge = (window as any).EduCmsNative;
+            if (bridge && typeof bridge.reload === 'function') {
+              bridge.reload();
+            } else {
+              window.location.reload();
+            }
+          } catch (e) {
+            console.warn('[bundle-drift] reload threw:', (e as Error)?.message);
+          }
+        }, delay);
+      } catch {
+        // Tolerated — /api/build-info will be re-polled on the next tick.
+      }
+    };
+
+    // First check delayed 30s so initial boot/pairing isn't interrupted
+    // by an immediate reload. Subsequent checks every 5 min.
+    const kickTimer = setTimeout(check, 30_000);
+    const iv = setInterval(check, 5 * 60_000);
+    return () => {
+      cancelled = true;
+      clearTimeout(kickTimer);
+      clearInterval(iv);
+      if (scheduledReloadTimer) clearTimeout(scheduledReloadTimer);
+    };
+  }, []);
+
   // ─── Realtime WebSocket Connection ───
   // Hardened: exponential backoff with jitter, refs (not effect-locals) for timers
   // so cleanup is deterministic, dead-connection detection via lastWsMessageAt,
