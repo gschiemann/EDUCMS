@@ -195,6 +195,8 @@ export class PlayerOtaController {
             id: true,
             tenantId: true,
             forceApkUpdatePendingAt: true,
+            lastOtaState: true,
+            lastOtaAt: true,
             tenant: { select: { autoUpdatePlayerEnabled: true } },
           } as any,
         }) as any;
@@ -207,7 +209,42 @@ export class PlayerOtaController {
           allowReason = 'tenant-auto-on';
         } else if (screen?.forceApkUpdatePendingAt) {
           const ageMs = Date.now() - new Date(screen.forceApkUpdatePendingAt).getTime();
-          if (ageMs < FORCE_WINDOW_MS) {
+
+          // 2026-05-12 — operator: "my signage keeps refreshing and
+          // loading the webpage out of nowhere which can not happen
+          // when we are live with customers". Root cause: The Den
+          // was stuck at last_ota_state='INSTALLING' for 2h+ because
+          // Manager's notification-based install dialog was eaten by
+          // the OEM. The forceApkUpdatePendingAt flag stayed set →
+          // every periodic worker tick re-downloaded the APK +
+          // tried to install + failed → infinite loop chewing
+          // bandwidth and triggering WebView reloads.
+          //
+          // Defensive auto-clear: if last_ota_state has been
+          // INSTALLING for > 10 minutes without a versionCode bump,
+          // we KNOW the install failed (OEM ate the prompt, signature
+          // mismatch, permission denied, whatever). Clear the flag so
+          // the kiosk stops retrying. Operator can re-push manually.
+          const STALLED_INSTALL_MS = 10 * 60_000;
+          const stalled =
+            (screen.lastOtaState === 'INSTALLING' || screen.lastOtaState === 'ERROR') &&
+            screen.lastOtaAt &&
+            (Date.now() - new Date(screen.lastOtaAt).getTime() > STALLED_INSTALL_MS);
+
+          if (stalled) {
+            this.logger.warn(
+              `[ota] auto-clearing force flag — install stalled at state=${screen.lastOtaState} ` +
+              `for ${Math.round((Date.now() - new Date(screen.lastOtaAt).getTime()) / 60000)}min ` +
+              `screen=${screen.id}`,
+            );
+            this.prisma.client.screen
+              .update({
+                where: { id: screen.id },
+                data: { forceApkUpdatePendingAt: null } as any,
+              })
+              .catch(() => { /* swallow */ });
+            allowReason = `force-pending-but-stalled-${screen.lastOtaState}`;
+          } else if (ageMs < FORCE_WINDOW_MS) {
             allowUpdate = true;
             allowReason = `force-pending-${Math.round(ageMs / 1000)}s-ago`;
             forcedPendingScreenId = screen.id;
