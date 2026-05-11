@@ -632,7 +632,7 @@ export class ScreensController {
     if (fingerprint.startsWith('preview-')) return { ok: true, ignored: 'preview' };
     const screen = await this.prisma.client.screen.findUnique({
       where: { deviceFingerprint: fingerprint },
-      select: { id: true, name: true, lastOtaState: true },
+      select: { id: true, name: true, lastOtaState: true, playerVersionCode: true },
     });
     if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
 
@@ -647,6 +647,54 @@ export class ScreensController {
       ? Math.max(0, Math.min(100, Math.round(body.progress)))
       : null;
     const message = body?.message ? String(body.message).slice(0, 500) : null;
+
+    // 2026-05-12 — operator: "the text says update complete to .54 but
+    // the installed version says .52 still". Root cause: Manager's
+    // SELF-update worker calls reportOtaState(INSTALLED, "Manager v...
+    // (up to date)") on every periodic tick to clear its own stale
+    // ERROR banner. That OVERWRITES the Player OTA state column —
+    // which was sitting on INSTALLING from the actual Player upgrade
+    // attempt. The web splash UI fires "Update complete to v1.0.54"
+    // when it sees state=INSTALLED, regardless of whether the
+    // playerVersionCode actually changed.
+    //
+    // Fix: discard Manager-self-update noise from the Player OTA state
+    // column. Manager reports its own state with messages like
+    // "Manager v1.0.17-debug (up to date)" — those are about MANAGER,
+    // not Player, and must not pollute the Player upgrade state UI.
+    //
+    // We detect Manager self-update by the message prefix the worker
+    // uses (apps/player/manager/.../ManagerSelfUpdateWorker.kt lines
+    // 120, 127). If the API needs richer routing later, add a source
+    // field to the request body; the prefix check is enough today.
+    const isManagerSelfReport = !!message && /^Manager v/i.test(message);
+    if (isManagerSelfReport) {
+      console.log(
+        `[ota-state] fp=${fingerprint.slice(0, 18)}… IGNORED Manager-self-update ` +
+        `noise (state=${state} msg="${(message || '').slice(0, 60)}") — would have ` +
+        `falsely overwritten Player OTA state column`,
+      );
+      return { ok: true, ignored: 'manager-self-update-noise' };
+    }
+
+    // 2026-05-12 — also guard against state=INSTALLED being written
+    // when the kiosk's reported playerVersionCode hasn't actually
+    // increased. The kiosk reports versionCode every heartbeat; the
+    // ONLY proof an install really landed is the versionCode bump.
+    // If a worker over-eagerly reports INSTALLED without an actual
+    // upgrade, downgrade it to the prior state so the splash banner
+    // doesn't lie. The legitimate INSTALLED is written by the
+    // persistReportedVersion path (line ~500 of this file) when a
+    // genuine versionCode bump is detected.
+    if (state === 'INSTALLED') {
+      console.log(
+        `[ota-state] fp=${fingerprint.slice(0, 18)}… INSTALLED received but ` +
+        `playerVersionCode=${(screen as any).playerVersionCode ?? '?'} — only ` +
+        `version-bump path writes INSTALLED, ignoring this report to prevent ` +
+        `false "Update complete" banner`,
+      );
+      return { ok: true, ignored: 'installed-without-version-bump' };
+    }
 
     await this.prisma.client.screen.update({
       where: { id: screen.id },

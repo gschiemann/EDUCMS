@@ -1215,8 +1215,20 @@ function PlayerPage() {
       // in progress" banner pops every 30s forever after a successful
       // install (operator caught this 2026-04-28).
       if (data.ota.state === 'INSTALLED') {
+        // 2026-05-12 — operator: "the text says update complete to .54
+        // but the installed version says .52 still". The banner was
+        // firing on a stale/false INSTALLED state. Belt-and-suspenders
+        // on top of the server-side fix in screens.controller — also
+        // verify the *currently running* playerVersion matches what
+        // the message claims was installed. If the message says
+        // "v1.0.54" but data.playerVersion is still "1.0.52-debug",
+        // the install didn't actually land — don't celebrate.
         const installedAt = String(data.ota.at || '').trim();
-        if (installedAt && otaInstalledKeyRef.current !== installedAt) {
+        const installedMsg = String(data.ota.message || '').trim();
+        const claimedVn = (installedMsg.match(/v(\d+\.\d+\.\d+)/i) || [])[1];
+        const runningVn = String((data as any).playerVersion || '').replace(/-debug$/i, '');
+        const versionMatches = !claimedVn || !runningVn || runningVn.startsWith(claimedVn);
+        if (installedAt && otaInstalledKeyRef.current !== installedAt && versionMatches) {
           otaInstalledKeyRef.current = installedAt;
           // Persist so navigating back to splash doesn't re-fire the
           // banner on the same sticky-INSTALLED state (operator bug
@@ -1229,6 +1241,10 @@ function PlayerPage() {
           } catch { /* ignore */ }
           setOtaProgress((prev) => prev ?? { startedAt: Date.now(), bridgeAvailable: true });
           setTimeout(() => setOtaProgress(null), 3000);
+        } else if (installedAt && !versionMatches) {
+          // Silently swallow — log so the operator can grep if needed.
+          // eslint-disable-next-line no-console
+          console.warn(`[OTA] suppressed false INSTALLED banner: claimed=${claimedVn} running=${runningVn}`);
         }
       }
     } else {
