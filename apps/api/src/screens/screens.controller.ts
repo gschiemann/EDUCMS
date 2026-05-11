@@ -2,6 +2,7 @@ import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGu
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import type { Request as ExpressReq, Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
+import { withDbRetry } from '../prisma/with-db-retry';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
@@ -469,9 +470,18 @@ export class ScreensController {
       return { screenId: null, paired: false, name: 'Preview', pairingCode: null, isPreview: true };
     }
 
-    const screen = await this.prisma.client.screen.findUnique({
-      where: { deviceFingerprint: fingerprint },
-    });
+    // Phase B — wrap the 3 DB hits in this hot endpoint with bounded
+    // retry. The Supabase pooler trips on prepared-statement reuse a
+    // few times per hour; without retry, those become a 500 → kiosk
+    // briefly shows OFFLINE on the dashboard. With retry, the second
+    // attempt almost always succeeds inside 100ms and the user sees
+    // nothing. See with-db-retry.ts for the transient-error classifier.
+    const screen = await withDbRetry(
+      () => this.prisma.client.screen.findUnique({
+        where: { deviceFingerprint: fingerprint },
+      }),
+      { label: 'screen.findUnique[fp]' },
+    );
     if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
 
     // Update lastPingAt — and if the kiosk passed its app version on
@@ -547,10 +557,13 @@ export class ScreensController {
       `prior=${screen.playerVersion || '(none)'} changed=${versionChanged} ` +
       `apk-ua=${isApkUa} url=${String(rawUrl).slice(0, 200)}`,
     );
-    await this.prisma.client.screen.update({
-      where: { id: screen.id },
-      data,
-    });
+    await withDbRetry(
+      () => this.prisma.client.screen.update({
+        where: { id: screen.id },
+        data,
+      }),
+      { label: 'screen.update[heartbeat]' },
+    );
 
     // 2026-04-29 — surface OTA state on the heartbeat so the web
     // player's splash can render REAL progress (CHECKING /
@@ -559,18 +572,21 @@ export class ScreensController {
     // /ota-state at each phase; we just relay the latest values
     // here. Web player already polls this endpoint every 30s, so
     // we get progress feedback for free.
-    const screenAfterUpdate = await this.prisma.client.screen.findUnique({
-      where: { id: screen.id },
-      select: {
-        lastOtaState: true,
-        lastOtaProgress: true,
-        lastOtaMessage: true,
-        lastOtaAt: true,
-        playerVersion: true,
-        managerVersion: true,
-        forceApkUpdatePendingAt: true,
-      } as any,
-    });
+    const screenAfterUpdate = await withDbRetry(
+      () => this.prisma.client.screen.findUnique({
+        where: { id: screen.id },
+        select: {
+          lastOtaState: true,
+          lastOtaProgress: true,
+          lastOtaMessage: true,
+          lastOtaAt: true,
+          playerVersion: true,
+          managerVersion: true,
+          forceApkUpdatePendingAt: true,
+        } as any,
+      }),
+      { label: 'screen.findUnique[ota-state]' },
+    );
     // 2026-04-29 — operator (push went silent on v1.0.30 kiosk):
     // "pushed, nothing happened anywhere" + dashboard showed
     // "waiting for kiosk (≤ 35 min via periodic check)". WS push
@@ -1425,10 +1441,18 @@ export class ScreensController {
   async getManifest(@Param('id') id: string, @Req() req: ExpressReq, @Res() res: Response) {
     const activeDeviceHash = req.headers['if-none-match'];
 
-    const screen = await this.prisma.client.screen.findUnique({
-      where: { id },
-      include: { screenGroup: true }
-    });
+    // Phase B — same retry treatment as deviceStatus. Manifest fetch
+    // is the call whose failure cascades all the way to nativeReload
+    // on the kiosk (5 consecutive failures → WebView hard reload),
+    // so a transient pool blip here is the single most visible
+    // failure mode for the kiosk experience.
+    const screen = await withDbRetry(
+      () => this.prisma.client.screen.findUnique({
+        where: { id },
+        include: { screenGroup: true }
+      }),
+      { label: 'screen.findUnique[manifest]' },
+    );
 
     if (!screen || screen.status === 'REVOKED') {
       return res.status(403).json({ error: 'Device invalid or revoked' });
