@@ -1,0 +1,36 @@
+# OTA wiring integrity gate.
+#
+# Catches every regression class that's repeatedly broken silent OTA on
+# operator kiosks — without an emulator, without an APK build, without
+# requiring the operator to sideload anything to verify. Runs in <5
+# seconds on every push + PR. Red CI = OTA is BROKEN.
+#
+# What this gate catches (see scripts/ota-wiring-check.sh for the
+# full list):
+#   - UPDATE_PACKAGES_WITHOUT_USER_ACTION stripped from a manifest
+#   - setRequireUserAction(USER_ACTION_NOT_REQUIRED) not called
+#   - Api31SilentInstall / Api34UpdateOwnership missing or not
+#     @RequiresApi-isolated (Android 11 VerifyError trap)
+#   - setAppPackageName not pinned to our own package
+#   - Web player OTA-banner dedup not persisting to localStorage
+#   - Player's OTA worker bailing out when Manager is installed
+#
+# When this gate fails: read the failure line, find the matching bug
+# class number in scripts/ota-wiring-check.sh, fix it, push again.
+
+name: OTA Wiring Integrity
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  check:
+    name: OTA wiring check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run OTA wiring integrity script
+        run: bash scripts/ota-wiring-check.sh
