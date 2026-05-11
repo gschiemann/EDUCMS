@@ -1147,6 +1147,17 @@ function PlayerPage() {
     | { kind: 'connected' }
     | { kind: 'reconnecting'; reason: string; nextRetryAt: number; attempt: number };
   const [connectivity, setConnectivity] = useState<ConnectivityState>({ kind: 'connected' });
+  // Sprint 11 Phase B5 — last-known-frame overlay (grace window).
+  // The "Reconnecting…" toast renders the moment connectivity flips
+  // to reconnecting, which pops up over the content for routine
+  // 1-3 s deploy blips that the kiosk would have recovered from
+  // silently. Operator-visible flash.
+  //
+  // Fix: gate the toast behind a 15 s grace timer. For brief blips
+  // the kiosk just keeps showing the previous frame; the toast only
+  // appears once the outage has been ongoing long enough that the
+  // operator deserves an explanation. Resets on successful reconnect.
+  const [showReconnectToast, setShowReconnectToast] = useState(false);
   // Resilient registration loop — DETACHED from the useEffect lifecycle
   // so a phase change doesn't cancel an in-flight retry. The catch
   // handler in the previous code did exactly that and produced the
@@ -3146,7 +3157,21 @@ function PlayerPage() {
   // Computed inline as a JSX expression (not a function) so it can
   // be referenced in the early-return Fragments below without
   // hitting temporal-dead-zone issues.
-  const connectivityToast = connectivity.kind === 'reconnecting' ? (() => {
+  // Phase B5 grace-window timer. Listens for connectivity transitions
+  // and decides when the toast becomes visible.
+  useEffect(() => {
+    if (connectivity.kind === 'connected') {
+      setShowReconnectToast(false);
+      return;
+    }
+    // Reconnecting state — kick the grace timer. If we recover before
+    // it fires, the cleanup below cancels it and the toast never shows.
+    const GRACE_MS = 15_000;
+    const t = setTimeout(() => setShowReconnectToast(true), GRACE_MS);
+    return () => clearTimeout(t);
+  }, [connectivity.kind]);
+
+  const connectivityToast = connectivity.kind === 'reconnecting' && showReconnectToast ? (() => {
     const remainMs = Math.max(0, connectivity.nextRetryAt - Date.now());
     const remainSec = Math.ceil(remainMs / 1000);
     // Operator screenshot 2026-04-27 (post-deploy reconnect on M Series):
