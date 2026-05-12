@@ -9,6 +9,7 @@ import {
   AlignLeft, AlignCenter, AlignRight,
   Bold, Italic, Underline, Strikethrough,
   RefreshCw, Maximize2, Clock, Thermometer, Gauge, Calendar, Globe, MousePointer,
+  Layers3,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { AssetLibraryModal, measureZoneFontSize } from './PropertiesPanel';
@@ -20,6 +21,7 @@ import { BuilderCanvas } from './BuilderCanvas';
 import { WidgetPalette } from './WidgetPalette';
 import { VariantPicker } from './VariantPicker';
 import { LayersPanel } from './LayersPanel';
+import { ScenesPanel } from './ScenesPanel';
 import { PropertiesPanel, CanvasBackdropSection } from './PropertiesPanel';
 import { BrandKitPanel } from './BrandKitPanel';
 import { BackgroundPanel } from './BackgroundPanel';
@@ -35,7 +37,7 @@ interface Props {
   onSaved: (t: Template) => void;
 }
 
-type PanelKey = 'widgets' | 'background' | 'layers' | 'properties' | 'brand';
+type PanelKey = 'widgets' | 'background' | 'layers' | 'scenes' | 'properties' | 'brand';
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 const AUTO_SAVE_IDLE_MS = 15_000;
@@ -93,6 +95,10 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         sortOrder: z.sortOrder ?? 0,
         defaultConfig: z.defaultConfig,
         locked: false,
+        touchAction: (z as any).touchAction ?? null,
+        // Phase D2.5 — thread sceneId into the builder store. Pre-D2
+        // zones have null and render in every scene (legacy/shared).
+        sceneId: (z as any).sceneId ?? null,
       })),
       meta: {
         name: template.name,
@@ -103,6 +109,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         bgGradient: template.bgGradient || '',
         bgImage: template.bgImage || '',
       },
+      scenes: template.scenes ?? [],
     });
   }, [template, init]);
 
@@ -153,6 +160,13 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
           zIndex: z.zIndex,
           sortOrder: i,
           defaultConfig: z.defaultConfig,
+          // Phase D1 + D2.5 — persist the touch action + scene
+          // assignment along with the zone geometry. Without these
+          // fields in the PUT body the API atomic-replace silently
+          // wiped them on every save — a regression that pre-shipped
+          // the multi-scene model.
+          touchAction: z.touchAction ?? null,
+          sceneId: z.sceneId ?? null,
         })),
       });
       markClean();
@@ -414,6 +428,10 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
     { key: 'widgets', label: 'Widgets', icon: Plus },
     { key: 'background', label: 'Background', icon: Paintbrush },
     { key: 'layers', label: 'Layers', icon: Layers },
+    // Phase D2.5 — Scenes panel slots between Layers and Properties so
+    // the operator's mental model is "layers within this scene → drill
+    // out to scenes → drill into a specific zone."
+    { key: 'scenes', label: 'Scenes', icon: Layers3 },
     { key: 'properties', label: 'Properties', icon: Settings2 },
     { key: 'brand', label: 'Brand', icon: Palette },
   ];
@@ -529,6 +547,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
               {panel === 'widgets' && <VariantPicker />}
               {panel === 'background' && <BackgroundPanel />}
               {panel === 'layers' && <LayersPanel />}
+              {panel === 'scenes' && <ScenesPanel />}
               {panel === 'properties' && <PropertiesPanel />}
               {panel === 'brand' && <BrandKitPanel />}
             </div>

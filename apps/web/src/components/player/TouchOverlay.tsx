@@ -19,8 +19,9 @@
  * pinch-zoom, and image carousels can layer on later.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { X as XIcon, Volume2, VolumeX } from 'lucide-react';
+import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 
 type TouchOverlayShape =
   | { kind: 'iframe'; url: string }
@@ -206,14 +207,28 @@ export function TouchOverlay({
 }
 
 /**
- * TouchNavOverlay — full-screen render of a navigated-to template
- * with a back chip. The visitor lands here after tapping a
- * goto-template action; tap "Back" or wait for idle to return home.
+ * TouchNavOverlay — Phase D2.7 (2026-05-12).
  *
- * v1 uses a simple iframe-into-the-builder-preview path. Until D2
- * lands the multi-scene model, this is enough — the operator can
- * link multiple templates together via goto-template actions and
- * get a working multi-scene experience without schema changes.
+ * Full-screen render of a navigated-to template with a back chip.
+ * Visitor lands here after tapping a goto-template action; tap "Back"
+ * or wait for idle to return home.
+ *
+ * v2 (this revision) renders the target template's zones via the same
+ * `WidgetPreview` the builder uses, scaled via transform:scale to fit
+ * the viewport. Same pattern the gallery thumbnails use
+ * (ScaledTemplateThumbnail) so coordinates stay pixel-accurate at any
+ * viewport size. live=true so widgets behave as on the main player
+ * (clocks tick, weather fetches, etc.).
+ *
+ * Limitations / honest scope:
+ *   - Stateless: every visit re-mounts the widgets (no carryover).
+ *   - No audio sync with the underlying player — audio toggles still
+ *     route via the existing edu:touch-sound-toggle event.
+ *   - Animations restart on every nav (acceptable for v1).
+ *   - Renders the template's default scene only. goto-scene fires the
+ *     edu:touch-scene-change event which the host player intercepts
+ *     before reaching this overlay, so this code path only handles
+ *     cross-template nav.
  */
 export function TouchNavOverlay({
   template,
@@ -222,35 +237,124 @@ export function TouchNavOverlay({
   template: any;
   onBack: () => void;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
+  const screenWidth = template?.screenWidth || 1920;
+  const screenHeight = template?.screenHeight || 1080;
+
+  // Compute the transform:scale every time the container resizes so
+  // the rendered scene fits the available viewport. Same math the
+  // gallery's `ScaledTemplateThumbnail` uses. Padding accounts for the
+  // back-chip + breathing room around the canvas.
+  useLayoutEffect(() => {
+    const recompute = () => {
+      const el = containerRef.current;
+      if (!el) return;
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (!w || !h) return;
+      const sx = w / screenWidth;
+      const sy = h / screenHeight;
+      setScale(Math.min(sx, sy));
+    };
+    recompute();
+    const ro = new ResizeObserver(recompute);
+    if (containerRef.current) ro.observe(containerRef.current);
+    window.addEventListener('resize', recompute);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', recompute);
+    };
+  }, [screenWidth, screenHeight]);
+
+  // Pick the default scene (or first by sort order). Mirrors the
+  // player's `defaultScene` resolution. Zones with `sceneId === null`
+  // render in every scene (shared); zones with a matching `sceneId`
+  // render on the active scene; zones with a *different* sceneId stay
+  // hidden so visitors see only the intended slice.
+  const scenes: Array<{ id: string; isDefault: boolean; sortOrder: number }> = Array.isArray(template?.scenes) ? template.scenes : [];
+  const defaultScene = scenes.find((s) => s.isDefault) || scenes[0] || null;
+  const allZones: any[] = Array.isArray(template?.zones) ? template.zones : [];
+  const zones = defaultScene
+    ? allZones.filter((z) => !z.sceneId || z.sceneId === defaultScene.id)
+    : allZones;
+
+  // Background paint — same precedence the playback layer uses: image
+  // wins over gradient wins over color, with a default-black fallback.
+  const bgStyle: React.CSSProperties = (() => {
+    if (template?.bgImage) {
+      return { background: `#000 url(${template.bgImage}) center/cover no-repeat` };
+    }
+    if (template?.bgGradient) return { background: template.bgGradient };
+    if (template?.bgColor) return { background: template.bgColor };
+    return { background: '#000' };
+  })();
+
   return (
     <div className="fixed inset-0 bg-black z-[115] flex flex-col" role="dialog" aria-modal="true">
       <button
         type="button"
         onClick={onBack}
         className="absolute top-6 left-6 z-10 px-4 py-2.5 rounded-full bg-white/15 hover:bg-white/25 text-white text-sm font-semibold backdrop-blur-sm transition-colors"
+        aria-label="Back to previous scene"
       >
         ← Back
       </button>
-      <div className="flex-1 flex items-center justify-center p-12">
-        {/* v1 — we render the template's name + a hint until D2
-            re-renders the actual zones. The full template-zone
-            render path lives inside the main player tree and isn't
-            extractable in a small commit. Operators get a working
-            "navigated to template X" signal; the visible content
-            wires through fetchContent + applyManifest in D2. */}
-        <div className="text-white text-center">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-2">
-            Navigated scene
-          </p>
-          <h2 className="text-5xl font-black mb-3">{template?.name || 'Untitled'}</h2>
-          {template?.description && (
-            <p className="text-lg text-white/70 max-w-2xl mx-auto">{template.description}</p>
-          )}
-          <p className="text-xs text-white/40 mt-12">
-            Phase D2 (multi-scene model) will render the live zones here.
-            Tap “← Back” or wait {Math.round(60_000 / 1000)} s to return.
-          </p>
-        </div>
+
+      {/* Scaling pane. Outer ref provides the measurement viewport;
+          inner div is the *fixed-pixel* canvas at the template's
+          natural resolution; transform:scale shrinks it to fit. */}
+      <div ref={containerRef} className="flex-1 relative flex items-center justify-center">
+        {zones.length === 0 ? (
+          // Hard-empty template fallback. Could happen if a freshly-
+          // created template was navigated to without any zones; better
+          // to communicate than to leave a black screen.
+          <div className="text-white text-center px-8">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-2">
+              Empty scene
+            </p>
+            <h2 className="text-4xl font-black mb-3">{template?.name || 'Untitled'}</h2>
+            <p className="text-sm text-white/50">This template has no widgets yet. Tap "← Back" to return.</p>
+          </div>
+        ) : (
+          <div
+            style={{
+              width: screenWidth,
+              height: screenHeight,
+              transform: `scale(${scale})`,
+              transformOrigin: 'center center',
+              position: 'relative',
+              ...bgStyle,
+            }}
+          >
+            {zones
+              .slice()
+              .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+              .map((z) => (
+                <div
+                  key={z.id}
+                  style={{
+                    position: 'absolute',
+                    left: `${z.x}%`,
+                    top: `${z.y}%`,
+                    width: `${z.width}%`,
+                    height: `${z.height}%`,
+                    zIndex: z.zIndex ?? 0,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <WidgetPreview
+                    widgetType={z.widgetType}
+                    config={z.defaultConfig || {}}
+                    width={z.width}
+                    height={z.height}
+                    live={true}
+                  />
+                </div>
+              ))}
+          </div>
+        )}
       </div>
     </div>
   );

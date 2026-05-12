@@ -916,6 +916,13 @@ export class TemplatesController {
         zIndex?: number;
         sortOrder?: number;
         defaultConfig?: any;
+        /** Phase D1 — TouchActionConfig JSON. Null clears it. */
+        touchAction?: any;
+        /** Phase D2.5 — TemplateScene.id this zone belongs to, or null
+         *  for a "shared" zone that renders in every scene. Validated
+         *  against scenes belonging to THIS template — passing a scene
+         *  id from a different template returns 400. */
+        sceneId?: string | null;
       }>;
     },
   ) {
@@ -930,6 +937,32 @@ export class TemplatesController {
     // Validate all zones
     for (const zone of body.zones) {
       validateZoneBounds(zone);
+    }
+
+    // Phase D2.5 — guard sceneId references. The atomic replace below
+    // would happily insert sceneIds that don't belong to this template
+    // (or don't exist at all); validating up-front gives the operator
+    // a friendly error instead of a foreign-key violation later.
+    const referencedSceneIds = Array.from(
+      new Set(
+        body.zones
+          .map((z) => z.sceneId)
+          .filter((s): s is string => typeof s === 'string' && !!s),
+      ),
+    );
+    if (referencedSceneIds.length > 0) {
+      const validScenes = await (this.prisma.client as any).templateScene.findMany({
+        where: { templateId: id, id: { in: referencedSceneIds } },
+        select: { id: true },
+      });
+      const validIds = new Set((validScenes as Array<{ id: string }>).map((s) => s.id));
+      const bad = referencedSceneIds.filter((sid) => !validIds.has(sid));
+      if (bad.length > 0) {
+        throw new HttpException(
+          `Zones reference scene ids that don't belong to this template: ${bad.join(', ')}`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
     }
 
     // Atomic replace: delete all existing zones then create new ones
@@ -948,14 +981,25 @@ export class TemplatesController {
             zIndex: z.zIndex ?? 0,
             sortOrder: z.sortOrder ?? i,
             defaultConfig: z.defaultConfig ? JSON.stringify(z.defaultConfig) : null,
-          },
+            // Phase D1 — persist TouchActionConfig. The player runtime
+            // reads zone.touchAction; the column accepts arbitrary
+            // JSON so future TouchActionConfig variants don't need
+            // schema migrations.
+            touchAction: z.touchAction == null ? null : (z.touchAction as any),
+            // Phase D2.5 — scene assignment. Null = shared across
+            // every scene. Validated above; safe to write directly.
+            sceneId: z.sceneId ?? null,
+          } as any,
         }),
       ),
     ]);
 
     const freshTemplate = await this.prisma.client.template.findUnique({
       where: { id },
-      include: { zones: { orderBy: { sortOrder: 'asc' } } },
+      include: {
+        zones: { orderBy: { sortOrder: 'asc' } },
+        scenes: { orderBy: { sortOrder: 'asc' } } as any,
+      } as any,
     });
     return mapTemplate(freshTemplate);
   }

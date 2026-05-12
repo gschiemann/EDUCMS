@@ -691,6 +691,12 @@ export function PropertiesPanel() {
 
       <ContentFields zone={zone} updateZone={updateZone} />
 
+      {/* Phase D2.5 — Scene assignment. Lets the operator move this
+          zone to a different scene, or mark it "shared" (visible on
+          every scene). Only rendered when the template has 2+ scenes;
+          single-scene templates don't need the affordance. */}
+      <ZoneSceneAssignment zone={zone} updateZone={updateZone} />
+
       {/* Phase D1 — Tap action editor. Only renders when the template
           has interactivity enabled (Template.isTouchEnabled). Sets
           zone.touchAction which the player runtime honors at tap-time
@@ -1062,6 +1068,42 @@ const ACTION_DEFS: Array<{
   { type: 'request-help',     label: 'Request help',       icon: Bell,         hint: 'Sends an in-app notification to admins.',                    example: 'e.g. a "Need a tour guide?" button at the front desk',
     targetLabel: 'Title (optional)', targetPlaceholder: 'Visitor at front desk',   needsTarget: false, picker: 'text' },
 ];
+
+// Phase D2.5 — Move a zone between scenes (or mark it shared so it
+// renders on every scene). Hidden when the template has fewer than
+// 2 scenes since single-scene templates have nothing to assign to.
+function ZoneSceneAssignment({
+  zone,
+  updateZone,
+}: {
+  zone: { id: string; sceneId?: string | null };
+  updateZone: (id: string, patch: any, commit?: boolean) => void;
+}) {
+  const scenes = useBuilderStore((s) => s.scenes);
+  if (!scenes || scenes.length < 2) return null;
+  const value = zone.sceneId ?? '__shared__';
+  return (
+    <section className="space-y-2">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Scene</div>
+      <select
+        value={value}
+        onChange={(e) => {
+          const v = e.target.value;
+          updateZone(zone.id, { sceneId: v === '__shared__' ? null : v }, true);
+        }}
+        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400"
+      >
+        <option value="__shared__">Shared (every scene)</option>
+        {scenes.map((s) => (
+          <option key={s.id} value={s.id}>{s.name}{s.isDefault ? ' · default' : ''}</option>
+        ))}
+      </select>
+      <p className="text-[10px] text-slate-400">
+        Move this widget between scenes, or mark it Shared to keep it visible everywhere.
+      </p>
+    </section>
+  );
+}
 
 function TapActionEditor({
   zone,

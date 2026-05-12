@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Zone, HistoryEntry } from './types';
+import type { Zone, HistoryEntry, TemplateScene } from './types';
 import { DEFAULT_GRID_SIZE, MIN_ZONE_SIZE, widgetLabel } from './constants';
 
 const HISTORY_LIMIT = 50;
@@ -20,6 +20,15 @@ interface BuilderState {
   // Sprint 4 — touch-mode settings. Not part of HistoryEntry (toggle-only UX).
   isTouchEnabled: boolean;
   idleResetMs: number;
+  // Phase D2.5 (2026-05-12) — multi-scene state. `scenes` mirrors the
+  // server's TemplateScene rows; `activeSceneId` tracks which scene the
+  // operator is currently editing. Zones with `sceneId === activeSceneId`
+  // (or `sceneId == null` for shared zones) render on the canvas. Scene
+  // CRUD goes through the API and refreshes this list; we DON'T put it
+  // in History (undo) because scenes are a higher-order entity than the
+  // canvas zones / meta you're snapshotting per action.
+  scenes: TemplateScene[];
+  activeSceneId: string | null;
   selectedIds: string[];
   /** Per-field text editing — set when operator focuses a sub-text on
    *  an HS widget (or any widget whose config carries a `__styles` map).
@@ -37,9 +46,18 @@ interface BuilderState {
   isDirty: boolean;
 
   // actions
-  init(payload: { id: string; isSystem: boolean; zones: Zone[]; meta: BuilderState['meta']; isTouchEnabled?: boolean; idleResetMs?: number }): void;
+  init(payload: { id: string; isSystem: boolean; zones: Zone[]; meta: BuilderState['meta']; isTouchEnabled?: boolean; idleResetMs?: number; scenes?: TemplateScene[] }): void;
   setTouchEnabled(v: boolean): void;
   setIdleResetMs(n: number): void;
+  /** Phase D2.5 — refresh scenes from server (called after CRUD ops). */
+  setScenes(scenes: TemplateScene[]): void;
+  /** Phase D2.5 — switch which scene the canvas shows + edits. Optimistic
+   *  client-only state; doesn't dirty the template. */
+  setActiveSceneId(sceneId: string | null): void;
+  /** Phase D2.5 — assign one or more zones to a scene (or null = shared
+   *  across every scene). Persists via the same updateZone path so the
+   *  next zone-save flush picks it up. */
+  assignZonesToScene(zoneIds: string[], sceneId: string | null, commit?: boolean): void;
   markClean(): void;
   addZone(widgetType: string, dropAt?: { x: number; y: number }): string;
   /**
@@ -102,6 +120,8 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   },
   isTouchEnabled: false,
   idleResetMs: 60000,
+  scenes: [],
+  activeSceneId: null,
   selectedIds: [],
   activeFieldName: null,
   gridSize: DEFAULT_GRID_SIZE,
@@ -114,22 +134,62 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   future: [],
   isDirty: false,
 
-  init: ({ id, isSystem, zones, meta, isTouchEnabled, idleResetMs }) => set({
-    templateId: id,
-    isSystem,
-    zones: zones.map(z => ({ ...z })),
-    meta,
-    isTouchEnabled: isTouchEnabled ?? false,
-    idleResetMs: idleResetMs ?? 60000,
-    selectedIds: [],
-    activeFieldName: null,
-    past: [],
-    future: [],
-    isDirty: false,
-  }),
+  init: ({ id, isSystem, zones, meta, isTouchEnabled, idleResetMs, scenes }) => {
+    // Pick the default scene (or first by sort order) so the canvas
+    // mounts on a known-good slice. Falls back to null (= show ALL
+    // zones, legacy behavior) when the template has no scenes — which
+    // shouldn't happen post-migration but is safer than blanking the
+    // canvas if the include() ever changes server-side.
+    const sceneList = scenes ?? [];
+    const defaultScene = sceneList.find((s) => s.isDefault) || sceneList[0] || null;
+    set({
+      templateId: id,
+      isSystem,
+      zones: zones.map(z => ({ ...z })),
+      meta,
+      isTouchEnabled: isTouchEnabled ?? false,
+      idleResetMs: idleResetMs ?? 60000,
+      scenes: sceneList,
+      activeSceneId: defaultScene?.id ?? null,
+      selectedIds: [],
+      activeFieldName: null,
+      past: [],
+      future: [],
+      isDirty: false,
+    });
+  },
 
   setTouchEnabled: (v) => set({ isTouchEnabled: v, isDirty: true }),
   setIdleResetMs: (n) => set({ idleResetMs: Math.max(5000, Math.min(600000, n)), isDirty: true }),
+
+  setScenes: (scenes) => {
+    // Preserve the currently-active scene if it still exists; otherwise
+    // fall back to the default or first scene so we never strand the
+    // canvas on a deleted scene id.
+    const prev = get().activeSceneId;
+    const stillThere = prev && scenes.find((s) => s.id === prev);
+    const fallback = scenes.find((s) => s.isDefault) || scenes[0] || null;
+    set({
+      scenes,
+      activeSceneId: stillThere ? prev : (fallback?.id ?? null),
+    });
+  },
+
+  setActiveSceneId: (sceneId) => {
+    // Drop selection when switching scenes — selecting a zone that's
+    // not visible on the current scene is a UX dead-end.
+    set({ activeSceneId: sceneId, selectedIds: [], activeFieldName: null });
+  },
+
+  assignZonesToScene: (zoneIds, sceneId, commit = true) => {
+    const prev = get();
+    if (zoneIds.length === 0) return;
+    const ids = new Set(zoneIds);
+    const zones = prev.zones.map((z) => (ids.has(z.id) ? { ...z, sceneId: sceneId ?? null } : z));
+    const base: Partial<BuilderState> = { zones, isDirty: true, future: [] };
+    if (commit) base.past = [...prev.past, snapshot(prev)].slice(-HISTORY_LIMIT);
+    set(base as BuilderState);
+  },
 
   markClean: () => set({ isDirty: false }),
 
@@ -235,6 +295,12 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     // / desc; once it lands as a zone, the type folds into the canonical
     // DECORATION dispatch in WidgetRenderer.
     const canonicalWidgetType = widgetType.startsWith('DECORATION_') ? 'DECORATION' : widgetType;
+    // Phase D2.5 — new zones inherit the currently-active scene so the
+    // operator's mental model holds: "I clicked Add while editing
+    // Scene B, the new widget belongs to Scene B." Shared zones (those
+    // that render in every scene) are an explicit operator choice via
+    // the properties panel.
+    const activeSceneId = get().activeSceneId;
     const next: Zone = clampZone({
       id,
       name: `${widgetLabel(widgetType)} ${zones.length + 1}`,
@@ -246,6 +312,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
       zIndex: zones.reduce((m, z) => Math.max(m, z.zIndex), 0) + 1,
       sortOrder: zones.length,
       defaultConfig: seedDefault(widgetType),
+      sceneId: activeSceneId,
     });
     set({ zones: [...zones, next], past, future: [], selectedIds: [id], isDirty: true });
     return id;

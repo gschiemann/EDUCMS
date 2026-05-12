@@ -1,7 +1,7 @@
 "use client";
 
 import { createElement, memo, useRef, useState } from 'react';
-import { Lock, Loader2, Upload } from 'lucide-react';
+import { Lock, Loader2, Upload, Hand } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 import { API_URL } from '@/lib/api-url';
 import type { Zone, ResizeHandle } from './types';
@@ -693,6 +693,30 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       {zone.locked && !previewMode && (
         <div className="absolute top-1 right-1 bg-slate-800/80 text-white rounded-full p-1" aria-label="Locked">
           <Lock className="w-3 h-3" aria-hidden />
+        </div>
+      )}
+
+      {/* Phase D2.6 — touch-action affordance. When a zone has a tap
+          action assigned, surface a small Hand badge so the operator
+          can audit interactivity from the canvas without opening the
+          properties panel. Hidden in preview mode; positioned right
+          of the lock icon so they don't collide. */}
+      {!previewMode && zone.touchAction && (
+        <div
+          className="absolute top-1 right-1 z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider opacity-80 group-hover:opacity-100 transition-opacity pointer-events-none"
+          style={{
+            background: 'var(--brand-primary, #6366f1)',
+            color: 'white',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.25)',
+            // Nudge down when both lock + touch badges are present so
+            // they stack instead of overlapping.
+            top: zone.locked ? '1.75rem' : '0.25rem',
+          }}
+          aria-label={`Touch action: ${zone.touchAction.type}`}
+          title={`Tap action: ${zone.touchAction.type}`}
+        >
+          <Hand className="w-2.5 h-2.5" aria-hidden />
+          {zone.touchAction.type}
         </div>
       )}
 

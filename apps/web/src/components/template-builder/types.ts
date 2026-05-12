@@ -82,6 +82,31 @@ export interface Zone {
   defaultConfig?: Record<string, unknown> | null;
   locked?: boolean;
   touchAction?: TouchActionConfig | null;
+  /** Phase D2 multi-scene. Optional — when null/undefined the zone
+   *  renders in EVERY scene (legacy + shared content like a tenant logo
+   *  in the corner). When set, the zone only renders when the scene
+   *  with this id is active. */
+  sceneId?: string | null;
+}
+
+/**
+ * TemplateScene — Phase D2 (2026-05-12) multi-scene model.
+ *
+ * A template can hold N scenes; each zone optionally points to a scene
+ * via `sceneId`. The player picks the default scene at boot and switches
+ * via `goto-scene` touch actions.
+ *
+ * Every template gets ONE `isDefault: true` scene at create-time (the
+ * migration backfilled "Main" for every existing template). Deleting
+ * the last default scene is blocked at the API; reassign or pick a new
+ * default first.
+ */
+export interface TemplateScene {
+  id: string;
+  templateId: string;
+  name: string;
+  sortOrder: number;
+  isDefault: boolean;
 }
 
 export interface Template {
@@ -98,6 +123,7 @@ export interface Template {
   isSystem?: boolean;
   status?: string;
   zones: Zone[];
+  scenes?: TemplateScene[];
 }
 
 export interface HistoryEntry {

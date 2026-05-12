@@ -275,7 +275,21 @@ export function BuilderCanvas() {
   // unrelated state tick (e.g. isDirty flag flipping). Per-key lets
   // Zustand skip the render entirely when nothing this component cares
   // about changed.
-  const zones = useBuilderStore((s) => s.zones);
+  const allZones = useBuilderStore((s) => s.zones);
+  const activeSceneId = useBuilderStore((s) => s.activeSceneId);
+  // Phase D2.5 — only render zones belonging to the active scene plus
+  // "shared" zones (sceneId == null). The store still holds every zone
+  // across every scene; this is purely the editor's viewport filter so
+  // hit-tests, multi-select, marquee, etc. all match what's visible.
+  // When activeSceneId is itself null (operator clicked the "Shared"
+  // pseudo-scene at the bottom of the panel) we render ONLY shared
+  // zones — that's how the operator audits "always-on" content.
+  const zones = (() => {
+    if (activeSceneId === null) {
+      return allZones.filter((z) => !z.sceneId);
+    }
+    return allZones.filter((z) => !z.sceneId || z.sceneId === activeSceneId);
+  })();
   const meta = useBuilderStore((s) => s.meta);
   const selectedIds = useBuilderStore((s) => s.selectedIds);
   const zoom = useBuilderStore((s) => s.zoom);

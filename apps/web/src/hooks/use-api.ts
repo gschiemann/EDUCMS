@@ -767,6 +767,10 @@ export function useUpdateTemplateZones() {
         zIndex?: number;
         sortOrder?: number;
         defaultConfig?: any;
+        /** Phase D1 — JSON-serialized touch action; null clears it. */
+        touchAction?: any;
+        /** Phase D2.5 — null = shared across every scene. */
+        sceneId?: string | null;
       }>;
     }) => apiFetch(`/templates/${id}/zones`, { method: 'PUT', body: JSON.stringify({ zones }) }),
     onSuccess: (_, vars) => {
@@ -798,6 +802,74 @@ export function useDeleteTemplate() {
       }
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ['templates'] }),
+  });
+}
+
+// ─── Template scenes (Phase D2.5) ───────────────────────────────
+//
+// Wraps the /templates/:id/scenes CRUD endpoints. All four mutations
+// invalidate the parent template query so the builder store picks up
+// the fresh scenes list on the next render.
+
+export interface TemplateScene {
+  id: string;
+  templateId: string;
+  name: string;
+  sortOrder: number;
+  isDefault: boolean;
+}
+
+export function useTemplateScenes(templateId: string) {
+  return useQuery<TemplateScene[]>({
+    queryKey: ['templates', templateId, 'scenes'],
+    queryFn: () => apiFetch<TemplateScene[]>(`/templates/${templateId}/scenes`),
+    enabled: !!templateId,
+    staleTime: 30_000,
+  });
+}
+
+export function useCreateScene(templateId: string) {
+  const qc = useQueryClient();
+  return useMutation<TemplateScene, Error, { name?: string }>({
+    mutationFn: (body) =>
+      apiFetch<TemplateScene>(`/templates/${templateId}/scenes`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['templates', templateId] });
+    },
+  });
+}
+
+export function useUpdateScene(templateId: string) {
+  const qc = useQueryClient();
+  return useMutation<
+    TemplateScene,
+    Error,
+    { sceneId: string; patch: { name?: string; sortOrder?: number; isDefault?: boolean } }
+  >({
+    mutationFn: ({ sceneId, patch }) =>
+      apiFetch<TemplateScene>(`/templates/${templateId}/scenes/${sceneId}`, {
+        method: 'PUT',
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['templates', templateId] });
+    },
+  });
+}
+
+export function useDeleteScene(templateId: string) {
+  const qc = useQueryClient();
+  return useMutation<{ success: boolean }, Error, string>({
+    mutationFn: (sceneId) =>
+      apiFetch<{ success: boolean }>(`/templates/${templateId}/scenes/${sceneId}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['templates', templateId] });
+    },
   });
 }
 
