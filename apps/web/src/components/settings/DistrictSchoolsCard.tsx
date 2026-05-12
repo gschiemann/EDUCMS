@@ -11,9 +11,9 @@
  * One UI, every industry. Pulled from Tenant.vertical (K12 default).
  */
 import { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
 import { apiFetch } from '@/lib/api-client';
 import { useAppStore } from '@/lib/store';
+import { useTenantSwitch } from '@/hooks/use-tenant-switch';
 import { Building2, Plus, MonitorPlay, Users, ExternalLink, AlertTriangle, Loader2 } from 'lucide-react';
 
 interface ChildTenant {
@@ -146,6 +146,16 @@ export function DistrictSchoolsCard() {
   const [slug, setSlug] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 2026-05-11 — clicking a child school used to be a bare <Link> which
+  // navigated WITHOUT re-issuing the JWT. The new dashboard URL would
+  // load but /branding/me still answered as the parent district, so the
+  // child's page rendered with the district's logo/colors. Now we route
+  // through the same useTenantSwitch hook the top-right toolbar uses —
+  // POST /tenants/switch → new JWT → store update → cache wipe → nav.
+  // The branding repaint then happens automatically because
+  // BrandStyleInjector watches [tenantId, activeTenant, user].
+  const { switchToTenant, switchingId, error: switchError } = useTenantSwitch();
 
   const role = user?.role || '';
   const visible = role === 'DISTRICT_ADMIN' || role === 'SUPER_ADMIN';
@@ -299,29 +309,44 @@ export function DistrictSchoolsCard() {
 
             {data?.children?.length ? (
               <div className="space-y-2">
-                {data.children.map((row) => (
-                  <Link
-                    key={row.id}
-                    href={`/${row.slug}/dashboard`}
-                    className="flex items-center justify-between gap-4 px-4 py-3 rounded-lg border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors group"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-slate-800 group-hover:text-indigo-700 truncate">
-                        {row.name}
+                {switchError && (
+                  <div className="flex items-start gap-2 text-xs text-rose-700 bg-rose-50 px-3 py-2 rounded border border-rose-200">
+                    <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <span>{switchError}</span>
+                  </div>
+                )}
+                {data.children.map((row) => {
+                  const isSwitching = switchingId === row.id;
+                  return (
+                    <button
+                      type="button"
+                      key={row.id}
+                      onClick={() => switchToTenant({ id: row.id, slug: row.slug })}
+                      disabled={!!switchingId}
+                      className="w-full flex items-center justify-between gap-4 px-4 py-3 rounded-lg border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors group disabled:opacity-60 disabled:cursor-wait text-left"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-slate-800 group-hover:text-indigo-700 truncate">
+                          {row.name}
+                        </div>
+                        <div className="text-xs text-slate-500 font-mono">/{row.slug}</div>
                       </div>
-                      <div className="text-xs text-slate-500 font-mono">/{row.slug}</div>
-                    </div>
-                    <div className="flex items-center gap-4 text-xs text-slate-500">
-                      <span className="flex items-center gap-1">
-                        <MonitorPlay className="w-3.5 h-3.5" /> {row._count.screens}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Users className="w-3.5 h-3.5" /> {row._count.users}
-                      </span>
-                      <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-indigo-600" />
-                    </div>
-                  </Link>
-                ))}
+                      <div className="flex items-center gap-4 text-xs text-slate-500">
+                        <span className="flex items-center gap-1">
+                          <MonitorPlay className="w-3.5 h-3.5" /> {row._count.screens}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Users className="w-3.5 h-3.5" /> {row._count.users}
+                        </span>
+                        {isSwitching ? (
+                          <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />
+                        ) : (
+                          <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-indigo-600" />
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             ) : (
               !adding && (

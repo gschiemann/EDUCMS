@@ -1,39 +1,28 @@
 "use client";
 
 import { useEffect, useRef, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
-import { useQueryClient } from '@tanstack/react-query';
+import { usePathname } from 'next/navigation';
 import { Building2, ChevronsUpDown, Check, Loader2 } from 'lucide-react';
 import { useAccessibleTenants } from '@/hooks/use-api';
 import { useAppStore } from '@/lib/store';
-import { apiFetch } from '@/lib/api-client';
+import { useTenantSwitch } from '@/hooks/use-tenant-switch';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
-
-const LS_KEY = 'edu_cms_last_school';
 
 export function SchoolSwitcher() {
   const [open, setOpen] = useState(false);
-  const [switchingId, setSwitchingId] = useState<string | null>(null);
-  const [switchError, setSwitchError] = useState<string | null>(null);
-  const router = useRouter();
   const pathname = usePathname() || '';
   const activeTenant = useAppStore((s) => s.activeTenant);
-  const setActiveTenant = useAppStore((s) => s.setActiveTenant);
-  const login = useAppStore((s) => s.login);
-  const qc = useQueryClient();
   const { data } = useAccessibleTenants();
   const ref = useRef<HTMLDivElement>(null);
+
+  // Shared switch flow — same hook the Settings → schools list now uses.
+  // Keeps JWT swap + Zustand update + qc.clear() + navigate in one place
+  // so branding repaint behavior is identical across surfaces.
+  const { switchToTenant, switchingId, error: switchError } = useTenantSwitch();
 
   const tenants = data?.tenants ?? [];
   const current = tenants.find((t) => t.slug === activeTenant || t.id === activeTenant);
   const copy = useTenantCopy();
-
-  // Persist last-selected to localStorage
-  useEffect(() => {
-    if (activeTenant && typeof window !== 'undefined') {
-      localStorage.setItem(LS_KEY, activeTenant);
-    }
-  }, [activeTenant]);
 
   useEffect(() => {
     if (!open) return;
@@ -45,45 +34,18 @@ export function SchoolSwitcher() {
   }, [open]);
 
   const switchTo = async (slug: string) => {
-    // Find the tenant record so we have its id for the API call. Previously
-    // this function only updated the URL + client state — NEVER re-issued a
-    // JWT. The caller's JWT still carried the old tenantId claim, so every
-    // API query returned the PARENT tenant's data even when the user
-    // "switched" to a child school. Screens, assets, playlists all came
-    // from the parent. Bug: tenant isolation was visually broken for any
-    // district admin with child schools.
     const tenant = tenants.find((t) => t.slug === slug || t.id === slug);
     if (!tenant) return;
-    setSwitchingId(tenant.id);
-    setSwitchError(null);
-    try {
-      const res: any = await apiFetch('/tenants/switch', {
-        method: 'POST',
-        body: JSON.stringify({ tenantId: tenant.id }),
-      });
-      // Re-issue token + user so every subsequent apiFetch is scoped to
-      // the new tenant. login() writes to LS so a page refresh survives.
-      login(res.access_token, res.user);
-      setActiveTenant(tenant.slug);
-      if (typeof window !== 'undefined') localStorage.setItem(LS_KEY, tenant.slug);
-      // Wipe React Query cache so every widget re-fetches under the new
-      // tenant scope. Without this, stale parent-tenant data would stay
-      // on screen until individual query staleTime expired.
-      qc.clear();
-      // Swap first path segment with the new slug.
-      const parts = pathname.split('/').filter(Boolean);
-      if (parts.length === 0) {
-        router.push(`/${tenant.slug}/dashboard`);
-      } else {
-        parts[0] = tenant.slug;
-        router.push('/' + parts.join('/'));
-      }
-      setOpen(false);
-    } catch (e: any) {
-      setSwitchError(e?.message || `Failed to switch ${copy.orgPlural.toLowerCase()}.`);
-    } finally {
-      setSwitchingId(null);
+    // Preserve the current sub-path on switch (so a tenant-switch from
+    // /lincoln/screens lands on /roosevelt/screens, not the dashboard).
+    const parts = pathname.split('/').filter(Boolean);
+    let destination: string | undefined;
+    if (parts.length > 0) {
+      parts[0] = tenant.slug;
+      destination = '/' + parts.join('/');
     }
+    const result = await switchToTenant({ id: tenant.id, slug: tenant.slug }, destination);
+    if (result.ok) setOpen(false);
   };
 
   // If the user only has one accessible tenant, render a non-interactive label.
