@@ -2073,16 +2073,23 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
         );
       }
 
-      // Color customization — applies to every visible variant.
-      // Sensible defaults so an unset color falls back to brand
-      // primary (or the variant-specific accent for help/heart/star/
-      // play/close which override in the renderer).
+      // Color customization. allowTransparent on the bgColor picker
+      // surfaces a "Clear" button that sets bgColor to 'transparent';
+      // the renderer treats that as "ghost mode" — no disc/pill fill,
+      // no shadow, just the icon glyph floating at the chosen color.
+      // Operator: "once you set a device to a color i see no way to
+      // go back to transparency." This is the way back.
+      //
+      // The icon color picker also allows transparent but 'transparent'
+      // on color means "inherit the default" (an actually-invisible
+      // icon is useless; treat it as a reset signal instead).
       fields.push(
         <ColorPickerField
           key="bgColor"
           label="Button background"
           value={cfg.bgColor || ''}
           onChange={(v) => setField({ bgColor: v || undefined })}
+          allowTransparent
         />
       );
       fields.push(
@@ -2091,11 +2098,14 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
           label="Icon / text color"
           value={cfg.color || ''}
           onChange={(v) => setField({ color: v || undefined })}
+          allowTransparent
         />
       );
       fields.push(
         <p key="reset-tip" className="text-[10px] text-slate-400 -mt-1 leading-snug">
-          Leave empty to inherit the tenant brand color. Some variants (heart, star, help, close) use a default accent that the override replaces.
+          <strong>Clear background</strong> → renders the icon only (no button disc behind it).
+          <br />
+          <strong>Clear icon color</strong> → falls back to the tenant brand color.
         </p>
       );
       break;

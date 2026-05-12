@@ -2114,11 +2114,33 @@ export function TouchPointWidget({ config }: { config: any }) {
   // fallbacks. All three round-trip through the Properties panel
   // editor — see ContentFields case 'TOUCH_POINT' below.
   //   bgColor — button fill / disc background
+  //              'transparent' → GHOST MODE: no disc, no shadow,
+  //                              icon-only render. Operator: "i see
+  //                              no way to go back to transparency"
+  //                              — Properties picker's Clear button
+  //                              sends 'transparent' here.
   //   color   — icon + text color
+  //              'transparent' → inherit brand default (an invisible
+  //                              icon is useless; we treat the clear
+  //                              gesture as a reset signal).
   //   label   — text overlaid on labeled variants (tap-prompt /
   //             square / back / next / print)
-  const bgColor: string = config?.bgColor || 'var(--brand-primary, #7c3aed)';
-  const color: string = config?.color || 'var(--brand-primary-ink, #ffffff)';
+  const rawBgColor: string = String(config?.bgColor || '');
+  const rawColor: string = String(config?.color || '');
+  const ghostMode = rawBgColor === 'transparent';
+  const bgColor: string = ghostMode
+    ? 'transparent'
+    : (rawBgColor || 'var(--brand-primary, #7c3aed)');
+  const color: string = (rawColor && rawColor !== 'transparent')
+    ? rawColor
+    : 'var(--brand-primary-ink, #ffffff)';
+  // In ghost mode the icon needs a default color too — the brand-ink
+  // is usually white which would be invisible without a disc behind
+  // it. Fall back to the brand primary so the icon stays visible
+  // against any scene background.
+  const ghostIconColor: string = (rawColor && rawColor !== 'transparent')
+    ? rawColor
+    : 'var(--brand-primary, #7c3aed)';
   const label: string | undefined = typeof config?.label === 'string' ? config.label : undefined;
 
   // Hotspot variant — runtime invisible; BuilderZone draws the editor
@@ -2151,6 +2173,8 @@ export function TouchPointWidget({ config }: { config: any }) {
 
   // Pill / chip shared base — for variants that flow horizontally
   // with optional text (tap-prompt, back, next, square, print, search).
+  // Ghost mode drops the background + shadow so the label/icon
+  // floats inline with no disc behind it.
   const pillStyle: React.CSSProperties = {
     width: '100%',
     height: '100%',
@@ -2158,10 +2182,10 @@ export function TouchPointWidget({ config }: { config: any }) {
     alignItems: 'center',
     justifyContent: 'center',
     gap: '4cqmin',
-    background: bgColor,
-    color,
+    background: ghostMode ? 'transparent' : bgColor,
+    color: ghostMode ? ghostIconColor : color,
     border: 'none',
-    boxShadow: '0 1cqmin 3cqmin rgba(0,0,0,0.18)',
+    boxShadow: ghostMode ? 'none' : '0 1cqmin 3cqmin rgba(0,0,0,0.18)',
     fontWeight: 800,
     fontSize: '14cqmin',
     letterSpacing: '0.01em',
@@ -2174,16 +2198,22 @@ export function TouchPointWidget({ config }: { config: any }) {
   // arrows, circle, play). aspect-ratio keeps the disc circular
   // even when the zone aspect isn't 1:1; maxWidth/Height: 100%
   // keeps it inside the zone.
+  //
+  // Ghost mode: drop background/shadow/aspect-ratio so the icon
+  // fills the zone freely (no inscribed-circle clipping). The
+  // operator gets a pure-icon affordance — useful when they have
+  // a colored scene background and want the icon to BE the visual,
+  // not a button on top of one.
   const discStyle = (overrides: Partial<React.CSSProperties> = {}): React.CSSProperties => ({
-    aspectRatio: '1 / 1',
+    aspectRatio: ghostMode ? undefined : '1 / 1',
     maxWidth: '100%',
     maxHeight: '100%',
-    width: 'auto',
+    width: ghostMode ? '100%' : 'auto',
     height: '100%',
-    borderRadius: '999px',
-    background: bgColor,
-    color,
-    boxShadow: '0 1cqmin 3cqmin rgba(0,0,0,0.18)',
+    borderRadius: ghostMode ? 0 : '999px',
+    background: ghostMode ? 'transparent' : bgColor,
+    color: ghostMode ? ghostIconColor : color,
+    boxShadow: ghostMode ? 'none' : '0 1cqmin 3cqmin rgba(0,0,0,0.18)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2194,6 +2224,35 @@ export function TouchPointWidget({ config }: { config: any }) {
   // Bigger zone = bigger icon, automatically.
   const iconLg: React.CSSProperties = { width: '40cqmin', height: '40cqmin', flexShrink: 0 };
   const iconMd: React.CSSProperties = { width: '12cqmin', height: '12cqmin', flexShrink: 0 };
+
+  // Helper for variants that ship their own themed default colors
+  // (close=slate, help=amber, play=white-on-brand, heart=pink,
+  // star=amber, info=blue). Three modes per variant:
+  //   1. Operator hasn't set color → use the variant's themed default
+  //   2. Operator set a real color → use the operator's value
+  //   3. Operator cleared bgColor to 'transparent' → GHOST MODE:
+  //      no disc fill, no shadow; icon color falls back to the
+  //      variant's THEMED bg color (NOT brand-ink) so the icon
+  //      keeps its visual identity (heart stays pink, star stays
+  //      amber, etc.) when there's no disc behind it.
+  const themedDisc = (
+    themedBg: string,
+    themedFg: string,
+    shadowRGBA?: string,
+  ): Partial<React.CSSProperties> => {
+    if (ghostMode) {
+      return {
+        background: 'transparent',
+        color: (rawColor && rawColor !== 'transparent') ? rawColor : themedBg,
+        boxShadow: 'none',
+      };
+    }
+    return {
+      background: rawBgColor || themedBg,
+      color: (rawColor && rawColor !== 'transparent') ? rawColor : themedFg,
+      ...(shadowRGBA ? { boxShadow: `0 2cqmin 6cqmin ${shadowRGBA}` } : {}),
+    };
+  };
 
   switch (variant) {
     case 'tap-prompt':
@@ -2286,13 +2345,10 @@ export function TouchPointWidget({ config }: { config: any }) {
       );
     case 'close':
       // High-contrast slate fallback for close — operator can override
-      // bgColor/color through Properties if their scene needs it.
+      // via Properties; clearing bgColor returns to ghost mode.
       return (
         <div style={containerStyle}>
-          <div style={discStyle({
-            background: config?.bgColor || 'rgba(15, 23, 42, 0.78)',
-            color: config?.color || '#ffffff',
-          })}>
+          <div style={discStyle(themedDisc('rgba(15, 23, 42, 0.78)', '#ffffff'))}>
             <X style={{ width: '45%', height: '45%' }} aria-hidden />
           </div>
         </div>
@@ -2306,29 +2362,19 @@ export function TouchPointWidget({ config }: { config: any }) {
         </div>
       );
     case 'help':
-      // Amber default for "help" — universal color for advisory UI.
-      // Override via Properties if your theme calls for different.
+      // Amber default for "help" — universal advisory color.
       return (
         <div style={containerStyle}>
-          <div style={discStyle({
-            background: config?.bgColor || 'var(--brand-accent, #f59e0b)',
-            color: config?.color || 'var(--brand-accent-ink, #ffffff)',
-          })}>
+          <div style={discStyle(themedDisc('var(--brand-accent, #f59e0b)', 'var(--brand-accent-ink, #ffffff)'))}>
             <HelpCircle style={{ width: '55%', height: '55%' }} aria-hidden />
           </div>
         </div>
       );
     case 'play':
-      // White-on-brand for play CTAs — sits on top of a video tile
-      // and reads as "press to start." Operator can flip bgColor to
-      // change the disc color.
+      // White-on-brand for play CTAs — sits on top of a video tile.
       return (
         <div style={containerStyle}>
-          <div style={discStyle({
-            background: config?.bgColor || 'rgba(255,255,255,0.92)',
-            color: config?.color || 'var(--brand-primary, #7c3aed)',
-            boxShadow: '0 2cqmin 6cqmin rgba(0,0,0,0.35)',
-          })}>
+          <div style={discStyle(themedDisc('rgba(255,255,255,0.92)', 'var(--brand-primary, #7c3aed)', 'rgba(0,0,0,0.35)'))}>
             <Play style={{ width: '45%', height: '45%', marginLeft: '6%' }} fill="currentColor" aria-hidden />
           </div>
         </div>
@@ -2340,10 +2386,7 @@ export function TouchPointWidget({ config }: { config: any }) {
     case 'info':
       return (
         <div style={containerStyle}>
-          <div style={discStyle({
-            background: config?.bgColor || 'var(--brand-accent, #3b82f6)',
-            color: config?.color || 'var(--brand-accent-ink, #ffffff)',
-          })}>
+          <div style={discStyle(themedDisc('var(--brand-accent, #3b82f6)', 'var(--brand-accent-ink, #ffffff)'))}>
             <Info style={{ width: '55%', height: '55%' }} aria-hidden />
           </div>
         </div>
@@ -2377,11 +2420,7 @@ export function TouchPointWidget({ config }: { config: any }) {
     case 'heart':
       return (
         <div style={containerStyle}>
-          <div style={discStyle({
-            background: config?.bgColor || '#ec4899',
-            color: config?.color || '#ffffff',
-            boxShadow: '0 2cqmin 6cqmin rgba(236, 72, 153, 0.35)',
-          })}>
+          <div style={discStyle(themedDisc('#ec4899', '#ffffff', 'rgba(236, 72, 153, 0.35)'))}>
             <Heart style={{ width: '50%', height: '50%' }} fill="currentColor" aria-hidden />
           </div>
         </div>
@@ -2389,11 +2428,7 @@ export function TouchPointWidget({ config }: { config: any }) {
     case 'star':
       return (
         <div style={containerStyle}>
-          <div style={discStyle({
-            background: config?.bgColor || '#f59e0b',
-            color: config?.color || '#ffffff',
-            boxShadow: '0 2cqmin 6cqmin rgba(245, 158, 11, 0.35)',
-          })}>
+          <div style={discStyle(themedDisc('#f59e0b', '#ffffff', 'rgba(245, 158, 11, 0.35)'))}>
             <Star style={{ width: '55%', height: '55%' }} fill="currentColor" aria-hidden />
           </div>
         </div>
