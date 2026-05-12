@@ -81,6 +81,15 @@ const HANDLE_STYLES: Record<ResizeHandle, React.CSSProperties> = {
   w:  { top: '50%', left: -6, marginTop: -6, cursor: 'ew-resize' },
 };
 
+// Phase D2.8 — operator-friendly hotspot model. A TOUCH_POINT zone is
+// invisible at runtime (WidgetRenderer returns null) and renders as a
+// distinctive dashed overlay in the builder so the operator can spot
+// it on top of underlying content. Styling diverges from regular
+// zones: transparent fill, dashed brand-color border, "Touch point"
+// label badge. Resize handles work normally so the operator can size
+// it over any tap target.
+const isTouchPointType = (w: string) => w === 'TOUCH_POINT';
+
 function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizePointerDown, onSelect, onConfigChange }: Props) {
   // 2026-04-29 — pointerdown movement tracking so we distinguish a
   // click (no movement → enter edit mode) from a drag (>4px movement
@@ -93,6 +102,7 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
   const color = getZoneColor(zone.widgetType);
   const icon = widgetIcon(zone.widgetType);
   const label = widgetLabel(zone.widgetType);
+  const isTouchPoint = isTouchPointType(zone.widgetType);
 
   // 2026-04-28 — operator: 'same white background with color
   // selected'. Cause: every zone hardcoded background:'#ffffff' in
@@ -334,11 +344,22 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         // operator's bg shows through. The colored border + label
         // badge keep zone position obvious; the white interior is
         // only needed against the default white canvas.
-        background: previewMode ? 'transparent' : (hasCanvasBg ? 'transparent' : '#ffffff'),
+        // Phase D2.8 — TOUCH_POINT styling differs:
+        //   - Always transparent fill (the underlying widget content
+        //     beneath the hotspot is the visual)
+        //   - Always-dashed brand-color border (signals "this is a
+        //     tap target, not a content zone")
+        //   - No drop shadow (would imply this floats above content
+        //     visually; we want it to feel layered without weight)
+        background: isTouchPoint
+          ? (previewMode ? 'transparent' : 'rgba(124, 58, 237, 0.06)')
+          : (previewMode ? 'transparent' : (hasCanvasBg ? 'transparent' : '#ffffff')),
         border: previewMode
           ? 'none'
-          : (selected ? `3px dashed ${color.accent}` : `3px solid ${color.accent}`),
-        boxShadow: previewMode ? undefined : `0 4px 12px ${color.accent}33`,
+          : (isTouchPoint
+              ? '3px dashed var(--brand-primary, #7c3aed)'
+              : (selected ? `3px dashed ${color.accent}` : `3px solid ${color.accent}`)),
+        boxShadow: previewMode || isTouchPoint ? undefined : `0 4px 12px ${color.accent}33`,
         outline: 'none',
         cursor: zone.locked || previewMode ? 'default' : 'move',
         userSelect: 'none',
@@ -654,8 +675,35 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
           inner widgets (image/video/logo without an asset) still
           show WHAT they are + WHERE they are. Hidden in preview
           mode + when the zone is being interacted with (so it
-          doesn't obscure the actual content). */}
-      {!previewMode && (
+          doesn't obscure the actual content).
+
+          Phase D2.8 — TOUCH_POINT zones use a centered "Tap target"
+          label instead of a corner badge. The whole zone is the
+          tap region so the label belongs in the middle — and it
+          uses the brand-primary color to match the dashed border.
+          When a tap action is set, we show its type ("goto-scene",
+          "open-url", ...) so operators audit at a glance. */}
+      {!previewMode && isTouchPoint && (
+        <div className="absolute inset-0 z-30 pointer-events-none flex flex-col items-center justify-center text-center">
+          <div
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider"
+            style={{
+              background: 'var(--brand-primary, #7c3aed)',
+              color: 'white',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+            }}
+          >
+            <Hand className="w-3 h-3" aria-hidden />
+            {zone.touchAction ? zone.touchAction.type : 'Tap target'}
+          </div>
+          {!zone.touchAction && (
+            <p className="mt-1.5 text-[9px] font-semibold uppercase tracking-wider" style={{ color: 'var(--brand-primary, #7c3aed)' }}>
+              Set Tap Action →
+            </p>
+          )}
+        </div>
+      )}
+      {!previewMode && !isTouchPoint && (
         <div
           className="absolute top-1 left-1 z-30 pointer-events-none flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider opacity-70 group-hover:opacity-100 transition-opacity"
           style={{ background: color.bg, color: color.text, border: `1px solid ${color.border}` }}
@@ -706,8 +754,13 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
           action-type label ("goto-template") and the chip used to
           overflow. Two-tier render: tiny zones get an icon-only
           badge with the type in tooltip; larger zones get the
-          short type label clipped at max-width with truncate. */}
-      {!previewMode && zone.touchAction && (() => {
+          short type label clipped at max-width with truncate.
+
+          Phase D2.8 — TOUCH_POINT zones already render their own
+          centered Hand badge with the action type (see the
+          isTouchPoint block above), so skip the duplicate corner
+          badge here for those. */}
+      {!previewMode && !isTouchPoint && zone.touchAction && (() => {
         const isTiny = zone.width < 15 || zone.height < 15;
         const actionType = zone.touchAction.type;
         return (

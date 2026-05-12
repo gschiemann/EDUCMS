@@ -383,6 +383,12 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
   }
 
   switch (widgetType) {
+    // Phase D2.8 — TOUCH_POINT is a hotspot zone: invisible at
+    // runtime (visitor sees underlying content unaltered), tap-
+    // detecting (the zone's onClick handler still fires because the
+    // zone div is rendered above the scene). The builder draws a
+    // dashed overlay for editor-time visibility via BuilderZone.
+    case 'TOUCH_POINT':  return null;
     case 'CLOCK':        return <ClockWidget config={cfg} compact={compact} />;
     case 'WEATHER':      return <WeatherWidget config={cfg} compact={compact} />;
     case 'COUNTDOWN':    return <CountdownWidget config={cfg} compact={compact} onConfigChange={onConfigChange} />;

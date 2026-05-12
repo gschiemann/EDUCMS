@@ -49,6 +49,13 @@ interface BuilderState {
   init(payload: { id: string; isSystem: boolean; zones: Zone[]; meta: BuilderState['meta']; isTouchEnabled?: boolean; idleResetMs?: number; scenes?: TemplateScene[] }): void;
   setTouchEnabled(v: boolean): void;
   setIdleResetMs(n: number): void;
+  /** Phase D2.8 — add a TOUCH_POINT hotspot. Unlike addZone (which
+   *  creates a content-bearing zone), this is a small, transparent
+   *  tap target the operator drops on TOP of existing content. Starts
+   *  at 15% × 15% so it doesn't blanket the canvas. The operator
+   *  positions it over whatever they want tappable, then sets a
+   *  Tap Action in the Properties panel. */
+  addTouchPoint(dropAt?: { x: number; y: number }): string;
   /** Phase D2.5 — refresh scenes from server (called after CRUD ops). */
   setScenes(scenes: TemplateScene[]): void;
   /** Phase D2.5 — switch which scene the canvas shows + edits. Optimistic
@@ -161,6 +168,64 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
 
   setTouchEnabled: (v) => set({ isTouchEnabled: v, isDirty: true }),
   setIdleResetMs: (n) => set({ idleResetMs: Math.max(5000, Math.min(600000, n)), isDirty: true }),
+
+  // Phase D2.8 (2026-05-12) — operator: "i dont like how the initial
+  // touch point is the full screen and you need to shrink it down...
+  // just have an option to add touch point and keep adding smaller
+  // squares i can resize across the entire teamplate."
+  //
+  // addTouchPoint creates an overlay-style hotspot — a small (15%×15%
+  // default), transparent, named tap target the operator drops on
+  // top of existing content. It's a zone like any other, but the
+  // widget renders invisibly at runtime (player shows nothing; only
+  // the tap is consumed). The builder paints a distinctive dashed
+  // outline so the operator can see and reposition it.
+  addTouchPoint: (dropAt) => {
+    const id = crypto.randomUUID();
+    const past = [...get().past, snapshot(get())].slice(-HISTORY_LIMIT);
+    const zones = get().zones;
+    // Smaller default than addZone's 40×30. Touch points are meant
+    // to overlay specific UI, not blanket-cover content.
+    const w = 15;
+    const h = 15;
+    let x: number, y: number;
+    if (dropAt) {
+      x = Math.max(0, Math.min(100 - w, dropAt.x - w / 2));
+      y = Math.max(0, Math.min(100 - h, dropAt.y - h / 2));
+    } else {
+      // Stagger so the 2nd / 3rd / 4th touch point doesn't stack on
+      // top of the previous one. Walk in a 5%-offset diagonal until
+      // we'd run off canvas, then reset to (10, 10).
+      const tpCount = zones.filter((z) => z.widgetType === 'TOUCH_POINT').length;
+      const offset = (tpCount * 5) % 60;
+      x = 10 + offset;
+      y = 10 + offset;
+      if (x + w > 100 || y + h > 100) { x = 10; y = 10; }
+    }
+    const activeSceneId = get().activeSceneId;
+    const next: Zone = clampZone({
+      id,
+      name: `Touch point ${zones.filter((z) => z.widgetType === 'TOUCH_POINT').length + 1}`,
+      widgetType: 'TOUCH_POINT',
+      x, y, width: w, height: h,
+      zIndex: zones.reduce((m, z) => Math.max(m, z.zIndex), 0) + 1,
+      sortOrder: zones.length,
+      defaultConfig: {},
+      sceneId: activeSceneId,
+    });
+    set({
+      zones: [...zones, next],
+      past,
+      future: [],
+      selectedIds: [id],
+      // Auto-enable touch mode the first time the operator drops a
+      // touch point — if they're adding a hotspot, the template is
+      // by definition touch-interactive. Saves a step.
+      isTouchEnabled: true,
+      isDirty: true,
+    });
+    return id;
+  },
 
   setScenes: (scenes) => {
     // Preserve the currently-active scene if it still exists; otherwise

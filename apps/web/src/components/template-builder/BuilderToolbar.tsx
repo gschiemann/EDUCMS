@@ -2,7 +2,7 @@
 
 import {
   ArrowLeft, Save, Copy, Eye, EyeOff, Tv,
-  RotateCw, Loader2, CheckCircle2, AlertCircle, Hand, Trash2, X,
+  RotateCw, Loader2, CheckCircle2, AlertCircle, Hand, Trash2, X, Plus,
 } from 'lucide-react';
 import { useMemo } from 'react';
 import { useBuilderStore } from './useBuilderStore';
@@ -37,6 +37,7 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, onDiscard, onPreview,
   const setTouchEnabled = useBuilderStore((s) => s.setTouchEnabled);
   const flipCanvas = useBuilderStore((s) => s.flipCanvas);
   const setPreviewMode = useBuilderStore((s) => s.setPreviewMode);
+  const addTouchPoint = useBuilderStore((s) => s.addTouchPoint);
 
   const touchWarnings = useMemo(
     () => isTouchEnabled ? validateTouchHitTargets(zones, meta.screenWidth, meta.screenHeight).warnings : [],
@@ -110,6 +111,23 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, onDiscard, onPreview,
           pressed={isTouchEnabled}
         >
           <Hand className="w-3.5 h-3.5" aria-hidden />
+        </ToolbarBtn>
+
+        {/* Phase D2.8 — "Add Touch Point" hotspot button. Operator
+            (2026-05-12): "i dont like how the initial touch point is
+            the full screen and you need to shrink it down... just
+            have an option to add touch point and keep adding smaller
+            squares i can resize across the entire teamplate." This
+            button drops a small (15%×15%) transparent hotspot the
+            operator can position over existing content. Each click
+            stamps another one. Auto-enables touch mode on first
+            click (no need to flip the Hand toggle separately). */}
+        <ToolbarBtn
+          label="Add a touch hotspot — drop, resize, set Tap Action"
+          onClick={() => addTouchPoint()}
+        >
+          <Plus className="w-3.5 h-3.5" aria-hidden />
+          <span className="ml-1 text-[10px] font-bold uppercase tracking-wider hidden md:inline">Touch point</span>
         </ToolbarBtn>
         {isTouchEnabled && touchWarnings.length > 0 && (
           <span
