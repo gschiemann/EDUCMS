@@ -69,17 +69,20 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, onDiscard, onPreview,
             for canvas-state controls. Top toolbar keeps only the things
             unique to it: preview/touch toggles + save/discard cluster. */}
 
-        {/* 2026-05-10 — operator: "we need a preview button to see the
-            template before we post it". Distinct from the "Live preview"
-            toggle (which only hides side panels — canvas stays at builder
-            zoom, widgets render with live=false so videos don't autoplay).
-            "Preview" opens TemplatePreviewModal: fullscreen, native
-            resolution, live widgets. The two buttons live side-by-side
-            so the operator can pick: subtle inline preview vs. full
-            "what does this look like on the TV" preview. */}
+        {/* 2026-05-10 — TWO different views, side-by-side. Operator
+            audit 2026-05-12 caught the confusion: both buttons used
+            the word "preview" and the Eye button just hid chrome
+            (canvas still at builder zoom) — operators hit it expecting
+            fullscreen and got "tiny logo, same view, what?"
+            Renamed to make the distinction obvious at a glance. */}
+
+        {/* Tv icon — "Preview at TV size": fullscreen modal, native
+            resolution, scales to fit the viewport. This is the one
+            operators want for "does my template look right on the
+            actual screen?" verification. */}
         {onPreview && (
           <ToolbarBtn
-            label="Preview template (fullscreen)"
+            label="Open fullscreen preview at native resolution"
             onClick={onPreview}
           >
             <Tv className="w-3.5 h-3.5" aria-hidden />
@@ -87,12 +90,19 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, onDiscard, onPreview,
           </ToolbarBtn>
         )}
 
+        {/* Eye icon — "Hide editor chrome": keeps the canvas at its
+            current builder zoom but hides selection handles, zone
+            label badges, hotspot outlines. Useful for "I just want
+            to see the layout without the editor scaffolding" without
+            committing to fullscreen. Renamed from "Live preview" to
+            "Clean view" to stop competing with the Preview button. */}
         <ToolbarBtn
-          label={previewMode ? 'Exit preview' : 'Live preview'}
+          label={previewMode ? 'Exit clean view (show editor chrome)' : 'Clean view — hide editor chrome on the canvas'}
           onClick={() => setPreviewMode(!previewMode)}
           pressed={previewMode}
         >
           {previewMode ? <EyeOff className="w-3.5 h-3.5" aria-hidden /> : <Eye className="w-3.5 h-3.5" aria-hidden />}
+          <span className="ml-1 text-[10px] font-bold uppercase tracking-wider hidden md:inline">{previewMode ? 'Show chrome' : 'Clean view'}</span>
         </ToolbarBtn>
         <ToolbarBtn
           label={isTouchEnabled ? 'Touch mode: ON (WCAG 44px enforced)' : 'Enable touch mode'}
