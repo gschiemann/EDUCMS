@@ -103,9 +103,35 @@ export default function SuperPage() {
             </h1>
             <p className="text-sm text-slate-500 mt-1">Tenants, licenses, billing health.</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <Stat label="Tenants" value={String(totalTenants)} />
             <Stat label="Paired screens" value={String(totalSeats)} />
+            {/* Phase B closeout — fleet health rollups across every
+                tenant. Sums new server-side fields. Falls back to 0
+                if an older API version hasn't surfaced them yet. */}
+            <Stat
+              label="Online now"
+              value={String((tenants ?? []).reduce((n, t) => n + (t.screensOnline ?? 0), 0))}
+              accent
+            />
+            {(() => {
+              const inEmergency = (tenants ?? []).filter(t => t.emergencyActive).length;
+              return inEmergency > 0
+                ? <Stat label="In emergency" value={String(inEmergency)} tone="alert" />
+                : null;
+            })()}
+            {(() => {
+              const incidents = (tenants ?? []).reduce((n, t) => n + (t.openIncidents24h ?? 0), 0);
+              return incidents > 0
+                ? <Stat label="Incidents 24h" value={String(incidents)} tone="warn" />
+                : null;
+            })()}
+            {(() => {
+              const inCanary = (tenants ?? []).filter(t => (t.canaryPercent ?? 100) < 100).length;
+              return inCanary > 0
+                ? <Stat label="In canary" value={String(inCanary)} tone="warn" />
+                : null;
+            })()}
             <Stat label="Approx MRR" value={`$${(monthlyMrrCents / 100).toFixed(0)}`} accent />
           </div>
         </header>
@@ -128,6 +154,12 @@ export default function SuperPage() {
                       <th className="text-left px-4 py-2 font-bold">Tier</th>
                       <th className="text-left px-4 py-2 font-bold">Status</th>
                       <th className="text-left px-4 py-2 font-bold">Seats</th>
+                      {/* Phase B closeout — fleet health columns. Sit
+                          right next to Seats so the operator sees
+                          billing utilization + live online status
+                          side-by-side. */}
+                      <th className="text-left px-4 py-2 font-bold">Online</th>
+                      <th className="text-left px-4 py-2 font-bold">Health</th>
                       <th className="text-left px-4 py-2 font-bold">Billing</th>
                       <th className="text-left px-4 py-2 font-bold">Expires</th>
                       <th className="text-right px-4 py-2 font-bold">Actions</th>
@@ -155,6 +187,54 @@ export default function SuperPage() {
                           <span className="text-slate-400"> / {t.seatLimit}</span>
                           {t.atLimit && <span className="text-[10px] text-rose-600 font-bold ml-2">FULL</span>}
                         </td>
+                        {/* Phase B closeout — Online column: live count vs
+                            paired count. Green when ALL paired screens are
+                            up; amber when partial; rose when none are
+                            reporting. This is "fleet uptime at a glance." */}
+                        <td className="px-4 py-2.5 font-mono">
+                          {(() => {
+                            const online = t.screensOnline ?? 0;
+                            const paired = t.seatsUsed;
+                            const tone = paired === 0
+                              ? 'text-slate-400'
+                              : online === paired
+                                ? 'text-emerald-700 font-bold'
+                                : online === 0
+                                  ? 'text-rose-700 font-bold'
+                                  : 'text-amber-700 font-bold';
+                            return (
+                              <span className={tone}>
+                                {online}<span className="text-slate-400 font-normal"> / {paired}</span>
+                              </span>
+                            );
+                          })()}
+                        </td>
+                        {/* Phase B closeout — Health column: stacks the
+                            three operator-actionable signals (emergency,
+                            canary, recent incidents) into a single cell of
+                            tiny chips. Empty = healthy. */}
+                        <td className="px-4 py-2.5">
+                          <div className="flex flex-wrap gap-1 items-center">
+                            {t.emergencyActive && (
+                              <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-100 text-rose-700" title="Tenant is in an active emergency override">
+                                🚨 emergency
+                              </span>
+                            )}
+                            {(t.canaryPercent ?? 100) < 100 && (
+                              <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-700" title={`Staged rollout — ${t.canaryPercent}% cohort eligible for the latest APK`}>
+                                ⚙️ canary {t.canaryPercent}%
+                              </span>
+                            )}
+                            {(t.openIncidents24h ?? 0) > 0 && (
+                              <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-700" title={`${t.openIncidents24h} INFRA_EVENT notification(s) in the last 24h`}>
+                                ⚠️ {t.openIncidents24h} incident{t.openIncidents24h === 1 ? '' : 's'}
+                              </span>
+                            )}
+                            {!t.emergencyActive && (t.canaryPercent ?? 100) >= 100 && !(t.openIncidents24h ?? 0) && (
+                              <span className="text-[9px] text-slate-300">—</span>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-4 py-2.5 text-slate-600">{t.billingMode}</td>
                         <td className="px-4 py-2.5 text-slate-600">{t.expiresAt ? new Date(t.expiresAt).toLocaleDateString() : '—'}</td>
                         <td className="px-4 py-2.5 text-right">
@@ -181,10 +261,20 @@ export default function SuperPage() {
   );
 }
 
-function Stat({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
+function Stat({ label, value, accent = false, tone }: { label: string; value: string; accent?: boolean; tone?: 'warn' | 'alert' }) {
+  // Phase B closeout — added `tone` for the new fleet-health pills
+  // (canary, incidents, emergency). Preserves the existing `accent`
+  // prop so the MRR + Online-now tiles keep their emerald look.
+  const palette = tone === 'alert'
+    ? { bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-700' }
+    : tone === 'warn'
+      ? { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700' }
+      : accent
+        ? { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700' }
+        : { bg: 'bg-white', border: 'border-slate-200', text: 'text-slate-900' };
   return (
-    <div className={`px-4 py-2.5 rounded-xl border ${accent ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'} shadow-sm`}>
-      <div className={`text-lg font-extrabold ${accent ? 'text-emerald-700' : 'text-slate-900'}`}>{value}</div>
+    <div className={`px-4 py-2.5 rounded-xl border ${palette.bg} ${palette.border} shadow-sm`}>
+      <div className={`text-lg font-extrabold ${palette.text}`}>{value}</div>
       <div className="text-[10px] uppercase tracking-widest font-bold text-slate-500">{label}</div>
     </div>
   );

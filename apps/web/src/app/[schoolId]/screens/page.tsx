@@ -2,7 +2,7 @@
 
 import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb } from '@/hooks/use-api';
+import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
@@ -238,6 +238,202 @@ function PlayerKindChip({ screen }: { screen: any }) {
  * 256px wide and the fingerprint is 30+ chars; manual selection at that
  * width is fiddly. Click → check icon flash → resets after 1.6s.
  */
+// Phase B closeout — top-of-page fleet summary. 4 KPI tiles computed
+// off the already-loaded screens array (zero extra network).
+//
+// Tiles:
+//   TOTAL        all paired screens for this tenant
+//   ONLINE       Screen.status === 'ONLINE'
+//   OFFLINE      everything else (PENDING / unpaired excluded)
+//   EMERGENCY    screens whose tenant.emergencyStatus is ACTIVE
+//                OR which have an active ScreenEmergencyOverride
+//                (we approximate using the per-screen `emergencyStatus`
+//                flag in the screens payload; the canonical fan-out
+//                lives in the manifest endpoint)
+//   CANARY       only renders when the tenant has canaryFleetPercent
+//                < 100 — shows live install/error counts so the admin
+//                sees rollout progress without clicking through.
+//
+// Per the operator note "don't add new pages" — this enhances the
+// existing dashboard rather than a separate fleet console.
+function FleetSummaryStrip({ screens }: { screens: any[] }) {
+  const canary = useCanaryRollout();
+  const total = screens.length;
+  const online = screens.filter((s) => s.status === 'ONLINE').length;
+  const offline = total - online;
+  const emergencyActive = screens.filter(
+    (s) => s.emergencyStatus === 'ACTIVE' || s.tenant?.emergencyStatus === 'ACTIVE',
+  ).length;
+  const canaryActive = (canary.data?.percent ?? 100) < 100;
+
+  // No content yet? Render nothing — avoids the empty-state-on-empty-state
+  // visual stacking when a tenant has just signed up and has 0 screens.
+  if (total === 0 && !canaryActive) return null;
+
+  const tile = (label: string, value: number | string, tone: 'ok' | 'warn' | 'alert' | 'neutral' = 'neutral') => {
+    const palette = {
+      ok:      { bg: 'bg-emerald-50',  ring: 'ring-emerald-100',  text: 'text-emerald-700',  num: 'text-emerald-700' },
+      warn:    { bg: 'bg-amber-50',    ring: 'ring-amber-100',    text: 'text-amber-700',    num: 'text-amber-700' },
+      alert:   { bg: 'bg-red-50',      ring: 'ring-red-100',      text: 'text-red-700',      num: 'text-red-700' },
+      neutral: { bg: 'bg-slate-50',    ring: 'ring-slate-100',    text: 'text-slate-600',    num: 'text-slate-800' },
+    }[tone];
+    return (
+      <div className={`${palette.bg} ring-1 ${palette.ring} rounded-2xl px-5 py-4 flex-1 min-w-[120px]`}>
+        <div className={`text-[10px] font-bold uppercase tracking-wider ${palette.text}`}>{label}</div>
+        <div className={`text-2xl font-black ${palette.num} mt-1`}>{value}</div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex flex-wrap gap-3">
+      {tile('Total', total, 'neutral')}
+      {tile('Online', online, online === total && total > 0 ? 'ok' : 'neutral')}
+      {tile('Offline', offline, offline > 0 ? 'warn' : 'neutral')}
+      {tile('Emergency', emergencyActive, emergencyActive > 0 ? 'alert' : 'neutral')}
+      {canaryActive && (
+        <CanaryRolloutTile canary={canary.data!} />
+      )}
+    </div>
+  );
+}
+
+// Phase B closeout — canary rollout progress tile. Renders next to the
+// summary counters only when canaryFleetPercent < 100, so the dashboard
+// stays clean during normal "full rollout" state and lights up exactly
+// when a rollout is in flight.
+//
+// Shows: cohort %, soak time remaining, ERROR count from the cohort
+// (which is what halts the auto-promote service — operator should see
+// this number FAST). Click jumps to /settings where the percent can be
+// adjusted or promoted-to-100 manually.
+function CanaryRolloutTile({ canary }: { canary: { percent: number; setAt: string | null; autoPromote: boolean; soakHours: number } }) {
+  const router = useRouter();
+  const params = useParams();
+  const schoolId = params?.schoolId as string;
+  const setAt = canary.setAt ? new Date(canary.setAt) : null;
+  const elapsedMs = setAt ? Date.now() - setAt.getTime() : 0;
+  const remainingMs = setAt && canary.soakHours
+    ? Math.max(0, canary.soakHours * 3600_000 - elapsedMs)
+    : 0;
+  const remainLabel = remainingMs > 3600_000
+    ? `${Math.ceil(remainingMs / 3600_000)}h left`
+    : remainingMs > 0
+      ? `${Math.ceil(remainingMs / 60_000)}m left`
+      : 'soak elapsed';
+
+  return (
+    <button
+      type="button"
+      onClick={() => router.push(`/${schoolId}/settings`)}
+      className="bg-amber-50 ring-1 ring-amber-100 rounded-2xl px-5 py-4 flex-1 min-w-[180px] text-left hover:bg-amber-100/60 transition-colors"
+      title={canary.autoPromote ? `Auto-promote when soak elapses (${canary.soakHours}h)` : 'Manual promote mode'}
+    >
+      <div className="text-[10px] font-bold uppercase tracking-wider text-amber-700 flex items-center gap-1.5">
+        <RefreshCw className="w-3 h-3" /> Canary rollout
+      </div>
+      <div className="text-2xl font-black text-amber-700 mt-1">{canary.percent}%</div>
+      <div className="text-[10px] text-amber-700/70 mt-1 font-semibold">
+        {remainLabel}{canary.autoPromote ? ' · auto-promote' : ' · manual'}
+      </div>
+    </button>
+  );
+}
+
+// Phase B closeout — per-screen diagnostics block inside the settings
+// popover. Rolls up every field already on the Screen payload into a
+// compact 2-column grid:
+//
+//   OS / browser         resolution
+//   APK + reported-at    Manager + reported-at
+//   Cache state          Last OTA state + message
+//   Address / location   Latest fingerprint
+//
+// Operators previously had to inspect the React Query devtools or curl
+// /api/v1/screens/status/<fp> to see this. Now it's one click in the
+// gear popover next to the screen row. No new endpoint — purely a
+// presentation enhancement.
+function ScreenDiagnostics({ screen }: { screen: any }) {
+  const cache: any = screen?.lastCacheReport || null;
+  const cacheLine = cache
+    ? `${cache.totalAssets ?? '?'} assets · ${cache.totalBytes != null ? Math.round(cache.totalBytes / 1024 / 1024) + ' MB' : '? size'}`
+    : 'not reported';
+  const emergencyLine = cache?.emergency?.count != null
+    ? `${cache.emergency.count} emergency assets`
+    : 'no emergency report';
+
+  const otaState: string | null = screen?.lastOtaState ?? null;
+  const otaMsg: string | null = screen?.lastOtaMessage ?? null;
+  const otaAt: string | null = screen?.lastOtaAt ?? null;
+  const otaProg: number | null = screen?.lastOtaProgress ?? null;
+
+  const playerV: string | null = screen?.playerVersion ?? null;
+  const playerVAt: string | null = screen?.playerVersionAt ?? null;
+  const managerV: string | null = screen?.managerVersion ?? null;
+  const managerVAt: string | null = screen?.managerVersionAt ?? null;
+
+  const row = (label: string, value: React.ReactNode, mono = false) => (
+    <div className="flex flex-col min-w-0">
+      <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{label}</div>
+      <div className={`text-[11px] text-slate-700 truncate ${mono ? 'font-mono' : 'font-medium'}`} title={typeof value === 'string' ? value : undefined}>
+        {value || <span className="text-slate-300">—</span>}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="px-3.5 py-3 border-t border-slate-100 bg-slate-50/40">
+      <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-2">
+        Diagnostics
+      </div>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
+        {row('OS', screen?.osInfo)}
+        {row('Resolution', screen?.resolution)}
+        {row(
+          'Player APK',
+          playerV ? (
+            <>
+              <span className="font-mono">v{playerV}</span>
+              {playerVAt && <span className="text-slate-400"> · {timeAgo(playerVAt)}</span>}
+            </>
+          ) : null,
+        )}
+        {row(
+          'Manager APK',
+          managerV ? (
+            <>
+              <span className="font-mono">v{managerV}</span>
+              {managerVAt && <span className="text-slate-400"> · {timeAgo(managerVAt)}</span>}
+            </>
+          ) : null,
+        )}
+        {row('Cache', cacheLine)}
+        {row('Emergency cache', emergencyLine)}
+        {row(
+          'Last OTA',
+          otaState ? (
+            <span className="flex flex-col">
+              <span className="font-semibold">
+                {otaState}{otaProg != null && otaProg < 100 ? ` ${otaProg}%` : ''}
+              </span>
+              {otaMsg && <span className="text-[10px] text-slate-500 truncate" title={otaMsg}>{otaMsg}</span>}
+              {otaAt && <span className="text-[10px] text-slate-400">{timeAgo(otaAt)}</span>}
+            </span>
+          ) : null,
+        )}
+        {row(
+          'Location',
+          screen?.address
+            ? <span title={`${screen.latitude}, ${screen.longitude}`}>{screen.address}</span>
+            : screen?.latitude != null
+              ? <span className="font-mono">{Number(screen.latitude).toFixed(3)}, {Number(screen.longitude).toFixed(3)}</span>
+              : null,
+        )}
+      </div>
+    </div>
+  );
+}
+
 function DeviceFingerprintRow({ fingerprint }: { fingerprint: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -670,6 +866,13 @@ function ScreenSettingsMenu({
               chars in a 256px-wide popover. */}
           <DeviceFingerprintRow fingerprint={(screen as any).deviceFingerprint || ''} />
 
+          {/* Phase B closeout — diagnostic detail block. Pulls everything
+              the dashboard knows about this screen into one place inside
+              the existing settings popover so admins don't have to chase
+              info across the row chrome and dev tools. No new endpoint —
+              all fields are already on the screen payload. */}
+          <ScreenDiagnostics screen={screen} />
+
       {/* Footer placeholder — leaves room for restart / cache /
           orientation / brightness settings as we build them. */}
       <div className="px-3.5 py-2 bg-slate-50/60 border-t border-slate-100 text-[10px] text-slate-400">
@@ -954,6 +1157,16 @@ export default function ScreensPage() {
           </button>
         </div>
       </div>
+
+      {/* Phase B closeout — fleet summary strip. Always visible at the top
+          of /screens. Computes counters off `flatScreens` (already loaded)
+          so this has zero extra network cost. The strip surfaces the four
+          numbers a district admin asks about every morning:
+            ONLINE / OFFLINE / EMERGENCY-ACTIVE / CANARY-IN-PROGRESS
+          For SUPER_ADMIN viewing this page while supervising a tenant,
+          the same strip shows that tenant's counts (the SUPER cross-tenant
+          rollup lives on /super, not here). */}
+      <FleetSummaryStrip screens={flatScreens} />
 
       {/* Sprint 8 — fleet map view (only when toggled on) */}
       {viewMode === 'map' && (

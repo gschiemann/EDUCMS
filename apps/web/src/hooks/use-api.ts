@@ -1078,6 +1078,13 @@ export type SuperTenantRow = {
   monthlyPriceCents: number | null;
   expiresAt: string | null;
   notes: string | null;
+  // Phase B closeout — cross-tenant fleet health rollups, populated
+  // server-side by /super/tenants. Older API versions may omit them;
+  // UI treats missing as 0 / 100% / false.
+  screensOnline?: number;
+  emergencyActive?: boolean;
+  canaryPercent?: number;
+  openIncidents24h?: number;
 };
 export function useSuperTenants() {
   return useQuery<SuperTenantRow[]>({

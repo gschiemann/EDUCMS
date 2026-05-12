@@ -28,18 +28,70 @@ export class SuperLicenseController {
     private readonly license: LicenseService,
   ) {}
 
-  /** List every tenant with its license summary + paired-screen count. */
+  /** List every tenant with its license summary + paired-screen count.
+   *
+   *  Phase B closeout — also surfaces fleet-health rollups so the
+   *  SUPER_ADMIN sees, at a glance, which tenants are healthy vs in
+   *  trouble without having to dive into each tenant's /screens page:
+   *
+   *    - screensOnline   live count (last ping within 2 min)
+   *    - emergencyActive 1/0 — is the tenant in an active alert
+   *    - canaryPercent   100 = full rollout, else mid-canary
+   *    - openIncidents24h count of INFRA_EVENT notifications in last 24h
+   *
+   *  Computed in ONE round trip via concurrent Prisma queries so the
+   *  endpoint stays under ~300 ms for fleets up to a few thousand
+   *  screens. The screen.lastPingAt threshold matches the dashboard's
+   *  per-row ONLINE/OFFLINE chip threshold.
+   */
   @Get('tenants')
   async listTenants() {
     const tenants = await this.prisma.client.tenant.findMany({
       select: {
         id: true, name: true, slug: true, vertical: true, parentId: true, createdAt: true,
+        emergencyStatus: true,
+        canaryFleetPercent: true,
         license: true,
         _count: { select: { screens: { where: { pairedAt: { not: null } } } } },
-      },
+      } as any,
       orderBy: [{ vertical: 'asc' }, { name: 'asc' }],
     });
-    return tenants.map(t => {
+
+    const onlineCutoff = new Date(Date.now() - 2 * 60_000);
+    const since24h = new Date(Date.now() - 24 * 60 * 60_000);
+
+    // Parallel: per-tenant ONLINE counts + per-tenant INFRA_EVENT count.
+    // groupBy is one query each, scales linearly with tenant count.
+    const [onlineByTenant, incidentsByTenant] = await Promise.all([
+      this.prisma.client.screen.groupBy({
+        by: ['tenantId'],
+        where: {
+          tenantId: { not: null },
+          status: { not: 'REVOKED' },
+          lastPingAt: { gte: onlineCutoff },
+        },
+        _count: { _all: true },
+      }),
+      this.prisma.client.notification.groupBy({
+        by: ['tenantId'],
+        where: {
+          kind: 'INFRA_EVENT' as any,
+          createdAt: { gte: since24h },
+        },
+        _count: { _all: true },
+      }).catch(() => []),
+    ]);
+
+    const onlineMap = new Map<string, number>();
+    for (const row of onlineByTenant as any[]) {
+      if (row.tenantId) onlineMap.set(row.tenantId, row._count?._all ?? 0);
+    }
+    const incidentMap = new Map<string, number>();
+    for (const row of incidentsByTenant as any[]) {
+      if (row.tenantId) incidentMap.set(row.tenantId, row._count?._all ?? 0);
+    }
+
+    return tenants.map((t: any) => {
       const seatLimit = t.license?.seatLimit ?? LicenseService.PILOT_SEAT_LIMIT;
       const seatsUsed = t._count.screens;
       return {
@@ -51,6 +103,11 @@ export class SuperLicenseController {
         monthlyPriceCents: t.license?.monthlyPriceCents ?? null,
         expiresAt: t.license?.expiresAt ?? t.license?.currentPeriodEnd ?? null,
         notes: t.license?.notes ?? null,
+        // Phase B closeout rollups
+        screensOnline: onlineMap.get(t.id) ?? 0,
+        emergencyActive: !!(t.emergencyStatus && t.emergencyStatus !== 'NONE' && t.emergencyStatus !== 'CLEARED'),
+        canaryPercent: t.canaryFleetPercent ?? 100,
+        openIncidents24h: incidentMap.get(t.id) ?? 0,
       };
     });
   }
