@@ -6,6 +6,13 @@ import {
   Megaphone, CalendarDays, Bell, UtensilsCrossed, Users, Globe, Rss, Share2,
   Image as ImageIcon, Play, ArrowRight, Timer, Shield, FileText, Square,
   ChevronRight, Thermometer, Eye, Sunrise, Sunset, MapPin, Star, Heart, Sparkles,
+  // Phase D2.9 touch widgets.
+  Hand, MousePointerClick, ArrowLeft, ArrowUp, ArrowDown, Circle,
+  // Phase D2.10 kiosk nav vocabulary.
+  Home, X, Menu, HelpCircle,
+  // Phase D2.11 comm + engagement + utility touch widgets.
+  // Heart/Star already imported above; reuse those.
+  Info, Search, Phone, Mail, Volume2, Printer, QrCode,
 } from 'lucide-react';
 // 2026-05-03 — single source of truth for time display. Operator
 // reported military-time leakage on the bell schedule canvas; every
@@ -383,12 +390,18 @@ export function WidgetPreview({ widgetType, config, width, height, live, onConfi
   }
 
   switch (widgetType) {
-    // Phase D2.8 — TOUCH_POINT is a hotspot zone: invisible at
-    // runtime (visitor sees underlying content unaltered), tap-
-    // detecting (the zone's onClick handler still fires because the
-    // zone div is rendered above the scene). The builder draws a
-    // dashed overlay for editor-time visibility via BuilderZone.
-    case 'TOUCH_POINT':  return null;
+    // Phase D2.8 + D2.9 — TOUCH_POINT is the canonical interactive-
+    // zone widget. The variant in config picks the visual:
+    //   - 'hotspot' (or unset) → invisible (BuilderZone draws a
+    //     dashed editor-time overlay, runtime is transparent)
+    //   - 'arrow-right'/'arrow-left'/'arrow-up'/'arrow-down' → visible
+    //     directional button, ideal for "Next" / "Back" navigation
+    //   - 'circle' → filled circle ("press here" indicator)
+    //   - 'square' → rounded-square button with optional label
+    //   - 'tap-prompt' → "Tap to continue" button with hand icon
+    // Tap detection is identical across variants — every TOUCH_POINT
+    // zone is captured by the zone's onClick handler in the player.
+    case 'TOUCH_POINT':  return <TouchPointWidget config={cfg} />;
     case 'CLOCK':        return <ClockWidget config={cfg} compact={compact} />;
     case 'WEATHER':      return <WeatherWidget config={cfg} compact={compact} />;
     case 'COUNTDOWN':    return <CountdownWidget config={cfg} compact={compact} onConfigChange={onConfigChange} />;
@@ -2060,6 +2073,455 @@ function LogoWidget({ config }: { config: any }) {
       <span style={{ fontSize: '0.5em', color: '#818cf8', fontWeight: 600, marginTop: '0.3em' }}>Add Logo</span>
     </div>
   );
+}
+
+// ═══════════════════════════════════════════════════════
+// TOUCH WIDGETS — Phase D2.9 + D2.10
+// ═══════════════════════════════════════════════════════
+//
+// One widget type (TOUCH_POINT), many visual variants. Tap detection
+// is identical across variants — the zone's onClick handler in the
+// player runtime is what fires the configured Tap Action. The
+// variant only controls what the visitor SEES (an arrow, a button,
+// a hamburger, nothing).
+//
+// Every variant uses brand-primary CSS vars so tenant theming
+// flows through automatically. `em`-based sizing (relative to the
+// zone's container font-size) keeps the icon/label proportional
+// when the operator resizes the hotspot.
+//
+// Renderer contract:
+//   - Hotspot variants ('hotspot') return null — the zone div is
+//     itself the tap target; we don't paint anything visible.
+//   - Visual variants return a fully styled button + label using
+//     inline styles (Tailwind utility classes would be cleaner but
+//     we already mix both throughout WidgetRenderer; inline keeps
+//     this contained).
+//
+// Sizing inside each variant uses % of the zone or em so the
+// affordance scales with how the operator drags the zone.
+
+function TouchPointWidget({ config }: { config: any }) {
+  const variant = String(config?.variant || 'hotspot').toLowerCase();
+  const label = typeof config?.label === 'string' ? config.label : undefined;
+
+  // The hotspot is the canonical invisible tap target. Editor-time
+  // the BuilderZone draws a dashed overlay (so the operator can
+  // still see + position it); runtime renders nothing.
+  if (variant === 'hotspot' || variant === '') {
+    return null;
+  }
+
+  // Shared button chrome — brand-primary fill, white ink, generous
+  // rounded corners, subtle drop shadow. Inline styles so the
+  // widget renders consistently inside any container regardless of
+  // surrounding cascade.
+  const baseButtonStyle: React.CSSProperties = {
+    width: '100%',
+    height: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.5em',
+    background: 'var(--brand-primary, #7c3aed)',
+    color: 'var(--brand-primary-ink, #ffffff)',
+    border: 'none',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+    fontWeight: 800,
+    letterSpacing: '0.01em',
+    fontSize: '1.5em',
+    overflow: 'hidden',
+  };
+
+  // Icon sizing in em so it scales with the zone's font-size which
+  // is itself set by the parent container's height in the player.
+  const iconStyle: React.CSSProperties = { width: '1.4em', height: '1.4em', flexShrink: 0 };
+
+  switch (variant) {
+    case 'tap-prompt':
+      return (
+        <div style={{ ...baseButtonStyle, borderRadius: '999px', padding: '0.5em 1.25em' }}>
+          <MousePointerClick style={iconStyle} aria-hidden />
+          <span style={{ whiteSpace: 'nowrap' }}>{label || 'Tap to continue'}</span>
+        </div>
+      );
+
+    case 'circle':
+      // Aspect-preserving circle. Uses a wrapper so the brand-color
+      // circle stays a true circle even when the zone aspect ratio
+      // isn't 1:1 (operator dragged it taller than wide → circle
+      // stays inside the smaller dimension).
+      return (
+        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div
+            style={{
+              aspectRatio: '1 / 1',
+              maxWidth: '100%',
+              maxHeight: '100%',
+              width: 'min(100%, 100%)',
+              borderRadius: '999px',
+              background: 'var(--brand-primary, #7c3aed)',
+              boxShadow: '0 6px 18px rgba(0,0,0,0.22)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'var(--brand-primary-ink, #ffffff)',
+            }}
+          >
+            <Hand style={{ width: '40%', height: '40%' }} aria-hidden />
+          </div>
+        </div>
+      );
+
+    case 'square':
+      return (
+        <div style={{ ...baseButtonStyle, borderRadius: '1em', padding: '0.5em 1em' }}>
+          {label ? <span style={{ whiteSpace: 'nowrap' }}>{label}</span> : <Hand style={iconStyle} aria-hidden />}
+        </div>
+      );
+
+    case 'arrow-right':
+      return (
+        <div style={{ ...baseButtonStyle, borderRadius: '999px' }}>
+          <ArrowRight style={{ width: '55%', height: '55%' }} aria-hidden />
+        </div>
+      );
+    case 'arrow-left':
+      return (
+        <div style={{ ...baseButtonStyle, borderRadius: '999px' }}>
+          <ArrowLeft style={{ width: '55%', height: '55%' }} aria-hidden />
+        </div>
+      );
+    case 'arrow-up':
+      return (
+        <div style={{ ...baseButtonStyle, borderRadius: '999px' }}>
+          <ArrowUp style={{ width: '55%', height: '55%' }} aria-hidden />
+        </div>
+      );
+    case 'arrow-down':
+      return (
+        <div style={{ ...baseButtonStyle, borderRadius: '999px' }}>
+          <ArrowDown style={{ width: '55%', height: '55%' }} aria-hidden />
+        </div>
+      );
+
+    // ── Kiosk nav vocabulary (Phase D2.10) ──
+    // These render as icon-only round buttons by default. Operators
+    // who want a label flip on TouchPoint variant 'back' / 'next'
+    // (which render labeled chips below).
+
+    case 'home':
+      return (
+        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div
+            style={{
+              aspectRatio: '1 / 1',
+              maxWidth: '100%', maxHeight: '100%',
+              borderRadius: '999px',
+              background: 'var(--brand-primary, #7c3aed)',
+              color: 'var(--brand-primary-ink, #ffffff)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Home style={{ width: '45%', height: '45%' }} aria-hidden />
+          </div>
+        </div>
+      );
+
+    case 'back':
+      return (
+        <div style={{ ...baseButtonStyle, borderRadius: '999px', padding: '0.5em 1.25em', justifyContent: 'flex-start' }}>
+          <ArrowLeft style={iconStyle} aria-hidden />
+          <span style={{ whiteSpace: 'nowrap' }}>{label || 'Back'}</span>
+        </div>
+      );
+
+    case 'next':
+      return (
+        <div style={{ ...baseButtonStyle, borderRadius: '999px', padding: '0.5em 1.25em', justifyContent: 'flex-end' }}>
+          <span style={{ whiteSpace: 'nowrap' }}>{label || 'Next'}</span>
+          <ArrowRight style={iconStyle} aria-hidden />
+        </div>
+      );
+
+    case 'close':
+      return (
+        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div
+            style={{
+              aspectRatio: '1 / 1',
+              maxWidth: '100%', maxHeight: '100%',
+              borderRadius: '999px',
+              background: 'rgba(15, 23, 42, 0.75)', // slate-900 @ 75% — high-contrast on any scene
+              color: '#ffffff',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <X style={{ width: '45%', height: '45%' }} aria-hidden />
+          </div>
+        </div>
+      );
+
+    case 'menu':
+      return (
+        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div
+            style={{
+              aspectRatio: '1 / 1',
+              maxWidth: '100%', maxHeight: '100%',
+              borderRadius: '0.75em',
+              background: 'var(--brand-primary, #7c3aed)',
+              color: 'var(--brand-primary-ink, #ffffff)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Menu style={{ width: '45%', height: '45%' }} aria-hidden />
+          </div>
+        </div>
+      );
+
+    case 'help':
+      return (
+        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div
+            style={{
+              aspectRatio: '1 / 1',
+              maxWidth: '100%', maxHeight: '100%',
+              borderRadius: '999px',
+              background: 'var(--brand-accent, #f59e0b)',
+              color: 'var(--brand-accent-ink, #ffffff)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.22)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontWeight: 900,
+            }}
+          >
+            <HelpCircle style={{ width: '55%', height: '55%' }} aria-hidden />
+          </div>
+        </div>
+      );
+
+    case 'play':
+      // Play CTAs sit on top of a video thumbnail typically. Round
+      // ring + filled play triangle, slightly oversized so it's
+      // unmistakably the call-to-action.
+      return (
+        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div
+            style={{
+              aspectRatio: '1 / 1',
+              maxWidth: '100%', maxHeight: '100%',
+              borderRadius: '999px',
+              background: 'rgba(255,255,255,0.92)',
+              color: 'var(--brand-primary, #7c3aed)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Play style={{ width: '45%', height: '45%', marginLeft: '6%' }} aria-hidden fill="currentColor" />
+          </div>
+        </div>
+      );
+
+    // ── Phase D2.11 communication / engagement / utility ──
+    //
+    // All round-button variants share the same chrome (round
+    // brand-color disc with a centered icon) — the only thing that
+    // changes is the icon + sometimes the fill color (Heart goes
+    // pink to signal "favorite," Star goes amber, Help+Info use
+    // accent). Pattern is centered to keep visual rhythm across
+    // the 25-widget palette consistent.
+    case 'qr': {
+      // Visible QR placeholder. Operator configures the encoded URL
+      // via config.qrText; the placeholder visual is a stylized
+      // square grid pattern so the operator can size + position
+      // before wiring real QR generation (deferred to v2).
+      const qrText = typeof config?.qrText === 'string' && config.qrText.trim()
+        ? config.qrText
+        : 'Set URL in Properties';
+      return (
+        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4%' }}>
+          <div
+            style={{
+              aspectRatio: '1 / 1',
+              maxWidth: '100%', maxHeight: '100%',
+              borderRadius: '0.5em',
+              background: '#ffffff',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              padding: '8%',
+              border: '1px solid #e2e8f0',
+              gap: '0.5em',
+              overflow: 'hidden',
+            }}
+          >
+            <QrCode style={{ width: '70%', height: '70%', color: '#0f172a' }} aria-hidden />
+            <span style={{ fontSize: '0.45em', fontWeight: 700, color: '#475569', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '100%' }}>
+              {qrText.length > 32 ? qrText.slice(0, 30) + '…' : qrText}
+            </span>
+          </div>
+        </div>
+      );
+    }
+
+    case 'info':
+      return (
+        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div
+            style={{
+              aspectRatio: '1 / 1',
+              maxWidth: '100%', maxHeight: '100%',
+              borderRadius: '999px',
+              background: 'var(--brand-accent, #3b82f6)',
+              color: 'var(--brand-accent-ink, #ffffff)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Info style={{ width: '55%', height: '55%' }} aria-hidden />
+          </div>
+        </div>
+      );
+
+    case 'phone':
+      return (
+        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div
+            style={{
+              aspectRatio: '1 / 1',
+              maxWidth: '100%', maxHeight: '100%',
+              borderRadius: '999px',
+              background: 'var(--brand-primary, #10b981)', // green-tinted feel via tenant primary
+              color: 'var(--brand-primary-ink, #ffffff)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Phone style={{ width: '45%', height: '45%' }} aria-hidden />
+          </div>
+        </div>
+      );
+
+    case 'email':
+      return (
+        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div
+            style={{
+              aspectRatio: '1 / 1',
+              maxWidth: '100%', maxHeight: '100%',
+              borderRadius: '999px',
+              background: 'var(--brand-primary, #7c3aed)',
+              color: 'var(--brand-primary-ink, #ffffff)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Mail style={{ width: '45%', height: '45%' }} aria-hidden />
+          </div>
+        </div>
+      );
+
+    case 'share':
+      return (
+        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div
+            style={{
+              aspectRatio: '1 / 1',
+              maxWidth: '100%', maxHeight: '100%',
+              borderRadius: '999px',
+              background: 'var(--brand-primary, #7c3aed)',
+              color: 'var(--brand-primary-ink, #ffffff)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Share2 style={{ width: '45%', height: '45%' }} aria-hidden />
+          </div>
+        </div>
+      );
+
+    case 'heart':
+      // Pink to signal "favorite" universally. Outline-on-default
+      // would be cleaner but a solid fill reads better at kiosk
+      // viewing distance.
+      return (
+        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div
+            style={{
+              aspectRatio: '1 / 1',
+              maxWidth: '100%', maxHeight: '100%',
+              borderRadius: '999px',
+              background: '#ec4899', // pink-500
+              color: '#ffffff',
+              boxShadow: '0 4px 14px rgba(236, 72, 153, 0.35)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Heart style={{ width: '50%', height: '50%' }} fill="currentColor" aria-hidden />
+          </div>
+        </div>
+      );
+
+    case 'star':
+      // Amber for "rating" — universal star color across rating UIs.
+      return (
+        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div
+            style={{
+              aspectRatio: '1 / 1',
+              maxWidth: '100%', maxHeight: '100%',
+              borderRadius: '999px',
+              background: '#f59e0b', // amber-500
+              color: '#ffffff',
+              boxShadow: '0 4px 14px rgba(245, 158, 11, 0.35)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Star style={{ width: '55%', height: '55%' }} fill="currentColor" aria-hidden />
+          </div>
+        </div>
+      );
+
+    case 'search':
+      return (
+        <div style={{ ...baseButtonStyle, borderRadius: '999px', padding: '0.5em 1em' }}>
+          <Search style={iconStyle} aria-hidden />
+        </div>
+      );
+
+    case 'volume':
+      return (
+        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div
+            style={{
+              aspectRatio: '1 / 1',
+              maxWidth: '100%', maxHeight: '100%',
+              borderRadius: '999px',
+              background: 'var(--brand-primary, #7c3aed)',
+              color: 'var(--brand-primary-ink, #ffffff)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Volume2 style={{ width: '50%', height: '50%' }} aria-hidden />
+          </div>
+        </div>
+      );
+
+    case 'print':
+      return (
+        <div style={{ ...baseButtonStyle, borderRadius: '0.75em', padding: '0.5em 1.25em' }}>
+          <Printer style={iconStyle} aria-hidden />
+          <span style={{ whiteSpace: 'nowrap' }}>Print</span>
+        </div>
+      );
+
+    default:
+      // Unknown variant → fall back to hotspot (invisible). Keeps
+      // forward-compat: an older player can render a newer template
+      // even if it doesn't know the new variant yet.
+      return null;
+  }
 }
 
 // ═══════════════════════════════════════════════════════

@@ -334,6 +334,44 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
         case 'COUNTDOWN':         return { label: 'Countdown', targetDate: '' };
         case 'STAFF_SPOTLIGHT':   return { staffName: 'Staff Name', role: 'Role' };
         case 'QUOTE':             return { quote: 'Click to edit quote', author: 'Author' };
+        // Phase D2.9 — Touch palette tiles. Each canonicalizes to
+        // widgetType='TOUCH_POINT' (see below) with the variant in
+        // defaultConfig. Variant drives the visual the renderer
+        // paints; the tap-target behavior is identical across all.
+        case 'TOUCH_HOTSPOT':     return { variant: 'hotspot' };
+        case 'TOUCH_TAP_PROMPT':  return { variant: 'tap-prompt', label: 'Tap to continue' };
+        case 'TOUCH_CIRCLE':      return { variant: 'circle' };
+        case 'TOUCH_SQUARE':      return { variant: 'square', label: 'Tap' };
+        case 'TOUCH_ARROW_RIGHT': return { variant: 'arrow-right' };
+        case 'TOUCH_ARROW_LEFT':  return { variant: 'arrow-left' };
+        case 'TOUCH_ARROW_UP':    return { variant: 'arrow-up' };
+        case 'TOUCH_ARROW_DOWN':  return { variant: 'arrow-down' };
+        // Phase D2.10 — kiosk nav button vocabulary. Each carries a
+        // default label so the variant renders meaningfully even
+        // before the operator edits it; labels are inline-editable
+        // via the contentEditable hotspot pattern.
+        case 'TOUCH_HOME':        return { variant: 'home' };
+        case 'TOUCH_BACK':        return { variant: 'back', label: 'Back' };
+        case 'TOUCH_NEXT':        return { variant: 'next', label: 'Next' };
+        case 'TOUCH_CLOSE':       return { variant: 'close' };
+        case 'TOUCH_MENU':        return { variant: 'menu' };
+        case 'TOUCH_HELP':        return { variant: 'help' };
+        case 'TOUCH_PLAY':        return { variant: 'play' };
+        // Phase D2.11 — comm + engagement + utility touch widgets.
+        // qrText is the placeholder URL the operator overrides in
+        // Properties → it's also passed into the QR generator at
+        // runtime once a QR library is wired up (v1 ships a visual
+        // placeholder so the operator can position + size first).
+        case 'TOUCH_QR':          return { variant: 'qr', qrText: 'https://example.com' };
+        case 'TOUCH_INFO':        return { variant: 'info' };
+        case 'TOUCH_PHONE':       return { variant: 'phone' };
+        case 'TOUCH_EMAIL':       return { variant: 'email' };
+        case 'TOUCH_SHARE':       return { variant: 'share' };
+        case 'TOUCH_HEART':       return { variant: 'heart' };
+        case 'TOUCH_STAR':        return { variant: 'star' };
+        case 'TOUCH_SEARCH':      return { variant: 'search' };
+        case 'TOUCH_VOLUME':      return { variant: 'volume' };
+        case 'TOUCH_PRINT':       return { variant: 'print' };
         // Sprint 11h decorations — the palette ships eight tiles but
         // they all spawn `widgetType='DECORATION'` rows; the variant
         // is what differentiates them. Defaults are sane so a fresh
@@ -359,27 +397,62 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     // distinct DECORATION_* type so it can carry its own label / icon
     // / desc; once it lands as a zone, the type folds into the canonical
     // DECORATION dispatch in WidgetRenderer.
-    const canonicalWidgetType = widgetType.startsWith('DECORATION_') ? 'DECORATION' : widgetType;
+    // Phase D2.9 — touch palette tiles (TOUCH_HOTSPOT, TOUCH_ARROW_*,
+    // TOUCH_CIRCLE, etc.) all canonicalize to widgetType='TOUCH_POINT'
+    // with their variant carried in defaultConfig. The seedDefault
+    // switch above already sets the variant key.
+    const isTouchTile = widgetType.startsWith('TOUCH_');
+    const canonicalWidgetType = isTouchTile
+      ? 'TOUCH_POINT'
+      : (widgetType.startsWith('DECORATION_') ? 'DECORATION' : widgetType);
     // Phase D2.5 — new zones inherit the currently-active scene so the
     // operator's mental model holds: "I clicked Add while editing
     // Scene B, the new widget belongs to Scene B." Shared zones (those
     // that render in every scene) are an explicit operator choice via
     // the properties panel.
     const activeSceneId = get().activeSceneId;
+
+    // Phase D2.9 — touch tiles drop SMALLER than regular content zones
+    // (15% × 15% vs the 40% × 30% default) so the operator doesn't
+    // have to shrink them every time. Most touch widgets sit on top
+    // of other content as tap hotspots; making them blanket-cover the
+    // canvas by default was the "i dont like how the inital touch
+    // point is the full screen and you need to shrink it down" issue.
+    const touchSize = isTouchTile ? { w: 15, h: 15 } : null;
+    const finalW = touchSize?.w ?? w;
+    const finalH = touchSize?.h ?? h;
+    // Recenter if we shrank — the original drop point should still be
+    // the visual center of the smaller zone.
+    if (touchSize && dropAt) {
+      x = Math.max(0, Math.min(100 - finalW, dropAt.x - finalW / 2));
+      y = Math.max(0, Math.min(100 - finalH, dropAt.y - finalH / 2));
+    }
+
     const next: Zone = clampZone({
       id,
       name: `${widgetLabel(widgetType)} ${zones.length + 1}`,
       widgetType: canonicalWidgetType,
       x,
       y,
-      width: w,
-      height: h,
+      width: finalW,
+      height: finalH,
       zIndex: zones.reduce((m, z) => Math.max(m, z.zIndex), 0) + 1,
       sortOrder: zones.length,
       defaultConfig: seedDefault(widgetType),
       sceneId: activeSceneId,
     });
-    set({ zones: [...zones, next], past, future: [], selectedIds: [id], isDirty: true });
+    set({
+      zones: [...zones, next],
+      past,
+      future: [],
+      selectedIds: [id],
+      isDirty: true,
+      // Phase D2.9 — dropping ANY touch tile auto-enables the
+      // template's touch mode. The big "Make this template
+      // interactive" CTA in Properties becomes superfluous once
+      // widgets carry the intent themselves.
+      ...(isTouchTile && !get().isTouchEnabled ? { isTouchEnabled: true } : {}),
+    });
     return id;
   },
 

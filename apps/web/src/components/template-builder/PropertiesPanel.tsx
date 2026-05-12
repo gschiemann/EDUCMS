@@ -810,34 +810,29 @@ function TemplateProperties() {
         onChange={(patch) => setMeta(patch)}
       />
 
-      {/* 2026-05-12 — operator: "i dont see [the touch toggle] in
-          properties panel, only on the top toolbar." The TapActionEditor
-          gates the toggle behind a zone-selection. Lift the template-
-          level switch here so it's discoverable from the no-selection
-          panel state — same place operators look for "what does this
-          template do?" config. */}
-      <section className="space-y-3">
+      {/* 2026-05-12 (Phase D2.9) — touch mode auto-enables the
+          moment the operator drops ANY widget from the Touch palette,
+          so the big "Make this template interactive" CTA is now
+          mostly redundant. Kept as a small status row + manual
+          override (rare: operator wants to disable for testing). */}
+      <section className="space-y-2">
         <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Interactive (touch) mode</h3>
-        <div className={`rounded-xl p-3 border shadow-sm ${isTouchEnabled ? 'bg-violet-50/60 border-violet-200' : 'bg-slate-50/50 border-slate-100'}`}>
-          <label className="flex items-start gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={isTouchEnabled}
-              onChange={(e) => setTouchEnabled(e.target.checked)}
-              className="mt-0.5 w-4 h-4 rounded border-slate-300 text-violet-600 focus:ring-2 focus:ring-violet-400 shrink-0"
-            />
-            <span className="flex-1">
-              <span className={`block text-xs font-bold ${isTouchEnabled ? 'text-violet-800' : 'text-slate-700'}`}>
-                {isTouchEnabled ? 'Touch mode is ON' : 'Make this template interactive'}
-              </span>
-              <span className="block text-[11px] text-slate-500 mt-1 leading-snug">
-                {isTouchEnabled
-                  ? 'Visitors can tap zones that have a Tap Action set. Click a zone on the canvas → scroll to "Tap action" in the Properties panel to wire one up. The little hand badge on a zone means it’s tappable.'
-                  : 'Turn on for kiosk / lobby templates where visitors tap to navigate. After enabling, click any zone on the canvas to add its Tap Action (open URL, switch scene, play video, etc).'}
-              </span>
+        <label className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${isTouchEnabled ? 'bg-violet-50/50 border-violet-200' : 'bg-slate-50/50 border-slate-100 hover:border-slate-200'}`}>
+          <input
+            type="checkbox"
+            checked={isTouchEnabled}
+            onChange={(e) => setTouchEnabled(e.target.checked)}
+            className="w-3.5 h-3.5 rounded border-slate-300 text-violet-600 focus:ring-2 focus:ring-violet-400 shrink-0"
+          />
+          <span className="flex-1 min-w-0">
+            <span className={`block text-[11px] font-bold ${isTouchEnabled ? 'text-violet-800' : 'text-slate-600'}`}>
+              {isTouchEnabled ? 'Touch mode: ON' : 'Touch mode: OFF'}
             </span>
-          </label>
-        </div>
+            <span className="block text-[10px] text-slate-500 leading-snug">
+              Auto-enables when you drop any widget from the <strong>Touch</strong> palette.
+            </span>
+          </span>
+        </label>
       </section>
     </div>
   );

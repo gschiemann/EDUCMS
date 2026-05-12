@@ -81,14 +81,26 @@ const HANDLE_STYLES: Record<ResizeHandle, React.CSSProperties> = {
   w:  { top: '50%', left: -6, marginTop: -6, cursor: 'ew-resize' },
 };
 
-// Phase D2.8 — operator-friendly hotspot model. A TOUCH_POINT zone is
-// invisible at runtime (WidgetRenderer returns null) and renders as a
-// distinctive dashed overlay in the builder so the operator can spot
-// it on top of underlying content. Styling diverges from regular
-// zones: transparent fill, dashed brand-color border, "Touch point"
-// label badge. Resize handles work normally so the operator can size
-// it over any tap target.
+// Phase D2.8 — TOUCH_POINT zones are the canonical interactive
+// widget. Phase D2.9 + D2.10 added 14 visual variants on top of the
+// original transparent "hotspot" — circles, arrows, kiosk nav
+// buttons (home/back/next/close/menu/help/play), etc.
+//
+// In the builder we differentiate:
+//   - INVISIBLE variant ('hotspot' or no variant): widget renders
+//     null at runtime, so the editor draws a dashed overlay + a
+//     centered "Tap target / Set Tap Action" hint badge so the
+//     operator can still see and position it.
+//   - VISIBLE variants (everything else): the widget paints its
+//     own button. The editor shows a small corner Hand badge with
+//     the assigned action type — same affordance as a tap action
+//     on a regular content zone.
 const isTouchPointType = (w: string) => w === 'TOUCH_POINT';
+const isInvisibleTouchVariant = (z: Zone) => {
+  if (z.widgetType !== 'TOUCH_POINT') return false;
+  const v = String((z.defaultConfig as any)?.variant || 'hotspot').toLowerCase();
+  return v === 'hotspot' || v === '';
+};
 
 function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizePointerDown, onSelect, onConfigChange }: Props) {
   // 2026-04-29 — pointerdown movement tracking so we distinguish a
@@ -103,6 +115,7 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
   const icon = widgetIcon(zone.widgetType);
   const label = widgetLabel(zone.widgetType);
   const isTouchPoint = isTouchPointType(zone.widgetType);
+  const isHotspotVariant = isInvisibleTouchVariant(zone);
 
   // 2026-04-28 — operator: 'same white background with color
   // selected'. Cause: every zone hardcoded background:'#ffffff' in
@@ -344,21 +357,26 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         // operator's bg shows through. The colored border + label
         // badge keep zone position obvious; the white interior is
         // only needed against the default white canvas.
-        // Phase D2.8 — TOUCH_POINT styling differs:
-        //   - Always transparent fill (the underlying widget content
-        //     beneath the hotspot is the visual)
-        //   - Always-dashed brand-color border (signals "this is a
-        //     tap target, not a content zone")
-        //   - No drop shadow (would imply this floats above content
-        //     visually; we want it to feel layered without weight)
-        background: isTouchPoint
+        // Phase D2.8/D2.9 — TOUCH_POINT styling. Two sub-styles:
+        //   - Invisible hotspot variant: dashed overlay + faint tint
+        //     so the operator can see and position what would
+        //     otherwise be totally transparent at runtime.
+        //   - Visible variant (arrow/circle/home/menu/etc.): the
+        //     widget paints its own button. Editor chrome stays
+        //     minimal (transparent fill, selection-only border)
+        //     so the touch-point visual isn't obscured.
+        background: isHotspotVariant
           ? (previewMode ? 'transparent' : 'rgba(124, 58, 237, 0.06)')
-          : (previewMode ? 'transparent' : (hasCanvasBg ? 'transparent' : '#ffffff')),
+          : (isTouchPoint
+              ? 'transparent'
+              : (previewMode ? 'transparent' : (hasCanvasBg ? 'transparent' : '#ffffff'))),
         border: previewMode
           ? 'none'
-          : (isTouchPoint
+          : (isHotspotVariant
               ? '3px dashed var(--brand-primary, #7c3aed)'
-              : (selected ? `3px dashed ${color.accent}` : `3px solid ${color.accent}`)),
+              : (isTouchPoint
+                  ? (selected ? '2px dashed var(--brand-primary, #7c3aed)' : 'none')
+                  : (selected ? `3px dashed ${color.accent}` : `3px solid ${color.accent}`))),
         boxShadow: previewMode || isTouchPoint ? undefined : `0 4px 12px ${color.accent}33`,
         outline: 'none',
         cursor: zone.locked || previewMode ? 'default' : 'move',
@@ -683,7 +701,13 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
           uses the brand-primary color to match the dashed border.
           When a tap action is set, we show its type ("goto-scene",
           "open-url", ...) so operators audit at a glance. */}
-      {!previewMode && isTouchPoint && (
+      {/* Phase D2.9 — invisible hotspot variant gets the centered
+          "Tap target / Set Tap Action" overlay so the operator can
+          see + audit what's otherwise invisible. Visible touch
+          variants render their own button via WidgetPreview, so
+          they fall through to the standard corner-badge affordance
+          (same as a regular content zone with a touchAction set). */}
+      {!previewMode && isHotspotVariant && (
         <div className="absolute inset-0 z-30 pointer-events-none flex flex-col items-center justify-center text-center">
           <div
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider"
@@ -756,11 +780,12 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
           badge with the type in tooltip; larger zones get the
           short type label clipped at max-width with truncate.
 
-          Phase D2.8 — TOUCH_POINT zones already render their own
-          centered Hand badge with the action type (see the
-          isTouchPoint block above), so skip the duplicate corner
-          badge here for those. */}
-      {!previewMode && !isTouchPoint && zone.touchAction && (() => {
+          Phase D2.8 — invisible hotspot variants render their own
+          centered Hand badge above (see the isHotspotVariant block),
+          so skip the corner badge there to avoid duplicating it.
+          Visible touch variants get the corner badge like any
+          regular zone with a touchAction. */}
+      {!previewMode && !isHotspotVariant && zone.touchAction && (() => {
         const isTiny = zone.width < 15 || zone.height < 15;
         const actionType = zone.touchAction.type;
         return (

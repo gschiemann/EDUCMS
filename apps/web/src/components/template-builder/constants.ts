@@ -14,6 +14,21 @@ import {
   Beer, Wine, Martini, Trophy, Mic2, Brain,
   // 2026-05-03 — VenueOS retail widget icons.
   ShoppingBag, Tag, MapPin, QrCode, Layers, Store,
+  // 2026-05-12 — Touch widget palette (Phase D2.9).
+  Hand, Circle, MousePointerClick, ArrowLeft, ArrowUp, ArrowDown,
+  ChevronRight as ChevronRightIcon,
+  // 2026-05-12 — Touch nav button set (Phase D2.10): home/back/next/
+  // close/menu/help/play. Mirrors the standard kiosk nav-bar
+  // vocabulary every competing interactive-signage tool ships by
+  // default (Intuiface, OptiSigns Engage, BrightSign, PandaSuite).
+  Home, X as CloseIcon, Menu as MenuIcon, HelpCircle, Play as PlayIcon,
+  // 2026-05-12 — Communication + engagement + utility touch widgets
+  // (Phase D2.11). Closes the competitive gap with mature interactive
+  // signage tools — QR scan-with-phone, info reveals, share/email/
+  // phone, star/heart engagement, search/volume/print utility. All
+  // mapped to TOUCH_POINT variants on the canvas.
+  Info as InfoIcon, Search, Phone, Mail, Heart, Volume2 as VolumeIcon,
+  Printer,
 } from 'lucide-react';
 // The "School Life" (QUOTE / STATS / SCOREBOARD / MENU_ITEM /
 // SCHEDULE_GRID / ATTENDANCE / BIRTHDAYS / HONOR_ROLL) and
@@ -297,7 +312,67 @@ export const WIDGET_GROUPS: ReadonlyArray<{
       { type: 'BULLETIN_CAFETERIA',  label: 'Bulletin Board · Cafeteria', desc: 'Cork bulletin-board cafeteria menu', icon: UtensilsCrossed },
     ],
   },
-  // "Touch / Interactive" group hidden pending editor — see file header.
+  // Phase D2.9 (2026-05-12) — Touch widgets. Operator: "cant we just
+  // have a touch widgets? then we can start to build a library of
+  // touch icons, like arrow, circles, etc... seems like less thinking
+  // to just pick a touch widget and keep adding more."
+  //
+  // Every tile in this group canonicalizes to widgetType='TOUCH_POINT'
+  // with a `variant` carrying which visual to render (same pattern
+  // Decorations use — one widget type, many variants). Dropping any
+  // tile auto-enables the template's isTouchEnabled flag so operators
+  // never have to think about the toggle separately.
+  //
+  // Universal — every vertical (school lobby, gym, retail, QSR) wants
+  // touch hotspots.
+  {
+    label: 'Touch (Tap & Go)',
+    types: [
+      // ── Generic hotspots + shapes ──
+      { type: 'TOUCH_HOTSPOT',      label: 'Transparent Hotspot', desc: 'Invisible tap area — drop on top of any content to make it tappable', icon: Hand },
+      { type: 'TOUCH_TAP_PROMPT',   label: 'Tap Here Button',     desc: 'Visible "Tap to continue" button with hand icon — best for kiosk start screens', icon: MousePointerClick },
+      { type: 'TOUCH_CIRCLE',       label: 'Circle Button',       desc: 'Filled circle hotspot — clean "press here" indicator', icon: Circle },
+      { type: 'TOUCH_SQUARE',       label: 'Square Button',       desc: 'Rounded-square button — drop, label it via Properties, set Tap Action', icon: Square },
+      // ── Directional arrows ──
+      { type: 'TOUCH_ARROW_RIGHT',  label: 'Right Arrow',         desc: 'Right-pointing arrow — pair with content panes for "Next" gestures', icon: ArrowRight },
+      { type: 'TOUCH_ARROW_LEFT',   label: 'Left Arrow',          desc: 'Left-pointing arrow — back / previous navigation', icon: ArrowLeft },
+      { type: 'TOUCH_ARROW_UP',     label: 'Up Arrow',            desc: 'Up arrow — scroll / page-up patterns', icon: ArrowUp },
+      { type: 'TOUCH_ARROW_DOWN',   label: 'Down Arrow',          desc: 'Down arrow — scroll / page-down patterns', icon: ArrowDown },
+      // ── Standard kiosk nav vocabulary ──
+      // Every competing interactive-signage tool ships this set by
+      // default (Intuiface, OptiSigns Engage, BrightSign, PandaSuite).
+      // Visitors recognize them instantly — Home is a house, Close is
+      // an X, Menu is a hamburger. Less mental work than custom
+      // labels for navigation chrome.
+      { type: 'TOUCH_HOME',         label: 'Home Button',         desc: 'House-icon button — "Return to start screen"; pair with goto-template back to your default', icon: Home },
+      { type: 'TOUCH_BACK',         label: 'Back Chip',           desc: 'Labeled "← Back" pill — bigger touch target than a plain arrow', icon: ArrowLeft },
+      { type: 'TOUCH_NEXT',         label: 'Next Chip',           desc: 'Labeled "Next →" pill — primary advance action with clear text', icon: ArrowRight },
+      { type: 'TOUCH_CLOSE',        label: 'Close Button',        desc: 'X-icon dismiss button — pair with reset-idle / goto-scene back to the lobby', icon: CloseIcon },
+      { type: 'TOUCH_MENU',         label: 'Menu Button',         desc: 'Hamburger icon — open a sub-menu via goto-scene', icon: MenuIcon },
+      { type: 'TOUCH_HELP',         label: 'Help Button',         desc: 'Question-mark button — opens help overlay or request-help action', icon: HelpCircle },
+      { type: 'TOUCH_PLAY',         label: 'Play Button',         desc: 'Big play triangle — pair with play-video Tap Action for video CTAs', icon: PlayIcon },
+      // ── Communication actions ──
+      // Standard kiosk patterns that ship across every competitor.
+      // QR is the highest-leverage: visitor scans with phone to
+      // transfer the experience off the kiosk. Others compose with
+      // open-url (tel: / mailto:), webhook, or show-overlay.
+      { type: 'TOUCH_QR',           label: 'QR Code',             desc: 'Visible QR placeholder — pair with config.qrText to encode a URL the visitor scans', icon: QrCode },
+      { type: 'TOUCH_INFO',         label: 'Info Button',         desc: 'Circled "i" — tap for show-overlay with details about nearby content', icon: InfoIcon },
+      { type: 'TOUCH_PHONE',        label: 'Phone Button',        desc: 'Phone receiver — pair with open-url tel:+1... for "tap to call" actions', icon: Phone },
+      { type: 'TOUCH_EMAIL',        label: 'Email Button',        desc: 'Envelope — pair with open-url mailto:... or webhook to send the visitor an email', icon: Mail },
+      { type: 'TOUCH_SHARE',        label: 'Share Button',        desc: 'Share icon — pair with show-overlay for a sharing options panel', icon: Share2 },
+      // ── Engagement actions ──
+      // Common on retail / restaurant kiosks for rating, saving, or
+      // expressing interest. Pair with webhook to log the action;
+      // pair with show-overlay for a confirmation animation.
+      { type: 'TOUCH_HEART',        label: 'Favorite (Heart)',    desc: 'Heart button — pair with webhook to log a favorite / save-for-later', icon: Heart },
+      { type: 'TOUCH_STAR',         label: 'Star Rating',         desc: 'Star button — pair with webhook to log a 1-tap rating', icon: Star },
+      // ── Utility ──
+      { type: 'TOUCH_SEARCH',       label: 'Search Button',       desc: 'Magnifying glass — pair with show-overlay for a search panel or open-url to a search page', icon: Search },
+      { type: 'TOUCH_VOLUME',       label: 'Volume Toggle',       desc: 'Speaker icon — pair with sound-toggle Tap Action to mute/unmute video', icon: VolumeIcon },
+      { type: 'TOUCH_PRINT',        label: 'Print Button',        desc: 'Printer icon — pair with webhook to dispatch a print job to a connected printer', icon: Printer },
+    ],
+  },
 ] as const;
 
 export const WIDGET_META: Record<string, { label: string; icon: LucideIcon; desc: string }> = {};
@@ -335,9 +410,12 @@ export const ZONE_COLORS: Record<string, { bg: string; border: string; text: str
   LOGO:            { bg: '#eef2ff', border: '#a5b4fc', text: '#4338ca', accent: '#6366f1' },
   TICKER:          { bg: '#fffbeb', border: '#fcd34d', text: '#a16207', accent: '#f59e0b' },
   EMPTY:           { bg: '#f8fafc', border: '#e2e8f0', text: '#94a3b8', accent: '#cbd5e1' },
-  // Touch / Interactive (Sprint 4)
+  // Touch / Interactive (Sprint 4 placeholders — unused; the Touch
+  // palette below replaces them. TOUCH_BUTTON and TOUCH_MENU were
+  // never wired into the picker per the file-header note, but had
+  // ZONE_COLOR entries. Removed TOUCH_MENU here so Phase D2.10's
+  // real TOUCH_MENU kiosk-nav button can take that key.
   TOUCH_BUTTON:       { bg: '#eef2ff', border: '#a5b4fc', text: '#3730a3', accent: '#4f46e5' },
-  TOUCH_MENU:         { bg: '#eef2ff', border: '#a5b4fc', text: '#3730a3', accent: '#4f46e5' },
   ROOM_FINDER:        { bg: '#f0fdfa', border: '#5eead4', text: '#0f766e', accent: '#14b8a6' },
   ON_SCREEN_KEYBOARD: { bg: '#f1f5f9', border: '#cbd5e1', text: '#334155', accent: '#475569' },
   WAYFINDING_MAP:     { bg: '#fef3c7', border: '#fcd34d', text: '#92400e', accent: '#f59e0b' },
@@ -359,6 +437,38 @@ export const ZONE_COLORS: Record<string, { bg: string; border: string; text: str
   DECORATION_TICKER:            { bg: '#fae8ff', border: '#e879f9', text: '#86198f', accent: '#d946ef' },
   DECORATION_NEON_BUZZ:         { bg: '#fae8ff', border: '#e879f9', text: '#86198f', accent: '#d946ef' },
   DECORATION_PULSE_GLOW:        { bg: '#fae8ff', border: '#e879f9', text: '#86198f', accent: '#d946ef' },
+  // Phase D2.9 — every touch palette tile resolves to widgetType
+  // 'TOUCH_POINT' on the canvas, so the canonical color theme lives
+  // under that key. Violet to match the AI-generate / interactivity
+  // brand language used elsewhere. Each palette-tile type also gets
+  // an entry so the palette button itself can render the right tint
+  // before the zone is created.
+  TOUCH_POINT:                  { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_HOTSPOT:                { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_TAP_PROMPT:             { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_CIRCLE:                 { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_SQUARE:                 { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_ARROW_RIGHT:            { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_ARROW_LEFT:             { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_ARROW_UP:               { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_ARROW_DOWN:             { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_HOME:                   { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_BACK:                   { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_NEXT:                   { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_CLOSE:                  { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_MENU:                   { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_HELP:                   { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_PLAY:                   { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_QR:                     { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_INFO:                   { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_PHONE:                  { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_EMAIL:                  { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_SHARE:                  { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_HEART:                  { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_STAR:                   { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_SEARCH:                 { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_VOLUME:                 { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
+  TOUCH_PRINT:                  { bg: '#f5f3ff', border: '#c4b5fd', text: '#6d28d9', accent: '#7c3aed' },
   // ── Restaurant / QSR vertical (warm cream + caramel + deep red) ──
   RESTAURANT_MENU_BOARD:        { bg: '#fef3c7', border: '#fcd34d', text: '#7a1f1f', accent: '#e8b94a' },
   RESTAURANT_COMBO_CAROUSEL:    { bg: '#fef2f2', border: '#fca5a5', text: '#7a1f1f', accent: '#dc2626' },
