@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, Component, ReactNode
 import '@/components/widgets/variants-register'; // Boot-time registration for custom themes
 import { MonitorPlay, Wifi, WifiOff, AlertTriangle, Loader2, Settings, CheckCircle2, HardDrive, Cpu, Server, Network, Play, Pause, Monitor, Info, Power, RefreshCw, Download, LogOut } from 'lucide-react';
 import { KioskSplash, type LoadProgress } from '@/components/player/KioskSplash';
+import { TouchOverlay, TouchNavOverlay } from '@/components/player/TouchOverlay';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import {
   registerOfflineCache,
@@ -1619,6 +1620,39 @@ function PlayerPage() {
   const cachedAuthTokenRef = useRef<string | null>(null);
   const [activeEmergency, setActiveEmergency] = useState<any | null>(null);
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null);
+
+  // Phase D1.5 — touch builder overlay layer. The dispatcher in
+  // dispatchTouchAction() publishes `edu:touch-overlay` /
+  // `edu:touch-navigate` / `edu:touch-sound-toggle` CustomEvents when
+  // a visitor taps a zone with a TouchActionConfig. This state +
+  // listener pair turns those events into actual on-screen behavior:
+  //
+  //   touchOverlay      — modal shown on top of the current scene.
+  //                       Shape: { kind: 'iframe', url } | { kind:
+  //                       'video', assetId, returnOnEnd? } | { kind:
+  //                       'asset', assetId }. Tap-outside dismisses.
+  //   touchMuted        — current sound state for in-scene videos.
+  //                       Defaults to muted (kiosk convention).
+  //                       Visitor taps "sound on/off" to flip.
+  //
+  // goto-template navigation is handled by the existing fetchContent
+  // path; we just fire it with a target template id when the
+  // edu:touch-navigate event arrives.
+  const [touchOverlay, setTouchOverlay] = useState<
+    | { kind: 'iframe'; url: string }
+    | { kind: 'video'; assetId: string; returnOnEnd: boolean }
+    | { kind: 'asset'; assetId: string }
+    | null
+  >(null);
+  const [touchMuted, setTouchMuted] = useState<boolean>(true);
+  // Phase D1.5 — touch navigation. When a visitor taps a
+  // goto-template action, we fetch the target template and render it
+  // FULL-SCREEN on top of the current playlist. A small "← Back"
+  // affordance + 60 s idle timeout (configurable per scene) returns
+  // them to the home template. Until D2 ships the multi-scene
+  // TemplateScene model, goto-template essentially overlays a
+  // sibling template — same effect as a scene change for visitors.
+  const [touchNavigatedTemplate, setTouchNavigatedTemplate] = useState<any | null>(null);
   // FIX (player-007): when the kiosk is in production but cannot find a
   // signed device JWT, the WS HELLO falls back to a `dev_<screenId>_*`
   // token that the server rejects unless DEV_WS_ALLOW=true. In prod
@@ -3193,6 +3227,11 @@ function PlayerPage() {
       if (idleResetTimerRef.current) clearTimeout(idleResetTimerRef.current);
       idleResetTimerRef.current = setTimeout(() => {
         setSceneTick(t => t + 1);
+        // Phase D1.5 — when idle elapses, also dismiss any active
+        // touch overlay + return to the home scene if we navigated
+        // away. Matches the "auto-return on idle" UX kiosks expect.
+        setTouchOverlay(null);
+        setTouchNavigatedTemplate(null);
       }, idleResetMs);
     };
 
@@ -3217,6 +3256,89 @@ function PlayerPage() {
       if (idleResetTimerRef.current) clearTimeout(idleResetTimerRef.current);
     };
   }, [isTouchTemplate, idleResetMs]);
+
+  // Phase D1.5 — touch overlay + navigate + sound listeners.
+  //
+  // The dispatcher in dispatchTouchAction() publishes three custom
+  // events when a visitor taps a zone. These listeners turn them
+  // into on-screen behavior:
+  //
+  //   edu:touch-overlay        → modal asset on top of the scene
+  //   edu:touch-navigate       → jump to another template
+  //   edu:touch-sound-toggle   → flip muted state for video assets
+  //
+  // Registered globally (not gated on isTouchTemplate) because a
+  // non-touch playlist could still contain a zone with a tap action
+  // via raw config. Cheap to keep armed — three event handlers, no
+  // intervals.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const onOverlay = (e: Event) => {
+      const ce = e as CustomEvent<any>;
+      const d = ce.detail || {};
+      if (d.kind === 'iframe' && d.url) {
+        setTouchOverlay({ kind: 'iframe', url: String(d.url) });
+      } else if (d.kind === 'video' && d.assetId) {
+        setTouchOverlay({
+          kind: 'video',
+          assetId: String(d.assetId),
+          returnOnEnd: d.returnOnEnd !== false,
+        });
+      } else if (d.kind === 'asset' && d.assetId) {
+        setTouchOverlay({ kind: 'asset', assetId: String(d.assetId) });
+      }
+    };
+
+    const onNavigate = (e: Event) => {
+      const ce = e as CustomEvent<any>;
+      const targetTemplateId = ce.detail?.templateId;
+      if (!targetTemplateId || typeof targetTemplateId !== 'string') return;
+      // Fetch the target template and stash it as the
+      // `touchNavigatedTemplate` overlay. The render path below
+      // renders this in place of the current playlist when set.
+      // Tap-anywhere on the back chip OR the existing idle-reset
+      // (Sprint 4 sceneTick) clears it.
+      (async () => {
+        try {
+          const token = typeof window !== 'undefined'
+            ? (localStorage.getItem('edu_cms_token') || '')
+            : '';
+          const res = await fetch(
+            `${getApiRoot()}/api/v1/templates/${encodeURIComponent(targetTemplateId)}`,
+            { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: 'no-store' },
+          );
+          if (!res.ok) {
+            console.warn(`[touch-navigate] template ${targetTemplateId} fetch failed: HTTP ${res.status}`);
+            return;
+          }
+          const tpl = await res.json();
+          setTouchNavigatedTemplate(tpl);
+        } catch (err) {
+          console.warn('[touch-navigate] fetch threw:', (err as Error)?.message);
+        }
+      })();
+    };
+
+    const onSoundToggle = () => {
+      setTouchMuted((m) => !m);
+    };
+
+    window.addEventListener('edu:touch-overlay', onOverlay as EventListener);
+    window.addEventListener('edu:touch-navigate', onNavigate as EventListener);
+    window.addEventListener('edu:touch-sound-toggle', onSoundToggle as EventListener);
+
+    return () => {
+      window.removeEventListener('edu:touch-overlay', onOverlay as EventListener);
+      window.removeEventListener('edu:touch-navigate', onNavigate as EventListener);
+      window.removeEventListener('edu:touch-sound-toggle', onSoundToggle as EventListener);
+    };
+    // applyManifest is declared later in this component and is a
+    // stable closure over our state setters; we don't depend on it
+    // in the dep array to avoid re-binding the listeners on every
+    // playlist change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Memoized sorted playlist + item-validity check.
   const isTemplate = !!playlist?.template;
@@ -4938,6 +5060,31 @@ function PlayerPage() {
       {otaOverlay}
       {connectivityToast}
       {unsignedWsBanner}
+      {/* Phase D1.5 — touch builder overlay layer. Renders ABOVE
+          all playback chrome but BELOW the emergency override (which
+          sits in its own z-index above everything for life-safety
+          reasons). Three modes:
+            - iframe: visitor tapped an Open URL action with overlay mode
+            - video:  visitor tapped Play Video — auto-returns on end
+            - asset:  visitor tapped Show Overlay — image/video modal
+          Tap-outside dismisses; existing idle-reset also clears.
+          Renders nothing when touchOverlay is null. */}
+      <TouchOverlay
+        overlay={touchOverlay}
+        muted={touchMuted}
+        onClose={() => setTouchOverlay(null)}
+        onSoundToggle={() => setTouchMuted((m) => !m)}
+      />
+      {/* Phase D1.5 — touch-navigated template overlay. When a
+          visitor taps a goto-template action we render the target
+          template full-screen with a back chip. Idle-reset returns
+          to the home template. Renders nothing when no nav active. */}
+      {touchNavigatedTemplate && (
+        <TouchNavOverlay
+          template={touchNavigatedTemplate}
+          onBack={() => setTouchNavigatedTemplate(null)}
+        />
+      )}
     </div>
   );
 }
