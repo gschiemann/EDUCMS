@@ -26,12 +26,13 @@ jobs:
   webkit-holiday-bridge:
     name: WebKit · Holiday template bridge protocol
     runs-on: ubuntu-latest
-    # 2026-05-12 — bumped from 5 to 8. Browser-binary install on a
-    # cold runner cache (Playwright pulls WebKit + deps fresh) was
-    # repeatedly tripping the 5-min hard cap even though the actual
-    # protocol test runs in under 2 min. 8 leaves headroom for the
-    # install + retry-fast-path without masking real failures.
-    timeout-minutes: 8
+    # 2026-05-12 — the WebKit install on a cold runner (`apt-get
+    # update && apt-get install` for ~160 packages of WebKit system
+    # deps) takes 3-7 min ON ITS OWN. The actual protocol test takes
+    # under 2 min. Cap at 15 to absorb the longest cold-cache install
+    # without masking real test regressions (real test failures
+    # surface inside the protocol script in seconds, not minutes).
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,8 +55,22 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Playwright WebKit
-        # Only the WebKit browser; skip Chromium/Firefox to keep CI fast.
+      # Cache the Playwright browser binaries between runs. Saves
+      # ~3-5 min on cache hit. Key includes the playwright version
+      # from package.json so a Playwright bump auto-invalidates.
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-webkit-${{ hashFiles('apps/web/package.json') }}
+
+      - name: Install Playwright WebKit (with system deps)
+        # Only the WebKit browser binary + its system dependencies.
+        # --with-deps runs apt-get for the C library deps WebKit
+        # needs at runtime (libgtk, libwebp, libavif, etc.) — these
+        # are NOT in the cache (system packages) so they reinstall
+        # every run. Browser binaries themselves ARE cached above.
         run: pnpm --filter web exec playwright install --with-deps webkit
 
       - name: Run cross-browser test
