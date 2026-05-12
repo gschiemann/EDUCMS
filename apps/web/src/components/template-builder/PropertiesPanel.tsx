@@ -2015,6 +2015,91 @@ function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
       fields.push(<TextField key="url" label="Web page URL" value={cfg.url || cfg.embedUrl || ''} placeholder="https://example.com" onChange={(v) => setField({ url: v, embedUrl: undefined })} />);
       fields.push(<TextField key="refreshIntervalMs" label="Auto-refresh every (ms, 0 = never)" value={String(cfg.refreshIntervalMs ?? 0)} placeholder="0" onChange={(v) => setField({ refreshIntervalMs: parseInt(v) || 0 })} />);
       break;
+
+    case 'TOUCH_POINT': {
+      // Phase D2.12 (2026-05-12) — operator: "these icons arent
+      // editable... we are getting close but these need to be
+      // completely editable and customizable to be usable."
+      //
+      // The widget itself reads config.color, config.bgColor,
+      // config.label, and config.qrText (qr variant only). Every
+      // variant supports color overrides; only the labeled +
+      // qr variants get text inputs.
+      let normalizedVariant = String(cfg.variant || 'hotspot').toLowerCase();
+      if (normalizedVariant.startsWith('touch-')) normalizedVariant = normalizedVariant.slice('touch-'.length);
+
+      // Hotspot is invisible — no color/label knobs make sense.
+      if (normalizedVariant === 'hotspot' || normalizedVariant === '') {
+        fields.push(
+          <div key="hotspot-help" className="text-[11px] text-slate-500 bg-slate-50/80 border border-slate-100 rounded-lg px-3 py-2 leading-snug">
+            <strong>Transparent hotspot.</strong> Renders invisible at runtime — the dashed outline you see in the editor is just for positioning. Wire its Tap Action below.
+          </div>
+        );
+        break;
+      }
+
+      const labeledVariants = new Set(['tap-prompt', 'square', 'back', 'next', 'print']);
+      if (labeledVariants.has(normalizedVariant)) {
+        const defaultLabel = normalizedVariant === 'tap-prompt' ? 'Tap to continue'
+          : normalizedVariant === 'back' ? 'Back'
+          : normalizedVariant === 'next' ? 'Next'
+          : normalizedVariant === 'print' ? 'Print'
+          : 'Tap';
+        fields.push(
+          <TextField
+            key="label"
+            label="Button label"
+            value={cfg.label ?? ''}
+            placeholder={defaultLabel}
+            onChange={(v) => setField({ label: v })}
+          />
+        );
+      }
+
+      if (normalizedVariant === 'qr') {
+        fields.push(
+          <TextField
+            key="qrText"
+            label="QR encodes this URL / text"
+            value={cfg.qrText ?? ''}
+            placeholder="https://example.com or any text"
+            onChange={(v) => setField({ qrText: v })}
+          />
+        );
+        fields.push(
+          <p key="qr-help" className="text-[10px] text-slate-500 -mt-1 leading-snug">
+            The visible QR code regenerates as you type. Phone cameras scan it directly — no Tap Action needed (but you can still add one if you want a fallback for visitors who can't scan).
+          </p>
+        );
+      }
+
+      // Color customization — applies to every visible variant.
+      // Sensible defaults so an unset color falls back to brand
+      // primary (or the variant-specific accent for help/heart/star/
+      // play/close which override in the renderer).
+      fields.push(
+        <ColorPickerField
+          key="bgColor"
+          label="Button background"
+          value={cfg.bgColor || ''}
+          onChange={(v) => setField({ bgColor: v || undefined })}
+        />
+      );
+      fields.push(
+        <ColorPickerField
+          key="color"
+          label="Icon / text color"
+          value={cfg.color || ''}
+          onChange={(v) => setField({ color: v || undefined })}
+        />
+      );
+      fields.push(
+        <p key="reset-tip" className="text-[10px] text-slate-400 -mt-1 leading-snug">
+          Leave empty to inherit the tenant brand color. Some variants (heart, star, help, close) use a default accent that the override replaces.
+        </p>
+      );
+      break;
+    }
     case 'BELL_SCHEDULE':
       fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Bell Schedule" onChange={(v) => setField({ title: v })} />);
       fields.push(

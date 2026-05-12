@@ -2103,431 +2103,419 @@ function LogoWidget({ config }: { config: any }) {
 
 export function TouchPointWidget({ config }: { config: any }) {
   // Normalize the variant — VariantPicker drops use `touch-${id}` to
-  // namespace the registered variant id (e.g. 'touch-hotspot' so it
-  // doesn't collide with other widget types' variant ids). The
-  // legacy WidgetPalette path drops the raw variant string. Strip
-  // the prefix once here so either flow renders identically.
+  // namespace the registered id; the legacy WidgetPalette path used
+  // the bare string. Either way TouchPointWidget switches on the
+  // unprefixed form.
   let variant = String(config?.variant || 'hotspot').toLowerCase();
   if (variant.startsWith('touch-')) variant = variant.slice('touch-'.length);
-  const label = typeof config?.label === 'string' ? config.label : undefined;
 
-  // The hotspot is the canonical invisible tap target. Editor-time
-  // the BuilderZone draws a dashed overlay (so the operator can
-  // still see + position it); runtime renders nothing.
-  if (variant === 'hotspot' || variant === '') {
-    return null;
-  }
+  // ── Operator-controlled customization (Phase D2.12) ──
+  // Three knobs read from defaultConfig with sensible brand-color
+  // fallbacks. All three round-trip through the Properties panel
+  // editor — see ContentFields case 'TOUCH_POINT' below.
+  //   bgColor — button fill / disc background
+  //   color   — icon + text color
+  //   label   — text overlaid on labeled variants (tap-prompt /
+  //             square / back / next / print)
+  const bgColor: string = config?.bgColor || 'var(--brand-primary, #7c3aed)';
+  const color: string = config?.color || 'var(--brand-primary-ink, #ffffff)';
+  const label: string | undefined = typeof config?.label === 'string' ? config.label : undefined;
 
-  // Shared button chrome — brand-primary fill, white ink, generous
-  // rounded corners, subtle drop shadow. Inline styles so the
-  // widget renders consistently inside any container regardless of
-  // surrounding cascade.
-  const baseButtonStyle: React.CSSProperties = {
+  // Hotspot variant — runtime invisible; BuilderZone draws the editor
+  // overlay so the operator can still see + position it.
+  if (variant === 'hotspot' || variant === '') return null;
+
+  // ─────────────────────────────────────────────────────
+  // Container-query sizing (Phase D2.12 — replaces em).
+  //
+  // Operator: "these icons arent edituable... they dont get any
+  // larger." The previous `em`-based sizing was relative to the
+  // parent's font-size, which never changed when the operator
+  // resized the zone. cqmin = 1% of the SMALLER container-query
+  // dimension, so an icon at `40cqmin` is always 40% of the zone's
+  // smaller side — drag the zone bigger, the icon scales with it.
+  //
+  // Wrapper sets `container-type: size` so cqw/cqh/cqmin units
+  // inside it resolve to THIS container, not the page viewport.
+  // ─────────────────────────────────────────────────────
+  const containerStyle: React.CSSProperties = {
+    width: '100%',
+    height: '100%',
+    containerType: 'size',
+    containerName: 'tp',
+    overflow: 'hidden',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+
+  // Pill / chip shared base — for variants that flow horizontally
+  // with optional text (tap-prompt, back, next, square, print, search).
+  const pillStyle: React.CSSProperties = {
     width: '100%',
     height: '100%',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '0.5em',
-    background: 'var(--brand-primary, #7c3aed)',
-    color: 'var(--brand-primary-ink, #ffffff)',
+    gap: '4cqmin',
+    background: bgColor,
+    color,
     border: 'none',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+    boxShadow: '0 1cqmin 3cqmin rgba(0,0,0,0.18)',
     fontWeight: 800,
+    fontSize: '14cqmin',
     letterSpacing: '0.01em',
-    fontSize: '1.5em',
     overflow: 'hidden',
+    padding: '4cqmin 6cqmin',
   };
 
-  // Icon sizing in em so it scales with the zone's font-size which
-  // is itself set by the parent container's height in the player.
-  const iconStyle: React.CSSProperties = { width: '1.4em', height: '1.4em', flexShrink: 0 };
+  // Round-disc shared base — for icon-only variants (home, close,
+  // menu, help, phone, email, share, heart, star, volume, info,
+  // arrows, circle, play). aspect-ratio keeps the disc circular
+  // even when the zone aspect isn't 1:1; maxWidth/Height: 100%
+  // keeps it inside the zone.
+  const discStyle = (overrides: Partial<React.CSSProperties> = {}): React.CSSProperties => ({
+    aspectRatio: '1 / 1',
+    maxWidth: '100%',
+    maxHeight: '100%',
+    width: 'auto',
+    height: '100%',
+    borderRadius: '999px',
+    background: bgColor,
+    color,
+    boxShadow: '0 1cqmin 3cqmin rgba(0,0,0,0.18)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...overrides,
+  });
+
+  // Icon sizing — cqmin so it scales with the smaller zone dimension.
+  // Bigger zone = bigger icon, automatically.
+  const iconLg: React.CSSProperties = { width: '40cqmin', height: '40cqmin', flexShrink: 0 };
+  const iconMd: React.CSSProperties = { width: '12cqmin', height: '12cqmin', flexShrink: 0 };
 
   switch (variant) {
     case 'tap-prompt':
       return (
-        <div style={{ ...baseButtonStyle, borderRadius: '999px', padding: '0.5em 1.25em' }}>
-          <MousePointerClick style={iconStyle} aria-hidden />
-          <span style={{ whiteSpace: 'nowrap' }}>{label || 'Tap to continue'}</span>
+        <div style={containerStyle}>
+          <div style={{ ...pillStyle, borderRadius: '999px' }}>
+            <MousePointerClick style={iconMd} aria-hidden />
+            <span style={{ whiteSpace: 'nowrap' }}>{label || 'Tap to continue'}</span>
+          </div>
         </div>
       );
 
     case 'circle':
-      // Aspect-preserving circle. Uses a wrapper so the brand-color
-      // circle stays a true circle even when the zone aspect ratio
-      // isn't 1:1 (operator dragged it taller than wide → circle
-      // stays inside the smaller dimension).
       return (
-        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div
-            style={{
-              aspectRatio: '1 / 1',
-              maxWidth: '100%',
-              maxHeight: '100%',
-              width: 'min(100%, 100%)',
-              borderRadius: '999px',
-              background: 'var(--brand-primary, #7c3aed)',
-              boxShadow: '0 6px 18px rgba(0,0,0,0.22)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'var(--brand-primary-ink, #ffffff)',
-            }}
-          >
-            <Hand style={{ width: '40%', height: '40%' }} aria-hidden />
+        <div style={containerStyle}>
+          <div style={discStyle()}>
+            <Hand style={{ width: '45%', height: '45%' }} aria-hidden />
           </div>
         </div>
       );
 
     case 'square':
       return (
-        <div style={{ ...baseButtonStyle, borderRadius: '1em', padding: '0.5em 1em' }}>
-          {label ? <span style={{ whiteSpace: 'nowrap' }}>{label}</span> : <Hand style={iconStyle} aria-hidden />}
+        <div style={containerStyle}>
+          <div style={{ ...pillStyle, borderRadius: '8cqmin' }}>
+            {label ? <span style={{ whiteSpace: 'nowrap' }}>{label}</span> : <Hand style={iconMd} aria-hidden />}
+          </div>
         </div>
       );
 
     case 'arrow-right':
       return (
-        <div style={{ ...baseButtonStyle, borderRadius: '999px' }}>
-          <ArrowRight style={{ width: '55%', height: '55%' }} aria-hidden />
+        <div style={containerStyle}>
+          <div style={discStyle()}>
+            <ArrowRight style={{ width: '55%', height: '55%' }} aria-hidden />
+          </div>
         </div>
       );
     case 'arrow-left':
       return (
-        <div style={{ ...baseButtonStyle, borderRadius: '999px' }}>
-          <ArrowLeft style={{ width: '55%', height: '55%' }} aria-hidden />
+        <div style={containerStyle}>
+          <div style={discStyle()}>
+            <ArrowLeft style={{ width: '55%', height: '55%' }} aria-hidden />
+          </div>
         </div>
       );
     case 'arrow-up':
       return (
-        <div style={{ ...baseButtonStyle, borderRadius: '999px' }}>
-          <ArrowUp style={{ width: '55%', height: '55%' }} aria-hidden />
+        <div style={containerStyle}>
+          <div style={discStyle()}>
+            <ArrowUp style={{ width: '55%', height: '55%' }} aria-hidden />
+          </div>
         </div>
       );
     case 'arrow-down':
       return (
-        <div style={{ ...baseButtonStyle, borderRadius: '999px' }}>
-          <ArrowDown style={{ width: '55%', height: '55%' }} aria-hidden />
+        <div style={containerStyle}>
+          <div style={discStyle()}>
+            <ArrowDown style={{ width: '55%', height: '55%' }} aria-hidden />
+          </div>
         </div>
       );
 
-    // ── Kiosk nav vocabulary (Phase D2.10) ──
-    // These render as icon-only round buttons by default. Operators
-    // who want a label flip on TouchPoint variant 'back' / 'next'
-    // (which render labeled chips below).
-
+    // ── Kiosk nav vocabulary ──
     case 'home':
       return (
-        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div
-            style={{
-              aspectRatio: '1 / 1',
-              maxWidth: '100%', maxHeight: '100%',
-              borderRadius: '999px',
-              background: 'var(--brand-primary, #7c3aed)',
-              color: 'var(--brand-primary-ink, #ffffff)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
+        <div style={containerStyle}>
+          <div style={discStyle()}>
             <Home style={{ width: '45%', height: '45%' }} aria-hidden />
           </div>
         </div>
       );
-
     case 'back':
       return (
-        <div style={{ ...baseButtonStyle, borderRadius: '999px', padding: '0.5em 1.25em', justifyContent: 'flex-start' }}>
-          <ArrowLeft style={iconStyle} aria-hidden />
-          <span style={{ whiteSpace: 'nowrap' }}>{label || 'Back'}</span>
+        <div style={containerStyle}>
+          <div style={{ ...pillStyle, borderRadius: '999px', justifyContent: 'flex-start' }}>
+            <ArrowLeft style={iconMd} aria-hidden />
+            <span style={{ whiteSpace: 'nowrap' }}>{label || 'Back'}</span>
+          </div>
         </div>
       );
-
     case 'next':
       return (
-        <div style={{ ...baseButtonStyle, borderRadius: '999px', padding: '0.5em 1.25em', justifyContent: 'flex-end' }}>
-          <span style={{ whiteSpace: 'nowrap' }}>{label || 'Next'}</span>
-          <ArrowRight style={iconStyle} aria-hidden />
+        <div style={containerStyle}>
+          <div style={{ ...pillStyle, borderRadius: '999px', justifyContent: 'flex-end' }}>
+            <span style={{ whiteSpace: 'nowrap' }}>{label || 'Next'}</span>
+            <ArrowRight style={iconMd} aria-hidden />
+          </div>
         </div>
       );
-
     case 'close':
+      // High-contrast slate fallback for close — operator can override
+      // bgColor/color through Properties if their scene needs it.
       return (
-        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div
-            style={{
-              aspectRatio: '1 / 1',
-              maxWidth: '100%', maxHeight: '100%',
-              borderRadius: '999px',
-              background: 'rgba(15, 23, 42, 0.75)', // slate-900 @ 75% — high-contrast on any scene
-              color: '#ffffff',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
+        <div style={containerStyle}>
+          <div style={discStyle({
+            background: config?.bgColor || 'rgba(15, 23, 42, 0.78)',
+            color: config?.color || '#ffffff',
+          })}>
             <X style={{ width: '45%', height: '45%' }} aria-hidden />
           </div>
         </div>
       );
-
     case 'menu':
       return (
-        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div
-            style={{
-              aspectRatio: '1 / 1',
-              maxWidth: '100%', maxHeight: '100%',
-              borderRadius: '0.75em',
-              background: 'var(--brand-primary, #7c3aed)',
-              color: 'var(--brand-primary-ink, #ffffff)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
+        <div style={containerStyle}>
+          <div style={discStyle({ borderRadius: '12cqmin' })}>
             <Menu style={{ width: '45%', height: '45%' }} aria-hidden />
           </div>
         </div>
       );
-
     case 'help':
+      // Amber default for "help" — universal color for advisory UI.
+      // Override via Properties if your theme calls for different.
       return (
-        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div
-            style={{
-              aspectRatio: '1 / 1',
-              maxWidth: '100%', maxHeight: '100%',
-              borderRadius: '999px',
-              background: 'var(--brand-accent, #f59e0b)',
-              color: 'var(--brand-accent-ink, #ffffff)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.22)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontWeight: 900,
-            }}
-          >
+        <div style={containerStyle}>
+          <div style={discStyle({
+            background: config?.bgColor || 'var(--brand-accent, #f59e0b)',
+            color: config?.color || 'var(--brand-accent-ink, #ffffff)',
+          })}>
             <HelpCircle style={{ width: '55%', height: '55%' }} aria-hidden />
           </div>
         </div>
       );
-
     case 'play':
-      // Play CTAs sit on top of a video thumbnail typically. Round
-      // ring + filled play triangle, slightly oversized so it's
-      // unmistakably the call-to-action.
+      // White-on-brand for play CTAs — sits on top of a video tile
+      // and reads as "press to start." Operator can flip bgColor to
+      // change the disc color.
       return (
-        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div
-            style={{
-              aspectRatio: '1 / 1',
-              maxWidth: '100%', maxHeight: '100%',
-              borderRadius: '999px',
-              background: 'rgba(255,255,255,0.92)',
-              color: 'var(--brand-primary, #7c3aed)',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <Play style={{ width: '45%', height: '45%', marginLeft: '6%' }} aria-hidden fill="currentColor" />
+        <div style={containerStyle}>
+          <div style={discStyle({
+            background: config?.bgColor || 'rgba(255,255,255,0.92)',
+            color: config?.color || 'var(--brand-primary, #7c3aed)',
+            boxShadow: '0 2cqmin 6cqmin rgba(0,0,0,0.35)',
+          })}>
+            <Play style={{ width: '45%', height: '45%', marginLeft: '6%' }} fill="currentColor" aria-hidden />
           </div>
         </div>
       );
 
-    // ── Phase D2.11 communication / engagement / utility ──
-    //
-    // All round-button variants share the same chrome (round
-    // brand-color disc with a centered icon) — the only thing that
-    // changes is the icon + sometimes the fill color (Heart goes
-    // pink to signal "favorite," Star goes amber, Help+Info use
-    // accent). Pattern is centered to keep visual rhythm across
-    // the 25-widget palette consistent.
-    case 'qr': {
-      // Visible QR placeholder. Operator configures the encoded URL
-      // via config.qrText; the placeholder visual is a stylized
-      // square grid pattern so the operator can size + position
-      // before wiring real QR generation (deferred to v2).
-      const qrText = typeof config?.qrText === 'string' && config.qrText.trim()
-        ? config.qrText
-        : 'Set URL in Properties';
-      return (
-        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4%' }}>
-          <div
-            style={{
-              aspectRatio: '1 / 1',
-              maxWidth: '100%', maxHeight: '100%',
-              borderRadius: '0.5em',
-              background: '#ffffff',
-              boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              padding: '8%',
-              border: '1px solid #e2e8f0',
-              gap: '0.5em',
-              overflow: 'hidden',
-            }}
-          >
-            <QrCode style={{ width: '70%', height: '70%', color: '#0f172a' }} aria-hidden />
-            <span style={{ fontSize: '0.45em', fontWeight: 700, color: '#475569', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '100%' }}>
-              {qrText.length > 32 ? qrText.slice(0, 30) + '…' : qrText}
-            </span>
-          </div>
-        </div>
-      );
-    }
-
+    // ── Communication ──
+    case 'qr':
+      return <QrCodeVariant config={config} bgColor={bgColor} color={color} />;
     case 'info':
       return (
-        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div
-            style={{
-              aspectRatio: '1 / 1',
-              maxWidth: '100%', maxHeight: '100%',
-              borderRadius: '999px',
-              background: 'var(--brand-accent, #3b82f6)',
-              color: 'var(--brand-accent-ink, #ffffff)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
+        <div style={containerStyle}>
+          <div style={discStyle({
+            background: config?.bgColor || 'var(--brand-accent, #3b82f6)',
+            color: config?.color || 'var(--brand-accent-ink, #ffffff)',
+          })}>
             <Info style={{ width: '55%', height: '55%' }} aria-hidden />
           </div>
         </div>
       );
-
     case 'phone':
       return (
-        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div
-            style={{
-              aspectRatio: '1 / 1',
-              maxWidth: '100%', maxHeight: '100%',
-              borderRadius: '999px',
-              background: 'var(--brand-primary, #10b981)', // green-tinted feel via tenant primary
-              color: 'var(--brand-primary-ink, #ffffff)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
+        <div style={containerStyle}>
+          <div style={discStyle()}>
             <Phone style={{ width: '45%', height: '45%' }} aria-hidden />
           </div>
         </div>
       );
-
     case 'email':
       return (
-        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div
-            style={{
-              aspectRatio: '1 / 1',
-              maxWidth: '100%', maxHeight: '100%',
-              borderRadius: '999px',
-              background: 'var(--brand-primary, #7c3aed)',
-              color: 'var(--brand-primary-ink, #ffffff)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
+        <div style={containerStyle}>
+          <div style={discStyle()}>
             <Mail style={{ width: '45%', height: '45%' }} aria-hidden />
           </div>
         </div>
       );
-
     case 'share':
       return (
-        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div
-            style={{
-              aspectRatio: '1 / 1',
-              maxWidth: '100%', maxHeight: '100%',
-              borderRadius: '999px',
-              background: 'var(--brand-primary, #7c3aed)',
-              color: 'var(--brand-primary-ink, #ffffff)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
+        <div style={containerStyle}>
+          <div style={discStyle()}>
             <Share2 style={{ width: '45%', height: '45%' }} aria-hidden />
           </div>
         </div>
       );
 
+    // ── Engagement ──
     case 'heart':
-      // Pink to signal "favorite" universally. Outline-on-default
-      // would be cleaner but a solid fill reads better at kiosk
-      // viewing distance.
       return (
-        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div
-            style={{
-              aspectRatio: '1 / 1',
-              maxWidth: '100%', maxHeight: '100%',
-              borderRadius: '999px',
-              background: '#ec4899', // pink-500
-              color: '#ffffff',
-              boxShadow: '0 4px 14px rgba(236, 72, 153, 0.35)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
+        <div style={containerStyle}>
+          <div style={discStyle({
+            background: config?.bgColor || '#ec4899',
+            color: config?.color || '#ffffff',
+            boxShadow: '0 2cqmin 6cqmin rgba(236, 72, 153, 0.35)',
+          })}>
             <Heart style={{ width: '50%', height: '50%' }} fill="currentColor" aria-hidden />
           </div>
         </div>
       );
-
     case 'star':
-      // Amber for "rating" — universal star color across rating UIs.
       return (
-        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div
-            style={{
-              aspectRatio: '1 / 1',
-              maxWidth: '100%', maxHeight: '100%',
-              borderRadius: '999px',
-              background: '#f59e0b', // amber-500
-              color: '#ffffff',
-              boxShadow: '0 4px 14px rgba(245, 158, 11, 0.35)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
+        <div style={containerStyle}>
+          <div style={discStyle({
+            background: config?.bgColor || '#f59e0b',
+            color: config?.color || '#ffffff',
+            boxShadow: '0 2cqmin 6cqmin rgba(245, 158, 11, 0.35)',
+          })}>
             <Star style={{ width: '55%', height: '55%' }} fill="currentColor" aria-hidden />
           </div>
         </div>
       );
 
+    // ── Utility ──
     case 'search':
       return (
-        <div style={{ ...baseButtonStyle, borderRadius: '999px', padding: '0.5em 1em' }}>
-          <Search style={iconStyle} aria-hidden />
+        <div style={containerStyle}>
+          <div style={{ ...pillStyle, borderRadius: '999px' }}>
+            <Search style={iconMd} aria-hidden />
+          </div>
         </div>
       );
-
     case 'volume':
       return (
-        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div
-            style={{
-              aspectRatio: '1 / 1',
-              maxWidth: '100%', maxHeight: '100%',
-              borderRadius: '999px',
-              background: 'var(--brand-primary, #7c3aed)',
-              color: 'var(--brand-primary-ink, #ffffff)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
+        <div style={containerStyle}>
+          <div style={discStyle()}>
             <Volume2 style={{ width: '50%', height: '50%' }} aria-hidden />
           </div>
         </div>
       );
-
     case 'print':
       return (
-        <div style={{ ...baseButtonStyle, borderRadius: '0.75em', padding: '0.5em 1.25em' }}>
-          <Printer style={iconStyle} aria-hidden />
-          <span style={{ whiteSpace: 'nowrap' }}>Print</span>
+        <div style={containerStyle}>
+          <div style={{ ...pillStyle, borderRadius: '8cqmin' }}>
+            <Printer style={iconMd} aria-hidden />
+            <span style={{ whiteSpace: 'nowrap' }}>{label || 'Print'}</span>
+          </div>
         </div>
       );
 
     default:
-      // Unknown variant → fall back to hotspot (invisible). Keeps
-      // forward-compat: an older player can render a newer template
-      // even if it doesn't know the new variant yet.
+      // Unknown variant → invisible. Keeps forward-compat with
+      // future variants the player doesn't know yet.
       return null;
   }
+}
+
+// ── Real QR code rendering (Phase D2.12) ──
+// Operator: "i dont see how you tie that QR code into an actual
+// working one." The placeholder was a lucide QrCode icon + URL text;
+// scanning it did nothing because it wasn't an actual QR code.
+//
+// Fix: generate a real QR via the bundled `qrcode` library on a hidden
+// canvas, convert to a data URL, render as an <img>. Re-renders only
+// when qrText changes (memoized in useEffect dep). White card around
+// the QR + the URL preview below so visitors know what they're
+// scanning.
+function QrCodeVariant({ config, bgColor, color }: { config: any; bgColor: string; color: string }) {
+  const qrText: string = typeof config?.qrText === 'string' && config.qrText.trim()
+    ? config.qrText.trim()
+    : '';
+  const [dataUrl, setDataUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (!qrText) { setDataUrl(''); return; }
+    let cancelled = false;
+    // Dynamic import keeps the qrcode lib out of the initial bundle —
+    // most templates don't have QR widgets. ~15KB saved on first paint.
+    import('qrcode').then((QR) => {
+      QR.toDataURL(qrText, { width: 512, margin: 1, errorCorrectionLevel: 'M' })
+        .then((url: string) => { if (!cancelled) setDataUrl(url); })
+        .catch(() => { if (!cancelled) setDataUrl(''); });
+    }).catch(() => { /* qrcode unavailable; show fallback */ });
+    return () => { cancelled = true; };
+  }, [qrText]);
+
+  return (
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        containerType: 'size',
+        containerName: 'tp',
+        overflow: 'hidden',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '4cqmin',
+      }}
+    >
+      <div
+        style={{
+          aspectRatio: '1 / 1',
+          maxWidth: '100%',
+          maxHeight: '100%',
+          background: color === 'var(--brand-primary-ink, #ffffff)' || /^#?[fF]{3,6}$/.test(color || '') ? '#ffffff' : bgColor,
+          // The frame fills the zone; inner QR + caption split it.
+          borderRadius: '4cqmin',
+          boxShadow: '0 2cqmin 6cqmin rgba(0,0,0,0.18)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          padding: '6cqmin',
+          gap: '4cqmin',
+          border: '0.5cqmin solid #e2e8f0',
+          overflow: 'hidden',
+        }}
+      >
+        {dataUrl ? (
+          <img
+            src={dataUrl}
+            alt={`QR code linking to ${qrText}`}
+            style={{ width: '80%', height: 'auto', imageRendering: 'pixelated', flexShrink: 0 }}
+          />
+        ) : (
+          <QrCode style={{ width: '60%', height: '60%', color: '#0f172a' }} aria-hidden />
+        )}
+        <span style={{
+          fontSize: '6cqmin',
+          fontWeight: 700,
+          color: '#475569',
+          whiteSpace: 'nowrap',
+          textOverflow: 'ellipsis',
+          overflow: 'hidden',
+          maxWidth: '100%',
+          textAlign: 'center',
+        }}>
+          {qrText ? (qrText.length > 32 ? qrText.slice(0, 30) + '…' : qrText) : 'Set URL in Properties'}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 // ═══════════════════════════════════════════════════════
