@@ -26,7 +26,12 @@ jobs:
   webkit-holiday-bridge:
     name: WebKit · Holiday template bridge protocol
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 2026-05-12 — bumped from 5 to 8. Browser-binary install on a
+    # cold runner cache (Playwright pulls WebKit + deps fresh) was
+    # repeatedly tripping the 5-min hard cap even though the actual
+    # protocol test runs in under 2 min. 8 leaves headroom for the
+    # install + retry-fast-path without masking real failures.
+    timeout-minutes: 8
     steps:
       - name: Checkout
         uses: actions/checkout@v4
