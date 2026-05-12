@@ -10,6 +10,7 @@ import { SuperAdminBanner } from './SuperAdminBanner';
 import { EmergencyOverlay } from './EmergencyOverlay';
 import { AuthExpirationGuard } from './AuthExpirationGuard';
 import { StaleBundleWatcher } from './StaleBundleWatcher';
+import { ProfileHydrator } from './ProfileHydrator';
 import { useTenantStatus } from '@/hooks/use-api';
 import { AppDialogHost } from '@/components/ui/app-dialog';
 import { BrandStyleInjector } from '@/components/branding/BrandStyleInjector';
@@ -73,6 +74,13 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           countdown; operator can Reload-now or Later. Pairs with
           the kiosk player's Phase B4 stale-bundle drift check. */}
       <StaleBundleWatcher />
+      {/* 2026-05-12 — auto-heal sessionStorage user objects that
+          predate the firstName/lastName columns. Fires one GET
+          /users/me on dashboard mount when the in-memory user
+          has no name fields; reconciles the store + sessionStorage
+          so the greeting shows the right name without operator
+          action. No-op for accounts that already have names. */}
+      <ProfileHydrator />
       {/* Tenant brand paint — scoped to authed dashboard only so the
           public marketing site + /login stay in the vendor palette. */}
       <BrandStyleInjector />
