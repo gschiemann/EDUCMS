@@ -53,12 +53,16 @@ export class OnboardingController {
   @Post('invites')
   @UseGuards(JwtAuthGuard, RbacGuard)
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async createInvite(@Request() req: any, @Body() body: { email: string; role: string }) {
+  async createInvite(@Request() req: any, @Body() body: { email: string; role: string; firstName?: string; lastName?: string }) {
     return this.onboarding.createInvite({
       inviterId: req.user.id,
       tenantId: req.user.tenantId,
       email: body.email,
       role: body.role,
+      // 2026-05-11 — names captured at invite time so the new user's
+      // first dashboard load reads "Hi Pat" not "Hi Pjones."
+      firstName: body.firstName,
+      lastName: body.lastName,
     });
   }
 
@@ -71,7 +75,7 @@ export class OnboardingController {
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   async createUserDirect(
     @Request() req: any,
-    @Body() body: { email: string; role: string; password: string },
+    @Body() body: { email: string; role: string; password: string; firstName?: string; lastName?: string },
   ) {
     return this.onboarding.createUserDirect({
       inviterId: req.user.id,
@@ -79,6 +83,8 @@ export class OnboardingController {
       email: body.email,
       role: body.role,
       password: body.password,
+      firstName: body.firstName,
+      lastName: body.lastName,
     });
   }
 

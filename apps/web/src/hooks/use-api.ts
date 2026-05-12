@@ -865,8 +865,11 @@ export function useCreateUser() {
 
 export function useInviteUser() {
   const qc = useQueryClient();
+  // 2026-05-11 — invite now accepts firstName + lastName so the
+  // dashboard greets new admins by name from day one instead of
+  // "Hi Pjones" from the email prefix.
   return useMutation({
-    mutationFn: (data: { email: string; role: string }) =>
+    mutationFn: (data: { email: string; role: string; firstName?: string; lastName?: string }) =>
       apiFetch('/invites', { method: 'POST', body: JSON.stringify(data) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
   });
@@ -876,7 +879,7 @@ export function useInviteUser() {
 export function useCreateUserDirect() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { email: string; role: string; password: string }) =>
+    mutationFn: (data: { email: string; role: string; password: string; firstName?: string; lastName?: string }) =>
       apiFetch('/users', { method: 'POST', body: JSON.stringify(data) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
   });

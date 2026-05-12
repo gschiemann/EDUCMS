@@ -13,7 +13,6 @@ import {
   useCanaryRollout, useUpdateCanaryRollout,
 } from '@/hooks/use-api';
 import { useState, useRef, useEffect } from 'react';
-import { ProfileCard } from '@/components/settings/ProfileCard';
 import { UsbIngestCard } from '@/components/settings/UsbIngestCard';
 import { LicenseCard } from '@/components/settings/LicenseCard';
 import { PanicContentEditor } from '@/components/settings/PanicContentEditor';
@@ -58,6 +57,11 @@ export default function SettingsPage() {
   const updatePanicSettings = useUpdateTenantPanicSettings();
   const [showAddUser, setShowAddUser] = useState(false);
   const [newEmail, setNewEmail] = useState('');
+  // 2026-05-11 — capture names at invite time so the new user's
+  // dashboard greets them by name from their first login instead
+  // of guessing from email prefix. Optional, both fields.
+  const [newFirstName, setNewFirstName] = useState('');
+  const [newLastName, setNewLastName] = useState('');
   const [newRole, setNewRole] = useState<string>('CONTRIBUTOR');
   const [inviteStatus, setInviteStatus] = useState<{ kind: 'ok' | 'err' | 'copy'; message: string; acceptUrl?: string } | null>(null);
   const inviteEmailRef = useRef<HTMLInputElement>(null);
@@ -78,13 +82,24 @@ export default function SettingsPage() {
           setInviteStatus({ kind: 'err', message: 'Password must be at least 8 characters.' });
           return;
         }
-        await createDirect.mutateAsync({ email: newEmail.trim(), role: newRole, password: newPassword });
+        await createDirect.mutateAsync({
+          email: newEmail.trim(),
+          role: newRole,
+          password: newPassword,
+          firstName: newFirstName.trim() || undefined,
+          lastName: newLastName.trim() || undefined,
+        });
         setInviteStatus({ kind: 'ok', message: `Added ${newEmail.trim()}. They can log in with the password you set.` });
-        setNewEmail(''); setNewPassword('');
+        setNewEmail(''); setNewPassword(''); setNewFirstName(''); setNewLastName('');
         setShowAddUser(false);
         return;
       }
-      const res: any = await inviteUser.mutateAsync({ email: newEmail.trim(), role: newRole });
+      const res: any = await inviteUser.mutateAsync({
+        email: newEmail.trim(),
+        role: newRole,
+        firstName: newFirstName.trim() || undefined,
+        lastName: newLastName.trim() || undefined,
+      });
       // API returns { acceptUrl, emailDelivered }. If email isn't wired up
       // we surface the accept link so the admin can paste it into their own
       // email / Slack rather than the invite disappearing into the void.
@@ -98,7 +113,7 @@ export default function SettingsPage() {
         setInviteStatus({ kind: 'ok', message: `Invitation sent to ${newEmail.trim()}.` });
         setShowAddUser(false);
       }
-      setNewEmail('');
+      setNewEmail(''); setNewFirstName(''); setNewLastName('');
     } catch (err: any) {
       setInviteStatus({ kind: 'err', message: err?.message || 'Could not send invitation.' });
     }
@@ -116,17 +131,16 @@ export default function SettingsPage() {
         <p className="text-sm text-slate-500 mt-0.5">Manage team members, roles, and system info.</p>
       </div>
 
-      {/* 2026-05-11 — Your Profile card. Lets every signed-in user
-          set their first + last name so the dashboard greeting reads
-          "Hi Greg" instead of "Hi Gschiemann." All roles can edit
-          their own row; no admin gate. Operator: "let's say Hi Greg
-          and not gschiemann." */}
-      <ProfileCard />
-
       {/* 2026-05-03 — VenueOS vertical switcher (DISTRICT_ADMIN +
           SUPER_ADMIN only). Lets a tenant admin switch industry
           post-signup if they picked the wrong vertical or pivot
-          business focus. Renders nothing for non-admin roles. */}
+          business focus. Renders nothing for non-admin roles.
+
+          (Per-user profile editing — first/last name — moved out of
+          this page on 2026-05-11. It now lives in the avatar
+          dropdown at the top-right of every page. Settings is for
+          TENANT-level admin config; cosmetic per-user fields
+          belong with the user, not buried under tenant settings.) */}
       <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN']}>
         <VerticalSwitcherCard />
       </RoleGate>
@@ -455,6 +469,16 @@ export default function SettingsPage() {
                   : 'We\u2019ll generate an invite link. The recipient sets their own password via the link — you never see it.'}
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* 2026-05-11 — name fields captured at invite time
+                    so the new admin's dashboard greets them by name
+                    on first login. Both optional — falls back to
+                    email-prefix display when omitted. */}
+                <input value={newFirstName} onChange={(e) => setNewFirstName(e.target.value)}
+                  placeholder="First name (optional)" type="text" maxLength={80}
+                  className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
+                <input value={newLastName} onChange={(e) => setNewLastName(e.target.value)}
+                  placeholder="Last name (optional)" type="text" maxLength={80}
+                  className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
                 <input ref={inviteEmailRef} value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder={tenantCopy.vertical === 'K12' ? 'teacher@school.edu' : 'colleague@yourcompany.com'} type="email"
                   className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
                 <select value={newRole} onChange={(e) => setNewRole(e.target.value)}
@@ -498,15 +522,25 @@ export default function SettingsPage() {
 
           {users && (
             <div className="divide-y divide-slate-50">
-              {users.map((user: any) => (
+              {users.map((user: any) => {
+                // 2026-05-11 — prefer "First Last" when set; show
+                // email as secondary line so the team list reads
+                // like a roster, not a mailing list.
+                const fn = (user.firstName || '').trim();
+                const ln = (user.lastName || '').trim();
+                const full = (fn || ln) ? `${fn} ${ln}`.trim() : null;
+                const avatar = full
+                  ? `${fn ? fn[0] : ''}${ln ? ln[0] : ''}`.toUpperCase() || (user.email?.substring(0, 2).toUpperCase() || '??')
+                  : (user.email?.substring(0, 2).toUpperCase() || '??');
+                return (
                 <div key={user.id} className="flex items-center justify-between px-6 py-3 hover:bg-slate-50/50 transition-colors">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-[10px] font-bold" style={{ background: 'linear-gradient(135deg, var(--brand-primary, #6366f1), color-mix(in srgb, var(--brand-primary, #6366f1) 60%, #8b5cf6))' }}>
-                      {user.email?.substring(0, 2).toUpperCase()}
+                      {avatar}
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-slate-800">{user.email}</p>
-                      <p className="text-[10px] text-slate-400">{user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'Member'}</p>
+                      <p className="text-xs font-semibold text-slate-800">{full || user.email}</p>
+                      <p className="text-[10px] text-slate-400">{full ? user.email : (user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'Member')}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -533,7 +567,8 @@ export default function SettingsPage() {
                     </button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

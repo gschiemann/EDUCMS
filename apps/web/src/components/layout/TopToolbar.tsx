@@ -3,13 +3,14 @@
 import { useAppStore } from '@/lib/store';
 import { RoleGate } from '../RoleGate';
 import { fullName as userFullName, initials as userInitials } from '@/lib/user-display';
-import { ShieldAlert, LogOut, Menu } from 'lucide-react';
+import { ShieldAlert, LogOut, Menu, UserCog } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
 import { HelpDrawer } from '../help/HelpDrawer';
 import { NotificationsBell } from './NotificationsBell';
 import { SchoolSwitcher } from './SchoolSwitcher';
+import { ProfileEditModal } from './ProfileEditModal';
 
 export function TopToolbar() {
   const router = useRouter();
@@ -19,6 +20,7 @@ export function TopToolbar() {
   const toggleMobileSidebar = useAppStore((state) => state.toggleMobileSidebar);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
@@ -83,9 +85,19 @@ export function TopToolbar() {
                   )}
                   <p className="text-[10px] text-slate-400 mt-0.5">{user?.role?.replace(/_/g, ' ')}</p>
                 </div>
+                {/* 2026-05-11 — Edit profile lives here, not in
+                    /settings (operator: "settings page is fucking
+                    crazy now"). Opens a small modal with name fields
+                    + live "Hi, Greg" preview. */}
+                <button
+                  onClick={() => { setShowUserMenu(false); setShowProfileModal(true); }}
+                  className="w-full text-left px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                >
+                  <UserCog className="w-3.5 h-3.5 text-slate-400" /> Edit profile
+                </button>
                 <button
                   onClick={() => { setShowUserMenu(false); logout(); router.push('/login'); }}
-                  className="w-full text-left px-4 py-2 text-xs font-medium text-red-600 hover:bg-red-50 flex items-center gap-2"
+                  className="w-full text-left px-4 py-2 text-xs font-medium text-red-600 hover:bg-red-50 flex items-center gap-2 border-t border-slate-100"
                 >
                   <LogOut className="w-3.5 h-3.5" /> Sign Out
                 </button>
@@ -96,6 +108,7 @@ export function TopToolbar() {
       </header>
 
       {isModalOpen && <EmergencyTriggerModal onClose={() => setIsModalOpen(false)} />}
+      {showProfileModal && <ProfileEditModal onClose={() => setShowProfileModal(false)} />}
     </>
   );
 }

@@ -124,7 +124,7 @@ export class UsersController {
 
   @Post()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN)
-  async create(@Request() req: any, @Body() body: { email: string; password: string; role: string }) {
+  async create(@Request() req: any, @Body() body: { email: string; password: string; role: string; firstName?: string; lastName?: string }) {
     const tenantId = req.user.tenantId;
 
     // CYCLE-1 auth-002: validate inputs and gate the role assignment so a
@@ -146,14 +146,26 @@ export class UsersController {
       parallelism: 4,
     });
 
+    // 2026-05-11 — names captured at create time so the dashboard
+    // greets new admins by name from day one instead of "Hi Pjones."
+    const trim = (v: unknown): string | null => {
+      if (typeof v !== 'string') return null;
+      const t = v.trim();
+      if (!t) return null;
+      if (t.length > 80) throw new BadRequestException('Name too long (max 80 characters)');
+      return t;
+    };
+
     const user = await this.prisma.client.user.create({
       data: {
         tenantId,
         email,
         passwordHash,
         role: body.role,
-      },
-      select: { id: true, email: true, role: true, createdAt: true },
+        firstName: trim(body.firstName),
+        lastName: trim(body.lastName),
+      } as any,
+      select: { id: true, email: true, role: true, createdAt: true, firstName: true, lastName: true } as any,
     });
 
     return user;

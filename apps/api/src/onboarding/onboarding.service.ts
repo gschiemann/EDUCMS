@@ -193,6 +193,11 @@ export class OnboardingService {
     tenantId: string;
     email: string;
     role: string;
+    // 2026-05-11 — capture display name at invite time so the new
+    // user's dashboard greeting reads correctly from their first
+    // login, instead of guessing from the email prefix.
+    firstName?: string;
+    lastName?: string;
   }) {
     const email = (input.email || '').trim().toLowerCase();
     const role = input.role;
@@ -200,6 +205,16 @@ export class OnboardingService {
     if (!ALLOWED_INVITE_ROLES.includes(role)) {
       throw new BadRequestException(`Role must be one of: ${ALLOWED_INVITE_ROLES.join(', ')}`);
     }
+    // Name validation — same 80-char cap as PUT /users/me + nullable.
+    const trimName = (v: unknown): string | null => {
+      if (typeof v !== 'string') return null;
+      const t = v.trim();
+      if (!t) return null;
+      if (t.length > 80) throw new BadRequestException('Name too long (max 80 characters)');
+      return t;
+    };
+    const firstName = trimName(input.firstName);
+    const lastName = trimName(input.lastName);
 
     const inviter = await this.prisma.client.user.findUnique({ where: { id: input.inviterId } });
     if (!inviter) throw new NotFoundException('Inviter not found.');
@@ -247,8 +262,23 @@ export class OnboardingService {
             passwordHash: placeholderHash,
             role,
             status: 'INVITED',
-          },
+            firstName,
+            lastName,
+          } as any,
         });
+      } else if (firstName || lastName) {
+        // Existing INVITED row + admin re-sends invite with names —
+        // update so the new info isn't dropped. Don't overwrite a
+        // non-null DB value with null though.
+        const patch: any = {};
+        if (firstName != null) patch.firstName = firstName;
+        if (lastName != null) patch.lastName = lastName;
+        if (Object.keys(patch).length > 0) {
+          placeholderUser = await tx.user.update({
+            where: { id: placeholderUser.id },
+            data: patch,
+          });
+        }
       }
       const invite = await tx.userInvite.create({
         data: {
@@ -317,6 +347,8 @@ export class OnboardingService {
     email: string;
     role: string;
     password: string;
+    firstName?: string;
+    lastName?: string;
   }) {
     const email = (input.email || '').trim().toLowerCase();
     const role = input.role;
@@ -325,6 +357,17 @@ export class OnboardingService {
       throw new BadRequestException(`Role must be one of: ${ALLOWED_INVITE_ROLES.join(', ')}`);
     }
     validatePassword(input.password);
+    // 2026-05-11 — display names captured at create time (same
+    // cap/null-as-empty rules as PUT /users/me).
+    const trimName = (v: unknown): string | null => {
+      if (typeof v !== 'string') return null;
+      const t = v.trim();
+      if (!t) return null;
+      if (t.length > 80) throw new BadRequestException('Name too long (max 80 characters)');
+      return t;
+    };
+    const firstName = trimName(input.firstName);
+    const lastName = trimName(input.lastName);
 
     const inviter = await this.prisma.client.user.findUnique({ where: { id: input.inviterId } });
     if (!inviter) throw new NotFoundException('Inviter not found.');
@@ -352,9 +395,12 @@ export class OnboardingService {
     const user = await this.prisma.client.$transaction(async (tx) => {
       let u = existing;
       if (u) {
+        const patch: any = { role, status: 'ACTIVE', passwordHash, tenantId: input.tenantId };
+        if (firstName != null) patch.firstName = firstName;
+        if (lastName != null) patch.lastName = lastName;
         u = await tx.user.update({
           where: { id: u.id },
-          data: { role, status: 'ACTIVE', passwordHash, tenantId: input.tenantId },
+          data: patch,
         });
       } else {
         u = await tx.user.create({
@@ -364,7 +410,9 @@ export class OnboardingService {
             passwordHash,
             role,
             status: 'ACTIVE',
-          },
+            firstName,
+            lastName,
+          } as any,
         });
       }
       await tx.auditLog.create({
