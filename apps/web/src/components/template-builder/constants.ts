@@ -47,7 +47,15 @@ import {
 // listing which industries see the group in their palette. Empty /
 // missing field means "all verticals" (universal — everyone sees it).
 //
-// Filter applied in WidgetPalette via useTenantCopy().vertical so a
+// (Historical note: WIDGET_GROUPS was originally the source-of-truth
+// for the WidgetPalette picker, which was deleted 2026-05-12. The V2
+// builder renders VariantPicker which uses variants-register.ts for
+// its tile set, NOT this list. WIDGET_GROUPS is still useful here as
+// the label/icon/color registry consumed by widgetLabel(), widgetIcon(),
+// getZoneColor(), and the bottom of this file — but adding a new tile
+// HERE will NOT make it appear in the operator's palette. Register
+// the variant in variants-register.ts instead.)
+// Filter previously applied in WidgetPalette via useTenantCopy().vertical so a
 // gym admin sees Media + Web & Text + Utility + Decorations + Fitness;
 // they DON'T see Education + Animated Scenes + Scrapbook + Storybook
 // (those are K12-only). A school admin sees the K12 groups as before

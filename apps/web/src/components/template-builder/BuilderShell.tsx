@@ -18,7 +18,12 @@ import { getZoneColor } from './constants';
 import { useBuilderStore } from './useBuilderStore';
 import { BuilderToolbar } from './BuilderToolbar';
 import { BuilderCanvas } from './BuilderCanvas';
-import { WidgetPalette } from './WidgetPalette';
+// WidgetPalette.tsx deleted 2026-05-12 — was imported but never rendered.
+// The widgets-panel tab renders VariantPicker (see line where panel ===
+// 'widgets' below). Three rounds of touch-widget edits landed in the
+// dead file before the operator's screenshot caught it. Do not
+// resurrect WidgetPalette without first verifying it's actually
+// mounted somewhere.
 import { VariantPicker } from './VariantPicker';
 import { LayersPanel } from './LayersPanel';
 import { ScenesPanel } from './ScenesPanel';

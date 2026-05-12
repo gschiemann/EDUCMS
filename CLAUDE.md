@@ -1341,6 +1341,38 @@ No commercial vendors until we have funding. All free/open-source or self-hosted
 
 8. **Prisma schema & types** — Source of truth is `packages/database/prisma/schema.prisma`. Regenerate `@prisma/client` after schema changes: `pnpm db:generate`
 
+9. **VERIFY THE RENDER TREE before editing any UI file.** Three rounds
+   of touch-widget edits on 2026-05-12 landed in
+   `apps/web/src/components/template-builder/WidgetPalette.tsx` —
+   a file that was imported but **never rendered**. CI was green,
+   build succeeded, no changes appeared in the operator's UI. The
+   widgets panel actually renders `<VariantPicker />` (which reads
+   `variants-register.ts`), not `<WidgetPalette />`.
+
+   **Rule before editing any component:**
+   ```
+   grep -rn '<ComponentName' apps/web/src --include="*.tsx"
+   ```
+   If nothing matches → the file is dead, your edits won't ship.
+   If matches exist → read the JSX context to confirm the mount
+   isn't gated behind a feature flag that's off / state that's
+   never set.
+
+   For the template builder specifically:
+   - `BuilderShell.tsx` is the entry. Its render method dispatches
+     panels → look there for `<WhatPanelKeyEquals === 'widgets' && <X />>`.
+   - The widgets panel = `VariantPicker`. Add tiles via
+     `registerVariant({ widgetType, id, render, defaultConfig })`
+     in `apps/web/src/components/widgets/variants-register.ts`.
+   - `constants.ts` WIDGET_GROUPS is the historical label/icon/
+     color registry. Adding a tile THERE will NOT make it appear
+     in the operator's palette.
+
+   Green CI is NOT proof of correctness. CI checks syntax + types,
+   not "is this file actually mounted." When changing user-visible
+   UI, always verify in the rendered DOM (manual click, screenshot,
+   or browser-MCP eval) BEFORE telling the user it shipped.
+
 ---
 
-**Last Updated:** 2026-04-17
+**Last Updated:** 2026-05-12
