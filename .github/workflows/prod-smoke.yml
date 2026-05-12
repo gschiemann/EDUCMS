@@ -34,7 +34,12 @@ jobs:
   prod-smoke:
     name: Prod smoke (Chromium)
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    # 2026-05-11 — bumped 8 → 12 min after the login retry budget
+    # extended to 5 attempts × up to 90 s backoffs. Worst-case the
+    # Supabase pgbouncer is degraded enough that we burn ~4 min in
+    # login retries; we still want headroom for the rest of the
+    # smoke (tenant + template walk) without false timeouts.
+    timeout-minutes: 12
     steps:
       - name: Checkout
         uses: actions/checkout@v4

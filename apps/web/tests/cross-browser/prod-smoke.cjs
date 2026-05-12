@@ -48,7 +48,13 @@ const TENANTS = [
   { slug: 'agc-education',          name: 'AGC Education' },
   { slug: 'greg-s-fitness',         name: "Greg's Fitness" },
 ];
-const CONCURRENCY = 6;
+// 2026-05-11 — dropped from 6 → 3 after Supabase pgbouncer degraded
+// during a fleet-grade Phase B run. 6 parallel browser contexts × 1
+// templates fetch each = 6 simultaneous /templates queries pounding
+// the pool. Half failed with "0 h3 after 30s" because the API never
+// responded fast enough. 3 keeps the test honest (still catches real
+// regressions) without piling on a struggling pool.
+const CONCURRENCY = 3;
 const TEMPLATES_TO_OPEN = 12;
 
 const results = [];
@@ -59,21 +65,48 @@ async function shot(page, name) {
 }
 
 async function loginAndCapture(browser) {
-  // Retry-with-backoff. The /auth/login endpoint has a 10/min per-IP
-  // throttle (added 2026-05-08); when multiple CI runs land in quick
-  // succession all sharing GitHub Actions' shared runner pool, the
-  // window can be saturated by the time this job's login fires —
-  // resulting in a 429 the page surfaces as "wait, no redirect" →
-  // waitForURL timeout. Wait a bit + retry up to 3 times. Total
-  // ceiling: 2 min, well under the 5-min job timeout.
+  // Retry-with-backoff + token-capture-first. The /auth/login endpoint
+  // has a 10/min per-IP throttle (added 2026-05-08); when multiple CI
+  // runs land in quick succession all sharing GitHub Actions' shared
+  // runner pool, the window can be saturated → 429. The Supabase
+  // pgbouncer pooler also occasionally hiccups during argon2 verify,
+  // pushing /auth/login response time above 15s.
+  //
+  // Previous strategy waited for URL navigation (Vercel-rendered
+  // dashboard load) to complete — that compounds with both the login
+  // throttle AND any post-login Vercel render slowness. New strategy:
+  //   1. Listen for the /auth/login response BEFORE submitting.
+  //   2. Submit, then await the response listener's promise (up to 45s).
+  //   3. As soon as we have the token, we're done — never wait for
+  //      the Vercel dashboard render. authedContext() will short-
+  //      circuit straight to /<slug>/templates with the JWT in
+  //      localStorage anyway.
+  //
+  // 5 attempts × 30/45/60/90 s backoffs gives the pool time to recover
+  // and the per-IP throttle time to roll over. Total ceiling ~4 min.
   let lastErr;
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  const backoffs = [30_000, 45_000, 60_000, 90_000];
+  for (let attempt = 1; attempt <= 5; attempt++) {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     const page = await ctx.newPage();
+    let resolveToken, rejectToken;
+    const tokenPromise = new Promise((res, rej) => { resolveToken = res; rejectToken = rej; });
     let token = null, user = null;
     page.on('response', async (r) => {
-      if (/\/auth\/login$/.test(r.url()) && r.status() === 200) {
-        try { const b = await r.json(); token = b.access_token; user = b.user; } catch {}
+      if (/\/auth\/login$/.test(r.url())) {
+        const status = r.status();
+        if (status === 200) {
+          try {
+            const b = await r.json();
+            token = b.access_token;
+            user = b.user;
+            if (token) resolveToken({ token, user });
+          } catch (e) {
+            rejectToken(new Error(`failed to parse /auth/login JSON: ${e.message}`));
+          }
+        } else {
+          rejectToken(new Error(`/auth/login returned HTTP ${status}`));
+        }
       }
     });
     try {
@@ -85,17 +118,24 @@ async function loginAndCapture(browser) {
       const submit = page.locator('button[type="submit"]:has-text("Sign in")');
       for (let i = 0; i < 30; i++) { if (await submit.isEnabled()) break; await delay(100); }
       await submit.click();
-      await page.waitForURL((u) => !/\/login\b/.test(u.pathname), { timeout: 15_000 });
-      await delay(800);
+      // Wait for the API response, NOT the URL navigation. 45 s is
+      // generous — covers the slowest observed Supabase auth verify
+      // (pgbouncer cold-start + argon2). The page can still be on
+      // /login when we resolve; authedContext() doesn't care.
+      const timeoutP = new Promise((_r, rej) =>
+        setTimeout(() => rej(new Error('login response timeout (45s)')), 45_000),
+      );
+      await Promise.race([tokenPromise, timeoutP]);
+      // Give cookies / storageState a beat to settle.
+      await delay(500);
       if (!token) throw new Error('login response missing access_token');
       return { token, user, state: await ctx.storageState() };
     } catch (e) {
       lastErr = e;
-      console.log(`Login attempt ${attempt}/3 failed: ${e.message}`);
+      console.log(`Login attempt ${attempt}/5 failed: ${e.message}`);
       await ctx.close();
-      if (attempt < 3) {
-        // 30s, then 60s — gives the per-IP throttle window time to roll over
-        const backoffMs = attempt === 1 ? 30_000 : 60_000;
+      if (attempt < 5) {
+        const backoffMs = backoffs[attempt - 1] ?? 60_000;
         console.log(`  backing off ${backoffMs / 1000}s before retry…`);
         await delay(backoffMs);
       }
@@ -149,16 +189,22 @@ async function tenantSmoke(browser, tenant, auth) {
     }
     ok(tenant.slug, 'navigate', `${navMs}ms initial`);
 
-    // Smart wait: poll for tile content up to 12s. The templates page
-    // shows a spinner while the API call is in flight; tiles are h3
-    // elements inside the templates section. Captures TIME-TO-TILES
-    // separately from initial page load.
+    // Smart wait: poll for tile content. The templates page shows a
+    // spinner while the API call is in flight; tiles are h3 elements
+    // inside the templates section.
+    //
+    // Bumped to 25 s (was 12 s) because Supabase pgbouncer can hiccup
+    // on the /templates query and we don't want a routine pool blip
+    // to fail the whole smoke. The fleet's primary template fetch
+    // hits the same pool — if it's healthy, h3 elements appear in
+    // ~2 s; if it's degraded, 10-20 s; if it's broken, no amount of
+    // waiting helps and the test correctly fails.
     const tileStart = Date.now();
     let tileCount = 0;
     try {
       await page.waitForFunction(() => {
         return document.querySelectorAll('h3').length > 5;
-      }, { timeout: 12_000 });
+      }, { timeout: 25_000 });
       tileCount = await page.locator('h3').count();
     } catch {
       tileCount = await page.locator('h3').count();
@@ -167,7 +213,7 @@ async function tenantSmoke(browser, tenant, auth) {
 
     if (tileCount < 3) {
       bad(tenant.slug, 'tiles', `only ${tileCount} h3 after ${tileMs}ms wait — likely API failed`);
-    } else if (tileMs > 5000) {
+    } else if (tileMs > 8000) {
       // Tiles loaded eventually but slow — flag as perf concern not failure
       ok(tenant.slug, 'tiles', `${tileCount} tiles, SLOW (${tileMs}ms)`);
     } else {
