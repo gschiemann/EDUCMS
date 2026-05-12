@@ -227,6 +227,14 @@ model User {
   email                String               @unique
   passwordHash         String               @map("password_hash")
   role                 String
+  // 2026-05-11 — user profile names. Operator: "let's say Hi Greg
+  // not gschiemann." Nullable so legacy rows keep loading; display
+  // logic falls back to email-prefix when null. Two columns instead
+  // of one `fullName` so we can do "Hi <firstName>" without
+  // string-splitting at every call site (and so SSO imports from
+  // Clever / Google have a clean target shape).
+  firstName            String?              @map("first_name")
+  lastName             String?              @map("last_name")
   canTriggerPanic      Boolean              @default(false) @map("can_trigger_panic")
   status               String               @default("ACTIVE")
   createdAt            DateTime             @default(now()) @map("created_at")

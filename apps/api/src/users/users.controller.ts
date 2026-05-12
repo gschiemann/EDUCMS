@@ -61,10 +61,65 @@ export class UsersController {
     const tenantId = req.user.tenantId;
     const users = await this.prisma.client.user.findMany({
       where: { tenantId },
-      select: { id: true, email: true, role: true, createdAt: true },
+      // 2026-05-11 — return firstName/lastName so the team list can
+      // show real names instead of email prefixes.
+      select: { id: true, email: true, role: true, createdAt: true, firstName: true, lastName: true } as any,
       orderBy: { createdAt: 'desc' },
     });
     return users;
+  }
+
+  // 2026-05-11 — self-profile endpoints. Operator: "let's say Hi Greg
+  // not gschiemann." Returns the caller's own profile + lets them
+  // edit firstName / lastName. Any signed-in role can use these —
+  // they only touch the caller's own row (resolved via req.user.id).
+  // Restricted-viewer is also allowed to set their own name since
+  // it's purely cosmetic and doesn't change permissions.
+  @Get('me')
+  async getMe(@Request() req: any) {
+    const me = await this.prisma.client.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        id: true, email: true, role: true,
+        firstName: true, lastName: true,
+        canTriggerPanic: true, tenantId: true, createdAt: true,
+      } as any,
+    });
+    if (!me) throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+    return me;
+  }
+
+  @Put('me')
+  async updateMe(
+    @Request() req: any,
+    @Body() body: { firstName?: string | null; lastName?: string | null },
+  ) {
+    // Cap names at 80 chars — generous, mostly protects the DB
+    // column from a runaway client. Empty string → null so the
+    // greeting falls back to email-prefix cleanly.
+    const trim = (v: unknown): string | null => {
+      if (typeof v !== 'string') return null;
+      const t = v.trim();
+      if (t.length === 0) return null;
+      if (t.length > 80) throw new BadRequestException('Name too long (max 80 characters)');
+      return t;
+    };
+    const data: any = {};
+    if (body.firstName !== undefined) data.firstName = trim(body.firstName);
+    if (body.lastName !== undefined) data.lastName = trim(body.lastName);
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException('Nothing to update');
+    }
+    const updated = await this.prisma.client.user.update({
+      where: { id: req.user.id },
+      data,
+      select: {
+        id: true, email: true, role: true,
+        firstName: true, lastName: true,
+        canTriggerPanic: true, tenantId: true,
+      } as any,
+    });
+    return updated;
   }
 
   @Post()

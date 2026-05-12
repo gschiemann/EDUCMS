@@ -33,6 +33,7 @@ import {
 } from '@/hooks/use-api';
 import { useAppStore } from '@/lib/store';
 import { useUIStore } from '@/store/ui-store';
+import { firstName as userFirstName } from '@/lib/user-display';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
@@ -200,12 +201,12 @@ export default function DashboardPage() {
   };
   const showOnboarding = !hintDismissed;
   const tenantName = (tenant as any)?.name || (user as any)?.tenantName || 'Your Organization';
-  const firstName = (() => {
-    const e = (user as any)?.email || '';
-    const local = e.split('@')[0] || '';
-    const bit = local.split(/[._-]/)[0];
-    return bit ? bit.charAt(0).toUpperCase() + bit.slice(1) : 'there';
-  })();
+  // 2026-05-11 — operator: "say Hi Greg not gschiemann." Helper
+  // prefers User.firstName when set; falls back to email-prefix for
+  // legacy rows that haven't filled in their profile. Single source
+  // of truth in lib/user-display.ts so the sidebar + top toolbar +
+  // avatar pick up the same name.
+  const firstName = userFirstName(user);
   const greeting = (() => {
     const h = now.getHours();
     if (h < 5) return 'Working late';

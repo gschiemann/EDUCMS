@@ -2,6 +2,7 @@
 
 import { useAppStore } from '@/lib/store';
 import { RoleGate } from '../RoleGate';
+import { fullName as userFullName, initials as userInitials } from '@/lib/user-display';
 import { ShieldAlert, LogOut, Menu } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
@@ -22,10 +23,11 @@ export function TopToolbar() {
 
   useEffect(() => { setMounted(true); }, []);
 
-  // Get user initials from email
-  const initials = mounted && user?.email
-    ? user.email.split('@')[0].substring(0, 2).toUpperCase()
-    : '··';
+  // 2026-05-11 — operator: "say Hi Greg not gschiemann." Use the
+  // user-display helper so initials prefer firstName+lastName, with
+  // email-prefix as a graceful fallback for legacy accounts.
+  const initials = mounted ? userInitials(user) : '··';
+  const fullDisplayName = mounted ? userFullName(user) : '';
 
   return (
     <>
@@ -75,7 +77,10 @@ export function TopToolbar() {
             {showUserMenu && (
               <div className="absolute right-0 top-12 w-56 bg-white border border-slate-200 rounded-xl shadow-xl py-2 z-50">
                 <div className="px-4 py-2 border-b border-slate-100">
-                  <p className="text-xs font-semibold text-slate-800 truncate">{user?.email}</p>
+                  <p className="text-xs font-semibold text-slate-800 truncate">{fullDisplayName || user?.email}</p>
+                  {fullDisplayName && user?.email && (
+                    <p className="text-[10px] text-slate-400 mt-0.5 truncate">{user.email}</p>
+                  )}
                   <p className="text-[10px] text-slate-400 mt-0.5">{user?.role?.replace(/_/g, ' ')}</p>
                 </div>
                 <button

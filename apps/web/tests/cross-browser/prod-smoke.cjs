@@ -283,6 +283,26 @@ async function listTemplatesViaApi(token) {
 }
 
 async function openTemplateInBuilder(browser, tpl, auth) {
+  // 2026-05-11 — same retry envelope as tenantSmoke. Supabase pool
+  // flake on a single /templates/:id GET trips the canvas mount;
+  // one retry with a 5s pause almost always recovers. Two failures
+  // in a row is a real regression.
+  let attempt = 0;
+  while (attempt <= 1) {
+    const transient = await openTemplateInBuilderOnce(browser, tpl, auth, attempt);
+    if (!transient) return;
+    attempt++;
+    if (attempt <= 1) {
+      const label = `tpl:${(tpl.name || tpl.id || '?').slice(0, 60)}`;
+      console.log(`  ↻ ${label} zero zones — retry ${attempt}/1 after 5s`);
+      const idx = results.findIndex((r) => r.scenario === label && r.step === 'canvas' && !r.ok);
+      if (idx >= 0) results.splice(idx, 1);
+      await delay(5000);
+    }
+  }
+}
+
+async function openTemplateInBuilderOnce(browser, tpl, auth, attemptNum) {
   const ctx = await authedContext(browser, auth);
   const page = await ctx.newPage();
   const errs = [];
@@ -307,14 +327,20 @@ async function openTemplateInBuilder(browser, tpl, auth) {
     const ms = Date.now() - start;
     if (zones === 0) {
       bad(label, 'canvas', `0 zones after ${ms}ms`);
-    } else if (ms > 8000) {
-      ok(label, 'canvas', `${zones} zones, SLOW (${ms}ms)`);
+      const safe = (tpl.name || tpl.id || 'unknown').replace(/[^a-z0-9]+/gi, '-').slice(0, 50).toLowerCase();
+      await shot(page, `tpl-${safe}-fail-${attemptNum}`);
+      if (errs.length) bad(label, 'errors', errs.slice(0, 1)[0].slice(0, 120));
+      return true; // transient — caller retries once
+    }
+    if (ms > 8000) {
+      ok(label, 'canvas', `${zones} zones, SLOW (${ms}ms)${attemptNum ? ` [retry ${attemptNum}]` : ''}`);
     } else {
-      ok(label, 'canvas', `${zones} zones in ${ms}ms`);
+      ok(label, 'canvas', `${zones} zones in ${ms}ms${attemptNum ? ` [retry ${attemptNum}]` : ''}`);
     }
     const safe = (tpl.name || tpl.id || 'unknown').replace(/[^a-z0-9]+/gi, '-').slice(0, 50).toLowerCase();
     await shot(page, `tpl-${safe}`);
     if (errs.length) bad(label, 'errors', errs.slice(0, 1)[0].slice(0, 120));
+    return false;
   } finally {
     await ctx.close();
   }

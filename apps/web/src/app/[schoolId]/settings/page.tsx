@@ -13,6 +13,7 @@ import {
   useCanaryRollout, useUpdateCanaryRollout,
 } from '@/hooks/use-api';
 import { useState, useRef, useEffect } from 'react';
+import { ProfileCard } from '@/components/settings/ProfileCard';
 import { UsbIngestCard } from '@/components/settings/UsbIngestCard';
 import { LicenseCard } from '@/components/settings/LicenseCard';
 import { PanicContentEditor } from '@/components/settings/PanicContentEditor';
@@ -114,6 +115,13 @@ export default function SettingsPage() {
         </h1>
         <p className="text-sm text-slate-500 mt-0.5">Manage team members, roles, and system info.</p>
       </div>
+
+      {/* 2026-05-11 — Your Profile card. Lets every signed-in user
+          set their first + last name so the dashboard greeting reads
+          "Hi Greg" instead of "Hi Gschiemann." All roles can edit
+          their own row; no admin gate. Operator: "let's say Hi Greg
+          and not gschiemann." */}
+      <ProfileCard />
 
       {/* 2026-05-03 — VenueOS vertical switcher (DISTRICT_ADMIN +
           SUPER_ADMIN only). Lets a tenant admin switch industry

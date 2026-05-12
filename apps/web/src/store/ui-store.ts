@@ -78,6 +78,12 @@ interface AppState {
     id: string;
     email: string;
     role: string;
+    /** 2026-05-11 — operator profile names. Set via /api/v1/users/me PUT
+     *  and surfaced in /users/me + /auth/login responses. Nullable on
+     *  legacy accounts that haven't filled them in; display helpers
+     *  fall back to email-prefix. */
+    firstName?: string | null;
+    lastName?: string | null;
     tenantId: string;
     tenantSlug?: string;
     tenantName?: string | null;

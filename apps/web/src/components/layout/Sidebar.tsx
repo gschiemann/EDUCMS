@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
+import { fullName as userFullName, initials as userInitials } from '@/lib/user-display';
 import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, FileClock, Crown, ClipboardCheck, Map } from 'lucide-react';
 import { RoleGate } from '../RoleGate';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
@@ -439,10 +440,18 @@ export function Sidebar() {
           {/* User info + Logout */}
           <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-[10px] font-bold shrink-0 shadow-sm" style={{ background: 'linear-gradient(135deg, var(--brand-primary, #4f46e5), color-mix(in srgb, var(--brand-primary, #4f46e5) 60%, #8b5cf6))' }} suppressHydrationWarning>
-              {mounted ? (user?.email?.substring(0, 2).toUpperCase() || '??') : ''}
+              {mounted ? userInitials(user) : ''}
             </div>
             <div className="flex-1 min-w-0" suppressHydrationWarning>
-              <p className="text-[11px] font-semibold text-slate-700 truncate">{mounted ? (user?.email || 'User') : '\u00A0'}</p>
+              {/* 2026-05-11 \u2014 show "Greg Schiemann" (or email if name not set)
+                  on the primary line, email subdued underneath when we have
+                  a real name. Operator: "say Hi Greg not gschiemann." */}
+              <p className="text-[11px] font-semibold text-slate-700 truncate">
+                {mounted ? (userFullName(user) || 'User') : '\u00A0'}
+              </p>
+              {mounted && (user?.firstName || user?.lastName) && user?.email && (
+                <p className="text-[9px] text-slate-400 truncate">{user.email}</p>
+              )}
               {mounted && user?.role === 'SUPER_ADMIN' ? (
                 <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-[1px] rounded bg-amber-500 text-amber-950 text-[8px] font-bold uppercase tracking-wider">
                   <Crown className="w-2.5 h-2.5" aria-hidden="true" />

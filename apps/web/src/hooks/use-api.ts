@@ -811,6 +811,49 @@ export function useUsers() {
   });
 }
 
+// 2026-05-11 — self-profile hooks. Operator: "let's say Hi Greg not
+// gschiemann." Reads/writes the caller's firstName + lastName.
+export type SelfProfile = {
+  id: string;
+  email: string;
+  role: string;
+  firstName: string | null;
+  lastName: string | null;
+  canTriggerPanic: boolean;
+  tenantId: string;
+};
+export function useMe() {
+  return useQuery<SelfProfile>({
+    queryKey: ['users', 'me'],
+    queryFn: () => apiFetch('/users/me'),
+    staleTime: 30_000,
+  });
+}
+export function useUpdateMe() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { firstName?: string | null; lastName?: string | null }) =>
+      apiFetch('/users/me', { method: 'PUT', body: JSON.stringify(data) }),
+    onSuccess: (updated: any) => {
+      qc.setQueryData(['users', 'me'], updated);
+      // Also patch the auth-store user so the dashboard greeting and
+      // sidebar avatar see the new name immediately — no re-login,
+      // no /users/me round trip.
+      const { useUIStore } = require('@/store/ui-store');
+      const cur = useUIStore.getState().user;
+      if (cur && cur.id === updated.id) {
+        useUIStore.setState({
+          user: {
+            ...cur,
+            firstName: updated.firstName ?? null,
+            lastName: updated.lastName ?? null,
+          },
+        });
+      }
+    },
+  });
+}
+
 export function useCreateUser() {
   const qc = useQueryClient();
   return useMutation({

@@ -127,6 +127,12 @@ export class AuthService {
       access_token: this.jwtService.sign(payload, rememberMe ? { expiresIn: '30d' } : undefined),
       user: {
         id: user.id, email: user.email, role: user.role,
+        // 2026-05-11 — first/last name in the login response so the
+        // dashboard greeting + sidebar can render "Hi, Greg" without
+        // a separate /users/me round trip. Null when the user hasn't
+        // set them yet; client falls back to email-prefix.
+        firstName: user.firstName ?? null,
+        lastName: user.lastName ?? null,
         tenantId: user.tenantId, tenantSlug: tenant?.slug || user.tenantId,
         tenantName: tenant?.name || null,
         tenantVertical: tenant?.vertical || 'K12',
