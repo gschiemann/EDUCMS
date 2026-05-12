@@ -23,9 +23,16 @@ export type WidgetType =
   | 'ANNOUNCEMENT' | 'TICKER' | 'BELL_SCHEDULE' | 'LUNCH_MENU' | 'CALENDAR'
   | 'STAFF_SPOTLIGHT' | 'IMAGE' | 'IMAGE_CAROUSEL' | 'VIDEO' | 'VIDEO_CAROUSEL' | 'LOGO'
   | 'WEBPAGE' | 'RSS_FEED' | 'SOCIAL_FEED' | 'PLAYLIST'
-  // Touch (Sprint 4)
+  // Touch (Sprint 4 placeholders)
   | 'TOUCH_BUTTON' | 'TOUCH_MENU' | 'ROOM_FINDER' | 'ON_SCREEN_KEYBOARD'
-  | 'WAYFINDING_MAP' | 'QUICK_POLL';
+  | 'WAYFINDING_MAP' | 'QUICK_POLL'
+  // Phase D2.9-D2.11 (2026-05-12) — canonical interactive zone.
+  // Many visual variants via config.variant; the runtime renderer
+  // (TouchPointWidget) dispatches across hotspot / shapes / arrows /
+  // kiosk-nav (home/back/next/close/menu/help/play) / comm (qr/info/
+  // phone/email/share) / engagement (heart/star) / utility (search/
+  // volume/print). All 25 variants registered in variants-register.
+  | 'TOUCH_POINT';
 
 export interface ThemeWidgetProps {
   config: any;

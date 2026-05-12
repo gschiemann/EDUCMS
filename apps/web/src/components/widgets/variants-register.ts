@@ -770,3 +770,71 @@ for (const w of ALL_V2_WIDGETS) {
 }
 
 // (basic content variants registered at top of file — see header block)
+
+// ════════════════════════════════════════════════════════════════════════
+// Phase D2.9-D2.11 (2026-05-12) — TOUCH_POINT variants
+//
+// 25 visual variants of the canonical interactive zone. Each registers
+// `widgetType: 'TOUCH_POINT'` so the picker groups them under one
+// "Touch" chip; the visual is selected via `defaultConfig.variant`,
+// which the runtime TouchPointWidget (WidgetRenderer) dispatches on.
+//
+// previewOnly: true — the canvas falls through to the standard
+// WidgetRenderer.case('TOUCH_POINT') path which already knows how to
+// render every variant. The variant's `render` is only used as the
+// picker thumbnail. TouchPointWidget IS the thumbnail too because
+// the visual is identical at every size (em-based sizing).
+//
+// Operator (2026-05-12): "where are the touch widgets? I expected
+// a pill just like all the other widgets called touch." Registering
+// here makes them appear in the V2 Widget Library's "Touch" chip
+// + the "All widgets" stream.
+// ════════════════════════════════════════════════════════════════════════
+import { TouchPointWidget as TouchTile } from './WidgetRenderer';
+
+const TOUCH_VARIANTS: Array<{ id: string; name: string; description: string; extraConfig?: Record<string, any> }> = [
+  // Generic hotspots + shapes
+  { id: 'hotspot',     name: 'Transparent Hotspot', description: 'Invisible tap area — drop on top of any content to make it tappable' },
+  { id: 'tap-prompt',  name: 'Tap Here Button',     description: '"Tap to continue" pill — best for kiosk start screens', extraConfig: { label: 'Tap to continue' } },
+  { id: 'circle',      name: 'Circle Button',       description: 'Filled circle hotspot — "press here" indicator' },
+  { id: 'square',      name: 'Square Button',       description: 'Rounded-square button — labeled via Properties', extraConfig: { label: 'Tap' } },
+  // Directional arrows
+  { id: 'arrow-right', name: 'Right Arrow',         description: 'Right-pointing arrow — pair with "Next" gestures' },
+  { id: 'arrow-left',  name: 'Left Arrow',          description: 'Left-pointing arrow — back / previous navigation' },
+  { id: 'arrow-up',    name: 'Up Arrow',            description: 'Up arrow — scroll / page-up patterns' },
+  { id: 'arrow-down',  name: 'Down Arrow',          description: 'Down arrow — scroll / page-down patterns' },
+  // Kiosk nav vocabulary
+  { id: 'home',        name: 'Home Button',         description: 'House-icon disc — "Return to start screen"' },
+  { id: 'back',        name: 'Back Chip',           description: 'Labeled "← Back" pill — bigger touch target', extraConfig: { label: 'Back' } },
+  { id: 'next',        name: 'Next Chip',           description: 'Labeled "Next →" pill — primary advance', extraConfig: { label: 'Next' } },
+  { id: 'close',       name: 'Close Button',        description: 'X-icon dismiss button — high-contrast on any bg' },
+  { id: 'menu',        name: 'Menu Button',         description: 'Hamburger icon — open a sub-menu via goto-scene' },
+  { id: 'help',        name: 'Help Button',         description: 'Amber "?" — opens help overlay or request-help action' },
+  { id: 'play',        name: 'Play Button',         description: 'Big play triangle — pair with play-video Tap Action' },
+  // Communication actions
+  { id: 'qr',          name: 'QR Code',             description: 'Visible QR placeholder — set qrText to encode a URL', extraConfig: { qrText: 'https://example.com' } },
+  { id: 'info',        name: 'Info Button',         description: 'Blue circled "i" — tap for show-overlay with details' },
+  { id: 'phone',       name: 'Phone Button',        description: 'Phone receiver — pair with open-url tel:+1...' },
+  { id: 'email',       name: 'Email Button',        description: 'Envelope — pair with open-url mailto:... or webhook' },
+  { id: 'share',       name: 'Share Button',        description: 'Share icon — opens a sharing options overlay' },
+  // Engagement actions
+  { id: 'heart',       name: 'Favorite (Heart)',    description: 'Pink heart — pair with webhook to log a favorite' },
+  { id: 'star',        name: 'Star Rating',         description: 'Amber star — pair with webhook to log a rating' },
+  // Utility
+  { id: 'search',      name: 'Search Button',       description: 'Magnifying glass — pair with show-overlay for a search panel' },
+  { id: 'volume',      name: 'Volume Toggle',       description: 'Speaker icon — pair with sound-toggle Tap Action' },
+  { id: 'print',       name: 'Print Button',        description: 'Printer icon — pair with webhook for a print job' },
+];
+
+for (const tv of TOUCH_VARIANTS) {
+  registerVariant({
+    id: `touch-${tv.id}`,
+    widgetType: 'TOUCH_POINT',
+    name: tv.name,
+    description: tv.description,
+    category: 'MODERN',
+    render: TouchTile as ComponentType<ThemeWidgetProps>,
+    defaultConfig: { variant: tv.id, ...(tv.extraConfig || {}) },
+    previewOnly: true,
+  });
+}

@@ -2101,8 +2101,14 @@ function LogoWidget({ config }: { config: any }) {
 // Sizing inside each variant uses % of the zone or em so the
 // affordance scales with how the operator drags the zone.
 
-function TouchPointWidget({ config }: { config: any }) {
-  const variant = String(config?.variant || 'hotspot').toLowerCase();
+export function TouchPointWidget({ config }: { config: any }) {
+  // Normalize the variant — VariantPicker drops use `touch-${id}` to
+  // namespace the registered variant id (e.g. 'touch-hotspot' so it
+  // doesn't collide with other widget types' variant ids). The
+  // legacy WidgetPalette path drops the raw variant string. Strip
+  // the prefix once here so either flow renders identically.
+  let variant = String(config?.variant || 'hotspot').toLowerCase();
+  if (variant.startsWith('touch-')) variant = variant.slice('touch-'.length);
   const label = typeof config?.label === 'string' ? config.label : undefined;
 
   // The hotspot is the canonical invisible tap target. Editor-time

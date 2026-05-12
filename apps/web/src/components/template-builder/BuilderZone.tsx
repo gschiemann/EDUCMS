@@ -98,7 +98,10 @@ const HANDLE_STYLES: Record<ResizeHandle, React.CSSProperties> = {
 const isTouchPointType = (w: string) => w === 'TOUCH_POINT';
 const isInvisibleTouchVariant = (z: Zone) => {
   if (z.widgetType !== 'TOUCH_POINT') return false;
-  const v = String((z.defaultConfig as any)?.variant || 'hotspot').toLowerCase();
+  let v = String((z.defaultConfig as any)?.variant || 'hotspot').toLowerCase();
+  // Strip the V2 picker's 'touch-' namespace prefix so 'touch-hotspot'
+  // and 'hotspot' both resolve to the same invisible-overlay branch.
+  if (v.startsWith('touch-')) v = v.slice('touch-'.length);
   return v === 'hotspot' || v === '';
 };
 

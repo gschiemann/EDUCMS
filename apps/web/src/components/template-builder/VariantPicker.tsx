@@ -43,6 +43,12 @@ const WIDGET_TYPE_LABELS: Record<string, string> = {
   IMAGE:           'Images',
   BELL_SCHEDULE:   'Bell Schedules',
   LUNCH_MENU:      'Lunch Menus',
+  // Phase D2.9-D2.11 — 25 touch widgets (hotspots, shapes, arrows,
+  // kiosk nav, comm, engagement, utility) all canonicalize to
+  // widgetType='TOUCH_POINT' with the visual selected via
+  // config.variant. The picker chip says "Touch" so operators can
+  // filter to just the interactive set.
+  TOUCH_POINT:     'Touch',
 };
 
 // 2026-05-10 — operator iteration 3: "leave the image, videos,
