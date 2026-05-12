@@ -109,23 +109,44 @@ export function WidgetPalette() {
         <p className="text-xs text-slate-400 text-center py-8 font-medium">No widgets match &ldquo;{query}&rdquo;.</p>
       )}
 
-      {filtered.map(group => (
-        <div key={group.label} className="space-y-2.5">
-          <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">{group.label}</h3>
-          <div className="space-y-1.5">
-            {group.types.map(t => (
-              <DraggableWidgetButton 
-                key={t.type}
-                type={t.type}
-                label={t.label}
-                desc={t.desc}
-                icon={t.icon}
-                colorTheme={getZoneColor(t.type)}
-              />
-            ))}
+      {filtered.map(group => {
+        // 2026-05-12 — Touch group gets visual emphasis (violet
+        // heading + faint background) since it's the pinned-top
+        // category and operators were missing the small slate-gray
+        // heading among the other 10 sections.
+        const isTouch = group.label.startsWith('Touch');
+        return (
+          <div
+            key={group.label}
+            className={isTouch
+              ? 'space-y-2.5 rounded-2xl bg-violet-50/40 ring-1 ring-violet-200/60 p-3 -mx-1'
+              : 'space-y-2.5'
+            }
+          >
+            <h3
+              className={isTouch
+                ? 'text-[11px] font-black text-violet-700 uppercase tracking-widest pl-1 flex items-center gap-1.5'
+                : 'text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1'
+              }
+            >
+              {isTouch && <span className="text-base leading-none">👆</span>}
+              {group.label}
+            </h3>
+            <div className="space-y-1.5">
+              {group.types.map(t => (
+                <DraggableWidgetButton
+                  key={t.type}
+                  type={t.type}
+                  label={t.label}
+                  desc={t.desc}
+                  icon={t.icon}
+                  colorTheme={getZoneColor(t.type)}
+                />
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

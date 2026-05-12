@@ -64,6 +64,69 @@ export const WIDGET_GROUPS: ReadonlyArray<{
   verticals?: ReadonlyArray<'K12' | 'GYM' | 'RETAIL' | 'CORPORATE' | 'QSR' | 'FASHION' | 'BAR'>;
   types: ReadonlyArray<{ type: string; label: string; desc: string; icon: LucideIcon }>;
 }> = [
+  // Phase D2.9-D2.11 (2026-05-12) — Touch widgets. Pinned to the TOP
+  // of the palette so operators see them first. Operator: "where are
+  // the touch widgets? I expected a pill just like all the other
+  // widgets called touch." Burying these at the bottom of a long
+  // scroll past Education / Animated Scenes / Decorations hid them
+  // behind 60+ other tiles.
+  //
+  // Every tile here canonicalizes to widgetType='TOUCH_POINT' with a
+  // `variant` field on defaultConfig — same pattern Decorations use,
+  // one widget type and many variants. Dropping any tile auto-
+  // enables the template's isTouchEnabled flag so the old "Make this
+  // template interactive" toggle is now a tiny status row.
+  //
+  // Universal — every vertical (school lobby, gym, retail, QSR) uses
+  // touch hotspots, so no `verticals` filter.
+  {
+    label: 'Touch (Tap & Go)',
+    types: [
+      // ── Generic hotspots + shapes ──
+      { type: 'TOUCH_HOTSPOT',      label: 'Transparent Hotspot', desc: 'Invisible tap area — drop on top of any content to make it tappable', icon: Hand },
+      { type: 'TOUCH_TAP_PROMPT',   label: 'Tap Here Button',     desc: 'Visible "Tap to continue" button with hand icon — best for kiosk start screens', icon: MousePointerClick },
+      { type: 'TOUCH_CIRCLE',       label: 'Circle Button',       desc: 'Filled circle hotspot — clean "press here" indicator', icon: Circle },
+      { type: 'TOUCH_SQUARE',       label: 'Square Button',       desc: 'Rounded-square button — drop, label it via Properties, set Tap Action', icon: Square },
+      // ── Directional arrows ──
+      { type: 'TOUCH_ARROW_RIGHT',  label: 'Right Arrow',         desc: 'Right-pointing arrow — pair with content panes for "Next" gestures', icon: ArrowRight },
+      { type: 'TOUCH_ARROW_LEFT',   label: 'Left Arrow',          desc: 'Left-pointing arrow — back / previous navigation', icon: ArrowLeft },
+      { type: 'TOUCH_ARROW_UP',     label: 'Up Arrow',            desc: 'Up arrow — scroll / page-up patterns', icon: ArrowUp },
+      { type: 'TOUCH_ARROW_DOWN',   label: 'Down Arrow',          desc: 'Down arrow — scroll / page-down patterns', icon: ArrowDown },
+      // ── Standard kiosk nav vocabulary ──
+      // Every competing interactive-signage tool ships this set by
+      // default (Intuiface, OptiSigns Engage, BrightSign, PandaSuite).
+      // Visitors recognize them instantly — Home is a house, Close is
+      // an X, Menu is a hamburger. Less mental work than custom
+      // labels for navigation chrome.
+      { type: 'TOUCH_HOME',         label: 'Home Button',         desc: 'House-icon button — "Return to start screen"; pair with goto-template back to your default', icon: Home },
+      { type: 'TOUCH_BACK',         label: 'Back Chip',           desc: 'Labeled "← Back" pill — bigger touch target than a plain arrow', icon: ArrowLeft },
+      { type: 'TOUCH_NEXT',         label: 'Next Chip',           desc: 'Labeled "Next →" pill — primary advance action with clear text', icon: ArrowRight },
+      { type: 'TOUCH_CLOSE',        label: 'Close Button',        desc: 'X-icon dismiss button — pair with reset-idle / goto-scene back to the lobby', icon: CloseIcon },
+      { type: 'TOUCH_MENU',         label: 'Menu Button',         desc: 'Hamburger icon — open a sub-menu via goto-scene', icon: MenuIcon },
+      { type: 'TOUCH_HELP',         label: 'Help Button',         desc: 'Question-mark button — opens help overlay or request-help action', icon: HelpCircle },
+      { type: 'TOUCH_PLAY',         label: 'Play Button',         desc: 'Big play triangle — pair with play-video Tap Action for video CTAs', icon: PlayIcon },
+      // ── Communication actions ──
+      // Standard kiosk patterns that ship across every competitor.
+      // QR is the highest-leverage: visitor scans with phone to
+      // transfer the experience off the kiosk. Others compose with
+      // open-url (tel: / mailto:), webhook, or show-overlay.
+      { type: 'TOUCH_QR',           label: 'QR Code',             desc: 'Visible QR placeholder — pair with config.qrText to encode a URL the visitor scans', icon: QrCode },
+      { type: 'TOUCH_INFO',         label: 'Info Button',         desc: 'Circled "i" — tap for show-overlay with details about nearby content', icon: InfoIcon },
+      { type: 'TOUCH_PHONE',        label: 'Phone Button',        desc: 'Phone receiver — pair with open-url tel:+1... for "tap to call" actions', icon: Phone },
+      { type: 'TOUCH_EMAIL',        label: 'Email Button',        desc: 'Envelope — pair with open-url mailto:... or webhook to send the visitor an email', icon: Mail },
+      { type: 'TOUCH_SHARE',        label: 'Share Button',        desc: 'Share icon — pair with show-overlay for a sharing options panel', icon: Share2 },
+      // ── Engagement actions ──
+      // Common on retail / restaurant kiosks for rating, saving, or
+      // expressing interest. Pair with webhook to log the action;
+      // pair with show-overlay for a confirmation animation.
+      { type: 'TOUCH_HEART',        label: 'Favorite (Heart)',    desc: 'Heart button — pair with webhook to log a favorite / save-for-later', icon: Heart },
+      { type: 'TOUCH_STAR',         label: 'Star Rating',         desc: 'Star button — pair with webhook to log a 1-tap rating', icon: Star },
+      // ── Utility ──
+      { type: 'TOUCH_SEARCH',       label: 'Search Button',       desc: 'Magnifying glass — pair with show-overlay for a search panel or open-url to a search page', icon: Search },
+      { type: 'TOUCH_VOLUME',       label: 'Volume Toggle',       desc: 'Speaker icon — pair with sound-toggle Tap Action to mute/unmute video', icon: VolumeIcon },
+      { type: 'TOUCH_PRINT',        label: 'Print Button',        desc: 'Printer icon — pair with webhook to dispatch a print job to a connected printer', icon: Printer },
+    ],
+  },
   {
     label: 'Media',
     types: [
@@ -310,67 +373,6 @@ export const WIDGET_GROUPS: ReadonlyArray<{
       { type: 'STORYBOOK_CAFETERIA', label: 'Storybook · Cafeteria', desc: 'Open-book spread cafeteria menu', icon: UtensilsCrossed },
       { type: 'BULLETIN_HALLWAY',    label: 'Bulletin Board · Hallway',   desc: 'Cork bulletin-board hallway with pinned index cards', icon: Cake },
       { type: 'BULLETIN_CAFETERIA',  label: 'Bulletin Board · Cafeteria', desc: 'Cork bulletin-board cafeteria menu', icon: UtensilsCrossed },
-    ],
-  },
-  // Phase D2.9 (2026-05-12) — Touch widgets. Operator: "cant we just
-  // have a touch widgets? then we can start to build a library of
-  // touch icons, like arrow, circles, etc... seems like less thinking
-  // to just pick a touch widget and keep adding more."
-  //
-  // Every tile in this group canonicalizes to widgetType='TOUCH_POINT'
-  // with a `variant` carrying which visual to render (same pattern
-  // Decorations use — one widget type, many variants). Dropping any
-  // tile auto-enables the template's isTouchEnabled flag so operators
-  // never have to think about the toggle separately.
-  //
-  // Universal — every vertical (school lobby, gym, retail, QSR) wants
-  // touch hotspots.
-  {
-    label: 'Touch (Tap & Go)',
-    types: [
-      // ── Generic hotspots + shapes ──
-      { type: 'TOUCH_HOTSPOT',      label: 'Transparent Hotspot', desc: 'Invisible tap area — drop on top of any content to make it tappable', icon: Hand },
-      { type: 'TOUCH_TAP_PROMPT',   label: 'Tap Here Button',     desc: 'Visible "Tap to continue" button with hand icon — best for kiosk start screens', icon: MousePointerClick },
-      { type: 'TOUCH_CIRCLE',       label: 'Circle Button',       desc: 'Filled circle hotspot — clean "press here" indicator', icon: Circle },
-      { type: 'TOUCH_SQUARE',       label: 'Square Button',       desc: 'Rounded-square button — drop, label it via Properties, set Tap Action', icon: Square },
-      // ── Directional arrows ──
-      { type: 'TOUCH_ARROW_RIGHT',  label: 'Right Arrow',         desc: 'Right-pointing arrow — pair with content panes for "Next" gestures', icon: ArrowRight },
-      { type: 'TOUCH_ARROW_LEFT',   label: 'Left Arrow',          desc: 'Left-pointing arrow — back / previous navigation', icon: ArrowLeft },
-      { type: 'TOUCH_ARROW_UP',     label: 'Up Arrow',            desc: 'Up arrow — scroll / page-up patterns', icon: ArrowUp },
-      { type: 'TOUCH_ARROW_DOWN',   label: 'Down Arrow',          desc: 'Down arrow — scroll / page-down patterns', icon: ArrowDown },
-      // ── Standard kiosk nav vocabulary ──
-      // Every competing interactive-signage tool ships this set by
-      // default (Intuiface, OptiSigns Engage, BrightSign, PandaSuite).
-      // Visitors recognize them instantly — Home is a house, Close is
-      // an X, Menu is a hamburger. Less mental work than custom
-      // labels for navigation chrome.
-      { type: 'TOUCH_HOME',         label: 'Home Button',         desc: 'House-icon button — "Return to start screen"; pair with goto-template back to your default', icon: Home },
-      { type: 'TOUCH_BACK',         label: 'Back Chip',           desc: 'Labeled "← Back" pill — bigger touch target than a plain arrow', icon: ArrowLeft },
-      { type: 'TOUCH_NEXT',         label: 'Next Chip',           desc: 'Labeled "Next →" pill — primary advance action with clear text', icon: ArrowRight },
-      { type: 'TOUCH_CLOSE',        label: 'Close Button',        desc: 'X-icon dismiss button — pair with reset-idle / goto-scene back to the lobby', icon: CloseIcon },
-      { type: 'TOUCH_MENU',         label: 'Menu Button',         desc: 'Hamburger icon — open a sub-menu via goto-scene', icon: MenuIcon },
-      { type: 'TOUCH_HELP',         label: 'Help Button',         desc: 'Question-mark button — opens help overlay or request-help action', icon: HelpCircle },
-      { type: 'TOUCH_PLAY',         label: 'Play Button',         desc: 'Big play triangle — pair with play-video Tap Action for video CTAs', icon: PlayIcon },
-      // ── Communication actions ──
-      // Standard kiosk patterns that ship across every competitor.
-      // QR is the highest-leverage: visitor scans with phone to
-      // transfer the experience off the kiosk. Others compose with
-      // open-url (tel: / mailto:), webhook, or show-overlay.
-      { type: 'TOUCH_QR',           label: 'QR Code',             desc: 'Visible QR placeholder — pair with config.qrText to encode a URL the visitor scans', icon: QrCode },
-      { type: 'TOUCH_INFO',         label: 'Info Button',         desc: 'Circled "i" — tap for show-overlay with details about nearby content', icon: InfoIcon },
-      { type: 'TOUCH_PHONE',        label: 'Phone Button',        desc: 'Phone receiver — pair with open-url tel:+1... for "tap to call" actions', icon: Phone },
-      { type: 'TOUCH_EMAIL',        label: 'Email Button',        desc: 'Envelope — pair with open-url mailto:... or webhook to send the visitor an email', icon: Mail },
-      { type: 'TOUCH_SHARE',        label: 'Share Button',        desc: 'Share icon — pair with show-overlay for a sharing options panel', icon: Share2 },
-      // ── Engagement actions ──
-      // Common on retail / restaurant kiosks for rating, saving, or
-      // expressing interest. Pair with webhook to log the action;
-      // pair with show-overlay for a confirmation animation.
-      { type: 'TOUCH_HEART',        label: 'Favorite (Heart)',    desc: 'Heart button — pair with webhook to log a favorite / save-for-later', icon: Heart },
-      { type: 'TOUCH_STAR',         label: 'Star Rating',         desc: 'Star button — pair with webhook to log a 1-tap rating', icon: Star },
-      // ── Utility ──
-      { type: 'TOUCH_SEARCH',       label: 'Search Button',       desc: 'Magnifying glass — pair with show-overlay for a search panel or open-url to a search page', icon: Search },
-      { type: 'TOUCH_VOLUME',       label: 'Volume Toggle',       desc: 'Speaker icon — pair with sound-toggle Tap Action to mute/unmute video', icon: VolumeIcon },
-      { type: 'TOUCH_PRINT',        label: 'Print Button',        desc: 'Printer icon — pair with webhook to dispatch a print job to a connected printer', icon: Printer },
     ],
   },
 ] as const;
