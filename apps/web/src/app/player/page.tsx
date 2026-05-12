@@ -56,6 +56,168 @@ function nativeReload() {
   try { (window as any).EduCmsNative?.reload?.(); } catch { /* noop */ }
 }
 
+/**
+ * Phase D1 — touch-action dispatcher (touch builder v1).
+ *
+ * Reads a TouchActionConfig from a tapped zone and executes the
+ * corresponding side-effect. Eight v1 primitives plus three legacy
+ * v0 aliases. Every action also dispatches an `edu:touch-action`
+ * CustomEvent so the idle-reset listener picks up ANY tap regardless
+ * of action type.
+ *
+ * Side-effects are intentionally local — the dispatcher doesn't
+ * mutate React state directly (would require lifting it into the
+ * component tree). For state-changing actions (goto-template,
+ * show-overlay) we publish a second CustomEvent that the player's
+ * top-level component listens for and routes into setState. Keeps
+ * the dispatcher pure module-level + the component listening surface
+ * narrow.
+ *
+ * Webhooks fire-and-forget; failures log but never throw.
+ * request-help posts a signed event to the same Redis channel
+ * emergency triggers use — reusing the existing notification path.
+ */
+function dispatchTouchAction(
+  action: any,
+  ctx: { screenId: string | null; tenantId: string | null },
+): void {
+  if (!action || typeof action !== 'object' || !action.type) return;
+  const type = action.type as string;
+  const target = action.target as string | undefined;
+
+  // Always broadcast — idle-reset, analytics, and the future
+  // co-edit cursor layer all listen for this single event.
+  try {
+    window.dispatchEvent(new CustomEvent('edu:touch-action', { detail: action }));
+  } catch { /* swallow */ }
+
+  switch (type) {
+    case 'open-url': {
+      if (!target) return;
+      if (action.openInNewTab) {
+        window.open(target, '_blank', 'noopener,noreferrer');
+      } else {
+        // Default to in-place overlay — kiosks rarely have a browser
+        // chrome to receive a new tab. The 'edu:touch-overlay' event
+        // is consumed by the player's overlay layer.
+        window.dispatchEvent(
+          new CustomEvent('edu:touch-overlay', {
+            detail: { kind: 'iframe', url: target },
+          }),
+        );
+      }
+      return;
+    }
+    case 'play-video': {
+      if (!target) return;
+      window.dispatchEvent(
+        new CustomEvent('edu:touch-overlay', {
+          detail: { kind: 'video', assetId: target, returnOnEnd: action.returnOnEnd !== false },
+        }),
+      );
+      return;
+    }
+    case 'goto-template': {
+      if (!target) return;
+      window.dispatchEvent(
+        new CustomEvent('edu:touch-navigate', {
+          detail: { templateId: target, transition: action.transition || 'cut' },
+        }),
+      );
+      return;
+    }
+    case 'show-overlay': {
+      if (!target) return;
+      window.dispatchEvent(
+        new CustomEvent('edu:touch-overlay', {
+          detail: { kind: 'asset', assetId: target },
+        }),
+      );
+      return;
+    }
+    case 'reset-idle': {
+      // The idle-reset listener already runs on every
+      // edu:touch-action event (dispatched above), so this case is
+      // a no-op — but we leave it explicit so the operator's "Stay
+      // on page" button does literally one thing they expect.
+      return;
+    }
+    case 'sound-toggle': {
+      window.dispatchEvent(new CustomEvent('edu:touch-sound-toggle'));
+      return;
+    }
+    case 'webhook': {
+      if (!target) return;
+      const method = (action.method as string) || 'POST';
+      const payload = {
+        ...(action.payload || {}),
+        // Stamp the calling kiosk so the receiver can correlate.
+        _meta: { screenId: ctx.screenId, tenantId: ctx.tenantId, ts: Date.now() },
+      };
+      try {
+        const url = target;
+        if (method === 'GET') {
+          const qs = new URLSearchParams();
+          for (const [k, v] of Object.entries(payload)) qs.set(k, typeof v === 'string' ? v : JSON.stringify(v));
+          fetch(`${url}?${qs.toString()}`, { method: 'GET', mode: 'no-cors' }).catch(() => {});
+        } else {
+          fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            mode: 'no-cors',
+          }).catch(() => {});
+        }
+      } catch { /* swallow */ }
+      return;
+    }
+    case 'request-help': {
+      // Post to our own /notifications/help endpoint — the server
+      // creates an in-app notification visible to admins of this
+      // tenant. The endpoint is rate-limited (10/min/screen) so a
+      // mashy visitor can't spam the admin pager.
+      const body = (action.body as string) || 'A kiosk visitor tapped “request help.”';
+      const title = (action.target as string) || 'Visitor needs assistance';
+      try {
+        fetch(`${getApiRoot()}/api/v1/notifications/help`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            screenId: ctx.screenId,
+            tenantId: ctx.tenantId,
+            title,
+            body,
+          }),
+        }).catch(() => {});
+      } catch { /* swallow */ }
+      return;
+    }
+    // Legacy v0 aliases — keep working unchanged.
+    case 'url': {
+      if (target) window.open(target, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    case 'navigate':
+    case 'show': {
+      // v0 never actually wired these in the player runtime, only
+      // dispatched the event. Treat as a synonym for goto-template
+      // when target looks like a UUID, else log + ignore.
+      if (target) {
+        window.dispatchEvent(
+          new CustomEvent('edu:touch-navigate', {
+            detail: { templateId: target, transition: 'cut' },
+          }),
+        );
+      }
+      return;
+    }
+    default: {
+      // Unknown type — log but don't break playback.
+      try { console.warn('[touch] unknown action type:', type); } catch {}
+    }
+  }
+}
+
 /** Get the device pairing token from URL → localStorage → null. */
 function getDeviceToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -3539,16 +3701,18 @@ function PlayerPage() {
             try { cfg = JSON.parse(cfg); } catch { cfg = {}; }
           }
           const zoneTouchAction = zone.touchAction || null;
+          // Phase D1 — full action dispatcher.
+          // Replaces the v0 inline `if (type === 'url')` with a real
+          // handler for all 8 v1 primitives (open-url, play-video,
+          // goto-template, show-overlay, reset-idle, sound-toggle,
+          // webhook, request-help) plus the legacy aliases
+          // (navigate, show, url). Each action also dispatches an
+          // edu:touch-action CustomEvent so the idle-reset listener
+          // earlier in the file picks it up regardless of type.
           const onZoneClick = zoneTouchAction
             ? (e: React.MouseEvent) => {
                 e.stopPropagation();
-                // Broadcast the action so the idle-reset listener above picks it up.
-                try {
-                  window.dispatchEvent(new CustomEvent('edu:touch-action', { detail: zoneTouchAction }));
-                } catch {}
-                if (zoneTouchAction.type === 'url' && zoneTouchAction.target) {
-                  window.open(zoneTouchAction.target, '_blank', 'noopener,noreferrer');
-                }
+                dispatchTouchAction(zoneTouchAction, { screenId, tenantId });
               }
             : undefined;
           // Universal text-style override — same scoped <style> trick

@@ -2,7 +2,8 @@
 
 import { useId, useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
-import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon, Tv, ExternalLink, RefreshCw, GripVertical } from 'lucide-react';
+import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon, Tv, ExternalLink, RefreshCw, GripVertical, Hand, Globe, Play, Layers, ShieldAlert, Volume2, Webhook, Bell, Sparkles } from 'lucide-react';
+import type { TouchActionConfig } from './types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DndContext, PointerSensor, KeyboardSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinates, useSortable, arrayMove } from '@dnd-kit/sortable';
@@ -690,6 +691,13 @@ export function PropertiesPanel() {
 
       <ContentFields zone={zone} updateZone={updateZone} />
 
+      {/* Phase D1 — Tap action editor. Only renders when the template
+          has interactivity enabled (Template.isTouchEnabled). Sets
+          zone.touchAction which the player runtime honors at tap-time
+          via the action dispatcher. Backward-compatible with legacy
+          `navigate / show / url` shapes. */}
+      <TapActionEditor zone={zone} updateZone={updateZone} />
+
       {/* Geometry — collapsed by default. Operator can drag-resize on
           the canvas for 99% of cases; this section is for the rare
           "I need this exactly 50% wide" case + the Align buttons.
@@ -868,6 +876,207 @@ function IconBtn({ label, onClick, children }: { label: string; onClick: () => v
     >
       {children}
     </button>
+  );
+}
+
+// Phase D1 — Tap action editor (touch builder v1).
+// Renders inside the zone properties panel only when the parent
+// template has `isTouchEnabled = true`. Picks a touch action from
+// the 8 v1 primitives + one legacy "url" alias and stores it on
+// zone.touchAction. The player runtime (apps/web/src/app/player/
+// page.tsx) honors the dispatched action at tap-time.
+//
+// UX: one-shot dropdown to pick the action TYPE, then a single
+// contextual input slot whose label + placeholder change to match.
+// Webflow-style "When tap on this zone, do Y" reads top-to-bottom.
+const ACTION_DEFS: Array<{
+  type: TouchActionConfig['type'];
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  hint: string;
+  targetLabel?: string;
+  targetPlaceholder?: string;
+  needsTarget: boolean;
+}> = [
+  { type: 'open-url',         label: 'Open URL',           icon: Globe,        hint: 'Load a webpage in an overlay (or new tab).',                 targetLabel: 'URL',          targetPlaceholder: 'https://example.com',         needsTarget: true },
+  { type: 'play-video',       label: 'Play video',         icon: Play,         hint: 'Play an asset, auto-return when it ends.',                   targetLabel: 'Asset ID',     targetPlaceholder: 'video asset id',              needsTarget: true },
+  { type: 'goto-template',    label: 'Go to template',     icon: Layers,       hint: 'Switch to another template (scene-style nav).',              targetLabel: 'Template ID',  targetPlaceholder: 'template id',                 needsTarget: true },
+  { type: 'show-overlay',     label: 'Show overlay',       icon: ShieldAlert,  hint: 'Modal image/video; tap-outside dismisses.',                  targetLabel: 'Asset ID',     targetPlaceholder: 'asset id (image/video)',      needsTarget: true },
+  { type: 'reset-idle',       label: 'Reset idle timer',   icon: RefreshCw,    hint: '"Stay on this page" — restarts the auto-return countdown.', needsTarget: false },
+  { type: 'sound-toggle',     label: 'Toggle sound',       icon: Volume2,      hint: 'Mute / unmute audio for the current scene.',                 needsTarget: false },
+  { type: 'webhook',          label: 'Call webhook',       icon: Webhook,      hint: 'POST to an external URL (POS, booking, etc.).',              targetLabel: 'Webhook URL',  targetPlaceholder: 'https://api.example.com/hook', needsTarget: true },
+  { type: 'request-help',     label: 'Request help',       icon: Bell,         hint: 'Sends an in-app notification to admins.',                    targetLabel: 'Title',        targetPlaceholder: 'Visitor at front desk',       needsTarget: false },
+  // Legacy alias preserved last so the operator can still pick the
+  // old "url" type if they want exactly the v0 behavior.
+  { type: 'url',              label: 'Open URL (legacy)',  icon: ExternalLink, hint: 'v0 behavior — opens in a new browser tab.',                  targetLabel: 'URL',          targetPlaceholder: 'https://example.com',         needsTarget: true },
+];
+
+function TapActionEditor({
+  zone,
+  updateZone,
+}: {
+  zone: { id: string; touchAction?: TouchActionConfig | null };
+  updateZone: (id: string, patch: any, commit?: boolean) => void;
+}) {
+  const isTouchEnabled = useBuilderStore((s) => s.isTouchEnabled);
+  const setTouchEnabled = useBuilderStore((s) => s.setTouchEnabled);
+
+  // Gate: this editor only makes sense for touch-enabled templates.
+  // We DON'T hide it entirely though — when isTouchEnabled is off,
+  // we render a single CTA that flips the flag, so first-time
+  // operators discover the feature instead of needing to find the
+  // template-level toggle.
+  if (!isTouchEnabled) {
+    return (
+      <section className="space-y-3">
+        <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1 flex items-center gap-1.5">
+          <Hand className="w-3 h-3" /> Tap action
+        </h3>
+        <button
+          type="button"
+          onClick={() => setTouchEnabled(true)}
+          className="w-full bg-gradient-to-br from-indigo-50 to-violet-50 rounded-xl p-4 border border-indigo-100 hover:from-indigo-100 hover:to-violet-100 transition-all text-left group"
+        >
+          <div className="text-[11px] font-bold text-indigo-700 mb-1 flex items-center gap-1.5">
+            <Sparkles className="w-3 h-3" /> Make this template interactive
+          </div>
+          <div className="text-[10px] text-indigo-700/70 leading-relaxed">
+            Turn on touch mode to let visitors tap zones — open a URL, play a video, request help, jump to another scene.
+          </div>
+        </button>
+      </section>
+    );
+  }
+
+  const action: TouchActionConfig | null = (zone.touchAction as TouchActionConfig | null) ?? null;
+  const def = action ? ACTION_DEFS.find((d) => d.type === action.type) : null;
+
+  const setAction = (next: TouchActionConfig | null) => {
+    updateZone(zone.id, { touchAction: next }, true);
+  };
+
+  const onTypeChange = (newType: TouchActionConfig['type']) => {
+    const newDef = ACTION_DEFS.find((d) => d.type === newType)!;
+    // Carry the old target over only when both types use it.
+    const prevTarget = (action as any)?.target || '';
+    const next: TouchActionConfig = newDef.needsTarget
+      ? ({ type: newType, target: prevTarget } as TouchActionConfig)
+      : ({ type: newType } as TouchActionConfig);
+    setAction(next);
+  };
+
+  return (
+    <section className="space-y-3">
+      <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1 flex items-center gap-1.5">
+        <Hand className="w-3 h-3" /> Tap action
+      </h3>
+      <div className="bg-indigo-50/40 rounded-xl p-3 border border-indigo-100 space-y-3">
+        <div className="text-[11px] text-slate-700 leading-snug">
+          When a visitor taps this zone…
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">
+            Do this
+          </label>
+          <select
+            value={action?.type ?? ''}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (!v) setAction(null);
+              else onTypeChange(v as TouchActionConfig['type']);
+            }}
+            className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          >
+            <option value="">— No action (display only) —</option>
+            {ACTION_DEFS.map((d) => (
+              <option key={d.type} value={d.type}>{d.label}</option>
+            ))}
+          </select>
+          {def && (
+            <p className="text-[10px] text-slate-500 mt-1.5 leading-snug">{def.hint}</p>
+          )}
+        </div>
+
+        {def?.needsTarget && (
+          <div>
+            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">
+              {def.targetLabel ?? 'Target'}
+            </label>
+            <input
+              type="text"
+              value={(action as any)?.target ?? ''}
+              onChange={(e) => setAction({ ...(action as any), target: e.target.value } as TouchActionConfig)}
+              placeholder={def.targetPlaceholder}
+              className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+          </div>
+        )}
+
+        {/* Per-action extras. Each variant gets its own light editor
+            here so we don't proliferate top-level fields the operator
+            has to scroll past. */}
+        {action?.type === 'open-url' && (
+          <label className="flex items-center gap-2 text-[11px] text-slate-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!!(action as any).openInNewTab}
+              onChange={(e) => setAction({ ...(action as any), openInNewTab: e.target.checked })}
+              className="w-3.5 h-3.5 accent-indigo-500"
+            />
+            Open in a new browser tab instead of an overlay
+          </label>
+        )}
+        {action?.type === 'play-video' && (
+          <label className="flex items-center gap-2 text-[11px] text-slate-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={(action as any).returnOnEnd !== false}
+              onChange={(e) => setAction({ ...(action as any), returnOnEnd: e.target.checked })}
+              className="w-3.5 h-3.5 accent-indigo-500"
+            />
+            Return to this scene when the video ends
+          </label>
+        )}
+        {action?.type === 'goto-template' && (
+          <div>
+            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Transition</label>
+            <select
+              value={(action as any).transition ?? 'cut'}
+              onChange={(e) => setAction({ ...(action as any), transition: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            >
+              <option value="cut">Cut (instant)</option>
+              <option value="fade">Fade (smooth)</option>
+            </select>
+          </div>
+        )}
+        {action?.type === 'webhook' && (
+          <div>
+            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Method</label>
+            <select
+              value={(action as any).method ?? 'POST'}
+              onChange={(e) => setAction({ ...(action as any), method: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            >
+              <option value="POST">POST (with payload)</option>
+              <option value="GET">GET</option>
+            </select>
+          </div>
+        )}
+        {action?.type === 'request-help' && (
+          <div>
+            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Notification body</label>
+            <input
+              type="text"
+              value={(action as any).body ?? ''}
+              onChange={(e) => setAction({ ...(action as any), body: e.target.value })}
+              placeholder="What admins should see — e.g. 'Visitor needs assistance at lobby kiosk'"
+              className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 

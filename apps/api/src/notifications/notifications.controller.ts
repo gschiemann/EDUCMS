@@ -1,11 +1,16 @@
-import { Controller, Get, Post, Param, Query, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpException, HttpStatus, Param, Post, Query, Request, UseGuards } from '@nestjs/common';
+import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { NotificationsService } from './notifications.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('api/v1/notifications')
 @UseGuards(JwtAuthGuard)
 export class NotificationsController {
-  constructor(private readonly service: NotificationsService) {}
+  constructor(
+    private readonly service: NotificationsService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   @Get()
   async list(@Request() req: any, @Query('limit') limit?: string) {
@@ -27,5 +32,56 @@ export class NotificationsController {
   @Post('read-all')
   async markAll(@Request() req: any) {
     return this.service.markAllRead(req.user.tenantId, req.user.id);
+  }
+
+}
+
+// Phase D1 — touch builder "request help" action endpoint.
+//
+// Sibling controller without the class-level JwtAuthGuard so kiosks
+// (which run unauthenticated for touch flows) can post help requests
+// without needing a device JWT. We resolve the tenant via screenId
+// so an attacker can't notify a tenant they don't have a paired
+// screen on. Rate-limited 10/min/IP to stop a mashy visitor (or
+// scripted abuse) from spamming the admin pager. 5-min dedupe
+// bucket so the same kiosk's mash-the-button visitor only produces
+// ONE notification per window.
+@Controller('api/v1/notifications')
+export class NotificationsPublicController {
+  constructor(
+    private readonly service: NotificationsService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('help')
+  async requestHelp(
+    @Body() body: { screenId?: string; tenantId?: string; title?: string; body?: string },
+  ) {
+    const screenId = (body?.screenId || '').trim();
+    if (!screenId) {
+      throw new HttpException('screenId required', HttpStatus.BAD_REQUEST);
+    }
+    const screen = await this.prisma.client.screen.findUnique({
+      where: { id: screenId },
+      select: { id: true, tenantId: true, name: true },
+    });
+    if (!screen?.tenantId) {
+      // Unpaired / unknown screen — silently no-op so a probe gets
+      // no useful error signal.
+      return { ok: true };
+    }
+    const title = (body?.title || 'Visitor needs assistance').slice(0, 120);
+    const detail = (body?.body || 'A kiosk visitor tapped “request help.”').slice(0, 500);
+    const bucket = Math.floor(Date.now() / (5 * 60_000));
+    await this.service.notify({
+      tenantId: screen.tenantId,
+      kind: 'INFO',
+      title: `${title} — ${screen.name}`,
+      body: detail,
+      link: `/screens`,
+      dedupeKey: `touch-help:${screenId}:${bucket}`,
+    }).catch(() => { /* best-effort — notification table off is OK */ });
+    return { ok: true };
   }
 }
