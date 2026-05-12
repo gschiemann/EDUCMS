@@ -482,13 +482,32 @@ export function BuilderCanvas() {
   } : {};
 
   return (
-    <div className="flex-1 overflow-auto bg-slate-200 p-8 flex items-center justify-center min-h-0">
+    // 2026-05-12 — reduced outer padding p-8 → p-4 so the canvas
+    // fills more of the available area. Combined with the parent-
+    // relative canvas-size fix below, builder ≈ preview at default
+    // zoom for most viewports.
+    <div className="flex-1 overflow-auto bg-slate-200 p-4 flex items-center justify-center min-h-0">
       <div
         className="shadow-2xl rounded-lg relative"
         style={{
-          width: `min(${90 * zoom}vw, ${aspectRatio * 70 * zoom}vh)`,
+          // 2026-05-12 — operator: "the template builder should already
+          // be a representation of the final product... when i hit TV
+          // preview the canvas is massive and nothing looks right." The
+          // old `min(90vw, ${AR}*70vh)` math sized the canvas against
+          // the VIEWPORT, ignoring the ~300px panel sidebar + 56px top
+          // toolbar that eat horizontal/vertical space. Result: builder
+          // canvas was ~30% smaller than the preview stage on the same
+          // window, so hitting Preview felt like a sudden upscale.
+          //
+          // New math sizes against the PARENT (the .flex-1 canvas-area
+          // wrapper) so the canvas fills whatever room the editor
+          // chrome leaves behind. Same WYSIWYG promise the preview
+          // modal uses, just with sidebar-aware bounds. `zoom` becomes
+          // a deviation FROM that fit baseline (0.5 = half, 2 = double).
+          width: zoom === 1 ? '100%' : `${100 * zoom}%`,
           aspectRatio: `${aspectRatio}`,
           maxWidth: '100%',
+          maxHeight: '100%',
         }}
       >
         {/* Per-template brand CSS vars. Widgets that use
