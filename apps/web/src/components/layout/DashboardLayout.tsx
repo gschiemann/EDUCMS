@@ -9,6 +9,7 @@ import { TopToolbar } from './TopToolbar';
 import { SuperAdminBanner } from './SuperAdminBanner';
 import { EmergencyOverlay } from './EmergencyOverlay';
 import { AuthExpirationGuard } from './AuthExpirationGuard';
+import { StaleBundleWatcher } from './StaleBundleWatcher';
 import { useTenantStatus } from '@/hooks/use-api';
 import { AppDialogHost } from '@/components/ui/app-dialog';
 import { BrandStyleInjector } from '@/components/branding/BrandStyleInjector';
@@ -64,6 +65,14 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           or the user is explicitly logged out. Mounted high in the tree
           so every dashboard page is protected. */}
       <AuthExpirationGuard />
+      {/* 2026-05-12 — operator hit "still shows gschiemann" because
+          their tab was on a pre-deploy bundle. StaleBundleWatcher
+          polls /api/build-info every 5 min and shows a "new version
+          available — reload in 30s" toast when the deployed SHA
+          differs from the bundle's baked-in SHA. Auto-reloads after
+          countdown; operator can Reload-now or Later. Pairs with
+          the kiosk player's Phase B4 stale-bundle drift check. */}
+      <StaleBundleWatcher />
       {/* Tenant brand paint — scoped to authed dashboard only so the
           public marketing site + /login stay in the vendor palette. */}
       <BrandStyleInjector />
