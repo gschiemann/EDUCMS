@@ -889,26 +889,178 @@ function IconBtn({ label, onClick, children }: { label: string; onClick: () => v
 // UX: one-shot dropdown to pick the action TYPE, then a single
 // contextual input slot whose label + placeholder change to match.
 // Webflow-style "When tap on this zone, do Y" reads top-to-bottom.
+// Picker kinds the target field can render. Each maps to a smart
+// picker UI instead of a free-text input — addresses the UX agent's
+// UX-CRITICAL findings #1 + #2 + #4 (operators don't have UUIDs).
+type TargetPicker = 'text' | 'url' | 'scene' | 'template' | 'asset-video' | 'asset-media';
+
+// Smart target picker — renders the right input for the action type:
+//   - 'url'         → text input with live `✓ Valid URL` validation
+//   - 'scene'       → dropdown of scenes on the CURRENT template
+//   - 'template'    → dropdown of templates in the CURRENT tenant
+//                     (excluding this one — can't goto-template itself)
+//   - 'asset-video' → dropdown of video assets in the asset library
+//   - 'asset-media' → dropdown of images + videos in the asset library
+//   - 'text'        → plain text input (fallback)
+//
+// All pickers fall through to a text input when the data source is
+// loading or empty, so operators can still hand-type UUIDs in a pinch.
+function TapActionTargetPicker({
+  kind,
+  value,
+  onChange,
+  placeholder,
+}: {
+  kind: TargetPicker;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  // Pull data from existing hooks. Each only fires its query when the
+  // picker actually needs it — `enabled` keys keep idle pickers from
+  // wasting network round trips.
+  const scenes = useBuilderStore((s) => (s as any).scenes as Array<{ id: string; name: string }> | undefined) || [];
+  const { data: templates } = useTemplates();
+  const { data: assets } = useAssets();
+  const currentTemplateId = useBuilderStore((s) => s.templateId);
+
+  if (kind === 'scene') {
+    if (!scenes.length) {
+      return (
+        <>
+          <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1.5 mb-1.5">
+            No scenes yet — add one in the Scenes panel, then pick it here.
+          </div>
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="or paste a scene ID…"
+            className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          />
+        </>
+      );
+    }
+    return (
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400"
+      >
+        <option value="">— Pick a scene —</option>
+        {scenes.map((s) => (
+          <option key={s.id} value={s.id}>{s.name}</option>
+        ))}
+      </select>
+    );
+  }
+
+  if (kind === 'template') {
+    const list = (Array.isArray(templates) ? templates : []).filter(
+      (t: any) => t.id !== currentTemplateId && !t.isSystem,
+    );
+    return (
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400"
+      >
+        <option value="">— Pick a template —</option>
+        {list.map((t: any) => (
+          <option key={t.id} value={t.id}>{t.name}</option>
+        ))}
+      </select>
+    );
+  }
+
+  if (kind === 'asset-video' || kind === 'asset-media') {
+    const list = (Array.isArray(assets) ? assets : []).filter((a: any) => {
+      const m = (a.mimeType || '').toLowerCase();
+      if (kind === 'asset-video') return m.startsWith('video/');
+      return m.startsWith('video/') || m.startsWith('image/');
+    });
+    return (
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400"
+      >
+        <option value="">— Pick an asset —</option>
+        {list.map((a: any) => (
+          <option key={a.id} value={a.id}>
+            {(a.originalName || a.fileName || a.id)} {a.mimeType ? `· ${a.mimeType.split('/')[0]}` : ''}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  // 'url' or 'text' → text input with live validation for URLs.
+  const trimmed = value.trim();
+  const looksLikeUrl = kind === 'url' && trimmed.length > 0;
+  let urlState: 'valid' | 'invalid' | null = null;
+  if (looksLikeUrl) {
+    try {
+      const u = new URL(trimmed);
+      urlState = u.protocol === 'http:' || u.protocol === 'https:' ? 'valid' : 'invalid';
+    } catch {
+      urlState = 'invalid';
+    }
+  }
+  return (
+    <>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={`w-full px-3 py-2 rounded-lg bg-white border text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400 ${
+          urlState === 'invalid'
+            ? 'border-rose-300 focus:ring-rose-200'
+            : urlState === 'valid'
+              ? 'border-emerald-300 focus:ring-emerald-200'
+              : 'border-slate-200'
+        }`}
+      />
+      {urlState === 'valid' && (
+        <p className="text-[10px] text-emerald-700 mt-1">✓ Valid URL</p>
+      )}
+      {urlState === 'invalid' && (
+        <p className="text-[10px] text-rose-700 mt-1">Not a valid http:// or https:// URL</p>
+      )}
+    </>
+  );
+}
+
 const ACTION_DEFS: Array<{
   type: TouchActionConfig['type'];
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   hint: string;
+  example?: string;
   targetLabel?: string;
   targetPlaceholder?: string;
   needsTarget: boolean;
+  picker: TargetPicker;
 }> = [
-  { type: 'open-url',         label: 'Open URL',           icon: Globe,        hint: 'Load a webpage in an overlay (or new tab).',                 targetLabel: 'URL',          targetPlaceholder: 'https://example.com',         needsTarget: true },
-  { type: 'play-video',       label: 'Play video',         icon: Play,         hint: 'Play an asset, auto-return when it ends.',                   targetLabel: 'Asset ID',     targetPlaceholder: 'video asset id',              needsTarget: true },
-  { type: 'goto-template',    label: 'Go to template',     icon: Layers,       hint: 'Switch to another template (scene-style nav).',              targetLabel: 'Template ID',  targetPlaceholder: 'template id',                 needsTarget: true },
-  { type: 'show-overlay',     label: 'Show overlay',       icon: ShieldAlert,  hint: 'Modal image/video; tap-outside dismisses.',                  targetLabel: 'Asset ID',     targetPlaceholder: 'asset id (image/video)',      needsTarget: true },
-  { type: 'reset-idle',       label: 'Reset idle timer',   icon: RefreshCw,    hint: '"Stay on this page" — restarts the auto-return countdown.', needsTarget: false },
-  { type: 'sound-toggle',     label: 'Toggle sound',       icon: Volume2,      hint: 'Mute / unmute audio for the current scene.',                 needsTarget: false },
-  { type: 'webhook',          label: 'Call webhook',       icon: Webhook,      hint: 'POST to an external URL (POS, booking, etc.).',              targetLabel: 'Webhook URL',  targetPlaceholder: 'https://api.example.com/hook', needsTarget: true },
-  { type: 'request-help',     label: 'Request help',       icon: Bell,         hint: 'Sends an in-app notification to admins.',                    targetLabel: 'Title',        targetPlaceholder: 'Visitor at front desk',       needsTarget: false },
-  // Legacy alias preserved last so the operator can still pick the
-  // old "url" type if they want exactly the v0 behavior.
-  { type: 'url',              label: 'Open URL (legacy)',  icon: ExternalLink, hint: 'v0 behavior — opens in a new browser tab.',                  targetLabel: 'URL',          targetPlaceholder: 'https://example.com',         needsTarget: true },
+  { type: 'open-url',         label: 'Open URL',           icon: Globe,        hint: 'Load a webpage in an overlay (or new tab).',                 example: 'e.g. tap a "Library Hours" button to show the library website',
+    targetLabel: 'URL',          targetPlaceholder: 'https://example.com',         needsTarget: true,  picker: 'url' },
+  { type: 'play-video',       label: 'Play video',         icon: Play,         hint: 'Play an asset, auto-return when it ends.',                   example: 'e.g. tap a poster to play a 30-second tour video',
+    targetLabel: 'Video asset',  targetPlaceholder: 'Pick a video…',               needsTarget: true,  picker: 'asset-video' },
+  { type: 'goto-scene',       label: 'Go to scene',        icon: Layers,       hint: 'Switch to another scene IN this template (no network call).',example: 'e.g. tap "Check In" to show the visitor sign-in scene',
+    targetLabel: 'Scene',        targetPlaceholder: 'Pick a scene…',               needsTarget: true,  picker: 'scene' },
+  { type: 'goto-template',    label: 'Go to template',     icon: Layers,       hint: 'Switch to another template entirely.',                       example: 'e.g. tap a building tile to show that building’s directory',
+    targetLabel: 'Template',     targetPlaceholder: 'Pick a template…',            needsTarget: true,  picker: 'template' },
+  { type: 'show-overlay',     label: 'Show overlay',       icon: ShieldAlert,  hint: 'Modal image/video; tap-outside dismisses.',                  example: 'e.g. tap a thumbnail to enlarge a poster or video clip',
+    targetLabel: 'Asset',        targetPlaceholder: 'Pick an image or video…',     needsTarget: true,  picker: 'asset-media' },
+  { type: 'reset-idle',       label: 'Reset idle timer',   icon: RefreshCw,    hint: '"Stay on this page" — restarts the auto-return countdown.', example: 'e.g. a "Need more time?" button on a long-form info page',
+    needsTarget: false,  picker: 'text' },
+  { type: 'sound-toggle',     label: 'Toggle sound',       icon: Volume2,      hint: 'Mute / unmute audio for the current scene.',                 example: 'e.g. an accessibility "🔊 Sound on" / "🔇 Mute" toggle',
+    needsTarget: false,  picker: 'text' },
+  { type: 'webhook',          label: 'Call webhook',       icon: Webhook,      hint: 'POST to an external URL (POS, booking, etc.).',              example: 'e.g. tap "Order coffee" → POSTs to Square POS',
+    targetLabel: 'Webhook URL',  targetPlaceholder: 'https://api.example.com/hook',needsTarget: true,  picker: 'url' },
+  { type: 'request-help',     label: 'Request help',       icon: Bell,         hint: 'Sends an in-app notification to admins.',                    example: 'e.g. a "Need a tour guide?" button at the front desk',
+    targetLabel: 'Title (optional)', targetPlaceholder: 'Visitor at front desk',   needsTarget: false, picker: 'text' },
 ];
 
 function TapActionEditor({
@@ -969,6 +1121,12 @@ function TapActionEditor({
     <section className="space-y-3">
       <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1 flex items-center gap-1.5">
         <Hand className="w-3 h-3" /> Tap action
+        {action && (
+          <span className="ml-1 inline-flex items-center gap-1 text-[9px] font-bold text-emerald-600 normal-case tracking-normal">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            ON
+          </span>
+        )}
       </h3>
       <div className="bg-indigo-50/40 rounded-xl p-3 border border-indigo-100 space-y-3">
         <div className="text-[11px] text-slate-700 leading-snug">
@@ -995,6 +1153,9 @@ function TapActionEditor({
           {def && (
             <p className="text-[10px] text-slate-500 mt-1.5 leading-snug">{def.hint}</p>
           )}
+          {def?.example && (
+            <p className="text-[10px] text-slate-400 mt-1 italic leading-snug">{def.example}</p>
+          )}
         </div>
 
         {def?.needsTarget && (
@@ -1002,12 +1163,16 @@ function TapActionEditor({
             <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">
               {def.targetLabel ?? 'Target'}
             </label>
-            <input
-              type="text"
+            {/* Phase D2 — smart pickers for goto-scene / goto-template /
+                asset actions. UX review found the v1 free-text UUID
+                input was unshippable. Each picker maps to a known
+                dropdown source: scenes on the current template,
+                templates in the tenant, assets in the asset library. */}
+            <TapActionTargetPicker
+              kind={def.picker}
               value={(action as any)?.target ?? ''}
-              onChange={(e) => setAction({ ...(action as any), target: e.target.value } as TouchActionConfig)}
+              onChange={(v) => setAction({ ...(action as any), target: v } as TouchActionConfig)}
               placeholder={def.targetPlaceholder}
-              className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
           </div>
         )}

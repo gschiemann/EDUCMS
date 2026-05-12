@@ -777,6 +777,11 @@ model Template {
   createdAt      DateTime       @default(now()) @map("created_at")
   updatedAt      DateTime       @default(now()) @updatedAt @map("updated_at")
   zones          TemplateZone[]
+  // 2026-05-12 — Phase D2 multi-scene relation. One template can
+  // have many scenes (Figma-style frames). Scenes are populated by
+  // the migration for every existing template (each gets a single
+  // "Default" scene + all current zones repointed to it).
+  scenes         TemplateScene[]
   playlists      Playlist[]
   createdBy      User?          @relation("TemplateCreator", fields: [createdById], references: [id])
   tenant         Tenant?        @relation(fields: [tenantId], references: [id])
@@ -810,21 +815,64 @@ model EmergencyMessage {
 }
 
 model TemplateZone {
-  id            String   @id @default(uuid())
-  templateId    String   @map("template_id")
+  id            String         @id @default(uuid())
+  templateId    String         @map("template_id")
+  // 2026-05-12 — Phase D2 (touch builder multi-scene). Each zone
+  // belongs to ONE scene. Nullable so legacy single-scene templates
+  // keep working — the migration backfills every existing zone with
+  // its parent template's default scene id, so post-migration this
+  // is effectively always set. Stays nullable on the schema to keep
+  // future template authoring tools simple.
+  sceneId       String?        @map("scene_id")
   name          String
-  widgetType    String   @map("widget_type")
-  x             Float    @default(0)
-  y             Float    @default(0)
-  width         Float    @default(100)
-  height        Float    @default(100)
-  zIndex        Int      @default(0) @map("z_index")
-  sortOrder     Int      @default(0) @map("sort_order")
-  defaultConfig String?  @map("default_config")
-  touchAction   Json?    @map("touch_action")
-  template      Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  widgetType    String         @map("widget_type")
+  x             Float          @default(0)
+  y             Float          @default(0)
+  width         Float          @default(100)
+  height        Float          @default(100)
+  zIndex        Int            @default(0) @map("z_index")
+  sortOrder     Int            @default(0) @map("sort_order")
+  defaultConfig String?        @map("default_config")
+  touchAction   Json?          @map("touch_action")
+  template      Template       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  scene         TemplateScene? @relation(fields: [sceneId], references: [id], onDelete: SetNull)
 
+  // Render gates by (templateId, sceneId) on every playback fetch —
+  // index supports the hot query path.
+  @@index([templateId, sceneId])
   @@map("template_zones")
+}
+
+/// Phase D2 (2026-05-12) — touch builder multi-scene model.
+///
+/// Until D2, a Template was one canvas. A touch flow that needs more
+/// than one screen had to span multiple Templates, navigated via
+/// goto-template. That worked but split the operator's mental model:
+/// "this kiosk shows the Front Desk template, which tap-links to the
+/// Check In template, which tap-links to the Visitor Pass template."
+/// Three rows in the gallery; one logical flow.
+///
+/// Multi-scene collapses that: a single Template owns N TemplateScene
+/// rows. Each scene has its own zones. Tap actions can target a
+/// sceneId within the same template (goto-scene) or another template
+/// entirely (goto-template, unchanged).
+///
+/// One scene per template is marked `isDefault = true`. The player
+/// starts there on first render. Operator-deletable scenes can't
+/// delete the default — a guard on the controller blocks it.
+model TemplateScene {
+  id          String         @id @default(uuid())
+  templateId  String         @map("template_id")
+  name        String
+  sortOrder   Int            @default(0) @map("sort_order")
+  isDefault   Boolean        @default(false) @map("is_default")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  template    Template       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  zones       TemplateZone[]
+
+  @@unique([templateId, name])
+  @@index([templateId, sortOrder])
+  @@map("template_scenes")
 }
 
 // Sprint 1.5 — submit-for-review workflow.

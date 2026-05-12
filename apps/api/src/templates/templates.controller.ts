@@ -403,11 +403,182 @@ export class TemplatesController {
       },
       include: {
         zones: { orderBy: { sortOrder: 'asc' } },
+        // 2026-05-12 — Phase D2 multi-scene model. Single-template
+        // detail now includes the scenes list so the builder can
+        // render the scene panel without a second round trip. Player
+        // also uses this on goto-template navigation.
+        scenes: { orderBy: { sortOrder: 'asc' } } as any,
         createdBy: { select: { id: true, email: true, role: true } },
-      },
+      } as any,
     });
     if (!template) return { error: 'Not found' };
     return mapTemplate(template);
+  }
+
+  // ───────────────────────────────────────────────────────
+  // Phase D2 multi-scene CRUD — operators add/rename/reorder/delete
+  // scenes inside a template. Every template has at minimum one
+  // is_default=true scene (auto-created by the migration); the
+  // controller blocks deletion of that scene to keep the invariant.
+  //
+  // All endpoints scope by `tenantId` so an operator from Tenant A
+  // can't enumerate or mutate scenes on a Tenant B template (system
+  // templates accept reads via the same OR pattern as the existing
+  // get, but writes require ownership).
+  // ───────────────────────────────────────────────────────
+
+  @Get(':id/scenes')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async listScenes(@Request() req: any, @Param('id') id: string) {
+    const tpl = await this.prisma.client.template.findFirst({
+      where: { id, OR: [{ tenantId: req.user.tenantId }, { isSystem: true }] },
+      select: { id: true } as any,
+    });
+    if (!tpl) throw new HttpException('Template not found', HttpStatus.NOT_FOUND);
+    return (this.prisma.client as any).templateScene.findMany({
+      where: { templateId: id },
+      orderBy: { sortOrder: 'asc' },
+    });
+  }
+
+  @Post(':id/scenes')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async createScene(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { name?: string },
+  ) {
+    const tpl = await this.assertOwnedTemplate(id, req.user.tenantId);
+    const name = (body?.name || 'Untitled scene').trim().slice(0, 80);
+    if (!name) throw new HttpException('name required', HttpStatus.BAD_REQUEST);
+    const lastSort = await (this.prisma.client as any).templateScene.findFirst({
+      where: { templateId: tpl.id },
+      orderBy: { sortOrder: 'desc' },
+      select: { sortOrder: true },
+    });
+    const sortOrder = (lastSort?.sortOrder ?? -1) + 1;
+    try {
+      return await (this.prisma.client as any).templateScene.create({
+        data: { templateId: tpl.id, name, sortOrder, isDefault: false },
+      });
+    } catch (e: any) {
+      // Unique (templateId, name) collision → return a friendly error.
+      if (e?.code === 'P2002') {
+        throw new HttpException(`A scene named "${name}" already exists in this template`, HttpStatus.CONFLICT);
+      }
+      throw e;
+    }
+  }
+
+  @Put(':id/scenes/:sceneId')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async updateScene(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Param('sceneId') sceneId: string,
+    @Body() body: { name?: string; sortOrder?: number; isDefault?: boolean },
+  ) {
+    const tpl = await this.assertOwnedTemplate(id, req.user.tenantId);
+    const scene = await (this.prisma.client as any).templateScene.findFirst({
+      where: { id: sceneId, templateId: tpl.id },
+    });
+    if (!scene) throw new HttpException('Scene not found', HttpStatus.NOT_FOUND);
+
+    const data: any = {};
+    if (body.name !== undefined) {
+      const trimmed = String(body.name).trim().slice(0, 80);
+      if (!trimmed) throw new HttpException('name must be non-empty', HttpStatus.BAD_REQUEST);
+      data.name = trimmed;
+    }
+    if (body.sortOrder !== undefined) {
+      data.sortOrder = Math.max(0, Math.floor(Number(body.sortOrder) || 0));
+    }
+
+    // Setting isDefault=true is a special transaction: flip the
+    // previous default off, flip this one on, all-or-nothing so we
+    // never end up with zero (or two) default scenes.
+    if (body.isDefault === true && !scene.isDefault) {
+      return this.prisma.client.$transaction(async (tx: any) => {
+        await tx.templateScene.updateMany({
+          where: { templateId: tpl.id, isDefault: true },
+          data: { isDefault: false },
+        });
+        return tx.templateScene.update({
+          where: { id: sceneId },
+          data: { ...data, isDefault: true },
+        });
+      });
+    }
+
+    if (Object.keys(data).length === 0 && body.isDefault === undefined) {
+      throw new HttpException('Nothing to update', HttpStatus.BAD_REQUEST);
+    }
+    try {
+      return await (this.prisma.client as any).templateScene.update({
+        where: { id: sceneId },
+        data,
+      });
+    } catch (e: any) {
+      if (e?.code === 'P2002') {
+        throw new HttpException(`A scene with that name already exists`, HttpStatus.CONFLICT);
+      }
+      throw e;
+    }
+  }
+
+  @Delete(':id/scenes/:sceneId')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async deleteScene(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Param('sceneId') sceneId: string,
+  ) {
+    const tpl = await this.assertOwnedTemplate(id, req.user.tenantId);
+    const scene = await (this.prisma.client as any).templateScene.findFirst({
+      where: { id: sceneId, templateId: tpl.id },
+    });
+    if (!scene) throw new HttpException('Scene not found', HttpStatus.NOT_FOUND);
+    if (scene.isDefault) {
+      throw new HttpException(
+        'Cannot delete the default scene. Set a different scene as default first.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    // Floating zones (sceneId IS NULL after the delete cascades
+    // SET NULL) get re-pointed to the default scene so they keep
+    // rendering for the visitor — operators can move them deliberately
+    // in the scene panel afterward.
+    const def = await (this.prisma.client as any).templateScene.findFirst({
+      where: { templateId: tpl.id, isDefault: true },
+    });
+    await this.prisma.client.$transaction(async (tx: any) => {
+      await tx.templateScene.delete({ where: { id: sceneId } });
+      if (def) {
+        await tx.templateZone.updateMany({
+          where: { templateId: tpl.id, sceneId: null },
+          data: { sceneId: def.id },
+        });
+      }
+    });
+    return { ok: true };
+  }
+
+  // Shared owner-check helper. SUPER_ADMIN sees everything; everyone
+  // else is gated to their own tenant. System templates (isSystem)
+  // are read-only — writes 403.
+  private async assertOwnedTemplate(templateId: string, tenantId: string): Promise<{ id: string; tenantId: string | null }> {
+    const tpl = await this.prisma.client.template.findFirst({
+      where: { id: templateId },
+      select: { id: true, tenantId: true, isSystem: true } as any,
+    });
+    if (!tpl) throw new HttpException('Template not found', HttpStatus.NOT_FOUND);
+    if ((tpl as any).isSystem) {
+      throw new HttpException('System templates are read-only', HttpStatus.FORBIDDEN);
+    }
+    if ((tpl as any).tenantId !== tenantId) {
+      throw new HttpException('Not your template', HttpStatus.FORBIDDEN);
+    }
+    return tpl as any;
   }
 
   // ───────────────────────────────────────────────────────

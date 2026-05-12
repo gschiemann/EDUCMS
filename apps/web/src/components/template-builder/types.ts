@@ -32,9 +32,15 @@ export type TouchActionConfig =
   // when it ends (the kiosk-native UX — visitor taps "Watch tour,"
   // video plays, returns home).
   | { type: 'play-video'; target: string; returnOnEnd?: boolean }
-  // Navigate to another template within the same tenant. Effectively
-  // a "scene change" until the TemplateScene model lands in D2.
+  // Navigate to another template within the same tenant. Cross-
+  // template nav — for staying inside one template across multiple
+  // scenes use goto-scene below.
   | { type: 'goto-template'; target: string; transition?: 'cut' | 'fade' }
+  // Phase D2 (2026-05-12) — switch to another scene WITHIN the
+  // current template. `target` is a TemplateScene.id. Visitor sees
+  // a scene change without a network round-trip; player just
+  // gates zone rendering by the new sceneId.
+  | { type: 'goto-scene'; target: string; transition?: 'cut' | 'fade' }
   // Modal overlay on top of the current scene — shows an image or
   // short video without leaving the current template. Tap-outside
   // dismisses.

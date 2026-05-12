@@ -199,6 +199,18 @@ function dispatchTouchAction(
       );
       return;
     }
+    case 'goto-scene': {
+      // Phase D2 — in-template scene switch. Fires a CustomEvent the
+      // player picks up to update currentSceneId. No network call;
+      // the scene's zones are already loaded with the template.
+      if (!target) return;
+      window.dispatchEvent(
+        new CustomEvent('edu:touch-scene-change', {
+          detail: { sceneId: target, transition: action.transition || 'cut' },
+        }),
+      );
+      return;
+    }
     case 'show-overlay': {
       if (!target) return;
       window.dispatchEvent(
@@ -1737,6 +1749,12 @@ function PlayerPage() {
   // TemplateScene model, goto-template essentially overlays a
   // sibling template — same effect as a scene change for visitors.
   const [touchNavigatedTemplate, setTouchNavigatedTemplate] = useState<any | null>(null);
+  // Phase D2 — current scene within the active template. Null
+  // defaults to "render every zone" so single-scene legacy templates
+  // (every zone has sceneId pointing to the lone default scene)
+  // keep rendering normally. Once a goto-scene action fires we
+  // pin the sceneId and the zone render path filters accordingly.
+  const [currentSceneId, setCurrentSceneId] = useState<string | null>(null);
   // FIX (player-007): when the kiosk is in production but cannot find a
   // signed device JWT, the WS HELLO falls back to a `dev_<screenId>_*`
   // token that the server rejects unless DEV_WS_ALLOW=true. In prod
@@ -3311,11 +3329,14 @@ function PlayerPage() {
       if (idleResetTimerRef.current) clearTimeout(idleResetTimerRef.current);
       idleResetTimerRef.current = setTimeout(() => {
         setSceneTick(t => t + 1);
-        // Phase D1.5 — when idle elapses, also dismiss any active
-        // touch overlay + return to the home scene if we navigated
-        // away. Matches the "auto-return on idle" UX kiosks expect.
+        // Phase D1.5 + D2 — when idle elapses, also dismiss any
+        // active touch overlay, return to the home template if we
+        // navigated cross-template, AND reset to the template's
+        // default scene if we changed scenes within the template.
+        // The "auto-return on idle" UX kiosks expect.
         setTouchOverlay(null);
         setTouchNavigatedTemplate(null);
+        setCurrentSceneId(null);
       }, idleResetMs);
     };
 
@@ -3414,14 +3435,24 @@ function PlayerPage() {
       setTouchMuted((m) => !m);
     };
 
+    const onSceneChange = (e: Event) => {
+      const ce = e as CustomEvent<any>;
+      const sid = ce.detail?.sceneId;
+      if (typeof sid === 'string' && sid) {
+        setCurrentSceneId(sid);
+      }
+    };
+
     window.addEventListener('edu:touch-overlay', onOverlay as EventListener);
     window.addEventListener('edu:touch-navigate', onNavigate as EventListener);
     window.addEventListener('edu:touch-sound-toggle', onSoundToggle as EventListener);
+    window.addEventListener('edu:touch-scene-change', onSceneChange as EventListener);
 
     return () => {
       window.removeEventListener('edu:touch-overlay', onOverlay as EventListener);
       window.removeEventListener('edu:touch-navigate', onNavigate as EventListener);
       window.removeEventListener('edu:touch-sound-toggle', onSoundToggle as EventListener);
+      window.removeEventListener('edu:touch-scene-change', onSceneChange as EventListener);
     };
     // applyManifest is declared later in this component and is a
     // stable closure over our state setters; we don't depend on it
@@ -3840,7 +3871,24 @@ function PlayerPage() {
   // (now-deleted) dark KioskSplash mode='stopped' overlay.
   if (isTemplate && !playbackStopped) {
     const tpl = playlist.template;
-    const zones = tpl.zones || [];
+    const allZones = tpl.zones || [];
+    // Phase D2 — scene-aware zone filter. Three cases:
+    //   1. currentSceneId set (operator-driven scene change)
+    //      → render zones whose sceneId matches
+    //   2. currentSceneId null AND tpl.scenes has a default scene
+    //      → render zones for the default scene (multi-scene template
+    //        starting fresh)
+    //   3. currentSceneId null AND no scenes (legacy template, or
+    //      zones with sceneId === null) → render every zone
+    // Case 3 preserves the v1 behavior for single-scene templates
+    // exactly, since the D2 migration backfilled every zone's
+    // sceneId to its default scene.
+    const tplScenes: any[] = Array.isArray((tpl as any).scenes) ? (tpl as any).scenes : [];
+    const defaultScene = tplScenes.find((s) => s.isDefault) || tplScenes[0] || null;
+    const activeSceneId = currentSceneId || defaultScene?.id || null;
+    const zones = activeSceneId
+      ? allZones.filter((z: any) => !z.sceneId || z.sceneId === activeSceneId)
+      : allZones;
 
     // v1.0.16 — auto-promote interactive UX when the template
     // contains a WEBPAGE zone. Operator (2026-04-27): "when i push a
