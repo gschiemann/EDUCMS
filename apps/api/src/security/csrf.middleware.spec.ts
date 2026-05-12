@@ -47,6 +47,16 @@ describe('isCsrfExempt', () => {
     expect(isCsrfExempt('PUT', '/api/v1/playlists/1')).toBe(false);
     expect(isCsrfExempt('DELETE', '/api/v1/playlists/1')).toBe(false);
   });
+
+  it('exempts the touch builder request-help endpoint', () => {
+    // Phase D1 — public endpoint kiosks (no CSRF cookie) call when a
+    // visitor taps a help button. Hardened via screenId resolution +
+    // rate limit + dedupe instead of CSRF.
+    expect(isCsrfExempt('POST', '/api/v1/notifications/help')).toBe(true);
+    // Sanity — the OTHER notifications endpoints are still gated.
+    expect(isCsrfExempt('POST', '/api/v1/notifications/abc/read')).toBe(false);
+    expect(isCsrfExempt('POST', '/api/v1/notifications/read-all')).toBe(false);
+  });
 });
 
 describe('CsrfMiddleware', () => {

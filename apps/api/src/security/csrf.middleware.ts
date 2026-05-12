@@ -69,6 +69,18 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   // immune to CSRF by definition (browsers cannot attach Bearer headers
   // cross-site automatically). See player-logs.controller.ts.
   (p) => /^\/api\/v1\/player-logs\/[^/]+$/.test(p),
+  // Phase D1 — touch builder "request help" action. Public endpoint
+  // hit by an unauthenticated kiosk WebView when a visitor taps a
+  // help button. No prior session → no CSRF cookie possible. Already
+  // hardened via:
+  //   - server-side tenant resolution from screenId (client can't
+  //     spoof the target tenant)
+  //   - 10/min/IP rate limit
+  //   - 5-min per-screen dedupe bucket
+  // CSRF threat model doesn't apply — the kiosk's WebView making this
+  // call IS the legitimate caller; there's no ambient-cookie attack
+  // surface to exploit.
+  (p) => p === '/api/v1/notifications/help',
 ];
 
 export function isCsrfExempt(method: string, path: string): boolean {
