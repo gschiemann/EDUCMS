@@ -1,8 +1,8 @@
 "use client";
 
 import {
-  ArrowLeft, Save, Copy, Eye, EyeOff, Tv,
-  RotateCw, Loader2, CheckCircle2, AlertCircle, Hand, Trash2, X, Plus,
+  ArrowLeft, Save, Copy, Tv,
+  RotateCw, Loader2, CheckCircle2, AlertCircle, Trash2, X,
 } from 'lucide-react';
 import { useMemo } from 'react';
 import { useBuilderStore } from './useBuilderStore';
@@ -32,12 +32,13 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, onDiscard, onPreview,
   const zones = useBuilderStore((s) => s.zones);
   const isDirty = useBuilderStore((s) => s.isDirty);
   const isSystem = useBuilderStore((s) => s.isSystem);
-  const previewMode = useBuilderStore((s) => s.previewMode);
+  // 2026-05-12 toolbar simplification — Clean View, Hand touch-mode
+  // toggle, and "+ Touch point" buttons removed. Selectors / setters
+  // dropped along with them. isTouchEnabled is still read because
+  // the warnings chip below the toolbar surfaces hit-target audit
+  // when touch mode is on (the toggle lives in Properties panel now).
   const isTouchEnabled = useBuilderStore((s) => s.isTouchEnabled);
-  const setTouchEnabled = useBuilderStore((s) => s.setTouchEnabled);
   const flipCanvas = useBuilderStore((s) => s.flipCanvas);
-  const setPreviewMode = useBuilderStore((s) => s.setPreviewMode);
-  const addTouchPoint = useBuilderStore((s) => s.addTouchPoint);
 
   const touchWarnings = useMemo(
     () => isTouchEnabled ? validateTouchHitTargets(zones, meta.screenWidth, meta.screenHeight).warnings : [],
@@ -70,17 +71,19 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, onDiscard, onPreview,
             for canvas-state controls. Top toolbar keeps only the things
             unique to it: preview/touch toggles + save/discard cluster. */}
 
-        {/* 2026-05-10 — TWO different views, side-by-side. Operator
-            audit 2026-05-12 caught the confusion: both buttons used
-            the word "preview" and the Eye button just hid chrome
-            (canvas still at builder zoom) — operators hit it expecting
-            fullscreen and got "tiny logo, same view, what?"
-            Renamed to make the distinction obvious at a glance. */}
-
-        {/* Tv icon — "Preview at TV size": fullscreen modal, native
-            resolution, scales to fit the viewport. This is the one
-            operators want for "does my template look right on the
-            actual screen?" verification. */}
+        {/* 2026-05-12 — toolbar cleanup. Removed three redundant
+            buttons after operator feedback:
+              - "Clean view" (Eye) — operators kept hitting it
+                expecting fullscreen and got the builder canvas at
+                builder-zoom instead. The Tv Preview button below
+                does the actual "show me on a TV" surface.
+              - Hand touch-mode toggle — auto-enables when ANY touch
+                widget is dropped (Phase D2.9); the manual override
+                still exists as a tiny checkbox at the bottom of
+                the Properties panel.
+              - "+ Touch point" — redundant with the 25-tile Touch
+                palette pinned at the top of Widgets.
+            Result: one Preview button. Less ceremony. */}
         {onPreview && (
           <ToolbarBtn
             label="Open fullscreen preview at native resolution"
@@ -90,45 +93,6 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, onDiscard, onPreview,
             <span className="ml-1 text-[10px] font-bold uppercase tracking-wider hidden md:inline">Preview</span>
           </ToolbarBtn>
         )}
-
-        {/* Eye icon — "Hide editor chrome": keeps the canvas at its
-            current builder zoom but hides selection handles, zone
-            label badges, hotspot outlines. Useful for "I just want
-            to see the layout without the editor scaffolding" without
-            committing to fullscreen. Renamed from "Live preview" to
-            "Clean view" to stop competing with the Preview button. */}
-        <ToolbarBtn
-          label={previewMode ? 'Exit clean view (show editor chrome)' : 'Clean view — hide editor chrome on the canvas'}
-          onClick={() => setPreviewMode(!previewMode)}
-          pressed={previewMode}
-        >
-          {previewMode ? <EyeOff className="w-3.5 h-3.5" aria-hidden /> : <Eye className="w-3.5 h-3.5" aria-hidden />}
-          <span className="ml-1 text-[10px] font-bold uppercase tracking-wider hidden md:inline">{previewMode ? 'Show chrome' : 'Clean view'}</span>
-        </ToolbarBtn>
-        <ToolbarBtn
-          label={isTouchEnabled ? 'Touch mode: ON (WCAG 44px enforced)' : 'Enable touch mode'}
-          onClick={() => setTouchEnabled(!isTouchEnabled)}
-          pressed={isTouchEnabled}
-        >
-          <Hand className="w-3.5 h-3.5" aria-hidden />
-        </ToolbarBtn>
-
-        {/* Phase D2.8 — "Add Touch Point" hotspot button. Operator
-            (2026-05-12): "i dont like how the initial touch point is
-            the full screen and you need to shrink it down... just
-            have an option to add touch point and keep adding smaller
-            squares i can resize across the entire teamplate." This
-            button drops a small (15%×15%) transparent hotspot the
-            operator can position over existing content. Each click
-            stamps another one. Auto-enables touch mode on first
-            click (no need to flip the Hand toggle separately). */}
-        <ToolbarBtn
-          label="Add a touch hotspot — drop, resize, set Tap Action"
-          onClick={() => addTouchPoint()}
-        >
-          <Plus className="w-3.5 h-3.5" aria-hidden />
-          <span className="ml-1 text-[10px] font-bold uppercase tracking-wider hidden md:inline">Touch point</span>
-        </ToolbarBtn>
         {isTouchEnabled && touchWarnings.length > 0 && (
           <span
             className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded flex items-center gap-1"
