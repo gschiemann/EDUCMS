@@ -71,8 +71,12 @@ export class NotificationsPublicController {
       // no useful error signal.
       return { ok: true };
     }
-    const title = (body?.title || 'Visitor needs assistance').slice(0, 120);
-    const detail = (body?.body || 'A kiosk visitor tapped “request help.”').slice(0, 500);
+    // Phase D1.6 — coerce-then-slice so a malformed payload with a
+    // non-string title/body doesn't 500 on `.slice` (security review
+    // 2026-05-12 LOW finding). `String()` handles null/undefined/
+    // object/number; the fallback string covers the empty case.
+    const title = String(body?.title ?? '').slice(0, 120) || 'Visitor needs assistance';
+    const detail = String(body?.body ?? '').slice(0, 500) || 'A kiosk visitor tapped “request help.”';
     const bucket = Math.floor(Date.now() / (5 * 60_000));
     await this.service.notify({
       tenantId: screen.tenantId,

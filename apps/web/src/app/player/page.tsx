@@ -58,6 +58,72 @@ function nativeReload() {
 }
 
 /**
+ * Phase D1.6 — touch-action URL safety helpers.
+ *
+ * Security review (2026-05-12) flagged HIGH: a rogue CONTRIBUTOR
+ * could set a zone's touchAction to `{ type: 'url', target:
+ * 'javascript:fetch(...)' }` and exfiltrate the device JWT from
+ * localStorage when a visitor tapped the zone (`window.open` runs
+ * javascript: URIs in the player's same origin). These two helpers
+ * gate every operator-supplied URL at the dispatcher boundary:
+ *
+ *   isHttpUrl  — only `http:` / `https:` schemes; rejects
+ *                `javascript:`, `data:`, `file:`, `vbscript:`, etc.
+ *   isPublicHttpUrl — adds a private-RFC-1918 / loopback / link-local
+ *                hostname check for webhook targets so operators
+ *                can't pivot a kiosk's WebView into the LAN
+ *                (`192.168.x.x` admin panels, `localhost:8080`,
+ *                printer queues at `10.0.0.x`, etc).
+ *
+ * Both reject malformed input safely (try/catch on `new URL`). The
+ * dispatcher logs + drops invalid actions rather than throwing —
+ * playback never breaks from a bad action shape.
+ */
+function isHttpUrl(u: unknown): u is string {
+  if (typeof u !== 'string' || !u) return false;
+  try {
+    const p = new URL(u).protocol;
+    return p === 'http:' || p === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function isPublicHttpUrl(u: unknown): u is string {
+  if (!isHttpUrl(u)) return false;
+  try {
+    const host = new URL(u as string).hostname.toLowerCase();
+    if (!host) return false;
+    // localhost variants
+    if (host === 'localhost' || host === '0.0.0.0' || host.endsWith('.localhost')) return false;
+    // .local mDNS (printers, routers)
+    if (host.endsWith('.local')) return false;
+    // IPv4 private + loopback + link-local
+    const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+    if (ipv4) {
+      const [, a, b] = ipv4.map(Number);
+      if (a === 127) return false;                 // 127.0.0.0/8 loopback
+      if (a === 10) return false;                  // 10.0.0.0/8
+      if (a === 192 && b === 168) return false;    // 192.168.0.0/16
+      if (a === 172 && b >= 16 && b <= 31) return false; // 172.16.0.0/12
+      if (a === 169 && b === 254) return false;    // 169.254.0.0/16 link-local
+      if (a === 100 && b >= 64 && b <= 127) return false; // 100.64.0.0/10 CGNAT
+      if (a === 0) return false;                   // 0.0.0.0/8
+    }
+    // IPv6 loopback + link-local + ULA
+    if (host === '::1' || host === '[::1]') return false;
+    if (host.startsWith('[fe80:') || host.startsWith('fe80:')) return false; // link-local
+    if (host.startsWith('[fc') || host.startsWith('fc') || host.startsWith('fd')) {
+      // fc00::/7 ULA (privately routed)
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Phase D1 — touch-action dispatcher (touch builder v1).
  *
  * Reads a TouchActionConfig from a tapped zone and executes the
@@ -94,7 +160,13 @@ function dispatchTouchAction(
 
   switch (type) {
     case 'open-url': {
-      if (!target) return;
+      // Phase D1.6 security gate — reject javascript:/data:/file:/etc.
+      // (Security review 2026-05-12: rogue operator could exfiltrate
+      // the device JWT via window.open('javascript:...')).
+      if (!isHttpUrl(target)) {
+        try { console.warn('[touch] open-url rejected — not http(s):', target); } catch {}
+        return;
+      }
       if (action.openInNewTab) {
         window.open(target, '_blank', 'noopener,noreferrer');
       } else {
@@ -148,7 +220,14 @@ function dispatchTouchAction(
       return;
     }
     case 'webhook': {
-      if (!target) return;
+      // Phase D1.6 security gate — reject non-http(s) AND private IPs.
+      // (Security review 2026-05-12: rogue operator could pivot the
+      // kiosk's WebView into the school LAN — 192.168.x.x admin
+      // panels, printer queues at 10.0.0.x, etc.).
+      if (!isPublicHttpUrl(target)) {
+        try { console.warn('[touch] webhook rejected — not a public http(s) URL:', target); } catch {}
+        return;
+      }
       const method = (action.method as string) || 'POST';
       const payload = {
         ...(action.payload || {}),
@@ -193,9 +272,14 @@ function dispatchTouchAction(
       } catch { /* swallow */ }
       return;
     }
-    // Legacy v0 aliases — keep working unchanged.
+    // Legacy v0 aliases — keep working unchanged (but with the same
+    // http(s) gate; the security fix backports to legacy rows too).
     case 'url': {
-      if (target) window.open(target, '_blank', 'noopener,noreferrer');
+      if (!isHttpUrl(target)) {
+        try { console.warn('[touch] url (legacy) rejected — not http(s):', target); } catch {}
+        return;
+      }
+      window.open(target, '_blank', 'noopener,noreferrer');
       return;
     }
     case 'navigate':
@@ -3301,8 +3385,14 @@ function PlayerPage() {
       // (Sprint 4 sceneTick) clears it.
       (async () => {
         try {
+          // Phase D1.6 — fall back to device JWT on a real kiosk
+          // (which doesn't have a dashboard user token in localStorage).
+          // Security review caught this: without the fallback,
+          // goto-template was non-functional on real kiosks.
           const token = typeof window !== 'undefined'
-            ? (localStorage.getItem('edu_cms_token') || '')
+            ? (localStorage.getItem('edu_cms_token')
+               || localStorage.getItem('edu_device_token')
+               || '')
             : '';
           const res = await fetch(
             `${getApiRoot()}/api/v1/templates/${encodeURIComponent(targetTemplateId)}`,
