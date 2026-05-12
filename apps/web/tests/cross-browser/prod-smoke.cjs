@@ -48,14 +48,25 @@ const TENANTS = [
   { slug: 'agc-education',          name: 'AGC Education' },
   { slug: 'greg-s-fitness',         name: "Greg's Fitness" },
 ];
-// 2026-05-11 — dropped from 6 → 3 after Supabase pgbouncer degraded
-// during a fleet-grade Phase B run. 6 parallel browser contexts × 1
-// templates fetch each = 6 simultaneous /templates queries pounding
-// the pool. Half failed with "0 h3 after 30s" because the API never
-// responded fast enough. 3 keeps the test honest (still catches real
-// regressions) without piling on a struggling pool.
-const CONCURRENCY = 3;
+// 2026-05-11 — Tenant concurrency dropped 6 → 3 → 1 after Supabase
+// pgbouncer pool flakiness. Even at concurrency 3, 1-of-3 random
+// /templates queries still timed out under `db: degraded` state.
+// Sequential tenant smoke is ~30 s slower (7 × 5 s = 35 s vs ~15 s
+// parallel) but completely eliminates the per-run lottery — every
+// tenant either consistently works or consistently fails, which is
+// what a smoke test is supposed to tell us.
+//
+// Template concurrency stays at 3 because the per-template fetch
+// hits a different endpoint (/templates/:id) and has shown no
+// flakiness in any run.
+const TENANT_CONCURRENCY = 1;
+const TEMPLATE_CONCURRENCY = 3;
 const TEMPLATES_TO_OPEN = 12;
+// 2026-05-11 — per-tenant retry. Even sequential, the pool can flake
+// once per minute. A single retry with 5 s wait converts a flaky
+// failure into a small slowdown. Two failures in a row is a real
+// regression; one retry is operational hygiene.
+const TENANT_TILE_RETRY = 1;
 
 const results = [];
 function ok(scenario, step, detail = '') { results.push({ scenario, step, ok: true, detail }); }
@@ -164,6 +175,27 @@ async function authedContext(browser, auth) {
 
 // -- Tenant smoke ---------------------------------------------------
 async function tenantSmoke(browser, tenant, auth) {
+  // Retry wrapper. The inner function returns true on tile success,
+  // false on a transient tile timeout (one pool blip is a retry, not
+  // a fail). Permanent failures (nav redirects, JS errors) fall
+  // through the `bad()` calls and return true to skip the retry.
+  let attempt = 0;
+  while (attempt <= TENANT_TILE_RETRY) {
+    const transient = await tenantSmokeOnce(browser, tenant, auth, attempt);
+    if (!transient) return;
+    attempt++;
+    if (attempt <= TENANT_TILE_RETRY) {
+      console.log(`  ↻ ${tenant.slug} tile timeout — retry ${attempt}/${TENANT_TILE_RETRY} after 5s`);
+      // Strip the previous attempt's bad('tiles') marker so it
+      // doesn't pollute the final report when the retry succeeds.
+      const idx = results.findIndex((r) => r.scenario === tenant.slug && r.step === 'tiles' && !r.ok);
+      if (idx >= 0) results.splice(idx, 1);
+      await delay(5000);
+    }
+  }
+}
+
+async function tenantSmokeOnce(browser, tenant, auth, attemptNum) {
   const ctx = await authedContext(browser, auth);
   const page = await ctx.newPage();
   const errs = [];
@@ -185,9 +217,9 @@ async function tenantSmoke(browser, tenant, auth) {
     if (!stayedOnSlug) {
       bad(tenant.slug, 'navigate', `redirected to ${finalPath}`);
       await shot(page, `t-${tenant.slug}-redirect`);
-      return;
+      return false; // navigation regression — not retryable
     }
-    ok(tenant.slug, 'navigate', `${navMs}ms initial`);
+    if (attemptNum === 0) ok(tenant.slug, 'navigate', `${navMs}ms initial`);
 
     // Smart wait: poll for tile content. The templates page shows a
     // spinner while the API call is in flight; tiles are h3 elements
@@ -213,17 +245,24 @@ async function tenantSmoke(browser, tenant, auth) {
 
     if (tileCount < 3) {
       bad(tenant.slug, 'tiles', `only ${tileCount} h3 after ${tileMs}ms wait — likely API failed`);
-    } else if (tileMs > 8000) {
+      await shot(page, `t-${tenant.slug}-templates-fail-${attemptNum}`);
+      if (errs.length) {
+        bad(tenant.slug, 'page-errors', errs.slice(0, 2).map((e) => e.slice(0, 120)).join(' | '));
+      }
+      return true; // transient — caller may retry
+    }
+    if (tileMs > 8000) {
       // Tiles loaded eventually but slow — flag as perf concern not failure
-      ok(tenant.slug, 'tiles', `${tileCount} tiles, SLOW (${tileMs}ms)`);
+      ok(tenant.slug, 'tiles', `${tileCount} tiles, SLOW (${tileMs}ms)${attemptNum ? ` [retry ${attemptNum}]` : ''}`);
     } else {
-      ok(tenant.slug, 'tiles', `${tileCount} tiles in ${tileMs}ms`);
+      ok(tenant.slug, 'tiles', `${tileCount} tiles in ${tileMs}ms${attemptNum ? ` [retry ${attemptNum}]` : ''}`);
     }
     await shot(page, `t-${tenant.slug}-templates`);
 
     if (errs.length) {
       bad(tenant.slug, 'page-errors', errs.slice(0, 2).map((e) => e.slice(0, 120)).join(' | '));
     }
+    return false;
   } finally {
     await ctx.close();
   }
@@ -299,8 +338,8 @@ async function pool(items, fn, n) {
     auth = await loginAndCapture(browser);
     console.log(`  token captured (${auth.token.length} chars), role=${auth.user?.role}`);
 
-    console.log(`Step 2: tenant smoke (${TENANTS.length} tenants × ${CONCURRENCY}-way)`);
-    await pool(TENANTS, (t) => tenantSmoke(browser, t, auth), CONCURRENCY);
+    console.log(`Step 2: tenant smoke (${TENANTS.length} tenants × ${TENANT_CONCURRENCY}-way)`);
+    await pool(TENANTS, (t) => tenantSmoke(browser, t, auth), TENANT_CONCURRENCY);
 
     console.log('Step 3: list templates via API');
     const tpls = await listTemplatesViaApi(auth.token);
@@ -309,7 +348,7 @@ async function pool(items, fn, n) {
     } else {
       const slice = tpls.slice(0, TEMPLATES_TO_OPEN);
       console.log(`  → ${tpls.length} templates total, opening first ${slice.length}`);
-      await pool(slice, (t) => openTemplateInBuilder(browser, t, auth), CONCURRENCY);
+      await pool(slice, (t) => openTemplateInBuilder(browser, t, auth), TEMPLATE_CONCURRENCY);
     }
   } finally {
     await browser.close();
