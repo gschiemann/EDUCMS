@@ -683,6 +683,15 @@ function sanitizeTouchTemplate(raw: any): {
     return Math.max(min, Math.min(max, v));
   };
 
+  // Actions whose semantics require a non-empty `target` to be valid.
+  // If sanitize ends up with no target on one of these, drop the whole
+  // action (player short-circuits on `!target` anyway, leaving the
+  // visitor with a non-responding tap — worse UX than no action at all).
+  const ACTIONS_REQUIRING_TARGET = new Set([
+    'open-url', 'play-video', 'goto-template', 'goto-scene',
+    'show-overlay', 'webhook',
+  ]);
+
   const sanitizeAction = (a: any): any | undefined => {
     if (!a || typeof a !== 'object') return undefined;
     const type = String(a.type || '').trim();
@@ -697,6 +706,10 @@ function sanitizeTouchTemplate(raw: any): {
       }
       out.target = target;
     }
+    // Drop the whole action if a required target was never resolved.
+    // (Functional audit caught: AI emitting `{type:'goto-scene'}` with
+    // no target → player short-circuits → tap dies silently.)
+    if (ACTIONS_REQUIRING_TARGET.has(type) && !out.target) return undefined;
     // Preserve the optional flags the model may emit.
     if (type === 'open-url' && a.openInNewTab === true) out.openInNewTab = true;
     if (type === 'play-video' && a.returnOnEnd !== false) out.returnOnEnd = true;
@@ -740,7 +753,7 @@ function sanitizeTouchTemplate(raw: any): {
     if (safeW < 3 || safeH < 3) continue;
 
     const cfg = z.defaultConfig && typeof z.defaultConfig === 'object' && !Array.isArray(z.defaultConfig)
-      ? z.defaultConfig as Record<string, any>
+      ? scrubConfigLeaves(z.defaultConfig) as Record<string, any>
       : undefined;
     zonesOut.push({
       name: typeof z.name === 'string' && z.name.trim() ? z.name.trim().slice(0, 30) : undefined,
@@ -768,5 +781,52 @@ function sanitizeTouchTemplate(raw: any): {
   return { name, description, zones: zonesOut, scenes: scenesOut.length ? scenesOut : undefined };
 }
 
+// Recursively scrub a `defaultConfig` value tree. Strips:
+//   - prototype-pollution keys (`__proto__`, `constructor`, `prototype`)
+//   - keys longer than 64 chars
+//   - dangerous URL schemes anywhere a string appears
+//   - depth > 4 (defends against an AI emitting deeply nested config)
+// Returns a NEW object/array — never mutates the input — so the
+// sanitizer is safe to call on caller-owned objects.
+//
+// Reasoning: WidgetRenderer reads many keys from defaultConfig and
+// some (WEBPAGE.url, IMAGE.assetUrl) get rendered as href/src. A
+// `javascript:` URL today flows into widgets that defensively gate on
+// schema, but a future widget that doesn't is a stored-XSS waiting to
+// happen. Scrub at the sanitizer boundary so no AI value with a
+// dangerous scheme ever reaches Prisma in the first place.
+const DANGEROUS_URL_SCHEME_RE = /^(?:javascript|data|vbscript|file|blob):/i;
+function scrubConfigLeaves(value: any, depth = 0): any {
+  if (depth > 4) return undefined;
+  if (value === null || value === undefined) return value;
+  if (typeof value === 'string') {
+    if (DANGEROUS_URL_SCHEME_RE.test(value)) return '';
+    return value.slice(0, 4000);
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : undefined;
+  }
+  if (typeof value === 'boolean') return value;
+  if (Array.isArray(value)) {
+    return value.slice(0, 50).map((v) => scrubConfigLeaves(v, depth + 1));
+  }
+  if (typeof value === 'object') {
+    const out: Record<string, any> = {};
+    let count = 0;
+    for (const [k, v] of Object.entries(value)) {
+      // Block prototype-pollution + over-long keys.
+      if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+      if (typeof k !== 'string' || k.length > 64) continue;
+      if (count >= 50) break; // Bound shallow-object width too.
+      const scrubbed = scrubConfigLeaves(v, depth + 1);
+      if (scrubbed !== undefined) out[k] = scrubbed;
+      count += 1;
+    }
+    return out;
+  }
+  // Functions / symbols / etc — drop.
+  return undefined;
+}
+
 // Export the sanitizer for unit testing.
-export { sanitizeTouchTemplate };
+export { sanitizeTouchTemplate, scrubConfigLeaves };

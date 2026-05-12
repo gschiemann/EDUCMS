@@ -28,6 +28,7 @@ import { BackgroundPanel } from './BackgroundPanel';
 import { TopContextToolbar } from './TopContextToolbar';
 import { TemplatePreviewModal } from './TemplatePreviewModal';
 import { useUpdateTemplate, useUpdateTemplateZones, useCreateTemplate, useDeleteTemplate } from '@/hooks/use-api';
+import { apiFetch } from '@/lib/api-client';
 import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
 import type { Template, Zone } from './types';
 
@@ -109,6 +110,14 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         bgGradient: template.bgGradient || '',
         bgImage: template.bgImage || '',
       },
+      // Phase D — thread the touch toggle + idle timer through init so
+      // AI-generated templates (which ship isTouchEnabled=true) open
+      // in the builder with the toggle ON. Functional audit caught
+      // the omission: previously these were dropped on init, the
+      // toolbar toggle was purely local, and saving never persisted
+      // the value either (see handleSave below for the matching fix).
+      isTouchEnabled: !!(template as any).isTouchEnabled,
+      idleResetMs: (template as any).idleResetMs ?? undefined,
       scenes: template.scenes ?? [],
     });
   }, [template, init]);
@@ -147,7 +156,13 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         bgColor: state.meta.bgColor || null,
         bgGradient: state.meta.bgGradient || null,
         bgImage: state.meta.bgImage || null,
-      });
+        // Phase D — persist the touch toggle + idle-reset. Without
+        // these, toggling touch mode in the builder was purely local;
+        // refresh restored the DB value and the operator's change
+        // was silently discarded (Functional audit #2).
+        isTouchEnabled: state.isTouchEnabled,
+        idleResetMs: state.idleResetMs,
+      } as any);
       const result = await updateZonesApi.mutateAsync({
         id: template.id,
         zones: state.zones.map((z, i) => ({
@@ -195,6 +210,13 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
     setSaveError(undefined);
     try {
       const orientation = state.meta.screenHeight > state.meta.screenWidth ? 'PORTRAIT' : 'LANDSCAPE';
+      // Save-as creates a fresh template via POST /templates which
+      // does NOT accept sceneId (scenes don't exist yet for the new
+      // row). We create the bare template + zones, then if the source
+      // had scenes, recreate them on the new template and re-point
+      // the zones via PUT /:id/zones. Without this, duplicating a
+      // multi-scene template lost ALL scene assignments + touch
+      // actions (Functional audit #1).
       const created = await createTemplate.mutateAsync({
         name: name.trim(),
         description: state.meta.description || undefined,
@@ -220,6 +242,59 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
           bgColor: state.meta.bgColor || null,
           bgGradient: state.meta.bgGradient || null,
           bgImage: state.meta.bgImage || null,
+          isTouchEnabled: state.isTouchEnabled,
+          idleResetMs: state.idleResetMs,
+        } as any);
+      }
+      // Recreate scenes on the new template (if the source had any
+      // beyond the auto-created default) and persist zone-level
+      // touchAction + sceneId via the zones PUT (which DOES accept
+      // both, unlike POST /templates).
+      if (newId) {
+        const sceneNameToNewId = new Map<string, string>();
+        // The POST handler creates a "Main" default scene implicitly;
+        // we map the source's default scene name to that. For any
+        // additional source scenes, POST /scenes to create them.
+        const srcScenes = state.scenes.slice();
+        const srcDefault = srcScenes.find((s) => s.isDefault) || srcScenes[0];
+        if (srcDefault) sceneNameToNewId.set(srcDefault.id, '__will-resolve-after__');
+        // Fetch the new template's auto-created default scene id.
+        try {
+          const newScenes: any[] = await apiFetch<any[]>(`/templates/${newId}/scenes`);
+          const newDefault = (newScenes || []).find((s) => s.isDefault) || newScenes?.[0];
+          if (srcDefault && newDefault) sceneNameToNewId.set(srcDefault.id, newDefault.id);
+          // Create extras + capture their new ids.
+          for (const s of srcScenes) {
+            if (sceneNameToNewId.has(s.id)) continue;
+            const made = await apiFetch<any>(`/templates/${newId}/scenes`, {
+              method: 'POST',
+              body: JSON.stringify({ name: s.name }),
+            });
+            if (made?.id) sceneNameToNewId.set(s.id, made.id);
+          }
+        } catch {
+          // Scenes are best-effort on save-as; if anything breaks,
+          // the new template still has its auto-created default
+          // and every zone falls back to "shared." Operator sees
+          // the copy and can iterate.
+        }
+        // Re-issue zones with the resolved sceneId + touchAction
+        // payload that POST /templates couldn't accept.
+        await updateZonesApi.mutateAsync({
+          id: newId,
+          zones: state.zones.map((z, i) => ({
+            name: z.name,
+            widgetType: z.widgetType,
+            x: Math.round(z.x * 100) / 100,
+            y: Math.round(z.y * 100) / 100,
+            width: Math.round(z.width * 100) / 100,
+            height: Math.round(z.height * 100) / 100,
+            zIndex: z.zIndex,
+            sortOrder: i,
+            defaultConfig: z.defaultConfig,
+            touchAction: z.touchAction ?? null,
+            sceneId: z.sceneId ? (sceneNameToNewId.get(z.sceneId) ?? null) : null,
+          })),
         });
       }
       setSaveStatus('saved');
@@ -234,7 +309,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       setSaveStatus('error');
       setSaveError(err instanceof Error ? err.message : String(err));
     }
-  }, [createTemplate, updateTemplate, router, routeParams]);
+  }, [createTemplate, updateTemplate, updateZonesApi, router, routeParams]);
 
   const handleSaveRef = useRef(handleSave);
   const saveStatusRef = useRef(saveStatus);

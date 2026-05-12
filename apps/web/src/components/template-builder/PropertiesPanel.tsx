@@ -1070,8 +1070,10 @@ const ACTION_DEFS: Array<{
 ];
 
 // Phase D2.5 — Move a zone between scenes (or mark it shared so it
-// renders on every scene). Hidden when the template has fewer than
-// 2 scenes since single-scene templates have nothing to assign to.
+// renders on every scene). Rendered whenever the template has at least
+// one real scene — single-scene templates still want a "Shared" toggle
+// so the operator can pin a logo / corner UI to "every future scene"
+// without first creating a throwaway second scene (Functional audit #6).
 function ZoneSceneAssignment({
   zone,
   updateZone,
@@ -1080,7 +1082,7 @@ function ZoneSceneAssignment({
   updateZone: (id: string, patch: any, commit?: boolean) => void;
 }) {
   const scenes = useBuilderStore((s) => s.scenes);
-  if (!scenes || scenes.length < 2) return null;
+  if (!scenes || scenes.length < 1) return null;
   const value = zone.sceneId ?? '__shared__';
   return (
     <section className="space-y-2">

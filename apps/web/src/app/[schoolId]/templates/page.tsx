@@ -321,6 +321,22 @@ export default function TemplatesPage() {
   const [showAiGenerate, setShowAiGenerate] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiError, setAiError] = useState<string | null>(null);
+  // Esc-to-close — wired only when the modal is open so dashboard
+  // keyboard shortcuts elsewhere aren't shadowed. Disabled while a
+  // generation is in flight so the operator doesn't accidentally
+  // abort their own request mid-flight.
+  useEffect(() => {
+    if (!showAiGenerate) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !generateTouch?.isPending) setShowAiGenerate(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // generateTouch.isPending is read inside the handler — no need
+    // in deps array; tearing down/setting-up on every render of a
+    // pending state would defeat the listener.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAiGenerate]);
   const [autoEditHandled, setAutoEditHandled] = useState(false);
   const router = useRouter();
   const params = useParams<{ schoolId: string }>();
@@ -528,15 +544,31 @@ export default function TemplatesPage() {
           surfaces inline in the modal (rate-limit, no-AI-key, AI
           returned garbage) instead of bouncing them to a toast. */}
       {showAiGenerate && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => !generateTouch.isPending && setShowAiGenerate(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ai-gen-title"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          // Guard against drag-select-from-textarea-ends-on-backdrop
+          // closing the modal: only close on a click whose target IS
+          // the backdrop element itself, not a bubbled selection.
+          onClick={(e) => {
+            if (e.target !== e.currentTarget) return;
+            if (generateTouch.isPending) return;
+            setShowAiGenerate(false);
+          }}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shadow-md">
                   <Sparkles className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-slate-800">Generate a touch template</h2>
+                  <h2 id="ai-gen-title" className="text-lg font-bold text-slate-800">Generate a touch template</h2>
                   <p className="text-xs text-slate-500">Describe what you want. Claude drafts the layout, scenes, and tap actions.</p>
                 </div>
               </div>
@@ -553,7 +585,13 @@ export default function TemplatesPage() {
             <textarea
               autoFocus
               value={aiPrompt}
-              onChange={(e) => setAiPrompt(e.target.value)}
+              onChange={(e) => {
+                setAiPrompt(e.target.value);
+                // Clear a stale error the moment the operator starts
+                // typing a new prompt — otherwise an old red banner
+                // keeps shouting at them while they iterate.
+                if (aiError) setAiError(null);
+              }}
               placeholder={`e.g. Lobby check-in kiosk with three tap buttons: "Sign in," "Visiting hours," and "Wi-Fi info." Use the brand colors. Each button opens its own scene.`}
               maxLength={1800}
               rows={5}
@@ -582,7 +620,11 @@ export default function TemplatesPage() {
             </div>
 
             {aiError && (
-              <div className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2.5">
+              <div
+                role="alert"
+                aria-live="polite"
+                className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2.5"
+              >
                 {aiError}
               </div>
             )}
@@ -621,7 +663,27 @@ export default function TemplatesPage() {
                         setAiError('Generation succeeded but returned no template id. Try again?');
                       }
                     } catch (e: any) {
-                      setAiError(e?.message || 'Generation failed. Try rephrasing or try again later.');
+                      // Translate the raw API error message into copy
+                      // the operator can act on. Pattern-match on the
+                      // backend's own error strings (defined in
+                      // AiService.generateTouchTemplate) so each error
+                      // class gets the right next-step guidance.
+                      const raw = (e?.message || '').toLowerCase();
+                      let friendly = 'Generation failed. Try rephrasing or try again later.';
+                      if (raw.includes('not configured')) {
+                        friendly = "AI isn't enabled for this site. Ask your administrator to add an API key in Settings → AI provider.";
+                      } else if (raw.includes('hourly') || raw.includes('rate-limited')) {
+                        friendly = "You've hit this hour's AI generation limit. Try again in a few minutes.";
+                      } else if (raw.includes('monthly free')) {
+                        friendly = 'Monthly free AI quota used up. Add your own provider key in Settings → AI provider, or wait until next month.';
+                      } else if (raw.includes('unparseable')) {
+                        friendly = 'The AI returned something unusable. Try rephrasing your prompt with more concrete details.';
+                      } else if (raw.includes('rejected')) {
+                        friendly = e.message; // BYOK 401 — already operator-friendly
+                      } else if (raw.includes('unreachable')) {
+                        friendly = 'Could not reach the AI service. Check your connection or retry.';
+                      }
+                      setAiError(friendly);
                     }
                   }}
                   disabled={generateTouch.isPending || !aiPrompt.trim()}

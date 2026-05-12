@@ -122,8 +122,11 @@ export default function MobilePanicPage() {
     setProgress(0);
   };
 
-  const handlePointerDown = (typeId: string) => (e: React.PointerEvent) => {
-    e.preventDefault();
+  // Shared "start hold" routine — Pointer events fire it on touch;
+  // keyboard activation routes through the same code path so admins
+  // with motor impairments / keyboard-only assistive input can trigger
+  // an emergency just like a touch user. WCAG 2.1.1.
+  const startHold = (typeId: string) => {
     if (phase !== 'idle') return;
     setHoldingId(typeId);
     setProgress(0);
@@ -133,6 +136,28 @@ export default function MobilePanicPage() {
       setProgress(pct);
     }, 50);
     holdTimerRef.current = setTimeout(() => fireEmergency(typeId), HOLD_DURATION_MS);
+  };
+
+  const handlePointerDown = (typeId: string) => (e: React.PointerEvent) => {
+    e.preventDefault();
+    startHold(typeId);
+  };
+
+  // Keyboard hold — Space/Enter starts the countdown on the focused
+  // button; key-up before HOLD_DURATION_MS cancels exactly like a
+  // pointer-release. Repeat key events are squelched so holding the
+  // key down doesn't reset the timer 30×/sec (A11y audit, 2026-05-12).
+  const handleKeyDown = (typeId: string) => (e: React.KeyboardEvent) => {
+    if (e.key !== ' ' && e.key !== 'Enter') return;
+    if (e.repeat) return;
+    e.preventDefault();
+    startHold(typeId);
+  };
+
+  const handleKeyUp = (e: React.KeyboardEvent) => {
+    if (e.key !== ' ' && e.key !== 'Enter') return;
+    e.preventDefault();
+    clearHold();
   };
 
   const fireEmergency = async (typeId: string) => {
@@ -260,7 +285,11 @@ export default function MobilePanicPage() {
               onPointerUp={clearHold}
               onPointerLeave={clearHold}
               onPointerCancel={clearHold}
+              onKeyDown={handleKeyDown(type.id)}
+              onKeyUp={handleKeyUp}
+              onBlur={clearHold}
               onContextMenu={(e) => e.preventDefault()}
+              aria-label={`Trigger ${type.id} emergency. Hold for 3 seconds to broadcast.`}
               disabled={phase === 'triggering'}
               className={`relative aspect-square w-full max-w-[160px] rounded-full flex flex-col items-center justify-center
                 shadow-[inset_0_-6px_0_rgba(0,0,0,0.25)] transition-all duration-150 outline-none

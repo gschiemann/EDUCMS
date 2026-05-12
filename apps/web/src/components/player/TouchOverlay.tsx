@@ -233,15 +233,41 @@ export function TouchOverlay({
 export function TouchNavOverlay({
   template,
   onBack,
+  idleReturnMs = 90_000,
 }: {
   template: any;
   onBack: () => void;
+  /** Auto-return-home after this many ms of no interaction. Defaults
+   *  to 90s (matches typical kiosk-attention timeout); the parent
+   *  player can override with its template-level idleResetMs. */
+  idleReturnMs?: number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
 
   const screenWidth = template?.screenWidth || 1920;
   const screenHeight = template?.screenHeight || 1080;
+
+  // Auto-return: visitor walks away mid-overlay → kiosk reverts to
+  // the main playback so the next visitor sees the home screen, not
+  // someone else's half-explored content. Any tap inside the overlay
+  // resets the countdown (UX audit H3, 2026-05-12).
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const arm = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => onBack(), idleReturnMs);
+    };
+    const onActivity = () => arm();
+    arm();
+    window.addEventListener('pointerdown', onActivity, { passive: true });
+    window.addEventListener('keydown', onActivity);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener('pointerdown', onActivity);
+      window.removeEventListener('keydown', onActivity);
+    };
+  }, [onBack, idleReturnMs]);
 
   // Compute the transform:scale every time the container resizes so
   // the rendered scene fits the available viewport. Same math the
@@ -282,9 +308,23 @@ export function TouchNavOverlay({
 
   // Background paint — same precedence the playback layer uses: image
   // wins over gradient wins over color, with a default-black fallback.
+  //
+  // Structured form (separate properties rather than concatenated
+  // `background:` shorthand) defeats the CSS-injection foot-gun where
+  // a `)` inside an operator-controlled bgImage URL could break out
+  // of `url(...)` and append arbitrary declarations (Security audit
+  // MED-3, 2026-05-12). We also URL-escape backslashes + quotes in
+  // the bg URL before interpolation.
   const bgStyle: React.CSSProperties = (() => {
     if (template?.bgImage) {
-      return { background: `#000 url(${template.bgImage}) center/cover no-repeat` };
+      const safe = String(template.bgImage).replace(/["\\]/g, (m) => `\\${m}`);
+      return {
+        backgroundColor: '#000',
+        backgroundImage: `url("${safe}")`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+      };
     }
     if (template?.bgGradient) return { background: template.bgGradient };
     if (template?.bgColor) return { background: template.bgColor };
@@ -293,13 +333,21 @@ export function TouchNavOverlay({
 
   return (
     <div className="fixed inset-0 bg-black z-[115] flex flex-col" role="dialog" aria-modal="true">
+      {/* Back chip — sized for a kiosk display viewed from 6-10 ft.
+          Dashboard-sized text (14px) was unreadable across a school
+          lobby (UX audit H1, 2026-05-12). text-2xl + tall padding +
+          min width gives the visitor a fingertip-friendly target
+          regardless of the underlying scene's background color
+          (slate-900 capsule kills the white-on-white invisibility
+          case). */}
       <button
         type="button"
         onClick={onBack}
-        className="absolute top-6 left-6 z-10 px-4 py-2.5 rounded-full bg-white/15 hover:bg-white/25 text-white text-sm font-semibold backdrop-blur-sm transition-colors"
-        aria-label="Back to previous scene"
+        className="absolute top-8 left-8 z-10 inline-flex items-center gap-2 px-6 py-4 rounded-full bg-slate-900/70 hover:bg-slate-900/85 text-white text-2xl font-bold backdrop-blur-md transition-colors min-w-[160px] justify-center"
+        aria-label="Return to main display"
       >
-        ← Back
+        <span aria-hidden>←</span>
+        Back
       </button>
 
       {/* Scaling pane. Outer ref provides the measurement viewport;
@@ -308,14 +356,15 @@ export function TouchNavOverlay({
       <div ref={containerRef} className="flex-1 relative flex items-center justify-center">
         {zones.length === 0 ? (
           // Hard-empty template fallback. Could happen if a freshly-
-          // created template was navigated to without any zones; better
-          // to communicate than to leave a black screen.
+          // created template was navigated to without any zones.
+          //
+          // Visitor-facing copy — the audience here is a school
+          // visitor in a lobby, NOT an operator. They have no idea
+          // what a "widget" is. "Nothing to show here" + Back is the
+          // entire message they need (UX audit G4, 2026-05-12).
           <div className="text-white text-center px-8">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-2">
-              Empty scene
-            </p>
-            <h2 className="text-4xl font-black mb-3">{template?.name || 'Untitled'}</h2>
-            <p className="text-sm text-white/50">This template has no widgets yet. Tap "← Back" to return.</p>
+            <h2 className="text-3xl font-black mb-3">Nothing to show here</h2>
+            <p className="text-base text-white/60">Tap Back to return.</p>
           </div>
         ) : (
           <div

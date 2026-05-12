@@ -548,18 +548,28 @@ export class TemplatesController {
         HttpStatus.BAD_REQUEST,
       );
     }
-    // Floating zones (sceneId IS NULL after the delete cascades
-    // SET NULL) get re-pointed to the default scene so they keep
-    // rendering for the visitor — operators can move them deliberately
-    // in the scene panel afterward.
+    // Zones belonging to THIS scene get re-pointed to the default
+    // scene so they keep rendering for the visitor. Critical: we
+    // capture their ids BEFORE the cascade fires so we don't
+    // accidentally re-point intentionally-shared zones (those have
+    // sceneId=null from the start and must stay null).
+    //
+    // Functional audit 2026-05-12 caught the original bug: matching
+    // `WHERE sceneId IS NULL` after the cascade hit every shared zone
+    // in the template, silently dragging logos/persistent UI into the
+    // default scene and losing their shared status.
     const def = await (this.prisma.client as any).templateScene.findFirst({
       where: { templateId: tpl.id, isDefault: true },
     });
+    const zonesOnDeletedScene = await this.prisma.client.templateZone.findMany({
+      where: { templateId: tpl.id, sceneId } as any,
+      select: { id: true },
+    });
     await this.prisma.client.$transaction(async (tx: any) => {
       await tx.templateScene.delete({ where: { id: sceneId } });
-      if (def) {
+      if (def && zonesOnDeletedScene.length > 0) {
         await tx.templateZone.updateMany({
-          where: { templateId: tpl.id, sceneId: null },
+          where: { id: { in: zonesOnDeletedScene.map((z: { id: string }) => z.id) } },
           data: { sceneId: def.id },
         });
       }
@@ -763,10 +773,19 @@ export class TemplatesController {
       // actual scene ids. If the AI emitted a name we never created,
       // fall back to the default scene (still navigable, just not the
       // scene the AI imagined).
+      //
+      // sanitizeAction in AiService already DROPS actions whose
+      // required target was missing after string-trim — so anything
+      // landing here as `{type:'goto-scene', target: undefined}` is
+      // already gone. We still defensively guard here in case a future
+      // sanitizer change loosens that contract; better to coerce to
+      // defaultSceneId than to persist a tap that does nothing.
       const resolveActionTarget = (a: any): any => {
-        if (!a) return null;
-        if (a.type === 'goto-scene' && typeof a.target === 'string') {
-          const resolved = sceneNameToId.get(a.target.toLowerCase()) || defaultSceneId;
+        if (!a || typeof a !== 'object') return null;
+        if (a.type === 'goto-scene') {
+          const wanted = typeof a.target === 'string' ? a.target.toLowerCase() : '';
+          const resolved = (wanted && sceneNameToId.get(wanted)) || defaultSceneId;
+          if (!resolved) return null;
           return { ...a, target: resolved };
         }
         return a;
@@ -1009,6 +1028,12 @@ export class TemplatesController {
       bgColor?: string | null;
       bgImage?: string | null;
       bgGradient?: string | null;
+      // Phase D — touch toggle + idle-reset now persist. The builder's
+      // BuilderShell.handleSave sends these on every save; before this,
+      // toggling touch mode in the toolbar was a purely local state
+      // change that vanished on the next refresh (Functional audit #2).
+      isTouchEnabled?: boolean;
+      idleResetMs?: number;
     },
   ) {
     const template = await this.prisma.client.template.findFirst({
@@ -1018,6 +1043,13 @@ export class TemplatesController {
     if (template.isSystem) {
       throw new HttpException('Cannot modify system templates. Duplicate it first.', HttpStatus.FORBIDDEN);
     }
+
+    // Clamp idleResetMs into a sane window so a buggy client can't
+    // brick a kiosk by saving idleResetMs=0 (visitor flow returns
+    // home before the first frame paints). 5s floor, 10min ceiling.
+    const clampedIdle = typeof body.idleResetMs === 'number' && Number.isFinite(body.idleResetMs)
+      ? Math.max(5_000, Math.min(600_000, body.idleResetMs))
+      : undefined;
 
     return mapTemplate(await this.prisma.client.template.update({
       where: { id },
@@ -1032,7 +1064,9 @@ export class TemplatesController {
         ...(body.bgColor !== undefined && { bgColor: body.bgColor }),
         ...(body.bgImage !== undefined && { bgImage: body.bgImage }),
         ...(body.bgGradient !== undefined && { bgGradient: body.bgGradient }),
-      },
+        ...(typeof body.isTouchEnabled === 'boolean' && { isTouchEnabled: body.isTouchEnabled }),
+        ...(clampedIdle !== undefined && { idleResetMs: clampedIdle }),
+      } as any,
       include: { zones: { orderBy: { sortOrder: 'asc' } } },
     }));
   }

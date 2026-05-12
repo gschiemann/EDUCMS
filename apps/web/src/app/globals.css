@@ -409,3 +409,29 @@
     background-color: rgba(255, 255, 255, 0.95) !important;
   }
 }
+
+/* ──────────────────────────────────────────────────────────────
+ * prefers-reduced-motion — a11y baseline (2026-05-12).
+ *
+ * App-wide audit caught: zero respect for the OS-level
+ * "reduce motion" preference. Sustained `animate-pulse` /
+ * `animate-spin` / `animate-ping` / page transitions can trigger
+ * vestibular symptoms in a non-trivial percentage of users and
+ * full-screen pulsing-red EmergencyOverlay raises a photosensitive
+ * concern. WCAG 2.3 + 2.3.3 baseline + browser-honored hint.
+ *
+ * Strategy: clamp animation duration / iterations / transition
+ * duration to ~instant when the user has opted in. Components that
+ * absolutely need motion (a true live cursor, a video) override
+ * via more-specific selectors as needed.
+ * ────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

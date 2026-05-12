@@ -744,6 +744,10 @@ export function useUpdateTemplate() {
       bgColor?: string | null;
       bgImage?: string | null;
       bgGradient?: string | null;
+      /** Phase D — persist the touch toggle so the builder isn't a
+       *  purely-local switch. Server clamps idleResetMs to a sane range. */
+      isTouchEnabled?: boolean;
+      idleResetMs?: number;
     }) => apiFetch(`/templates/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ['templates', vars.id] });

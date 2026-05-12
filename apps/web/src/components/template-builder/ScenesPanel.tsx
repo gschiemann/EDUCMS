@@ -110,8 +110,12 @@ export function ScenesPanel() {
       return;
     }
     const zonesOnScene = zones.filter((z) => z.sceneId === sceneId).length;
+    // Controller behavior: zones on the deleted scene get moved to
+    // the DEFAULT scene (NOT marked shared — that would inadvertently
+    // duplicate them onto every scene). Match the message to the
+    // actual outcome so the operator isn't surprised.
     const detail = zonesOnScene > 0
-      ? `This scene has ${zonesOnScene} widget${zonesOnScene === 1 ? '' : 's'}. Deleting the scene reassigns them to "shared" (visible on every scene).`
+      ? `This scene has ${zonesOnScene} widget${zonesOnScene === 1 ? '' : 's'}. Deleting the scene moves them to the default scene.`
       : 'This scene is empty.';
     const ok = await appConfirm({
       title: `Delete "${name}"?`,
@@ -261,23 +265,32 @@ export function ScenesPanel() {
         {/* "Shared" pseudo-scene — represents zones with sceneId === null
             that render on every scene (corner logos, persistent UI, etc).
             Clicking it filters the canvas to show ONLY shared zones so
-            the operator can audit what's "always visible." */}
-        <button
-          type="button"
-          onClick={() => setActiveSceneId(null)}
-          className={`w-full rounded-lg border px-2.5 py-2 text-left transition-colors flex items-center gap-2 ${
-            activeSceneId === null
-              ? 'border-slate-400 bg-slate-100'
-              : 'border-dashed border-slate-200 bg-slate-50 hover:bg-slate-100'
-          }`}
-        >
-          <Layers3 className="w-3.5 h-3.5 text-slate-400" />
-          <span className="text-xs font-bold text-slate-600">Shared</span>
-          <span className="text-[10px] text-slate-400 font-mono">
-            {sharedCount} {sharedCount === 1 ? 'zone' : 'zones'}
-          </span>
-          <span className="ml-auto text-[10px] text-slate-400">on every scene</span>
-        </button>
+            the operator can audit what's "always visible."
+
+            UX audit 2026-05-12 (B1) — hide the row entirely on
+            single-scene templates UNLESS there are already shared
+            zones. A lone "Scene 1" + "Shared" pseudo-row reads as
+            two scenes to first-time operators. Show it once there's
+            an actual multi-scene workflow OR the operator has
+            already opted into shared zones via the properties panel. */}
+        {(scenes.length >= 2 || sharedCount > 0) && (
+          <button
+            type="button"
+            onClick={() => setActiveSceneId(null)}
+            className={`w-full rounded-lg border px-2.5 py-2 text-left transition-colors flex items-center gap-2 ${
+              activeSceneId === null
+                ? 'border-slate-400 bg-slate-100'
+                : 'border-dashed border-slate-200 bg-slate-50 hover:bg-slate-100'
+            }`}
+          >
+            <Layers3 className="w-3.5 h-3.5 text-slate-400" />
+            <span className="text-xs font-bold text-slate-600">Shared</span>
+            <span className="text-[10px] text-slate-400 font-mono">
+              {sharedCount} {sharedCount === 1 ? 'zone' : 'zones'}
+            </span>
+            <span className="ml-auto text-[10px] text-slate-400">shown on every scene</span>
+          </button>
+        )}
       </div>
     </div>
   );

@@ -3366,6 +3366,16 @@ function PlayerPage() {
     };
   }, [isTouchTemplate, idleResetMs]);
 
+  // Phase D5 — when the playlist swaps to a new template, the stale
+  // currentSceneId (a scene id from the PREVIOUS template) silently
+  // filters out every zone in the new template (no scene ids match).
+  // Visitor saw only shared zones until idle reset fired. Reset on
+  // every template-id transition so each new template starts on its
+  // own default scene. (Functional audit #7, 2026-05-12.)
+  useEffect(() => {
+    setCurrentSceneId(null);
+  }, [playlist?.template?.id]);
+
   // Phase D5 — touch analytics shipping.
   //
   // Captures every `edu:touch-action` event into an in-memory queue
@@ -3390,37 +3400,52 @@ function PlayerPage() {
 
     const tplIdRef = () => playlist?.template?.id || null;
 
-    const flush = async (sync = false) => {
+    const flush = async () => {
       if (queue.length === 0) return;
       // Hard-cap to 100 (matches server batch limit). Slice rather
       // than drop the queue entirely so a backlog drains over multiple
       // flushes.
       const batch = queue.splice(0, 100);
-      const body = JSON.stringify({ events: batch, screenId });
+      // Server binds screenId from the JWT (req.user.sub for device
+      // tokens) — the controller ignores any body screenId to defeat
+      // rotation-bypass on the in-memory rate limit. We omit it here.
+      const body = JSON.stringify({ events: batch });
+      const url = `${getApiRoot()}/api/v1/analytics/touch-events`;
+      // sendBeacon CANNOT carry an Authorization header, so the API's
+      // JwtAuthGuard rejects every beacon with 401 → analytics drops
+      // 100% of pagehide batches. Use fetch+keepalive instead: the
+      // request survives navigation AND carries the Bearer token.
+      // Modern browsers (Chrome 80+, Safari 13+, Firefox 79+, Android
+      // System WebView 90+) all support keepalive: true.
+      const token =
+        localStorage.getItem('edu_cms_token') ||
+        localStorage.getItem('edu_device_token') ||
+        '';
       try {
-        const url = `${getApiRoot()}/api/v1/analytics/touch-events`;
-        if (sync && navigator.sendBeacon) {
-          const blob = new Blob([body], { type: 'application/json' });
-          navigator.sendBeacon(url, blob);
-          return;
-        }
-        const token =
-          localStorage.getItem('edu_cms_token') ||
-          localStorage.getItem('edu_device_token') ||
-          '';
-        await fetch(url, {
+        const res = await fetch(url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body,
-          // keepalive lets the request survive a tab-close on browsers
-          // that don't fire pagehide synchronously.
           keepalive: true,
         });
+        // 5xx → DB write failed mid-batch. Push the batch back so the
+        // next flush retries it. Cap requeue depth at 2 to avoid an
+        // infinite loop on a persistently broken server (events older
+        // than 5 min would fall outside the clock-skew window anyway).
+        if (!res.ok && res.status >= 500) {
+          const stillFresh = batch.filter((e) => Date.now() - e.clientTs < 4 * 60_000);
+          queue.unshift(...stillFresh);
+        }
+        // 4xx (e.g. 403 from a not-yet-paired device) → drop silently;
+        // analytics is best-effort, retrying won't help.
       } catch {
-        // Best-effort — drop on the floor.
+        // Network error — push back so a later flush retries, again
+        // bounded by the freshness filter.
+        const stillFresh = batch.filter((e) => Date.now() - e.clientTs < 4 * 60_000);
+        queue.unshift(...stillFresh);
       }
     };
 
@@ -3445,19 +3470,24 @@ function PlayerPage() {
     window.addEventListener('edu:touch-action', onTouchAction as EventListener);
     timer = setInterval(() => flush(), 5_000);
 
-    const onHide = () => flush(true);
+    // fetch+keepalive replaces sendBeacon (which couldn't carry the
+    // Authorization header); the same async flush() works for both
+    // the interval tick AND the pagehide drain because keepalive lets
+    // the request outlive the page navigation.
+    const onHide = () => { void flush(); };
     window.addEventListener('pagehide', onHide);
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') flush(true);
+      if (document.visibilityState === 'hidden') void flush();
     });
 
     return () => {
       window.removeEventListener('edu:touch-action', onTouchAction as EventListener);
       window.removeEventListener('pagehide', onHide);
       if (timer) clearInterval(timer);
-      // Best-effort drain on unmount; sendBeacon ensures we don't
-      // lose the last batch even mid-navigation.
-      flush(true);
+      // Best-effort drain on unmount. keepalive: true on the underlying
+      // fetch lets the request survive the page navigation that's about
+      // to happen.
+      void flush();
     };
     // playlist?.template?.id is read live via tplIdRef() so we don't
     // need it in the dep array. screenId is stable per session.
