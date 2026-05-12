@@ -23,6 +23,7 @@ import {
   useDuplicateTemplate, useUpdateTemplate, useUpdateTemplateZones,
   useAssets, usePlaylists, useAssetFolders,
   useTenantBranding, useApplyBrandToTemplates,
+  useGenerateTouchTemplate,
 } from '@/hooks/use-api';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
@@ -313,6 +314,13 @@ export default function TemplatesPage() {
   const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  // Phase D3 — AI generate-touch modal. Distinct from the regular
+  // create flow: operator types a prompt instead of picking a preset,
+  // and the response stream lands them straight in the builder with a
+  // pre-built scene-aware template.
+  const [showAiGenerate, setShowAiGenerate] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiError, setAiError] = useState<string | null>(null);
   const [autoEditHandled, setAutoEditHandled] = useState(false);
   const router = useRouter();
   const params = useParams<{ schoolId: string }>();
@@ -363,6 +371,7 @@ export default function TemplatesPage() {
   const updateTemplate = useUpdateTemplate();
   const duplicateTemplate = useDuplicateTemplate();
   const deleteTemplate = useDeleteTemplate();
+  const generateTouch = useGenerateTouchTemplate();
 
   const q = searchQuery.trim().toLowerCase();
   const filtered = (templates || []).filter((t: Template) => {
@@ -488,6 +497,19 @@ export default function TemplatesPage() {
           </div>
           <div className="flex items-center gap-2">
             <ApplyBrandButton disabled={isViewer} />
+            {/* Phase D3 — AI generate button. Sits next to "New Template"
+                so operators discover it without it stealing the primary
+                CTA. The platform/BYOK key check happens server-side; if
+                AI isn't configured the API returns a friendly 503 that
+                this button surfaces via the modal's error pane. */}
+            <button
+              onClick={() => { setShowAiGenerate(true); setAiError(null); }}
+              disabled={isViewer}
+              title={isViewer ? 'Read-only — viewer role' : 'Describe a touch template, get a working draft'}
+              className="px-4 py-3 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Sparkles className="w-5 h-5" /> Generate with AI
+            </button>
             <button
               onClick={() => setShowCreate(true)}
               disabled={isViewer}
@@ -499,6 +521,120 @@ export default function TemplatesPage() {
           </div>
         </div>
       </div>
+
+      {/* Phase D3 — AI Generate Modal. Operator types a prompt; we
+          POST /templates/generate-touch; if it succeeds we navigate
+          straight into the V2 builder so they can iterate. Failure
+          surfaces inline in the modal (rate-limit, no-AI-key, AI
+          returned garbage) instead of bouncing them to a toast. */}
+      {showAiGenerate && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => !generateTouch.isPending && setShowAiGenerate(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shadow-md">
+                  <Sparkles className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800">Generate a touch template</h2>
+                  <p className="text-xs text-slate-500">Describe what you want. Claude drafts the layout, scenes, and tap actions.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => !generateTouch.isPending && setShowAiGenerate(false)}
+                disabled={generateTouch.isPending}
+                className="text-slate-400 hover:text-slate-600 disabled:opacity-40"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <textarea
+              autoFocus
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              placeholder={`e.g. Lobby check-in kiosk with three tap buttons: "Sign in," "Visiting hours," and "Wi-Fi info." Use the brand colors. Each button opens its own scene.`}
+              maxLength={1800}
+              rows={5}
+              disabled={generateTouch.isPending}
+              className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent placeholder:text-slate-400 disabled:opacity-60"
+            />
+
+            <div className="flex flex-wrap gap-2">
+              {[
+                'Wi-Fi info screen with QR code and password',
+                'Cafeteria menu with tap-to-see-allergens',
+                'Library map with tap on each section',
+                'After-school programs picker',
+                'Front-desk visitor sign-in kiosk',
+              ].map((suggestion) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  onClick={() => setAiPrompt(suggestion)}
+                  disabled={generateTouch.isPending}
+                  className="text-[11px] px-3 py-1.5 rounded-full bg-violet-50 text-violet-700 font-semibold hover:bg-violet-100 transition-colors disabled:opacity-50"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+
+            {aiError && (
+              <div className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2.5">
+                {aiError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-1">
+              <p className="text-[10px] text-slate-400">
+                Drafts are editable. Always review before publishing to a screen.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowAiGenerate(false)}
+                  disabled={generateTouch.isPending}
+                  className="px-4 py-2 text-sm font-bold rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    setAiError(null);
+                    const prompt = aiPrompt.trim();
+                    if (!prompt) {
+                      setAiError('Tell the AI what to build.');
+                      return;
+                    }
+                    try {
+                      const res = await generateTouch.mutateAsync({
+                        prompt,
+                        vertical: (tenantCopy.vertical || 'venue').toLowerCase(),
+                      });
+                      const newId = res?.template?.id;
+                      if (newId) {
+                        setShowAiGenerate(false);
+                        setAiPrompt('');
+                        router.push(`/${params?.schoolId ?? ''}/templates/builder/${newId}`);
+                      } else {
+                        setAiError('Generation succeeded but returned no template id. Try again?');
+                      }
+                    } catch (e: any) {
+                      setAiError(e?.message || 'Generation failed. Try rephrasing or try again later.');
+                    }
+                  }}
+                  disabled={generateTouch.isPending || !aiPrompt.trim()}
+                  className="px-5 py-2 text-sm font-bold rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {generateTouch.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  {generateTouch.isPending ? 'Generating…' : 'Generate'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create Modal */}
       {showCreate && (

@@ -396,4 +396,377 @@ export class AiService {
     }
     return { options, intent: opts.intent, source: resolved.source, usage } as any;
   }
+
+  /**
+   * Phase D3 (2026-05-12) — AI-generate a touch template from a prompt.
+   *
+   * Generates the FULL template structure (zones with positions, widget
+   * types, and touch actions) so an operator can type "lobby check-in
+   * kiosk with three tap-buttons: Sign in, Visiting hours, Wi-Fi info"
+   * and get back a working template they can iterate on.
+   *
+   * Reuses the same provider resolution + rate limit + monthly cap path
+   * the text-snippet generate() uses; this is a heavier call so the
+   * max_tokens is higher and we run a second sanitize pass on the JSON
+   * before persisting.
+   *
+   * Output shape — strictly validated server-side before persisting:
+   *   { name, description?, zones: [ {widgetType, x, y, width, height,
+   *     defaultConfig?, touchAction?, sceneId?, name? } ], scenes?: [ { name } ] }
+   *
+   * All coordinates are clamped to [0, 100]; widget types are intersected
+   * against a hard allowlist; touch action `type` is intersected against
+   * the TouchActionConfig discriminated union. Any field that fails
+   * validation is dropped, never echoed back to the operator — we'd
+   * rather hand back 5 valid zones than 7 zones with 2 corrupt ones.
+   */
+  async generateTouchTemplate(opts: {
+    tenantId: string;
+    prompt: string;
+    screenWidth?: number;
+    screenHeight?: number;
+    vertical?: string;
+  }): Promise<{
+    parsed: {
+      name: string;
+      description?: string;
+      zones: Array<{
+        name?: string;
+        widgetType: string;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        defaultConfig?: Record<string, any>;
+        touchAction?: any;
+        sceneId?: string | null;
+      }>;
+      scenes?: Array<{ name: string }>;
+    };
+    source: 'tenant' | 'platform';
+    usage: { used: number; cap: number; resetAt: string } | null;
+  }> {
+    const resolved = await this.resolveProviderKey(opts.tenantId);
+    if (!resolved) {
+      throw new ServiceUnavailableException(
+        'AI is not configured. Add your provider API key in Settings → Integrations, or contact your admin.',
+      );
+    }
+    const prompt = (opts.prompt || '').trim();
+    if (!prompt) throw new BadRequestException('Tell the AI what kind of touch template to build.');
+    if (prompt.length > 2000) {
+      throw new BadRequestException('Prompt too long. Keep it under 2000 characters.');
+    }
+
+    // Same rate limit + monthly cap path as generate(). One generation
+    // burns one slot regardless of which generator the operator picks.
+    const now = Date.now();
+    const oneHourAgo = now - 60 * 60 * 1000;
+    const recent = (this.recentByTenant.get(opts.tenantId) || []).filter((t) => t > oneHourAgo);
+    if (recent.length === 0) this.recentByTenant.delete(opts.tenantId);
+    else this.recentByTenant.set(opts.tenantId, recent);
+    if (recent.length >= this.HOURLY_CAP) {
+      throw new BadRequestException(
+        `Hit the hourly AI cap (${this.HOURLY_CAP} generations/hour). Try again later.`,
+      );
+    }
+    if (resolved.source === 'platform') {
+      const u = await this.readPlatformUsage(opts.tenantId);
+      if (u.used >= u.cap) {
+        throw new BadRequestException(
+          `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
+        );
+      }
+    }
+
+    // System prompt — strict, schema-anchored, no creative latitude on
+    // the structure. The AI's job is content + arrangement, NOT to
+    // invent new widget types or touch action shapes.
+    const system = TOUCH_TEMPLATE_SYSTEM_PROMPT;
+    const userPrompt = [
+      `Operator description: ${prompt}`,
+      `Vertical: ${opts.vertical || 'venue'}`,
+      `Canvas: ${opts.screenWidth || 1920} × ${opts.screenHeight || 1080} px (landscape).`,
+      '',
+      'Return ONLY a JSON object matching the schema. No preamble, no markdown fences, no commentary.',
+    ].join('\n');
+
+    let raw: string;
+    try {
+      const out = await dispatchAi(resolved.provider, {
+        apiKey: resolved.apiKey,
+        system,
+        userPrompt,
+        // Higher cap than the text-snippet path because a 6-zone
+        // template with touch actions is ~1.5KB JSON. 1500 keeps spend
+        // bounded (~$0.02/call on Haiku) but leaves headroom.
+        maxTokens: 1500,
+      });
+      if (out.errorStatus) {
+        if (out.errorStatus === 401 && resolved.source === 'tenant') {
+          throw new ServiceUnavailableException(
+            `Your ${resolved.provider === 'anthropic' ? 'Anthropic' : 'OpenAI'} API key was rejected. Re-enter it in Settings → Integrations.`,
+          );
+        }
+        if (out.errorStatus === 429) {
+          throw new ServiceUnavailableException('AI service rate-limited the request. Try again in a moment.');
+        }
+        throw new ServiceUnavailableException(`AI service responded ${out.errorStatus}.`);
+      }
+      raw = out.raw;
+    } catch (err: any) {
+      if (err instanceof ServiceUnavailableException) throw err;
+      this.logger.error(`AI touch-template dispatch failed: ${err?.message}`);
+      throw new ServiceUnavailableException('AI service unreachable.');
+    }
+
+    const stripped = raw
+      .replace(/^```(?:json)?\n?/, '')
+      .replace(/\n?```$/, '')
+      .trim();
+    let parsed: any;
+    try {
+      parsed = JSON.parse(stripped);
+    } catch (e: any) {
+      this.logger.warn(`AI returned non-JSON for touch template: ${stripped.slice(0, 200)}`);
+      throw new ServiceUnavailableException('AI returned an unparseable response. Try rephrasing your prompt.');
+    }
+
+    const sanitized = sanitizeTouchTemplate(parsed);
+    if (!sanitized.zones.length) {
+      throw new ServiceUnavailableException('AI returned no usable zones. Try a more specific prompt.');
+    }
+
+    // Bump rate-limit + monthly counter only AFTER a successful, usable
+    // result. Same leak-fix pattern as generate().
+    recent.push(now);
+    this.recentByTenant.set(opts.tenantId, recent);
+    if (resolved.source === 'platform') {
+      try { await this.bumpPlatformUsage(opts.tenantId); }
+      catch (e: any) { this.logger.warn(`Platform usage bump failed: ${e?.message}`); }
+    }
+    let usage: { used: number; cap: number; resetAt: string } | null = null;
+    if (resolved.source === 'platform') {
+      const u = await this.readPlatformUsage(opts.tenantId);
+      usage = { used: u.used, cap: u.cap, resetAt: u.resetAt };
+    }
+    return { parsed: sanitized, source: resolved.source, usage };
+  }
 }
+
+// ───────────────────────────────────────────────────────
+// Touch-template generation — system prompt + sanitizer.
+//
+// Kept at module scope (not inside the class) so unit tests can import
+// sanitizeTouchTemplate() directly without instantiating the service.
+// ───────────────────────────────────────────────────────
+
+/**
+ * Subset of widget types that are safe to AI-generate. Excludes anything
+ * that would need server-side configuration (DEVICE_*, SCREEN_*, RSS_FEED
+ * with auth tokens, etc.) or that's heavyweight enough that random
+ * placement makes no sense. Operator can still drop excluded widgets
+ * manually in the builder.
+ */
+const TOUCH_GEN_ALLOWED_WIDGETS = new Set([
+  'TEXT', 'RICH_TEXT', 'ANNOUNCEMENT', 'TICKER',
+  'CLOCK', 'WEATHER', 'COUNTDOWN', 'CALENDAR',
+  'IMAGE', 'IMAGE_CAROUSEL', 'VIDEO', 'LOGO',
+  'BELL_SCHEDULE', 'LUNCH_MENU', 'STAFF_SPOTLIGHT',
+  'WEBPAGE', 'QUOTE',
+  'DECORATION',
+]);
+
+/** Touch action types the AI may emit. Mirrors TouchActionConfig in
+ *  apps/web/src/components/template-builder/types.ts. Anything outside
+ *  this set is dropped during sanitize. */
+const TOUCH_GEN_ALLOWED_ACTIONS = new Set([
+  'open-url', 'play-video', 'goto-template', 'goto-scene',
+  'show-overlay', 'reset-idle', 'sound-toggle', 'webhook',
+  'request-help',
+]);
+
+const TOUCH_TEMPLATE_SYSTEM_PROMPT = `You design interactive touch-screen templates for digital signage. The
+operator describes what they want; you return a JSON object that the
+template builder can render directly.
+
+OUTPUT SCHEMA (strict — no extra fields):
+{
+  "name": string,                     // ≤ 60 chars
+  "description": string,              // ≤ 200 chars, optional
+  "zones": [
+    {
+      "name": string,                 // ≤ 30 chars, e.g. "Sign In button"
+      "widgetType": one of: TEXT, RICH_TEXT, ANNOUNCEMENT, TICKER, CLOCK,
+                            WEATHER, COUNTDOWN, CALENDAR, IMAGE,
+                            IMAGE_CAROUSEL, VIDEO, LOGO, BELL_SCHEDULE,
+                            LUNCH_MENU, STAFF_SPOTLIGHT, WEBPAGE, QUOTE,
+                            DECORATION
+      "x":      0–100,                // percent of canvas width
+      "y":      0–100,                // percent of canvas height
+      "width":  3–100,                // percent
+      "height": 3–100,                // percent
+      "defaultConfig": { ... },       // widget-specific config; common keys:
+                                      //   TEXT/RICH_TEXT:   { content }
+                                      //   ANNOUNCEMENT:     { message }
+                                      //   TICKER:           { messages: string[] }
+                                      //   COUNTDOWN:        { label, targetDate }
+                                      //   QUOTE:            { quote, author }
+                                      //   STAFF_SPOTLIGHT:  { staffName, role }
+                                      //   WEBPAGE:          { url }
+      "touchAction": {                // optional; ONLY for interactive zones
+        "type": one of: open-url, play-video, goto-template, goto-scene,
+                        show-overlay, reset-idle, sound-toggle, webhook,
+                        request-help,
+        "target": string              // URL, asset id, scene name, or template name
+      }
+    }
+  ],
+  "scenes": [ { "name": string } ]    // optional; include for multi-screen
+                                      // interactions. First scene is the
+                                      // default. Names should be short.
+}
+
+RULES:
+- 3-8 zones per template. Don't crowd the canvas; whitespace is good.
+- No two zones should overlap by more than 10%.
+- For touch templates, AT LEAST 2 zones should have a touchAction set.
+- Use 'goto-scene' with target=scene-name for in-template navigation;
+  the server resolves the name to the matching scene id.
+- TouchAction targets that look like URLs MUST start with https://.
+- No webhook targets to private IPs or localhost.
+- TEXT / ANNOUNCEMENT / QUOTE widgets should have populated content
+  fields. Don't return empty defaultConfig — the operator should see
+  meaningful placeholder copy on first load.
+- For Wi-Fi / sign-in / kiosk scenarios, use ANNOUNCEMENT for headlines
+  and TEXT for body copy.
+- Pick zones that fit a 1920×1080 landscape canvas unless told otherwise.
+
+Return JSON ONLY. No markdown fences, no prose, no apology. If the
+operator's prompt is unsuitable for a touch template, return a minimal
+valid template explaining the issue in the description field.`;
+
+/**
+ * Strip every field that doesn't match the schema. Soft on individual
+ * zones (drop bad ones, keep good ones) but strict on the top-level
+ * envelope (must have a name + at least one zone after filtering).
+ */
+function sanitizeTouchTemplate(raw: any): {
+  name: string;
+  description?: string;
+  zones: Array<{
+    name?: string;
+    widgetType: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    defaultConfig?: Record<string, any>;
+    touchAction?: any;
+    sceneId?: string | null;
+  }>;
+  scenes?: Array<{ name: string }>;
+} {
+  if (!raw || typeof raw !== 'object') {
+    return { name: 'Untitled', zones: [] };
+  }
+  const name = typeof raw.name === 'string' && raw.name.trim()
+    ? raw.name.trim().slice(0, 60)
+    : 'Untitled template';
+  const description = typeof raw.description === 'string' && raw.description.trim()
+    ? raw.description.trim().slice(0, 200)
+    : undefined;
+
+  const clampPct = (n: any, min = 0, max = 100): number | null => {
+    const v = typeof n === 'number' ? n : parseFloat(String(n));
+    if (!Number.isFinite(v)) return null;
+    return Math.max(min, Math.min(max, v));
+  };
+
+  const sanitizeAction = (a: any): any | undefined => {
+    if (!a || typeof a !== 'object') return undefined;
+    const type = String(a.type || '').trim();
+    if (!TOUCH_GEN_ALLOWED_ACTIONS.has(type)) return undefined;
+    const out: any = { type };
+    if (typeof a.target === 'string' && a.target.trim()) {
+      const target = a.target.trim().slice(0, 1000);
+      // open-url / webhook: must be https. Anything else falls through
+      // as text (scene/template name lookups happen later).
+      if (type === 'open-url' || type === 'webhook') {
+        if (!/^https:\/\//i.test(target)) return undefined;
+      }
+      out.target = target;
+    }
+    // Preserve the optional flags the model may emit.
+    if (type === 'open-url' && a.openInNewTab === true) out.openInNewTab = true;
+    if (type === 'play-video' && a.returnOnEnd !== false) out.returnOnEnd = true;
+    if ((type === 'goto-template' || type === 'goto-scene') && a.transition === 'fade') {
+      out.transition = 'fade';
+    }
+    if (type === 'webhook') {
+      out.method = a.method === 'GET' ? 'GET' : 'POST';
+      if (a.payload && typeof a.payload === 'object' && !Array.isArray(a.payload)) {
+        // Bound payload size; only string/number/boolean leaves.
+        const flat: Record<string, any> = {};
+        let count = 0;
+        for (const [k, v] of Object.entries(a.payload)) {
+          if (count >= 10) break;
+          if (typeof k !== 'string' || k.length > 64) continue;
+          if (['string', 'number', 'boolean'].includes(typeof v)) {
+            flat[k] = v;
+            count += 1;
+          }
+        }
+        out.payload = flat;
+      }
+    }
+    return out;
+  };
+
+  const zonesIn = Array.isArray(raw.zones) ? raw.zones : [];
+  const zonesOut: Array<any> = [];
+  for (const z of zonesIn.slice(0, 20)) {
+    if (!z || typeof z !== 'object') continue;
+    const widgetType = String(z.widgetType || '').trim().toUpperCase();
+    if (!TOUCH_GEN_ALLOWED_WIDGETS.has(widgetType)) continue;
+    const x = clampPct(z.x);
+    const y = clampPct(z.y);
+    const width = clampPct(z.width, 3);
+    const height = clampPct(z.height, 3);
+    if (x == null || y == null || width == null || height == null) continue;
+    // Don't allow zones to overflow the canvas. Shrink instead of dropping.
+    const safeW = Math.min(width, 100 - x);
+    const safeH = Math.min(height, 100 - y);
+    if (safeW < 3 || safeH < 3) continue;
+
+    const cfg = z.defaultConfig && typeof z.defaultConfig === 'object' && !Array.isArray(z.defaultConfig)
+      ? z.defaultConfig as Record<string, any>
+      : undefined;
+    zonesOut.push({
+      name: typeof z.name === 'string' && z.name.trim() ? z.name.trim().slice(0, 30) : undefined,
+      widgetType,
+      x,
+      y,
+      width: safeW,
+      height: safeH,
+      defaultConfig: cfg,
+      touchAction: sanitizeAction(z.touchAction),
+      // sceneId can't be set at generation time — the scenes don't have
+      // ids yet. The controller will resolve sceneId after scenes are
+      // created from `scenes[]` names.
+    });
+  }
+
+  const scenesIn = Array.isArray(raw.scenes) ? raw.scenes : [];
+  const scenesOut: Array<{ name: string }> = [];
+  for (const s of scenesIn.slice(0, 8)) {
+    if (!s || typeof s !== 'object') continue;
+    const sName = typeof s.name === 'string' && s.name.trim() ? s.name.trim().slice(0, 60) : '';
+    if (sName) scenesOut.push({ name: sName });
+  }
+
+  return { name, description, zones: zonesOut, scenes: scenesOut.length ? scenesOut : undefined };
+}
+
+// Export the sanitizer for unit testing.
+export { sanitizeTouchTemplate };

@@ -146,16 +146,20 @@ function isPublicHttpUrl(u: unknown): u is string {
  */
 function dispatchTouchAction(
   action: any,
-  ctx: { screenId: string | null; tenantId: string | null },
+  ctx: { screenId: string | null; tenantId: string | null; zoneId?: string | null },
 ): void {
   if (!action || typeof action !== 'object' || !action.type) return;
   const type = action.type as string;
   const target = action.target as string | undefined;
 
   // Always broadcast — idle-reset, analytics, and the future
-  // co-edit cursor layer all listen for this single event.
+  // co-edit cursor layer all listen for this single event. Phase D5
+  // analytics reads `detail.zoneId` so we include it here when the
+  // caller supplied one (zone click sites always do).
   try {
-    window.dispatchEvent(new CustomEvent('edu:touch-action', { detail: action }));
+    window.dispatchEvent(new CustomEvent('edu:touch-action', {
+      detail: { ...action, zoneId: ctx.zoneId ?? null },
+    }));
   } catch { /* swallow */ }
 
   switch (type) {
@@ -3362,6 +3366,104 @@ function PlayerPage() {
     };
   }, [isTouchTemplate, idleResetMs]);
 
+  // Phase D5 — touch analytics shipping.
+  //
+  // Captures every `edu:touch-action` event into an in-memory queue
+  // and flushes to POST /api/v1/analytics/touch-events every 5 s (or
+  // 50 events, whichever comes first). On page hide we use
+  // sendBeacon() so the last batch isn't lost when the kiosk navigates
+  // or sleeps. Failures are swallowed — analytics drops are acceptable
+  // on a flaky kiosk; the on-screen experience never depends on it.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    interface QueuedEvent {
+      templateId: string;
+      zoneId?: string;
+      sceneId?: string;
+      actionType?: string;
+      actionTarget?: string;
+      clientTs: number;
+    }
+    const queue: QueuedEvent[] = [];
+    let timer: any = null;
+
+    const tplIdRef = () => playlist?.template?.id || null;
+
+    const flush = async (sync = false) => {
+      if (queue.length === 0) return;
+      // Hard-cap to 100 (matches server batch limit). Slice rather
+      // than drop the queue entirely so a backlog drains over multiple
+      // flushes.
+      const batch = queue.splice(0, 100);
+      const body = JSON.stringify({ events: batch, screenId });
+      try {
+        const url = `${getApiRoot()}/api/v1/analytics/touch-events`;
+        if (sync && navigator.sendBeacon) {
+          const blob = new Blob([body], { type: 'application/json' });
+          navigator.sendBeacon(url, blob);
+          return;
+        }
+        const token =
+          localStorage.getItem('edu_cms_token') ||
+          localStorage.getItem('edu_device_token') ||
+          '';
+        await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body,
+          // keepalive lets the request survive a tab-close on browsers
+          // that don't fire pagehide synchronously.
+          keepalive: true,
+        });
+      } catch {
+        // Best-effort — drop on the floor.
+      }
+    };
+
+    const onTouchAction = (e: Event) => {
+      const ce = e as CustomEvent<{ type?: string; target?: string; zoneId?: string | null }>;
+      const tplId = tplIdRef();
+      // No template id = nothing meaningful to attribute the tap to.
+      // Happens during the kiosk-paired empty state; just skip.
+      if (!tplId) return;
+      const detail = ce.detail || {};
+      queue.push({
+        templateId: tplId,
+        zoneId: detail.zoneId || undefined,
+        sceneId: currentSceneId || undefined,
+        actionType: detail.type,
+        actionTarget: detail.target,
+        clientTs: Date.now(),
+      });
+      if (queue.length >= 50) flush();
+    };
+
+    window.addEventListener('edu:touch-action', onTouchAction as EventListener);
+    timer = setInterval(() => flush(), 5_000);
+
+    const onHide = () => flush(true);
+    window.addEventListener('pagehide', onHide);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') flush(true);
+    });
+
+    return () => {
+      window.removeEventListener('edu:touch-action', onTouchAction as EventListener);
+      window.removeEventListener('pagehide', onHide);
+      if (timer) clearInterval(timer);
+      // Best-effort drain on unmount; sendBeacon ensures we don't
+      // lose the last batch even mid-navigation.
+      flush(true);
+    };
+    // playlist?.template?.id is read live via tplIdRef() so we don't
+    // need it in the dep array. screenId is stable per session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screenId]);
+
   // Phase D1.5 — touch overlay + navigate + sound listeners.
   //
   // The dispatcher in dispatchTouchAction() publishes three custom
@@ -3972,7 +4074,11 @@ function PlayerPage() {
           const onZoneClick = zoneTouchAction
             ? (e: React.MouseEvent) => {
                 e.stopPropagation();
-                dispatchTouchAction(zoneTouchAction, { screenId, tenantId });
+                // Pass zoneId so the analytics ship (Phase D5) can
+                // attribute the tap to the specific widget. Without
+                // this, every tap on every zone would be lumped
+                // together at the template level.
+                dispatchTouchAction(zoneTouchAction, { screenId, tenantId, zoneId: zone.id });
               }
             : undefined;
           // Universal text-style override — same scoped <style> trick

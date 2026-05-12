@@ -805,6 +805,64 @@ export function useDeleteTemplate() {
   });
 }
 
+// ─── Touch analytics (Phase D5) ─────────────────────────────────
+
+export interface TouchAggregateResponse {
+  templateId: string;
+  sinceDays: number;
+  sceneId: string | null;
+  total: number;
+  byZone: Record<string, number>;
+}
+
+export function useTouchAggregate(templateId: string, opts?: { sinceDays?: number; sceneId?: string; enabled?: boolean }) {
+  const sinceDays = opts?.sinceDays ?? 30;
+  const sceneId = opts?.sceneId;
+  return useQuery<TouchAggregateResponse>({
+    queryKey: ['analytics', 'touch', templateId, sinceDays, sceneId || null],
+    queryFn: () => {
+      const qs = new URLSearchParams({ sinceDays: String(sinceDays) });
+      if (sceneId) qs.set('sceneId', sceneId);
+      return apiFetch<TouchAggregateResponse>(`/analytics/touch-events/template/${templateId}?${qs.toString()}`);
+    },
+    enabled: !!templateId && (opts?.enabled ?? true),
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
+// ─── Template AI generate (Phase D3) ────────────────────────────
+//
+// POST /templates/generate-touch — operator types a prompt, AI returns
+// a structured template payload (sanitized server-side), the controller
+// persists it, we get back the full Template + ai usage info.
+
+export interface AiGenerateTouchResponse {
+  template: any;
+  ai: {
+    source: 'tenant' | 'platform';
+    usage: { used: number; cap: number; resetAt: string } | null;
+  };
+}
+
+export function useGenerateTouchTemplate() {
+  const qc = useQueryClient();
+  return useMutation<
+    AiGenerateTouchResponse,
+    Error,
+    { prompt: string; screenWidth?: number; screenHeight?: number; vertical?: string }
+  >({
+    mutationFn: (body) =>
+      apiFetch<AiGenerateTouchResponse>('/templates/generate-touch', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['templates'] });
+    },
+  });
+}
+
 // ─── Template scenes (Phase D2.5) ───────────────────────────────
 //
 // Wraps the /templates/:id/scenes CRUD endpoints. All four mutations

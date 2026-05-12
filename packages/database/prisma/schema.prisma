@@ -151,6 +151,8 @@ model Tenant {
   submissions                     Submission[]
   // Floor plans (Sprint 8b indoor map).
   floorPlans                      FloorPlan[]
+  // Phase D5 touch analytics.
+  touchEvents                     TouchEvent[]
 
   @@map("tenants")
 }
@@ -873,6 +875,49 @@ model TemplateScene {
   @@unique([templateId, name])
   @@index([templateId, sortOrder])
   @@map("template_scenes")
+}
+
+// Phase D5 (2026-05-12) — tap analytics. Player batches edu:touch-action
+// events and ships them here so operators can see WHICH zones are
+// actually being tapped vs the ones they THOUGHT visitors would tap.
+// Used by the builder's "Tap counts" overlay + the future dashboard
+// heatmap widget.
+//
+// We deliberately do NOT use AuditLog for this:
+//   - Audit log is immutable + legally significant for emergency actions
+//   - Audit rows are 0.5–2 KB each; tap events are 100 bytes — a small
+//     row per tap keeps storage cost predictable
+//   - Audit log indices are tuned for "show me everything user X did";
+//     analytics need "group taps by zone over a date range" which is
+//     a totally different access pattern
+//
+// Schema is additive. NO foreign keys to Template/TemplateZone — taps
+// must survive a template edit/delete (forensics + retention). The
+// templateId / zoneId are stored as opaque strings; aggregation joins
+// in-memory in the controller.
+// Field comments:
+//   actionType   — Touch action 'type' field (open-url, goto-scene, ...)
+//   actionTarget — Optional target the action resolved to (URL, scene id, asset id)
+//   clientTs     — Client-side timestamp from the player; trusted within ±5 min
+//   createdAt    — Server-side ingest time; used for retention sweeps
+model TouchEvent {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  screenId    String?  @map("screen_id")
+  templateId  String   @map("template_id")
+  zoneId      String?  @map("zone_id")
+  sceneId     String?  @map("scene_id")
+  actionType  String?  @map("action_type")
+  actionTarget String? @map("action_target")
+  clientTs    DateTime @map("client_ts")
+  createdAt   DateTime @default(now()) @map("created_at")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+
+  // Hot path: "show me taps for THIS template over the last 30 days"
+  @@index([tenantId, templateId, createdAt])
+  // Per-zone aggregation: "rank zones by tap count for this template"
+  @@index([templateId, zoneId])
+  @@map("touch_events")
 }
 
 // Sprint 1.5 — submit-for-review workflow.

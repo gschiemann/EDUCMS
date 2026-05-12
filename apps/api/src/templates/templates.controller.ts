@@ -9,11 +9,15 @@ import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { SYSTEM_TEMPLATE_PRESETS } from './system-presets';
 import { FITNESS_TEMPLATE_PRESETS } from './fitness-presets';
+import { AiService } from '../ai/ai.service';
 
 @Controller('api/v1/templates')
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class TemplatesController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly ai: AiService,
+  ) {}
 
   // ───────────────────────────────────────────────────────
   // BRAND INHERITANCE HELPER (2026-05-04)
@@ -670,6 +674,145 @@ export class TemplatesController {
       },
     });
     return mapTemplate(result);
+  }
+
+  // ───────────────────────────────────────────────────────
+  // CREATE FROM AI PROMPT (Phase D3 — 2026-05-12)
+  // ───────────────────────────────────────────────────────
+  // Operator types "lobby check-in kiosk with three tap-buttons" →
+  // AI returns structured template JSON → we sanitize it server-side →
+  // persist as a brand-new draft template the operator can iterate
+  // on. Identical save-then-edit loop as create-from-preset, just
+  // sourced from an LLM instead of a hand-curated preset.
+  //
+  // All validation lives in AiService.sanitizeTouchTemplate — by the
+  // time we're inserting rows, the payload has already been clamped
+  // to safe widget types, percent ranges, and TouchActionConfig
+  // variants. No raw model output reaches Prisma.
+
+  @Post('generate-touch')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async generateTouchTemplate(
+    @Request() req: any,
+    @Body() body: {
+      prompt: string;
+      screenWidth?: number;
+      screenHeight?: number;
+      vertical?: string;
+    },
+  ) {
+    const result = await this.ai.generateTouchTemplate({
+      tenantId: req.user.tenantId,
+      prompt: body.prompt,
+      screenWidth: body.screenWidth,
+      screenHeight: body.screenHeight,
+      vertical: body.vertical,
+    });
+
+    const screenWidth = body.screenWidth || 1920;
+    const screenHeight = body.screenHeight || 1080;
+    const orientation = screenHeight > screenWidth ? 'PORTRAIT' : 'LANDSCAPE';
+    const parsed = result.parsed;
+
+    // Auto-inherit tenant brand like the regular POST / route. The AI
+    // already proposes a description + initial palette via widget
+    // configs; the brand defaults paint chrome (font, surface, ink).
+    const brand = await this.getBrandDefaults(req.user.tenantId);
+
+    // Create the template + initial scenes in a transaction so a
+    // half-built draft can't survive a failure mid-write.
+    const created = await this.prisma.client.$transaction(async (tx) => {
+      const tpl = await tx.template.create({
+        data: {
+          tenantId: req.user.tenantId,
+          name: parsed.name,
+          description: parsed.description || null,
+          category: 'CUSTOM',
+          orientation,
+          screenWidth,
+          screenHeight,
+          isTouchEnabled: true, // AI-generated templates are touch by definition
+          bgColor: brand.surface || null,
+          brandKit: brand.brandKit ?? undefined,
+          createdById: req.user.id,
+        } as any,
+      });
+
+      // Scenes (optional). If the AI returned scene names, create
+      // them and resolve scene-name targets in zone touchActions to
+      // the real scene ids below. Default scene = first one returned.
+      const sceneNameToId = new Map<string, string>();
+      const scenesToCreate = parsed.scenes && parsed.scenes.length
+        ? parsed.scenes
+        : [{ name: 'Main' }];
+      for (let i = 0; i < scenesToCreate.length; i++) {
+        const s = scenesToCreate[i];
+        const scene = await (tx as any).templateScene.create({
+          data: {
+            templateId: tpl.id,
+            name: s.name,
+            sortOrder: i,
+            isDefault: i === 0,
+          },
+        });
+        sceneNameToId.set(s.name.toLowerCase(), scene.id);
+      }
+      const defaultSceneId = Array.from(sceneNameToId.values())[0];
+
+      // Resolve scene-name targets in goto-scene touch actions to
+      // actual scene ids. If the AI emitted a name we never created,
+      // fall back to the default scene (still navigable, just not the
+      // scene the AI imagined).
+      const resolveActionTarget = (a: any): any => {
+        if (!a) return null;
+        if (a.type === 'goto-scene' && typeof a.target === 'string') {
+          const resolved = sceneNameToId.get(a.target.toLowerCase()) || defaultSceneId;
+          return { ...a, target: resolved };
+        }
+        return a;
+      };
+
+      // Zones — assign to default scene unless we can map the AI's
+      // sceneId hint (it doesn't really emit them, so default scene
+      // is the common path).
+      for (let i = 0; i < parsed.zones.length; i++) {
+        const z = parsed.zones[i];
+        const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand, z.widgetType);
+        await tx.templateZone.create({
+          data: {
+            templateId: tpl.id,
+            name: z.name || `${z.widgetType.toLowerCase()} ${i + 1}`,
+            widgetType: z.widgetType,
+            x: z.x,
+            y: z.y,
+            width: z.width,
+            height: z.height,
+            zIndex: i + 1,
+            sortOrder: i,
+            defaultConfig: cfg && Object.keys(cfg).length ? JSON.stringify(cfg) : null,
+            touchAction: resolveActionTarget(z.touchAction),
+            sceneId: defaultSceneId,
+          } as any,
+        });
+      }
+
+      const fresh = await tx.template.findUnique({
+        where: { id: tpl.id },
+        include: {
+          zones: { orderBy: { sortOrder: 'asc' } },
+          scenes: { orderBy: { sortOrder: 'asc' } } as any,
+        } as any,
+      });
+      return fresh;
+    });
+
+    return {
+      template: mapTemplate(created),
+      ai: {
+        source: result.source,
+        usage: result.usage,
+      },
+    };
   }
 
   // ───────────────────────────────────────────────────────

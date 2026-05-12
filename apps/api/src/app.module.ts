@@ -49,6 +49,7 @@ import { SampleDataModule } from './sample-data/sample-data.module';
 import { ImportsModule } from './imports/imports.module';
 // 2026-05-03 — Claude-backed AI content generation.
 import { AiModule } from './ai/ai.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_FILTER, APP_GUARD, APP_PIPE, APP_INTERCEPTOR } from '@nestjs/core';
 import { SanitizationPipe } from './security/sanitization.pipe';
@@ -89,6 +90,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     SampleDataModule,
     ImportsModule,
     AiModule,
+    AnalyticsModule,
     // 2026-05-06 — operator: kiosk wedged on "429 trying to
     // reconnect" right after fresh APK install. Cause: a fresh kiosk
     // boot fires a flurry of API hits in the first 60 s — manifest

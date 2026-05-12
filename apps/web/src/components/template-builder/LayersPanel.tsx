@@ -1,7 +1,8 @@
 "use client";
 
-import { Lock, Unlock, ChevronUp, ChevronDown, Trash2, Copy, Image as ImageIcon } from 'lucide-react';
+import { Lock, Unlock, ChevronUp, ChevronDown, Trash2, Copy, Image as ImageIcon, Hand } from 'lucide-react';
 import { useBuilderStore } from './useBuilderStore';
+import { useTouchAggregate } from '@/hooks/use-api';
 import { getZoneColor, widgetIcon, widgetLabel } from './constants';
 
 /** A pseudo-layer for the canvas background — always at the bottom of
@@ -49,6 +50,19 @@ export function LayersPanel() {
   const toggleLock = useBuilderStore((s) => s.toggleLock);
   const duplicateZone = useBuilderStore((s) => s.duplicateZone);
   const removeSelected = useBuilderStore((s) => s.removeSelected);
+  const templateId = useBuilderStore((s) => s.templateId);
+  const isTouchEnabled = useBuilderStore((s) => s.isTouchEnabled);
+
+  // Phase D5 — fetch tap aggregates so the operator can see which
+  // zones are getting tapped. Only fires for touch-enabled templates
+  // (non-touch templates have no edu:touch-action events to count) and
+  // only when we have a saved templateId (new drafts have none yet).
+  const { data: tapAgg } = useTouchAggregate(templateId, {
+    enabled: isTouchEnabled && !!templateId,
+    sinceDays: 30,
+  });
+  const tapsByZone = tapAgg?.byZone || {};
+  const hasTapData = (tapAgg?.total || 0) > 0;
 
   const sorted = [...zones].sort((a, b) => b.zIndex - a.zIndex);
 
@@ -89,10 +103,21 @@ export function LayersPanel() {
 
   return (
     <ul className="p-2 space-y-1" aria-label="Layers">
+      {/* Phase D5 — surface aggregate tap counts when the template has
+          ANY tap data. The per-zone counts render inline below. Hidden
+          when there's nothing to show so the panel stays clean for
+          freshly-built templates that haven't been deployed yet. */}
+      {isTouchEnabled && hasTapData && (
+        <li className="px-2 pt-1 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+          <Hand className="w-3 h-3 text-violet-500" />
+          {tapAgg!.total} {tapAgg!.total === 1 ? 'tap' : 'taps'} · last {tapAgg!.sinceDays} days
+        </li>
+      )}
       {sorted.map(zone => {
         const c = getZoneColor(zone.widgetType);
         const Icon = widgetIcon(zone.widgetType);
         const isSelected = selectedIds.includes(zone.id);
+        const tapCount = tapsByZone[zone.id] || 0;
         return (
           <li key={zone.id}>
             <div
@@ -117,6 +142,19 @@ export function LayersPanel() {
                   <span className="text-xs font-semibold text-slate-700 truncate block">{zone.name}</span>
                   <span className="text-[10px] uppercase font-medium text-slate-400 block">{widgetLabel(zone.widgetType)}</span>
                 </span>
+                {/* Phase D5 — tap count badge per zone. Only shown when
+                    the template is touch-enabled AND this zone has at
+                    least one recorded tap. Compact integer; tooltip
+                    spells out the time window. */}
+                {isTouchEnabled && tapCount > 0 && (
+                  <span
+                    className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 text-[10px] font-bold"
+                    title={`${tapCount} taps in the last ${tapAgg!.sinceDays} days`}
+                  >
+                    <Hand className="w-2.5 h-2.5" />
+                    {tapCount}
+                  </span>
+                )}
               </button>
               <div className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                 <button
