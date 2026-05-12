@@ -50,9 +50,18 @@ export function ProfileEditModal({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // 2026-05-12 — operator hit "it won't let me save because it
+  // already exists." Different bug, but the modal's "disable Save
+  // unless dirty" UX is also confusing — if the operator reopens
+  // and the inputs are pre-filled with their saved name, the
+  // button is dead and there's no visible feedback. Loosen the
+  // gate: Save stays enabled as long as at least one input has
+  // text (so we don't store empty strings) AND a mutation isn't
+  // already in flight. Save is idempotent server-side.
   const dirty =
     (firstName.trim() !== (me?.firstName ?? '')) ||
     (lastName.trim() !== (me?.lastName ?? ''));
+  const hasContent = (firstName.trim().length > 0) || (lastName.trim().length > 0);
 
   const previewUser = {
     ...me,
@@ -61,17 +70,30 @@ export function ProfileEditModal({ onClose }: { onClose: () => void }) {
     email: me?.email ?? null,
   };
 
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const onSave = async () => {
-    if (!dirty || update.isPending) return;
-    await update.mutateAsync({
-      firstName: firstName.trim() || null,
-      lastName: lastName.trim() || null,
-    });
-    setSavedFlash(true);
-    setTimeout(() => {
-      setSavedFlash(false);
-      onClose();
-    }, 900);
+    if (update.isPending) return;
+    // Allow re-saving the same values — the API is idempotent and
+    // operators have hit "Save is dead and won't update" when the
+    // inputs are pre-filled with their existing name.
+    if (!hasContent) {
+      setErrorMsg('Enter at least a first or last name.');
+      return;
+    }
+    setErrorMsg(null);
+    try {
+      await update.mutateAsync({
+        firstName: firstName.trim() || null,
+        lastName: lastName.trim() || null,
+      });
+      setSavedFlash(true);
+      setTimeout(() => {
+        setSavedFlash(false);
+        onClose();
+      }, 900);
+    } catch (e: any) {
+      setErrorMsg(e?.message || 'Could not save profile. Try again.');
+    }
   };
 
   return (
@@ -138,6 +160,12 @@ export function ProfileEditModal({ onClose }: { onClose: () => void }) {
           <div className="text-[11px] text-slate-500 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
             Dashboard will say: <span className="font-bold text-slate-800">Hi, {displayFirst(previewUser)}</span>
           </div>
+
+          {errorMsg && (
+            <div className="text-[11px] font-semibold text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">
+              {errorMsg}
+            </div>
+          )}
         </div>
 
         <div className="px-6 py-4 bg-slate-50/60 border-t border-slate-100 flex items-center justify-end gap-2">
@@ -145,6 +173,9 @@ export function ProfileEditModal({ onClose }: { onClose: () => void }) {
             <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 mr-auto">
               <Check className="w-3.5 h-3.5" /> Saved
             </span>
+          )}
+          {!dirty && !savedFlash && hasContent && (
+            <span className="text-[10px] text-slate-400 italic mr-auto">No changes yet — edit a field to enable Save.</span>
           )}
           <button
             type="button"
@@ -157,7 +188,8 @@ export function ProfileEditModal({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             onClick={onSave}
-            disabled={!dirty || update.isPending || isLoading}
+            disabled={!hasContent || update.isPending || isLoading}
+            title={!hasContent ? 'Enter at least a first or last name' : undefined}
             className="px-4 py-2 text-xs font-bold rounded-lg text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             style={{ background: 'var(--brand-primary, #4f46e5)' }}
           >
