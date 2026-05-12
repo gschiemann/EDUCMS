@@ -77,7 +77,7 @@ All required env vars for `.env` (gitignored):
 
 | Variable | Purpose | Example |
 |---|---|---|
-| `DATABASE_URL` | Prisma connection pooled | `postgresql://user:pass@host:6543/postgres?pgbouncer=true` |
+| `DATABASE_URL` | Prisma connection pooled (Supabase pgBouncer port 6543). **MUST include `connection_limit=10` or higher** — Prisma's default when `pgbouncer=true` is **1**, which causes every concurrent request to time out with `Timed out fetching a new connection from the connection pool` and a cascade of `DATABASE_ERROR` 500s across every endpoint. Also include `pool_timeout=20` for headroom under background-service load (canary auto-promote, offline-screen-scanner, cohort outage detection). | `postgresql://user:pass@host:6543/postgres?pgbouncer=true&connection_limit=10&pool_timeout=20` |
 | `DIRECT_URL` | Prisma direct (migrations only) | `postgresql://user:pass@host:5432/postgres` |
 | `SUPABASE_URL` | Supabase project URL | `https://xyz.supabase.co` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase auth + storage | `eyJ...` |
