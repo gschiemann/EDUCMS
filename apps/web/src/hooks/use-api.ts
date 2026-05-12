@@ -836,6 +836,13 @@ export function useUpdateMe() {
       apiFetch('/users/me', { method: 'PUT', body: JSON.stringify(data) }),
     onSuccess: (updated: any) => {
       qc.setQueryData(['users', 'me'], updated);
+      // 2026-05-12 — operator: "in settings under team members we
+      // should see first last name" — the team list query
+      // (`['users']` from useUsers) had cached the pre-update rows
+      // with null names. Invalidating forces a refetch so the
+      // operator's own row in their own team list updates to "Greg
+      // Schiemann" immediately, not after a 60s staleTime expiry.
+      qc.invalidateQueries({ queryKey: ['users'] });
       // 2026-05-12 — operator caught: "updated my profile with my
       // name but still says gschiemann on dashboard." Root cause was
       // a dynamic `require('@/store/ui-store')` here — Next.js
