@@ -836,19 +836,39 @@ export function useUpdateMe() {
       apiFetch('/users/me', { method: 'PUT', body: JSON.stringify(data) }),
     onSuccess: (updated: any) => {
       qc.setQueryData(['users', 'me'], updated);
-      // Also patch the auth-store user so the dashboard greeting and
-      // sidebar avatar see the new name immediately — no re-login,
-      // no /users/me round trip.
-      const { useUIStore } = require('@/store/ui-store');
+      // 2026-05-12 — operator caught: "updated my profile with my
+      // name but still says gschiemann on dashboard." Root cause was
+      // a dynamic `require('@/store/ui-store')` here — Next.js
+      // client modules use ESM, so the require returned a different
+      // module instance than the one components statically imported.
+      // The setState fired on the wrong store; subscribers never got
+      // the update.
+      //
+      // Fix: use the same static import the rest of the file uses
+      // (line 4). Now setState lands on THE store, the dashboard's
+      // useAppStore selector sees the new user object, and the
+      // "Hi {firstName}" greeting re-renders immediately.
       const cur = useUIStore.getState().user;
       if (cur && cur.id === updated.id) {
-        useUIStore.setState({
-          user: {
-            ...cur,
-            firstName: updated.firstName ?? null,
-            lastName: updated.lastName ?? null,
-          },
-        });
+        const nextUser = {
+          ...cur,
+          firstName: updated.firstName ?? null,
+          lastName: updated.lastName ?? null,
+        };
+        useUIStore.setState({ user: nextUser });
+        // Persist back to sessionStorage so a page refresh doesn't
+        // lose the names. The store's bootstrapAuth reads
+        // sessionStorage on init; without this, the next reload
+        // would re-hydrate from the OLD JSON (no firstName/lastName)
+        // and the greeting would revert to email-prefix.
+        try {
+          if (typeof window !== 'undefined') {
+            const ss = window.sessionStorage;
+            if (ss && ss.getItem('edu_cms_user')) {
+              ss.setItem('edu_cms_user', JSON.stringify(nextUser));
+            }
+          }
+        } catch { /* sessionStorage unavailable — non-fatal */ }
       }
     },
   });
