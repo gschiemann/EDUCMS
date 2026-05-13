@@ -313,17 +313,12 @@ export default function TemplatesPage() {
   const [activeHoliday, setActiveHoliday] = useState('');
   const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
-  // 2026-05-13 — top-pill canvas filter. 'all' shows everything;
-  // 'landscape' / 'portrait' filter by orientation; 'custom' filters
-  // to nothing extra but enables the resolution inputs so that
-  // selecting ANY template after picking custom auto-adapts it to
-  // the operator's W×H. Operator ask: "just add it to the pill up
-  // top, so its landscape, portrait, then custom...get rid of the
-  // little arrows that opn the window today and dump the preset
-  // pill so its not too busy up top".
-  const [shapeFilter, setShapeFilter] = useState<'all' | 'landscape' | 'portrait' | 'custom'>('all');
-  const [customW, setCustomW] = useState(960);
-  const [customH, setCustomH] = useState(1080);
+  // 2026-05-13 — top-pill canvas filter was removed per operator
+  // ("add custom above each template where you have portrait and
+  // landscape already, you added it in the filter section, get rid
+  // of it there"). Canvas-size adaptation now lives on the per-card
+  // toggle chip (Landscape | Portrait | Custom) — Custom opens
+  // AdaptForLedModal for that specific template.
   const [showCreate, setShowCreate] = useState(false);
   // Phase D3 — AI generate-touch modal. Distinct from the regular
   // create flow: operator types a prompt instead of picking a preset,
@@ -415,16 +410,6 @@ export default function TemplatesPage() {
     // empty bgColor. Real portrait variants (with dedicated
     // *PortraitWidget components) ship one at a time post-launch.
     if (LETTERBOXED_PORTRAIT_PRESETS.has(t.id)) return false;
-    // 2026-05-13 — top-pill shape filter. Landscape = wider than tall,
-    // Portrait = taller than wide, Custom = show every aspect (the
-    // operator will adapt whichever one they pick to their W×H).
-    if (shapeFilter === 'landscape' || shapeFilter === 'portrait') {
-      const w = t.screenWidth || 1920;
-      const h = t.screenHeight || 1080;
-      const isLandscape = w >= h;
-      if (shapeFilter === 'landscape' && !isLandscape) return false;
-      if (shapeFilter === 'portrait' && isLandscape) return false;
-    }
     if (activeCategory && t.category !== activeCategory) return false;
     if (activeLevel) {
       // UNIVERSAL (or missing) is always shown — it's grade-agnostic.
@@ -508,37 +493,13 @@ export default function TemplatesPage() {
   }
 
   /**
-   * Open-template router that respects the top-pill canvas mode.
-   *
-   *   shapeFilter === 'custom' → duplicate at (customW × customH) FIRST,
-   *     then open the duplicate in the builder. Source template (and
-   *     any system preset) stays unchanged. Default name encodes the
-   *     new dimensions so the operator can tell siblings apart.
-   *   shapeFilter !== 'custom' → open the source as-is (the existing
-   *     behavior — system presets get auto-converted to a custom row
-   *     on first save inside the builder).
-   *
-   * Wired into both the gallery card Edit / Customize buttons and the
-   * preview modal's Customize / Edit footer. Operator picks Custom +
-   * resolution at the top → every template click after that auto-
-   * adapts. No more arrow icons or per-card modals.
+   * Default open-template behavior. System presets route to the
+   * read-only builder URL (which auto-converts to a custom on first
+   * save); custom templates open in the editable builder directly.
+   * Custom-canvas adapts now route through the per-card Custom chip
+   * → AdaptForLedModal, NOT through here.
    */
-  async function openForCanvas(source: Template) {
-    if (shapeFilter === 'custom') {
-      const w = Math.max(100, Math.min(15360, Math.round(customW)));
-      const h = Math.max(100, Math.min(15360, Math.round(customH)));
-      const result = await duplicateTemplate.mutateAsync({
-        id: source.id,
-        screenWidth: w,
-        screenHeight: h,
-        orientation: h > w ? 'PORTRAIT' : 'LANDSCAPE',
-      });
-      openInBuilder(result);
-      return;
-    }
-    // Non-custom: same as before — open source directly. System
-    // presets route through the read-only builder URL; custom
-    // templates open in the editable builder.
+  function openTemplate(source: Template) {
     if (source.isSystem) {
       router.push(`/${params?.schoolId}/templates/builder/${source.id}`);
     } else {
@@ -851,116 +812,26 @@ export default function TemplatesPage() {
         />
       )}
 
-      {/* 2026-05-13 — Top-pill shape filter. Replaces the prior
-          two-tier "grade level + category sub-filter" stack per
-          operator ask: "just add it to the pill up top, so its
-          landscape, portrait, then custom...get rid of the little
-          arrows that opn the window today and dump the preset pill
-          so its not too busy up top". Single row: All / Landscape /
-          Portrait / Custom + search. When Custom is active, an inline
-          W×H input row + 1-6 panel chips appear; subsequent template
-          clicks auto-adapt to the chosen resolution via the existing
-          Adapt-for-LED duplicate flow. The grade-level + category
-          + holiday filters are still wired up internally; they're just
-          not surfaced as chrome here — the operator already drills
-          via search. */}
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap gap-3 items-center">
-          <div className="flex gap-1.5 items-center flex-wrap">
-            {([
-              { key: 'all',       label: 'All',       icon: null },
-              { key: 'landscape', label: 'Landscape', icon: Monitor },
-              { key: 'portrait',  label: 'Portrait',  icon: Smartphone },
-              { key: 'custom',    label: 'Custom',    icon: Settings2 },
-            ] as const).map((chip) => {
-              const active = shapeFilter === chip.key;
-              const Icon = chip.icon;
-              return (
-                <button
-                  key={chip.key}
-                  type="button"
-                  onClick={() => setShapeFilter(chip.key as typeof shapeFilter)}
-                  aria-pressed={active}
-                  className={`px-4 py-2 rounded-full text-sm font-bold border transition-all flex items-center gap-1.5 ${
-                    active
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                      : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
-                  }`}
-                >
-                  {Icon && <Icon className="w-3.5 h-3.5" aria-hidden />}
-                  {chip.label}
-                </button>
-              );
-            })}
-          </div>
-          <div className="relative flex-1 min-w-[200px] max-w-md">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" aria-hidden />
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search templates..."
-              aria-label="Search templates"
-              className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
-            />
-          </div>
+      {/* 2026-05-13 — Top filter pill removed per operator: "no i
+          meant add custom above each template where you have portrait
+          and landscape already, you added it in the filter section,
+          get rid of it there and add to each temaplte and dump the
+          preset pill so you have room". Search lives alone now; the
+          per-card Landscape/Portrait toggle picked up a third
+          "Custom" chip that opens the Adapt-for-LED resolution modal
+          for that specific template. */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <div className="relative flex-1 min-w-[200px] max-w-md">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" aria-hidden />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search templates..."
+            aria-label="Search templates"
+            className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+          />
         </div>
-        {/* Custom-resolution row. Just two inputs (W × H) — the
-            panel-count shortcuts were removed per operator: "i dont
-            need all that 1 panel 2 panel shit, just let me type in
-            the custom resoltiuoin and dump all those options". */}
-        {shapeFilter === 'custom' && (
-          <div className="flex flex-wrap items-center gap-2 p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl">
-            <span className="text-xs font-bold text-indigo-700 mr-1">Canvas</span>
-            <input
-              type="number"
-              min={100}
-              max={15360}
-              value={customW}
-              onChange={(e) => setCustomW(parseInt(e.target.value) || 1920)}
-              className="w-28 px-3 py-2 rounded-lg bg-white border border-indigo-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              aria-label="Custom canvas width in pixels"
-            />
-            <span className="text-slate-400 text-xs font-bold">×</span>
-            <input
-              type="number"
-              min={100}
-              max={15360}
-              value={customH}
-              onChange={(e) => setCustomH(parseInt(e.target.value) || 1080)}
-              className="w-28 px-3 py-2 rounded-lg bg-white border border-indigo-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              aria-label="Custom canvas height in pixels"
-            />
-            <span className="text-[11px] text-slate-500">{customW > customH ? 'landscape' : customH > customW ? 'portrait' : 'square'}</span>
-            <span className="text-[11px] text-slate-500 ml-auto">Any template you open will be sized to this resolution.</span>
-          </div>
-        )}
-        {/* Holiday-specific sub-filter — only when category=HOLIDAYS.
-            Pill-shaped chips with emoji + holiday name. Operators pick
-            the holiday that matches the season; "All holidays" shows
-            every variant for the current grade level. K12-only — gym
-            and retail HOLIDAYS categories have their own seasonal
-            chips driven from VERTICAL_TEMPLATE_CATEGORIES. */}
-        {tenantCopy.showSchoolLevelFilter && activeLevel && activeCategory === 'HOLIDAYS' && (
-          <div className="flex gap-1.5 flex-wrap">
-            {HOLIDAY_SUB_FILTERS.map(h => (
-              <button
-                key={h.key}
-                type="button"
-                onClick={() => setActiveHoliday(h.key)}
-                aria-pressed={activeHoliday === h.key}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all inline-flex items-center gap-1.5 ${
-                  activeHoliday === h.key
-                    ? 'bg-rose-500 text-white border-rose-500 shadow-sm'
-                    : 'bg-white text-slate-600 border-slate-200 hover:border-rose-300 hover:text-rose-600'
-                }`}
-              >
-                <span aria-hidden>{h.emoji}</span>
-                {h.label}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
       {isLoading ? (
@@ -1010,8 +881,9 @@ export default function TemplatesPage() {
                     key={t.id}
                     template={t}
                     portraitSibling={portraitSiblingFor(t)}
-                    onEdit={() => openForCanvas(t)}
+                    onEdit={() => openTemplate(t)}
                     onDuplicate={() => handleDuplicate(t)}
+                    onAdaptForLED={() => setAdaptTemplate(t)}
                     onDelete={async () => {
                       const ok = await appConfirm({
                         title: 'Delete this template?',
@@ -1040,20 +912,20 @@ export default function TemplatesPage() {
         <TemplatePreviewModal
           template={previewTemplate}
           onClose={() => setPreviewTemplate(null)}
-          // Both Customize (presets) and Edit (custom templates) now
-          // route through openForCanvas — which auto-adapts to the
-          // top-pill's customW×customH when shapeFilter === 'custom',
-          // and otherwise opens the source as-is. One handler, two
-          // entry points, no per-card modals.
+          // Customize (presets) and Edit (custom templates) open the
+          // source template as-is. The per-card "Custom" toggle chip
+          // is the only entry point for canvas-size overrides — it
+          // routes through AdaptForLedModal which duplicates at the
+          // chosen W×H before opening the builder.
           onCustomize={previewTemplate.isSystem ? () => {
             const t = previewTemplate;
             setPreviewTemplate(null);
-            openForCanvas(t);
+            openTemplate(t);
           } : undefined}
           onEdit={!previewTemplate.isSystem ? () => {
             const t = previewTemplate;
             setPreviewTemplate(null);
-            openForCanvas(t);
+            openTemplate(t);
           } : undefined}
         />
       )}
@@ -1459,31 +1331,33 @@ function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, 
           </div>
         )}
 
-        {/* Orientation toggle — only renders when a portrait sibling
-            exists for this preset. Lets the operator preview either
-            orientation right from the gallery tile without leaving
-            the page. Click stops propagation so it doesn't fire the
-            outer onPreview. */}
-        {portraitSibling && (
-          <div
-            className="absolute top-3 left-3 inline-flex items-center bg-white/95 border border-slate-200 rounded-full overflow-hidden shadow-sm"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-            role="group"
-            aria-label="Orientation"
+        {/* Orientation + Custom canvas toggle. Renders on every card
+            so the operator can switch between the template's natural
+            orientation, its portrait sibling (when one exists), or
+            adapt to a custom LED size. Click stops propagation so it
+            doesn't fire the outer onPreview. Per operator 2026-05-13:
+            "add custom above each template where you have portrait
+            and landscape already". */}
+        <div
+          className="absolute top-3 left-3 inline-flex items-center bg-white/95 border border-slate-200 rounded-full overflow-hidden shadow-sm"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          role="group"
+          aria-label="Canvas"
+        >
+          <button
+            type="button"
+            onClick={() => setShowPortrait(false)}
+            className={`flex items-center gap-1 px-2 py-1 text-[10px] font-semibold transition ${
+              !showPortrait ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'
+            }`}
+            aria-pressed={!showPortrait}
+            title="Landscape"
           >
-            <button
-              type="button"
-              onClick={() => setShowPortrait(false)}
-              className={`flex items-center gap-1 px-2 py-1 text-[10px] font-semibold transition ${
-                !showPortrait ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'
-              }`}
-              aria-pressed={!showPortrait}
-              title="Landscape"
-            >
-              <Monitor className="w-3 h-3" />
-              Landscape
-            </button>
+            <Monitor className="w-3 h-3" />
+            Landscape
+          </button>
+          {portraitSibling && (
             <button
               type="button"
               onClick={() => setShowPortrait(true)}
@@ -1496,8 +1370,19 @@ function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, 
               <Smartphone className="w-3 h-3" />
               Portrait
             </button>
-          </div>
-        )}
+          )}
+          {onAdaptForLED && (
+            <button
+              type="button"
+              onClick={onAdaptForLED}
+              className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-50 transition border-l border-slate-200"
+              title="Adapt this template to a custom LED canvas size"
+            >
+              <Settings2 className="w-3 h-3" />
+              Custom
+            </button>
+          )}
+        </div>
 
         {/* Hover overlay */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors rounded-t-2xl pointer-events-none" />
