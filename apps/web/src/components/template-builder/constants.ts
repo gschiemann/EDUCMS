@@ -390,6 +390,21 @@ WIDGET_GROUPS.forEach(g => g.types.forEach(t => {
   WIDGET_META[t.type] = { label: t.label, icon: t.icon as LucideIcon, desc: t.desc };
 }));
 
+// Phase D2.9-D2.12 — the canonical interactive widget type. Every
+// touch palette tile (TOUCH_HOTSPOT, TOUCH_HELP, etc.) canonicalizes
+// to widgetType='TOUCH_POINT' on the zone, with the visual in
+// defaultConfig.variant. The palette tiles each have their own META
+// entries from the loop above, but the CANONICAL type was missing —
+// so widgetLabel('TOUCH_POINT') was returning the raw string (or
+// being mistaken for 'Placeholder' in the Properties panel chip).
+// Register it explicitly so the Properties panel shows a friendly
+// "Touch widget" name + the violet Hand color theme.
+WIDGET_META['TOUCH_POINT'] = {
+  label: 'Touch widget',
+  icon: Hand,
+  desc: 'Interactive tap target — visual selected via the variant on defaultConfig',
+};
+
 export function widgetLabel(type: string): string {
   return WIDGET_META[type]?.label ?? type;
 }

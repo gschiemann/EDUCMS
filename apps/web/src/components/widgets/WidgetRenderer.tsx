@@ -2195,28 +2195,41 @@ export function TouchPointWidget({ config }: { config: any }) {
 
   // Round-disc shared base — for icon-only variants (home, close,
   // menu, help, phone, email, share, heart, star, volume, info,
-  // arrows, circle, play). aspect-ratio keeps the disc circular
-  // even when the zone aspect isn't 1:1; maxWidth/Height: 100%
-  // keeps it inside the zone.
+  // arrows, circle, play).
   //
-  // Ghost mode: drop background/shadow/aspect-ratio so the icon
-  // fills the zone freely (no inscribed-circle clipping). The
-  // operator gets a pure-icon affordance — useful when they have
-  // a colored scene background and want the icon to BE the visual,
+  // 2026-05-12 follow-up — operator: "still making the square
+  // background colored. i changed both to a color and got this"
+  // (screenshot shows the full rectangular zone filled, not an
+  // inscribed circle). Root cause: the previous `aspectRatio +
+  // width: auto + height: 100%` combo didn't reliably produce a
+  // square inside a flex container — width 'auto' often
+  // collapsed to "stretch" depending on the flex axis behavior,
+  // and the disc ended up taking the rectangular zone size,
+  // border-radius 999px clamping to a pill rather than a circle.
+  //
+  // Fix: explicit equal-side sizing via `min(100cqw, 100cqh)` —
+  // the smaller of the container-query width / height. Inscribed
+  // square in any aspect, regardless of flex behavior. With
+  // border-radius: 50% (half the disc's smaller side) it
+  // renders as a true circle every time.
+  //
+  // Ghost mode: drop background/shadow/sizing so the icon fills
+  // the zone freely (no inscribed-circle clipping). The operator
+  // gets a pure-icon affordance — useful when they have a
+  // colored scene background and want the icon to BE the visual,
   // not a button on top of one.
+  const discSize = 'min(100cqw, 100cqh)';
   const discStyle = (overrides: Partial<React.CSSProperties> = {}): React.CSSProperties => ({
-    aspectRatio: ghostMode ? undefined : '1 / 1',
-    maxWidth: '100%',
-    maxHeight: '100%',
-    width: ghostMode ? '100%' : 'auto',
-    height: '100%',
-    borderRadius: ghostMode ? 0 : '999px',
+    width: ghostMode ? '100%' : discSize,
+    height: ghostMode ? '100%' : discSize,
+    borderRadius: ghostMode ? 0 : '50%',
     background: ghostMode ? 'transparent' : bgColor,
     color: ghostMode ? ghostIconColor : color,
     boxShadow: ghostMode ? 'none' : '0 1cqmin 3cqmin rgba(0,0,0,0.18)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
     ...overrides,
   });
 
