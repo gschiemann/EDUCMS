@@ -836,7 +836,10 @@ const CSS = `
    tile is full-width, 1/8 of the viewport height, so six fit
    comfortably with hero text above + status footer below. */
 @media (max-width: 480px) {
-  .kiosk-frame { padding: 4vw 2vw !important; }
+  /* 2026-05-13 — targets the actual class names defined in this
+     file (kiosk-stage, kiosk-brand-name, etc.) — not "kiosk-frame"
+     which doesn't exist. Earlier version was a no-op. */
+  .kiosk-stage { padding: 4vw 2vw !important; gap: 2vh !important; }
   .kiosk-instructions { font-size: 4vw !important; }
   .kiosk-instruction-label { font-size: 3vw !important; }
   .kiosk-instruction-line { font-size: 4vw !important; }
@@ -853,7 +856,7 @@ const CSS = `
   }
   .kiosk-code-char { font-size: 6.5vh !important; }
   .kiosk-qr-hint { font-size: 3vw !important; }
-  /* The brand-name + footer rows shrink so the code dominates. */
+  /* Brand row + status footer compress so the pairing code dominates. */
   .kiosk-brand-name { font-size: 4.5vw !important; }
   .kiosk-status-row { font-size: 2.8vw !important; gap: 1vw !important; flex-wrap: wrap; }
 }
