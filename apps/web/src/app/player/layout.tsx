@@ -54,18 +54,67 @@ export default function PlayerLayout({
       <Script id="player-viewport-pin" strategy="beforeInteractive">
         {`(function(){try{
           var p=new URLSearchParams(location.search);
+          // Two pairs of size params:
+          //   w / h        — what Android reports as the controller's
+          //                  display (e.g. NovaStar Taurus output =
+          //                  1920×1080 even when the LED poster is
+          //                  smaller).
+          //   canvasW / canvasH — operator-supplied size of the LED's
+          //                  actual VISIBLE pixels (e.g. 960×1080 for
+          //                  a single-poster panel, 320×1080 for an
+          //                  ultra-narrow tower).
+          // The controller can't tell us LED dimensions — NovaStar's
+          // tile mapping is hardware-level and not exposed to Android.
+          // So the operator sets canvasW/canvasH once per screen via
+          // the player's info overlay ("Resize for LED" button), we
+          // persist to localStorage, and apply on every subsequent boot.
           var w=parseInt(p.get('w'),10);
           var h=parseInt(p.get('h'),10);
-          if(w>0&&h>0){
+          var canvasW=parseInt(p.get('canvasW'),10);
+          var canvasH=parseInt(p.get('canvasH'),10);
+          // Persist URL-param values to localStorage so a manual reload
+          // (without params) still applies them.
+          try{
+            if(canvasW>0)localStorage.setItem('edu_canvasW',String(canvasW));
+            if(canvasH>0)localStorage.setItem('edu_canvasH',String(canvasH));
+          }catch(e){}
+          // Fall back to localStorage if URL didn't supply.
+          if(!(canvasW>0)){try{canvasW=parseInt(localStorage.getItem('edu_canvasW'),10)||0;}catch(e){}}
+          if(!(canvasH>0)){try{canvasH=parseInt(localStorage.getItem('edu_canvasH'),10)||0;}catch(e){}}
+          // Effective canvas: operator override wins; controller size
+          // fallback; nothing if neither is set (browser tab).
+          var effW=canvasW>0?canvasW:(w>0?w:0);
+          var effH=canvasH>0?canvasH:(h>0?h:0);
+          if(effW>0&&effH>0){
             var m=document.querySelector('meta[name="viewport"]');
-            if(m)m.content='width='+w+', height='+h+', initial-scale=1, user-scalable=no';
-            // Also pin html/body explicit dimensions as a belt-and-
-            // braces fallback: some Android WebViews ignore viewport
-            // meta after page-load. Setting documentElement size
-            // forces every % / vw / vh calc to use the LED canvas.
-            document.documentElement.style.width=w+'px';
-            document.documentElement.style.height=h+'px';
+            if(m)m.content='width='+effW+', height='+effH+', initial-scale=1, user-scalable=no';
+            // Pin documentElement + body to canvas size at top-left so
+            // all our 100vw/100vh layouts resolve to the LED's actual
+            // visible pixels — not to whatever the controller's frame
+            // buffer happens to be. The CONTROLLER's frame buffer may
+            // be larger (1920×1080 forced minimum on Taurus) — those
+            // extra pixels are off-LED anyway, so we paint them black
+            // via the body's bg.
+            document.documentElement.style.width=effW+'px';
+            document.documentElement.style.height=effH+'px';
             document.documentElement.style.overflow='hidden';
+            // Body styles deferred to DOMContentLoaded — body element
+            // may not exist yet when beforeInteractive runs.
+            document.addEventListener('DOMContentLoaded',function(){
+              if(document.body){
+                document.body.style.width=effW+'px';
+                document.body.style.height=effH+'px';
+                document.body.style.margin='0';
+                document.body.style.padding='0';
+                document.body.style.background='#000';
+                document.body.style.overflow='hidden';
+              }
+            });
+            // Expose to CSS as custom props so any layout that wants
+            // to honor the canvas explicitly (instead of vw/vh) can
+            // read --led-w / --led-h.
+            document.documentElement.style.setProperty('--led-w',effW+'px');
+            document.documentElement.style.setProperty('--led-h',effH+'px');
           }
         }catch(e){}})();`}
       </Script>

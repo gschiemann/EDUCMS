@@ -1102,6 +1102,54 @@ function CacheStatusRow({ status }: { status: CacheStatus | null }) {
   );
 }
 
+/**
+ * Diagnostic row showing the effective LED canvas. If the operator has
+ * set a canvas override (URL params or localStorage), display it with
+ * "(override)" suffix. Otherwise show the controller's reported display
+ * size with "(auto)" so the operator can tell at a glance whether
+ * they're on auto or manual. Renders nothing on SSR.
+ */
+function CanvasInfoRow() {
+  const [tick, setTick] = useState(0);
+  // Re-read after mount so localStorage values land. Re-render on a
+  // 'storage' event for cross-tab edits (not common on a kiosk, but
+  // free to add) plus a one-shot mount.
+  useEffect(() => {
+    setTick((t) => t + 1);
+    const onStorage = () => setTick((t) => t + 1);
+    if (typeof window !== 'undefined') window.addEventListener('storage', onStorage);
+    return () => {
+      if (typeof window !== 'undefined') window.removeEventListener('storage', onStorage);
+    };
+  }, []);
+  if (typeof window === 'undefined') return null;
+  let display = '—';
+  let label = 'auto';
+  try {
+    const p = new URLSearchParams(window.location.search);
+    const override = readCanvasOverride();
+    if (override.w && override.h) {
+      display = `${override.w}×${override.h}`;
+      label = 'override';
+    } else {
+      const w = parseInt(p.get('w') || '', 10) || window.screen.width;
+      const h = parseInt(p.get('h') || '', 10) || window.screen.height;
+      display = `${w}×${h}`;
+    }
+  } catch { /* fall back to defaults */ }
+  // `tick` only used to trigger a re-render; reference it to silence
+  // the unused-variable warning.
+  void tick;
+  return (
+    <div className="flex justify-between">
+      <span className="text-slate-400">LED canvas</span>
+      <span className={label === 'override' ? 'text-emerald-400 font-medium text-xs' : 'text-slate-300 font-medium text-xs'}>
+        {display}{' '}<span className="opacity-60">({label})</span>
+      </span>
+    </div>
+  );
+}
+
 // ─── Error boundary wraps the whole player so a single widget crash can't
 // ─── black out the screen mid-emergency. On crash, we surface the cached
 // ─── emergency (if any) and start a recovery countdown, then auto-reload.
@@ -1348,6 +1396,15 @@ function PlayerPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [showOverlay, setShowOverlay] = useState(false);
+  // 2026-05-13 — Canvas-size editor. NovaStar / other LED controllers
+  // force a minimum frame buffer (e.g. Taurus = 1920×1080) even when
+  // the LED itself is narrower (single 960×1080 poster or 320×1080
+  // tower). Without an override the splash + content render to the
+  // full 1920 wide and the LED only shows the top-left slice — the
+  // bottom + right go off-LED. Operator resizes the canvas from this
+  // editor; the next reload picks up canvasW/canvasH from URL params,
+  // pins the document, and content fills the visible LED.
+  const [showCanvasEditor, setShowCanvasEditor] = useState(false);
   // v1.0.16 — visible feedback for the "Sync Now" button. Operator
   // (2026-04-27): "hitting sync does nothing it appears, not sure
   // what the button is used for". Cause: when fetchContent runs and
@@ -1822,6 +1879,21 @@ function PlayerPage() {
   // "carousel only shows items 1 and 2" bug the Integration Lead
   // reported on the Goodview device.
   const currentPlaylistSigRef = useRef<string>('');
+  // 2026-05-13 — operator rule "once content is live, it stays live."
+  // The bug: a transient EMPTY manifest (server hiccup, race against an
+  // admin mid-edit, or a 0.5s window during a playlist republish) used
+  // to immediately `setPlaylist(null)` and flash the screen back to the
+  // "Waiting for schedule" Pastel Pop splash for a second. Confirmed
+  // happening on the Taurus deploy — manifest occasionally comes back
+  // empty between SYNCs.
+  //
+  // Fix: require N consecutive empty manifests before clearing the
+  // playing playlist. A legitimate unschedule (admin removed the
+  // schedule on purpose) hits N within ~30 s of background polling and
+  // clears as before. A transient blip recovers within 1-2 ticks and
+  // never touches the visible playback. Streak resets to 0 the moment
+  // we get a non-empty manifest.
+  const emptyManifestStreakRef = useRef<number>(0);
   // Manifest-reported playlist summary for the Stopped splash. Holds
   // the name, schedule window, item count, and approximate byte size
   // for each scheduled playlist. Only used for the operator info
@@ -2307,6 +2379,12 @@ function PlayerPage() {
         cacheEmergency(null);
       }
       if (manifest.playlists && manifest.playlists.length > 0) {
+        // Reset the empty-manifest streak the second we get real
+        // content back — a blip that lasted < REQUIRE_EMPTY_STREAK
+        // ticks should never escalate, and a sustained empty period
+        // followed by recovery should never be poised one-off-from
+        // clearing on the next blip.
+        emptyManifestStreakRef.current = 0;
         // Capture the operator-facing playlist summary for the
         // Stopped splash — name, schedule window, item count, disk
         // footprint. Independent of the playback signature check
@@ -2471,6 +2549,24 @@ function PlayerPage() {
       // already in the empty state. Prevents the same-signature loop
       // above from missing this case.
       if (currentPlaylistSigRef.current !== '') {
+        // 2026-05-13 — REQUIRE_EMPTY_STREAK gate. See
+        // emptyManifestStreakRef declaration up top for full rationale.
+        // Don't blank a playing screen on a single empty response;
+        // wait for the admin's intent to be unambiguous.
+        emptyManifestStreakRef.current += 1;
+        const REQUIRE_EMPTY_STREAK = 3;
+        if (emptyManifestStreakRef.current < REQUIRE_EMPTY_STREAK) {
+          console.log(
+            `[Player] empty manifest (streak ${emptyManifestStreakRef.current}/${REQUIRE_EMPTY_STREAK}) — keeping current playlist live`,
+          );
+          // Don't clear setManifestPlaylists either — the Stopped splash
+          // info panel should still reflect what's actually rolling.
+          return true;
+        }
+        console.log(
+          `[Player] ${emptyManifestStreakRef.current} consecutive empty manifests — clearing playlist`,
+        );
+        emptyManifestStreakRef.current = 0;
         currentPlaylistSigRef.current = '';
         setPlaylist(null);
         setCurrentIndex(0);
@@ -4004,6 +4100,19 @@ function PlayerPage() {
     </div>
   ) : null;
 
+  // Canvas-size editor — rendered in every phase so the operator can
+  // open it from the playing-empty overlay AND it stays mounted across
+  // phase changes (e.g. so the save+reload doesn't disappear mid-input
+  // if a SYNC fires). Initial values pre-fill from current override.
+  const canvasOverride = readCanvasOverride();
+  const canvasEditor = showCanvasEditor ? (
+    <CanvasSizeEditor
+      initialW={canvasOverride.w}
+      initialH={canvasOverride.h}
+      onClose={() => setShowCanvasEditor(false)}
+    />
+  ) : null;
+
   // ─── Render: Registering ───
   if (phase === 'registering') {
     return (
@@ -4021,6 +4130,7 @@ function PlayerPage() {
         {otaOverlay}
         {connectivityToast}
         {unsignedWsBanner}
+        {canvasEditor}
       </>
     );
   }
@@ -4048,6 +4158,7 @@ function PlayerPage() {
         {otaOverlay}
         {connectivityToast}
         {unsignedWsBanner}
+        {canvasEditor}
       </>
     );
   }
@@ -4163,6 +4274,27 @@ function PlayerPage() {
           if (!isInteractive && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setShowOverlay(s => !s); }
         }}
         style={{
+          // 2026-05-13 — Inline-style fallback. Operator reported
+          // (Taurus LED) publishing the Rainbow Animated Portrait
+          // template → screen went pure black. Root cause: the
+          // wrapper relied on Tailwind's `fixed inset-0` for
+          // full-screen positioning. When Tailwind fails to load
+          // on the Taurus WebView (cert/CDN/cache — see kiosk-splash
+          // 2026-05-13 entry for the same class of bug), the
+          // wrapper collapses to a default block element with
+          // height:auto, which is 0 once its children all use
+          // position:absolute (they're taken out of normal flow).
+          // The zones absolute-position relative to <body> instead
+          // of this wrapper, AND the wrapper paints no background,
+          // so the screen falls back to body's #000 fill = pure
+          // black. Pinning position/inset/size inline makes the
+          // template canvas survive Tailwind absence.
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          width: '100vw',
+          height: '100vh',
+          overflow: 'hidden',
+          cursor: isInteractive ? undefined : 'none',
           backgroundColor: tpl.bgColor || '#000000',
           ...(tpl.bgGradient ? { background: tpl.bgGradient } : {}),
           ...(tpl.bgImage ? { backgroundImage: tpl.bgImage.trim().startsWith('url(') ? tpl.bgImage : `url(${tpl.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}),
@@ -4261,6 +4393,14 @@ function PlayerPage() {
             data-zone-id={zone.id}
             onClick={onZoneClick}
             style={{
+              // Inline `position: absolute` so the zone still
+              // anchors at %-offsets when Tailwind's `absolute`
+              // utility is missing. Without this, zones flowed
+              // into normal block layout on the Taurus and the
+              // template wrapper's bg-color got covered by stacked
+              // widget DOM — appearing as a black screen.
+              position: 'absolute',
+              overflow: 'hidden',
               left: `${zone.x}%`,
               top: `${zone.y}%`,
               width: `${zone.width}%`,
@@ -4305,14 +4445,22 @@ function PlayerPage() {
                 <div className="flex justify-between"><span className="text-slate-400">Template</span><span className="text-white font-medium">{tpl.name}</span></div>
                 <div className="flex justify-between"><span className="text-slate-400">Zones</span><span className="text-white font-medium">{zones.length} live widgets</span></div>
                 <div className="flex justify-between"><span className="text-slate-400">Resolution</span><span className="text-white font-medium">{tpl.screenWidth}×{tpl.screenHeight}</span></div>
+                <CanvasInfoRow />
                 <div className="flex justify-between"><span className="text-slate-400">Last Sync</span><span className="text-white font-medium">{lastSync || 'Never'}</span></div>
                 <CacheStatusRow status={cacheStatus} />
                 <SoftwareInfoRow />
                 <DiagnosticsRow />
               </div>
-              <div className="flex gap-2 pt-2">
+              <div className="flex gap-2 pt-2 flex-wrap">
                 <button onClick={(e) => { e.stopPropagation(); handleSyncWithFeedback(); }} disabled={syncFeedback === 'syncing'} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-700/60 text-white rounded-lg font-medium text-sm transition-colors">
                   {syncFeedback === 'syncing' ? 'Syncing…' : syncFeedback === 'done' ? 'Synced ✓' : syncFeedback === 'err' ? 'Sync failed' : 'Sync Now'}
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowCanvasEditor(true); }}
+                  title="Set the LED's visible pixel size (overrides the controller's frame buffer)"
+                  className="py-2 px-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold transition-colors"
+                >
+                  Resize for LED
                 </button>
                 {/* Stop button — ALWAYS shown, unlike the native-only
                     Exit below. Tries the exit bridge first, then a
@@ -4351,6 +4499,7 @@ function PlayerPage() {
         {otaOverlay}
         {connectivityToast}
         {unsignedWsBanner}
+        {canvasEditor}
       </div>
     );
   }
@@ -4636,7 +4785,30 @@ function PlayerPage() {
           })}
         </div>
       ) : (
-        <div className="absolute inset-0 bg-slate-50 flex items-stretch justify-center p-8 overflow-hidden cursor-default" onClick={(e) => e.stopPropagation()} role="presentation">
+        <div
+          className="absolute inset-0 bg-slate-50 flex items-stretch justify-center p-8 overflow-hidden cursor-default"
+          onClick={(e) => e.stopPropagation()}
+          role="presentation"
+          // 2026-05-13 — Inline-style fallback for Taurus WebViews where
+          // Tailwind sometimes fails to load. Operator photo (2026-05-13)
+          // showed "Connecting to your CMS..." jammed in the top-left
+          // corner of a 960×1080 LED — root cause was `flex justify-center
+          // items-stretch p-8` being Tailwind-only, so without the bundle
+          // the card landed at the default block-level top-left position.
+          // Declaring the same layout inline guarantees centering even
+          // when the CSS bundle never arrives.
+          style={{
+            position: 'absolute',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: '#f8fafc',
+            display: 'flex',
+            alignItems: 'stretch',
+            justifyContent: 'center',
+            padding: '32px',
+            overflow: 'hidden',
+            cursor: 'default',
+          }}
+        >
           {/* Decorative background blurs to match Pastel Pop */}
           <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-400/20 rounded-full blur-3xl pointer-events-none" />
           <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-400/20 rounded-full blur-3xl pointer-events-none" />
@@ -4670,7 +4842,31 @@ function PlayerPage() {
                   screen height, giving the buttons more breathing
                   room on partial-chain LED installs.
               */}
-          <div className="w-full max-w-5xl max-h-full bg-white/80 backdrop-blur-3xl rounded-[3rem] shadow-[0_20px_60px_rgb(0,0,0,0.06)] border border-white p-8 flex flex-col items-center z-10 animate-in fade-in zoom-in-95 duration-700 overflow-hidden">
+          <div
+            className="w-full max-w-5xl max-h-full bg-white/80 backdrop-blur-3xl rounded-[3rem] shadow-[0_20px_60px_rgb(0,0,0,0.06)] border border-white p-8 flex flex-col items-center z-10 animate-in fade-in zoom-in-95 duration-700 overflow-hidden"
+            // Tailwind-fallback inline styles — keeps the inner card
+            // centered + flex-column when the utility classes never
+            // applied. Width/max-width set so the card actually has
+            // room to breathe on a 960×1080 LED.
+            style={{
+              width: '100%',
+              maxWidth: '1024px',
+              maxHeight: '100%',
+              background: 'rgba(255,255,255,0.8)',
+              borderRadius: '48px',
+              border: '1px solid white',
+              padding: '32px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textAlign: 'center',
+              zIndex: 10,
+              overflow: 'hidden',
+              color: '#1e293b',
+              fontFamily: 'system-ui, -apple-system, sans-serif',
+            }}
+          >
             {/* 2026-04-28 — operator: "removal of as many other splash
                 screens as possible...why cant this screen be the one
                 that says connecting to your cms and then just
@@ -4684,11 +4880,29 @@ function PlayerPage() {
                 into this layout and we want the code to be the hero. */}
             {phase === 'connecting' ? (
               <>
-                <div className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-indigo-100 to-indigo-50 shadow-[inset_0_4px_20px_rgb(0,0,0,0.05)] flex items-center justify-center mb-6 ring-4 ring-white">
-                  <Loader2 className="w-12 h-12 text-indigo-500 animate-spin" />
+                <div
+                  className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-indigo-100 to-indigo-50 shadow-[inset_0_4px_20px_rgb(0,0,0,0.05)] flex items-center justify-center mb-6 ring-4 ring-white"
+                  style={{
+                    width: '96px', height: '96px',
+                    borderRadius: '32px',
+                    background: 'linear-gradient(135deg, #e0e7ff 0%, #eef2ff 100%)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    marginBottom: '24px',
+                    boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.05), 0 0 0 4px white',
+                  }}
+                >
+                  <Loader2 className="w-12 h-12 text-indigo-500 animate-spin" style={{ width: '48px', height: '48px', color: '#6366f1' }} />
                 </div>
-                <h1 className="text-4xl font-extrabold text-slate-800 tracking-tight">Connecting to your CMS</h1>
-                <p className="text-lg font-medium text-slate-500 mt-2 mb-10 text-center">
+                <h1
+                  className="text-4xl font-extrabold text-slate-800 tracking-tight"
+                  style={{ fontSize: '36px', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.025em', margin: 0, textAlign: 'center' }}
+                >
+                  Connecting to your CMS
+                </h1>
+                <p
+                  className="text-lg font-medium text-slate-500 mt-2 mb-10 text-center"
+                  style={{ fontSize: '18px', fontWeight: 500, color: '#64748b', marginTop: '8px', marginBottom: '40px', textAlign: 'center' }}
+                >
                   {loadProgress?.phase === 'manifest' ? 'Fetching your playlist…' :
                    loadProgress?.phase === 'assets' ? 'Downloading content…' :
                    loadProgress?.phase === 'emergency' ? 'Caching emergency content…' :
@@ -4708,11 +4922,29 @@ function PlayerPage() {
                     mode='stopped' was killed; playbackStopped now
                     falls through to this view with paused-specific
                     hero / playlist list / action buttons. */}
-                <div className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-amber-100 to-amber-50 shadow-[inset_0_4px_20px_rgb(0,0,0,0.05)] flex items-center justify-center mb-6 ring-4 ring-white">
-                  <Pause className="w-12 h-12 text-amber-500" />
+                <div
+                  className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-amber-100 to-amber-50 shadow-[inset_0_4px_20px_rgb(0,0,0,0.05)] flex items-center justify-center mb-6 ring-4 ring-white"
+                  style={{
+                    width: '96px', height: '96px',
+                    borderRadius: '32px',
+                    background: 'linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    marginBottom: '24px',
+                    boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.05), 0 0 0 4px white',
+                  }}
+                >
+                  <Pause className="w-12 h-12 text-amber-500" style={{ width: '48px', height: '48px', color: '#f59e0b' }} />
                 </div>
-                <h1 className="text-4xl font-extrabold text-slate-800 tracking-tight">Playback Paused</h1>
-                <p className="text-lg font-medium text-slate-500 mt-2 mb-10 text-center">
+                <h1
+                  className="text-4xl font-extrabold text-slate-800 tracking-tight"
+                  style={{ fontSize: '36px', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.025em', margin: 0, textAlign: 'center' }}
+                >
+                  Playback Paused
+                </h1>
+                <p
+                  className="text-lg font-medium text-slate-500 mt-2 mb-10 text-center"
+                  style={{ fontSize: '18px', fontWeight: 500, color: '#64748b', marginTop: '8px', marginBottom: '40px', textAlign: 'center' }}
+                >
                   {exitUnavailable
                     ? 'Use your remote’s Home button to return to the launcher.'
                     : 'Content is held. Resume to go back to playback.'}
@@ -4720,11 +4952,31 @@ function PlayerPage() {
               </>
             ) : (
               <>
-                <div className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-emerald-100 to-emerald-50 shadow-[inset_0_4px_20px_rgb(0,0,0,0.05)] flex items-center justify-center mb-6 ring-4 ring-white">
-                  <CheckCircle2 className="w-12 h-12 text-emerald-500" />
+                <div
+                  className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-emerald-100 to-emerald-50 shadow-[inset_0_4px_20px_rgb(0,0,0,0.05)] flex items-center justify-center mb-6 ring-4 ring-white"
+                  style={{
+                    width: '96px', height: '96px',
+                    borderRadius: '32px',
+                    background: 'linear-gradient(135deg, #d1fae5 0%, #ecfdf5 100%)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    marginBottom: '24px',
+                    boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.05), 0 0 0 4px white',
+                  }}
+                >
+                  <CheckCircle2 className="w-12 h-12 text-emerald-500" style={{ width: '48px', height: '48px', color: '#10b981' }} />
                 </div>
-                <h1 className="text-4xl font-extrabold text-slate-800 tracking-tight">Screen Paired Successfully</h1>
-                <p className="text-lg font-medium text-slate-500 mt-2 mb-10 text-center">Waiting for a schedule to be assigned from the dashboard...</p>
+                <h1
+                  className="text-4xl font-extrabold text-slate-800 tracking-tight"
+                  style={{ fontSize: '36px', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.025em', margin: 0, textAlign: 'center' }}
+                >
+                  Screen Paired Successfully
+                </h1>
+                <p
+                  className="text-lg font-medium text-slate-500 mt-2 mb-10 text-center"
+                  style={{ fontSize: '18px', fontWeight: 500, color: '#64748b', marginTop: '8px', marginBottom: '40px', textAlign: 'center' }}
+                >
+                  Waiting for a schedule to be assigned from the dashboard...
+                </p>
               </>
             )}
 
@@ -5425,18 +5677,26 @@ function PlayerPage() {
             <div className="space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-slate-400">Playlist</span><span className="text-white font-medium">{playlist?.name || 'None'}</span></div>
               <div className="flex justify-between"><span className="text-slate-400">Slide</span><span className="text-white font-medium">{(currentIndex % (sorted.length || 1)) + 1} / {sorted.length}</span></div>
+              <CanvasInfoRow />
               <div className="flex justify-between"><span className="text-slate-400">Last Sync</span><span className="text-white font-medium">{lastSync || 'Never'}</span></div>
               <CacheStatusRow status={cacheStatus} />
               <SoftwareInfoRow />
               <DiagnosticsRow />
             </div>
-            <div className="flex gap-2 pt-2">
+            <div className="flex gap-2 pt-2 flex-wrap">
               <button
                 onClick={(e) => { e.stopPropagation(); handleSyncWithFeedback(); }}
                 disabled={syncFeedback === 'syncing'}
                 className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-700/60 text-white rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-1.5"
               >
                 {syncFeedback === 'syncing' ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Syncing…</> : 'Sync Now'}
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowCanvasEditor(true); }}
+                title="Set the LED's visible pixel size (overrides the controller's frame buffer)"
+                className="py-2 px-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold transition-colors"
+              >
+                Resize for LED
               </button>
               {/* Overlay actions trimmed to Sync + Stop. Exit +
                   Unpair are now on the Stopped splash where they
@@ -5461,6 +5721,7 @@ function PlayerPage() {
       {otaOverlay}
       {connectivityToast}
       {unsignedWsBanner}
+      {canvasEditor}
       {/* Phase D1.5 — touch builder overlay layer. Renders ABOVE
           all playback chrome but BELOW the emergency override (which
           sits in its own z-index above everything for life-safety
@@ -5580,6 +5841,206 @@ function OtaProgressOverlay({
           ×
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * Read the currently-effective LED canvas size from URL params or
+ * localStorage. Mirrors layout.tsx's pinning logic so the info-overlay
+ * row + the editor's initial values stay in sync with what the page is
+ * actually rendering. Returns `null` for either dimension if no
+ * override is active (player will use the controller's reported w/h).
+ */
+function readCanvasOverride(): { w: number | null; h: number | null } {
+  if (typeof window === 'undefined') return { w: null, h: null };
+  try {
+    const p = new URLSearchParams(window.location.search);
+    const urlW = parseInt(p.get('canvasW') || '', 10);
+    const urlH = parseInt(p.get('canvasH') || '', 10);
+    const lsW = parseInt(localStorage.getItem('edu_canvasW') || '', 10);
+    const lsH = parseInt(localStorage.getItem('edu_canvasH') || '', 10);
+    return {
+      w: Number.isFinite(urlW) && urlW > 0 ? urlW : (Number.isFinite(lsW) && lsW > 0 ? lsW : null),
+      h: Number.isFinite(urlH) && urlH > 0 ? urlH : (Number.isFinite(lsH) && lsH > 0 ? lsH : null),
+    };
+  } catch {
+    return { w: null, h: null };
+  }
+}
+
+/**
+ * Operator-facing modal that sets the LED's visible-canvas size. The
+ * Taurus / NovaStar / Colorlight controllers all force a minimum frame
+ * buffer (usually 1920×1080) regardless of the LED's physical pixel
+ * count — content rendered to the full frame buffer only displays the
+ * top-left portion that overlaps the actual LED panel. The operator
+ * pastes in their LED's true size here, we persist to localStorage,
+ * then reload with URL params so layout.tsx's beforeInteractive script
+ * applies them BEFORE React mounts and resizes html/body accordingly.
+ *
+ * Inline styles only — Tailwind sometimes fails to load on Taurus
+ * WebViews (cert / CDN reach), and the editor MUST be reachable in
+ * that failure mode to set the canvas size that fixes everything else.
+ */
+function CanvasSizeEditor({
+  initialW,
+  initialH,
+  onClose,
+}: {
+  initialW: number | null;
+  initialH: number | null;
+  onClose: () => void;
+}) {
+  const [w, setW] = useState(String(initialW || ''));
+  const [h, setH] = useState(String(initialH || ''));
+
+  const reloadWith = (params: Record<string, string | null>) => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    Object.entries(params).forEach(([k, v]) => {
+      if (v === null) url.searchParams.delete(k);
+      else url.searchParams.set(k, v);
+    });
+    window.location.href = url.toString();
+  };
+
+  const save = () => {
+    const wNum = parseInt(w, 10);
+    const hNum = parseInt(h, 10);
+    if (!wNum || !hNum || wNum < 100 || hNum < 100) {
+      // Cheap inline validation. <100px is almost certainly a typo.
+      alert('Enter both width and height in pixels (e.g. 960 and 1080).');
+      return;
+    }
+    try { localStorage.setItem('edu_canvasW', String(wNum)); } catch { /* ignore */ }
+    try { localStorage.setItem('edu_canvasH', String(hNum)); } catch { /* ignore */ }
+    reloadWith({ canvasW: String(wNum), canvasH: String(hNum) });
+  };
+
+  const clear = () => {
+    try { localStorage.removeItem('edu_canvasW'); } catch { /* ignore */ }
+    try { localStorage.removeItem('edu_canvasH'); } catch { /* ignore */ }
+    reloadWith({ canvasW: null, canvasH: null });
+  };
+
+  const inputStyle: React.CSSProperties = {
+    flex: 1,
+    padding: '10px 12px',
+    background: '#1e293b',
+    border: '1px solid #334155',
+    borderRadius: '8px',
+    color: 'white',
+    fontSize: '15px',
+    minWidth: 0,
+  };
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, top: 0, left: 0, right: 0, bottom: 0,
+        zIndex: 100000,
+        background: 'rgba(2, 6, 23, 0.92)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '16px',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+      }}
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#0f172a',
+          padding: '24px',
+          borderRadius: '16px',
+          width: '100%',
+          maxWidth: '420px',
+          color: 'white',
+          border: '1px solid #334155',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+        }}
+      >
+        <h3 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 6px 0' }}>Resize for LED</h3>
+        <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 18px 0', lineHeight: 1.5 }}>
+          Set the LED panel's actual visible pixels. The controller's frame buffer is usually
+          bigger (1920×1080 minimum on Taurus) but the LED only shows a portion of it.
+          <br /><br />
+          Examples: <strong>960×1080</strong> for one poster, <strong>320×1080</strong> for an ultra-narrow tower.
+        </p>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '18px' }}>
+          <input
+            type="number"
+            inputMode="numeric"
+            value={w}
+            onChange={(e) => setW(e.target.value)}
+            placeholder="Width"
+            aria-label="Canvas width in pixels"
+            style={inputStyle}
+          />
+          <span style={{ color: '#64748b', fontSize: '20px' }}>×</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            value={h}
+            onChange={(e) => setH(e.target.value)}
+            placeholder="Height"
+            aria-label="Canvas height in pixels"
+            style={inputStyle}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            onClick={save}
+            style={{
+              flex: '1 1 140px',
+              padding: '10px 14px',
+              background: '#6366f1',
+              border: 'none',
+              borderRadius: '8px',
+              color: 'white',
+              fontWeight: 700,
+              fontSize: '14px',
+              cursor: 'pointer',
+            }}
+          >
+            Save &amp; reload
+          </button>
+          {(initialW || initialH) ? (
+            <button
+              onClick={clear}
+              style={{
+                padding: '10px 14px',
+                background: '#334155',
+                border: 'none',
+                borderRadius: '8px',
+                color: 'white',
+                fontWeight: 600,
+                fontSize: '14px',
+                cursor: 'pointer',
+              }}
+            >
+              Reset
+            </button>
+          ) : null}
+          <button
+            onClick={onClose}
+            style={{
+              padding: '10px 14px',
+              background: '#334155',
+              border: 'none',
+              borderRadius: '8px',
+              color: 'white',
+              fontWeight: 600,
+              fontSize: '14px',
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
