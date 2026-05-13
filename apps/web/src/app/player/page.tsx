@@ -4299,6 +4299,18 @@ function PlayerPage() {
           ...(tpl.bgGradient ? { background: tpl.bgGradient } : {}),
           ...(tpl.bgImage ? { backgroundImage: tpl.bgImage.trim().startsWith('url(') ? tpl.bgImage : `url(${tpl.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}),
         }}>
+        {/* Scale the entire template scene from its authored design
+            resolution down (or up) to the LED canvas via transform:
+            scale(). Pre-built templates are authored at 1920×1080
+            landscape or 2160×3840 portrait; this lets a 960×1080 LED
+            canvas show the whole template fit-contain'd instead of
+            clipping the bottom-right half. Operator report 2026-05-13:
+            "the template loads now but its 1080x1920 so cutting off
+            half the screen." */}
+        <TemplateScaler
+          designW={tpl.screenWidth || 1920}
+          designH={tpl.screenHeight || 1080}
+        >
         {/* Render each zone with its live widget. Key by sceneTick on touch
             templates so idle-reset remounts widgets and clears local state. */}
         {zones.map((zone: any) => {
@@ -4419,6 +4431,7 @@ function PlayerPage() {
           </div>
           );
         })}
+        </TemplateScaler>
 
         {/* Preview mode chip — always visible in the top-right corner so
             it's obvious the browser tab is a preview, not the real kiosk. */}
@@ -5518,7 +5531,28 @@ function PlayerPage() {
                 Unpair is demoted to a small text link below. When idle
                 (waiting or just paired), Auto-Play is the primary
                 action and Unpair sits in the row. */}
-            <div className="flex flex-wrap items-center justify-center gap-3 flex-shrink-0 mt-6 w-full">
+            {/* Margin fallback for Chromium 83 / Taurus — `gap` on flex
+                containers is Chrome 84+, so a button row that used Tailwind
+                `gap-3` rendered with zero spacing. Operator photo
+                (2026-05-13) showed "Unpair Sync now Exit Auto-Play" all
+                jammed together. Per-button horizontal margin reproduces
+                14px between adjacent buttons regardless of gap support. */}
+            <style suppressHydrationWarning>{`
+              .edu-action-row > button { margin: 4px 7px; }
+            `}</style>
+            <div
+              className="edu-action-row flex flex-wrap items-center justify-center gap-3 flex-shrink-0 mt-6 w-full"
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '14px',
+                marginTop: '24px',
+                width: '100%',
+                flexShrink: 0,
+              }}
+            >
               {playbackStopped ? (
                 <>
                   <button
@@ -5852,6 +5886,101 @@ function OtaProgressOverlay({
  * actually rendering. Returns `null` for either dimension if no
  * override is active (player will use the controller's reported w/h).
  */
+
+/**
+ * Scales a template designed at (designW × designH) — typically the
+ * pre-built 1920×1080 landscape or 2160×3840 portrait master sizes —
+ * to fit any LED canvas via CSS transform.
+ *
+ * Why this matters (operator report 2026-05-13): "the template loads
+ * now but its 1080x1920 so cutting off half the screen...what could
+ * we do to offer custom resolutions with our pre packaged temapltes?
+ * right now they are just 4k landscape or portrait". The pre-built
+ * templates are authored at a fixed design resolution (zone positions
+ * % of that resolution, widget pixel sizes tuned for that resolution).
+ * Without scaling, a 1080×1920 template renders at 1080×1920 inside a
+ * 960×1080 LED canvas — the bottom-right gets clipped off-LED.
+ *
+ * Pattern matches CLAUDE.md "Template Design Workflow" section: wrap
+ * the scene in a fixed-size design-resolution div, wrap that in a
+ * container that measures its parent and applies transform: scale(N)
+ * to fit. fit-contain (Math.min) preserves aspect ratio and never
+ * crops — black bars appear on whichever axis doesn't fill. The LED
+ * canvas's background color shows through those bars.
+ */
+function TemplateScaler({
+  designW,
+  designH,
+  children,
+}: {
+  designW: number;
+  designH: number;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const compute = () => {
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
+      if (w <= 0 || h <= 0) return;
+      // fit-contain: scale to the smaller of (canvasW/designW, canvasH/designH).
+      // Anything larger would crop the design's edges off-LED.
+      setScale(Math.min(w / designW, h / designH));
+    };
+    compute();
+    // Two RAFs — first paint may report 0 offsetWidth on the Taurus
+    // WebView; the second tick has real dimensions. Same pattern the
+    // rainbow-animated theme's useScaleToFit uses, copied for
+    // consistency.
+    const r1 = requestAnimationFrame(compute);
+    const r2 = requestAnimationFrame(() => requestAnimationFrame(compute));
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(compute) : null;
+    if (ro) ro.observe(el);
+    window.addEventListener('resize', compute);
+    return () => {
+      cancelAnimationFrame(r1);
+      cancelAnimationFrame(r2);
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', compute);
+    };
+  }, [designW, designH]);
+  return (
+    <div
+      ref={ref}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        top: 0, right: 0, bottom: 0, left: 0,
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        // Inner scene at the template's authored design resolution.
+        // Zones inside use %-offsets, which now resolve against the
+        // design res — matching what the operator saw in the builder.
+        style={{
+          width: `${designW}px`,
+          height: `${designH}px`,
+          flexShrink: 0,
+          position: 'relative',
+          transform: scale > 0 ? `scale(${scale})` : 'scale(0)',
+          transformOrigin: 'center center',
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function readCanvasOverride(): { w: number | null; h: number | null } {
   if (typeof window === 'undefined') return { w: null, h: null };
   try {

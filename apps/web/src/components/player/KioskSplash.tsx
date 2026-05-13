@@ -416,15 +416,23 @@ const CSS = `
 }
 
 /* ─── Background layers ──────────────────────────────────────── */
+/* 2026-05-13 — every 'inset: <value>' rule below ALSO declares
+   top/right/bottom/left long-hand. NovaStar Taurus controllers ship
+   Chromium 83 which doesn't support the inset shorthand (Chrome 87+).
+   Without the long-hand fallback the absolute children fall back to
+   top/left/right/bottom: auto — they collapse to content size at
+   the top-left of their containing block, and the operator saw
+   "Connecting to your CMS..." pinned at top-left of the LED instead
+   of centered. */
 .kiosk-base {
-  position: absolute; inset: 0; z-index: 0;
+  position: absolute; inset: 0; top: 0; right: 0; bottom: 0; left: 0; z-index: 0;
   background:
     radial-gradient(1400px 800px at 15% 20%, rgba(99, 102, 241, 0.18), transparent 60%),
     radial-gradient(1100px 700px at 85% 80%, rgba(168, 85, 247, 0.15), transparent 60%),
     linear-gradient(135deg, #0a0a1a 0%, #111024 40%, #0a0a1a 100%);
 }
 .kiosk-aurora {
-  position: absolute; inset: -20%; z-index: 1;
+  position: absolute; inset: -20%; top: -20%; right: -20%; bottom: -20%; left: -20%; z-index: 1;
   pointer-events: none; filter: blur(120px); opacity: 0.55;
   will-change: transform;
 }
@@ -487,7 +495,7 @@ const CSS = `
 }
 
 .kiosk-grain {
-  position: absolute; inset: 0; z-index: 3;
+  position: absolute; inset: 0; top: 0; right: 0; bottom: 0; left: 0; z-index: 3;
   pointer-events: none;
   opacity: 0.05;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/></svg>");
@@ -496,7 +504,7 @@ const CSS = `
 
 /* ─── Stage ─────────────────────────────────────────────────── */
 .kiosk-stage {
-  position: absolute; inset: 0; z-index: 10;
+  position: absolute; inset: 0; top: 0; right: 0; bottom: 0; left: 0; z-index: 10;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   padding: clamp(20px, 4vw, 48px);
@@ -514,14 +522,14 @@ const CSS = `
   margin-bottom: 18px;
 }
 .kiosk-logo-ring-inner {
-  position: absolute; inset: -8px;
+  position: absolute; inset: -8px; top: -8px; right: -8px; bottom: -8px; left: -8px;
   border-radius: 50%;
   border: 2px solid var(--splash-primary);
   opacity: 0.5;
   animation: logo-pulse 2.8s ease-in-out infinite;
 }
 .kiosk-logo-tile {
-  position: absolute; inset: 0;
+  position: absolute; inset: 0; top: 0; right: 0; bottom: 0; left: 0;
   border-radius: 50%;
   background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
   border: 1.5px solid rgba(255,255,255,0.12);
@@ -634,7 +642,7 @@ const CSS = `
   z-index: 2;
 }
 .kiosk-code-glow {
-  position: absolute; inset: 0;
+  position: absolute; inset: 0; top: 0; right: 0; bottom: 0; left: 0;
   background:
     radial-gradient(60% 40% at 50% 100%, var(--splash-primary), transparent 70%);
   opacity: 0.35;
