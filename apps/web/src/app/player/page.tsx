@@ -617,7 +617,18 @@ function PlayerVideoSlide({
       src={isMov ? undefined : src}
       className={classes}
       preload="auto"
-      style={{ background: '#000' }}
+      // 2026-05-13 — inline-style fallback so the video renders
+      // full-screen even if Tailwind doesn't apply the parent
+      // utility classes. Background:#000 was already here; the
+      // position/size/object-fit lines are the new fallbacks.
+      style={{
+        position: 'absolute',
+        top: 0, left: 0, right: 0, bottom: 0,
+        width: '100%',
+        height: '100%',
+        objectFit: 'contain',
+        background: '#000',
+      }}
       muted={isMuted}
       playsInline
       loop={isSoloPlaylist}
@@ -4327,6 +4338,20 @@ function PlayerPage() {
   return (
     <div
       className={`fixed inset-0 bg-black overflow-hidden ${isPlaylistInteractive ? '' : 'cursor-none'}`}
+      // 2026-05-13 — inline-style fallback. Same reasoning as
+      // /player/layout.tsx: if Tailwind doesn't apply (CDN reach,
+      // WebView caching the old bundle, etc.), this wrapper still
+      // sizes correctly and the image/video inside still has a
+      // positioned ancestor to fill.
+      style={{
+        position: 'fixed',
+        top: 0, left: 0, right: 0, bottom: 0,
+        width: '100vw',
+        height: '100vh',
+        background: '#000',
+        overflow: 'hidden',
+        cursor: isPlaylistInteractive ? undefined : 'none',
+      }}
       role={isPlaylistInteractive ? undefined : 'button'}
       tabIndex={isPlaylistInteractive ? -1 : 0}
       aria-label={isPlaylistInteractive ? undefined : 'Toggle screen info overlay'}
@@ -4341,7 +4366,18 @@ function PlayerPage() {
       }}
     >
       {currentItem && !playbackStopped ? (
-        <div className={`relative w-full h-full flex items-center justify-center ${isPlaylistInteractive ? '' : 'pointer-events-none'}`}>
+        <div
+          className={`relative w-full h-full flex items-center justify-center ${isPlaylistInteractive ? '' : 'pointer-events-none'}`}
+          style={{
+            position: 'relative',
+            width: '100%',
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: isPlaylistInteractive ? undefined : 'none',
+          }}
+        >
           {sorted.map((item, index) => {
             const isActive = index === (currentIndex % sorted.length);
             const mime = item.asset?.mimeType || '';
@@ -4526,6 +4562,25 @@ function PlayerPage() {
                 src={resUrl}
                 alt=""
                 className={classes}
+                // 2026-05-13 — inline-style fallback so the image renders
+                // even if Tailwind's `absolute inset-0 w-full h-full
+                // object-contain` utilities fail to apply. Operator was
+                // seeing a black screen on a Taurus WebView with the
+                // image downloaded but invisible — the parent flex
+                // wrapper relies on Tailwind for sizing too. Two
+                // belts-and-suspenders: image element gets explicit
+                // absolute-fill, opacity flips by isActive so transitions
+                // still work.
+                style={{
+                  position: 'absolute',
+                  top: 0, left: 0, right: 0, bottom: 0,
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain',
+                  opacity: isActive ? 1 : 0,
+                  zIndex: isActive ? 10 : 0,
+                  transition: trans === 'NONE' ? 'none' : 'opacity 1000ms ease-in-out',
+                }}
                 onError={() => {
                   console.warn('[Player] image error, skipping:', resUrl);
                   if (isActive) setCurrentIndex(prev => prev + 1);
