@@ -135,6 +135,21 @@ export function ScreenEmergencyContentConfig({
 
   const onUploadCustom = async (type: EmergencyTypeRow, orient: Orient, file: File) => {
     setUploadError(null);
+    // Block .mov / .avi BEFORE the upload starts — emergency content
+    // is the worst place to discover a format problem (operator was
+    // staging a lockdown asset and won't notice the silent player-side
+    // playback fail until a drill or a real incident). Same allowlist
+    // as the asset library; same friendly error.
+    const lowerName = (file.name || '').toLowerCase();
+    const lowerType = (file.type || '').toLowerCase();
+    if (lowerName.endsWith('.mov') || lowerType === 'video/quicktime') {
+      setUploadError("QuickTime .mov isn't supported — export as MP4 (QuickTime Player → Export As → 1080p) and re-upload.");
+      return;
+    }
+    if (lowerName.endsWith('.avi') || lowerType === 'video/x-msvideo') {
+      setUploadError("AVI isn't supported — convert to MP4 and re-upload.");
+      return;
+    }
     setUploadingType(`${type.short}-${orient}`);
     const k = apiKeys(type, orient);
     const screenK = screenKeys(type, orient);
@@ -150,7 +165,19 @@ export function ScreenEmergencyContentConfig({
         credentials: 'include',
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
-      if (!res.ok) throw new Error(`Upload failed (${res.status})`);
+      if (!res.ok) {
+        // Pull the friendly error string out of the API response if it
+        // came back as JSON ({ message: "..." }) — the assertUploadIntent
+        // / multer fileFilter paths return actionable text we want to
+        // surface verbatim instead of a generic "Upload failed (415)".
+        let detail = `Upload failed (${res.status})`;
+        try {
+          const payload = await res.json();
+          if (payload?.message) detail = payload.message;
+          else if (payload?.error) detail = payload.error;
+        } catch { /* fall back to generic status */ }
+        throw new Error(detail);
+      }
       const uploaded = await res.json();
       const url =
         uploaded?.url ||
@@ -330,7 +357,13 @@ export function ScreenEmergencyContentConfig({
                       )}
                       <input
                         type="file"
-                        accept="image/*,video/*,application/pdf"
+                        // Explicit format list — `video/*` would let the
+                        // OS picker show .mov / .avi which the player
+                        // can't play back. Keeping the allowlist
+                        // narrow saves the operator a round-trip
+                        // discovering it's unsupported. Mirrors the
+                        // assets-library accept list.
+                        accept=".jpg,.jpeg,.png,.webp,.gif,.svg,.bmp,.mp4,.m4v,.webm,.mp3,.ogg,.wav,.m4a,.pdf"
                         className="hidden"
                         disabled={!!uploadingType || updateMutation.isPending}
                         onChange={(e) => {

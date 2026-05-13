@@ -14,12 +14,41 @@ import { randomUUID, createHash } from 'crypto';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
 import { EmailService } from '../email/email.service';
 
+// Browser-playable formats only. Cross-browser support is non-negotiable
+// for digital signage (CLAUDE.md "Cross-browser support" section): every
+// asset has to render on Mac Safari + Windows Edge + Android WebView with
+// the same source file. That excludes:
+//
+//   * `video/quicktime` (.mov) — Apple-only container. Many .mov files
+//     are TRUE QuickTime (`ftyp=qt  `) which Chromium/WebKit refuse to
+//     decode regardless of the MIME header. Even iPhone-style .mov
+//     (`ftyp=mp42`) plays inconsistently. 2026-05-13: a customer's
+//     IMG_*.mov from an iPhone shipped to a Taurus controller, the
+//     Android WebView refused it, splash screen forever.
+//   * `video/x-msvideo` (.avi) — Chromium dropped support in 2014, no
+//     mainstream browser plays AVI today.
+//
+// If an operator hits this list with a .mov or .avi, the assertUploadIntent
+// error message tells them to export as MP4 (H.264) — universal.
 const ALLOWED_TYPES = [
   'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml', 'image/x-icon', 'image/bmp',
-  'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo', 'video/x-m4v',
+  'video/mp4', 'video/webm', 'video/x-m4v',
   'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4',
   'application/pdf',
 ];
+
+// Filename extensions we explicitly REJECT before normalization, so the
+// operator gets a clear actionable error ("export as MP4") instead of a
+// silently-failing "file type is not supported" — same gate also applied
+// in the web client's pre-upload check.
+const REJECTED_EXTENSIONS: Record<string, string> = {
+  '.mov': "QuickTime .mov files aren't supported by all browsers (they fail to play on Android signage players and Windows Edge). Please export as MP4 (H.264) — in QuickTime Player: File → Export As → 1080p, then upload the .mp4.",
+  '.avi': "AVI files aren't supported by browsers. Please convert to MP4 (H.264) before uploading.",
+};
+const REJECTED_MIMES: Record<string, string> = {
+  'video/quicktime': REJECTED_EXTENSIONS['.mov'],
+  'video/x-msvideo': REJECTED_EXTENSIONS['.avi'],
+};
 
 const MAX_ASSET_FILE_SIZE = 500 * 1024 * 1024;
 const EXTENSION_MIME_TYPES: Record<string, string> = {
@@ -34,8 +63,6 @@ const EXTENSION_MIME_TYPES: Record<string, string> = {
   '.mp4': 'video/mp4',
   '.m4v': 'video/mp4',
   '.webm': 'video/webm',
-  '.mov': 'video/quicktime',
-  '.avi': 'video/x-msvideo',
   '.mp3': 'audio/mpeg',
   '.ogg': 'audio/ogg',
   '.wav': 'audio/wav',
@@ -53,8 +80,6 @@ const MIME_EXTENSIONS: Record<string, string> = {
   'image/bmp': '.bmp',
   'video/mp4': '.mp4',
   'video/webm': '.webm',
-  'video/quicktime': '.mov',
-  'video/x-msvideo': '.avi',
   'video/x-m4v': '.m4v',
   'audio/mpeg': '.mp3',
   'audio/ogg': '.ogg',
@@ -121,11 +146,24 @@ export class AssetsController {
   }
 
   private assertUploadIntent(filename: string | undefined, contentType: string | undefined, size: number | undefined): string {
+    // Surface friendly per-format guidance BEFORE the generic "not
+    // supported" fall-through. .mov / .avi are the common foot-guns
+    // (operators export from iMovie / QuickTime / Camtasia and don't
+    // realize Android WebView refuses to play them) — telling them
+    // "export as MP4" is the actionable next step, not "file type
+    // not supported, sorry."
+    const ext = extname(filename || '').toLowerCase();
+    const explicit = (contentType || '').split(';')[0].trim().toLowerCase();
+    const rejectReason = REJECTED_EXTENSIONS[ext] || REJECTED_MIMES[explicit];
+    if (rejectReason) {
+      throw new HttpException(rejectReason, HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+    }
+
     const mimeType = this.normalizeMimeType(filename, contentType);
     if (!ALLOWED_TYPES.includes(mimeType)) {
       throw new HttpException(
-        'File type is not supported. Allowed: images, MP4/WebM/MOV/AVI video, audio, PDF.',
-        HttpStatus.BAD_REQUEST,
+        'File type is not supported. Allowed: images (JPG/PNG/WebP/GIF/SVG), MP4/WebM video, audio (MP3/OGG/WAV/M4A), PDF.',
+        HttpStatus.UNSUPPORTED_MEDIA_TYPE,
       );
     }
 
@@ -348,7 +386,7 @@ export class AssetsController {
   ) {
     if (!file) {
       throw new HttpException(
-        'No file uploaded, or file type is not supported. Allowed: images, video, audio, PDF.',
+        'No file uploaded, or file type is not supported. Allowed: images (JPG/PNG/WebP/GIF/SVG), MP4/WebM video, audio, PDF. QuickTime .mov and AVI are not supported — export as MP4 first.',
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -526,7 +564,7 @@ export class AssetsController {
   ) {
     if (!file) {
       throw new HttpException(
-        'No file uploaded, or file type is not supported. Allowed: images, video, audio, PDF.',
+        'No file uploaded, or file type is not supported. Allowed: images (JPG/PNG/WebP/GIF/SVG), MP4/WebM video, audio, PDF. QuickTime .mov and AVI are not supported — export as MP4 first.',
         HttpStatus.BAD_REQUEST,
       );
     }

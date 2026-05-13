@@ -5290,12 +5290,33 @@ export function AssetLibraryModal({
     const mt = (a.mimeType || '').toLowerCase();
     return kind === 'image' ? mt.startsWith('image/') : mt.startsWith('video/');
   });
+  // 2026-05-13 — Dropped video/quicktime. .mov files break on Android
+  // signage players and aren't reliable in Edge/Safari. The library-side
+  // /assets/presign endpoint also rejects them; keeping them out of the
+  // template-builder media picker prevents an operator from trying to
+  // upload a .mov here, watching it fail at the API, then being confused
+  // about why their template's video zone is empty.
   const acceptAttr = kind === 'image'
     ? 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/avif'
-    : 'video/mp4,video/webm,video/quicktime';
+    : 'video/mp4,video/webm';
 
   const handleUpload = async (file: File) => {
     setUploadError(null);
+    // Fail fast on formats we already know won't play back. Mirrors the
+    // server's REJECTED_EXTENSIONS / REJECTED_MIMES gate in
+    // assets.controller.ts and the assets-page client-side check —
+    // operator gets the actionable "export as MP4" message in <100ms
+    // instead of after a 30-second upload that ends in a server reject.
+    const lowerName = (file.name || '').toLowerCase();
+    const lowerType = (file.type || '').toLowerCase();
+    if (lowerName.endsWith('.mov') || lowerType === 'video/quicktime') {
+      setUploadError("QuickTime .mov isn't supported (Android players and Edge refuse it). Export as MP4: QuickTime Player → File → Export As → 1080p, then upload the .mp4.");
+      return;
+    }
+    if (lowerName.endsWith('.avi') || lowerType === 'video/x-msvideo') {
+      setUploadError("AVI files aren't supported by browsers. Convert to MP4 (H.264) and re-upload.");
+      return;
+    }
     setUploading(true);
     try {
       const contentType = file.type || (kind === 'image' ? 'image/jpeg' : 'video/mp4');

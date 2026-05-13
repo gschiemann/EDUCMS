@@ -48,10 +48,16 @@ export class SupabaseStorageService implements OnModuleInit {
     // Bucket file-size limit. Multer cap (500MB) + Railway request body
     // cap mean the actual uploadable ceiling is whichever is lower; this
     // is the Supabase side. Bumped from 50MB to 500MB to match Multer.
+    // 2026-05-13 — Dropped video/quicktime + video/x-msvideo. .mov files
+    // (especially QuickTime-only ftyp=qt containers) and AVI don't play
+    // in Android WebView / Chromium / WebKit, breaking the screen
+    // experience. Kept here as defense-in-depth alongside the
+    // assets.controller assertUploadIntent gate — if someone hits the
+    // Supabase upload URL directly, the bucket policy still rejects.
     const ALLOWED_MIMES = [
       'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml',
       'image/x-icon', 'image/bmp',
-      'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo', 'video/x-m4v',
+      'video/mp4', 'video/webm', 'video/x-m4v',
       'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4',
       'application/pdf',
       // 2026-05-03 BUG FIX (cycle 1 ai-imports BUG-002) — added PowerPoint

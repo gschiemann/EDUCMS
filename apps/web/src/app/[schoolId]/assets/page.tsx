@@ -15,7 +15,32 @@ import { FolderPicker } from '@/components/assets/FolderPicker';
 // it never loads" but the actual error was the client-side guard. Server
 // is 500MB.
 const MAX_FILE_SIZE = 500 * 1024 * 1024;
-const ACCEPT_STRING = '.jpg,.jpeg,.png,.webp,.gif,.svg,.bmp,.mp4,.m4v,.webm,.mov,.avi,.mp3,.ogg,.wav,.pdf';
+// 2026-05-13 — Dropped .mov and .avi from the accept list. Browsers /
+// Android WebView refuse QuickTime (`ftyp=qt  `) containers and have
+// never supported AVI cross-platform. Operator hit this with an
+// IMG_*.mov from an iPhone — file uploaded fine, then the player
+// silently failed to play it (HTML5 video element refused the source).
+// Keeping these out of the picker AND the drag-drop validation below
+// means the operator gets an instant, actionable error instead of a
+// 4-hour debugging trip. Server enforces the same allowlist in
+// assets.controller.ts (assertUploadIntent + Supabase bucket policy).
+const ACCEPT_STRING = '.jpg,.jpeg,.png,.webp,.gif,.svg,.bmp,.mp4,.m4v,.webm,.mp3,.ogg,.wav,.m4a,.pdf';
+
+// Friendly, per-format rejection messages. Mirrors REJECTED_EXTENSIONS /
+// REJECTED_MIMES on the server — keeping the rule list in two places is
+// the price of "fail before upload instead of fail after the bytes have
+// landed on Supabase." When you add a format to one, add it to the other.
+function getUnsupportedReason(file: File): string | null {
+  const name = (file.name || '').toLowerCase();
+  const type = (file.type || '').toLowerCase();
+  if (name.endsWith('.mov') || type === 'video/quicktime') {
+    return "QuickTime .mov isn't supported (Android signage players and Windows Edge refuse it). Export as MP4: in QuickTime Player → File → Export As → 1080p, then upload the .mp4.";
+  }
+  if (name.endsWith('.avi') || type === 'video/x-msvideo') {
+    return "AVI files aren't supported by browsers. Convert to MP4 (H.264) and re-upload.";
+  }
+  return null;
+}
 
 type UploadPhase = 'idle' | 'uploading' | 'success' | 'error';
 type ViewMode = 'grid' | 'list';
@@ -271,7 +296,14 @@ export default function AssetsPage() {
     const genId = () => { try { return crypto.randomUUID(); } catch { return Math.random().toString(36).substring(2, 10); } };
     const items = list.map((file) => {
       const item: UploadItem = { id: genId(), file, progress: 0, phase: 'idle' };
-      if (file.size > MAX_FILE_SIZE) { item.phase = 'error'; item.error = `Too large (${fmtSize(file.size)})`; }
+      // Reject BEFORE any network call. The order matters: format check
+      // first (we'd rather tell the operator "export as MP4" than "too
+      // large" if both happen to be true on the same file). Both states
+      // surface in the upload-progress strip so the operator sees which
+      // file is blocked and why.
+      const unsupportedReason = getUnsupportedReason(file);
+      if (unsupportedReason) { item.phase = 'error'; item.error = unsupportedReason; }
+      else if (file.size > MAX_FILE_SIZE) { item.phase = 'error'; item.error = `Too large (${fmtSize(file.size)})`; }
       else item.phase = 'uploading';
       return item;
     });
@@ -612,15 +644,25 @@ export default function AssetsPage() {
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Uploads</span>
             <button onClick={() => setUploads(p => p.filter(u => u.phase === 'uploading'))} className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold">Clear done</button>
           </div>
-          <div className="divide-y divide-slate-50 max-h-40 overflow-y-auto">
+          <div className="divide-y divide-slate-50 max-h-64 overflow-y-auto">
             {uploads.map(u => (
-              <div key={u.id} className="px-4 py-2 flex items-center gap-3">
-                {typeIcon(u.file.type, 'w-3.5 h-3.5')}
-                <span className="flex-1 text-[11px] font-medium text-slate-700 truncate">{u.file.name}</span>
-                <span className="text-[10px] text-slate-400 shrink-0">{fmtSize(u.file.size)}</span>
-                {u.phase === 'uploading' && <div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 transition-all rounded-full" style={{ width: `${u.progress}%` }} /></div>}
-                {u.phase === 'success' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
-                {u.phase === 'error' && <span className="text-[10px] text-red-500 font-semibold truncate max-w-32">{u.error}</span>}
+              <div key={u.id} className="px-4 py-2">
+                <div className="flex items-center gap-3">
+                  {typeIcon(u.file.type, 'w-3.5 h-3.5')}
+                  <span className="flex-1 text-[11px] font-medium text-slate-700 truncate" title={u.file.name}>{u.file.name}</span>
+                  <span className="text-[10px] text-slate-400 shrink-0">{fmtSize(u.file.size)}</span>
+                  {u.phase === 'uploading' && <div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 transition-all rounded-full" style={{ width: `${u.progress}%` }} /></div>}
+                  {u.phase === 'success' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
+                  {u.phase === 'error' && <X className="w-3.5 h-3.5 text-red-500 shrink-0" />}
+                </div>
+                {/* Error reason on its own row so long messages (export-as-MP4
+                    guidance, file-too-large, server validation errors) can
+                    wrap and stay legible. Title attribute preserves the full
+                    text on hover so even if it's clipped by vertical
+                    scrolling the operator can still read it. */}
+                {u.phase === 'error' && u.error && (
+                  <p className="text-[10px] text-red-600 font-medium leading-snug mt-1 ml-6 pr-2" title={u.error}>{u.error}</p>
+                )}
               </div>
             ))}
           </div>
@@ -832,10 +874,22 @@ export default function AssetsPage() {
                     <video
                       src={thumb}
                       muted
+                      playsInline
                       preload="metadata"
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      // 2026-05-13 — seek-to-frame-1 hack so a freshly-
+                      // uploaded video shows a real preview without
+                      // requiring a hover or page reload. Without
+                      // this the browser leaves a black/empty <video>
+                      // box until the user mouses over and triggers
+                      // .play(). Operator: "when i upload a video
+                      // asset it doesnt show the preview until i
+                      // refesh the page and then it shows."
+                      onLoadedMetadata={(e) => {
+                        try { (e.currentTarget as HTMLVideoElement).currentTime = 0.1; } catch { /* ignore */ }
+                      }}
                       onMouseEnter={(e) => { try { e.currentTarget.play(); } catch {} }}
-                      onMouseLeave={(e) => { try { e.currentTarget.pause(); e.currentTarget.currentTime = 0; } catch {} }}
+                      onMouseLeave={(e) => { try { e.currentTarget.pause(); e.currentTarget.currentTime = 0.1; } catch {} }}
                     />
                   ) : thumb ? (
                     // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/no-noninteractive-element-interactions
@@ -908,7 +962,16 @@ export default function AssetsPage() {
                 >
                   <div className="w-12 h-12 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
                     {thumb && isVideo(a) ? (
-                      <video src={thumb} muted preload="metadata" className="w-full h-full object-cover" />
+                      <video
+                        src={thumb}
+                        muted
+                        playsInline
+                        preload="metadata"
+                        className="w-full h-full object-cover"
+                        onLoadedMetadata={(e) => {
+                          try { (e.currentTarget as HTMLVideoElement).currentTime = 0.1; } catch { /* ignore */ }
+                        }}
+                      />
                     ) : thumb ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
