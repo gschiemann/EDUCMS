@@ -1125,9 +1125,11 @@ function CanvasInfoRow() {
   if (typeof window === 'undefined') return null;
   let display = '—';
   let label = 'auto';
+  let fitMode: 'contain' | 'cover' = 'contain';
   try {
     const p = new URLSearchParams(window.location.search);
     const override = readCanvasOverride();
+    fitMode = override.fitMode;
     if (override.w && override.h) {
       display = `${override.w}×${override.h}`;
       label = 'override';
@@ -1141,12 +1143,20 @@ function CanvasInfoRow() {
   // the unused-variable warning.
   void tick;
   return (
-    <div className="flex justify-between">
-      <span className="text-slate-400">LED canvas</span>
-      <span className={label === 'override' ? 'text-emerald-400 font-medium text-xs' : 'text-slate-300 font-medium text-xs'}>
-        {display}{' '}<span className="opacity-60">({label})</span>
-      </span>
-    </div>
+    <>
+      <div className="flex justify-between">
+        <span className="text-slate-400">LED canvas</span>
+        <span className={label === 'override' ? 'text-emerald-400 font-medium text-xs' : 'text-slate-300 font-medium text-xs'}>
+          {display}{' '}<span className="opacity-60">({label})</span>
+        </span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-slate-400">Fit mode</span>
+        <span className="text-slate-300 font-medium text-xs">
+          {fitMode === 'cover' ? 'Fill screen (crop overflow)' : 'Show whole template (letterbox)'}
+        </span>
+      </div>
+    </>
   );
 }
 
@@ -4109,6 +4119,7 @@ function PlayerPage() {
     <CanvasSizeEditor
       initialW={canvasOverride.w}
       initialH={canvasOverride.h}
+      initialFitMode={canvasOverride.fitMode}
       onClose={() => setShowCanvasEditor(false)}
     />
   ) : null;
@@ -4310,6 +4321,7 @@ function PlayerPage() {
         <TemplateScaler
           designW={tpl.screenWidth || 1920}
           designH={tpl.screenHeight || 1080}
+          fitMode={canvasOverride.fitMode}
         >
         {/* Render each zone with its live widget. Key by sceneTick on touch
             templates so idle-reset remounts widgets and clears local state. */}
@@ -5914,10 +5926,12 @@ function OtaProgressOverlay({
 function TemplateScaler({
   designW,
   designH,
+  fitMode = 'contain',
   children,
 }: {
   designW: number;
   designH: number;
+  fitMode?: 'contain' | 'cover';
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -5929,9 +5943,16 @@ function TemplateScaler({
       const w = el.offsetWidth;
       const h = el.offsetHeight;
       if (w <= 0 || h <= 0) return;
-      // fit-contain: scale to the smaller of (canvasW/designW, canvasH/designH).
-      // Anything larger would crop the design's edges off-LED.
-      setScale(Math.min(w / designW, h / designH));
+      // contain: scale down until the WHOLE design fits — letterbox bars
+      //          appear on whichever axis doesn't fill (Math.min).
+      // cover:   scale UP until the design fills the canvas entirely —
+      //          parts of the design get cropped off-LED (Math.max).
+      // Operator picks per-screen via the "Resize for LED" overlay
+      // (2026-05-13 — partner ask: "i thought it would fill the screen
+      // fully, is that possible?"). Default stays contain so nothing
+      // unexpectedly disappears off-screen.
+      const fn = fitMode === 'cover' ? Math.max : Math.min;
+      setScale(fn(w / designW, h / designH));
     };
     compute();
     // Two RAFs — first paint may report 0 offsetWidth on the Taurus
@@ -5949,7 +5970,7 @@ function TemplateScaler({
       if (ro) ro.disconnect();
       window.removeEventListener('resize', compute);
     };
-  }, [designW, designH]);
+  }, [designW, designH, fitMode]);
   return (
     <div
       ref={ref}
@@ -5984,20 +6005,27 @@ function TemplateScaler({
   );
 }
 
-function readCanvasOverride(): { w: number | null; h: number | null } {
-  if (typeof window === 'undefined') return { w: null, h: null };
+function readCanvasOverride(): { w: number | null; h: number | null; fitMode: 'contain' | 'cover' } {
+  if (typeof window === 'undefined') return { w: null, h: null, fitMode: 'contain' };
   try {
     const p = new URLSearchParams(window.location.search);
     const urlW = parseInt(p.get('canvasW') || '', 10);
     const urlH = parseInt(p.get('canvasH') || '', 10);
     const lsW = parseInt(localStorage.getItem('edu_canvasW') || '', 10);
     const lsH = parseInt(localStorage.getItem('edu_canvasH') || '', 10);
+    // fitMode: URL param wins, then localStorage, then default to 'contain'.
+    // 'cover' means scale template to FILL the LED (cropping overflow);
+    // 'contain' fits the whole design inside (letterbox on aspect mismatch).
+    const urlFit = (p.get('fitMode') || '').toLowerCase();
+    const lsFit = (typeof localStorage !== 'undefined' ? localStorage.getItem('edu_fitMode') || '' : '').toLowerCase();
+    const fitMode: 'contain' | 'cover' = urlFit === 'cover' || lsFit === 'cover' ? 'cover' : 'contain';
     return {
       w: Number.isFinite(urlW) && urlW > 0 ? urlW : (Number.isFinite(lsW) && lsW > 0 ? lsW : null),
       h: Number.isFinite(urlH) && urlH > 0 ? urlH : (Number.isFinite(lsH) && lsH > 0 ? lsH : null),
+      fitMode,
     };
   } catch {
-    return { w: null, h: null };
+    return { w: null, h: null, fitMode: 'contain' };
   }
 }
 
@@ -6018,14 +6046,17 @@ function readCanvasOverride(): { w: number | null; h: number | null } {
 function CanvasSizeEditor({
   initialW,
   initialH,
+  initialFitMode = 'contain',
   onClose,
 }: {
   initialW: number | null;
   initialH: number | null;
+  initialFitMode?: 'contain' | 'cover';
   onClose: () => void;
 }) {
   const [w, setW] = useState(String(initialW || ''));
   const [h, setH] = useState(String(initialH || ''));
+  const [fitMode, setFitMode] = useState<'contain' | 'cover'>(initialFitMode);
 
   const reloadWith = (params: Record<string, string | null>) => {
     if (typeof window === 'undefined') return;
@@ -6047,13 +6078,15 @@ function CanvasSizeEditor({
     }
     try { localStorage.setItem('edu_canvasW', String(wNum)); } catch { /* ignore */ }
     try { localStorage.setItem('edu_canvasH', String(hNum)); } catch { /* ignore */ }
-    reloadWith({ canvasW: String(wNum), canvasH: String(hNum) });
+    try { localStorage.setItem('edu_fitMode', fitMode); } catch { /* ignore */ }
+    reloadWith({ canvasW: String(wNum), canvasH: String(hNum), fitMode });
   };
 
   const clear = () => {
     try { localStorage.removeItem('edu_canvasW'); } catch { /* ignore */ }
     try { localStorage.removeItem('edu_canvasH'); } catch { /* ignore */ }
-    reloadWith({ canvasW: null, canvasH: null });
+    try { localStorage.removeItem('edu_fitMode'); } catch { /* ignore */ }
+    reloadWith({ canvasW: null, canvasH: null, fitMode: null });
   };
 
   const inputStyle: React.CSSProperties = {
@@ -6121,6 +6154,57 @@ function CanvasSizeEditor({
             aria-label="Canvas height in pixels"
             style={inputStyle}
           />
+        </div>
+        {/* Fit-mode picker. Operator-facing labels chosen to be plain
+            English — "Show whole template" / "Fill the screen" — instead
+            of CSS jargon (contain/cover). Default is contain to avoid
+            cropping content unexpectedly. */}
+        <div style={{ marginBottom: '18px' }}>
+          <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '8px', fontWeight: 600 }}>
+            When the template's shape doesn't match the LED:
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={() => setFitMode('contain')}
+              style={{
+                flex: 1,
+                padding: '10px 12px',
+                background: fitMode === 'contain' ? '#6366f1' : '#1e293b',
+                border: fitMode === 'contain' ? '1px solid #818cf8' : '1px solid #334155',
+                borderRadius: '8px',
+                color: 'white',
+                fontSize: '12px',
+                fontWeight: fitMode === 'contain' ? 700 : 500,
+                cursor: 'pointer',
+                textAlign: 'left',
+                lineHeight: 1.4,
+              }}
+            >
+              <div style={{ fontWeight: 700, marginBottom: '2px' }}>Show whole template</div>
+              <div style={{ fontSize: '10px', opacity: 0.85 }}>Bars on the edges if shapes don't match</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setFitMode('cover')}
+              style={{
+                flex: 1,
+                padding: '10px 12px',
+                background: fitMode === 'cover' ? '#6366f1' : '#1e293b',
+                border: fitMode === 'cover' ? '1px solid #818cf8' : '1px solid #334155',
+                borderRadius: '8px',
+                color: 'white',
+                fontSize: '12px',
+                fontWeight: fitMode === 'cover' ? 700 : 500,
+                cursor: 'pointer',
+                textAlign: 'left',
+                lineHeight: 1.4,
+              }}
+            >
+              <div style={{ fontWeight: 700, marginBottom: '2px' }}>Fill the screen</div>
+              <div style={{ fontSize: '10px', opacity: 0.85 }}>Crops parts of the template that don't fit</div>
+            </button>
+          </div>
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button
