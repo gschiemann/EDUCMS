@@ -905,56 +905,34 @@ export default function TemplatesPage() {
             />
           </div>
         </div>
-        {/* Custom-resolution row. Appears only when the operator picks
-            "Custom" above. Two inputs (W × H) + 1-6 panel LED shortcuts
-            so the Nova Star panel-chain configs are one click away.
-            Subsequent template Customize / Edit clicks auto-duplicate
-            at this resolution. */}
+        {/* Custom-resolution row. Just two inputs (W × H) — the
+            panel-count shortcuts were removed per operator: "i dont
+            need all that 1 panel 2 panel shit, just let me type in
+            the custom resoltiuoin and dump all those options". */}
         {shapeFilter === 'custom' && (
-          <div className="flex flex-col gap-2 p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl">
-            <div className="flex items-center gap-2 text-xs font-bold text-indigo-700">
-              <Settings2 className="w-3.5 h-3.5" />
-              Custom canvas — any template you open will be sized to this resolution
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min={100}
-                max={15360}
-                value={customW}
-                onChange={(e) => setCustomW(parseInt(e.target.value) || 1920)}
-                className="w-28 px-3 py-2 rounded-lg bg-white border border-indigo-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                aria-label="Custom canvas width in pixels"
-              />
-              <span className="text-slate-400 text-xs font-bold">×</span>
-              <input
-                type="number"
-                min={100}
-                max={15360}
-                value={customH}
-                onChange={(e) => setCustomH(parseInt(e.target.value) || 1080)}
-                className="w-28 px-3 py-2 rounded-lg bg-white border border-indigo-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                aria-label="Custom canvas height in pixels"
-              />
-              <span className="text-[11px] text-slate-500 ml-1">{customW > customH ? 'landscape' : customH > customW ? 'portrait' : 'square'}</span>
-              <div className="flex gap-1 ml-3 flex-wrap">
-                {[1,2,3,4,5,6].map((n) => {
-                  const w = n * 320;
-                  const active = customW === w && customH === 1080;
-                  return (
-                    <button
-                      key={n}
-                      type="button"
-                      onClick={() => { setCustomW(w); setCustomH(1080); }}
-                      className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all ${active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
-                      title={`${n} panel${n > 1 ? 's' : ''} · ${w}×1080`}
-                    >
-                      {n} panel{n > 1 ? 's' : ''}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+          <div className="flex flex-wrap items-center gap-2 p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl">
+            <span className="text-xs font-bold text-indigo-700 mr-1">Canvas</span>
+            <input
+              type="number"
+              min={100}
+              max={15360}
+              value={customW}
+              onChange={(e) => setCustomW(parseInt(e.target.value) || 1920)}
+              className="w-28 px-3 py-2 rounded-lg bg-white border border-indigo-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              aria-label="Custom canvas width in pixels"
+            />
+            <span className="text-slate-400 text-xs font-bold">×</span>
+            <input
+              type="number"
+              min={100}
+              max={15360}
+              value={customH}
+              onChange={(e) => setCustomH(parseInt(e.target.value) || 1080)}
+              className="w-28 px-3 py-2 rounded-lg bg-white border border-indigo-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              aria-label="Custom canvas height in pixels"
+            />
+            <span className="text-[11px] text-slate-500">{customW > customH ? 'landscape' : customH > customW ? 'portrait' : 'square'}</span>
+            <span className="text-[11px] text-slate-500 ml-auto">Any template you open will be sized to this resolution.</span>
           </div>
         )}
         {/* Holiday-specific sub-filter — only when category=HOLIDAYS.
