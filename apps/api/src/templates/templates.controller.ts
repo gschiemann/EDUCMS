@@ -955,7 +955,18 @@ export class TemplatesController {
   async duplicate(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { name?: string },
+    @Body() body: {
+      name?: string;
+      // 2026-05-13 — "Adapt for LED" flow: operator-picked canvas size
+      // override. When provided, the duplicate keeps every zone's
+      // %-based position but rerenders at a different canvas aspect.
+      // Widgets scale themselves to their new zone dimensions via their
+      // internal useScaleToFit hooks, so the design is preserved without
+      // stretching. Operator then drag-adjusts in the builder to taste.
+      screenWidth?: number;
+      screenHeight?: number;
+      orientation?: string;
+    },
   ) {
     const source = await this.prisma.client.template.findFirst({
       where: {
@@ -966,6 +977,19 @@ export class TemplatesController {
     });
     if (!source) return { error: 'Not found' };
 
+    // Resolve canvas size: explicit body overrides win, otherwise inherit
+    // the source's dimensions. Cap inputs at sane bounds — anything
+    // outside this range is almost certainly a typo and would break the
+    // builder's viewport calculations.
+    const requestedW = Number.isFinite(body.screenWidth) ? Number(body.screenWidth) : 0;
+    const requestedH = Number.isFinite(body.screenHeight) ? Number(body.screenHeight) : 0;
+    const screenWidth = requestedW >= 100 && requestedW <= 15360 ? requestedW : source.screenWidth;
+    const screenHeight = requestedH >= 100 && requestedH <= 15360 ? requestedH : source.screenHeight;
+    const orientation =
+      body.orientation === 'PORTRAIT' || body.orientation === 'LANDSCAPE'
+        ? body.orientation
+        : (screenHeight > screenWidth ? 'PORTRAIT' : 'LANDSCAPE');
+
     // Auto-inherit tenant brand on duplicate (fill blanks only —
     // don't repaint a deliberately-themed source). System presets
     // duplicated this way pick up the operator's brand exactly like
@@ -973,15 +997,23 @@ export class TemplatesController {
     // source already had a brand-filled config, the helper sees
     // existing keys and skips them; if blank, gets the tenant brand.
     const brand = await this.getBrandDefaults(req.user.tenantId);
+
+    // Default name. If canvas was overridden, encode the new dimensions
+    // so the operator can tell siblings apart at a glance.
+    const canvasChanged = screenWidth !== source.screenWidth || screenHeight !== source.screenHeight;
+    const defaultName = canvasChanged
+      ? `${source.name} (${screenWidth}×${screenHeight})`
+      : `${source.name} (Copy)`;
+
     return this.prisma.client.template.create({
       data: {
         tenantId: req.user.tenantId,
-        name: body.name || `${source.name} (Copy)`,
+        name: body.name || defaultName,
         description: source.description,
         category: source.category,
-        orientation: source.orientation,
-        screenWidth: source.screenWidth,
-        screenHeight: source.screenHeight,
+        orientation,
+        screenWidth,
+        screenHeight,
         bgColor: source.bgColor || brand.surface || null,
         bgImage: source.bgImage,
         bgGradient: source.bgGradient,
@@ -993,6 +1025,10 @@ export class TemplatesController {
             return {
               name: z.name,
               widgetType: z.widgetType,
+              // Zones already stored as %-of-canvas — inherit verbatim.
+              // Widgets handle their own internal pixel scaling via
+              // useScaleToFit so the visual proportions stay correct
+              // even when the new canvas has a different aspect.
               x: z.x,
               y: z.y,
               width: z.width,

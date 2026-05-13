@@ -720,10 +720,20 @@ export function useCreateFromPreset() {
 export function useDuplicateTemplate() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, name }: { id: string; name?: string }) =>
+    // 2026-05-13 — gained optional screenWidth / screenHeight /
+    // orientation so the "Adapt for LED" flow can pick a new canvas size
+    // when duplicating. Zones inherit their %-based positions; widgets
+    // self-scale to fit the new aspect via their internal useScaleToFit.
+    mutationFn: ({ id, name, screenWidth, screenHeight, orientation }: {
+      id: string;
+      name?: string;
+      screenWidth?: number;
+      screenHeight?: number;
+      orientation?: 'LANDSCAPE' | 'PORTRAIT';
+    }) =>
       apiFetch(`/templates/${id}/duplicate`, {
         method: 'POST',
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, screenWidth, screenHeight, orientation }),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['templates'] }),
   });

@@ -364,6 +364,13 @@ export default function TemplatesPage() {
   const [newH, setNewH] = useState(2160);
   const [customRes, setCustomRes] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  // 2026-05-13 — "Adapt for LED" modal state. Operator clicks the
+  // resize icon on any template → modal opens with Portrait /
+  // Landscape / Custom orientation picker + size inputs. On save we
+  // duplicate the template at the new canvas dimensions, then open
+  // the builder for drag-adjustment. The duplicate inherits all zones
+  // at their %-positions; widgets self-scale to fit the new aspect.
+  const [adaptTemplate, setAdaptTemplate] = useState<Template | null>(null);
 
   const { data: templates, isLoading } = useTemplates();
 
@@ -759,6 +766,31 @@ export default function TemplatesPage() {
         </div>
       )}
 
+      {/* 2026-05-13 — "Adapt for LED" modal. Three high-level
+          orientation buttons (Portrait / Landscape / Custom) match
+          the operator's mental model directly. Custom expands to a
+          W×H input + 1-6 panel LED shortcuts. On save we duplicate the
+          source template at the new canvas dimensions and open the
+          builder. Zones inherit their %-positions automatically;
+          widgets self-scale to fit. */}
+      {adaptTemplate && (
+        <AdaptForLedModal
+          source={adaptTemplate}
+          onClose={() => setAdaptTemplate(null)}
+          onAdapt={async ({ screenWidth, screenHeight, orientation }) => {
+            const result = await duplicateTemplate.mutateAsync({
+              id: adaptTemplate.id,
+              screenWidth,
+              screenHeight,
+              orientation,
+            });
+            setAdaptTemplate(null);
+            openInBuilder(result);
+          }}
+          pending={duplicateTemplate.isPending}
+        />
+      )}
+
       {/* Two-tier filter bar.
           K12: Primary = grade level (Elementary / Middle / High);
           Secondary = room category (LOBBY / HALLWAY / CAFETERIA / …),
@@ -896,6 +928,7 @@ export default function TemplatesPage() {
                     template={t}
                     portraitSibling={portraitSiblingFor(t)}
                     onPreview={(active) => setPreviewTemplate(active)}
+                    onAdaptForLED={() => setAdaptTemplate(t)}
                   />
                 ))}
               </div>
@@ -924,6 +957,7 @@ export default function TemplatesPage() {
                     portraitSibling={portraitSiblingFor(t)}
                     onEdit={() => openInBuilder(t)}
                     onDuplicate={() => handleDuplicate(t)}
+                    onAdaptForLED={() => setAdaptTemplate(t)}
                     onDelete={async () => {
                       const ok = await appConfirm({
                         title: 'Delete this template?',
@@ -1090,10 +1124,189 @@ function TemplatePreviewModal({
 }
 
 // ═════════════════════════════════════════════════════
+// ADAPT FOR LED — duplicate to a new canvas size
+// ═════════════════════════════════════════════════════
+
+/**
+ * "Pick a canvas size and adapt this template" — the operator-facing
+ * answer to "we have 1-6 panel LED setups, can it auto-fit them all?"
+ * (2026-05-13). Three high-level options:
+ *
+ *   Portrait  → tall canvas (1080×1920 default — 4K portrait/2 = 1080×1920)
+ *   Landscape → wide canvas (1920×1080 default — Full HD landscape)
+ *   Custom    → operator picks W×H, with 1-6 panel LED shortcuts for
+ *               the Taurus / NovaStar poster chains we run today.
+ *
+ * On confirm, the parent calls /templates/:id/duplicate with the new
+ * canvas dimensions. The duplicated template inherits every zone's
+ * %-position; widgets self-scale to fit via their internal useScaleToFit.
+ * Builder then opens for drag-adjustment.
+ */
+function AdaptForLedModal({
+  source,
+  onClose,
+  onAdapt,
+  pending,
+}: {
+  source: Template;
+  onClose: () => void;
+  onAdapt: (canvas: { screenWidth: number; screenHeight: number; orientation: 'LANDSCAPE' | 'PORTRAIT' }) => void | Promise<void>;
+  pending: boolean;
+}) {
+  // Pick a sensible starting mode: if the source is portrait, default
+  // the picker to portrait; otherwise landscape. Operator can flip.
+  const sourceOrient: 'LANDSCAPE' | 'PORTRAIT' =
+    (source.screenHeight || 1080) > (source.screenWidth || 1920) ? 'PORTRAIT' : 'LANDSCAPE';
+  const [mode, setMode] = useState<'PORTRAIT' | 'LANDSCAPE' | 'CUSTOM'>(sourceOrient);
+  const [customW, setCustomW] = useState(source.screenWidth || 1920);
+  const [customH, setCustomH] = useState(source.screenHeight || 1080);
+
+  // The LED-poster shortcuts the operator uses in production. Each
+  // chip prefills the custom W/H so they can hit Adapt without typing.
+  const ledPanelShortcuts = [
+    { panels: 1, w: 320, h: 1080 },
+    { panels: 2, w: 640, h: 1080 },
+    { panels: 3, w: 960, h: 1080 },
+    { panels: 4, w: 1280, h: 1080 },
+    { panels: 5, w: 1600, h: 1080 },
+    { panels: 6, w: 1920, h: 1080 },
+  ];
+
+  const resolveCanvas = (): { screenWidth: number; screenHeight: number; orientation: 'LANDSCAPE' | 'PORTRAIT' } => {
+    if (mode === 'PORTRAIT') return { screenWidth: 1080, screenHeight: 1920, orientation: 'PORTRAIT' };
+    if (mode === 'LANDSCAPE') return { screenWidth: 1920, screenHeight: 1080, orientation: 'LANDSCAPE' };
+    const w = Math.max(100, Math.min(15360, Math.round(customW)));
+    const h = Math.max(100, Math.min(15360, Math.round(customH)));
+    return {
+      screenWidth: w,
+      screenHeight: h,
+      orientation: h > w ? 'PORTRAIT' : 'LANDSCAPE',
+    };
+  };
+
+  const handleAdapt = async () => {
+    await onAdapt(resolveCanvas());
+  };
+
+  const orientButtonStyle = (active: boolean): string =>
+    `flex-1 py-3 rounded-xl border-2 transition-all text-left px-4 ${
+      active
+        ? 'bg-indigo-50 border-indigo-400 text-indigo-700'
+        : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-200'
+    }`;
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-xl p-6 space-y-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">Adapt for an LED</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              We'll copy <span className="font-semibold">{source.name}</span> to a new canvas size and open the builder so you can fine-tune widget placement.
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div>
+          <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5 block">Canvas shape</label>
+          <div className="flex gap-2">
+            <button onClick={() => setMode('PORTRAIT')} className={orientButtonStyle(mode === 'PORTRAIT')}>
+              <div className="text-sm font-bold flex items-center gap-1.5"><Smartphone className="w-4 h-4" /> Portrait</div>
+              <div className="text-[10px] opacity-70 mt-0.5">1080×1920 (tall)</div>
+            </button>
+            <button onClick={() => setMode('LANDSCAPE')} className={orientButtonStyle(mode === 'LANDSCAPE')}>
+              <div className="text-sm font-bold flex items-center gap-1.5"><Monitor className="w-4 h-4" /> Landscape</div>
+              <div className="text-[10px] opacity-70 mt-0.5">1920×1080 (wide)</div>
+            </button>
+            <button onClick={() => setMode('CUSTOM')} className={orientButtonStyle(mode === 'CUSTOM')}>
+              <div className="text-sm font-bold flex items-center gap-1.5"><Settings2 className="w-4 h-4" /> Custom</div>
+              <div className="text-[10px] opacity-70 mt-0.5">Any resolution</div>
+            </button>
+          </div>
+        </div>
+
+        {mode === 'CUSTOM' && (
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Resolution</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min={100}
+                  max={15360}
+                  value={customW}
+                  onChange={(e) => setCustomW(parseInt(e.target.value) || 1920)}
+                  className="flex-1 px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  aria-label="Custom canvas width in pixels"
+                />
+                <span className="text-slate-400 text-xs font-bold">×</span>
+                <input
+                  type="number"
+                  min={100}
+                  max={15360}
+                  value={customH}
+                  onChange={(e) => setCustomH(parseInt(e.target.value) || 1080)}
+                  className="flex-1 px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  aria-label="Custom canvas height in pixels"
+                />
+                <span className="text-[10px] text-slate-400 w-20">{customW > customH ? 'landscape' : 'portrait'}</span>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Or pick an LED poster setup</label>
+              <div className="grid grid-cols-3 gap-2">
+                {ledPanelShortcuts.map((p) => {
+                  const active = customW === p.w && customH === p.h;
+                  return (
+                    <button
+                      key={p.panels}
+                      onClick={() => { setCustomW(p.w); setCustomH(p.h); }}
+                      className={`px-3 py-2 rounded-lg text-left transition-all border ${active ? 'bg-indigo-50 border-indigo-400 text-indigo-700' : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-200'}`}
+                    >
+                      <div className="text-xs font-bold">{p.panels} panel{p.panels > 1 ? 's' : ''}</div>
+                      <div className="text-[10px] opacity-60 mt-0.5">{p.w}×{p.h}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 flex items-start gap-2">
+          <Sparkles className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+          <p className="text-[11px] text-amber-800 leading-relaxed">
+            We'll keep every widget at its original visual size so nothing looks stretched. After we open the builder, drag the widgets around to lay them out for the new canvas shape.
+          </p>
+        </div>
+
+        <button
+          onClick={handleAdapt}
+          disabled={pending}
+          className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
+        >
+          {pending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Maximize2 className="w-4 h-4" />}
+          Adapt &amp; Open Builder
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════
 // GALLERY CARD — premium hover preview
 // ═════════════════════════════════════════════════════
 
-function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, onDuplicate, onDelete, onPreview, isViewerDisabled = false }: {
+function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, onDuplicate, onAdaptForLED, onDelete, onPreview, isViewerDisabled = false }: {
   template: Template;
   /** If this template has a portrait sibling preset, pass it here; the
    *  card shows a Landscape | Portrait toggle and renders the active
@@ -1103,6 +1316,10 @@ function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, 
   onUsePortrait?: () => void;
   onEdit?: () => void;
   onDuplicate?: () => void;
+  /** "Adapt for LED" — duplicate the template at a different canvas
+   *  resolution so the operator can re-layout for a 1-6 panel LED
+   *  setup (320×1080 → 1920×1080). */
+  onAdaptForLED?: () => void;
   onDelete?: () => void;
   /** Called with the currently-active orientation's template (landscape
    *  by default, portrait sibling when toggled). */
@@ -1265,6 +1482,11 @@ function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, 
           {onDuplicate && (
             <button onClick={onDuplicate} disabled={isViewerDisabled} title={isViewerDisabled ? 'Read-only — viewer role' : 'Duplicate'} className="py-2 px-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               <Copy className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {onAdaptForLED && (
+            <button onClick={onAdaptForLED} disabled={isViewerDisabled} title={isViewerDisabled ? 'Read-only — viewer role' : 'Adapt for a custom LED size'} className="py-2 px-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              <Maximize2 className="w-3.5 h-3.5" />
             </button>
           )}
           {onDelete && (
