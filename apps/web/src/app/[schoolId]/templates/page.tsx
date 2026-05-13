@@ -996,6 +996,19 @@ export default function TemplatesPage() {
             setPreviewTemplate(null);
             openInBuilder(t);
           } : undefined}
+          // Available for BOTH system presets and custom templates —
+          // operator: "i dont see the custom button in the templates
+          // when i go to open them, i click the template it opens to
+          // preview, then just customization option that takes me into
+          // the editor but nothing for the custom canvas". The card-
+          // level Maximize2 icon was easy to miss; surfacing the action
+          // inside the Preview bottom bar where the operator already
+          // expects to find the primary CTAs.
+          onAdaptForLED={() => {
+            const t = previewTemplate;
+            setPreviewTemplate(null);
+            setAdaptTemplate(t);
+          }}
         />
       )}
     </div>
@@ -1006,10 +1019,14 @@ export default function TemplatesPage() {
 // Fullscreen template preview modal
 // ═════════════════════════════════════════════════════
 function TemplatePreviewModal({
-  template, onClose, onCustomize, onEdit,
+  template, onClose, onCustomize, onEdit, onAdaptForLED,
 }: {
   template: Template;
   onClose: () => void;
+  /** Opens the "Adapt for LED" canvas-size picker, duplicates the
+   *  template at the new dimensions, opens the builder. Available
+   *  on both system presets and custom templates. */
+  onAdaptForLED?: () => void;
   /** Opens the builder with the system preset loaded. Nothing is
    *  written to the DB here — save-as-copy in the builder does that. */
   onCustomize?: () => void;
@@ -1089,7 +1106,7 @@ function TemplatePreviewModal({
       </div>
 
       {/* Floating bottom CTA bar */}
-      {(onEdit || onCustomize) && (
+      {(onEdit || onCustomize || onAdaptForLED) && (
         <div
           className="absolute bottom-4 inset-x-0 flex items-center justify-center gap-2 pointer-events-none"
         >
@@ -1113,6 +1130,16 @@ function TemplatePreviewModal({
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-full flex items-center gap-1.5"
               >
                 <Pencil className="w-3.5 h-3.5" /> Customize
+              </button>
+            )}
+            {onAdaptForLED && (
+              <button
+                type="button"
+                onClick={onAdaptForLED}
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-full flex items-center gap-1.5 border border-white/20"
+                title="Duplicate this template at a different LED canvas size"
+              >
+                <Maximize2 className="w-3.5 h-3.5" /> Adapt for LED
               </button>
             )}
           </div>
