@@ -3955,22 +3955,45 @@ function PlayerPage() {
   };
 
   /**
-   * Operator-triggered full unpair. Mirrors the TENANT_CHANGED WS
-   * handler (the original full-teardown path) so a button-click unpair
-   * and a server-pushed re-pair clear the same state. The previous
-   * inline handler only cleared `edu_device_fp` — leaving the device
-   * token, the manifest cache, AND (critically) the native APK's
-   * DataStore-persisted token. Operator reported "tried to unpair and
-   * it didn't unpair": the APK's `?token=...` URL param survived, the
-   * server saw the same fingerprint, and the player re-paired on the
-   * next register.
+   * Operator-triggered full unpair. Three-layer teardown:
    *
-   * Now: clear every piece of pairing state on BOTH sides, fire the
-   * native bridge so the APK wipes its DataStore + reloads with an
-   * empty token, and reset phase to 'registering' for browser-only
-   * fallback when no bridge is present.
+   *   1. SERVER — POST /screens/unpair/:fp with our device token.
+   *      Clears tenantId + regenerates pairingCode on the Screen row.
+   *      WITHOUT this the next register call sees the same Android
+   *      fingerprint, matches the still-paired record, and returns
+   *      paired:true. Operator: "tried to unpair a device and it
+   *      didn't unpair" — exactly this.
+   *   2. CLIENT (localStorage + caches) — wipe device token, fp,
+   *      manifest cache, emergency cache, SW cache tiers. Mirrors
+   *      the TENANT_CHANGED WS handler's full teardown.
+   *   3. NATIVE — EduCmsNative.unpair() makes the APK clear its
+   *      DataStore-persisted token and reload the WebView with an
+   *      empty `?token=...` URL param.
+   *
+   * Fire-and-forget on the server call (don't block the local teardown
+   * if the network is slow / the API is down — better to have a kiosk
+   * stuck on the pairing splash than one that "looks paired but isn't").
    */
-  const handleUnpair = () => {
+  const handleUnpair = async () => {
+    const fp = getDeviceFingerprint();
+    const token = (() => {
+      try { return localStorage.getItem('edu_device_token') || ''; } catch { return ''; }
+    })();
+
+    // 1. Server: clear tenantId + regenerate pairingCode. 4s budget,
+    //    swallow errors so a flaky network can't trap the kiosk.
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4000);
+      await fetch(`${getApiRoot()}/api/v1/screens/unpair/${encodeURIComponent(fp)}`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        signal: controller.signal,
+      }).catch(() => { /* tolerate — local teardown still proceeds */ });
+      clearTimeout(timer);
+    } catch { /* ignore */ }
+
+    // 2. Local state + caches.
     try { localStorage.removeItem('edu_device_token'); } catch { /* ignore */ }
     try { localStorage.removeItem('edu_device_fp'); } catch { /* ignore */ }
     try { localStorage.removeItem('edu_manifest_cache_v1'); } catch { /* ignore */ }
@@ -3978,9 +4001,10 @@ function PlayerPage() {
     try {
       navigator.serviceWorker?.controller?.postMessage({ type: 'CLEAR_CACHE', tier: 'all' });
     } catch { /* ignore */ }
-    // Native bridge wipes DataStore + reloads WebView with empty token.
-    // On non-APK (browser tab) clients the bridge is undefined; fall
-    // through to the React-side reset below.
+
+    // 3. Native bridge → APK wipes DataStore + reloads with empty
+    //    token. On non-APK clients (browser tab) fall through to a
+    //    React-only reset.
     try {
       const bridge = (window as any).EduCmsNative;
       if (bridge && typeof bridge.unpair === 'function') {

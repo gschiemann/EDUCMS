@@ -950,6 +950,108 @@ export class ScreensController {
     return updated;
   }
 
+  /**
+   * Device-initiated unpair. The player calls this when the operator
+   * taps "Unpair" on the kiosk overlay. Without it, clearing the
+   * device's local token + reloading just re-registers under the same
+   * stable Android fingerprint and the SERVER returns paired:true
+   * again — the visible "unpair" did nothing.
+   *
+   * Effect:
+   *   - tenantId cleared → next register returns paired:false
+   *   - new pairingCode generated → screen can be re-paired from any
+   *     dashboard the operator has access to
+   *   - schedules for this screen deleted (no point in firing alerts
+   *     at a now-disowned device, and a future re-pair starts fresh)
+   *   - status flipped to PENDING
+   *
+   * Auth: requires a valid device JWT in `Authorization: Bearer ...`
+   * that binds to the same screenId as the fingerprint we found.
+   * Anyone with a fingerprint alone can't unpair someone else's screen.
+   *
+   * 2026-05-13 — operator: "i tried to unpair a device and it didnt
+   * unpair". Root cause was the missing server-side step described
+   * above; this endpoint closes the loop.
+   */
+  @Post('unpair/:deviceFingerprint')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  async deviceInitiatedUnpair(
+    @Param('deviceFingerprint') fingerprint: string,
+    @Req() req: ExpressReq,
+  ) {
+    if (fingerprint.startsWith('preview-')) {
+      return { ok: true, ignored: 'preview' };
+    }
+    const screen = await this.prisma.client.screen.findUnique({
+      where: { deviceFingerprint: fingerprint },
+    });
+    if (!screen) {
+      // Nothing to unpair — return success (idempotent).
+      return { ok: true, alreadyUnpaired: true };
+    }
+    // Verify the caller actually owns this screen via device JWT.
+    const verified = verifyDeviceForScreen(req, screen.id);
+    if (!verified.ok) {
+      throw new HttpException(
+        `Unauthorized: ${verified.reason}`,
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+
+    const previousTenantId = screen.tenantId;
+
+    // Generate a fresh pairing code (retry on rare collision — same
+    // loop as @Post('register')'s new-device path).
+    let newPairingCode = generatePairingCode();
+    let codeLength = 6;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const exists = await this.prisma.client.screen.findUnique({
+        where: { pairingCode: newPairingCode },
+      });
+      if (!exists || exists.id === screen.id) break;
+      if (attempt >= 25 && codeLength === 6) codeLength = 8;
+      newPairingCode = generatePairingCode(codeLength);
+    }
+
+    await this.prisma.client.$transaction(async (tx) => {
+      // Drop schedules — operator is repurposing the screen.
+      await tx.schedule.deleteMany({ where: { screenId: screen.id } });
+      // Clear tenant + reissue pairing code; flip status to PENDING.
+      await tx.screen.update({
+        where: { id: screen.id },
+        data: {
+          tenantId: null,
+          screenGroupId: null,
+          pairingCode: newPairingCode,
+          status: 'PENDING',
+          lastPingAt: new Date(),
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId: previousTenantId || 'unknown',
+          userId: null,
+          action: 'SCREEN_UNPAIRED_BY_DEVICE',
+          targetType: 'Screen',
+          targetId: screen.id,
+          details: JSON.stringify({
+            name: screen.name,
+            fingerprint,
+            previousTenantId,
+            newPairingCode,
+          }),
+        },
+      }).catch(() => { /* non-fatal */ });
+    });
+
+    // Notify the prior tenant's dashboard so the screen list refreshes.
+    if (previousTenantId) {
+      try { this.notifySync(previousTenantId); } catch { /* ignore */ }
+    }
+
+    return { ok: true, screenId: screen.id, newPairingCode };
+  }
+
   // ─── ADMIN: Update a screen ───
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Put(':id')
