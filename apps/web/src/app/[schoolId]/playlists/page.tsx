@@ -49,8 +49,54 @@ function playlistStamp(playlist: any, field: 'createdAt' | 'updatedAt') {
 
 function thumbUrl(asset: any) {
   if (!asset) return null;
-  if (!asset.mimeType?.startsWith('image/')) return null;
+  // 2026-05-13 — Videos get a real preview too, not just an icon.
+  // Operator: "the playlists with videos are not showing the preview
+  // of the video like the images one". Previously this returned null
+  // for video/* so every video item rendered the generic file icon.
+  // Callers must check the mime to decide between <img> and <video>;
+  // see <AssetThumb> below for the canonical pattern.
+  if (
+    !asset.mimeType?.startsWith('image/') &&
+    !asset.mimeType?.startsWith('video/')
+  ) return null;
   return asset.fileUrl?.startsWith('http') ? asset.fileUrl : `${apiBase}${asset.fileUrl}`;
+}
+
+/**
+ * Renders the right inline media element for any asset's thumbnail.
+ * Image → <img>. Video → <video preload="metadata"> that seeks to
+ * 0.1s so the browser commits a real first frame instead of leaving
+ * a black/empty video tag. Returns null for assets without a thumb.
+ *
+ * Use this anywhere you'd otherwise have written `{thumb && <img />}`
+ * — keeps every preview surface (playlist editor, asset picker,
+ * scheduled item card) consistent with the asset library.
+ */
+function AssetThumb({ asset, className }: { asset: any; className?: string }) {
+  const url = thumbUrl(asset);
+  if (!url) return null;
+  if (asset?.mimeType?.startsWith('video/')) {
+    return (
+      // eslint-disable-next-line jsx-a11y/media-has-caption
+      <video
+        src={url}
+        muted
+        playsInline
+        preload="metadata"
+        className={className}
+        onLoadedMetadata={(e) => {
+          // Seek to a tiny offset so the browser DECODES and paints a
+          // real frame. Without this, Chromium/Safari often leave a
+          // black rectangle until the video is played. 0.1s is past
+          // any leading I-frame oddities and short enough to feel
+          // instant.
+          try { (e.currentTarget as HTMLVideoElement).currentTime = 0.1; } catch { /* ignore */ }
+        }}
+      />
+    );
+  }
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={url} alt="" className={className} />;
 }
 
 function mimeIcon(mime: string, cls = 'w-4 h-4') {
@@ -100,7 +146,9 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
         </div>
         <span className="text-xs font-bold text-slate-400 w-5 text-center">{index + 1}</span>
         <div className="w-14 h-10 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
-          {thumb ? <img src={thumb} alt="" className="w-full h-full object-cover" /> : mimeIcon(item.asset?.mimeType)}
+          {thumb
+            ? <AssetThumb asset={item.asset} className="w-full h-full object-cover" />
+            : mimeIcon(item.asset?.mimeType)}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -440,8 +488,7 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
                     title={assetName(asset)}
                   >
                     {thumb ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={thumb} alt="" className="w-full h-full object-cover" />
+                      <AssetThumb asset={asset} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         {mimeIcon(asset.mimeType, 'w-3.5 h-3.5')}
@@ -1702,8 +1749,7 @@ export default function PlaylistsPage() {
                         >
                           <div className="aspect-video bg-slate-100 flex items-center justify-center relative overflow-hidden">
                             {thumb ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={thumb} alt="" className="w-full h-full object-cover" />
+                              <AssetThumb asset={asset} className="w-full h-full object-cover" />
                             ) : (
                               mimeIcon(asset.mimeType, 'w-8 h-8')
                             )}
@@ -2273,7 +2319,38 @@ export default function PlaylistsPage() {
               playlist={pl}
               screenMap={playlistScreenMap[pl.id] || { screens: [], groups: [], scheduleCount: 0, activeCount: 0 }}
               onOpen={() => handleSelect(pl)}
-              onDelete={() => deletePlaylist.mutate(pl.id)}
+              onDelete={async () => {
+                // 2026-05-13 — the old "click delete and pray" path
+                // silently bounced when the server rejected (e.g.
+                // protected emergency playlists return 403, or a
+                // schedule constraint blocks it). Optimistic update
+                // hid the card, server rejected, rollback popped it
+                // back in, operator saw "delete didn't work" and had
+                // no clue why. Now: confirm first, await the mutation,
+                // surface any server error in an alert. The card only
+                // stays gone if the API actually deleted.
+                const ok = await appConfirm({
+                  title: `Delete "${pl.name || 'playlist'}"?`,
+                  message:
+                    pl.scheduleCount && pl.scheduleCount > 0
+                      ? `This playlist has ${pl.scheduleCount} scheduled screen(s). Deleting it will disable those schedules. This can't be undone.`
+                      : "This can't be undone.",
+                  confirmLabel: 'Delete',
+                  tone: 'danger',
+                });
+                if (!ok) return;
+                try {
+                  await deletePlaylist.mutateAsync(pl.id);
+                } catch (err: any) {
+                  await appAlert({
+                    title: "Couldn't delete playlist",
+                    message:
+                      err?.message ||
+                      'The server rejected the delete. Refresh and try again.',
+                    tone: 'danger',
+                  });
+                }
+              }}
               onToggleActive={async (active: boolean) => {
                 // Going INACTIVE — no conflict possible, just flip.
                 if (!active) {

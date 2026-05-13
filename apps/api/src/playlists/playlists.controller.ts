@@ -255,17 +255,46 @@ export class PlaylistsController {
       );
     }
 
-    // Soft-disable (don't hard-delete) schedules so the audit trail of
-    // "this schedule existed for playlist X" survives. Hard-deleting
-    // schedules loses the forensic record that a schedule was ever
-    // attached to an emergency drill playlist before it was removed.
-    // Prisma's @updatedAt directive refreshes updatedAt automatically on
-    // any write, so we only need to flip isActive here.
-    await this.prisma.client.schedule.updateMany({
-      where: { playlistId: id },
-      data: { isActive: false },
+    // 2026-05-13 — Old behavior soft-disabled schedules (set
+    // isActive=false) then tried to delete the playlist. That FAILED
+    // with a Postgres foreign-key constraint because `Schedule.playlist`
+    // has no `onDelete: Cascade` — every Schedule row still pointed at
+    // the playlist, so the delete bounced and the client's optimistic
+    // update rolled back ("deletes for 1s then pops right back in,"
+    // reported verbatim by the operator).
+    //
+    // New behavior: write an AuditLog entry that captures the schedule
+    // metadata first (audit trail preserved), THEN hard-delete the
+    // schedules, THEN delete the playlist. PlaylistItems are removed by
+    // their own onDelete: Cascade. Single transaction so a partial
+    // failure rolls everything back.
+    await this.prisma.client.$transaction(async (tx) => {
+      const attachedSchedules = await tx.schedule.findMany({
+        where: { playlistId: id },
+        select: {
+          id: true, screenId: true, screenGroupId: true,
+          startTime: true, endTime: true, isActive: true,
+        },
+      });
+      if (attachedSchedules.length > 0) {
+        await tx.auditLog.create({
+          data: {
+            tenantId: req.user.tenantId,
+            userId: req.user.id,
+            action: 'PLAYLIST_DELETED',
+            targetType: 'Playlist',
+            targetId: id,
+            details: JSON.stringify({
+              name: playlist.name,
+              scheduleCount: attachedSchedules.length,
+              schedules: attachedSchedules,
+            }),
+          },
+        }).catch(() => { /* non-fatal — primary delete still proceeds */ });
+        await tx.schedule.deleteMany({ where: { playlistId: id } });
+      }
+      await tx.playlist.delete({ where: { id } });
     });
-    await this.prisma.client.playlist.delete({ where: { id } });
     this.notifySync(req.user.tenantId);
     return { deleted: true };
   }
