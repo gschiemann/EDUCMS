@@ -593,11 +593,28 @@ function PlayerVideoSlide({
     };
   }, [isMuted]);
 
+  // 2026-05-13 — MIME-coercion for iPhone .mov files.
+  //
+  // iPhones produce .mov files that are actually H.264/AAC inside a
+  // QuickTime container — MP4-payload-compatible bytes with the wrong
+  // MIME label. Supabase serves them as `Content-Type: video/quicktime`
+  // (correct per spec), but Android WebView's HTMLVideoElement refuses
+  // to even *try* video/quicktime — it errors before sniffing the
+  // codec. Result: operator uploads an iPhone clip, dashboard shows
+  // it just fine (desktop Chrome accepts QT), kiosk shows nothing.
+  //
+  // Fix: when the URL looks like a .mov, render <source type="video/mp4">
+  // children instead of using the bare `src` attribute. This tells the
+  // browser "treat this as MP4 regardless of what the server says,"
+  // and the actual H.264/AAC bytes decode fine. Doesn't help for true
+  // QuickTime-only formats (DV, ProRes, etc.) but those are vanishingly
+  // rare on signage. iPhone H.264-in-MOV is 99% of operator uploads.
+  const isMov = /\.mov(\?|$)/i.test(src);
   return (
     <video
       ref={videoRef}
       key={videoKey}
-      src={src}
+      src={isMov ? undefined : src}
       className={classes}
       preload="auto"
       style={{ background: '#000' }}
@@ -606,7 +623,16 @@ function PlayerVideoSlide({
       loop={isSoloPlaylist}
       onEnded={isSoloPlaylist ? undefined : onEnded}
       onError={onError}
-    />
+    >
+      {isMov && (
+        <>
+          {/* Try MP4 first (iPhone .mov is MP4-payload). Fall back to
+              the raw QT mime in case some asset really is true QT. */}
+          <source src={src} type="video/mp4" />
+          <source src={src} type="video/quicktime" />
+        </>
+      )}
+    </video>
   );
 }
 
