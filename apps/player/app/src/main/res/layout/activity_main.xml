@@ -55,80 +55,94 @@
         android:focusable="true"
         android:background="#0F172A">
 
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:orientation="vertical"
-            android:padding="64dp"
-            android:gravity="center">
+        <!-- 2026-05-13 (v1.0.56) — wrap the gate content in a ScrollView
+             with adaptive padding so it fits on ultra-narrow LED posters
+             (320×1080 NovaStar Taurus single-poster mode). Operator was
+             stuck looking at a clipped install dialog they couldn't see
+             or interact with. Smaller default text + wrap_content
+             constrained to parent width via maxWidth="match_parent". -->
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:scrollbars="none">
 
-            <ProgressBar
-                android:id="@+id/managerGateSpinner"
-                android:layout_width="64dp"
-                android:layout_height="64dp"
-                android:indeterminate="true"
-                android:layout_marginBottom="32dp" />
-
-            <TextView
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="EduCMS"
-                android:textColor="#94A3B8"
-                android:textSize="14sp"
-                android:textStyle="bold"
-                android:letterSpacing="0.2"
-                android:gravity="center"
-                android:layout_marginBottom="8dp" />
+                android:minHeight="match_parent"
+                android:orientation="vertical"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="32dp"
+                android:gravity="center">
 
-            <TextView
-                android:id="@+id/managerGateTitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Setting up your player"
-                android:textColor="#FFFFFF"
-                android:textSize="36sp"
-                android:textStyle="bold"
-                android:gravity="center"
-                android:layout_marginBottom="16dp" />
+                <ProgressBar
+                    android:id="@+id/managerGateSpinner"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:indeterminate="true"
+                    android:layout_marginBottom="20dp" />
 
-            <TextView
-                android:id="@+id/managerGateStatus"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Installing companion service…"
-                android:textColor="#94A3B8"
-                android:textSize="20sp"
-                android:gravity="center"
-                android:layout_marginBottom="24dp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="EduCMS"
+                    android:textColor="#94A3B8"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.2"
+                    android:gravity="center"
+                    android:layout_marginBottom="8dp" />
 
-            <TextView
-                android:id="@+id/managerGateHint"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="When you see the system Install dialog, tap Install."
-                android:textColor="#FBBF24"
-                android:textSize="16sp"
-                android:gravity="center"
-                android:layout_marginBottom="32dp" />
+                <TextView
+                    android:id="@+id/managerGateTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Setting up your player"
+                    android:textColor="#FFFFFF"
+                    android:textSize="22sp"
+                    android:textStyle="bold"
+                    android:gravity="center"
+                    android:layout_marginBottom="12dp" />
 
-            <Button
-                android:id="@+id/managerGateRetry"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Retry install"
-                android:textSize="14sp"
-                android:visibility="gone" />
+                <TextView
+                    android:id="@+id/managerGateStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Installing companion service…"
+                    android:textColor="#94A3B8"
+                    android:textSize="14sp"
+                    android:gravity="center"
+                    android:layout_marginBottom="16dp" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="The player will start automatically when setup completes."
-                android:textColor="#475569"
-                android:textSize="14sp"
-                android:gravity="center"
-                android:layout_marginTop="32dp" />
-        </LinearLayout>
+                <TextView
+                    android:id="@+id/managerGateHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="When you see the system Install dialog, tap Install."
+                    android:textColor="#FBBF24"
+                    android:textSize="12sp"
+                    android:gravity="center"
+                    android:layout_marginBottom="24dp" />
+
+                <Button
+                    android:id="@+id/managerGateRetry"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Retry install"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="The player will start automatically when setup completes."
+                    android:textColor="#475569"
+                    android:textSize="11sp"
+                    android:gravity="center"
+                    android:layout_marginTop="20dp" />
+            </LinearLayout>
+        </ScrollView>
     </FrameLayout>
 
     <!-- Recovery overlay. Initially hidden. -->

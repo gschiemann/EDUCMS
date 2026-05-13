@@ -52,6 +52,23 @@ object ManagerBootstrap {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     fun bootstrapIfNeeded(ctx: Context) {
+        // 2026-05-13 (Player v1.0.56) — operator deploying to an LED
+        // poster (320×1080 single-poster mode) couldn't see the system
+        // Install dialog the bootstrap fires. Two escape hatches:
+        //
+        //   /sdcard/edu-cms/skip-manager.txt — present (any contents):
+        //     skip the Manager bootstrap entirely. Operator manually
+        //     sideloaded Manager via ViPlex Express, or accepts running
+        //     without the companion (kiosk lock-in / auto-update
+        //     features become unavailable, but pairing + playback work
+        //     normally).
+        //
+        // Operator drops the flag file via ViPlex Express → File
+        // Transfer. The Player picks it up on next boot.
+        if (shouldSkipBootstrap(ctx)) {
+            PlayerLogger.i(TAG, "Skipping Manager bootstrap — /sdcard/edu-cms/skip-manager.txt present")
+            return
+        }
         CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
             try {
                 bootstrapInternal(ctx)
@@ -61,6 +78,29 @@ object ManagerBootstrap {
                 showToast(ctx, "Manager install failed — will retry on next launch")
                 reportBlocked(ctx, "exception: ${e.message?.take(120)}")
             }
+        }
+    }
+
+    /**
+     * Check for the skip-bootstrap flag file. Looks in two locations
+     * because ViPlex Express's file-push lands in different paths
+     * depending on Taurus model + Android version:
+     *
+     *   /sdcard/edu-cms/skip-manager.txt
+     *   /storage/emulated/0/edu-cms/skip-manager.txt
+     *
+     * Either presence is enough. Contents are ignored — file existence
+     * alone is the signal. Operator can later remove the file (or just
+     * uninstall + reinstall Player) to re-enable the bootstrap.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun shouldSkipBootstrap(ctx: Context): Boolean {
+        val candidates = listOf(
+            "/sdcard/edu-cms/skip-manager.txt",
+            "/storage/emulated/0/edu-cms/skip-manager.txt",
+        )
+        return candidates.any { path ->
+            try { File(path).exists() } catch (_: Exception) { false }
         }
     }
 

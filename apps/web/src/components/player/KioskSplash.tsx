@@ -827,4 +827,34 @@ const CSS = `
   }
   .kiosk-code-char { font-size: clamp(48px, 8.5vw, 92px); }
 }
+
+/* ─── Ultra-narrow portrait tower (Nova Taurus LED poster) ──────
+   Operator 2026-05-13: deploying to a single 320×1080 LED poster.
+   Six horizontal code tiles can't fit in ~280px of usable width
+   even at 32px tile width — they'd touch and read as one blob.
+   Below 480px viewport width the code row stacks VERTICALLY: each
+   tile is full-width, 1/8 of the viewport height, so six fit
+   comfortably with hero text above + status footer below. */
+@media (max-width: 480px) {
+  .kiosk-frame { padding: 4vw 2vw !important; }
+  .kiosk-instructions { font-size: 4vw !important; }
+  .kiosk-instruction-label { font-size: 3vw !important; }
+  .kiosk-instruction-line { font-size: 4vw !important; }
+  .kiosk-code-row {
+    flex-direction: column !important;
+    gap: 1.5vh !important;
+    width: 90% !important;
+  }
+  .kiosk-code-tile {
+    width: 100% !important;
+    height: 10vh !important;
+    min-height: 60px !important;
+    max-height: 110px !important;
+  }
+  .kiosk-code-char { font-size: 6.5vh !important; }
+  .kiosk-qr-hint { font-size: 3vw !important; }
+  /* The brand-name + footer rows shrink so the code dominates. */
+  .kiosk-brand-name { font-size: 4.5vw !important; }
+  .kiosk-status-row { font-size: 2.8vw !important; gap: 1vw !important; flex-wrap: wrap; }
+}
 `;
