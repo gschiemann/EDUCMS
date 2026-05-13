@@ -1125,7 +1125,7 @@ function CanvasInfoRow() {
   if (typeof window === 'undefined') return null;
   let display = '—';
   let label = 'auto';
-  let fitMode: 'contain' | 'cover' = 'contain';
+  let fitMode: 'contain' | 'cover' | 'auto' = 'auto';
   try {
     const p = new URLSearchParams(window.location.search);
     const override = readCanvasOverride();
@@ -1142,6 +1142,11 @@ function CanvasInfoRow() {
   // `tick` only used to trigger a re-render; reference it to silence
   // the unused-variable warning.
   void tick;
+  const fitLabel = fitMode === 'cover'
+    ? 'Fill screen (crop overflow)'
+    : fitMode === 'contain'
+      ? 'Show whole template (letterbox)'
+      : 'Auto (fills when shapes match)';
   return (
     <>
       <div className="flex justify-between">
@@ -1152,9 +1157,7 @@ function CanvasInfoRow() {
       </div>
       <div className="flex justify-between">
         <span className="text-slate-400">Fit mode</span>
-        <span className="text-slate-300 font-medium text-xs">
-          {fitMode === 'cover' ? 'Fill screen (crop overflow)' : 'Show whole template (letterbox)'}
-        </span>
+        <span className="text-slate-300 font-medium text-xs">{fitLabel}</span>
       </div>
     </>
   );
@@ -5926,12 +5929,23 @@ function OtaProgressOverlay({
 function TemplateScaler({
   designW,
   designH,
-  fitMode = 'contain',
+  fitMode = 'auto',
   children,
 }: {
   designW: number;
   designH: number;
-  fitMode?: 'contain' | 'cover';
+  /**
+   * - contain: fit the WHOLE design inside the LED (letterbox bars
+   *   on the axis that doesn't match).
+   * - cover: scale to FILL the LED (crop the design's overflow).
+   * - auto (default 2026-05-13 — partner's "320×1080 to 1920×1080,
+   *   auto-fill all of those" ask): cover when aspect difference is
+   *   small (< 25%), contain when it's large. Sensible default that
+   *   makes the common 2-panel/portrait-template case fill perfectly
+   *   without cropping anything important, while a portrait template
+   *   on a 6-panel 16:9 LED still preserves the whole design.
+   */
+  fitMode?: 'contain' | 'cover' | 'auto';
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -5943,15 +5957,24 @@ function TemplateScaler({
       const w = el.offsetWidth;
       const h = el.offsetHeight;
       if (w <= 0 || h <= 0) return;
-      // contain: scale down until the WHOLE design fits — letterbox bars
-      //          appear on whichever axis doesn't fill (Math.min).
-      // cover:   scale UP until the design fills the canvas entirely —
-      //          parts of the design get cropped off-LED (Math.max).
-      // Operator picks per-screen via the "Resize for LED" overlay
-      // (2026-05-13 — partner ask: "i thought it would fill the screen
-      // fully, is that possible?"). Default stays contain so nothing
-      // unexpectedly disappears off-screen.
-      const fn = fitMode === 'cover' ? Math.max : Math.min;
+      // Effective mode resolution. `auto` looks at aspect mismatch:
+      //   designAspect / canvasAspect within ±25% → cover (fills LED,
+      //   minor crop on one axis the operator likely won't notice).
+      //   beyond 25% → contain (preserves the design, takes black bars
+      //   rather than cropping ~half the template off-LED).
+      // 25% threshold is empirical: 320×1080 (0.30) vs portrait template
+      // (0.56) = 46% diff → contain. 640×1080 (0.59) vs portrait (0.56)
+      // = 5% → cover. 1920×1080 (1.78) vs landscape (1.78) = 0% → cover.
+      // 960×1080 (0.89) vs portrait (0.56) = 37% → contain.
+      let effective: 'contain' | 'cover' = fitMode === 'cover' ? 'cover' : 'contain';
+      if (fitMode === 'auto') {
+        const canvasAspect = w / h;
+        const designAspect = designW / designH;
+        const aspectDiff = Math.abs(canvasAspect - designAspect)
+          / Math.max(canvasAspect, designAspect);
+        effective = aspectDiff < 0.25 ? 'cover' : 'contain';
+      }
+      const fn = effective === 'cover' ? Math.max : Math.min;
       setScale(fn(w / designW, h / designH));
     };
     compute();
@@ -6005,27 +6028,32 @@ function TemplateScaler({
   );
 }
 
-function readCanvasOverride(): { w: number | null; h: number | null; fitMode: 'contain' | 'cover' } {
-  if (typeof window === 'undefined') return { w: null, h: null, fitMode: 'contain' };
+function readCanvasOverride(): { w: number | null; h: number | null; fitMode: 'contain' | 'cover' | 'auto' } {
+  if (typeof window === 'undefined') return { w: null, h: null, fitMode: 'auto' };
   try {
     const p = new URLSearchParams(window.location.search);
     const urlW = parseInt(p.get('canvasW') || '', 10);
     const urlH = parseInt(p.get('canvasH') || '', 10);
     const lsW = parseInt(localStorage.getItem('edu_canvasW') || '', 10);
     const lsH = parseInt(localStorage.getItem('edu_canvasH') || '', 10);
-    // fitMode: URL param wins, then localStorage, then default to 'contain'.
-    // 'cover' means scale template to FILL the LED (cropping overflow);
-    // 'contain' fits the whole design inside (letterbox on aspect mismatch).
+    // fitMode resolution: URL → localStorage → 'auto' default.
+    // 'auto' picks cover for close-aspect matches (320×1080 panels +
+    // portrait template fill perfectly), contain for big mismatches
+    // (portrait template on 6-panel 16:9 LED preserves whole design).
     const urlFit = (p.get('fitMode') || '').toLowerCase();
     const lsFit = (typeof localStorage !== 'undefined' ? localStorage.getItem('edu_fitMode') || '' : '').toLowerCase();
-    const fitMode: 'contain' | 'cover' = urlFit === 'cover' || lsFit === 'cover' ? 'cover' : 'contain';
+    const candidate = (urlFit || lsFit || 'auto').toLowerCase();
+    const fitMode: 'contain' | 'cover' | 'auto' =
+      candidate === 'cover' ? 'cover'
+      : candidate === 'contain' ? 'contain'
+      : 'auto';
     return {
       w: Number.isFinite(urlW) && urlW > 0 ? urlW : (Number.isFinite(lsW) && lsW > 0 ? lsW : null),
       h: Number.isFinite(urlH) && urlH > 0 ? urlH : (Number.isFinite(lsH) && lsH > 0 ? lsH : null),
       fitMode,
     };
   } catch {
-    return { w: null, h: null, fitMode: 'contain' };
+    return { w: null, h: null, fitMode: 'auto' };
   }
 }
 
@@ -6046,17 +6074,17 @@ function readCanvasOverride(): { w: number | null; h: number | null; fitMode: 'c
 function CanvasSizeEditor({
   initialW,
   initialH,
-  initialFitMode = 'contain',
+  initialFitMode = 'auto',
   onClose,
 }: {
   initialW: number | null;
   initialH: number | null;
-  initialFitMode?: 'contain' | 'cover';
+  initialFitMode?: 'contain' | 'cover' | 'auto';
   onClose: () => void;
 }) {
   const [w, setW] = useState(String(initialW || ''));
   const [h, setH] = useState(String(initialH || ''));
-  const [fitMode, setFitMode] = useState<'contain' | 'cover'>(initialFitMode);
+  const [fitMode, setFitMode] = useState<'contain' | 'cover' | 'auto'>(initialFitMode);
 
   const reloadWith = (params: Record<string, string | null>) => {
     if (typeof window === 'undefined') return;
@@ -6155,55 +6183,57 @@ function CanvasSizeEditor({
             style={inputStyle}
           />
         </div>
-        {/* Fit-mode picker. Operator-facing labels chosen to be plain
-            English — "Show whole template" / "Fill the screen" — instead
-            of CSS jargon (contain/cover). Default is contain to avoid
-            cropping content unexpectedly. */}
+        {/* Fit-mode picker. Plain-English labels (no CSS jargon).
+            'auto' default picks the right mode based on aspect-diff:
+            close-aspect = cover (fills LED); far-aspect = contain
+            (preserves whole template with letterbox). Partner ask
+            2026-05-13: "each poster is 320×1080 and we may use 1 or
+            we may use 6 and everything in between, i want it to auto
+            fill all of those if we can". */}
         <div style={{ marginBottom: '18px' }}>
           <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '8px', fontWeight: 600 }}>
-            When the template's shape doesn't match the LED:
+            How should templates fit the LED?
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              type="button"
-              onClick={() => setFitMode('contain')}
-              style={{
-                flex: 1,
-                padding: '10px 12px',
-                background: fitMode === 'contain' ? '#6366f1' : '#1e293b',
-                border: fitMode === 'contain' ? '1px solid #818cf8' : '1px solid #334155',
-                borderRadius: '8px',
-                color: 'white',
-                fontSize: '12px',
-                fontWeight: fitMode === 'contain' ? 700 : 500,
-                cursor: 'pointer',
-                textAlign: 'left',
-                lineHeight: 1.4,
-              }}
-            >
-              <div style={{ fontWeight: 700, marginBottom: '2px' }}>Show whole template</div>
-              <div style={{ fontSize: '10px', opacity: 0.85 }}>Bars on the edges if shapes don't match</div>
-            </button>
-            <button
-              type="button"
-              onClick={() => setFitMode('cover')}
-              style={{
-                flex: 1,
-                padding: '10px 12px',
-                background: fitMode === 'cover' ? '#6366f1' : '#1e293b',
-                border: fitMode === 'cover' ? '1px solid #818cf8' : '1px solid #334155',
-                borderRadius: '8px',
-                color: 'white',
-                fontSize: '12px',
-                fontWeight: fitMode === 'cover' ? 700 : 500,
-                cursor: 'pointer',
-                textAlign: 'left',
-                lineHeight: 1.4,
-              }}
-            >
-              <div style={{ fontWeight: 700, marginBottom: '2px' }}>Fill the screen</div>
-              <div style={{ fontSize: '10px', opacity: 0.85 }}>Crops parts of the template that don't fit</div>
-            </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {([
+              {
+                key: 'auto' as const,
+                title: 'Auto-fit (recommended)',
+                desc: 'Fills the screen when the template matches the LED shape. Falls back to letterbox when the shapes are very different — so portrait templates on a wide LED still show fully.',
+              },
+              {
+                key: 'cover' as const,
+                title: 'Always fill the screen',
+                desc: 'Scales the template up to fill the LED entirely. Crops the parts that overflow off the visible area.',
+              },
+              {
+                key: 'contain' as const,
+                title: 'Always show whole template',
+                desc: "Never crops. If the template's shape doesn't match the LED, you'll see bars along the edges in the template's background color.",
+              },
+            ]).map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => setFitMode(opt.key)}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  background: fitMode === opt.key ? '#6366f1' : '#1e293b',
+                  border: fitMode === opt.key ? '1px solid #818cf8' : '1px solid #334155',
+                  borderRadius: '8px',
+                  color: 'white',
+                  fontSize: '12px',
+                  fontWeight: fitMode === opt.key ? 700 : 500,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  lineHeight: 1.4,
+                }}
+              >
+                <div style={{ fontWeight: 700, marginBottom: '2px' }}>{opt.title}</div>
+                <div style={{ fontSize: '10px', opacity: 0.85 }}>{opt.desc}</div>
+              </button>
+            ))}
           </div>
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
